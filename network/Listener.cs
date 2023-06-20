@@ -1,0 +1,87 @@
+﻿using System.Net;
+using System.Net.Sockets;
+
+namespace network
+{
+    class Listener
+    {
+        SocketAsyncEventArgs accept_args;
+
+        Socket listen_socket;
+
+        AutoResetEvent flow_control_event;
+
+        public delegate void newClientHandler(Socket client_socket, object token);
+
+        public newClientHandler onNewClient;
+
+        public Listener()
+        {
+            this.onNewClient = null;
+        }
+
+        public void start(string host, int port, int backlog)
+        {
+            try
+            {
+                IPAddress address = host == "0.0.0.0" ? IPAddress.Any : IPAddress.Parse(host);
+                IPEndPoint end_point = new IPEndPoint(address, port);
+
+                this.listen_socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                this.listen_socket.Bind(end_point);
+                this.listen_socket.Listen(backlog);
+
+                this.accept_args = new SocketAsyncEventArgs();
+                this.accept_args.Completed += new EventHandler<SocketAsyncEventArgs>(onAcceptCompleted);
+
+                this.listen_socket.AcceptAsync(this.accept_args);
+
+                Thread listen_thread = new Thread(doListen);
+                listen_thread.Start();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+        }
+
+        void doListen()
+        {
+            this.flow_control_event = new AutoResetEvent(false);
+
+            while (true)
+            {
+                this.accept_args.AcceptSocket = null;
+                try
+                {
+                    if (!listen_socket.AcceptAsync(this.accept_args))
+                    {
+                        onAcceptCompleted(null, this.accept_args);
+                    }
+
+                    this.flow_control_event.WaitOne();
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"doListen Fail. {e.Message}");
+                    continue;
+                }
+            }
+        }
+
+        void onAcceptCompleted(object? sender, SocketAsyncEventArgs socket_event_args)
+        {
+            var (socket_error, accept_socket, user_token) = (socket_event_args.SocketError, socket_event_args.AcceptSocket, socket_event_args.UserToken);
+
+            this.flow_control_event.Set();
+
+            if (socket_error != SocketError.Success || accept_socket is null || user_token is null)
+            {
+                Console.WriteLine($"onAcceptCompleted fail. socket_error:{socket_error}, accept_socket:{accept_socket}, user_token:{user_token}");
+                return;
+            }
+
+            this.onNewClient(accept_socket, user_token);
+        }
+    }
+}
