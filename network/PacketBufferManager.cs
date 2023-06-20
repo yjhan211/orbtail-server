@@ -2,7 +2,7 @@
 
 namespace network
 {
-    class PacketBufferManager
+    public class PacketBufferManager
     {
         private static ObjectPool<Packet> pool;
 

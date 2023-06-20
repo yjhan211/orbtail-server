@@ -1,4 +1,6 @@
-﻿using System.Net;
+﻿#pragma warning disable CS8604
+
+using System.Net;
 using System.Net.Sockets;
 
 namespace network
@@ -33,8 +35,6 @@ namespace network
 
                 this.accept_args = new SocketAsyncEventArgs();
                 this.accept_args.Completed += new EventHandler<SocketAsyncEventArgs>(onAcceptCompleted);
-
-                this.listen_socket.AcceptAsync(this.accept_args);
 
                 Thread listen_thread = new Thread(doListen);
                 listen_thread.Start();
@@ -74,13 +74,6 @@ namespace network
             var (socket_error, accept_socket, user_token) = (socket_event_args.SocketError, socket_event_args.AcceptSocket, socket_event_args.UserToken);
 
             this.flow_control_event.Set();
-
-            if (socket_error != SocketError.Success || accept_socket is null || user_token is null)
-            {
-                Console.WriteLine($"onAcceptCompleted fail. socket_error:{socket_error}, accept_socket:{accept_socket}, user_token:{user_token}");
-                return;
-            }
-
             this.onNewClient(accept_socket, user_token);
         }
     }
