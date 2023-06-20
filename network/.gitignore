@@ -1,0 +1,43 @@
+# 플랫폼 및 도구 파일
+**/.dotnet/
+**/obj/
+**/bin/
+
+# 빌드 출력
+**/*.exe
+**/*.dll
+**/*.pdb
+**/*.dll.config
+**/*.exe.config
+
+# NuGet 패키지
+**/packages/
+
+# 툴 내용
+**/npm-debug.log
+**/yarn-debug.log*
+**/yarn-error.log*
+**/bower_components/
+
+# 지정된 개발 환경 파일
+**/*.suo
+**/*.user
+**/*.sln.docstates
+**/*.vs/
+**/.vscode/
+
+# 로그 파일
+**/*.logs
+**/*.log
+
+# 유니티3D 특정 파일
+**/*.unityproj
+**/*.sln
+**/*.sln.cache
+**/*.pidb
+**/*.userprefs
+**/*.csproj
+**/*.csproj.user
+**/*.pidb.meta
+**/*.pdb.meta
+**/*.mdb.meta
