@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace game_server
 {
-    public enum PROTOCOL : int
+    public enum PROTOCOL : Int32
     {
         BEGIN = 0,
 

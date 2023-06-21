@@ -27,19 +27,19 @@ namespace server
             Console.WriteLine("protocol id " + protocol);
             switch (protocol)
             {
-                case PROTOCOL.CHAT_MSG_REQ:
+                case PROTOCOL.BEGIN:
+                    string text = msg.PopString();
+                    Console.WriteLine(string.Format("text {0}", text));
+                    token.is_alive = true;
 
-                    {
-                        string text = msg.PopString();
-                        Console.WriteLine(string.Format("text {0}", text));
-
-                        Packet response = Packet.Create((short)PROTOCOL.CHAT_MSG_ACK);
-                        response.Push(text);
-                        Send(response);
-                    }
+                    Packet response = Packet.Create((int)PROTOCOL.BEGIN);
+                    response.Push(text);
+                    Send(response);
                     break;
             }
         }
+
+        public void ProcessUserOperation(Packet msg) { }
 
         public void Send(Packet msg)
         {
@@ -50,14 +50,8 @@ namespace server
         {
             Console.WriteLine("The client disconnected.");
 
-            Program.RemoveUser(this);
-        }
-
-        public void ProcessUserOperation(Packet msg) { }
-
-        public void Disconnect()
-        {
             this.token.socket.Disconnect(false);
+            Program.RemoveUser(this);
         }
     }
 }

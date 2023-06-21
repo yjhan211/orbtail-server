@@ -16,6 +16,7 @@ namespace network
         readonly Queue<Packet> sending_queue;
         readonly object cs_sending_queue;
         public Timer heartbeat_timer;
+        public bool is_alive = true;
 
         public UserToken()
         {
@@ -55,6 +56,7 @@ namespace network
 
         public void OnRemoved()
         {
+            this.heartbeat_timer.Dispose();
             this.sending_queue.Clear();
             this.peer?.OnRemoved();
         }

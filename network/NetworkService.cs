@@ -94,6 +94,20 @@ namespace network
                 this.session_created_callback(user_token);
 
                 BeginRecv(user_token, client_socket, recv_args, send_args);
+                user_token.heartbeat_timer = new Timer(
+                    (object _) =>
+                    {
+                        if (user_token.is_alive)
+                        {
+                            user_token.is_alive = false;
+                            return;
+                        }
+                        this.CloseClientSocket(user_token);
+                    },
+                    null,
+                    TimeSpan.Zero,
+                    TimeSpan.FromSeconds(10)
+                );
             }
             catch (Exception e)
             {
@@ -152,7 +166,7 @@ namespace network
                     || recv_args.Buffer == null
                 )
                 {
-                    // TODO close_clientsocket
+                    this.CloseClientSocket(user_token);
                     throw new Exception(
                         $"processRecv fail. BytesTransferred:{recv_args.BytesTransferred}"
                     );
@@ -177,11 +191,13 @@ namespace network
             }
         }
 
-        public void closeClientSocket(UserToken token)
+        public void CloseClientSocket(UserToken user_token)
         {
-            token.OnRemoved();
-            this.recv_event_args_pool.Push(token.recv_event_args);
-            this.recv_event_args_pool.Push(token.send_event_args);
+            user_token.OnRemoved();
+            this.recv_event_args_pool.Push(user_token.recv_event_args);
+            this.recv_event_args_pool.Push(user_token.send_event_args);
+
+            Interlocked.Decrement(ref this.connected_count);
         }
 
         private static UserToken GetUserToken(SocketAsyncEventArgs args)

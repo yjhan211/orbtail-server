@@ -14,8 +14,6 @@ namespace network
 
         void Send(Packet msg);
 
-        void Disconnect();
-
         void ProcessUserOperation(Packet msg);
     }
 }

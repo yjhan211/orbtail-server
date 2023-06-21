@@ -34,7 +34,7 @@ namespace network
                 this.listen_socket.Bind(end_point);
                 this.listen_socket.Listen(backlog);
 
-                this.accept_args = new SocketAsyncEventArgs();
+                this.accept_args = new();
                 this.accept_args.Completed += new EventHandler<SocketAsyncEventArgs>(
                     OnAcceptCompleted
                 );
