@@ -65,6 +65,17 @@ namespace network
             send_event_arg.SetBuffer(new byte[1024], 0, 1024);
 
             BeginRecv(user_token, socket, receive_event_arg, send_event_arg);
+            user_token.heartbeat_timer = new Timer(
+                (object _) =>
+                {
+                    Packet msg = Packet.Create(0);
+                    msg.Push(0);
+                    user_token.Send(msg);
+                },
+                null,
+                TimeSpan.Zero,
+                TimeSpan.FromSeconds(3)
+            );
         }
 
         void OnNewClient(Socket client_socket, object _)
@@ -83,18 +94,6 @@ namespace network
                 this.session_created_callback(user_token);
 
                 BeginRecv(user_token, client_socket, recv_args, send_args);
-
-                user_token.heartbeat_timer = new Timer(
-                    (object _) =>
-                    {
-                        Packet msg = Packet.Create(0);
-                        msg.Push(0);
-                        user_token.Send(msg);
-                    },
-                    null,
-                    TimeSpan.Zero,
-                    TimeSpan.FromSeconds(3)
-                );
             }
             catch (Exception e)
             {

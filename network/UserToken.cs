@@ -66,7 +66,7 @@ namespace network
 
             lock (this.cs_sending_queue)
             {
-                bool is_sending = this.sending_queue.Count <= 0;
+                bool is_sending = this.sending_queue.Count > 0;
                 this.sending_queue.Enqueue(clone);
                 if (!is_sending)
                 {
@@ -91,6 +91,7 @@ namespace network
                     this.send_event_args.Offset,
                     msg.position
                 );
+
                 if (!this.socket.SendAsync(this.send_event_args))
                 {
                     ProcessSend(this.send_event_args);
