@@ -4,6 +4,10 @@
     {
         public T Value { get; private set; }
 
-        public Const(T value) : this() { Value = value; }
+        public Const(T value)
+            : this()
+        {
+            Value = value;
+        }
     }
 }
