@@ -18,21 +18,18 @@ namespace server
             PacketBufferManager.Initialize(2000);
 
             NetworkService network_service = new();
-            network_service.session_created_callback += OnSessionCreated;
             network_service.Initialize();
-            network_service.Listen("0.0.0.0", 7979, 100);
-
-            Console.WriteLine("Started!");
-            Console.ReadLine();
-        }
-
-        static void OnSessionCreated(UserToken token)
-        {
-            GameUser user = new(token);
-            lock (user_list)
+            network_service.session_created_callback += (UserToken token) =>
             {
-                user_list.Add(user);
-            }
+                GameUser user = new(token);
+                lock (user_list)
+                {
+                    user_list.Add(user);
+                }
+            };
+
+            network_service.Listen("0.0.0.0", 7979, 100);
+            Console.WriteLine("Started!");
         }
 
         public static void RemoveUser(GameUser user)
