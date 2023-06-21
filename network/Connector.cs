@@ -1,4 +1,7 @@
-﻿using System;
+﻿#pragma warning disable CS8618
+#pragma warning disable CS8622
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -11,31 +14,35 @@ namespace network
     public class Connector
     {
         public delegate void ConnectHandler(UserToken token);
-        public ConnectHandler connectedCallback { get; set; }
+        public ConnectHandler connected_callback { get; set; }
 
         Socket client;
 
-        NetworkService network_service;
+        readonly NetworkService network_service;
 
         public Connector(NetworkService network_service)
         {
             this.network_service = network_service;
         }
 
-        public void connect(IPEndPoint remote_endpoint)
+        public void Connect(IPEndPoint remote_endpoint)
         {
-            this.client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            this.client = new Socket(
+                AddressFamily.InterNetwork,
+                SocketType.Stream,
+                ProtocolType.Tcp
+            );
 
-            SocketAsyncEventArgs event_arg = new SocketAsyncEventArgs();
-            event_arg.Completed += onConnectCompleted;
+            SocketAsyncEventArgs event_arg = new();
+            event_arg.Completed += OnConnectCompleted;
             event_arg.RemoteEndPoint = remote_endpoint;
             if (!this.client.ConnectAsync(event_arg))
             {
-                onConnectCompleted(null, event_arg);
+                OnConnectCompleted(null, event_arg);
             }
         }
 
-        void onConnectCompleted(object sender, SocketAsyncEventArgs args)
+        void OnConnectCompleted(object? sender, SocketAsyncEventArgs args)
         {
             if (args.SocketError != SocketError.Success)
             {
@@ -43,9 +50,9 @@ namespace network
                 return;
             }
 
-            UserToken token = new UserToken();
+            UserToken token = new();
             this.network_service.onConnectCompleted(this.client, token);
-            this.connectedCallback(token);
+            this.connected_callback(token);
         }
     }
 }

@@ -8,14 +8,14 @@ namespace network
 {
     public interface IPeer
     {
-        void onMessage(Const<byte[]> buffer);
+        void OnMessage(Const<byte[]> buffer);
 
-        void onRemoved();
+        void OnRemoved();
 
-        void send(Packet msg);
+        void Send(Packet msg);
 
-        void disconnect();
+        void Disconnect();
 
-        void processUserOperation(Packet msg);
+        void ProcessUserOperation(Packet msg);
     }
 }

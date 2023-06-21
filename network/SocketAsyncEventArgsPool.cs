@@ -2,14 +2,14 @@
 
 namespace network
 {
-    // Represents a collection of reusable SocketAsyncEventArgs objects.  
+    // Represents a collection of reusable SocketAsyncEventArgs objects.
     class SocketAsyncEventArgsPool
     {
-        Stack<SocketAsyncEventArgs> m_pool;
+        readonly Stack<SocketAsyncEventArgs> m_pool;
 
         // Initializes the object pool to the specified size
         //
-        // The "capacity" parameter is the maximum number of 
+        // The "capacity" parameter is the maximum number of
         // SocketAsyncEventArgs objects the pool can hold
         public SocketAsyncEventArgsPool(int capacity)
         {
@@ -18,11 +18,17 @@ namespace network
 
         // Add a SocketAsyncEventArg instance to the pool
         //
-        //The "item" parameter is the SocketAsyncEventArgs instance 
+        //The "item" parameter is the SocketAsyncEventArgs instance
         // to add to the pool
         public void Push(SocketAsyncEventArgs item)
         {
-            if (item == null) { throw new ArgumentNullException("Items added to a SocketAsyncEventArgsPool cannot be null"); }
+            if (item == null)
+            {
+                throw new ArgumentNullException(
+                    nameof(item),
+                    "Items added to a SocketAsyncEventArgsPool cannot be null"
+                );
+            }
             lock (m_pool)
             {
                 m_pool.Push(item);

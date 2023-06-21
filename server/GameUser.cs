@@ -11,52 +11,51 @@ namespace server
 
     class GameUser : IPeer
     {
-        UserToken token;
+        readonly UserToken token;
 
         public GameUser(UserToken token)
         {
             this.token = token;
-            this.token.setPeer(this);
+            this.token.SetPeer(this);
         }
 
-        public void onMessage(Const<byte[]> buffer)
+        public void OnMessage(Const<byte[]> buffer)
         {
-            Packet msg = new Packet(buffer.Value, this);
-            PROTOCOL protocol = (PROTOCOL)msg.popProtocolId();
+            Packet msg = new(buffer.Value, this);
+            PROTOCOL protocol = (PROTOCOL)msg.PopProtocolId();
             Console.WriteLine("------------------------------------------------------");
             Console.WriteLine("protocol id " + protocol);
             switch (protocol)
             {
                 case PROTOCOL.CHAT_MSG_REQ:
+
                     {
-                        string text = msg.popString();
+                        string text = msg.PopString();
                         Console.WriteLine(string.Format("text {0}", text));
 
-                        Packet response = Packet.create((short)PROTOCOL.CHAT_MSG_ACK);
-                        response.push(text);
-                        send(response);
+                        Packet response = Packet.Create((short)PROTOCOL.CHAT_MSG_ACK);
+                        response.Push(text);
+                        Send(response);
                     }
                     break;
             }
         }
 
-        public void send(Packet msg)
+        public void Send(Packet msg)
         {
-            this.token.send(msg);
+            this.token.Send(msg);
         }
 
-        public void onRemoved()
+        public void OnRemoved()
         {
             Console.WriteLine("The client disconnected.");
 
-            Program.removeUser(this);
+            Program.RemoveUser(this);
         }
 
-        public void processUserOperation(Packet msg)
-        {
-        }
+        public void ProcessUserOperation(Packet msg) { }
 
-        public void disconnect()
+        public void Disconnect()
         {
             this.token.socket.Disconnect(false);
         }

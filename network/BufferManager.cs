@@ -4,12 +4,11 @@ namespace network
 {
     internal class BufferManager
     {
-
-        int m_numBytes;                 // the total number of bytes controlled by the buffer pool
+        readonly int m_numBytes; // the total number of bytes controlled by the buffer pool
         int m_currentIndex;
-        int m_bufferSize;
+        readonly int m_bufferSize;
 
-        byte[] m_buffer;                // the underlying byte array maintained by the Buffer Manager
+        readonly byte[] m_buffer; // the underlying byte array maintained by the Buffer Manager
 
         public BufferManager(int totalBytes, int bufferSize)
         {

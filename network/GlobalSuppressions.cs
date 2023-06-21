@@ -3,5 +3,10 @@
 // Project-level suppressions either have no target or are given
 // a specific target and scoped to a namespace, type, member, etc.
 
-
-[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:명명 스타일", Justification = "<보류 중>", Scope = "namespaceanddescendants", Target = "~N:network")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Style",
+    "IDE1006:명명 스타일",
+    Justification = "<보류 중>",
+    Scope = "namespaceanddescendants",
+    Target = "~N:network"
+)]

@@ -1,4 +1,8 @@
-﻿using System.Collections.Concurrent;
+﻿#pragma warning disable CS8604
+#pragma warning disable CS8622
+#pragma warning disable CS8618
+
+using System.Collections.Concurrent;
 
 namespace network
 {
@@ -6,19 +10,19 @@ namespace network
     {
         private static ObjectPool<Packet> pool;
 
-        public static void initialize(int capacity)
+        public static void Initialize(int capacity)
         {
             pool = new ObjectPool<Packet>(() => new Packet(), capacity);
         }
 
-        public static Packet pop()
+        public static Packet Pop()
         {
-            return pool.pop();
+            return pool.Pop();
         }
 
-        public static void push(Packet packet)
+        public static void Push(Packet packet)
         {
-            pool.push(packet);
+            pool.Push(packet);
         }
     }
 
@@ -31,7 +35,9 @@ namespace network
         {
             if (object_generator is null || pool_capacity <= 0)
             {
-                throw new Exception($"fail initialize objectpool. {nameof(object_generator)}, {pool_capacity}");
+                throw new Exception(
+                    $"fail initialize objectpool. {nameof(object_generator)}, {pool_capacity}"
+                );
             }
 
             this.objects = new ConcurrentBag<T>();
@@ -43,7 +49,7 @@ namespace network
             }
         }
 
-        public T pop()
+        public T Pop()
         {
             if (this.objects.TryTake(out var item))
             {
@@ -53,7 +59,7 @@ namespace network
             return this.object_generator();
         }
 
-        public void push(T item)
+        public void Push(T item)
         {
             this.objects.Add(item);
         }

@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿#pragma warning disable CS8618
+
+using System.Text;
 
 namespace network
 {
@@ -9,16 +11,16 @@ namespace network
         public int position { get; private set; }
         public Int32 protocol_id { get; private set; }
 
-        public static Packet create(Int32 protocol_id)
+        public static Packet Create(Int32 protocol_id)
         {
-            Packet packet = PacketBufferManager.pop();
-            packet.setProtocol(protocol_id);
+            Packet packet = PacketBufferManager.Pop();
+            packet.SetProtocol(protocol_id);
             return packet;
         }
 
-        public static void destroy(Packet packet)
+        public static void Destroy(Packet packet)
         {
-            PacketBufferManager.push(packet);
+            PacketBufferManager.Push(packet);
         }
 
         public Packet(byte[] buffer, IPeer owner)
@@ -33,24 +35,24 @@ namespace network
             this.buffer = new byte[1024];
         }
 
-        public Int32 popProtocolId()
+        public Int32 PopProtocolId()
         {
-            return popInt32();
+            return PopInt32();
         }
 
-        public void copyTo(Packet target)
+        public void CopyTo(Packet target)
         {
-            target.setProtocol(this.protocol_id);
-            target.overwrite(this.buffer, this.position);
+            target.SetProtocol(this.protocol_id);
+            target.Overwrite(this.buffer, this.position);
         }
 
-        public void overwrite(byte[] source, int position)
+        public void Overwrite(byte[] source, int position)
         {
             Array.Copy(source, this.buffer, source.Length);
             this.position = position;
         }
 
-        public byte popByte()
+        public byte PopByte()
         {
             byte data = (byte)BitConverter.ToInt16(this.buffer, this.position);
             this.position = sizeof(byte);
@@ -58,21 +60,21 @@ namespace network
             return data;
         }
 
-        public Int16 popInt16()
+        public Int16 PopInt16()
         {
             Int16 data = BitConverter.ToInt16(this.buffer, this.position);
             this.position = sizeof(Int16);
             return data;
         }
 
-        public Int32 popInt32()
+        public Int32 PopInt32()
         {
             Int32 data = BitConverter.ToInt32(this.buffer, this.position);
             this.position += sizeof(Int32);
             return data;
         }
 
-        public string popString()
+        public string PopString()
         {
             // 문자열 길이는 최대 2바이트 까지. 0 ~ 32767
             Int16 len = BitConverter.ToInt16(this.buffer, this.position);
@@ -85,49 +87,49 @@ namespace network
             return data;
         }
 
-        public void setProtocol(Int32 protocol_id)
+        public void SetProtocol(Int32 protocol_id)
         {
             this.protocol_id = protocol_id;
             this.position = Config.HEADER_SIZE;
 
-            push(protocol_id);
+            Push(protocol_id);
         }
 
-        public void recordSize()
+        public void RecordSize()
         {
             Int32 body_size = (Int32)(this.position - Config.HEADER_SIZE);
             byte[] header = BitConverter.GetBytes(body_size);
             header.CopyTo(this.buffer, 0);
         }
 
-        public void pushInt16(Int16 data)
+        public void PushInt16(Int16 data)
         {
             byte[] temp_buffer = BitConverter.GetBytes(data);
             temp_buffer.CopyTo(this.buffer, this.position);
             this.position += temp_buffer.Length;
         }
 
-        public void push(byte data)
+        public void Push(byte data)
         {
             this.buffer[this.position] = data;
             this.position += sizeof(byte);
         }
 
-        public void push(Int16 data)
+        public void Push(Int16 data)
         {
             byte[] temp_buffer = BitConverter.GetBytes(data);
             temp_buffer.CopyTo(this.buffer, this.position);
             this.position += temp_buffer.Length;
         }
 
-        public void push(Int32 data)
+        public void Push(Int32 data)
         {
             byte[] temp_buffer = BitConverter.GetBytes(data);
             temp_buffer.CopyTo(this.buffer, this.position);
             this.position += temp_buffer.Length;
         }
 
-        public void push(string data)
+        public void Push(string data)
         {
             byte[] temp_buffer = Encoding.UTF8.GetBytes(data);
 

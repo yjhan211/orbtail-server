@@ -1,8 +1,8 @@
 ﻿#pragma warning disable CS8604
 #pragma warning disable CS8622
+#pragma warning disable CS8618
 
 using System.Net.Sockets;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace network
 {
@@ -11,15 +11,11 @@ namespace network
         public Socket socket { get; set; }
         public SocketAsyncEventArgs recv_event_args { get; private set; }
         public SocketAsyncEventArgs send_event_args { get; private set; }
-
-        MessageResolver message_resolver;
-
+        readonly MessageResolver message_resolver;
         IPeer peer;
-
-        Queue<Packet> sending_queue;
-        private object cs_sending_queue;
-
-        Timer heartbeat_timer;
+        readonly Queue<Packet> sending_queue;
+        readonly object cs_sending_queue;
+        public Timer heartbeat_timer;
 
         public UserToken()
         {
@@ -28,45 +24,45 @@ namespace network
             this.sending_queue = new Queue<Packet>();
         }
 
-        public void setPeer(IPeer peer)
+        public void SetPeer(IPeer peer)
         {
             this.peer = peer;
         }
 
-        public void setEventArgs(SocketAsyncEventArgs receive_event_args, SocketAsyncEventArgs send_event_args)
+        public void SetEventArgs(
+            SocketAsyncEventArgs receive_event_args,
+            SocketAsyncEventArgs send_event_args
+        )
         {
             this.recv_event_args = receive_event_args;
             this.send_event_args = send_event_args;
         }
 
-        public void onReceived(byte[] buffer, int offset, int transfered)
+        public void OnReceived(byte[] buffer, int offset, int transfered)
         {
-            this.message_resolver.onReceived(buffer, offset, transfered, onMessage);
+            this.message_resolver.OnReceived(buffer, offset, transfered, OnMessage);
         }
 
-        void onMessage(Const<byte[]> buffer)
+        void OnMessage(Const<byte[]> buffer)
         {
             if (this.peer is null)
             {
                 return;
             }
 
-            this.peer.onMessage(buffer);
+            this.peer.OnMessage(buffer);
         }
 
-        public void onRemoved()
+        public void OnRemoved()
         {
             this.sending_queue.Clear();
-            if (this.peer is not null)
-            {
-                this.peer.onRemoved();
-            }
+            this.peer?.OnRemoved();
         }
 
-        public void send(Packet msg)
+        public void Send(Packet msg)
         {
-            Packet clone = new Packet();
-            msg.copyTo(clone);
+            Packet clone = new();
+            msg.CopyTo(clone);
 
             lock (this.cs_sending_queue)
             {
@@ -75,30 +71,36 @@ namespace network
                 if (!is_sending)
                 {
                     // 현재 전송중이지 않으므로 전송 시작
-                    startSend();
+                    StartSend();
                 }
             }
         }
 
-        void startSend()
+        void StartSend()
         {
             lock (this.cs_sending_queue)
             {
                 Packet msg = this.sending_queue.Peek();
-                msg.recordSize(); // 헤더에 패킷 사이즈 기록
+                msg.RecordSize(); // 헤더에 패킷 사이즈 기록
 
                 this.send_event_args.SetBuffer(this.send_event_args.Offset, msg.position);
-                Array.Copy(msg.buffer, 0, this.send_event_args.Buffer, this.send_event_args.Offset, msg.position);
+                Array.Copy(
+                    msg.buffer,
+                    0,
+                    this.send_event_args.Buffer,
+                    this.send_event_args.Offset,
+                    msg.position
+                );
                 if (!this.socket.SendAsync(this.send_event_args))
                 {
-                    processSend(this.send_event_args);
+                    ProcessSend(this.send_event_args);
                 }
             }
         }
 
         static int sent_count = 0;
 
-        public void processSend(SocketAsyncEventArgs args)
+        public void ProcessSend(SocketAsyncEventArgs args)
         {
             if (args.BytesTransferred <= 0 || args.SocketError != SocketError.Success)
             {
@@ -121,37 +123,26 @@ namespace network
                 }
 
                 Interlocked.Increment(ref sent_count);
-                Console.WriteLine(string.Format($"[{Thread.CurrentThread.ManagedThreadId}] [send] {args.SocketError} | transferred: {args.BytesTransferred}, {sent_count}"));
+                Console.WriteLine(
+                    $"[{Environment.CurrentManagedThreadId}] [send] {args.SocketError} | transferred: {args.BytesTransferred}, {sent_count}"
+                );
 
                 this.sending_queue.Dequeue();
                 if (this.sending_queue.Count > 0)
                 {
-                    startSend();
+                    StartSend();
                 }
             }
         }
 
-        public void disconnect()
+        public void Disconnect()
         {
             try
             {
                 this.socket.Shutdown(SocketShutdown.Send);
             }
-            catch (Exception e) { }
+            catch (Exception) { }
             this.socket.Close();
-        }
-
-        public void startHeartBeat()
-        {
-            TimerCallback callback = new(sendHeartBeat);
-            this.heartbeat_timer = new Timer(callback, null, TimeSpan.Zero, TimeSpan.FromSeconds(3));
-        }
-
-        private void sendHeartBeat(object state)
-        {
-            Packet msg = Packet.create(0);
-            msg.push(0);
-            send(msg);
         }
     }
 }

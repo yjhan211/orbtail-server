@@ -1,4 +1,6 @@
 ﻿#pragma warning disable CS8604
+#pragma warning disable CS8618
+#pragma warning disable CS8622
 
 using System.Net;
 using System.Net.Sockets;
@@ -17,26 +19,27 @@ namespace network
 
         public newClientHandler onNewClient;
 
-        public Listener()
-        {
-            this.onNewClient = null;
-        }
-
-        public void start(string host, int port, int backlog)
+        public void Start(string host, int port, int backlog)
         {
             try
             {
                 IPAddress address = host == "0.0.0.0" ? IPAddress.Any : IPAddress.Parse(host);
-                IPEndPoint end_point = new IPEndPoint(address, port);
+                IPEndPoint end_point = new(address, port);
 
-                this.listen_socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                this.listen_socket = new Socket(
+                    AddressFamily.InterNetwork,
+                    SocketType.Stream,
+                    ProtocolType.Tcp
+                );
                 this.listen_socket.Bind(end_point);
                 this.listen_socket.Listen(backlog);
 
                 this.accept_args = new SocketAsyncEventArgs();
-                this.accept_args.Completed += new EventHandler<SocketAsyncEventArgs>(onAcceptCompleted);
+                this.accept_args.Completed += new EventHandler<SocketAsyncEventArgs>(
+                    OnAcceptCompleted
+                );
 
-                Thread listen_thread = new Thread(doListen);
+                Thread listen_thread = new(DoListen);
                 listen_thread.Start();
             }
             catch (Exception e)
@@ -45,7 +48,7 @@ namespace network
             }
         }
 
-        void doListen()
+        void DoListen()
         {
             this.flow_control_event = new AutoResetEvent(false);
 
@@ -56,7 +59,7 @@ namespace network
                 {
                     if (!listen_socket.AcceptAsync(this.accept_args))
                     {
-                        onAcceptCompleted(null, this.accept_args);
+                        OnAcceptCompleted(null, this.accept_args);
                     }
 
                     this.flow_control_event.WaitOne();
@@ -69,9 +72,13 @@ namespace network
             }
         }
 
-        void onAcceptCompleted(object? sender, SocketAsyncEventArgs socket_event_args)
+        void OnAcceptCompleted(object? sender, SocketAsyncEventArgs socket_event_args)
         {
-            var (socket_error, accept_socket, user_token) = (socket_event_args.SocketError, socket_event_args.AcceptSocket, socket_event_args.UserToken);
+            var (socket_error, accept_socket, user_token) = (
+                socket_event_args.SocketError,
+                socket_event_args.AcceptSocket,
+                socket_event_args.UserToken
+            );
 
             this.flow_control_event.Set();
             this.onNewClient(accept_socket, user_token);
