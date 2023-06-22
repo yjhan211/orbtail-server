@@ -1,4 +1,7 @@
-﻿namespace game_server
+﻿#pragma warning disable CS8618
+#pragma warning disable IDE1006
+
+namespace game_server
 {
     using network;
 
@@ -67,7 +70,6 @@
         S_TO_C_LOGIN Login(C_TO_S_LOGIN request)
         {
             // TODO request.account_token 검증 후 유저 정보 로드
-
             S_TO_C_LOGIN result = new() { user_uid = this.user_uid, name = $"플레이어{user_uid}" };
 
             return result;
