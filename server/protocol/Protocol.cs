@@ -8,11 +8,9 @@ namespace game_server
 {
     public enum PROTOCOL : Int32
     {
-        BEGIN = 0,
-
-        CHAT_MSG_REQ = 1,
-        CHAT_MSG_ACK = 2,
-
+        HEART_BEAT = 0,
+        C_TO_S_LOGIN,
+        S_TO_C_LOGIN,
         END
     }
 }

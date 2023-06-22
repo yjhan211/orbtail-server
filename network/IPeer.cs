@@ -13,7 +13,5 @@ namespace network
         void OnRemoved();
 
         void Send(Packet msg);
-
-        void ProcessUserOperation(Packet msg);
     }
 }

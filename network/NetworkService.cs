@@ -69,7 +69,6 @@ namespace network
                 (object _) =>
                 {
                     Packet msg = Packet.Create(0);
-                    msg.Push(0);
                     user_token.Send(msg);
                 },
                 null,

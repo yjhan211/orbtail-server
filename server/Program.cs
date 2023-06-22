@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using network;
 
-namespace server
+namespace game_server
 {
     class Program
     {
@@ -21,9 +21,10 @@ namespace server
             network_service.Initialize();
             network_service.session_created_callback += (UserToken token) =>
             {
-                GameUser user = new(token);
                 lock (user_list)
                 {
+                    Int32 user_uid = user_list.Count + 1;
+                    GameUser user = new(user_uid, token);
                     user_list.Add(user);
                 }
             };
