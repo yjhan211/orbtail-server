@@ -194,7 +194,7 @@ namespace network
         {
             user_token.OnRemoved();
             this.recv_event_args_pool.Push(user_token.recv_event_args);
-            this.recv_event_args_pool.Push(user_token.send_event_args);
+            this.send_event_args_pool.Push(user_token.send_event_args);
 
             Interlocked.Decrement(ref this.connected_count);
         }
