@@ -13,11 +13,11 @@ namespace network
         SocketAsyncEventArgsPool send_event_args_pool;
         public delegate void sessionHandler(UserToken token);
         public sessionHandler session_created_callback { get; set; }
-        object connect_lock;
+        object event_args_pool_lock;
 
         public void Initialize()
         {
-            this.connect_lock = new Object();
+            this.event_args_pool_lock = new Object();
 
             this.buffer_manager = new BufferManager(
                 Config.MAX_CONNECTION * Config.PRE_ALLOC_COUNT * Config.BUFFER_SIZE,
@@ -67,16 +67,16 @@ namespace network
             send_event_arg.SetBuffer(new byte[1024], 0, 1024);
 
             BeginRecv(user_token, socket, receive_event_arg, send_event_arg);
-            user_token.heartbeat_timer = new Timer(
-                (object _) =>
-                {
-                    Packet msg = Packet.Create(0);
-                    user_token.Send(msg);
-                },
-                null,
-                TimeSpan.Zero,
-                TimeSpan.FromSeconds(3)
-            );
+            // user_token.heartbeat_timer = new Timer(
+            //     (object _) =>
+            //     {
+            //         Packet msg = Packet.Create(0);
+            //         user_token.Send(msg);
+            //     },
+            //     null,
+            //     TimeSpan.Zero,
+            //     TimeSpan.FromSeconds(3)
+            // );
         }
 
         void OnNewClient(Socket client_socket, object _)
@@ -90,7 +90,7 @@ namespace network
                 SocketAsyncEventArgs recv_args;
                 SocketAsyncEventArgs send_args;
 
-                lock (connect_lock)
+                lock (event_args_pool_lock)
                 {
                     recv_args = this.recv_event_args_pool.Pop();
                     send_args = this.send_event_args_pool.Pop();
@@ -102,24 +102,24 @@ namespace network
                 this.session_created_callback(user_token);
 
                 BeginRecv(user_token, client_socket, recv_args, send_args);
-                user_token.heartbeat_timer = new Timer(
-                    (object _) =>
-                    {
-                        if (user_token.is_alive)
-                        {
-                            user_token.is_alive = false;
-                            return;
-                        }
-                        this.CloseClientSocket(user_token);
-                    },
-                    null,
-                    TimeSpan.Zero,
-                    TimeSpan.FromSeconds(10)
-                );
+                // user_token.heartbeat_timer = new Timer(
+                //     (object _) =>
+                //     {
+                //         if (user_token.is_alive)
+                //         {
+                //             user_token.is_alive = false;
+                //             return;
+                //         }
+                //         this.CloseClientSocket(user_token);
+                //     },
+                //     null,
+                //     TimeSpan.Zero,
+                //     TimeSpan.FromSeconds(10)
+                // );
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message);
+                Console.WriteLine($"{e.Message}, {e.StackTrace}");
             }
         }
 
@@ -180,6 +180,10 @@ namespace network
                     );
                 }
 
+                Console.WriteLine(
+                    $"[recv] user_uid:{user_token.peer.GetUserUid()}, BytesTransferred:{recv_args.BytesTransferred}"
+                );
+
                 // 패킷 처리
                 user_token.OnReceived(
                     recv_args.Buffer,
@@ -195,22 +199,25 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message);
+                Console.WriteLine($"{e.Message}, {e.StackTrace}");
             }
         }
 
         public void CloseClientSocket(UserToken user_token)
         {
-            lock (user_token.lock_disconnect)
+            lock (event_args_pool_lock)
             {
-                if (!user_token.is_released)
+                lock (user_token.lock_disconnect)
                 {
-                    user_token.is_released = true;
+                    if (!user_token.is_released)
+                    {
+                        user_token.is_released = true;
 
-                    this.recv_event_args_pool.Push(user_token.recv_event_args);
-                    this.send_event_args_pool.Push(user_token.send_event_args);
+                        this.recv_event_args_pool.Push(user_token.recv_event_args);
+                        this.send_event_args_pool.Push(user_token.send_event_args);
 
-                    user_token.OnRemoved();
+                        user_token.OnRemoved();
+                    }
                 }
             }
         }

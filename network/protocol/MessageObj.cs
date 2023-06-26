@@ -22,13 +22,13 @@ namespace game_server
         public string name { get; set; } // 임시 이름.. 서버에서 아무렇게나
 
         [Key("player_list")]
-        public List<Player> player_list { get; set; }
+        public List<PlayerObj> player_list { get; set; }
     }
 
     [MessagePackObject]
-    public class Player
+    public class PlayerObj
     {
-        public Player(int user_uid, string name)
+        public PlayerObj(int user_uid, string name)
         {
             this.user_uid = user_uid;
             this.name = name;

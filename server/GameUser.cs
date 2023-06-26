@@ -5,9 +5,9 @@ namespace game_server
 {
     using network;
 
-    class GameUser : IPeer
+    public class GameUser : IPeer
     {
-        readonly int user_uid; // TODO 임시
+        public readonly int user_uid; // TODO 임시
         public string name { get; private set; }
         readonly UserToken token;
 
@@ -18,27 +18,18 @@ namespace game_server
             this.token.SetPeer(this);
         }
 
+        public int GetUserUid()
+        {
+            return this.user_uid;
+        }
+
         void IPeer.OnMessage(Const<byte[]> buffer)
         {
-            Packet packet = new(buffer.Value, this);
-            PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
-            byte[] body = packet.PopBody();
-            switch (protocol_id)
-            {
-                case PROTOCOL.HEART_BEAT:
-                    token.is_alive = true;
-                    break;
+            byte[] clone = new byte[1024];
+            Array.Copy(buffer.Value, clone, buffer.Value.Length);
 
-                case PROTOCOL.C_TO_S_LOGIN:
-                    var request = MessagePack.MessagePackSerializer.Deserialize<C_TO_S_LOGIN>(body);
-                    var result = this.Login(request);
-                    Packet response = MakePacket(
-                        (int)PROTOCOL.S_TO_C_LOGIN,
-                        MessagePack.MessagePackSerializer.Serialize(result)
-                    );
-                    Send(response);
-                    break;
-            }
+            Packet packet = new(clone, this);
+            Program.game_server.EnqueuePacket(packet);
         }
 
         public static Packet MakePacket(int protocol_id, byte[] body)
@@ -62,9 +53,28 @@ namespace game_server
             Program.RemoveUser(this);
         }
 
-        public void ProcessUserOperation(Packet msg)
+        public void ProcessUserOperation(Packet packet)
         {
-            throw new NotImplementedException();
+            PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
+            byte[] body = packet.PopBody();
+
+            switch (protocol_id)
+            {
+                case PROTOCOL.HEART_BEAT:
+                    token.is_alive = true;
+                    break;
+
+                case PROTOCOL.C_TO_S_LOGIN:
+                    var request = MessagePack.MessagePackSerializer.Deserialize<C_TO_S_LOGIN>(body);
+                    var result = this.Login(request);
+                    Packet response = MakePacket(
+                        (int)PROTOCOL.S_TO_C_LOGIN,
+                        MessagePack.MessagePackSerializer.Serialize(result)
+                    );
+                    Program.game_server.JoinUser(new Player(this));
+                    Send(response);
+                    break;
+            }
         }
 
         S_TO_C_LOGIN Login(C_TO_S_LOGIN request)
@@ -72,9 +82,9 @@ namespace game_server
             // TODO request.account_token 검증 후 유저 정보 로드
             this.name = $"플레이어{user_uid}";
 
-            List<Player> player_list = Program
+            List<PlayerObj> player_list = Program
                 .GetUserList()
-                .Select(user_info => new Player(user_info.user_uid, user_info.name))
+                .Select(user_info => new PlayerObj(user_info.user_uid, user_info.name))
                 .ToList();
 
             S_TO_C_LOGIN result =

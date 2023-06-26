@@ -44,7 +44,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message);
+                Console.WriteLine($"{e.Message}, {e.StackTrace}");
             }
         }
 
@@ -66,7 +66,7 @@ namespace network
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"doListen Fail. {e.Message}");
+                    Console.WriteLine($"{e.Message}, {e.StackTrace}");
                     continue;
                 }
             }

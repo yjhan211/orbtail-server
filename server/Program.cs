@@ -12,6 +12,7 @@ namespace game_server
     class Program
     {
         readonly static List<GameUser> user_list = new();
+        public readonly static GameServer game_server = new GameServer();
 
         static void Main(string[] args)
         {

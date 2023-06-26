@@ -20,6 +20,7 @@ namespace network
 
         public static void Destroy(Packet packet)
         {
+            packet.position = 0;
             PacketBufferManager.Push(packet);
         }
 

@@ -12,9 +12,9 @@ namespace network
         public SocketAsyncEventArgs recv_event_args { get; private set; }
         public SocketAsyncEventArgs send_event_args { get; private set; }
         readonly MessageResolver message_resolver;
-        IPeer peer;
+        public IPeer peer;
         readonly Queue<Packet> sending_queue;
-        readonly object cs_sending_queue;
+        readonly object lock_sending_queue;
         public Timer heartbeat_timer;
         public bool is_alive = true;
         public bool is_released = true;
@@ -22,7 +22,7 @@ namespace network
 
         public UserToken()
         {
-            this.cs_sending_queue = new();
+            this.lock_sending_queue = new();
             this.message_resolver = new();
             this.sending_queue = new();
             this.lock_disconnect = new();
@@ -54,7 +54,13 @@ namespace network
 
         public void OnRemoved()
         {
-            this.sending_queue.Clear();
+            this.is_released = true;
+
+            lock (this.lock_sending_queue)
+            {
+                this.sending_queue.Clear();
+            }
+
             this.peer?.OnRemoved();
             this.heartbeat_timer?.Dispose();
         }
@@ -64,7 +70,7 @@ namespace network
             Packet clone = new();
             msg.CopyTo(clone);
 
-            lock (this.cs_sending_queue)
+            lock (this.lock_sending_queue)
             {
                 bool is_sending = this.sending_queue.Count > 0;
                 this.sending_queue.Enqueue(clone);
@@ -78,7 +84,7 @@ namespace network
 
         void StartSend()
         {
-            lock (this.cs_sending_queue)
+            lock (this.lock_sending_queue)
             {
                 Packet msg = this.sending_queue.Peek();
                 msg.RecordSize(); // 헤더에 패킷 사이즈 기록
@@ -106,7 +112,7 @@ namespace network
                 return;
             }
 
-            lock (this.cs_sending_queue)
+            lock (this.lock_sending_queue)
             {
                 if (this.sending_queue.Count <= 0)
                 {
@@ -122,10 +128,11 @@ namespace network
                 }
 
                 Console.WriteLine(
-                    $"[{Environment.CurrentManagedThreadId}] [send] {args.SocketError} | transferred: {args.BytesTransferred}"
+                    $"[{Environment.CurrentManagedThreadId}] [send] {args.SocketError} | {this.peer.GetUserUid()} | transferred: {args.BytesTransferred}"
                 );
 
                 this.sending_queue.Dequeue();
+
                 if (this.sending_queue.Count > 0)
                 {
                     StartSend();
