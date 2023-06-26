@@ -17,12 +17,15 @@ namespace network
         readonly object cs_sending_queue;
         public Timer heartbeat_timer;
         public bool is_alive = true;
+        public bool is_released = true;
+        public object lock_disconnect;
 
         public UserToken()
         {
-            this.cs_sending_queue = new object();
-            this.message_resolver = new MessageResolver();
-            this.sending_queue = new Queue<Packet>();
+            this.cs_sending_queue = new();
+            this.message_resolver = new();
+            this.sending_queue = new();
+            this.lock_disconnect = new();
         }
 
         public void SetPeer(IPeer peer)
@@ -46,19 +49,14 @@ namespace network
 
         void OnMessage(Const<byte[]> buffer)
         {
-            if (this.peer is null)
-            {
-                return;
-            }
-
-            this.peer.OnMessage(buffer);
+            this.peer?.OnMessage(buffer);
         }
 
         public void OnRemoved()
         {
-            this.heartbeat_timer.Dispose();
             this.sending_queue.Clear();
             this.peer?.OnRemoved();
+            this.heartbeat_timer?.Dispose();
         }
 
         public void Send(Packet msg)
@@ -101,8 +99,6 @@ namespace network
             }
         }
 
-        static int sent_count = 0;
-
         public void ProcessSend(SocketAsyncEventArgs args)
         {
             if (args.BytesTransferred <= 0 || args.SocketError != SocketError.Success)
@@ -125,9 +121,8 @@ namespace network
                     return;
                 }
 
-                Interlocked.Increment(ref sent_count);
                 Console.WriteLine(
-                    $"[{Environment.CurrentManagedThreadId}] [send] {args.SocketError} | transferred: {args.BytesTransferred}, {sent_count}"
+                    $"[{Environment.CurrentManagedThreadId}] [send] {args.SocketError} | transferred: {args.BytesTransferred}"
                 );
 
                 this.sending_queue.Dequeue();
@@ -140,11 +135,7 @@ namespace network
 
         public void Disconnect()
         {
-            try
-            {
-                this.socket.Shutdown(SocketShutdown.Send);
-            }
-            catch (Exception) { }
+            this.socket.Shutdown(SocketShutdown.Send);
             this.socket.Close();
         }
     }

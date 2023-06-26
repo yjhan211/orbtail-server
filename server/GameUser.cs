@@ -70,7 +70,20 @@ namespace game_server
         S_TO_C_LOGIN Login(C_TO_S_LOGIN request)
         {
             // TODO request.account_token 검증 후 유저 정보 로드
-            S_TO_C_LOGIN result = new() { user_uid = this.user_uid, name = $"플레이어{user_uid}" };
+            this.name = $"플레이어{user_uid}";
+
+            List<Player> player_list = Program
+                .GetUserList()
+                .Select(user_info => new Player(user_info.user_uid, user_info.name))
+                .ToList();
+
+            S_TO_C_LOGIN result =
+                new()
+                {
+                    user_uid = this.user_uid,
+                    name = this.name,
+                    player_list = player_list,
+                };
 
             return result;
         }

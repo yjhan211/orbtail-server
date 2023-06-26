@@ -80,8 +80,8 @@ namespace network
                 socket_event_args.UserToken
             );
 
-            this.flow_control_event.Set();
             this.onNewClient(accept_socket, user_token);
+            this.flow_control_event.Set();
         }
     }
 }

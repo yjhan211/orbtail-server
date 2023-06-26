@@ -7,16 +7,18 @@ namespace network
 {
     public class NetworkService
     {
-        int connected_count = 0;
         Listener client_listener;
         BufferManager buffer_manager;
         SocketAsyncEventArgsPool recv_event_args_pool;
         SocketAsyncEventArgsPool send_event_args_pool;
         public delegate void sessionHandler(UserToken token);
         public sessionHandler session_created_callback { get; set; }
+        object connect_lock;
 
         public void Initialize()
         {
+            this.connect_lock = new Object();
+
             this.buffer_manager = new BufferManager(
                 Config.MAX_CONNECTION * Config.PRE_ALLOC_COUNT * Config.BUFFER_SIZE,
                 Config.BUFFER_SIZE
@@ -81,15 +83,22 @@ namespace network
         {
             try
             {
-                Interlocked.Increment(ref this.connected_count);
                 Console.WriteLine(
-                    $"[{Environment.CurrentManagedThreadId}] A client connected. handle:{client_socket.Handle}, count:{this.connected_count}"
+                    $"[{Environment.CurrentManagedThreadId}] A client connected. handle:{client_socket.Handle}"
                 );
 
-                SocketAsyncEventArgs recv_args = this.recv_event_args_pool.Pop();
-                SocketAsyncEventArgs send_args = this.send_event_args_pool.Pop();
+                SocketAsyncEventArgs recv_args;
+                SocketAsyncEventArgs send_args;
+
+                lock (connect_lock)
+                {
+                    recv_args = this.recv_event_args_pool.Pop();
+                    send_args = this.send_event_args_pool.Pop();
+                }
 
                 UserToken user_token = GetUserToken(recv_args);
+                user_token.is_alive = true;
+                user_token.is_released = false;
                 this.session_created_callback(user_token);
 
                 BeginRecv(user_token, client_socket, recv_args, send_args);
@@ -192,11 +201,18 @@ namespace network
 
         public void CloseClientSocket(UserToken user_token)
         {
-            user_token.OnRemoved();
-            this.recv_event_args_pool.Push(user_token.recv_event_args);
-            this.send_event_args_pool.Push(user_token.send_event_args);
+            lock (user_token.lock_disconnect)
+            {
+                if (!user_token.is_released)
+                {
+                    user_token.is_released = true;
 
-            Interlocked.Decrement(ref this.connected_count);
+                    this.recv_event_args_pool.Push(user_token.recv_event_args);
+                    this.send_event_args_pool.Push(user_token.send_event_args);
+
+                    user_token.OnRemoved();
+                }
+            }
         }
 
         private static UserToken GetUserToken(SocketAsyncEventArgs args)

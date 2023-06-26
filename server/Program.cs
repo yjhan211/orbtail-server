@@ -23,7 +23,7 @@ namespace game_server
             {
                 lock (user_list)
                 {
-                    Int32 user_uid = user_list.Count + 1;
+                    int user_uid = user_list.Count;
                     GameUser user = new(user_uid, token);
                     user_list.Add(user);
                 }
@@ -38,6 +38,14 @@ namespace game_server
             lock (user_list)
             {
                 user_list.Remove(user);
+            }
+        }
+
+        public static List<GameUser> GetUserList()
+        {
+            lock (user_list)
+            {
+                return user_list;
             }
         }
     }
