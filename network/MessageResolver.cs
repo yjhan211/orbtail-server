@@ -49,31 +49,44 @@
 
         bool CopyPacket(byte[] buffer, ref int start_position, int offset, int transferred)
         {
-            // 더 이상 카피할 데이터 없음
-            if (this.current_position >= offset + transferred)
+            try
             {
-                return false;
-            }
+                // 더 이상 카피할 데이터 없음
+                if (this.current_position >= offset + transferred)
+                {
+                    return false;
+                }
 
-            int copy_size = this.target_position - this.current_position;
-            if (this.remain_bytes < copy_size)
+                int copy_size = this.target_position - this.current_position;
+                if (this.remain_bytes < copy_size)
+                {
+                    copy_size = this.remain_bytes;
+                }
+
+                // Console.WriteLine(
+                //     $"start_position: {start_position}, current_position:{this.current_position}, copy_size:{copy_size}"
+                // );
+
+                Array.Copy(
+                    buffer,
+                    start_position,
+                    this.message_buffer,
+                    this.current_position,
+                    copy_size
+                );
+
+                start_position += copy_size;
+                this.current_position += copy_size;
+                this.remain_bytes -= copy_size;
+
+                return this.current_position >= this.target_position;
+            }
+            catch (Exception e)
             {
-                copy_size = this.remain_bytes;
+                throw new Exception(
+                    $"{e.Message}, {e.StackTrace} | start_position:{start_position}, length:{this.message_buffer.Length}, cur_pos:{this.current_position}, tar_pos:{this.target_position}"
+                );
             }
-
-            Array.Copy(
-                buffer,
-                start_position,
-                this.message_buffer,
-                this.current_position,
-                copy_size
-            );
-
-            start_position += copy_size;
-            this.current_position += copy_size;
-            this.remain_bytes -= copy_size;
-
-            return this.current_position >= this.target_position;
         }
 
         int ParseHeader()
@@ -86,6 +99,7 @@
             Array.Clear(this.message_buffer, 0, this.message_buffer.Length);
 
             this.current_position = 0;
+            this.target_position = 0;
         }
     }
 }

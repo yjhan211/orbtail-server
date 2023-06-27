@@ -4,6 +4,7 @@
 namespace game_server
 {
     using network;
+    using MessagePack;
 
     public class GameUser : IPeer
     {
@@ -70,19 +71,19 @@ namespace game_server
                         {
                             user_uid = player.GetUserUid(),
                             name = player.name,
-                            player_list = player_list,
+                            player_list = new List<PlayerObj>(), // TODO 100개 붙으면 1024바이트 넘어가서 보류. 동적으로 로드하도록 개선해야 함
                         };
 
                     Send(
                         MakePacket(
                             (int)PROTOCOL.S_TO_C_LOGIN,
-                            MessagePack.MessagePackSerializer.Serialize(response)
+                            MessagePackSerializer.Serialize(response)
                         )
                     );
 
                     Packet response2 = GameUser.MakePacket(
                         (int)PROTOCOL.S_TO_C_LOGIN_ALL,
-                        MessagePack.MessagePackSerializer.Serialize(
+                        MessagePackSerializer.Serialize(
                             new S_TO_C_LOGIN_ALL()
                             {
                                 user_uid = player.user_uid,
@@ -91,7 +92,23 @@ namespace game_server
                         )
                     );
                     Program.game_server.Broadcast(response2);
+                    break;
 
+                case PROTOCOL.C_TO_S_CHAT_MSG:
+                    C_TO_S_CHAT_MSG request = MessagePackSerializer.Deserialize<C_TO_S_CHAT_MSG>(
+                        body
+                    );
+                    Packet response3 = MakePacket(
+                        (int)PROTOCOL.S_TO_C_CHAT_MSG_ALL,
+                        MessagePackSerializer.Serialize(
+                            new S_TO_C_CHAT_MSG_ALL()
+                            {
+                                user_uid = this.player.GetUserUid(),
+                                chat_message = request.chat_message,
+                            }
+                        )
+                    );
+                    Program.game_server.Broadcast(response3);
                     break;
             }
         }

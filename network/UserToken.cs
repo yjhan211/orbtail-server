@@ -127,9 +127,9 @@ namespace network
                     return;
                 }
 
-                Console.WriteLine(
-                    $"[{Environment.CurrentManagedThreadId}] [send] {args.SocketError} | {this.peer.GetUserUid()} | transferred: {args.BytesTransferred}"
-                );
+                // Console.WriteLine(
+                //     $"[{Environment.CurrentManagedThreadId}] [send] {args.SocketError} | {this.peer.GetUserUid()} | transferred: {args.BytesTransferred}"
+                // );
 
                 this.sending_queue.Dequeue();
 

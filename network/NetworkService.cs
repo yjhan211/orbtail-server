@@ -67,16 +67,16 @@ namespace network
             send_event_arg.SetBuffer(new byte[1024], 0, 1024);
 
             BeginRecv(user_token, socket, receive_event_arg, send_event_arg);
-            // user_token.heartbeat_timer = new Timer(
-            //     (object _) =>
-            //     {
-            //         Packet msg = Packet.Create(0);
-            //         user_token.Send(msg);
-            //     },
-            //     null,
-            //     TimeSpan.Zero,
-            //     TimeSpan.FromSeconds(3)
-            // );
+            user_token.heartbeat_timer = new Timer(
+                (object _) =>
+                {
+                    Packet msg = Packet.Create(0);
+                    user_token.Send(msg);
+                },
+                null,
+                TimeSpan.Zero,
+                TimeSpan.FromSeconds(3)
+            );
         }
 
         void OnNewClient(Socket client_socket, object _)
@@ -102,20 +102,20 @@ namespace network
                 this.session_created_callback(user_token);
 
                 BeginRecv(user_token, client_socket, recv_args, send_args);
-                // user_token.heartbeat_timer = new Timer(
-                //     (object _) =>
-                //     {
-                //         if (user_token.is_alive)
-                //         {
-                //             user_token.is_alive = false;
-                //             return;
-                //         }
-                //         this.CloseClientSocket(user_token);
-                //     },
-                //     null,
-                //     TimeSpan.Zero,
-                //     TimeSpan.FromSeconds(10)
-                // );
+                user_token.heartbeat_timer = new Timer(
+                    (object _) =>
+                    {
+                        if (user_token.is_alive)
+                        {
+                            user_token.is_alive = false;
+                            return;
+                        }
+                        this.CloseClientSocket(user_token);
+                    },
+                    null,
+                    TimeSpan.Zero,
+                    TimeSpan.FromSeconds(10)
+                );
             }
             catch (Exception e)
             {
@@ -180,9 +180,9 @@ namespace network
                     );
                 }
 
-                Console.WriteLine(
-                    $"[recv] user_uid:{user_token.peer.GetUserUid()}, BytesTransferred:{recv_args.BytesTransferred}"
-                );
+                // Console.WriteLine(
+                //     $"[recv] user_uid:{user_token.peer.GetUserUid()}, BytesTransferred:{recv_args.BytesTransferred}"
+                // );
 
                 // 패킷 처리
                 user_token.OnReceived(
