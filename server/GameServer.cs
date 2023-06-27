@@ -10,7 +10,6 @@ namespace game_server
     {
         object player_list_lock = new();
         List<Player> player_list = new();
-        bool test;
         object operation_lock;
         Queue<Packet> user_operations;
 
@@ -95,8 +94,15 @@ namespace game_server
 
         public void Broadcast(Packet msg)
         {
-            this.player_list.ForEach(player => player.Send(msg, true));
-            Packet.Destroy(packet: msg);
+            Packet clone = new Packet();
+            msg.CopyTo(clone);
+            lock (this.player_list_lock)
+            {
+                this.player_list.ForEach(player => player.Send(msg, true));
+            }
+
+            // this.player_list.ForEach(player => player.Send(msg, true));
+            Packet.Destroy(msg);
         }
 
         void ProcessReceive(Packet msg)
