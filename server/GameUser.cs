@@ -22,7 +22,7 @@ namespace game_server
             return this.player?.GetUserUid() ?? 0;
         }
 
-        void IPeer.OnMessage(Const<byte[]> buffer)
+        public void OnMessage(Const<byte[]> buffer)
         {
             byte[] clone = new byte[1024];
             Array.Copy(buffer.Value, clone, buffer.Value.Length);
@@ -81,7 +81,7 @@ namespace game_server
                         )
                     );
 
-                    Packet response2 = GameUser.MakePacket(
+                    Packet response2 = MakePacket(
                         (int)PROTOCOL.S_TO_C_LOGIN_ALL,
                         MessagePackSerializer.Serialize(
                             new S_TO_C_LOGIN_ALL()
