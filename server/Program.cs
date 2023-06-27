@@ -24,8 +24,7 @@ namespace game_server
             {
                 lock (user_list)
                 {
-                    int user_uid = user_list.Count;
-                    GameUser user = new(user_uid, token);
+                    GameUser user = new(token);
                     user_list.Add(user);
                 }
             };

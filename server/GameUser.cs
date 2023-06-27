@@ -7,20 +7,18 @@ namespace game_server
 
     public class GameUser : IPeer
     {
-        public readonly int user_uid; // TODO 임시
-        public string name { get; private set; }
         readonly UserToken token;
+        Player player;
 
-        public GameUser(int user_uid, UserToken token)
+        public GameUser(UserToken token)
         {
-            this.user_uid = user_uid;
             this.token = token;
             this.token.SetPeer(this);
         }
 
         public int GetUserUid()
         {
-            return this.user_uid;
+            return this.player?.GetUserUid() ?? 0;
         }
 
         void IPeer.OnMessage(Const<byte[]> buffer)
@@ -65,37 +63,37 @@ namespace game_server
                     break;
 
                 case PROTOCOL.C_TO_S_LOGIN:
-                    var request = MessagePack.MessagePackSerializer.Deserialize<C_TO_S_LOGIN>(body);
-                    var result = this.Login(request);
-                    Packet response = MakePacket(
-                        (int)PROTOCOL.S_TO_C_LOGIN,
-                        MessagePack.MessagePackSerializer.Serialize(result)
+                    (this.player, List<PlayerObj> player_list) = Program.game_server.JoinUser(this);
+
+                    S_TO_C_LOGIN response =
+                        new()
+                        {
+                            user_uid = player.GetUserUid(),
+                            name = player.name,
+                            player_list = player_list,
+                        };
+
+                    Send(
+                        MakePacket(
+                            (int)PROTOCOL.S_TO_C_LOGIN,
+                            MessagePack.MessagePackSerializer.Serialize(response)
+                        )
                     );
-                    Program.game_server.JoinUser(new Player(this));
-                    Send(response);
+
+                    Packet response2 = GameUser.MakePacket(
+                        (int)PROTOCOL.S_TO_C_LOGIN_ALL,
+                        MessagePack.MessagePackSerializer.Serialize(
+                            new S_TO_C_LOGIN_ALL()
+                            {
+                                user_uid = player.user_uid,
+                                name = player.name,
+                            }
+                        )
+                    );
+                    Program.game_server.Broadcast(response2);
+
                     break;
             }
-        }
-
-        S_TO_C_LOGIN Login(C_TO_S_LOGIN request)
-        {
-            // TODO request.account_token 검증 후 유저 정보 로드
-            this.name = $"플레이어{user_uid}";
-
-            List<PlayerObj> player_list = Program
-                .GetUserList()
-                .Select(user_info => new PlayerObj(user_info.user_uid, user_info.name))
-                .ToList();
-
-            S_TO_C_LOGIN result =
-                new()
-                {
-                    user_uid = this.user_uid,
-                    name = this.name,
-                    player_list = player_list,
-                };
-
-            return result;
         }
     }
 }

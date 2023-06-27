@@ -55,27 +55,33 @@ namespace game_server
             }
         }
 
-        public void JoinUser(Player player)
+        public int latest_user_uid = 0;
+
+        Player MakePlayer(GameUser user)
         {
+            Interlocked.Increment(ref latest_user_uid);
+            Player player = new(user, latest_user_uid, name: $"플레이어{latest_user_uid}");
+
+            return player;
+        }
+
+        public (Player, List<PlayerObj>) JoinUser(GameUser user)
+        {
+            Player player;
+            List<PlayerObj> player_list;
             lock (this.player_list_lock)
             {
+                player = MakePlayer(user);
                 this.player_list.Add(player);
+
+                player_list = this.player_list
+                    .Select(
+                        player_info => new PlayerObj(player_info.GetUserUid(), player_info.name)
+                    )
+                    .ToList();
             }
 
-            Packet response = GameUser.MakePacket(
-                (int)PROTOCOL.S_TO_C_LOGIN_ALL,
-                MessagePack.MessagePackSerializer.Serialize(
-                    new S_TO_C_LOGIN_ALL()
-                    {
-                        user_uid = player.owner.user_uid,
-                        name = player.owner.name,
-                    }
-                )
-            );
-
-            Console.WriteLine($"user join success. count:{this.player_list.Count}");
-
-            this.broadcast(response);
+            return (player, player_list);
         }
 
         public void EnqueuePacket(Packet packet)
@@ -87,10 +93,10 @@ namespace game_server
             }
         }
 
-        void broadcast(Packet msg)
+        public void Broadcast(Packet msg)
         {
             this.player_list.ForEach(player => player.Send(msg, true));
-            Packet.Destroy(msg);
+            Packet.Destroy(packet: msg);
         }
 
         void ProcessReceive(Packet msg)
