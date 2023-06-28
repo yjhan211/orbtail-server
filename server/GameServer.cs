@@ -98,7 +98,12 @@ namespace game_server
             msg.CopyTo(clone);
             lock (this.player_list_lock)
             {
-                this.player_list.ForEach(player => player.Send(msg, true));
+                this.player_list.ForEach(
+                    (player) =>
+                    {
+                        player.Send(msg, true);
+                    }
+                );
             }
 
             // this.player_list.ForEach(player => player.Send(msg, true));

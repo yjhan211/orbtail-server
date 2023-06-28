@@ -25,7 +25,7 @@
                 if (this.current_position < Config.HEADER_SIZE)
                 {
                     this.target_position = Config.HEADER_SIZE;
-                    if (!CopyPacket(buffer, ref start_position, offset, transferred))
+                    if (!CopyPacket(buffer, ref start_position))
                     {
                         // 헤더가 덜 왔음. 다음 수신 기다림
                         return;
@@ -35,7 +35,7 @@
                 }
 
                 // 메세지 복사
-                if (!CopyPacket(buffer, ref start_position, offset, transferred))
+                if (!CopyPacket(buffer, ref start_position))
                 {
                     // 메세지가 덜 왔음. 다음 수신 기다림
                     return;
@@ -47,16 +47,10 @@
             }
         }
 
-        bool CopyPacket(byte[] buffer, ref int start_position, int offset, int transferred)
+        bool CopyPacket(byte[] buffer, ref int start_position)
         {
             try
             {
-                // 더 이상 카피할 데이터 없음
-                if (this.current_position >= offset + transferred)
-                {
-                    return false;
-                }
-
                 int copy_size = this.target_position - this.current_position;
                 if (this.remain_bytes < copy_size)
                 {
