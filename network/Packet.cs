@@ -9,12 +9,12 @@ namespace network
         public IPeer owner { get; private set; }
         public byte[] buffer { get; private set; }
         public int position { get; private set; }
-        public Int32 protocol_id { get; private set; }
+        public int protocol_id { get; private set; }
 
-        public static Packet Create(Int32 protocol_id)
+        public static Packet Create(PROTOCOL protocol_id)
         {
             Packet packet = PacketBufferManager.Pop();
-            packet.SetProtocolId(protocol_id);
+            packet.SetProtocolId((int)protocol_id);
             return packet;
         }
 

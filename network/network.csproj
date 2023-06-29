@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <OutputType>Library</OutputType>
     <TargetFramework>net7.0</TargetFramework>
@@ -12,5 +11,7 @@
     <PackageReference Include="MessagePack.ReactiveProperty" Version="2.5.108"/>
     <PackageReference Include="MessagePack.UnityShims" Version="2.5.108"/>
     <PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="2.5.108"/>
+    <PackageReference Include="log4net" Version="2.0.15"/>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>
   </ItemGroup>
 </Project>

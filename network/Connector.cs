@@ -15,9 +15,7 @@ namespace network
     {
         public delegate void ConnectHandler(UserToken token);
         public ConnectHandler connected_callback { get; set; }
-
         Socket client;
-
         readonly NetworkService network_service;
 
         public Connector(NetworkService network_service)
@@ -27,18 +25,26 @@ namespace network
 
         public void Connect(IPEndPoint remote_endpoint)
         {
-            this.client = new Socket(
-                AddressFamily.InterNetwork,
-                SocketType.Stream,
-                ProtocolType.Tcp
-            );
-
-            SocketAsyncEventArgs event_arg = new();
-            event_arg.Completed += OnConnectCompleted;
-            event_arg.RemoteEndPoint = remote_endpoint;
-            if (!this.client.ConnectAsync(event_arg))
+            try
             {
-                OnConnectCompleted(null, event_arg);
+                this.client = new Socket(
+                    AddressFamily.InterNetwork,
+                    SocketType.Stream,
+                    ProtocolType.Tcp
+                );
+
+                SocketAsyncEventArgs event_arg = new();
+                event_arg.Completed += OnConnectCompleted;
+                event_arg.RemoteEndPoint = remote_endpoint;
+
+                if (!this.client.ConnectAsync(event_arg))
+                {
+                    OnConnectCompleted(null, event_arg);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"{e.Message}, {e.StackTrace}");
             }
         }
 
@@ -50,8 +56,8 @@ namespace network
                 return;
             }
 
-            UserToken token = new();
-            this.network_service.onConnectCompleted(this.client, token);
+            UserToken token = new(this.network_service);
+            this.network_service.OnConnectCompleted(this.client, token);
             this.connected_callback(token);
         }
     }

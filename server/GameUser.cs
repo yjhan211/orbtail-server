@@ -31,7 +31,7 @@ namespace game_server
             Program.game_server.EnqueuePacket(packet);
         }
 
-        public static Packet MakePacket(int protocol_id, byte[] body)
+        public static Packet MakePacket(PROTOCOL protocol_id, byte[] body)
         {
             Packet result_packet = Packet.Create(protocol_id);
             result_packet.SetBody(body);
@@ -75,14 +75,11 @@ namespace game_server
                         };
 
                     Send(
-                        MakePacket(
-                            (int)PROTOCOL.S_TO_C_LOGIN,
-                            MessagePackSerializer.Serialize(response)
-                        )
+                        MakePacket(PROTOCOL.S_TO_C_LOGIN, MessagePackSerializer.Serialize(response))
                     );
 
                     Packet response2 = MakePacket(
-                        (int)PROTOCOL.S_TO_C_LOGIN_ALL,
+                        PROTOCOL.S_TO_C_LOGIN_ALL,
                         MessagePackSerializer.Serialize(
                             new S_TO_C_LOGIN_ALL()
                             {
@@ -99,7 +96,7 @@ namespace game_server
                         body
                     );
                     Packet response3 = MakePacket(
-                        (int)PROTOCOL.S_TO_C_CHAT_MSG_ALL,
+                        PROTOCOL.S_TO_C_CHAT_MSG_ALL,
                         MessagePackSerializer.Serialize(
                             new S_TO_C_CHAT_MSG_ALL()
                             {

@@ -15,24 +15,27 @@ namespace network
 
         AutoResetEvent flow_control_event;
 
-        public delegate void newClientHandler(Socket client_socket, object token);
+        public delegate void newClientHandler(Socket client_socket, object? token);
 
         public newClientHandler onNewClient;
 
-        public void Start(string host, int port, int backlog)
+        public void Start()
         {
             try
             {
-                IPAddress address = host == "0.0.0.0" ? IPAddress.Any : IPAddress.Parse(host);
-                IPEndPoint end_point = new(address, port);
+                IPAddress address =
+                    Config.IP == "0.0.0.0" ? IPAddress.Any : IPAddress.Parse(Config.IP);
+
+                IPEndPoint end_point = new(address, Config.PORT);
 
                 this.listen_socket = new Socket(
                     AddressFamily.InterNetwork,
                     SocketType.Stream,
                     ProtocolType.Tcp
                 );
+
                 this.listen_socket.Bind(end_point);
-                this.listen_socket.Listen(backlog);
+                this.listen_socket.Listen(Config.BACK_LOG);
 
                 this.accept_args = new();
                 this.accept_args.Completed += new EventHandler<SocketAsyncEventArgs>(
@@ -44,6 +47,7 @@ namespace network
             }
             catch (Exception e)
             {
+                // TODO 파일로깅
                 Console.WriteLine($"{e.Message}, {e.StackTrace}");
             }
         }
@@ -55,32 +59,27 @@ namespace network
             while (true)
             {
                 this.accept_args.AcceptSocket = null;
-                try
+                if (!listen_socket.AcceptAsync(this.accept_args))
                 {
-                    if (!listen_socket.AcceptAsync(this.accept_args))
-                    {
-                        OnAcceptCompleted(null, this.accept_args);
-                    }
-
-                    this.flow_control_event.WaitOne();
+                    OnAcceptCompleted(null, this.accept_args);
                 }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"{e.Message}, {e.StackTrace}");
-                    continue;
-                }
+                this.flow_control_event.WaitOne();
             }
         }
 
         void OnAcceptCompleted(object? sender, SocketAsyncEventArgs socket_event_args)
         {
-            var (socket_error, accept_socket, user_token) = (
-                socket_event_args.SocketError,
-                socket_event_args.AcceptSocket,
-                socket_event_args.UserToken
-            );
+            if (socket_event_args.SocketError != SocketError.Success)
+            {
+                throw new Exception($"AcceptFail. SocketError:{socket_event_args.SocketError}");
+            }
 
-            this.onNewClient(accept_socket, user_token);
+            if (socket_event_args.AcceptSocket == null)
+            {
+                throw new Exception($"AcceptFail. AcceptSocket is null");
+            }
+
+            this.onNewClient(socket_event_args.AcceptSocket, null);
             this.flow_control_event.Set();
         }
     }

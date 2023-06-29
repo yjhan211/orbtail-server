@@ -1,5 +1,4 @@
 ﻿#pragma warning disable CS8604
-#pragma warning disable CS8622
 #pragma warning disable CS8618
 
 using System.Net.Sockets;
@@ -19,13 +18,15 @@ namespace network
         public bool is_alive = true;
         public bool is_released = true;
         public object lock_disconnect;
+        readonly NetworkService network_service;
 
-        public UserToken()
+        public UserToken(NetworkService network_service)
         {
             this.lock_sending_queue = new();
             this.message_resolver = new();
             this.sending_queue = new();
             this.lock_disconnect = new();
+            this.network_service = network_service;
         }
 
         public void SetPeer(IPeer peer)
@@ -42,27 +43,18 @@ namespace network
             this.send_event_args = send_event_args;
         }
 
-        public void OnReceived(byte[] buffer, int offset, int transfered)
+        public (ErrorCode error_code, string? error_log) OnReceived(
+            byte[] buffer,
+            int offset,
+            int transfered
+        )
         {
-            this.message_resolver.OnReceived(buffer, offset, transfered, OnMessage);
+            return this.message_resolver.OnReceived(buffer, offset, transfered, OnMessage);
         }
 
         void OnMessage(Const<byte[]> buffer)
         {
             this.peer?.OnMessage(buffer);
-        }
-
-        public void OnRemoved()
-        {
-            this.is_released = true;
-
-            lock (this.lock_sending_queue)
-            {
-                this.sending_queue.Clear();
-            }
-
-            this.peer?.OnRemoved();
-            this.heartbeat_timer?.Dispose();
         }
 
         public void Send(Packet msg)
@@ -76,7 +68,6 @@ namespace network
                 this.sending_queue.Enqueue(clone);
                 if (!is_sending)
                 {
-                    // 현재 전송중이지 않으므로 전송 시작
                     StartSend();
                 }
             }
@@ -84,64 +75,89 @@ namespace network
 
         void StartSend()
         {
-            lock (this.lock_sending_queue)
+            try
             {
-                Packet msg = this.sending_queue.Peek();
-                msg.RecordSize(); // 헤더에 패킷 사이즈 기록
-
-                this.send_event_args.SetBuffer(this.send_event_args.Offset, msg.position);
-                Array.Copy(
-                    msg.buffer,
-                    0,
-                    this.send_event_args.Buffer,
-                    this.send_event_args.Offset,
-                    msg.position
-                );
-
-                if (!this.socket.SendAsync(this.send_event_args))
+                lock (this.lock_sending_queue)
                 {
-                    ProcessSend(this.send_event_args);
+                    Packet packet = this.sending_queue.Peek();
+                    packet.RecordSize();
+
+                    this.send_event_args.SetBuffer(this.send_event_args.Offset, packet.position);
+                    Array.Copy(
+                        packet.buffer,
+                        0,
+                        this.send_event_args.Buffer,
+                        this.send_event_args.Offset,
+                        packet.position
+                    );
+
+                    if (!this.socket.SendAsync(this.send_event_args))
+                    {
+                        ProcessSend(this.send_event_args);
+                    }
                 }
+            }
+            catch (Exception e)
+            {
+                // TODO 파일로깅
+                Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                this.network_service.CloseClientSocket(this);
             }
         }
 
         public void ProcessSend(SocketAsyncEventArgs args)
         {
-            if (args.BytesTransferred <= 0 || args.SocketError != SocketError.Success)
+            if (args.SocketError != SocketError.Success)
             {
-                return;
+                throw new Exception(
+                    $"args.SocketError not Success. SocketError:{args.SocketError}, bytesTransferred:{args.BytesTransferred}"
+                );
             }
 
             lock (this.lock_sending_queue)
             {
+                // 보낼 것이 없음
                 if (this.sending_queue.Count <= 0)
                 {
                     return;
                 }
 
-                // TODO 테스트 해야됨
-                // TODO 패킷 하나를 다 못보낸 경우 처리
-                int size = this.sending_queue.Peek().position;
-                if (args.BytesTransferred != size)
+                // 전송 완료
+                if (this.sending_queue.Sum(buffer => buffer.position) == args.BytesTransferred)
                 {
+                    this.sending_queue.Clear();
                     return;
                 }
 
-                // Console.WriteLine(
-                //     $"[{Environment.CurrentManagedThreadId}] [send] {args.SocketError} | {this.peer.GetUserUid()} | transferred: {args.BytesTransferred}"
-                // );
-
-                this.sending_queue.Dequeue();
-
-                if (this.sending_queue.Count > 0)
+                int sum = 0;
+                while (true)
                 {
-                    StartSend();
+                    sum += this.sending_queue.Peek().position;
+                    if (sum <= args.BytesTransferred)
+                    {
+                        // 이미 보낸 패킷이므로 제거
+                        this.sending_queue.Dequeue();
+                        continue;
+                    }
+                    break;
                 }
+
+                StartSend();
             }
         }
 
-        public void Disconnect()
+        public void OnRemoved()
         {
+            this.is_released = true;
+
+            lock (this.lock_sending_queue)
+            {
+                this.sending_queue.Clear();
+            }
+
+            this.peer?.OnRemoved();
+            this.heartbeat_timer?.Dispose();
+
             this.socket.Shutdown(SocketShutdown.Send);
             this.socket.Close();
         }

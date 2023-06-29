@@ -1,5 +1,7 @@
 ﻿#pragma warning disable CS8618
 #pragma warning disable CS8622
+#pragma warning disable CS8600
+#pragma warning disable CS8604
 
 using System.Net.Sockets;
 
@@ -13,22 +15,21 @@ namespace network
         SocketAsyncEventArgsPool send_event_args_pool;
         public delegate void sessionHandler(UserToken token);
         public sessionHandler session_created_callback { get; set; }
-        object event_args_pool_lock;
+        object init_event_args_lock;
 
         public void Initialize()
         {
-            this.event_args_pool_lock = new Object();
-
             this.buffer_manager = new BufferManager(
                 Config.MAX_CONNECTION * Config.PRE_ALLOC_COUNT * Config.BUFFER_SIZE,
                 Config.BUFFER_SIZE
             );
             this.recv_event_args_pool = new SocketAsyncEventArgsPool(Config.MAX_CONNECTION);
             this.send_event_args_pool = new SocketAsyncEventArgsPool(Config.MAX_CONNECTION);
+            this.init_event_args_lock = new Object();
 
             foreach (var _ in Enumerable.Range(0, Config.MAX_CONNECTION))
             {
-                UserToken user_token = new();
+                UserToken user_token = new(this);
 
                 SocketAsyncEventArgs recv_args = new();
                 recv_args.Completed += new EventHandler<SocketAsyncEventArgs>(RecvCompleted);
@@ -44,33 +45,33 @@ namespace network
             }
         }
 
-        public void Listen(string host, int port, int backlog)
+        public void Listen()
         {
             this.client_listener = new Listener();
 
-            client_listener.onNewClient += OnNewClient;
-            client_listener.Start(host, port, backlog);
+            this.client_listener.onNewClient += OnNewClient;
+            this.client_listener.Start();
         }
 
-        // C->S 접속 성공 시 호출
-        public void onConnectCompleted(Socket socket, UserToken user_token)
+        // Connector->OnConnectCompleted()
+        public void OnConnectCompleted(Socket socket, UserToken user_token)
         {
-            // 2개만 있으면 되므로 SocketAsyncEventArgsPool 사용 안함
             SocketAsyncEventArgs receive_event_arg = new();
             receive_event_arg.Completed += new EventHandler<SocketAsyncEventArgs>(RecvCompleted);
             receive_event_arg.UserToken = user_token;
-            receive_event_arg.SetBuffer(new byte[1024], 0, 1024);
+            receive_event_arg.SetBuffer(new byte[Config.BUFFER_SIZE], 0, Config.BUFFER_SIZE);
 
             SocketAsyncEventArgs send_event_arg = new();
             send_event_arg.Completed += new EventHandler<SocketAsyncEventArgs>(SendCompleted);
             send_event_arg.UserToken = user_token;
-            send_event_arg.SetBuffer(new byte[1024], 0, 1024);
+            send_event_arg.SetBuffer(new byte[Config.BUFFER_SIZE], 0, Config.BUFFER_SIZE);
 
             BeginRecv(user_token, socket, receive_event_arg, send_event_arg);
+
             user_token.heartbeat_timer = new Timer(
                 (object _) =>
                 {
-                    Packet msg = Packet.Create(0);
+                    Packet msg = Packet.Create(PROTOCOL.HEART_BEAT);
                     user_token.Send(msg);
                 },
                 null,
@@ -79,29 +80,37 @@ namespace network
             );
         }
 
+        // Listener->sessionCreatedCallback()
         void OnNewClient(Socket client_socket, object _)
         {
             try
             {
-                Console.WriteLine(
-                    $"[{Environment.CurrentManagedThreadId}] A client connected. handle:{client_socket.Handle}"
-                );
+                SocketAsyncEventArgs recv_args = null;
+                SocketAsyncEventArgs send_args = null;
 
-                SocketAsyncEventArgs recv_args;
-                SocketAsyncEventArgs send_args;
-
-                lock (event_args_pool_lock)
+                lock (this.init_event_args_lock)
                 {
                     recv_args = this.recv_event_args_pool.Pop();
                     send_args = this.send_event_args_pool.Pop();
                 }
 
-                UserToken user_token = GetUserToken(recv_args);
+                if (
+                    recv_args.UserToken is not UserToken
+                    || send_args.UserToken is not UserToken
+                    || recv_args.UserToken != send_args.UserToken
+                )
+                {
+                    throw new Exception($"invalid args.UserToken:");
+                }
+
+                UserToken user_token = (UserToken)recv_args.UserToken;
                 user_token.is_alive = true;
                 user_token.is_released = false;
+
                 this.session_created_callback(user_token);
 
                 BeginRecv(user_token, client_socket, recv_args, send_args);
+
                 user_token.heartbeat_timer = new Timer(
                     (object _) =>
                     {
@@ -151,45 +160,46 @@ namespace network
             ProcessRecv(args);
         }
 
-        void SendCompleted(object sender, SocketAsyncEventArgs args)
-        {
-            UserToken token = GetUserToken(args);
-            token.ProcessSend(args);
-        }
-
         void ProcessRecv(SocketAsyncEventArgs recv_args)
         {
+            UserToken user_token = null;
             try
             {
-                var (user_token, bytes_transferred, socket_error, recv_buffer) = (
-                    GetUserToken(recv_args),
-                    recv_args.BytesTransferred,
-                    recv_args.SocketError,
-                    recv_args.Buffer
-                );
-
-                if (
-                    bytes_transferred <= 0
-                    || socket_error != SocketError.Success
-                    || recv_args.Buffer == null
-                )
+                if (recv_args.UserToken is not UserToken)
                 {
-                    this.CloseClientSocket(user_token);
-                    throw new Exception(
-                        $"processRecv fail. BytesTransferred:{recv_args.BytesTransferred}"
-                    );
+                    throw new Exception($"invalid args.UserToken : {recv_args.UserToken}");
                 }
 
-                // Console.WriteLine(
-                //     $"[recv] user_uid:{user_token.peer.GetUserUid()}, BytesTransferred:{recv_args.BytesTransferred}"
-                // );
+                // UserToken 획득
+                user_token = (UserToken)recv_args.UserToken;
+
+                if (recv_args.SocketError != SocketError.Success)
+                {
+                    throw new Exception($"recv_args.SocketError is not Success.");
+                }
+
+                // 버퍼 확인
+                if (recv_args.BytesTransferred <= 0)
+                {
+                    throw new Exception("recv_args.BytesTransferred less then 0");
+                }
+
+                if (recv_args.Buffer == null)
+                {
+                    throw new Exception($"recv_args.Buffer is null.");
+                }
 
                 // 패킷 처리
-                user_token.OnReceived(
+                (ErrorCode error_code, string? error_log) = user_token.OnReceived(
                     recv_args.Buffer,
                     recv_args.Offset,
                     recv_args.BytesTransferred
                 );
+
+                if (error_code != ErrorCode.SUCCESS)
+                {
+                    throw new Exception(error_log);
+                }
 
                 // 다음 패킷 수신 대기
                 if (!user_token.socket.ReceiveAsync(recv_args))
@@ -199,37 +209,37 @@ namespace network
             }
             catch (Exception e)
             {
+                // TODO 파일로깅
                 Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                this.CloseClientSocket(user_token);
             }
+        }
+
+        void SendCompleted(object sender, SocketAsyncEventArgs send_args)
+        {
+            if (send_args.UserToken is not UserToken token)
+            {
+                throw new Exception($"invalid args.UserToken : {send_args.UserToken}");
+            }
+
+            token.ProcessSend(send_args);
         }
 
         public void CloseClientSocket(UserToken user_token)
         {
-            lock (event_args_pool_lock)
+            lock (this.init_event_args_lock)
             {
                 lock (user_token.lock_disconnect)
                 {
                     if (!user_token.is_released)
                     {
-                        user_token.is_released = true;
+                        user_token.OnRemoved();
 
                         this.recv_event_args_pool.Push(user_token.recv_event_args);
                         this.send_event_args_pool.Push(user_token.send_event_args);
-
-                        user_token.OnRemoved();
                     }
                 }
             }
-        }
-
-        private static UserToken GetUserToken(SocketAsyncEventArgs args)
-        {
-            if (args.UserToken is not UserToken user_token)
-            {
-                throw new Exception("user token is null.");
-            }
-
-            return user_token;
         }
     }
 }

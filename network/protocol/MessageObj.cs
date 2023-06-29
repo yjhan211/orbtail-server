@@ -3,7 +3,7 @@
 
 using MessagePack;
 
-namespace game_server
+namespace network
 {
     [MessagePackObject]
     public class C_TO_S_LOGIN

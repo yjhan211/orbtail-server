@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace game_server
+namespace network
 {
     public enum PROTOCOL : Int32
     {

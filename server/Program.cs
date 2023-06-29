@@ -29,8 +29,10 @@ namespace game_server
                 }
             };
 
-            network_service.Listen("0.0.0.0", 7979, 100);
-            Console.WriteLine("Started!");
+            network_service.Listen();
+
+            // TODO 파일로깅
+            Console.WriteLine("Server Start");
         }
 
         public static void RemoveUser(GameUser user)
