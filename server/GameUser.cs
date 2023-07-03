@@ -8,48 +8,37 @@ namespace game_server
 
     public class GameUser : IPeer
     {
-        readonly UserToken token;
-        Player player;
+        public UserToken token { get; private set; }
+        public Player player { get; private set; }
 
         public GameUser(UserToken token)
         {
             this.token = token;
+
+            this.token.is_alive = true;
+            this.token.is_released = false;
+
             this.token.SetPeer(this);
         }
 
-        public int GetUserUid()
+        public int GetPlayerUid()
         {
-            return this.player?.GetUserUid() ?? 0;
+            return this.player.player_id;
         }
 
         public void OnMessage(Const<byte[]> buffer)
         {
-            byte[] clone = new byte[1024];
+            byte[] clone = new byte[Config.BUFFER_SIZE];
             Array.Copy(buffer.Value, clone, buffer.Value.Length);
 
             Packet packet = new(clone, this);
             Program.game_server.EnqueuePacket(packet);
         }
 
-        public static Packet MakePacket(PROTOCOL protocol_id, byte[] body)
+        static void HandleMessage<T>(byte[] body, Action<T> handleMessage)
         {
-            Packet result_packet = Packet.Create(protocol_id);
-            result_packet.SetBody(body);
-
-            return result_packet;
-        }
-
-        public void Send(Packet msg)
-        {
-            this.token.Send(msg);
-        }
-
-        public void OnRemoved()
-        {
-            Console.WriteLine("The client disconnected.");
-
-            this.token.socket.Disconnect(false);
-            Program.RemoveUser(this);
+            T msg = MessagePackSerializer.Deserialize<T>(body);
+            handleMessage(msg);
         }
 
         public void ProcessUserOperation(Packet packet)
@@ -60,54 +49,51 @@ namespace game_server
             switch (protocol_id)
             {
                 case PROTOCOL.HEART_BEAT:
-                    token.is_alive = true;
+                    HeartBeat();
                     break;
 
                 case PROTOCOL.C_TO_S_LOGIN:
-                    (this.player, List<PlayerObj> player_list) = Program.game_server.JoinUser(this);
-
-                    S_TO_C_LOGIN response =
-                        new()
-                        {
-                            user_uid = player.GetUserUid(),
-                            name = player.name,
-                            player_list = new List<PlayerObj>(), // TODO 100개 붙으면 1024바이트 넘어가서 보류. 동적으로 로드하도록 개선해야 함
-                        };
-
-                    Send(
-                        MakePacket(PROTOCOL.S_TO_C_LOGIN, MessagePackSerializer.Serialize(response))
-                    );
-
-                    Packet response2 = MakePacket(
-                        PROTOCOL.S_TO_C_LOGIN_ALL,
-                        MessagePackSerializer.Serialize(
-                            new S_TO_C_LOGIN_ALL()
-                            {
-                                user_uid = player.user_uid,
-                                name = player.name,
-                            }
-                        )
-                    );
-                    Program.game_server.Broadcast(response2);
+                    HandleMessage<C_TO_S_LOGIN>(body, Login);
                     break;
 
                 case PROTOCOL.C_TO_S_CHAT_MSG:
-                    C_TO_S_CHAT_MSG request = MessagePackSerializer.Deserialize<C_TO_S_CHAT_MSG>(
-                        body
-                    );
-                    Packet response3 = MakePacket(
-                        PROTOCOL.S_TO_C_CHAT_MSG_ALL,
-                        MessagePackSerializer.Serialize(
-                            new S_TO_C_CHAT_MSG_ALL()
-                            {
-                                user_uid = this.player.GetUserUid(),
-                                chat_message = request.chat_message,
-                            }
-                        )
-                    );
-                    Program.game_server.Broadcast(response3);
+                    HandleMessage<C_TO_S_CHAT_MSG>(body, SendChat);
                     break;
             }
+        }
+
+        void HeartBeat()
+        {
+            this.token.is_alive = true;
+        }
+
+        void Login(C_TO_S_LOGIN request)
+        {
+            (this.player, List<PlayerObj> player_list) = Program.game_server.LoginUser(this);
+            Packet packet = GameServer.MakeLoginPacket(this.player, player_list);
+
+            Send(packet);
+        }
+
+        void SendChat(C_TO_S_CHAT_MSG request)
+        {
+            if (this.player == null)
+            {
+                return;
+            }
+
+            Program.game_server.SendChat(this.player, chat_message: request.chat_message);
+        }
+
+        public void Send(Packet msg)
+        {
+            this.token.Send(msg);
+        }
+
+        public void OnRemoved()
+        {
+            Console.WriteLine("The client disconnected.");
+            Program.game_server.LeaveUser(this.player);
         }
     }
 }

@@ -85,6 +85,7 @@ namespace network
         {
             try
             {
+                Console.WriteLine("on new client");
                 SocketAsyncEventArgs recv_args = null;
                 SocketAsyncEventArgs send_args = null;
 
@@ -100,13 +101,12 @@ namespace network
                     || recv_args.UserToken != send_args.UserToken
                 )
                 {
-                    throw new Exception($"invalid args.UserToken:");
+                    throw new Exception(
+                        $"invalid args.UserToken: {recv_args.UserToken}|{send_args.UserToken}"
+                    );
                 }
 
                 UserToken user_token = (UserToken)recv_args.UserToken;
-                user_token.is_alive = true;
-                user_token.is_released = false;
-
                 this.session_created_callback(user_token);
 
                 BeginRecv(user_token, client_socket, recv_args, send_args);

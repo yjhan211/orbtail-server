@@ -12,6 +12,7 @@ namespace network
         C_TO_S_LOGIN,
         S_TO_C_LOGIN,
         S_TO_C_LOGIN_ALL,
+        S_TO_C_LOGOUT_ALL,
         C_TO_S_CHAT_MSG,
         S_TO_C_CHAT_MSG_ALL,
         END

@@ -9,20 +9,21 @@ namespace game_server
 
     public class Player
     {
-        public readonly int user_uid;
+        public readonly int player_id;
         public GameUser owner { get; private set; }
         public string name { get; private set; }
 
-        public Player(GameUser user, int user_uid, string name)
+        public Player(GameUser user, int player_id, string name)
         {
             this.owner = user;
-            this.user_uid = user_uid;
+            this.player_id = player_id;
             this.name = name;
         }
 
-        public int GetUserUid()
+        public PlayerObj ConvertObj()
         {
-            return this.user_uid;
+            PlayerObj player_obj = new() { player_id = this.player_id, name = this.name };
+            return player_obj;
         }
 
         public void Send(Packet msg, bool is_broadcast)

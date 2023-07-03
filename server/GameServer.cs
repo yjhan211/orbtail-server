@@ -1,128 +1,147 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using network;
-
 namespace game_server
 {
-    public class GameServer
-    {
-        object player_list_lock = new();
-        List<Player> player_list = new();
-        object operation_lock;
-        Queue<Packet> user_operations;
+    using network;
 
-        // 로직은 하나의 스레드로만 처리한다.
-        Thread logic_thread;
-        AutoResetEvent loop_event;
+    public partial class GameServer
+    {
+        readonly NetworkService network_service;
+        readonly object player_map_lock;
+        readonly Dictionary<int, Player> player_map;
+        readonly object operation_lock;
+        readonly Queue<Packet> operation_queue;
+        readonly Thread logic_thread;
+        readonly AutoResetEvent loop_event;
 
         public GameServer()
         {
-            this.operation_lock = new object();
-            this.loop_event = new AutoResetEvent(false);
-            this.user_operations = new Queue<Packet>();
+            this.network_service = new();
 
+            this.player_map_lock = new();
+            this.player_map = new Dictionary<int, Player>();
+
+            this.operation_lock = new object();
+            this.operation_queue = new Queue<Packet>();
+
+            this.loop_event = new AutoResetEvent(false);
             this.logic_thread = new Thread(GameLoop);
+        }
+
+        public void Start()
+        {
+            PacketBufferManager.Initialize(2000);
+            this.network_service.Initialize();
+            this.network_service.session_created_callback += (UserToken token) =>
+            {
+                // TODO DB 붙이기 전까진 일단 이렇게 ...
+                GameUser user = new(token);
+            };
+
+            this.network_service.Listen();
             this.logic_thread.Start();
+
+            Console.WriteLine("Game Server Start");
         }
 
         void GameLoop()
         {
             while (true)
             {
-                Packet packet = null;
+                Packet? packet = null;
+
                 lock (this.operation_lock)
                 {
-                    if (this.user_operations.Count > 0)
-                    {
-                        packet = this.user_operations.Dequeue();
-                    }
+                    this.operation_queue.TryDequeue(out packet);
                 }
 
                 if (packet != null)
                 {
-                    // 패킷 처리.
                     ProcessReceive(packet);
                 }
 
-                // 더이상 처리할 패킷이 없으면 스레드 대기.
-                if (this.user_operations.Count <= 0)
+                if (this.operation_queue.Count <= 0)
                 {
                     this.loop_event.WaitOne();
                 }
             }
         }
 
-        public int latest_user_uid = 0;
+        static int latest_player_id = 0;
 
-        Player MakePlayer(GameUser user)
+        public (Player player, List<PlayerObj> player_list) LoginUser(GameUser user)
         {
-            Interlocked.Increment(ref latest_user_uid);
-            Player player = new(user, latest_user_uid, name: $"플레이어{latest_user_uid}");
+            List<PlayerObj> player_list = new();
 
-            return player;
-        }
-
-        public (Player, List<PlayerObj>) JoinUser(GameUser user)
-        {
-            Player player;
-            List<PlayerObj> player_list;
-            lock (this.player_list_lock)
+            lock (this.player_map_lock)
             {
-                player = MakePlayer(user);
-                this.player_list.Add(player);
-
-                player_list = this.player_list
-                    .Select(
-                        player_info => new PlayerObj(player_info.GetUserUid(), player_info.name)
-                    )
-                    .ToList();
+                foreach (KeyValuePair<int, Player> pair in this.player_map)
+                {
+                    player_list.Add(pair.Value.ConvertObj());
+                }
             }
 
+            // 플레이어 생성
+            Interlocked.Increment(ref latest_player_id);
+            Player player = new(user, latest_player_id, name: $"플레이어{latest_player_id}");
+
+            // 기존 월드 유저들에게 로그인 정보 전송
+            Packet broadcast_packet = MakeLoginAllPacket(player);
+            Program.game_server.Broadcast(broadcast_packet);
+
+            // 새 플레이어를 월드에 등록
+            lock (this.player_map_lock)
+            {
+                this.player_map.Add(player.player_id, player);
+            }
+
+            // 월드 정보 동적으로 로드하도록 개선해야 함 (1024바이트 이하로 쪼개서..)
             return (player, player_list);
+        }
+
+        public void SendChat(Player player, string chat_message)
+        {
+            Packet packet = MakeChatPacket(player, chat_message);
+            Program.game_server.Broadcast(packet);
+        }
+
+        public void LeaveUser(Player player)
+        {
+            lock (this.player_map_lock)
+            {
+                this.player_map.Remove(player.player_id);
+            }
+
+            Packet packet = MakeLogoutAllPacket(player);
+            Program.game_server.Broadcast(packet);
         }
 
         public void EnqueuePacket(Packet packet)
         {
             lock (this.operation_lock)
             {
-                this.user_operations.Enqueue(packet);
+                this.operation_queue.Enqueue(packet);
                 this.loop_event.Set();
             }
         }
 
-        public void Broadcast(Packet msg)
+        void Broadcast(Packet msg)
         {
-            Packet clone = new Packet();
+            Packet clone = new();
             msg.CopyTo(clone);
-            lock (this.player_list_lock)
+
+            lock (this.player_map_lock)
             {
-                this.player_list.ForEach(
-                    (player) =>
-                    {
-                        player.Send(msg, true);
-                    }
-                );
+                foreach (KeyValuePair<int, Player> pair in this.player_map)
+                {
+                    pair.Value.Send(clone, true);
+                }
             }
 
-            // this.player_list.ForEach(player => player.Send(msg, true));
             Packet.Destroy(msg);
         }
 
-        void ProcessReceive(Packet msg)
+        static void ProcessReceive(Packet msg)
         {
-            //todo:
-            // user msg filter 체크.
             msg.owner.ProcessUserOperation(msg);
-        }
-
-        public void UserDisconnected(GameUser user)
-        {
-            // if (this.matching_waiting_users.Contains(user))
-            // {
-            //     this.matching_waiting_users.Remove(user);
-            // }
         }
     }
 }

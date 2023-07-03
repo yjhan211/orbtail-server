@@ -15,7 +15,5 @@ namespace network
         void Send(Packet msg);
 
         void ProcessUserOperation(Packet msg);
-
-        int GetUserUid();
     }
 }

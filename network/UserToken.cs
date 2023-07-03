@@ -123,7 +123,7 @@ namespace network
                 }
 
                 // 전송 완료
-                if (this.sending_queue.Sum(buffer => buffer.position) == args.BytesTransferred)
+                if (this.sending_queue.Sum(buffer => buffer.position) <= args.BytesTransferred)
                 {
                     this.sending_queue.Clear();
                     return;
@@ -158,7 +158,8 @@ namespace network
             this.peer?.OnRemoved();
             this.heartbeat_timer?.Dispose();
 
-            this.socket.Shutdown(SocketShutdown.Send);
+            this.socket.Disconnect(false);
+            this.socket.Shutdown(SocketShutdown.Both);
             this.socket.Close();
         }
     }
