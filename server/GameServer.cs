@@ -11,6 +11,7 @@ namespace game_server
         readonly Queue<Packet> operation_queue;
         readonly Thread logic_thread;
         readonly AutoResetEvent loop_event;
+        readonly MapTile[,] map_info;
 
         public GameServer()
         {
@@ -24,6 +25,19 @@ namespace game_server
 
             this.loop_event = new AutoResetEvent(false);
             this.logic_thread = new Thread(GameLoop);
+
+            this.map_info = new MapTile[10, 10];
+
+            for (int x = 0; x < 10; x++)
+            {
+                for (int y = 0; y < 10; y++)
+                {
+                    this.map_info[x, y] = new MapTile(TileType.SIDEWALK);
+                    Console.Write((int)this.map_info[x, y].type);
+                    Console.Write(",");
+                }
+                Console.WriteLine("");
+            }
         }
 
         public void Start()
@@ -97,7 +111,7 @@ namespace game_server
             return (player, player_list);
         }
 
-        public void SendChat(Player player, string chat_message)
+        public static void SendChat(Player player, string chat_message)
         {
             Packet packet = MakeChatPacket(player, chat_message);
             Program.game_server.Broadcast(packet);

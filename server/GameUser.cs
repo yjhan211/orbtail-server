@@ -5,6 +5,7 @@ namespace game_server
 {
     using network;
     using MessagePack;
+    using UnityEngine;
 
     public class GameUser : IPeer
     {
@@ -59,6 +60,10 @@ namespace game_server
                 case PROTOCOL.C_TO_S_CHAT_MSG:
                     HandleMessage<C_TO_S_CHAT_MSG>(body, SendChat);
                     break;
+
+                case PROTOCOL.C_TO_S_MOVE:
+                    HandleMessage<C_TO_S_MOVE>(body, Move);
+                    break;
             }
         }
 
@@ -82,7 +87,25 @@ namespace game_server
                 return;
             }
 
-            Program.game_server.SendChat(this.player, chat_message: request.chat_message);
+            GameServer.SendChat(this.player, chat_message: request.chat_message);
+        }
+
+        void Move(C_TO_S_MOVE request)
+        {
+            if (this.player == null)
+            {
+                return;
+            }
+
+            // if (this.player.move_timestamp < 이동 소요시간)
+            // {
+            //     this.player.current_cell = this.player.target_cell;
+            // }
+
+            // Vector2 direction = request.direction;
+            // // 여기서 direction에 위치한 target_cell을 구함
+            // this.player.target_cell = // 머시기...
+            // this.player.move_timestamp = DateTimeOffset.Now.ToUnixTimeSeconds();
         }
 
         public void Send(Packet msg)
