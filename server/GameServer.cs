@@ -119,6 +119,11 @@ namespace game_server
 
         public void LeaveUser(Player player)
         {
+            if (player == null)
+            {
+                return;
+            }
+
             lock (this.player_map_lock)
             {
                 this.player_map.Remove(player.player_id);
