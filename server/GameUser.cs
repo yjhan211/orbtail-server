@@ -90,6 +90,13 @@ namespace game_server
             GameServer.SendChat(this.player, chat_message: request.chat_message);
         }
 
+        double GetMoveElapsedTime()
+        {
+            TimeSpan elapsedTime = DateTime.Now - this.player.move_timestamp;
+
+            return elapsedTime.TotalSeconds;
+        }
+
         void Move(C_TO_S_MOVE request)
         {
             if (this.player == null)
@@ -97,15 +104,59 @@ namespace game_server
                 return;
             }
 
-            // if (this.player.move_timestamp < 이동 소요시간)
-            // {
-            //     this.player.current_cell = this.player.target_cell;
-            // }
+            if (GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+            {
+                Console.WriteLine("잉??");
+                return;
+            }
 
-            // Vector2 direction = request.direction;
-            // // 여기서 direction에 위치한 target_cell을 구함
-            // this.player.target_cell = // 머시기...
-            // this.player.move_timestamp = DateTimeOffset.Now.ToUnixTimeSeconds();
+            player.current_cell = player.target_cell;
+
+            Vector3Int temp_target_cell = new Vector3Int(
+                player.current_cell.x,
+                player.current_cell.y,
+                0
+            );
+
+            if (request.direction.x > 0 && request.direction.y > 0)
+            {
+                temp_target_cell.x += 1;
+            }
+            else if (request.direction.x < 0 && request.direction.y < 0)
+            {
+                temp_target_cell.x -= 1;
+            }
+            else if (request.direction.x > 0 && request.direction.y < 0)
+            {
+                temp_target_cell.y -= 1;
+            }
+            else
+            {
+                temp_target_cell.y += 1;
+            }
+
+            if (player.target_cell.Equals(temp_target_cell))
+            {
+                Console.WriteLine("잉??");
+                return;
+            }
+
+            player.target_cell = new CellPosition(temp_target_cell.x, temp_target_cell.y);
+            player.move_timestamp = DateTime.Now;
+
+            Console.WriteLine("----------------------------------------");
+            Console.WriteLine($"{request.direction.x}, {request.direction.y}");
+            Console.WriteLine($"{player.current_cell.x}, {player.current_cell.y}");
+            Console.WriteLine($"{player.target_cell.x}, {player.target_cell.y}");
+
+            Packet packet = GameServer.MakeMovePacket(
+                this.player,
+                this.player.current_cell,
+                this.player.target_cell,
+                this.player.move_timestamp
+            );
+
+            Program.game_server.Broadcast(packet);
         }
 
         public void Send(Packet msg)

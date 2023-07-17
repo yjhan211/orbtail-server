@@ -46,5 +46,25 @@ namespace game_server
 
             return packet;
         }
+
+        public static Packet MakeMovePacket(
+            Player player,
+            CellPosition current_cell,
+            CellPosition target_cell,
+            DateTime move_timestamp
+        )
+        {
+            Packet packet = Packet.Create(PROTOCOL.S_TO_C_MOVE_ALL);
+            S_TO_C_MOVE_ALL body = new S_TO_C_MOVE_ALL()
+            {
+                player_id = player.player_id,
+                current_cell = current_cell,
+                target_cell = target_cell,
+                move_timestamp = move_timestamp,
+            };
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+
+            return packet;
+        }
     }
 }

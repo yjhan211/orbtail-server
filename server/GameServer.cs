@@ -26,18 +26,18 @@ namespace game_server
             this.loop_event = new AutoResetEvent(false);
             this.logic_thread = new Thread(GameLoop);
 
-            this.map_info = new MapTile[10, 10];
+            // this.map_info = new MapTile[100, 100];
 
-            for (int x = 0; x < 10; x++)
-            {
-                for (int y = 0; y < 10; y++)
-                {
-                    this.map_info[x, y] = new MapTile(TileType.SIDEWALK);
-                    Console.Write((int)this.map_info[x, y].type);
-                    Console.Write(",");
-                }
-                Console.WriteLine("");
-            }
+            // for (int x = 0; x < 100; x++)
+            // {
+            //     for (int y = 0; y < 100; y++)
+            //     {
+            //         this.map_info[x, y] = new MapTile(TileType.SIDEWALK);
+            //         Console.Write((int)this.map_info[x, y].type);
+            //         Console.Write(",");
+            //     }
+            //     Console.WriteLine("");
+            // }
         }
 
         public void Start()
@@ -117,6 +117,8 @@ namespace game_server
             Program.game_server.Broadcast(packet);
         }
 
+        public static void SendMove() { }
+
         public void LeaveUser(Player player)
         {
             if (player == null)
@@ -142,7 +144,7 @@ namespace game_server
             }
         }
 
-        void Broadcast(Packet msg)
+        public void Broadcast(Packet msg)
         {
             Packet clone = new();
             msg.CopyTo(clone);

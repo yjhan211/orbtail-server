@@ -111,20 +111,20 @@ namespace network
 
                 BeginRecv(user_token, client_socket, recv_args, send_args);
 
-                user_token.heartbeat_timer = new Timer(
-                    (object _) =>
-                    {
-                        if (user_token.is_alive)
-                        {
-                            user_token.is_alive = false;
-                            return;
-                        }
-                        this.CloseClientSocket(user_token);
-                    },
-                    null,
-                    TimeSpan.Zero,
-                    TimeSpan.FromSeconds(10)
-                );
+                // user_token.heartbeat_timer = new Timer(
+                //     (object _) =>
+                //     {
+                //         if (user_token.is_alive)
+                //         {
+                //             user_token.is_alive = false;
+                //             return;
+                //         }
+                //         this.CloseClientSocket(user_token);
+                //     },
+                //     null,
+                //     TimeSpan.Zero,
+                //     TimeSpan.FromSeconds(10)
+                // );
             }
             catch (Exception e)
             {

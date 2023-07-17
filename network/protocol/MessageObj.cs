@@ -2,7 +2,7 @@
 #pragma warning disable IDE1006
 
 using MessagePack;
-using UnityEngine;
+using System.Collections.Generic;
 
 namespace network
 {
@@ -35,13 +35,45 @@ namespace network
         public string name { get; set; } // 임시 이름.. 서버에서 아무렇게나
 
         [Key("current_cell")]
-        public Vector2Int current_cell { get; set; }
+        public CellPosition current_cell { get; set; }
 
         [Key("target_cell")]
-        public Vector2Int target_cell { get; set; }
+        public CellPosition target_cell { get; set; }
 
         [Key("move_timestamp")]
-        public long move_timestamp { get; set; }
+        public DateTime move_timestamp { get; set; }
+    }
+
+    [MessagePackObject]
+    public class CellPosition
+    {
+        public CellPosition(int x, int y)
+        {
+            this.x = x;
+            this.y = y;
+        }
+
+        [Key("x")]
+        public int x { get; set; }
+
+        [Key("y")]
+        public int y { get; set; }
+    }
+
+    [MessagePackObject]
+    public class Direction
+    {
+        public Direction(float x, float y)
+        {
+            this.x = x;
+            this.y = y;
+        }
+
+        [Key("x")]
+        public float x { get; set; }
+
+        [Key("y")]
+        public float y { get; set; }
     }
 
     [MessagePackObject]
@@ -79,7 +111,7 @@ namespace network
     public class C_TO_S_MOVE
     {
         [Key("direction")]
-        public Vector2 direction { get; set; }
+        public Direction direction { get; set; }
     }
 
     [MessagePackObject]
@@ -89,13 +121,13 @@ namespace network
         public long player_id { get; set; }
 
         [Key("current_cell")]
-        public Vector2Int current_cell { get; set; }
+        public CellPosition current_cell { get; set; }
 
         [Key("target_cell")]
-        public Vector2Int target_cell { get; set; }
+        public CellPosition target_cell { get; set; }
 
         [Key("move_timestamp")]
-        public long move_timestamp { get; set; }
+        public DateTime move_timestamp { get; set; }
     }
 
     [MessagePackObject]
