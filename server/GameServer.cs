@@ -6,7 +6,7 @@ namespace game_server
     {
         readonly NetworkService network_service;
         readonly object player_map_lock;
-        readonly Dictionary<int, Player> player_map;
+        readonly Dictionary<long, Player> player_map;
         readonly object operation_lock;
         readonly Queue<Packet> operation_queue;
         readonly Thread logic_thread;
@@ -18,13 +18,13 @@ namespace game_server
             this.network_service = new();
 
             this.player_map_lock = new();
-            this.player_map = new Dictionary<int, Player>();
+            this.player_map = new();
 
-            this.operation_lock = new object();
-            this.operation_queue = new Queue<Packet>();
+            this.operation_lock = new();
+            this.operation_queue = new();
 
-            this.loop_event = new AutoResetEvent(false);
-            this.logic_thread = new Thread(GameLoop);
+            this.loop_event = new(false);
+            this.logic_thread = new(GameLoop);
 
             // this.map_info = new MapTile[100, 100];
 
@@ -81,13 +81,13 @@ namespace game_server
 
         static int latest_player_id = 0;
 
-        public (Player player, List<PlayerObj> player_list) LoginUser(GameUser user)
+        public long LoginUser(GameUser user)
         {
             List<PlayerObj> player_list = new();
 
             lock (this.player_map_lock)
             {
-                foreach (KeyValuePair<int, Player> pair in this.player_map)
+                foreach (KeyValuePair<long, Player> pair in this.player_map)
                 {
                     player_list.Add(pair.Value.ConvertObj());
                 }
@@ -108,27 +108,116 @@ namespace game_server
             }
 
             // 월드 정보 동적으로 로드하도록 개선해야 함 (1024바이트 이하로 쪼개서..)
-            return (player, player_list);
+            Packet packet = MakeLoginPacket(player, player_list);
+            user.Send(packet);
+
+            return player.player_id;
         }
 
-        public static void SendChat(Player player, string chat_message)
+#pragma warning disable CA1822
+        public void SendChat(long player_id, string chat_message)
         {
+            if (!this.player_map.TryGetValue(player_id, out Player? player))
+            {
+                return;
+            }
+
             Packet packet = MakeChatPacket(player, chat_message);
             Program.game_server.Broadcast(packet);
         }
 
-        public static void SendMove() { }
-
-        public void LeaveUser(Player player)
+        public void Move(long player_id, Direction direction)
         {
-            if (player == null)
+            Player? player;
+
+            lock (this.player_map_lock)
+            {
+                if (!this.player_map.TryGetValue(player_id, out player))
+                {
+                    return;
+                }
+
+                if (GetMoveElapsedTime(player) < Config.MOVE_ELAPSED_TIME)
+                {
+                    return;
+                }
+
+                Console.WriteLine($"{player.current_cell.x}, {player.current_cell.y}");
+
+                player.current_cell = CellPosition.Clone(player.target_cell);
+                (CellPosition temp_target_cell, player.is_flip) = CalcTargetPosition(
+                    player.current_cell,
+                    direction
+                );
+
+                if (player.target_cell.Equals(temp_target_cell))
+                {
+                    return;
+                }
+
+                player.target_cell = temp_target_cell;
+                player.move_timestamp = DateTime.UtcNow;
+
+                Console.WriteLine($"{player.target_cell.x}, {player.target_cell.y}");
+                Console.WriteLine("==================================");
+            }
+
+            Packet packet = MakeMovePacket(
+                player,
+                player.current_cell,
+                player.target_cell,
+                player.move_timestamp,
+                player.is_flip
+            );
+
+            Program.game_server.Broadcast(packet);
+        }
+
+        static (CellPosition, bool) CalcTargetPosition(
+            CellPosition current_cell,
+            Direction direction
+        )
+        {
+            bool is_flip = false;
+
+            if (direction.x > 0 && direction.y > 0)
+            {
+                current_cell.x += 1;
+                is_flip = true;
+            }
+            else if (direction.x < 0 && direction.y < 0)
+            {
+                current_cell.x -= 1;
+            }
+            else if (direction.x > 0 && direction.y < 0)
+            {
+                current_cell.y -= 1;
+                is_flip = true;
+            }
+            else
+            {
+                current_cell.y += 1;
+            }
+
+            return (current_cell, is_flip);
+        }
+
+        double GetMoveElapsedTime(Player player)
+        {
+            TimeSpan elapsedTime = DateTime.UtcNow - player.move_timestamp;
+            return elapsedTime.TotalSeconds;
+        }
+
+        public void LeaveUser(long player_id)
+        {
+            if (!this.player_map.TryGetValue(player_id, out Player? player))
             {
                 return;
             }
 
             lock (this.player_map_lock)
             {
-                this.player_map.Remove(player.player_id);
+                this.player_map.Remove(player_id);
             }
 
             Packet packet = MakeLogoutAllPacket(player);
@@ -151,7 +240,7 @@ namespace game_server
 
             lock (this.player_map_lock)
             {
-                foreach (KeyValuePair<int, Player> pair in this.player_map)
+                foreach (KeyValuePair<long, Player> pair in this.player_map)
                 {
                     pair.Value.Send(clone, true);
                 }

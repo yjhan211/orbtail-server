@@ -10,6 +10,7 @@ namespace game_server
         public CellPosition current_cell { get; set; }
         public CellPosition target_cell { get; set; }
         public DateTime move_timestamp { get; set; }
+        public bool is_flip { get; set; }
 
         public Player(GameUser user, int player_id, string name)
         {
@@ -20,6 +21,8 @@ namespace game_server
             this.current_cell = new CellPosition(50, 50);
             this.target_cell = new CellPosition(50, 50);
             this.move_timestamp = DateTime.MinValue;
+
+            is_flip = false;
         }
 
         public PlayerObj ConvertObj()
@@ -32,6 +35,7 @@ namespace game_server
                     current_cell = this.current_cell,
                     target_cell = this.target_cell,
                     move_timestamp = this.move_timestamp,
+                    is_flip = this.is_flip,
                 };
 
             return player_obj;

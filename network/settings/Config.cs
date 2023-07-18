@@ -11,7 +11,7 @@
 
         public static readonly float SPEED = 1.7f;
         public static readonly float MOVE_ELAPSED_TIME = 1f / SPEED;
-        public static readonly float MOVE_ANIM_ELAPSED_TIME = 0.8f;
+        public static readonly float MOVE_ANIM_ELAPSED_TIME = MOVE_ELAPSED_TIME + 0.2f;
         public static float FILP_LOTATION = 180;
 
         public static string GAME_SERVER_IP = "127.0.0.1";

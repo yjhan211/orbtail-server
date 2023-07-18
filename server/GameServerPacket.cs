@@ -51,7 +51,8 @@ namespace game_server
             Player player,
             CellPosition current_cell,
             CellPosition target_cell,
-            DateTime move_timestamp
+            DateTime move_timestamp,
+            bool is_flip
         )
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_MOVE_ALL);
@@ -61,6 +62,7 @@ namespace game_server
                 current_cell = current_cell,
                 target_cell = target_cell,
                 move_timestamp = move_timestamp,
+                is_flip = is_flip,
             };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 

@@ -5,12 +5,11 @@ namespace game_server
 {
     using network;
     using MessagePack;
-    using UnityEngine;
 
     public class GameUser : IPeer
     {
         public UserToken token { get; private set; }
-        public Player player { get; private set; }
+        public long player_id { get; private set; }
 
         public GameUser(UserToken token)
         {
@@ -20,11 +19,6 @@ namespace game_server
             this.token.is_released = false;
 
             this.token.SetPeer(this);
-        }
-
-        public int GetPlayerUid()
-        {
-            return this.player.player_id;
         }
 
         public void OnMessage(Const<byte[]> buffer)
@@ -74,89 +68,17 @@ namespace game_server
 
         void Login(C_TO_S_LOGIN request)
         {
-            (this.player, List<PlayerObj> player_list) = Program.game_server.LoginUser(this);
-            Packet packet = GameServer.MakeLoginPacket(this.player, player_list);
-
-            Send(packet);
+            this.player_id = Program.game_server.LoginUser(this);
         }
 
         void SendChat(C_TO_S_CHAT_MSG request)
         {
-            if (this.player == null)
-            {
-                return;
-            }
-
-            GameServer.SendChat(this.player, chat_message: request.chat_message);
-        }
-
-        double GetMoveElapsedTime()
-        {
-            TimeSpan elapsedTime = DateTime.Now - this.player.move_timestamp;
-
-            return elapsedTime.TotalSeconds;
+            Program.game_server.SendChat(this.player_id, request.chat_message);
         }
 
         void Move(C_TO_S_MOVE request)
         {
-            if (this.player == null)
-            {
-                return;
-            }
-
-            if (GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
-            {
-                Console.WriteLine("잉??");
-                return;
-            }
-
-            player.current_cell = player.target_cell;
-
-            Vector3Int temp_target_cell = new Vector3Int(
-                player.current_cell.x,
-                player.current_cell.y,
-                0
-            );
-
-            if (request.direction.x > 0 && request.direction.y > 0)
-            {
-                temp_target_cell.x += 1;
-            }
-            else if (request.direction.x < 0 && request.direction.y < 0)
-            {
-                temp_target_cell.x -= 1;
-            }
-            else if (request.direction.x > 0 && request.direction.y < 0)
-            {
-                temp_target_cell.y -= 1;
-            }
-            else
-            {
-                temp_target_cell.y += 1;
-            }
-
-            if (player.target_cell.Equals(temp_target_cell))
-            {
-                Console.WriteLine("잉??");
-                return;
-            }
-
-            player.target_cell = new CellPosition(temp_target_cell.x, temp_target_cell.y);
-            player.move_timestamp = DateTime.Now;
-
-            Console.WriteLine("----------------------------------------");
-            Console.WriteLine($"{request.direction.x}, {request.direction.y}");
-            Console.WriteLine($"{player.current_cell.x}, {player.current_cell.y}");
-            Console.WriteLine($"{player.target_cell.x}, {player.target_cell.y}");
-
-            Packet packet = GameServer.MakeMovePacket(
-                this.player,
-                this.player.current_cell,
-                this.player.target_cell,
-                this.player.move_timestamp
-            );
-
-            Program.game_server.Broadcast(packet);
+            Program.game_server.Move(this.player_id, request.direction);
         }
 
         public void Send(Packet msg)
@@ -167,7 +89,7 @@ namespace game_server
         public void OnRemoved()
         {
             Console.WriteLine("The client disconnected.");
-            Program.game_server.LeaveUser(this.player);
+            Program.game_server.LeaveUser(this.player_id);
         }
     }
 }

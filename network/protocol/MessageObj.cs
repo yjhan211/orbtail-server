@@ -42,6 +42,9 @@ namespace network
 
         [Key("move_timestamp")]
         public DateTime move_timestamp { get; set; }
+
+        [Key("is_flip")]
+        public bool is_flip { get; set; }
     }
 
     [MessagePackObject]
@@ -58,6 +61,16 @@ namespace network
 
         [Key("y")]
         public int y { get; set; }
+
+        public bool Equals(CellPosition target)
+        {
+            return this.x == target.x && this.y == target.y;
+        }
+
+        public static CellPosition Clone(CellPosition target)
+        {
+            return new CellPosition(target.x, target.y);
+        }
     }
 
     [MessagePackObject]
@@ -128,6 +141,9 @@ namespace network
 
         [Key("move_timestamp")]
         public DateTime move_timestamp { get; set; }
+
+        [Key("is_flip")]
+        public bool is_flip { get; set; }
     }
 
     [MessagePackObject]
