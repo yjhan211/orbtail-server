@@ -126,7 +126,7 @@ namespace game_server
             Program.game_server.Broadcast(packet);
         }
 
-        public void Move(long player_id, Direction direction)
+        public void HeartBeat(long player_id)
         {
             Player? player;
 
@@ -142,7 +142,25 @@ namespace game_server
                     return;
                 }
 
-                Console.WriteLine($"{player.current_cell.x}, {player.current_cell.y}");
+                player.current_cell = CellPosition.Clone(player.target_cell);
+            }
+        }
+
+        public void Move(long player_id, Direction direction)
+        {
+            Player? player;
+
+            lock (this.player_map_lock)
+            {
+                if (!this.player_map.TryGetValue(player_id, out player))
+                {
+                    return;
+                }
+
+                if ((float)GetMoveElapsedTime(player) <= Config.MOVE_ELAPSED_TIME)
+                {
+                    return;
+                }
 
                 player.current_cell = CellPosition.Clone(player.target_cell);
                 (CellPosition temp_target_cell, player.is_flip) = CalcTargetPosition(
@@ -157,9 +175,6 @@ namespace game_server
 
                 player.target_cell = temp_target_cell;
                 player.move_timestamp = DateTime.UtcNow;
-
-                Console.WriteLine($"{player.target_cell.x}, {player.target_cell.y}");
-                Console.WriteLine("==================================");
             }
 
             Packet packet = MakeMovePacket(
