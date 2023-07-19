@@ -13,7 +13,7 @@ namespace network
 
         public static readonly float SPEED = 1f;
         public static readonly float MOVE_ELAPSED_TIME = 0.58f / SPEED;
-        public static readonly float MOVE_ANIM_ELAPSED_TIME = MOVE_ELAPSED_TIME + 0.5f;
+        public static readonly float MOVE_ANIM_ELAPSED_TIME = MOVE_ELAPSED_TIME + 0.3f;
         public static float FILP_LOTATION = 180;
 
         public static string GAME_SERVER_IP = "127.0.0.1";
