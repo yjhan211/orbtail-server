@@ -1,4 +1,6 @@
-﻿namespace network
+﻿#pragma warning disable CA2211
+
+namespace network
 {
     public class Config
     {
@@ -17,5 +19,7 @@
         public static string GAME_SERVER_IP = "127.0.0.1";
         public static short GAME_SERVER_PORT = 7979;
         public static int MAX_CHAT_LINE = 2000;
+
+        public static bool HEARTBEAT_ACTIVE = false;
     }
 }

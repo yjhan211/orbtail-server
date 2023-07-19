@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using network;
 
 namespace game_server
@@ -56,14 +52,15 @@ namespace game_server
         )
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_MOVE_ALL);
-            S_TO_C_MOVE_ALL body = new S_TO_C_MOVE_ALL()
-            {
-                player_id = player.player_id,
-                current_cell = current_cell,
-                target_cell = target_cell,
-                move_timestamp = move_timestamp,
-                is_flip = is_flip,
-            };
+            S_TO_C_MOVE_ALL body =
+                new()
+                {
+                    player_id = player.player_id,
+                    current_cell = current_cell,
+                    target_cell = target_cell,
+                    move_timestamp = move_timestamp,
+                    is_flip = is_flip,
+                };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;

@@ -1,3 +1,5 @@
+#pragma warning disable IDE1006
+
 namespace game_server
 {
     using network;

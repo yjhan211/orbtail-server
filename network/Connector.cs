@@ -1,5 +1,4 @@
 ﻿#pragma warning disable CS8618
-#pragma warning disable CS8622
 
 using System;
 using System.Collections.Generic;

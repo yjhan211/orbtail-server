@@ -1,6 +1,4 @@
-﻿#pragma warning disable CS8604
-#pragma warning disable CS8618
-#pragma warning disable CS8622
+﻿#pragma warning disable CS8618
 
 using System.Net;
 using System.Net.Sockets;

@@ -11,7 +11,8 @@ namespace game_server
         readonly Queue<Packet> operation_queue;
         readonly Thread logic_thread;
         readonly AutoResetEvent loop_event;
-        readonly MapTile[,] map_info;
+
+        // readonly MapTile[,] map_info;
 
         public GameServer()
         {
@@ -128,11 +129,9 @@ namespace game_server
 
         public void HeartBeat(long player_id)
         {
-            Player? player;
-
             lock (this.player_map_lock)
             {
-                if (!this.player_map.TryGetValue(player_id, out player))
+                if (!this.player_map.TryGetValue(player_id, out Player? player))
                 {
                     return;
                 }
