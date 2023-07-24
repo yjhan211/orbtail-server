@@ -55,7 +55,7 @@ namespace network
                 return;
             }
 
-            UserToken token = new(this.network_service);
+            UserToken token = new();
             this.network_service.OnConnectCompleted(this.client, token);
             this.connected_callback(token);
         }

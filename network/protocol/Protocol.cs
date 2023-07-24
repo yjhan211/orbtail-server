@@ -11,8 +11,8 @@ namespace network
         HEART_BEAT = 0,
         C_TO_S_LOGIN,
         S_TO_C_LOGIN,
-        S_TO_C_LOGIN_ALL,
-        S_TO_C_LOGOUT_ALL,
+        S_TO_C_PLAYER_SPAWN,
+        S_TO_C_PLAYER_DISTROY,
         C_TO_S_CHAT_MSG,
         S_TO_C_CHAT_MSG_ALL,
         C_TO_S_MOVE,
@@ -24,5 +24,13 @@ namespace network
     {
         EMPTY,
         SIDEWALK,
+    }
+
+    public enum DirectionType : byte
+    {
+        TOP_LEFT,
+        TOP_RIGHT,
+        BOTTOM_LEFT,
+        BOTTOM_RIGHT,
     }
 }

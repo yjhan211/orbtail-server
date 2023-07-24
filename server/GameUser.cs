@@ -1,5 +1,4 @@
-﻿#pragma warning disable CS8618
-#pragma warning disable IDE1006
+﻿#pragma warning disable IDE1006
 
 namespace game_server
 {

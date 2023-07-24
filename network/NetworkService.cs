@@ -29,7 +29,7 @@ namespace network
 
             foreach (var _ in Enumerable.Range(0, Config.MAX_CONNECTION))
             {
-                UserToken user_token = new(this);
+                UserToken user_token = new();
 
                 SocketAsyncEventArgs recv_args = new();
                 recv_args.Completed += new EventHandler<SocketAsyncEventArgs>(RecvCompleted);
@@ -237,7 +237,6 @@ namespace network
                     if (!user_token.is_released)
                     {
                         user_token.OnRemoved();
-
                         this.recv_event_args_pool.Push(user_token.recv_event_args);
                         this.send_event_args_pool.Push(user_token.send_event_args);
                     }
