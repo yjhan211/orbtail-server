@@ -84,33 +84,34 @@ namespace game_server
 
         public long LoginUser(GameUser user)
         {
-            List<PlayerObj> player_list = new();
+            Player player;
 
             lock (this.player_map_lock)
             {
+                // 플레이어 생성
+                Interlocked.Increment(ref latest_player_id);
+                player = new(user, latest_player_id, name: $"플레이어{latest_player_id}");
+
+                // 기존 월드 유저들에게 로그인 정보 전송
+                Packet broadcast_packet = MakeSpawnPlayerPacket(player);
+                Program.game_server.Broadcast(broadcast_packet);
+
+                // 본인 정보 전송
+                Packet login_packet = MakeLoginPacket(player);
+                user.Send(login_packet);
+
+                // 기존 월드 유저 정보 전송
                 foreach (KeyValuePair<long, Player> pair in this.player_map)
                 {
-                    player_list.Add(pair.Value.ConvertObj());
+                    Packet spawn_player_packet = MakeSpawnPlayerPacket(pair.Value);
+                    user.Send(spawn_player_packet);
                 }
-            }
 
-            // 플레이어 생성
-            Interlocked.Increment(ref latest_player_id);
-            Player player = new(user, latest_player_id, name: $"플레이어{latest_player_id}");
-
-            // 기존 월드 유저들에게 로그인 정보 전송
-            Packet broadcast_packet = MakeLoginAllPacket(player);
-            Program.game_server.Broadcast(broadcast_packet);
-
-            // 새 플레이어를 월드에 등록
-            lock (this.player_map_lock)
-            {
+                // 새 플레이어를 월드에 등록
                 this.player_map.Add(player.player_id, player);
-            }
 
-            // 월드 정보 동적으로 로드하도록 개선해야 함 (1024바이트 이하로 쪼개서..)
-            Packet packet = MakeLoginPacket(player, player_list);
-            user.Send(packet);
+                SendChat(player.player_id, $"님이 접속하였습니다.");
+            }
 
             return player.player_id;
         }
@@ -145,7 +146,7 @@ namespace game_server
             }
         }
 
-        public void Move(long player_id, Direction direction)
+        public void Move(long player_id, DirectionType direction)
         {
             Player? player;
 
@@ -189,21 +190,21 @@ namespace game_server
 
         static (CellPosition, bool) CalcTargetPosition(
             CellPosition current_cell,
-            Direction direction
+            DirectionType direction
         )
         {
             bool is_flip = false;
 
-            if (direction.x > 0 && direction.y > 0)
+            if (direction == DirectionType.TOP_LEFT)
             {
                 current_cell.x += 1;
                 is_flip = true;
             }
-            else if (direction.x < 0 && direction.y < 0)
+            else if (direction == DirectionType.TOP_RIGHT)
             {
                 current_cell.x -= 1;
             }
-            else if (direction.x > 0 && direction.y < 0)
+            else if (direction == DirectionType.BOTTOM_LEFT)
             {
                 current_cell.y -= 1;
                 is_flip = true;
@@ -229,12 +230,14 @@ namespace game_server
                 return;
             }
 
+            SendChat(player_id, $"님이 접속 종료하였습니다.");
+
             lock (this.player_map_lock)
             {
                 this.player_map.Remove(player_id);
             }
 
-            Packet packet = MakeLogoutAllPacket(player);
+            Packet packet = MakeDistroyPlayerPacket(player);
             Program.game_server.Broadcast(packet);
         }
 

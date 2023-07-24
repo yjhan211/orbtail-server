@@ -18,15 +18,13 @@ namespace network
         public bool is_alive = true;
         public bool is_released = true;
         public object lock_disconnect;
-        readonly NetworkService network_service;
 
-        public UserToken(NetworkService network_service)
+        public UserToken()
         {
             this.lock_sending_queue = new();
             this.message_resolver = new();
             this.sending_queue = new();
             this.lock_disconnect = new();
-            this.network_service = network_service;
         }
 
         public void SetPeer(IPeer peer)
@@ -101,16 +99,15 @@ namespace network
             {
                 // TODO 파일로깅
                 Console.WriteLine($"{e.Message}, {e.StackTrace}");
-                this.network_service.CloseClientSocket(this);
             }
         }
 
-        public void ProcessSend(SocketAsyncEventArgs args)
+        public void ProcessSend(SocketAsyncEventArgs send_args)
         {
-            if (args.SocketError != SocketError.Success)
+            if (send_args.SocketError != SocketError.Success)
             {
                 throw new Exception(
-                    $"args.SocketError not Success. SocketError:{args.SocketError}, bytesTransferred:{args.BytesTransferred}"
+                    $"send_args.SocketError not Success. SocketError:{send_args.SocketError}, bytesTransferred:{send_args.BytesTransferred}"
                 );
             }
 
@@ -123,7 +120,7 @@ namespace network
                 }
 
                 // 전송 완료
-                if (this.sending_queue.Sum(buffer => buffer.position) <= args.BytesTransferred)
+                if (this.sending_queue.Sum(buffer => buffer.position) <= send_args.BytesTransferred)
                 {
                     this.sending_queue.Clear();
                     return;
@@ -133,7 +130,7 @@ namespace network
                 while (true)
                 {
                     sum += this.sending_queue.Peek().position;
-                    if (sum <= args.BytesTransferred)
+                    if (sum <= send_args.BytesTransferred)
                     {
                         // 이미 보낸 패킷이므로 제거
                         this.sending_queue.Dequeue();

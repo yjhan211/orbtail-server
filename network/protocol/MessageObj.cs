@@ -18,9 +18,6 @@ namespace network
     {
         [Key("player")]
         public PlayerObj player { get; set; }
-
-        [Key("player_list")]
-        public List<PlayerObj> player_list { get; set; }
     }
 
     [MessagePackObject]
@@ -74,30 +71,14 @@ namespace network
     }
 
     [MessagePackObject]
-    public class Direction
-    {
-        public Direction(float x, float y)
-        {
-            this.x = x;
-            this.y = y;
-        }
-
-        [Key("x")]
-        public float x { get; set; }
-
-        [Key("y")]
-        public float y { get; set; }
-    }
-
-    [MessagePackObject]
-    public class S_TO_C_LOGIN_ALL
+    public class S_TO_C_PLAYER_SPAWN
     {
         [Key("player")]
         public PlayerObj player;
     }
 
     [MessagePackObject]
-    public class S_TO_C_LOGOUT_ALL
+    public class S_TO_C_PLAYER_DISTROY
     {
         [Key("player")]
         public PlayerObj player;
@@ -124,7 +105,7 @@ namespace network
     public class C_TO_S_MOVE
     {
         [Key("direction")]
-        public Direction direction { get; set; }
+        public DirectionType direction { get; set; }
     }
 
     [MessagePackObject]

@@ -6,28 +6,28 @@ namespace game_server
 
     public partial class GameServer
     {
-        public static Packet MakeLoginPacket(Player player, List<PlayerObj> player_list)
+        public static Packet MakeLoginPacket(Player player)
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_LOGIN);
-            S_TO_C_LOGIN body = new() { player = player.ConvertObj(), player_list = player_list };
+            S_TO_C_LOGIN body = new() { player = player.ConvertObj() };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;
         }
 
-        static Packet MakeLoginAllPacket(Player player)
+        static Packet MakeSpawnPlayerPacket(Player player)
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_LOGIN_ALL);
-            S_TO_C_LOGIN_ALL body = new() { player = player.ConvertObj() };
+            Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_SPAWN);
+            S_TO_C_PLAYER_SPAWN body = new() { player = player.ConvertObj() };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;
         }
 
-        static Packet MakeLogoutAllPacket(Player player)
+        static Packet MakeDistroyPlayerPacket(Player player)
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_LOGOUT_ALL);
-            S_TO_C_LOGOUT_ALL body = new() { player = player.ConvertObj() };
+            Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_DISTROY);
+            S_TO_C_PLAYER_DISTROY body = new() { player = player.ConvertObj() };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;
