@@ -128,6 +128,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class S_TO_C_MOVE_ALL_LIST
+    {
+        [Key("move_obj_list")]
+        public List<S_TO_C_MOVE_ALL> move_obj_list { get; set; }
+    }
+
+    [MessagePackObject]
     public class MapTile
     {
         public MapTile(TileType tile_type)

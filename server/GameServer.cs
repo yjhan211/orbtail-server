@@ -11,6 +11,7 @@ namespace game_server
         readonly Queue<Packet> operation_queue;
         readonly Thread logic_thread;
         readonly AutoResetEvent loop_event;
+        readonly Queue<S_TO_C_MOVE_ALL> player_move_queue;
 
         // readonly MapTile[,] map_info;
 
@@ -27,6 +28,8 @@ namespace game_server
             this.loop_event = new(false);
             this.logic_thread = new(GameLoop);
 
+            this.player_move_queue = new();
+
             // this.map_info = new MapTile[100, 100];
 
             // for (int x = 0; x < 100; x++)
@@ -39,6 +42,43 @@ namespace game_server
             //     }
             //     Console.WriteLine("");
             // }
+
+            Thread move_broadcast_thread =
+                new(() =>
+                {
+                    while (true)
+                    {
+                        List<S_TO_C_MOVE_ALL> move_list = new();
+
+                        while (true)
+                        {
+                            if (this.player_move_queue.Count <= 0)
+                            {
+                                break;
+                            }
+
+                            if (move_list.Count > 10)
+                            {
+                                break;
+                            }
+
+                            if (this.player_move_queue.TryDequeue(out S_TO_C_MOVE_ALL? move_obj))
+                            {
+                                move_list.Add(move_obj);
+                            }
+                        }
+
+                        if (move_list.Count > 0)
+                        {
+                            Packet packet = MakeMoveListPacket(move_list);
+                            Broadcast(packet);
+                        }
+
+                        Thread.Sleep(10);
+                    }
+                });
+
+            move_broadcast_thread.Start();
         }
 
         public void Start()
@@ -110,6 +150,7 @@ namespace game_server
                 // 새 플레이어를 월드에 등록
                 this.player_map.Add(player.player_id, player);
 
+                // TODO 시스템메시지 분리
                 SendChat(player.player_id, $"님이 접속하였습니다.");
             }
 
@@ -177,15 +218,17 @@ namespace game_server
                 player.move_timestamp = DateTime.UtcNow;
             }
 
-            Packet packet = MakeMovePacket(
-                player,
-                player.current_cell,
-                player.target_cell,
-                player.move_timestamp,
-                player.is_flip
-            );
+            S_TO_C_MOVE_ALL move_obj =
+                new()
+                {
+                    player_id = player.player_id,
+                    current_cell = player.current_cell,
+                    target_cell = player.target_cell,
+                    move_timestamp = player.move_timestamp,
+                    is_flip = player.is_flip,
+                };
 
-            Program.game_server.Broadcast(packet);
+            this.player_move_queue.Enqueue(move_obj);
         }
 
         static (CellPosition, bool) CalcTargetPosition(

@@ -65,5 +65,15 @@ namespace game_server
 
             return packet;
         }
+
+        public static Packet MakeMoveListPacket(List<S_TO_C_MOVE_ALL> move_obj_list)
+        {
+            Packet packet = Packet.Create(PROTOCOL.S_TO_C_MOVE_ALL_LIST);
+
+            S_TO_C_MOVE_ALL_LIST body = new() { move_obj_list = move_obj_list };
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+
+            return packet;
+        }
     }
 }

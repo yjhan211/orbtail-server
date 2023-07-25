@@ -20,6 +20,6 @@ namespace network
         public static short GAME_SERVER_PORT = 7979;
         public static int MAX_CHAT_LINE = 2000;
 
-        public static bool HEARTBEAT_ACTIVE = true;
+        public static bool HEARTBEAT_ACTIVE = false;
     }
 }
