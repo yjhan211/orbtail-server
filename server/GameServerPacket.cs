@@ -15,19 +15,19 @@ namespace game_server
             return packet;
         }
 
-        static Packet MakeSpawnPlayerPacket(Player player)
+        static Packet MakeSpawnPlayerListPacket(List<PlayerObj> player_list)
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_SPAWN);
-            S_TO_C_PLAYER_SPAWN body = new() { player = player.ConvertObj() };
+            Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_SPAWN_LIST);
+            S_TO_C_PLAYER_SPAWN_LIST body = new() { player_list = player_list };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;
         }
 
-        static Packet MakeDistroyPlayerPacket(Player player)
+        static Packet MakeDistroyPlayerListPacket(List<PlayerObj> player_list)
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_DISTROY);
-            S_TO_C_PLAYER_DISTROY body = new() { player = player.ConvertObj() };
+            Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_DESTROY_LIST);
+            S_TO_C_PLAYER_DESTROY_LIST body = new() { player_list = player_list };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;

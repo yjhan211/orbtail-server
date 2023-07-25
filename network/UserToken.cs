@@ -107,7 +107,6 @@ namespace network
             {
                 // TODO 파일로깅
                 Console.WriteLine($"{e.Message}, {e.StackTrace}");
-                this.network_service.CloseClientSocket(this);
             }
         }
 
