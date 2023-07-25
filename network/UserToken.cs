@@ -18,13 +18,15 @@ namespace network
         public bool is_alive = true;
         public bool is_released = true;
         public object lock_disconnect;
+        public NetworkService network_service;
 
-        public UserToken()
+        public UserToken(NetworkService network_service)
         {
             this.lock_sending_queue = new();
             this.message_resolver = new();
             this.sending_queue = new();
             this.lock_disconnect = new();
+            this.network_service = network_service;
         }
 
         public void SetPeer(IPeer peer)
@@ -62,8 +64,14 @@ namespace network
 
             lock (this.lock_sending_queue)
             {
+                if (this.is_released)
+                {
+                    return;
+                }
+
                 bool is_sending = this.sending_queue.Count > 0;
                 this.sending_queue.Enqueue(clone);
+
                 if (!is_sending)
                 {
                     StartSend();
@@ -99,12 +107,13 @@ namespace network
             {
                 // TODO 파일로깅
                 Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                this.network_service.CloseClientSocket(this);
             }
         }
 
         public void ProcessSend(SocketAsyncEventArgs send_args)
         {
-            if (send_args.SocketError != SocketError.Success)
+            if (send_args.SocketError != SocketError.Success || send_args.BytesTransferred <= 0)
             {
                 throw new Exception(
                     $"send_args.SocketError not Success. SocketError:{send_args.SocketError}, bytesTransferred:{send_args.BytesTransferred}"
@@ -145,10 +154,9 @@ namespace network
 
         public void OnRemoved()
         {
-            this.is_released = true;
-
             lock (this.lock_sending_queue)
             {
+                this.is_released = true;
                 this.sending_queue.Clear();
             }
 
