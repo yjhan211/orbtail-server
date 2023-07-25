@@ -362,20 +362,19 @@ namespace game_server
 
         public void LeaveUser(long player_id)
         {
-            if (!this.player_map.TryGetValue(player_id, out Player? player))
-            {
-                return;
-            }
-
             // TODO 시스템메시지 분리
             SendChat(player_id, $"님이 접속 종료하였습니다.");
 
             lock (this.player_map_lock)
             {
-                this.player_map.Remove(player_id);
-            }
+                if (!this.player_map.TryGetValue(player_id, out Player? player))
+                {
+                    return;
+                }
 
-            this.player_destroy_queue.Enqueue(player.ConvertObj());
+                this.player_map.Remove(player_id);
+                this.player_destroy_queue.Enqueue(player.ConvertObj());
+            }
         }
 
         public void EnqueuePacket(Packet packet)
