@@ -71,17 +71,17 @@ namespace network
     }
 
     [MessagePackObject]
-    public class S_TO_C_PLAYER_SPAWN
+    public class S_TO_C_PLAYER_SPAWN_LIST
     {
-        [Key("player")]
-        public PlayerObj player;
+        [Key("player_list")]
+        public List<PlayerObj> player_list;
     }
 
     [MessagePackObject]
-    public class S_TO_C_PLAYER_DISTROY
+    public class S_TO_C_PLAYER_DESTROY_LIST
     {
-        [Key("player")]
-        public PlayerObj player;
+        [Key("player_list")]
+        public List<PlayerObj> player_list;
     }
 
     [MessagePackObject]
@@ -125,6 +125,13 @@ namespace network
 
         [Key("is_flip")]
         public bool is_flip { get; set; }
+    }
+
+    [MessagePackObject]
+    public class S_TO_C_MOVE_ALL_LIST
+    {
+        [Key("move_obj_list")]
+        public List<S_TO_C_MOVE_ALL> move_obj_list { get; set; }
     }
 
     [MessagePackObject]

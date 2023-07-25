@@ -25,11 +25,11 @@ namespace network
             );
             this.recv_event_args_pool = new SocketAsyncEventArgsPool(Config.MAX_CONNECTION);
             this.send_event_args_pool = new SocketAsyncEventArgsPool(Config.MAX_CONNECTION);
-            this.init_event_args_lock = new Object();
+            this.init_event_args_lock = new();
 
             foreach (var _ in Enumerable.Range(0, Config.MAX_CONNECTION))
             {
-                UserToken user_token = new();
+                UserToken user_token = new(this);
 
                 SocketAsyncEventArgs recv_args = new();
                 recv_args.Completed += new EventHandler<SocketAsyncEventArgs>(RecvCompleted);
@@ -93,17 +93,6 @@ namespace network
                 {
                     recv_args = this.recv_event_args_pool.Pop();
                     send_args = this.send_event_args_pool.Pop();
-                }
-
-                if (
-                    recv_args.UserToken is not UserToken
-                    || send_args.UserToken is not UserToken
-                    || recv_args.UserToken != send_args.UserToken
-                )
-                {
-                    throw new Exception(
-                        $"invalid args.UserToken: {recv_args.UserToken}|{send_args.UserToken}"
-                    );
                 }
 
                 UserToken user_token = (UserToken)recv_args.UserToken;
