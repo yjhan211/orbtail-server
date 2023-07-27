@@ -19,8 +19,13 @@ namespace game_server
         readonly Thread spawn_broadcast_thread;
         readonly Thread destroy_broadcast_thread;
 
+        readonly object player_spawn_lock;
         readonly Queue<PlayerObj> player_spawn_queue;
+
+        readonly object player_destroy_lock;
         readonly Queue<PlayerObj> player_destroy_queue;
+
+        readonly object player_move_queue_lock;
         readonly Queue<S_TO_C_MOVE_ALL> player_move_queue;
 
         // readonly MapTile[,] map_info;
@@ -42,8 +47,13 @@ namespace game_server
             this.spawn_broadcast_thread = new(SpawnBroadCast);
             this.destroy_broadcast_thread = new(DestroyBroadCast);
 
+            this.player_spawn_lock = new();
             this.player_spawn_queue = new();
+
+            this.player_destroy_lock = new();
             this.player_destroy_queue = new();
+
+            this.player_move_queue_lock = new();
             this.player_move_queue = new();
 
             // this.map_info = new MapTile[100, 100];
@@ -85,21 +95,24 @@ namespace game_server
             {
                 List<S_TO_C_MOVE_ALL> move_list = new();
 
-                while (true)
+                lock (this.player_move_queue_lock)
                 {
-                    if (this.player_move_queue.Count <= 0)
+                    while (true)
                     {
-                        break;
-                    }
+                        if (this.player_move_queue.Count <= 0)
+                        {
+                            break;
+                        }
 
-                    if (move_list.Count > 10)
-                    {
-                        break;
-                    }
+                        if (move_list.Count > 10)
+                        {
+                            break;
+                        }
 
-                    if (this.player_move_queue.TryDequeue(out S_TO_C_MOVE_ALL? move_obj))
-                    {
-                        move_list.Add(move_obj);
+                        if (this.player_move_queue.TryDequeue(out S_TO_C_MOVE_ALL? move_obj))
+                        {
+                            move_list.Add(move_obj);
+                        }
                     }
                 }
 
@@ -119,21 +132,24 @@ namespace game_server
             {
                 List<PlayerObj> spawn_list = new();
 
-                while (true)
+                lock (this.player_spawn_lock)
                 {
-                    if (this.player_spawn_queue.Count <= 0)
+                    while (true)
                     {
-                        break;
-                    }
+                        if (this.player_spawn_queue.Count <= 0)
+                        {
+                            break;
+                        }
 
-                    if (spawn_list.Count > Config.BROADCAST_UNIT)
-                    {
-                        break;
-                    }
+                        if (spawn_list.Count > Config.BROADCAST_UNIT)
+                        {
+                            break;
+                        }
 
-                    if (this.player_spawn_queue.TryDequeue(out PlayerObj? spawn_obj))
-                    {
-                        spawn_list.Add(spawn_obj);
+                        if (this.player_spawn_queue.TryDequeue(out PlayerObj? spawn_obj))
+                        {
+                            spawn_list.Add(spawn_obj);
+                        }
                     }
                 }
 
@@ -153,21 +169,24 @@ namespace game_server
             {
                 List<PlayerObj> destroy_list = new();
 
-                while (true)
+                lock (this.player_destroy_lock)
                 {
-                    if (this.player_destroy_queue.Count <= 0)
+                    while (true)
                     {
-                        break;
-                    }
+                        if (this.player_destroy_queue.Count <= 0)
+                        {
+                            break;
+                        }
 
-                    if (destroy_list.Count > Config.BROADCAST_UNIT)
-                    {
-                        break;
-                    }
+                        if (destroy_list.Count > Config.BROADCAST_UNIT)
+                        {
+                            break;
+                        }
 
-                    if (this.player_destroy_queue.TryDequeue(out PlayerObj? destroy_obj))
-                    {
-                        destroy_list.Add(destroy_obj);
+                        if (this.player_destroy_queue.TryDequeue(out PlayerObj? destroy_obj))
+                        {
+                            destroy_list.Add(destroy_obj);
+                        }
                     }
                 }
 
