@@ -1,6 +1,11 @@
 namespace game_server
 {
+    using System;
+    using System.Collections.Concurrent;
     using network;
+    using System.Numerics;
+
+    // using UnityEngine;
 
     public partial class GameServer
     {
@@ -19,14 +24,9 @@ namespace game_server
         readonly Thread spawn_broadcast_thread;
         readonly Thread destroy_broadcast_thread;
 
-        readonly object player_spawn_lock;
-        readonly Queue<PlayerObj> player_spawn_queue;
-
-        readonly object player_destroy_lock;
-        readonly Queue<PlayerObj> player_destroy_queue;
-
-        readonly object player_move_queue_lock;
-        readonly Queue<S_TO_C_MOVE_ALL> player_move_queue;
+        readonly ConcurrentQueue<PlayerObj> player_spawn_queue;
+        readonly ConcurrentQueue<PlayerObj> player_destroy_queue;
+        readonly ConcurrentQueue<S_TO_C_MOVE_ALL> player_move_queue;
 
         // readonly MapTile[,] map_info;
 
@@ -47,13 +47,8 @@ namespace game_server
             this.spawn_broadcast_thread = new(SpawnBroadCast);
             this.destroy_broadcast_thread = new(DestroyBroadCast);
 
-            this.player_spawn_lock = new();
             this.player_spawn_queue = new();
-
-            this.player_destroy_lock = new();
             this.player_destroy_queue = new();
-
-            this.player_move_queue_lock = new();
             this.player_move_queue = new();
 
             // this.map_info = new MapTile[100, 100];
@@ -91,15 +86,15 @@ namespace game_server
 
         void MoveBroadCast()
         {
-            while (true)
+            try
             {
-                List<S_TO_C_MOVE_ALL> move_list = new();
-
-                lock (this.player_move_queue_lock)
+                while (true)
                 {
+                    List<S_TO_C_MOVE_ALL> move_list = new();
+
                     while (true)
                     {
-                        if (this.player_move_queue.Count <= 0)
+                        if (this.player_move_queue.IsEmpty)
                         {
                             break;
                         }
@@ -114,29 +109,33 @@ namespace game_server
                             move_list.Add(move_obj);
                         }
                     }
-                }
 
-                if (move_list.Count > 0)
-                {
-                    Packet packet = MakeMoveListPacket(move_list);
-                    Broadcast(packet);
-                }
+                    if (move_list.Count > 0)
+                    {
+                        Packet packet = MakeMoveListPacket(move_list);
+                        Broadcast(packet);
+                    }
 
-                Thread.Sleep(10);
+                    Thread.Sleep(10);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"{e.Message}, {e.StackTrace}");
             }
         }
 
         void SpawnBroadCast()
         {
-            while (true)
+            try
             {
-                List<PlayerObj> spawn_list = new();
-
-                lock (this.player_spawn_lock)
+                while (true)
                 {
+                    List<PlayerObj> spawn_list = new();
+
                     while (true)
                     {
-                        if (this.player_spawn_queue.Count <= 0)
+                        if (this.player_spawn_queue.IsEmpty)
                         {
                             break;
                         }
@@ -151,29 +150,32 @@ namespace game_server
                             spawn_list.Add(spawn_obj);
                         }
                     }
-                }
 
-                if (spawn_list.Count > 0)
-                {
-                    Packet packet = MakeSpawnPlayerListPacket(spawn_list);
-                    Broadcast(packet);
-                }
+                    if (spawn_list.Count > 0)
+                    {
+                        Packet packet = MakeSpawnPlayerListPacket(spawn_list);
+                        Broadcast(packet);
+                    }
 
-                Thread.Sleep(10);
+                    Thread.Sleep(10);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"{e.Message}, {e.StackTrace}");
             }
         }
 
         void DestroyBroadCast()
         {
-            while (true)
+            try
             {
-                List<PlayerObj> destroy_list = new();
-
-                lock (this.player_destroy_lock)
+                while (true)
                 {
+                    List<PlayerObj> destroy_list = new();
                     while (true)
                     {
-                        if (this.player_destroy_queue.Count <= 0)
+                        if (this.player_destroy_queue.IsEmpty)
                         {
                             break;
                         }
@@ -188,38 +190,49 @@ namespace game_server
                             destroy_list.Add(destroy_obj);
                         }
                     }
-                }
 
-                if (destroy_list.Count > 0)
-                {
-                    Packet packet = MakeDistroyPlayerListPacket(destroy_list);
-                    Broadcast(packet);
-                }
+                    if (destroy_list.Count > 0)
+                    {
+                        Packet packet = MakeDistroyPlayerListPacket(destroy_list);
+                        Broadcast(packet);
+                    }
 
-                Thread.Sleep(10);
+                    Thread.Sleep(10);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"{e.Message}, {e.StackTrace}");
             }
         }
 
         void GameLoop()
         {
-            while (true)
+            try
             {
-                Packet? packet = null;
-
-                lock (this.operation_lock)
+                while (true)
                 {
-                    this.operation_queue.TryDequeue(out packet);
-                }
+                    Packet? packet = null;
 
-                if (packet != null)
-                {
-                    ProcessReceive(packet);
-                }
+                    lock (this.operation_lock)
+                    {
+                        this.operation_queue.TryDequeue(out packet);
+                    }
 
-                if (this.operation_queue.Count <= 0)
-                {
-                    this.loop_event.WaitOne();
+                    if (packet != null)
+                    {
+                        ProcessReceive(packet);
+                    }
+
+                    if (this.operation_queue.Count <= 0)
+                    {
+                        this.loop_event.WaitOne();
+                    }
                 }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"{e.Message}, {e.StackTrace}");
             }
         }
 
@@ -316,6 +329,21 @@ namespace game_server
                 }
 
                 player.current_cell = CellPosition.Clone(player.target_cell);
+                // if (this.tile_map[player.current_cell.x][player.current_cell.y] != null)
+                // {
+                //     return;
+                // }
+                // this.tile_map[player.current_cell.x][player.current_cell.y] = player;
+
+                // for (int x = 8; x < 8; x++)
+                // {
+                //     for (int y = 0; y < 8; y++)
+                //     {
+                //         player = this.tile_map[x][y];
+                //         Broadcast(player);
+                //     }
+                // }
+
                 (CellPosition temp_target_cell, player.is_flip) = CalcTargetPosition(
                     player.current_cell,
                     direction
@@ -329,6 +357,10 @@ namespace game_server
                 player.target_cell = temp_target_cell;
                 player.move_timestamp = DateTime.UtcNow;
             }
+
+            Console.WriteLine($"current: {player.current_cell.x},{player.current_cell.y}");
+            Console.WriteLine($"target: {player.target_cell.x},{player.target_cell.y}");
+            Console.WriteLine("");
 
             S_TO_C_MOVE_ALL move_obj =
                 new()
@@ -405,7 +437,6 @@ namespace game_server
             }
         }
 
-        // TODO broadcast 타일 기반 범위 지정
         public void Broadcast(Packet msg)
         {
             Packet clone = new();
@@ -420,6 +451,34 @@ namespace game_server
             }
 
             Packet.Destroy(msg);
+        }
+
+        // public void BroadcastByDistance(List<S_TO_C_MOVE_ALL> move_obj_list)
+        // {
+        //     Packet clone = new();
+        //     msg.CopyTo(clone);
+
+        //     lock (this.player_map_lock)
+        //     {
+        //         foreach (KeyValuePair<long, Player> pair in this.player_map)
+        //         {
+        //             CellPosition target_cell = pair.Value.current_cell;
+        //             if (GetDistance(owner_cell, target_cell) < 30)
+        //             {
+        //                 pair.Value.Send(clone, true);
+        //             }
+        //         }
+        //     }
+
+        //     Packet.Destroy(msg);
+        // }
+
+        static float GetDistance(CellPosition owner_cell, CellPosition target_cell)
+        {
+            int deltaX = owner_cell.x - target_cell.x;
+            int deltaY = owner_cell.y - target_cell.y;
+
+            return MathF.Sqrt(deltaX * deltaX + deltaY * deltaY);
         }
 
         static void ProcessReceive(Packet msg)

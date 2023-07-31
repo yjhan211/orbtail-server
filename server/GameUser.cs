@@ -20,6 +20,11 @@ namespace game_server
             this.token.SetPeer(this);
         }
 
+        public long GetPlayerId()
+        {
+            return this.player_id;
+        }
+
         public void OnMessage(Const<byte[]> buffer)
         {
             byte[] clone = new byte[Config.BUFFER_SIZE];
@@ -37,26 +42,33 @@ namespace game_server
 
         public void ProcessUserOperation(Packet packet)
         {
-            PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
-            byte[] body = packet.PopBody();
-
-            switch (protocol_id)
+            try
             {
-                case PROTOCOL.HEART_BEAT:
-                    HeartBeat();
-                    break;
+                PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
+                byte[] body = packet.PopBody();
 
-                case PROTOCOL.C_TO_S_LOGIN:
-                    HandleMessage<C_TO_S_LOGIN>(body, Login);
-                    break;
+                switch (protocol_id)
+                {
+                    case PROTOCOL.HEART_BEAT:
+                        HeartBeat();
+                        break;
 
-                case PROTOCOL.C_TO_S_CHAT_MSG:
-                    HandleMessage<C_TO_S_CHAT_MSG>(body, SendChat);
-                    break;
+                    case PROTOCOL.C_TO_S_LOGIN:
+                        HandleMessage<C_TO_S_LOGIN>(body, Login);
+                        break;
 
-                case PROTOCOL.C_TO_S_MOVE:
-                    HandleMessage<C_TO_S_MOVE>(body, Move);
-                    break;
+                    case PROTOCOL.C_TO_S_CHAT_MSG:
+                        HandleMessage<C_TO_S_CHAT_MSG>(body, SendChat);
+                        break;
+
+                    case PROTOCOL.C_TO_S_MOVE:
+                        HandleMessage<C_TO_S_MOVE>(body, Move);
+                        break;
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"{e.Message}, {e.StackTrace}");
             }
         }
 

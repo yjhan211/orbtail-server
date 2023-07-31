@@ -20,8 +20,8 @@ namespace game_server
             this.player_id = player_id;
             this.name = name;
 
-            this.current_cell = new CellPosition(50, 50);
-            this.target_cell = new CellPosition(50, 50);
+            this.current_cell = new CellPosition(0, 0);
+            this.target_cell = new CellPosition(0, 0);
             this.move_timestamp = DateTime.MinValue;
 
             is_flip = false;
