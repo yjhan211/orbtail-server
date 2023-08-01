@@ -2,10 +2,8 @@ namespace game_server
 {
     using System;
     using System.Collections.Concurrent;
+    using System.Runtime.InteropServices;
     using network;
-    using System.Numerics;
-
-    // using UnityEngine;
 
     public partial class GameServer
     {
@@ -28,7 +26,8 @@ namespace game_server
         readonly ConcurrentQueue<PlayerObj> player_destroy_queue;
         readonly ConcurrentQueue<S_TO_C_MOVE_ALL> player_move_queue;
 
-        // readonly MapTile[,] map_info;
+        readonly Player?[,] player_cell_info;
+        const int MAP_SIZE = 100;
 
         public GameServer()
         {
@@ -51,18 +50,7 @@ namespace game_server
             this.player_destroy_queue = new();
             this.player_move_queue = new();
 
-            // this.map_info = new MapTile[100, 100];
-
-            // for (int x = 0; x < 100; x++)
-            // {
-            //     for (int y = 0; y < 100; y++)
-            //     {
-            //         this.map_info[x, y] = new MapTile(TileType.SIDEWALK);
-            //         Console.Write((int)this.map_info[x, y].type);
-            //         Console.Write(",");
-            //     }
-            //     Console.WriteLine("");
-            // }
+            this.player_cell_info = new Player?[MAP_SIZE, MAP_SIZE];
         }
 
         public void Start()
@@ -113,7 +101,7 @@ namespace game_server
                     if (move_list.Count > 0)
                     {
                         Packet packet = MakeMoveListPacket(move_list);
-                        Broadcast(packet);
+                        // Broadcast(packet);
                     }
 
                     Thread.Sleep(10);
@@ -154,7 +142,7 @@ namespace game_server
                     if (spawn_list.Count > 0)
                     {
                         Packet packet = MakeSpawnPlayerListPacket(spawn_list);
-                        Broadcast(packet);
+                        // Broadcast(packet);
                     }
 
                     Thread.Sleep(10);
@@ -194,7 +182,7 @@ namespace game_server
                     if (destroy_list.Count > 0)
                     {
                         Packet packet = MakeDistroyPlayerListPacket(destroy_list);
-                        Broadcast(packet);
+                        // Broadcast(packet);
                     }
 
                     Thread.Sleep(10);
@@ -272,6 +260,9 @@ namespace game_server
 
                 // 새 플레이어를 월드에 등록
                 this.player_map.Add(player.player_id, player);
+                this.player_cell_info[player.current_cell.x, player.current_cell.y] = player;
+
+                // DrawPlayerCellInfo();
 
                 // TODO 시스템메시지 분리
                 // TODO Spawn패킷을 모아서 보내기 때문에 클라에는 player 정보가 없어서 채팅이 안 뜸 ..
@@ -290,8 +281,9 @@ namespace game_server
                 return;
             }
 
-            Packet packet = MakeChatPacket(player, chat_message);
-            Program.game_server.Broadcast(packet);
+            // TODO 채팅 분리
+            // Packet packet = MakeChatPacket(player, chat_message);
+            // Program.game_server.Broadcast(packet, player.current_cell);
         }
 
         public void HeartBeat(long player_id)
@@ -303,12 +295,18 @@ namespace game_server
                     return;
                 }
 
+                // 현재 위치 조정
                 if (GetMoveElapsedTime(player) < Config.MOVE_ELAPSED_TIME)
                 {
                     return;
                 }
 
-                player.current_cell = CellPosition.Clone(player.target_cell);
+                if (player.current_cell.Equals(player.target_cell))
+                {
+                    return;
+                }
+
+                UpdatePosition(player);
             }
         }
 
@@ -323,34 +321,21 @@ namespace game_server
                     return;
                 }
 
-                if ((float)GetMoveElapsedTime(player) <= Config.MOVE_ELAPSED_TIME)
+                if (GetMoveElapsedTime(player) <= Config.MOVE_ELAPSED_TIME)
                 {
                     return;
                 }
 
-                player.current_cell = CellPosition.Clone(player.target_cell);
-                // if (this.tile_map[player.current_cell.x][player.current_cell.y] != null)
-                // {
-                //     return;
-                // }
-                // this.tile_map[player.current_cell.x][player.current_cell.y] = player;
+                UpdatePosition(player);
 
-                // for (int x = 8; x < 8; x++)
-                // {
-                //     for (int y = 0; y < 8; y++)
-                //     {
-                //         player = this.tile_map[x][y];
-                //         Broadcast(player);
-                //     }
-                // }
-
-                (CellPosition temp_target_cell, player.is_flip) = CalcTargetPosition(
-                    player.current_cell,
+                (CellPosition? temp_target_cell, player.is_flip) = CalcTargetPosition(
+                    new(player.current_cell.x, player.current_cell.y),
                     direction
                 );
 
-                if (player.target_cell.Equals(temp_target_cell))
+                if (temp_target_cell == null || player.target_cell.Equals(temp_target_cell))
                 {
+                    // 회전은 시켜주는 게 맞는가? -_-
                     return;
                 }
 
@@ -358,9 +343,10 @@ namespace game_server
                 player.move_timestamp = DateTime.UtcNow;
             }
 
-            Console.WriteLine($"current: {player.current_cell.x},{player.current_cell.y}");
-            Console.WriteLine($"target: {player.target_cell.x},{player.target_cell.y}");
-            Console.WriteLine("");
+            GetBroadCastTarget(player.target_cell);
+
+            Packet move_packet = MakeMovePacket(player);
+            Broadcast(move_packet, player.target_cell);
 
             S_TO_C_MOVE_ALL move_obj =
                 new()
@@ -373,13 +359,20 @@ namespace game_server
                 };
 
             this.player_move_queue.Enqueue(move_obj);
-            // this.move_broadcast_event.Set();
         }
 
-        static (CellPosition, bool) CalcTargetPosition(
-            CellPosition current_cell,
-            DirectionType direction
-        )
+        public void UpdatePosition(Player player)
+        {
+            CellPosition latest_position = new(player.current_cell.x, player.current_cell.y);
+            this.player_cell_info[latest_position.x, latest_position.y] = null;
+
+            player.current_cell = new(player.target_cell.x, player.target_cell.y);
+            this.player_cell_info[player.current_cell.x, player.current_cell.y] = player;
+
+            // DrawPlayerCellInfo();
+        }
+
+        (CellPosition?, bool) CalcTargetPosition(CellPosition current_cell, DirectionType direction)
         {
             bool is_flip = false;
 
@@ -402,7 +395,27 @@ namespace game_server
                 current_cell.y += 1;
             }
 
+            if (IsOutOfMapRange(current_cell))
+            {
+                return (null, is_flip);
+            }
+
+            if (HasPlayer(current_cell))
+            {
+                return (null, is_flip);
+            }
+
             return (current_cell, is_flip);
+        }
+
+        bool HasPlayer(CellPosition cell)
+        {
+            return this.player_cell_info[cell.x, cell.y] != null;
+        }
+
+        bool IsOutOfMapRange(CellPosition cell)
+        {
+            return cell.x < 0 || cell.x >= MAP_SIZE || cell.y < 0 || cell.y >= MAP_SIZE;
         }
 
         double GetMoveElapsedTime(Player player)
@@ -423,6 +436,7 @@ namespace game_server
                     return;
                 }
 
+                this.player_cell_info[player.current_cell.x, player.current_cell.y] = null;
                 this.player_map.Remove(player_id);
                 this.player_destroy_queue.Enqueue(player.ConvertObj());
             }
@@ -437,48 +451,107 @@ namespace game_server
             }
         }
 
-        public void Broadcast(Packet msg)
+        public void Broadcast(Packet msg, CellPosition owner_position)
         {
             Packet clone = new();
             msg.CopyTo(clone);
 
             lock (this.player_map_lock)
             {
-                foreach (KeyValuePair<long, Player> pair in this.player_map)
+                foreach (Player? target_player in GetBroadCastTarget(owner_position))
                 {
-                    pair.Value.Send(clone, true);
+                    target_player?.Send(clone, true);
                 }
             }
 
             Packet.Destroy(msg);
         }
 
-        // public void BroadcastByDistance(List<S_TO_C_MOVE_ALL> move_obj_list)
-        // {
-        //     Packet clone = new();
-        //     msg.CopyTo(clone);
-
-        //     lock (this.player_map_lock)
-        //     {
-        //         foreach (KeyValuePair<long, Player> pair in this.player_map)
-        //         {
-        //             CellPosition target_cell = pair.Value.current_cell;
-        //             if (GetDistance(owner_cell, target_cell) < 30)
-        //             {
-        //                 pair.Value.Send(clone, true);
-        //             }
-        //         }
-        //     }
-
-        //     Packet.Destroy(msg);
-        // }
-
-        static float GetDistance(CellPosition owner_cell, CellPosition target_cell)
+        List<Player?> GetBroadCastTarget(CellPosition owner_position)
         {
-            int deltaX = owner_cell.x - target_cell.x;
-            int deltaY = owner_cell.y - target_cell.y;
+            List<Player?> target_list = new();
 
-            return MathF.Sqrt(deltaX * deltaX + deltaY * deltaY);
+            const int X_MIN_BOUND = -11;
+            const int X_MAX_BOUND = 14;
+
+            const int Y_MIN_BOUND = -5;
+            const int Y_MAX_BOUND = -6;
+
+            var min_x = owner_position.x + X_MIN_BOUND;
+            var max_x = owner_position.x + X_MAX_BOUND;
+
+            var min_y = owner_position.y + Y_MIN_BOUND;
+            var max_y = owner_position.y + Y_MAX_BOUND;
+
+            var line = 0;
+
+            // Console.WriteLine($"owner: {owner_position.x}, {owner_position.y}");
+            for (int x = min_x; x <= max_x; x++)
+            {
+                line += 1;
+
+                if (line <= 6)
+                {
+                    min_y -= 1;
+                }
+                else if (7 < line)
+                {
+                    min_y += 1;
+                }
+
+                if (line <= 20)
+                {
+                    max_y += 1;
+                }
+                else if (21 < line)
+                {
+                    max_y -= 1;
+                }
+
+                // Console.Write($"[{line}]");
+
+                for (int y = min_y; y <= max_y; y++)
+                {
+                    if (IsOutOfMapRange(new CellPosition(x, y)))
+                    {
+                        continue;
+                    }
+
+                    // Console.Write($"({x},{y})");
+
+                    if (!HasPlayer(new CellPosition(x, y)))
+                    {
+                        continue;
+                    }
+
+                    target_list.Add(this.player_cell_info[x, y]);
+                }
+
+                // Console.WriteLine("");
+            }
+
+            return target_list;
+        }
+
+        public void DrawPlayerCellInfo()
+        {
+            for (int x = MAP_SIZE - 1; x >= 0; x--)
+            {
+                for (int y = MAP_SIZE - 1; y >= 0; y--)
+                {
+                    if (this.player_cell_info[x, y] == null)
+                    {
+                        Console.Write("X,");
+                    }
+                    else
+                    {
+                        Console.Write("O,");
+                    }
+                }
+                Console.WriteLine("");
+            }
+
+            Console.WriteLine("==========================================");
         }
 
         static void ProcessReceive(Packet msg)

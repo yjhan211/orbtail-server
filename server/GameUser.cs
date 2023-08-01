@@ -75,6 +75,7 @@ namespace game_server
         void HeartBeat()
         {
             this.token.is_alive = true;
+            // Program.game_server.HeartBeat(this.player_id);
         }
 
         void Login(C_TO_S_LOGIN request)

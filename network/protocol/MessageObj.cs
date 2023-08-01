@@ -63,11 +63,6 @@ namespace network
         {
             return this.x == target.x && this.y == target.y;
         }
-
-        public static CellPosition Clone(CellPosition target)
-        {
-            return new CellPosition(target.x, target.y);
-        }
     }
 
     [MessagePackObject]

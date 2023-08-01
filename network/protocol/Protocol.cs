@@ -24,7 +24,6 @@ namespace network
     public enum TileType : int
     {
         EMPTY,
-        SIDEWALK,
     }
 
     public enum DirectionType : byte

@@ -43,23 +43,17 @@ namespace game_server
             return packet;
         }
 
-        public static Packet MakeMovePacket(
-            Player player,
-            CellPosition current_cell,
-            CellPosition target_cell,
-            DateTime move_timestamp,
-            bool is_flip
-        )
+        public static Packet MakeMovePacket(Player player)
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_MOVE_ALL);
             S_TO_C_MOVE_ALL body =
                 new()
                 {
                     player_id = player.player_id,
-                    current_cell = current_cell,
-                    target_cell = target_cell,
-                    move_timestamp = move_timestamp,
-                    is_flip = is_flip,
+                    current_cell = player.current_cell,
+                    target_cell = player.target_cell,
+                    move_timestamp = player.move_timestamp,
+                    is_flip = player.is_flip,
                 };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
