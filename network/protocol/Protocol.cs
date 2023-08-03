@@ -16,8 +16,7 @@ namespace network
         C_TO_S_CHAT_MSG,
         S_TO_C_CHAT_MSG_ALL,
         C_TO_S_MOVE,
-        S_TO_C_MOVE_ALL,
-        S_TO_C_MOVE_ALL_LIST,
+        S_TO_C_MOVE_LIST,
         END
     }
 

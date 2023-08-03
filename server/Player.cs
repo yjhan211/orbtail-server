@@ -43,13 +43,10 @@ namespace game_server
             return player_obj;
         }
 
-        public void Send(Packet msg, bool is_broadcast)
+        public void Send(Packet msg)
         {
             this.owner.Send(msg);
-            if (!is_broadcast)
-            {
-                Packet.Destroy(msg);
-            }
+            Packet.Destroy(msg);
         }
     }
 }

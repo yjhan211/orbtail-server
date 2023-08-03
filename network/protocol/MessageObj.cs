@@ -6,22 +6,24 @@ using System.Collections.Generic;
 
 namespace network
 {
+    public interface IMessagePackObject { }
+
     [MessagePackObject]
-    public class C_TO_S_LOGIN
+    public class C_TO_S_LOGIN : IMessagePackObject
     {
         [Key("token")]
         public string account_token { get; set; } // (임시) 현재 아무 의미 없음 .. 추후 계정키로 변경 예정
     }
 
     [MessagePackObject]
-    public class S_TO_C_LOGIN
+    public class S_TO_C_LOGIN : IMessagePackObject
     {
         [Key("player")]
         public PlayerObj player { get; set; }
     }
 
     [MessagePackObject]
-    public class PlayerObj
+    public class PlayerObj : IMessagePackObject
     {
         public PlayerObj() { }
 
@@ -45,7 +47,7 @@ namespace network
     }
 
     [MessagePackObject]
-    public class CellPosition
+    public class CellPosition : IMessagePackObject
     {
         public CellPosition(int x, int y)
         {
@@ -66,28 +68,28 @@ namespace network
     }
 
     [MessagePackObject]
-    public class S_TO_C_PLAYER_SPAWN_LIST
+    public class S_TO_C_PLAYER_SPAWN_LIST : IMessagePackObject
     {
         [Key("player_list")]
         public List<PlayerObj> player_list;
     }
 
     [MessagePackObject]
-    public class S_TO_C_PLAYER_DESTROY_LIST
+    public class S_TO_C_PLAYER_DESTROY_LIST : IMessagePackObject
     {
-        [Key("player_list")]
-        public List<PlayerObj> player_list;
+        [Key("player_id_list")]
+        public List<long> player_id_list;
     }
 
     [MessagePackObject]
-    public class C_TO_S_CHAT_MSG
+    public class C_TO_S_CHAT_MSG : IMessagePackObject
     {
         [Key("chat_message")]
         public string chat_message { get; set; }
     }
 
     [MessagePackObject]
-    public class S_TO_C_CHAT_MSG_ALL
+    public class S_TO_C_CHAT_MSG_ALL : IMessagePackObject
     {
         [Key("player_id")]
         public long player_id { get; set; }
@@ -97,14 +99,14 @@ namespace network
     }
 
     [MessagePackObject]
-    public class C_TO_S_MOVE
+    public class C_TO_S_MOVE : IMessagePackObject
     {
         [Key("direction")]
         public DirectionType direction { get; set; }
     }
 
     [MessagePackObject]
-    public class S_TO_C_MOVE_ALL
+    public class MoveObj : IMessagePackObject
     {
         [Key("player_id")]
         public long player_id { get; set; }
@@ -123,14 +125,14 @@ namespace network
     }
 
     [MessagePackObject]
-    public class S_TO_C_MOVE_ALL_LIST
+    public class S_TO_C_MOVE_ALL_LIST : IMessagePackObject
     {
         [Key("move_obj_list")]
-        public List<S_TO_C_MOVE_ALL> move_obj_list { get; set; }
+        public List<MoveObj> move_obj_list { get; set; }
     }
 
     [MessagePackObject]
-    public class MapTile
+    public class MapTile : IMessagePackObject
     {
         public MapTile(TileType tile_type)
         {

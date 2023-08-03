@@ -18,14 +18,6 @@ namespace game_server
         readonly Thread logic_thread;
         readonly AutoResetEvent loop_event;
 
-        readonly Thread move_broadcast_thread;
-        readonly Thread spawn_broadcast_thread;
-        readonly Thread destroy_broadcast_thread;
-
-        readonly ConcurrentQueue<PlayerObj> player_spawn_queue;
-        readonly ConcurrentQueue<PlayerObj> player_destroy_queue;
-        readonly ConcurrentQueue<S_TO_C_MOVE_ALL> player_move_queue;
-
         readonly Player?[,] player_cell_info;
         const int MAP_SIZE = 100;
 
@@ -42,14 +34,6 @@ namespace game_server
             this.loop_event = new(false);
             this.logic_thread = new(GameLoop);
 
-            this.move_broadcast_thread = new(MoveBroadCast);
-            this.spawn_broadcast_thread = new(SpawnBroadCast);
-            this.destroy_broadcast_thread = new(DestroyBroadCast);
-
-            this.player_spawn_queue = new();
-            this.player_destroy_queue = new();
-            this.player_move_queue = new();
-
             this.player_cell_info = new Player?[MAP_SIZE, MAP_SIZE];
         }
 
@@ -65,133 +49,8 @@ namespace game_server
 
             this.network_service.Listen();
             this.logic_thread.Start();
-            this.move_broadcast_thread.Start();
-            this.spawn_broadcast_thread.Start();
-            this.destroy_broadcast_thread.Start();
 
             Console.WriteLine("Game Server Start");
-        }
-
-        void MoveBroadCast()
-        {
-            try
-            {
-                while (true)
-                {
-                    List<S_TO_C_MOVE_ALL> move_list = new();
-
-                    while (true)
-                    {
-                        if (this.player_move_queue.IsEmpty)
-                        {
-                            break;
-                        }
-
-                        if (move_list.Count > 10)
-                        {
-                            break;
-                        }
-
-                        if (this.player_move_queue.TryDequeue(out S_TO_C_MOVE_ALL? move_obj))
-                        {
-                            move_list.Add(move_obj);
-                        }
-                    }
-
-                    if (move_list.Count > 0)
-                    {
-                        Packet packet = MakeMoveListPacket(move_list);
-                        // Broadcast(packet);
-                    }
-
-                    Thread.Sleep(10);
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"{e.Message}, {e.StackTrace}");
-            }
-        }
-
-        void SpawnBroadCast()
-        {
-            try
-            {
-                while (true)
-                {
-                    List<PlayerObj> spawn_list = new();
-
-                    while (true)
-                    {
-                        if (this.player_spawn_queue.IsEmpty)
-                        {
-                            break;
-                        }
-
-                        if (spawn_list.Count > Config.BROADCAST_UNIT)
-                        {
-                            break;
-                        }
-
-                        if (this.player_spawn_queue.TryDequeue(out PlayerObj? spawn_obj))
-                        {
-                            spawn_list.Add(spawn_obj);
-                        }
-                    }
-
-                    if (spawn_list.Count > 0)
-                    {
-                        Packet packet = MakeSpawnPlayerListPacket(spawn_list);
-                        // Broadcast(packet);
-                    }
-
-                    Thread.Sleep(10);
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"{e.Message}, {e.StackTrace}");
-            }
-        }
-
-        void DestroyBroadCast()
-        {
-            try
-            {
-                while (true)
-                {
-                    List<PlayerObj> destroy_list = new();
-                    while (true)
-                    {
-                        if (this.player_destroy_queue.IsEmpty)
-                        {
-                            break;
-                        }
-
-                        if (destroy_list.Count > Config.BROADCAST_UNIT)
-                        {
-                            break;
-                        }
-
-                        if (this.player_destroy_queue.TryDequeue(out PlayerObj? destroy_obj))
-                        {
-                            destroy_list.Add(destroy_obj);
-                        }
-                    }
-
-                    if (destroy_list.Count > 0)
-                    {
-                        Packet packet = MakeDistroyPlayerListPacket(destroy_list);
-                        // Broadcast(packet);
-                    }
-
-                    Thread.Sleep(10);
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"{e.Message}, {e.StackTrace}");
-            }
         }
 
         void GameLoop()
@@ -236,38 +95,40 @@ namespace game_server
                 Interlocked.Increment(ref latest_player_id);
                 player = new(user, latest_player_id, name: $"플레이어{latest_player_id}");
 
-                // 기존 월드 유저들에게 로그인 정보 전송
-                this.player_spawn_queue.Enqueue(player.ConvertObj());
+                List<Player?> spawn_broadcast_target = GetBroadCastTarget(player.current_cell);
+                foreach (Player? target_player in spawn_broadcast_target)
+                {
+                    if (target_player == null)
+                    {
+                        continue;
+                    }
+
+                    // 기존 영역 유저들에게 새 유저 정보 전송
+                    target_player.owner.packet_queue_processor.AddToQueue(
+                        PROTOCOL.S_TO_C_PLAYER_SPAWN_LIST,
+                        player.ConvertObj()
+                    );
+
+                    // 새 유저에게 기존 영역 유저 정보 전송
+                    player.owner.packet_queue_processor.AddToQueue(
+                        PROTOCOL.S_TO_C_PLAYER_SPAWN_LIST,
+                        target_player.ConvertObj()
+                    );
+                }
 
                 // 본인 정보 전송
                 Packet login_packet = MakeLoginPacket(player);
                 user.Send(login_packet);
 
-                // 기존 월드 유저 정보 전송
-                List<PlayerObj> past_player_list = new();
-                foreach (KeyValuePair<long, Player> pair in this.player_map)
-                {
-                    if (past_player_list.Count > Config.BROADCAST_UNIT)
-                    {
-                        user.Send(MakeSpawnPlayerListPacket(past_player_list));
-                        past_player_list.Clear();
-                    }
-
-                    past_player_list.Add(pair.Value.ConvertObj());
-                }
-
-                user.Send(MakeSpawnPlayerListPacket(past_player_list));
-
                 // 새 플레이어를 월드에 등록
                 this.player_map.Add(player.player_id, player);
+
+                // TODO 중복 등록 처리 - Player가 아니라 List<GameObject>로 개선
                 this.player_cell_info[player.current_cell.x, player.current_cell.y] = player;
 
                 // DrawPlayerCellInfo();
 
                 // TODO 시스템메시지 분리
-                // TODO Spawn패킷을 모아서 보내기 때문에 클라에는 player 정보가 없어서 채팅이 안 뜸 ..
-                // TODO 시스템메시지 분리하면서 이것도 같이 처리하는거로...
-                // SendChat(player.player_id, $"님이 접속하였습니다.");
             }
 
             return player.player_id;
@@ -282,8 +143,6 @@ namespace game_server
             }
 
             // TODO 채팅 분리
-            // Packet packet = MakeChatPacket(player, chat_message);
-            // Program.game_server.Broadcast(packet, player.current_cell);
         }
 
         public void HeartBeat(long player_id)
@@ -295,7 +154,7 @@ namespace game_server
                     return;
                 }
 
-                // 현재 위치 조정
+                #region 현재 위치 조정
                 if (GetMoveElapsedTime(player) < Config.MOVE_ELAPSED_TIME)
                 {
                     return;
@@ -307,6 +166,7 @@ namespace game_server
                 }
 
                 UpdatePosition(player);
+                #endregion
             }
         }
 
@@ -335,7 +195,6 @@ namespace game_server
 
                 if (temp_target_cell == null || player.target_cell.Equals(temp_target_cell))
                 {
-                    // 회전은 시켜주는 게 맞는가? -_-
                     return;
                 }
 
@@ -343,12 +202,7 @@ namespace game_server
                 player.move_timestamp = DateTime.UtcNow;
             }
 
-            GetBroadCastTarget(player.target_cell);
-
-            Packet move_packet = MakeMovePacket(player);
-            Broadcast(move_packet, player.target_cell);
-
-            S_TO_C_MOVE_ALL move_obj =
+            MoveObj move_obj =
                 new()
                 {
                     player_id = player.player_id,
@@ -358,7 +212,19 @@ namespace game_server
                     is_flip = player.is_flip,
                 };
 
-            this.player_move_queue.Enqueue(move_obj);
+            List<Player?> move_broadcast_target = GetBroadCastTarget(player.current_cell);
+            foreach (Player? target_player in move_broadcast_target)
+            {
+                if (target_player == null)
+                {
+                    continue;
+                }
+
+                target_player.owner.packet_queue_processor.AddToQueue(
+                    PROTOCOL.S_TO_C_MOVE_LIST,
+                    move_obj
+                );
+            }
         }
 
         public void UpdatePosition(Player player)
@@ -427,7 +293,7 @@ namespace game_server
         public void LeaveUser(long player_id)
         {
             // TODO 시스템메시지 분리
-            SendChat(player_id, $"님이 접속 종료하였습니다.");
+            // SendChat(player_id, $"님이 접속 종료하였습니다.");
 
             lock (this.player_map_lock)
             {
@@ -438,7 +304,20 @@ namespace game_server
 
                 this.player_cell_info[player.current_cell.x, player.current_cell.y] = null;
                 this.player_map.Remove(player_id);
-                this.player_destroy_queue.Enqueue(player.ConvertObj());
+
+                List<Player?> destroy_broadcast_target = GetBroadCastTarget(player.current_cell);
+                foreach (Player? target_player in destroy_broadcast_target)
+                {
+                    if (target_player == null)
+                    {
+                        continue;
+                    }
+
+                    target_player.owner.packet_queue_processor.AddToQueue(
+                        PROTOCOL.S_TO_C_PLAYER_DESTROY_LIST,
+                        player.ConvertObj()
+                    );
+                }
             }
         }
 
@@ -451,24 +330,10 @@ namespace game_server
             }
         }
 
-        public void Broadcast(Packet msg, CellPosition owner_position)
-        {
-            Packet clone = new();
-            msg.CopyTo(clone);
-
-            lock (this.player_map_lock)
-            {
-                foreach (Player? target_player in GetBroadCastTarget(owner_position))
-                {
-                    target_player?.Send(clone, true);
-                }
-            }
-
-            Packet.Destroy(msg);
-        }
-
         List<Player?> GetBroadCastTarget(CellPosition owner_position)
         {
+            return new List<Player?>(this.player_map.Values);
+
             List<Player?> target_list = new();
 
             const int X_MIN_BOUND = -11;

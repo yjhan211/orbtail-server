@@ -4,11 +4,13 @@ namespace game_server
 {
     using network;
     using MessagePack;
+    using System.Collections.Concurrent;
 
     public class GameUser : IPeer
     {
         public UserToken token { get; private set; }
         public long player_id { get; private set; }
+        public PacketQueueProcessor packet_queue_processor { get; set; }
 
         public GameUser(UserToken token)
         {
@@ -16,8 +18,8 @@ namespace game_server
 
             this.token.is_alive = true;
             this.token.is_released = false;
-
             this.token.SetPeer(this);
+            this.packet_queue_processor = new(this);
         }
 
         public long GetPlayerId()
@@ -75,7 +77,7 @@ namespace game_server
         void HeartBeat()
         {
             this.token.is_alive = true;
-            // Program.game_server.HeartBeat(this.player_id);
+            Program.game_server.HeartBeat(this.player_id);
         }
 
         void Login(C_TO_S_LOGIN request)

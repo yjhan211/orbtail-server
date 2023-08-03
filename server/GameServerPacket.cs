@@ -15,7 +15,7 @@ namespace game_server
             return packet;
         }
 
-        static Packet MakeSpawnPlayerListPacket(List<PlayerObj> player_list)
+        public static Packet MakeSpawnPlayerListPacket(List<PlayerObj> player_list)
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_SPAWN_LIST);
             S_TO_C_PLAYER_SPAWN_LIST body = new() { player_list = player_list };
@@ -24,10 +24,10 @@ namespace game_server
             return packet;
         }
 
-        static Packet MakeDistroyPlayerListPacket(List<PlayerObj> player_list)
+        public static Packet MakeDestroyPlayerListPacket(List<long> player_id_list)
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_DESTROY_LIST);
-            S_TO_C_PLAYER_DESTROY_LIST body = new() { player_list = player_list };
+            S_TO_C_PLAYER_DESTROY_LIST body = new() { player_id_list = player_id_list };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;
@@ -43,26 +43,9 @@ namespace game_server
             return packet;
         }
 
-        public static Packet MakeMovePacket(Player player)
+        public static Packet MakeMoveListPacket(List<MoveObj> move_obj_list)
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_MOVE_ALL);
-            S_TO_C_MOVE_ALL body =
-                new()
-                {
-                    player_id = player.player_id,
-                    current_cell = player.current_cell,
-                    target_cell = player.target_cell,
-                    move_timestamp = player.move_timestamp,
-                    is_flip = player.is_flip,
-                };
-            packet.SetBody(MessagePackSerializer.Serialize(body));
-
-            return packet;
-        }
-
-        public static Packet MakeMoveListPacket(List<S_TO_C_MOVE_ALL> move_obj_list)
-        {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_MOVE_ALL_LIST);
+            Packet packet = Packet.Create(PROTOCOL.S_TO_C_MOVE_LIST);
 
             S_TO_C_MOVE_ALL_LIST body = new() { move_obj_list = move_obj_list };
             packet.SetBody(MessagePackSerializer.Serialize(body));
