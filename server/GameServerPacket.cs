@@ -24,6 +24,15 @@ namespace game_server
             return packet;
         }
 
+        public static Packet MakeMapInfoObject(List<PlayerObj> player_list)
+        {
+            Packet packet = Packet.Create(PROTOCOL.S_TO_C_MAP_INFO);
+            S_TO_C_MAP_INFO body = new() { player_list = player_list };
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+
+            return packet;
+        }
+
         public static Packet MakeDestroyPlayerListPacket(List<long> player_id_list)
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_DESTROY_LIST);
@@ -37,7 +46,17 @@ namespace game_server
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_CHAT_MSG_ALL);
             S_TO_C_CHAT_MSG_ALL body =
-                new() { player_id = player.player_id, chat_message = chat_message };
+                new() { player_id = player.object_id, chat_message = chat_message };
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+
+            return packet;
+        }
+
+        public static Packet MakeBoundTilePacket(List<BoundTile> tile_list)
+        {
+            Packet packet = Packet.Create(PROTOCOL.S_TO_C_BOUND_TILE_INFO);
+
+            S_TO_C_BOUND_TILE_INFO body = new() { tile_list = tile_list };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;

@@ -132,6 +132,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class S_TO_C_MAP_INFO : IMessagePackObject
+    {
+        [Key("player_list")]
+        public List<PlayerObj> player_list;
+    }
+
+    [MessagePackObject]
     public class MapTile : IMessagePackObject
     {
         public MapTile(TileType tile_type)
@@ -141,5 +148,28 @@ namespace network
 
         [Key("tile_type")]
         public TileType type { get; set; }
+    }
+
+    [MessagePackObject]
+    public class BoundTile : IMessagePackObject
+    {
+        public BoundTile(byte x, byte y)
+        {
+            this.x = x;
+            this.y = y;
+        }
+
+        [Key("x")]
+        public byte x { get; set; }
+
+        [Key("y")]
+        public byte y { get; set; }
+    }
+
+    [MessagePackObject]
+    public class S_TO_C_BOUND_TILE_INFO : IMessagePackObject
+    {
+        [Key("tile_list")]
+        public List<BoundTile> tile_list { get; set; }
     }
 }

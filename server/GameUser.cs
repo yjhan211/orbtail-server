@@ -10,7 +10,6 @@ namespace game_server
     {
         public UserToken token { get; private set; }
         public long player_id { get; private set; }
-        public PacketQueueProcessor packet_queue_processor { get; set; }
 
         public GameUser(UserToken token)
         {
@@ -19,7 +18,6 @@ namespace game_server
             this.token.is_alive = true;
             this.token.is_released = false;
             this.token.SetPeer(this);
-            this.packet_queue_processor = new(this);
         }
 
         public long GetPlayerId()
