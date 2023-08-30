@@ -52,13 +52,11 @@ namespace game_server
                         continue;
                     }
 
-                    foreach (List<GameObject> game_object_list in this.world_info)
-                    {
-                        target_list.AddRange(game_object_list);
-                    }
+                    target_list.AddRange(this.world_info[x, y]);
                 }
             }
 
+            // Console.WriteLine(target_list.Count);
             return target_list;
         }
 
@@ -105,12 +103,19 @@ namespace game_server
                 return;
             }
 
-            this.world_info[game_object.current_cell.x, game_object.current_cell.y].Remove(
-                game_object
-            );
+            if (
+                !this.world_info[game_object.current_cell.x, game_object.current_cell.y].Remove(
+                    game_object
+                )
+            )
+            {
+                Console.WriteLine("remove fail.");
+            }
 
             this.world_info[target_cell.x, target_cell.y].Add(game_object);
             game_object.current_cell = target_cell;
+
+            DrawPlayerCellInfo();
         }
 
         bool RemoveInMap(GameObject game_object)
@@ -152,14 +157,7 @@ namespace game_server
             {
                 for (int y = MAP_SIZE - 1; y >= 0; y--)
                 {
-                    if (this.world_info[x, y].Count == 0)
-                    {
-                        Console.Write("X,");
-                    }
-                    else
-                    {
-                        Console.Write("O,");
-                    }
+                    Console.Write($"{this.world_info[x, y].Count}");
                 }
                 Console.WriteLine("");
             }

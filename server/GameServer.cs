@@ -1,12 +1,12 @@
 namespace game_server
 {
     using System;
+    using System.Collections.Concurrent;
     using network;
 
     public partial class GameServer
     {
         readonly NetworkService network_service;
-
         readonly object world_lock;
         readonly Dictionary<long, Player> player_map;
 
@@ -38,9 +38,12 @@ namespace game_server
             {
                 for (int y = 0; y < MAP_SIZE; y++)
                 {
-                    this.world_info[x, y] = new List<GameObject>();
+                    this.world_info[x, y] = new();
+                    Console.WriteLine(this.world_info[x, y].Count);
                 }
             }
+
+            Console.WriteLine("==================================================");
         }
 
         public void Start()
@@ -105,7 +108,7 @@ namespace game_server
 
                 // 새 플레이어를 월드에 등록
                 this.player_map.Add(player.object_id, player);
-                this.world_info[player.target_cell.x, player.target_cell.y].Add(player);
+                MoveFinish(player, player.target_cell);
 
                 // TODO 시스템메시지 분리
             }

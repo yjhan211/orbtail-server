@@ -90,7 +90,7 @@ namespace game_server
 
         void Move(C_TO_S_MOVE request)
         {
-            Program.game_server.Move(this.player_id, request.direction);
+            Program.game_server.MovePlayer(this.player_id, request.direction);
         }
 
         public void Send(Packet msg)

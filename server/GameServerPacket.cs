@@ -26,6 +26,7 @@ namespace game_server
 
         public static Packet MakeMapInfoObject(List<PlayerObj> player_list)
         {
+            // TODO 10개 이하로 쪼개기
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_MAP_INFO);
             S_TO_C_MAP_INFO body = new() { player_list = player_list };
             packet.SetBody(MessagePackSerializer.Serialize(body));

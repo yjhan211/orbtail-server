@@ -11,7 +11,10 @@ namespace game_server
         public CellPosition target_cell { get; set; }
         public DateTime move_timestamp { get; set; }
         public bool is_flip { get; set; }
-        public PacketQueueProcessor packet_queue_processor { get; set; }
+
+        object recv_world_info_lock;
+        Task processing_task;
+        CancellationTokenSource cts;
 
         public Player(GameUser user, long player_id, string name)
         {
@@ -21,16 +24,15 @@ namespace game_server
             this.object_id = player_id;
             this.name = name;
 
-            var random_x = 0;
-            var random_y = 0;
-
-            this.current_cell = new CellPosition(random_x, random_y);
-            this.target_cell = new CellPosition(random_x, random_y);
+            this.current_cell = new CellPosition(0, 0);
+            this.target_cell = new CellPosition(0, 0);
             this.move_timestamp = DateTime.MinValue;
 
-            is_flip = false;
+            this.is_flip = false;
 
-            this.packet_queue_processor = new(this);
+            this.recv_world_info_lock = new();
+            this.cts = new();
+            this.processing_task = Task.Run(RecvWorldInfo, cts.Token);
         }
 
         public PlayerObj ConvertObj()
@@ -53,6 +55,50 @@ namespace game_server
         {
             this.owner.Send(msg);
             Packet.Destroy(msg);
+        }
+
+        async Task RecvWorldInfo()
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    lock (recv_world_info_lock)
+                    {
+                        List<PlayerObj> player_list = new List<PlayerObj>();
+
+                        List<GameObject> game_objects = Program.game_server.GetBoundGameObjectList(
+                            this.target_cell
+                        );
+
+                        foreach (GameObject game_object in game_objects)
+                        {
+                            if (game_object is Player player_object)
+                            {
+                                player_list.Add(player_object.ConvertObj());
+                            }
+                        }
+
+                        List<List<PlayerObj>> chunks = player_list
+                            .Select((player, index) => new { player, index })
+                            .GroupBy(pair => pair.index / Config.BROADCAST_UNIT)
+                            .Select(group => group.Select(pair => pair.player).ToList())
+                            .ToList();
+
+                        foreach (var chunk in chunks)
+                        {
+                            Packet packet = GameServer.MakeMapInfoObject(chunk);
+                            this.Send(packet);
+                        }
+                    }
+
+                    await Task.Delay(500);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"{e.StackTrace} || {e.Message}");
+                }
+            }
         }
     }
 }
