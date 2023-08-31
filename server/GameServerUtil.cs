@@ -5,9 +5,9 @@ namespace game_server
 
     public partial class GameServer
     {
-        public List<GameObject> GetBoundGameObjectList(CellPosition cell_position)
+        public List<MapObject> GetBoundMapObjectList(CellPosition cell_position)
         {
-            List<GameObject> target_list = new();
+            List<MapObject> target_list = new();
 
             const int X_MIN_BOUND = -11;
             const int X_MAX_BOUND = 14;
@@ -96,32 +96,27 @@ namespace game_server
             return (current_cell, is_flip);
         }
 
-        void MoveFinish(GameObject game_object, CellPosition target_cell)
+        void MoveFinish(MapObject map_object, CellPosition target_cell)
         {
-            if (game_object.current_cell.Equals(target_cell))
+            if (map_object.current_cell.Equals(target_cell))
             {
                 return;
             }
 
-            if (
-                !this.world_info[game_object.current_cell.x, game_object.current_cell.y].Remove(
-                    game_object
-                )
-            )
-            {
-                Console.WriteLine("remove fail.");
-            }
+            this.world_info[map_object.current_cell.x, map_object.current_cell.y].Remove(
+                map_object
+            );
 
-            this.world_info[target_cell.x, target_cell.y].Add(game_object);
-            game_object.current_cell = target_cell;
+            this.world_info[target_cell.x, target_cell.y].Add(map_object);
+            map_object.current_cell = target_cell;
 
             DrawPlayerCellInfo();
         }
 
-        bool RemoveInMap(GameObject game_object)
+        bool RemoveInMap(MapObject map_object)
         {
-            this.world_info[game_object.current_cell.x, game_object.current_cell.y].Remove(
-                game_object
+            this.world_info[map_object.current_cell.x, map_object.current_cell.y].Remove(
+                map_object
             );
 
             return true;
@@ -129,7 +124,7 @@ namespace game_server
 
         bool HasPlayer(CellPosition cell_position)
         {
-            foreach (GameObject game_object in this.world_info[cell_position.x, cell_position.y])
+            foreach (MapObject game_object in this.world_info[cell_position.x, cell_position.y])
             {
                 if (game_object is Player)
                 {

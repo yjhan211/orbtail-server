@@ -15,29 +15,10 @@ namespace game_server
             return packet;
         }
 
-        public static Packet MakeSpawnPlayerListPacket(List<PlayerObj> player_list)
+        public static Packet MakeMapInfoObject(List<MapObject> map_object_list)
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_SPAWN_LIST);
-            S_TO_C_PLAYER_SPAWN_LIST body = new() { player_list = player_list };
-            packet.SetBody(MessagePackSerializer.Serialize(body));
-
-            return packet;
-        }
-
-        public static Packet MakeMapInfoObject(List<PlayerObj> player_list)
-        {
-            // TODO 10개 이하로 쪼개기
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_MAP_INFO);
-            S_TO_C_MAP_INFO body = new() { player_list = player_list };
-            packet.SetBody(MessagePackSerializer.Serialize(body));
-
-            return packet;
-        }
-
-        public static Packet MakeDestroyPlayerListPacket(List<long> player_id_list)
-        {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_DESTROY_LIST);
-            S_TO_C_PLAYER_DESTROY_LIST body = new() { player_id_list = player_id_list };
+            S_TO_C_MAP_INFO body = new() { map_object_list = map_object_list };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;
@@ -58,16 +39,6 @@ namespace game_server
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_BOUND_TILE_INFO);
 
             S_TO_C_BOUND_TILE_INFO body = new() { tile_list = tile_list };
-            packet.SetBody(MessagePackSerializer.Serialize(body));
-
-            return packet;
-        }
-
-        public static Packet MakeMoveListPacket(List<MoveObj> move_obj_list)
-        {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_MOVE_LIST);
-
-            S_TO_C_MOVE_ALL_LIST body = new() { move_obj_list = move_obj_list };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;

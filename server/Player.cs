@@ -4,7 +4,7 @@ namespace game_server
 {
     using network;
 
-    public class Player : GameObject
+    public class Player : MapObject
     {
         public GameUser owner { get; private set; }
         public string name { get; private set; }
@@ -65,29 +65,16 @@ namespace game_server
                 {
                     lock (recv_world_info_lock)
                     {
-                        List<PlayerObj> player_list = new List<PlayerObj>();
-
-                        List<GameObject> game_objects = Program.game_server.GetBoundGameObjectList(
-                            this.target_cell
-                        );
-
-                        foreach (GameObject game_object in game_objects)
-                        {
-                            if (game_object is Player player_object)
-                            {
-                                player_list.Add(player_object.ConvertObj());
-                            }
-                        }
-
-                        List<List<PlayerObj>> chunks = player_list
+                        List<List<MapObject>> chunk_list = Program.game_server
+                            .GetBoundMapObjectList(this.target_cell)
                             .Select((player, index) => new { player, index })
                             .GroupBy(pair => pair.index / Config.BROADCAST_UNIT)
                             .Select(group => group.Select(pair => pair.player).ToList())
                             .ToList();
 
-                        foreach (var chunk in chunks)
+                        foreach (var map_object_list in chunk_list)
                         {
-                            Packet packet = GameServer.MakeMapInfoObject(chunk);
+                            Packet packet = GameServer.MakeMapInfoObject(map_object_list);
                             this.Send(packet);
                         }
                     }

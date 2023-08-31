@@ -16,7 +16,7 @@ namespace game_server
         readonly Thread logic_thread;
         readonly AutoResetEvent loop_event;
 
-        readonly List<GameObject>[,] world_info;
+        readonly List<MapObject>[,] world_info;
         const int MAP_SIZE = 10;
         static long latest_player_id = 0;
 
@@ -33,17 +33,14 @@ namespace game_server
             this.loop_event = new(false);
             this.logic_thread = new(GameLoop);
 
-            this.world_info = new List<GameObject>[MAP_SIZE, MAP_SIZE];
+            this.world_info = new List<MapObject>[MAP_SIZE, MAP_SIZE];
             for (int x = 0; x < MAP_SIZE; x++)
             {
                 for (int y = 0; y < MAP_SIZE; y++)
                 {
                     this.world_info[x, y] = new();
-                    Console.WriteLine(this.world_info[x, y].Count);
                 }
             }
-
-            Console.WriteLine("==================================================");
         }
 
         public void Start()

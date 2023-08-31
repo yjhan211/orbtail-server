@@ -125,17 +125,23 @@ namespace network
     }
 
     [MessagePackObject]
-    public class S_TO_C_MOVE_ALL_LIST : IMessagePackObject
+    public abstract class MapObject
     {
-        [Key("move_obj_list")]
-        public List<MoveObj> move_obj_list { get; set; }
+        [Key("object_type")]
+        public ObjectType object_type { get; set; }
+
+        [Key("object_id")]
+        public long object_id { get; set; }
+
+        [Key("current_cell")]
+        public CellPosition current_cell { get; set; }
     }
 
     [MessagePackObject]
     public class S_TO_C_MAP_INFO : IMessagePackObject
     {
-        [Key("player_list")]
-        public List<PlayerObj> player_list;
+        [Key("map_object_list")]
+        public List<MapObject> map_object_list;
     }
 
     [MessagePackObject]
