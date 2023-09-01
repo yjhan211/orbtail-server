@@ -4,13 +4,10 @@ namespace game_server
 {
     using network;
 
-    public class Player : MapObject
+    public class Player : GameObject
     {
         public GameUser owner { get; private set; }
         public string name { get; private set; }
-        public CellPosition target_cell { get; set; }
-        public DateTime move_timestamp { get; set; }
-        public bool is_flip { get; set; }
 
         object recv_world_info_lock;
         Task processing_task;
@@ -35,22 +32,6 @@ namespace game_server
             this.processing_task = Task.Run(RecvWorldInfo, cts.Token);
         }
 
-        public PlayerObj ConvertObj()
-        {
-            PlayerObj player_obj =
-                new()
-                {
-                    player_id = this.object_id,
-                    name = this.name,
-                    current_cell = this.current_cell,
-                    target_cell = this.target_cell,
-                    move_timestamp = this.move_timestamp,
-                    is_flip = this.is_flip,
-                };
-
-            return player_obj;
-        }
-
         public void Send(Packet msg)
         {
             this.owner.Send(msg);
@@ -65,16 +46,18 @@ namespace game_server
                 {
                     lock (recv_world_info_lock)
                     {
-                        List<List<MapObject>> chunk_list = Program.game_server
-                            .GetBoundMapObjectList(this.target_cell)
-                            .Select((player, index) => new { player, index })
-                            .GroupBy(pair => pair.index / Config.BROADCAST_UNIT)
-                            .Select(group => group.Select(pair => pair.player).ToList())
-                            .ToList();
+                        List<GameObject> game_object_list =
+                            Program.game_server.GetBoundMapObjectList(this.target_cell);
 
-                        foreach (var map_object_list in chunk_list)
+                        for (int i = 0; i < game_object_list.Count; i += Config.BROADCAST_UNIT)
                         {
-                            Packet packet = GameServer.MakeMapInfoObject(map_object_list);
+                            List<GameObjectMsg> chunk = game_object_list
+                                .Skip(i)
+                                .Take(Config.BROADCAST_UNIT)
+                                .Select((game_object) => game_object.ParseToMsg())
+                                .ToList();
+
+                            Packet packet = GameServer.MakeMapInfoMsg(chunk);
                             this.Send(packet);
                         }
                     }
@@ -84,6 +67,7 @@ namespace game_server
                 catch (Exception e)
                 {
                     Console.WriteLine($"{e.StackTrace} || {e.Message}");
+                    this.owner.OnRemoved();
                 }
             }
         }

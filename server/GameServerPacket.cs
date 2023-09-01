@@ -9,16 +9,16 @@ namespace game_server
         public static Packet MakeLoginPacket(Player player)
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_LOGIN);
-            S_TO_C_LOGIN body = new() { player = player.ConvertObj() };
+            S_TO_C_LOGIN body = new() { player_object = player.ParseToMsg(), name = player.name };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;
         }
 
-        public static Packet MakeMapInfoObject(List<MapObject> map_object_list)
+        public static Packet MakeMapInfoMsg(List<GameObjectMsg> game_object_list)
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_MAP_INFO);
-            S_TO_C_MAP_INFO body = new() { map_object_list = map_object_list };
+            S_TO_C_MAP_INFO body = new() { game_object_list = game_object_list };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;
