@@ -25,6 +25,7 @@ namespace game_server
                     object_id = this.object_id,
                     current_cell = this.current_cell,
                     target_cell = this.target_cell,
+                    move_timestamp = this.move_timestamp,
                     is_flip = this.is_flip
                 };
 

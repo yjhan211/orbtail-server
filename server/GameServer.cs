@@ -17,7 +17,7 @@ namespace game_server
         readonly AutoResetEvent loop_event;
 
         readonly List<GameObject>[,] world_info;
-        const int MAP_SIZE = 10;
+        const int MAP_SIZE = 100;
         static long latest_player_id = 0;
 
         public GameServer()
@@ -105,7 +105,7 @@ namespace game_server
 
                 // 새 플레이어를 월드에 등록
                 this.player_map.Add(player.object_id, player);
-                MoveFinish(player, player.target_cell);
+                this.world_info[player.target_cell.x, player.target_cell.y].Add(player);
 
                 // TODO 시스템메시지 분리
             }
@@ -191,6 +191,7 @@ namespace game_server
                 }
 
                 RemoveInMap(player);
+                player.cts.Cancel();
                 this.player_map.Remove(player_id);
             }
         }

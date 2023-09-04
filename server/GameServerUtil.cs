@@ -7,52 +7,55 @@ namespace game_server
     {
         public List<GameObject> GetBoundMapObjectList(CellPosition cell_position)
         {
-            List<GameObject> target_list = new();
-
             const int X_MIN_BOUND = -11;
             const int X_MAX_BOUND = 14;
 
             const int Y_MIN_BOUND = -5;
             const int Y_MAX_BOUND = -6;
 
-            var min_x = cell_position.x + X_MIN_BOUND;
-            var max_x = cell_position.x + X_MAX_BOUND;
+            List<GameObject> target_list = new();
 
-            var min_y = cell_position.y + Y_MIN_BOUND;
-            var max_y = cell_position.y + Y_MAX_BOUND;
-
-            var line = 0;
-
-            for (int x = min_x; x <= max_x; x++)
+            lock (this.world_lock)
             {
-                line += 1;
+                var min_x = cell_position.x + X_MIN_BOUND;
+                var max_x = cell_position.x + X_MAX_BOUND;
 
-                if (line <= 6)
-                {
-                    min_y -= 1;
-                }
-                else if (7 < line)
-                {
-                    min_y += 1;
-                }
+                var min_y = cell_position.y + Y_MIN_BOUND;
+                var max_y = cell_position.y + Y_MAX_BOUND;
 
-                if (line <= 20)
-                {
-                    max_y += 1;
-                }
-                else if (21 < line)
-                {
-                    max_y -= 1;
-                }
+                var line = 0;
 
-                for (int y = min_y; y <= max_y; y++)
+                for (int x = min_x; x <= max_x; x++)
                 {
-                    if (IsOutOfMapRange(new CellPosition(x, y)))
+                    line += 1;
+
+                    if (line <= 6)
                     {
-                        continue;
+                        min_y -= 1;
+                    }
+                    else if (7 < line)
+                    {
+                        min_y += 1;
                     }
 
-                    target_list.AddRange(this.world_info[x, y]);
+                    if (line <= 20)
+                    {
+                        max_y += 1;
+                    }
+                    else if (21 < line)
+                    {
+                        max_y -= 1;
+                    }
+
+                    for (int y = min_y; y <= max_y; y++)
+                    {
+                        if (IsOutOfMapRange(new CellPosition(x, y)))
+                        {
+                            continue;
+                        }
+
+                        target_list.AddRange(this.world_info[x, y]);
+                    }
                 }
             }
 
@@ -148,6 +151,8 @@ namespace game_server
 
         public void DrawPlayerCellInfo()
         {
+            return;
+
             for (int x = MAP_SIZE - 1; x >= 0; x--)
             {
                 for (int y = MAP_SIZE - 1; y >= 0; y--)

@@ -11,7 +11,7 @@ namespace game_server
 
         object recv_world_info_lock;
         Task processing_task;
-        CancellationTokenSource cts;
+        public CancellationTokenSource cts;
 
         public Player(GameUser user, long player_id, string name)
         {
@@ -44,7 +44,7 @@ namespace game_server
             {
                 try
                 {
-                    lock (recv_world_info_lock)
+                    // lock (recv_world_info_lock)
                     {
                         List<GameObject> game_object_list =
                             Program.game_server.GetBoundMapObjectList(this.target_cell);
@@ -59,16 +59,30 @@ namespace game_server
 
                             Packet packet = GameServer.MakeMapInfoMsg(chunk);
                             this.Send(packet);
+
+                            if (this.object_id == 1)
+                            {
+                                Console.WriteLine("send");
+                            }
+
+                            await Task.Delay(100);
                         }
                     }
-
-                    await Task.Delay(500);
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine($"{e.StackTrace} || {e.Message}");
                     this.owner.OnRemoved();
                 }
+            }
+
+            try
+            {
+                processing_task.Wait();
+            }
+            catch (AggregateException e)
+            {
+                Console.WriteLine($"{e.StackTrace} || {e.Message}");
             }
         }
     }
