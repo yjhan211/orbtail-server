@@ -102,6 +102,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class S_TO_C_OUT_BOUND_INFO : IMessagePackObject
+    {
+        [Key("out_bound_list")]
+        public List<long> out_bound_list;
+    }
+
+    [MessagePackObject]
     public class MapTile : IMessagePackObject
     {
         public MapTile(TileType tile_type)

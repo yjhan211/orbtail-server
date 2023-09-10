@@ -2,6 +2,7 @@
 
 namespace game_server
 {
+    using System.Numerics;
     using network;
 
     public class Player : GameObject
@@ -12,6 +13,8 @@ namespace game_server
         object recv_world_info_lock;
         Task processing_task;
         public CancellationTokenSource cts;
+
+        public List<long> bound_player_id_list;
 
         public Player(GameUser user, long player_id, string name)
         {
@@ -29,6 +32,7 @@ namespace game_server
 
             this.recv_world_info_lock = new();
             this.cts = new();
+            this.bound_player_id_list = new();
             this.processing_task = Task.Run(RecvWorldInfo, cts.Token);
         }
 
@@ -44,10 +48,24 @@ namespace game_server
             {
                 try
                 {
-                    // lock (recv_world_info_lock)
+                    lock (recv_world_info_lock)
                     {
-                        List<GameObject> game_object_list =
-                            Program.game_server.GetBoundMapObjectList(this.target_cell);
+                        (List<GameObject> game_object_list, List<long> out_bound_id_list) =
+                            Program.game_server.GetBoundMapObjectList(
+                                this.target_cell,
+                                ref bound_player_id_list
+                            );
+
+                        for (int i = 0; i < out_bound_id_list.Count; i++)
+                        {
+                            this.bound_player_id_list.Remove(out_bound_id_list[i]);
+                        }
+
+                        if (this.object_id > 100)
+                        {
+                            Console.WriteLine($"bound: {bound_player_id_list.Count}");
+                            Console.WriteLine($"target: {game_object_list.Count}");
+                        }
 
                         for (int i = 0; i < game_object_list.Count; i += Config.BROADCAST_UNIT)
                         {
@@ -60,14 +78,16 @@ namespace game_server
                             Packet packet = GameServer.MakeMapInfoMsg(chunk);
                             this.Send(packet);
 
-                            if (this.object_id == 1)
-                            {
-                                Console.WriteLine("send");
-                            }
-
-                            await Task.Delay(100);
+                            // if (this.object_id == 1)
+                            // {
+                            //     Console.WriteLine("send");
+                            // }
                         }
+
+                        // Packet outbound_packet = GameServer.MakeOutBoundInfoMsg(out_bound_id_list);
+                        // this.Send(outbound_packet);
                     }
+                    await Task.Delay(300);
                 }
                 catch (Exception e)
                 {

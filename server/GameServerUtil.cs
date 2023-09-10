@@ -5,7 +5,10 @@ namespace game_server
 
     public partial class GameServer
     {
-        public List<GameObject> GetBoundMapObjectList(CellPosition cell_position)
+        public (List<GameObject>, List<long>) GetBoundMapObjectList(
+            CellPosition cell_position,
+            ref List<long> bound_player_id_list
+        )
         {
             const int X_MIN_BOUND = -11;
             const int X_MAX_BOUND = 14;
@@ -14,6 +17,7 @@ namespace game_server
             const int Y_MAX_BOUND = -6;
 
             List<GameObject> target_list = new();
+            List<long> out_bound_id_list = bound_player_id_list.ConvertAll(s => s);
 
             lock (this.world_lock)
             {
@@ -54,13 +58,43 @@ namespace game_server
                             continue;
                         }
 
-                        target_list.AddRange(this.world_info[x, y]);
+                        for (int i = 0; i < this.world_info[x, y].Count; i++)
+                        {
+                            // 기존 인지하지 않던 오브젝트
+                            if (!bound_player_id_list.Contains(this.world_info[x, y][i].object_id))
+                            {
+                                target_list.Add(this.world_info[x, y][i]);
+                                bound_player_id_list.Add(this.world_info[x, y][i].object_id);
+                            }
+                            else
+                            {
+                                // 기존 인지하던 오브젝트
+                                if (
+                                    // 위치 변경 없으면 스킵
+                                    this.world_info[x, y][i].current_cell.Equals(
+                                        this.world_info[x, y][i].target_cell
+                                    )
+                                )
+                                {
+                                    continue;
+                                }
+                                else
+                                {
+                                    // 위치 변경 있으면 추가
+                                    target_list.Add(this.world_info[x, y][i]);
+                                }
+                            }
+
+                            out_bound_id_list.Remove(this.world_info[x, y][i].object_id);
+                        }
+
+                        // target_list.AddRange(this.world_info[x, y]);
                     }
                 }
             }
 
             // Console.WriteLine(target_list.Count);
-            return target_list;
+            return (target_list, out_bound_id_list);
         }
 
         (CellPosition?, bool) CalcMoveTarget(CellPosition current_cell, DirectionType direction)

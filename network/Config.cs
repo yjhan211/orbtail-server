@@ -6,7 +6,7 @@ namespace network
     {
         public static readonly int MAX_CONNECTION = 1000;
         public static readonly int PRE_ALLOC_COUNT = 2;
-        public static readonly int BUFFER_SIZE = 1024;
+        public static readonly int BUFFER_SIZE = 2000;
         public static readonly int HEADER_SIZE = 4;
 
         public static readonly int BACK_LOG = 100;
@@ -20,7 +20,7 @@ namespace network
         public static short GAME_SERVER_PORT = 7979;
         public static int MAX_CHAT_LINE = 2000;
 
-        public static int BROADCAST_UNIT = 5;
+        public static int BROADCAST_UNIT = 15;
 
         public static bool HEARTBEAT_ACTIVE = false;
     }

@@ -24,6 +24,15 @@ namespace game_server
             return packet;
         }
 
+        public static Packet MakeOutBoundInfoMsg(List<long> out_bound_list)
+        {
+            Packet packet = Packet.Create(PROTOCOL.S_TO_C_OUT_BOUND_INFO);
+            S_TO_C_OUT_BOUND_INFO body = new() { out_bound_list = out_bound_list };
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+
+            return packet;
+        }
+
         static Packet MakeChatPacket(Player player, string chat_message)
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_CHAT_MSG_ALL);
