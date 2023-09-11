@@ -70,15 +70,10 @@ namespace game_server
                             {
                                 // 기존 인지하던 오브젝트
                                 if (
-                                    // 위치 변경 없으면 스킵
-                                    this.world_info[x, y][i].current_cell.Equals(
+                                    !this.world_info[x, y][i].current_cell.Equals(
                                         this.world_info[x, y][i].target_cell
                                     )
                                 )
-                                {
-                                    continue;
-                                }
-                                else
                                 {
                                     // 위치 변경 있으면 추가
                                     target_list.Add(this.world_info[x, y][i]);
@@ -87,13 +82,15 @@ namespace game_server
 
                             out_bound_id_list.Remove(this.world_info[x, y][i].object_id);
                         }
-
-                        // target_list.AddRange(this.world_info[x, y]);
                     }
+                }
+
+                for (int i = 0; i < out_bound_id_list.Count; i++)
+                {
+                    bound_player_id_list.Remove(out_bound_id_list[i]);
                 }
             }
 
-            // Console.WriteLine(target_list.Count);
             return (target_list, out_bound_id_list);
         }
 
@@ -146,8 +143,6 @@ namespace game_server
 
             this.world_info[target_cell.x, target_cell.y].Add(map_object);
             map_object.current_cell = target_cell;
-
-            DrawPlayerCellInfo();
         }
 
         bool RemoveInMap(GameObject map_object)
@@ -185,8 +180,6 @@ namespace game_server
 
         public void DrawPlayerCellInfo()
         {
-            return;
-
             for (int x = MAP_SIZE - 1; x >= 0; x--)
             {
                 for (int y = MAP_SIZE - 1; y >= 0; y--)

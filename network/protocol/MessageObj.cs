@@ -99,6 +99,9 @@ namespace network
     {
         [Key("game_object_list")]
         public List<GameObjectMsg> game_object_list;
+
+        [Key("delete_object_list")]
+        public List<long> delete_object_list;
     }
 
     [MessagePackObject]

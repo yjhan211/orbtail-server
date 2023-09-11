@@ -15,10 +15,20 @@ namespace game_server
             return packet;
         }
 
-        public static Packet MakeMapInfoMsg(List<GameObjectMsg> game_object_list)
+        public static Packet MakeMapInfoMsg(
+            List<GameObjectMsg> game_object_list,
+            List<long> delete_object_list,
+            bool send_delete_list
+        )
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_MAP_INFO);
-            S_TO_C_MAP_INFO body = new() { game_object_list = game_object_list };
+            S_TO_C_MAP_INFO body =
+                new()
+                {
+                    game_object_list = game_object_list,
+                    delete_object_list = send_delete_list ? delete_object_list : new()
+                };
+
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;

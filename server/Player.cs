@@ -48,46 +48,35 @@ namespace game_server
             {
                 try
                 {
-                    lock (recv_world_info_lock)
+                    (List<GameObject> game_object_list, List<long> out_bound_id_list) =
+                        Program.game_server.GetBoundMapObjectList(
+                            this.target_cell,
+                            ref bound_player_id_list
+                        );
+
+                    if (game_object_list.Count <= 0)
                     {
-                        (List<GameObject> game_object_list, List<long> out_bound_id_list) =
-                            Program.game_server.GetBoundMapObjectList(
-                                this.target_cell,
-                                ref bound_player_id_list
-                            );
-
-                        for (int i = 0; i < out_bound_id_list.Count; i++)
-                        {
-                            this.bound_player_id_list.Remove(out_bound_id_list[i]);
-                        }
-
-                        if (this.object_id > 100)
-                        {
-                            Console.WriteLine($"bound: {bound_player_id_list.Count}");
-                            Console.WriteLine($"target: {game_object_list.Count}");
-                        }
-
-                        for (int i = 0; i < game_object_list.Count; i += Config.BROADCAST_UNIT)
-                        {
-                            List<GameObjectMsg> chunk = game_object_list
-                                .Skip(i)
-                                .Take(Config.BROADCAST_UNIT)
-                                .Select((game_object) => game_object.ParseToMsg())
-                                .ToList();
-
-                            Packet packet = GameServer.MakeMapInfoMsg(chunk);
-                            this.Send(packet);
-
-                            // if (this.object_id == 1)
-                            // {
-                            //     Console.WriteLine("send");
-                            // }
-                        }
-
-                        // Packet outbound_packet = GameServer.MakeOutBoundInfoMsg(out_bound_id_list);
-                        // this.Send(outbound_packet);
+                        Packet packet = GameServer.MakeMapInfoMsg(new(), out_bound_id_list, true);
+                        this.Send(packet);
                     }
-                    await Task.Delay(300);
+
+                    for (int i = 0; i < game_object_list.Count; i += Config.BROADCAST_UNIT)
+                    {
+                        List<GameObjectMsg> chunk = game_object_list
+                            .Skip(i)
+                            .Take(Config.BROADCAST_UNIT)
+                            .Select((game_object) => game_object.ParseToMsg())
+                            .ToList();
+
+                        Packet packet = GameServer.MakeMapInfoMsg(
+                            chunk,
+                            out_bound_id_list,
+                            game_object_list.Count <= (i + Config.BROADCAST_UNIT)
+                        );
+                        this.Send(packet);
+                    }
+
+                    await Task.Delay(200);
                 }
                 catch (Exception e)
                 {

@@ -7,7 +7,7 @@ namespace game_server
     public partial class GameServer
     {
         readonly NetworkService network_service;
-        readonly object world_lock;
+        public object world_lock;
         readonly Dictionary<long, Player> player_map;
 
         readonly object operation_lock;
