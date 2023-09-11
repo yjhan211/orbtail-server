@@ -16,6 +16,14 @@ namespace game_server
         public DateTime move_timestamp { get; set; }
         public bool is_flip { get; set; }
 
+        public GameObject()
+        {
+            this.current_cell = new CellPosition(0, 0);
+            this.target_cell = new CellPosition(0, 0);
+            this.move_timestamp = DateTime.MinValue;
+            this.is_flip = false;
+        }
+
         public GameObjectMsg ParseToMsg()
         {
             GameObjectMsg game_object_msg =
@@ -30,6 +38,27 @@ namespace game_server
                 };
 
             return game_object_msg;
+        }
+
+        public void SetFlip(DirectionType direction)
+        {
+            switch (direction)
+            {
+                case DirectionType.TOP_LEFT:
+                case DirectionType.BOTTOM_LEFT:
+                    this.is_flip = true;
+                    break;
+
+                default:
+                    this.is_flip = false;
+                    break;
+            }
+        }
+
+        public double GetMoveElapsedTime()
+        {
+            TimeSpan elapsedTime = DateTime.UtcNow - this.move_timestamp;
+            return elapsedTime.TotalSeconds;
         }
     }
 }

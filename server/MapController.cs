@@ -164,36 +164,32 @@ namespace game_server
                             continue;
                         }
 
-                        for (int i = 0; i < this.map_info[x, y].Count; i++)
+                        foreach (GameObject game_object in this.map_info[x, y])
                         {
                             // 기존 인지하지 않던 오브젝트
-                            if (!bound_player_id_list.Contains(this.map_info[x, y][i].object_id))
+                            if (!bound_player_id_list.Contains(game_object.object_id))
                             {
-                                target_list.Add(this.map_info[x, y][i]);
-                                bound_player_id_list.Add(this.map_info[x, y][i].object_id);
+                                target_list.Add(game_object);
+                                bound_player_id_list.Add(game_object.object_id);
                             }
                             else
                             {
                                 // 기존 인지하던 오브젝트
-                                if (
-                                    !this.map_info[x, y][i].current_cell.Equals(
-                                        this.map_info[x, y][i].target_cell
-                                    )
-                                )
+                                if (!game_object.current_cell.Equals(game_object.target_cell))
                                 {
                                     // 위치 변경 있으면 추가
-                                    target_list.Add(this.map_info[x, y][i]);
+                                    target_list.Add(game_object);
                                 }
                             }
 
-                            out_bound_id_list.Remove(this.map_info[x, y][i].object_id);
+                            out_bound_id_list.Remove(game_object.object_id);
                         }
                     }
                 }
 
-                for (int i = 0; i < out_bound_id_list.Count; i++)
+                foreach (int object_id in out_bound_id_list)
                 {
-                    bound_player_id_list.Remove(out_bound_id_list[i]);
+                    bound_player_id_list.Remove(object_id);
                 }
             }
 
