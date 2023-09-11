@@ -9,12 +9,10 @@ namespace game_server
     {
         public GameUser owner { get; private set; }
         public string name { get; private set; }
-
-        object recv_world_info_lock;
-        Task processing_task;
         public CancellationTokenSource cts;
-
         public List<long> bound_player_id_list;
+        public object user_lock;
+        Task processing_task;
 
         public Player(GameUser user, long player_id, string name)
         {
@@ -30,9 +28,11 @@ namespace game_server
 
             this.is_flip = false;
 
-            this.recv_world_info_lock = new();
             this.cts = new();
             this.bound_player_id_list = new();
+
+            this.user_lock = new();
+
             this.processing_task = Task.Run(RecvWorldInfo, cts.Token);
         }
 
@@ -42,6 +42,27 @@ namespace game_server
             Packet.Destroy(msg);
         }
 
+        public void SetFlip(DirectionType direction)
+        {
+            switch (direction)
+            {
+                case DirectionType.TOP_LEFT:
+                case DirectionType.BOTTOM_LEFT:
+                    this.is_flip = true;
+                    break;
+
+                default:
+                    this.is_flip = false;
+                    break;
+            }
+        }
+
+        public double GetMoveElapsedTime()
+        {
+            TimeSpan elapsedTime = DateTime.UtcNow - this.move_timestamp;
+            return elapsedTime.TotalSeconds;
+        }
+
         async Task RecvWorldInfo()
         {
             while (!cts.Token.IsCancellationRequested)
@@ -49,7 +70,7 @@ namespace game_server
                 try
                 {
                     (List<GameObject> game_object_list, List<long> out_bound_id_list) =
-                        Program.game_server.GetBoundMapObjectList(
+                        Program.game_server.map_controller.GetBoundMapObjectList(
                             this.target_cell,
                             ref bound_player_id_list
                         );

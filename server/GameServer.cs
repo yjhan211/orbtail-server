@@ -9,16 +9,12 @@ namespace game_server
         readonly NetworkService network_service;
         public object world_lock;
         readonly Dictionary<long, Player> player_map;
-
         readonly object operation_lock;
         readonly Queue<Packet> operation_queue;
-
         readonly Thread logic_thread;
         readonly AutoResetEvent loop_event;
-
-        readonly List<GameObject>[,] world_info;
-        const int MAP_SIZE = 100;
         static long latest_player_id = 0;
+        public MapController map_controller;
 
         public GameServer()
         {
@@ -33,19 +29,12 @@ namespace game_server
             this.loop_event = new(false);
             this.logic_thread = new(GameLoop);
 
-            this.world_info = new List<GameObject>[MAP_SIZE, MAP_SIZE];
-            for (int x = 0; x < MAP_SIZE; x++)
-            {
-                for (int y = 0; y < MAP_SIZE; y++)
-                {
-                    this.world_info[x, y] = new();
-                }
-            }
+            this.map_controller = new();
         }
 
         public void Start()
         {
-            PacketBufferManager.Initialize(2000);
+            PacketBufferManager.Initialize(10000);
             this.network_service.Initialize();
             this.network_service.session_created_callback += (UserToken token) =>
             {
@@ -89,6 +78,20 @@ namespace game_server
             }
         }
 
+        public void EnqueuePacket(Packet packet)
+        {
+            lock (this.operation_lock)
+            {
+                this.operation_queue.Enqueue(packet);
+                this.loop_event.Set();
+            }
+        }
+
+        static void ProcessReceive(Packet msg)
+        {
+            msg.owner.ProcessUserOperation(msg);
+        }
+
         public long LoginUser(GameUser user)
         {
             Player player;
@@ -99,13 +102,17 @@ namespace game_server
                 Interlocked.Increment(ref latest_player_id);
                 player = new(user, latest_player_id, name: $"플레이어{latest_player_id}");
 
+                // 새 플레이어를 월드에 등록
+                if (!this.player_map.TryAdd(player.object_id, player))
+                {
+                    throw new Exception("Already Exist Player");
+                }
+
                 // 본인 정보 전송
                 Packet login_packet = MakeLoginPacket(player);
                 user.Send(login_packet);
 
-                // 새 플레이어를 월드에 등록
-                this.player_map.Add(player.object_id, player);
-                this.world_info[player.target_cell.x, player.target_cell.y].Add(player);
+                this.map_controller.SpawnGameObject(player);
 
                 // TODO 시스템메시지 분리
             }
@@ -138,15 +145,12 @@ namespace game_server
 
         public void UpdatePosition(Player player)
         {
-            if (GetMoveElapsedTime(player) < Config.MOVE_ELAPSED_TIME)
+            if (player.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
             {
                 return;
             }
 
-            lock (this.world_lock)
-            {
-                MoveFinish(player, player.target_cell);
-            }
+            this.map_controller.MoveGameObject(player);
         }
 
         public void MovePlayer(long player_id, DirectionType direction)
@@ -158,19 +162,20 @@ namespace game_server
                     return;
                 }
 
-                if (GetMoveElapsedTime(player) <= Config.MOVE_ELAPSED_TIME)
+                if (player.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
                 {
                     return;
                 }
 
-                MoveFinish(player, player.target_cell);
+                this.map_controller.MoveGameObject(player);
+                player.SetFlip(direction);
 
-                (CellPosition? temp_target_cell, player.is_flip) = CalcMoveTarget(
+                CellPosition temp_target_cell = this.map_controller.CalcMoveTarget(
                     new(player.current_cell.x, player.current_cell.y),
                     direction
                 );
 
-                if (temp_target_cell == null || player.target_cell.Equals(temp_target_cell))
+                if (player.target_cell.Equals(temp_target_cell))
                 {
                     return;
                 }
@@ -182,7 +187,6 @@ namespace game_server
 
         public void LeaveUser(long player_id)
         {
-            // TODO 시스템메시지 분리
             lock (this.world_lock)
             {
                 if (!this.player_map.TryGetValue(player_id, out Player? player))
@@ -190,24 +194,13 @@ namespace game_server
                     return;
                 }
 
-                RemoveInMap(player);
                 player.cts.Cancel();
+
+                this.map_controller.ReleaseGameObject(player);
                 this.player_map.Remove(player_id);
             }
-        }
 
-        public void EnqueuePacket(Packet packet)
-        {
-            lock (this.operation_lock)
-            {
-                this.operation_queue.Enqueue(packet);
-                this.loop_event.Set();
-            }
-        }
-
-        static void ProcessReceive(Packet msg)
-        {
-            msg.owner.ProcessUserOperation(msg);
+            // TODO 시스템메시지 분리
         }
     }
 }
