@@ -9,6 +9,10 @@ namespace game_server
     public class MapController
     {
         const int MAP_SIZE = 100;
+        const int X_MIN_BOUND = -11;
+        const int X_MAX_BOUND = 14;
+        const int Y_MIN_BOUND = -5;
+        const int Y_MAX_BOUND = -6;
         readonly object map_info_lock;
         public readonly List<GameObject>[,] map_info;
 
@@ -67,65 +71,51 @@ namespace game_server
             }
         }
 
-        public CellPosition CalcMoveTarget(CellPosition current_cell, DirectionType direction)
+        public void SetPlayerTargetCell(Player player, CellPosition cell, DirectionType direction)
         {
-            CellPosition clone = new(current_cell.x, current_cell.y);
-
             if (direction == DirectionType.TOP_LEFT)
             {
-                current_cell.x += 1;
+                cell.x += 1;
             }
             else if (direction == DirectionType.TOP_RIGHT)
             {
-                current_cell.x -= 1;
+                cell.x -= 1;
             }
             else if (direction == DirectionType.BOTTOM_LEFT)
             {
-                current_cell.y -= 1;
+                cell.y -= 1;
             }
             else
             {
-                current_cell.y += 1;
+                cell.y += 1;
             }
 
-            if (IsOutOfMapRange(current_cell))
+            if (player.target_cell.Equals(cell))
             {
-                return clone;
+                return;
             }
 
-            if (HasPlayer(current_cell))
+            if (IsOutOfMapRange(cell))
             {
-                return clone;
+                return;
             }
 
-            return current_cell;
+            lock (this.map_info_lock)
+            {
+                if (this.map_info[cell.x, cell.y].Any(game_object => game_object is Player))
+                {
+                    return;
+                }
+
+                player.target_cell = cell;
+                player.move_timestamp = DateTime.UtcNow;
+            }
         }
 
         bool IsOutOfMapRange(CellPosition cell)
         {
             return cell.x < 0 || cell.x >= MAP_SIZE || cell.y < 0 || cell.y >= MAP_SIZE;
         }
-
-        bool HasPlayer(CellPosition cell_position)
-        {
-            lock (this.map_info_lock)
-            {
-                foreach (GameObject game_object in this.map_info[cell_position.x, cell_position.y])
-                {
-                    if (game_object is Player)
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-        }
-
-        const int X_MIN_BOUND = -11;
-        const int X_MAX_BOUND = 14;
-        const int Y_MIN_BOUND = -5;
-        const int Y_MAX_BOUND = -6;
 
         public (List<GameObject>, List<long>) GetBoundMapObjectList(
             CellPosition cell_position,

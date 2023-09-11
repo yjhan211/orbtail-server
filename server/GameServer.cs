@@ -132,18 +132,15 @@ namespace game_server
 
         public void HeartBeat(long player_id)
         {
-            lock (this.world_lock)
+            if (!this.player_map.TryGetValue(player_id, out Player? player))
             {
-                if (!this.player_map.TryGetValue(player_id, out Player? player))
-                {
-                    return;
-                }
-
-                UpdatePosition(player);
+                return;
             }
+
+            UpdatePosition(player);
         }
 
-        public void UpdatePosition(Player player)
+        void UpdatePosition(Player player)
         {
             if (player.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
             {
@@ -155,34 +152,22 @@ namespace game_server
 
         public void MovePlayer(long player_id, DirectionType direction)
         {
-            lock (this.world_lock)
+            if (!this.player_map.TryGetValue(player_id, out Player? player))
             {
-                if (!this.player_map.TryGetValue(player_id, out Player? player))
-                {
-                    return;
-                }
-
-                if (player.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
-                {
-                    return;
-                }
-
-                this.map_controller.MoveGameObject(player);
-                player.SetFlip(direction);
-
-                CellPosition temp_target_cell = this.map_controller.CalcMoveTarget(
-                    new(player.current_cell.x, player.current_cell.y),
-                    direction
-                );
-
-                if (player.target_cell.Equals(temp_target_cell))
-                {
-                    return;
-                }
-
-                player.target_cell = temp_target_cell;
-                player.move_timestamp = DateTime.UtcNow;
+                return;
             }
+
+            if (player.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+            {
+                return;
+            }
+
+            this.map_controller.MoveGameObject(player);
+
+            CellPosition current_cell = new(player.current_cell.x, player.current_cell.y);
+            this.map_controller.SetPlayerTargetCell(player, current_cell, direction);
+
+            player.SetFlip(direction);
         }
 
         public void LeaveUser(long player_id)
