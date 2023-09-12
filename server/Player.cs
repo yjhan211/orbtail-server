@@ -63,19 +63,6 @@ namespace game_server
                             .Select((game_object) => game_object.ParseObjectMsg())
                             .ToList();
 
-                        if (
-                            this.object_id == 101
-                            && game_object_list.Count <= (i + Config.BROADCAST_UNIT)
-                        )
-                        {
-                            foreach (long id in out_bound_id_list)
-                            {
-                                Console.Write($"{id},");
-                            }
-                            Console.WriteLine();
-                            Console.WriteLine("============================================");
-                        }
-
                         Packet packet = GameServer.MakeMapInfoPacket(
                             chunk,
                             out_bound_id_list,
