@@ -9,13 +9,19 @@ namespace game_server
         public static Packet MakeLoginPacket(Player player)
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_LOGIN);
-            S_TO_C_LOGIN body = new() { player_object = player.ParseToMsg(), name = player.name };
+            S_TO_C_LOGIN body =
+                new()
+                {
+                    object_msg = player.ParseObjectMsg(),
+                    player_msg = player.ParsePlayerMsg(),
+                    name = player.name
+                };
             packet.SetBody(MessagePackSerializer.Serialize(body));
 
             return packet;
         }
 
-        public static Packet MakeMapInfoMsg(
+        public static Packet MakeMapInfoPacket(
             List<GameObjectMsg> game_object_list,
             List<long> delete_object_list,
             bool send_delete_list
@@ -25,21 +31,20 @@ namespace game_server
             S_TO_C_MAP_INFO body =
                 new()
                 {
-                    game_object_list = game_object_list,
+                    object_list = game_object_list,
                     delete_object_list = send_delete_list ? delete_object_list : new()
                 };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
-
             return packet;
         }
 
-        public static Packet MakeOutBoundInfoMsg(List<long> out_bound_list)
+        public static Packet MakePlayerInfoPacket(List<PlayerMsg> player_msg_list)
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_OUT_BOUND_INFO);
-            S_TO_C_OUT_BOUND_INFO body = new() { out_bound_list = out_bound_list };
-            packet.SetBody(MessagePackSerializer.Serialize(body));
+            Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_INFO);
+            S_TO_C_PLAYER_INFO body = new() { player_msg = player_msg_list };
 
+            packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
         }
 

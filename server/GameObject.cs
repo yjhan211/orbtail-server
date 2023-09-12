@@ -11,20 +11,20 @@ namespace game_server
     {
         public ObjectType object_type { get; set; }
         public long object_id { get; set; }
-        public CellPosition current_cell { get; set; }
-        public CellPosition target_cell { get; set; }
+        public Cell current_cell { get; set; }
+        public Cell target_cell { get; set; }
         public DateTime move_timestamp { get; set; }
         public bool is_flip { get; set; }
 
         public GameObject()
         {
-            this.current_cell = new CellPosition(0, 0);
-            this.target_cell = new CellPosition(0, 0);
+            this.current_cell = new Cell(0, 0);
+            this.target_cell = new Cell(0, 0);
             this.move_timestamp = DateTime.MinValue;
             this.is_flip = false;
         }
 
-        public GameObjectMsg ParseToMsg()
+        public GameObjectMsg ParseObjectMsg()
         {
             GameObjectMsg game_object_msg =
                 new()

@@ -164,13 +164,45 @@ namespace game_server
 
             this.map_controller.MoveGameObject(player);
 
-            CellPosition current_cell = new(player.current_cell.x, player.current_cell.y);
+            Cell current_cell = new(player.current_cell.x, player.current_cell.y);
             this.map_controller.SetPlayerTargetCell(player, current_cell, direction);
 
             player.SetFlip(direction);
         }
 
-        public void LeaveUser(long player_id)
+        public void GetPlayerInfo(GameUser user, List<long> target_player_id_list)
+        {
+            // TODO 예외처리
+            if (300 < target_player_id_list.Count)
+            {
+                throw new Exception("Too many target player id");
+            }
+
+            List<Player> target_player_list = new();
+            foreach (var target_player_id in target_player_id_list)
+            {
+                if (!this.player_map.TryGetValue(target_player_id, out Player? player))
+                {
+                    return;
+                }
+
+                target_player_list.Add(player);
+            }
+
+            for (int i = 0; i < target_player_list.Count; i += Config.BROADCAST_UNIT)
+            {
+                List<PlayerMsg> chunk = target_player_list
+                    .Skip(i)
+                    .Take(Config.BROADCAST_UNIT)
+                    .Select((player) => player.ParsePlayerMsg())
+                    .ToList();
+
+                Packet player_info_packet = MakePlayerInfoPacket(chunk);
+                user.Send(player_info_packet);
+            }
+        }
+
+        public void LeavePlayer(long player_id)
         {
             lock (this.world_lock)
             {

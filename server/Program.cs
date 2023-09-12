@@ -22,7 +22,7 @@ namespace game_server
 
         static void test()
         {
-            var owner = new CellPosition(15, 15);
+            var owner = new Cell(15, 15);
 
             const int X_MIN_BOUND = -11;
             const int X_MAX_BOUND = 14;

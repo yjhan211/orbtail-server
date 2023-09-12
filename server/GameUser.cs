@@ -64,6 +64,10 @@ namespace game_server
                     case PROTOCOL.C_TO_S_MOVE:
                         HandleMessage<C_TO_S_MOVE>(body, Move);
                         break;
+
+                    case PROTOCOL.C_TO_S_PLAYER_INFO:
+                        HandleMessage<C_TO_S_PLAYER_INFO>(body, GetPlayerInfo);
+                        break;
                 }
             }
             catch (Exception e)
@@ -93,6 +97,11 @@ namespace game_server
             Program.game_server.MovePlayer(this.player_id, request.direction);
         }
 
+        void GetPlayerInfo(C_TO_S_PLAYER_INFO request)
+        {
+            Program.game_server.GetPlayerInfo(this, request.player_id);
+        }
+
         public void Send(Packet msg)
         {
             this.token.Send(msg);
@@ -101,7 +110,7 @@ namespace game_server
         public void OnRemoved()
         {
             Console.WriteLine("The client disconnected.");
-            Program.game_server.LeaveUser(this.player_id);
+            Program.game_server.LeavePlayer(this.player_id);
         }
     }
 }

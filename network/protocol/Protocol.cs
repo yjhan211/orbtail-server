@@ -20,6 +20,8 @@ namespace network
         S_TO_C_MAP_INFO,
         S_TO_C_OUT_BOUND_INFO,
         S_TO_C_BOUND_TILE_INFO,
+        C_TO_S_PLAYER_INFO,
+        S_TO_C_PLAYER_INFO,
         END
     }
 

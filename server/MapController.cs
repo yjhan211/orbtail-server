@@ -71,7 +71,7 @@ namespace game_server
             }
         }
 
-        public void SetPlayerTargetCell(Player player, CellPosition cell, DirectionType direction)
+        public void SetPlayerTargetCell(Player player, Cell cell, DirectionType direction)
         {
             if (direction == DirectionType.TOP_LEFT)
             {
@@ -112,13 +112,13 @@ namespace game_server
             }
         }
 
-        bool IsOutOfMapRange(CellPosition cell)
+        bool IsOutOfMapRange(Cell cell)
         {
             return cell.x < 0 || cell.x >= MAP_SIZE || cell.y < 0 || cell.y >= MAP_SIZE;
         }
 
         public (List<GameObject>, List<long>) GetBoundMapObjectList(
-            CellPosition cell_position,
+            Cell cell_position,
             ref List<long> bound_player_id_list
         )
         {
@@ -159,7 +159,7 @@ namespace game_server
 
                     for (int y = min_y; y <= max_y; y++)
                     {
-                        if (IsOutOfMapRange(new CellPosition(x, y)))
+                        if (IsOutOfMapRange(new Cell(x, y)))
                         {
                             continue;
                         }

@@ -36,6 +36,13 @@ namespace game_server
             Packet.Destroy(msg);
         }
 
+        public PlayerMsg ParsePlayerMsg()
+        {
+            PlayerMsg msg = new PlayerMsg { player_id = this.object_id, name = this.name };
+
+            return msg;
+        }
+
         async Task RecvWorldInfo()
         {
             while (!cts.Token.IsCancellationRequested)
@@ -53,10 +60,10 @@ namespace game_server
                         List<GameObjectMsg> chunk = game_object_list
                             .Skip(i)
                             .Take(Config.BROADCAST_UNIT)
-                            .Select((game_object) => game_object.ParseToMsg())
+                            .Select((game_object) => game_object.ParseObjectMsg())
                             .ToList();
 
-                        Packet packet = GameServer.MakeMapInfoMsg(
+                        Packet packet = GameServer.MakeMapInfoPacket(
                             chunk,
                             out_bound_id_list,
                             game_object_list.Count <= (i + Config.BROADCAST_UNIT)
@@ -66,7 +73,11 @@ namespace game_server
 
                     if (game_object_list.Count <= 0)
                     {
-                        Packet packet = GameServer.MakeMapInfoMsg(new(), out_bound_id_list, true);
+                        Packet packet = GameServer.MakeMapInfoPacket(
+                            new(),
+                            out_bound_id_list,
+                            true
+                        );
                         this.Send(packet);
                     }
 

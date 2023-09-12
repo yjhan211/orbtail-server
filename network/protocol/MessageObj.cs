@@ -2,7 +2,6 @@
 #pragma warning disable IDE1006
 
 using MessagePack;
-using System.Collections.Generic;
 
 namespace network
 {
@@ -18,8 +17,11 @@ namespace network
     [MessagePackObject]
     public class S_TO_C_LOGIN : IMessagePackObject
     {
-        [Key("player_object")]
-        public GameObjectMsg player_object { get; set; }
+        [Key("object_msg")]
+        public GameObjectMsg object_msg { get; set; }
+
+        [Key("player_msg")]
+        public PlayerMsg player_msg { get; set; }
 
         [Key("name")]
         public string name { get; set; }
@@ -37,10 +39,10 @@ namespace network
         public long object_id { get; set; }
 
         [Key("current_cell")]
-        public CellPosition current_cell { get; set; }
+        public Cell current_cell { get; set; }
 
         [Key("target_cell")]
-        public CellPosition target_cell { get; set; }
+        public Cell target_cell { get; set; }
 
         [Key("move_timestamp")]
         public DateTime move_timestamp { get; set; }
@@ -50,9 +52,9 @@ namespace network
     }
 
     [MessagePackObject]
-    public class CellPosition : IMessagePackObject
+    public class Cell : IMessagePackObject
     {
-        public CellPosition(int x, int y)
+        public Cell(int x, int y)
         {
             this.x = x;
             this.y = y;
@@ -64,7 +66,7 @@ namespace network
         [Key("y")]
         public int y { get; set; }
 
-        public bool Equals(CellPosition target)
+        public bool Equals(Cell target)
         {
             return this.x == target.x && this.y == target.y;
         }
@@ -97,18 +99,35 @@ namespace network
     [MessagePackObject]
     public class S_TO_C_MAP_INFO : IMessagePackObject
     {
-        [Key("game_object_list")]
-        public List<GameObjectMsg> game_object_list;
+        [Key("object_list")]
+        public List<GameObjectMsg> object_list;
 
         [Key("delete_object_list")]
         public List<long> delete_object_list;
     }
 
     [MessagePackObject]
-    public class S_TO_C_OUT_BOUND_INFO : IMessagePackObject
+    public class C_TO_S_PLAYER_INFO : IMessagePackObject
     {
-        [Key("out_bound_list")]
-        public List<long> out_bound_list;
+        [Key("player_id_list")]
+        public List<long> player_id { get; set; }
+    }
+
+    [MessagePackObject]
+    public class S_TO_C_PLAYER_INFO : IMessagePackObject
+    {
+        [Key("player_msg_list")]
+        public List<PlayerMsg> player_msg { get; set; }
+    }
+
+    [MessagePackObject]
+    public class PlayerMsg : IMessagePackObject
+    {
+        [Key("player_id")]
+        public long player_id { get; set; }
+
+        [Key("name")]
+        public string name { get; set; }
     }
 
     [MessagePackObject]
