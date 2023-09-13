@@ -182,11 +182,6 @@ namespace game_server
                 return;
             }
 
-            if (Config.INFO_UNIT < target_player_id_list.Count)
-            {
-                throw new Exception("Too many target player id");
-            }
-
             List<Player> target_player_list = new();
             foreach (var target_player_id in target_player_id_list)
             {
