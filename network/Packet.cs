@@ -33,7 +33,7 @@ namespace network
 
         public Packet()
         {
-            this.buffer = new byte[10000];
+            this.buffer = new byte[Config.BUFFER_SIZE];
         }
 
         public void CopyTo(Packet target)
