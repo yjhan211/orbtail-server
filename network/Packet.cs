@@ -68,6 +68,11 @@ namespace network
 
         public void SetBody(byte[] serizlized_buffer)
         {
+            if (Config.BUFFER_SIZE < serizlized_buffer.Length)
+            {
+                throw new Exception("BUFFER SIZE OVER");
+            }
+
             serizlized_buffer.CopyTo(this.buffer, this.position);
             this.position += serizlized_buffer.Length;
         }

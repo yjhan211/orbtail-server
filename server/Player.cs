@@ -24,6 +24,7 @@ namespace game_server
             this.object_id = player_id;
             this.name = name;
 
+            init_cell = new(0, 0);
             this.current_cell = init_cell;
             this.target_cell = init_cell;
 
