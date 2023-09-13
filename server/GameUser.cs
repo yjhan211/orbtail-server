@@ -99,7 +99,7 @@ namespace game_server
 
         void GetPlayerInfo(C_TO_S_PLAYER_INFO request)
         {
-            Program.game_server.GetPlayerInfo(this, request.player_id);
+            Program.game_server.GetPlayerInfo(this.player_id, request.player_id);
         }
 
         public void Send(Packet msg)

@@ -4,7 +4,7 @@ namespace game_server
 {
     using MessagePack;
 
-    public partial class GameServer
+    public static class PacketMaker
     {
         public static Packet MakeLoginPacket(Player player)
         {
@@ -16,8 +16,8 @@ namespace game_server
                     player_msg = player.ParsePlayerMsg(),
                     name = player.name
                 };
-            packet.SetBody(MessagePackSerializer.Serialize(body));
 
+            packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
         }
 
@@ -53,18 +53,17 @@ namespace game_server
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_CHAT_MSG_ALL);
             S_TO_C_CHAT_MSG_ALL body =
                 new() { player_id = player.object_id, chat_message = chat_message };
-            packet.SetBody(MessagePackSerializer.Serialize(body));
 
+            packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
         }
 
         public static Packet MakeBoundTilePacket(List<BoundTile> tile_list)
         {
             Packet packet = Packet.Create(PROTOCOL.S_TO_C_BOUND_TILE_INFO);
-
             S_TO_C_BOUND_TILE_INFO body = new() { tile_list = tile_list };
-            packet.SetBody(MessagePackSerializer.Serialize(body));
 
+            packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
         }
     }

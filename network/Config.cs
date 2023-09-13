@@ -8,7 +8,6 @@ namespace network
         public static readonly int PRE_ALLOC_COUNT = 2;
         public static readonly int BUFFER_SIZE = 2048;
         public static readonly int HEADER_SIZE = 4;
-
         public static readonly int BACK_LOG = 100;
 
         public static readonly float SPEED = 1f;
@@ -21,6 +20,7 @@ namespace network
         public static int MAX_CHAT_LINE = 2000;
 
         public static int BROADCAST_UNIT = 15;
+        public static int INFO_UNIT = 300;
 
         public static bool HEARTBEAT_ACTIVE = false;
     }

@@ -195,5 +195,11 @@ namespace game_server
 
             return (target_list, out_bound_id_list);
         }
+
+        public Cell GetRandomCell()
+        {
+            Random random = new();
+            return new(random.Next(0, MAP_SIZE), random.Next(0, MAP_SIZE));
+        }
     }
 }

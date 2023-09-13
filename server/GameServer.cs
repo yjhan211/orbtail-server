@@ -34,7 +34,7 @@ namespace game_server
 
         public void Start()
         {
-            PacketBufferManager.Initialize(10000);
+            PacketBufferManager.Initialize(Config.MAX_CONNECTION);
             this.network_service.Initialize();
             this.network_service.session_created_callback += (UserToken token) =>
             {
@@ -100,7 +100,12 @@ namespace game_server
             {
                 // 플레이어 생성
                 Interlocked.Increment(ref latest_player_id);
-                player = new(user, latest_player_id, name: $"플레이어{latest_player_id}");
+                player = new(
+                    user,
+                    latest_player_id,
+                    name: $"플레이어{latest_player_id}",
+                    this.map_controller.GetRandomCell()
+                );
 
                 // 새 플레이어를 월드에 등록
                 if (!this.player_map.TryAdd(player.object_id, player))
@@ -109,7 +114,7 @@ namespace game_server
                 }
 
                 // 본인 정보 전송
-                Packet login_packet = MakeLoginPacket(player);
+                Packet login_packet = PacketMaker.MakeLoginPacket(player);
                 user.Send(login_packet);
 
                 this.map_controller.SpawnGameObject(player);
@@ -170,10 +175,14 @@ namespace game_server
             player.SetFlip(direction);
         }
 
-        public void GetPlayerInfo(GameUser user, List<long> target_player_id_list)
+        public void GetPlayerInfo(long player_id, List<long> target_player_id_list)
         {
-            // TODO 예외처리
-            if (300 < target_player_id_list.Count)
+            if (!this.player_map.TryGetValue(player_id, out Player? player))
+            {
+                return;
+            }
+
+            if (Config.INFO_UNIT < target_player_id_list.Count)
             {
                 throw new Exception("Too many target player id");
             }
@@ -181,12 +190,12 @@ namespace game_server
             List<Player> target_player_list = new();
             foreach (var target_player_id in target_player_id_list)
             {
-                if (!this.player_map.TryGetValue(target_player_id, out Player? player))
+                if (!this.player_map.TryGetValue(target_player_id, out Player? target_player))
                 {
                     return;
                 }
 
-                target_player_list.Add(player);
+                target_player_list.Add(target_player);
             }
 
             for (int i = 0; i < target_player_list.Count; i += Config.BROADCAST_UNIT)
@@ -197,8 +206,10 @@ namespace game_server
                     .Select((player) => player.ParsePlayerMsg())
                     .ToList();
 
-                Packet player_info_packet = MakePlayerInfoPacket(chunk);
-                user.Send(player_info_packet);
+                lock (player.user_lock)
+                {
+                    player.player_msg_queue.Enqueue(chunk);
+                }
             }
         }
 
