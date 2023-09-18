@@ -40,6 +40,7 @@ namespace game_server
             {
                 // TODO DB 붙이기 전까진 일단 이렇게 ...
                 GameUser user = new(token);
+                Console.WriteLine("connected");
             };
 
             this.network_service.Listen();
