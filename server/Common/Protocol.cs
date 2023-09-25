@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace network
+namespace game_server
 {
     public enum PROTOCOL : int
     {
@@ -27,7 +27,7 @@ namespace network
 
     public enum ObjectType : int
     {
-        ENPTY,
+        NONE,
         PLAYER,
         ITEM
     }

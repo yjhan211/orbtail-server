@@ -10,10 +10,10 @@ namespace network
     {
         void OnMessage(Const<byte[]> buffer);
 
-        void OnRemoved();
+        Task OnRemoved();
 
         void Send(Packet msg);
 
-        void ProcessUserOperation(Packet msg);
+        Task ProcessUserOperation(Packet msg);
     }
 }

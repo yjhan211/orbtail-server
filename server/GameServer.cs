@@ -1,27 +1,23 @@
 namespace game_server
 {
     using System;
-    using System.Collections.Concurrent;
+    using System.Threading.Tasks;
     using network;
 
     public partial class GameServer
     {
         readonly NetworkService network_service;
-        public object world_lock;
-        readonly Dictionary<long, Player> player_map;
+        readonly Dictionary<long, GameUser> user_map;
         readonly object operation_lock;
         readonly Queue<Packet> operation_queue;
         readonly Thread logic_thread;
         readonly AutoResetEvent loop_event;
-        static long latest_player_id = 0;
         public MapController map_controller;
 
         public GameServer()
         {
             this.network_service = new();
-
-            this.world_lock = new();
-            this.player_map = new();
+            this.user_map = new();
 
             this.operation_lock = new();
             this.operation_queue = new();
@@ -38,9 +34,7 @@ namespace game_server
             this.network_service.Initialize();
             this.network_service.session_created_callback += (UserToken token) =>
             {
-                // TODO DB 붙이기 전까진 일단 이렇게 ...
                 GameUser user = new(token);
-                Console.WriteLine("connected");
             };
 
             this.network_service.Listen();
@@ -93,136 +87,144 @@ namespace game_server
             msg.owner.ProcessUserOperation(msg);
         }
 
-        public long LoginUser(GameUser user)
+        public async Task<long> LoginUserAsync(GameUser user)
         {
-            Player player;
-
-            lock (this.world_lock)
+            if (user.player_id > 0)
             {
-                // 플레이어 생성
-                Interlocked.Increment(ref latest_player_id);
-                player = new(
-                    user,
-                    latest_player_id,
-                    name: $"플레이어{latest_player_id}",
-                    this.map_controller.GetRandomCell()
+                throw new Exception("Already Has Player id");
+            }
+
+            // TODO 로그인용 웹서버 생기면 거기서 토큰으로 유저아이디 불러오기
+            // TODO 로그인용 웹서버는 데이터베이스에서 기존 토큰 있는지 확인 후 제거
+            long temp_player_id = await Program.redis_client.BasicRetryAsync(
+                (db) => db.StringIncrementAsync("temp_player_id")
+            );
+
+            if (!this.user_map.TryAdd(temp_player_id, user))
+            {
+                throw new Exception("Already Exist Player");
+            }
+
+            // 플레이어 생성
+            PlayerInfo player_info =
+                new(
+                    temp_player_id,
+                    name: $"플레이어{temp_player_id}",
+                    new Cell(0, 0)
+                // this.map_controller.GetRandomCell()
                 );
 
-                // 새 플레이어를 월드에 등록
-                if (!this.player_map.TryAdd(player.object_id, player))
-                {
-                    throw new Exception("Already Exist Player");
-                }
+            // 유저 정보 캐싱
+            await player_info.Save();
 
-                // 본인 정보 전송
-                Packet login_packet = PacketMaker.MakeLoginPacket(player);
-                user.Send(login_packet);
+            // 본인 정보 전송
+            Packet login_packet = PacketMaker.MakeLoginPacket(player_info);
+            user.Send(login_packet);
 
-                this.map_controller.SpawnGameObject(player);
+            // 월드에 게임 오브젝트 정보 갱신
+            this.map_controller.SpawnGameObject(player_info.object_info);
 
-                // TODO 시스템메시지 분리
-            }
-
-            return player.object_id;
+            // TODO 시스템메시지 분리
+            return player_info.player_id;
         }
 
-        public void SendChat(long player_id, string chat_message)
+        // public async Task SendChat(long player_id, string chat_message)
+        // {
+        //     // TODO 채팅 분리
+        //     // if (!this.player_map.TryGetValue(player_id, out Player? player))
+        //     // {
+        //     //     return;
+        //     // }
+        // }
+
+        public async Task HeartBeat(long player_id)
         {
-            if (!this.player_map.TryGetValue(player_id, out Player? player))
+            var player_info = await PlayerInfo.Load(player_id);
+            if (player_info == null)
             {
                 return;
             }
 
-            // TODO 채팅 분리
+            await UpdatePosition(player_info);
         }
 
-        public void HeartBeat(long player_id)
+        async Task UpdatePosition(PlayerInfo player_info)
         {
-            if (!this.player_map.TryGetValue(player_id, out Player? player))
+            if (player_info.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
             {
                 return;
             }
 
-            UpdatePosition(player);
+            await this.map_controller.MoveGameObject(player_info.object_info);
+            await player_info.Save();
         }
 
-        void UpdatePosition(Player player)
+        public async Task MovePlayer(long player_id, DirectionType direction)
         {
-            if (player.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+            PlayerInfo? player_info = await PlayerInfo.Load(player_id);
+            if (player_info == null)
             {
                 return;
             }
 
-            this.map_controller.MoveGameObject(player);
+            if (player_info.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+            {
+                return;
+            }
+
+            await this.map_controller.MoveGameObject(player_info.object_info);
+
+            Cell current_cell = Cell.Clone(player_info.object_info.current_cell);
+            await this.map_controller.SetPlayerTargetCell(player_info, current_cell, direction);
+
+            player_info.object_info.SetFlip(direction);
+
+            await player_info.Save();
         }
 
-        public void MovePlayer(long player_id, DirectionType direction)
+        public async Task GetPlayerInfo(GameUser user, List<long> target_player_id_list)
         {
-            if (!this.player_map.TryGetValue(player_id, out Player? player))
+            PlayerInfo? player_info = await PlayerInfo.Load(user.player_id);
+            if (player_info == null)
             {
                 return;
             }
 
-            if (player.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
-            {
-                return;
-            }
-
-            this.map_controller.MoveGameObject(player);
-
-            Cell current_cell = new(player.current_cell.x, player.current_cell.y);
-            this.map_controller.SetPlayerTargetCell(player, current_cell, direction);
-
-            player.SetFlip(direction);
-        }
-
-        public void GetPlayerInfo(long player_id, List<long> target_player_id_list)
-        {
-            if (!this.player_map.TryGetValue(player_id, out Player? player))
-            {
-                return;
-            }
-
-            List<Player> target_player_list = new();
+            List<PlayerInfo> player_info_list = new();
             foreach (var target_player_id in target_player_id_list)
             {
-                if (!this.player_map.TryGetValue(target_player_id, out Player? target_player))
+                PlayerInfo? target_player_info = await PlayerInfo.Load(target_player_id);
+                if (target_player_info == null)
                 {
-                    return;
+                    continue;
                 }
 
-                target_player_list.Add(target_player);
+                player_info_list.Add(target_player_info);
             }
 
-            for (int i = 0; i < target_player_list.Count; i += Config.BROADCAST_UNIT)
+            for (int i = 0; i < player_info_list.Count; i += Config.BROADCAST_UNIT)
             {
-                List<PlayerMsg> chunk = target_player_list
+                List<PlayerInfo> chunk = player_info_list
                     .Skip(i)
                     .Take(Config.BROADCAST_UNIT)
-                    .Select((player) => player.ParsePlayerMsg())
                     .ToList();
 
-                lock (player.user_lock)
-                {
-                    player.player_msg_queue.Enqueue(chunk);
-                }
+                user.player_info_list_queue.Enqueue(chunk);
             }
         }
 
-        public void LeavePlayer(long player_id)
+        public async Task LeavePlayer(GameUser user)
         {
-            lock (this.world_lock)
+            user.cts.Cancel();
+
+            PlayerInfo? player_info = await PlayerInfo.Load(user.player_id);
+            if (player_info == null)
             {
-                if (!this.player_map.TryGetValue(player_id, out Player? player))
-                {
-                    return;
-                }
-
-                player.cts.Cancel();
-
-                this.map_controller.ReleaseGameObject(player);
-                this.player_map.Remove(player_id);
+                return;
             }
+
+            await this.map_controller.ReleaseGameObject(player_info.object_info);
+            await player_info.Delete();
 
             // TODO 시스템메시지 분리
         }

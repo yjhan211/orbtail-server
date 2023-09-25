@@ -15,7 +15,7 @@ namespace network
         public static readonly float MOVE_ANIM_ELAPSED_TIME = MOVE_ELAPSED_TIME + 0.4f;
         public static float FILP_LOTATION = 180;
 
-        public static string GAME_SERVER_IP = "127.0.0.1";
+        public static string GAME_SERVER_IP = "0.0.0.0";
         public static short GAME_SERVER_PORT = 7979;
         public static int MAX_CHAT_LINE = 2000;
         public static int INFO_UNIT = BUFFER_SIZE / sizeof(long);
@@ -25,5 +25,7 @@ namespace network
         public static int BROADCAST_UNIT = BUFFER_SIZE / BROADCAST_CHUNK_SIZE;
         public static bool HEARTBEAT_ACTIVE = false;
         public static int TARGET_FRAME_RATE = 30;
+
+        public static string REDIS_CONFIG = "127.0.0.1:6379,abortConnect=false";
     }
 }

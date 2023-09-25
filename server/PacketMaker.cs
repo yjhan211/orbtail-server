@@ -6,28 +6,23 @@ namespace game_server
 
     public static class PacketMaker
     {
-        public static Packet MakeLoginPacket(Player player)
+        public static Packet MakeLoginPacket(PlayerInfo player_info)
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_LOGIN);
+            Packet packet = Packet.Create((int)PROTOCOL.S_TO_C_LOGIN);
             S_TO_C_LOGIN body =
-                new()
-                {
-                    object_msg = player.ParseObjectMsg(),
-                    player_msg = player.ParsePlayerMsg(),
-                    name = player.name
-                };
+                new() { object_info = player_info.object_info, player_info = player_info };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
         }
 
         public static Packet MakeMapInfoPacket(
-            List<GameObjectMsg> game_object_list,
-            List<long> delete_object_list,
+            List<GameObjectInfo> game_object_list,
+            List<string> delete_object_list,
             bool send_delete_list
         )
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_MAP_INFO);
+            Packet packet = Packet.Create((int)PROTOCOL.S_TO_C_MAP_INFO);
             S_TO_C_MAP_INFO body =
                 new()
                 {
@@ -39,20 +34,20 @@ namespace game_server
             return packet;
         }
 
-        public static Packet MakePlayerInfoPacket(List<PlayerMsg> player_msg_list)
+        public static Packet MakePlayerInfoPacket(List<PlayerInfo> player_info_list)
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_PLAYER_INFO);
-            S_TO_C_PLAYER_INFO body = new() { player_msg = player_msg_list };
+            Packet packet = Packet.Create((int)PROTOCOL.S_TO_C_PLAYER_INFO);
+            S_TO_C_PLAYER_INFO body = new() { player_info_list = player_info_list };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
         }
 
-        static Packet MakeChatPacket(Player player, string chat_message)
+        static Packet MakeChatPacket(PlayerInfo player, string chat_message)
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_CHAT_MSG_ALL);
+            Packet packet = Packet.Create((int)PROTOCOL.S_TO_C_CHAT_MSG_ALL);
             S_TO_C_CHAT_MSG_ALL body =
-                new() { player_id = player.object_id, chat_message = chat_message };
+                new() { player_id = player.player_id, chat_message = chat_message };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -60,7 +55,7 @@ namespace game_server
 
         public static Packet MakeBoundTilePacket(List<BoundTile> tile_list)
         {
-            Packet packet = Packet.Create(PROTOCOL.S_TO_C_BOUND_TILE_INFO);
+            Packet packet = Packet.Create((int)PROTOCOL.S_TO_C_BOUND_TILE_INFO);
             S_TO_C_BOUND_TILE_INFO body = new() { tile_list = tile_list };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));

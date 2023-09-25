@@ -13,9 +13,16 @@ namespace game_server
     {
         public static GameServer game_server = new();
 
-        static void Main(string[] args)
+#pragma warning disable CS8618
+        public static RedisConnection redis_client;
+#pragma warning restore
+
+        static async Task Main(string[] args)
         {
             game_server.Start();
+            redis_client = await RedisConnection.InitializeAsync(
+                connectionString: Config.REDIS_CONFIG
+            );
         }
     }
 }

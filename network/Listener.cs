@@ -21,12 +21,7 @@ namespace network
         {
             try
             {
-                IPAddress address =
-                    Config.GAME_SERVER_IP == "0.0.0.0"
-                        ? IPAddress.Any
-                        : IPAddress.Parse(Config.GAME_SERVER_IP);
-
-                IPEndPoint end_point = new(address, Config.GAME_SERVER_PORT);
+                IPEndPoint end_point = new(IPAddress.Any, Config.GAME_SERVER_PORT);
 
                 this.listen_socket = new Socket(
                     AddressFamily.InterNetwork,

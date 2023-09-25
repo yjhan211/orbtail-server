@@ -11,10 +11,10 @@ namespace network
         public int position { get; private set; }
         public int protocol_id { get; private set; }
 
-        public static Packet Create(PROTOCOL protocol_id)
+        public static Packet Create(int protocol_id)
         {
             Packet packet = PacketBufferManager.Pop();
-            packet.SetProtocolId((int)protocol_id);
+            packet.SetProtocolId(protocol_id);
             return packet;
         }
 

@@ -56,6 +56,8 @@ namespace network
         // Connector->OnConnectCompleted()
         public void OnConnectCompleted(Socket socket, UserToken user_token)
         {
+            Console.WriteLine("connect completed");
+
             SocketAsyncEventArgs receive_event_arg = new();
             receive_event_arg.Completed += new EventHandler<SocketAsyncEventArgs>(RecvCompleted);
             receive_event_arg.UserToken = user_token;
@@ -71,7 +73,7 @@ namespace network
             user_token.heartbeat_timer = new Timer(
                 (object _) =>
                 {
-                    Packet msg = Packet.Create(PROTOCOL.HEART_BEAT);
+                    Packet msg = Packet.Create(0);
                     user_token.Send(msg);
                 },
                 null,
