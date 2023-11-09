@@ -11,18 +11,20 @@ namespace game_server
 {
     class Program
     {
-        public static GameServer game_server = new();
-
 #pragma warning disable CS8618
-        public static RedisConnection redis_client;
+        public static GameServer game_server;
 #pragma warning restore
 
         static async Task Main(string[] args)
         {
-            game_server.Start();
-            redis_client = await RedisConnection.InitializeAsync(
+            game_server = new();
+
+            var redis_client = await RedisConnection.InitializeAsync(
                 connectionString: Config.REDIS_CONFIG
             );
+
+            RedisHelper.Initialize(redis_client);
+            game_server.Start();
         }
     }
 }

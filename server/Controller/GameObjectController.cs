@@ -6,9 +6,14 @@ namespace game_server
 
     public partial class GameObjectInfo
     {
-        static string GetHashField(ObjectType type, long object_id)
+        public static string MakeHashField(ObjectType type, long object_id)
         {
-            return $"{(int)type}:{object_id}";
+            return $"{(int)type}_{object_id}";
+        }
+
+        public string GetHashField()
+        {
+            return $"{(int)this.object_type}_{this.object_id}";
         }
 
         public GameObjectInfo(ObjectType object_type, long player_id, Cell cell)
@@ -23,13 +28,10 @@ namespace game_server
 
         public async Task Save()
         {
-            await Program.redis_client.BasicRetryAsync(
-                (db) =>
-                    db.HashSetAsync(
-                        HASH_KEY,
-                        GetHashField(this.object_type, object_id),
-                        JsonSerializer.Serialize(this)
-                    )
+            await RedisHelper.HashSet(
+                HASH_KEY,
+                this.GetHashField(),
+                JsonSerializer.Serialize(this)
             );
         }
 
@@ -37,8 +39,9 @@ namespace game_server
         {
             try
             {
-                var serialized_data = await Program.redis_client.BasicRetryAsync(
-                    db => db.HashGetAsync(HASH_KEY, GetHashField(type, object_id))
+                var serialized_data = await RedisHelper.HashGet(
+                    HASH_KEY,
+                    MakeHashField(type, object_id)
                 );
 
                 if (serialized_data.IsNull)
@@ -59,11 +62,49 @@ namespace game_server
             }
         }
 
+        public static async Task<List<GameObjectInfo>> LoadAll(List<string> object_key_list)
+        {
+            try
+            {
+                var hash_entries = await RedisHelper.HashGet(HASH_KEY, object_key_list);
+                if (hash_entries == null)
+                {
+                    return new();
+                }
+
+                List<string> hash_strings = hash_entries
+                    .Where(entry => entry != RedisValue.Null)
+                    .Select(entry => entry.ToString())
+                    .ToList();
+
+                List<GameObjectInfo> result = new();
+
+                for (int i = 0; i < hash_strings.Count; i++)
+                {
+                    var game_object_info = JsonSerializer.Deserialize<GameObjectInfo>(
+                        hash_strings[i]
+                    );
+
+                    if (game_object_info == null)
+                    {
+                        continue;
+                    }
+
+                    result.Add(game_object_info);
+                }
+
+                return result;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"{e.StackTrace}{e.Message}");
+                return new();
+            }
+        }
+
         public async Task Delete()
         {
-            await Program.redis_client.BasicRetryAsync(
-                (db) => db.HashDeleteAsync(HASH_KEY, GetHashField(this.object_type, object_id))
-            );
+            await RedisHelper.HashDelete(HASH_KEY, this.GetHashField());
         }
 
         public double GetMoveElapsedTime()

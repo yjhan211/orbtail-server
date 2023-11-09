@@ -70,7 +70,7 @@ namespace network
         {
             if (Config.BUFFER_SIZE < serizlized_buffer.Length)
             {
-                throw new Exception("BUFFER SIZE OVER");
+                throw new Exception($"BUFFER SIZE OVER. {serizlized_buffer.Length}");
             }
 
             serizlized_buffer.CopyTo(this.buffer, this.position);

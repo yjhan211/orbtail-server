@@ -16,18 +16,14 @@ namespace game_server
         public async Task Save()
         {
             await this.object_info.Save();
-            await Program.redis_client.BasicRetryAsync(
-                (db) => db.HashSetAsync(HASH_KEY, this.player_id, JsonSerializer.Serialize(this))
-            );
+            await RedisHelper.HashSet(HASH_KEY, this.player_id, JsonSerializer.Serialize(this));
         }
 
         public async static Task<PlayerInfo?> Load(long player_id)
         {
             try
             {
-                var serialized = await Program.redis_client.BasicRetryAsync(
-                    (db) => db.HashGetAsync(HASH_KEY, player_id)
-                );
+                var serialized = await RedisHelper.HashGet(HASH_KEY, player_id);
 
                 if (serialized == RedisValue.Null)
                 {
@@ -59,9 +55,7 @@ namespace game_server
         public async Task Delete()
         {
             await this.object_info.Delete();
-            await Program.redis_client.BasicRetryAsync(
-                (db) => db.HashDeleteAsync(HASH_KEY, player_id)
-            );
+            await RedisHelper.HashDelete(HASH_KEY, player_id);
         }
     }
 }

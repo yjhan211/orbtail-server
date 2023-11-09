@@ -96,11 +96,8 @@ namespace game_server
 
             // TODO 로그인용 웹서버 생기면 거기서 토큰으로 유저아이디 불러오기
             // TODO 로그인용 웹서버는 데이터베이스에서 기존 토큰 있는지 확인 후 제거
-            long temp_player_id = await Program.redis_client.BasicRetryAsync(
-                (db) => db.StringIncrementAsync("temp_player_id")
-            );
-
-            if (!this.user_map.TryAdd(temp_player_id, user))
+            long temp_player_id = await RedisHelper.StringIncrement("temp_player_id");
+            if (temp_player_id < 0 || !this.user_map.TryAdd(temp_player_id, user))
             {
                 throw new Exception("Already Exist Player");
             }
@@ -110,8 +107,8 @@ namespace game_server
                 new(
                     temp_player_id,
                     name: $"플레이어{temp_player_id}",
-                    new Cell(0, 0)
-                // this.map_controller.GetRandomCell()
+                    // new Cell(0, 0)
+                    this.map_controller.GetRandomCell()
                 );
 
             // 유저 정보 캐싱
@@ -122,7 +119,7 @@ namespace game_server
             user.Send(login_packet);
 
             // 월드에 게임 오브젝트 정보 갱신
-            this.map_controller.SpawnGameObject(player_info.object_info);
+            this.map_controller.SetGameObject(player_info.object_info);
 
             // TODO 시스템메시지 분리
             return player_info.player_id;
@@ -223,8 +220,8 @@ namespace game_server
                 return;
             }
 
-            await this.map_controller.ReleaseGameObject(player_info.object_info);
-            await player_info.Delete();
+            await this.map_controller.UnsetGameObject(player_info.object_info);
+            // await player_info.Delete();
 
             // TODO 시스템메시지 분리
         }

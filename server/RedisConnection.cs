@@ -25,6 +25,7 @@ namespace game_server
         private readonly string _connectionString;
         private ConnectionMultiplexer _connection;
         private IDatabase _database;
+        private ISubscriber _subscriber;
 
 #pragma warning disable CS8618
         private RedisConnection(string connectionString)
@@ -37,6 +38,8 @@ namespace game_server
         {
             var redisConnection = new RedisConnection(connectionString);
             await redisConnection.ForceReconnectAsync(initializing: true);
+
+            redisConnection._subscriber = redisConnection._connection.GetSubscriber();
 
             Console.WriteLine("Redis connect success");
 
@@ -175,6 +178,28 @@ namespace game_server
             {
                 _reconnectSemaphore.Release();
             }
+        }
+
+        public async Task PublishMessage(string channel, string message)
+        {
+            await _subscriber.PublishAsync(channel, message);
+        }
+
+        public void SubscribeToChannel(string channel)
+        {
+            _subscriber.Subscribe(
+                channel,
+                (channel, message) =>
+                {
+                    Console.WriteLine($"Received message on channel '{channel}': {message}");
+                    // 여기에서 메시지 처리 로직을 추가하세요.
+                }
+            );
+        }
+
+        public void UnsubscribeFromChannel(string channel)
+        {
+            _subscriber.Unsubscribe(channel);
         }
 
         public void Dispose()

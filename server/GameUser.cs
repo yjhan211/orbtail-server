@@ -32,6 +32,8 @@ namespace game_server
 
         async Task RecvWorldInfo()
         {
+            DateTime loop_time = DateTime.UtcNow;
+
             while (!cts.Token.IsCancellationRequested)
             {
                 try
@@ -64,8 +66,13 @@ namespace game_server
                     if (game_object_list.Count == 0 && out_bound_list.Count != 0)
                     {
                         Packet packet = PacketMaker.MakeMapInfoPacket(new(), out_bound_list, true);
-
                         this.Send(packet);
+                    }
+
+                    if (player_id == 1)
+                    {
+                        Console.WriteLine($"{(DateTime.UtcNow - loop_time).TotalMilliseconds}");
+                        loop_time = DateTime.UtcNow;
                     }
 
                     await Task.Delay(200);
@@ -101,21 +108,21 @@ namespace game_server
 
                     if (this.player_info_list_queue.TryDequeue(out List<PlayerInfo>? info_list))
                     {
-                        var bound_hash = await Program.redis_client.BasicRetryAsync(
-                            (db) =>
-                                db.HashGetAllAsync(MapController.GetBoundObjectKey(this.player_id))
-                        );
+                        // var bound_hash = await Program.redis_client.BasicRetryAsync(
+                        //     (db) =>
+                        //         db.HashGetAllAsync(MapController.GetBoundObjectKey(this.player_id))
+                        // );
 
-                        var bound_object_key_list = bound_hash
-                            .Select(entry => entry.Name.ToString())
-                            .ToList();
+                        // var bound_object_key_list = bound_hash
+                        //     .Select(entry => entry.Name.ToString())
+                        //     .ToList();
 
-                        info_list = info_list.FindAll(
-                            (info) =>
-                                bound_object_key_list.Contains(
-                                    MapController.GetGameObjectKey(info.object_info)
-                                )
-                        );
+                        // info_list = info_list.FindAll(
+                        //     (info) =>
+                        //         bound_object_key_list.Contains(
+                        //             MapController.GetGameObjectKey(info.object_info)
+                        //         )
+                        // );
 
                         Packet player_info_packet = PacketMaker.MakePlayerInfoPacket(info_list);
                         this.Send(player_info_packet);
