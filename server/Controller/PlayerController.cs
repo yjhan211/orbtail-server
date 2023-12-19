@@ -1,7 +1,7 @@
 namespace game_server
 {
+    using network;
     using System.Text.Json;
-    using MessagePack;
     using StackExchange.Redis;
 
     public partial class PlayerInfo
@@ -13,17 +13,33 @@ namespace game_server
             this.name = name;
         }
 
+        public string GetLockKey()
+        {
+            return $"player_lock_{this.player_id}";
+        }
+
+        public static string GetLockKey(long player_id)
+        {
+            return $"player_lock_{player_id}";
+        }
+
         public async Task Save()
         {
             await this.object_info.Save();
-            await RedisHelper.HashSet(HASH_KEY, this.player_id, JsonSerializer.Serialize(this));
+            await CacheHelper.HashSet(HASH_KEY, this.player_id, JsonSerializer.Serialize(this));
+        }
+
+        public void Save(Transaction transaction)
+        {
+            this.object_info.Save(transaction);
+            transaction.HashSet(HASH_KEY, this.player_id, JsonSerializer.Serialize(this));
         }
 
         public async static Task<PlayerInfo?> Load(long player_id)
         {
             try
             {
-                var serialized = await RedisHelper.HashGet(HASH_KEY, player_id);
+                var serialized = await CacheHelper.HashGet(HASH_KEY, player_id);
 
                 if (serialized == RedisValue.Null)
                 {
@@ -55,7 +71,7 @@ namespace game_server
         public async Task Delete()
         {
             await this.object_info.Delete();
-            await RedisHelper.HashDelete(HASH_KEY, player_id);
+            await CacheHelper.HashDelete(HASH_KEY, player_id);
         }
     }
 }

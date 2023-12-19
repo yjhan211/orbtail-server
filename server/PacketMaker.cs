@@ -16,19 +16,19 @@ namespace game_server
             return packet;
         }
 
-        public static Packet MakeMapInfoPacket(
-            List<GameObjectInfo> game_object_list,
-            List<string> delete_object_list,
-            bool send_delete_list
-        )
+        public static Packet MakeMapInfoPacket(List<GameObjectInfo> object_list, bool is_ended)
         {
             Packet packet = Packet.Create((int)PROTOCOL.S_TO_C_MAP_INFO);
-            S_TO_C_MAP_INFO body =
-                new()
-                {
-                    object_list = game_object_list,
-                    delete_object_list = send_delete_list ? delete_object_list : new()
-                };
+            S_TO_C_MAP_INFO body = new() { object_list = object_list, is_ended = is_ended };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet MakeMapUpdatePacket(List<GameObjectInfo> object_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.S_TO_C_MAP_UPDATE);
+            S_TO_C_MAP_UPDATE body = new() { object_list = object_list };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

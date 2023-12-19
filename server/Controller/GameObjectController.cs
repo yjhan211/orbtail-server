@@ -28,18 +28,23 @@ namespace game_server
 
         public async Task Save()
         {
-            await RedisHelper.HashSet(
+            await CacheHelper.HashSet(
                 HASH_KEY,
                 this.GetHashField(),
                 JsonSerializer.Serialize(this)
             );
         }
 
+        public void Save(Transaction transaction)
+        {
+            transaction.HashSet(HASH_KEY, this.GetHashField(), JsonSerializer.Serialize(this));
+        }
+
         public static async Task<GameObjectInfo?> Load(ObjectType type, long object_id)
         {
             try
             {
-                var serialized_data = await RedisHelper.HashGet(
+                var serialized_data = await CacheHelper.HashGet(
                     HASH_KEY,
                     MakeHashField(type, object_id)
                 );
@@ -62,11 +67,11 @@ namespace game_server
             }
         }
 
-        public static async Task<List<GameObjectInfo>> LoadAll(List<string> object_key_list)
+        public static async Task<List<GameObjectInfo>> LoadAll(RedisValue[] object_keys)
         {
             try
             {
-                var hash_entries = await RedisHelper.HashGet(HASH_KEY, object_key_list);
+                var hash_entries = await CacheHelper.HashGet(HASH_KEY, object_keys);
                 if (hash_entries == null)
                 {
                     return new();
@@ -79,12 +84,9 @@ namespace game_server
 
                 List<GameObjectInfo> result = new();
 
-                for (int i = 0; i < hash_strings.Count; i++)
+                foreach (var hash_string in hash_strings)
                 {
-                    var game_object_info = JsonSerializer.Deserialize<GameObjectInfo>(
-                        hash_strings[i]
-                    );
-
+                    var game_object_info = JsonSerializer.Deserialize<GameObjectInfo>(hash_string);
                     if (game_object_info == null)
                     {
                         continue;
@@ -104,7 +106,7 @@ namespace game_server
 
         public async Task Delete()
         {
-            await RedisHelper.HashDelete(HASH_KEY, this.GetHashField());
+            await CacheHelper.HashDelete(HASH_KEY, this.GetHashField());
         }
 
         public double GetMoveElapsedTime()

@@ -2,6 +2,8 @@ namespace game_server
 {
     using StackExchange.Redis;
     using System.Net.Sockets;
+    using RedLockNet.SERedis;
+    using RedLockNet.SERedis.Configuration;
 
     public class RedisConnection : IDisposable
     {
@@ -23,8 +25,8 @@ namespace game_server
 
         private SemaphoreSlim _reconnectSemaphore = new SemaphoreSlim(initialCount: 1, maxCount: 1);
         private readonly string _connectionString;
-        private ConnectionMultiplexer _connection;
-        private IDatabase _database;
+        public ConnectionMultiplexer _connection;
+        public IDatabase _database;
         private ISubscriber _subscriber;
 
 #pragma warning disable CS8618
@@ -40,9 +42,6 @@ namespace game_server
             await redisConnection.ForceReconnectAsync(initializing: true);
 
             redisConnection._subscriber = redisConnection._connection.GetSubscriber();
-
-            Console.WriteLine("Redis connect success");
-
             return redisConnection;
         }
 

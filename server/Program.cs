@@ -15,7 +15,7 @@ namespace game_server
         public static GameServer game_server;
 #pragma warning restore
 
-        static async Task Main(string[] args)
+        static async Task Main()
         {
             game_server = new();
 
@@ -23,7 +23,10 @@ namespace game_server
                 connectionString: Config.REDIS_CONFIG
             );
 
-            RedisHelper.Initialize(redis_client);
+            CacheHelper.Initialize(redis_client);
+            LockHelper.Initialize(redis_client);
+            PubSubHelper.Initialize(redis_client);
+
             game_server.Start();
         }
     }

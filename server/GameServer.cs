@@ -87,7 +87,7 @@ namespace game_server
             msg.owner.ProcessUserOperation(msg);
         }
 
-        public async Task<long> LoginUserAsync(GameUser user)
+        public async Task<PlayerInfo> LoginUserAsync(GameUser user)
         {
             if (user.player_id > 0)
             {
@@ -96,33 +96,36 @@ namespace game_server
 
             // TODO 로그인용 웹서버 생기면 거기서 토큰으로 유저아이디 불러오기
             // TODO 로그인용 웹서버는 데이터베이스에서 기존 토큰 있는지 확인 후 제거
-            long temp_player_id = await RedisHelper.StringIncrement("temp_player_id");
+            long temp_player_id = await CacheHelper.StringIncrement("temp_player_id");
             if (temp_player_id < 0 || !this.user_map.TryAdd(temp_player_id, user))
             {
                 throw new Exception("Already Exist Player");
             }
 
-            // 플레이어 생성
-            PlayerInfo player_info =
-                new(
-                    temp_player_id,
-                    name: $"플레이어{temp_player_id}",
-                    // new Cell(0, 0)
-                    this.map_controller.GetRandomCell()
-                );
+            user.player_id = temp_player_id;
 
-            // 유저 정보 캐싱
-            await player_info.Save();
+            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_id)))
+            { // 플레이어 생성
+                PlayerInfo player_info =
+                    new(
+                        temp_player_id,
+                        name: $"플레이어{temp_player_id}",
+                        // new Cell(0, 0)
+                        this.map_controller.GetRandomCell()
+                    );
 
-            // 본인 정보 전송
-            Packet login_packet = PacketMaker.MakeLoginPacket(player_info);
-            user.Send(login_packet);
+                player_info.object_info.map_id = MapController.MAP_ID;
 
-            // 월드에 게임 오브젝트 정보 갱신
-            this.map_controller.SetGameObject(player_info.object_info);
+                // 계정 정보 전송
+                Packet login_packet = PacketMaker.MakeLoginPacket(player_info);
+                user.Send(login_packet);
 
-            // TODO 시스템메시지 분리
-            return player_info.player_id;
+                // 월드에 게임 오브젝트 정보 갱신. 오브젝트 정보는 MovePlayer에서 별도로 보냄
+                await this.map_controller.MovePlayer(user, player_info, DirectionType.TOP_LEFT);
+
+                // TODO 시스템메시지 분리
+                return player_info;
+            }
         }
 
         // public async Task SendChat(long player_id, string chat_message)
@@ -134,53 +137,80 @@ namespace game_server
         //     // }
         // }
 
-        public async Task HeartBeat(long player_id)
+        public async Task HeartBeat(GameUser user)
         {
-            var player_info = await PlayerInfo.Load(player_id);
+            if (user.player_id <= 0)
+            {
+                return;
+            }
+
+            var player_info = await PlayerInfo.Load(user.player_id);
             if (player_info == null)
             {
                 return;
             }
 
-            await UpdatePosition(player_info);
+            await UpdatePosition(user, player_info);
         }
 
-        async Task UpdatePosition(PlayerInfo player_info)
+        async Task UpdatePosition(GameUser user, PlayerInfo player)
         {
-            if (player_info.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+            if (player.object_info.target_cell.Equals(player.object_info.current_cell))
             {
                 return;
             }
 
-            await this.map_controller.MoveGameObject(player_info.object_info);
-            await player_info.Save();
+            if (player.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+            {
+                return;
+            }
+
+            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_id)))
+            {
+                // 이동이 완료되었으면 포지션 업데이트
+                await this.map_controller.MovePlayer(user, player, DirectionType.NONE);
+            }
         }
 
-        public async Task MovePlayer(long player_id, DirectionType direction)
+        public async Task MovePlayer(GameUser user, DirectionType direction_type)
         {
-            PlayerInfo? player_info = await PlayerInfo.Load(player_id);
-            if (player_info == null)
+            try
             {
-                return;
-            }
+                if (user.player_id <= 0)
+                {
+                    return;
+                }
 
-            if (player_info.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                PlayerInfo? player_info = await PlayerInfo.Load(user.player_id);
+                if (player_info == null)
+                {
+                    return;
+                }
+
+                // 아직 기존 이동이 완료되지 않았음. 무시
+                if (player_info.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                {
+                    return;
+                }
+
+                using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_id)))
+                {
+                    await this.map_controller.MovePlayer(user, player_info, direction_type);
+                }
+            }
+            catch (Exception e)
             {
-                return;
+                Console.WriteLine($"{e.StackTrace}, {e.Message}");
             }
-
-            await this.map_controller.MoveGameObject(player_info.object_info);
-
-            Cell current_cell = Cell.Clone(player_info.object_info.current_cell);
-            await this.map_controller.SetPlayerTargetCell(player_info, current_cell, direction);
-
-            player_info.object_info.SetFlip(direction);
-
-            await player_info.Save();
         }
 
         public async Task GetPlayerInfo(GameUser user, List<long> target_player_id_list)
         {
+            if (user.player_id <= 0)
+            {
+                return;
+            }
+
             PlayerInfo? player_info = await PlayerInfo.Load(user.player_id);
             if (player_info == null)
             {
@@ -212,7 +242,10 @@ namespace game_server
 
         public async Task LeavePlayer(GameUser user)
         {
-            user.cts.Cancel();
+            if (user.player_id <= 0)
+            {
+                return;
+            }
 
             PlayerInfo? player_info = await PlayerInfo.Load(user.player_id);
             if (player_info == null)
@@ -220,10 +253,13 @@ namespace game_server
                 return;
             }
 
-            await this.map_controller.UnsetGameObject(player_info.object_info);
-            // await player_info.Delete();
+            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_id)))
+            {
+                await this.map_controller.UnsetPlayer(player_info.object_info);
+                // await player_info.Delete();
 
-            // TODO 시스템메시지 분리
+                // TODO 시스템메시지 분리
+            }
         }
     }
 }

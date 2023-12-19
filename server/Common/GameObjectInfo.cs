@@ -16,7 +16,7 @@ namespace game_server
             this.object_id = 0;
             this.current_cell = new Cell(0, 0);
             this.target_cell = new Cell(0, 0);
-            this.move_timestamp = DateTime.MinValue;
+            this.move_timestamp = default;
             this.is_flip = false;
         }
 
@@ -25,6 +25,9 @@ namespace game_server
 
         [Key("object_id")]
         public long object_id { get; set; }
+
+        [Key("map_id")]
+        public int map_id { get; set; }
 
         [Key("current_cell")]
         public Cell current_cell { get; set; }

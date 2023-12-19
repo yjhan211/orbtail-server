@@ -17,9 +17,18 @@ namespace game_server
         [Key("y")]
         public int y { get; set; }
 
-        public bool Equals(Cell target)
+        public override bool Equals(object? obj)
         {
-            return this.x == target.x && this.y == target.y;
+            if (obj == null || GetType() != obj.GetType())
+                return false;
+
+            var other = (Cell)obj;
+            return this.x == other.x && this.y == other.y;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(this.x, this.y);
         }
 
         public static Cell Clone(Cell cell)

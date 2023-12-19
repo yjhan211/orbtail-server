@@ -20,11 +20,12 @@ namespace network
         public static int MAX_CHAT_LINE = 2000;
         public static int INFO_UNIT = BUFFER_SIZE / sizeof(long);
         public static int PACKET_HOLD_COUNT = 10;
-        public static int BROADCAST_CHUNK_SIZE = 120;
+        public static int BROADCAST_CHUNK_SIZE = 200;
         public static int OUT_BOUND_LIMIT = 200;
         public static int BROADCAST_UNIT = BUFFER_SIZE / BROADCAST_CHUNK_SIZE;
         public static bool HEARTBEAT_ACTIVE = false;
         public static int TARGET_FRAME_RATE = 30;
+        public static TimeSpan LOCK_TTL = TimeSpan.FromSeconds(30);
 
         public static string REDIS_CONFIG = "127.0.0.1:6379,abortConnect=false";
     }

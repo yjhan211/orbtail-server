@@ -52,10 +52,17 @@ namespace game_server
     public class S_TO_C_MAP_INFO : IMessagePackObject
     {
         [Key("object_list")]
-        public List<GameObjectInfo> object_list;
+        public List<GameObjectInfo> object_list { get; set; }
 
-        [Key("delete_object_list")]
-        public List<string> delete_object_list;
+        [Key("is_ended")]
+        public bool is_ended { get; set; }
+    }
+
+    [MessagePackObject]
+    public class S_TO_C_MAP_UPDATE : IMessagePackObject
+    {
+        [Key("object_list")]
+        public List<GameObjectInfo> object_list { get; set; }
     }
 
     [MessagePackObject]

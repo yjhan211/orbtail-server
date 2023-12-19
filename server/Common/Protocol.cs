@@ -18,6 +18,7 @@ namespace game_server
         C_TO_S_MOVE,
         S_TO_C_MOVE_LIST,
         S_TO_C_MAP_INFO,
+        S_TO_C_MAP_UPDATE,
         S_TO_C_OUT_BOUND_INFO,
         S_TO_C_BOUND_TILE_INFO,
         C_TO_S_PLAYER_INFO,
@@ -39,6 +40,7 @@ namespace game_server
 
     public enum DirectionType : byte
     {
+        NONE,
         TOP_LEFT,
         TOP_RIGHT,
         BOTTOM_LEFT,
