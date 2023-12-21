@@ -11,7 +11,7 @@ namespace game_server
     public class GameUser : IPeer
     {
         public UserToken token { get; private set; }
-        public object player_info_lock { get; private set; }
+        public SemaphoreSlim player_lock;
         public PlayerInfo? player_info { get; set; }
         public CancellationTokenSource cts;
         public ConcurrentQueue<GameObjectInfo> move_queue;
@@ -28,7 +28,7 @@ namespace game_server
             this.token.is_released = false;
             this.token.SetPeer(this);
 
-            this.player_info_lock = new();
+            this.player_lock = new(1);
             this.cts = new();
 
             this.move_queue = new();
@@ -51,6 +51,8 @@ namespace game_server
             this.move_queue.Enqueue(info);
         }
 
+        // player_lock
+
         async Task RecvWorldInfo()
         {
             while (!cts.Token.IsCancellationRequested)
@@ -62,14 +64,14 @@ namespace game_server
                         continue;
                     }
 
-                    List<string> bound_cell_list;
-                    lock (this.player_info_lock)
-                    {
-                        bound_cell_list = MapController
-                            .GetBoundCellList(player_info.object_info.current_cell)
-                            .Select((cell) => GetPositionKey(player_info.object_info.map_id, cell))
-                            .ToList();
-                    }
+                    await this.player_lock.WaitAsync();
+                    Cell current_cell = Cell.Clone(player_info.object_info.current_cell);
+                    this.player_lock.Release();
+
+                    List<string> bound_cell_list = bound_cell_list = MapController
+                        .GetBoundCellList(current_cell)
+                        .Select((cell) => GetPositionKey(player_info.object_info.map_id, cell))
+                        .ToList();
 
                     var game_object_keys = await CacheHelper.ListRange(bound_cell_list);
                     var game_object_list = await GameObjectInfo.LoadAll(game_object_keys);
@@ -81,8 +83,6 @@ namespace game_server
 
                         Packet packet = PacketMaker.MakeMapInfoPacket(batch, is_ended);
                         this.Send(packet);
-
-                        await Task.Delay(100);
                     }
 
                     await Task.Delay(1000);
@@ -90,6 +90,7 @@ namespace game_server
                 catch (Exception e)
                 {
                     Console.WriteLine($"{e.StackTrace} || {e.Message}");
+                    this.player_lock.Release();
                     await this.OnRemoved();
                 }
             }
@@ -115,16 +116,15 @@ namespace game_server
                         continue;
                     }
 
-                    List<GameObjectInfo> game_object_list = new();
-
                     // move_queue에 데이터가 없을 때까지 기다리고 비동기적으로 처리
                     while (!this.move_queue.Any())
                     {
-                        await Task.Delay(200); // 200ms 대기
+                        await Task.Delay(100); // 200ms 대기
                     }
 
+                    List<GameObjectInfo> game_object_list = new();
                     // move_queue에 데이터가 있을 때 리스트에 추가
-                    while (this.move_queue.TryPeek(out var object_info))
+                    while (this.move_queue.TryDequeue(out var object_info))
                     {
                         if (game_object_list.Count >= Config.BROADCAST_UNIT)
                         {
@@ -132,17 +132,10 @@ namespace game_server
                         }
 
                         game_object_list.Add(object_info);
-                        this.move_queue.TryDequeue(out var _);
                     }
 
-                    // game_object_list에 있는 모든 아이템을 패킷으로 만들어 전송
-                    if (game_object_list.Any())
-                    {
-                        Packet packet = PacketMaker.MakeMapUpdatePacket(game_object_list);
-                        this.Send(packet);
-
-                        await Task.Delay(10);
-                    }
+                    Packet packet = PacketMaker.MakeMapUpdatePacket(game_object_list);
+                    this.Send(packet);
                 }
                 catch (Exception e)
                 {
@@ -214,10 +207,18 @@ namespace game_server
 
         public async Task ProcessUserOperation(Packet packet)
         {
+            bool is_lock = false;
+
             try
             {
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 byte[] body = packet.PopBody();
+
+                if (protocol_id == PROTOCOL.HEART_BEAT)
+                {
+                    is_lock = true;
+                    await this.player_lock.WaitAsync();
+                }
 
                 switch (protocol_id)
                 {
@@ -246,6 +247,13 @@ namespace game_server
             {
                 Console.WriteLine($"{e.Message}, {e.StackTrace}");
             }
+            finally
+            {
+                if (is_lock)
+                {
+                    this.player_lock.Release();
+                }
+            }
         }
 
         async Task HeartBeat()
@@ -256,11 +264,7 @@ namespace game_server
 
         async Task Login(C_TO_S_LOGIN request)
         {
-            var player_info = await Program.game_server.LoginUserAsync(this);
-            lock (this.player_info_lock)
-            {
-                this.player_info = player_info;
-            }
+            this.player_info = await Program.game_server.LoginUserAsync(this);
         }
 
         async Task Move(C_TO_S_MOVE request)

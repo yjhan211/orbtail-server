@@ -17,7 +17,7 @@ namespace game_server
             Console.WriteLine("LockHelper initialize success");
         }
 
-        public static IDisposable AcquireLock(
+        public static async Task<IDisposable> AcquireLock(
             string lockKey,
             int retryCount = 3,
             TimeSpan expiryTime = default,
@@ -34,7 +34,7 @@ namespace game_server
                     retryDelay
                 );
 
-                disposer.AcquireLock(); // 동기적으로 락을 획득합니다.
+                await disposer.AcquireLockAsync(); // 동기적으로 락을 획득합니다.
                 return disposer;
             }
             catch (Exception e)
@@ -67,10 +67,10 @@ namespace game_server
             this._redlock_factory = redLockFactory;
 
             // 락을 획득하고 결과를 저장합니다.
-            AcquireLock();
+            AcquireLockAsync().GetAwaiter().GetResult(); // 비동기 호출을 동기적으로 대기하며 실행합니다.
         }
 
-        public void AcquireLock()
+        public async Task AcquireLockAsync()
         {
             if (_redlock_factory == null)
             {
@@ -81,7 +81,7 @@ namespace game_server
 
             do
             {
-                using (var redLock = _redlock_factory.CreateLock(lock_key, expiry_time))
+                using (var redLock = await _redlock_factory.CreateLockAsync(lock_key, expiry_time))
                 {
                     if (redLock.IsAcquired)
                     {
@@ -96,7 +96,7 @@ namespace game_server
 
                         if (retry_delay != default)
                         {
-                            Thread.Sleep(retry_delay);
+                            await Task.Delay(retry_delay);
                         }
                     }
                 }

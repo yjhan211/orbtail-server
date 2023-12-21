@@ -102,7 +102,7 @@ namespace game_server
                 throw new Exception("Already Exist Player");
             }
 
-            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(temp_player_id)))
+            using (await LockHelper.AcquireLock(PlayerInfo.GetLockKey(temp_player_id)))
             { // 플레이어 생성
                 PlayerInfo player_info =
                     new(
@@ -160,10 +160,9 @@ namespace game_server
                 return;
             }
 
-            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_info.player_id)))
-            {
-                await this.map_controller.MovePlayer(user, DirectionType.NONE);
-            }
+            await user.player_lock.WaitAsync();
+            await this.map_controller.MovePlayer(user, DirectionType.NONE);
+            user.player_lock.Release();
         }
 
         public async Task MovePlayer(GameUser user, DirectionType direction_type)
@@ -181,10 +180,7 @@ namespace game_server
                     return;
                 }
 
-                using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_info.player_id)))
-                {
-                    await this.map_controller.MovePlayer(user, direction_type);
-                }
+                await this.map_controller.MovePlayer(user, direction_type);
             }
             catch (Exception e)
             {
@@ -229,7 +225,7 @@ namespace game_server
                 return;
             }
 
-            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_info.player_id)))
+            using (await LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_info.player_id)))
             {
                 await this.map_controller.UnsetPlayer(user.player_info.object_info);
                 // await player_info.Delete();
