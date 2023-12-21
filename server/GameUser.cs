@@ -62,10 +62,14 @@ namespace game_server
                         continue;
                     }
 
-                    List<string> bound_cell_list = MapController
-                        .GetBoundCellList(player_info.object_info.current_cell)
-                        .Select((cell) => GetPositionKey(player_info.object_info.map_id, cell))
-                        .ToList();
+                    List<string> bound_cell_list;
+                    lock (this.player_info_lock)
+                    {
+                        bound_cell_list = MapController
+                            .GetBoundCellList(player_info.object_info.current_cell)
+                            .Select((cell) => GetPositionKey(player_info.object_info.map_id, cell))
+                            .ToList();
+                    }
 
                     var game_object_keys = await CacheHelper.ListRange(bound_cell_list);
                     var game_object_list = await GameObjectInfo.LoadAll(game_object_keys);
