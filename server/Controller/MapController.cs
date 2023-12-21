@@ -1,15 +1,55 @@
 namespace game_server
 {
     using System;
+    using System.Collections.Concurrent;
+    using System.Text.Json;
+    using StackExchange.Redis;
 
     public class MapController
     {
         public const int MAP_ID = 1;
-        const int MAP_SIZE = 15;
+        const int MAP_SIZE = 100;
         const int X_MIN_BOUND = -11;
         const int X_MAX_BOUND = 14;
         const int Y_MIN_BOUND = -5;
         const int Y_MAX_BOUND = -6;
+        ConcurrentDictionary<string, List<GameUser>> move_subscribers;
+        ISubscriber subscriber;
+
+        public MapController()
+        {
+            this.subscriber = Program.redis_connection._connection.GetSubscriber();
+
+            this.move_subscribers = new();
+            for (int x = 0; x < MAP_SIZE; x++)
+            {
+                for (int y = 0; y < MAP_SIZE; y++)
+                {
+                    var position_key = GetPositionKey(new(x, y));
+
+                    this.move_subscribers[position_key] = new();
+
+                    this.subscriber.Subscribe(
+                        new(position_key, RedisChannel.PatternMode.Literal),
+                        HandleMoveMessage
+                    );
+                }
+            }
+        }
+
+        void HandleMoveMessage(RedisChannel channel, RedisValue message)
+        {
+            var object_info = JsonSerializer.Deserialize<GameObjectInfo?>(message.ToString());
+            if (object_info == null)
+            {
+                return;
+            }
+
+            foreach (var subscriber in this.move_subscribers[channel!])
+            {
+                subscriber.HandleMoveMessage(object_info);
+            }
+        }
 
         public string GetMapKey()
         {
@@ -42,22 +82,21 @@ namespace game_server
             );
         }
 
-        public async Task MovePlayer(
-            GameUser user,
-            PlayerInfo player_info,
-            DirectionType directon_type
-        )
+        public async Task MovePlayer(GameUser user, DirectionType directon_type)
         {
+            PlayerInfo player_info = user.player_info!;
+
             // 1. current_cell을 target_cell로 변경
-            await CacheHelper.ListRemove(
-                GetPositionKey(player_info.object_info.current_cell),
-                player_info.object_info.GetHashField()
-            );
+            var last_position_key = GetPositionKey(player_info.object_info.current_cell);
+
+            await CacheHelper.ListRemove(last_position_key, player_info.object_info.GetHashField());
 
             player_info.object_info.current_cell = Cell.Clone(player_info.object_info.target_cell);
 
+            var current_position_key = GetPositionKey(player_info.object_info.current_cell);
+
             await CacheHelper.ListPush(
-                GetPositionKey(player_info.object_info.current_cell),
+                current_position_key,
                 player_info.object_info.GetHashField()
             );
 
@@ -72,14 +111,15 @@ namespace game_server
             await player_info.Save();
 
             // 4. 구독 타일 변경
-            await user.SubScribeMove(this.GetPositionKey(player_info.object_info.current_cell));
+            this.move_subscribers[last_position_key].Remove(user);
+            this.move_subscribers[current_position_key].Add(user);
 
             // 새로운 브로드캐스트 영역
             var broadcast_list = GetBoundCellList(player_info.object_info.current_cell);
 
             foreach (var broadcast_cell in broadcast_list)
             {
-                _ = user.PublishMove(GetPositionKey(broadcast_cell), player_info.object_info);
+                await PublishMove(GetPositionKey(broadcast_cell), player_info.object_info);
             }
         }
 
@@ -177,6 +217,19 @@ namespace game_server
         {
             Random random = new();
             return new(random.Next(0, MAP_SIZE), random.Next(0, MAP_SIZE));
+        }
+
+        public async Task PublishMove(string position_key, GameObjectInfo object_info)
+        {
+            await PublishToChannel(
+                new(position_key, RedisChannel.PatternMode.Literal),
+                JsonSerializer.Serialize(object_info)
+            );
+        }
+
+        async Task PublishToChannel(RedisChannel channel, RedisValue message)
+        {
+            await this.subscriber.PublishAsync(channel, message);
         }
     }
 }

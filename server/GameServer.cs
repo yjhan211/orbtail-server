@@ -89,7 +89,7 @@ namespace game_server
 
         public async Task<PlayerInfo> LoginUserAsync(GameUser user)
         {
-            if (user.player_id > 0)
+            if (user.player_info != null)
             {
                 throw new Exception("Already Has Player id");
             }
@@ -102,9 +102,7 @@ namespace game_server
                 throw new Exception("Already Exist Player");
             }
 
-            user.player_id = temp_player_id;
-
-            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_id)))
+            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(temp_player_id)))
             { // 플레이어 생성
                 PlayerInfo player_info =
                     new(
@@ -115,13 +113,14 @@ namespace game_server
                     );
 
                 player_info.object_info.map_id = MapController.MAP_ID;
+                user.player_info = player_info;
 
                 // 계정 정보 전송
                 Packet login_packet = PacketMaker.MakeLoginPacket(player_info);
                 user.Send(login_packet);
 
                 // 월드에 게임 오브젝트 정보 갱신. 오브젝트 정보는 MovePlayer에서 별도로 보냄
-                await this.map_controller.MovePlayer(user, player_info, DirectionType.TOP_LEFT);
+                await this.map_controller.MovePlayer(user, DirectionType.NONE);
 
                 // TODO 시스템메시지 분리
                 return player_info;
@@ -139,36 +138,31 @@ namespace game_server
 
         public async Task HeartBeat(GameUser user)
         {
-            if (user.player_id <= 0)
-            {
-                return;
-            }
-
-            var player_info = await PlayerInfo.Load(user.player_id);
-            if (player_info == null)
-            {
-                return;
-            }
-
-            await UpdatePosition(user, player_info);
+            await UpdatePosition(user);
         }
 
-        async Task UpdatePosition(GameUser user, PlayerInfo player)
+        async Task UpdatePosition(GameUser user)
         {
-            if (player.object_info.target_cell.Equals(player.object_info.current_cell))
+            if (user.player_info == null)
             {
                 return;
             }
 
-            if (player.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+            GameObjectInfo object_info = user.player_info.object_info;
+            if (object_info.target_cell.Equals(object_info.current_cell))
             {
                 return;
             }
 
-            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_id)))
+            // 아직 이동이 완료되지 않음
+            if (object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
             {
-                // 이동이 완료되었으면 포지션 업데이트
-                await this.map_controller.MovePlayer(user, player, DirectionType.NONE);
+                return;
+            }
+
+            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_info.player_id)))
+            {
+                await this.map_controller.MovePlayer(user, DirectionType.NONE);
             }
         }
 
@@ -176,26 +170,20 @@ namespace game_server
         {
             try
             {
-                if (user.player_id <= 0)
+                if (user.player_info == null)
                 {
                     return;
                 }
 
-                PlayerInfo? player_info = await PlayerInfo.Load(user.player_id);
-                if (player_info == null)
+                // 아직 이동이 완료되지 않음
+                if (user.player_info.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
                 {
                     return;
                 }
 
-                // 아직 기존 이동이 완료되지 않았음. 무시
-                if (player_info.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_info.player_id)))
                 {
-                    return;
-                }
-
-                using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_id)))
-                {
-                    await this.map_controller.MovePlayer(user, player_info, direction_type);
+                    await this.map_controller.MovePlayer(user, direction_type);
                 }
             }
             catch (Exception e)
@@ -206,13 +194,7 @@ namespace game_server
 
         public async Task GetPlayerInfo(GameUser user, List<long> target_player_id_list)
         {
-            if (user.player_id <= 0)
-            {
-                return;
-            }
-
-            PlayerInfo? player_info = await PlayerInfo.Load(user.player_id);
-            if (player_info == null)
+            if (user.player_info == null)
             {
                 return;
             }
@@ -242,20 +224,14 @@ namespace game_server
 
         public async Task LeavePlayer(GameUser user)
         {
-            if (user.player_id <= 0)
+            if (user.player_info == null)
             {
                 return;
             }
 
-            PlayerInfo? player_info = await PlayerInfo.Load(user.player_id);
-            if (player_info == null)
+            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_info.player_id)))
             {
-                return;
-            }
-
-            using (LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_id)))
-            {
-                await this.map_controller.UnsetPlayer(player_info.object_info);
+                await this.map_controller.UnsetPlayer(user.player_info.object_info);
                 // await player_info.Delete();
 
                 // TODO 시스템메시지 분리
