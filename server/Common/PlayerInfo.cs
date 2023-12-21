@@ -1,6 +1,5 @@
 namespace game_server
 {
-    using System.Text.Json.Serialization;
     using MessagePack;
 
     [MessagePackObject]
@@ -8,13 +7,11 @@ namespace game_server
     {
         // 원래는 PlayerInfo가 GameObjectInfo를 상속받는 형식을 의도했으나
         // MessagePackObject 역직렬화 과정에 문제가 있어서 이렇게 됨
-        [JsonIgnore]
         [IgnoreMember]
         public GameObjectInfo object_info { get; set; }
 
         /*-----------------------------------------------------------------*/
 
-        [JsonIgnore]
         [IgnoreMember]
         public const string HASH_KEY = "player_info";
 

@@ -1,8 +1,7 @@
 namespace game_server
 {
-    using network;
-    using System.Text.Json;
     using StackExchange.Redis;
+    using MessagePack;
 
     public partial class PlayerInfo
     {
@@ -26,13 +25,17 @@ namespace game_server
         public async Task Save()
         {
             await this.object_info.Save();
-            await CacheHelper.HashSet(HASH_KEY, this.player_id, JsonSerializer.Serialize(this));
+            await CacheHelper.HashSet(
+                HASH_KEY,
+                this.player_id,
+                MessagePackSerializer.Serialize(this)
+            );
         }
 
         public void Save(Transaction transaction)
         {
             this.object_info.Save(transaction);
-            transaction.HashSet(HASH_KEY, this.player_id, JsonSerializer.Serialize(this));
+            transaction.HashSet(HASH_KEY, this.player_id, MessagePackSerializer.Serialize(this));
         }
 
         public async static Task<PlayerInfo?> Load(long player_id)
@@ -46,7 +49,7 @@ namespace game_server
                     return null;
                 }
 
-                var player_info = JsonSerializer.Deserialize<PlayerInfo>(serialized.ToString());
+                var player_info = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
                 if (player_info == null)
                 {
                     return null;

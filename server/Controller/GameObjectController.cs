@@ -2,7 +2,6 @@ namespace game_server
 {
     using MessagePack;
     using StackExchange.Redis;
-    using System.Text.Json;
 
     public partial class GameObjectInfo
     {
@@ -31,13 +30,17 @@ namespace game_server
             await CacheHelper.HashSet(
                 HASH_KEY,
                 this.GetHashField(),
-                JsonSerializer.Serialize(this)
+                MessagePackSerializer.Serialize(this)
             );
         }
 
         public void Save(Transaction transaction)
         {
-            transaction.HashSet(HASH_KEY, this.GetHashField(), JsonSerializer.Serialize(this));
+            transaction.HashSet(
+                HASH_KEY,
+                this.GetHashField(),
+                MessagePackSerializer.Serialize(this)
+            );
         }
 
         public static async Task<GameObjectInfo?> Load(ObjectType type, long object_id)
@@ -54,8 +57,8 @@ namespace game_server
                     return null;
                 }
 
-                var object_info = JsonSerializer.Deserialize<GameObjectInfo?>(
-                    serialized_data.ToString()
+                var object_info = MessagePackSerializer.Deserialize<GameObjectInfo?>(
+                    serialized_data
                 );
 
                 return object_info;
@@ -77,16 +80,18 @@ namespace game_server
                     return new();
                 }
 
-                List<string> hash_strings = hash_entries
+                List<RedisValue> hash_strings = hash_entries
                     .Where(entry => entry != RedisValue.Null)
-                    .Select(entry => entry.ToString())
+                    .Select(entry => entry)
                     .ToList();
 
                 List<GameObjectInfo> result = new();
 
                 foreach (var hash_string in hash_strings)
                 {
-                    var game_object_info = JsonSerializer.Deserialize<GameObjectInfo>(hash_string);
+                    var game_object_info = MessagePackSerializer.Deserialize<GameObjectInfo>(
+                        hash_string
+                    );
                     if (game_object_info == null)
                     {
                         continue;

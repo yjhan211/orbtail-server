@@ -2,53 +2,77 @@ namespace game_server
 {
     using System;
     using System.Collections.Concurrent;
-    using System.Text.Json;
+    using MessagePack;
     using StackExchange.Redis;
 
     public class MapController
     {
         public const int MAP_ID = 1;
-        const int MAP_SIZE = 100;
+        const int MAP_SIZE = 10;
         const int X_MIN_BOUND = -11;
         const int X_MAX_BOUND = 14;
         const int Y_MIN_BOUND = -5;
         const int Y_MAX_BOUND = -6;
-        ConcurrentDictionary<string, List<GameUser>> move_subscribers;
-        ISubscriber subscriber;
+        object move_subscribers_lock;
+        ConcurrentDictionary<string, ISubscriber> publishers;
+        ConcurrentDictionary<string, ISubscriber> subscribers;
+        ConcurrentDictionary<string, List<GameUser>> move_subscribe_users;
 
         public MapController()
         {
-            this.subscriber = Program.redis_connection._connection.GetSubscriber();
+            this.move_subscribers_lock = new();
 
-            this.move_subscribers = new();
+            this.publishers = new();
+            this.subscribers = new();
+            this.move_subscribe_users = new();
+            var cancellationTokenSource = new CancellationTokenSource();
+
             for (int x = 0; x < MAP_SIZE; x++)
             {
                 for (int y = 0; y < MAP_SIZE; y++)
                 {
-                    var position_key = GetPositionKey(new(x, y));
+                    Cell cell = new(x, y);
+                    var subscriber_key = GetSubscriberKey(cell);
+                    var position_key = GetPositionKey(cell);
 
-                    this.move_subscribers[position_key] = new();
+                    if (!this.subscribers.ContainsKey(subscriber_key))
+                    {
+                        this.publishers[subscriber_key] =
+                            Program.redis_connection._connection.GetSubscriber();
 
-                    this.subscriber.Subscribe(
+                        this.subscribers[subscriber_key] =
+                            Program.redis_connection._connection.GetSubscriber();
+                    }
+                    this.move_subscribe_users[position_key] = new();
+
+                    this.subscribers[subscriber_key].Subscribe(
                         new(position_key, RedisChannel.PatternMode.Literal),
-                        HandleMoveMessage
+                        (channel, message) => HandleMoveMessage(channel, message)
                     );
                 }
             }
         }
 
-        void HandleMoveMessage(RedisChannel channel, RedisValue message)
+        async Task HandleMoveMessage(RedisChannel channel, RedisValue message)
         {
-            var object_info = JsonSerializer.Deserialize<GameObjectInfo?>(message.ToString());
+            var object_info = MessagePackSerializer.Deserialize<GameObjectInfo>(message);
             if (object_info == null)
             {
                 return;
             }
 
-            foreach (var subscriber in this.move_subscribers[channel!])
+            await Task.Run(() =>
             {
-                subscriber.HandleMoveMessage(object_info);
-            }
+                foreach (var subscriber in this.move_subscribe_users[channel!])
+                {
+                    subscriber.move_queue.Enqueue(object_info);
+                }
+            });
+        }
+
+        public string GetSubscriberKey(Cell cell)
+        {
+            return $"subscriber_{GetMapKey()}_{(cell.x + cell.y) % 10}";
         }
 
         public string GetMapKey()
@@ -108,18 +132,21 @@ namespace game_server
             );
 
             // 3. 변경사항 저장
-            await player_info.Save();
+            await player_info.object_info.Save();
 
             // 4. 구독 타일 변경
-            this.move_subscribers[last_position_key].Remove(user);
-            this.move_subscribers[current_position_key].Add(user);
+            lock (this.move_subscribers_lock)
+            {
+                this.move_subscribe_users[last_position_key].Remove(user);
+                this.move_subscribe_users[current_position_key].Add(user);
+            }
 
             // 새로운 브로드캐스트 영역
             var broadcast_list = GetBoundCellList(player_info.object_info.current_cell);
 
             foreach (var broadcast_cell in broadcast_list)
             {
-                await PublishMove(GetPositionKey(broadcast_cell), player_info.object_info);
+                _ = PublishMove(GetPositionKey(broadcast_cell), player_info.object_info);
             }
         }
 
@@ -223,13 +250,14 @@ namespace game_server
         {
             await PublishToChannel(
                 new(position_key, RedisChannel.PatternMode.Literal),
-                JsonSerializer.Serialize(object_info)
+                MessagePackSerializer.Serialize(object_info),
+                GetSubscriberKey(object_info.current_cell)
             );
         }
 
-        async Task PublishToChannel(RedisChannel channel, RedisValue message)
+        async Task PublishToChannel(RedisChannel channel, RedisValue message, string publisher_key)
         {
-            await this.subscriber.PublishAsync(channel, message);
+            await this.publishers[publisher_key].PublishAsync(channel, message);
         }
     }
 }

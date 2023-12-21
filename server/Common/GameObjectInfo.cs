@@ -1,12 +1,10 @@
 namespace game_server
 {
-    using System.Text.Json.Serialization;
     using MessagePack;
 
     [MessagePackObject]
     public partial class GameObjectInfo : IMessagePackObject
     {
-        [JsonIgnore]
         [IgnoreMember]
         const string HASH_KEY = "game_object_info";
 

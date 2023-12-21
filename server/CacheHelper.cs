@@ -24,7 +24,7 @@ namespace game_server
             return new Transaction(conn._database.CreateTransaction());
         }
 
-        public static async Task HashSet(string key, string field, string value)
+        public static async Task HashSet(string key, string field, byte[] value)
         {
             try
             {
@@ -41,7 +41,7 @@ namespace game_server
             }
         }
 
-        public static async Task HashSet(string key, long field, string value)
+        public static async Task HashSet(string key, long field, byte[] value)
         {
             try
             {
@@ -255,7 +255,7 @@ namespace game_server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"HashDelete Fail. err: {e.Message}");
+                Console.WriteLine($"ListPush Fail. err: {e.Message}");
             }
         }
 
@@ -272,7 +272,7 @@ namespace game_server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"HashDelete Fail. err: {e.Message}");
+                Console.WriteLine($"ListRemove Fail. err: {e.Message}");
             }
         }
 
@@ -304,12 +304,12 @@ namespace game_server
             this.transaction = transaction;
         }
 
-        public void HashSet(string key, string field, string value)
+        public void HashSet(string key, string field, byte[] value)
         {
             transaction.HashSetAsync(key, field, value);
         }
 
-        public void HashSet(string key, long field, string value)
+        public void HashSet(string key, long field, byte[] value)
         {
             transaction.HashSetAsync(key, field, value);
         }

@@ -4,8 +4,6 @@ namespace game_server
 {
     using network;
     using MessagePack;
-    using StackExchange.Redis;
-    using System.Text.Json;
     using System.Collections.Concurrent;
 
     public class GameUser : IPeer
@@ -45,13 +43,6 @@ namespace game_server
         {
             return $"map_{map_id}|{cell.x},{cell.y}";
         }
-
-        public void HandleMoveMessage(GameObjectInfo info)
-        {
-            this.move_queue.Enqueue(info);
-        }
-
-        // player_lock
 
         async Task RecvWorldInfo()
         {
@@ -265,6 +256,7 @@ namespace game_server
         async Task Login(C_TO_S_LOGIN request)
         {
             this.player_info = await Program.game_server.LoginUserAsync(this);
+            await Program.game_server.MovePlayer(this, DirectionType.NONE);
         }
 
         async Task Move(C_TO_S_MOVE request)
