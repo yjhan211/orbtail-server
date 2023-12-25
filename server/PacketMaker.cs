@@ -16,10 +16,10 @@ namespace game_server
             return packet;
         }
 
-        public static Packet MakeMapInfoPacket(List<GameObjectInfo> object_list, bool is_ended)
+        public static Packet MakeMapInfoPacket(List<string> object_key_list, bool is_ended)
         {
             Packet packet = Packet.Create((int)PROTOCOL.S_TO_C_MAP_INFO);
-            S_TO_C_MAP_INFO body = new() { object_list = object_list, is_ended = is_ended };
+            S_TO_C_MAP_INFO body = new() { object_key_list = object_key_list, is_ended = is_ended };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -53,7 +53,7 @@ namespace game_server
             return packet;
         }
 
-        public static Packet MakeBoundTilePacket(List<BoundTile> tile_list)
+        public static Packet MakeBoundTilePacket(List<Cell> tile_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.S_TO_C_BOUND_TILE_INFO);
             S_TO_C_BOUND_TILE_INFO body = new() { tile_list = tile_list };

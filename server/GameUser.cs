@@ -5,6 +5,7 @@ namespace game_server
     using network;
     using MessagePack;
     using System.Collections.Concurrent;
+    using StackExchange.Redis;
 
     public class GameUser : IPeer
     {
@@ -16,8 +17,8 @@ namespace game_server
         public ConcurrentQueue<List<PlayerInfo>> player_info_list_queue;
         public string? move_channel;
         Task? world_info_task;
-        Task world_update_task;
-        Task game_object_info_task;
+        Task? world_update_task;
+        Task? game_object_info_task;
 
         public GameUser(UserToken token)
         {
@@ -33,10 +34,6 @@ namespace game_server
             this.player_info_list_queue = new();
 
             this.move_channel = default;
-
-            // this.world_info_task = Task.Run(RecvWorldInfo, cts.Token);
-            this.world_update_task = Task.Run(RecvSubscribed, cts.Token);
-            this.game_object_info_task = Task.Run(RecvGameObjectInfo, cts.Token);
         }
 
         string GetPositionKey(int map_id, Cell cell)
@@ -64,15 +61,22 @@ namespace game_server
                         .Select((cell) => GetPositionKey(player_info.object_info.map_id, cell))
                         .ToList();
 
-                    var game_object_keys = await CacheHelper.ListRange(bound_cell_list);
-                    var game_object_list = await GameObjectInfo.LoadAll(game_object_keys);
-
-                    for (int i = 0; i < game_object_list.Count; i += Config.BROADCAST_UNIT)
+                    RedisValue[] game_object_keys = await CacheHelper.ListRange(bound_cell_list);
+                    for (int i = 0; i < game_object_keys.Length; i += Config.BROADCAST_UNIT)
                     {
-                        var batch = game_object_list.Skip(i).Take(Config.BROADCAST_UNIT).ToList();
-                        var is_ended = (i + Config.BROADCAST_UNIT) >= game_object_list.Count;
+                        RedisValue[] batch = game_object_keys
+                            .Skip(i)
+                            .Take(Config.BROADCAST_UNIT)
+                            .ToArray();
 
-                        Packet packet = PacketMaker.MakeMapInfoPacket(batch, is_ended);
+                        var remain = game_object_keys.Length - i - Config.BROADCAST_UNIT;
+                        var is_ended = remain <= 0;
+
+                        Packet packet = PacketMaker.MakeMapInfoPacket(
+                            batch.Select((item) => item.ToString()).ToList(),
+                            is_ended
+                        );
+
                         this.Send(packet);
                     }
 
@@ -81,14 +85,13 @@ namespace game_server
                 catch (Exception e)
                 {
                     Console.WriteLine($"{e.StackTrace} || {e.Message}");
-                    this.player_lock.Release();
                     await this.OnRemoved();
                 }
             }
 
             try
             {
-                // this.world_info_task.Wait();
+                this.world_info_task!.Wait();
             }
             catch (AggregateException e)
             {
@@ -137,7 +140,7 @@ namespace game_server
 
             try
             {
-                this.world_update_task.Wait();
+                this.world_update_task!.Wait();
             }
             catch (AggregateException e)
             {
@@ -173,7 +176,7 @@ namespace game_server
 
             try
             {
-                this.game_object_info_task.Wait();
+                this.game_object_info_task!.Wait();
             }
             catch (AggregateException e)
             {
@@ -205,7 +208,7 @@ namespace game_server
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 byte[] body = packet.PopBody();
 
-                if (protocol_id == PROTOCOL.HEART_BEAT)
+                if (protocol_id != PROTOCOL.HEART_BEAT)
                 {
                     is_lock = true;
                     await this.player_lock.WaitAsync();
@@ -232,6 +235,10 @@ namespace game_server
                     case PROTOCOL.C_TO_S_PLAYER_INFO:
                         await HandleMessage<C_TO_S_PLAYER_INFO>(body, GetPlayerInfo);
                         break;
+
+                    case PROTOCOL.C_TO_S_OBJECT_INFO:
+                        await HandleMessage<C_TO_S_OBJECT_INFO>(body, GetObjectInfo);
+                        break;
                 }
             }
             catch (Exception e)
@@ -257,6 +264,10 @@ namespace game_server
         {
             this.player_info = await Program.game_server.LoginUserAsync(this);
             await Program.game_server.MovePlayer(this, DirectionType.NONE);
+
+            this.world_info_task = Task.Run(RecvWorldInfo, cts.Token);
+            this.world_update_task = Task.Run(RecvSubscribed, cts.Token);
+            this.game_object_info_task = Task.Run(RecvGameObjectInfo, cts.Token);
         }
 
         async Task Move(C_TO_S_MOVE request)
@@ -267,6 +278,11 @@ namespace game_server
         async Task GetPlayerInfo(C_TO_S_PLAYER_INFO request)
         {
             await Program.game_server.GetPlayerInfo(this, request.player_id_list);
+        }
+
+        async Task GetObjectInfo(C_TO_S_OBJECT_INFO request)
+        {
+            await Program.game_server.GetObjectInfo(this, request.object_key_list);
         }
 
         public void Send(Packet msg)

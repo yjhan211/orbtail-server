@@ -51,8 +51,8 @@ namespace game_server
     [MessagePackObject]
     public class S_TO_C_MAP_INFO : IMessagePackObject
     {
-        [Key("object_list")]
-        public List<GameObjectInfo> object_list { get; set; }
+        [Key("object_key_list")]
+        public List<string> object_key_list { get; set; }
 
         [Key("is_ended")]
         public bool is_ended { get; set; }
@@ -80,6 +80,20 @@ namespace game_server
     }
 
     [MessagePackObject]
+    public class C_TO_S_OBJECT_INFO : IMessagePackObject
+    {
+        [Key("object_key_list")]
+        public List<string> object_key_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class S_TO_C_OBJECT_INFO : IMessagePackObject
+    {
+        [Key("object_info_list")]
+        public List<GameObjectInfo> object_info_list { get; set; }
+    }
+
+    [MessagePackObject]
     public class MapTile : IMessagePackObject
     {
         public MapTile(TileType tile_type)
@@ -92,25 +106,9 @@ namespace game_server
     }
 
     [MessagePackObject]
-    public class BoundTile : IMessagePackObject
-    {
-        public BoundTile(byte x, byte y)
-        {
-            this.x = x;
-            this.y = y;
-        }
-
-        [Key("x")]
-        public byte x { get; set; }
-
-        [Key("y")]
-        public byte y { get; set; }
-    }
-
-    [MessagePackObject]
     public class S_TO_C_BOUND_TILE_INFO : IMessagePackObject
     {
         [Key("tile_list")]
-        public List<BoundTile> tile_list { get; set; }
+        public List<Cell> tile_list { get; set; }
     }
 }

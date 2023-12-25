@@ -3,16 +3,13 @@ namespace game_server
     using System;
     using System.Collections.Concurrent;
     using MessagePack;
+    using network;
     using StackExchange.Redis;
 
     public class MapController
     {
         public const int MAP_ID = 1;
-        const int MAP_SIZE = 10;
-        const int X_MIN_BOUND = -11;
-        const int X_MAX_BOUND = 14;
-        const int Y_MIN_BOUND = -5;
-        const int Y_MAX_BOUND = -6;
+        const int MAP_SIZE = 30;
         object move_subscribers_lock;
         ConcurrentDictionary<string, ISubscriber> publishers;
         ConcurrentDictionary<string, ISubscriber> subscribers;
@@ -196,31 +193,65 @@ namespace game_server
         {
             List<Cell> result = new();
 
-            int min_x = pivot_cell.x + X_MIN_BOUND;
-            int max_x = pivot_cell.x + X_MAX_BOUND;
-            int min_y = pivot_cell.y + Y_MIN_BOUND;
-            int max_y = pivot_cell.y + Y_MAX_BOUND;
+            int min_x = pivot_cell.x - 13;
+            int max_x = pivot_cell.x + 14;
+
+            int min_y = pivot_cell.y - 7;
+            int max_y = pivot_cell.y - 9;
 
             int line = 0;
+
+            // 어떻게 이런 코드가
             for (int x = min_x; x <= max_x; x++)
             {
                 line += 1;
 
-                if (line <= 6)
+                if (line <= 1)
                 {
                     min_y -= 1;
+                    max_y += 2;
                 }
-                else if (7 < line)
+                else if (line <= 4)
                 {
-                    min_y += 1;
+                    min_y -= 1;
+                    max_y += 1;
                 }
-
-                if (line <= 20)
+                else if (line == 5)
+                {
+                    min_y -= 1;
+                    max_y += 1;
+                }
+                else if (line == 6)
+                {
+                    min_y -= 1;
+                    max_y += 1;
+                }
+                else if (line == 7)
                 {
                     max_y += 1;
                 }
-                else if (21 < line)
+                else if (line == 8)
                 {
+                    min_y += 1;
+                    max_y += 1;
+                }
+                else if (line == 9)
+                {
+                    min_y += 1;
+                    max_y += 1;
+                }
+                else if (line <= 22)
+                {
+                    min_y += 1;
+                    max_y += 1;
+                }
+                else if (line == 23)
+                {
+                    min_y += 1;
+                }
+                else
+                {
+                    min_y += 1;
                     max_y -= 1;
                 }
 

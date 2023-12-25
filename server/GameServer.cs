@@ -3,6 +3,7 @@ namespace game_server
     using System;
     using System.Threading.Tasks;
     using network;
+    using StackExchange.Redis;
 
     public partial class GameServer
     {
@@ -212,6 +213,20 @@ namespace game_server
                     .ToList();
 
                 user.player_info_list_queue.Enqueue(chunk);
+            }
+        }
+
+        public async Task GetObjectInfo(GameUser user, List<string> target_object_key_list)
+        {
+            if (user.player_info == null)
+            {
+                return;
+            }
+
+            RedisValue[] request = target_object_key_list.Select(key => (RedisValue)key).ToArray();
+            foreach (var object_info in await GameObjectInfo.LoadAll(request))
+            {
+                user.move_queue.Enqueue(object_info);
             }
         }
 

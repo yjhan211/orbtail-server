@@ -23,6 +23,8 @@ namespace game_server
         S_TO_C_BOUND_TILE_INFO,
         C_TO_S_PLAYER_INFO,
         S_TO_C_PLAYER_INFO,
+        C_TO_S_OBJECT_INFO,
+        S_TO_C_OBJECT_INFO,
         END
     }
 
