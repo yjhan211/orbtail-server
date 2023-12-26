@@ -22,6 +22,12 @@ namespace network
             PacketBufferManager.Push(packet);
         }
 
+        public Packet(byte[] buffer)
+        {
+            this.buffer = buffer;
+            this.position = Config.HEADER_SIZE;
+        }
+
         public Packet(byte[] buffer, IPeer owner)
         {
             this.buffer = buffer;

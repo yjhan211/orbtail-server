@@ -3,15 +3,29 @@
 
 using MessagePack;
 
-namespace game_server
+namespace network
 {
     public interface IMessagePackObject { }
+
+    [MessagePackObject]
+    public class C_TO_S_HEART_BEAT : IMessagePackObject
+    {
+        [Key("player_id")]
+        public long player_id { get; set; }
+    }
 
     [MessagePackObject]
     public class C_TO_S_LOGIN : IMessagePackObject
     {
         [Key("token")]
         public string account_token { get; set; } // (임시) 현재 아무 의미 없음 .. 추후 계정키로 변경 예정
+    }
+
+    [MessagePackObject]
+    public class C_TO_S_LOGOUT : IMessagePackObject
+    {
+        [Key("player_id")]
+        public long player_id { get; set; }
     }
 
     [MessagePackObject]
@@ -27,6 +41,9 @@ namespace game_server
     [MessagePackObject]
     public class C_TO_S_CHAT_MSG : IMessagePackObject
     {
+        [Key("player_id")]
+        public long player_id { get; set; }
+
         [Key("chat_message")]
         public string chat_message { get; set; }
     }
@@ -44,6 +61,9 @@ namespace game_server
     [MessagePackObject]
     public class C_TO_S_MOVE : IMessagePackObject
     {
+        [Key("player_id")]
+        public long player_id { get; set; }
+
         [Key("direction")]
         public DirectionType direction { get; set; }
     }
@@ -68,6 +88,9 @@ namespace game_server
     [MessagePackObject]
     public class C_TO_S_PLAYER_INFO : IMessagePackObject
     {
+        [Key("player_id")]
+        public long player_id { get; set; }
+
         [Key("player_id_list")]
         public List<long> player_id_list { get; set; }
     }
@@ -82,6 +105,9 @@ namespace game_server
     [MessagePackObject]
     public class C_TO_S_OBJECT_INFO : IMessagePackObject
     {
+        [Key("player_id")]
+        public long player_id { get; set; }
+
         [Key("object_key_list")]
         public List<string> object_key_list { get; set; }
     }

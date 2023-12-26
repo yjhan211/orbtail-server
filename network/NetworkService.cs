@@ -3,6 +3,7 @@
 #pragma warning disable CS8600
 #pragma warning disable CS8604
 
+using System.Net;
 using System.Net.Sockets;
 
 namespace network
@@ -45,12 +46,12 @@ namespace network
             }
         }
 
-        public void Listen()
+        public void Listen(IPAddress address, short port)
         {
             this.client_listener = new Listener();
 
             this.client_listener.onNewClient += OnNewClient;
-            this.client_listener.Start();
+            this.client_listener.Start(address, port);
         }
 
         // Connector->OnConnectCompleted()

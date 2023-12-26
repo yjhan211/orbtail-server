@@ -1,23 +1,23 @@
 using RedLockNet.SERedis;
 using RedLockNet.SERedis.Configuration;
 
-namespace game_server
+namespace network
 {
-    public static class LockHelper
+    public class LockHelper
     {
 #pragma warning disable CS8618
-        public static RedLockFactory _redlock_factory;
+        public RedLockFactory _redlock_factory;
 #pragma warning restore
 
-        public static void Initialize(RedisConnection conn)
+        public void Initialize(RedisConnection conn)
         {
             var redisEndpoints = new[] { new RedLockEndPoint(conn._connection.GetEndPoints()[0]) };
-            _redlock_factory = RedLockFactory.Create(redisEndpoints);
+            this._redlock_factory = RedLockFactory.Create(redisEndpoints);
 
             Console.WriteLine("LockHelper initialize success");
         }
 
-        public static async Task<IDisposable> AcquireLock(
+        public async Task<IDisposable> AcquireLock(
             string lockKey,
             int retryCount = 3,
             TimeSpan expiryTime = default,
@@ -27,7 +27,7 @@ namespace game_server
             try
             {
                 var disposer = new LockDisposer(
-                    _redlock_factory,
+                    this._redlock_factory,
                     lockKey,
                     retryCount,
                     expiryTime,
@@ -127,6 +127,7 @@ namespace game_server
                 {
                     if (redLock.IsAcquired)
                     {
+                        redLock.Dispose();
                         // Console.WriteLine($"Lock released for key: {lock_key}");
                         return;
                     }

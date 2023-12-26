@@ -1,4 +1,4 @@
-namespace game_server
+namespace network
 {
     using MessagePack;
 
@@ -26,6 +26,23 @@ namespace game_server
             this.player_id = 0;
             this.name = String.Empty;
             this.object_info = new GameObjectInfo();
+        }
+
+        public PlayerInfo(long player_id, string name, Cell cell)
+        {
+            this.player_id = player_id;
+            this.object_info = new GameObjectInfo(ObjectType.PLAYER, player_id, cell);
+            this.name = name;
+        }
+
+        public string GetLockKey()
+        {
+            return $"player_lock_{this.player_id}";
+        }
+
+        public static string GetLockKey(long player_id)
+        {
+            return $"player_lock_{player_id}";
         }
     }
 }

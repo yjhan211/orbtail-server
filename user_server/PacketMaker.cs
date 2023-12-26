@@ -1,8 +1,7 @@
-using network;
-
-namespace game_server
+namespace user_server
 {
     using MessagePack;
+    using network;
 
     public static class PacketMaker
     {

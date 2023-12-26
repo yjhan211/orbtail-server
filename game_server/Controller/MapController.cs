@@ -9,24 +9,21 @@ namespace game_server
     public class MapController
     {
         public const int MAP_ID = 1;
-        const int MAP_SIZE = 30;
         object move_subscribers_lock;
-        ConcurrentDictionary<string, ISubscriber> publishers;
         ConcurrentDictionary<string, ISubscriber> subscribers;
-        ConcurrentDictionary<string, List<GameUser>> move_subscribe_users;
+        ConcurrentDictionary<string, List<long>> move_subscribe_users;
 
         public MapController()
         {
             this.move_subscribers_lock = new();
 
-            this.publishers = new();
             this.subscribers = new();
             this.move_subscribe_users = new();
             var cancellationTokenSource = new CancellationTokenSource();
 
-            for (int x = 0; x < MAP_SIZE; x++)
+            for (int x = 0; x < MapHelper.MAP_SIZE; x++)
             {
-                for (int y = 0; y < MAP_SIZE; y++)
+                for (int y = 0; y < MapHelper.MAP_SIZE; y++)
                 {
                     Cell cell = new(x, y);
                     var subscriber_key = GetSubscriberKey(cell);
@@ -34,9 +31,6 @@ namespace game_server
 
                     if (!this.subscribers.ContainsKey(subscriber_key))
                     {
-                        this.publishers[subscriber_key] =
-                            Program.redis_connection._connection.GetSubscriber();
-
                         this.subscribers[subscriber_key] =
                             Program.redis_connection._connection.GetSubscriber();
                     }
@@ -60,9 +54,13 @@ namespace game_server
 
             await Task.Run(() =>
             {
-                foreach (var subscriber in this.move_subscribe_users[channel!])
+                foreach (long player_id in this.move_subscribe_users[channel!])
                 {
-                    subscriber.move_queue.Enqueue(object_info);
+                    Program.game_server.publisher.PublishAsync(
+                        new($"object_{player_id}", RedisChannel.PatternMode.Literal),
+                        MessagePackSerializer.Serialize(object_info)
+                    );
+                    // subscriber.move_queue.Enqueue(object_info);
                 }
             });
         }
@@ -89,7 +87,7 @@ namespace game_server
 
         public async Task SetPlayer(GameObjectInfo game_object)
         {
-            await CacheHelper.ListPush(
+            await Program.cache_helper.ListPush(
                 GetPositionKey(game_object.current_cell),
                 game_object.GetHashField()
             );
@@ -97,26 +95,27 @@ namespace game_server
 
         public async Task UnsetPlayer(GameObjectInfo game_object)
         {
-            await CacheHelper.ListRemove(
+            await Program.cache_helper.ListRemove(
                 GetPositionKey(game_object.current_cell),
                 game_object.GetHashField()
             );
         }
 
-        public async Task MovePlayer(GameUser user, DirectionType directon_type)
+        public async Task MovePlayer(PlayerInfo player_info, DirectionType directon_type)
         {
-            PlayerInfo player_info = user.player_info!;
-
             // 1. current_cell을 target_cell로 변경
             var last_position_key = GetPositionKey(player_info.object_info.current_cell);
 
-            await CacheHelper.ListRemove(last_position_key, player_info.object_info.GetHashField());
+            await Program.cache_helper.ListRemove(
+                last_position_key,
+                player_info.object_info.GetHashField()
+            );
 
             player_info.object_info.current_cell = Cell.Clone(player_info.object_info.target_cell);
 
             var current_position_key = GetPositionKey(player_info.object_info.current_cell);
 
-            await CacheHelper.ListPush(
+            await Program.cache_helper.ListPush(
                 current_position_key,
                 player_info.object_info.GetHashField()
             );
@@ -129,17 +128,17 @@ namespace game_server
             );
 
             // 3. 변경사항 저장
-            await player_info.object_info.Save();
+            await GameObjecController.Save(player_info.object_info);
 
             // 4. 구독 타일 변경
             lock (this.move_subscribers_lock)
             {
-                this.move_subscribe_users[last_position_key].Remove(user);
-                this.move_subscribe_users[current_position_key].Add(user);
+                this.move_subscribe_users[last_position_key].Remove(player_info.player_id);
+                this.move_subscribe_users[current_position_key].Add(player_info.player_id);
             }
 
             // 새로운 브로드캐스트 영역
-            var broadcast_list = GetBoundCellList(player_info.object_info.current_cell);
+            var broadcast_list = MapHelper.GetBoundCellList(player_info.object_info.current_cell);
 
             foreach (var broadcast_cell in broadcast_list)
             {
@@ -173,7 +172,7 @@ namespace game_server
 
             player.object_info.move_timestamp = DateTime.UtcNow;
 
-            if (IsOutOfMapRange(cell))
+            if (MapHelper.IsOutOfMapRange(cell))
             {
                 return;
             }
@@ -184,111 +183,12 @@ namespace game_server
             return;
         }
 
-        static bool IsOutOfMapRange(Cell cell)
-        {
-            return cell.x < 0 || cell.x >= MAP_SIZE || cell.y < 0 || cell.y >= MAP_SIZE;
-        }
-
-        public static List<Cell> GetBoundCellList(Cell pivot_cell)
-        {
-            List<Cell> result = new();
-
-            int min_x = pivot_cell.x - 13;
-            int max_x = pivot_cell.x + 14;
-
-            int min_y = pivot_cell.y - 7;
-            int max_y = pivot_cell.y - 9;
-
-            int line = 0;
-
-            // 어떻게 이런 코드가
-            for (int x = min_x; x <= max_x; x++)
-            {
-                line += 1;
-
-                if (line <= 1)
-                {
-                    min_y -= 1;
-                    max_y += 2;
-                }
-                else if (line <= 4)
-                {
-                    min_y -= 1;
-                    max_y += 1;
-                }
-                else if (line == 5)
-                {
-                    min_y -= 1;
-                    max_y += 1;
-                }
-                else if (line == 6)
-                {
-                    min_y -= 1;
-                    max_y += 1;
-                }
-                else if (line == 7)
-                {
-                    max_y += 1;
-                }
-                else if (line == 8)
-                {
-                    min_y += 1;
-                    max_y += 1;
-                }
-                else if (line == 9)
-                {
-                    min_y += 1;
-                    max_y += 1;
-                }
-                else if (line <= 22)
-                {
-                    min_y += 1;
-                    max_y += 1;
-                }
-                else if (line == 23)
-                {
-                    min_y += 1;
-                }
-                else
-                {
-                    min_y += 1;
-                    max_y -= 1;
-                }
-
-                for (int y = min_y; y <= max_y; y++)
-                {
-                    Cell cell = new(x, y);
-
-                    if (IsOutOfMapRange(cell))
-                    {
-                        continue;
-                    }
-
-                    result.Add(cell);
-                }
-            }
-
-            return result;
-        }
-
-        public Cell GetRandomCell()
-        {
-            Random random = new();
-            return new(random.Next(0, MAP_SIZE), random.Next(0, MAP_SIZE));
-        }
-
         public async Task PublishMove(string position_key, GameObjectInfo object_info)
         {
-            await PublishToChannel(
-                new(position_key, RedisChannel.PatternMode.Literal),
-                MessagePackSerializer.Serialize(object_info),
-                GetSubscriberKey(object_info.current_cell)
+            await Program.game_server.PublishToChannel(
+                position_key,
+                MessagePackSerializer.Serialize(object_info)
             );
-        }
-
-        async Task PublishToChannel(RedisChannel channel, RedisValue message, string publisher_key)
-        {
-            await this.publishers[publisher_key].PublishAsync(channel, message);
         }
     }
 }

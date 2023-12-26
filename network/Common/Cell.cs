@@ -1,4 +1,4 @@
-namespace game_server
+namespace network
 {
     using MessagePack;
 

@@ -15,8 +15,9 @@ namespace network
         public static readonly float MOVE_ANIM_ELAPSED_TIME = MOVE_ELAPSED_TIME + 0.4f;
         public static float FILP_LOTATION = 180;
 
-        public static string GAME_SERVER_IP = "0.0.0.0";
-        public static short GAME_SERVER_PORT = 7979;
+        public static string USER_SERVER_IP = "0.0.0.0";
+        public static short USER_SERVER_PORT = 7900;
+        public static short GAME_SERVER_PORT = 8000;
         public static int MAX_CHAT_LINE = 2000;
         public static int INFO_UNIT = BUFFER_SIZE / sizeof(long);
         public static int PACKET_HOLD_COUNT = 10;

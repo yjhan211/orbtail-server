@@ -17,11 +17,11 @@ namespace network
 
         public newClientHandler onNewClient;
 
-        public void Start()
+        public void Start(IPAddress address, short port)
         {
             try
             {
-                IPEndPoint end_point = new(IPAddress.Any, Config.GAME_SERVER_PORT);
+                IPEndPoint end_point = new(address, port);
 
                 this.listen_socket = new Socket(
                     AddressFamily.InterNetwork,
