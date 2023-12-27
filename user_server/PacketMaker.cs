@@ -45,8 +45,7 @@ namespace user_server
         static Packet MakeChatPacket(PlayerInfo player, string chat_message)
         {
             Packet packet = Packet.Create((int)PROTOCOL.S_TO_C_CHAT_MSG_ALL);
-            S_TO_C_CHAT_MSG_ALL body =
-                new() { player_id = player.player_id, chat_message = chat_message };
+            S_TO_C_CHAT_MSG_ALL body = new() { chat_message = chat_message };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

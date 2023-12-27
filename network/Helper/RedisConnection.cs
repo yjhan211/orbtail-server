@@ -190,7 +190,9 @@ namespace network
                 channel,
                 (channel, message) =>
                 {
-                    Console.WriteLine($"Received message on channel '{channel}': {message}");
+                    Console.WriteLine(
+                        $"[network] Received message on channel '{channel}': {message}"
+                    );
                     // 여기에서 메시지 처리 로직을 추가하세요.
                 }
             );

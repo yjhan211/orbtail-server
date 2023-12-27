@@ -27,7 +27,7 @@ namespace game_server
             game_server = new();
             game_server.Start();
 
-            Console.WriteLine("Game Server Start");
+            Console.WriteLine("[GameServer] Game Server Start");
 
             Console.ReadKey();
         }

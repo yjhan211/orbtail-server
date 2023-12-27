@@ -35,7 +35,7 @@ namespace user_server
 
             network_service.Listen(IPAddress.Any, Config.USER_SERVER_PORT);
 
-            Console.WriteLine("User Server Start");
+            Console.WriteLine("[UserServer] User Server Start");
         }
     }
 }

@@ -50,7 +50,7 @@ namespace game_server
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message + e.StackTrace);
+                Console.WriteLine($"[GameServer] {e.Message} {e.StackTrace}");
                 return null;
             }
         }

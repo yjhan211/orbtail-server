@@ -51,7 +51,7 @@ namespace game_server
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                    Console.WriteLine($"[GameServer] {e.Message}, {e.StackTrace}");
                 }
             }
 
@@ -61,45 +61,43 @@ namespace game_server
             }
             catch (AggregateException e)
             {
-                Console.WriteLine($"{e.StackTrace} || {e.Message}");
+                Console.WriteLine($"[GameServer] {e.StackTrace} || {e.Message}");
             }
         }
 
-        async Task HandleMessage<T>(byte[] body, Func<T, Task> handleMessage)
+        async Task HandleMessage<T>(long player_id, byte[] body, Func<long, T, Task> handleMessage)
         {
             T msg = MessagePackSerializer.Deserialize<T>(body);
-            await handleMessage(msg);
+            await handleMessage(player_id, msg);
         }
 
         async Task ProcessReceiveAsync(Packet packet)
         {
             PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
+            long player_id = packet.PopPlayerId();
             byte[] body = packet.PopBody();
 
             switch (protocol_id)
             {
-                case PROTOCOL.HEART_BEAT:
-                    // await HandleMessage<C_TO_S_HEART_BEAT>(body, HeartBeat);
-                    break;
-
                 case PROTOCOL.C_TO_S_MOVE:
-                    await HandleMessage<C_TO_S_MOVE>(body, MovePlayer);
+                    await HandleMessage<C_TO_S_MOVE>(player_id, body, MovePlayer);
                     break;
 
                 case PROTOCOL.C_TO_S_PLAYER_INFO:
-                    await HandleMessage<C_TO_S_PLAYER_INFO>(body, GetPlayerInfo);
+                    await HandleMessage<C_TO_S_PLAYER_INFO>(player_id, body, GetPlayerInfo);
                     break;
 
                 case PROTOCOL.C_TO_S_OBJECT_INFO:
-                    await HandleMessage<C_TO_S_OBJECT_INFO>(body, GetObjectInfo);
+                    await HandleMessage<C_TO_S_OBJECT_INFO>(player_id, body, GetObjectInfo);
                     break;
             }
         }
 
-        public async Task HeartBeat(C_TO_S_HEART_BEAT msg)
-        {
-            await UpdatePosition(msg.player_id);
-        }
+        // TODO updatePosition 다른데로 옮길 것
+        // public async Task HeartBeat(C_TO_S_HEART_BEAT msg)
+        // {
+        //     await UpdatePosition(msg.player_id);
+        // }
 
         async Task UpdatePosition(long player_id)
         {
@@ -126,14 +124,14 @@ namespace game_server
             // user.player_lock.Release();
         }
 
-        public async Task MovePlayer(C_TO_S_MOVE msg)
+        public async Task MovePlayer(long player_id, C_TO_S_MOVE msg)
         {
             try
             {
-                PlayerInfo? player_info = await PlayerController.Load(msg.player_id);
+                Console.WriteLine("move");
+                PlayerInfo? player_info = await PlayerController.Load(player_id);
                 if (player_info == null)
                 {
-                    Console.WriteLine(msg.player_id);
                     return;
                 }
 
@@ -147,13 +145,13 @@ namespace game_server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"{e.StackTrace}, {e.Message}");
+                Console.WriteLine($"[GameServer] {e.StackTrace}, {e.Message}");
             }
         }
 
-        public async Task GetPlayerInfo(C_TO_S_PLAYER_INFO msg)
+        public async Task GetPlayerInfo(long player_id, C_TO_S_PLAYER_INFO msg)
         {
-            PlayerInfo? player_info = await PlayerController.Load(msg.player_id);
+            PlayerInfo? player_info = await PlayerController.Load(player_id);
             if (player_info == null)
             {
                 return;
@@ -185,9 +183,9 @@ namespace game_server
             }
         }
 
-        public async Task GetObjectInfo(C_TO_S_OBJECT_INFO msg)
+        public async Task GetObjectInfo(long player_id, C_TO_S_OBJECT_INFO msg)
         {
-            PlayerInfo? player_info = await PlayerController.Load(msg.player_id);
+            PlayerInfo? player_info = await PlayerController.Load(player_id);
             if (player_info == null)
             {
                 return;
@@ -198,28 +196,29 @@ namespace game_server
             foreach (var object_info in await GameObjecController.LoadAll(request))
             {
                 _ = PublishToChannel(
-                    $"object_{msg.player_id}",
+                    $"object_{player_id}",
                     MessagePackSerializer.Serialize(object_info)
                 );
             }
         }
 
-        public async Task LeavePlayer(C_TO_S_LOGOUT msg)
-        {
-            PlayerInfo? player_info = await PlayerController.Load(msg.player_id);
-            if (player_info == null)
-            {
-                return;
-            }
+        // TODO 접속종료 처리
+        // public async Task LeavePlayer(long player_id, C_TO_S_LOGOUT msg)
+        // {
+        //     PlayerInfo? player_info = await PlayerController.Load(msg.player_id);
+        //     if (player_info == null)
+        //     {
+        //         return;
+        //     }
 
-            // using (await LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_info.player_id)))
-            {
-                await this.map_controller.UnsetPlayer(player_info.object_info);
-                // await player_info.Delete();
+        //     // using (await LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_info.player_id)))
+        //     {
+        //         await this.map_controller.UnsetPlayer(player_info.object_info);
+        //         // await player_info.Delete();
 
-                // TODO 시스템메시지 분리
-            }
-        }
+        //         // TODO 시스템메시지 분리
+        //     }
+        // }
 
         public async Task PublishToChannel(string channel_name, RedisValue message)
         {

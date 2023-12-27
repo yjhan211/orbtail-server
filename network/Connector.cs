@@ -43,7 +43,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
             }
         }
 
@@ -53,7 +53,9 @@ namespace network
             {
                 if (args.SocketError != SocketError.Success)
                 {
-                    Console.WriteLine(string.Format("Failed to connect. {0}", args.SocketError));
+                    Console.WriteLine(
+                        string.Format("[network] Failed to connect. {0}", args.SocketError)
+                    );
                     return;
                 }
 
@@ -63,7 +65,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
             }
         }
     }

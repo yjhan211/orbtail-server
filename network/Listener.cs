@@ -43,7 +43,7 @@ namespace network
             catch (Exception e)
             {
                 // TODO 파일로깅
-                Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
             }
         }
 

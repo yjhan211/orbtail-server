@@ -57,7 +57,7 @@ namespace network
         // Connector->OnConnectCompleted()
         public void OnConnectCompleted(Socket socket, UserToken user_token)
         {
-            Console.WriteLine("connect completed");
+            Console.WriteLine("[network] connect completed");
 
             SocketAsyncEventArgs receive_event_arg = new();
             receive_event_arg.Completed += new EventHandler<SocketAsyncEventArgs>(RecvCompleted);
@@ -74,7 +74,7 @@ namespace network
             user_token.heartbeat_timer = new Timer(
                 (object _) =>
                 {
-                    Packet msg = Packet.Create(0);
+                    Packet msg = Packet.Create((int)PROTOCOL.HEART_BEAT);
                     user_token.Send(msg);
                 },
                 null,
@@ -88,7 +88,7 @@ namespace network
         {
             try
             {
-                Console.WriteLine("on new client");
+                Console.WriteLine("[network] on new client");
                 SocketAsyncEventArgs recv_args = null;
                 SocketAsyncEventArgs send_args = null;
 
@@ -123,7 +123,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
             }
         }
 
@@ -205,7 +205,7 @@ namespace network
             catch (Exception e)
             {
                 // TODO 파일로깅
-                Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
                 this.CloseClientSocket(user_token);
             }
         }

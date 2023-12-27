@@ -8,11 +8,13 @@ namespace network
         public byte[] buffer { get; private set; }
         public int position { get; private set; }
         public int protocol_id { get; private set; }
+        public long player_id { get; private set; }
 
-        public static Packet Create(int protocol_id)
+        public static Packet Create(int protocol_id, long player_id = 0)
         {
             Packet packet = PacketBufferManager.Pop();
             packet.SetProtocolId(protocol_id);
+            packet.SetPlayerId(player_id);
             return packet;
         }
 
@@ -66,6 +68,23 @@ namespace network
         {
             Int32 data = BitConverter.ToInt32(this.buffer, this.position);
             this.position += sizeof(Int32);
+
+            return data;
+        }
+
+        public void SetPlayerId(long player_id)
+        {
+            this.player_id = player_id;
+
+            byte[] temp_buffer = BitConverter.GetBytes(player_id);
+            temp_buffer.CopyTo(this.buffer, this.position);
+            this.position += temp_buffer.Length;
+        }
+
+        public long PopPlayerId()
+        {
+            long data = BitConverter.ToInt64(this.buffer, this.position);
+            this.position += sizeof(Int64);
 
             return data;
         }
