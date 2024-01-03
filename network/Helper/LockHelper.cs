@@ -9,12 +9,10 @@ namespace network
         public RedLockFactory _redlock_factory;
 #pragma warning restore
 
-        public void Initialize(RedisConnection conn)
+        public LockHelper(RedisConnection conn)
         {
             var redisEndpoints = new[] { new RedLockEndPoint(conn._connection.GetEndPoints()[0]) };
             this._redlock_factory = RedLockFactory.Create(redisEndpoints);
-
-            Console.WriteLine("LockHelper initialize success");
         }
 
         public async Task<IDisposable> AcquireLock(

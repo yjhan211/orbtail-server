@@ -2,8 +2,31 @@ namespace network
 {
     using StackExchange.Redis;
     using System.Net.Sockets;
-    using RedLockNet.SERedis;
-    using RedLockNet.SERedis.Configuration;
+
+    public class RedisConnectionPool : IDisposable
+    {
+        private static readonly Lazy<ConnectionMultiplexer> _multiplexer =
+            new Lazy<ConnectionMultiplexer>(() =>
+            {
+                var configurationOptions = ConfigurationOptions.Parse(Config.REDIS_CONFIG);
+                configurationOptions.AbortOnConnectFail = false; // Adjust options as needed
+
+                return ConnectionMultiplexer.Connect(configurationOptions);
+            });
+
+        public static ConnectionMultiplexer GetConnection()
+        {
+            return _multiplexer.Value;
+        }
+
+        public void Dispose()
+        {
+            if (_multiplexer.IsValueCreated)
+            {
+                _multiplexer.Value.Dispose();
+            }
+        }
+    }
 
     public class RedisConnection : IDisposable
     {
@@ -29,19 +52,19 @@ namespace network
         public IDatabase _database;
         private ISubscriber _subscriber;
 
-#pragma warning disable CS8618
-        private RedisConnection(string connectionString)
+        public RedisConnection(ConnectionMultiplexer connection)
         {
-            _connectionString = connectionString;
+            _connection = connection;
         }
-#pragma warning restore
 
-        public static async Task<RedisConnection> InitializeAsync(string connectionString)
+        public static async Task<RedisConnection> InitializeAsync()
         {
-            var redisConnection = new RedisConnection(connectionString);
-            await redisConnection.ForceReconnectAsync(initializing: true);
+            var connection = RedisConnectionPool.GetConnection();
+            var redisConnection = new RedisConnection(connection);
 
+            await redisConnection.ForceReconnectAsync(initializing: true);
             redisConnection._subscriber = redisConnection._connection.GetSubscriber();
+
             return redisConnection;
         }
 
@@ -165,7 +188,7 @@ namespace network
                 Interlocked.Exchange(ref _connection, null);
 #pragma warning restore
                 ConnectionMultiplexer newConnection = await ConnectionMultiplexer.ConnectAsync(
-                    _connectionString
+                    Config.REDIS_CONFIG
                 );
                 Interlocked.Exchange(ref _connection, newConnection);
 

@@ -59,5 +59,14 @@ namespace user_server
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
         }
+
+        public static Packet MakeMovePacket(long player_id)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.C_TO_S_MOVE, player_id);
+            C_TO_S_MOVE body = new() { direction = DirectionType.NONE };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
     }
 }

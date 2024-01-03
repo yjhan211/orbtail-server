@@ -4,14 +4,11 @@ namespace network
 {
     public class CacheHelper
     {
-#pragma warning disable CS8618
         RedisConnection conn;
-#pragma warning restore
 
-        public void Initialize(RedisConnection conn)
+        public CacheHelper(RedisConnection conn)
         {
             this.conn = conn;
-            Console.WriteLine("CacheHelper Initialize success");
         }
 
         public Transaction BeginTransaction()

@@ -6,10 +6,10 @@ namespace game_server
 
     public static class PlayerController
     {
-        public static async Task Save(PlayerInfo player_info)
+        public static async Task Save(CacheHelper cache_helper, PlayerInfo player_info)
         {
-            await GameObjecController.Save(player_info.object_info);
-            await Program.cache_helper.HashSet(
+            await GameObjecController.Save(cache_helper, player_info.object_info);
+            await cache_helper.HashSet(
                 PlayerInfo.HASH_KEY,
                 player_info.player_id,
                 MessagePackSerializer.Serialize(player_info)
@@ -22,11 +22,11 @@ namespace game_server
         //     transaction.HashSet(HASH_KEY, this.player_id, MessagePackSerializer.Serialize(this));
         // }
 
-        public static async Task<PlayerInfo?> Load(long player_id)
+        public static async Task<PlayerInfo?> Load(CacheHelper cache_helper, long player_id)
         {
             try
             {
-                var serialized = await Program.cache_helper.HashGet(PlayerInfo.HASH_KEY, player_id);
+                var serialized = await cache_helper.HashGet(PlayerInfo.HASH_KEY, player_id);
 
                 if (serialized == RedisValue.Null)
                 {
@@ -39,7 +39,12 @@ namespace game_server
                     return null;
                 }
 
-                var object_info = await GameObjecController.Load(ObjectType.PLAYER, player_id);
+                var object_info = await GameObjecController.Load(
+                    cache_helper,
+                    ObjectType.PLAYER,
+                    player_id
+                );
+
                 if (object_info == null)
                 {
                     return null;
@@ -55,10 +60,10 @@ namespace game_server
             }
         }
 
-        public static async Task Delete(PlayerInfo player_info)
+        public static async Task Delete(CacheHelper cache_helper, PlayerInfo player_info)
         {
-            await GameObjecController.Delete(player_info.object_info);
-            await Program.cache_helper.HashDelete(PlayerInfo.HASH_KEY, player_info.player_id);
+            await GameObjecController.Delete(cache_helper, player_info.object_info);
+            await cache_helper.HashDelete(PlayerInfo.HASH_KEY, player_info.player_id);
         }
     }
 }

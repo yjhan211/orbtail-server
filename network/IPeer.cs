@@ -12,7 +12,7 @@ namespace network
 
         Task OnRemoved();
 
-        void Send(Packet msg);
+        void SendToClient(Packet msg);
 
         // Task ProcessUserOperation(Packet msg);
     }

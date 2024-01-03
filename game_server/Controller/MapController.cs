@@ -9,18 +9,22 @@ namespace game_server
     public class MapController
     {
         public const int MAP_ID = 1;
-        object move_subscribers_lock;
+        readonly object map_subscribers_lock;
+        static readonly object map_publisher_lock = new();
+        static ISubscriber? map_publisher;
         ConcurrentDictionary<string, ISubscriber> subscribers;
         ConcurrentDictionary<string, List<long>> move_subscribe_users;
 
         public MapController()
         {
-            this.move_subscribers_lock = new();
+            this.map_subscribers_lock = new();
 
             this.subscribers = new();
             this.move_subscribe_users = new();
-            var cancellationTokenSource = new CancellationTokenSource();
+        }
 
+        public async Task InitializeAsync()
+        {
             for (int x = 0; x < MapHelper.MAP_SIZE; x++)
             {
                 for (int y = 0; y < MapHelper.MAP_SIZE; y++)
@@ -31,16 +35,35 @@ namespace game_server
 
                     if (!this.subscribers.ContainsKey(subscriber_key))
                     {
-                        this.subscribers[subscriber_key] =
-                            Program.redis_connection._connection.GetSubscriber();
+                        var redis_conn = await RedisConnection.InitializeAsync();
+                        this.subscribers[subscriber_key] = redis_conn._connection.GetSubscriber();
                     }
                     this.move_subscribe_users[position_key] = new();
 
+#pragma warning disable CS4014
                     this.subscribers[subscriber_key].Subscribe(
                         new(position_key, RedisChannel.PatternMode.Literal),
                         (channel, message) => HandleMoveMessage(channel, message)
                     );
+#pragma warning restore CS4014
                 }
+            }
+        }
+
+        public static ISubscriber GetMapPublisher()
+        {
+            lock (map_publisher_lock)
+            {
+                if (map_publisher == null)
+                {
+                    var redisConnection = RedisConnection
+                        .InitializeAsync()
+                        .GetAwaiter()
+                        .GetResult();
+                    map_publisher = redisConnection._connection.GetSubscriber();
+                }
+
+                return map_publisher;
             }
         }
 
@@ -52,22 +75,22 @@ namespace game_server
                 return;
             }
 
-            await Task.Run(() =>
+            var redis_conn = await RedisConnection.InitializeAsync();
+            map_publisher = redis_conn._connection.GetSubscriber();
+
+            foreach (long player_id in this.move_subscribe_users[channel!])
             {
-                foreach (long player_id in this.move_subscribe_users[channel!])
-                {
-                    Program.game_server.publisher.PublishAsync(
-                        new($"object_{player_id}", RedisChannel.PatternMode.Literal),
-                        MessagePackSerializer.Serialize(object_info)
-                    );
-                    // subscriber.move_queue.Enqueue(object_info);
-                }
-            });
+                _ = Program.game_server.PublishToChannel(
+                    GetMapPublisher(),
+                    $"object_{player_id}",
+                    MessagePackSerializer.Serialize(object_info)
+                );
+            }
         }
 
         public string GetSubscriberKey(Cell cell)
         {
-            return $"subscriber_{GetMapKey()}_{(cell.x + cell.y) % 10}";
+            return $"subscriber_{GetMapKey()}_{cell.x % 10}";
         }
 
         public string GetMapKey()
@@ -85,28 +108,16 @@ namespace game_server
             return $"{GetMapKey()}|{cell.x},{cell.y}";
         }
 
-        public async Task SetPlayer(GameObjectInfo game_object)
-        {
-            await Program.cache_helper.ListPush(
-                GetPositionKey(game_object.current_cell),
-                game_object.GetHashField()
-            );
-        }
-
-        public async Task UnsetPlayer(GameObjectInfo game_object)
-        {
-            await Program.cache_helper.ListRemove(
-                GetPositionKey(game_object.current_cell),
-                game_object.GetHashField()
-            );
-        }
-
-        public async Task MovePlayer(PlayerInfo player_info, DirectionType directon_type)
+        public async Task MovePlayer(
+            CacheHelper cache_helper,
+            PlayerInfo player_info,
+            DirectionType directon_type
+        )
         {
             // 1. current_cell을 target_cell로 변경
             var last_position_key = GetPositionKey(player_info.object_info.current_cell);
 
-            await Program.cache_helper.ListRemove(
+            await cache_helper.ListRemove(
                 last_position_key,
                 player_info.object_info.GetHashField()
             );
@@ -115,7 +126,7 @@ namespace game_server
 
             var current_position_key = GetPositionKey(player_info.object_info.current_cell);
 
-            await Program.cache_helper.ListPush(
+            await cache_helper.ListPush(
                 current_position_key,
                 player_info.object_info.GetHashField()
             );
@@ -128,10 +139,10 @@ namespace game_server
             );
 
             // 3. 변경사항 저장
-            await GameObjecController.Save(player_info.object_info);
+            await GameObjecController.Save(cache_helper, player_info.object_info);
 
             // 4. 구독 타일 변경
-            lock (this.move_subscribers_lock)
+            lock (this.map_subscribers_lock)
             {
                 this.move_subscribe_users[last_position_key].Remove(player_info.player_id);
                 this.move_subscribe_users[current_position_key].Add(player_info.player_id);
@@ -183,9 +194,10 @@ namespace game_server
             return;
         }
 
-        public async Task PublishMove(string position_key, GameObjectInfo object_info)
+        public static async Task PublishMove(string position_key, GameObjectInfo object_info)
         {
             await Program.game_server.PublishToChannel(
+                GetMapPublisher(),
                 position_key,
                 MessagePackSerializer.Serialize(object_info)
             );

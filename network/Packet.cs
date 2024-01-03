@@ -6,7 +6,7 @@ namespace network
     {
         public IPeer owner { get; private set; }
         public byte[] buffer { get; private set; }
-        public int position { get; private set; }
+        public int position { get; set; }
         public int protocol_id { get; private set; }
         public long player_id { get; private set; }
 
@@ -45,6 +45,7 @@ namespace network
         public void CopyTo(Packet target)
         {
             target.SetProtocolId(this.protocol_id);
+            target.SetPlayerId(this.player_id);
             target.Overwrite(this.buffer, this.position);
         }
 
@@ -54,7 +55,7 @@ namespace network
             this.position = position;
         }
 
-        public void SetProtocolId(Int32 protocol_id)
+        void SetProtocolId(Int32 protocol_id)
         {
             this.protocol_id = protocol_id;
             this.position = Config.HEADER_SIZE;
@@ -72,7 +73,7 @@ namespace network
             return data;
         }
 
-        public void SetPlayerId(long player_id)
+        void SetPlayerId(long player_id)
         {
             this.player_id = player_id;
 
@@ -114,6 +115,13 @@ namespace network
             Int32 body_size = (Int32)(this.position - Config.HEADER_SIZE);
             byte[] header = BitConverter.GetBytes(body_size);
             header.CopyTo(this.buffer, 0);
+        }
+
+        public byte[] ToBytes()
+        {
+            byte[] data = new byte[this.position];
+            Array.Copy(this.buffer, data, this.position);
+            return data;
         }
     }
 }

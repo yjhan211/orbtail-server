@@ -8,7 +8,6 @@ namespace game_server
 
     public class GameServer
     {
-        public ISubscriber publisher;
         readonly SemaphoreSlim operation_lock;
         public CancellationTokenSource cts;
         Task? logic_thread;
@@ -16,14 +15,15 @@ namespace game_server
 
         public GameServer()
         {
-            this.publisher = Program.redis_connection._connection.GetSubscriber();
             this.operation_lock = new(1);
             this.cts = new();
             this.map_controller = new();
         }
 
-        public void Start()
+        public async Task Start()
         {
+            await this.map_controller.InitializeAsync();
+
             this.logic_thread = Task.Run(GameLoop, this.cts.Token);
         }
 
@@ -33,9 +33,11 @@ namespace game_server
             {
                 try
                 {
+                    var redis_connection = await RedisConnection.InitializeAsync();
+                    CacheHelper cache_helper = new(redis_connection);
                     while (true)
                     {
-                        byte[]? message = await Program.cache_helper.Dequeue("packet_queue");
+                        byte[]? message = await cache_helper.Dequeue("packet_queue");
                         if (message == null)
                         {
                             await Task.Delay(10);
@@ -65,10 +67,15 @@ namespace game_server
             }
         }
 
-        async Task HandleMessage<T>(long player_id, byte[] body, Func<long, T, Task> handleMessage)
+        async Task HandleMessage<T>(
+            RedisConnection redis_conn,
+            long player_id,
+            byte[] body,
+            Func<RedisConnection, long, T, Task> handleMessage
+        )
         {
             T msg = MessagePackSerializer.Deserialize<T>(body);
-            await handleMessage(player_id, msg);
+            await handleMessage(redis_conn, player_id, msg);
         }
 
         async Task ProcessReceiveAsync(Packet packet)
@@ -77,19 +84,32 @@ namespace game_server
             long player_id = packet.PopPlayerId();
             byte[] body = packet.PopBody();
 
-            switch (protocol_id)
+            using (var redis_conn = await RedisConnection.InitializeAsync())
             {
-                case PROTOCOL.C_TO_S_MOVE:
-                    await HandleMessage<C_TO_S_MOVE>(player_id, body, MovePlayer);
-                    break;
+                switch (protocol_id)
+                {
+                    case PROTOCOL.C_TO_S_MOVE:
+                        await HandleMessage<C_TO_S_MOVE>(redis_conn, player_id, body, MovePlayer);
+                        break;
 
-                case PROTOCOL.C_TO_S_PLAYER_INFO:
-                    await HandleMessage<C_TO_S_PLAYER_INFO>(player_id, body, GetPlayerInfo);
-                    break;
+                    case PROTOCOL.C_TO_S_PLAYER_INFO:
+                        await HandleMessage<C_TO_S_PLAYER_INFO>(
+                            redis_conn,
+                            player_id,
+                            body,
+                            GetPlayerInfo
+                        );
+                        break;
 
-                case PROTOCOL.C_TO_S_OBJECT_INFO:
-                    await HandleMessage<C_TO_S_OBJECT_INFO>(player_id, body, GetObjectInfo);
-                    break;
+                    case PROTOCOL.C_TO_S_OBJECT_INFO:
+                        await HandleMessage<C_TO_S_OBJECT_INFO>(
+                            redis_conn,
+                            player_id,
+                            body,
+                            GetObjectInfo
+                        );
+                        break;
+                }
             }
         }
 
@@ -99,9 +119,10 @@ namespace game_server
         //     await UpdatePosition(msg.player_id);
         // }
 
-        async Task UpdatePosition(long player_id)
+        async Task UpdatePosition(RedisConnection redis_conn, long player_id)
         {
-            PlayerInfo? player_info = await PlayerController.Load(player_id);
+            CacheHelper cache_helper = new(redis_conn);
+            PlayerInfo? player_info = await PlayerController.Load(cache_helper, player_id);
             if (player_info == null)
             {
                 return;
@@ -120,16 +141,16 @@ namespace game_server
             }
 
             // await user.player_lock.WaitAsync();
-            await this.map_controller.MovePlayer(player_info, DirectionType.NONE);
+            await this.map_controller.MovePlayer(cache_helper, player_info, DirectionType.NONE);
             // user.player_lock.Release();
         }
 
-        public async Task MovePlayer(long player_id, C_TO_S_MOVE msg)
+        public async Task MovePlayer(RedisConnection redis_conn, long player_id, C_TO_S_MOVE msg)
         {
             try
             {
-                Console.WriteLine("move");
-                PlayerInfo? player_info = await PlayerController.Load(player_id);
+                CacheHelper cache_helper = new(redis_conn);
+                PlayerInfo? player_info = await PlayerController.Load(cache_helper, player_id);
                 if (player_info == null)
                 {
                     return;
@@ -141,7 +162,7 @@ namespace game_server
                     return;
                 }
 
-                await this.map_controller.MovePlayer(player_info, msg.direction);
+                await this.map_controller.MovePlayer(cache_helper, player_info, msg.direction);
             }
             catch (Exception e)
             {
@@ -149,9 +170,14 @@ namespace game_server
             }
         }
 
-        public async Task GetPlayerInfo(long player_id, C_TO_S_PLAYER_INFO msg)
+        public async Task GetPlayerInfo(
+            RedisConnection redis_conn,
+            long player_id,
+            C_TO_S_PLAYER_INFO msg
+        )
         {
-            PlayerInfo? player_info = await PlayerController.Load(player_id);
+            CacheHelper cache_helper = new(redis_conn);
+            PlayerInfo? player_info = await PlayerController.Load(cache_helper, player_id);
             if (player_info == null)
             {
                 return;
@@ -160,7 +186,10 @@ namespace game_server
             List<PlayerInfo> player_info_list = new();
             foreach (var target_player_id in msg.player_id_list)
             {
-                PlayerInfo? target_player_info = await PlayerController.Load(target_player_id);
+                PlayerInfo? target_player_info = await PlayerController.Load(
+                    cache_helper,
+                    target_player_id
+                );
                 if (target_player_info == null)
                 {
                     continue;
@@ -169,6 +198,7 @@ namespace game_server
                 player_info_list.Add(target_player_info);
             }
 
+            ISubscriber publisher = redis_conn._connection.GetSubscriber();
             for (int i = 0; i < player_info_list.Count; i += Config.BROADCAST_UNIT)
             {
                 List<PlayerInfo> chunk = player_info_list
@@ -177,25 +207,33 @@ namespace game_server
                     .ToList();
 
                 _ = PublishToChannel(
+                    publisher,
                     $"object_info_{player_info.player_id}",
                     MessagePackSerializer.Serialize(chunk)
                 );
             }
         }
 
-        public async Task GetObjectInfo(long player_id, C_TO_S_OBJECT_INFO msg)
+        public async Task GetObjectInfo(
+            RedisConnection redis_conn,
+            long player_id,
+            C_TO_S_OBJECT_INFO msg
+        )
         {
-            PlayerInfo? player_info = await PlayerController.Load(player_id);
+            CacheHelper cache_helper = new(redis_conn);
+            PlayerInfo? player_info = await PlayerController.Load(cache_helper, player_id);
             if (player_info == null)
             {
                 return;
             }
 
             RedisValue[] request = msg.object_key_list.Select(key => (RedisValue)key).ToArray();
+            ISubscriber publisher = redis_conn._connection.GetSubscriber();
 
-            foreach (var object_info in await GameObjecController.LoadAll(request))
+            foreach (var object_info in await GameObjecController.LoadAll(cache_helper, request))
             {
                 _ = PublishToChannel(
+                    publisher,
                     $"object_{player_id}",
                     MessagePackSerializer.Serialize(object_info)
                 );
@@ -220,10 +258,14 @@ namespace game_server
         //     }
         // }
 
-        public async Task PublishToChannel(string channel_name, RedisValue message)
+        public async Task PublishToChannel(
+            ISubscriber publisher,
+            string channel_name,
+            RedisValue message
+        )
         {
             RedisChannel channel = new(channel_name, RedisChannel.PatternMode.Literal);
-            await this.publisher.PublishAsync(channel, message);
+            await publisher.PublishAsync(channel, message);
         }
     }
 }

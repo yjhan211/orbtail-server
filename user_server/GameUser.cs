@@ -9,28 +9,30 @@ namespace user_server
 
     public class GameUser : IPeer
     {
+        public UserToken token { get; private set; }
+        public long player_id;
+
+        RedisConnection redis_connection;
+        CacheHelper cache_helper;
+        LockHelper lock_helper;
+
         ISubscriber operation_subscriber;
         ISubscriber object_subscriber;
         ISubscriber object_info_subscriber;
-        public UserToken token { get; private set; }
-        public SemaphoreSlim player_lock;
-        public long player_id;
 
-        // public PlayerInfo? player_info { get; set; }
+        Task world_info_task;
+        Task game_object_subscribe_task;
+        Task game_object_info_task;
+
         public CancellationTokenSource cts;
         public ConcurrentQueue<GameObjectInfo> object_info_queue;
         public ConcurrentQueue<List<PlayerInfo>> player_info_list_queue;
-        public string? move_channel;
-        Task? world_info_task;
-        Task? game_object_subscribe_task;
-        Task? game_object_info_task;
 
+        public SemaphoreSlim player_lock;
+
+#pragma warning disable CS8618
         public GameUser(UserToken token)
         {
-            this.operation_subscriber = Program.redis_connection._connection.GetSubscriber();
-            this.object_subscriber = Program.redis_connection._connection.GetSubscriber();
-            this.object_info_subscriber = Program.redis_connection._connection.GetSubscriber();
-
             this.token = token;
             this.token.is_alive = true;
             this.token.is_released = false;
@@ -42,13 +44,33 @@ namespace user_server
             this.object_info_queue = new();
             this.player_info_list_queue = new();
 
-            this.move_channel = default;
-
             this.player_id = 0;
+
+            this.initializeAsync().Wait();
+        }
+#pragma warning restore
+
+        public async Task initializeAsync()
+        {
+            this.redis_connection = await RedisConnection.InitializeAsync();
+
+            this.cache_helper = new(this.redis_connection);
+            this.lock_helper = new(this.redis_connection);
+
+            this.operation_subscriber = this.redis_connection._connection.GetSubscriber();
+            this.object_subscriber = this.redis_connection._connection.GetSubscriber();
+            this.object_info_subscriber = this.redis_connection._connection.GetSubscriber();
 
             this.world_info_task = Task.Run(RecvWorldInfo, cts.Token);
             this.game_object_subscribe_task = Task.Run(SubscribeObjectInfo, cts.Token);
             this.game_object_info_task = Task.Run(RecvObjectInfo, cts.Token);
+        }
+
+        public async Task ReleaseAsync()
+        {
+            await this.operation_subscriber.UnsubscribeAllAsync();
+            await this.object_subscriber.UnsubscribeAllAsync();
+            await this.object_info_subscriber.UnsubscribeAllAsync();
         }
 
         // 일정 주기마다 브로드캐스트 범위 내의 오브젝트를 확인하는 Task
@@ -81,9 +103,7 @@ namespace user_server
                         .Select((cell) => MapHelper.GetPositionKey(object_info.map_id, cell))
                         .ToList();
 
-                    RedisValue[] object_keys = await Program.cache_helper.ListRange(
-                        bound_cell_list
-                    );
+                    RedisValue[] object_keys = await this.cache_helper.ListRange(bound_cell_list);
 
                     var player_key = GameObjectInfo.MakeHashField(
                         ObjectType.PLAYER,
@@ -110,7 +130,7 @@ namespace user_server
                             is_ended
                         );
 
-                        this.Send(packet);
+                        this.SendToClient(packet);
                     }
 
                     await Task.Delay(1000);
@@ -139,21 +159,8 @@ namespace user_server
             {
                 try
                 {
-                    Console.WriteLine("11111");
-                    if (player_id == 0)
-                    {
-                        continue;
-                    }
-
-                    // object_info_queue 데이터가 없을 때까지 기다리고 비동기적으로 처리
-                    while (!this.object_info_queue.Any())
-                    {
-                        await Task.Delay(100);
-                    }
-
                     List<GameObjectInfo> game_object_list = new();
 
-                    // object_info_queue 데이터가 있을 때 리스트에 추가
                     while (this.object_info_queue.TryDequeue(out var object_info))
                     {
                         if (game_object_list.Count >= Config.BROADCAST_UNIT)
@@ -164,8 +171,13 @@ namespace user_server
                         game_object_list.Add(object_info);
                     }
 
-                    Packet packet = PacketMaker.MakeMapUpdatePacket(game_object_list);
-                    this.Send(packet);
+                    if (game_object_list.Count > 0)
+                    {
+                        Packet packet = PacketMaker.MakeMapUpdatePacket(game_object_list);
+                        this.SendToClient(packet);
+                    }
+
+                    await Task.Delay(10);
                 }
                 catch (Exception e)
                 {
@@ -180,7 +192,6 @@ namespace user_server
             }
             catch (AggregateException e)
             {
-                Console.WriteLine("22222");
                 Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
             }
         }
@@ -200,7 +211,7 @@ namespace user_server
                     if (this.player_info_list_queue.TryDequeue(out List<PlayerInfo>? info_list))
                     {
                         Packet player_info_packet = PacketMaker.MakePlayerInfoPacket(info_list);
-                        this.Send(player_info_packet);
+                        this.SendToClient(player_info_packet);
                     }
 
                     await Task.Delay(500);
@@ -257,7 +268,7 @@ namespace user_server
                                 $"Invalid Player ID: {this.player_id}, {player_id}"
                             );
                         }
-                        await Program.cache_helper.Enqueue("packet_queue", clone);
+                        await this.cache_helper.Enqueue("packet_queue", clone);
                         break;
                 }
             }
@@ -329,7 +340,8 @@ namespace user_server
             }
 
             // TODO 로그인용 웹서버
-            long temp_player_id = await Program.cache_helper.StringIncrement("temp_player_id");
+            Console.WriteLine($"cache_helper:{cache_helper}");
+            long temp_player_id = await this.cache_helper.StringIncrement("temp_player_id");
             if (temp_player_id < 0)
             {
                 // TODO 이미 로그인된 유저인지 확인 로직 추가할 것
@@ -337,7 +349,7 @@ namespace user_server
             }
 
             PlayerInfo player_info;
-            using (await Program.lock_helper.AcquireLock(PlayerInfo.GetLockKey(temp_player_id)))
+            using (await this.lock_helper.AcquireLock(PlayerInfo.GetLockKey(temp_player_id)))
             {
                 // 플레이어 생성
                 player_info = new(
@@ -348,13 +360,13 @@ namespace user_server
 
                 player_info.object_info.map_id = 1; // TODO 임시
 
-                await Program.cache_helper.HashSet(
+                await this.cache_helper.HashSet(
                     GameObjectInfo.HASH_KEY,
                     player_info.object_info.GetHashField(),
                     MessagePackSerializer.Serialize(player_info.object_info)
                 );
 
-                await Program.cache_helper.HashSet(
+                await this.cache_helper.HashSet(
                     PlayerInfo.HASH_KEY,
                     player_info.player_id,
                     MessagePackSerializer.Serialize(player_info)
@@ -365,11 +377,14 @@ namespace user_server
 
             // 계정 정보 전송
             Packet login_packet = PacketMaker.MakeLoginPacket(player_info);
-            this.Send(login_packet);
+            SendToClient(login_packet);
 
+            // 게임서버에 유저 정보 전송
+            Packet move_packet = PacketMaker.MakeMovePacket(this.player_id);
+            await SendToGameServer(move_packet);
+
+            // 구독 시작
             await StartSubscribe();
-
-            // await Program.user_server.MovePlayer(this, DirectionType.NONE);
         }
 
         async Task StartSubscribe()
@@ -396,13 +411,6 @@ namespace user_server
             );
         }
 
-        async Task ReleaseSubscribe()
-        {
-            await this.operation_subscriber.UnsubscribeAllAsync();
-            await this.object_subscriber.UnsubscribeAllAsync();
-            await this.object_info_subscriber.UnsubscribeAllAsync();
-        }
-
         async Task Move(long player_id, C_TO_S_MOVE request)
         {
             // await Program.user_server.MovePlayer(this, request.direction);
@@ -418,11 +426,11 @@ namespace user_server
             // await Program.user_server.GetObjectInfo(this, request.object_key_list);
         }
 
-        public static async Task<GameObjectInfo?> LoadGameObject(ObjectType type, long object_id)
+        public async Task<GameObjectInfo?> LoadGameObject(ObjectType type, long object_id)
         {
             try
             {
-                var serialized_data = await Program.cache_helper.HashGet(
+                var serialized_data = await this.cache_helper.HashGet(
                     GameObjectInfo.HASH_KEY,
                     GameObjectInfo.MakeHashField(type, object_id)
                 );
@@ -445,9 +453,15 @@ namespace user_server
             }
         }
 
-        public void Send(Packet msg)
+        public void SendToClient(Packet msg)
         {
             this.token.Send(msg);
+            Packet.Destroy(msg);
+        }
+
+        public async Task SendToGameServer(Packet msg)
+        {
+            await this.cache_helper.Enqueue("packet_queue", msg.ToBytes());
             Packet.Destroy(msg);
         }
 
@@ -457,11 +471,15 @@ namespace user_server
 
             // TODO game_server에서 처리 후 후처리 (ex: 맵에 있는 유저 키 삭제 등)
             // await Program.user_server.LeavePlayer(this);
-            await Program.cache_helper.HashDelete(GameObjectInfo.HASH_KEY, this.player_id);
-            await Program.cache_helper.HashDelete(PlayerInfo.HASH_KEY, this.player_id);
+
+            await this.cache_helper.HashDelete(GameObjectInfo.HASH_KEY, this.player_id);
+            await this.cache_helper.HashDelete(PlayerInfo.HASH_KEY, this.player_id);
+
             this.player_id = 0;
 
-            await ReleaseSubscribe();
+            await ReleaseAsync();
+
+            this.redis_connection.Dispose();
 
             Console.WriteLine("[UserServer] The client disconnected.");
         }

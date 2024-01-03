@@ -6,9 +6,9 @@ namespace game_server
 
     public static class GameObjecController
     {
-        public static async Task Save(GameObjectInfo object_info)
+        public static async Task Save(CacheHelper cache_helper, GameObjectInfo object_info)
         {
-            await Program.cache_helper.HashSet(
+            await cache_helper.HashSet(
                 GameObjectInfo.HASH_KEY,
                 object_info.GetHashField(),
                 MessagePackSerializer.Serialize(object_info)
@@ -24,11 +24,15 @@ namespace game_server
         //     );
         // }
 
-        public static async Task<GameObjectInfo?> Load(ObjectType type, long object_id)
+        public static async Task<GameObjectInfo?> Load(
+            CacheHelper cache_helper,
+            ObjectType type,
+            long object_id
+        )
         {
             try
             {
-                var serialized_data = await Program.cache_helper.HashGet(
+                var serialized_data = await cache_helper.HashGet(
                     GameObjectInfo.HASH_KEY,
                     GameObjectInfo.MakeHashField(type, object_id)
                 );
@@ -51,14 +55,14 @@ namespace game_server
             }
         }
 
-        public static async Task<List<GameObjectInfo>> LoadAll(RedisValue[] object_keys)
+        public static async Task<List<GameObjectInfo>> LoadAll(
+            CacheHelper cache_helper,
+            RedisValue[] object_keys
+        )
         {
             try
             {
-                var hash_entries = await Program.cache_helper.HashGet(
-                    GameObjectInfo.HASH_KEY,
-                    object_keys
-                );
+                var hash_entries = await cache_helper.HashGet(GameObjectInfo.HASH_KEY, object_keys);
 
                 if (hash_entries == null)
                 {
@@ -94,12 +98,9 @@ namespace game_server
             }
         }
 
-        public static async Task Delete(GameObjectInfo object_info)
+        public static async Task Delete(CacheHelper cache_helper, GameObjectInfo object_info)
         {
-            await Program.cache_helper.HashDelete(
-                GameObjectInfo.HASH_KEY,
-                object_info.GetHashField()
-            );
+            await cache_helper.HashDelete(GameObjectInfo.HASH_KEY, object_info.GetHashField());
         }
     }
 }

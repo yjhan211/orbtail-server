@@ -28,6 +28,6 @@ namespace network
         public static int TARGET_FRAME_RATE = 30;
         public static TimeSpan LOCK_TTL = TimeSpan.FromSeconds(30);
 
-        public static string REDIS_CONFIG = "127.0.0.1:6379,abortConnect=false";
+        public static string REDIS_CONFIG = "127.0.0.1:6379,abortConnect=False";
     }
 }
