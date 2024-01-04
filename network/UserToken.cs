@@ -54,7 +54,7 @@ namespace network
 
         void OnMessage(Const<byte[]> buffer)
         {
-            this.peer?.OnMessage(buffer);
+            this.peer?.OnMessageFromClient(buffer);
         }
 
         public void Send(Packet msg)

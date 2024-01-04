@@ -9,10 +9,12 @@ namespace game_server
         public static GameServer game_server;
 #pragma warning restore
 
-        static async Task Main()
+        static void Main()
         {
+            PacketBufferManager.Initialize(Config.MAX_CONNECTION);
+
             game_server = new();
-            await game_server.Start();
+            game_server.Start();
 
             Console.WriteLine("[GameServer] Game Server Start");
             Console.ReadKey();

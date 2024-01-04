@@ -5,86 +5,56 @@ namespace game_server
     using MessagePack;
     using network;
     using StackExchange.Redis;
+    using user_server;
 
     public class MapController
     {
         public const int MAP_ID = 1;
-        readonly object map_subscribers_lock;
         CacheHelper cache_helper;
         ISubscriber? map_publisher;
-        ConcurrentDictionary<string, ISubscriber> subscribers;
-        ConcurrentDictionary<string, List<long>> move_subscribe_users;
-        public List<string>[,] object_map;
+        public ConcurrentDictionary<Cell, List<string>> object_position_map;
         public CancellationTokenSource cts;
         List<string> position_key_all;
-        Task map_info_task;
+        Task collect_map_task;
+        SemaphoreSlim collect_map_lock;
 
         public MapController()
         {
-            this.map_subscribers_lock = new();
-            this.subscribers = new();
-            this.move_subscribe_users = new();
-
             var redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
             this.cache_helper = new(redis_connection);
             this.map_publisher = redis_connection._connection.GetSubscriber();
 
-            this.object_map = new List<string>[MapHelper.MAP_SIZE, MapHelper.MAP_SIZE];
+            this.object_position_map = new();
 
             this.cts = new();
-            this.map_info_task = Task.Run(MapInfoTask, cts.Token);
+            this.collect_map_task = Task.Run(CollectMapInfo, cts.Token);
+            this.collect_map_lock = new(1);
 
             this.position_key_all = new();
         }
 
-        public async Task InitializeAsync()
+        public void Initialize()
+        {
+            for (int x = 0; x < MapHelper.MAP_SIZE; x++)
+            {
+                for (int y = 0; y < MapHelper.MAP_SIZE; y++)
+                {
+                    this.position_key_all.Add(MapHelper.GetPositionKey(MAP_ID, new(x, y)));
+                }
+            }
+
+            InitPositionMap();
+        }
+
+        void InitPositionMap()
         {
             for (int x = 0; x < MapHelper.MAP_SIZE; x++)
             {
                 for (int y = 0; y < MapHelper.MAP_SIZE; y++)
                 {
                     Cell cell = new(x, y);
-                    var subscriber_key = GetSubscriberKey(cell);
-                    var position_key = GetPositionKey(cell);
-
-                    if (!this.subscribers.ContainsKey(subscriber_key))
-                    {
-                        var redis_conn = await RedisConnection.InitializeAsync();
-                        this.subscribers[subscriber_key] = redis_conn._connection.GetSubscriber();
-                    }
-                    this.move_subscribe_users[position_key] = new();
-
-#pragma warning disable CS4014
-                    this.subscribers[subscriber_key].Subscribe(
-                        new(position_key, RedisChannel.PatternMode.Literal),
-                        (channel, message) => HandleMoveMessage(channel, message)
-                    );
-#pragma warning restore CS4014
-
-                    this.object_map[x, y] = new();
-                    this.position_key_all.Add(MapHelper.GetPositionKey(MAP_ID, cell));
+                    this.object_position_map[cell] = new();
                 }
-            }
-        }
-
-        async Task HandleMoveMessage(RedisChannel channel, RedisValue message)
-        {
-            var object_info = MessagePackSerializer.Deserialize<GameObjectInfo>(message);
-            if (object_info == null)
-            {
-                return;
-            }
-
-            var redis_conn = await RedisConnection.InitializeAsync();
-            map_publisher = redis_conn._connection.GetSubscriber();
-
-            foreach (long player_id in this.move_subscribe_users[channel!])
-            {
-                _ = Program.game_server.PublishToChannel(
-                    this.map_publisher,
-                    $"object_{player_id}",
-                    MessagePackSerializer.Serialize(object_info)
-                );
             }
         }
 
@@ -108,20 +78,56 @@ namespace game_server
             return $"{GetMapKey()}|{cell.x},{cell.y}";
         }
 
-        async Task MapInfoTask()
+        async Task CollectMapInfo()
         {
             while (!cts.Token.IsCancellationRequested)
             {
                 try
                 {
+                    await this.collect_map_lock.WaitAsync();
+
+                    InitPositionMap();
+
                     List<(string key, RedisValue value)> object_keys =
                         await this.cache_helper.ListRangeWithKey(this.position_key_all);
 
-                    for (int i = 0; i < object_keys.Count; i++)
+                    foreach (var object_key in object_keys)
                     {
-                        (string key, RedisValue value) = object_keys[i];
-                        var cell = MapHelper.GetCell(key);
-                        this.object_map[cell.x, cell.y].Add(value.ToString());
+                        (string position_key, RedisValue value) = object_key;
+                        var cell = MapHelper.GetCell(position_key);
+                        this.object_position_map[cell].Add(value.ToString());
+
+                        Console.WriteLine(
+                            $"2 {cell.x}, {cell.y} | count: {this.object_position_map[cell].Count}"
+                        );
+                    }
+
+                    // TODO 여러개의 서버 인스턴스가 나눠서 다루도록 수정해야 함
+                    foreach (var object_list in this.object_position_map)
+                    {
+                        var position_key = object_list.Key;
+                        var channel_list = object_list.Value;
+
+                        var map_info_list = new List<string>();
+                        foreach (var bound_cell in MapHelper.GetBoundCellList(position_key))
+                        {
+                            map_info_list.AddRange(this.object_position_map[bound_cell]);
+                        }
+
+                        if (!map_info_list.Any())
+                        {
+                            continue;
+                        }
+
+                        Packet packet = PacketMaker.G_TO_U_MAP_INFO(map_info_list);
+                        foreach (var channel in channel_list)
+                        {
+                            _ = Program.game_server.PublishToChannel(
+                                this.map_publisher!,
+                                channel,
+                                packet
+                            );
+                        }
                     }
 
                     await Task.Delay(1000);
@@ -130,11 +136,16 @@ namespace game_server
                 {
                     Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
                 }
+                finally
+                {
+                    this.collect_map_lock.Release();
+                }
             }
 
             try
             {
-                this.map_info_task!.Wait();
+                this.collect_map_task!.Wait();
+                this.collect_map_lock.Release();
             }
             catch (AggregateException e)
             {
@@ -175,19 +186,16 @@ namespace game_server
             // 3. 변경사항 저장
             await GameObjecController.Save(cache_helper, player_info.object_info);
 
-            // 4. 구독 타일 변경
-            lock (this.map_subscribers_lock)
+            var bound_cell_list = MapHelper.GetBoundCellList(player_info.object_info.current_cell);
+            foreach (var bound_cell in bound_cell_list)
             {
-                this.move_subscribe_users[last_position_key].Remove(player_info.player_id);
-                this.move_subscribe_users[current_position_key].Add(player_info.player_id);
-            }
+                var target_list = this.object_position_map[bound_cell];
+                Packet packet = PacketMaker.G_TO_U_MOVE(player_info.object_info);
 
-            // 새로운 브로드캐스트 영역
-            var broadcast_list = MapHelper.GetBoundCellList(player_info.object_info.current_cell);
-
-            foreach (var broadcast_cell in broadcast_list)
-            {
-                _ = PublishMove(GetPositionKey(broadcast_cell), player_info.object_info);
+                foreach (var target in target_list)
+                {
+                    _ = Program.game_server.PublishToChannel(this.map_publisher!, target, packet);
+                }
             }
         }
 
@@ -226,15 +234,6 @@ namespace game_server
             player.object_info.SetFlip(direction);
 
             return;
-        }
-
-        public async Task PublishMove(string position_key, GameObjectInfo object_info)
-        {
-            await Program.game_server.PublishToChannel(
-                this.map_publisher!,
-                position_key,
-                MessagePackSerializer.Serialize(object_info)
-            );
         }
     }
 }
