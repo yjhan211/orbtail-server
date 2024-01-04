@@ -61,7 +61,7 @@ namespace user_server
             this.object_subscriber = this.redis_connection._connection.GetSubscriber();
             this.object_info_subscriber = this.redis_connection._connection.GetSubscriber();
 
-            this.world_info_task = Task.Run(RecvWorldInfo, cts.Token);
+            this.world_info_task = Task.Run(RecvWorldInfo, cts!.Token);
             this.game_object_subscribe_task = Task.Run(SubscribeObjectInfo, cts.Token);
             this.game_object_info_task = Task.Run(RecvObjectInfo, cts.Token);
         }

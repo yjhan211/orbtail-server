@@ -207,6 +207,48 @@ namespace network
             return results.ToArray();
         }
 
+        public async Task<List<(string key, RedisValue value)>> ListRangeWithKey(
+            List<string> keys,
+            int start = 0,
+            int end = -1
+        )
+        {
+            const int batch_size = 10;
+
+            if (keys == null || keys.Count == 0)
+            {
+                return new List<(string key, RedisValue value)>();
+            }
+
+            var results = new List<(string key, RedisValue value)>();
+
+            for (int i = 0; i < keys.Count; i += batch_size)
+            {
+                var batch_keys = keys.Skip(i).Take(batch_size).ToList();
+
+                try
+                {
+                    var batchTasks = batch_keys.Select(async key =>
+                    {
+                        var range = await conn.BasicRetryAsync(
+                            db => db.ListRangeAsync(key, start, end)
+                        );
+                        return range.Select(value => (key, value));
+                    });
+
+                    var batchResults = await Task.WhenAll(batchTasks);
+                    results.AddRange(batchResults.SelectMany(x => x));
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"ListRangeBatch error: {e.Message}");
+                    // 예외 처리 - 로깅 또는 재시도 등
+                }
+            }
+
+            return results;
+        }
+
         public async Task ListPush(string key, string value)
         {
             try

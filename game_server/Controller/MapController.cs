@@ -10,17 +10,31 @@ namespace game_server
     {
         public const int MAP_ID = 1;
         readonly object map_subscribers_lock;
-        static readonly object map_publisher_lock = new();
-        static ISubscriber? map_publisher;
+        CacheHelper cache_helper;
+        ISubscriber? map_publisher;
         ConcurrentDictionary<string, ISubscriber> subscribers;
         ConcurrentDictionary<string, List<long>> move_subscribe_users;
+        public List<string>[,] object_map;
+        public CancellationTokenSource cts;
+        List<string> position_key_all;
+        Task map_info_task;
 
         public MapController()
         {
             this.map_subscribers_lock = new();
-
             this.subscribers = new();
             this.move_subscribe_users = new();
+
+            var redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
+            this.cache_helper = new(redis_connection);
+            this.map_publisher = redis_connection._connection.GetSubscriber();
+
+            this.object_map = new List<string>[MapHelper.MAP_SIZE, MapHelper.MAP_SIZE];
+
+            this.cts = new();
+            this.map_info_task = Task.Run(MapInfoTask, cts.Token);
+
+            this.position_key_all = new();
         }
 
         public async Task InitializeAsync()
@@ -46,24 +60,10 @@ namespace game_server
                         (channel, message) => HandleMoveMessage(channel, message)
                     );
 #pragma warning restore CS4014
-                }
-            }
-        }
 
-        public static ISubscriber GetMapPublisher()
-        {
-            lock (map_publisher_lock)
-            {
-                if (map_publisher == null)
-                {
-                    var redisConnection = RedisConnection
-                        .InitializeAsync()
-                        .GetAwaiter()
-                        .GetResult();
-                    map_publisher = redisConnection._connection.GetSubscriber();
+                    this.object_map[x, y] = new();
+                    this.position_key_all.Add(MapHelper.GetPositionKey(MAP_ID, cell));
                 }
-
-                return map_publisher;
             }
         }
 
@@ -81,7 +81,7 @@ namespace game_server
             foreach (long player_id in this.move_subscribe_users[channel!])
             {
                 _ = Program.game_server.PublishToChannel(
-                    GetMapPublisher(),
+                    this.map_publisher,
                     $"object_{player_id}",
                     MessagePackSerializer.Serialize(object_info)
                 );
@@ -106,6 +106,40 @@ namespace game_server
         public string GetPositionKey(Cell cell)
         {
             return $"{GetMapKey()}|{cell.x},{cell.y}";
+        }
+
+        async Task MapInfoTask()
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    List<(string key, RedisValue value)> object_keys =
+                        await this.cache_helper.ListRangeWithKey(this.position_key_all);
+
+                    for (int i = 0; i < object_keys.Count; i++)
+                    {
+                        (string key, RedisValue value) = object_keys[i];
+                        var cell = MapHelper.GetCell(key);
+                        this.object_map[cell.x, cell.y].Add(value.ToString());
+                    }
+
+                    await Task.Delay(1000);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
+                }
+            }
+
+            try
+            {
+                this.map_info_task!.Wait();
+            }
+            catch (AggregateException e)
+            {
+                Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
+            }
         }
 
         public async Task MovePlayer(
@@ -194,10 +228,10 @@ namespace game_server
             return;
         }
 
-        public static async Task PublishMove(string position_key, GameObjectInfo object_info)
+        public async Task PublishMove(string position_key, GameObjectInfo object_info)
         {
             await Program.game_server.PublishToChannel(
-                GetMapPublisher(),
+                this.map_publisher!,
                 position_key,
                 MessagePackSerializer.Serialize(object_info)
             );

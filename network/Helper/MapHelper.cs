@@ -7,7 +7,7 @@ namespace network
 {
     public static class MapHelper
     {
-        public const int MAP_SIZE = 30;
+        public const int MAP_SIZE = 100;
 
         public static bool IsOutOfMapRange(Cell cell)
         {
@@ -23,6 +23,14 @@ namespace network
         public static string GetPositionKey(int map_id, Cell cell)
         {
             return $"map_{map_id}|{cell.x},{cell.y}";
+        }
+
+        public static Cell GetCell(string position_key)
+        {
+            var split = position_key.Split("|");
+            var position = split[1].Split(",");
+
+            return new Cell(Int32.Parse(position[0]), Int32.Parse(position[1]));
         }
 
         public static List<Cell> GetBoundCellList(Cell pivot_cell)
