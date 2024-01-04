@@ -24,7 +24,7 @@ namespace user_server
         Task game_object_subscribe_task;
         Task game_object_info_task;
 
-        public CancellationTokenSource cts;
+        public CancellationTokenSource? cts;
         public ConcurrentQueue<GameObjectInfo> object_info_queue;
         public ConcurrentQueue<List<PlayerInfo>> player_info_list_queue;
 
@@ -159,6 +159,12 @@ namespace user_server
             {
                 try
                 {
+                    if (this.player_id == 0)
+                    {
+                        await Task.Delay(100);
+                        continue;
+                    }
+
                     List<GameObjectInfo> game_object_list = new();
 
                     while (this.object_info_queue.TryDequeue(out var object_info))
@@ -177,7 +183,7 @@ namespace user_server
                         this.SendToClient(packet);
                     }
 
-                    await Task.Delay(10);
+                    await Task.Delay(100);
                 }
                 catch (Exception e)
                 {
@@ -467,12 +473,18 @@ namespace user_server
 
         public async Task OnRemoved()
         {
-            // this.cts.Cancel();
+            this.cts!.Cancel();
+            this.cts.Dispose();
+            this.cts = null;
 
             // TODO game_server에서 처리 후 후처리 (ex: 맵에 있는 유저 키 삭제 등)
             // await Program.user_server.LeavePlayer(this);
 
-            await this.cache_helper.HashDelete(GameObjectInfo.HASH_KEY, this.player_id);
+            await this.cache_helper.HashDelete(
+                GameObjectInfo.HASH_KEY,
+                GameObjectInfo.MakeHashField(ObjectType.PLAYER, this.player_id)
+            );
+
             await this.cache_helper.HashDelete(PlayerInfo.HASH_KEY, this.player_id);
 
             this.player_id = 0;
