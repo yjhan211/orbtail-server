@@ -18,9 +18,9 @@ namespace game_server
             this.map_controller = new();
         }
 
-        public void Start()
+        public void Start(int server_id)
         {
-            this.map_controller.Initialize();
+            this.map_controller.Initialize(server_id);
             this.logic_thread = Task.Run(GameLoop, this.cts.Token);
         }
 
@@ -150,8 +150,6 @@ namespace game_server
                 PlayerInfo? player_info = await PlayerController.Load(cache_helper, player_id);
                 if (player_info == null)
                 {
-                    Console.WriteLine($"1133");
-
                     return;
                 }
 

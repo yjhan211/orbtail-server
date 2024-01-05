@@ -14,10 +14,12 @@ namespace game_server
         ISubscriber? map_publisher;
         public ConcurrentDictionary<Cell, List<string>> object_position_map;
         public CancellationTokenSource cts;
-        List<string> position_key_all;
+        HashSet<string> collect_position_keys; // 레디스에서 주기적으로 조회하는 셀
+        HashSet<string> manage_position_keys; // 조회한 collect_position_key를 publish하는 셀
         Task collect_map_task;
         SemaphoreSlim collect_map_lock;
 
+#pragma warning disable CS8618
         public MapController()
         {
             var redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
@@ -26,24 +28,46 @@ namespace game_server
 
             this.object_position_map = new();
 
-            this.cts = new();
-            this.collect_map_task = Task.Run(CollectMapInfo, cts.Token);
-            this.collect_map_lock = new(1);
-
-            this.position_key_all = new();
+            this.collect_position_keys = new();
+            this.manage_position_keys = new();
         }
+#pragma warning restore CS8618
 
-        public void Initialize()
+        public void Initialize(int server_id)
         {
-            for (int x = 0; x < MapHelper.MAP_SIZE; x++)
+            int section = MapHelper.MAP_SIZE / Config.GAME_SERVER_NUM; // 10
+            int start_x = (server_id - 1) * section;
+            int start_y = 0;
+
+            int end_x = server_id * section;
+            int end_y = MapHelper.MAP_SIZE;
+
+            for (int x = start_x; x < end_x; x++)
             {
-                for (int y = 0; y < MapHelper.MAP_SIZE; y++)
+                for (int y = start_y; y < end_y; y++)
                 {
-                    this.position_key_all.Add(MapHelper.GetPositionKey(MAP_ID, new(x, y)));
+                    Cell cell = new(x, y);
+                    var manage_position_key = MapHelper.GetPositionKey(MAP_ID, new(cell.x, cell.y));
+                    this.manage_position_keys.Add(manage_position_key);
+
+                    Console.WriteLine(manage_position_key);
+
+                    foreach (var bound_cell in MapHelper.GetBoundCellList(cell))
+                    {
+                        var collect_position_key = MapHelper.GetPositionKey(
+                            MAP_ID,
+                            new(bound_cell.x, bound_cell.y)
+                        );
+                        this.collect_position_keys.Add(collect_position_key);
+                    }
                 }
             }
 
-            InitPositionMap();
+            this.cts = new();
+            this.collect_map_lock = new(1);
+            this.collect_map_task = Task.Run(CollectMapInfo, cts.Token);
+
+            Console.WriteLine(this.manage_position_keys.Count);
         }
 
         void InitPositionMap()
@@ -88,29 +112,41 @@ namespace game_server
 
                     InitPositionMap();
 
+                    // 조회 대상인 cell에 있는 유저 키를 모두 조회
                     List<(string key, RedisValue value)> object_keys =
-                        await this.cache_helper.ListRangeWithKey(this.position_key_all);
+                        await this.cache_helper.ListRangeWithKey(
+                            this.collect_position_keys.ToList()
+                        );
 
+                    // 서버에 캐싱
                     foreach (var object_key in object_keys)
                     {
                         (string position_key, RedisValue value) = object_key;
                         var cell = MapHelper.GetCell(position_key);
                         this.object_position_map[cell].Add(value.ToString());
-
-                        Console.WriteLine(
-                            $"2 {cell.x}, {cell.y} | count: {this.object_position_map[cell].Count}"
-                        );
                     }
 
-                    // TODO 여러개의 서버 인스턴스가 나눠서 다루도록 수정해야 함
+                    // 조회 대상 유저를 셀 단위로 순회하며 - 대신 관리 대상인 유저들에게만 이 유저들에게 주변 오브젝트 정보를 publish
                     foreach (var object_list in this.object_position_map)
                     {
-                        var position_key = object_list.Key;
+                        var cell = object_list.Key;
+                        var position_key = MapHelper.GetPositionKey(MAP_ID, cell);
+
+                        if (!this.manage_position_keys.Contains(position_key))
+                        {
+                            continue;
+                        }
+
+                        // 셀에 위치한 유저 리스트
                         var channel_list = object_list.Value;
 
+                        // 같은 셀에 위치한 유저들은 같은 주변 오브젝트 정보를 받음
                         var map_info_list = new List<string>();
-                        foreach (var bound_cell in MapHelper.GetBoundCellList(position_key))
+
+                        // 가시거리 범위에 있는 셀 순회
+                        foreach (var bound_cell in MapHelper.GetBoundCellList(cell))
                         {
+                            // 셀을 참조로 앞서 캐싱한 오브젝트들의 키를 넣음
                             map_info_list.AddRange(this.object_position_map[bound_cell]);
                         }
 
@@ -119,6 +155,7 @@ namespace game_server
                             continue;
                         }
 
+                        // 주변 오브젝트 정보를 publish
                         Packet packet = PacketMaker.G_TO_U_MAP_INFO(map_info_list);
                         foreach (var channel in channel_list)
                         {
@@ -126,6 +163,10 @@ namespace game_server
                                 this.map_publisher!,
                                 channel,
                                 packet
+                            );
+
+                            Console.WriteLine(
+                                $"[GameServer{Program.server_id}] publish to {channel}"
                             );
                         }
                     }
@@ -194,6 +235,7 @@ namespace game_server
 
                 foreach (var target in target_list)
                 {
+                    Console.WriteLine("move publish");
                     _ = Program.game_server.PublishToChannel(this.map_publisher!, target, packet);
                 }
             }

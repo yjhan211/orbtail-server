@@ -218,23 +218,24 @@ namespace user_server
                 Packet packet = new(clone, this);
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 long player_id = packet.PopPlayerId();
+                var body = packet.PopBody();
 
                 switch (protocol_id)
                 {
                     case PROTOCOL.G_TO_U_MAP_INFO:
-                        await HandleMessage<G_TO_U_MAP_INFO>(player_id, packet.PopBody(), MapInfo);
+                        await HandleMessage<G_TO_U_MAP_INFO>(player_id, body, MapInfo);
                         break;
 
                     case PROTOCOL.G_TO_U_MOVE:
-                        await HandleMessage<G_TO_U_MOVE>(player_id, packet.PopBody(), Move);
+                        await HandleMessage<G_TO_U_MOVE>(player_id, body, Move);
                         break;
 
-                    // case PROTOCOL.C_TO_S_PLAYER_INFO:
-                    //     await HandleMessage<C_TO_S_PLAYER_INFO>(player_id, body, GetPlayerInfo);
+                    // case PROTOCOL.C_TO_U_PLAYER_INFO:
+                    //     await HandleMessage<C_TO_U_PLAYER_INFO>(player_id, body, GetPlayerInfo);
                     //     break;
 
-                    // case PROTOCOL.C_TO_S_OBJECT_INFO:
-                    //     await HandleMessage<C_TO_S_OBJECT_INFO>(player_id, body, GetObjectInfo);
+                    // case PROTOCOL.C_TO_U_OBJECT_INFO:
+                    //     await HandleMessage<C_TO_U_OBJECT_INFO>(player_id, body, GetObjectInfo);
                     //     break;
                 }
             }
@@ -344,7 +345,6 @@ namespace user_server
 
         async Task Move(long _, G_TO_U_MOVE body)
         {
-            Console.WriteLine("enqueue move");
             this.move_object_queue.Enqueue(body.object_info);
         }
 
