@@ -94,6 +94,10 @@ namespace user_server
                     if (game_object_list.Count > 0)
                     {
                         Packet packet = PacketMaker.U_TO_C_MAP_UPDATE(game_object_list);
+                        if (this.player_id == 1)
+                        {
+                            Console.WriteLine($"{game_object_list.Count} | {packet.position}");
+                        }
                         this.SendToClient(packet);
                     }
 
@@ -206,16 +210,19 @@ namespace user_server
             }
         }
 
-        // OnMessage -> GameServer -> this.subscriber -> ProgessUserOperation
         public async Task OnMessageFromGameServer(RedisValue message)
         {
             try
             {
                 await this.player_lock.WaitAsync();
 
-                byte[] clone = (byte[])message!;
+                if (message.Length() == 0)
+                {
+                    Console.WriteLine($"user_id:{this.player_id}");
+                    return;
+                }
 
-                Packet packet = new(clone, this);
+                Packet packet = new((byte[])message!, this);
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 long player_id = packet.PopPlayerId();
                 var body = packet.PopBody();

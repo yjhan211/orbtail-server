@@ -27,7 +27,7 @@ namespace user_server
         public static Packet G_TO_U_MAP_INFO(List<string> object_key_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_MAP_INFO);
-            G_TO_U_MAP_INFO body = new() { object_key_list = object_key_list, };
+            G_TO_U_MAP_INFO body = new() { object_key_list = object_key_list };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

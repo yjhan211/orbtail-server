@@ -241,6 +241,7 @@ namespace game_server
         //     }
         // }
 
+        // 주의: 여러 개의 채널에 하나의 패킷 전송 시 반드시 PublishToChannels 이용. Destroy 때문...
         public async Task PublishToChannel(
             ISubscriber publisher,
             string channel_name,
@@ -248,7 +249,22 @@ namespace game_server
         )
         {
             RedisChannel channel = new(channel_name, RedisChannel.PatternMode.Literal);
-            await publisher.PublishAsync(channel, packet.ToBytes());
+            _ = publisher.PublishAsync(channel, packet.ToBytes());
+
+            Packet.Destroy(packet);
+        }
+
+        public async Task PublishToChannels(
+            ISubscriber publisher,
+            List<string> channel_name_list,
+            Packet packet
+        )
+        {
+            foreach (var channel_name in channel_name_list)
+            {
+                RedisChannel channel = new(channel_name, RedisChannel.PatternMode.Literal);
+                _ = publisher.PublishAsync(channel, packet.ToBytes());
+            }
 
             Packet.Destroy(packet);
         }

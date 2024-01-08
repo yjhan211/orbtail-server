@@ -12,6 +12,7 @@ namespace game_server
         public const int MAP_ID = 1;
         CacheHelper cache_helper;
         ISubscriber? map_publisher;
+        SemaphoreSlim map_publisher_lock;
         public ConcurrentDictionary<Cell, List<string>> object_position_map;
         public CancellationTokenSource cts;
         HashSet<string> collect_position_keys; // 레디스에서 주기적으로 조회하는 셀
@@ -25,6 +26,7 @@ namespace game_server
             var redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
             this.cache_helper = new(redis_connection);
             this.map_publisher = redis_connection._connection.GetSubscriber();
+            this.map_publisher_lock = new(1);
 
             this.object_position_map = new();
 
@@ -156,19 +158,11 @@ namespace game_server
                         }
 
                         // 주변 오브젝트 정보를 publish
-                        Packet packet = PacketMaker.G_TO_U_MAP_INFO(map_info_list);
-                        foreach (var channel in channel_list)
-                        {
-                            _ = Program.game_server.PublishToChannel(
-                                this.map_publisher!,
-                                channel,
-                                packet
-                            );
-
-                            Console.WriteLine(
-                                $"[GameServer{Program.server_id}] publish to {channel}"
-                            );
-                        }
+                        _ = Program.game_server.PublishToChannels(
+                            this.map_publisher!,
+                            channel_list,
+                            PacketMaker.G_TO_U_MAP_INFO(map_info_list)
+                        );
                     }
 
                     await Task.Delay(1000);
@@ -232,12 +226,7 @@ namespace game_server
             {
                 var target_list = this.object_position_map[bound_cell];
                 Packet packet = PacketMaker.G_TO_U_MOVE(player_info.object_info);
-
-                foreach (var target in target_list)
-                {
-                    Console.WriteLine("move publish");
-                    _ = Program.game_server.PublishToChannel(this.map_publisher!, target, packet);
-                }
+                _ = Program.game_server.PublishToChannels(this.map_publisher!, target_list, packet);
             }
         }
 
