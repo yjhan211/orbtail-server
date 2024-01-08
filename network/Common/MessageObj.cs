@@ -112,6 +112,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class U_TO_G_LOGOUT : IMessagePackObject
+    {
+        [Key("player_id")]
+        public long player_id { get; set; }
+    }
+
+    [MessagePackObject]
     public class MapTile : IMessagePackObject
     {
         public MapTile(TileType tile_type)

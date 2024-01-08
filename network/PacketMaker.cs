@@ -78,6 +78,15 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_G_LOGOUT(long player_id)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_G_LOGOUT, player_id);
+            U_TO_G_LOGOUT body = new() { player_id = player_id };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet MakeBoundTilePacket(List<Cell> tile_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_BOUND_TILE_INFO);

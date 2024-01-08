@@ -1,4 +1,6 @@
-﻿using System.Net;
+﻿using System.Collections.Concurrent;
+using System.Net;
+using game_server;
 using network;
 
 namespace user_server
@@ -9,9 +11,13 @@ namespace user_server
         public static NetworkService network_service;
 #pragma warning restore
 
+        static Task? leave_user_task;
+        public static ConcurrentQueue<GameUser>? leave_user_queue;
+
         static async Task Main()
         {
             network_service = new();
+            leave_user_queue = new();
 
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
             network_service.Initialize();
@@ -23,7 +29,27 @@ namespace user_server
 
             network_service.Listen(IPAddress.Any, Config.USER_SERVER_PORT);
 
+            leave_user_task = Task.Run(ProcessLeaveUser);
+
             Console.WriteLine("[UserServer] User Server Start");
+        }
+
+        public static async Task ProcessLeaveUser()
+        {
+            while (true)
+            {
+                while (leave_user_queue!.TryDequeue(out GameUser? user))
+                {
+                    if (user == null)
+                    {
+                        continue;
+                    }
+
+                    Console.WriteLine($"[UserServer] The client disconnected. {user.player_id}");
+                    await user.ReleaseAsync();
+                }
+                await Task.Delay(100);
+            }
         }
     }
 }

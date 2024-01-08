@@ -95,6 +95,11 @@ namespace game_server
             await cache_helper.HashDelete(GameObjectInfo.HASH_KEY, object_info.GetHashField());
         }
 
+        public static async Task Delete(CacheHelper cache_helper, string hash_field)
+        {
+            await cache_helper.HashDelete(GameObjectInfo.HASH_KEY, hash_field);
+        }
+
         // public void Save(Transaction transaction)
         // {
         //     transaction.HashSet(

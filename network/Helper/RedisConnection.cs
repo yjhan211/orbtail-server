@@ -1,5 +1,7 @@
 namespace network
 {
+    using RedLockNet.SERedis;
+    using RedLockNet.SERedis.Configuration;
     using StackExchange.Redis;
     using System.Net.Sockets;
 
@@ -55,6 +57,13 @@ namespace network
         public RedisConnection(ConnectionMultiplexer connection)
         {
             _connection = connection;
+        }
+
+        public RedLockFactory GetRedLockFactory()
+        {
+            return RedLockFactory.Create(
+                new[] { new RedLockEndPoint(this._connection.GetEndPoints()[0]) }
+            );
         }
 
         public static async Task<RedisConnection> InitializeAsync()

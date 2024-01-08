@@ -4,6 +4,7 @@ namespace game_server
     using System.Threading.Tasks;
     using MessagePack;
     using network;
+    using RedLockNet.SERedis;
     using StackExchange.Redis;
 
     public class GameServer
@@ -89,32 +90,12 @@ namespace game_server
                         await HandleMessage<U_TO_G_MOVE>(redis_conn, player_id, body, MovePlayer);
                         break;
 
-                    // case PROTOCOL.C_TO_S_PLAYER_INFO:
-                    //     await HandleMessage<C_TO_S_PLAYER_INFO>(
-                    //         redis_conn,
-                    //         player_id,
-                    //         body,
-                    //         GetPlayerInfo
-                    //     );
-                    //     break;
-
-                    // case PROTOCOL.C_TO_S_OBJECT_INFO:
-                    //     await HandleMessage<C_TO_S_OBJECT_INFO>(
-                    //         redis_conn,
-                    //         player_id,
-                    //         body,
-                    //         GetObjectInfo
-                    //     );
-                    //     break;
+                    case PROTOCOL.U_TO_G_LOGOUT:
+                        await HandleMessage<U_TO_G_LOGOUT>(redis_conn, player_id, body, Logout);
+                        break;
                 }
             }
         }
-
-        // TODO updatePosition 다른데로 옮길 것
-        // public async Task HeartBeat(C_TO_S_HEART_BEAT msg)
-        // {
-        //     await UpdatePosition(msg.player_id);
-        // }
 
         async Task UpdatePosition(RedisConnection redis_conn, long player_id)
         {
@@ -137,7 +118,7 @@ namespace game_server
                 return;
             }
 
-            // await user.player_lock.WaitAsync();
+            // await user.player_lock.WaitAsync()
             await this.map_controller.MovePlayer(cache_helper, player_info, DirectionType.NONE);
             // user.player_lock.Release();
         }
@@ -161,45 +142,51 @@ namespace game_server
             }
         }
 
-        // public async Task GetObjectInfo(
-        //     RedisConnection redis_conn,
-        //     long player_id,
-        //     C_TO_U_OBJECT_INFO msg
-        // )
-        // {
-        //     CacheHelper cache_helper = new(redis_conn);
-        //     PlayerInfo? player_info = await PlayerController.Load(cache_helper, player_id);
-        //     if (player_info == null)
-        //     {
-        //         return;
-        //     }
+        public async Task Logout(RedisConnection redis_conn, long player_id, U_TO_G_LOGOUT msg)
+        {
+            try
+            {
+                CacheHelper cache_helper = new(redis_conn);
+                var redlock = redis_conn.GetRedLockFactory();
 
-        //     RedisValue[] request = msg.object_key_list.Select(key => (RedisValue)key).ToArray();
-        //     ISubscriber publisher = redis_conn._connection.GetSubscriber();
+                using (var player_lock = await PlayerController.Lock(redlock, player_id))
+                {
+                    PlayerInfo? player_info = await PlayerController.Load(
+                        cache_helper,
+                        msg.player_id
+                    );
 
-        //     foreach (var object_info in await GameObjectController.LoadAll(cache_helper, request))
-        //     {
-        //         _ = PublishToChannel(publisher, $"object_{player_id}", object_info);
-        //     }
-        // }
+                    if (player_info == null)
+                    {
+                        return;
+                    }
 
-        // TODO 접속종료 처리
-        // public async Task LeavePlayer(long player_id, C_TO_S_LOGOUT msg)
-        // {
-        //     PlayerInfo? player_info = await PlayerController.Load(msg.player_id);
-        //     if (player_info == null)
-        //     {
-        //         return;
-        //     }
+                    GameObjectInfo object_info = player_info.object_info;
+                    if (object_info == null)
+                    {
+                        return;
+                    }
 
-        //     // using (await LockHelper.AcquireLock(PlayerInfo.GetLockKey(user.player_info.player_id)))
-        //     {
-        //         await this.map_controller.UnsetPlayer(player_info.object_info);
-        //         // await player_info.Delete();
+                    await cache_helper.ListRemove(
+                        MapHelper.GetPositionKey(object_info.map_id, object_info.current_cell),
+                        object_info.GetHashField()
+                    );
 
-        //         // TODO 시스템메시지 분리
-        //     }
-        // }
+                    await cache_helper.ListRemove(
+                        MapHelper.GetPositionKey(object_info.map_id, object_info.target_cell),
+                        object_info.GetHashField()
+                    );
+
+                    await PlayerController.Delete(cache_helper, player_id);
+                }
+
+                // TODO 이 처리 이후 큐로 패킷이 온다면 DB에서 처리한다.
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[GameServer] {e.StackTrace}, {e.Message}");
+            }
+        }
 
         // 주의: 여러 개의 채널에 하나의 패킷 전송 시 반드시 PublishToChannels 이용. Destroy 때문...
         public async Task PublishToChannel(

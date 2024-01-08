@@ -16,8 +16,8 @@ namespace user_server
         public long player_id;
 
         RedisConnection redis_connection;
-        CacheHelper cache_helper;
-        RedLockFactory redlock;
+        public CacheHelper cache_helper { get; private set; }
+        public RedLockFactory redlock { get; private set; }
 
         ISubscriber game_server_subscriber;
 
@@ -49,10 +49,8 @@ namespace user_server
         public async Task initializeAsync()
         {
             this.redis_connection = await RedisConnection.InitializeAsync();
+            this.redlock = this.redis_connection.GetRedLockFactory();
             this.cache_helper = new(this.redis_connection);
-            this.redlock = RedLockFactory.Create(
-                new[] { new RedLockEndPoint(redis_connection._connection.GetEndPoints()[0]) }
-            );
 
             this.game_server_subscriber = this.redis_connection._connection.GetSubscriber();
             this.game_object_subscribe_task = Task.Run(SubscribeMove, cts.Token);
@@ -60,7 +58,13 @@ namespace user_server
 
         public async Task ReleaseAsync()
         {
+            Packet packet = PacketMaker.U_TO_G_LOGOUT(this.player_id);
+            _ = this.SendToGameServer(packet);
+
             await this.game_server_subscriber.UnsubscribeAllAsync();
+            this.redis_connection.Dispose();
+
+            this.player_id = 0;
         }
 
         // 구독중인 Cell에 오는 Move 메시지를 취합하는 Task (오로지 모아서 보내는 목적)
@@ -302,31 +306,6 @@ namespace user_server
             await SendToGameServer(packet);
         }
 
-        // async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
-        // {
-        //     if (player_id != this.player_id)
-        //     {
-        //         return;
-        //     }
-
-        //     RedisValue[] keys = body.player_id_list.ConvertAll(x => (RedisValue)x).ToArray();
-        //     var player_info_list = await PlayerController.LoadAll(this.cache_helper, keys);
-
-        //     for (int i = 0; i < player_info_list.Count; i += Config.BROADCAST_UNIT)
-        //     {
-        //         List<PlayerInfo> chunk = player_info_list
-        //             .Skip(i)
-        //             .Take(Config.BROADCAST_UNIT)
-        //             .ToList();
-
-        //         Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(chunk);
-        //         this.SendToClient(packet);
-
-        //         await Task.Delay(100);
-        //     }
-        // }
-
-
         async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
         {
             if (player_id != this.player_id)
@@ -368,7 +347,7 @@ namespace user_server
         }
 
         // 이 함수가 호출되는 경우: G_TO_U_MAP_INFO의 object_key_list에는 있으나 클라에는 GameObjectInfo가 없을 때
-        // 어떤 경우에 생기는가: 클라가 기존 반경 이미 접속해서 잠수타고 있는 유저를 만났을 때
+        // 어떤 경우에 생기는가: 이미 접속해서 잠수타고 있는 오브젝트를 만났을 때
         async Task GetObjectInfo(long player_id, C_TO_U_OBJECT_INFO body)
         {
             if (player_id != this.player_id)
@@ -443,23 +422,7 @@ namespace user_server
             this.cts!.Cancel();
             this.cts.Dispose();
 
-            // TODO game_server에서 처리 후 후처리 (ex: 맵에 있는 유저 키 삭제 등)
-            // await Program.user_server.LeavePlayer(this);
-
-            await this.cache_helper.HashDelete(
-                GameObjectInfo.HASH_KEY,
-                GameObjectInfo.MakeHashField(ObjectType.PLAYER, this.player_id)
-            );
-
-            await this.cache_helper.HashDelete(PlayerInfo.HASH_KEY, this.player_id);
-
-            this.player_id = 0;
-
-            await ReleaseAsync();
-
-            this.redis_connection.Dispose();
-
-            Console.WriteLine("[UserServer] The client disconnected.");
+            Program.leave_user_queue!.Enqueue(this);
         }
     }
 }
