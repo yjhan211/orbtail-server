@@ -94,10 +94,6 @@ namespace user_server
                     if (game_object_list.Count > 0)
                     {
                         Packet packet = PacketMaker.U_TO_C_MAP_UPDATE(game_object_list);
-                        if (this.player_id == 1)
-                        {
-                            Console.WriteLine($"{game_object_list.Count} | {packet.position}");
-                        }
                         this.SendToClient(packet);
                     }
 

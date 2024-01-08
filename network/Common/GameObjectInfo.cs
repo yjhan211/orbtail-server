@@ -3,7 +3,7 @@ namespace network
     using MessagePack;
 
     [MessagePackObject]
-    public partial class GameObjectInfo : IMessagePackObject
+    public class GameObjectInfo : IMessagePackObject
     {
         [IgnoreMember]
         public const string HASH_KEY = "game_object_info";

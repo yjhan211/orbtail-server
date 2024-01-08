@@ -3,7 +3,7 @@ namespace network
     using MessagePack;
 
     [MessagePackObject]
-    public partial class PlayerInfo : IMessagePackObject
+    public class PlayerInfo : IMessagePackObject
     {
         // 원래는 PlayerInfo가 GameObjectInfo를 상속받는 형식을 의도했으나
         // MessagePackObject 역직렬화 과정에 문제가 있어서 이렇게 됨

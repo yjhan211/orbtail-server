@@ -217,7 +217,7 @@ namespace game_server
         //     RedisValue[] request = msg.object_key_list.Select(key => (RedisValue)key).ToArray();
         //     ISubscriber publisher = redis_conn._connection.GetSubscriber();
 
-        //     foreach (var object_info in await GameObjecController.LoadAll(cache_helper, request))
+        //     foreach (var object_info in await GameObjectController.LoadAll(cache_helper, request))
         //     {
         //         _ = PublishToChannel(publisher, $"object_{player_id}", object_info);
         //     }

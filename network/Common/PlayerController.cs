@@ -8,7 +8,7 @@ namespace game_server
     {
         public static async Task Save(CacheHelper cache_helper, PlayerInfo player_info)
         {
-            await GameObjecController.Save(cache_helper, player_info.object_info);
+            await GameObjectController.Save(cache_helper, player_info.object_info);
             await cache_helper.HashSet(
                 PlayerInfo.HASH_KEY,
                 player_info.player_id,
@@ -39,7 +39,7 @@ namespace game_server
                     return null;
                 }
 
-                var object_info = await GameObjecController.Load(
+                var object_info = await GameObjectController.Load(
                     cache_helper,
                     ObjectType.PLAYER,
                     player_id
@@ -62,7 +62,7 @@ namespace game_server
 
         public static async Task Delete(CacheHelper cache_helper, PlayerInfo player_info)
         {
-            await GameObjecController.Delete(cache_helper, player_info.object_info);
+            await GameObjectController.Delete(cache_helper, player_info.object_info);
             await cache_helper.HashDelete(PlayerInfo.HASH_KEY, player_info.player_id);
         }
     }

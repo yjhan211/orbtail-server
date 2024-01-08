@@ -37,7 +37,7 @@ namespace game_server
 
         public void Initialize(int server_id)
         {
-            int section = MapHelper.MAP_SIZE / Config.GAME_SERVER_NUM; // 10
+            int section = MapHelper.MAP_SIZE / Config.GAME_SERVER_NUM;
             int start_x = (server_id - 1) * section;
             int start_y = 0;
 
@@ -51,8 +51,6 @@ namespace game_server
                     Cell cell = new(x, y);
                     var manage_position_key = MapHelper.GetPositionKey(MAP_ID, new(cell.x, cell.y));
                     this.manage_position_keys.Add(manage_position_key);
-
-                    Console.WriteLine(manage_position_key);
 
                     foreach (var bound_cell in MapHelper.GetBoundCellList(cell))
                     {
@@ -68,8 +66,6 @@ namespace game_server
             this.cts = new();
             this.collect_map_lock = new(1);
             this.collect_map_task = Task.Run(CollectMapInfo, cts.Token);
-
-            Console.WriteLine(this.manage_position_keys.Count);
         }
 
         void InitPositionMap()
@@ -128,6 +124,8 @@ namespace game_server
                         this.object_position_map[cell].Add(value.ToString());
                     }
 
+                    this.collect_map_lock.Release();
+
                     // 조회 대상 유저를 셀 단위로 순회하며 - 대신 관리 대상인 유저들에게만 이 유저들에게 주변 오브젝트 정보를 publish
                     foreach (var object_list in this.object_position_map)
                     {
@@ -170,10 +168,6 @@ namespace game_server
                 catch (Exception e)
                 {
                     Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
-                }
-                finally
-                {
-                    this.collect_map_lock.Release();
                 }
             }
 
@@ -219,15 +213,20 @@ namespace game_server
             );
 
             // 3. 변경사항 저장
-            await GameObjecController.Save(cache_helper, player_info.object_info);
+            await GameObjectController.Save(cache_helper, player_info.object_info);
 
             var bound_cell_list = MapHelper.GetBoundCellList(player_info.object_info.current_cell);
+
+            await this.collect_map_lock.WaitAsync();
+
             foreach (var bound_cell in bound_cell_list)
             {
                 var target_list = this.object_position_map[bound_cell];
                 Packet packet = PacketMaker.G_TO_U_MOVE(player_info.object_info);
                 _ = Program.game_server.PublishToChannels(this.map_publisher!, target_list, packet);
             }
+
+            this.collect_map_lock.Release();
         }
 
         void SetPlayerTargetCell(PlayerInfo player, Cell cell, DirectionType direction)
