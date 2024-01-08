@@ -60,6 +60,46 @@ namespace game_server
             }
         }
 
+        public static async Task<List<PlayerInfo>> LoadAll(
+            CacheHelper cache_helper,
+            RedisValue[] object_keys
+        )
+        {
+            try
+            {
+                var hash_entries = await cache_helper.HashGet(PlayerInfo.HASH_KEY, object_keys);
+                if (hash_entries == null)
+                {
+                    return new();
+                }
+
+                List<RedisValue> hash_strings = hash_entries
+                    .Where(entry => entry != RedisValue.Null)
+                    .Select(entry => entry)
+                    .ToList();
+
+                List<PlayerInfo> result = new();
+
+                foreach (var hash_string in hash_strings)
+                {
+                    var player_info = MessagePackSerializer.Deserialize<PlayerInfo>(hash_string);
+                    if (player_info == null)
+                    {
+                        continue;
+                    }
+
+                    result.Add(player_info);
+                }
+
+                return result;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[GameServer] {e.StackTrace}{e.Message}");
+                return new();
+            }
+        }
+
         public static async Task Delete(CacheHelper cache_helper, PlayerInfo player_info)
         {
             await GameObjectController.Delete(cache_helper, player_info.object_info);

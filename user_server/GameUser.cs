@@ -6,6 +6,7 @@ namespace user_server
     using MessagePack;
     using System.Collections.Concurrent;
     using StackExchange.Redis;
+    using game_server;
 
     public class GameUser : IPeer
     {
@@ -19,12 +20,9 @@ namespace user_server
         ISubscriber game_server_subscriber;
 
         Task game_object_subscribe_task;
-        Task game_object_info_task;
-
         public CancellationTokenSource cts;
         public ConcurrentQueue<string> map_queue;
         public ConcurrentQueue<GameObjectInfo> move_object_queue;
-        public ConcurrentQueue<List<PlayerInfo>> player_info_list_queue;
 
         public SemaphoreSlim player_lock;
 
@@ -36,13 +34,11 @@ namespace user_server
             this.token.is_released = false;
             this.token.SetPeer(this);
 
-            this.player_lock = new(1);
-            this.cts = new();
-
-            this.move_object_queue = new();
-            this.player_info_list_queue = new();
-
             this.player_id = 0;
+            this.player_lock = new(1);
+
+            this.cts = new();
+            this.move_object_queue = new();
 
             this.initializeAsync().Wait();
         }
@@ -56,9 +52,7 @@ namespace user_server
             this.lock_helper = new(this.redis_connection);
 
             this.game_server_subscriber = this.redis_connection._connection.GetSubscriber();
-
             this.game_object_subscribe_task = Task.Run(SubscribeMove, cts.Token);
-            this.game_object_info_task = Task.Run(RecvObjectInfo, cts.Token);
         }
 
         public async Task ReleaseAsync()
@@ -66,7 +60,7 @@ namespace user_server
             await this.game_server_subscriber.UnsubscribeAllAsync();
         }
 
-        // 구독중인 Cell에 오는 Move 메시지를 취합하는 Task (모아서 보내려고)
+        // 구독중인 Cell에 오는 Move 메시지를 취합하는 Task (오로지 모아서 보내는 목적)
         async Task SubscribeMove()
         {
             while (!cts.Token.IsCancellationRequested)
@@ -116,43 +110,6 @@ namespace user_server
             }
         }
 
-        // 요청에 의한 응답으로 온 ObjectInfo를 취합하는 Task
-        async Task RecvObjectInfo()
-        {
-            while (!cts.Token.IsCancellationRequested)
-            {
-                try
-                {
-                    if (player_id == 0)
-                    {
-                        continue;
-                    }
-
-                    if (this.player_info_list_queue.TryDequeue(out List<PlayerInfo>? info_list))
-                    {
-                        Packet player_info_packet = PacketMaker.U_TO_C_PLAYER_INFO(info_list);
-                        this.SendToClient(player_info_packet);
-                    }
-
-                    await Task.Delay(500);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
-                    await this.OnRemoved();
-                }
-            }
-
-            try
-            {
-                this.game_object_info_task!.Wait();
-            }
-            catch (AggregateException e)
-            {
-                Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
-            }
-        }
-
         public async Task OnMessageFromClient(Const<byte[]> buffer)
         {
             try
@@ -163,36 +120,52 @@ namespace user_server
                 Packet packet = new(clone, this);
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 long player_id = packet.PopPlayerId();
+                byte[] body = packet.PopBody();
 
+                // 단순 조회 or 브로드캐스팅 없는 유저 단일 로직이라면 유저 서버 내부에서 처리
+                // 그 외에는 게임 서버 전송
                 switch (protocol_id)
                 {
-                    // 게임이 아니라 유저 단일에만 영향을 미치는 로직이라면 유저서버 내부에서 처리
                     case PROTOCOL.HEART_BEAT:
                         HeartBeat();
                         break;
 
                     case PROTOCOL.C_TO_U_LOGIN:
                         await this.player_lock.WaitAsync();
-                        await HandleMessage<C_TO_U_LOGIN>(player_id, packet.PopBody(), Login);
-                        break;
-
-                    case PROTOCOL.C_TO_U_MOVE:
-                        await HandleMessage<C_TO_U_MOVE>(player_id, packet.PopBody(), RequestMove);
+                        await HandleMessage<C_TO_U_LOGIN>(player_id, body, Login);
                         break;
 
                     default:
-                        // 클라이언트 패킷은 기본적으로 게임 서버로 전송됨
-                        if (player_id == 0)
+                        if (player_id == 0 || this.player_id != player_id)
                         {
-                            return;
+                            throw new Exception($"Invalid ID: {this.player_id}, {player_id}");
                         }
-                        if (this.player_id != player_id)
+                        switch (protocol_id)
                         {
-                            throw new Exception(
-                                $"Invalid Player ID: {this.player_id}, {player_id}"
-                            );
+                            case PROTOCOL.C_TO_U_MOVE:
+                                await HandleMessage<C_TO_U_MOVE>(player_id, body, RequestMove);
+                                break;
+
+                            case PROTOCOL.C_TO_U_PLAYER_INFO:
+                                await HandleMessage<C_TO_U_PLAYER_INFO>(
+                                    player_id,
+                                    body,
+                                    GetPlayerInfo
+                                );
+                                break;
+
+                            case PROTOCOL.C_TO_U_OBJECT_INFO:
+                                await HandleMessage<C_TO_U_OBJECT_INFO>(
+                                    player_id,
+                                    body,
+                                    GetObjectInfo
+                                );
+                                break;
+
+                            default:
+                                await this.SendToGameServer(packet);
+                                break;
                         }
-                        await this.cache_helper.Enqueue("packet_queue", clone);
                         break;
                 }
             }
@@ -212,12 +185,6 @@ namespace user_server
             {
                 await this.player_lock.WaitAsync();
 
-                if (message.Length() == 0)
-                {
-                    Console.WriteLine($"user_id:{this.player_id}");
-                    return;
-                }
-
                 Packet packet = new((byte[])message!, this);
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 long player_id = packet.PopPlayerId();
@@ -232,14 +199,6 @@ namespace user_server
                     case PROTOCOL.G_TO_U_MOVE:
                         await HandleMessage<G_TO_U_MOVE>(player_id, body, Move);
                         break;
-
-                    // case PROTOCOL.C_TO_U_PLAYER_INFO:
-                    //     await HandleMessage<C_TO_U_PLAYER_INFO>(player_id, body, GetPlayerInfo);
-                    //     break;
-
-                    // case PROTOCOL.C_TO_U_OBJECT_INFO:
-                    //     await HandleMessage<C_TO_U_OBJECT_INFO>(player_id, body, GetObjectInfo);
-                    //     break;
                 }
             }
             catch (Exception e)
@@ -289,18 +248,7 @@ namespace user_server
                 );
 
                 player_info.object_info.map_id = 1; // TODO 임시
-
-                await this.cache_helper.HashSet(
-                    GameObjectInfo.HASH_KEY,
-                    player_info.object_info.GetHashField(),
-                    MessagePackSerializer.Serialize(player_info.object_info)
-                );
-
-                await this.cache_helper.HashSet(
-                    PlayerInfo.HASH_KEY,
-                    player_info.player_id,
-                    MessagePackSerializer.Serialize(player_info)
-                );
+                await PlayerController.Save(this.cache_helper, player_info);
 
                 this.player_id = player_info.player_id;
             }
@@ -330,7 +278,12 @@ namespace user_server
                 return;
             }
 
-            GameObjectInfo? object_info = await LoadGameObject(ObjectType.PLAYER, player_id);
+            GameObjectInfo? object_info = await GameObjectController.Load(
+                this.cache_helper,
+                ObjectType.PLAYER,
+                player_id
+            );
+
             if (object_info == null)
             {
                 return;
@@ -346,10 +299,54 @@ namespace user_server
             await SendToGameServer(packet);
         }
 
+        async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
+        {
+            if (player_id != this.player_id)
+            {
+                return;
+            }
+
+            RedisValue[] keys = body.player_id_list.ConvertAll(x => (RedisValue)x).ToArray();
+            var player_info_list = await PlayerController.LoadAll(this.cache_helper, keys);
+
+            for (int i = 0; i < player_info_list.Count; i += Config.BROADCAST_UNIT)
+            {
+                List<PlayerInfo> chunk = player_info_list
+                    .Skip(i)
+                    .Take(Config.BROADCAST_UNIT)
+                    .ToList();
+
+                Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(chunk);
+                this.SendToClient(packet);
+
+                await Task.Delay(100);
+            }
+        }
+
+        // 이 함수가 호출되는 경우: G_TO_U_MAP_INFO의 object_key_list에는 있으나 클라에는 GameObjectInfo가 없을 때
+        // 어떤 경우에 생기는가: 클라가 기존 반경 이미 접속해서 잠수타고 있는 유저를 만났을 때
+        async Task GetObjectInfo(long player_id, C_TO_U_OBJECT_INFO body)
+        {
+            if (player_id != this.player_id)
+            {
+                return;
+            }
+
+            RedisValue[] keys = body.object_key_list.ConvertAll(x => (RedisValue)x).ToArray();
+            var object_info_list = await GameObjectController.LoadAll(this.cache_helper, keys);
+            foreach (var object_info in object_info_list)
+            {
+                this.move_object_queue.Enqueue(object_info);
+            }
+        }
+
+#pragma warning disable CS1998
         async Task Move(long _, G_TO_U_MOVE body)
         {
             this.move_object_queue.Enqueue(body.object_info);
         }
+#pragma warning restore CS1998
+
 
         async Task MapInfo(long _, G_TO_U_MAP_INFO body)
         {
@@ -382,33 +379,6 @@ namespace user_server
             {
                 Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
                 await this.OnRemoved();
-            }
-        }
-
-        public async Task<GameObjectInfo?> LoadGameObject(ObjectType type, long object_id)
-        {
-            try
-            {
-                var serialized_data = await this.cache_helper.HashGet(
-                    GameObjectInfo.HASH_KEY,
-                    GameObjectInfo.MakeHashField(type, object_id)
-                );
-
-                if (serialized_data.IsNull)
-                {
-                    return null;
-                }
-
-                var object_info = MessagePackSerializer.Deserialize<GameObjectInfo?>(
-                    serialized_data
-                );
-
-                return object_info;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"[UserServer] {e.StackTrace}{e.Message}");
-                return null;
             }
         }
 

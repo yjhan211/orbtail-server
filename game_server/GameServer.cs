@@ -161,46 +161,6 @@ namespace game_server
             }
         }
 
-        // public async Task GetPlayerInfo(
-        //     RedisConnection redis_conn,
-        //     long player_id,
-        //     C_TO_U_PLAYER_INFO msg
-        // )
-        // {
-        //     CacheHelper cache_helper = new(redis_conn);
-        //     PlayerInfo? player_info = await PlayerController.Load(cache_helper, player_id);
-        //     if (player_info == null)
-        //     {
-        //         return;
-        //     }
-
-        //     List<PlayerInfo> player_info_list = new();
-        //     foreach (var target_player_id in msg.player_id_list)
-        //     {
-        //         PlayerInfo? target_player_info = await PlayerController.Load(
-        //             cache_helper,
-        //             target_player_id
-        //         );
-        //         if (target_player_info == null)
-        //         {
-        //             continue;
-        //         }
-
-        //         player_info_list.Add(target_player_info);
-        //     }
-
-        //     ISubscriber publisher = redis_conn._connection.GetSubscriber();
-        //     for (int i = 0; i < player_info_list.Count; i += Config.BROADCAST_UNIT)
-        //     {
-        //         List<PlayerInfo> chunk = player_info_list
-        //             .Skip(i)
-        //             .Take(Config.BROADCAST_UNIT)
-        //             .ToList();
-
-        //         _ = PublishToChannel(publisher, $"object_info_{player_info.player_id}", chunk);
-        //     }
-        // }
-
         // public async Task GetObjectInfo(
         //     RedisConnection redis_conn,
         //     long player_id,
