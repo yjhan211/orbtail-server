@@ -7,6 +7,8 @@ namespace user_server
     using System.Collections.Concurrent;
     using StackExchange.Redis;
     using game_server;
+    using RedLockNet.SERedis;
+    using RedLockNet.SERedis.Configuration;
 
     public class GameUser : IPeer
     {
@@ -15,7 +17,7 @@ namespace user_server
 
         RedisConnection redis_connection;
         CacheHelper cache_helper;
-        LockHelper lock_helper;
+        RedLockFactory redlock;
 
         ISubscriber game_server_subscriber;
 
@@ -47,9 +49,10 @@ namespace user_server
         public async Task initializeAsync()
         {
             this.redis_connection = await RedisConnection.InitializeAsync();
-
             this.cache_helper = new(this.redis_connection);
-            this.lock_helper = new(this.redis_connection);
+            this.redlock = RedLockFactory.Create(
+                new[] { new RedLockEndPoint(redis_connection._connection.GetEndPoints()[0]) }
+            );
 
             this.game_server_subscriber = this.redis_connection._connection.GetSubscriber();
             this.game_object_subscribe_task = Task.Run(SubscribeMove, cts.Token);
@@ -238,7 +241,7 @@ namespace user_server
             }
 
             PlayerInfo player_info;
-            using (await this.lock_helper.AcquireLock(PlayerInfo.GetLockKey(temp_player_id)))
+            using (var player_lock = await PlayerController.Lock(this.redlock, this.player_id))
             {
                 // 플레이어 생성
                 player_info = new(
@@ -299,6 +302,31 @@ namespace user_server
             await SendToGameServer(packet);
         }
 
+        // async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
+        // {
+        //     if (player_id != this.player_id)
+        //     {
+        //         return;
+        //     }
+
+        //     RedisValue[] keys = body.player_id_list.ConvertAll(x => (RedisValue)x).ToArray();
+        //     var player_info_list = await PlayerController.LoadAll(this.cache_helper, keys);
+
+        //     for (int i = 0; i < player_info_list.Count; i += Config.BROADCAST_UNIT)
+        //     {
+        //         List<PlayerInfo> chunk = player_info_list
+        //             .Skip(i)
+        //             .Take(Config.BROADCAST_UNIT)
+        //             .ToList();
+
+        //         Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(chunk);
+        //         this.SendToClient(packet);
+
+        //         await Task.Delay(100);
+        //     }
+        // }
+
+
         async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
         {
             if (player_id != this.player_id)
@@ -306,20 +334,36 @@ namespace user_server
                 return;
             }
 
-            RedisValue[] keys = body.player_id_list.ConvertAll(x => (RedisValue)x).ToArray();
-            var player_info_list = await PlayerController.LoadAll(this.cache_helper, keys);
-
-            for (int i = 0; i < player_info_list.Count; i += Config.BROADCAST_UNIT)
+            var player_id_list = body.player_id_list;
+            var player_info_list = new List<PlayerInfo>();
+            for (int i = 0; i < player_id_list.Count; i++)
             {
-                List<PlayerInfo> chunk = player_info_list
-                    .Skip(i)
-                    .Take(Config.BROADCAST_UNIT)
-                    .ToList();
+                var target_player_id = player_id_list[i];
+                using (var player_lock = await PlayerController.Lock(this.redlock, this.player_id))
+                {
+                    var target_player_info = await PlayerController.Load(
+                        this.cache_helper,
+                        target_player_id
+                    );
 
-                Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(chunk);
-                this.SendToClient(packet);
+                    if (target_player_info == null)
+                    {
+                        continue;
+                    }
 
-                await Task.Delay(100);
+                    player_info_list.Add(target_player_info);
+
+                    bool is_max = player_info_list.Count >= Config.BROADCAST_UNIT;
+                    bool is_ended = i == player_id_list.Count - 1;
+
+                    if (is_max || is_ended)
+                    {
+                        Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(player_info_list);
+                        this.SendToClient(packet);
+
+                        await Task.Delay(100);
+                    }
+                }
             }
         }
 

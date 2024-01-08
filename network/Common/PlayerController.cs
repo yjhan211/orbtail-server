@@ -3,9 +3,16 @@ namespace game_server
     using StackExchange.Redis;
     using MessagePack;
     using network;
+    using RedLockNet.SERedis;
+    using RedLockNet;
 
     public static class PlayerController
     {
+        public static async Task<IRedLock> Lock(RedLockFactory redlock, long player_id)
+        {
+            return await redlock.CreateLockAsync(PlayerInfo.GetLockKey(player_id), Config.LOCK_TTL);
+        }
+
         public static async Task Save(CacheHelper cache_helper, PlayerInfo player_info)
         {
             await GameObjectController.Save(cache_helper, player_info.object_info);
