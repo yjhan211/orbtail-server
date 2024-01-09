@@ -12,6 +12,8 @@ namespace network
 
         public static readonly float SPEED = 1f;
         public static readonly float MOVE_ELAPSED_TIME = 0.5f / SPEED;
+        public static readonly int MOVE_ELAPSED_MS = (int)(MOVE_ELAPSED_TIME * 1000);
+
         public static readonly float MOVE_ANIM_ELAPSED_TIME = MOVE_ELAPSED_TIME + 0.4f;
         public static float FILP_LOTATION = 180;
 

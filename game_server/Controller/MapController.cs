@@ -10,13 +10,13 @@ namespace game_server
     public class MapController
     {
         public const int MAP_ID = 1;
-        CacheHelper cache_helper;
+
         ISubscriber? map_publisher;
-        SemaphoreSlim map_publisher_lock;
         public ConcurrentDictionary<Cell, List<string>> object_position_map;
         public CancellationTokenSource cts;
-        HashSet<string> collect_position_keys; // 레디스에서 주기적으로 조회하는 셀
-        HashSet<string> manage_position_keys; // 조회한 collect_position_key를 publish하는 셀
+        HashSet<string> collect_position_keys; // 레디스에서 주기적으로 조회하는 셀 (관리 대상에게 전달하기 위한 목적으로 수집)
+
+        HashSet<string> manage_position_keys; // 조회한 collect_position_key를 publish하는 셀. (직접적인 관리 대상)
         Task collect_map_task;
         SemaphoreSlim collect_map_lock;
 
@@ -24,9 +24,8 @@ namespace game_server
         public MapController()
         {
             var redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
-            this.cache_helper = new(redis_connection);
+
             this.map_publisher = redis_connection._connection.GetSubscriber();
-            this.map_publisher_lock = new(1);
 
             this.object_position_map = new();
 
@@ -102,6 +101,9 @@ namespace game_server
 
         async Task CollectMapInfo()
         {
+            var redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
+            CacheHelper cache_helper = new(redis_connection);
+
             while (!cts.Token.IsCancellationRequested)
             {
                 try
@@ -112,9 +114,7 @@ namespace game_server
 
                     // 조회 대상인 cell에 있는 유저 키를 모두 조회
                     List<(string key, RedisValue value)> object_keys =
-                        await this.cache_helper.ListRangeWithKey(
-                            this.collect_position_keys.ToList()
-                        );
+                        await cache_helper.ListRangeWithKey(this.collect_position_keys.ToList());
 
                     // 서버에 캐싱
                     foreach (var object_key in object_keys)
@@ -227,6 +227,18 @@ namespace game_server
             }
 
             this.collect_map_lock.Release();
+
+            if (directon_type == DirectionType.NONE)
+            {
+                return;
+            }
+
+            // 마지막 Move요청 처리. 이 처리가 없으면 current_cell과 target_cell이 계속 불일치
+            await Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME));
+                await MovePlayer(cache_helper, player_info, DirectionType.NONE);
+            });
         }
 
         void SetPlayerTargetCell(PlayerInfo player, Cell cell, DirectionType direction)
