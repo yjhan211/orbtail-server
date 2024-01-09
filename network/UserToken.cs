@@ -54,7 +54,7 @@ namespace network
 
         void OnMessage(Const<byte[]> buffer)
         {
-            this.peer?.OnMessage(buffer);
+            this.peer?.OnMessageFromClient(buffer);
         }
 
         public void Send(Packet msg)
@@ -106,7 +106,7 @@ namespace network
             catch (Exception e)
             {
                 // TODO 파일로깅
-                Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
             }
         }
 

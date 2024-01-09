@@ -43,21 +43,30 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
             }
         }
 
         void OnConnectCompleted(object? sender, SocketAsyncEventArgs args)
         {
-            if (args.SocketError != SocketError.Success)
+            try
             {
-                Console.WriteLine(string.Format("Failed to connect. {0}", args.SocketError));
-                return;
-            }
+                if (args.SocketError != SocketError.Success)
+                {
+                    Console.WriteLine(
+                        string.Format("[network] Failed to connect. {0}", args.SocketError)
+                    );
+                    return;
+                }
 
-            UserToken token = new(this.network_service);
-            this.network_service.OnConnectCompleted(this.client, token);
-            this.connected_callback(token);
+                UserToken token = new(this.network_service);
+                this.network_service.OnConnectCompleted(this.client, token);
+                this.connected_callback(token);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
+            }
         }
     }
 }

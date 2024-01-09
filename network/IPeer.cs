@@ -8,12 +8,12 @@ namespace network
 {
     public interface IPeer
     {
-        void OnMessage(Const<byte[]> buffer);
+        Task OnMessageFromClient(Const<byte[]> buffer);
 
-        void OnRemoved();
+        Task OnRemoved();
 
-        void Send(Packet msg);
+        void SendToClient(Packet msg);
 
-        void ProcessUserOperation(Packet msg);
+        // Task ProcessUserOperation(Packet msg);
     }
 }

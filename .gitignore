@@ -1,2 +1,4 @@
 .vscode/settings.json
 .vscode/sftp.json
+.vs/
+*.sh

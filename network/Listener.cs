@@ -17,16 +17,11 @@ namespace network
 
         public newClientHandler onNewClient;
 
-        public void Start()
+        public void Start(IPAddress address, short port)
         {
             try
             {
-                IPAddress address =
-                    Config.GAME_SERVER_IP == "0.0.0.0"
-                        ? IPAddress.Any
-                        : IPAddress.Parse(Config.GAME_SERVER_IP);
-
-                IPEndPoint end_point = new(address, Config.GAME_SERVER_PORT);
+                IPEndPoint end_point = new(address, port);
 
                 this.listen_socket = new Socket(
                     AddressFamily.InterNetwork,
@@ -48,7 +43,7 @@ namespace network
             catch (Exception e)
             {
                 // TODO 파일로깅
-                Console.WriteLine($"{e.Message}, {e.StackTrace}");
+                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
             }
         }
 

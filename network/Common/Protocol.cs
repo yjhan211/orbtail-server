@@ -9,25 +9,29 @@ namespace network
     public enum PROTOCOL : int
     {
         HEART_BEAT = 0,
-        C_TO_S_LOGIN,
-        S_TO_C_LOGIN,
-        S_TO_C_PLAYER_SPAWN_LIST,
-        S_TO_C_PLAYER_DESTROY_LIST,
-        C_TO_S_CHAT_MSG,
-        S_TO_C_CHAT_MSG_ALL,
-        C_TO_S_MOVE,
-        S_TO_C_MOVE_LIST,
-        S_TO_C_MAP_INFO,
-        S_TO_C_OUT_BOUND_INFO,
-        S_TO_C_BOUND_TILE_INFO,
-        C_TO_S_PLAYER_INFO,
-        S_TO_C_PLAYER_INFO,
+        C_TO_U_LOGIN,
+        U_TO_C_LOGIN,
+        C_TO_U_CHAT_MSG,
+        U_TO_C_CHAT_MSG,
+        C_TO_U_MOVE,
+        U_TO_G_MOVE,
+        G_TO_U_MOVE,
+        G_TO_U_MAP_INFO,
+        U_TO_C_MAP_INFO,
+        U_TO_C_MAP_UPDATE,
+        C_TO_U_PLAYER_INFO,
+        U_TO_C_PLAYER_INFO,
+        C_TO_U_OBJECT_INFO,
+        U_TO_C_OBJECT_INFO,
+        U_TO_C_BOUND_TILE_INFO,
+        U_TO_G_LOGOUT,
+
         END
     }
 
     public enum ObjectType : int
     {
-        ENPTY,
+        NONE,
         PLAYER,
         ITEM
     }
@@ -39,6 +43,7 @@ namespace network
 
     public enum DirectionType : byte
     {
+        NONE,
         TOP_LEFT,
         TOP_RIGHT,
         BOTTOM_LEFT,

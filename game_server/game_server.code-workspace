@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../user_server"
+		},
+		{
+			"path": "../network"
+		},
+		{
+			"path": "../dummy_client"
+		}
+	],
+	"settings": {}
+}

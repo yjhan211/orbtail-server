@@ -12,18 +12,21 @@ namespace network
 
         public static readonly float SPEED = 1f;
         public static readonly float MOVE_ELAPSED_TIME = 0.5f / SPEED;
+        public static readonly int MOVE_ELAPSED_MS = (int)(MOVE_ELAPSED_TIME * 1000);
+
         public static readonly float MOVE_ANIM_ELAPSED_TIME = MOVE_ELAPSED_TIME + 0.4f;
         public static float FILP_LOTATION = 180;
 
-        public static string GAME_SERVER_IP = "127.0.0.1";
-        public static short GAME_SERVER_PORT = 7979;
+        public static string USER_SERVER_IP = "0.0.0.0";
+        public static short USER_SERVER_PORT = 7900;
+        public static short GAME_SERVER_PORT = 8000;
         public static int MAX_CHAT_LINE = 2000;
-        public static int INFO_UNIT = BUFFER_SIZE / sizeof(long);
-        public static int PACKET_HOLD_COUNT = 10;
-        public static int BROADCAST_CHUNK_SIZE = 120;
-        public static int OUT_BOUND_LIMIT = 300;
+        public static int BROADCAST_CHUNK_SIZE = 150;
         public static int BROADCAST_UNIT = BUFFER_SIZE / BROADCAST_CHUNK_SIZE;
         public static bool HEARTBEAT_ACTIVE = false;
-        public static int TARGET_FRAME_RATE = 30;
+        public static TimeSpan LOCK_TTL = TimeSpan.FromSeconds(30);
+
+        public static string REDIS_CONFIG = "127.0.0.1:6379,abortConnect=False";
+        public static int GAME_SERVER_NUM = 2;
     }
 }
