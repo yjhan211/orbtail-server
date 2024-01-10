@@ -1,0 +1,21 @@
+# .NET SDK 이미지를 사용하여 애플리케이션 빌드
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build-env
+
+WORKDIR /App
+COPY ./network ./network
+WORKDIR /App/network
+RUN dotnet restore
+
+# game_server 프로젝트 복사 및 빌드
+WORKDIR /App
+COPY ./game_server ./game_server
+WORKDIR /App/game_server
+RUN dotnet restore
+
+RUN dotnet publish -c Release -o out
+
+# Build runtime image
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+WORKDIR /App/game_server
+COPY --from=build-env /App/game_server/out .
+ENTRYPOINT ["dotnet", "game_server.dll"]

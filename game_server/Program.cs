@@ -10,7 +10,7 @@ namespace game_server
         public static int server_id;
 #pragma warning restore
 
-        static void Main(string[] args)
+        async static Task Main(string[] args)
         {
             server_id = int.Parse(args[0]);
 
@@ -20,7 +20,7 @@ namespace game_server
             game_server.Start(server_id);
 
             Console.WriteLine("[GameServer] Game Server Start");
-            Console.ReadKey();
+            await Task.Delay(-1);
         }
     }
 }
