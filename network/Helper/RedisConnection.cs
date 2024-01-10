@@ -49,10 +49,9 @@ namespace network
         private const int RetryMaxAttempts = 5;
 
         private SemaphoreSlim _reconnectSemaphore = new SemaphoreSlim(initialCount: 1, maxCount: 1);
-        private readonly string _connectionString;
         public ConnectionMultiplexer _connection;
-        public IDatabase _database;
-        private ISubscriber _subscriber;
+        public IDatabase? _database;
+        private ISubscriber? _subscriber;
 
         public RedisConnection(ConnectionMultiplexer connection)
         {
@@ -88,6 +87,11 @@ namespace network
             {
                 try
                 {
+                    if (_database == null)
+                    {
+                        throw new Exception();
+                    }
+
                     return await func(_database);
                 }
                 catch (Exception ex)
@@ -209,30 +213,6 @@ namespace network
             {
                 _reconnectSemaphore.Release();
             }
-        }
-
-        public async Task PublishMessage(string channel, string message)
-        {
-            await _subscriber.PublishAsync(channel, message);
-        }
-
-        public void SubscribeToChannel(string channel)
-        {
-            _subscriber.Subscribe(
-                channel,
-                (channel, message) =>
-                {
-                    Console.WriteLine(
-                        $"[network] Received message on channel '{channel}': {message}"
-                    );
-                    // 여기에서 메시지 처리 로직을 추가하세요.
-                }
-            );
-        }
-
-        public void UnsubscribeFromChannel(string channel)
-        {
-            _subscriber.Unsubscribe(channel);
         }
 
         public void Dispose()

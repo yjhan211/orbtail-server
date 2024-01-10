@@ -11,15 +11,15 @@ namespace network
             this.conn = conn;
         }
 
-        public Transaction BeginTransaction()
-        {
-            if (this.conn == null)
-            {
-                throw new Exception("RedisHelper.conn is null");
-            }
+        // public Transaction BeginTransaction()
+        // {
+        //     if (this.conn == null)
+        //     {
+        //         throw new Exception("RedisHelper.conn is null");
+        //     }
 
-            return new Transaction(this.conn._database.CreateTransaction());
-        }
+        //     return new Transaction(this.conn._database.CreateTransaction());
+        // }
 
         public async Task HashSet(string key, string field, byte[] value)
         {

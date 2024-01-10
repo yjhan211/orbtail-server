@@ -10,11 +10,9 @@ namespace user_server
 #pragma warning disable CS8618
         public static NetworkService network_service;
 #pragma warning restore
-
-        static Task? leave_user_task;
         public static ConcurrentQueue<GameUser>? leave_user_queue;
 
-        static async Task Main()
+        static void Main()
         {
             network_service = new();
             leave_user_queue = new();
@@ -29,7 +27,7 @@ namespace user_server
 
             network_service.Listen(IPAddress.Any, Config.USER_SERVER_PORT);
 
-            leave_user_task = Task.Run(ProcessLeaveUser);
+            Task.Run(ProcessLeaveUser);
 
             Console.WriteLine("[UserServer] User Server Start");
         }

@@ -371,6 +371,7 @@ namespace user_server
 #pragma warning restore CS1998
 
 
+#pragma warning disable CS1998
         async Task MapInfo(long _, G_TO_U_MAP_INFO body)
         {
             try
@@ -404,6 +405,7 @@ namespace user_server
                 this.OnRemoved();
             }
         }
+#pragma warning restore CS1998
 
         public void SendToClient(Packet msg)
         {
