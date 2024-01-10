@@ -103,7 +103,7 @@ namespace user_server
                 catch (Exception e)
                 {
                     Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
-                    await this.OnRemoved();
+                    this.OnRemoved();
                 }
             }
 
@@ -401,7 +401,7 @@ namespace user_server
             catch (Exception e)
             {
                 Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
-                await this.OnRemoved();
+                this.OnRemoved();
             }
         }
 
@@ -417,7 +417,7 @@ namespace user_server
             Packet.Destroy(msg);
         }
 
-        public async Task OnRemoved()
+        public void OnRemoved()
         {
             this.cts!.Cancel();
             this.cts.Dispose();

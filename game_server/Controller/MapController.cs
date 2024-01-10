@@ -156,7 +156,7 @@ namespace game_server
                         }
 
                         // 주변 오브젝트 정보를 publish
-                        _ = Program.game_server.PublishToChannels(
+                        Program.game_server.PublishToChannels(
                             this.map_publisher!,
                             channel_list,
                             PacketMaker.G_TO_U_MAP_INFO(map_info_list)
@@ -223,7 +223,7 @@ namespace game_server
             {
                 var target_list = this.object_position_map[bound_cell];
                 Packet packet = PacketMaker.G_TO_U_MOVE(player_info.object_info);
-                _ = Program.game_server.PublishToChannels(this.map_publisher!, target_list, packet);
+                Program.game_server.PublishToChannels(this.map_publisher!, target_list, packet);
             }
 
             this.collect_map_lock.Release();

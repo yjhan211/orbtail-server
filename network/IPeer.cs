@@ -10,7 +10,7 @@ namespace network
     {
         Task OnMessageFromClient(Const<byte[]> buffer);
 
-        Task OnRemoved();
+        void OnRemoved();
 
         void SendToClient(Packet msg);
 
