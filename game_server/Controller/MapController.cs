@@ -167,7 +167,7 @@ namespace game_server
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
+                    LogManager.WriteErrorLog(e);
                 }
             }
 
@@ -178,7 +178,7 @@ namespace game_server
             }
             catch (AggregateException e)
             {
-                Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
+                LogManager.WriteErrorLog(e);
             }
         }
 

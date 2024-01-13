@@ -105,8 +105,7 @@ namespace network
             }
             catch (Exception e)
             {
-                // TODO 파일로깅
-                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
+                LogManager.WriteErrorLog(e);
             }
         }
 

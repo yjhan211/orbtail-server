@@ -19,7 +19,7 @@ namespace game_server
             game_server = new();
             game_server.Start(server_id);
 
-            Console.WriteLine("[GameServer] Game Server Start");
+            LogManager.WriteInfoLog($"Server Start. server_id: {server_id}");
             await Task.Delay(-1);
         }
     }

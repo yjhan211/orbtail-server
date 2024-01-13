@@ -49,4 +49,9 @@ namespace network
         BOTTOM_LEFT,
         BOTTOM_RIGHT,
     }
+
+    public enum LoginType : int
+    {
+        GUEST,
+    }
 }

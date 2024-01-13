@@ -34,7 +34,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"HashSet Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -51,7 +51,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"HashSet Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -68,7 +68,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"HashGet Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
                 return RedisValue.Null;
             }
         }
@@ -86,7 +86,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"HashGet Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
                 return RedisValue.Null;
             }
         }
@@ -115,7 +115,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"HashGetBatch Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
                 return null;
             }
         }
@@ -133,7 +133,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"HashDelete Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -150,7 +150,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"HashDelete Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -167,7 +167,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"HashDelete Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
                 return Array.Empty<RedisValue>();
             }
         }
@@ -199,7 +199,7 @@ namespace network
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"ListRangeBatch error: {e.Message}");
+                    LogManager.WriteErrorLog(e);
                     // 예외 처리 - 로깅 또는 재시도 등
                 }
             }
@@ -241,7 +241,7 @@ namespace network
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"ListRangeBatch error: {e.Message}");
+                    LogManager.WriteErrorLog(e);
                     // 예외 처리 - 로깅 또는 재시도 등
                 }
             }
@@ -262,7 +262,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"ListPush Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -279,7 +279,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"ListRemove Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -296,7 +296,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"ListPush Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -313,7 +313,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"ListPush Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
                 return null;
             }
         }
@@ -331,7 +331,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"StringIncrement Fail. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
                 return -1;
             }
         }
@@ -380,7 +380,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Transaction execution failed. err: {e.Message}");
+                LogManager.WriteErrorLog(e);
                 return false;
             }
         }

@@ -102,7 +102,7 @@ namespace user_server
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
+                    LogManager.WriteErrorLog(e);
                     this.OnRemoved();
                 }
             }
@@ -113,7 +113,7 @@ namespace user_server
             }
             catch (AggregateException e)
             {
-                Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -178,7 +178,7 @@ namespace user_server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[UserServer] {e.Message}, {e.StackTrace}");
+                LogManager.WriteErrorLog(e);
             }
             finally
             {
@@ -210,7 +210,7 @@ namespace user_server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[UserServer] {e.Message}, {e.StackTrace}");
+                LogManager.WriteErrorLog(e);
             }
             finally
             {
@@ -244,6 +244,8 @@ namespace user_server
                 throw new Exception("Already Exist Player");
             }
 
+            bool is_created = false;
+
             PlayerInfo player_info;
             using (var player_lock = await PlayerController.Lock(this.redlock, this.player_id))
             {
@@ -258,6 +260,7 @@ namespace user_server
                 await PlayerController.Save(this.cache_helper, player_info);
 
                 this.player_id = player_info.player_id;
+                is_created = true;
             }
 
             // 계정 정보 전송
@@ -276,6 +279,8 @@ namespace user_server
                 ),
                 async (channel, message) => await OnMessageFromGameServer(message)
             );
+
+            LogManager.WriteLoginLog(LoginType.GUEST, $"{temp_player_id}", player_info, is_created);
         }
 
         async Task RequestMove(long player_id, C_TO_U_MOVE body)
@@ -401,7 +406,7 @@ namespace user_server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
+                LogManager.WriteErrorLog(e);
                 this.OnRemoved();
             }
         }

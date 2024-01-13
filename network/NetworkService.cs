@@ -57,8 +57,6 @@ namespace network
         // Connector->OnConnectCompleted()
         public void OnConnectCompleted(Socket socket, UserToken user_token)
         {
-            Console.WriteLine("[network] connect completed");
-
             SocketAsyncEventArgs receive_event_arg = new();
             receive_event_arg.Completed += new EventHandler<SocketAsyncEventArgs>(RecvCompleted);
             receive_event_arg.UserToken = user_token;
@@ -88,7 +86,8 @@ namespace network
         {
             try
             {
-                Console.WriteLine("[network] on new client");
+                LogManager.WriteDebugLog("on new client");
+
                 SocketAsyncEventArgs recv_args = null;
                 SocketAsyncEventArgs send_args = null;
 
@@ -123,7 +122,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -176,7 +175,9 @@ namespace network
                 // 버퍼 확인
                 if (recv_args.BytesTransferred <= 0)
                 {
-                    throw new Exception("recv_args.BytesTransferred less then 0");
+                    // throw new Exception("recv_args.BytesTransferred less then 0");
+                    this.CloseClientSocket(user_token);
+                    return;
                 }
 
                 if (recv_args.Buffer == null)
@@ -205,7 +206,7 @@ namespace network
             catch (Exception e)
             {
                 // TODO 파일로깅
-                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
+                LogManager.WriteErrorLog(e);
                 this.CloseClientSocket(user_token);
             }
         }

@@ -42,7 +42,7 @@ namespace game_server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[GameServer] {e.StackTrace}{e.Message}");
+                LogManager.WriteErrorLog(e);
                 return null;
             }
         }
@@ -85,7 +85,7 @@ namespace game_server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[GameServer] {e.StackTrace}{e.Message}");
+                LogManager.WriteErrorLog(e);
                 return new();
             }
         }
