@@ -27,7 +27,7 @@ namespace network
         public static bool HEARTBEAT_ACTIVE = false;
         public static TimeSpan LOCK_TTL = TimeSpan.FromSeconds(30);
 
-        public static string REDIS_CONFIG = "127.0.0.1:6379,abortConnect=False";
+        public static string REDIS_CONFIG = "redis:6379,abortConnect=False";
         public static int GAME_SERVER_NUM = 2;
     }
 }

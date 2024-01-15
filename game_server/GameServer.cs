@@ -100,6 +100,8 @@ namespace game_server
         public async Task MovePlayer(RedisConnection redis_conn, long player_id, U_TO_G_MOVE msg)
         {
             CacheHelper cache_helper = new(redis_conn);
+            var redlock = redis_conn.GetRedLockFactory();
+
             PlayerInfo? player_info = await PlayerController.Load(cache_helper, player_id);
 
             if (player_info == null)
@@ -107,7 +109,10 @@ namespace game_server
                 throw new Exception($"can't find player_info. player_id : {player_id}");
             }
 
-            await this.map_controller.MovePlayer(cache_helper, player_info, msg.direction);
+            // using (var player_lock = await PlayerController.Lock(redlock, player_id))
+            {
+                await this.map_controller.MovePlayer(cache_helper, player_info, msg.direction);
+            }
         }
 
         public async Task Logout(RedisConnection redis_conn, long player_id, U_TO_G_LOGOUT msg)

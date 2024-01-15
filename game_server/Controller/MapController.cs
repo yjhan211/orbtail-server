@@ -235,7 +235,7 @@ namespace game_server
             }
 
             // 마지막 Move요청 처리. 이 처리가 없으면 current_cell과 target_cell이 계속 불일치
-            await Task.Run(async () =>
+            _ = Task.Run(async () =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME));
                 await MovePlayer(cache_helper, player_info, DirectionType.NONE);

@@ -8,7 +8,6 @@ namespace user_server
     using StackExchange.Redis;
     using game_server;
     using RedLockNet.SERedis;
-    using RedLockNet.SERedis.Configuration;
 
     public class GameUser : IPeer
     {
