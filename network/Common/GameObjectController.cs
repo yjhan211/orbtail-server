@@ -22,29 +22,18 @@ namespace game_server
             long object_id
         )
         {
-            try
+            var serialized_data = await cache_helper.HashGet(
+                GameObjectInfo.HASH_KEY,
+                GameObjectInfo.MakeHashField(type, object_id)
+            );
+
+            if (serialized_data.IsNull)
             {
-                var serialized_data = await cache_helper.HashGet(
-                    GameObjectInfo.HASH_KEY,
-                    GameObjectInfo.MakeHashField(type, object_id)
-                );
-
-                if (serialized_data.IsNull)
-                {
-                    return null;
-                }
-
-                var object_info = MessagePackSerializer.Deserialize<GameObjectInfo?>(
-                    serialized_data
-                );
-
-                return object_info;
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
                 return null;
             }
+
+            var object_info = MessagePackSerializer.Deserialize<GameObjectInfo?>(serialized_data);
+            return object_info;
         }
 
         public static async Task<List<GameObjectInfo>> LoadAll(
@@ -52,42 +41,34 @@ namespace game_server
             RedisValue[] object_keys
         )
         {
-            try
+            var hash_entries = await cache_helper.HashGet(GameObjectInfo.HASH_KEY, object_keys);
+
+            if (hash_entries == null)
             {
-                var hash_entries = await cache_helper.HashGet(GameObjectInfo.HASH_KEY, object_keys);
-
-                if (hash_entries == null)
-                {
-                    return new();
-                }
-
-                List<RedisValue> hash_strings = hash_entries
-                    .Where(entry => entry != RedisValue.Null)
-                    .Select(entry => entry)
-                    .ToList();
-
-                List<GameObjectInfo> result = new();
-
-                foreach (var hash_string in hash_strings)
-                {
-                    var game_object_info = MessagePackSerializer.Deserialize<GameObjectInfo>(
-                        hash_string
-                    );
-                    if (game_object_info == null)
-                    {
-                        continue;
-                    }
-
-                    result.Add(game_object_info);
-                }
-
-                return result;
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
                 return new();
             }
+
+            List<RedisValue> hash_strings = hash_entries
+                .Where(entry => entry != RedisValue.Null)
+                .Select(entry => entry)
+                .ToList();
+
+            List<GameObjectInfo> result = new();
+
+            foreach (var hash_string in hash_strings)
+            {
+                var game_object_info = MessagePackSerializer.Deserialize<GameObjectInfo>(
+                    hash_string
+                );
+                if (game_object_info == null)
+                {
+                    continue;
+                }
+
+                result.Add(game_object_info);
+            }
+
+            return result;
         }
 
         public static async Task Delete(CacheHelper cache_helper, GameObjectInfo object_info)

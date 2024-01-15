@@ -168,6 +168,7 @@ namespace game_server
                 catch (Exception e)
                 {
                     LogManager.WriteErrorLog(e);
+                    cts.Cancel();
                 }
             }
 

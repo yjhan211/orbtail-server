@@ -97,98 +97,54 @@ namespace game_server
             }
         }
 
-        async Task UpdatePosition(RedisConnection redis_conn, long player_id)
+        public async Task MovePlayer(RedisConnection redis_conn, long player_id, U_TO_G_MOVE msg)
         {
             CacheHelper cache_helper = new(redis_conn);
             PlayerInfo? player_info = await PlayerController.Load(cache_helper, player_id);
+
             if (player_info == null)
             {
-                return;
+                throw new Exception($"can't find player_info. player_id : {player_id}");
             }
 
-            GameObjectInfo object_info = player_info.object_info;
-            if (object_info.target_cell.Equals(object_info.current_cell))
-            {
-                return;
-            }
-
-            // 아직 이동이 완료되지 않음
-            if (object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
-            {
-                return;
-            }
-
-            // await user.player_lock.WaitAsync()
-            await this.map_controller.MovePlayer(cache_helper, player_info, DirectionType.NONE);
-            // user.player_lock.Release();
-        }
-
-        public async Task MovePlayer(RedisConnection redis_conn, long player_id, U_TO_G_MOVE msg)
-        {
-            try
-            {
-                CacheHelper cache_helper = new(redis_conn);
-                PlayerInfo? player_info = await PlayerController.Load(cache_helper, player_id);
-                if (player_info == null)
-                {
-                    return;
-                }
-
-                await this.map_controller.MovePlayer(cache_helper, player_info, msg.direction);
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-            }
+            await this.map_controller.MovePlayer(cache_helper, player_info, msg.direction);
         }
 
         public async Task Logout(RedisConnection redis_conn, long player_id, U_TO_G_LOGOUT msg)
         {
-            try
+            CacheHelper cache_helper = new(redis_conn);
+            var redlock = redis_conn.GetRedLockFactory();
+
+            using (var player_lock = await PlayerController.Lock(redlock, player_id))
             {
-                CacheHelper cache_helper = new(redis_conn);
-                var redlock = redis_conn.GetRedLockFactory();
+                PlayerInfo? player_info = await PlayerController.Load(cache_helper, msg.player_id);
 
-                using (var player_lock = await PlayerController.Lock(redlock, player_id))
+                if (player_info == null)
                 {
-                    PlayerInfo? player_info = await PlayerController.Load(
-                        cache_helper,
-                        msg.player_id
-                    );
-
-                    if (player_info == null)
-                    {
-                        return;
-                    }
-
-                    GameObjectInfo object_info = player_info.object_info;
-                    if (object_info == null)
-                    {
-                        return;
-                    }
-
-                    await cache_helper.ListRemove(
-                        MapHelper.GetPositionKey(object_info.map_id, object_info.current_cell),
-                        object_info.GetHashField()
-                    );
-
-                    await cache_helper.ListRemove(
-                        MapHelper.GetPositionKey(object_info.map_id, object_info.target_cell),
-                        object_info.GetHashField()
-                    );
-
-                    await PlayerController.Delete(cache_helper, player_id);
+                    throw new Exception($"can't find player_info. player_id : {player_id}");
                 }
 
-                // TODO 이 처리 이후 큐로 패킷이 온다면 DB에서 처리한다.
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
+                GameObjectInfo object_info = player_info.object_info;
+                if (object_info == null)
+                {
+                    throw new Exception($"can't find object_info. player_id : {player_id}");
+                }
+
+                await cache_helper.ListRemove(
+                    MapHelper.GetPositionKey(object_info.map_id, object_info.current_cell),
+                    object_info.GetHashField()
+                );
+
+                await cache_helper.ListRemove(
+                    MapHelper.GetPositionKey(object_info.map_id, object_info.target_cell),
+                    object_info.GetHashField()
+                );
+
+                await PlayerController.Delete(cache_helper, player_id);
             }
         }
 
-        // 주의: 여러 개의 채널에 하나의 패킷 전송 시 반드시 PublishToChannels 이용. Destroy 때문...
+        // 주의: 여러 개의 채널에 하나의 패킷 전송 시 반드시 PublishToChannels 이용. Packet Destroy 때문...
         public void PublishToChannel(ISubscriber publisher, string channel_name, Packet packet)
         {
             RedisChannel channel = new(channel_name, RedisChannel.PatternMode.Literal);

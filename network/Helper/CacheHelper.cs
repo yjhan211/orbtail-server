@@ -23,158 +23,101 @@ namespace network
 
         public async Task HashSet(string key, string field, byte[] value)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                await this.conn.BasicRetryAsync((db) => db.HashSetAsync(key, field, value));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-            }
+            await this.conn.BasicRetryAsync((db) => db.HashSetAsync(key, field, value));
         }
 
         public async Task HashSet(string key, long field, byte[] value)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                await this.conn.BasicRetryAsync((db) => db.HashSetAsync(key, field, value));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-            }
+            await this.conn.BasicRetryAsync((db) => db.HashSetAsync(key, field, value));
         }
 
         public async Task<RedisValue> HashGet(string key, string field)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                return await this.conn.BasicRetryAsync((db) => db.HashGetAsync(key, field));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-                return RedisValue.Null;
-            }
+            return await this.conn.BasicRetryAsync((db) => db.HashGetAsync(key, field));
         }
 
         public async Task<RedisValue> HashGet(string key, long field)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                return await this.conn.BasicRetryAsync((db) => db.HashGetAsync(key, field));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-                return RedisValue.Null;
-            }
+            return await this.conn.BasicRetryAsync((db) => db.HashGetAsync(key, field));
         }
 
         public async Task<RedisValue[]?> HashGet(string key, RedisValue[] fields)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
+                throw new Exception("RedisHelper.conn is null");
+            }
+
+            var result = await conn.BasicRetryAsync(
+                async (db) =>
                 {
-                    throw new Exception("RedisHelper.conn is null");
+                    var pipeline = db.CreateBatch();
+                    var task = pipeline.HashGetAsync(key, fields);
+
+                    pipeline.Execute();
+                    return await task;
                 }
+            );
 
-                var result = await conn.BasicRetryAsync(
-                    async (db) =>
-                    {
-                        var pipeline = db.CreateBatch();
-                        var task = pipeline.HashGetAsync(key, fields);
-
-                        pipeline.Execute();
-                        return await task;
-                    }
-                );
-
-                return result;
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-                return null;
-            }
+            return result;
         }
 
         public async Task HashDelete(string key, string field)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                await this.conn.BasicRetryAsync((db) => db.HashDeleteAsync(key, field));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-            }
+            await this.conn.BasicRetryAsync((db) => db.HashDeleteAsync(key, field));
         }
 
         public async Task HashDelete(string key, long field)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                await this.conn.BasicRetryAsync((db) => db.HashDeleteAsync(key, field));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-            }
+            await this.conn.BasicRetryAsync((db) => db.HashDeleteAsync(key, field));
         }
 
         public async Task<RedisValue[]> ListRange(string key, int start = 0, int end = -1)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                return await this.conn.BasicRetryAsync((db) => db.ListRangeAsync(key, start, end));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-                return Array.Empty<RedisValue>();
-            }
+            return await this.conn.BasicRetryAsync((db) => db.ListRangeAsync(key, start, end));
         }
 
         public async Task<RedisValue[]> ListRange(List<string> keys, int start = 0, int end = -1)
         {
-            const int batch_size = 10;
+            if (this.conn == null)
+            {
+                throw new Exception("RedisHelper.conn is null");
+            }
 
             if (keys == null || keys.Count == 0)
             {
@@ -183,25 +126,18 @@ namespace network
 
             var results = new List<RedisValue>();
 
-            for (int i = 0; i < keys.Count; i += batch_size)
+            for (int i = 0; i < keys.Count; i += Config.BATCH_SIZE)
             {
-                var batch_keys = keys.Skip(i).Take(batch_size).ToList();
-
-                try
-                {
-                    var batchTasks = batch_keys.Select(
+                var batch_tasks = keys.Skip(i)
+                    .Take(Config.BATCH_SIZE)
+                    .ToList()
+                    .Select(
                         async key =>
                             await conn.BasicRetryAsync(db => db.ListRangeAsync(key, start, end))
                     );
 
-                    var batchResults = await Task.WhenAll(batchTasks);
-                    results.AddRange(batchResults.SelectMany(r => r));
-                }
-                catch (Exception e)
-                {
-                    LogManager.WriteErrorLog(e);
-                    // 예외 처리 - 로깅 또는 재시도 등
-                }
+                var batch_results = await Task.WhenAll(batch_tasks);
+                results.AddRange(batch_results.SelectMany(r => r));
             }
 
             return results.ToArray();
@@ -213,7 +149,10 @@ namespace network
             int end = -1
         )
         {
-            const int batch_size = 10;
+            if (this.conn == null)
+            {
+                throw new Exception("RedisHelper.conn is null");
+            }
 
             if (keys == null || keys.Count == 0)
             {
@@ -222,13 +161,12 @@ namespace network
 
             var results = new List<(string key, RedisValue value)>();
 
-            for (int i = 0; i < keys.Count; i += batch_size)
+            for (int i = 0; i < keys.Count; i += Config.BATCH_SIZE)
             {
-                var batch_keys = keys.Skip(i).Take(batch_size).ToList();
-
-                try
-                {
-                    var batchTasks = batch_keys.Select(async key =>
+                var batch_tasks = keys.Skip(i)
+                    .Take(Config.BATCH_SIZE)
+                    .ToList()
+                    .Select(async key =>
                     {
                         var range = await conn.BasicRetryAsync(
                             db => db.ListRangeAsync(key, start, end)
@@ -236,14 +174,8 @@ namespace network
                         return range.Select(value => (key, value));
                     });
 
-                    var batchResults = await Task.WhenAll(batchTasks);
-                    results.AddRange(batchResults.SelectMany(x => x));
-                }
-                catch (Exception e)
-                {
-                    LogManager.WriteErrorLog(e);
-                    // 예외 처리 - 로깅 또는 재시도 등
-                }
+                var batchResults = await Task.WhenAll(batch_tasks);
+                results.AddRange(batchResults.SelectMany(x => x));
             }
 
             return results;
@@ -251,89 +183,52 @@ namespace network
 
         public async Task ListPush(string key, string value)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                await this.conn.BasicRetryAsync((db) => db.ListRightPushAsync(key, value));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-            }
+            await this.conn.BasicRetryAsync((db) => db.ListRightPushAsync(key, value));
         }
 
         public async Task ListRemove(string key, string value)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                await this.conn.BasicRetryAsync((db) => db.ListRemoveAsync(key, value));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-            }
+            await this.conn.BasicRetryAsync((db) => db.ListRemoveAsync(key, value));
         }
 
         public async Task Enqueue(string key, byte[] value)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                await this.conn.BasicRetryAsync((db) => db.ListLeftPushAsync(key, value));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-            }
+            await this.conn.BasicRetryAsync((db) => db.ListLeftPushAsync(key, value));
         }
 
         public async Task<byte[]?> Dequeue(string key)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                return await this.conn.BasicRetryAsync((db) => db.ListRightPopAsync(key));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-                return null;
-            }
+            return await this.conn.BasicRetryAsync((db) => db.ListRightPopAsync(key));
         }
 
         public async Task<long> StringIncrement(string key)
         {
-            try
+            if (this.conn == null)
             {
-                if (this.conn == null)
-                {
-                    throw new Exception("RedisHelper.conn is null");
-                }
+                throw new Exception("RedisHelper.conn is null");
+            }
 
-                return await this.conn.BasicRetryAsync((db) => db.StringIncrementAsync(key));
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-                return -1;
-            }
+            return await this.conn.BasicRetryAsync((db) => db.StringIncrementAsync(key));
         }
     }
 

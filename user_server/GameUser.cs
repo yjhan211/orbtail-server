@@ -179,6 +179,7 @@ namespace user_server
             catch (Exception e)
             {
                 LogManager.WriteErrorLog(e);
+                this.OnRemoved();
             }
             finally
             {
@@ -211,6 +212,7 @@ namespace user_server
             catch (Exception e)
             {
                 LogManager.WriteErrorLog(e);
+                this.OnRemoved();
             }
             finally
             {
