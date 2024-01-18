@@ -28,6 +28,6 @@ namespace network
         public static TimeSpan LOCK_TTL = TimeSpan.FromSeconds(30);
 
         public static string REDIS_CONFIG = "redis:6379,abortConnect=False";
-        public static int GAME_SERVER_NUM = 2;
+        public static int GAME_SERVER_NUM = 1;
     }
 }

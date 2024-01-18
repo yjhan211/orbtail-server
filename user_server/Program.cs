@@ -46,7 +46,7 @@ namespace user_server
                         continue;
                     }
 
-                    LogManager.WriteDebugLog($"client disconnect. player_id: {user.player_id}");
+                    // LogManager.WriteDebugLog($"client disconnect. player_id: {user.player_id}");
                     await user.ReleaseAsync();
                 }
                 await Task.Delay(100);

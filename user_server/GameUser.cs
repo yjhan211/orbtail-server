@@ -24,7 +24,6 @@ namespace user_server
         public CancellationTokenSource cts;
         public ConcurrentQueue<string> map_queue;
         public ConcurrentQueue<GameObjectInfo> move_object_queue;
-
         public SemaphoreSlim player_lock;
 
 #pragma warning disable CS8618
@@ -60,10 +59,9 @@ namespace user_server
             Packet packet = PacketMaker.U_TO_G_LOGOUT(this.player_id);
             _ = this.SendToGameServer(packet);
 
+            this.player_id = 0;
             await this.game_server_subscriber.UnsubscribeAllAsync();
             this.redis_connection.Dispose();
-
-            this.player_id = 0;
         }
 
         // 구독중인 Cell에 오는 Move 메시지를 취합하는 Task (오로지 모아서 보내는 목적)
@@ -281,7 +279,7 @@ namespace user_server
                 async (channel, message) => await OnMessageFromGameServer(message)
             );
 
-            LogManager.WriteLoginLog(LoginType.GUEST, $"{temp_player_id}", player_info, is_created);
+            // LogManager.WriteLoginLog(LoginType.GUEST, $"{temp_player_id}", player_info, is_created);
         }
 
         async Task RequestMove(long player_id, C_TO_U_MOVE body)

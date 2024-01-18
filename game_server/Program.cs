@@ -14,6 +14,7 @@ namespace game_server
         {
             server_id = int.Parse(args[0]);
 
+            LogManager.Initialize("game_server");
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
 
             game_server = new();
