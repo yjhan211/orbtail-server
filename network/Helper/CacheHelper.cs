@@ -102,6 +102,16 @@ namespace network
             await this.conn.BasicRetryAsync((db) => db.HashDeleteAsync(key, field));
         }
 
+        public async Task<bool> HashExists(string key, string field)
+        {
+            if (this.conn == null)
+            {
+                throw new Exception("RedisHelper.conn is null");
+            }
+
+            return await this.conn.BasicRetryAsync((db) => db.HashExistsAsync(key, field));
+        }
+
         public async Task<RedisValue[]> ListRange(string key, int start = 0, int end = -1)
         {
             if (this.conn == null)

@@ -117,11 +117,19 @@ namespace game_server
                         await cache_helper.ListRangeWithKey(this.collect_position_keys.ToList());
 
                     // 서버에 캐싱
-                    foreach (var object_key in object_keys)
+                    foreach ((string position_key, RedisValue value) in object_keys)
                     {
-                        (string position_key, RedisValue value) = object_key;
+                        string object_key = value.ToString();
+
+                        // 없으면 지움
+                        bool is_exist = await GameObjectController.Exist(cache_helper, object_key);
+                        if (!is_exist)
+                        {
+                            await cache_helper.ListRemove(position_key, object_key);
+                        }
+
                         var cell = MapHelper.GetCell(position_key);
-                        this.object_position_map[cell].Add(value.ToString());
+                        this.object_position_map[cell].Add(object_key);
                     }
 
                     this.collect_map_lock.Release();

@@ -81,6 +81,11 @@ namespace game_server
             await cache_helper.HashDelete(GameObjectInfo.HASH_KEY, hash_field);
         }
 
+        public static async Task<bool> Exist(CacheHelper cache_helper, string hash_field)
+        {
+            return await cache_helper.HashExists(GameObjectInfo.HASH_KEY, hash_field);
+        }
+
         // public void Save(Transaction transaction)
         // {
         //     transaction.HashSet(
