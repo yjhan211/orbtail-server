@@ -12,9 +12,12 @@ namespace game_server
 
         async static Task Main(string[] args)
         {
-            server_id = int.Parse(args[0]);
-
             LogManager.Initialize("game_server");
+            if (!Int32.TryParse(Environment.GetEnvironmentVariable("SERVER_ID"), out server_id))
+            {
+                LogManager.WriteErrorLog(new Exception("Invalid Server Id"));
+            }
+
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
 
             game_server = new();
