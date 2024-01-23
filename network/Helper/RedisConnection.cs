@@ -10,10 +10,8 @@ namespace network
         private static readonly Lazy<ConnectionMultiplexer> _multiplexer =
             new Lazy<ConnectionMultiplexer>(() =>
             {
-                var configurationOptions = ConfigurationOptions.Parse(
-                    "redis-service:6379,abortConnect=False"
-                );
-                configurationOptions.AbortOnConnectFail = false; // Adjust options as needed
+                var configurationOptions = ConfigurationOptions.Parse(Config.REDIS_CONFIG);
+                configurationOptions.AbortOnConnectFail = true; // Adjust options as needed
 
                 return ConnectionMultiplexer.Connect(configurationOptions);
             });

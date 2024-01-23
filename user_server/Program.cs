@@ -25,7 +25,14 @@ namespace user_server
             network_service.Initialize();
             network_service.session_created_callback += (UserToken token) =>
             {
-                GameUser user = new(token);
+                try
+                {
+                    GameUser user = new(token);
+                }
+                catch (Exception e)
+                {
+                    LogManager.WriteErrorLog(e);
+                }
             };
 
             network_service.Listen(IPAddress.Any, Config.USER_SERVER_PORT);

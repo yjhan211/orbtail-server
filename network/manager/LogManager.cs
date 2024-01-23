@@ -20,6 +20,12 @@ namespace network
                 .Debug()
                 .Enrich.WithProperty("server_type", LogManager.server_type)
                 .Enrich.WithProperty("log_type", "info")
+                .Enrich.WithProperty(
+                    "@t_kst",
+                    DateTimeOffset.UtcNow
+                        .ToOffset(TimeSpan.FromHours(9))
+                        .ToString("yyyy-MM-dd HH:mm:ss")
+                )
                 .WriteTo.Console(new CompactJsonFormatter())
                 .CreateLogger();
         }
