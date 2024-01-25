@@ -289,6 +289,8 @@ namespace user_server
                 return;
             }
 
+            LogManager.WriteDebugLog("request move from client");
+
             GameObjectInfo? object_info = await GameObjectController.Load(
                 this.cache_helper,
                 ObjectType.PLAYER,
@@ -306,6 +308,7 @@ namespace user_server
                 return;
             }
 
+            LogManager.WriteDebugLog("request move to game server");
             Packet packet = PacketMaker.U_TO_G_MOVE(player_id, body.direction);
             await SendToGameServer(packet);
         }
