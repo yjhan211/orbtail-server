@@ -48,7 +48,9 @@ namespace network
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            return await this.conn.BasicRetryAsync((db) => db.HashGetAsync(key, field));
+            return await this.conn.BasicRetryAsync(
+                (db) => db.HashGetAsync(key, field, CommandFlags.PreferReplica)
+            );
         }
 
         public async Task<RedisValue> HashGet(string key, long field)
@@ -58,7 +60,9 @@ namespace network
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            return await this.conn.BasicRetryAsync((db) => db.HashGetAsync(key, field));
+            return await this.conn.BasicRetryAsync(
+                (db) => db.HashGetAsync(key, field, CommandFlags.PreferReplica)
+            );
         }
 
         public async Task<RedisValue[]?> HashGet(string key, RedisValue[] fields)
@@ -72,7 +76,7 @@ namespace network
                 async (db) =>
                 {
                     var pipeline = db.CreateBatch();
-                    var task = pipeline.HashGetAsync(key, fields);
+                    var task = pipeline.HashGetAsync(key, fields, CommandFlags.PreferReplica);
 
                     pipeline.Execute();
                     return await task;
@@ -109,7 +113,9 @@ namespace network
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            return await this.conn.BasicRetryAsync((db) => db.HashExistsAsync(key, field));
+            return await this.conn.BasicRetryAsync(
+                (db) => db.HashExistsAsync(key, field, CommandFlags.PreferReplica)
+            );
         }
 
         public async Task<RedisValue[]> ListRange(string key, int start = 0, int end = -1)
@@ -119,7 +125,9 @@ namespace network
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            return await this.conn.BasicRetryAsync((db) => db.ListRangeAsync(key, start, end));
+            return await this.conn.BasicRetryAsync(
+                (db) => db.ListRangeAsync(key, start, end, CommandFlags.PreferReplica)
+            );
         }
 
         public async Task<RedisValue[]> ListRange(List<string> keys, int start = 0, int end = -1)
@@ -143,7 +151,9 @@ namespace network
                     .ToList()
                     .Select(
                         async key =>
-                            await conn.BasicRetryAsync(db => db.ListRangeAsync(key, start, end))
+                            await conn.BasicRetryAsync(
+                                db => db.ListRangeAsync(key, start, end, CommandFlags.PreferReplica)
+                            )
                     );
 
                 var batch_results = await Task.WhenAll(batch_tasks);
@@ -179,7 +189,7 @@ namespace network
                     .Select(async key =>
                     {
                         var range = await conn.BasicRetryAsync(
-                            db => db.ListRangeAsync(key, start, end)
+                            db => db.ListRangeAsync(key, start, end, CommandFlags.PreferReplica)
                         );
                         return range.Select(value => (key, value));
                     });

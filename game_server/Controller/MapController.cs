@@ -36,7 +36,7 @@ namespace game_server
 
         public void Initialize(int server_id)
         {
-            int section = MapHelper.MAP_SIZE / Config.GAME_SERVER_NUM;
+            int section = MapHelper.MAP_SIZE / MapHelper.GAME_SERVER_NUM;
             int start_x = (server_id - 1) * section;
             int start_y = 0;
 
