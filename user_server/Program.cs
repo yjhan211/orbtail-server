@@ -16,7 +16,7 @@ namespace user_server
 
         static void Main()
         {
-            LogManager.Initialize(server_type);
+            LogManager.Initialize(server_type, 0);
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
 
             network_service = new();

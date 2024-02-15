@@ -25,7 +25,6 @@ namespace network
         U_TO_C_OBJECT_INFO,
         U_TO_C_BOUND_TILE_INFO,
         U_TO_G_LOGOUT,
-
         END
     }
 

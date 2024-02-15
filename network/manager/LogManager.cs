@@ -12,13 +12,14 @@ namespace network
         static string server_type = "unknown";
         static Logger? logger;
 
-        public static void Initialize(string server_type)
+        public static void Initialize(string server_type, int server_id)
         {
             LogManager.server_type = server_type;
 
             logger = new LoggerConfiguration().MinimumLevel
                 .Debug()
                 .Enrich.WithProperty("server_type", LogManager.server_type)
+                .Enrich.WithProperty("server_id", server_id)
                 .Enrich.WithProperty("log_type", "info")
                 .Enrich.WithProperty(
                     "@t_kst",
@@ -50,7 +51,7 @@ namespace network
         {
             using (LogContext.PushProperty("log_type", "error"))
             {
-                logger!.Error("Exception: {@e}", e);
+                logger!.Error("{msg}", e);
             }
         }
 
