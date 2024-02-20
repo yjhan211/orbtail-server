@@ -26,7 +26,5 @@ namespace network
         public static int BROADCAST_UNIT = BUFFER_SIZE / BROADCAST_CHUNK_SIZE;
         public static bool HEARTBEAT_ACTIVE = false;
         public static TimeSpan LOCK_TTL = TimeSpan.FromSeconds(30);
-        public static string REDIS_CONFIG =
-            "redis-cluster-leader.redis-operators:6379,abortConnect=False";
     }
 }

@@ -13,9 +13,20 @@ namespace user_server
         public static NetworkService network_service;
 #pragma warning restore
         public static ConcurrentQueue<GameUser>? leave_user_queue;
+        public static int game_server_num;
 
         static void Main()
         {
+            if (
+                !Int32.TryParse(
+                    Environment.GetEnvironmentVariable("GAME_SERVER_NUM"),
+                    out game_server_num
+                )
+            )
+            {
+                LogManager.WriteErrorLog(new Exception("Invalid Game Server Num"));
+            }
+
             LogManager.Initialize(server_type, 0);
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
 

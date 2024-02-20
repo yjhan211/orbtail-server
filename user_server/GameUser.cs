@@ -13,13 +13,10 @@ namespace user_server
     {
         public UserToken token { get; private set; }
         public long player_id;
-
         RedisConnection redis_connection;
         public CacheHelper cache_helper { get; private set; }
         public RedLockFactory redlock { get; private set; }
-
         ISubscriber game_server_subscriber;
-
         Task game_object_subscribe_task;
         public CancellationTokenSource cts;
         public ConcurrentQueue<string> map_queue;
@@ -190,7 +187,7 @@ namespace user_server
             {
                 await this.player_lock.WaitAsync();
 
-                Packet packet = new((byte[])message!, this);
+                Packet packet = new((byte[])message!);
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 long player_id = packet.PopPlayerId();
                 var body = packet.PopBody();
@@ -266,9 +263,16 @@ namespace user_server
             Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info);
             SendToClient(login_packet);
 
-            // 게임서버에 유저 정보 전송
-            Packet move_packet = PacketMaker.U_TO_G_MOVE(this.player_id, DirectionType.NONE);
-            await SendToGameServer(move_packet);
+            var current_manage_server = GetObjectManageServer(player_info.object_info.current_cell);
+            var position_key = MapHelper.GetPositionKey(player_info.object_info.current_cell);
+
+            // 현재 담당 서버에 전송
+            await this.game_server_subscriber.PublishAsync(
+                new($"move_object_{current_manage_server}", RedisChannel.PatternMode.Literal),
+                MessagePackSerializer.Serialize(
+                    (position_key, position_key, player_info.object_info)
+                )
+            );
 
             // 게임 서버 구독 시작
             await this.game_server_subscriber.SubscribeAsync(
@@ -278,8 +282,6 @@ namespace user_server
                 ),
                 async (channel, message) => await OnMessageFromGameServer(message)
             );
-
-            // LogManager.WriteLoginLog(LoginType.GUEST, $"{temp_player_id}", player_info, is_created);
         }
 
         async Task RequestMove(long player_id, C_TO_U_MOVE body)
@@ -300,14 +302,59 @@ namespace user_server
                 return;
             }
 
-            // 아직 이동이 완료되지 않음
             if (object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
             {
+                // 아직 이동이 완료되지 않음
                 return;
             }
 
-            Packet packet = PacketMaker.U_TO_G_MOVE(player_id, body.direction);
-            await SendToGameServer(packet);
+            var next_target_cell = MapHelper.CalcTargetCell(
+                object_info.target_cell,
+                body.direction
+            );
+
+            if (MapHelper.IsOutOfMapRange(next_target_cell))
+            {
+                // 맵 밖으로 벗어남
+                return;
+            }
+
+            var current_manage_server = GetObjectManageServer(object_info.current_cell);
+            var target_manage_server = GetObjectManageServer(object_info.target_cell);
+
+            // 1. 과거 위치 키 챙겨놓고
+            var last_position_key = MapHelper.GetPositionKey(object_info.current_cell);
+
+            // 2. current_cell을 target_cell로 변경
+            object_info.current_cell = Cell.Clone(object_info.target_cell);
+
+            // 3. 갱신된 위치 키 챙김
+            var current_position_key = MapHelper.GetPositionKey(object_info.current_cell);
+
+            // 4. target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
+            object_info.move_timestamp = DateTime.UtcNow;
+            object_info.target_cell = next_target_cell;
+            object_info.SetFlip(body.direction);
+
+            // 5. 변경사항 저장
+            await GameObjectController.Save(cache_helper, object_info);
+
+            if (current_manage_server != target_manage_server)
+            {
+                // 과거 담당 서버에는 영역을 떠났다고 전송
+                await this.game_server_subscriber.PublishAsync(
+                    new($"leave_object_{current_manage_server}", RedisChannel.PatternMode.Literal),
+                    MessagePackSerializer.Serialize((last_position_key, object_info.GetHashField()))
+                );
+            }
+
+            // 현재 담당 서버에 전송
+            await this.game_server_subscriber.PublishAsync(
+                new($"move_object_{target_manage_server}", RedisChannel.PatternMode.Literal),
+                MessagePackSerializer.Serialize(
+                    (last_position_key, current_position_key, object_info)
+                )
+            );
         }
 
         async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
@@ -411,6 +458,11 @@ namespace user_server
         }
 #pragma warning restore CS1998
 
+        public int GetObjectManageServer(Cell cell)
+        {
+            return MapHelper.CalcServerIdFromCell(cell, Program.game_server_num);
+        }
+
         public void SendToClient(Packet msg)
         {
             this.token.Send(msg);
@@ -420,6 +472,20 @@ namespace user_server
         public async Task SendToGameServer(Packet msg)
         {
             await this.cache_helper.Enqueue("packet_queue", msg.ToBytes());
+            Packet.Destroy(msg);
+        }
+
+        public async Task SendToMoveServer(Cell cell, Packet msg)
+        {
+            var server_id = GetObjectManageServer(cell);
+
+            RedisChannel channel =
+                new($"move_object_{server_id}", RedisChannel.PatternMode.Literal);
+
+            await this.game_server_subscriber.PublishAsync(channel, msg.ToBytes());
+
+            LogManager.WriteInfoLog($"server_id: {server_id}, cell: {cell.x}, {cell.y}");
+
             Packet.Destroy(msg);
         }
 

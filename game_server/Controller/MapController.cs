@@ -1,6 +1,5 @@
 namespace game_server
 {
-    using System;
     using System.Collections.Concurrent;
     using MessagePack;
     using network;
@@ -10,78 +9,63 @@ namespace game_server
     public class MapController
     {
         public const int MAP_ID = 1;
-
+        RedisConnection redis_connection;
         ISubscriber? map_publisher;
-        public ConcurrentDictionary<Cell, List<string>> object_position_map;
-        public CancellationTokenSource cts;
-        HashSet<string> collect_position_keys; // 레디스에서 주기적으로 조회하는 셀 (관리 대상에게 전달하기 위한 목적으로 수집)
+        public ConcurrentDictionary<string, List<string>> object_position_map;
 
-        HashSet<string> manage_position_keys; // 조회한 collect_position_key를 publish하는 셀. (직접적인 관리 대상)
-        Task collect_map_task;
-        SemaphoreSlim collect_map_lock;
-
-#pragma warning disable CS8618
         public MapController()
         {
-            var redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
-
+            this.redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
             this.map_publisher = redis_connection._connection.GetSubscriber();
-
             this.object_position_map = new();
-
-            this.collect_position_keys = new();
-            this.manage_position_keys = new();
         }
-#pragma warning restore CS8618
 
-        public void Initialize(int server_id)
+        public async Task Initialize()
         {
-            int section = MapHelper.MAP_SIZE / MapHelper.GAME_SERVER_NUM;
-            int start_x = (server_id - 1) * section;
-            int start_y = 0;
+            // 서버 분할 설정
+            int horizontal_divisions = 2; // 가로로 2개 섹션
+            int vertical_divisions = 5; // 세로로 5개 섹션
 
-            int end_x = server_id * section;
-            int end_y = MapHelper.MAP_SIZE;
+            // 각 섹션의 크기 계산
+            int section_width = MapHelper.MAP_SIZE / horizontal_divisions;
+            int section_height = MapHelper.MAP_SIZE / vertical_divisions;
+
+            // 서버 ID를 기반으로 해당 서버의 가로 세로 위치 계산
+            int horizontal_position = (Program.server_id - 1) % horizontal_divisions;
+            int vertical_position = (Program.server_id - 1) / horizontal_divisions;
+
+            // 해당 서버가 담당할 맵의 x, y 시작점 계산
+            int start_x = horizontal_position * section_width;
+            int start_y = vertical_position * section_height;
+
+            // 해당 서버가 담당할 맵의 x, y 끝점 계산
+            int end_x = start_x + section_width;
+            int end_y = start_y + section_height;
 
             for (int x = start_x; x < end_x; x++)
             {
                 for (int y = start_y; y < end_y; y++)
                 {
                     Cell cell = new(x, y);
-                    var manage_position_key = MapHelper.GetPositionKey(MAP_ID, new(cell.x, cell.y));
-                    this.manage_position_keys.Add(manage_position_key);
-
-                    foreach (var bound_cell in MapHelper.GetBoundCellList(cell))
-                    {
-                        var collect_position_key = MapHelper.GetPositionKey(
-                            MAP_ID,
-                            new(bound_cell.x, bound_cell.y)
-                        );
-                        this.collect_position_keys.Add(collect_position_key);
-                    }
+                    var position_key = MapHelper.GetPositionKey(MAP_ID, cell);
+                    this.object_position_map[position_key] = [];
                 }
             }
 
-            this.cts = new();
-            this.collect_map_lock = new(1);
-            this.collect_map_task = Task.Run(CollectMapInfo, cts.Token);
-        }
+            await this.map_publisher!.SubscribeAsync(
+                new($"move_object_{Program.server_id}", RedisChannel.PatternMode.Literal),
+                (channel, msg) => MoveManageObject(msg)
+            );
 
-        void InitPositionMap()
-        {
-            for (int x = 0; x < MapHelper.MAP_SIZE; x++)
-            {
-                for (int y = 0; y < MapHelper.MAP_SIZE; y++)
-                {
-                    Cell cell = new(x, y);
-                    this.object_position_map[cell] = new();
-                }
-            }
-        }
+            await this.map_publisher!.SubscribeAsync(
+                new($"leave_object_{Program.server_id}", RedisChannel.PatternMode.Literal),
+                (channel, msg) => LeaveManageObject(msg)
+            );
 
-        public string GetSubscriberKey(Cell cell)
-        {
-            return $"subscriber_{GetMapKey()}_{cell.x % 10}";
+             await this.map_publisher!.SubscribeAsync(
+                new($"broadcast_object_{Program.server_id}", RedisChannel.PatternMode.Literal),
+                (channel, msg) => BroadcastUpdateObject(msg)
+            );
         }
 
         public string GetMapKey()
@@ -99,192 +83,90 @@ namespace game_server
             return $"{GetMapKey()}|{cell.x},{cell.y}";
         }
 
-        async Task CollectMapInfo()
+object position_lock = new();
+
+        public void MoveManageObject(RedisValue message)
         {
-            var redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
-            CacheHelper cache_helper = new(redis_connection);
+            var (last_position_key, current_position_key, object_info) 
+            = MessagePackSerializer.Deserialize<(string, string, GameObjectInfo)>(message);
 
-            while (!cts.Token.IsCancellationRequested)
+            // 6. 맵 갱신
+            var object_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, object_info.object_id);
+
+            lock (position_lock)
             {
-                try
+                // 6-1. last를 관리하는 서버가 본인이면 지움
+                if (this.object_position_map.TryGetValue(last_position_key, out _))
                 {
-                    await this.collect_map_lock.WaitAsync();
-
-                    InitPositionMap();
-
-                    // 조회 대상인 cell에 있는 유저 키를 모두 조회
-                    List<(string key, RedisValue value)> object_keys =
-                        await cache_helper.ListRangeWithKey(this.collect_position_keys.ToList());
-
-                    // 서버에 캐싱
-                    foreach ((string position_key, RedisValue value) in object_keys)
-                    {
-                        string object_key = value.ToString();
-
-                        // 없으면 지움
-                        bool is_exist = await GameObjectController.Exist(cache_helper, object_key);
-                        if (!is_exist)
-                        {
-                            await cache_helper.ListRemove(position_key, object_key);
-                        }
-
-                        var cell = MapHelper.GetCell(position_key);
-                        this.object_position_map[cell].Add(object_key);
-                    }
-
-                    this.collect_map_lock.Release();
-
-                    // 조회 대상 유저를 셀 단위로 순회하며 - 대신 관리 대상인 유저들에게만 이 유저들에게 주변 오브젝트 정보를 publish
-                    foreach (var object_list in this.object_position_map)
-                    {
-                        var cell = object_list.Key;
-                        var position_key = MapHelper.GetPositionKey(MAP_ID, cell);
-
-                        if (!this.manage_position_keys.Contains(position_key))
-                        {
-                            continue;
-                        }
-
-                        // 셀에 위치한 유저 리스트
-                        var channel_list = object_list.Value;
-
-                        // 같은 셀에 위치한 유저들은 같은 주변 오브젝트 정보를 받음
-                        var map_info_list = new List<string>();
-
-                        // 가시거리 범위에 있는 셀 순회
-                        foreach (var bound_cell in MapHelper.GetBoundCellList(cell))
-                        {
-                            // 셀을 참조로 앞서 캐싱한 오브젝트들의 키를 넣음
-                            map_info_list.AddRange(this.object_position_map[bound_cell]);
-                        }
-
-                        if (!map_info_list.Any())
-                        {
-                            continue;
-                        }
-
-                        // 주변 오브젝트 정보를 publish
-                        Program.game_server.PublishToChannels(
-                            this.map_publisher!,
-                            channel_list,
-                            PacketMaker.G_TO_U_MAP_INFO(map_info_list)
-                        );
-                    }
-
-                    await Task.Delay(1000);
+                    this.object_position_map[last_position_key].Remove(object_key);
                 }
-                catch (Exception e)
-                {
-                    LogManager.WriteErrorLog(e);
-                    cts.Cancel();
-                }
+
+                // 6-2. current 추가
+                this.object_position_map[current_position_key].Add(object_key);
             }
 
-            try
+            // 7. bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
+            var bound_cell_list = MapHelper.GetBoundCellList(object_info.current_cell);
+            var bound_server_list = bound_cell_list.Select(cell => MapHelper.CalcServerIdFromCell(cell, Program.game_server_num))
+                                    .Distinct()
+                                    .ToList();
+
+            var broadcast_msg = MessagePackSerializer.Serialize(object_info);                        
+            foreach (var server_id in bound_server_list)
             {
-                this.collect_map_task!.Wait();
-                this.collect_map_lock.Release();
+                _ = this.map_publisher!.PublishAsync(new($"broadcast_object_{server_id}", RedisChannel.PatternMode.Literal), 
+                    broadcast_msg);
             }
-            catch (AggregateException e)
+
+            // 9. 마지막 Move요청 처리. 이 처리가 없으면 current_cell과 target_cell이 계속 불일치
+            // if (body.direction == DirectionType.NONE)
+            // {
+            //     return;
+            // }
+
+            // _ = Task.Run(async () =>
+            // {
+            //     await Task.Delay(TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME));
+            //     await MoveManageObject(cache_helper, player_info, DirectionType.NONE);
+            // });
+        }
+
+        public void LeaveManageObject(RedisValue message)
+        {
+            (string position_key, string object_key) = MessagePackSerializer.Deserialize<(string, string)>(message);
+
+            lock (position_lock)
             {
-                LogManager.WriteErrorLog(e);
+                this.object_position_map[position_key].Remove(object_key);
             }
         }
 
-        public async Task MovePlayer(
-            CacheHelper cache_helper,
-            PlayerInfo player_info,
-            DirectionType directon_type
-        )
+        public void BroadcastUpdateObject(RedisValue message)
         {
-            // 1. current_cell을 target_cell로 변경
-            var last_position_key = GetPositionKey(player_info.object_info.current_cell);
+            var object_info = MessagePackSerializer.Deserialize<GameObjectInfo>(message);
 
-            await cache_helper.ListRemove(
-                last_position_key,
-                player_info.object_info.GetHashField()
-            );
+            var channels = new List<string>();
 
-            player_info.object_info.current_cell = Cell.Clone(player_info.object_info.target_cell);
-
-            var current_position_key = GetPositionKey(player_info.object_info.current_cell);
-
-            await cache_helper.ListPush(
-                current_position_key,
-                player_info.object_info.GetHashField()
-            );
-
-            // 2. target_cell을 new_target_cell로 변경 및 move_timestamp 업데이트
-            this.SetPlayerTargetCell(
-                player_info,
-                Cell.Clone(player_info.object_info.current_cell),
-                directon_type
-            );
-
-            // 3. 변경사항 저장
-            await GameObjectController.Save(cache_helper, player_info.object_info);
-
-            var bound_cell_list = MapHelper.GetBoundCellList(player_info.object_info.current_cell);
-
-            await this.collect_map_lock.WaitAsync();
-
-            foreach (var bound_cell in bound_cell_list)
+            // 담당하는 셀에 영향 받는 유저가 있다면 전송
+            foreach (var bound_cell in MapHelper.GetBoundCellList(object_info.current_cell))
             {
-                var target_list = this.object_position_map[bound_cell];
-                Packet packet = PacketMaker.G_TO_U_MOVE(player_info.object_info);
-                Program.game_server.PublishToChannels(this.map_publisher!, target_list, packet);
+                var bound_cell_key = MapHelper.GetPositionKey(MAP_ID, bound_cell);
+                if (!this.object_position_map.TryGetValue(bound_cell_key, out var target_user_list))
+                {
+                    continue;
+                }
+
+                if (target_user_list.Count > 0)
+                {
+                    channels.AddRange(target_user_list);
+                }
             }
 
-            this.collect_map_lock.Release();
-
-            if (directon_type == DirectionType.NONE)
+            if (channels.Count > 0)
             {
-                return;
+                Packet send_packet = PacketMaker.G_TO_U_MOVE(object_info);
+                Program.game_server.PublishToChannels(this.map_publisher!, channels, send_packet);
             }
-
-            // 마지막 Move요청 처리. 이 처리가 없으면 current_cell과 target_cell이 계속 불일치
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME));
-                await MovePlayer(cache_helper, player_info, DirectionType.NONE);
-            });
-        }
-
-        void SetPlayerTargetCell(PlayerInfo player, Cell cell, DirectionType direction)
-        {
-            switch (direction)
-            {
-                case DirectionType.TOP_LEFT:
-                    cell.x += 1;
-                    break;
-
-                case DirectionType.TOP_RIGHT:
-                    cell.x -= 1;
-                    break;
-
-                case DirectionType.BOTTOM_LEFT:
-                    cell.y -= 1;
-                    break;
-
-                case DirectionType.BOTTOM_RIGHT:
-                    cell.y += 1;
-                    break;
-
-                default:
-                    return;
-            }
-
-            player.object_info.move_timestamp = DateTime.UtcNow;
-
-            if (MapHelper.IsOutOfMapRange(cell))
-            {
-                return;
-            }
-
-            player.object_info.target_cell = cell;
-            player.object_info.SetFlip(direction);
-
-            return;
         }
     }
 }

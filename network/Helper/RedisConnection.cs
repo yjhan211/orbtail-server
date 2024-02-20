@@ -7,31 +7,30 @@ namespace network
 
     public class RedisConnectionPool : IDisposable
     {
+        public static ConfigurationOptions configOptions = new ConfigurationOptions
+        {
+            // Kubernetes 서비스 주소를 EndPoints에 추가
+            EndPoints =
+            {
+                { "redis-cluster-leader.redis-operators.svc.cluster.local", 6379 },
+                { "redis-cluster-follower.redis-operators.svc.cluster.local", 6379 }
+            },
+            CommandMap = CommandMap.Create(
+                new HashSet<string> { "INFO", "CONFIG" },
+                available: false
+            ),
+            KeepAlive = 180,
+            // 필요한 경우 비밀번호 설정
+            // Password = "yourpassword",
+            Ssl = false, // Kubernetes 내부 통신에서는 일반적으로 SSL을 사용하지 않음
+            ConnectTimeout = 5000,
+            SyncTimeout = 5000,
+            AbortOnConnectFail = false // 클러스터 노드 중 하나에 연결 실패해도 연결 시도를 중단하지 않음
+        };
+
         private static readonly Lazy<ConnectionMultiplexer> _multiplexer =
             new Lazy<ConnectionMultiplexer>(() =>
             {
-                var configOptions = new ConfigurationOptions
-                {
-                    // Kubernetes 서비스 주소를 EndPoints에 추가
-                    EndPoints =
-                    {
-                        { "redis-cluster-leader.redis-operators.svc.cluster.local", 6379 },
-                        { "redis-cluster-follower.redis-operators.svc.cluster.local", 6379 }
-                    },
-                    CommandMap = CommandMap.Create(
-                        new HashSet<string> { "INFO", "CONFIG" },
-                        available: false
-                    ),
-                    KeepAlive = 180,
-                    // 필요한 경우 비밀번호 설정
-                    // Password = "yourpassword",
-                    Ssl = false, // Kubernetes 내부 통신에서는 일반적으로 SSL을 사용하지 않음
-                    ConnectTimeout = 5000,
-                    SyncTimeout = 5000,
-                    AbortOnConnectFail = false // 클러스터 노드 중 하나에 연결 실패해도 연결 시도를 중단하지 않음
-                };
-                configOptions.AbortOnConnectFail = true; // Adjust options as needed
-
                 return ConnectionMultiplexer.Connect(configOptions);
             });
 
@@ -220,7 +219,7 @@ namespace network
                 Interlocked.Exchange(ref _connection, null);
 #pragma warning restore
                 ConnectionMultiplexer newConnection = await ConnectionMultiplexer.ConnectAsync(
-                    Config.REDIS_CONFIG
+                    RedisConnectionPool.configOptions
                 );
                 Interlocked.Exchange(ref _connection, newConnection);
 

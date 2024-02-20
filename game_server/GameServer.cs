@@ -19,9 +19,9 @@ namespace game_server
             this.map_controller = new();
         }
 
-        public void Start(int server_id)
+        public async Task Start()
         {
-            this.map_controller.Initialize(server_id);
+            await this.map_controller.Initialize();
             this.logic_thread = Task.Run(GameLoop, this.cts.Token);
         }
 
@@ -86,32 +86,10 @@ namespace game_server
             {
                 switch (protocol_id)
                 {
-                    case PROTOCOL.U_TO_G_MOVE:
-                        await HandleMessage<U_TO_G_MOVE>(redis_conn, player_id, body, MovePlayer);
-                        break;
-
                     case PROTOCOL.U_TO_G_LOGOUT:
                         await HandleMessage<U_TO_G_LOGOUT>(redis_conn, player_id, body, Logout);
                         break;
                 }
-            }
-        }
-
-        public async Task MovePlayer(RedisConnection redis_conn, long player_id, U_TO_G_MOVE msg)
-        {
-            CacheHelper cache_helper = new(redis_conn);
-            var redlock = redis_conn.GetRedLockFactory();
-
-            PlayerInfo? player_info = await PlayerController.Load(cache_helper, player_id);
-
-            if (player_info == null)
-            {
-                throw new Exception($"can't find player_info. player_id : {player_id}");
-            }
-
-            // using (var player_lock = await PlayerController.Lock(redlock, player_id))
-            {
-                await this.map_controller.MovePlayer(cache_helper, player_info, msg.direction);
             }
         }
 
@@ -135,15 +113,15 @@ namespace game_server
                     throw new Exception($"can't find object_info. player_id : {player_id}");
                 }
 
-                await cache_helper.ListRemove(
-                    MapHelper.GetPositionKey(object_info.map_id, object_info.current_cell),
-                    object_info.GetHashField()
-                );
+                // await cache_helper.ListRemove(
+                //     MapHelper.GetPositionKey(object_info.map_id, object_info.current_cell),
+                //     object_info.GetHashField()
+                // );
 
-                await cache_helper.ListRemove(
-                    MapHelper.GetPositionKey(object_info.map_id, object_info.target_cell),
-                    object_info.GetHashField()
-                );
+                // await cache_helper.ListRemove(
+                //     MapHelper.GetPositionKey(object_info.map_id, object_info.target_cell),
+                //     object_info.GetHashField()
+                // );
 
                 await PlayerController.Delete(cache_helper, player_id);
             }
