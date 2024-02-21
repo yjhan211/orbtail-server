@@ -38,7 +38,7 @@ namespace game_server
                         byte[]? message = await cache_helper.Dequeue("packet_queue");
                         if (message == null)
                         {
-                            await Task.Delay(10);
+                            await Task.Delay(100);
                             continue;
                         }
 
@@ -113,15 +113,7 @@ namespace game_server
                     throw new Exception($"can't find object_info. player_id : {player_id}");
                 }
 
-                // await cache_helper.ListRemove(
-                //     MapHelper.GetPositionKey(object_info.map_id, object_info.current_cell),
-                //     object_info.GetHashField()
-                // );
-
-                // await cache_helper.ListRemove(
-                //     MapHelper.GetPositionKey(object_info.map_id, object_info.target_cell),
-                //     object_info.GetHashField()
-                // );
+                // TODO map_position Remove
 
                 await PlayerController.Delete(cache_helper, player_id);
             }

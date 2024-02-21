@@ -23,9 +23,7 @@ namespace game_server
         public async Task Initialize()
         {
             // 서버 분할 설정
-            int horizontal_divisions = 2; // 가로로 2개 섹션
-            int vertical_divisions = 5; // 세로로 5개 섹션
-
+            var (horizontal_divisions, vertical_divisions) = MapHelper.DetermineDivisions(Program.game_server_num);
             // 각 섹션의 크기 계산
             int section_width = MapHelper.MAP_SIZE / horizontal_divisions;
             int section_height = MapHelper.MAP_SIZE / vertical_divisions;
@@ -49,6 +47,10 @@ namespace game_server
                     Cell cell = new(x, y);
                     var position_key = MapHelper.GetPositionKey(MAP_ID, cell);
                     this.object_position_map[position_key] = [];
+
+                    await this.map_publisher!.SubscribeAsync(
+                        new(position_key, RedisChannel.PatternMode.Literal), 
+                        (channel, msg) => BroadcastUpdateObject(channel!, msg));
                 }
             }
 
@@ -60,11 +62,6 @@ namespace game_server
             await this.map_publisher!.SubscribeAsync(
                 new($"leave_object_{Program.server_id}", RedisChannel.PatternMode.Literal),
                 (channel, msg) => LeaveManageObject(msg)
-            );
-
-             await this.map_publisher!.SubscribeAsync(
-                new($"broadcast_object_{Program.server_id}", RedisChannel.PatternMode.Literal),
-                (channel, msg) => BroadcastUpdateObject(msg)
             );
         }
 
@@ -90,31 +87,28 @@ object position_lock = new();
             var (last_position_key, current_position_key, object_info) 
             = MessagePackSerializer.Deserialize<(string, string, GameObjectInfo)>(message);
 
-            // 6. 맵 갱신
+            // 맵 갱신
             var object_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, object_info.object_id);
 
             lock (position_lock)
             {
-                // 6-1. last를 관리하는 서버가 본인이면 지움
+                // last를 관리하는 서버가 본인이면 지움
                 if (this.object_position_map.TryGetValue(last_position_key, out _))
                 {
                     this.object_position_map[last_position_key].Remove(object_key);
                 }
 
-                // 6-2. current 추가
+                // current 추가
                 this.object_position_map[current_position_key].Add(object_key);
             }
 
-            // 7. bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
+            // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
             var bound_cell_list = MapHelper.GetBoundCellList(object_info.current_cell);
-            var bound_server_list = bound_cell_list.Select(cell => MapHelper.CalcServerIdFromCell(cell, Program.game_server_num))
-                                    .Distinct()
-                                    .ToList();
-
             var broadcast_msg = MessagePackSerializer.Serialize(object_info);                        
-            foreach (var server_id in bound_server_list)
+            foreach (var bound_cell in bound_cell_list)
             {
-                _ = this.map_publisher!.PublishAsync(new($"broadcast_object_{server_id}", RedisChannel.PatternMode.Literal), 
+                _ = this.map_publisher!.PublishAsync(
+                    new(MapHelper.GetPositionKey(bound_cell), RedisChannel.PatternMode.Literal), 
                     broadcast_msg);
             }
 
@@ -141,32 +135,21 @@ object position_lock = new();
             }
         }
 
-        public void BroadcastUpdateObject(RedisValue message)
+        public void BroadcastUpdateObject(string position_key, RedisValue message)
         {
             var object_info = MessagePackSerializer.Deserialize<GameObjectInfo>(message);
-
-            var channels = new List<string>();
-
-            // 담당하는 셀에 영향 받는 유저가 있다면 전송
-            foreach (var bound_cell in MapHelper.GetBoundCellList(object_info.current_cell))
+            if (!this.object_position_map.TryGetValue(position_key, out var channel_list))
             {
-                var bound_cell_key = MapHelper.GetPositionKey(MAP_ID, bound_cell);
-                if (!this.object_position_map.TryGetValue(bound_cell_key, out var target_user_list))
-                {
-                    continue;
-                }
-
-                if (target_user_list.Count > 0)
-                {
-                    channels.AddRange(target_user_list);
-                }
+                return;
             }
 
-            if (channels.Count > 0)
+            if (channel_list.Count <= 0)
             {
-                Packet send_packet = PacketMaker.G_TO_U_MOVE(object_info);
-                Program.game_server.PublishToChannels(this.map_publisher!, channels, send_packet);
+                return;
             }
+
+            Packet send_packet = PacketMaker.G_TO_U_MOVE(object_info);
+            Program.game_server.PublishToChannels(this.map_publisher!, channel_list, send_packet);
         }
     }
 }

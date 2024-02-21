@@ -155,11 +155,27 @@ namespace network
             return result;
         }
 
-        public static int CalcServerIdFromCell(Cell cell, int game_server_num)
+        public static (int, int) DetermineDivisions(int total_server_num)
+        {
+            int sqrt = (int)Math.Sqrt(total_server_num);
+            int horizontal_divisions = sqrt;
+            int vertical_divisions = sqrt;
+
+            while (horizontal_divisions * vertical_divisions < total_server_num)
+            {
+                if (horizontal_divisions <= vertical_divisions)
+                    horizontal_divisions++;
+                else
+                    vertical_divisions++;
+            }
+
+            return (horizontal_divisions, vertical_divisions);
+        }
+
+        public static int CalcServerIdFromCell(Cell cell, int total_server_num)
         {
             // 맵 분할 설정
-            int horizontal_divisions = 2; // 가로로 2개 섹션
-            int vertical_divisions = 5; // 세로로 5개 섹션
+            var (horizontal_divisions, vertical_divisions) = DetermineDivisions(total_server_num);
 
             // 각 섹션의 크기
             int section_width = MapHelper.MAP_SIZE / horizontal_divisions;
@@ -176,9 +192,9 @@ namespace network
             // 서버 ID 계산
             // 세로 위치(verticalPosition)를 기반으로 몇 번째 "행"에 있는지 계산하고,
             // 가로 위치(horizontalPosition)를 추가하여 최종적인 서버 ID를 도출
-            int serverId = vertical_position * horizontal_divisions + horizontal_position + 1;
+            int server_id = vertical_position * horizontal_divisions + horizontal_position + 1;
 
-            return serverId;
+            return server_id;
         }
     }
 }

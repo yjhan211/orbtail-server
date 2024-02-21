@@ -13,6 +13,7 @@ namespace user_server
     {
         public UserToken token { get; private set; }
         public long player_id;
+        GameObjectInfo object_info;
         RedisConnection redis_connection;
         public CacheHelper cache_helper { get; private set; }
         public RedLockFactory redlock { get; private set; }
@@ -22,7 +23,6 @@ namespace user_server
         public ConcurrentQueue<string> map_queue;
         public ConcurrentQueue<GameObjectInfo> move_object_queue;
         public SemaphoreSlim player_lock;
-
 #pragma warning disable CS8618
         public GameUser(UserToken token)
         {
@@ -259,6 +259,8 @@ namespace user_server
                 is_created = true;
             }
 
+            this.object_info = player_info.object_info;
+
             // 계정 정보 전송
             Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info);
             SendToClient(login_packet);
@@ -269,9 +271,7 @@ namespace user_server
             // 현재 담당 서버에 전송
             await this.game_server_subscriber.PublishAsync(
                 new($"move_object_{current_manage_server}", RedisChannel.PatternMode.Literal),
-                MessagePackSerializer.Serialize(
-                    (position_key, position_key, player_info.object_info)
-                )
+                MessagePackSerializer.Serialize((position_key, position_key, this.object_info))
             );
 
             // 게임 서버 구독 시작
@@ -291,25 +291,14 @@ namespace user_server
                 return;
             }
 
-            GameObjectInfo? object_info = await GameObjectController.Load(
-                this.cache_helper,
-                ObjectType.PLAYER,
-                player_id
-            );
-
-            if (object_info == null)
-            {
-                return;
-            }
-
-            if (object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+            if (this.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
             {
                 // 아직 이동이 완료되지 않음
                 return;
             }
 
             var next_target_cell = MapHelper.CalcTargetCell(
-                object_info.target_cell,
+                this.object_info.target_cell,
                 body.direction
             );
 
@@ -319,40 +308,42 @@ namespace user_server
                 return;
             }
 
-            var current_manage_server = GetObjectManageServer(object_info.current_cell);
-            var target_manage_server = GetObjectManageServer(object_info.target_cell);
+            var current_manage_server = GetObjectManageServer(this.object_info.current_cell);
+            var target_manage_server = GetObjectManageServer(this.object_info.target_cell);
 
             // 1. 과거 위치 키 챙겨놓고
-            var last_position_key = MapHelper.GetPositionKey(object_info.current_cell);
+            var last_position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
 
             // 2. current_cell을 target_cell로 변경
-            object_info.current_cell = Cell.Clone(object_info.target_cell);
+            this.object_info.current_cell = Cell.Clone(this.object_info.target_cell);
 
             // 3. 갱신된 위치 키 챙김
-            var current_position_key = MapHelper.GetPositionKey(object_info.current_cell);
+            var current_position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
 
             // 4. target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
-            object_info.move_timestamp = DateTime.UtcNow;
-            object_info.target_cell = next_target_cell;
-            object_info.SetFlip(body.direction);
+            this.object_info.move_timestamp = DateTime.UtcNow;
+            this.object_info.target_cell = next_target_cell;
+            this.object_info.SetFlip(body.direction);
 
             // 5. 변경사항 저장
-            await GameObjectController.Save(cache_helper, object_info);
+            // await GameObjectController.Save(cache_helper, this.object_info);
 
             if (current_manage_server != target_manage_server)
             {
                 // 과거 담당 서버에는 영역을 떠났다고 전송
-                await this.game_server_subscriber.PublishAsync(
+                _ = this.game_server_subscriber.PublishAsync(
                     new($"leave_object_{current_manage_server}", RedisChannel.PatternMode.Literal),
-                    MessagePackSerializer.Serialize((last_position_key, object_info.GetHashField()))
+                    MessagePackSerializer.Serialize(
+                        (last_position_key, this.object_info.GetHashField())
+                    )
                 );
             }
 
             // 현재 담당 서버에 전송
-            await this.game_server_subscriber.PublishAsync(
+            _ = this.game_server_subscriber.PublishAsync(
                 new($"move_object_{target_manage_server}", RedisChannel.PatternMode.Literal),
                 MessagePackSerializer.Serialize(
-                    (last_position_key, current_position_key, object_info)
+                    (last_position_key, current_position_key, this.object_info)
                 )
             );
         }
