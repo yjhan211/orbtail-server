@@ -49,7 +49,10 @@ namespace network
     public class U_TO_G_MOVE : IMessagePackObject
     {
         [Key("object_info")]
-        public DirectionType direction { get; set; }
+        public GameObjectInfo object_info { get; set; }
+
+        [Key("target_cell")]
+        public Cell target_cell { get; set; }
     }
 
     [MessagePackObject]

@@ -60,10 +60,14 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_G_MOVE(long player_id, DirectionType direction)
+        public static Packet U_TO_G_MOVE(
+            long player_id,
+            GameObjectInfo object_info,
+            Cell target_cell
+        )
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_G_MOVE, player_id);
-            U_TO_G_MOVE body = new() { direction = direction };
+            U_TO_G_MOVE body = new() { object_info = object_info, target_cell = target_cell };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

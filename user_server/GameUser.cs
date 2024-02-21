@@ -8,26 +8,21 @@ namespace user_server
     using StackExchange.Redis;
     using game_server;
     using RedLockNet.SERedis;
-    using RedLockNet.SERedis.Configuration;
 
     public class GameUser : IPeer
     {
         public UserToken token { get; private set; }
         public long player_id;
-
+        GameObjectInfo object_info;
         RedisConnection redis_connection;
         public CacheHelper cache_helper { get; private set; }
         public RedLockFactory redlock { get; private set; }
-
         ISubscriber game_server_subscriber;
-
         Task game_object_subscribe_task;
         public CancellationTokenSource cts;
         public ConcurrentQueue<string> map_queue;
         public ConcurrentQueue<GameObjectInfo> move_object_queue;
-
         public SemaphoreSlim player_lock;
-
 #pragma warning disable CS8618
         public GameUser(UserToken token)
         {
@@ -61,10 +56,9 @@ namespace user_server
             Packet packet = PacketMaker.U_TO_G_LOGOUT(this.player_id);
             _ = this.SendToGameServer(packet);
 
+            this.player_id = 0;
             await this.game_server_subscriber.UnsubscribeAllAsync();
             this.redis_connection.Dispose();
-
-            this.player_id = 0;
         }
 
         // 구독중인 Cell에 오는 Move 메시지를 취합하는 Task (오로지 모아서 보내는 목적)
@@ -102,8 +96,8 @@ namespace user_server
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
-                    await this.OnRemoved();
+                    LogManager.WriteErrorLog(e);
+                    this.OnRemoved();
                 }
             }
 
@@ -113,7 +107,7 @@ namespace user_server
             }
             catch (AggregateException e)
             {
-                Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -178,7 +172,8 @@ namespace user_server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[UserServer] {e.Message}, {e.StackTrace}");
+                LogManager.WriteErrorLog(e);
+                this.OnRemoved();
             }
             finally
             {
@@ -192,7 +187,7 @@ namespace user_server
             {
                 await this.player_lock.WaitAsync();
 
-                Packet packet = new((byte[])message!, this);
+                Packet packet = new((byte[])message!);
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 long player_id = packet.PopPlayerId();
                 var body = packet.PopBody();
@@ -210,7 +205,8 @@ namespace user_server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[UserServer] {e.Message}, {e.StackTrace}");
+                LogManager.WriteErrorLog(e);
+                this.OnRemoved();
             }
             finally
             {
@@ -244,6 +240,8 @@ namespace user_server
                 throw new Exception("Already Exist Player");
             }
 
+            bool is_created = false;
+
             PlayerInfo player_info;
             using (var player_lock = await PlayerController.Lock(this.redlock, this.player_id))
             {
@@ -258,15 +256,23 @@ namespace user_server
                 await PlayerController.Save(this.cache_helper, player_info);
 
                 this.player_id = player_info.player_id;
+                is_created = true;
             }
+
+            this.object_info = player_info.object_info;
 
             // 계정 정보 전송
             Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info);
             SendToClient(login_packet);
 
-            // 게임서버에 유저 정보 전송
-            Packet move_packet = PacketMaker.U_TO_G_MOVE(this.player_id, DirectionType.NONE);
-            await SendToGameServer(move_packet);
+            var current_manage_server = GetObjectManageServer(player_info.object_info.current_cell);
+            var position_key = MapHelper.GetPositionKey(player_info.object_info.current_cell);
+
+            // 현재 담당 서버에 전송
+            await this.game_server_subscriber.PublishAsync(
+                new($"move_object_{current_manage_server}", RedisChannel.PatternMode.Literal),
+                MessagePackSerializer.Serialize((position_key, position_key, this.object_info))
+            );
 
             // 게임 서버 구독 시작
             await this.game_server_subscriber.SubscribeAsync(
@@ -285,25 +291,61 @@ namespace user_server
                 return;
             }
 
-            GameObjectInfo? object_info = await GameObjectController.Load(
-                this.cache_helper,
-                ObjectType.PLAYER,
-                player_id
+            if (this.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+            {
+                // 아직 이동이 완료되지 않음
+                return;
+            }
+
+            var next_target_cell = MapHelper.CalcTargetCell(
+                this.object_info.target_cell,
+                body.direction
             );
 
-            if (object_info == null)
+            if (MapHelper.IsOutOfMapRange(next_target_cell))
             {
+                // 맵 밖으로 벗어남
                 return;
             }
 
-            // 아직 이동이 완료되지 않음
-            if (object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+            var current_manage_server = GetObjectManageServer(this.object_info.current_cell);
+            var target_manage_server = GetObjectManageServer(this.object_info.target_cell);
+
+            // 1. 과거 위치 키 챙겨놓고
+            var last_position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
+
+            // 2. current_cell을 target_cell로 변경
+            this.object_info.current_cell = Cell.Clone(this.object_info.target_cell);
+
+            // 3. 갱신된 위치 키 챙김
+            var current_position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
+
+            // 4. target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
+            this.object_info.move_timestamp = DateTime.UtcNow;
+            this.object_info.target_cell = next_target_cell;
+            this.object_info.SetFlip(body.direction);
+
+            // 5. 변경사항 저장
+            // await GameObjectController.Save(cache_helper, this.object_info);
+
+            if (current_manage_server != target_manage_server)
             {
-                return;
+                // 과거 담당 서버에는 영역을 떠났다고 전송
+                _ = this.game_server_subscriber.PublishAsync(
+                    new($"leave_object_{current_manage_server}", RedisChannel.PatternMode.Literal),
+                    MessagePackSerializer.Serialize(
+                        (last_position_key, this.object_info.GetHashField())
+                    )
+                );
             }
 
-            Packet packet = PacketMaker.U_TO_G_MOVE(player_id, body.direction);
-            await SendToGameServer(packet);
+            // 현재 담당 서버에 전송
+            _ = this.game_server_subscriber.PublishAsync(
+                new($"move_object_{target_manage_server}", RedisChannel.PatternMode.Literal),
+                MessagePackSerializer.Serialize(
+                    (last_position_key, current_position_key, this.object_info)
+                )
+            );
         }
 
         async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
@@ -371,6 +413,7 @@ namespace user_server
 #pragma warning restore CS1998
 
 
+#pragma warning disable CS1998
         async Task MapInfo(long _, G_TO_U_MAP_INFO body)
         {
             try
@@ -400,9 +443,15 @@ namespace user_server
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[UserServer] {e.StackTrace} || {e.Message}");
-                await this.OnRemoved();
+                LogManager.WriteErrorLog(e);
+                this.OnRemoved();
             }
+        }
+#pragma warning restore CS1998
+
+        public int GetObjectManageServer(Cell cell)
+        {
+            return MapHelper.CalcServerIdFromCell(cell, Program.game_server_num);
         }
 
         public void SendToClient(Packet msg)
@@ -417,7 +466,21 @@ namespace user_server
             Packet.Destroy(msg);
         }
 
-        public async Task OnRemoved()
+        public async Task SendToMoveServer(Cell cell, Packet msg)
+        {
+            var server_id = GetObjectManageServer(cell);
+
+            RedisChannel channel =
+                new($"move_object_{server_id}", RedisChannel.PatternMode.Literal);
+
+            await this.game_server_subscriber.PublishAsync(channel, msg.ToBytes());
+
+            LogManager.WriteInfoLog($"server_id: {server_id}, cell: {cell.x}, {cell.y}");
+
+            Packet.Destroy(msg);
+        }
+
+        public void OnRemoved()
         {
             this.cts!.Cancel();
             this.cts.Dispose();

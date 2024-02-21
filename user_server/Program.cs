@@ -7,31 +7,50 @@ namespace user_server
 {
     class Program
     {
+        static string server_type = "user_server";
+
 #pragma warning disable CS8618
         public static NetworkService network_service;
 #pragma warning restore
-
-        static Task? leave_user_task;
         public static ConcurrentQueue<GameUser>? leave_user_queue;
+        public static int game_server_num;
 
-        static async Task Main()
+        static void Main()
         {
+            if (
+                !Int32.TryParse(
+                    Environment.GetEnvironmentVariable("GAME_SERVER_NUM"),
+                    out game_server_num
+                )
+            )
+            {
+                LogManager.WriteErrorLog(new Exception("Invalid Game Server Num"));
+            }
+
+            LogManager.Initialize(server_type, 0);
+            PacketBufferManager.Initialize(Config.MAX_CONNECTION);
+
             network_service = new();
             leave_user_queue = new();
 
-            PacketBufferManager.Initialize(Config.MAX_CONNECTION);
             network_service.Initialize();
             network_service.session_created_callback += (UserToken token) =>
             {
-                GameUser user = new(token);
-                // await user.initializeAsync();
+                try
+                {
+                    GameUser user = new(token);
+                }
+                catch (Exception e)
+                {
+                    LogManager.WriteErrorLog(e);
+                }
             };
 
             network_service.Listen(IPAddress.Any, Config.USER_SERVER_PORT);
 
-            leave_user_task = Task.Run(ProcessLeaveUser);
+            Task.Run(ProcessLeaveUser);
 
-            Console.WriteLine("[UserServer] User Server Start");
+            LogManager.WriteInfoLog($"user server start. max_connection: {Config.MAX_CONNECTION}");
         }
 
         public static async Task ProcessLeaveUser()
@@ -45,7 +64,7 @@ namespace user_server
                         continue;
                     }
 
-                    Console.WriteLine($"[UserServer] The client disconnected. {user.player_id}");
+                    // LogManager.WriteDebugLog($"client disconnect. player_id: {user.player_id}");
                     await user.ReleaseAsync();
                 }
                 await Task.Delay(100);

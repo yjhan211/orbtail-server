@@ -43,7 +43,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -65,7 +65,7 @@ namespace network
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[network] {e.Message}, {e.StackTrace}");
+                LogManager.WriteErrorLog(e);
             }
         }
     }

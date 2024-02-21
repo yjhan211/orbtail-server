@@ -7,13 +7,31 @@ namespace network
 
     public class RedisConnectionPool : IDisposable
     {
+        public static ConfigurationOptions configOptions = new ConfigurationOptions
+        {
+            // Kubernetes 서비스 주소를 EndPoints에 추가
+            EndPoints =
+            {
+                { "redis-cluster-leader.redis-operators.svc.cluster.local", 6379 },
+                { "redis-cluster-follower.redis-operators.svc.cluster.local", 6379 }
+            },
+            CommandMap = CommandMap.Create(
+                new HashSet<string> { "INFO", "CONFIG" },
+                available: false
+            ),
+            KeepAlive = 180,
+            // 필요한 경우 비밀번호 설정
+            // Password = "yourpassword",
+            Ssl = false, // Kubernetes 내부 통신에서는 일반적으로 SSL을 사용하지 않음
+            ConnectTimeout = 5000,
+            SyncTimeout = 5000,
+            AbortOnConnectFail = false // 클러스터 노드 중 하나에 연결 실패해도 연결 시도를 중단하지 않음
+        };
+
         private static readonly Lazy<ConnectionMultiplexer> _multiplexer =
             new Lazy<ConnectionMultiplexer>(() =>
             {
-                var configurationOptions = ConfigurationOptions.Parse(Config.REDIS_CONFIG);
-                configurationOptions.AbortOnConnectFail = false; // Adjust options as needed
-
-                return ConnectionMultiplexer.Connect(configurationOptions);
+                return ConnectionMultiplexer.Connect(configOptions);
             });
 
         public static ConnectionMultiplexer GetConnection()
@@ -49,10 +67,9 @@ namespace network
         private const int RetryMaxAttempts = 5;
 
         private SemaphoreSlim _reconnectSemaphore = new SemaphoreSlim(initialCount: 1, maxCount: 1);
-        private readonly string _connectionString;
         public ConnectionMultiplexer _connection;
-        public IDatabase _database;
-        private ISubscriber _subscriber;
+        public IDatabase? _database;
+        private ISubscriber? _subscriber;
 
         public RedisConnection(ConnectionMultiplexer connection)
         {
@@ -88,6 +105,11 @@ namespace network
             {
                 try
                 {
+                    if (_database == null)
+                    {
+                        throw new Exception();
+                    }
+
                     return await func(_database);
                 }
                 catch (Exception ex)
@@ -197,7 +219,7 @@ namespace network
                 Interlocked.Exchange(ref _connection, null);
 #pragma warning restore
                 ConnectionMultiplexer newConnection = await ConnectionMultiplexer.ConnectAsync(
-                    Config.REDIS_CONFIG
+                    RedisConnectionPool.configOptions
                 );
                 Interlocked.Exchange(ref _connection, newConnection);
 
@@ -209,30 +231,6 @@ namespace network
             {
                 _reconnectSemaphore.Release();
             }
-        }
-
-        public async Task PublishMessage(string channel, string message)
-        {
-            await _subscriber.PublishAsync(channel, message);
-        }
-
-        public void SubscribeToChannel(string channel)
-        {
-            _subscriber.Subscribe(
-                channel,
-                (channel, message) =>
-                {
-                    Console.WriteLine(
-                        $"[network] Received message on channel '{channel}': {message}"
-                    );
-                    // 여기에서 메시지 처리 로직을 추가하세요.
-                }
-            );
-        }
-
-        public void UnsubscribeFromChannel(string channel)
-        {
-            _subscriber.Unsubscribe(channel);
         }
 
         public void Dispose()
