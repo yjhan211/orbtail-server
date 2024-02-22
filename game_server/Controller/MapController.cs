@@ -5,18 +5,19 @@ namespace game_server
     using network;
     using StackExchange.Redis;
     using user_server;
+    using NATS.Client;
 
     public class MapController
     {
         public const int MAP_ID = 1;
         RedisConnection redis_connection;
-        ISubscriber? map_publisher;
+        NatsClient nats_client;
         public ConcurrentDictionary<string, List<string>> object_position_map;
 
         public MapController()
         {
             this.redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
-            this.map_publisher = redis_connection._connection.GetSubscriber();
+            this.nats_client = new();
             this.object_position_map = new();
         }
 
@@ -48,21 +49,12 @@ namespace game_server
                     var position_key = MapHelper.GetPositionKey(MAP_ID, cell);
                     this.object_position_map[position_key] = [];
 
-                    await this.map_publisher!.SubscribeAsync(
-                        new(position_key, RedisChannel.PatternMode.Literal), 
-                        (channel, msg) => BroadcastUpdateObject(channel!, msg));
+                    this.nats_client.Subscribe(position_key, (subject, msg) => BroadcastUpdateObject(subject, msg));
                 }
             }
 
-            await this.map_publisher!.SubscribeAsync(
-                new($"move_object_{Program.server_id}", RedisChannel.PatternMode.Literal),
-                (channel, msg) => MoveManageObject(msg)
-            );
-
-            await this.map_publisher!.SubscribeAsync(
-                new($"leave_object_{Program.server_id}", RedisChannel.PatternMode.Literal),
-                (channel, msg) => LeaveManageObject(msg)
-            );
+            this.nats_client.Subscribe($"move_object_{Program.server_id}", (channel, msg) => MoveManageObject(msg));
+            this.nats_client.Subscribe($"leave_object_{Program.server_id}", (channel, msg) => LeaveManageObject(msg));
         }
 
         public string GetMapKey()
@@ -107,9 +99,7 @@ object position_lock = new();
             var broadcast_msg = MessagePackSerializer.Serialize(object_info);                        
             foreach (var bound_cell in bound_cell_list)
             {
-                _ = this.map_publisher!.PublishAsync(
-                    new(MapHelper.GetPositionKey(bound_cell), RedisChannel.PatternMode.Literal), 
-                    broadcast_msg);
+                this.nats_client.Publish(MapHelper.GetPositionKey(bound_cell), broadcast_msg);
             }
 
             // 9. 마지막 Move요청 처리. 이 처리가 없으면 current_cell과 target_cell이 계속 불일치
@@ -148,8 +138,12 @@ object position_lock = new();
                 return;
             }
 
-            Packet send_packet = PacketMaker.G_TO_U_MOVE(object_info);
-            Program.game_server.PublishToChannels(this.map_publisher!, channel_list, send_packet);
+            Packet packet = PacketMaker.G_TO_U_MOVE(object_info);
+            foreach (var channel in channel_list)
+            {
+                this.nats_client.Publish(channel, packet.ToBytes());
+            }
+            Packet.Destroy(packet);
         }
     }
 }

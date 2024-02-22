@@ -15,9 +15,11 @@ namespace user_server
         public long player_id;
         GameObjectInfo object_info;
         RedisConnection redis_connection;
+        NatsClient nats_client;
         public CacheHelper cache_helper { get; private set; }
         public RedLockFactory redlock { get; private set; }
-        ISubscriber game_server_subscriber;
+
+        // ISubscriber game_server_subscriber;
         Task game_object_subscribe_task;
         public CancellationTokenSource cts;
         public ConcurrentQueue<string> map_queue;
@@ -37,6 +39,8 @@ namespace user_server
             this.cts = new();
             this.move_object_queue = new();
 
+            this.nats_client = new();
+
             this.initializeAsync().Wait();
         }
 #pragma warning restore
@@ -47,7 +51,9 @@ namespace user_server
             this.redlock = this.redis_connection.GetRedLockFactory();
             this.cache_helper = new(this.redis_connection);
 
-            this.game_server_subscriber = this.redis_connection._connection.GetSubscriber();
+            this.nats_client = new();
+
+            // this.game_server_subscriber = this.redis_connection._connection.GetSubscriber();
             this.game_object_subscribe_task = Task.Run(SubscribeMove, cts.Token);
         }
 
@@ -57,7 +63,8 @@ namespace user_server
             _ = this.SendToGameServer(packet);
 
             this.player_id = 0;
-            await this.game_server_subscriber.UnsubscribeAllAsync();
+            this.nats_client.Close();
+            // await this.game_server_subscriber.UnsubscribeAllAsync();
             this.redis_connection.Dispose();
         }
 
@@ -269,17 +276,14 @@ namespace user_server
             var position_key = MapHelper.GetPositionKey(player_info.object_info.current_cell);
 
             // 현재 담당 서버에 전송
-            await this.game_server_subscriber.PublishAsync(
-                new($"move_object_{current_manage_server}", RedisChannel.PatternMode.Literal),
+            this.nats_client.Publish(
+                $"move_object_{current_manage_server}",
                 MessagePackSerializer.Serialize((position_key, position_key, this.object_info))
             );
 
             // 게임 서버 구독 시작
-            await this.game_server_subscriber.SubscribeAsync(
-                new(
-                    GameObjectInfo.MakeHashField(ObjectType.PLAYER, this.player_id),
-                    RedisChannel.PatternMode.Literal
-                ),
+            this.nats_client.Subscribe(
+                GameObjectInfo.MakeHashField(ObjectType.PLAYER, this.player_id),
                 async (channel, message) => await OnMessageFromGameServer(message)
             );
         }
@@ -331,8 +335,8 @@ namespace user_server
             if (current_manage_server != target_manage_server)
             {
                 // 과거 담당 서버에는 영역을 떠났다고 전송
-                _ = this.game_server_subscriber.PublishAsync(
-                    new($"leave_object_{current_manage_server}", RedisChannel.PatternMode.Literal),
+                this.nats_client.Publish(
+                    $"leave_object_{current_manage_server}",
                     MessagePackSerializer.Serialize(
                         (last_position_key, this.object_info.GetHashField())
                     )
@@ -340,8 +344,8 @@ namespace user_server
             }
 
             // 현재 담당 서버에 전송
-            _ = this.game_server_subscriber.PublishAsync(
-                new($"move_object_{target_manage_server}", RedisChannel.PatternMode.Literal),
+            this.nats_client.Publish(
+                $"move_object_{target_manage_server}",
                 MessagePackSerializer.Serialize(
                     (last_position_key, current_position_key, this.object_info)
                 )
@@ -463,20 +467,6 @@ namespace user_server
         public async Task SendToGameServer(Packet msg)
         {
             await this.cache_helper.Enqueue("packet_queue", msg.ToBytes());
-            Packet.Destroy(msg);
-        }
-
-        public async Task SendToMoveServer(Cell cell, Packet msg)
-        {
-            var server_id = GetObjectManageServer(cell);
-
-            RedisChannel channel =
-                new($"move_object_{server_id}", RedisChannel.PatternMode.Literal);
-
-            await this.game_server_subscriber.PublishAsync(channel, msg.ToBytes());
-
-            LogManager.WriteInfoLog($"server_id: {server_id}, cell: {cell.x}, {cell.y}");
-
             Packet.Destroy(msg);
         }
 
