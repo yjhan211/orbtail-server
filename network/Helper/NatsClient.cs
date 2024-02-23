@@ -9,10 +9,10 @@ namespace network
     {
         private IConnection _connection;
 
-        public NatsClient()
+        public NatsClient(string url)
         {
             var options = ConnectionFactory.GetDefaultOptions();
-            options.Url = "nats.default.svc.cluster.local:4222";
+            options.Url = url;
             _connection = new ConnectionFactory().CreateConnection(options);
         }
 

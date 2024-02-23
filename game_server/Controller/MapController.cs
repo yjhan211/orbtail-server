@@ -10,21 +10,22 @@ namespace game_server
     public class MapController
     {
         public const int MAP_ID = 1;
-        RedisConnection redis_connection;
-        NatsClient nats_client;
+        NatsClient? nats_client;
         public ConcurrentDictionary<string, List<string>> object_position_map;
 
         public MapController()
         {
-            this.redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
-            this.nats_client = new();
             this.object_position_map = new();
         }
 
-        public async Task Initialize()
+        public void Initialize(NatsClient nats_client)
         {
+            this.nats_client = nats_client;
+
             // 서버 분할 설정
-            var (horizontal_divisions, vertical_divisions) = MapHelper.DetermineDivisions(Program.game_server_num);
+            var (horizontal_divisions, vertical_divisions) = MapHelper.DetermineDivisions(
+                Program.game_server_num
+            );
             // 각 섹션의 크기 계산
             int section_width = MapHelper.MAP_SIZE / horizontal_divisions;
             int section_height = MapHelper.MAP_SIZE / vertical_divisions;
@@ -47,14 +48,23 @@ namespace game_server
                 {
                     Cell cell = new(x, y);
                     var position_key = MapHelper.GetPositionKey(MAP_ID, cell);
-                    this.object_position_map[position_key] = [];
+                    this.object_position_map[position_key] = new();
 
-                    this.nats_client.Subscribe(position_key, (subject, msg) => BroadcastUpdateObject(subject, msg));
+                    this.nats_client.Subscribe(
+                        position_key,
+                        (subject, msg) => BroadcastUpdateObject(subject, msg)
+                    );
                 }
             }
 
-            this.nats_client.Subscribe($"move_object_{Program.server_id}", (channel, msg) => MoveManageObject(msg));
-            this.nats_client.Subscribe($"leave_object_{Program.server_id}", (channel, msg) => LeaveManageObject(msg));
+            this.nats_client.Subscribe(
+                $"move_object_{Program.server_id}",
+                (channel, msg) => MoveManageObject(msg)
+            );
+            this.nats_client.Subscribe(
+                $"leave_object_{Program.server_id}",
+                (channel, msg) => LeaveManageObject(msg)
+            );
         }
 
         public string GetMapKey()
@@ -72,12 +82,14 @@ namespace game_server
             return $"{GetMapKey()}|{cell.x},{cell.y}";
         }
 
-object position_lock = new();
+        object position_lock = new();
 
         public void MoveManageObject(RedisValue message)
         {
-            var (last_position_key, current_position_key, object_info) 
-            = MessagePackSerializer.Deserialize<(string, string, GameObjectInfo)>(message);
+            var (last_position_key, object_info) = MessagePackSerializer.Deserialize<(
+                string,
+                GameObjectInfo
+            )>(message);
 
             // 맵 갱신
             var object_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, object_info.object_id);
@@ -91,23 +103,24 @@ object position_lock = new();
                 }
 
                 // current 추가
+                var current_position_key = MapHelper.GetPositionKey(object_info.current_cell);
                 this.object_position_map[current_position_key].Add(object_key);
             }
 
             // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
             var bound_cell_list = MapHelper.GetBoundCellList(object_info.current_cell);
-            var broadcast_msg = MessagePackSerializer.Serialize(object_info);                        
+            var broadcast_msg = MessagePackSerializer.Serialize(object_info);
             foreach (var bound_cell in bound_cell_list)
             {
-                this.nats_client.Publish(MapHelper.GetPositionKey(bound_cell), broadcast_msg);
+                this.nats_client!.Publish(MapHelper.GetPositionKey(bound_cell), broadcast_msg);
             }
 
-            // 9. 마지막 Move요청 처리. 이 처리가 없으면 current_cell과 target_cell이 계속 불일치
             // if (body.direction == DirectionType.NONE)
             // {
             //     return;
             // }
 
+            // 마지막 Move요청 처리. 이 처리가 없으면 current_cell과 target_cell이 계속 불일치
             // _ = Task.Run(async () =>
             // {
             //     await Task.Delay(TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME));
@@ -117,7 +130,10 @@ object position_lock = new();
 
         public void LeaveManageObject(RedisValue message)
         {
-            (string position_key, string object_key) = MessagePackSerializer.Deserialize<(string, string)>(message);
+            (string position_key, string object_key) = MessagePackSerializer.Deserialize<(
+                string,
+                string
+            )>(message);
 
             lock (position_lock)
             {
@@ -141,7 +157,7 @@ object position_lock = new();
             Packet packet = PacketMaker.G_TO_U_MOVE(object_info);
             foreach (var channel in channel_list)
             {
-                this.nats_client.Publish(channel, packet.ToBytes());
+                this.nats_client!.Publish(channel, packet.ToBytes());
             }
             Packet.Destroy(packet);
         }

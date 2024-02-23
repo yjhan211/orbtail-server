@@ -7,7 +7,7 @@ namespace network
 {
     public static class MapHelper
     {
-        public const int MAP_SIZE = 100;
+        public const int MAP_SIZE = 96;
 
         public static bool IsOutOfMapRange(Cell cell)
         {

@@ -13,15 +13,16 @@ namespace user_server
     {
         public UserToken token { get; private set; }
         public long player_id;
+        Cell last_cell;
         GameObjectInfo object_info;
         RedisConnection redis_connection;
         NatsClient nats_client;
         public CacheHelper cache_helper { get; private set; }
         public RedLockFactory redlock { get; private set; }
 
-        // ISubscriber game_server_subscriber;
         Task game_object_subscribe_task;
         public CancellationTokenSource cts;
+
         public ConcurrentQueue<string> map_queue;
         public ConcurrentQueue<GameObjectInfo> move_object_queue;
         public SemaphoreSlim player_lock;
@@ -39,32 +40,30 @@ namespace user_server
             this.cts = new();
             this.move_object_queue = new();
 
-            this.nats_client = new();
-
             this.initializeAsync().Wait();
         }
 #pragma warning restore
+#pragma warning disable CS1998
 
         public async Task initializeAsync()
         {
             this.redis_connection = await RedisConnection.InitializeAsync();
             this.redlock = this.redis_connection.GetRedLockFactory();
             this.cache_helper = new(this.redis_connection);
+            this.nats_client = new(Program.nats_endpoint);
 
-            this.nats_client = new();
-
-            // this.game_server_subscriber = this.redis_connection._connection.GetSubscriber();
             this.game_object_subscribe_task = Task.Run(SubscribeMove, cts.Token);
         }
 
-        public async Task ReleaseAsync()
+        public void Release()
         {
+            PublishLeave(this.object_info.current_cell);
+
             Packet packet = PacketMaker.U_TO_G_LOGOUT(this.player_id);
             _ = this.SendToGameServer(packet);
 
             this.player_id = 0;
             this.nats_client.Close();
-            // await this.game_server_subscriber.UnsubscribeAllAsync();
             this.redis_connection.Dispose();
         }
 
@@ -247,8 +246,6 @@ namespace user_server
                 throw new Exception("Already Exist Player");
             }
 
-            bool is_created = false;
-
             PlayerInfo player_info;
             using (var player_lock = await PlayerController.Lock(this.redlock, this.player_id))
             {
@@ -263,23 +260,17 @@ namespace user_server
                 await PlayerController.Save(this.cache_helper, player_info);
 
                 this.player_id = player_info.player_id;
-                is_created = true;
             }
 
             this.object_info = player_info.object_info;
+            this.last_cell = Cell.Clone(player_info.object_info.current_cell);
 
             // 계정 정보 전송
             Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info);
             SendToClient(login_packet);
 
-            var current_manage_server = GetObjectManageServer(player_info.object_info.current_cell);
-            var position_key = MapHelper.GetPositionKey(player_info.object_info.current_cell);
-
             // 현재 담당 서버에 전송
-            this.nats_client.Publish(
-                $"move_object_{current_manage_server}",
-                MessagePackSerializer.Serialize((position_key, position_key, this.object_info))
-            );
+            PublishMove();
 
             // 게임 서버 구독 시작
             this.nats_client.Subscribe(
@@ -315,41 +306,25 @@ namespace user_server
             var current_manage_server = GetObjectManageServer(this.object_info.current_cell);
             var target_manage_server = GetObjectManageServer(this.object_info.target_cell);
 
-            // 1. 과거 위치 키 챙겨놓고
-            var last_position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
+            // 과거 위치 챙겨놓고
+            this.last_cell = Cell.Clone(this.object_info.current_cell);
 
-            // 2. current_cell을 target_cell로 변경
+            // current_cell을 target_cell로 변경
             this.object_info.current_cell = Cell.Clone(this.object_info.target_cell);
 
-            // 3. 갱신된 위치 키 챙김
-            var current_position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
-
-            // 4. target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
+            // target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
             this.object_info.move_timestamp = DateTime.UtcNow;
             this.object_info.target_cell = next_target_cell;
             this.object_info.SetFlip(body.direction);
 
-            // 5. 변경사항 저장
-            // await GameObjectController.Save(cache_helper, this.object_info);
-
             if (current_manage_server != target_manage_server)
             {
                 // 과거 담당 서버에는 영역을 떠났다고 전송
-                this.nats_client.Publish(
-                    $"leave_object_{current_manage_server}",
-                    MessagePackSerializer.Serialize(
-                        (last_position_key, this.object_info.GetHashField())
-                    )
-                );
+                PublishLeave();
             }
 
             // 현재 담당 서버에 전송
-            this.nats_client.Publish(
-                $"move_object_{target_manage_server}",
-                MessagePackSerializer.Serialize(
-                    (last_position_key, current_position_key, this.object_info)
-                )
-            );
+            PublishMove();
         }
 
         async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
@@ -409,15 +384,11 @@ namespace user_server
             }
         }
 
-#pragma warning disable CS1998
         async Task Move(long _, G_TO_U_MOVE body)
         {
             this.move_object_queue.Enqueue(body.object_info);
         }
-#pragma warning restore CS1998
 
-
-#pragma warning disable CS1998
         async Task MapInfo(long _, G_TO_U_MAP_INFO body)
         {
             try
@@ -466,8 +437,35 @@ namespace user_server
 
         public async Task SendToGameServer(Packet msg)
         {
-            await this.cache_helper.Enqueue("packet_queue", msg.ToBytes());
+            await this.cache_helper.Enqueue("game_server_queue", msg.ToBytes());
             Packet.Destroy(msg);
+        }
+
+        public void PublishLeave(Cell? leave_cell = null)
+        {
+            if (leave_cell == null)
+            {
+                leave_cell = this.last_cell;
+            }
+
+            var manage_server = GetObjectManageServer(leave_cell);
+            this.nats_client.Publish(
+                $"leave_object_{manage_server}",
+                MessagePackSerializer.Serialize(
+                    (MapHelper.GetPositionKey(leave_cell), this.object_info.GetHashField())
+                )
+            );
+        }
+
+        public void PublishMove()
+        {
+            var manage_server = GetObjectManageServer(this.object_info.current_cell);
+            this.nats_client.Publish(
+                $"move_object_{manage_server}",
+                MessagePackSerializer.Serialize(
+                    (MapHelper.GetPositionKey(this.last_cell), this.object_info)
+                )
+            );
         }
 
         public void OnRemoved()

@@ -11,23 +11,41 @@ namespace user_server
 
 #pragma warning disable CS8618
         public static NetworkService network_service;
-#pragma warning restore
         public static ConcurrentQueue<GameUser>? leave_user_queue;
         public static int game_server_num;
+        public static string[] redis_endpoints;
+        public static string nats_endpoint;
+#pragma warning restore
 
         static void Main()
         {
-            if (
-                !Int32.TryParse(
-                    Environment.GetEnvironmentVariable("GAME_SERVER_NUM"),
-                    out game_server_num
-                )
-            )
+            string? game_server_env = Environment.GetEnvironmentVariable("GAME_SERVER_NUM");
+            if (!Int32.TryParse(game_server_env, out game_server_num))
             {
                 LogManager.WriteErrorLog(new Exception("Invalid Game Server Num"));
+                return;
+            }
+            LogManager.Initialize(server_type, 0);
+
+            string? redis_endpoints_env = Environment.GetEnvironmentVariable("REDIS_ENDPOINTS");
+            if (string.IsNullOrEmpty(redis_endpoints_env))
+            {
+                LogManager.WriteErrorLog(new Exception("Invalid Redis EndPoint"));
+                return;
             }
 
-            LogManager.Initialize(server_type, 0);
+            redis_endpoints = redis_endpoints_env.Split(' ').ToArray();
+            RedisConnectionPool.Initialize(Program.redis_endpoints);
+
+            string? nats_endpoint_env = Environment.GetEnvironmentVariable("NATS_ENDPOINT");
+            if (string.IsNullOrEmpty(nats_endpoint_env))
+            {
+                LogManager.WriteErrorLog(new Exception("Invalid Nats EndPoint"));
+                return;
+            }
+
+            nats_endpoint = nats_endpoint_env;
+
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
 
             network_service = new();
@@ -64,10 +82,11 @@ namespace user_server
                         continue;
                     }
 
-                    // LogManager.WriteDebugLog($"client disconnect. player_id: {user.player_id}");
-                    await user.ReleaseAsync();
+                    user.Release();
+
+                    LogManager.WriteInfoLog($"client disconnect. player_id: {user.player_id}");
                 }
-                await Task.Delay(100);
+                await Task.Delay(10);
             }
         }
     }

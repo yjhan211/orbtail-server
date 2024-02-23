@@ -4,24 +4,24 @@ namespace game_server
     using System.Threading.Tasks;
     using MessagePack;
     using network;
-    using RedLockNet.SERedis;
-    using StackExchange.Redis;
 
     public class GameServer
     {
-        public CancellationTokenSource cts;
+        NatsClient nats_client;
+        CancellationTokenSource cts;
         Task? logic_thread;
-        public MapController map_controller;
+        MapController map_controller;
 
         public GameServer()
         {
+            this.nats_client = new(Program.nats_endpoint);
             this.cts = new();
             this.map_controller = new();
         }
 
-        public async Task Start()
+        public void Start()
         {
-            await this.map_controller.Initialize();
+            this.map_controller.Initialize(this.nats_client);
             this.logic_thread = Task.Run(GameLoop, this.cts.Token);
         }
 
@@ -35,10 +35,10 @@ namespace game_server
                     CacheHelper cache_helper = new(redis_connection);
                     while (true)
                     {
-                        byte[]? message = await cache_helper.Dequeue("packet_queue");
+                        byte[]? message = await cache_helper.Dequeue("game_server_queue");
                         if (message == null)
                         {
-                            await Task.Delay(100);
+                            await Task.Delay(10);
                             continue;
                         }
 
@@ -113,34 +113,8 @@ namespace game_server
                     throw new Exception($"can't find object_info. player_id : {player_id}");
                 }
 
-                // TODO map_position Remove
-
                 await PlayerController.Delete(cache_helper, player_id);
             }
-        }
-
-        // 주의: 여러 개의 채널에 하나의 패킷 전송 시 반드시 PublishToChannels 이용. Packet Destroy 때문...
-        public void PublishToChannel(ISubscriber publisher, string channel_name, Packet packet)
-        {
-            RedisChannel channel = new(channel_name, RedisChannel.PatternMode.Literal);
-            _ = publisher.PublishAsync(channel, packet.ToBytes());
-
-            Packet.Destroy(packet);
-        }
-
-        public void PublishToChannels(
-            ISubscriber publisher,
-            List<string> channel_name_list,
-            Packet packet
-        )
-        {
-            foreach (var channel_name in channel_name_list)
-            {
-                RedisChannel channel = new(channel_name, RedisChannel.PatternMode.Literal);
-                _ = publisher.PublishAsync(channel, packet.ToBytes());
-            }
-
-            Packet.Destroy(packet);
         }
     }
 }

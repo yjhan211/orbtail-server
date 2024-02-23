@@ -7,8 +7,10 @@ namespace game_server
     {
 #pragma warning disable CS8618
         public static GameServer game_server;
-        public static int server_id;
+        public static int server_id = 0;
         public static int game_server_num;
+        public static string[] redis_endpoints;
+        public static string nats_endpoint;
 #pragma warning restore
 
         async static Task Main(string[] args)
@@ -17,22 +19,38 @@ namespace game_server
             {
                 LogManager.WriteErrorLog(new Exception("Invalid Server Id"));
             }
+            LogManager.Initialize("game_server", server_id);
 
-            if (
-                !Int32.TryParse(
-                    Environment.GetEnvironmentVariable("GAME_SERVER_NUM"),
-                    out game_server_num
-                )
-            )
+            string? game_server_env = Environment.GetEnvironmentVariable("GAME_SERVER_NUM");
+            if (!Int32.TryParse(game_server_env, out game_server_num))
             {
                 LogManager.WriteErrorLog(new Exception("Invalid Game Server Num"));
+                return;
             }
 
-            LogManager.Initialize("game_server", server_id);
+            string? redis_endpoints_env = Environment.GetEnvironmentVariable("REDIS_ENDPOINTS");
+            if (string.IsNullOrEmpty(redis_endpoints_env))
+            {
+                LogManager.WriteErrorLog(new Exception("Invalid Redis EndPoint"));
+                return;
+            }
+
+            redis_endpoints = redis_endpoints_env.Split(' ').ToArray();
+            RedisConnectionPool.Initialize(Program.redis_endpoints);
+
+            string? nats_endpoint_env = Environment.GetEnvironmentVariable("NATS_ENDPOINT");
+            if (string.IsNullOrEmpty(nats_endpoint_env))
+            {
+                LogManager.WriteErrorLog(new Exception("Invalid Nats EndPoint"));
+                return;
+            }
+
+            nats_endpoint = nats_endpoint_env;
+
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
 
             game_server = new();
-            await game_server.Start();
+            game_server.Start();
 
             LogManager.WriteInfoLog($"Server Start. server_id: {server_id}");
             await Task.Delay(-1);
