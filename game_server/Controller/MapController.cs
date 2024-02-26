@@ -5,25 +5,29 @@ namespace game_server
     using network;
     using StackExchange.Redis;
     using user_server;
+    using NATS.Client;
 
     public class MapController
     {
         public const int MAP_ID = 1;
-        RedisConnection redis_connection;
-        ISubscriber? map_publisher;
+        NatsClient? nats_client;
         public ConcurrentDictionary<string, List<string>> object_position_map;
+        public CancellationTokenSource cts;
 
         public MapController()
         {
-            this.redis_connection = RedisConnection.InitializeAsync().GetAwaiter().GetResult();
-            this.map_publisher = redis_connection._connection.GetSubscriber();
             this.object_position_map = new();
+            this.cts = new();
         }
 
-        public async Task Initialize()
+        public void Initialize(NatsClient nats_client)
         {
+            this.nats_client = nats_client;
+
             // 서버 분할 설정
-            var (horizontal_divisions, vertical_divisions) = MapHelper.DetermineDivisions(Program.game_server_num);
+            var (horizontal_divisions, vertical_divisions) = MapHelper.DetermineDivisions(
+                Program.game_server_num
+            );
             // 각 섹션의 크기 계산
             int section_width = MapHelper.MAP_SIZE / horizontal_divisions;
             int section_height = MapHelper.MAP_SIZE / vertical_divisions;
@@ -46,22 +50,43 @@ namespace game_server
                 {
                     Cell cell = new(x, y);
                     var position_key = MapHelper.GetPositionKey(MAP_ID, cell);
-                    this.object_position_map[position_key] = [];
+                    this.object_position_map[position_key] = new();
 
-                    await this.map_publisher!.SubscribeAsync(
-                        new(position_key, RedisChannel.PatternMode.Literal), 
-                        (channel, msg) => BroadcastUpdateObject(channel!, msg));
+                    this.nats_client.Subscribe(
+                        $"update_{position_key}",
+                        (subject, msg) => BroadcastUpdateObject(position_key, msg)
+                    );
+
+                    this.nats_client.Subscribe(
+                        $"destroy_{position_key}",
+                        (subject, msg) => BroadcastDestroyObject(position_key, msg)
+                    );
+
+                    foreach (var bound_cell in MapHelper.GetBoundCellList(cell))
+                    {
+                        var bound_cell_key = MapHelper.GetPositionKey(bound_cell);
+                    }
                 }
             }
 
-            await this.map_publisher!.SubscribeAsync(
-                new($"move_object_{Program.server_id}", RedisChannel.PatternMode.Literal),
-                (channel, msg) => MoveManageObject(msg)
+            this.nats_client.Subscribe(
+                $"move_object_{Program.server_id}",
+                (subject, msg) => MoveManageObject(msg)
             );
 
-            await this.map_publisher!.SubscribeAsync(
-                new($"leave_object_{Program.server_id}", RedisChannel.PatternMode.Literal),
-                (channel, msg) => LeaveManageObject(msg)
+            this.nats_client.Subscribe(
+                $"leave_object_{Program.server_id}",
+                (subject, msg) => LeaveManageObject(msg)
+            );
+
+            this.nats_client.Subscribe(
+                $"spawn_object_{Program.server_id}",
+                (subject, msg) => SpawnManageObject(msg)
+            );
+
+            this.nats_client.Subscribe(
+                $"destroy_object_{Program.server_id}",
+                (subject, msg) => DestroyManageObject(msg)
             );
         }
 
@@ -80,16 +105,19 @@ namespace game_server
             return $"{GetMapKey()}|{cell.x},{cell.y}";
         }
 
-object position_lock = new();
+        object position_lock = new();
 
         public void MoveManageObject(RedisValue message)
         {
-            var (last_position_key, current_position_key, object_info) 
-            = MessagePackSerializer.Deserialize<(string, string, GameObjectInfo)>(message);
+            var (last_position_key, object_info) = MessagePackSerializer.Deserialize<(
+                string,
+                GameObjectInfo
+            )>(message);
 
-            // 맵 갱신
             var object_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, object_info.object_id);
+            var current_position_key = MapHelper.GetPositionKey(object_info.current_cell);
 
+            // 위치 갱신
             lock (position_lock)
             {
                 // last를 관리하는 서버가 본인이면 지움
@@ -104,34 +132,68 @@ object position_lock = new();
 
             // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
             var bound_cell_list = MapHelper.GetBoundCellList(object_info.current_cell);
-            var broadcast_msg = MessagePackSerializer.Serialize(object_info);                        
+            var broadcast_msg = MessagePackSerializer.Serialize(object_info);
             foreach (var bound_cell in bound_cell_list)
             {
-                _ = this.map_publisher!.PublishAsync(
-                    new(MapHelper.GetPositionKey(bound_cell), RedisChannel.PatternMode.Literal), 
-                    broadcast_msg);
+                var subject = $"update_{MapHelper.GetPositionKey(bound_cell)}";
+                this.nats_client!.Publish(subject, broadcast_msg);
             }
-
-            // 9. 마지막 Move요청 처리. 이 처리가 없으면 current_cell과 target_cell이 계속 불일치
-            // if (body.direction == DirectionType.NONE)
-            // {
-            //     return;
-            // }
-
-            // _ = Task.Run(async () =>
-            // {
-            //     await Task.Delay(TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME));
-            //     await MoveManageObject(cache_helper, player_info, DirectionType.NONE);
-            // });
         }
 
         public void LeaveManageObject(RedisValue message)
         {
-            (string position_key, string object_key) = MessagePackSerializer.Deserialize<(string, string)>(message);
+            (string position_key, string object_key) = MessagePackSerializer.Deserialize<(
+                string,
+                string
+            )>(message);
 
             lock (position_lock)
             {
                 this.object_position_map[position_key].Remove(object_key);
+            }
+        }
+
+        public void SpawnManageObject(RedisValue message)
+        {
+            (string user_subject, List<string> position_key_list) =
+                MessagePackSerializer.Deserialize<(string, List<string>)>(message);
+
+            var spawn_list = new List<string>();
+            foreach (var position_key in position_key_list)
+            {
+                spawn_list.AddRange(this.object_position_map[position_key]);
+            }
+
+            if (spawn_list.Count > 0)
+            {
+                Packet packet = PacketMaker.G_TO_U_SPAWN(spawn_list);
+                this.nats_client!.Publish(user_subject, packet.ToBytes());
+                Packet.Destroy(packet);
+            }
+        }
+
+        public void DestroyManageObject(RedisValue message)
+        {
+            (string position_key, string object_key) = MessagePackSerializer.Deserialize<(
+                string,
+                string
+            )>(message);
+
+            lock (position_lock)
+            {
+                this.object_position_map[position_key].Remove(object_key);
+            }
+
+            Cell position_cell = MapHelper.GetCell(position_key);
+            var bound_cell_list = MapHelper.GetBoundCellList(position_cell);
+
+            foreach (var bound_cell in bound_cell_list)
+            {
+                var bound_cell_key = MapHelper.GetPositionKey(bound_cell);
+                this.nats_client!.Publish(
+                    $"destroy_{bound_cell_key}",
+                    MessagePackSerializer.Serialize(object_key)
+                );
             }
         }
 
@@ -148,8 +210,35 @@ object position_lock = new();
                 return;
             }
 
-            Packet send_packet = PacketMaker.G_TO_U_MOVE(object_info);
-            Program.game_server.PublishToChannels(this.map_publisher!, channel_list, send_packet);
+            Packet packet = PacketMaker.G_TO_U_MOVE(object_info);
+            foreach (var channel in channel_list)
+            {
+                this.nats_client!.Publish(channel, packet.ToBytes());
+            }
+            Packet.Destroy(packet);
+        }
+
+        public void BroadcastDestroyObject(string position_key, RedisValue message)
+        {
+            var object_key = MessagePackSerializer.Deserialize<string>(message);
+            if (!this.object_position_map.TryGetValue(position_key, out var channel_list))
+            {
+                return;
+            }
+
+            if (channel_list.Count <= 0)
+            {
+                return;
+            }
+
+            Packet packet = PacketMaker.G_TO_U_DESTROY(object_key);
+
+            foreach (var channel in channel_list)
+            {
+                this.nats_client!.Publish(channel, packet.ToBytes());
+            }
+
+            Packet.Destroy(packet);
         }
     }
 }

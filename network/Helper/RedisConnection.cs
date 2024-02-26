@@ -7,26 +7,35 @@ namespace network
 
     public class RedisConnectionPool : IDisposable
     {
-        public static ConfigurationOptions configOptions = new ConfigurationOptions
+        public static ConfigurationOptions configOptions;
+
+        public static void Initialize(string[] endPointsArray)
         {
-            // Kubernetes 서비스 주소를 EndPoints에 추가
-            EndPoints =
+            EndPointCollection endPoints = new EndPointCollection();
+
+            foreach (var endPointString in endPointsArray)
             {
-                { "redis-cluster-leader.redis-operators.svc.cluster.local", 6379 },
-                { "redis-cluster-follower.redis-operators.svc.cluster.local", 6379 }
-            },
-            CommandMap = CommandMap.Create(
-                new HashSet<string> { "INFO", "CONFIG" },
-                available: false
-            ),
-            KeepAlive = 180,
-            // 필요한 경우 비밀번호 설정
-            // Password = "yourpassword",
-            Ssl = false, // Kubernetes 내부 통신에서는 일반적으로 SSL을 사용하지 않음
-            ConnectTimeout = 5000,
-            SyncTimeout = 5000,
-            AbortOnConnectFail = false // 클러스터 노드 중 하나에 연결 실패해도 연결 시도를 중단하지 않음
-        };
+                string[] parts = endPointString.Split(':');
+                if (parts.Length == 2 && int.TryParse(parts[1], out int port))
+                {
+                    endPoints.Add(parts[0], port);
+                }
+            }
+
+            configOptions = new ConfigurationOptions
+            {
+                EndPoints = endPoints,
+                CommandMap = CommandMap.Create(
+                    new HashSet<string> { "INFO", "CONFIG" },
+                    available: false
+                ),
+                KeepAlive = 180,
+                Ssl = false, // Kubernetes 내부 통신에서는 일반적으로 SSL을 사용하지 않음
+                ConnectTimeout = 5000,
+                SyncTimeout = 5000,
+                AbortOnConnectFail = false // 클러스터 노드 중 하나에 연결 실패해도 연결 시도를 중단하지 않음
+            };
+        }
 
         private static readonly Lazy<ConnectionMultiplexer> _multiplexer =
             new Lazy<ConnectionMultiplexer>(() =>
@@ -69,7 +78,6 @@ namespace network
         private SemaphoreSlim _reconnectSemaphore = new SemaphoreSlim(initialCount: 1, maxCount: 1);
         public ConnectionMultiplexer _connection;
         public IDatabase? _database;
-        private ISubscriber? _subscriber;
 
         public RedisConnection(ConnectionMultiplexer connection)
         {
@@ -89,7 +97,6 @@ namespace network
             var redisConnection = new RedisConnection(connection);
 
             await redisConnection.ForceReconnectAsync(initializing: true);
-            redisConnection._subscriber = redisConnection._connection.GetSubscriber();
 
             return redisConnection;
         }
