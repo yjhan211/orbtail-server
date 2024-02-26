@@ -11,14 +11,10 @@ namespace user_server
     {
         Cell last_cell;
         GameObjectInfo object_info;
-
         Task move_object_task;
         public CancellationTokenSource cts;
-
         NatsClient nats_client;
-
-        ConcurrentQueue<GameObjectInfo> move_object_queue;
-
+        readonly ConcurrentQueue<GameObjectInfo> move_object_queue;
         SemaphoreSlim object_lock;
 
         public async Task SubscribeGameServer(RedisValue message)
