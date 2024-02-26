@@ -72,8 +72,8 @@ namespace network
     [MessagePackObject]
     public class G_TO_U_DESTROY : IMessagePackObject
     {
-        [Key("object_key_list")]
-        public List<string> object_key_list { get; set; }
+        [Key("object_key")]
+        public string object_key { get; set; }
     }
 
     [MessagePackObject]
@@ -89,11 +89,8 @@ namespace network
     [MessagePackObject]
     public class U_TO_C_DESTROY : IMessagePackObject
     {
-        [Key("object_key_list")]
-        public List<string> object_key_list { get; set; }
-
-        [Key("is_ended")]
-        public bool is_ended { get; set; }
+        [Key("object_key")]
+        public string object_key { get; set; }
     }
 
     [MessagePackObject]

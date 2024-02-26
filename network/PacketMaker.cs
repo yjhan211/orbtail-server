@@ -82,19 +82,19 @@ namespace user_server
             return packet;
         }
 
-        public static Packet G_TO_U_DESTROY(List<string> object_key_list)
+        public static Packet G_TO_U_DESTROY(string object_key)
         {
             Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_DESTROY);
-            G_TO_U_DESTROY body = new() { object_key_list = object_key_list };
+            G_TO_U_DESTROY body = new() { object_key = object_key };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
         }
 
-        public static Packet U_TO_C_DESTROY(List<string> object_key_list, bool is_ended)
+        public static Packet U_TO_C_DESTROY(string object_key)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_DESTROY);
-            U_TO_C_DESTROY body = new() { object_key_list = object_key_list, is_ended = is_ended };
+            U_TO_C_DESTROY body = new() { object_key = object_key };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

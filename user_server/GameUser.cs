@@ -60,7 +60,7 @@ namespace user_server
 
         public void Release()
         {
-            PublishLeave(this.object_info.current_cell);
+            PublishDestroy();
 
             Packet packet = PacketMaker.U_TO_G_LOGOUT(this.player_id);
             _ = this.SendToGameServer(packet);
@@ -203,6 +203,10 @@ namespace user_server
 
                     case PROTOCOL.G_TO_U_SPAWN:
                         await HandleMessage<G_TO_U_SPAWN>(player_id, body, SubscribeSpawn);
+                        break;
+
+                    case PROTOCOL.G_TO_U_DESTROY:
+                        await HandleMessage<G_TO_U_DESTROY>(player_id, body, SubscribeDestroy);
                         break;
                 }
             }
@@ -469,6 +473,24 @@ namespace user_server
             }
         }
 
+        async Task SubscribeDestroy(long _, G_TO_U_DESTROY body)
+        {
+            try
+            {
+                var object_key = body.object_key;
+
+                Packet packet = PacketMaker.U_TO_C_DESTROY(object_key);
+                this.SendToClient(packet);
+
+                LogManager.WriteInfoLog(object_key);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+                this.OnRemoved();
+            }
+        }
+
 #pragma warning restore CS1998
 
         public int GetObjectManageServer(Cell cell)
@@ -500,6 +522,20 @@ namespace user_server
                 $"leave_object_{manage_server}",
                 MessagePackSerializer.Serialize(
                     (MapHelper.GetPositionKey(leave_cell), this.object_info.GetHashField())
+                )
+            );
+        }
+
+        public void PublishDestroy()
+        {
+            var manage_server = GetObjectManageServer(this.object_info.current_cell);
+            this.nats_client.Publish(
+                $"destroy_object_{manage_server}",
+                MessagePackSerializer.Serialize(
+                    (
+                        MapHelper.GetPositionKey(this.object_info.current_cell),
+                        this.object_info.GetHashField()
+                    )
                 )
             );
         }

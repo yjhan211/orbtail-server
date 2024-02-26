@@ -53,8 +53,13 @@ namespace game_server
                     this.object_position_map[position_key] = new();
 
                     this.nats_client.Subscribe(
-                        position_key,
-                        (subject, msg) => BroadcastUpdateObject(subject, msg)
+                        $"update_{position_key}",
+                        (subject, msg) => BroadcastUpdateObject(position_key, msg)
+                    );
+
+                    this.nats_client.Subscribe(
+                        $"destroy_{position_key}",
+                        (subject, msg) => BroadcastDestroyObject(position_key, msg)
                     );
 
                     foreach (var bound_cell in MapHelper.GetBoundCellList(cell))
@@ -77,6 +82,11 @@ namespace game_server
             this.nats_client.Subscribe(
                 $"spawn_object_{Program.server_id}",
                 (subject, msg) => SpawnManageObject(msg)
+            );
+
+            this.nats_client.Subscribe(
+                $"destroy_object_{Program.server_id}",
+                (subject, msg) => DestroyManageObject(msg)
             );
         }
 
@@ -125,7 +135,8 @@ namespace game_server
             var broadcast_msg = MessagePackSerializer.Serialize(object_info);
             foreach (var bound_cell in bound_cell_list)
             {
-                this.nats_client!.Publish(MapHelper.GetPositionKey(bound_cell), broadcast_msg);
+                var subject = $"update_{MapHelper.GetPositionKey(bound_cell)}";
+                this.nats_client!.Publish(subject, broadcast_msg);
             }
         }
 
@@ -161,6 +172,31 @@ namespace game_server
             }
         }
 
+        public void DestroyManageObject(RedisValue message)
+        {
+            (string position_key, string object_key) = MessagePackSerializer.Deserialize<(
+                string,
+                string
+            )>(message);
+
+            lock (position_lock)
+            {
+                this.object_position_map[position_key].Remove(object_key);
+            }
+
+            Cell position_cell = MapHelper.GetCell(position_key);
+            var bound_cell_list = MapHelper.GetBoundCellList(position_cell);
+
+            foreach (var bound_cell in bound_cell_list)
+            {
+                var bound_cell_key = MapHelper.GetPositionKey(bound_cell);
+                this.nats_client!.Publish(
+                    $"destroy_{bound_cell_key}",
+                    MessagePackSerializer.Serialize(object_key)
+                );
+            }
+        }
+
         public void BroadcastUpdateObject(string position_key, RedisValue message)
         {
             var object_info = MessagePackSerializer.Deserialize<GameObjectInfo>(message);
@@ -179,6 +215,29 @@ namespace game_server
             {
                 this.nats_client!.Publish(channel, packet.ToBytes());
             }
+            Packet.Destroy(packet);
+        }
+
+        public void BroadcastDestroyObject(string position_key, RedisValue message)
+        {
+            var object_key = MessagePackSerializer.Deserialize<string>(message);
+            if (!this.object_position_map.TryGetValue(position_key, out var channel_list))
+            {
+                return;
+            }
+
+            if (channel_list.Count <= 0)
+            {
+                return;
+            }
+
+            Packet packet = PacketMaker.G_TO_U_DESTROY(object_key);
+
+            foreach (var channel in channel_list)
+            {
+                this.nats_client!.Publish(channel, packet.ToBytes());
+            }
+
             Packet.Destroy(packet);
         }
     }
