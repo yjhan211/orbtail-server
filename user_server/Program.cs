@@ -82,9 +82,8 @@ namespace user_server
                         continue;
                     }
 
-                    user.Release();
-
                     LogManager.WriteInfoLog($"client disconnect. player_id: {user.player_id}");
+                    user.Release();
                 }
                 await Task.Delay(10);
             }

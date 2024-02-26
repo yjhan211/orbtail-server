@@ -20,12 +20,14 @@ namespace user_server
         public CacheHelper cache_helper { get; private set; }
         public RedLockFactory redlock { get; private set; }
 
-        Task game_object_subscribe_task;
+        Task move_object_task;
         public CancellationTokenSource cts;
 
         public ConcurrentQueue<string> map_queue;
         public ConcurrentQueue<GameObjectInfo> move_object_queue;
         public SemaphoreSlim player_lock;
+        SemaphoreSlim object_lock;
+
 #pragma warning disable CS8618
         public GameUser(UserToken token)
         {
@@ -36,6 +38,7 @@ namespace user_server
 
             this.player_id = 0;
             this.player_lock = new(1);
+            this.object_lock = new(1);
 
             this.cts = new();
             this.move_object_queue = new();
@@ -52,7 +55,7 @@ namespace user_server
             this.cache_helper = new(this.redis_connection);
             this.nats_client = new(Program.nats_endpoint);
 
-            this.game_object_subscribe_task = Task.Run(SubscribeMove, cts.Token);
+            this.move_object_task = Task.Run(RecvMoveObjectTask, cts.Token);
         }
 
         public void Release()
@@ -68,7 +71,7 @@ namespace user_server
         }
 
         // 구독중인 Cell에 오는 Move 메시지를 취합하는 Task (오로지 모아서 보내는 목적)
-        async Task SubscribeMove()
+        async Task RecvMoveObjectTask()
         {
             while (!cts.Token.IsCancellationRequested)
             {
@@ -109,7 +112,7 @@ namespace user_server
 
             try
             {
-                this.game_object_subscribe_task!.Wait();
+                this.move_object_task!.Wait();
             }
             catch (AggregateException e)
             {
@@ -129,12 +132,10 @@ namespace user_server
                 long player_id = packet.PopPlayerId();
                 byte[] body = packet.PopBody();
 
-                // 단순 조회 or 브로드캐스팅 없는 유저 단일 로직이라면 유저 서버 내부에서 처리
-                // 그 외에는 게임 서버 전송
                 switch (protocol_id)
                 {
                     case PROTOCOL.HEART_BEAT:
-                        HeartBeat();
+                        await HeartBeat();
                         break;
 
                     case PROTOCOL.C_TO_U_LOGIN:
@@ -168,10 +169,6 @@ namespace user_server
                                     GetObjectInfo
                                 );
                                 break;
-
-                            default:
-                                await this.SendToGameServer(packet);
-                                break;
                         }
                         break;
                 }
@@ -187,7 +184,7 @@ namespace user_server
             }
         }
 
-        public async Task OnMessageFromGameServer(RedisValue message)
+        public async Task SubscribeGameServer(RedisValue message)
         {
             try
             {
@@ -200,12 +197,12 @@ namespace user_server
 
                 switch (protocol_id)
                 {
-                    case PROTOCOL.G_TO_U_MAP_INFO:
-                        await HandleMessage<G_TO_U_MAP_INFO>(player_id, body, MapInfo);
+                    case PROTOCOL.G_TO_U_MOVE:
+                        await HandleMessage<G_TO_U_MOVE>(player_id, body, SubscribeMove);
                         break;
 
-                    case PROTOCOL.G_TO_U_MOVE:
-                        await HandleMessage<G_TO_U_MOVE>(player_id, body, Move);
+                    case PROTOCOL.G_TO_U_SPAWN:
+                        await HandleMessage<G_TO_U_SPAWN>(player_id, body, SubscribeSpawn);
                         break;
                 }
             }
@@ -226,9 +223,22 @@ namespace user_server
             await handleMessage(player_id, msg);
         }
 
-        void HeartBeat()
+        async Task HeartBeat()
         {
             this.token.is_alive = true;
+
+            if (this.object_info == null)
+            {
+                return;
+            }
+
+            if (!this.object_info.current_cell.Equals(this.object_info.target_cell))
+            {
+                if (this.object_info.GetMoveElapsedTime() >= Config.MOVE_ELAPSED_TIME)
+                {
+                    await Move(this.object_info.target_cell, DirectionType.NONE);
+                }
+            }
         }
 
         async Task Login(long _, C_TO_U_LOGIN request)
@@ -265,18 +275,17 @@ namespace user_server
             this.object_info = player_info.object_info;
             this.last_cell = Cell.Clone(player_info.object_info.current_cell);
 
+            // 게임 서버 구독 시작
+            this.nats_client.Subscribe(
+                this.object_info.GetHashField(),
+                async (channel, message) => await SubscribeGameServer(message)
+            );
+
             // 계정 정보 전송
             Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info);
             SendToClient(login_packet);
 
-            // 현재 담당 서버에 전송
-            PublishMove();
-
-            // 게임 서버 구독 시작
-            this.nats_client.Subscribe(
-                GameObjectInfo.MakeHashField(ObjectType.PLAYER, this.player_id),
-                async (channel, message) => await OnMessageFromGameServer(message)
-            );
+            await Move(this.object_info.current_cell, DirectionType.NONE, true);
         }
 
         async Task RequestMove(long player_id, C_TO_U_MOVE body)
@@ -303,6 +312,13 @@ namespace user_server
                 return;
             }
 
+            await Move(next_target_cell, body.direction);
+        }
+
+        async Task Move(Cell next_target_cell, DirectionType direction, bool all_bound = false)
+        {
+            await this.object_lock.WaitAsync();
+
             var current_manage_server = GetObjectManageServer(this.object_info.current_cell);
             var target_manage_server = GetObjectManageServer(this.object_info.target_cell);
 
@@ -315,7 +331,12 @@ namespace user_server
             // target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
             this.object_info.move_timestamp = DateTime.UtcNow;
             this.object_info.target_cell = next_target_cell;
-            this.object_info.SetFlip(body.direction);
+            if (direction != DirectionType.NONE)
+            {
+                this.object_info.SetFlip(direction);
+            }
+
+            this.object_lock.Release();
 
             if (current_manage_server != target_manage_server)
             {
@@ -325,6 +346,36 @@ namespace user_server
 
             // 현재 담당 서버에 전송
             PublishMove();
+
+            var last_bound_cell_list = all_bound
+                ? new()
+                : MapHelper.GetBoundCellList(this.last_cell);
+
+            var current_bound_cell_list = MapHelper.GetBoundCellList(this.object_info.current_cell);
+
+            // 현재 바운드 - 이전 바운드 = spawn 대상
+            var object_spawn_list = current_bound_cell_list
+                .Except(last_bound_cell_list)
+                .GroupBy(
+                    cell => MapHelper.CalcServerIdFromCell(cell, Program.game_server_num),
+                    cell => MapHelper.GetPositionKey(cell)
+                )
+                .Select(group => new { server_id = group.Key, position_key_list = group.ToList() });
+
+            foreach (var item in object_spawn_list)
+            {
+                RequestSpawnObjectList(item.server_id, item.position_key_list);
+            }
+        }
+
+        void RequestSpawnObjectList(int server_id, List<string> position_key_list)
+        {
+            this.nats_client.Publish(
+                $"spawn_object_{server_id}",
+                MessagePackSerializer.Serialize(
+                    (this.object_info.GetHashField(), position_key_list)
+                )
+            );
         }
 
         async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
@@ -367,7 +418,7 @@ namespace user_server
             }
         }
 
-        // 이 함수가 호출되는 경우: G_TO_U_MAP_INFO의 object_key_list에는 있으나 클라에는 GameObjectInfo가 없을 때
+        // 이 함수가 호출되는 경우: G_TO_U_SPAWN_LIST의 object_key_list에는 있으나 클라에는 GameObjectInfo가 없을 때
         // 어떤 경우에 생기는가: 이미 접속해서 잠수타고 있는 오브젝트를 만났을 때
         async Task GetObjectInfo(long player_id, C_TO_U_OBJECT_INFO body)
         {
@@ -384,22 +435,17 @@ namespace user_server
             }
         }
 
-        async Task Move(long _, G_TO_U_MOVE body)
+        async Task SubscribeMove(long _, G_TO_U_MOVE body)
         {
             this.move_object_queue.Enqueue(body.object_info);
         }
 
-        async Task MapInfo(long _, G_TO_U_MAP_INFO body)
+        async Task SubscribeSpawn(long _, G_TO_U_SPAWN body)
         {
             try
             {
                 var object_keys = body.object_key_list;
                 var player_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, this.player_id);
-
-                if (!object_keys.Contains(player_key))
-                {
-                    return;
-                }
 
                 for (int i = 0; i < object_keys.Count; i += Config.BROADCAST_UNIT)
                 {
@@ -408,7 +454,7 @@ namespace user_server
                     var remain = object_keys.Count - i - Config.BROADCAST_UNIT;
                     var is_ended = remain <= 0;
 
-                    Packet packet = PacketMaker.U_TO_C_MAP_INFO(
+                    Packet packet = PacketMaker.U_TO_C_SPAWN(
                         batch.Select((item) => item.ToString()).ToList(),
                         is_ended
                     );
@@ -422,6 +468,7 @@ namespace user_server
                 this.OnRemoved();
             }
         }
+
 #pragma warning restore CS1998
 
         public int GetObjectManageServer(Cell cell)

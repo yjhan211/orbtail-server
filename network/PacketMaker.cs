@@ -15,24 +15,6 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_MAP_INFO(List<string> object_key_list, bool is_ended)
-        {
-            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_MAP_INFO);
-            U_TO_C_MAP_INFO body = new() { object_key_list = object_key_list, is_ended = is_ended };
-
-            packet.SetBody(MessagePackSerializer.Serialize(body));
-            return packet;
-        }
-
-        public static Packet G_TO_U_MAP_INFO(List<string> object_key_list)
-        {
-            Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_MAP_INFO);
-            G_TO_U_MAP_INFO body = new() { object_key_list = object_key_list };
-
-            packet.SetBody(MessagePackSerializer.Serialize(body));
-            return packet;
-        }
-
         public static Packet U_TO_C_MAP_UPDATE(List<GameObjectInfo> object_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_MAP_UPDATE);
@@ -77,6 +59,42 @@ namespace user_server
         {
             Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_MOVE, object_info.object_id);
             G_TO_U_MOVE body = new() { object_info = object_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet G_TO_U_SPAWN(List<string> object_key_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_SPAWN);
+            G_TO_U_SPAWN body = new() { object_key_list = object_key_list };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_SPAWN(List<string> object_key_list, bool is_ended)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_SPAWN);
+            U_TO_C_SPAWN body = new() { object_key_list = object_key_list, is_ended = is_ended };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet G_TO_U_DESTROY(List<string> object_key_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_DESTROY);
+            G_TO_U_DESTROY body = new() { object_key_list = object_key_list };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_DESTROY(List<string> object_key_list, bool is_ended)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_DESTROY);
+            U_TO_C_DESTROY body = new() { object_key_list = object_key_list, is_ended = is_ended };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

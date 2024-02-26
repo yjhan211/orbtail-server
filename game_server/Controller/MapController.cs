@@ -12,10 +12,12 @@ namespace game_server
         public const int MAP_ID = 1;
         NatsClient? nats_client;
         public ConcurrentDictionary<string, List<string>> object_position_map;
+        public CancellationTokenSource cts;
 
         public MapController()
         {
             this.object_position_map = new();
+            this.cts = new();
         }
 
         public void Initialize(NatsClient nats_client)
@@ -54,16 +56,27 @@ namespace game_server
                         position_key,
                         (subject, msg) => BroadcastUpdateObject(subject, msg)
                     );
+
+                    foreach (var bound_cell in MapHelper.GetBoundCellList(cell))
+                    {
+                        var bound_cell_key = MapHelper.GetPositionKey(bound_cell);
+                    }
                 }
             }
 
             this.nats_client.Subscribe(
                 $"move_object_{Program.server_id}",
-                (channel, msg) => MoveManageObject(msg)
+                (subject, msg) => MoveManageObject(msg)
             );
+
             this.nats_client.Subscribe(
                 $"leave_object_{Program.server_id}",
-                (channel, msg) => LeaveManageObject(msg)
+                (subject, msg) => LeaveManageObject(msg)
+            );
+
+            this.nats_client.Subscribe(
+                $"spawn_object_{Program.server_id}",
+                (subject, msg) => SpawnManageObject(msg)
             );
         }
 
@@ -91,9 +104,10 @@ namespace game_server
                 GameObjectInfo
             )>(message);
 
-            // 맵 갱신
             var object_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, object_info.object_id);
+            var current_position_key = MapHelper.GetPositionKey(object_info.current_cell);
 
+            // 위치 갱신
             lock (position_lock)
             {
                 // last를 관리하는 서버가 본인이면 지움
@@ -103,7 +117,6 @@ namespace game_server
                 }
 
                 // current 추가
-                var current_position_key = MapHelper.GetPositionKey(object_info.current_cell);
                 this.object_position_map[current_position_key].Add(object_key);
             }
 
@@ -114,18 +127,6 @@ namespace game_server
             {
                 this.nats_client!.Publish(MapHelper.GetPositionKey(bound_cell), broadcast_msg);
             }
-
-            // if (body.direction == DirectionType.NONE)
-            // {
-            //     return;
-            // }
-
-            // 마지막 Move요청 처리. 이 처리가 없으면 current_cell과 target_cell이 계속 불일치
-            // _ = Task.Run(async () =>
-            // {
-            //     await Task.Delay(TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME));
-            //     await MoveManageObject(cache_helper, player_info, DirectionType.NONE);
-            // });
         }
 
         public void LeaveManageObject(RedisValue message)
@@ -138,6 +139,25 @@ namespace game_server
             lock (position_lock)
             {
                 this.object_position_map[position_key].Remove(object_key);
+            }
+        }
+
+        public void SpawnManageObject(RedisValue message)
+        {
+            (string user_subject, List<string> position_key_list) =
+                MessagePackSerializer.Deserialize<(string, List<string>)>(message);
+
+            var spawn_list = new List<string>();
+            foreach (var position_key in position_key_list)
+            {
+                spawn_list.AddRange(this.object_position_map[position_key]);
+            }
+
+            if (spawn_list.Count > 0)
+            {
+                Packet packet = PacketMaker.G_TO_U_SPAWN(spawn_list);
+                this.nats_client!.Publish(user_subject, packet.ToBytes());
+                Packet.Destroy(packet);
             }
         }
 

@@ -63,14 +63,31 @@ namespace network
     }
 
     [MessagePackObject]
-    public class G_TO_U_MAP_INFO : IMessagePackObject
+    public class G_TO_U_SPAWN : IMessagePackObject
     {
         [Key("object_key_list")]
         public List<string> object_key_list { get; set; }
     }
 
     [MessagePackObject]
-    public class U_TO_C_MAP_INFO : IMessagePackObject
+    public class G_TO_U_DESTROY : IMessagePackObject
+    {
+        [Key("object_key_list")]
+        public List<string> object_key_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_SPAWN : IMessagePackObject
+    {
+        [Key("object_key_list")]
+        public List<string> object_key_list { get; set; }
+
+        [Key("is_ended")]
+        public bool is_ended { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_DESTROY : IMessagePackObject
     {
         [Key("object_key_list")]
         public List<string> object_key_list { get; set; }
