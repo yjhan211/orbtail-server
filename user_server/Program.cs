@@ -34,8 +34,7 @@ namespace user_server
                 return;
             }
 
-            redis_endpoints = redis_endpoints_env.Split(' ').ToArray();
-            RedisConnectionPool.Initialize(Program.redis_endpoints);
+            RedisConnectionPool.Initialize(redis_endpoints_env);
 
             string? nats_endpoint_env = Environment.GetEnvironmentVariable("NATS_ENDPOINT");
             if (string.IsNullOrEmpty(nats_endpoint_env))

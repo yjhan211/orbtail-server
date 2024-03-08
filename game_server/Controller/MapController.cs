@@ -10,6 +10,8 @@ namespace game_server
     public class MapController
     {
         public const int MAP_ID = 1;
+        ConnectionMultiplexer? redis_connection;
+        CacheHelper? cache_helper;
         NatsClient? nats_client;
         public ConcurrentDictionary<string, List<string>> object_position_map;
         public CancellationTokenSource cts;
@@ -22,72 +24,62 @@ namespace game_server
 
         public void Initialize(NatsClient nats_client)
         {
+            this.redis_connection = RedisConnectionPool.GetConnection();
+            this.cache_helper = new CacheHelper(redis_connection);
+
             this.nats_client = nats_client;
 
-            // 서버 분할 설정
-            var (horizontal_divisions, vertical_divisions) = MapHelper.DetermineDivisions(
-                Program.game_server_num
+            var manage_part_list = MapHelper.GetManagePartList(
+                Program.game_server_num,
+                Program.server_id
             );
-            // 각 섹션의 크기 계산
-            int section_width = MapHelper.MAP_SIZE / horizontal_divisions;
-            int section_height = MapHelper.MAP_SIZE / vertical_divisions;
 
-            // 서버 ID를 기반으로 해당 서버의 가로 세로 위치 계산
-            int horizontal_position = (Program.server_id - 1) % horizontal_divisions;
-            int vertical_position = (Program.server_id - 1) / horizontal_divisions;
-
-            // 해당 서버가 담당할 맵의 x, y 시작점 계산
-            int start_x = horizontal_position * section_width;
-            int start_y = vertical_position * section_height;
-
-            // 해당 서버가 담당할 맵의 x, y 끝점 계산
-            int end_x = start_x + section_width;
-            int end_y = start_y + section_height;
-
-            for (int x = start_x; x < end_x; x++)
+            var manage_position_key_list = new List<string>();
+            foreach (var manage_part in manage_part_list)
             {
-                for (int y = start_y; y < end_y; y++)
-                {
-                    Cell cell = new(x, y);
-                    var position_key = MapHelper.GetPositionKey(MAP_ID, cell);
-                    this.object_position_map[position_key] = new();
+                this.nats_client.Subscribe(
+                    $"move_object_{manage_part}",
+                    (subject, msg) => MoveManageObject(msg)
+                );
 
-                    this.nats_client.Subscribe(
-                        $"update_{position_key}",
-                        (subject, msg) => BroadcastUpdateObject(position_key, msg)
-                    );
+                this.nats_client.Subscribe(
+                    $"leave_object_{manage_part}",
+                    (subject, msg) => LeaveManageObject(msg)
+                );
 
-                    this.nats_client.Subscribe(
-                        $"destroy_{position_key}",
-                        (subject, msg) => BroadcastDestroyObject(position_key, msg)
-                    );
+                this.nats_client.Subscribe(
+                    $"spawn_object_{manage_part}",
+                    (subject, msg) => SpawnManageObject(msg)
+                );
 
-                    foreach (var bound_cell in MapHelper.GetBoundCellList(cell))
-                    {
-                        var bound_cell_key = MapHelper.GetPositionKey(bound_cell);
-                    }
-                }
+                this.nats_client.Subscribe(
+                    $"destroy_object_{manage_part}",
+                    (subject, msg) => DestroyManageObject(msg)
+                );
+
+                var position_value_list = this.cache_helper
+                    .ListRange($"position_list_{manage_part}")
+                    .GetAwaiter()
+                    .GetResult();
+
+                var position_list = position_value_list.Select(x => x.ToString()).ToList();
+                manage_position_key_list.AddRange(position_list);
             }
 
-            this.nats_client.Subscribe(
-                $"move_object_{Program.server_id}",
-                (subject, msg) => MoveManageObject(msg)
-            );
+            foreach (var position_key in manage_position_key_list)
+            {
+                this.object_position_map[position_key] = new();
 
-            this.nats_client.Subscribe(
-                $"leave_object_{Program.server_id}",
-                (subject, msg) => LeaveManageObject(msg)
-            );
+                this.nats_client.Subscribe(
+                    $"update_{position_key}",
+                    (subject, msg) => BroadcastUpdateObject(position_key, msg)
+                );
 
-            this.nats_client.Subscribe(
-                $"spawn_object_{Program.server_id}",
-                (subject, msg) => SpawnManageObject(msg)
-            );
-
-            this.nats_client.Subscribe(
-                $"destroy_object_{Program.server_id}",
-                (subject, msg) => DestroyManageObject(msg)
-            );
+                this.nats_client.Subscribe(
+                    $"destroy_{position_key}",
+                    (subject, msg) => BroadcastDestroyObject(position_key, msg)
+                );
+            }
         }
 
         public string GetMapKey()

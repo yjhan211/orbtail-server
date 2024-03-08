@@ -2,7 +2,6 @@
 {
     using network;
     using MessagePack;
-    using System.Collections.Concurrent;
     using StackExchange.Redis;
     using game_server;
     using RedLockNet.SERedis;
@@ -11,7 +10,7 @@
     {
         public UserToken token { get; private set; }
         public long player_id;
-        RedisConnection redis_connection;
+        public ConnectionMultiplexer redis_connection;
         public CacheHelper cache_helper { get; private set; }
         public RedLockFactory redlock { get; private set; }
         public SemaphoreSlim player_lock;
@@ -31,15 +30,16 @@
             this.cts = new();
             this.move_object_queue = new();
 
-            this.initializeAsync().Wait();
+            this.Initialize();
         }
 #pragma warning restore
 
-        public async Task initializeAsync()
+        public void Initialize()
         {
-            this.redis_connection = await RedisConnection.InitializeAsync();
-            this.redlock = this.redis_connection.GetRedLockFactory();
+            this.redis_connection = RedisConnectionPool.GetConnection();
             this.cache_helper = new(this.redis_connection);
+
+            this.redlock = RedisConnectionPool.GetRedLockFactory(this.redis_connection);
             this.nats_client = new(Program.nats_endpoint);
 
             this.move_object_task = Task.Run(RecvMoveObjectTask, cts.Token);
@@ -258,7 +258,6 @@
 
             this.player_id = 0;
             this.nats_client.Close();
-            this.redis_connection.Dispose();
         }
 
         public void OnRemoved()
