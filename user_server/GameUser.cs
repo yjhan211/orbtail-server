@@ -266,6 +266,7 @@
             this.cts.Dispose();
 
             Program.leave_user_queue!.Enqueue(this);
+            this.token.network_service.CloseClientSocket(this.token);
         }
     }
 }
