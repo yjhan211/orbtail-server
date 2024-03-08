@@ -9,7 +9,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "network", "network\network.
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "dummy_client", "dummy_client\dummy_client.csproj", "{36958B19-AE68-4D68-A6F2-17FCE18BEDB8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "game_server", "game_server\game_server.csproj", "{D9326058-CA01-475A-A255-6177730E2611}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "game_server", "game_server\game_server.csproj", "{D9326058-CA01-475A-A255-6177730E2611}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "map_partitioner", "map_partitioner\map_partitioner.csproj", "{3AE5A0A6-6A39-495F-86EE-57082AE72CAF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,6 +35,10 @@ Global
 		{D9326058-CA01-475A-A255-6177730E2611}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D9326058-CA01-475A-A255-6177730E2611}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D9326058-CA01-475A-A255-6177730E2611}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3AE5A0A6-6A39-495F-86EE-57082AE72CAF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3AE5A0A6-6A39-495F-86EE-57082AE72CAF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3AE5A0A6-6A39-495F-86EE-57082AE72CAF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3AE5A0A6-6A39-495F-86EE-57082AE72CAF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

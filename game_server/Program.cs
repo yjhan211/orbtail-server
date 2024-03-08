@@ -35,8 +35,7 @@ namespace game_server
                 return;
             }
 
-            redis_endpoints = redis_endpoints_env.Split(' ').ToArray();
-            RedisConnectionPool.Initialize(Program.redis_endpoints);
+            RedisConnectionPool.Initialize(redis_endpoints_env);
 
             string? nats_endpoint_env = Environment.GetEnvironmentVariable("NATS_ENDPOINT");
             if (string.IsNullOrEmpty(nats_endpoint_env))
@@ -48,6 +47,7 @@ namespace game_server
             nats_endpoint = nats_endpoint_env;
 
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
+            MapHelper.InitializeGameServer();
 
             game_server = new();
             game_server.Start();

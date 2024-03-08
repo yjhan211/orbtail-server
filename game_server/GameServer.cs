@@ -1,9 +1,11 @@
 namespace game_server
 {
+    using StackExchange.Redis.MultiplexerPool;
     using System;
     using System.Threading.Tasks;
     using MessagePack;
     using network;
+    using StackExchange.Redis;
 
     public class GameServer
     {
@@ -11,12 +13,17 @@ namespace game_server
         CancellationTokenSource cts;
         Task? logic_thread;
         MapController map_controller;
+        ConnectionMultiplexer redis_connection;
+        CacheHelper cache_helper;
 
         public GameServer()
         {
             this.nats_client = new(Program.nats_endpoint);
             this.cts = new();
             this.map_controller = new();
+
+            this.redis_connection = RedisConnectionPool.GetConnection();
+            this.cache_helper = new(this.redis_connection);
         }
 
         public void Start()
@@ -31,8 +38,6 @@ namespace game_server
             {
                 try
                 {
-                    var redis_connection = await RedisConnection.InitializeAsync();
-                    CacheHelper cache_helper = new(redis_connection);
                     while (true)
                     {
                         byte[]? message = await cache_helper.Dequeue("game_server_queue");
@@ -45,7 +50,7 @@ namespace game_server
                         Packet? packet = new(message);
                         if (packet != null)
                         {
-                            await ProcessReceiveAsync(packet);
+                            await ProcessReceiveAsync(cache_helper, packet);
                         }
                     }
                 }
@@ -66,37 +71,33 @@ namespace game_server
         }
 
         async Task HandleMessage<T>(
-            RedisConnection redis_conn,
+            CacheHelper cache_helper,
             long player_id,
             byte[] body,
-            Func<RedisConnection, long, T, Task> handleMessage
+            Func<CacheHelper, long, T, Task> handleMessage
         )
         {
             T msg = MessagePackSerializer.Deserialize<T>(body);
-            await handleMessage(redis_conn, player_id, msg);
+            await handleMessage(cache_helper, player_id, msg);
         }
 
-        async Task ProcessReceiveAsync(Packet packet)
+        async Task ProcessReceiveAsync(CacheHelper cache_helper, Packet packet)
         {
             PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
             long player_id = packet.PopPlayerId();
             byte[] body = packet.PopBody();
 
-            using (var redis_conn = await RedisConnection.InitializeAsync())
+            switch (protocol_id)
             {
-                switch (protocol_id)
-                {
-                    case PROTOCOL.U_TO_G_LOGOUT:
-                        await HandleMessage<U_TO_G_LOGOUT>(redis_conn, player_id, body, Logout);
-                        break;
-                }
+                case PROTOCOL.U_TO_G_LOGOUT:
+                    await HandleMessage<U_TO_G_LOGOUT>(cache_helper, player_id, body, Logout);
+                    break;
             }
         }
 
-        public async Task Logout(RedisConnection redis_conn, long player_id, U_TO_G_LOGOUT msg)
+        public async Task Logout(CacheHelper cache_helper, long player_id, U_TO_G_LOGOUT msg)
         {
-            CacheHelper cache_helper = new(redis_conn);
-            var redlock = redis_conn.GetRedLockFactory();
+            var redlock = RedisConnectionPool.GetRedLockFactory(this.redis_connection);
 
             using (var player_lock = await PlayerController.Lock(redlock, player_id))
             {

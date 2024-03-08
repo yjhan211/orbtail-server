@@ -2,22 +2,158 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using StackExchange.Redis;
 
 namespace network
 {
     public static class MapHelper
     {
-        public const int MAP_SIZE = 96;
-
-        public static bool IsOutOfMapRange(Cell cell)
+        public static Dictionary<string, int> part_by_position_key = new();
+        public static Dictionary<int, List<string>> position_list_by_part = new();
+        public static List<Cell> part_pivot_list = new()
         {
-            return cell.x < 0 || cell.x >= MAP_SIZE || cell.y < 0 || cell.y >= MAP_SIZE;
+            new(25, 85),
+            new(31, 79),
+            new(37, 73),
+            new(43, 67),
+            new(49, 61),
+            new(55, 55),
+            new(61, 49),
+            new(67, 43),
+            new(73, 37),
+            new(79, 31),
+            new(45, 105),
+            new(51, 99),
+            new(57, 93),
+            new(63, 87),
+            new(69, 81),
+            new(75, 75),
+            new(81, 69),
+            new(87, 63),
+            new(93, 57),
+            new(99, 51),
+            new(65, 125),
+            new(71, 119),
+            new(77, 113),
+            new(83, 107),
+            new(89, 101),
+            new(95, 95),
+            new(101, 89),
+            new(107, 83),
+            new(113, 77),
+            new(119, 71),
+            new(85, 145),
+            new(91, 139),
+            new(97, 133),
+            new(103, 127),
+            new(109, 121),
+            new(115, 115),
+            new(121, 109),
+            new(127, 103),
+            new(133, 97),
+            new(139, 91)
+        };
+
+        public static void InitializeGameServer()
+        {
+            var part_number = 1;
+            foreach (var part_pivot in part_pivot_list)
+            {
+                var pivot_cell = Cell.Clone(part_pivot);
+                var cell_list = GetBoundCellList(pivot_cell);
+                position_list_by_part[part_number] = new();
+
+                foreach (var cell in cell_list)
+                {
+                    var position_key = GetPositionKey(1, cell);
+                    if (!part_by_position_key.TryGetValue(position_key, out var duplicate))
+                    {
+                        // part_by_position_key.Add(position_key, part_number);
+                        position_list_by_part[part_number].Add(position_key);
+                    }
+                }
+
+                part_number++;
+            }
         }
 
-        public static Cell GetRandomCell()
+        public static void InitializeUserServer()
         {
-            Random random = new();
-            return new(random.Next(0, MAP_SIZE), random.Next(0, MAP_SIZE));
+            var part_number = 1;
+            foreach (var part_pivot in part_pivot_list)
+            {
+                var pivot_cell = Cell.Clone(part_pivot);
+                var cell_list = GetBoundCellList(pivot_cell);
+                position_list_by_part[part_number] = new();
+
+                foreach (var cell in cell_list)
+                {
+                    var position_key = GetPositionKey(1, cell);
+                    if (!part_by_position_key.TryGetValue(position_key, out var duplicate))
+                    {
+                        part_by_position_key.Add(position_key, part_number);
+                        // position_list_by_part[part_number].Add(position_key);
+                    }
+                }
+
+                part_number++;
+            }
+        }
+
+        public static int[][] map_partition = [
+            [1,2],[11,12],
+            [3,4],[13,14],
+            [5,6],[15,16],
+            [7,8],[17,18],
+            [9,10],[19,20],
+            [21,22],[31,32],
+            [23,24],[33,34],
+            [25,26],[35,36],
+            [27,28],[37,38],
+            [29,30],[39,40]
+        ];
+
+        public static List<int> GetManagePartList(int total_server, int game_server_id)
+        {
+            var result = new List<int>();
+
+            switch (total_server)
+            {
+                case 40:
+                    result.Add(game_server_id);
+                    break;
+
+                case 20:
+                    result.AddRange(map_partition[game_server_id - 1]);
+                    break;
+
+                case 10:
+                    for (int i = 2 * game_server_id - 2; i < 2 * game_server_id; i++)
+                    {
+                        result.AddRange(map_partition[i]);
+                    }
+                    break;
+
+                case 5:
+                    for (int i = 4 * (game_server_id - 1); i < 4 * game_server_id; i++)
+                    {
+                        result.AddRange(map_partition[i]);
+                    }
+                    break;
+
+                case 2:
+                    var start_index = game_server_id == 1 ? 0 : 10;
+                    for (int i = start_index; i < start_index + 10; i++)
+                    {
+                        result.AddRange(map_partition[i]);
+                    }
+                    break;
+
+                default:
+                    throw new Exception("invalid Total Server num");
+            }
+
+            return result;
         }
 
         public static string GetPositionKey(int map_id, Cell cell)
@@ -142,12 +278,6 @@ namespace network
                 for (int y = min_y; y <= max_y; y++)
                 {
                     Cell cell = new(x, y);
-
-                    if (IsOutOfMapRange(cell))
-                    {
-                        continue;
-                    }
-
                     result.Add(cell);
                 }
             }
@@ -172,29 +302,54 @@ namespace network
             return (horizontal_divisions, vertical_divisions);
         }
 
-        public static int CalcServerIdFromCell(Cell cell, int total_server_num)
+        public static Cell GetRandomCell()
         {
-            // 맵 분할 설정
-            var (horizontal_divisions, vertical_divisions) = DetermineDivisions(total_server_num);
+            var target_list = new List<Cell>()
+            {
+                new(25, 85),
+                new(31, 79),
+                new(37, 73),
+                new(43, 67),
+                new(49, 61),
+                new(55, 55),
+                new(61, 49),
+                new(67, 43),
+                new(73, 37),
+                new(79, 31),
+                new(45, 105),
+                new(51, 99),
+                new(57, 93),
+                new(63, 87),
+                new(69, 81),
+                new(75, 75),
+                new(81, 69),
+                new(87, 63),
+                new(93, 57),
+                new(99, 51),
+                new(65, 125),
+                new(71, 119),
+                new(77, 113),
+                new(83, 107),
+                new(89, 101),
+                new(95, 95),
+                new(101, 89),
+                new(107, 83),
+                new(113, 77),
+                new(119, 71),
+                new(85, 145),
+                new(91, 139),
+                new(97, 133),
+                new(103, 127),
+                new(109, 121),
+                new(115, 115),
+                new(121, 109),
+                new(127, 103),
+                new(133, 97),
+                new(139, 91)
+            };
 
-            // 각 섹션의 크기
-            int section_width = MapHelper.MAP_SIZE / horizontal_divisions;
-            int section_height = MapHelper.MAP_SIZE / vertical_divisions;
-
-            // 주어진 좌표
-            int x = cell.x; // 예시 좌표 x
-            int y = cell.y; // 예시 좌표 y
-
-            // 주어진 좌표가 위치한 섹션의 가로, 세로 위치 계산
-            int horizontal_position = x / section_width;
-            int vertical_position = y / section_height;
-
-            // 서버 ID 계산
-            // 세로 위치(verticalPosition)를 기반으로 몇 번째 "행"에 있는지 계산하고,
-            // 가로 위치(horizontalPosition)를 추가하여 최종적인 서버 ID를 도출
-            int server_id = vertical_position * horizontal_divisions + horizontal_position + 1;
-
-            return server_id;
+            Random random = new();
+            return target_list[random.Next(0, target_list.Count)];
         }
     }
 }

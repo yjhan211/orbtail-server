@@ -5,7 +5,6 @@ namespace user_server
     using System.Collections.Concurrent;
     using StackExchange.Redis;
     using game_server;
-    using RedLockNet.SERedis;
 
     public partial class GameUser : IPeer
     {
@@ -122,9 +121,9 @@ namespace user_server
                 body.direction
             );
 
-            if (MapHelper.IsOutOfMapRange(next_target_cell))
+            // TODO map_id
+            if (GetObjectManagePart(next_target_cell) == 0)
             {
-                // 맵 밖으로 벗어남
                 return;
             }
 
@@ -135,8 +134,8 @@ namespace user_server
         {
             await this.object_lock.WaitAsync();
 
-            var current_manage_server = GetObjectManageServer(this.object_info.current_cell);
-            var target_manage_server = GetObjectManageServer(this.object_info.target_cell);
+            var current_manage_part = GetObjectManagePart(this.object_info.current_cell);
+            var target_manage_part = GetObjectManagePart(this.object_info.target_cell);
 
             // 과거 위치 챙겨놓고
             this.last_cell = Cell.Clone(this.object_info.current_cell);
@@ -146,7 +145,7 @@ namespace user_server
 
             // target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
             this.object_info.move_timestamp = DateTime.UtcNow;
-            this.object_info.target_cell = next_target_cell;
+            this.object_info.target_cell = Cell.Clone(next_target_cell);
             if (direction != DirectionType.NONE)
             {
                 this.object_info.SetFlip(direction);
@@ -156,7 +155,7 @@ namespace user_server
 
             this.object_lock.Release();
 
-            if (current_manage_server != target_manage_server)
+            if (current_manage_part != target_manage_part)
             {
                 // 과거 담당 서버에는 영역을 떠났다고 전송
                 PublishLeave();
@@ -172,17 +171,23 @@ namespace user_server
             var current_bound_cell_list = MapHelper.GetBoundCellList(this.object_info.current_cell);
 
             // 현재 바운드 - 이전 바운드 = spawn 대상
+            // TODO map_id
             var object_spawn_list = current_bound_cell_list
                 .Except(last_bound_cell_list)
-                .GroupBy(
-                    cell => MapHelper.CalcServerIdFromCell(cell, Program.game_server_num),
-                    cell => MapHelper.GetPositionKey(cell)
+                .Select(
+                    cell =>
+                        new
+                        {
+                            part_id = GetObjectManagePart(cell),
+                            position_key = MapHelper.GetPositionKey(cell)
+                        }
                 )
-                .Select(group => new { server_id = group.Key, position_key_list = group.ToList() });
+                .GroupBy(item => item.part_id, item => item.position_key)
+                .Select(group => new { part_id = group.Key, position_key_list = group.ToList() });
 
             foreach (var item in object_spawn_list)
             {
-                RequestSpawnObjectList(item.server_id, item.position_key_list);
+                RequestSpawnObjectList(item.part_id, item.position_key_list);
             }
         }
 
@@ -203,9 +208,9 @@ namespace user_server
                 leave_cell = this.last_cell;
             }
 
-            var manage_server = GetObjectManageServer(leave_cell);
+            var manage_part = GetObjectManagePart(leave_cell);
             this.nats_client.Publish(
-                $"leave_object_{manage_server}",
+                $"leave_object_{manage_part}",
                 MessagePackSerializer.Serialize(
                     (MapHelper.GetPositionKey(leave_cell), this.object_info.GetHashField())
                 )
@@ -214,9 +219,9 @@ namespace user_server
 
         public void PublishDestroy()
         {
-            var manage_server = GetObjectManageServer(this.object_info.current_cell);
+            var manage_part = GetObjectManagePart(this.object_info.current_cell);
             this.nats_client.Publish(
-                $"destroy_object_{manage_server}",
+                $"destroy_object_{manage_part}",
                 MessagePackSerializer.Serialize(
                     (
                         MapHelper.GetPositionKey(this.object_info.current_cell),
@@ -228,9 +233,9 @@ namespace user_server
 
         public void PublishMove()
         {
-            var manage_server = GetObjectManageServer(this.object_info.current_cell);
+            var manage_part = GetObjectManagePart(this.object_info.current_cell);
             this.nats_client.Publish(
-                $"move_object_{manage_server}",
+                $"move_object_{manage_part}",
                 MessagePackSerializer.Serialize(
                     (MapHelper.GetPositionKey(this.last_cell), this.object_info)
                 )
@@ -293,9 +298,14 @@ namespace user_server
 
 #pragma warning restore CS1998
 
-        public int GetObjectManageServer(Cell cell)
+        public int GetObjectManagePart(Cell cell)
         {
-            return MapHelper.CalcServerIdFromCell(cell, Program.game_server_num);
+            MapHelper.part_by_position_key.TryGetValue(
+                MapHelper.GetPositionKey(cell),
+                out var part_id
+            );
+
+            return part_id;
         }
     }
 }
