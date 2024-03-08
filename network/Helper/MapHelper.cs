@@ -8,6 +8,98 @@ namespace network
 {
     public static class MapHelper
     {
+        public static Dictionary<string, int> part_by_position_key = new();
+        public static Dictionary<int, List<string>> position_list_by_part = new();
+        public static List<Cell> part_pivot_list = new()
+        {
+            new(25, 85),
+            new(31, 79),
+            new(37, 73),
+            new(43, 67),
+            new(49, 61),
+            new(55, 55),
+            new(61, 49),
+            new(67, 43),
+            new(73, 37),
+            new(79, 31),
+            new(45, 105),
+            new(51, 99),
+            new(57, 93),
+            new(63, 87),
+            new(69, 81),
+            new(75, 75),
+            new(81, 69),
+            new(87, 63),
+            new(93, 57),
+            new(99, 51),
+            new(65, 125),
+            new(71, 119),
+            new(77, 113),
+            new(83, 107),
+            new(89, 101),
+            new(95, 95),
+            new(101, 89),
+            new(107, 83),
+            new(113, 77),
+            new(119, 71),
+            new(85, 145),
+            new(91, 139),
+            new(97, 133),
+            new(103, 127),
+            new(109, 121),
+            new(115, 115),
+            new(121, 109),
+            new(127, 103),
+            new(133, 97),
+            new(139, 91)
+        };
+
+        public static void InitializeGameServer()
+        {
+            var part_number = 1;
+            foreach (var part_pivot in part_pivot_list)
+            {
+                var pivot_cell = Cell.Clone(part_pivot);
+                var cell_list = GetBoundCellList(pivot_cell);
+                position_list_by_part[part_number] = new();
+
+                foreach (var cell in cell_list)
+                {
+                    var position_key = GetPositionKey(1, cell);
+                    if (!part_by_position_key.TryGetValue(position_key, out var duplicate))
+                    {
+                        // part_by_position_key.Add(position_key, part_number);
+                        position_list_by_part[part_number].Add(position_key);
+                    }
+                }
+
+                part_number++;
+            }
+        }
+
+        public static void InitializeUserServer()
+        {
+            var part_number = 1;
+            foreach (var part_pivot in part_pivot_list)
+            {
+                var pivot_cell = Cell.Clone(part_pivot);
+                var cell_list = GetBoundCellList(pivot_cell);
+                position_list_by_part[part_number] = new();
+
+                foreach (var cell in cell_list)
+                {
+                    var position_key = GetPositionKey(1, cell);
+                    if (!part_by_position_key.TryGetValue(position_key, out var duplicate))
+                    {
+                        part_by_position_key.Add(position_key, part_number);
+                        // position_list_by_part[part_number].Add(position_key);
+                    }
+                }
+
+                part_number++;
+            }
+        }
+
         public static int[][] map_partition = [
             [1,2],[11,12],
             [3,4],[13,14],
@@ -60,20 +152,6 @@ namespace network
                 default:
                     throw new Exception("invalid Total Server num");
             }
-
-            return result;
-        }
-
-        public static async Task<bool> IsMoveableTile(
-            CacheHelper cache_helper,
-            int map_id,
-            Cell cell
-        )
-        {
-            var result = await cache_helper.HashExists(
-                $"position_part_map_{map_id}",
-                GetPositionKey(cell)
-            );
 
             return result;
         }
@@ -222,17 +300,6 @@ namespace network
             }
 
             return (horizontal_divisions, vertical_divisions);
-        }
-
-        public static async Task<int> GetPartIdFromPositionKey(CacheHelper cache_helper, int map_id, string position_key)
-        {
-            var part_value = await cache_helper.HashGet($"position_part_map_{map_id}", position_key);
-            if (part_value == RedisValue.Null)
-            {
-                return 0;
-            }
-            
-            return int.Parse(part_value.ToString());
         }
 
         public static Cell GetRandomCell()

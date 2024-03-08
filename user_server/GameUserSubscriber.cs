@@ -122,7 +122,7 @@ namespace user_server
             );
 
             // TODO map_id
-            if (!await MapHelper.IsMoveableTile(this.cache_helper, 1, next_target_cell))
+            if (GetObjectManagePart(next_target_cell) == 0)
             {
                 return;
             }
@@ -145,7 +145,7 @@ namespace user_server
 
             // target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
             this.object_info.move_timestamp = DateTime.UtcNow;
-            this.object_info.target_cell = next_target_cell;
+            this.object_info.target_cell = Cell.Clone(next_target_cell);
             if (direction != DirectionType.NONE)
             {
                 this.object_info.SetFlip(direction);
@@ -178,13 +178,7 @@ namespace user_server
                     cell =>
                         new
                         {
-                            part_id = MapHelper
-                                .GetPartIdFromPositionKey(
-                                    this.cache_helper,
-                                    1,
-                                    MapHelper.GetPositionKey(cell)
-                                )
-                                .Result,
+                            part_id = GetObjectManagePart(cell),
                             position_key = MapHelper.GetPositionKey(cell)
                         }
                 )
@@ -306,10 +300,10 @@ namespace user_server
 
         public int GetObjectManagePart(Cell cell)
         {
-            var part_id = MapHelper
-                .GetPartIdFromPositionKey(this.cache_helper, 1, MapHelper.GetPositionKey(cell))
-                .GetAwaiter()
-                .GetResult();
+            MapHelper.part_by_position_key.TryGetValue(
+                MapHelper.GetPositionKey(cell),
+                out var part_id
+            );
 
             return part_id;
         }

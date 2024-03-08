@@ -86,6 +86,18 @@ namespace network
             return result;
         }
 
+        public async Task<HashEntry[]?> HashGetAll(string key)
+        {
+            if (this.conn == null)
+            {
+                throw new Exception("RedisHelper.conn is null");
+            }
+
+            return await this.QueryRedisAsync(
+                (db) => db.HashGetAllAsync(key, CommandFlags.PreferReplica)
+            );
+        }
+
         public async Task HashDelete(string key, string field)
         {
             if (this.conn == null)

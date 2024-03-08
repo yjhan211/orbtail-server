@@ -57,13 +57,7 @@ namespace game_server
                     (subject, msg) => DestroyManageObject(msg)
                 );
 
-                var position_value_list = this.cache_helper
-                    .ListRange($"position_list_{manage_part}")
-                    .GetAwaiter()
-                    .GetResult();
-
-                var position_list = position_value_list.Select(x => x.ToString()).ToList();
-                manage_position_key_list.AddRange(position_list);
+                manage_position_key_list.AddRange(MapHelper.position_list_by_part[manage_part]);
             }
 
             foreach (var position_key in manage_position_key_list)

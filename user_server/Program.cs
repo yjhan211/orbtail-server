@@ -63,6 +63,8 @@ namespace user_server
                 }
             };
 
+            MapHelper.InitializeUserServer();
+
             network_service.Listen(IPAddress.Any, Config.USER_SERVER_PORT);
 
             Task.Run(ProcessLeaveUser);
