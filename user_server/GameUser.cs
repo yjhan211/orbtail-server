@@ -140,23 +140,27 @@
                 throw new Exception("Already Has Player id");
             }
 
-            // TODO 로그인용 웹서버
-            long temp_player_id = await this.cache_helper.StringIncrement("temp_player_id");
-            if (temp_player_id < 0)
-            {
-                // TODO 이미 로그인된 유저인지 확인 로직 추가할 것
-                throw new Exception("Already Exist Player");
-            }
+            long temp_player_id =
+                request.account_token == "dummy"
+                    ? await this.cache_helper.StringIncrement("temp_player_id")
+                    : long.Parse(request.account_token);
 
-            PlayerInfo player_info;
+            PlayerInfo? player_info = null;
             using (var player_lock = await PlayerController.Lock(this.redlock, this.player_id))
             {
-                // 플레이어 생성
-                player_info = new(
-                    temp_player_id,
-                    name: $"플레이어{temp_player_id}",
-                    MapHelper.GetRandomCell()
-                );
+                player_info = await PlayerController.Load(this.cache_helper, temp_player_id);
+
+                if (player_info == null)
+                {
+                    // 플레이어 생성
+                    player_info = new(
+                        temp_player_id,
+                        name: request.account_token == "dummy"
+                            ? $"더미{temp_player_id}"
+                            : $"플레이어{temp_player_id}",
+                        MapHelper.GetRandomCell()
+                    );
+                }
 
                 player_info.object_info.map_id = 1; // TODO 임시
                 await PlayerController.Save(this.cache_helper, player_info);
@@ -249,12 +253,14 @@
             Packet.Destroy(msg);
         }
 
-        public void Release()
+        public async Task Release()
         {
             PublishDestroy();
 
             Packet packet = PacketMaker.U_TO_G_LOGOUT(this.player_id);
             _ = this.SendToGameServer(packet);
+
+            await GameObjectController.Save(this.cache_helper, this.object_info);
 
             this.player_id = 0;
             this.nats_client.Close();
