@@ -5,6 +5,7 @@
     using StackExchange.Redis;
     using game_server;
     using RedLockNet.SERedis;
+    using network.Common;
 
     public partial class GameUser : IPeer
     {
@@ -93,6 +94,10 @@
                                     body,
                                     GetObjectInfo
                                 );
+                                break;
+
+                            case PROTOCOL.C_TO_U_GET_JOB:
+                                await HandleMessage<C_TO_U_GET_JOB>(player_id, body, GetJob);
                                 break;
                         }
                         break;
@@ -239,6 +244,40 @@
             {
                 this.move_object_queue.Enqueue(object_info);
             }
+        }
+
+        async Task GetJob(long player_id, C_TO_U_GET_JOB body)
+        {
+            if (player_id != this.player_id)
+            {
+                return;
+            }
+
+            var job_info = await JobController.Load(this.cache_helper, this.player_id);
+            if (job_info!.job_type != JobType.NONE)
+            {
+                this.SendToClient(
+                    PacketMaker.U_TO_C_GET_JOB(this.player_id, ErrorCode.ALREADY_HAS_JOB, job_info)
+                );
+                return;
+            }
+
+            switch (body.job_type)
+            {
+                case JobType.GEOIOGIST:
+                    job_info.job_type = JobType.GEOIOGIST;
+                    job_info.job_grade = JobGrade.TRAINEE;
+                    break;
+
+                default:
+                    break;
+            }
+
+            await JobController.Save(this.cache_helper, job_info);
+
+            this.SendToClient(
+                PacketMaker.U_TO_C_GET_JOB(this.player_id, ErrorCode.SUCCESS, job_info)
+            );
         }
 
         public void SendToClient(Packet msg)

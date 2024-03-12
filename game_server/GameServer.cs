@@ -1,6 +1,5 @@
 namespace game_server
 {
-    using StackExchange.Redis.MultiplexerPool;
     using System;
     using System.Threading.Tasks;
     using MessagePack;
@@ -90,7 +89,8 @@ namespace game_server
             switch (protocol_id)
             {
                 case PROTOCOL.U_TO_G_LOGOUT:
-                    await HandleMessage<U_TO_G_LOGOUT>(cache_helper, player_id, body, Logout);
+                    // TODO DB 붙이기 전까지 일단 안지움
+                    // await HandleMessage<U_TO_G_LOGOUT>(cache_helper, player_id, body, Logout);
                     break;
             }
         }

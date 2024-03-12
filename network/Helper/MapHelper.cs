@@ -285,23 +285,6 @@ namespace network
             return result;
         }
 
-        public static (int, int) DetermineDivisions(int total_server_num)
-        {
-            int sqrt = (int)Math.Sqrt(total_server_num);
-            int horizontal_divisions = sqrt;
-            int vertical_divisions = sqrt;
-
-            while (horizontal_divisions * vertical_divisions < total_server_num)
-            {
-                if (horizontal_divisions <= vertical_divisions)
-                    horizontal_divisions++;
-                else
-                    vertical_divisions++;
-            }
-
-            return (horizontal_divisions, vertical_divisions);
-        }
-
         public static Cell GetRandomCell()
         {
             var target_list = new List<Cell>()

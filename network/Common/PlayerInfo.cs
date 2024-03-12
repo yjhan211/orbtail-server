@@ -10,6 +10,9 @@ namespace network
         [IgnoreMember]
         public GameObjectInfo object_info { get; set; }
 
+        [IgnoreMember]
+        public JobInfo job_info { get; set; }
+
         /*-----------------------------------------------------------------*/
 
         [IgnoreMember]
@@ -26,12 +29,14 @@ namespace network
             this.player_id = 0;
             this.name = String.Empty;
             this.object_info = new GameObjectInfo();
+            this.job_info = new JobInfo();
         }
 
         public PlayerInfo(long player_id, string name, Cell cell)
         {
             this.player_id = player_id;
             this.object_info = new GameObjectInfo(ObjectType.PLAYER, player_id, cell);
+            this.job_info = new JobInfo();
             this.name = name;
         }
 

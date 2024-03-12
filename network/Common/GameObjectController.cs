@@ -1,7 +1,6 @@
 namespace game_server
 {
     using MessagePack;
-    using Microsoft.Extensions.Caching.Memory;
     using network;
     using StackExchange.Redis;
 

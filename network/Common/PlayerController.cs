@@ -5,6 +5,8 @@ namespace game_server
     using network;
     using RedLockNet.SERedis;
     using RedLockNet;
+    using network.Common;
+    using Newtonsoft.Json.Linq;
 
     public static class PlayerController
     {
@@ -16,6 +18,7 @@ namespace game_server
         public static async Task Save(CacheHelper cache_helper, PlayerInfo player_info)
         {
             await GameObjectController.Save(cache_helper, player_info.object_info);
+            await JobController.Save(cache_helper, player_info.job_info);
             await cache_helper.HashSet(
                 PlayerInfo.HASH_KEY,
                 player_info.player_id,
@@ -31,6 +34,7 @@ namespace game_server
 
         public static async Task<PlayerInfo?> Load(CacheHelper cache_helper, long player_id)
         {
+            // TODO from DB
             try
             {
                 var serialized = await cache_helper.HashGet(PlayerInfo.HASH_KEY, player_id);
@@ -46,18 +50,13 @@ namespace game_server
                     return null;
                 }
 
-                var object_info = await GameObjectController.Load(
-                    cache_helper,
-                    ObjectType.PLAYER,
-                    player_id
-                );
+                player_info.object_info =
+                    await GameObjectController.Load(cache_helper, ObjectType.PLAYER, player_id)
+                    ?? new GameObjectInfo();
 
-                if (object_info == null)
-                {
-                    return null;
-                }
+                player_info.job_info =
+                    await JobController.Load(cache_helper, player_id) ?? new JobInfo();
 
-                player_info.object_info = object_info;
                 return player_info;
             }
             catch (Exception e)
@@ -119,6 +118,8 @@ namespace game_server
                 cache_helper,
                 GameObjectInfo.MakeHashField(ObjectType.PLAYER, player_id)
             );
+
+            await JobController.Delete(cache_helper, player_id);
 
             await cache_helper.HashDelete(PlayerInfo.HASH_KEY, player_id);
         }

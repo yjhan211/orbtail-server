@@ -9,7 +9,12 @@ namespace user_server
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LOGIN);
             U_TO_C_LOGIN body =
-                new() { object_info = player_info.object_info, player_info = player_info };
+                new()
+                {
+                    object_info = player_info.object_info,
+                    player_info = player_info,
+                    job_info = player_info.job_info
+                };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -37,6 +42,15 @@ namespace user_server
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CHAT_MSG);
             U_TO_C_CHAT_MSG body = new() { chat_message = chat_message };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_GET_JOB(long player_id, ErrorCode error_code, JobInfo job_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_GET_JOB, player_id);
+            U_TO_C_GET_JOB body = new() { error_code = error_code, job_info = job_info };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -104,15 +118,6 @@ namespace user_server
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_G_LOGOUT, player_id);
             U_TO_G_LOGOUT body = new() { player_id = player_id };
-
-            packet.SetBody(MessagePackSerializer.Serialize(body));
-            return packet;
-        }
-
-        public static Packet MakeBoundTilePacket(List<Cell> tile_list)
-        {
-            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_BOUND_TILE_INFO);
-            U_TO_C_BOUND_TILE_INFO body = new() { tile_list = tile_list };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

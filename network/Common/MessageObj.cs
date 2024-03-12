@@ -22,6 +22,9 @@ namespace network
 
         [Key("player_info")]
         public PlayerInfo player_info { get; set; }
+
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
     }
 
     [MessagePackObject]
@@ -136,21 +139,19 @@ namespace network
     }
 
     [MessagePackObject]
-    public class MapTile : IMessagePackObject
+    public class C_TO_U_GET_JOB : IMessagePackObject
     {
-        public MapTile(TileType tile_type)
-        {
-            this.type = tile_type;
-        }
-
-        [Key("tile_type")]
-        public TileType type { get; set; }
+        [Key("job_type")]
+        public JobType job_type { get; set; }
     }
 
     [MessagePackObject]
-    public class U_TO_C_BOUND_TILE_INFO : IMessagePackObject
+    public class U_TO_C_GET_JOB : IMessagePackObject
     {
-        [Key("tile_list")]
-        public List<Cell> tile_list { get; set; }
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
     }
 }
