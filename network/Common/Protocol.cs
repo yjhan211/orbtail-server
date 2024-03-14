@@ -16,6 +16,7 @@ namespace network
         C_TO_U_MOVE,
         U_TO_G_MOVE,
         G_TO_U_MOVE,
+        U_TO_C_MOVE,
         G_TO_U_SPAWN,
         U_TO_C_SPAWN,
         G_TO_U_DESTROY,
