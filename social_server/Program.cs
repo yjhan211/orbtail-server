@@ -9,6 +9,8 @@ namespace social_server
         static string server_type = "community_server";
         public static string[] redis_endpoints;
         public static string nats_endpoint;
+        static SocialServer social_server;
+
 #pragma warning restore
 
         async static Task Main()
@@ -38,6 +40,8 @@ namespace social_server
             LogManager.WriteInfoLog(
                 $"community server start. max_connection: {Config.MAX_CONNECTION}"
             );
+
+            social_server = new();
 
             await Task.Delay(-1);
         }

@@ -28,6 +28,8 @@ namespace social_server
 
         async Task SendChat(RedisValue message)
         {
+            LogManager.WriteInfoLog("send chat");
+
             var (player_id, body) = MessagePackSerializer.Deserialize<(long, C_TO_U_CHAT_MSG)>(
                 message
             );

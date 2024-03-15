@@ -107,6 +107,7 @@
                                 break;
 
                             case PROTOCOL.C_TO_U_CHAT_MSG:
+                                LogManager.WriteInfoLog("보냄");
                                 this.nats_client.Publish(
                                     "chat",
                                     MessagePackSerializer.Serialize((player_id, body))
@@ -307,6 +308,7 @@
 
         public void SendToClient(Packet msg)
         {
+            LogManager.WriteInfoLog("send chat 2");
             this.token.Send(msg);
             Packet.Destroy(msg);
         }
