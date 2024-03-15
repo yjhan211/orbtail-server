@@ -12,6 +12,7 @@ namespace network
         C_TO_U_LOGIN,
         U_TO_C_LOGIN,
         C_TO_U_CHAT_MSG,
+        S_TO_U_CHAT_MSG,
         U_TO_C_CHAT_MSG,
         C_TO_U_MOVE,
         U_TO_G_MOVE,
@@ -68,6 +69,13 @@ namespace network
         PRINCIPAL, // 책임 연구원
         LEAD, // 수석 연구원
         CHIEF // 최고 연구원
+    }
+
+    public enum ChatType : byte
+    {
+        ALL, // 전체
+        NOMAL, // 지역
+        GUILD, // 연구소
     }
 
     public enum LoginType : int

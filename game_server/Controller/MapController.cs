@@ -5,7 +5,6 @@ namespace game_server
     using network;
     using StackExchange.Redis;
     using user_server;
-    using NATS.Client;
 
     public class MapController
     {

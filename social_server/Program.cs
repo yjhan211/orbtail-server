@@ -1,31 +1,19 @@
 ﻿using network;
 
-namespace game_server
+namespace social_server
 {
     class Program
     {
 #pragma warning disable CS8618
-        public static GameServer game_server;
-        public static int server_id = 0;
-        public static int game_server_num;
+
+        static string server_type = "community_server";
         public static string[] redis_endpoints;
         public static string nats_endpoint;
 #pragma warning restore
 
-        async static Task Main(string[] args)
+        async static Task Main()
         {
-            if (!Int32.TryParse(Environment.GetEnvironmentVariable("SERVER_ID"), out server_id))
-            {
-                LogManager.WriteErrorLog(new Exception("Invalid Server Id"));
-            }
-            LogManager.Initialize("game_server", server_id);
-
-            string? game_server_env = Environment.GetEnvironmentVariable("GAME_SERVER_NUM");
-            if (!Int32.TryParse(game_server_env, out game_server_num))
-            {
-                LogManager.WriteErrorLog(new Exception("Invalid Game Server Num"));
-                return;
-            }
+            LogManager.Initialize(server_type, 0);
 
             string? redis_endpoints_env = Environment.GetEnvironmentVariable("REDIS_ENDPOINTS");
             if (string.IsNullOrEmpty(redis_endpoints_env))
@@ -46,12 +34,11 @@ namespace game_server
             nats_endpoint = nats_endpoint_env;
 
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
-            MapHelper.InitializeGameServer();
 
-            game_server = new();
-            game_server.Start();
+            LogManager.WriteInfoLog(
+                $"community server start. max_connection: {Config.MAX_CONNECTION}"
+            );
 
-            LogManager.WriteInfoLog($"Server Start. server_id: {server_id}");
             await Task.Delay(-1);
         }
     }

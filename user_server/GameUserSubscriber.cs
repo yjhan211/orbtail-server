@@ -16,7 +16,7 @@ namespace user_server
         readonly ConcurrentQueue<GameObjectInfo> move_object_queue;
         SemaphoreSlim object_lock;
 
-        public async Task SubscribeGameServer(RedisValue message)
+        public async Task SubscribeToUser(RedisValue message)
         {
             try
             {
@@ -39,6 +39,10 @@ namespace user_server
 
                     case PROTOCOL.G_TO_U_DESTROY:
                         await HandleMessage<G_TO_U_DESTROY>(player_id, body, SubscribeDestroy);
+                        break;
+
+                    case PROTOCOL.S_TO_U_CHAT_MSG:
+                        SendToClient(packet);
                         break;
                 }
             }

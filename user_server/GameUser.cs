@@ -52,6 +52,12 @@
             {
                 byte[] clone = new byte[Config.BUFFER_SIZE];
                 Array.Copy(buffer.Value, clone, buffer.Value.Length);
+                if (Config.BUFFER_SIZE < buffer.Value.Length)
+                {
+                    throw new Exception(
+                        $"Invalid Buffer Size. player id: {this.player_id}, size: {buffer.Value.Length}"
+                    );
+                }
 
                 Packet packet = new(clone, this);
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
@@ -98,6 +104,13 @@
 
                             case PROTOCOL.C_TO_U_GET_JOB:
                                 await HandleMessage<C_TO_U_GET_JOB>(player_id, body, GetJob);
+                                break;
+
+                            case PROTOCOL.C_TO_U_CHAT_MSG:
+                                this.nats_client.Publish(
+                                    "chat",
+                                    MessagePackSerializer.Serialize((player_id, body))
+                                );
                                 break;
                         }
                         break;
@@ -176,10 +189,16 @@
             this.object_info = player_info.object_info;
             this.last_cell = Cell.Clone(player_info.object_info.current_cell);
 
-            // 게임 서버 구독 시작
+            // 개인 구독 시작
             this.nats_client.Subscribe(
                 this.object_info.GetHashField(),
-                async (channel, message) => await SubscribeGameServer(message)
+                async (channel, message) => await SubscribeToUser(message)
+            );
+
+            // 단체 구독 시작
+            this.nats_client.Subscribe(
+                "all",
+                async (channel, message) => await SubscribeToUser(message)
             );
 
             // 계정 정보 전송
@@ -187,6 +206,12 @@
             SendToClient(login_packet);
 
             await Move(this.object_info.current_cell, DirectionType.NONE, true);
+
+            // 이전 채팅기록 불러오기
+            this.nats_client.Publish(
+                $"chat_history",
+                MessagePackSerializer.Serialize(this.object_info.GetHashField())
+            );
         }
 
         async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
