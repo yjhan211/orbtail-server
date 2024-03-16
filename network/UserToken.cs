@@ -164,6 +164,8 @@ namespace network
             this.socket.Disconnect(false);
             this.socket.Shutdown(SocketShutdown.Both);
             this.socket.Close();
+            this.socket.Dispose(); // Dispose 호출 추가
+            this.socket = null; // 소켓 참조를 null로 설정
         }
     }
 }

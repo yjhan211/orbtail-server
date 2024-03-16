@@ -53,6 +53,21 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_CHAT_MSG(ChatType chat_type, string name, string chat_message)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CHAT_MSG);
+            S_TO_U_CHAT_MSG body =
+                new()
+                {
+                    chat_type = chat_type,
+                    name = name,
+                    chat_message = chat_message
+                };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_C_GET_JOB(long player_id, ErrorCode error_code, JobInfo job_info)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_GET_JOB, player_id);

@@ -28,8 +28,6 @@ namespace social_server
 
         async Task SendChat(RedisValue message)
         {
-            LogManager.WriteInfoLog("send chat");
-
             var (player_id, body) = MessagePackSerializer.Deserialize<(long, C_TO_U_CHAT_MSG)>(
                 message
             );
@@ -43,7 +41,7 @@ namespace social_server
                     return;
                 }
 
-                this.user_name_map.Add(player_id, player_name);
+                this.user_name_map.Add(player_id, player_info.name);
                 player_name = player_info.name;
             }
 
@@ -62,9 +60,11 @@ namespace social_server
 
                 case ChatType.NOMAL:
                     // 맵 단위로 나눠야되나...
+                    Packet.Destroy(packet);
                     break;
 
                 case ChatType.GUILD:
+                    Packet.Destroy(packet);
                     break;
             }
         }

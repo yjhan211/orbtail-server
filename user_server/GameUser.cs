@@ -50,8 +50,6 @@
         {
             try
             {
-                byte[] clone = new byte[Config.BUFFER_SIZE];
-                Array.Copy(buffer.Value, clone, buffer.Value.Length);
                 if (Config.BUFFER_SIZE < buffer.Value.Length)
                 {
                     throw new Exception(
@@ -59,10 +57,14 @@
                     );
                 }
 
+                byte[] clone = new byte[Config.BUFFER_SIZE];
+                Array.Copy(buffer.Value, clone, buffer.Value.Length);
+
                 Packet packet = new(clone, this);
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 long player_id = packet.PopPlayerId();
                 byte[] body = packet.PopBody();
+                Packet.Destroy(packet);
 
                 switch (protocol_id)
                 {
@@ -107,11 +109,7 @@
                                 break;
 
                             case PROTOCOL.C_TO_U_CHAT_MSG:
-                                LogManager.WriteInfoLog("보냄");
-                                this.nats_client.Publish(
-                                    "chat",
-                                    MessagePackSerializer.Serialize((player_id, body))
-                                );
+                                await HandleMessage<C_TO_U_CHAT_MSG>(player_id, body, RequestChat);
                                 break;
                         }
                         break;
@@ -134,6 +132,7 @@
             await handleMessage(player_id, msg);
         }
 
+#pragma warning disable CS1998
         async Task HeartBeat()
         {
             this.token.is_alive = true;
@@ -306,9 +305,14 @@
             );
         }
 
+        async Task RequestChat(long player_id, C_TO_U_CHAT_MSG body)
+        {
+            var message = MessagePackSerializer.Serialize((player_id, body));
+            this.nats_client.Publish("chat", message);
+        }
+
         public void SendToClient(Packet msg)
         {
-            LogManager.WriteInfoLog("send chat 2");
             this.token.Send(msg);
             Packet.Destroy(msg);
         }
@@ -340,5 +344,6 @@
             Program.leave_user_queue!.Enqueue(this);
             this.token.network_service.CloseClientSocket(this.token);
         }
+#pragma warning restore CS1998
     }
 }

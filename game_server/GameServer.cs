@@ -47,10 +47,13 @@ namespace game_server
                         }
 
                         Packet? packet = new(message);
-                        if (packet != null)
+                        if (packet == null)
                         {
-                            await ProcessReceiveAsync(cache_helper, packet);
+                            continue;
                         }
+
+                        await ProcessReceiveAsync(cache_helper, packet);
+                        Packet.Destroy(packet);
                     }
                 }
                 catch (Exception e)

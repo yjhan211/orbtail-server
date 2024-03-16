@@ -13,8 +13,11 @@ namespace network
         public static Packet Create(int protocol_id, long player_id = 0)
         {
             Packet packet = PacketBufferManager.Pop();
+            packet.buffer = new byte[Config.BUFFER_SIZE];
+
             packet.SetProtocolId(protocol_id);
             packet.SetPlayerId(player_id);
+
             return packet;
         }
 

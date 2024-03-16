@@ -20,12 +20,13 @@ namespace user_server
         {
             try
             {
-                await this.player_lock.WaitAsync();
-
                 Packet packet = new((byte[])message!);
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 long player_id = packet.PopPlayerId();
                 var body = packet.PopBody();
+                Packet.Destroy(packet);
+
+                await this.player_lock.WaitAsync();
 
                 switch (protocol_id)
                 {
@@ -42,7 +43,7 @@ namespace user_server
                         break;
 
                     case PROTOCOL.S_TO_U_CHAT_MSG:
-                        SendToClient(packet);
+                        await HandleMessage<S_TO_U_CHAT_MSG>(player_id, body, SubscribeChatMsg);
                         break;
                 }
             }
@@ -106,6 +107,8 @@ namespace user_server
                 LogManager.WriteErrorLog(e);
             }
         }
+
+#pragma warning disable CS1998
 
         async Task RequestMove(long player_id, C_TO_U_MOVE body)
         {
@@ -246,8 +249,6 @@ namespace user_server
             );
         }
 
-#pragma warning disable CS1998
-
         async Task SubscribeMove(long _, G_TO_U_MOVE body)
         {
             this.move_object_queue.Enqueue(body.object_info);
@@ -255,52 +256,45 @@ namespace user_server
 
         async Task SubscribeSpawn(long _, G_TO_U_SPAWN body)
         {
-            try
+            var object_keys = body.object_key_list;
+            var player_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, this.player_id);
+
+            for (int i = 0; i < object_keys.Count; i += Config.BROADCAST_UNIT)
             {
-                var object_keys = body.object_key_list;
-                var player_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, this.player_id);
+                List<string> batch = object_keys.Skip(i).Take(Config.BROADCAST_UNIT).ToList();
 
-                for (int i = 0; i < object_keys.Count; i += Config.BROADCAST_UNIT)
-                {
-                    List<string> batch = object_keys.Skip(i).Take(Config.BROADCAST_UNIT).ToList();
+                var remain = object_keys.Count - i - Config.BROADCAST_UNIT;
+                var is_ended = remain <= 0;
 
-                    var remain = object_keys.Count - i - Config.BROADCAST_UNIT;
-                    var is_ended = remain <= 0;
+                Packet packet = PacketMaker.U_TO_C_SPAWN(
+                    batch.Select((item) => item.ToString()).ToList(),
+                    is_ended
+                );
 
-                    Packet packet = PacketMaker.U_TO_C_SPAWN(
-                        batch.Select((item) => item.ToString()).ToList(),
-                        is_ended
-                    );
-
-                    this.SendToClient(packet);
-                }
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-                this.OnRemoved();
+                this.SendToClient(packet);
             }
         }
 
         async Task SubscribeDestroy(long _, G_TO_U_DESTROY body)
         {
-            try
-            {
-                var object_key = body.object_key;
+            var object_key = body.object_key;
 
-                Packet packet = PacketMaker.U_TO_C_DESTROY(object_key);
-                this.SendToClient(packet);
+            Packet packet = PacketMaker.U_TO_C_DESTROY(object_key);
+            this.SendToClient(packet);
 
-                LogManager.WriteInfoLog(object_key);
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-                this.OnRemoved();
-            }
+            LogManager.WriteInfoLog(object_key);
         }
 
-#pragma warning restore CS1998
+        async Task SubscribeChatMsg(long _, S_TO_U_CHAT_MSG body)
+        {
+            Packet packet = PacketMaker.U_TO_C_CHAT_MSG(
+                body.chat_type,
+                body.name,
+                body.chat_message
+            );
+
+            this.SendToClient(packet);
+        }
 
         public int GetObjectManagePart(Cell cell)
         {
@@ -311,5 +305,7 @@ namespace user_server
 
             return part_id;
         }
+
+#pragma warning restore CS1998
     }
 }
