@@ -253,6 +253,16 @@ namespace network
             return await this.QueryRedisAsync((db) => db.ListRightPopAsync(key));
         }
 
+        public async Task<long> ListLength(string key)
+        {
+            if (this.conn == null)
+            {
+                throw new Exception("RedisHelper.conn is null");
+            }
+
+            return await this.QueryRedisAsync((db) => db.ListLengthAsync(key));
+        }
+
         public async Task<long> StringIncrement(string key)
         {
             if (this.conn == null)

@@ -208,10 +208,11 @@
             await Move(this.object_info.current_cell, DirectionType.NONE, true);
 
             // 이전 채팅기록 불러오기
-            this.nats_client.Publish(
-                $"chat_history",
-                MessagePackSerializer.Serialize(this.object_info.GetHashField())
-            );
+            var chat_history = await ChatController.GetChatHistory(this.cache_helper, ChatType.ALL);
+            foreach (var chat_packet in chat_history)
+            {
+                SendToClient(chat_packet);
+            }
         }
 
         async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
@@ -307,8 +308,13 @@
 
         async Task RequestChat(long player_id, C_TO_U_CHAT_MSG body)
         {
+            if (body.chat_message.Length >= Config.MAX_CHAT_LENGTH)
+            {
+                return;
+            }
+
             var message = MessagePackSerializer.Serialize((player_id, body));
-            this.nats_client.Publish("chat", message);
+            await ChatController.SendChat(cache_helper, nats_client, message);
         }
 
         public void SendToClient(Packet msg)

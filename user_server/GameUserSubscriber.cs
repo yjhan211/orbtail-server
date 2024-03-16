@@ -21,12 +21,12 @@ namespace user_server
             try
             {
                 Packet packet = new((byte[])message!);
+
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 long player_id = packet.PopPlayerId();
                 var body = packet.PopBody();
-                Packet.Destroy(packet);
 
-                await this.player_lock.WaitAsync();
+                Packet.Destroy(packet);
 
                 switch (protocol_id)
                 {
@@ -42,8 +42,8 @@ namespace user_server
                         await HandleMessage<G_TO_U_DESTROY>(player_id, body, SubscribeDestroy);
                         break;
 
-                    case PROTOCOL.S_TO_U_CHAT_MSG:
-                        await HandleMessage<S_TO_U_CHAT_MSG>(player_id, body, SubscribeChatMsg);
+                    case PROTOCOL.U_TO_C_CHAT_MSG:
+                        await HandleMessage<U_TO_C_CHAT_MSG>(player_id, body, SubscribeChatMsg);
                         break;
                 }
             }
@@ -51,10 +51,6 @@ namespace user_server
             {
                 LogManager.WriteErrorLog(e);
                 this.OnRemoved();
-            }
-            finally
-            {
-                this.player_lock.Release();
             }
         }
 
@@ -285,7 +281,7 @@ namespace user_server
             LogManager.WriteInfoLog(object_key);
         }
 
-        async Task SubscribeChatMsg(long _, S_TO_U_CHAT_MSG body)
+        async Task SubscribeChatMsg(long _, U_TO_C_CHAT_MSG body)
         {
             Packet packet = PacketMaker.U_TO_C_CHAT_MSG(
                 body.chat_type,

@@ -38,19 +38,6 @@ namespace network
     }
 
     [MessagePackObject]
-    public class S_TO_U_CHAT_MSG : IMessagePackObject
-    {
-        [Key("chat_type")]
-        public ChatType chat_type { get; set; }
-
-        [Key("name")]
-        public string name { get; set; }
-
-        [Key("chat_message")]
-        public string chat_message { get; set; }
-    }
-
-    [MessagePackObject]
     public class U_TO_C_CHAT_MSG : IMessagePackObject
     {
         [Key("chat_type")]

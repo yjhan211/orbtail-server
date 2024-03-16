@@ -13,8 +13,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "game_server", "game_server\
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "map_partitioner", "map_partitioner\map_partitioner.csproj", "{3AE5A0A6-6A39-495F-86EE-57082AE72CAF}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "social_server", "social_server\social_server.csproj", "{DE6CEB68-FC1E-47C3-8EF2-4FAF214456C9}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

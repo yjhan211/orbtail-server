@@ -62,7 +62,7 @@ namespace user_server
                 }
             };
 
-            MapHelper.InitializeUserServer();
+            MapHelper.Initialize();
 
             network_service.Listen(IPAddress.Any, Config.USER_SERVER_PORT);
 

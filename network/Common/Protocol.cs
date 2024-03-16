@@ -12,7 +12,6 @@ namespace network
         C_TO_U_LOGIN,
         U_TO_C_LOGIN,
         C_TO_U_CHAT_MSG,
-        S_TO_U_CHAT_MSG,
         U_TO_C_CHAT_MSG,
         C_TO_U_MOVE,
         U_TO_G_MOVE,
