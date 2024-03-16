@@ -177,20 +177,24 @@ namespace user_server
             // TODO map_id
             var object_spawn_list = current_bound_cell_list
                 .Except(last_bound_cell_list)
+                .Select(MapHelper.GetPositionKey)
                 .Select(
-                    cell =>
+                    position_key =>
                         new
                         {
-                            part_id = GetObjectManagePart(cell),
-                            position_key = MapHelper.GetPositionKey(cell)
+                            server_id = MapHelper.GetServerIdByPositionKey(
+                                Program.game_server_num,
+                                position_key
+                            ),
+                            position_key
                         }
                 )
-                .GroupBy(item => item.part_id, item => item.position_key)
-                .Select(group => new { part_id = group.Key, position_key_list = group.ToList() });
+                .GroupBy(item => item.server_id, item => item.position_key)
+                .Select(group => new { server_id = group.Key, position_key_list = group.ToList() });
 
             foreach (var item in object_spawn_list)
             {
-                RequestSpawnObjectList(item.part_id, item.position_key_list);
+                RequestSpawnObjectList(item.server_id, item.position_key_list);
             }
         }
 
@@ -211,9 +215,14 @@ namespace user_server
                 leave_cell = this.last_cell;
             }
 
-            var manage_part = GetObjectManagePart(leave_cell);
+            var position_key = MapHelper.GetPositionKey(leave_cell);
+            var manage_sever = MapHelper.GetServerIdByPositionKey(
+                Program.game_server_num,
+                position_key
+            );
+
             this.nats_client.Publish(
-                $"leave_object_{manage_part}",
+                $"leave_object_{manage_sever}",
                 MessagePackSerializer.Serialize(
                     (MapHelper.GetPositionKey(leave_cell), this.object_info.GetHashField())
                 )
@@ -222,26 +231,29 @@ namespace user_server
 
         public void PublishDestroy()
         {
-            var manage_part = GetObjectManagePart(this.object_info.current_cell);
+            var position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
+            var manage_server = MapHelper.GetServerIdByPositionKey(
+                Program.game_server_num,
+                position_key
+            );
+
             this.nats_client.Publish(
-                $"destroy_object_{manage_part}",
-                MessagePackSerializer.Serialize(
-                    (
-                        MapHelper.GetPositionKey(this.object_info.current_cell),
-                        this.object_info.GetHashField()
-                    )
-                )
+                $"destroy_object_{manage_server}",
+                MessagePackSerializer.Serialize((position_key, this.object_info.GetHashField()))
             );
         }
 
         public void PublishMove()
         {
-            var manage_part = GetObjectManagePart(this.object_info.current_cell);
+            var position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
+            var manage_server = MapHelper.GetServerIdByPositionKey(
+                Program.game_server_num,
+                position_key
+            );
+
             this.nats_client.Publish(
-                $"move_object_{manage_part}",
-                MessagePackSerializer.Serialize(
-                    (MapHelper.GetPositionKey(this.last_cell), this.object_info)
-                )
+                $"move_object_{manage_server}",
+                MessagePackSerializer.Serialize((position_key, this.object_info))
             );
         }
 
