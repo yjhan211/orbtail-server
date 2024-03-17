@@ -93,8 +93,6 @@ namespace game_server
 
         object position_lock = new();
 
-        static string test = "";
-
         public void MoveManageObject(RedisValue message)
         {
             var (last_position_key, object_info) = MessagePackSerializer.Deserialize<(
@@ -116,7 +114,6 @@ namespace game_server
 
                 // current 추가
                 this.object_position_map[current_position_key].Add(object_key);
-                test = current_position_key;
             }
 
             // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
@@ -181,7 +178,7 @@ namespace game_server
 
             lock (position_lock)
             {
-                this.object_position_map[position_key].Remove(object_key);
+                var is_remove = this.object_position_map[position_key].Remove(object_key);
             }
 
             Cell position_cell = MapHelper.GetCell(position_key);
@@ -209,17 +206,19 @@ namespace game_server
             Packet packet = PacketMaker.G_TO_U_MOVE(object_info);
 
             var pivot_cell = MapHelper.GetCell(position_key);
-            foreach (var bound_cell in MapHelper.GetBoundCellList(pivot_cell))
+            var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
+
+            foreach (var bound_cell in bound_cell_list)
             {
                 var bound_position_key = MapHelper.GetPositionKey(bound_cell);
                 if (!this.object_position_map.TryGetValue(bound_position_key, out var channel_list))
                 {
-                    return;
+                    continue;
                 }
 
                 if (channel_list.Count <= 0)
                 {
-                    return;
+                    continue;
                 }
 
                 foreach (var channel in channel_list)
@@ -238,18 +237,21 @@ namespace game_server
             );
 
             Packet packet = PacketMaker.G_TO_U_DESTROY(object_key);
+
             var pivot_cell = MapHelper.GetCell(position_key);
-            foreach (var bound_cell in MapHelper.GetBoundCellList(pivot_cell))
+            var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
+
+            foreach (var bound_cell in bound_cell_list)
             {
                 var bound_position_key = MapHelper.GetPositionKey(bound_cell);
                 if (!this.object_position_map.TryGetValue(bound_position_key, out var channel_list))
                 {
-                    return;
+                    continue;
                 }
 
                 if (channel_list.Count <= 0)
                 {
-                    return;
+                    continue;
                 }
 
                 foreach (var channel in channel_list)

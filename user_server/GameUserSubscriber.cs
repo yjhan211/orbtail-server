@@ -137,14 +137,21 @@ namespace user_server
         {
             await this.object_lock.WaitAsync();
 
-            var current_manage_part = GetObjectManagePart(this.object_info.current_cell);
-            var target_manage_part = GetObjectManagePart(this.object_info.target_cell);
-
             // 과거 위치 챙겨놓고
             this.last_cell = Cell.Clone(this.object_info.current_cell);
+            var last_position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
+            var last_manage_server = MapHelper.GetServerIdByPositionKey(
+                Program.game_server_num,
+                last_position_key
+            );
 
             // current_cell을 target_cell로 변경
             this.object_info.current_cell = Cell.Clone(this.object_info.target_cell);
+            var current_position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
+            var current_manage_server = MapHelper.GetServerIdByPositionKey(
+                Program.game_server_num,
+                current_position_key
+            );
 
             // target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
             this.object_info.move_timestamp = DateTime.UtcNow;
@@ -158,14 +165,14 @@ namespace user_server
 
             this.object_lock.Release();
 
-            if (current_manage_part != target_manage_part)
+            if (last_manage_server != current_manage_server)
             {
                 // 과거 담당 서버에는 영역을 떠났다고 전송
-                PublishLeave();
+                PublishLeave(last_position_key);
             }
 
-            // 현재 담당 서버에 전송
-            PublishMove();
+            // 현재 담당 서버에 전송 (같은 서버에 PublishLeave 따로 보내면 순서 뒤바뀔 수 있음)
+            PublishMove(last_position_key, current_position_key);
 
             var last_bound_cell_list = all_bound
                 ? new()
@@ -208,23 +215,17 @@ namespace user_server
             );
         }
 
-        public void PublishLeave(Cell? leave_cell = null)
+        public void PublishLeave(string leave_position_key)
         {
-            if (leave_cell == null)
-            {
-                leave_cell = this.last_cell;
-            }
-
-            var position_key = MapHelper.GetPositionKey(leave_cell);
             var manage_sever = MapHelper.GetServerIdByPositionKey(
                 Program.game_server_num,
-                position_key
+                leave_position_key
             );
 
             this.nats_client.Publish(
                 $"leave_object_{manage_sever}",
                 MessagePackSerializer.Serialize(
-                    (MapHelper.GetPositionKey(leave_cell), this.object_info.GetHashField())
+                    (leave_position_key, this.object_info.GetHashField())
                 )
             );
         }
@@ -243,17 +244,16 @@ namespace user_server
             );
         }
 
-        public void PublishMove()
+        public void PublishMove(string last_position_key, string current_position_key)
         {
-            var position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
             var manage_server = MapHelper.GetServerIdByPositionKey(
                 Program.game_server_num,
-                position_key
+                current_position_key
             );
 
             this.nats_client.Publish(
                 $"move_object_{manage_server}",
-                MessagePackSerializer.Serialize((position_key, this.object_info))
+                MessagePackSerializer.Serialize((last_position_key, this.object_info))
             );
         }
 

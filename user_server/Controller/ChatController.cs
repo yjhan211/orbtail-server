@@ -20,18 +20,22 @@ namespace user_server
         public static async Task AddChatHistory(
             CacheHelper cache_helper,
             ChatType chat_type,
-            Packet packet
+            string sender_name,
+            string message
         )
         {
-            var key = GetChatHistoryKey(chat_type);
+            var key = GetChatHistoryKey(ChatType.ALL);
             var history_length = await cache_helper.ListLength(key);
 
-            if (history_length >= HISTORY_NUM)
+            while (history_length >= HISTORY_NUM)
             {
                 await cache_helper.Dequeue(key);
             }
 
-            await cache_helper.Enqueue(key, packet.ToBytes());
+            await cache_helper.Enqueue(
+                key,
+                MessagePackSerializer.Serialize((chat_type, sender_name, message))
+            );
         }
 
         public static async Task<List<Packet>> GetChatHistory(
@@ -41,10 +45,37 @@ namespace user_server
         {
             var key = GetChatHistoryKey(chat_type);
             var redis_values = await cache_helper.ListRange(key);
-            var result = redis_values
-                .Where(value => value != RedisValue.Null)
-                .Select(value => new Packet(value!))
-                .ToList();
+
+            var result = new List<Packet>();
+
+            foreach (var redis_value in redis_values)
+            {
+                if (redis_value == RedisValue.Null)
+                {
+                    continue;
+                }
+
+                (ChatType, string, string) deserialize;
+
+                try
+                {
+                    deserialize = MessagePackSerializer.Deserialize<(ChatType, string, string)>(
+                        redis_value
+                    );
+                }
+                catch (MessagePackSerializationException)
+                {
+                    continue;
+                }
+
+                var packet = PacketMaker.U_TO_C_CHAT_MSG(
+                    deserialize.Item1,
+                    deserialize.Item2,
+                    deserialize.Item3
+                );
+
+                result.Add(packet);
+            }
 
             return result;
         }
@@ -60,7 +91,7 @@ namespace user_server
             );
 
             var player_name = "";
-            if (!ChatController.user_name_map.TryGet(player_id, out player_name))
+            if (!user_name_map.TryGet(player_id, out player_name))
             {
                 var player_info = await PlayerController.Load(cache_helper, player_id);
                 if (player_info == null)
@@ -68,7 +99,7 @@ namespace user_server
                     return;
                 }
 
-                ChatController.user_name_map.Add(player_id, player_info.name);
+                user_name_map.Add(player_id, player_info.name);
                 player_name = player_info.name;
             }
 
@@ -81,7 +112,12 @@ namespace user_server
             switch (body.chat_type)
             {
                 case ChatType.ALL:
-                    await ChatController.AddChatHistory(cache_helper, body.chat_type, packet);
+                    await AddChatHistory(
+                        cache_helper,
+                        body.chat_type,
+                        player_name,
+                        body.chat_message
+                    );
                     nats_client.Publish("all", packet.ToBytes());
                     break;
 
