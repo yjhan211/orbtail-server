@@ -209,7 +209,6 @@
 
             // 이전 채팅기록 불러오기
             var chat_history = await ChatController.GetChatHistory(this.cache_helper, ChatType.ALL);
-            LogManager.WriteInfoLog($"{chat_history.Count}");
             foreach (var chat_packet in chat_history)
             {
                 SendToClient(chat_packet);

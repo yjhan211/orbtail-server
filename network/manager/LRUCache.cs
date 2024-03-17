@@ -14,9 +14,9 @@ namespace network.manager
     {
         private readonly int capacity;
         private readonly LinkedList<TKey> list;
-
         private readonly Dictionary<TKey, LinkedListNode<TKey>> dict;
         private readonly Dictionary<TKey, TValue> valueDict;
+        private readonly object syncLock = new object();
 
         public LRUCache(int capacity)
         {
@@ -28,35 +28,41 @@ namespace network.manager
 
         public void Add(TKey key, TValue value)
         {
-            if (dict.ContainsKey(key))
+            lock (syncLock)
             {
-                list.Remove(dict[key]);
-            }
-            else if (dict.Count >= capacity)
-            {
-                TKey oldest = list.Last.Value;
-                list.RemoveLast();
-                dict.Remove(oldest);
-                valueDict.Remove(oldest);
-            }
+                if (dict.ContainsKey(key))
+                {
+                    list.Remove(dict[key]);
+                }
+                else if (dict.Count >= capacity)
+                {
+                    TKey oldest = list.Last.Value;
+                    list.RemoveLast();
+                    dict.Remove(oldest);
+                    valueDict.Remove(oldest);
+                }
 
-            LinkedListNode<TKey> node = list.AddFirst(key);
-            dict[key] = node;
-            valueDict[key] = value;
+                LinkedListNode<TKey> node = list.AddFirst(key);
+                dict[key] = node;
+                valueDict[key] = value;
+            }
         }
 
         public bool TryGet(TKey key, out TValue value)
         {
-            if (dict.TryGetValue(key, out LinkedListNode<TKey> node))
+            lock (syncLock)
             {
-                list.Remove(node);
-                list.AddFirst(node);
-                value = valueDict[key];
-                return true;
-            }
+                if (dict.TryGetValue(key, out LinkedListNode<TKey> node))
+                {
+                    list.Remove(node);
+                    list.AddFirst(node);
+                    value = valueDict[key];
+                    return true;
+                }
 
-            value = default;
-            return false;
+                value = default;
+                return false;
+            }
         }
     }
 }

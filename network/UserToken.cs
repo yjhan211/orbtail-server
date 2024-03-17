@@ -158,14 +158,20 @@ namespace network
                 this.sending_queue.Clear();
             }
 
-            this.peer?.OnRemoved();
-            this.heartbeat_timer?.Dispose();
+            try
+            {
+                this.peer?.OnRemoved();
 
-            this.socket.Disconnect(false);
-            this.socket.Shutdown(SocketShutdown.Both);
-            this.socket.Close();
-            this.socket.Dispose(); // Dispose 호출 추가
-            this.socket = null; // 소켓 참조를 null로 설정
+                if (this.heartbeat_timer != null)
+                {
+                    this.heartbeat_timer.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                // 예외 처리 및 로깅
+                Console.WriteLine($"Error in OnRemoved: {ex.Message}");
+            }
         }
     }
 }
