@@ -30,6 +30,7 @@ namespace user_server
             while (history_length >= HISTORY_NUM)
             {
                 await cache_helper.Dequeue(key);
+                history_length--;
             }
 
             await cache_helper.Enqueue(
@@ -45,7 +46,6 @@ namespace user_server
         {
             var key = GetChatHistoryKey(chat_type);
             var redis_values = await cache_helper.ListRange(key);
-
             var result = new List<Packet>();
 
             foreach (var redis_value in redis_values)
