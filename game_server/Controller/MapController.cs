@@ -178,7 +178,7 @@ namespace game_server
 
             lock (position_lock)
             {
-                var is_remove = this.object_position_map[position_key].Remove(object_key);
+                this.object_position_map[position_key].Remove(object_key);
             }
 
             Cell position_cell = MapHelper.GetCell(position_key);
