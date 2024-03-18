@@ -3,7 +3,7 @@ namespace network.Common
     using MessagePack;
     using network;
 
-    public static class JobController
+    public static class JobInfoController
     {
         public static async Task Save(CacheHelper cache_helper, JobInfo job_info)
         {

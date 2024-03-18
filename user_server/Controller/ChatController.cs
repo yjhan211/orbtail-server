@@ -9,8 +9,17 @@ namespace user_server
     // TODO 도배금지, 채팅금지 등
     public static class ChatController
     {
+        static CacheHelper? cache_helper;
+        static NatsClient? nats_client;
         const int HISTORY_NUM = 30;
         public static LRUCache<long, string> user_name_map = new(1000);
+
+        public static void Initialize()
+        {
+            var connection = RedisConnectionPool.GetConnection();
+            cache_helper = new(connection);
+            nats_client = new(Program.nats_endpoint);
+        }
 
         static string GetChatHistoryKey(ChatType chat_type)
         {
@@ -18,14 +27,13 @@ namespace user_server
         }
 
         public static async Task AddChatHistory(
-            CacheHelper cache_helper,
             ChatType chat_type,
             string sender_name,
             string message
         )
         {
             var key = GetChatHistoryKey(ChatType.ALL);
-            var history_length = await cache_helper.ListLength(key);
+            var history_length = await cache_helper!.ListLength(key);
 
             while (history_length >= HISTORY_NUM)
             {
@@ -80,20 +88,17 @@ namespace user_server
             return result;
         }
 
-        public static async Task SendChat(
-            CacheHelper cache_helper,
-            NatsClient nats_client,
-            RedisValue message
-        )
+        public static async Task SendChat(long player_id, C_TO_U_CHAT_MSG body)
         {
-            var (player_id, body) = MessagePackSerializer.Deserialize<(long, C_TO_U_CHAT_MSG)>(
-                message
-            );
+            if (body.chat_message.Length >= Config.MAX_CHAT_LENGTH)
+            {
+                return;
+            }
 
             var player_name = "";
             if (!user_name_map.TryGet(player_id, out player_name))
             {
-                var player_info = await PlayerController.Load(cache_helper, player_id);
+                var player_info = await PlayerInfoController.Load(cache_helper!, player_id);
                 if (player_info == null)
                 {
                     return;
@@ -112,13 +117,8 @@ namespace user_server
             switch (body.chat_type)
             {
                 case ChatType.ALL:
-                    await AddChatHistory(
-                        cache_helper,
-                        body.chat_type,
-                        player_name,
-                        body.chat_message
-                    );
-                    nats_client.Publish("all", packet.ToBytes());
+                    await AddChatHistory(body.chat_type, player_name, body.chat_message);
+                    nats_client!.Publish("all", packet.ToBytes());
                     break;
 
                 case ChatType.NOMAL:

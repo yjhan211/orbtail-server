@@ -45,9 +45,13 @@ namespace user_server
             nats_endpoint = nats_endpoint_env;
 
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
+            MapHelper.Initialize();
+            ChatController.Initialize();
 
             network_service = new();
             leave_user_queue = new();
+
+            Task.Run(ProcessLeaveUser);
 
             network_service.Initialize();
             network_service.session_created_callback += (UserToken token) =>
@@ -62,11 +66,7 @@ namespace user_server
                 }
             };
 
-            MapHelper.Initialize();
-
             network_service.Listen(IPAddress.Any, Config.USER_SERVER_PORT);
-
-            Task.Run(ProcessLeaveUser);
 
             LogManager.WriteInfoLog($"user server start. max_connection: {Config.MAX_CONNECTION}");
         }

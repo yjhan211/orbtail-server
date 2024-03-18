@@ -6,17 +6,26 @@
     using game_server;
     using RedLockNet.SERedis;
     using network.Common;
+    using user_server.Controller;
 
     public partial class GameUser : IPeer
     {
         public UserToken token { get; private set; }
-        public long player_id;
-        public ConnectionMultiplexer redis_connection;
+        public ConnectionMultiplexer redis_connection { get; private set; }
         public CacheHelper cache_helper { get; private set; }
         public RedLockFactory redlock { get; private set; }
-        public SemaphoreSlim player_lock;
+        public SemaphoreSlim player_lock { get; private set; }
+        public CancellationTokenSource cts { get; private set; }
+        public NatsClient nats_client { get; private set; }
 
-#pragma warning disable CS8618
+        /*-------------------------------------------------------------*/
+
+        public long player_id { get; private set; }
+        GameObjectController? move_controller { get; set; }
+        JobController? job_controller { get; set; }
+
+        /*-------------------------------------------------------------*/
+
         public GameUser(UserToken token)
         {
             this.token = token;
@@ -24,26 +33,28 @@
             this.token.is_released = false;
             this.token.SetPeer(this);
 
-            this.player_id = 0;
-            this.player_lock = new(1);
-            this.object_lock = new(1);
-
-            this.cts = new();
-            this.move_object_queue = new();
-
-            this.Initialize();
-        }
-#pragma warning restore
-
-        public void Initialize()
-        {
             this.redis_connection = RedisConnectionPool.GetConnection();
             this.cache_helper = new(this.redis_connection);
-
             this.redlock = RedisConnectionPool.GetRedLockFactory(this.redis_connection);
+
             this.nats_client = new(Program.nats_endpoint);
 
-            this.move_object_task = Task.Run(RecvMoveObjectTask, cts.Token);
+            this.player_id = 0;
+            this.player_lock = new(1);
+
+            this.cts = new();
+        }
+
+        async Task HandleMessage<T>(long player_id, byte[] body, Func<long, T, Task> handleMessage)
+        {
+            T msg = MessagePackSerializer.Deserialize<T>(body);
+            await handleMessage(player_id, msg);
+        }
+
+        void HandleMessage<T>(long player_id, byte[] body, Action<long, T> handleMessage)
+        {
+            T msg = MessagePackSerializer.Deserialize<T>(body);
+            handleMessage(player_id, msg);
         }
 
         public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -64,7 +75,6 @@
                 PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
                 long player_id = packet.PopPlayerId();
                 byte[] body = packet.PopBody();
-                Packet.Destroy(packet);
 
                 switch (protocol_id)
                 {
@@ -82,10 +92,18 @@
                         {
                             throw new Exception($"Invalid ID: {this.player_id}, {player_id}");
                         }
+                        if (this.move_controller == null || this.job_controller == null)
+                        {
+                            return;
+                        }
                         switch (protocol_id)
                         {
                             case PROTOCOL.C_TO_U_MOVE:
-                                await HandleMessage<C_TO_U_MOVE>(player_id, body, RequestMove);
+                                await HandleMessage<C_TO_U_MOVE>(
+                                    player_id,
+                                    body,
+                                    this.move_controller.RequestMove
+                                );
                                 break;
 
                             case PROTOCOL.C_TO_U_PLAYER_INFO:
@@ -100,20 +118,30 @@
                                 await HandleMessage<C_TO_U_OBJECT_INFO>(
                                     player_id,
                                     body,
-                                    GetObjectInfo
+                                    this.move_controller.GetObjectInfo
                                 );
                                 break;
 
                             case PROTOCOL.C_TO_U_GET_JOB:
-                                await HandleMessage<C_TO_U_GET_JOB>(player_id, body, GetJob);
+                                await HandleMessage<C_TO_U_GET_JOB>(
+                                    player_id,
+                                    body,
+                                    this.job_controller.GetJob
+                                );
                                 break;
 
                             case PROTOCOL.C_TO_U_CHAT_MSG:
-                                await HandleMessage<C_TO_U_CHAT_MSG>(player_id, body, RequestChat);
+                                await HandleMessage<C_TO_U_CHAT_MSG>(
+                                    player_id,
+                                    body,
+                                    ChatController.SendChat
+                                );
                                 break;
                         }
                         break;
                 }
+
+                Packet.Destroy(packet);
             }
             catch (Exception e)
             {
@@ -126,28 +154,67 @@
             }
         }
 
-        async Task HandleMessage<T>(long player_id, byte[] body, Func<long, T, Task> handleMessage)
+        public void OnMessageFromSubscribe(RedisValue message)
         {
-            T msg = MessagePackSerializer.Deserialize<T>(body);
-            await handleMessage(player_id, msg);
+            try
+            {
+                if (this.move_controller == null)
+                {
+                    return;
+                }
+
+                Packet packet = new((byte[])message!);
+                PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
+                long player_id = packet.PopPlayerId();
+                var body = packet.PopBody();
+
+                switch (protocol_id)
+                {
+                    case PROTOCOL.G_TO_U_MOVE:
+                        HandleMessage<G_TO_U_MOVE>(
+                            player_id,
+                            body,
+                            this.move_controller.SubscribeMove
+                        );
+                        break;
+
+                    case PROTOCOL.G_TO_U_SPAWN:
+                        HandleMessage<G_TO_U_SPAWN>(
+                            player_id,
+                            body,
+                            this.move_controller.SubscribeSpawn
+                        );
+                        break;
+
+                    case PROTOCOL.G_TO_U_DESTROY:
+                        HandleMessage<G_TO_U_DESTROY>(
+                            player_id,
+                            body,
+                            this.move_controller.SubscribeDestroy
+                        );
+                        break;
+
+                    case PROTOCOL.U_TO_C_CHAT_MSG:
+                        HandleMessage<U_TO_C_CHAT_MSG>(player_id, body, SubscribeChatMsg);
+                        break;
+                }
+
+                Packet.Destroy(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+                this.OnRemoved();
+            }
         }
 
-#pragma warning disable CS1998
         async Task HeartBeat()
         {
             this.token.is_alive = true;
 
-            if (this.object_info == null)
+            if (this.move_controller != null)
             {
-                return;
-            }
-
-            if (!this.object_info.current_cell.Equals(this.object_info.target_cell))
-            {
-                if (this.object_info.GetMoveElapsedTime() >= Config.MOVE_ELAPSED_TIME)
-                {
-                    await Move(this.object_info.target_cell, DirectionType.NONE);
-                }
+                await this.move_controller.HeartBeat();
             }
         }
 
@@ -164,9 +231,9 @@
                     : long.Parse(request.account_token);
 
             PlayerInfo? player_info = null;
-            using (var player_lock = await PlayerController.Lock(this.redlock, this.player_id))
+            using (var player_lock = await PlayerInfoController.Lock(this.redlock, this.player_id))
             {
-                player_info = await PlayerController.Load(this.cache_helper, temp_player_id);
+                player_info = await PlayerInfoController.Load(this.cache_helper, temp_player_id);
 
                 if (player_info == null)
                 {
@@ -181,31 +248,35 @@
                 }
 
                 player_info.object_info.map_id = 1; // TODO 임시
-                await PlayerController.Save(this.cache_helper, player_info);
+                await PlayerInfoController.Save(this.cache_helper, player_info);
 
                 this.player_id = player_info.player_id;
             }
 
-            this.object_info = player_info.object_info;
-            this.last_cell = Cell.Clone(player_info.object_info.current_cell);
+            this.move_controller = new(this, player_info.object_info);
+            this.job_controller = new(this, player_info.job_info);
 
             // 개인 구독 시작
             this.nats_client.Subscribe(
-                this.object_info.GetHashField(),
-                async (channel, message) => await SubscribeToUser(message)
+                player_info.object_info.GetHashField(),
+                (channel, message) => OnMessageFromSubscribe(message)
             );
 
-            // 단체 구독 시작
+            // 공용 구독 시작
             this.nats_client.Subscribe(
                 "all",
-                async (channel, message) => await SubscribeToUser(message)
+                (channel, message) => OnMessageFromSubscribe(message)
             );
 
             // 계정 정보 전송
             Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info);
             SendToClient(login_packet);
 
-            await Move(this.object_info.current_cell, DirectionType.NONE, true);
+            await this.move_controller.Move(
+                player_info.object_info.current_cell,
+                DirectionType.NONE,
+                true
+            );
 
             // 이전 채팅기록 불러오기
             var chat_history = await ChatController.GetChatHistory(this.cache_helper, ChatType.ALL);
@@ -227,9 +298,11 @@
             for (int i = 0; i < player_id_list.Count; i++)
             {
                 var target_player_id = player_id_list[i];
-                using (var player_lock = await PlayerController.Lock(this.redlock, this.player_id))
+                using (
+                    var player_lock = await PlayerInfoController.Lock(this.redlock, this.player_id)
+                )
                 {
-                    var target_player_info = await PlayerController.Load(
+                    var target_player_info = await PlayerInfoController.Load(
                         this.cache_helper,
                         target_player_id
                     );
@@ -255,66 +328,15 @@
             }
         }
 
-        // 이 함수가 호출되는 경우: G_TO_U_SPAWN_LIST의 object_key_list에는 있으나 클라에는 GameObjectInfo가 없을 때
-        // 어떤 경우에 생기는가: 이미 접속해서 잠수타고 있는 오브젝트를 만났을 때
-        async Task GetObjectInfo(long player_id, C_TO_U_OBJECT_INFO body)
+        void SubscribeChatMsg(long _, U_TO_C_CHAT_MSG body)
         {
-            if (player_id != this.player_id)
-            {
-                return;
-            }
-
-            RedisValue[] keys = body.object_key_list.ConvertAll(x => (RedisValue)x).ToArray();
-            var object_info_list = await GameObjectController.LoadAll(this.cache_helper, keys);
-            foreach (var object_info in object_info_list)
-            {
-                this.move_object_queue.Enqueue(object_info);
-            }
-        }
-
-        async Task GetJob(long player_id, C_TO_U_GET_JOB body)
-        {
-            if (player_id != this.player_id)
-            {
-                return;
-            }
-
-            var job_info = await JobController.Load(this.cache_helper, this.player_id);
-            if (job_info!.job_type != JobType.NONE)
-            {
-                this.SendToClient(
-                    PacketMaker.U_TO_C_GET_JOB(this.player_id, ErrorCode.ALREADY_HAS_JOB, job_info)
-                );
-                return;
-            }
-
-            switch (body.job_type)
-            {
-                case JobType.GEOIOGIST:
-                    job_info.job_type = JobType.GEOIOGIST;
-                    job_info.job_grade = JobGrade.TRAINEE;
-                    break;
-
-                default:
-                    break;
-            }
-
-            await JobController.Save(this.cache_helper, job_info);
-
-            this.SendToClient(
-                PacketMaker.U_TO_C_GET_JOB(this.player_id, ErrorCode.SUCCESS, job_info)
+            Packet packet = PacketMaker.U_TO_C_CHAT_MSG(
+                body.chat_type,
+                body.name,
+                body.chat_message
             );
-        }
 
-        async Task RequestChat(long player_id, C_TO_U_CHAT_MSG body)
-        {
-            if (body.chat_message.Length >= Config.MAX_CHAT_LENGTH)
-            {
-                return;
-            }
-
-            var message = MessagePackSerializer.Serialize((player_id, body));
-            await ChatController.SendChat(cache_helper, nats_client, message);
+            this.SendToClient(packet);
         }
 
         public void SendToClient(Packet msg)
@@ -331,12 +353,13 @@
 
         public async Task Release()
         {
-            PublishDestroy();
+            if (this.move_controller != null)
+            {
+                await this.move_controller.PublishDestroy();
+            }
 
             Packet packet = PacketMaker.U_TO_G_LOGOUT(this.player_id);
             _ = this.SendToGameServer(packet);
-
-            await GameObjectController.Save(this.cache_helper, this.object_info);
 
             this.player_id = 0;
             this.nats_client.Close();
@@ -350,6 +373,5 @@
             Program.leave_user_queue!.Enqueue(this);
             this.token.network_service.CloseClientSocket(this.token);
         }
-#pragma warning restore CS1998
     }
 }

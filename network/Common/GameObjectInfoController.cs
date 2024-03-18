@@ -4,7 +4,7 @@ namespace game_server
     using network;
     using StackExchange.Redis;
 
-    public static class GameObjectController
+    public static class GameObjectInfoController
     {
         public static async Task Save(CacheHelper cache_helper, GameObjectInfo object_info)
         {

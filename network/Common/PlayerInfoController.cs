@@ -8,7 +8,7 @@ namespace game_server
     using network.Common;
     using Newtonsoft.Json.Linq;
 
-    public static class PlayerController
+    public static class PlayerInfoController
     {
         public static async Task<IRedLock> Lock(RedLockFactory redlock, long player_id)
         {
@@ -17,8 +17,8 @@ namespace game_server
 
         public static async Task Save(CacheHelper cache_helper, PlayerInfo player_info)
         {
-            await GameObjectController.Save(cache_helper, player_info.object_info);
-            await JobController.Save(cache_helper, player_info.job_info);
+            await GameObjectInfoController.Save(cache_helper, player_info.object_info);
+            await JobInfoController.Save(cache_helper, player_info.job_info);
             await cache_helper.HashSet(
                 PlayerInfo.HASH_KEY,
                 player_info.player_id,
@@ -51,11 +51,11 @@ namespace game_server
                 }
 
                 player_info.object_info =
-                    await GameObjectController.Load(cache_helper, ObjectType.PLAYER, player_id)
+                    await GameObjectInfoController.Load(cache_helper, ObjectType.PLAYER, player_id)
                     ?? new GameObjectInfo();
 
                 player_info.job_info =
-                    await JobController.Load(cache_helper, player_id) ?? new JobInfo();
+                    await JobInfoController.Load(cache_helper, player_id) ?? new JobInfo();
 
                 return player_info;
             }
@@ -108,18 +108,18 @@ namespace game_server
 
         public static async Task Delete(CacheHelper cache_helper, PlayerInfo player_info)
         {
-            await GameObjectController.Delete(cache_helper, player_info.object_info);
+            await GameObjectInfoController.Delete(cache_helper, player_info.object_info);
             await cache_helper.HashDelete(PlayerInfo.HASH_KEY, player_info.player_id);
         }
 
         public static async Task Delete(CacheHelper cache_helper, long player_id)
         {
-            await GameObjectController.Delete(
+            await GameObjectInfoController.Delete(
                 cache_helper,
                 GameObjectInfo.MakeHashField(ObjectType.PLAYER, player_id)
             );
 
-            await JobController.Delete(cache_helper, player_id);
+            await JobInfoController.Delete(cache_helper, player_id);
 
             await cache_helper.HashDelete(PlayerInfo.HASH_KEY, player_id);
         }

@@ -102,9 +102,12 @@ namespace game_server
         {
             var redlock = RedisConnectionPool.GetRedLockFactory(this.redis_connection);
 
-            using (var player_lock = await PlayerController.Lock(redlock, player_id))
+            using (var player_lock = await PlayerInfoController.Lock(redlock, player_id))
             {
-                PlayerInfo? player_info = await PlayerController.Load(cache_helper, msg.player_id);
+                PlayerInfo? player_info = await PlayerInfoController.Load(
+                    cache_helper,
+                    msg.player_id
+                );
 
                 if (player_info == null)
                 {
@@ -117,7 +120,7 @@ namespace game_server
                     throw new Exception($"can't find object_info. player_id : {player_id}");
                 }
 
-                await PlayerController.Delete(cache_helper, player_id);
+                await PlayerInfoController.Delete(cache_helper, player_id);
             }
         }
     }
