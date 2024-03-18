@@ -231,17 +231,13 @@ namespace network
                     {
                         user_token.is_released = true;
 
-                        if (user_token.socket != null)
+                        if (user_token.socket.Connected)
                         {
-                            if (user_token.socket.Connected)
-                            {
-                                user_token.socket.Shutdown(SocketShutdown.Both);
-                            }
-                            user_token.socket.Close();
-                            user_token.socket.Dispose();
-                            user_token.socket = null;
+                            user_token.socket.Shutdown(SocketShutdown.Both);
                         }
 
+                        user_token.socket.Close();
+                        user_token.socket.Dispose();
                         user_token.OnRemoved();
                     }
                     catch (Exception ex)
