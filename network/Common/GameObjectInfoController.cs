@@ -84,14 +84,5 @@ namespace game_server
         {
             return await cache_helper.HashExists(GameObjectInfo.HASH_KEY, hash_field);
         }
-
-        // public void Save(Transaction transaction)
-        // {
-        //     transaction.HashSet(
-        //         HASH_KEY,
-        //         this.GetHashField(),
-        //         MessagePackSerializer.Serialize(this)
-        //     );
-        // }
     }
 }

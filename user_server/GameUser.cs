@@ -76,6 +76,8 @@
                 long player_id = packet.PopPlayerId();
                 byte[] body = packet.PopBody();
 
+                await this.player_lock.WaitAsync();
+
                 switch (protocol_id)
                 {
                     case PROTOCOL.HEART_BEAT:
@@ -83,7 +85,6 @@
                         break;
 
                     case PROTOCOL.C_TO_U_LOGIN:
-                        await this.player_lock.WaitAsync();
                         await HandleMessage<C_TO_U_LOGIN>(player_id, body, Login);
                         break;
 
@@ -234,7 +235,6 @@
             using (var player_lock = await PlayerInfoController.Lock(this.redlock, this.player_id))
             {
                 player_info = await PlayerInfoController.Load(this.cache_helper, temp_player_id);
-
                 if (player_info == null)
                 {
                     // 플레이어 생성
@@ -246,13 +246,11 @@
                         MapHelper.GetRandomCell()
                     );
                 }
-
                 player_info.object_info.map_id = 1; // TODO 임시
                 await PlayerInfoController.Save(this.cache_helper, player_info);
-
-                this.player_id = player_info.player_id;
             }
 
+            this.player_id = player_info.player_id;
             this.move_controller = new(this, player_info.object_info);
             this.job_controller = new(this, player_info.job_info);
 
@@ -288,42 +286,37 @@
 
         async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
         {
-            if (player_id != this.player_id)
-            {
-                return;
-            }
-
             var player_id_list = body.player_id_list;
             var player_info_list = new List<PlayerInfo>();
             for (int i = 0; i < player_id_list.Count; i++)
             {
                 var target_player_id = player_id_list[i];
-                using (
-                    var player_lock = await PlayerInfoController.Lock(this.redlock, this.player_id)
-                )
+                PlayerInfo? target_player_info;
+
+                using (await PlayerInfoController.Lock(this.redlock, this.player_id))
                 {
-                    var target_player_info = await PlayerInfoController.Load(
+                    target_player_info = await PlayerInfoController.Load(
                         this.cache_helper,
                         target_player_id
                     );
+                }
 
-                    if (target_player_info == null)
-                    {
-                        continue;
-                    }
+                if (target_player_info == null)
+                {
+                    continue;
+                }
 
-                    player_info_list.Add(target_player_info);
+                player_info_list.Add(target_player_info);
 
-                    bool is_max = player_info_list.Count >= Config.BROADCAST_UNIT;
-                    bool is_ended = i == player_id_list.Count - 1;
+                bool is_max = player_info_list.Count >= Config.BROADCAST_UNIT;
+                bool is_ended = i == player_id_list.Count - 1;
 
-                    if (is_max || is_ended)
-                    {
-                        Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(player_info_list);
-                        this.SendToClient(packet);
+                if (is_max || is_ended)
+                {
+                    Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(player_info_list);
+                    this.SendToClient(packet);
 
-                        await Task.Delay(100);
-                    }
+                    await Task.Delay(100);
                 }
             }
         }
