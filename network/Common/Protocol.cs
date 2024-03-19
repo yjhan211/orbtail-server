@@ -70,6 +70,19 @@ namespace network
         CHIEF // 최고 연구원
     }
 
+    public enum PlayerGrade : byte
+    {
+        NONE,
+        RUFFIAN, // 불량배
+        LAW_BREAKER, // 위법시민
+        COMMONER, // 시민
+        LAW_ABIDING, // 준법시민
+        RIGHTEOUS_PERSON, // 의인
+        PHILANTHROPIST, // 박애주의자
+        HERO, // 영웅
+        SAINT, // 성자
+    }
+
     public enum ChatType : byte
     {
         ALL, // 전체

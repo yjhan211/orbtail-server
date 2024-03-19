@@ -24,10 +24,15 @@ namespace network
         [Key("name")]
         public string name { get; set; }
 
+        [Key("grade")]
+        public PlayerGrade grade { get; set; }
+
         public PlayerInfo()
         {
             this.player_id = 0;
             this.name = String.Empty;
+            this.grade = PlayerGrade.NONE;
+
             this.object_info = new GameObjectInfo();
             this.job_info = new JobInfo();
         }
@@ -35,9 +40,11 @@ namespace network
         public PlayerInfo(long player_id, string name, Cell cell)
         {
             this.player_id = player_id;
+            this.name = name;
+            this.grade = PlayerGrade.COMMONER;
+
             this.object_info = new GameObjectInfo(ObjectType.PLAYER, player_id, cell);
             this.job_info = new JobInfo();
-            this.name = name;
         }
 
         public string GetLockKey()
