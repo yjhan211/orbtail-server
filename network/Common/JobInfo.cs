@@ -20,10 +20,18 @@ namespace network
         [Key("exp")]
         public int exp { get; set; }
 
+        // 이거 없애면 안됨 MessagePack에서 씀
         public JobInfo()
         {
             this.player_id = 0;
+            this.job_type = JobType.NONE;
+            this.job_grade = JobGrade.NONE;
+            this.exp = 0;
+        }
 
+        public JobInfo(long player_id)
+        {
+            this.player_id = player_id;
             this.job_type = JobType.NONE;
             this.job_grade = JobGrade.NONE;
             this.exp = 0;

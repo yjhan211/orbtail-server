@@ -13,6 +13,9 @@ namespace network
         [IgnoreMember]
         public JobInfo job_info { get; set; }
 
+        [IgnoreMember]
+        public InventoryInfo inventory_info { get; set; }
+
         /*-----------------------------------------------------------------*/
 
         [IgnoreMember]
@@ -27,14 +30,20 @@ namespace network
         [Key("grade")]
         public PlayerGrade grade { get; set; }
 
+        [Key("wear_items")]
+        public List<long> wear_items { get; set; }
+
+        // 이거 없애면 안됨 MessagePack에서 씀
         public PlayerInfo()
         {
             this.player_id = 0;
-            this.name = String.Empty;
+            this.name = "";
             this.grade = PlayerGrade.NONE;
+            this.wear_items = new List<long>();
 
             this.object_info = new GameObjectInfo();
             this.job_info = new JobInfo();
+            this.inventory_info = new InventoryInfo();
         }
 
         public PlayerInfo(long player_id, string name, Cell cell)
@@ -42,9 +51,11 @@ namespace network
             this.player_id = player_id;
             this.name = name;
             this.grade = PlayerGrade.COMMONER;
+            this.wear_items = new List<long>();
 
             this.object_info = new GameObjectInfo(ObjectType.PLAYER, player_id, cell);
-            this.job_info = new JobInfo();
+            this.job_info = new JobInfo(player_id);
+            this.inventory_info = new InventoryInfo(player_id);
         }
 
         public string GetLockKey()

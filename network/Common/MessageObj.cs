@@ -25,6 +25,9 @@ namespace network
 
         [Key("job_info")]
         public JobInfo job_info { get; set; }
+
+        [Key("inventory_info")]
+        public InventoryInfo inventory_info { get; set; }
     }
 
     [MessagePackObject]
@@ -152,6 +155,23 @@ namespace network
     {
         [Key("job_type")]
         public JobType job_type { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_WEAR_ITEM : IMessagePackObject
+    {
+        [Key("item_id")]
+        public long item_id { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_WEAR_ITEM : IMessagePackObject
+    {
+        [Key("player_info")]
+        public PlayerInfo player_info { get; set; }
+
+        [Key("inventory_info")]
+        public InventoryInfo inventory_info { get; set; }
     }
 
     [MessagePackObject]

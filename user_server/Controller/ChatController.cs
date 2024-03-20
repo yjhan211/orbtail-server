@@ -47,10 +47,7 @@ namespace user_server
             );
         }
 
-        public static async Task<List<Packet>> GetChatHistory(
-            CacheHelper cache_helper,
-            ChatType chat_type
-        )
+        public static async Task<List<Packet>> GetChatHistory(GameUser _, ChatType chat_type)
         {
             var key = GetChatHistoryKey(chat_type);
             var redis_values = await cache_helper.ListRange(key);
@@ -88,7 +85,7 @@ namespace user_server
             return result;
         }
 
-        public static async Task SendChat(long player_id, C_TO_U_CHAT_MSG body)
+        public static async Task SendChat(GameUser user, C_TO_U_CHAT_MSG body)
         {
             if (body.chat_message.Length >= Config.MAX_CHAT_LENGTH)
             {
@@ -96,15 +93,15 @@ namespace user_server
             }
 
             var player_name = "";
-            if (!user_name_map.TryGet(player_id, out player_name))
+            if (!user_name_map.TryGet(user.player_id, out player_name))
             {
-                var player_info = await PlayerInfoController.Load(cache_helper!, player_id);
+                var player_info = await PlayerInfoController.Load(cache_helper!, user.player_id);
                 if (player_info == null)
                 {
                     return;
                 }
 
-                user_name_map.Add(player_id, player_info.name);
+                user_name_map.Add(user.player_id, player_info.name);
                 player_name = player_info.name;
             }
 

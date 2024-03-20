@@ -5,7 +5,6 @@ namespace game_server
     using network;
     using RedLockNet.SERedis;
     using RedLockNet;
-    using network.Common;
     using Newtonsoft.Json.Linq;
 
     public static class PlayerInfoController
@@ -19,6 +18,8 @@ namespace game_server
         {
             await GameObjectInfoController.Save(cache_helper, player_info.object_info);
             await JobInfoController.Save(cache_helper, player_info.job_info);
+            await InventoryInfoController.Save(cache_helper, player_info.inventory_info);
+
             await cache_helper.HashSet(
                 PlayerInfo.HASH_KEY,
                 player_info.player_id,
@@ -52,10 +53,14 @@ namespace game_server
 
                 player_info.object_info =
                     await GameObjectInfoController.Load(cache_helper, ObjectType.PLAYER, player_id)
-                    ?? new GameObjectInfo();
+                    ?? new GameObjectInfo(player_id);
 
                 player_info.job_info =
-                    await JobInfoController.Load(cache_helper, player_id) ?? new JobInfo();
+                    await JobInfoController.Load(cache_helper, player_id) ?? new JobInfo(player_id);
+
+                player_info.inventory_info =
+                    await InventoryInfoController.Load(cache_helper, player_id)
+                    ?? new InventoryInfo(player_id);
 
                 return player_info;
             }

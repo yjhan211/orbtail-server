@@ -13,7 +13,8 @@ namespace user_server
                 {
                     object_info = player_info.object_info,
                     player_info = player_info,
-                    job_info = player_info.job_info
+                    job_info = player_info.job_info,
+                    inventory_info = player_info.inventory_info,
                 };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -24,6 +25,16 @@ namespace user_server
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_MAP_UPDATE);
             U_TO_C_MAP_UPDATE body = new() { object_list = object_list };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_WEAR_ITEM(PlayerInfo player_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_WEAR_ITEM);
+            U_TO_C_WEAR_ITEM body =
+                new() { player_info = player_info, inventory_info = player_info.inventory_info, };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

@@ -5,8 +5,6 @@
     using StackExchange.Redis;
     using game_server;
     using RedLockNet.SERedis;
-    using network.Common;
-    using user_server.Controller;
 
     public partial class GameUser : IPeer
     {
@@ -45,16 +43,16 @@
             this.cts = new();
         }
 
-        async Task HandleMessage<T>(long player_id, byte[] body, Func<long, T, Task> handleMessage)
+        async Task HandleMessage<T>(byte[] body, Func<GameUser, T, Task> handleMessage)
         {
             T msg = MessagePackSerializer.Deserialize<T>(body);
-            await handleMessage(player_id, msg);
+            await handleMessage(this, msg);
         }
 
-        void HandleMessage<T>(long player_id, byte[] body, Action<long, T> handleMessage)
+        void HandleMessage<T>(byte[] body, Action<GameUser, T> handleMessage)
         {
             T msg = MessagePackSerializer.Deserialize<T>(body);
-            handleMessage(player_id, msg);
+            handleMessage(this, msg);
         }
 
         public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -85,7 +83,7 @@
                         break;
 
                     case PROTOCOL.C_TO_U_LOGIN:
-                        await HandleMessage<C_TO_U_LOGIN>(player_id, body, Login);
+                        await HandleMessage<C_TO_U_LOGIN>(body, Login);
                         break;
 
                     default:
@@ -101,23 +99,17 @@
                         {
                             case PROTOCOL.C_TO_U_MOVE:
                                 await HandleMessage<C_TO_U_MOVE>(
-                                    player_id,
                                     body,
                                     this.move_controller.RequestMove
                                 );
                                 break;
 
                             case PROTOCOL.C_TO_U_PLAYER_INFO:
-                                await HandleMessage<C_TO_U_PLAYER_INFO>(
-                                    player_id,
-                                    body,
-                                    GetPlayerInfo
-                                );
+                                await HandleMessage<C_TO_U_PLAYER_INFO>(body, GetPlayerInfo);
                                 break;
 
                             case PROTOCOL.C_TO_U_OBJECT_INFO:
                                 await HandleMessage<C_TO_U_OBJECT_INFO>(
-                                    player_id,
                                     body,
                                     this.move_controller.GetObjectInfo
                                 );
@@ -125,18 +117,20 @@
 
                             case PROTOCOL.C_TO_U_GET_JOB:
                                 await HandleMessage<C_TO_U_GET_JOB>(
-                                    player_id,
                                     body,
                                     this.job_controller.GetJob
                                 );
                                 break;
 
-                            case PROTOCOL.C_TO_U_CHAT_MSG:
-                                await HandleMessage<C_TO_U_CHAT_MSG>(
-                                    player_id,
+                            case PROTOCOL.C_TO_U_WEAR_ITEM:
+                                await HandleMessage<C_TO_U_WEAR_ITEM>(
                                     body,
-                                    ChatController.SendChat
+                                    InventoryController.RequestWearItem
                                 );
+                                break;
+
+                            case PROTOCOL.C_TO_U_CHAT_MSG:
+                                await HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
                                 break;
                         }
                         break;
@@ -172,31 +166,19 @@
                 switch (protocol_id)
                 {
                     case PROTOCOL.G_TO_U_MOVE:
-                        HandleMessage<G_TO_U_MOVE>(
-                            player_id,
-                            body,
-                            this.move_controller.SubscribeMove
-                        );
+                        HandleMessage<G_TO_U_MOVE>(body, this.move_controller.SubscribeMove);
                         break;
 
                     case PROTOCOL.G_TO_U_SPAWN:
-                        HandleMessage<G_TO_U_SPAWN>(
-                            player_id,
-                            body,
-                            this.move_controller.SubscribeSpawn
-                        );
+                        HandleMessage<G_TO_U_SPAWN>(body, this.move_controller.SubscribeSpawn);
                         break;
 
                     case PROTOCOL.G_TO_U_DESTROY:
-                        HandleMessage<G_TO_U_DESTROY>(
-                            player_id,
-                            body,
-                            this.move_controller.SubscribeDestroy
-                        );
+                        HandleMessage<G_TO_U_DESTROY>(body, this.move_controller.SubscribeDestroy);
                         break;
 
                     case PROTOCOL.U_TO_C_CHAT_MSG:
-                        HandleMessage<U_TO_C_CHAT_MSG>(player_id, body, SubscribeChatMsg);
+                        HandleMessage<U_TO_C_CHAT_MSG>(body, SubscribeChatMsg);
                         break;
                 }
 
@@ -219,7 +201,7 @@
             }
         }
 
-        async Task Login(long _, C_TO_U_LOGIN request)
+        async Task Login(GameUser _, C_TO_U_LOGIN request)
         {
             if (this.player_id != 0)
             {
@@ -228,13 +210,14 @@
 
             long temp_player_id =
                 request.account_token == "dummy"
-                    ? await this.cache_helper.StringIncrement("temp_player_id")
+                    ? await cache_helper.StringIncrement("temp_player_id")
                     : long.Parse(request.account_token);
 
+            bool is_new = false;
             PlayerInfo? player_info = null;
             using (var player_lock = await PlayerInfoController.Lock(this.redlock, this.player_id))
             {
-                player_info = await PlayerInfoController.Load(this.cache_helper, temp_player_id);
+                player_info = await PlayerInfoController.Load(cache_helper, temp_player_id);
                 if (player_info == null)
                 {
                     // 플레이어 생성
@@ -245,14 +228,26 @@
                             : $"플레이어{temp_player_id}",
                         MapHelper.GetRandomCell()
                     );
+
+                    is_new = true;
                 }
+
                 player_info.object_info.map_id = 1; // TODO 임시
                 await PlayerInfoController.Save(this.cache_helper, player_info);
-            }
 
-            this.player_id = player_info.player_id;
-            this.move_controller = new(this, player_info.object_info);
-            this.job_controller = new(this, player_info.job_info);
+                this.player_id = player_info.player_id;
+                this.move_controller = new(this, player_info.object_info);
+                this.job_controller = new(this, player_info.job_info);
+
+                if (is_new)
+                {
+                    // 기본 아이템 증정
+                    var default_hair = new ItemInfo(10010001, 1, player_id);
+
+                    await InventoryController.AddItem(this, this.player_id, default_hair);
+                    player_info = await InventoryController.WearItem(this, default_hair.item_id);
+                }
+            }
 
             // 개인 구독 시작
             this.nats_client.Subscribe(
@@ -277,14 +272,14 @@
             );
 
             // 이전 채팅기록 불러오기
-            var chat_history = await ChatController.GetChatHistory(this.cache_helper, ChatType.ALL);
+            var chat_history = await ChatController.GetChatHistory(this, ChatType.ALL);
             foreach (var chat_packet in chat_history)
             {
                 SendToClient(chat_packet);
             }
         }
 
-        async Task GetPlayerInfo(long player_id, C_TO_U_PLAYER_INFO body)
+        async Task GetPlayerInfo(GameUser _, C_TO_U_PLAYER_INFO body)
         {
             var player_id_list = body.player_id_list;
             var player_info_list = new List<PlayerInfo>();
@@ -296,7 +291,7 @@
                 using (await PlayerInfoController.Lock(this.redlock, this.player_id))
                 {
                     target_player_info = await PlayerInfoController.Load(
-                        this.cache_helper,
+                        cache_helper,
                         target_player_id
                     );
                 }
@@ -321,7 +316,7 @@
             }
         }
 
-        void SubscribeChatMsg(long _, U_TO_C_CHAT_MSG body)
+        void SubscribeChatMsg(GameUser _, U_TO_C_CHAT_MSG body)
         {
             Packet packet = PacketMaker.U_TO_C_CHAT_MSG(
                 body.chat_type,

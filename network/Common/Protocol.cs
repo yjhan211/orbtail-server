@@ -27,6 +27,8 @@ namespace network
         C_TO_U_OBJECT_INFO,
         C_TO_U_GET_JOB,
         U_TO_C_GET_JOB,
+        C_TO_U_WEAR_ITEM,
+        U_TO_C_WEAR_ITEM,
         U_TO_G_LOGOUT,
         END
     }

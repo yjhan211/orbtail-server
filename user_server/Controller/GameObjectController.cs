@@ -16,7 +16,6 @@ namespace user_server
 
         GameObjectInfo object_info;
         Cell last_cell;
-
         Task move_object_task;
 
         public GameObjectController(GameUser user, GameObjectInfo object_info)
@@ -33,7 +32,7 @@ namespace user_server
         }
 
         // 다른 객체의 이동 정보 구독. RecvMoveObjectTask에서 일괄 전송
-        public void SubscribeMove(long _, G_TO_U_MOVE body)
+        public void SubscribeMove(GameUser _, G_TO_U_MOVE body)
         {
             this.move_object_queue.Enqueue(body.object_info);
         }
@@ -83,7 +82,7 @@ namespace user_server
 
         // 이 함수가 호출되는 경우: G_TO_U_SPAWN_LIST의 object_key_list에는 있으나 클라에는 GameObjectInfo가 없을 때
         // 어떤 경우에 생기는가: 이미 접속해서 잠수타고 있는 오브젝트를 만났을 때
-        public async Task GetObjectInfo(long _, C_TO_U_OBJECT_INFO body)
+        public async Task GetObjectInfo(GameUser _, C_TO_U_OBJECT_INFO body)
         {
             RedisValue[] keys = body.object_key_list.ConvertAll(x => (RedisValue)x).ToArray();
             var object_info_list = await GameObjectInfoController.LoadAll(user.cache_helper, keys);
@@ -94,7 +93,7 @@ namespace user_server
         }
 
         // 스폰해야 할 오브젝트 정보 구독
-        public void SubscribeSpawn(long _, G_TO_U_SPAWN body)
+        public void SubscribeSpawn(GameUser _, G_TO_U_SPAWN body)
         {
             var object_keys = body.object_key_list;
             var player_key = GameObjectInfo.MakeHashField(
@@ -119,7 +118,7 @@ namespace user_server
         }
 
         // 삭제해야 할 오브젝트 정보 구독
-        public void SubscribeDestroy(long _, G_TO_U_DESTROY body)
+        public void SubscribeDestroy(GameUser _, G_TO_U_DESTROY body)
         {
             var object_key = body.object_key;
 
@@ -151,7 +150,7 @@ namespace user_server
         }
 
         // 클라의 이동 요청
-        public async Task RequestMove(long _, C_TO_U_MOVE body)
+        public async Task RequestMove(GameUser _, C_TO_U_MOVE body)
         {
             // 아직 이동이 완료되지 않음
             if (this.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)

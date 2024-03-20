@@ -1,7 +1,6 @@
-namespace network.Common
+namespace network
 {
     using MessagePack;
-    using network;
 
     public static class JobInfoController
     {

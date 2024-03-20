@@ -1,11 +1,6 @@
-namespace user_server.Controller
+namespace user_server
 {
-    using game_server;
-    using MessagePack;
     using network;
-    using network.Common;
-    using network.manager;
-    using StackExchange.Redis;
 
     public class JobController
     {
@@ -21,7 +16,7 @@ namespace user_server.Controller
             this.job_info = job_info;
         }
 
-        public async Task GetJob(long _, C_TO_U_GET_JOB body)
+        public async Task GetJob(GameUser _, C_TO_U_GET_JOB body)
         {
             if (this.job_info!.job_type != JobType.NONE)
             {
