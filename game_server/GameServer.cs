@@ -1,6 +1,5 @@
 namespace game_server
 {
-    using StackExchange.Redis.MultiplexerPool;
     using System;
     using System.Threading.Tasks;
     using MessagePack;
@@ -48,10 +47,13 @@ namespace game_server
                         }
 
                         Packet? packet = new(message);
-                        if (packet != null)
+                        if (packet == null)
                         {
-                            await ProcessReceiveAsync(cache_helper, packet);
+                            continue;
                         }
+
+                        await ProcessReceiveAsync(cache_helper, packet);
+                        Packet.Destroy(packet);
                     }
                 }
                 catch (Exception e)
@@ -90,7 +92,8 @@ namespace game_server
             switch (protocol_id)
             {
                 case PROTOCOL.U_TO_G_LOGOUT:
-                    await HandleMessage<U_TO_G_LOGOUT>(cache_helper, player_id, body, Logout);
+                    // TODO DB 붙이기 전까지 일단 안지움
+                    // await HandleMessage<U_TO_G_LOGOUT>(cache_helper, player_id, body, Logout);
                     break;
             }
         }
@@ -99,9 +102,12 @@ namespace game_server
         {
             var redlock = RedisConnectionPool.GetRedLockFactory(this.redis_connection);
 
-            using (var player_lock = await PlayerController.Lock(redlock, player_id))
+            using (var player_lock = await PlayerInfoController.Lock(redlock, player_id))
             {
-                PlayerInfo? player_info = await PlayerController.Load(cache_helper, msg.player_id);
+                PlayerInfo? player_info = await PlayerInfoController.Load(
+                    cache_helper,
+                    msg.player_id
+                );
 
                 if (player_info == null)
                 {
@@ -114,7 +120,7 @@ namespace game_server
                     throw new Exception($"can't find object_info. player_id : {player_id}");
                 }
 
-                await PlayerController.Delete(cache_helper, player_id);
+                await PlayerInfoController.Delete(cache_helper, player_id);
             }
         }
     }

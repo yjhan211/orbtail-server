@@ -1,5 +1,4 @@
-﻿using System.Net;
-using network;
+﻿using network;
 
 namespace game_server
 {
@@ -47,7 +46,7 @@ namespace game_server
             nats_endpoint = nats_endpoint_env;
 
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
-            MapHelper.InitializeGameServer();
+            MapHelper.Initialize();
 
             game_server = new();
             game_server.Start();

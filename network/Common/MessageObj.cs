@@ -22,11 +22,20 @@ namespace network
 
         [Key("player_info")]
         public PlayerInfo player_info { get; set; }
+
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
+
+        [Key("inventory_info")]
+        public InventoryInfo inventory_info { get; set; }
     }
 
     [MessagePackObject]
     public class C_TO_U_CHAT_MSG : IMessagePackObject
     {
+        [Key("chat_type")]
+        public ChatType chat_type { get; set; }
+
         [Key("chat_message")]
         public string chat_message { get; set; }
     }
@@ -34,6 +43,12 @@ namespace network
     [MessagePackObject]
     public class U_TO_C_CHAT_MSG : IMessagePackObject
     {
+        [Key("chat_type")]
+        public ChatType chat_type { get; set; }
+
+        [Key("name")]
+        public string name { get; set; }
+
         [Key("chat_message")]
         public string chat_message { get; set; }
     }
@@ -115,6 +130,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class G_TO_U_PLAYER_INFO : IMessagePackObject
+    {
+        [Key("player_info")]
+        public PlayerInfo player_info { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_U_OBJECT_INFO : IMessagePackObject
     {
         [Key("object_key_list")]
@@ -136,21 +158,36 @@ namespace network
     }
 
     [MessagePackObject]
-    public class MapTile : IMessagePackObject
+    public class C_TO_U_GET_JOB : IMessagePackObject
     {
-        public MapTile(TileType tile_type)
-        {
-            this.type = tile_type;
-        }
-
-        [Key("tile_type")]
-        public TileType type { get; set; }
+        [Key("job_type")]
+        public JobType job_type { get; set; }
     }
 
     [MessagePackObject]
-    public class U_TO_C_BOUND_TILE_INFO : IMessagePackObject
+    public class C_TO_U_WEAR_ITEM : IMessagePackObject
     {
-        [Key("tile_list")]
-        public List<Cell> tile_list { get; set; }
+        [Key("item_uid")]
+        public long item_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_WEAR_ITEM : IMessagePackObject
+    {
+        [Key("player_info")]
+        public PlayerInfo player_info { get; set; }
+
+        [Key("inventory_info")]
+        public InventoryInfo inventory_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_GET_JOB : IMessagePackObject
+    {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
     }
 }

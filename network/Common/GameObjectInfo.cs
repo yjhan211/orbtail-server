@@ -39,20 +39,31 @@ namespace network
             return $"{(int)this.object_type}_{this.object_id}";
         }
 
+        // 이거 없애면 안됨 MessagePack에서 씀
         public GameObjectInfo()
         {
             this.object_type = ObjectType.NONE;
-            this.object_id = 0;
+            this.object_id = object_id;
             this.current_cell = new Cell(0, 0);
             this.target_cell = new Cell(0, 0);
             this.move_timestamp = default;
             this.is_flip = false;
         }
 
-        public GameObjectInfo(ObjectType object_type, long player_id, Cell cell)
+        public GameObjectInfo(long object_id)
+        {
+            this.object_type = ObjectType.NONE;
+            this.object_id = object_id;
+            this.current_cell = new Cell(0, 0);
+            this.target_cell = new Cell(0, 0);
+            this.move_timestamp = default;
+            this.is_flip = false;
+        }
+
+        public GameObjectInfo(ObjectType object_type, long object_id, Cell cell)
         {
             this.object_type = object_type;
-            this.object_id = player_id;
+            this.object_id = object_id;
             this.current_cell = Cell.Clone(cell);
             this.target_cell = Cell.Clone(cell);
             this.move_timestamp = DateTime.MinValue;

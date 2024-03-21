@@ -240,7 +240,7 @@ namespace network
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            await this.QueryRedisAsync((db) => db.ListLeftPushAsync(key, value));
+            await this.QueryRedisAsync((db) => db.ListRightPushAsync(key, value));
         }
 
         public async Task<byte[]?> Dequeue(string key)
@@ -250,7 +250,17 @@ namespace network
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            return await this.QueryRedisAsync((db) => db.ListRightPopAsync(key));
+            return await this.QueryRedisAsync((db) => db.ListLeftPopAsync(key));
+        }
+
+        public async Task<long> ListLength(string key)
+        {
+            if (this.conn == null)
+            {
+                throw new Exception("RedisHelper.conn is null");
+            }
+
+            return await this.QueryRedisAsync((db) => db.ListLengthAsync(key));
         }
 
         public async Task<long> StringIncrement(string key)

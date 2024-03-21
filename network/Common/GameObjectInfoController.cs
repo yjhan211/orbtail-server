@@ -1,11 +1,10 @@
 namespace game_server
 {
     using MessagePack;
-    using Microsoft.Extensions.Caching.Memory;
     using network;
     using StackExchange.Redis;
 
-    public static class GameObjectController
+    public static class GameObjectInfoController
     {
         public static async Task Save(CacheHelper cache_helper, GameObjectInfo object_info)
         {
@@ -85,14 +84,5 @@ namespace game_server
         {
             return await cache_helper.HashExists(GameObjectInfo.HASH_KEY, hash_field);
         }
-
-        // public void Save(Transaction transaction)
-        // {
-        //     transaction.HashSet(
-        //         HASH_KEY,
-        //         this.GetHashField(),
-        //         MessagePackSerializer.Serialize(this)
-        //     );
-        // }
     }
 }

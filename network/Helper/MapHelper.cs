@@ -54,30 +54,7 @@ namespace network
             new(139, 91)
         };
 
-        public static void InitializeGameServer()
-        {
-            var part_number = 1;
-            foreach (var part_pivot in part_pivot_list)
-            {
-                var pivot_cell = Cell.Clone(part_pivot);
-                var cell_list = GetBoundCellList(pivot_cell);
-                position_list_by_part[part_number] = new();
-
-                foreach (var cell in cell_list)
-                {
-                    var position_key = GetPositionKey(1, cell);
-                    if (!part_by_position_key.TryGetValue(position_key, out var duplicate))
-                    {
-                        // part_by_position_key.Add(position_key, part_number);
-                        position_list_by_part[part_number].Add(position_key);
-                    }
-                }
-
-                part_number++;
-            }
-        }
-
-        public static void InitializeUserServer()
+        public static void Initialize()
         {
             var part_number = 1;
             foreach (var part_pivot in part_pivot_list)
@@ -92,7 +69,7 @@ namespace network
                     if (!part_by_position_key.TryGetValue(position_key, out var duplicate))
                     {
                         part_by_position_key.Add(position_key, part_number);
-                        // position_list_by_part[part_number].Add(position_key);
+                        position_list_by_part[part_number].Add(position_key);
                     }
                 }
 
@@ -154,6 +131,57 @@ namespace network
             }
 
             return result;
+        }
+
+        public static List<int> GetBoundServerList(int total_server_num, Cell cell)
+        {
+            return GetBoundCellList(cell)
+                .Select(GetPositionKey)
+                .Select(
+                    (position_key) =>
+                        GetServerIdByPositionKey(total_server_num, position_key)
+                )
+                .Where((server_id) => server_id != 0)
+                .Distinct()
+                .ToList();
+        }
+
+        public static int GetServerIdByPositionKey(int total_server_num, string position_key)
+        {
+            if (!part_by_position_key.TryGetValue(position_key, out int part_number))
+            {
+                return 0;
+            }
+
+            int server_id = 0;
+
+            switch (total_server_num)
+            {
+                case 40:
+                    server_id = part_number;
+                    break;
+
+                case 20:
+                    server_id = Array.FindIndex(map_partition, parts => parts.Contains(part_number)) + 1;
+                    break;
+
+                case 10:
+                    server_id = (Array.FindIndex(map_partition, parts => parts.Contains(part_number)) + 1 + 1) / 2;
+                    break;
+
+                case 5:
+                    server_id = (Array.FindIndex(map_partition, parts => parts.Contains(part_number)) + 1 + 3) / 4;
+                    break;
+
+                case 2:
+                    server_id = Array.FindIndex(map_partition, parts => parts.Contains(part_number)) < 10 ? 1 : 2;
+                    break;
+
+                default:
+                    throw new Exception("Invalid total server num");
+            }
+
+            return server_id;
         }
 
         public static string GetPositionKey(int map_id, Cell cell)
@@ -283,23 +311,6 @@ namespace network
             }
 
             return result;
-        }
-
-        public static (int, int) DetermineDivisions(int total_server_num)
-        {
-            int sqrt = (int)Math.Sqrt(total_server_num);
-            int horizontal_divisions = sqrt;
-            int vertical_divisions = sqrt;
-
-            while (horizontal_divisions * vertical_divisions < total_server_num)
-            {
-                if (horizontal_divisions <= vertical_divisions)
-                    horizontal_divisions++;
-                else
-                    vertical_divisions++;
-            }
-
-            return (horizontal_divisions, vertical_divisions);
         }
 
         public static Cell GetRandomCell()

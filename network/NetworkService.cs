@@ -223,13 +223,31 @@ namespace network
 
         public void CloseClientSocket(UserToken user_token)
         {
-            lock (this.init_event_args_lock)
+            lock (user_token.lock_disconnect)
             {
-                lock (user_token.lock_disconnect)
+                if (!user_token.is_released)
                 {
-                    if (!user_token.is_released)
+                    try
                     {
+                        user_token.is_released = true;
+
+                        if (user_token.socket.Connected)
+                        {
+                            user_token.socket.Shutdown(SocketShutdown.Both);
+                        }
+
+                        user_token.socket.Close();
+                        user_token.socket.Dispose();
                         user_token.OnRemoved();
+                    }
+                    catch (Exception ex)
+                    {
+                        // 예외 처리 및 로깅
+                        Console.WriteLine($"Error in CloseClientSocket: {ex.Message}");
+                    }
+
+                    lock (this.init_event_args_lock)
+                    {
                         this.recv_event_args_pool.Push(user_token.recv_event_args);
                         this.send_event_args_pool.Push(user_token.send_event_args);
                     }
