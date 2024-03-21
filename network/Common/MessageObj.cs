@@ -130,6 +130,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class G_TO_U_PLAYER_INFO : IMessagePackObject
+    {
+        [Key("player_info")]
+        public PlayerInfo player_info { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_U_OBJECT_INFO : IMessagePackObject
     {
         [Key("object_key_list")]
@@ -160,8 +167,8 @@ namespace network
     [MessagePackObject]
     public class C_TO_U_WEAR_ITEM : IMessagePackObject
     {
-        [Key("item_id")]
-        public long item_id { get; set; }
+        [Key("item_uid")]
+        public long item_uid { get; set; }
     }
 
     [MessagePackObject]

@@ -180,6 +180,10 @@
                     case PROTOCOL.U_TO_C_CHAT_MSG:
                         HandleMessage<U_TO_C_CHAT_MSG>(body, SubscribeChatMsg);
                         break;
+
+                    case PROTOCOL.G_TO_U_PLAYER_INFO:
+                        HandleMessage<G_TO_U_PLAYER_INFO>(body, SubscribePlayerInfo);
+                        break;
                 }
 
                 Packet.Destroy(packet);
@@ -215,7 +219,7 @@
 
             bool is_new = false;
             PlayerInfo? player_info = null;
-            using (var player_lock = await PlayerInfoController.Lock(this.redlock, this.player_id))
+            using (await PlayerInfoController.Lock(this.redlock, this.player_id))
             {
                 player_info = await PlayerInfoController.Load(cache_helper, temp_player_id);
                 if (player_info == null)
@@ -242,10 +246,10 @@
                 if (is_new)
                 {
                     // 기본 아이템 증정
-                    var default_hair = new ItemInfo(10010001, 1, player_id);
+                    var default_hair = await InventoryController.CreateItem(this, 1001000001, 1);
 
-                    await InventoryController.AddItem(this, this.player_id, default_hair);
-                    player_info = await InventoryController.WearItem(this, default_hair.item_id);
+                    var __ = await InventoryController.AddItem(this, this.player_id, default_hair);
+                    player_info = await InventoryController.WearItem(this, default_hair.item_uid);
                 }
             }
 
@@ -314,6 +318,14 @@
                     await Task.Delay(100);
                 }
             }
+        }
+
+        void SubscribePlayerInfo(GameUser _, G_TO_U_PLAYER_INFO body)
+        {
+            var player_info_list = new List<PlayerInfo> { body.player_info };
+
+            Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(player_info_list);
+            this.SendToClient(packet);
         }
 
         void SubscribeChatMsg(GameUser _, U_TO_C_CHAT_MSG body)

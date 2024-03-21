@@ -1,6 +1,7 @@
 namespace game_server
 {
     using System.Collections.Concurrent;
+    using System.Reactive.Subjects;
     using MessagePack;
     using network;
     using StackExchange.Redis;
@@ -46,6 +47,11 @@ namespace game_server
             this.nats_client.Subscribe(
                 $"destroy_object_{Program.server_id}",
                 (subject, msg) => DestroyManageObject(msg)
+            );
+
+            this.nats_client.Subscribe(
+                $"update_player_{Program.server_id}",
+                (subject, msg) => UpdatePlayerInfo(msg)
             );
 
             this.nats_client.Subscribe(
@@ -194,6 +200,40 @@ namespace game_server
                     MessagePackSerializer.Serialize((position_key, object_key))
                 );
             }
+        }
+
+        public void UpdatePlayerInfo(RedisValue message)
+        {
+            (string position_key, PlayerInfo player_info) = MessagePackSerializer.Deserialize<(
+                string,
+                PlayerInfo
+            )>(message);
+
+            Packet packet = PacketMaker.G_TO_U_PLAYER_INFO(player_info);
+
+            var pivot_cell = MapHelper.GetCell(position_key);
+            var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
+
+            foreach (var bound_cell in bound_cell_list)
+            {
+                var bound_position_key = MapHelper.GetPositionKey(bound_cell);
+                if (!this.object_position_map.TryGetValue(bound_position_key, out var channel_list))
+                {
+                    continue;
+                }
+
+                if (channel_list.Count <= 0)
+                {
+                    continue;
+                }
+
+                foreach (var channel in channel_list)
+                {
+                    this.nats_client!.Publish(channel, packet.ToBytes());
+                }
+            }
+
+            Packet.Destroy(packet);
         }
 
         public void BroadcastUpdateObject(RedisValue message)

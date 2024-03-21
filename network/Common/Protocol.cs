@@ -24,6 +24,7 @@ namespace network
         U_TO_C_MAP_UPDATE,
         C_TO_U_PLAYER_INFO,
         U_TO_C_PLAYER_INFO,
+        G_TO_U_PLAYER_INFO,
         C_TO_U_OBJECT_INFO,
         C_TO_U_GET_JOB,
         U_TO_C_GET_JOB,
@@ -69,7 +70,7 @@ namespace network
         SENIOR_ASSOCIATE, // 선임 연구원
         PRINCIPAL, // 책임 연구원
         LEAD, // 수석 연구원
-        CHIEF // 최고 연구원
+        CHIEF // 대가
     }
 
     public enum PlayerGrade : byte
@@ -80,7 +81,6 @@ namespace network
         COMMONER, // 시민
         LAW_ABIDING, // 준법시민
         RIGHTEOUS_PERSON, // 의인
-        PHILANTHROPIST, // 박애주의자
         HERO, // 영웅
         SAINT, // 성자
     }

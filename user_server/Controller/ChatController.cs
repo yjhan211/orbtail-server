@@ -10,7 +10,6 @@ namespace user_server
     public static class ChatController
     {
         static CacheHelper? cache_helper;
-        static NatsClient? nats_client;
         const int HISTORY_NUM = 30;
         public static LRUCache<long, string> user_name_map = new(1000);
 
@@ -18,7 +17,6 @@ namespace user_server
         {
             var connection = RedisConnectionPool.GetConnection();
             cache_helper = new(connection);
-            nats_client = new(Program.nats_endpoint);
         }
 
         static string GetChatHistoryKey(ChatType chat_type)
@@ -47,10 +45,10 @@ namespace user_server
             );
         }
 
-        public static async Task<List<Packet>> GetChatHistory(GameUser _, ChatType chat_type)
+        public static async Task<List<Packet>> GetChatHistory(GameUser user, ChatType chat_type)
         {
             var key = GetChatHistoryKey(chat_type);
-            var redis_values = await cache_helper.ListRange(key);
+            var redis_values = await user.cache_helper.ListRange(key);
             var result = new List<Packet>();
 
             foreach (var redis_value in redis_values)
@@ -115,7 +113,7 @@ namespace user_server
             {
                 case ChatType.ALL:
                     await AddChatHistory(body.chat_type, player_name, body.chat_message);
-                    nats_client!.Publish("all", packet.ToBytes());
+                    user.nats_client.Publish("all", packet.ToBytes());
                     break;
 
                 case ChatType.NOMAL:

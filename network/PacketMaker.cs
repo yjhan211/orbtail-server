@@ -95,6 +95,15 @@ namespace user_server
             return packet;
         }
 
+        public static Packet G_TO_U_PLAYER_INFO(PlayerInfo player_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_PLAYER_INFO, player_info.player_id);
+            G_TO_U_PLAYER_INFO body = new() { player_info = player_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet G_TO_U_SPAWN(List<string> object_key_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_SPAWN);
