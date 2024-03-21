@@ -189,5 +189,8 @@ namespace network
 
         [Key("job_info")]
         public JobInfo job_info { get; set; }
+
+        [Key("inventory_info")]
+        public InventoryInfo inventory_info { get; set; }
     }
 }

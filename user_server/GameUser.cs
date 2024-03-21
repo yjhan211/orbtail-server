@@ -20,7 +20,6 @@
 
         public long player_id { get; private set; }
         GameObjectController? move_controller { get; set; }
-        JobController? job_controller { get; set; }
 
         /*-------------------------------------------------------------*/
 
@@ -91,7 +90,7 @@
                         {
                             throw new Exception($"Invalid ID: {this.player_id}, {player_id}");
                         }
-                        if (this.move_controller == null || this.job_controller == null)
+                        if (this.move_controller == null)
                         {
                             return;
                         }
@@ -116,10 +115,7 @@
                                 break;
 
                             case PROTOCOL.C_TO_U_GET_JOB:
-                                await HandleMessage<C_TO_U_GET_JOB>(
-                                    body,
-                                    this.job_controller.GetJob
-                                );
+                                await HandleMessage<C_TO_U_GET_JOB>(body, JobController.GetJob);
                                 break;
 
                             case PROTOCOL.C_TO_U_WEAR_ITEM:
@@ -241,7 +237,6 @@
 
                 this.player_id = player_info.player_id;
                 this.move_controller = new(this, player_info.object_info);
-                this.job_controller = new(this, player_info.job_info);
 
                 if (is_new)
                 {
