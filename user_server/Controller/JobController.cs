@@ -22,16 +22,17 @@ namespace user_server
             }
 
             InventoryInfo inventory_info;
-
             using (await PlayerInfoController.Lock(user.redlock, user.player_id))
             {
+                List<ItemInfo> gift_item_list = new();
+
                 switch (body.job_type)
                 {
                     case JobType.GEOIOGIST:
                         job_info.job_type = JobType.GEOIOGIST;
                         job_info.job_grade = JobGrade.TRAINEE;
                         var gift_geo = await InventoryController.CreateItem(user, 1002000001, 1);
-                        await InventoryController.AddItem(user, user.player_id, gift_geo);
+                        gift_item_list.Add(gift_geo);
                         break;
 
                     default:
@@ -39,7 +40,13 @@ namespace user_server
                 }
 
                 var gift_food = await InventoryController.CreateItem(user, 2001000001, 1);
-                inventory_info = await InventoryController.AddItem(user, user.player_id, gift_food);
+                gift_item_list.Add(gift_food);
+
+                inventory_info = await InventoryController.AddItem(
+                    user,
+                    user.player_id,
+                    gift_item_list
+                );
 
                 await JobInfoController.Save(user.cache_helper, job_info);
             }

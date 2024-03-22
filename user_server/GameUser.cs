@@ -6,7 +6,7 @@
     using game_server;
     using RedLockNet.SERedis;
 
-    public partial class GameUser : IPeer
+    public class GameUser : IPeer
     {
         public UserToken token { get; private set; }
         public ConnectionMultiplexer redis_connection { get; private set; }
@@ -243,7 +243,7 @@
                     // 기본 아이템 증정
                     var default_hair = await InventoryController.CreateItem(this, 1001000001, 1);
 
-                    var __ = await InventoryController.AddItem(this, this.player_id, default_hair);
+                    await InventoryController.AddItem(this, this.player_id, default_hair);
                     player_info = await InventoryController.WearItem(this, default_hair.item_uid);
                 }
             }

@@ -31,6 +31,27 @@ namespace user_server
             return inventory_info;
         }
 
+        public static async Task<InventoryInfo> AddItem(
+            GameUser user,
+            long player_id,
+            List<ItemInfo> item_info_list
+        )
+        {
+            var inventory_info = await InventoryInfoController.Load(user.cache_helper, player_id);
+            if (inventory_info == null)
+            {
+                throw new Exception("inventory_info not exists");
+            }
+
+            foreach (var item_info in item_info_list)
+            {
+                inventory_info.item_list.Add(item_info);
+            }
+            await InventoryInfoController.Save(user.cache_helper, inventory_info);
+
+            return inventory_info;
+        }
+
         public static async Task RequestWearItem(GameUser user, C_TO_U_WEAR_ITEM body)
         {
             PlayerInfo result_player_info;
@@ -101,7 +122,6 @@ namespace user_server
 
                 if (last_wear_item_index != -1)
                 {
-                    // 같은 종류 아이템 착용 해제
                     // 같은 종류 아이템 착용 해제
                     player_info.inventory_info.item_list[last_wear_item_index].is_wear = false;
                     player_info.wear_items.Remove(
