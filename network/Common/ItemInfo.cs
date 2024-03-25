@@ -23,6 +23,9 @@ namespace network
         [Key("durability")]
         public int durability { get; set; } // 내구도
 
+        [Key("skill_id")]
+        public int skill_id { get; set; } // 장비에 붙어있는 스킬
+
         // 이거 없애면 안됨 MessagePack에서 씀
         public ItemInfo()
         {
@@ -31,6 +34,7 @@ namespace network
             this.count = 0;
             this.is_wear = false;
             this.durability = 0;
+            this.skill_id = 0;
 
             this.object_info = new();
         }
@@ -42,6 +46,7 @@ namespace network
             this.count = count;
             this.is_wear = false;
             this.durability = 100;
+            this.skill_id = 0;
 
             this.object_info = new(player_id);
         }

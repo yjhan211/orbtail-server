@@ -31,6 +31,8 @@ namespace user_server
                     case JobType.GEOIOGIST:
                         job_info.job_type = JobType.GEOIOGIST;
                         job_info.job_grade = JobGrade.TRAINEE;
+                        job_info.hp = GameDesignData.GetMaxHP(job_info.job_grade);
+
                         var gift_geo = await InventoryController.CreateItem(user, 1002000001, 1);
                         gift_item_list.Add(gift_geo);
                         break;
