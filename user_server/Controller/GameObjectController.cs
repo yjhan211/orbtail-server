@@ -163,7 +163,11 @@ namespace user_server
                 body.direction
             );
 
-            var next_position_key = MapHelper.GetPositionKey(next_target_cell);
+            var next_position_key = MapHelper.GetPositionKey(
+                this.object_info.map_id,
+                next_target_cell
+            );
+
             if (MapHelper.GetServerIdByPositionKey(Program.game_server_num, next_position_key) == 0)
             {
                 return;
@@ -183,7 +187,12 @@ namespace user_server
 
             // 과거 위치 챙겨놓고
             this.last_cell = Cell.Clone(this.object_info.current_cell);
-            var last_position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
+
+            var last_position_key = MapHelper.GetPositionKey(
+                this.object_info.map_id,
+                this.object_info.current_cell
+            );
+
             var last_manage_server = MapHelper.GetServerIdByPositionKey(
                 Program.game_server_num,
                 last_position_key
@@ -191,7 +200,12 @@ namespace user_server
 
             // current_cell을 target_cell로 변경
             this.object_info.current_cell = Cell.Clone(this.object_info.target_cell);
-            var current_position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
+
+            var current_position_key = MapHelper.GetPositionKey(
+                this.object_info.map_id,
+                this.object_info.current_cell
+            );
+
             var current_manage_server = MapHelper.GetServerIdByPositionKey(
                 Program.game_server_num,
                 current_position_key
@@ -227,7 +241,10 @@ namespace user_server
             // 현재 바운드 - 이전 바운드 = spawn 대상 TODO map_id
             var object_spawn_list = current_bound_cell_list
                 .Except(last_bound_cell_list)
-                .Select(MapHelper.GetPositionKey)
+                .Select(
+                    (last_bound_cell) =>
+                        MapHelper.GetPositionKey(this.object_info.map_id, last_bound_cell)
+                )
                 .Select(
                     position_key =>
                         new
@@ -257,7 +274,7 @@ namespace user_server
             );
 
             user.nats_client.Publish(
-                $"leave_object_{manage_sever}",
+                MapHelper.GetLeaveManageSubject(this.object_info.map_id, manage_sever),
                 MessagePackSerializer.Serialize(
                     (leave_position_key, this.object_info.GetHashField())
                 )
@@ -273,7 +290,7 @@ namespace user_server
             );
 
             user.nats_client.Publish(
-                $"move_object_{manage_server}",
+                MapHelper.GetMoveManageSubject(this.object_info.map_id, manage_server),
                 MessagePackSerializer.Serialize((last_position_key, this.object_info))
             );
         }
@@ -282,7 +299,7 @@ namespace user_server
         void RequestSpawnObjectList(int server_id, List<string> position_key_list)
         {
             user.nats_client.Publish(
-                $"spawn_object_{server_id}",
+                MapHelper.GetSpawnManageSubject(this.object_info.map_id, server_id),
                 MessagePackSerializer.Serialize(
                     (this.object_info.GetHashField(), position_key_list)
                 )
@@ -294,14 +311,18 @@ namespace user_server
         {
             await GameObjectInfoController.Save(user.cache_helper, this.object_info);
 
-            var position_key = MapHelper.GetPositionKey(this.object_info.current_cell);
+            var position_key = MapHelper.GetPositionKey(
+                this.object_info.map_id,
+                this.object_info.current_cell
+            );
+
             var manage_server = MapHelper.GetServerIdByPositionKey(
                 Program.game_server_num,
                 position_key
             );
 
             user.nats_client.Publish(
-                $"destroy_object_{manage_server}",
+                MapHelper.GetDestroyObjectSubject(this.object_info.map_id, manage_server),
                 MessagePackSerializer.Serialize((position_key, this.object_info.GetHashField()))
             );
         }

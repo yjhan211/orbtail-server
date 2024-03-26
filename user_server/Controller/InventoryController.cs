@@ -54,20 +54,22 @@ namespace user_server
 
         public static async Task RequestWearItem(GameUser user, C_TO_U_WEAR_ITEM body)
         {
-            PlayerInfo result_player_info;
+            PlayerInfo player_info;
             using (await PlayerInfoController.Lock(user.redlock, user.player_id))
             {
-                result_player_info = await WearItem(user, body.item_uid);
+                player_info = await WearItem(user, body.item_uid);
             }
 
-            Packet packet = PacketMaker.U_TO_C_WEAR_ITEM(result_player_info);
+            Packet packet = PacketMaker.U_TO_C_WEAR_ITEM(player_info);
             user.SendToClient(packet);
 
             var position_key = MapHelper.GetPositionKey(
-                result_player_info.object_info.current_cell
+                player_info.object_info.map_id,
+                player_info.object_info.current_cell
             );
 
             var target_server_list = MapHelper.GetBoundServerList(
+                player_info.object_info.map_id,
                 Program.game_server_num,
                 MapHelper.GetCell(position_key)
             );
@@ -75,8 +77,8 @@ namespace user_server
             foreach (var target_server in target_server_list)
             {
                 user.nats_client!.Publish(
-                    $"update_player_{target_server}",
-                    MessagePackSerializer.Serialize((position_key, result_player_info))
+                    MapHelper.GetUpdatePlayerSubject(player_info.object_info.map_id, target_server),
+                    MessagePackSerializer.Serialize((position_key, player_info))
                 );
             }
         }

@@ -230,9 +230,8 @@
                     );
 
                     is_new = true;
+                    player_info.object_info.map_id = MapID.CITY_1;
                 }
-
-                player_info.object_info.map_id = 1; // TODO 임시
                 await PlayerInfoController.Save(this.cache_helper, player_info);
 
                 this.player_id = player_info.player_id;

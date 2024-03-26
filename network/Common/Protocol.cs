@@ -34,6 +34,13 @@ namespace network
         END
     }
 
+    public enum MapID : int
+    {
+        NONE,
+        CITY_1,
+        FOREST_1,
+    }
+
     public enum ObjectType : int
     {
         NONE,

@@ -8,18 +8,19 @@ namespace game_server
 
     public class GameServer
     {
-        NatsClient nats_client;
         CancellationTokenSource cts;
         Task? logic_thread;
-        MapController map_controller;
+        List<MapController> map_controller_list;
         ConnectionMultiplexer redis_connection;
         CacheHelper cache_helper;
 
         public GameServer()
         {
-            this.nats_client = new(Program.nats_endpoint);
             this.cts = new();
-            this.map_controller = new();
+            this.map_controller_list = new();
+
+            this.map_controller_list.Add(new(MapID.CITY_1));
+            this.map_controller_list.Add(new(MapID.FOREST_1));
 
             this.redis_connection = RedisConnectionPool.GetConnection();
             this.cache_helper = new(this.redis_connection);
@@ -27,7 +28,12 @@ namespace game_server
 
         public void Start()
         {
-            this.map_controller.Initialize(this.nats_client);
+            foreach (var map_controller in this.map_controller_list)
+            {
+                NatsClient nats_client = new(Program.nats_endpoint);
+                map_controller.Initialize(nats_client);
+            }
+
             this.logic_thread = Task.Run(GameLoop, this.cts.Token);
         }
 
@@ -92,8 +98,7 @@ namespace game_server
             switch (protocol_id)
             {
                 case PROTOCOL.U_TO_G_LOGOUT:
-                    // TODO DB 붙이기 전까지 일단 안지움
-                    // await HandleMessage<U_TO_G_LOGOUT>(cache_helper, player_id, body, Logout);
+                    await HandleMessage<U_TO_G_LOGOUT>(cache_helper, player_id, body, Logout);
                     break;
             }
         }
@@ -120,7 +125,8 @@ namespace game_server
                     throw new Exception($"can't find object_info. player_id : {player_id}");
                 }
 
-                await PlayerInfoController.Delete(cache_helper, player_id);
+                // TODO DB 붙이기 전까지 일단 안지움
+                // await PlayerInfoController.Delete(cache_helper, player_id);
             }
         }
     }

@@ -1,94 +1,141 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using StackExchange.Redis;
-
 namespace network
 {
+    // 개발 기간 이슈로 MAP_CITY_1, MAP_FOREST_1는 동일한 맵 크기, 동일한 파티셔닝 구조로 감
+    // 추후 달라진다면 MapHelper 분리 필요
     public static class MapHelper
     {
         public static Dictionary<string, int> part_by_position_key = new();
         public static Dictionary<int, List<string>> position_list_by_part = new();
-        public static List<Cell> part_pivot_list = new()
+        public static List<Cell> part_pivot_list =
+            new()
+            {
+                new(25, 85),
+                new(31, 79),
+                new(37, 73),
+                new(43, 67),
+                new(49, 61),
+                new(55, 55),
+                new(61, 49),
+                new(67, 43),
+                new(73, 37),
+                new(79, 31),
+                new(45, 105),
+                new(51, 99),
+                new(57, 93),
+                new(63, 87),
+                new(69, 81),
+                new(75, 75),
+                new(81, 69),
+                new(87, 63),
+                new(93, 57),
+                new(99, 51),
+                new(65, 125),
+                new(71, 119),
+                new(77, 113),
+                new(83, 107),
+                new(89, 101),
+                new(95, 95),
+                new(101, 89),
+                new(107, 83),
+                new(113, 77),
+                new(119, 71),
+                new(85, 145),
+                new(91, 139),
+                new(97, 133),
+                new(103, 127),
+                new(109, 121),
+                new(115, 115),
+                new(121, 109),
+                new(127, 103),
+                new(133, 97),
+                new(139, 91)
+            };
+
+        public static int[][] map_partition = new int[][]
         {
-            new(25, 85),
-            new(31, 79),
-            new(37, 73),
-            new(43, 67),
-            new(49, 61),
-            new(55, 55),
-            new(61, 49),
-            new(67, 43),
-            new(73, 37),
-            new(79, 31),
-            new(45, 105),
-            new(51, 99),
-            new(57, 93),
-            new(63, 87),
-            new(69, 81),
-            new(75, 75),
-            new(81, 69),
-            new(87, 63),
-            new(93, 57),
-            new(99, 51),
-            new(65, 125),
-            new(71, 119),
-            new(77, 113),
-            new(83, 107),
-            new(89, 101),
-            new(95, 95),
-            new(101, 89),
-            new(107, 83),
-            new(113, 77),
-            new(119, 71),
-            new(85, 145),
-            new(91, 139),
-            new(97, 133),
-            new(103, 127),
-            new(109, 121),
-            new(115, 115),
-            new(121, 109),
-            new(127, 103),
-            new(133, 97),
-            new(139, 91)
+            new int[] { 1, 2 },
+            new int[] { 11, 12 },
+            new int[] { 3, 4 },
+            new int[] { 13, 14 },
+            new int[] { 5, 6 },
+            new int[] { 15, 16 },
+            new int[] { 7, 8 },
+            new int[] { 17, 18 },
+            new int[] { 9, 10 },
+            new int[] { 19, 20 },
+            new int[] { 21, 22 },
+            new int[] { 31, 32 },
+            new int[] { 23, 24 },
+            new int[] { 33, 34 },
+            new int[] { 25, 26 },
+            new int[] { 35, 36 },
+            new int[] { 27, 28 },
+            new int[] { 37, 38 },
+            new int[] { 29, 30 },
+            new int[] { 39, 40 }
         };
 
         public static void Initialize()
         {
             var part_number = 1;
-            foreach (var part_pivot in part_pivot_list)
+
+            foreach (var map_id in new MapID[] { MapID.CITY_1, MapID.FOREST_1 })
             {
-                var pivot_cell = Cell.Clone(part_pivot);
-                var cell_list = GetBoundCellList(pivot_cell);
-                position_list_by_part[part_number] = new();
-
-                foreach (var cell in cell_list)
+                foreach (var part_pivot in part_pivot_list)
                 {
-                    var position_key = GetPositionKey(1, cell);
-                    if (!part_by_position_key.TryGetValue(position_key, out var duplicate))
-                    {
-                        part_by_position_key.Add(position_key, part_number);
-                        position_list_by_part[part_number].Add(position_key);
-                    }
-                }
+                    var pivot_cell = Cell.Clone(part_pivot);
+                    var cell_list = GetBoundCellList(pivot_cell);
+                    position_list_by_part[part_number] = new();
 
-                part_number++;
+                    foreach (var cell in cell_list)
+                    {
+                        var position_key = GetPositionKey(map_id, cell);
+                        if (!part_by_position_key.TryGetValue(position_key, out var duplicate))
+                        {
+                            part_by_position_key.Add(position_key, part_number);
+                            position_list_by_part[part_number].Add(position_key);
+                        }
+                    }
+
+                    part_number++;
+                }
             }
         }
 
-        public static int[][] map_partition = [
-            [1,2],[11,12],
-            [3,4],[13,14],
-            [5,6],[15,16],
-            [7,8],[17,18],
-            [9,10],[19,20],
-            [21,22],[31,32],
-            [23,24],[33,34],
-            [25,26],[35,36],
-            [27,28],[37,38],
-            [29,30],[39,40]
-        ];
+        public static string GetMoveManageSubject(MapID map_id, int server_id)
+        {
+            return $"move_object_{map_id}_{server_id}";
+        }
+
+        public static string GetLeaveManageSubject(MapID map_id, int server_id)
+        {
+            return $"leave_object_{map_id}_{server_id}";
+        }
+
+        public static string GetSpawnManageSubject(MapID map_id, int server_id)
+        {
+            return $"spawn_object_{map_id}_{server_id}";
+        }
+
+        public static string GetDestroyObjectSubject(MapID map_id, int server_id)
+        {
+            return $"destroy_object_{map_id}_{server_id}";
+        }
+
+        public static string GetUpdatePlayerSubject(MapID map_id, int server_id)
+        {
+            return $"update_player_{map_id}_{server_id}";
+        }
+
+        public static string GetBrodcastMoveSubject(MapID map_id, int server_id)
+        {
+            return $"broadcast_move_{map_id}_{server_id}";
+        }
+
+        public static string GetBrodcastDestroySubject(MapID map_id, int server_id)
+        {
+            return $"broadcast_destroy_{map_id}_{server_id}";
+        }
 
         public static List<int> GetManagePartList(int total_server, int game_server_id)
         {
@@ -133,14 +180,11 @@ namespace network
             return result;
         }
 
-        public static List<int> GetBoundServerList(int total_server_num, Cell cell)
+        public static List<int> GetBoundServerList(MapID map_id, int total_server_num, Cell cell)
         {
             return GetBoundCellList(cell)
-                .Select(GetPositionKey)
-                .Select(
-                    (position_key) =>
-                        GetServerIdByPositionKey(total_server_num, position_key)
-                )
+                .Select((bound_cell) => GetPositionKey(map_id, bound_cell))
+                .Select((position_key) => GetServerIdByPositionKey(total_server_num, position_key))
                 .Where((server_id) => server_id != 0)
                 .Distinct()
                 .ToList();
@@ -162,19 +206,33 @@ namespace network
                     break;
 
                 case 20:
-                    server_id = Array.FindIndex(map_partition, parts => parts.Contains(part_number)) + 1;
+                    server_id =
+                        Array.FindIndex(map_partition, parts => parts.Contains(part_number)) + 1;
                     break;
 
                 case 10:
-                    server_id = (Array.FindIndex(map_partition, parts => parts.Contains(part_number)) + 1 + 1) / 2;
+                    server_id =
+                        (
+                            Array.FindIndex(map_partition, parts => parts.Contains(part_number))
+                            + 1
+                            + 1
+                        ) / 2;
                     break;
 
                 case 5:
-                    server_id = (Array.FindIndex(map_partition, parts => parts.Contains(part_number)) + 1 + 3) / 4;
+                    server_id =
+                        (
+                            Array.FindIndex(map_partition, parts => parts.Contains(part_number))
+                            + 1
+                            + 3
+                        ) / 4;
                     break;
 
                 case 2:
-                    server_id = Array.FindIndex(map_partition, parts => parts.Contains(part_number)) < 10 ? 1 : 2;
+                    server_id =
+                        Array.FindIndex(map_partition, parts => parts.Contains(part_number)) < 10
+                            ? 1
+                            : 2;
                     break;
 
                 default:
@@ -184,7 +242,7 @@ namespace network
             return server_id;
         }
 
-        public static string GetPositionKey(int map_id, Cell cell)
+        public static string GetPositionKey(MapID map_id, Cell cell)
         {
             return $"map_{map_id}|{cell.x},{cell.y}";
         }
@@ -195,21 +253,6 @@ namespace network
             var position = split[1].Split(",");
 
             return new Cell(Int32.Parse(position[0]), Int32.Parse(position[1]));
-        }
-
-        public static string GetMapKey()
-        {
-            return $"map_{1}";
-        }
-
-        public static string GetMapKey(int map_id)
-        {
-            return $"map_{map_id}";
-        }
-
-        public static string GetPositionKey(Cell cell)
-        {
-            return $"{GetMapKey()}|{cell.x},{cell.y}";
         }
 
         public static Cell CalcTargetCell(Cell cell, DirectionType direction)
@@ -315,52 +358,8 @@ namespace network
 
         public static Cell GetRandomCell()
         {
-            var target_list = new List<Cell>()
-            {
-                new(25, 85),
-                new(31, 79),
-                new(37, 73),
-                new(43, 67),
-                new(49, 61),
-                new(55, 55),
-                new(61, 49),
-                new(67, 43),
-                new(73, 37),
-                new(79, 31),
-                new(45, 105),
-                new(51, 99),
-                new(57, 93),
-                new(63, 87),
-                new(69, 81),
-                new(75, 75),
-                new(81, 69),
-                new(87, 63),
-                new(93, 57),
-                new(99, 51),
-                new(65, 125),
-                new(71, 119),
-                new(77, 113),
-                new(83, 107),
-                new(89, 101),
-                new(95, 95),
-                new(101, 89),
-                new(107, 83),
-                new(113, 77),
-                new(119, 71),
-                new(85, 145),
-                new(91, 139),
-                new(97, 133),
-                new(103, 127),
-                new(109, 121),
-                new(115, 115),
-                new(121, 109),
-                new(127, 103),
-                new(133, 97),
-                new(139, 91)
-            };
-
             Random random = new();
-            return target_list[random.Next(0, target_list.Count)];
+            return part_pivot_list[random.Next(0, part_pivot_list.Count)];
         }
     }
 }

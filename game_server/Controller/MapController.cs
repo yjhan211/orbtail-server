@@ -1,7 +1,6 @@
 namespace game_server
 {
     using System.Collections.Concurrent;
-    using System.Reactive.Subjects;
     using MessagePack;
     using network;
     using StackExchange.Redis;
@@ -9,15 +8,16 @@ namespace game_server
 
     public class MapController
     {
-        public const int MAP_ID = 1;
+        public MapID map_id; // TODO 채널 확장
         ConnectionMultiplexer? redis_connection;
         CacheHelper? cache_helper;
         NatsClient? nats_client;
         public ConcurrentDictionary<string, List<string>> object_position_map;
         public CancellationTokenSource cts;
 
-        public MapController()
+        public MapController(MapID map_id)
         {
+            this.map_id = map_id;
             this.object_position_map = new();
             this.cts = new();
         }
@@ -30,37 +30,37 @@ namespace game_server
             this.nats_client = nats_client;
 
             this.nats_client.Subscribe(
-                $"move_object_{Program.server_id}",
+                MapHelper.GetMoveManageSubject(this.map_id, Program.server_id),
                 (subject, msg) => MoveManageObject(msg)
             );
 
             this.nats_client.Subscribe(
-                $"leave_object_{Program.server_id}",
+                MapHelper.GetLeaveManageSubject(this.map_id, Program.server_id),
                 (subject, msg) => LeaveManageObject(msg)
             );
 
             this.nats_client.Subscribe(
-                $"spawn_object_{Program.server_id}",
+                MapHelper.GetSpawnManageSubject(this.map_id, Program.server_id),
                 (subject, msg) => SpawnManageObject(msg)
             );
 
             this.nats_client.Subscribe(
-                $"destroy_object_{Program.server_id}",
+                MapHelper.GetDestroyObjectSubject(this.map_id, Program.server_id),
                 (subject, msg) => DestroyManageObject(msg)
             );
 
             this.nats_client.Subscribe(
-                $"update_player_{Program.server_id}",
+                MapHelper.GetUpdatePlayerSubject(this.map_id, Program.server_id),
                 (subject, msg) => UpdatePlayerInfo(msg)
             );
 
             this.nats_client.Subscribe(
-                $"update_{Program.server_id}",
+                MapHelper.GetBrodcastMoveSubject(this.map_id, Program.server_id),
                 (subject, msg) => BroadcastUpdateObject(msg)
             );
 
             this.nats_client.Subscribe(
-                $"destroy_{Program.server_id}",
+                MapHelper.GetBrodcastDestroySubject(this.map_id, Program.server_id),
                 (subject, msg) => BroadcastDestroyObject(msg)
             );
 
@@ -82,21 +82,6 @@ namespace game_server
             }
         }
 
-        public string GetMapKey()
-        {
-            return $"map_{MAP_ID}";
-        }
-
-        public static string GetMapKey(int map_id)
-        {
-            return $"map_{map_id}";
-        }
-
-        public string GetPositionKey(Cell cell)
-        {
-            return $"{GetMapKey()}|{cell.x},{cell.y}";
-        }
-
         object position_lock = new();
 
         public void MoveManageObject(RedisValue message)
@@ -107,7 +92,10 @@ namespace game_server
             )>(message);
 
             var object_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, object_info.object_id);
-            var current_position_key = MapHelper.GetPositionKey(object_info.current_cell);
+            var current_position_key = MapHelper.GetPositionKey(
+                this.map_id,
+                object_info.current_cell
+            );
 
             // 위치 갱신
             lock (position_lock)
@@ -124,6 +112,7 @@ namespace game_server
 
             // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
             var target_server_list = MapHelper.GetBoundServerList(
+                this.map_id,
                 Program.game_server_num,
                 object_info.current_cell
             );
@@ -131,7 +120,7 @@ namespace game_server
             foreach (var target_server in target_server_list)
             {
                 this.nats_client!.Publish(
-                    $"update_{target_server}",
+                    MapHelper.GetBrodcastMoveSubject(this.map_id, target_server),
                     MessagePackSerializer.Serialize((current_position_key, object_info))
                 );
             }
@@ -189,6 +178,7 @@ namespace game_server
 
             Cell position_cell = MapHelper.GetCell(position_key);
             var target_server_list = MapHelper.GetBoundServerList(
+                this.map_id,
                 Program.game_server_num,
                 position_cell
             );
@@ -196,7 +186,7 @@ namespace game_server
             foreach (var target_server in target_server_list)
             {
                 this.nats_client!.Publish(
-                    $"destroy_{target_server}",
+                    MapHelper.GetBrodcastDestroySubject(this.map_id, target_server),
                     MessagePackSerializer.Serialize((position_key, object_key))
                 );
             }
@@ -216,7 +206,7 @@ namespace game_server
 
             foreach (var bound_cell in bound_cell_list)
             {
-                var bound_position_key = MapHelper.GetPositionKey(bound_cell);
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
                 if (!this.object_position_map.TryGetValue(bound_position_key, out var channel_list))
                 {
                     continue;
@@ -250,7 +240,7 @@ namespace game_server
 
             foreach (var bound_cell in bound_cell_list)
             {
-                var bound_position_key = MapHelper.GetPositionKey(bound_cell);
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
                 if (!this.object_position_map.TryGetValue(bound_position_key, out var channel_list))
                 {
                     continue;
@@ -283,7 +273,7 @@ namespace game_server
 
             foreach (var bound_cell in bound_cell_list)
             {
-                var bound_position_key = MapHelper.GetPositionKey(bound_cell);
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
                 if (!this.object_position_map.TryGetValue(bound_position_key, out var channel_list))
                 {
                     continue;
