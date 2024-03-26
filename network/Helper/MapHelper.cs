@@ -75,10 +75,20 @@ namespace network
             new int[] { 39, 40 }
         };
 
+        public static Dictionary<string, (MapID, Cell)> portal_info =
+            new()
+            {
+                { GetPositionKey(MapID.CITY_1, new(89, 141)), (MapID.FOREST_1, new(50, 50)) },
+                { GetPositionKey(MapID.CITY_1, new(89, 142)), (MapID.FOREST_1, new(50, 50)) },
+                { GetPositionKey(MapID.CITY_1, new(90, 141)), (MapID.FOREST_1, new(50, 50)) },
+                { GetPositionKey(MapID.CITY_1, new(90, 142)), (MapID.FOREST_1, new(50, 50)) },
+            };
+
         public static void Initialize()
         {
             var part_number = 1;
 
+            // 여기서부터
             foreach (var map_id in new MapID[] { MapID.CITY_1, MapID.FOREST_1 })
             {
                 foreach (var part_pivot in part_pivot_list)

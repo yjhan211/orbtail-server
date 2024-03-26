@@ -198,8 +198,24 @@ namespace user_server
                 last_position_key
             );
 
-            // current_cell을 target_cell로 변경
-            this.object_info.current_cell = Cell.Clone(this.object_info.target_cell);
+            var target_position_key = MapHelper.GetPositionKey(
+                this.object_info.map_id,
+                this.object_info.target_cell
+            );
+
+            // target_cell이 포탈 좌표인지 확인
+            if (MapHelper.portal_info.TryGetValue(target_position_key, out var portal_result))
+            {
+                // 포탈 좌표면 해당하는 결과로 변경
+                this.object_info.map_id = portal_result.Item1;
+                this.object_info.current_cell = Cell.Clone(portal_result.Item2);
+                this.object_info.target_cell = Cell.Clone(portal_result.Item2);
+            }
+            else
+            {
+                // current_cell을 target_cell로 변경
+                this.object_info.current_cell = Cell.Clone(this.object_info.target_cell);
+            }
 
             var current_position_key = MapHelper.GetPositionKey(
                 this.object_info.map_id,
