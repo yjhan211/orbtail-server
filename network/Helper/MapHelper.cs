@@ -5,7 +5,9 @@ namespace network
     public static class MapHelper
     {
         public static Dictionary<string, int> part_by_position_key = new();
-        public static Dictionary<int, List<string>> position_list_by_part = new();
+        public static Dictionary<MapID, Dictionary<int, List<string>>> position_list_by_map_part =
+            new();
+
         public static List<Cell> part_pivot_list =
             new()
             {
@@ -86,27 +88,26 @@ namespace network
 
         public static void Initialize()
         {
-            var part_number = 1;
-
-            // 여기서부터
-            foreach (var map_id in new MapID[] { MapID.CITY_1, MapID.FOREST_1 })
+            foreach (var map_id in new List<MapID>() { MapID.CITY_1, MapID.FOREST_1 })
             {
+                position_list_by_map_part[map_id] = new();
+
+                var part_number = 1;
                 foreach (var part_pivot in part_pivot_list)
                 {
                     var pivot_cell = Cell.Clone(part_pivot);
                     var cell_list = GetBoundCellList(pivot_cell);
-                    position_list_by_part[part_number] = new();
 
+                    position_list_by_map_part[map_id][part_number] = new();
                     foreach (var cell in cell_list)
                     {
                         var position_key = GetPositionKey(map_id, cell);
                         if (!part_by_position_key.TryGetValue(position_key, out var duplicate))
                         {
                             part_by_position_key.Add(position_key, part_number);
-                            position_list_by_part[part_number].Add(position_key);
+                            position_list_by_map_part[map_id][part_number].Add(position_key);
                         }
                     }
-
                     part_number++;
                 }
             }

@@ -183,7 +183,21 @@ namespace user_server
             bool all_bound = false
         )
         {
+            var target_position_key = MapHelper.GetPositionKey(
+                this.object_info.map_id,
+                this.object_info.target_cell
+            );
+
+            // target_cell이 포탈 좌표면 맵 이동
+            if (MapHelper.portal_info.TryGetValue(target_position_key, out var portal_result))
+            {
+                await ChangeMap(portal_result);
+                return;
+            }
+
             await this.object_lock.WaitAsync();
+
+            LogManager.WriteInfoLog("111111111");
 
             // 과거 위치 챙겨놓고
             this.last_cell = Cell.Clone(this.object_info.current_cell);
@@ -193,39 +207,31 @@ namespace user_server
                 this.object_info.current_cell
             );
 
+            LogManager.WriteInfoLog("222222");
+
             var last_manage_server = MapHelper.GetServerIdByPositionKey(
                 Program.game_server_num,
                 last_position_key
             );
 
-            var target_position_key = MapHelper.GetPositionKey(
-                this.object_info.map_id,
-                this.object_info.target_cell
-            );
+            LogManager.WriteInfoLog("3333333");
 
-            // target_cell이 포탈 좌표인지 확인
-            if (MapHelper.portal_info.TryGetValue(target_position_key, out var portal_result))
-            {
-                // 포탈 좌표면 해당하는 결과로 변경
-                this.object_info.map_id = portal_result.Item1;
-                this.object_info.current_cell = Cell.Clone(portal_result.Item2);
-                this.object_info.target_cell = Cell.Clone(portal_result.Item2);
-            }
-            else
-            {
-                // current_cell을 target_cell로 변경
-                this.object_info.current_cell = Cell.Clone(this.object_info.target_cell);
-            }
+            // current_cell을 target_cell로 변경
+            this.object_info.current_cell = Cell.Clone(this.object_info.target_cell);
 
             var current_position_key = MapHelper.GetPositionKey(
                 this.object_info.map_id,
                 this.object_info.current_cell
             );
 
+            LogManager.WriteInfoLog("444444444");
+
             var current_manage_server = MapHelper.GetServerIdByPositionKey(
                 Program.game_server_num,
                 current_position_key
             );
+
+            LogManager.WriteInfoLog("555555");
 
             // target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
             this.object_info.move_timestamp = DateTime.UtcNow;
@@ -235,15 +241,21 @@ namespace user_server
                 this.object_info.SetFlip(direction);
             }
 
+            LogManager.WriteInfoLog("66666666");
+
             await GameObjectInfoController.Save(user.cache_helper, this.object_info);
 
             this.object_lock.Release();
+
+            LogManager.WriteInfoLog("77");
 
             if (last_manage_server != current_manage_server)
             {
                 // 과거 담당 서버에는 영역을 떠났다고 전송
                 PublishLeave(last_position_key);
             }
+
+            LogManager.WriteInfoLog($"user - current_position_key: {current_position_key}");
 
             // 현재 담당 서버에 전송 - 같은 서버에 PublishLeave 따로 보내면 순서 뒤바뀔 수 있음
             PublishMove(last_position_key, current_position_key);
@@ -279,6 +291,19 @@ namespace user_server
             {
                 RequestSpawnObjectList(item.server_id, item.position_key_list);
             }
+        }
+
+        public async Task ChangeMap((MapID map_id, Cell spawn_cell) change_info)
+        {
+            // 기존 맵에 삭제 요청
+            await PublishDestroy();
+
+            this.object_info.map_id = change_info.map_id;
+            this.object_info.current_cell = Cell.Clone(change_info.spawn_cell);
+            this.object_info.target_cell = Cell.Clone(change_info.spawn_cell);
+
+            // 새로운 맵에 생성
+            await Move(this.object_info.current_cell, DirectionType.NONE, true);
         }
 
         // 다른 서버의 할당 영역으로 넘어갈 때, 기존 할당되어있던 서버에 삭제 요청
