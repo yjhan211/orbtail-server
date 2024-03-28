@@ -158,6 +158,15 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_CHANGE_MAP(MapID map_id, Cell spawn_cell)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CHANGE_MAP);
+            U_TO_C_CHANGE_MAP body = new() { map_id = map_id, spawn_cell = spawn_cell };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_G_LOGOUT(long player_id)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_G_LOGOUT, player_id);

@@ -182,6 +182,16 @@ namespace network
     }
 
     [MessagePackObject]
+    public class U_TO_C_CHANGE_MAP : IMessagePackObject
+    {
+        [Key("map_id")]
+        public MapID map_id { get; set; }
+
+        [Key("spawn_cell")]
+        public Cell spawn_cell { get; set; }
+    }
+
+    [MessagePackObject]
     public class U_TO_C_GET_JOB : IMessagePackObject
     {
         [Key("error_code")]

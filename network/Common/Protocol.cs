@@ -30,6 +30,7 @@ namespace network
         U_TO_C_GET_JOB,
         C_TO_U_WEAR_ITEM,
         U_TO_C_WEAR_ITEM,
+        U_TO_C_CHANGE_MAP,
         U_TO_G_LOGOUT,
         END
     }

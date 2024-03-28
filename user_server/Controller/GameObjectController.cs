@@ -197,8 +197,6 @@ namespace user_server
 
             await this.object_lock.WaitAsync();
 
-            LogManager.WriteInfoLog("111111111");
-
             // 과거 위치 챙겨놓고
             this.last_cell = Cell.Clone(this.object_info.current_cell);
 
@@ -207,14 +205,10 @@ namespace user_server
                 this.object_info.current_cell
             );
 
-            LogManager.WriteInfoLog("222222");
-
             var last_manage_server = MapHelper.GetServerIdByPositionKey(
                 Program.game_server_num,
                 last_position_key
             );
-
-            LogManager.WriteInfoLog("3333333");
 
             // current_cell을 target_cell로 변경
             this.object_info.current_cell = Cell.Clone(this.object_info.target_cell);
@@ -224,14 +218,10 @@ namespace user_server
                 this.object_info.current_cell
             );
 
-            LogManager.WriteInfoLog("444444444");
-
             var current_manage_server = MapHelper.GetServerIdByPositionKey(
                 Program.game_server_num,
                 current_position_key
             );
-
-            LogManager.WriteInfoLog("555555");
 
             // target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
             this.object_info.move_timestamp = DateTime.UtcNow;
@@ -241,21 +231,15 @@ namespace user_server
                 this.object_info.SetFlip(direction);
             }
 
-            LogManager.WriteInfoLog("66666666");
-
             await GameObjectInfoController.Save(user.cache_helper, this.object_info);
 
             this.object_lock.Release();
-
-            LogManager.WriteInfoLog("77");
 
             if (last_manage_server != current_manage_server)
             {
                 // 과거 담당 서버에는 영역을 떠났다고 전송
                 PublishLeave(last_position_key);
             }
-
-            LogManager.WriteInfoLog($"user - current_position_key: {current_position_key}");
 
             // 현재 담당 서버에 전송 - 같은 서버에 PublishLeave 따로 보내면 순서 뒤바뀔 수 있음
             PublishMove(last_position_key, current_position_key);
@@ -297,6 +281,9 @@ namespace user_server
         {
             // 기존 맵에 삭제 요청
             await PublishDestroy();
+
+            var packet = PacketMaker.U_TO_C_CHANGE_MAP(change_info.map_id, change_info.spawn_cell);
+            user.SendToClient(packet);
 
             this.object_info.map_id = change_info.map_id;
             this.object_info.current_cell = Cell.Clone(change_info.spawn_cell);
