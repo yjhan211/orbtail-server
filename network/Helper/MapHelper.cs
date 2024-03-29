@@ -77,13 +77,17 @@ namespace network
             new int[] { 39, 40 }
         };
 
-        public static Dictionary<string, (MapID, Cell)> portal_info =
+        public static Dictionary<string, (MapID, Cell, bool)> portal_info =
             new()
             {
-                { GetPositionKey(MapID.CITY_1, new(89, 141)), (MapID.FOREST_1, new(50, 50)) },
-                { GetPositionKey(MapID.CITY_1, new(89, 142)), (MapID.FOREST_1, new(50, 50)) },
-                { GetPositionKey(MapID.CITY_1, new(90, 141)), (MapID.FOREST_1, new(50, 50)) },
-                { GetPositionKey(MapID.CITY_1, new(90, 142)), (MapID.FOREST_1, new(50, 50)) },
+                { GetPositionKey(MapID.CITY_1, new(89, 141)), (MapID.FOREST_1, new(59, 66), true) },
+                { GetPositionKey(MapID.CITY_1, new(89, 142)), (MapID.FOREST_1, new(59, 66), true) },
+                { GetPositionKey(MapID.CITY_1, new(90, 141)), (MapID.FOREST_1, new(59, 66), true) },
+                { GetPositionKey(MapID.CITY_1, new(90, 142)), (MapID.FOREST_1, new(59, 66), true) },
+                { GetPositionKey(MapID.FOREST_1, new(60, 69)), (MapID.CITY_1, new(89, 139), true) },
+                { GetPositionKey(MapID.FOREST_1, new(60, 70)), (MapID.CITY_1, new(89, 139), true) },
+                { GetPositionKey(MapID.FOREST_1, new(59, 70)), (MapID.CITY_1, new(89, 139), true) },
+                { GetPositionKey(MapID.FOREST_1, new(59, 69)), (MapID.CITY_1, new(89, 139), true) },
             };
 
         public static void Initialize()

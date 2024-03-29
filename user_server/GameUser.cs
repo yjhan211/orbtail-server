@@ -5,6 +5,7 @@
     using StackExchange.Redis;
     using game_server;
     using RedLockNet.SERedis;
+    using log4net.Repository.Hierarchy;
 
     public class GameUser : IPeer
     {
@@ -19,7 +20,7 @@
         /*-------------------------------------------------------------*/
 
         public long player_id { get; private set; }
-        GameObjectController? move_controller { get; set; }
+        GameObjectController? object_controller { get; set; }
 
         /*-------------------------------------------------------------*/
 
@@ -90,16 +91,24 @@
                         {
                             throw new Exception($"Invalid ID: {this.player_id}, {player_id}");
                         }
-                        if (this.move_controller == null)
+                        if (this.object_controller == null)
                         {
                             return;
                         }
                         switch (protocol_id)
                         {
+                            case PROTOCOL.C_TO_U_CHANGE_MAP_SUCCESS:
+                                await ChangeMapSuccess();
+                                break;
+
+                            case PROTOCOL.C_TO_U_CHAT_LOG:
+                                await ChatLog();
+                                break;
+
                             case PROTOCOL.C_TO_U_MOVE:
                                 await HandleMessage<C_TO_U_MOVE>(
                                     body,
-                                    this.move_controller.RequestMove
+                                    this.object_controller.RequestMove
                                 );
                                 break;
 
@@ -110,7 +119,7 @@
                             case PROTOCOL.C_TO_U_OBJECT_INFO:
                                 await HandleMessage<C_TO_U_OBJECT_INFO>(
                                     body,
-                                    this.move_controller.GetObjectInfo
+                                    this.object_controller.GetObjectInfo
                                 );
                                 break;
 
@@ -149,7 +158,7 @@
         {
             try
             {
-                if (this.move_controller == null)
+                if (this.object_controller == null)
                 {
                     return;
                 }
@@ -162,15 +171,18 @@
                 switch (protocol_id)
                 {
                     case PROTOCOL.G_TO_U_MOVE:
-                        HandleMessage<G_TO_U_MOVE>(body, this.move_controller.SubscribeMove);
+                        HandleMessage<G_TO_U_MOVE>(body, this.object_controller.SubscribeMove);
                         break;
 
                     case PROTOCOL.G_TO_U_SPAWN:
-                        HandleMessage<G_TO_U_SPAWN>(body, this.move_controller.SubscribeSpawn);
+                        HandleMessage<G_TO_U_SPAWN>(body, this.object_controller.SubscribeSpawn);
                         break;
 
                     case PROTOCOL.G_TO_U_DESTROY:
-                        HandleMessage<G_TO_U_DESTROY>(body, this.move_controller.SubscribeDestroy);
+                        HandleMessage<G_TO_U_DESTROY>(
+                            body,
+                            this.object_controller.SubscribeDestroy
+                        );
                         break;
 
                     case PROTOCOL.U_TO_C_CHAT_MSG:
@@ -195,9 +207,9 @@
         {
             this.token.is_alive = true;
 
-            if (this.move_controller != null)
+            if (this.object_controller != null)
             {
-                await this.move_controller.HeartBeat();
+                await this.object_controller.HeartBeat();
             }
         }
 
@@ -235,7 +247,7 @@
                 await PlayerInfoController.Save(this.cache_helper, player_info);
 
                 this.player_id = player_info.player_id;
-                this.move_controller = new(this, player_info.object_info);
+                this.object_controller = new(this, player_info.object_info);
 
                 if (is_new)
                 {
@@ -262,13 +274,19 @@
             // 계정 정보 전송
             Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info);
             SendToClient(login_packet);
+        }
 
-            await this.move_controller.Move(
-                player_info.object_info.current_cell,
+        async Task ChangeMapSuccess()
+        {
+            await this.object_controller!.Move(
+                this.object_controller.object_info.current_cell,
                 DirectionType.NONE,
                 true
             );
+        }
 
+        async Task ChatLog()
+        {
             // 이전 채팅기록 불러오기
             var chat_history = await ChatController.GetChatHistory(this, ChatType.ALL);
             foreach (var chat_packet in chat_history)
@@ -347,9 +365,9 @@
 
         public async Task Release()
         {
-            if (this.move_controller != null)
+            if (this.object_controller != null)
             {
-                await this.move_controller.PublishDestroy();
+                await this.object_controller.PublishDestroy();
             }
 
             Packet packet = PacketMaker.U_TO_G_LOGOUT(this.player_id);

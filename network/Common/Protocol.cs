@@ -13,6 +13,7 @@ namespace network
         U_TO_C_LOGIN,
         C_TO_U_CHAT_MSG,
         U_TO_C_CHAT_MSG,
+        C_TO_U_CHAT_LOG,
         C_TO_U_MOVE,
         U_TO_G_MOVE,
         G_TO_U_MOVE,
@@ -31,6 +32,7 @@ namespace network
         C_TO_U_WEAR_ITEM,
         U_TO_C_WEAR_ITEM,
         U_TO_C_CHANGE_MAP,
+        C_TO_U_CHANGE_MAP_SUCCESS,
         U_TO_G_LOGOUT,
         END
     }

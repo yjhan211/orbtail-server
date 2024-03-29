@@ -14,7 +14,7 @@ namespace user_server
 
         /*-------------------------------------------------------------*/
 
-        GameObjectInfo object_info;
+        public GameObjectInfo object_info { get; private set; }
         Cell last_cell;
         Task move_object_task;
 
@@ -277,20 +277,23 @@ namespace user_server
             }
         }
 
-        public async Task ChangeMap((MapID map_id, Cell spawn_cell) change_info)
+        public async Task ChangeMap((MapID map_id, Cell spawn_cell, bool is_flip) change_info)
         {
             // 기존 맵에 삭제 요청
             await PublishDestroy();
 
-            var packet = PacketMaker.U_TO_C_CHANGE_MAP(change_info.map_id, change_info.spawn_cell);
+            var packet = PacketMaker.U_TO_C_CHANGE_MAP(
+                change_info.map_id,
+                change_info.spawn_cell,
+                change_info.is_flip
+            );
+
             user.SendToClient(packet);
 
             this.object_info.map_id = change_info.map_id;
             this.object_info.current_cell = Cell.Clone(change_info.spawn_cell);
             this.object_info.target_cell = Cell.Clone(change_info.spawn_cell);
-
-            // 새로운 맵에 생성
-            await Move(this.object_info.current_cell, DirectionType.NONE, true);
+            this.object_info.is_flip = change_info.is_flip;
         }
 
         // 다른 서버의 할당 영역으로 넘어갈 때, 기존 할당되어있던 서버에 삭제 요청

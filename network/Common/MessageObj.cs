@@ -189,6 +189,9 @@ namespace network
 
         [Key("spawn_cell")]
         public Cell spawn_cell { get; set; }
+
+        [Key("is_flip")]
+        public bool is_flip { get; set; }
     }
 
     [MessagePackObject]

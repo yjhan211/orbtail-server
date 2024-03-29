@@ -146,16 +146,6 @@ namespace game_server
                 manage_position_key_list.AddRange(
                     MapHelper.position_list_by_map_part[this.map_id][manage_part]
                 );
-
-                if (map_id == MapID.FOREST_1)
-                {
-                    LogManager.WriteDebugLog(
-                        String.Join(
-                            ",",
-                            MapHelper.position_list_by_map_part[this.map_id][manage_part]
-                        )
-                    );
-                }
             }
 
             foreach (var position_key in manage_position_key_list)
@@ -179,10 +169,6 @@ namespace game_server
                 object_info.current_cell
             );
 
-            LogManager.WriteInfoLog(
-                $"[{this.map_id}] current_position_key: {current_position_key}"
-            );
-
             // 위치 갱신
             lock (position_lock)
             {
@@ -202,8 +188,6 @@ namespace game_server
                 Program.game_server_num,
                 object_info.current_cell
             );
-
-            LogManager.WriteInfoLog($"target_server_list: {target_server_list.Count}");
 
             foreach (var target_server in target_server_list)
             {
@@ -255,7 +239,7 @@ namespace game_server
 
             lock (position_lock)
             {
-                this.object_position_dict[position_key].Remove(object_key);
+                var result = this.object_position_dict[position_key].Remove(object_key);
             }
 
             Cell position_cell = MapHelper.GetCell(position_key);
@@ -337,7 +321,7 @@ namespace game_server
                     continue;
                 }
 
-                foreach (var channel in channel_list)
+                foreach (var channel in channel_list.ToList())
                 {
                     this.nats_client!.Publish(channel, packet.ToBytes());
                 }
