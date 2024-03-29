@@ -48,7 +48,8 @@ namespace network
     {
         NONE,
         PLAYER,
-        ITEM
+        ITEM,
+        JOB_RESOURCE,
     }
 
     public enum TileType : int
