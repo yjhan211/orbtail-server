@@ -5,7 +5,6 @@ namespace game_server
     using network;
     using RedLockNet.SERedis;
     using RedLockNet;
-    using Newtonsoft.Json.Linq;
 
     public static class PlayerInfoController
     {

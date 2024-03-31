@@ -41,6 +41,19 @@
             return result;
         }
 
+        public static (string, int) GetJobResourceDetail(int job_resource_id)
+        {
+            var result = ("", 0);
+            switch (job_resource_id)
+            {
+                case 10001:
+                    result = ("무른 암석", 20);
+                    break;
+            }
+
+            return result;
+        }
+
         public static bool IsSameTypeItem(int item_id, int target_item_id)
         {
             return GetItemType(item_id) == GetItemType(target_item_id);

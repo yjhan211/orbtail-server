@@ -123,6 +123,13 @@
                                 );
                                 break;
 
+                            case PROTOCOL.C_TO_U_JOB_RESOURCE_INFO:
+                                await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(
+                                    body,
+                                    GetJobResourceInfo
+                                );
+                                break;
+
                             case PROTOCOL.C_TO_U_GET_JOB:
                                 await HandleMessage<C_TO_U_GET_JOB>(body, JobController.GetJob);
                                 break;
@@ -325,6 +332,44 @@
                 if (is_max || is_ended)
                 {
                     Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(player_info_list);
+                    this.SendToClient(packet);
+
+                    await Task.Delay(100);
+                }
+            }
+        }
+
+        async Task GetJobResourceInfo(GameUser _, C_TO_U_JOB_RESOURCE_INFO body)
+        {
+            var job_resource_id_list = body.job_resource_id_list;
+            var job_resource_info_list = new List<JobResourceInfo>();
+
+            for (int i = 0; i < job_resource_id_list.Count; i++)
+            {
+                var target_resource_id = job_resource_id_list[i];
+                JobResourceInfo? target_resource_info;
+
+                using (await JobResourceController.Lock(this.redlock, target_resource_id))
+                {
+                    target_resource_info = await JobResourceController.Load(
+                        cache_helper,
+                        target_resource_id
+                    );
+                }
+
+                if (target_resource_info == null)
+                {
+                    continue;
+                }
+
+                job_resource_info_list.Add(target_resource_info);
+
+                bool is_max = job_resource_id_list.Count >= Config.BROADCAST_UNIT;
+                bool is_ended = i == job_resource_id_list.Count - 1;
+
+                if (is_max || is_ended)
+                {
+                    Packet packet = PacketMaker.U_TO_C_JOB_RESOURCE_INFO(job_resource_info_list);
                     this.SendToClient(packet);
 
                     await Task.Delay(100);

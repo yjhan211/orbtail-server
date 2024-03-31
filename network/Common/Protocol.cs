@@ -27,6 +27,8 @@ namespace network
         U_TO_C_PLAYER_INFO,
         G_TO_U_PLAYER_INFO,
         C_TO_U_OBJECT_INFO,
+        C_TO_U_JOB_RESOURCE_INFO,
+        U_TO_C_JOB_RESOURCE_INFO,
         C_TO_U_GET_JOB,
         U_TO_C_GET_JOB,
         C_TO_U_WEAR_ITEM,
@@ -49,7 +51,7 @@ namespace network
         NONE,
         PLAYER,
         ITEM,
-        JOB_RESOURCE,
+        JOBRESOURCE,
     }
 
     public enum TileType : int

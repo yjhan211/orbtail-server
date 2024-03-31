@@ -28,11 +28,6 @@ namespace game_server
             this.manage_cell_list = new();
 
             this.cts = new();
-
-            if (this.map_id == MapID.FOREST_1)
-            {
-                this.create_job_resource_task = Task.Run(CreateJobResourceTask, this.cts.Token);
-            }
         }
 
         public void Initialize(NatsClient nats_client)
@@ -168,6 +163,11 @@ namespace game_server
                 this.object_position_dict[position_key] = new();
                 manage_cell_list.Add(MapHelper.GetCell(position_key));
             }
+
+            if (this.map_id == MapID.FOREST_1)
+            {
+                this.create_job_resource_task = Task.Run(CreateJobResourceTask, this.cts.Token);
+            }
         }
 
         object position_lock = new();
@@ -202,6 +202,7 @@ namespace game_server
                             this.map_id,
                             create_cell
                         );
+
                         long resource_uid = await this.cache_helper!.StringIncrement(
                             "temp_job_resource_uid"
                         );
@@ -209,23 +210,20 @@ namespace game_server
                         GameObjectInfo object_info =
                             new()
                             {
-                                object_type = ObjectType.JOB_RESOURCE,
+                                object_type = ObjectType.JOBRESOURCE,
                                 object_id = resource_uid,
                                 current_cell = create_cell,
                                 target_cell = create_cell,
                             };
-                        ;
 
-                        // TODO resource_id 정리, 확률 기반 생성
-                        JobResourceInfo job_resource_info = new(resource_uid, 1, object_info);
+                        // TODO resource_id 정리, 확률 기반으로 종류 결정
+                        JobResourceInfo job_resource_info = new(resource_uid, 10001, object_info);
                         this.job_resource_dict[part_resource_info.Key].Add(job_resource_info);
+                        this.object_position_dict[create_position_key].Add(
+                            object_info.GetHashField()
+                        );
 
-                        lock (position_lock)
-                        {
-                            this.object_position_dict[create_position_key].Add(
-                                object_info.GetHashField()
-                            );
-                        }
+                        await JobResourceController.Save(this.cache_helper, job_resource_info);
 
                         // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
                         var target_server_list = MapHelper.GetBoundServerList(

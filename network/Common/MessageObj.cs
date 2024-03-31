@@ -151,6 +151,20 @@ namespace network
     }
 
     [MessagePackObject]
+    public class C_TO_U_JOB_RESOURCE_INFO : IMessagePackObject
+    {
+        [Key("job_resource_id_list")]
+        public List<long> job_resource_id_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_JOB_RESOURCE_INFO : IMessagePackObject
+    {
+        [Key("job_resource_info")]
+        public List<JobResourceInfo> job_resource_info_list { get; set; }
+    }
+
+    [MessagePackObject]
     public class U_TO_G_LOGOUT : IMessagePackObject
     {
         [Key("player_id")]

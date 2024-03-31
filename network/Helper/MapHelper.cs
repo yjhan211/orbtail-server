@@ -296,7 +296,7 @@ namespace network
             return clone;
         }
 
-        public static List<Cell> GetBoundCellList(Cell pivot_cell)
+        public static List<Cell> GetBoundCellList(Cell pivot_cell, bool client_view = false)
         {
             List<Cell> result = new();
 
@@ -359,6 +359,29 @@ namespace network
                 {
                     min_y += 1;
                     max_y -= 1;
+                }
+
+                // 캐릭이 범위보다 아래에 있음. 클라에선 맨 윗줄 날려버림
+                if (client_view)
+                {
+                    for (int y = min_y; y <= max_y; y++)
+                    {
+                        int dx = System.Math.Abs(x - pivot_cell.x);
+                        int dy = System.Math.Abs(y - pivot_cell.y);
+
+                        if (
+                            (dx >= 8 && dx <= 14)
+                            && (dy >= 8 && dy <= 14)
+                            && (dx + dy == 22 || dx + dy == 23)
+                        )
+                        {
+                            continue;
+                        }
+
+                        Cell cell = new(x, y);
+                        result.Add(cell);
+                    }
+                    continue;
                 }
 
                 for (int y = min_y; y <= max_y; y++)

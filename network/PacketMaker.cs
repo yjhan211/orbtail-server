@@ -49,6 +49,15 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_JOB_RESOURCE_INFO(List<JobResourceInfo> job_resource_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_JOB_RESOURCE_INFO);
+            U_TO_C_JOB_RESOURCE_INFO body = new() { job_resource_info_list = job_resource_list };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_C_CHAT_MSG(ChatType chat_type, string name, string chat_message)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CHAT_MSG);

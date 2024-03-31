@@ -246,9 +246,12 @@ namespace user_server
 
             var last_bound_cell_list = all_bound
                 ? new()
-                : MapHelper.GetBoundCellList(this.last_cell);
+                : MapHelper.GetBoundCellList(this.last_cell, true);
 
-            var current_bound_cell_list = MapHelper.GetBoundCellList(this.object_info.current_cell);
+            var current_bound_cell_list = MapHelper.GetBoundCellList(
+                this.object_info.current_cell,
+                true
+            );
 
             // 현재 바운드 - 이전 바운드 = spawn 대상 TODO map_id
             var object_spawn_list = current_bound_cell_list
