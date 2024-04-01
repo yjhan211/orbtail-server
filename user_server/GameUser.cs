@@ -141,6 +141,13 @@
                                 );
                                 break;
 
+                            case PROTOCOL.C_TO_U_USE_SKILL:
+                                await HandleMessage<C_TO_U_USE_SKILL>(
+                                    body,
+                                    JobController.UseJobSkill
+                                );
+                                break;
+
                             case PROTOCOL.C_TO_U_CHAT_MSG:
                                 await HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
                                 break;

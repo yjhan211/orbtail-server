@@ -165,6 +165,37 @@ namespace network
     }
 
     [MessagePackObject]
+    public class C_TO_U_USE_SKILL : IMessagePackObject
+    {
+        [Key("target_job_resource_uid")]
+        public long resource_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_USE_SKILL : IMessagePackObject
+    {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_G_USE_SKILL : IMessagePackObject
+    {
+        [Key("resource_uid")]
+        public long resource_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_USE_SKILL_COMPLETE : IMessagePackObject
+    {
+        [Key("item_info")]
+        public ItemInfo item_info { get; set; }
+
+        [Key("inventory_info")]
+        public InventoryInfo inventory_info { get; set; }
+    }
+
+    [MessagePackObject]
     public class U_TO_G_LOGOUT : IMessagePackObject
     {
         [Key("player_id")]

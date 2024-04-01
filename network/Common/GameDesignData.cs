@@ -41,13 +41,13 @@
             return result;
         }
 
-        public static (string, int) GetJobResourceDetail(int job_resource_id)
+        public static (string, int, int, string) GetJobResourceDetail(int job_resource_id)
         {
-            var result = ("", 0);
+            var result = ("", 0, 0, "");
             switch (job_resource_id)
             {
                 case 10001:
-                    result = ("무른 암석", 20);
+                    result = ("무른 암석", 20, 10000, "채광 스킬이 필요해요.");
                     break;
             }
 
