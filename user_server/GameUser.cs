@@ -312,38 +312,12 @@
         async Task GetPlayerInfo(GameUser _, C_TO_U_PLAYER_INFO body)
         {
             var player_id_list = body.player_id_list;
-            var player_info_list = new List<PlayerInfo>();
-            for (int i = 0; i < player_id_list.Count; i++)
-            {
-                var target_player_id = player_id_list[i];
-                PlayerInfo? target_player_info;
 
-                using (await PlayerInfoController.Lock(this.redlock, this.player_id))
-                {
-                    target_player_info = await PlayerInfoController.Load(
-                        cache_helper,
-                        target_player_id
-                    );
-                }
+            RedisValue[] keys = body.player_id_list.ConvertAll(x => (RedisValue)x).ToArray();
+            var player_info_list = await PlayerInfoController.LoadAll(cache_helper, keys);
 
-                if (target_player_info == null)
-                {
-                    continue;
-                }
-
-                player_info_list.Add(target_player_info);
-
-                bool is_max = player_info_list.Count >= Config.BROADCAST_UNIT;
-                bool is_ended = i == player_id_list.Count - 1;
-
-                if (is_max || is_ended)
-                {
-                    Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(player_info_list);
-                    this.SendToClient(packet);
-
-                    await Task.Delay(100);
-                }
-            }
+            Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(player_info_list);
+            this.SendToClient(packet);
         }
 
         async Task GetJobResourceInfo(GameUser _, C_TO_U_JOB_RESOURCE_INFO body)

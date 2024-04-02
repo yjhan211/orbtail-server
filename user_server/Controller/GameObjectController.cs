@@ -60,7 +60,7 @@ namespace user_server
                         user.SendToClient(packet);
                     }
 
-                    await Task.Delay(100);
+                    await Task.Delay(16);
                 }
                 catch (Exception e)
                 {
@@ -124,8 +124,6 @@ namespace user_server
 
             Packet packet = PacketMaker.U_TO_C_DESTROY(object_key);
             user.SendToClient(packet);
-
-            LogManager.WriteInfoLog(object_key);
         }
 
         // 마지막 이동 요청 후처리
