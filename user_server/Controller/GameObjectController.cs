@@ -122,6 +122,8 @@ namespace user_server
         {
             var object_key = body.object_key;
 
+            LogManager.WriteDebugLog($"{object_key}");
+
             Packet packet = PacketMaker.U_TO_C_DESTROY(object_key);
             user.SendToClient(packet);
         }
@@ -172,6 +174,28 @@ namespace user_server
             }
 
             await Move(next_target_cell, body.direction);
+        }
+
+        public async Task SetFlip(DirectionType direction)
+        {
+            if (direction == DirectionType.NONE)
+            {
+                return;
+            }
+
+            await this.object_lock.WaitAsync();
+
+            this.object_info.SetFlip(direction);
+            await GameObjectInfoController.Save(user.cache_helper, this.object_info);
+
+            this.object_lock.Release();
+
+            var current_position_key = MapHelper.GetPositionKey(
+                this.object_info.map_id,
+                this.object_info.current_cell
+            );
+
+            PublishMove(current_position_key, current_position_key);
         }
 
         // 이동

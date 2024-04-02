@@ -25,9 +25,16 @@ namespace network
 
         [Key("job_info")]
         public JobInfo job_info { get; set; }
+    }
 
-        [Key("inventory_info")]
-        public InventoryInfo inventory_info { get; set; }
+    [MessagePackObject]
+    public class U_TO_C_INVENTORY_ITEM_LIST : IMessagePackObject
+    {
+        [Key("item_list")]
+        public List<ItemInfo> item_list { get; set; }
+
+        [Key("is_ended")]
+        public bool is_end { get; set; }
     }
 
     [MessagePackObject]
@@ -174,8 +181,8 @@ namespace network
     [MessagePackObject]
     public class U_TO_C_USE_SKILL : IMessagePackObject
     {
-        [Key("error_code")]
-        public ErrorCode error_code { get; set; }
+        [Key("job_resource_info")]
+        public JobResourceInfo job_resource_info { get; set; }
     }
 
     [MessagePackObject]
@@ -191,8 +198,8 @@ namespace network
         [Key("item_info")]
         public ItemInfo item_info { get; set; }
 
-        [Key("inventory_info")]
-        public InventoryInfo inventory_info { get; set; }
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
     }
 
     [MessagePackObject]
@@ -221,9 +228,6 @@ namespace network
     {
         [Key("player_info")]
         public PlayerInfo player_info { get; set; }
-
-        [Key("inventory_info")]
-        public InventoryInfo inventory_info { get; set; }
     }
 
     [MessagePackObject]
@@ -247,8 +251,5 @@ namespace network
 
         [Key("job_info")]
         public JobInfo job_info { get; set; }
-
-        [Key("inventory_info")]
-        public InventoryInfo inventory_info { get; set; }
     }
 }

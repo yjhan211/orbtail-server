@@ -11,6 +11,7 @@ namespace network
         HEART_BEAT = 0,
         C_TO_U_LOGIN,
         U_TO_C_LOGIN,
+        U_TO_C_INVENTORY_ITEM_LIST,
         C_TO_U_CHAT_MSG,
         U_TO_C_CHAT_MSG,
         C_TO_U_CHAT_LOG,
@@ -32,6 +33,7 @@ namespace network
         C_TO_U_USE_SKILL,
         U_TO_C_USE_SKILL,
         U_TO_G_USE_SKILL,
+        U_TO_C_USE_SKILL_COMPLETE,
         C_TO_U_GET_JOB,
         U_TO_C_GET_JOB,
         C_TO_U_WEAR_ITEM,
@@ -117,6 +119,13 @@ namespace network
     {
         SUCCESS = 0,
         ALREADY_HAS_JOB,
+        ALREADY_ANOTHER_USE_SKILL,
         FATAL
+    }
+
+    public enum PlayerState : short
+    {
+        NONE = 0,
+        GEO_WORK_1,
     }
 }

@@ -20,6 +20,9 @@ namespace network
         [Key("player_id")]
         public long player_id { get; set; } // 점유중인 플레이어 아이디
 
+        [Key("end_timestamp")]
+        public DateTime end_timestamp { get; set; } // 점유 끝나는 시간
+
         // 이거 없애면 안됨 MessagePack에서 씀
         public JobResourceInfo()
         {

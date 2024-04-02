@@ -399,5 +399,13 @@ namespace network
             Random random = new();
             return part_pivot_list[random.Next(0, part_pivot_list.Count)];
         }
+
+        public static int GetDistance(Cell cell1, Cell cell2)
+        {
+            int dx = Math.Abs(cell1.x - cell2.x);
+            int dy = Math.Abs(cell1.y - cell2.y);
+
+            return dx + dy;
+        }
     }
 }

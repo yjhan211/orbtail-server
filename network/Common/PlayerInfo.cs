@@ -33,6 +33,9 @@ namespace network
         [Key("wear_item_id_list")]
         public List<int> wear_items { get; set; }
 
+        [Key("state")]
+        public PlayerState state { get; set; }
+
         // 이거 없애면 안됨 MessagePack에서 씀
         public PlayerInfo()
         {
@@ -40,6 +43,7 @@ namespace network
             this.name = "";
             this.grade = PlayerGrade.NONE;
             this.wear_items = new List<int>();
+            this.state = PlayerState.NONE;
 
             this.object_info = new GameObjectInfo();
             this.job_info = new JobInfo();
@@ -52,6 +56,7 @@ namespace network
             this.name = name;
             this.grade = PlayerGrade.COMMONER;
             this.wear_items = new List<int>();
+            this.state = PlayerState.NONE;
 
             this.object_info = new GameObjectInfo(ObjectType.PLAYER, player_id, cell);
             this.job_info = new JobInfo(player_id);

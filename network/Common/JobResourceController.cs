@@ -64,9 +64,9 @@ namespace network
             return resource_info;
         }
 
-        public static async Task Delete(CacheHelper cache_helper, long player_id)
+        public static async Task Delete(CacheHelper cache_helper, long resource_uid)
         {
-            await cache_helper.HashDelete(JobResourceInfo.HASH_KEY, player_id);
+            await cache_helper.HashDelete(JobResourceInfo.HASH_KEY, resource_uid);
         }
     }
 }

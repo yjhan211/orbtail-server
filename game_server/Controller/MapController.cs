@@ -214,6 +214,7 @@ namespace game_server
                                 object_id = resource_uid,
                                 current_cell = create_cell,
                                 target_cell = create_cell,
+                                map_id = MapID.FOREST_1,
                             };
 
                         // TODO resource_id 정리, 확률 기반으로 종류 결정
@@ -352,6 +353,8 @@ namespace game_server
                 Program.game_server_num,
                 position_cell
             );
+
+            LogManager.WriteDebugLog($"{object_key}, {target_server_list.Count}");
 
             foreach (var target_server in target_server_list)
             {

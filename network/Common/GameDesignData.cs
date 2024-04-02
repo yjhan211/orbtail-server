@@ -28,13 +28,13 @@
             return result;
         }
 
-        public static string GetSkillDetail(int skill_id)
+        public static (string, bool, PlayerState) GetSkillDetail(int skill_id)
         {
-            var result = "";
+            var result = ("", false, PlayerState.NONE);
             switch (skill_id)
             {
                 case 10001:
-                    result = "채광 Lv1: 암석으로부터 자원을 얻는 기술";
+                    result = ("채광 Lv1: 암석으로부터 자원을 얻는 기술", true, PlayerState.GEO_WORK_1);
                     break;
             }
 

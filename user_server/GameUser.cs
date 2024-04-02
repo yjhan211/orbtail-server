@@ -20,9 +20,11 @@
         /*-------------------------------------------------------------*/
 
         public long player_id { get; private set; }
-        GameObjectController? object_controller { get; set; }
+        public GameObjectController? object_controller { get; set; }
 
         /*-------------------------------------------------------------*/
+        public bool in_action { get; set; }
+        public JobResourceInfo? current_job_resource { get; set; }
 
         public GameUser(UserToken token)
         {
@@ -76,83 +78,96 @@
 
                 await this.player_lock.WaitAsync();
 
-                switch (protocol_id)
+                var non_auth_protocol = new[] { PROTOCOL.HEART_BEAT, PROTOCOL.C_TO_U_LOGIN };
+                if (non_auth_protocol.Contains(protocol_id))
                 {
-                    case PROTOCOL.HEART_BEAT:
-                        await HeartBeat();
-                        break;
+                    switch (protocol_id)
+                    {
+                        case PROTOCOL.HEART_BEAT:
+                            await HeartBeat();
+                            break;
 
-                    case PROTOCOL.C_TO_U_LOGIN:
-                        await HandleMessage<C_TO_U_LOGIN>(body, Login);
-                        break;
+                        case PROTOCOL.C_TO_U_LOGIN:
+                            await HandleMessage<C_TO_U_LOGIN>(body, Login);
+                            break;
+                    }
+                }
+                else
+                {
+                    if (player_id == 0 || this.player_id != player_id)
+                    {
+                        throw new Exception($"Invalid ID: {this.player_id}, {player_id}");
+                    }
 
-                    default:
-                        if (player_id == 0 || this.player_id != player_id)
-                        {
-                            throw new Exception($"Invalid ID: {this.player_id}, {player_id}");
-                        }
-                        if (this.object_controller == null)
-                        {
-                            return;
-                        }
-                        switch (protocol_id)
-                        {
-                            case PROTOCOL.C_TO_U_CHANGE_MAP_SUCCESS:
-                                await ChangeMapSuccess();
-                                break;
+                    if (this.object_controller == null)
+                    {
+                        throw new Exception($"not initialize state {this.player_id}, {player_id}");
+                    }
 
-                            case PROTOCOL.C_TO_U_CHAT_LOG:
-                                await ChatLog();
-                                break;
+                    var action_protocol = new[]
+                    {
+                        PROTOCOL.C_TO_U_MOVE,
+                        PROTOCOL.C_TO_U_WEAR_ITEM,
+                        PROTOCOL.C_TO_U_GET_JOB,
+                        PROTOCOL.C_TO_U_USE_SKILL
+                    };
 
-                            case PROTOCOL.C_TO_U_MOVE:
-                                await HandleMessage<C_TO_U_MOVE>(
-                                    body,
-                                    this.object_controller.RequestMove
-                                );
-                                break;
+                    if (action_protocol.Contains(protocol_id) && this.in_action)
+                    {
+                        throw new Exception($"in action. {this.player_id}");
+                    }
 
-                            case PROTOCOL.C_TO_U_PLAYER_INFO:
-                                await HandleMessage<C_TO_U_PLAYER_INFO>(body, GetPlayerInfo);
-                                break;
+                    switch (protocol_id)
+                    {
+                        case PROTOCOL.C_TO_U_CHANGE_MAP_SUCCESS:
+                            await ChangeMapSuccess();
+                            break;
 
-                            case PROTOCOL.C_TO_U_OBJECT_INFO:
-                                await HandleMessage<C_TO_U_OBJECT_INFO>(
-                                    body,
-                                    this.object_controller.GetObjectInfo
-                                );
-                                break;
+                        case PROTOCOL.C_TO_U_CHAT_LOG:
+                            await ChatLog();
+                            break;
 
-                            case PROTOCOL.C_TO_U_JOB_RESOURCE_INFO:
-                                await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(
-                                    body,
-                                    GetJobResourceInfo
-                                );
-                                break;
+                        case PROTOCOL.C_TO_U_MOVE:
+                            await HandleMessage<C_TO_U_MOVE>(
+                                body,
+                                this.object_controller.RequestMove
+                            );
+                            break;
 
-                            case PROTOCOL.C_TO_U_GET_JOB:
-                                await HandleMessage<C_TO_U_GET_JOB>(body, JobController.GetJob);
-                                break;
+                        case PROTOCOL.C_TO_U_PLAYER_INFO:
+                            await HandleMessage<C_TO_U_PLAYER_INFO>(body, GetPlayerInfo);
+                            break;
 
-                            case PROTOCOL.C_TO_U_WEAR_ITEM:
-                                await HandleMessage<C_TO_U_WEAR_ITEM>(
-                                    body,
-                                    InventoryController.RequestWearItem
-                                );
-                                break;
+                        case PROTOCOL.C_TO_U_OBJECT_INFO:
+                            await HandleMessage<C_TO_U_OBJECT_INFO>(
+                                body,
+                                this.object_controller.GetObjectInfo
+                            );
+                            break;
 
-                            case PROTOCOL.C_TO_U_USE_SKILL:
-                                await HandleMessage<C_TO_U_USE_SKILL>(
-                                    body,
-                                    JobController.UseJobSkill
-                                );
-                                break;
+                        case PROTOCOL.C_TO_U_JOB_RESOURCE_INFO:
+                            await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, GetJobResourceInfo);
+                            break;
 
-                            case PROTOCOL.C_TO_U_CHAT_MSG:
-                                await HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
-                                break;
-                        }
-                        break;
+                        case PROTOCOL.C_TO_U_GET_JOB:
+                            await HandleMessage<C_TO_U_GET_JOB>(body, JobController.GetJob);
+                            break;
+
+                        case PROTOCOL.C_TO_U_WEAR_ITEM:
+                            await HandleMessage<C_TO_U_WEAR_ITEM>(
+                                body,
+                                InventoryController.RequestWearItem
+                            );
+                            break;
+
+                        case PROTOCOL.C_TO_U_USE_SKILL:
+                            await HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
+                            break;
+
+                        case PROTOCOL.C_TO_U_CHAT_MSG:
+                            await HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
+                            break;
+                    }
                 }
 
                 Packet.Destroy(packet);
@@ -160,7 +175,7 @@
             catch (Exception e)
             {
                 LogManager.WriteErrorLog(e);
-                this.OnRemoved();
+                // this.OnRemoved();
             }
             finally
             {
@@ -225,6 +240,11 @@
             {
                 await this.object_controller.HeartBeat();
             }
+
+            if (this.current_job_resource != null)
+            {
+                await JobController.JobSkillEnd(this);
+            }
         }
 
         async Task Login(GameUser _, C_TO_U_LOGIN request)
@@ -259,9 +279,11 @@
                     player_info.object_info.map_id = MapID.CITY_1;
                 }
                 await PlayerInfoController.Save(this.cache_helper, player_info);
+                await GameObjectInfoController.Save(this.cache_helper, player_info.object_info);
 
                 this.player_id = player_info.player_id;
                 this.object_controller = new(this, player_info.object_info);
+                this.in_action = false;
 
                 if (is_new)
                 {
@@ -288,6 +310,13 @@
             // 계정 정보 전송
             Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info);
             SendToClient(login_packet);
+
+            // 인벤토리 정보 전송
+            await InventoryController.GetCurrentItemList(this);
+
+            // TODO 테스트하느라 넣음 삭제할 것
+            C_TO_U_GET_JOB dummy = new() { job_type = JobType.GEOIOGIST };
+            await JobController.GetJob(this, dummy);
         }
 
         async Task ChangeMapSuccess()
@@ -375,6 +404,28 @@
             );
 
             this.SendToClient(packet);
+        }
+
+        public void BroadcastUpdatePlayerInfo(PlayerInfo player_info)
+        {
+            var position_key = MapHelper.GetPositionKey(
+                player_info.object_info.map_id,
+                player_info.object_info.current_cell
+            );
+
+            var target_server_list = MapHelper.GetBoundServerList(
+                player_info.object_info.map_id,
+                Program.game_server_num,
+                MapHelper.GetCell(position_key)
+            );
+
+            foreach (var target_server in target_server_list)
+            {
+                this.nats_client!.Publish(
+                    MapHelper.GetUpdatePlayerSubject(player_info.object_info.map_id, target_server),
+                    MessagePackSerializer.Serialize((position_key, player_info))
+                );
+            }
         }
 
         public void SendToClient(Packet msg)

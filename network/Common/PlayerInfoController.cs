@@ -15,7 +15,8 @@ namespace game_server
 
         public static async Task Save(CacheHelper cache_helper, PlayerInfo player_info)
         {
-            await GameObjectInfoController.Save(cache_helper, player_info.object_info);
+            // 조회가 빈번해서 메모리에 올려뒀음. 따로 Save함
+            // await GameObjectInfoController.Save(cache_helper, player_info.object_info);
             await JobInfoController.Save(cache_helper, player_info.job_info);
             await InventoryInfoController.Save(cache_helper, player_info.inventory_info);
 

@@ -54,6 +54,11 @@ namespace user_server
 
         public static async Task RequestWearItem(GameUser user, C_TO_U_WEAR_ITEM body)
         {
+            if (user.in_action)
+            {
+                throw new Exception("player in action");
+            }
+
             PlayerInfo player_info;
             using (await PlayerInfoController.Lock(user.redlock, user.player_id))
             {
@@ -62,24 +67,37 @@ namespace user_server
 
             Packet packet = PacketMaker.U_TO_C_WEAR_ITEM(player_info);
             user.SendToClient(packet);
+            await GetCurrentItemList(user);
 
-            var position_key = MapHelper.GetPositionKey(
-                player_info.object_info.map_id,
-                player_info.object_info.current_cell
-            );
+            user.BroadcastUpdatePlayerInfo(player_info);
+        }
 
-            var target_server_list = MapHelper.GetBoundServerList(
-                player_info.object_info.map_id,
-                Program.game_server_num,
-                MapHelper.GetCell(position_key)
-            );
-
-            foreach (var target_server in target_server_list)
+        public static async Task GetCurrentItemList(GameUser user)
+        {
+            var player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+            if (player_info == null)
             {
-                user.nats_client!.Publish(
-                    MapHelper.GetUpdatePlayerSubject(player_info.object_info.map_id, target_server),
-                    MessagePackSerializer.Serialize((position_key, player_info))
-                );
+                throw new Exception("player_info not exists");
+            }
+
+            var inventory_info = player_info.inventory_info;
+            if (inventory_info == null)
+            {
+                throw new Exception("inventory_info not exists");
+            }
+
+            for (int i = 0; i < inventory_info.item_list.Count; i += Config.BROADCAST_UNIT)
+            {
+                List<ItemInfo> batch = inventory_info.item_list
+                    .Skip(i)
+                    .Take(Config.BROADCAST_UNIT)
+                    .ToList();
+
+                var remain = inventory_info.item_list.Count - i - Config.BROADCAST_UNIT;
+                var is_ended = remain <= 0;
+
+                Packet packet = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(batch, is_ended);
+                user.SendToClient(packet);
             }
         }
 
