@@ -181,8 +181,14 @@ namespace network
     [MessagePackObject]
     public class U_TO_C_USE_SKILL : IMessagePackObject
     {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+
         [Key("job_resource_info")]
-        public JobResourceInfo job_resource_info { get; set; }
+        public JobResourceInfo? job_resource_info { get; set; }
+
+        [Key("job_info")]
+        public JobInfo? job_info { get; set; }
     }
 
     [MessagePackObject]
@@ -228,6 +234,20 @@ namespace network
     {
         [Key("player_info")]
         public PlayerInfo player_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_USE_ITEM : IMessagePackObject
+    {
+        [Key("item_uid")]
+        public long item_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_USE_ITEM : IMessagePackObject
+    {
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
     }
 
     [MessagePackObject]

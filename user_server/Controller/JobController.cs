@@ -32,7 +32,6 @@ namespace user_server
                     case JobType.GEOIOGIST:
                         job_info.job_type = JobType.GEOIOGIST;
                         job_info.job_grade = JobGrade.TRAINEE;
-                        job_info.hp = GameDesignData.GetMaxHP(job_info.job_grade);
 
                         var gift_geo = await InventoryController.CreateItem(user, 1002000001, 1);
                         gift_item_list.Add(gift_geo);
@@ -81,6 +80,9 @@ namespace user_server
         public static async Task UseJobSkill(GameUser user, C_TO_U_USE_SKILL body)
         {
             PlayerInfo? player_info;
+            JobResourceInfo? job_resource_info;
+            var direction = DirectionType.NONE;
+
             using (await PlayerInfoController.Lock(user.redlock, user.player_id))
             {
                 player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
@@ -88,85 +90,103 @@ namespace user_server
                 {
                     throw new Exception("player_info not exists");
                 }
-            }
-
-            var use_skill_id = 0;
-            JobResourceInfo? job_resource_info;
-
-            var direction = DirectionType.NONE;
-            using (await JobResourceController.Lock(user.redlock, body.resource_uid))
-            {
-                job_resource_info = await JobResourceController.Load(
-                    user.cache_helper,
-                    body.resource_uid
-                );
-
-                if (job_resource_info == null)
+                if (player_info.job_info == null)
                 {
-                    throw new Exception($"job_resource_info not exists. uid : {body.resource_uid}");
+                    throw new Exception("job_info not exists");
+                }
+                if (player_info.job_info.hp <= 0)
+                {
+                    throw new Exception("hp not enough");
                 }
 
-                if (job_resource_info.player_id != 0)
+                var use_skill_id = 0;
+                using (await JobResourceController.Lock(user.redlock, body.resource_uid))
                 {
-                    throw new Exception($"already another player used. uid : {body.resource_uid}");
-                }
-
-                var player_current_cell = player_info.object_info.current_cell;
-                var job_resource_current_cell = job_resource_info.object_info.current_cell;
-                if (1 < MapHelper.GetDistance(player_current_cell, job_resource_current_cell))
-                {
-                    throw new Exception(
-                        $"invalid position. player: {player_info.player_id} resource: {body.resource_uid}"
+                    job_resource_info = await JobResourceController.Load(
+                        user.cache_helper,
+                        body.resource_uid
                     );
-                }
 
-                direction = CalcSkillDirection(player_current_cell, job_resource_current_cell);
+                    if (job_resource_info == null)
+                    {
+                        throw new Exception(
+                            $"job_resource_info not exists. uid : {body.resource_uid}"
+                        );
+                    }
 
-                var skill_list = GetSkillList(player_info);
-                var job_resource_detail = GameDesignData.GetJobResourceDetail(
-                    job_resource_info.resource_id
-                );
+                    if (job_resource_info.player_id != 0)
+                    {
+                        Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(
+                            ErrorCode.ALREADY_ANOTHER_USE_SKILL
+                        );
 
-                var job_resource_name = job_resource_detail.Item1;
-                var job_resource_maxHp = job_resource_detail.Item2;
-                var job_resource_skill_type = job_resource_detail.Item3;
+                        user.SendToClient(error_packet);
+                    }
 
-                switch (job_resource_info.resource_id)
-                {
-                    case 10001: // 무른 암석
-                        foreach (var skill_id in skill_list)
-                        {
-                            int skill_type = (skill_id / 10000) * 10000;
-                            if (skill_type == job_resource_skill_type)
+                    var player_current_cell = player_info.object_info.current_cell;
+                    var job_resource_current_cell = job_resource_info.object_info.current_cell;
+                    if (1 < MapHelper.GetDistance(player_current_cell, job_resource_current_cell))
+                    {
+                        throw new Exception(
+                            $"invalid position. player: {player_info.player_id} resource: {body.resource_uid}"
+                        );
+                    }
+
+                    direction = CalcSkillDirection(player_current_cell, job_resource_current_cell);
+
+                    var skill_list = GetSkillList(player_info);
+                    var job_resource_detail = GameDesignData.GetJobResourceDetail(
+                        job_resource_info.resource_id
+                    );
+
+                    var job_resource_name = job_resource_detail.Item1;
+                    var job_resource_maxHp = job_resource_detail.Item2;
+                    var job_resource_skill_type = job_resource_detail.Item3;
+
+                    switch (job_resource_info.resource_id)
+                    {
+                        case 10001: // 무른 암석
+                            foreach (var skill_id in skill_list)
                             {
-                                use_skill_id = skill_id;
-                                break;
+                                int skill_type = (skill_id / 10000) * 10000;
+                                if (skill_type == job_resource_skill_type)
+                                {
+                                    use_skill_id = skill_id;
+                                    break;
+                                }
                             }
-                        }
-                        break;
+                            break;
+                    }
+
+                    if (use_skill_id == 0)
+                    {
+                        throw new Exception("current useable skill is none");
+                    }
+
+                    job_resource_info.player_id = user.player_id;
+                    job_resource_info.end_timestamp = DateTime.UtcNow.AddSeconds(10);
+
+                    user.current_job_resource = job_resource_info;
+                    await JobResourceController.Save(user.cache_helper, job_resource_info);
                 }
 
-                if (use_skill_id == 0)
-                {
-                    throw new Exception("current useable skill is none");
-                }
+                user.in_action = true;
 
-                job_resource_info.player_id = user.player_id;
-                job_resource_info.end_timestamp = DateTime.UtcNow.AddSeconds(10);
+                var skill_detail = GameDesignData.GetSkillDetail(use_skill_id);
+                player_info.state = skill_detail.Item3;
+                player_info.job_info.hp -= 1;
 
-                user.current_job_resource = job_resource_info;
-                await JobResourceController.Save(user.cache_helper, job_resource_info);
+                await PlayerInfoController.Save(user.cache_helper, player_info);
             }
 
-            user.in_action = true;
-
-            var skill_detail = GameDesignData.GetSkillDetail(use_skill_id);
-            player_info.state = skill_detail.Item3;
-
-            await PlayerInfoController.Save(user.cache_helper, player_info);
             await user.object_controller!.SetFlip(direction);
 
-            Packet packet = PacketMaker.U_TO_C_USE_SKILL(job_resource_info);
+            Packet packet = PacketMaker.U_TO_C_USE_SKILL(
+                ErrorCode.SUCCESS,
+                job_resource_info,
+                player_info.job_info
+            );
+
             user.SendToClient(packet);
             user.BroadcastUpdatePlayerInfo(player_info);
         }

@@ -6,6 +6,7 @@
     using game_server;
     using RedLockNet.SERedis;
     using log4net.Repository.Hierarchy;
+    using System.Diagnostics;
 
     public class GameUser : IPeer
     {
@@ -160,6 +161,13 @@
                             );
                             break;
 
+                        case PROTOCOL.C_TO_U_USE_ITEM:
+                            await HandleMessage<C_TO_U_USE_ITEM>(
+                                body,
+                                InventoryController.RequestUseItem
+                            );
+                            break;
+
                         case PROTOCOL.C_TO_U_USE_SKILL:
                             await HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
                             break;
@@ -277,6 +285,7 @@
 
                     is_new = true;
                     player_info.object_info.map_id = MapID.CITY_1;
+                    player_info.job_info.hp = 50;
                 }
                 await PlayerInfoController.Save(this.cache_helper, player_info);
                 await GameObjectInfoController.Save(this.cache_helper, player_info.object_info);

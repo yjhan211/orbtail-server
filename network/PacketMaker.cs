@@ -48,6 +48,15 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_USE_ITEM(JobInfo job_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_USE_ITEM);
+            U_TO_C_USE_ITEM body = new() { job_info = job_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_C_PLAYER_INFO(List<PlayerInfo> player_info_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_PLAYER_INFO);
@@ -184,10 +193,20 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_USE_SKILL(JobResourceInfo job_resource_info)
+        public static Packet U_TO_C_USE_SKILL(
+            ErrorCode error_code,
+            JobResourceInfo? job_resource_info = null,
+            JobInfo? job_info = null
+        )
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_USE_SKILL);
-            U_TO_C_USE_SKILL body = new() { job_resource_info = job_resource_info };
+            U_TO_C_USE_SKILL body =
+                new()
+                {
+                    error_code = error_code,
+                    job_resource_info = job_resource_info,
+                    job_info = job_info
+                };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

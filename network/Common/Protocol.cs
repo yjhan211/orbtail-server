@@ -38,6 +38,8 @@ namespace network
         U_TO_C_GET_JOB,
         C_TO_U_WEAR_ITEM,
         U_TO_C_WEAR_ITEM,
+        C_TO_U_USE_ITEM,
+        U_TO_C_USE_ITEM,
         U_TO_C_CHANGE_MAP,
         C_TO_U_CHANGE_MAP_SUCCESS,
         U_TO_G_LOGOUT,

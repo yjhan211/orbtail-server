@@ -101,6 +101,59 @@ namespace user_server
             }
         }
 
+        public static async Task RequestUseItem(GameUser user, C_TO_U_USE_ITEM body)
+        {
+            PlayerInfo player_info;
+            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            {
+                player_info = await UseItem(user, body.item_uid);
+            }
+
+            Packet packet = PacketMaker.U_TO_C_USE_ITEM(player_info.job_info);
+            user.SendToClient(packet);
+
+            await GetCurrentItemList(user);
+        }
+
+        public static async Task<PlayerInfo> UseItem(GameUser user, long item_uid)
+        {
+            var player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+            if (player_info == null)
+            {
+                throw new Exception("player_info not exists");
+            }
+
+            var target_item_index = player_info.inventory_info.item_list.FindIndex(
+                item => item.item_uid == item_uid
+            );
+
+            var target_item = player_info.inventory_info.item_list[target_item_index];
+            if (target_item == null)
+            {
+                throw new Exception($"Item with uid {item_uid} not found");
+            }
+
+            if (!GameDesignData.IsUseableItem(target_item.item_id))
+            {
+                throw new Exception($"not wearable item {target_item.item_id}");
+            }
+
+            switch (target_item.item_id)
+            {
+                case 2001000001:
+                    player_info.job_info.hp = Math.Min(
+                        GameDesignData.GetMaxHP(player_info.job_info.job_grade),
+                        player_info.job_info.hp + 20
+                    );
+                    break;
+            }
+
+            player_info.inventory_info.item_list.RemoveAt(target_item_index);
+            await PlayerInfoController.Save(user.cache_helper, player_info);
+
+            return player_info;
+        }
+
         public static async Task<PlayerInfo> WearItem(GameUser user, long item_uid)
         {
             var player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);

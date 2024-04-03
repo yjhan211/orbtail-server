@@ -181,6 +181,15 @@
             return wearable;
         }
 
+        public static bool IsUseableItem(int item_id)
+        {
+            int item_type = (int)(item_id / 1000000);
+            int kind = (int)(item_type / 1000);
+
+            var useable = kind == 2;
+            return useable;
+        }
+
         public static int GetMaxItemCount(PlayerGrade grade)
         {
             var result = 0;
