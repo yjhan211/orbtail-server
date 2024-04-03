@@ -30,6 +30,7 @@ namespace network
         C_TO_U_OBJECT_INFO,
         C_TO_U_JOB_RESOURCE_INFO,
         U_TO_C_JOB_RESOURCE_INFO,
+        G_TO_U_JOB_RESOURCE_INFO,
         C_TO_U_USE_SKILL,
         U_TO_C_USE_SKILL,
         U_TO_G_USE_SKILL,

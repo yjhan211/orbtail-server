@@ -144,6 +144,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class G_TO_U_JOB_RESOURCE_INFO : IMessagePackObject
+    {
+        [Key("job_resource_info")]
+        public JobResourceInfo job_resource_info { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_U_OBJECT_INFO : IMessagePackObject
     {
         [Key("object_key_list")]
@@ -183,9 +190,6 @@ namespace network
     {
         [Key("error_code")]
         public ErrorCode error_code { get; set; }
-
-        [Key("job_resource_info")]
-        public JobResourceInfo? job_resource_info { get; set; }
 
         [Key("job_info")]
         public JobInfo? job_info { get; set; }

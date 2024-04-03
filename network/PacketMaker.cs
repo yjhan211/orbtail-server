@@ -142,6 +142,15 @@ namespace user_server
             return packet;
         }
 
+        public static Packet G_TO_U_JOB_RESOURCE_INFO(JobResourceInfo job_resource_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_JOB_RESOURCE_INFO);
+            G_TO_U_JOB_RESOURCE_INFO body = new() { job_resource_info = job_resource_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet G_TO_U_SPAWN(List<string> object_key_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_SPAWN);
@@ -193,20 +202,10 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_USE_SKILL(
-            ErrorCode error_code,
-            JobResourceInfo? job_resource_info = null,
-            JobInfo? job_info = null
-        )
+        public static Packet U_TO_C_USE_SKILL(ErrorCode error_code, JobInfo? job_info = null)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_USE_SKILL);
-            U_TO_C_USE_SKILL body =
-                new()
-                {
-                    error_code = error_code,
-                    job_resource_info = job_resource_info,
-                    job_info = job_info
-                };
+            U_TO_C_USE_SKILL body = new() { error_code = error_code, job_info = job_info };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

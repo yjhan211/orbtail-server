@@ -32,6 +32,7 @@ namespace user_server
                     case JobType.GEOIOGIST:
                         job_info.job_type = JobType.GEOIOGIST;
                         job_info.job_grade = JobGrade.TRAINEE;
+                        job_info.hp = 5; // TODO 삭제
 
                         var gift_geo = await InventoryController.CreateItem(user, 1002000001, 1);
                         gift_item_list.Add(gift_geo);
@@ -88,15 +89,21 @@ namespace user_server
                 player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
                 if (player_info == null)
                 {
-                    throw new Exception("player_info not exists");
+                    Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
+                    user.SendToClient(error_packet);
+                    return;
                 }
                 if (player_info.job_info == null)
                 {
-                    throw new Exception("job_info not exists");
+                    Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
+                    user.SendToClient(error_packet);
+                    return;
                 }
                 if (player_info.job_info.hp <= 0)
                 {
-                    throw new Exception("hp not enough");
+                    Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
+                    user.SendToClient(error_packet);
+                    return;
                 }
 
                 var use_skill_id = 0;
@@ -109,9 +116,9 @@ namespace user_server
 
                     if (job_resource_info == null)
                     {
-                        throw new Exception(
-                            $"job_resource_info not exists. uid : {body.resource_uid}"
-                        );
+                        Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
+                        user.SendToClient(error_packet);
+                        return;
                     }
 
                     if (job_resource_info.player_id != 0)
@@ -119,17 +126,17 @@ namespace user_server
                         Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(
                             ErrorCode.ALREADY_ANOTHER_USE_SKILL
                         );
-
                         user.SendToClient(error_packet);
+                        return;
                     }
 
                     var player_current_cell = player_info.object_info.current_cell;
                     var job_resource_current_cell = job_resource_info.object_info.current_cell;
                     if (1 < MapHelper.GetDistance(player_current_cell, job_resource_current_cell))
                     {
-                        throw new Exception(
-                            $"invalid position. player: {player_info.player_id} resource: {body.resource_uid}"
-                        );
+                        Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
+                        user.SendToClient(error_packet);
+                        return;
                     }
 
                     direction = CalcSkillDirection(player_current_cell, job_resource_current_cell);
@@ -160,7 +167,9 @@ namespace user_server
 
                     if (use_skill_id == 0)
                     {
-                        throw new Exception("current useable skill is none");
+                        Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
+                        user.SendToClient(error_packet);
+                        return;
                     }
 
                     job_resource_info.player_id = user.player_id;
@@ -181,14 +190,11 @@ namespace user_server
 
             await user.object_controller!.SetFlip(direction);
 
-            Packet packet = PacketMaker.U_TO_C_USE_SKILL(
-                ErrorCode.SUCCESS,
-                job_resource_info,
-                player_info.job_info
-            );
+            Packet packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.SUCCESS, player_info.job_info);
 
             user.SendToClient(packet);
             user.BroadcastUpdatePlayerInfo(player_info);
+            user.BroadcastUpdateJobResourceInfo(job_resource_info);
         }
 
         public static async Task JobSkillEnd(GameUser user)

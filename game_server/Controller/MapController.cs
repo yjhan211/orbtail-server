@@ -113,6 +113,21 @@ namespace game_server
             );
 
             this.nats_client.Subscribe(
+                MapHelper.GetUpdateJobResourceSubject(this.map_id, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        UpdateJobResourceInfo(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
+            );
+
+            this.nats_client.Subscribe(
                 MapHelper.GetBrodcastMoveSubject(this.map_id, Program.server_id),
                 (subject, msg) =>
                 {
@@ -373,6 +388,40 @@ namespace game_server
             )>(message);
 
             Packet packet = PacketMaker.G_TO_U_PLAYER_INFO(player_info);
+
+            var pivot_cell = MapHelper.GetCell(position_key);
+            var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
+
+            foreach (var bound_cell in bound_cell_list)
+            {
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
+                if (
+                    !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
+                )
+                {
+                    continue;
+                }
+
+                if (channel_list.Count <= 0)
+                {
+                    continue;
+                }
+
+                foreach (var channel in channel_list)
+                {
+                    this.nats_client!.Publish(channel, packet.ToBytes());
+                }
+            }
+
+            Packet.Destroy(packet);
+        }
+
+        public void UpdateJobResourceInfo(RedisValue message)
+        {
+            (string position_key, JobResourceInfo job_resource_info) =
+                MessagePackSerializer.Deserialize<(string, JobResourceInfo)>(message);
+
+            Packet packet = PacketMaker.G_TO_U_JOB_RESOURCE_INFO(job_resource_info);
 
             var pivot_cell = MapHelper.GetCell(position_key);
             var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);

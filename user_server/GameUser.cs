@@ -229,6 +229,10 @@
                     case PROTOCOL.G_TO_U_PLAYER_INFO:
                         HandleMessage<G_TO_U_PLAYER_INFO>(body, SubscribePlayerInfo);
                         break;
+
+                    case PROTOCOL.G_TO_U_JOB_RESOURCE_INFO:
+                        HandleMessage<G_TO_U_JOB_RESOURCE_INFO>(body, SubscribeJobResourceInfo);
+                        break;
                 }
 
                 Packet.Destroy(packet);
@@ -404,6 +408,12 @@
             this.SendToClient(packet);
         }
 
+        void SubscribeJobResourceInfo(GameUser _, G_TO_U_JOB_RESOURCE_INFO body)
+        {
+            Packet packet = PacketMaker.U_TO_C_JOB_RESOURCE_INFO(new() { body.job_resource_info });
+            this.SendToClient(packet);
+        }
+
         void SubscribeChatMsg(GameUser _, U_TO_C_CHAT_MSG body)
         {
             Packet packet = PacketMaker.U_TO_C_CHAT_MSG(
@@ -433,6 +443,31 @@
                 this.nats_client!.Publish(
                     MapHelper.GetUpdatePlayerSubject(player_info.object_info.map_id, target_server),
                     MessagePackSerializer.Serialize((position_key, player_info))
+                );
+            }
+        }
+
+        public void BroadcastUpdateJobResourceInfo(JobResourceInfo job_resource_info)
+        {
+            var position_key = MapHelper.GetPositionKey(
+                job_resource_info.object_info.map_id,
+                job_resource_info.object_info.current_cell
+            );
+
+            var target_server_list = MapHelper.GetBoundServerList(
+                job_resource_info.object_info.map_id,
+                Program.game_server_num,
+                MapHelper.GetCell(position_key)
+            );
+
+            foreach (var target_server in target_server_list)
+            {
+                this.nats_client!.Publish(
+                    MapHelper.GetUpdateJobResourceSubject(
+                        job_resource_info.object_info.map_id,
+                        target_server
+                    ),
+                    MessagePackSerializer.Serialize((position_key, job_resource_info))
                 );
             }
         }
