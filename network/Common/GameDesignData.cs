@@ -8,23 +8,23 @@
             var result = ("", "", "", "", "");
             switch (item_id)
             {
-                case 1001000001:
+                case 101000001:
                     result = ("수습 연구원의 머리", "조건 없음", "", "100", "초심자의 결의는 언제나 반짝여요.");
                     break;
 
-                case 1001000002:
+                case 101000002:
                     result = ("지질학자의 머리", "조건 없음", "", "100", "사실 돌을 좋아한다기 보단 돌이 되고 싶었어요.");
                     break;
 
-                case 1002000001:
+                case 102000001:
                     result = ("지질학자의 모자", "수습 이상 지질학자", "채광 Lv1 사용 가능", "100", "지질학 입문자의 든든한 파트너");
                     break;
 
-                case 1002000002:
+                case 102000002:
                     result = ("식물학자의 모자", "수습 이상 식물학자", "채집 Lv1 사용 가능", "100", "식물학 입문자의 든든한 파트너");
                     break;
 
-                case 2001000001:
+                case 201000001:
                     result = ("밤양갱", "조건 없음", "컨디션 20 회복", "", "우리는 너무 많이 생각하고는 해요.");
                     break;
             }
@@ -49,17 +49,22 @@
             return result;
         }
 
-        public static (string, int, int, string) GetJobResourceDetail(int job_resource_id)
+        public static (string, int, int, string, List<int>) GetJobResourceDetail(
+            int job_resource_id
+        )
         {
-            var result = ("", 0, 0, "");
+            var reward_item_list = new List<int>();
+            var result = ("", 0, 0, "", reward_item_list);
             switch (job_resource_id)
             {
                 case 10001:
-                    result = ("무른 암석", 20, 10000, "채광 스킬이 필요해요.");
+                    reward_item_list.Add(301000001);
+                    result = ("무른 암석", 20, 10000, "채광 스킬이 필요해요.", reward_item_list);
                     break;
 
                 case 20001:
-                    result = ("들풀", 20, 20000, "채집 스킬이 필요해요.");
+                    reward_item_list.Add(301000002);
+                    result = ("들풀", 20, 20000, "채집 스킬이 필요해요.", reward_item_list);
                     break;
             }
 
@@ -73,14 +78,14 @@
 
         public static int GetItemType(int item_id)
         {
-            var item_type = (int)(item_id / 1000000);
+            int item_type = (int)(item_id / 1000000);
             return item_type;
         }
 
         public static (string, string) GetWearItemSpriteInfo(int item_id)
         {
-            var item_type = (int)(item_id / 1000000);
-            var lavel_number = (int)(item_id % 1000000);
+            int item_type = (int)(item_id / 1000000);
+            var lavel_number = (int)(item_id % 100000);
 
             (string, string) result = ("none", "none");
             switch (item_type)
@@ -91,6 +96,23 @@
 
                 case 1002:
                     result = ("hat", $"hat_{lavel_number}");
+                    break;
+            }
+
+            return result;
+        }
+
+        public static (string, string) GetJobToolSpriteInfo(PlayerState player_state)
+        {
+            (string, string) result = ("tool", "none");
+            switch (player_state)
+            {
+                case PlayerState.GEO_WORK_1:
+                    result = ("tool", "tool_1");
+                    break;
+
+                case PlayerState.BOTAN_WORK_1:
+                    result = ("tool", "tool_2");
                     break;
             }
 
@@ -176,11 +198,11 @@
             int result = 0;
             switch (item_id)
             {
-                case 1002000001: // 지질학자의 모자
+                case 102000001: // 지질학자의 모자
                     result = 10001; // 채광 레벨 1
                     break;
 
-                case 1002000002: // 식물학자의 모자
+                case 102000002: // 식물학자의 모자
                     result = 20001; //채집 레벨 1
                     break;
             }
@@ -191,7 +213,7 @@
         public static bool IsWearableItem(int item_id)
         {
             int item_type = (int)(item_id / 1000000);
-            int kind = (int)(item_type / 1000);
+            int kind = (int)(item_type / 100);
 
             var wearable = kind == 1;
             return wearable;
@@ -202,11 +224,11 @@
             JobType target_job_type = JobType.NONE;
             switch (item_id)
             {
-                case 1002000001:
+                case 102000001:
                     target_job_type = JobType.GEOIOGIST;
                     break;
 
-                case 1002000002:
+                case 102000002:
                     target_job_type = JobType.BOTANIST;
                     break;
 
@@ -220,7 +242,7 @@
         public static bool IsUseableItem(int item_id)
         {
             int item_type = (int)(item_id / 1000000);
-            int kind = (int)(item_type / 1000);
+            int kind = (int)(item_type / 100);
 
             var useable = kind == 2;
             return useable;

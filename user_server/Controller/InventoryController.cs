@@ -13,6 +13,31 @@ namespace user_server
             return new ItemInfo(item_uid, item_id, count);
         }
 
+        public static PlayerInfo AddItem(PlayerInfo player_info, ItemInfo item_info)
+        {
+            var is_create = true;
+            var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
+            if (is_countable)
+            {
+                for (int i = 0; i < player_info.inventory_info.item_list.Count; i++)
+                {
+                    if (player_info.inventory_info.item_list[i].item_id == item_info.item_id)
+                    {
+                        player_info.inventory_info.item_list[i].count += item_info.count;
+                        is_create = false;
+                        break;
+                    }
+                }
+            }
+
+            if (is_create)
+            {
+                player_info.inventory_info.item_list.Add(item_info);
+            }
+
+            return player_info;
+        }
+
         public static async Task<InventoryInfo> AddItem(
             GameUser user,
             long player_id,
@@ -25,10 +50,55 @@ namespace user_server
                 throw new Exception("inventory_info not exists");
             }
 
-            inventory_info.item_list.Add(item_info);
+            var is_create = true;
+            var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
+            if (is_countable)
+            {
+                for (int i = 0; i < inventory_info.item_list.Count; i++)
+                {
+                    if (inventory_info.item_list[i].item_id == item_info.item_id)
+                    {
+                        inventory_info.item_list[i].count += item_info.count;
+                        is_create = false;
+                        break;
+                    }
+                }
+            }
+
+            if (is_create)
+            {
+                inventory_info.item_list.Add(item_info);
+            }
             await InventoryInfoController.Save(user.cache_helper, inventory_info);
 
             return inventory_info;
+        }
+
+        public static PlayerInfo AddItem(PlayerInfo player_info, List<ItemInfo> item_info_list)
+        {
+            foreach (var item_info in item_info_list)
+            {
+                var is_create = true;
+                var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
+                if (is_countable)
+                {
+                    for (int i = 0; i < player_info.inventory_info.item_list.Count; i++)
+                    {
+                        if (player_info.inventory_info.item_list[i].item_id == item_info.item_id)
+                        {
+                            player_info.inventory_info.item_list[i].count += item_info.count;
+                            is_create = false;
+                            break;
+                        }
+                    }
+                }
+                if (is_create)
+                {
+                    player_info.inventory_info.item_list.Add(item_info);
+                }
+            }
+
+            return player_info;
         }
 
         public static async Task<InventoryInfo> AddItem(
@@ -45,10 +115,26 @@ namespace user_server
 
             foreach (var item_info in item_info_list)
             {
-                inventory_info.item_list.Add(item_info);
+                var is_create = true;
+                var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
+                if (is_countable)
+                {
+                    for (int i = 0; i < inventory_info.item_list.Count; i++)
+                    {
+                        if (inventory_info.item_list[i].item_id == item_info.item_id)
+                        {
+                            inventory_info.item_list[i].count += item_info.count;
+                            is_create = false;
+                            break;
+                        }
+                    }
+                }
+                if (is_create)
+                {
+                    inventory_info.item_list.Add(item_info);
+                }
             }
             await InventoryInfoController.Save(user.cache_helper, inventory_info);
-
             return inventory_info;
         }
 
@@ -132,15 +218,19 @@ namespace user_server
             {
                 throw new Exception($"Item with uid {item_uid} not found");
             }
+            if (target_item.count <= 0)
+            {
+                throw new Exception($"Item {item_uid} count invalid");
+            }
 
             if (!GameDesignData.IsUseableItem(target_item.item_id))
             {
-                throw new Exception($"not wearable item {target_item.item_id}");
+                throw new Exception($"not useable item {target_item.item_id}");
             }
 
             switch (target_item.item_id)
             {
-                case 2001000001:
+                case 201000001:
                     player_info.job_info.hp = Math.Min(
                         GameDesignData.GetMaxHP(player_info.job_info.job_grade),
                         player_info.job_info.hp + 20
@@ -148,7 +238,16 @@ namespace user_server
                     break;
             }
 
-            player_info.inventory_info.item_list.RemoveAt(target_item_index);
+            if (target_item.count <= 1)
+            {
+                player_info.inventory_info.item_list.RemoveAt(target_item_index);
+            }
+            else
+            {
+                // TODO 일괄사용
+                player_info.inventory_info.item_list[target_item_index].count -= 1;
+            }
+
             await PlayerInfoController.Save(user.cache_helper, player_info);
 
             return player_info;
