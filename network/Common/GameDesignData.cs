@@ -197,6 +197,26 @@
             return wearable;
         }
 
+        public static bool IsWearableJobType(int item_id, JobType job_type)
+        {
+            JobType target_job_type = JobType.NONE;
+            switch (item_id)
+            {
+                case 1002000001:
+                    target_job_type = JobType.GEOIOGIST;
+                    break;
+
+                case 1002000002:
+                    target_job_type = JobType.BOTANIST;
+                    break;
+
+                default:
+                    return true;
+            }
+
+            return target_job_type == job_type;
+        }
+
         public static bool IsUseableItem(int item_id)
         {
             int item_type = (int)(item_id / 1000000);

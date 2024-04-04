@@ -167,7 +167,6 @@ namespace user_server
             );
 
             var target_item = player_info.inventory_info.item_list[target_item_index];
-
             if (target_item == null)
             {
                 throw new Exception($"Item with uid {item_uid} not found");
@@ -176,6 +175,16 @@ namespace user_server
             if (!GameDesignData.IsWearableItem(target_item.item_id))
             {
                 throw new Exception($"not wearable item {target_item.item_id}");
+            }
+
+            if (
+                !GameDesignData.IsWearableJobType(
+                    target_item.item_id,
+                    player_info.job_info.job_type
+                )
+            )
+            {
+                throw new Exception($"not wearable job type. {target_item.item_id}");
             }
 
             if (target_item.is_wear)
