@@ -299,7 +299,7 @@
                 if (is_new)
                 {
                     // 기본 아이템 증정
-                    var default_hair = await InventoryController.CreateItem(this, 1001000001, 1);
+                    var default_hair = await InventoryController.CreateItem(this, 101000001, 1);
 
                     await InventoryController.AddItem(this, this.player_id, default_hair);
                     player_info = await InventoryController.WearItem(this, default_hair.item_uid);
@@ -324,10 +324,6 @@
 
             // 인벤토리 정보 전송
             await InventoryController.GetCurrentItemList(this);
-
-            // TODO 테스트하느라 넣음 삭제할 것
-            C_TO_U_GET_JOB dummy = new() { job_type = JobType.GEOIOGIST };
-            await JobController.GetJob(this, dummy);
         }
 
         async Task ChangeMapSuccess()

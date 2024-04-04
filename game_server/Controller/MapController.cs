@@ -1,6 +1,7 @@
 namespace game_server
 {
     using System.Collections.Concurrent;
+    using System.Security.AccessControl;
     using MessagePack;
     using network;
     using StackExchange.Redis;
@@ -233,7 +234,16 @@ namespace game_server
                             };
 
                         // TODO resource_id 정리, 확률 기반으로 종류 결정
-                        JobResourceInfo job_resource_info = new(resource_uid, 10001, object_info);
+                        List<int> gen_resource_type_list = new() { 10001, 20001 };
+                        JobResourceInfo job_resource_info =
+                            new(
+                                resource_uid,
+                                gen_resource_type_list[
+                                    random.Next(0, gen_resource_type_list.Count)
+                                ],
+                                object_info
+                            );
+
                         this.job_resource_dict[part_resource_info.Key].Add(job_resource_info);
                         this.object_position_dict[create_position_key].Add(
                             object_info.GetHashField()

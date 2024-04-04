@@ -33,15 +33,23 @@ namespace user_server
                         job_info.job_type = JobType.GEOIOGIST;
                         job_info.job_grade = JobGrade.TRAINEE;
 
-                        var gift_geo = await InventoryController.CreateItem(user, 1002000001, 1);
+                        var gift_geo = await InventoryController.CreateItem(user, 102000001, 1);
                         gift_item_list.Add(gift_geo);
+                        break;
+
+                    case JobType.BOTANIST:
+                        job_info.job_type = JobType.BOTANIST;
+                        job_info.job_grade = JobGrade.TRAINEE;
+
+                        var gift_botan = await InventoryController.CreateItem(user, 102000002, 1);
+                        gift_item_list.Add(gift_botan);
                         break;
 
                     default:
                         break;
                 }
 
-                var gift_food = await InventoryController.CreateItem(user, 2001000001, 1);
+                var gift_food = await InventoryController.CreateItem(user, 201000001, 1);
                 gift_item_list.Add(gift_food);
 
                 inventory_info = await InventoryController.AddItem(
@@ -152,6 +160,7 @@ namespace user_server
                     switch (job_resource_info.resource_id)
                     {
                         case 10001: // 무른 암석
+                        case 20001: // 들풀
                             foreach (var skill_id in skill_list)
                             {
                                 int skill_type = (skill_id / 10000) * 10000;
@@ -204,6 +213,15 @@ namespace user_server
             }
 
             var job_resource = user.current_job_resource;
+            var job_resource_detail = GameDesignData.GetJobResourceDetail(
+                user.current_job_resource.resource_id
+            );
+
+            Random random = new();
+            var reward_item = job_resource_detail.Item5[
+                random.Next(0, job_resource_detail.Item5.Count)
+            ];
+
             user.current_job_resource = null;
 
             using (await PlayerInfoController.Lock(user.redlock, user.player_id))
@@ -218,8 +236,10 @@ namespace user_server
                 }
 
                 // 아이템 주고
-                var item_info = await InventoryController.CreateItem(user, 2001000001, 1);
-                player_info.inventory_info.item_list.Add(item_info);
+                var item_info = await InventoryController.CreateItem(user, reward_item, 1);
+
+                // TODO 이거 진짜 이상한데 일단 나중에 고치자
+                player_info = InventoryController.AddItem(player_info, item_info);
 
                 // 경험치 올리고
                 player_info.job_info.exp += 1;
