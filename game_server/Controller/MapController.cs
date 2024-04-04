@@ -369,8 +369,6 @@ namespace game_server
                 position_cell
             );
 
-            LogManager.WriteDebugLog($"{object_key}, {target_server_list.Count}");
-
             foreach (var target_server in target_server_list)
             {
                 this.nats_client!.Publish(

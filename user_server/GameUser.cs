@@ -5,8 +5,6 @@
     using StackExchange.Redis;
     using game_server;
     using RedLockNet.SERedis;
-    using log4net.Repository.Hierarchy;
-    using System.Diagnostics;
 
     public class GameUser : IPeer
     {

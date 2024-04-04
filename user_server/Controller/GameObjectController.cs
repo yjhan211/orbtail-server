@@ -122,8 +122,6 @@ namespace user_server
         {
             var object_key = body.object_key;
 
-            LogManager.WriteDebugLog($"{object_key}");
-
             Packet packet = PacketMaker.U_TO_C_DESTROY(object_key);
             user.SendToClient(packet);
         }
