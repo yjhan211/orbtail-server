@@ -324,10 +324,6 @@
 
             // 인벤토리 정보 전송
             await InventoryController.GetCurrentItemList(this);
-
-            // TODO 테스트하느라 넣음 삭제할 것
-            C_TO_U_GET_JOB dummy = new() { job_type = JobType.GEOIOGIST };
-            await JobController.GetJob(this, dummy);
         }
 
         async Task ChangeMapSuccess()

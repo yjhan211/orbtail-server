@@ -79,7 +79,8 @@ namespace network
     public enum JobType : byte
     {
         NONE,
-        GEOIOGIST,
+        GEOIOGIST, // 지질학자
+        BOTANIST, // 식물학자
     }
 
     public enum JobGrade : byte
@@ -130,5 +131,6 @@ namespace network
     {
         NONE = 0,
         GEO_WORK_1,
+        BOTAN_WORK_1,
     }
 }

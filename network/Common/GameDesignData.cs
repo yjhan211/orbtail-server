@@ -20,6 +20,10 @@
                     result = ("지질학자의 모자", "수습 이상 지질학자", "채광 Lv1 사용 가능", "100", "지질학 입문자의 든든한 파트너");
                     break;
 
+                case 1002000002:
+                    result = ("식물학자의 모자", "수습 이상 식물학자", "채집 Lv1 사용 가능", "100", "식물학 입문자의 든든한 파트너");
+                    break;
+
                 case 2001000001:
                     result = ("밤양갱", "조건 없음", "컨디션 20 회복", "", "우리는 너무 많이 생각하고는 해요.");
                     break;
@@ -36,6 +40,10 @@
                 case 10001:
                     result = ("채광 Lv1: 암석으로부터 자원을 얻는 기술", true, PlayerState.GEO_WORK_1);
                     break;
+
+                case 20001:
+                    result = ("채집 Lv1: 식물로부터 자원을 얻는 기술", true, PlayerState.BOTAN_WORK_1);
+                    break;
             }
 
             return result;
@@ -48,6 +56,10 @@
             {
                 case 10001:
                     result = ("무른 암석", 20, 10000, "채광 스킬이 필요해요.");
+                    break;
+
+                case 20001:
+                    result = ("들풀", 20, 20000, "채집 스킬이 필요해요.");
                     break;
             }
 
@@ -166,6 +178,10 @@
             {
                 case 1002000001: // 지질학자의 모자
                     result = 10001; // 채광 레벨 1
+                    break;
+
+                case 1002000002: // 식물학자의 모자
+                    result = 20001; //채집 레벨 1
                     break;
             }
 
@@ -316,6 +332,10 @@
 
                 case JobType.GEOIOGIST:
                     result = "지질학";
+                    break;
+
+                case JobType.BOTANIST:
+                    result = "식물학";
                     break;
             }
 

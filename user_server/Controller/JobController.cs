@@ -37,6 +37,14 @@ namespace user_server
                         gift_item_list.Add(gift_geo);
                         break;
 
+                    case JobType.BOTANIST:
+                        job_info.job_type = JobType.BOTANIST;
+                        job_info.job_grade = JobGrade.TRAINEE;
+
+                        var gift_botan = await InventoryController.CreateItem(user, 1002000002, 1);
+                        gift_item_list.Add(gift_botan);
+                        break;
+
                     default:
                         break;
                 }
@@ -152,6 +160,7 @@ namespace user_server
                     switch (job_resource_info.resource_id)
                     {
                         case 10001: // 무른 암석
+                        case 20001: // 들풀
                             foreach (var skill_id in skill_list)
                             {
                                 int skill_type = (skill_id / 10000) * 10000;
