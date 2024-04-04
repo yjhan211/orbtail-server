@@ -17,6 +17,9 @@ namespace network
         [Key("grade")]
         public JobGrade job_grade { get; set; }
 
+        [Key("hp")]
+        public int hp { get; set; }
+
         [Key("exp")]
         public int exp { get; set; }
 
@@ -26,6 +29,7 @@ namespace network
             this.player_id = 0;
             this.job_type = JobType.NONE;
             this.job_grade = JobGrade.NONE;
+            this.hp = 0;
             this.exp = 0;
         }
 
@@ -34,6 +38,7 @@ namespace network
             this.player_id = player_id;
             this.job_type = JobType.NONE;
             this.job_grade = JobGrade.NONE;
+            this.hp = 0;
             this.exp = 0;
         }
     }

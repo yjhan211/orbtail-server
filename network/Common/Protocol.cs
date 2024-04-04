@@ -11,8 +11,10 @@ namespace network
         HEART_BEAT = 0,
         C_TO_U_LOGIN,
         U_TO_C_LOGIN,
+        U_TO_C_INVENTORY_ITEM_LIST,
         C_TO_U_CHAT_MSG,
         U_TO_C_CHAT_MSG,
+        C_TO_U_CHAT_LOG,
         C_TO_U_MOVE,
         U_TO_G_MOVE,
         G_TO_U_MOVE,
@@ -26,19 +28,38 @@ namespace network
         U_TO_C_PLAYER_INFO,
         G_TO_U_PLAYER_INFO,
         C_TO_U_OBJECT_INFO,
+        C_TO_U_JOB_RESOURCE_INFO,
+        U_TO_C_JOB_RESOURCE_INFO,
+        G_TO_U_JOB_RESOURCE_INFO,
+        C_TO_U_USE_SKILL,
+        U_TO_C_USE_SKILL,
+        U_TO_G_USE_SKILL,
+        U_TO_C_USE_SKILL_COMPLETE,
         C_TO_U_GET_JOB,
         U_TO_C_GET_JOB,
         C_TO_U_WEAR_ITEM,
         U_TO_C_WEAR_ITEM,
+        C_TO_U_USE_ITEM,
+        U_TO_C_USE_ITEM,
+        U_TO_C_CHANGE_MAP,
+        C_TO_U_CHANGE_MAP_SUCCESS,
         U_TO_G_LOGOUT,
         END
+    }
+
+    public enum MapID : int
+    {
+        NONE,
+        CITY_1,
+        FOREST_1,
     }
 
     public enum ObjectType : int
     {
         NONE,
         PLAYER,
-        ITEM
+        ITEM,
+        JOBRESOURCE,
     }
 
     public enum TileType : int
@@ -101,6 +122,13 @@ namespace network
     {
         SUCCESS = 0,
         ALREADY_HAS_JOB,
+        ALREADY_ANOTHER_USE_SKILL,
         FATAL
+    }
+
+    public enum PlayerState : short
+    {
+        NONE = 0,
+        GEO_WORK_1,
     }
 }

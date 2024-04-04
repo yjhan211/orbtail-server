@@ -9,25 +9,45 @@
             switch (item_id)
             {
                 case 1001000001:
-                    result = ("수습 연구원의 머리", "조건 없음", "열정적인 마음가짐", "100", "초심자의 결의는 언제나 반짝여요.");
+                    result = ("수습 연구원의 머리", "조건 없음", "", "100", "초심자의 결의는 언제나 반짝여요.");
                     break;
 
                 case 1001000002:
-                    result = ("지질학자의 머리", "조건 없음", "부드러운 인상", "100", "사실 돌을 좋아한다기 보단 돌이 되고 싶었어요.");
+                    result = ("지질학자의 머리", "조건 없음", "", "100", "사실 돌을 좋아한다기 보단 돌이 되고 싶었어요.");
                     break;
 
                 case 1002000001:
-                    result = (
-                        "지질학자의 모자",
-                        "수습 이상 지질학자",
-                        "채광 스킬 사용 가능",
-                        "100",
-                        "연구도 좋지만 가장 중요한 건 안전이에요."
-                    );
+                    result = ("지질학자의 모자", "수습 이상 지질학자", "채광 Lv1 사용 가능", "100", "지질학 입문자의 든든한 파트너");
                     break;
 
                 case 2001000001:
-                    result = ("밤양갱", "조건 없음", "체력 20 회복", "", "우리는 너무 많이 생각하고는 해요.");
+                    result = ("밤양갱", "조건 없음", "컨디션 20 회복", "", "우리는 너무 많이 생각하고는 해요.");
+                    break;
+            }
+
+            return result;
+        }
+
+        public static (string, bool, PlayerState) GetSkillDetail(int skill_id)
+        {
+            var result = ("", false, PlayerState.NONE);
+            switch (skill_id)
+            {
+                case 10001:
+                    result = ("채광 Lv1: 암석으로부터 자원을 얻는 기술", true, PlayerState.GEO_WORK_1);
+                    break;
+            }
+
+            return result;
+        }
+
+        public static (string, int, int, string) GetJobResourceDetail(int job_resource_id)
+        {
+            var result = ("", 0, 0, "");
+            switch (job_resource_id)
+            {
+                case 10001:
+                    result = ("무른 암석", 20, 10000, "채광 스킬이 필요해요.");
                     break;
             }
 
@@ -65,6 +85,93 @@
             return result;
         }
 
+        public static int GetMaxHP(JobGrade job_grade)
+        {
+            var result = 0;
+            switch (job_grade)
+            {
+                case JobGrade.TRAINEE:
+                    result = 100;
+                    break;
+
+                case JobGrade.RESEARCHER:
+                    result = 150;
+                    break;
+
+                case JobGrade.ASSOCIATE:
+                    result = 200;
+                    break;
+
+                case JobGrade.SENIOR_ASSOCIATE:
+                    result = 300;
+                    break;
+
+                case JobGrade.PRINCIPAL:
+                    result = 500;
+                    break;
+
+                case JobGrade.LEAD:
+                    result = 1000;
+                    break;
+
+                case JobGrade.CHIEF:
+                    result = 10000;
+                    break;
+            }
+
+            return result;
+        }
+
+        public static int GetMaxExp(JobGrade job_grade)
+        {
+            var result = 0;
+            switch (job_grade)
+            {
+                case JobGrade.TRAINEE:
+                    result = 100;
+                    break;
+
+                case JobGrade.RESEARCHER:
+                    result = 1000;
+                    break;
+
+                case JobGrade.ASSOCIATE:
+                    result = 10000;
+                    break;
+
+                case JobGrade.SENIOR_ASSOCIATE:
+                    result = 100000;
+                    break;
+
+                case JobGrade.PRINCIPAL:
+                    result = 1000000;
+                    break;
+
+                case JobGrade.LEAD:
+                    result = 100000000;
+                    break;
+
+                case JobGrade.CHIEF:
+                    result = 0;
+                    break;
+            }
+
+            return result;
+        }
+
+        public static int GetSkill(int item_id)
+        {
+            int result = 0;
+            switch (item_id)
+            {
+                case 1002000001: // 지질학자의 모자
+                    result = 10001; // 채광 레벨 1
+                    break;
+            }
+
+            return result;
+        }
+
         public static bool IsWearableItem(int item_id)
         {
             int item_type = (int)(item_id / 1000000);
@@ -72,6 +179,15 @@
 
             var wearable = kind == 1;
             return wearable;
+        }
+
+        public static bool IsUseableItem(int item_id)
+        {
+            int item_type = (int)(item_id / 1000000);
+            int kind = (int)(item_type / 1000);
+
+            var useable = kind == 2;
+            return useable;
         }
 
         public static int GetMaxItemCount(PlayerGrade grade)

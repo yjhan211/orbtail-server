@@ -1,7 +1,6 @@
 namespace game_server
 {
     using System.Collections.Concurrent;
-    using System.Reactive.Subjects;
     using MessagePack;
     using network;
     using StackExchange.Redis;
@@ -9,16 +8,25 @@ namespace game_server
 
     public class MapController
     {
-        public const int MAP_ID = 1;
+        public MapID map_id; // TODO 채널 확장
         ConnectionMultiplexer? redis_connection;
         CacheHelper? cache_helper;
         NatsClient? nats_client;
-        public ConcurrentDictionary<string, List<string>> object_position_map;
+
+        ConcurrentDictionary<string, List<string>> object_position_dict;
+        ConcurrentDictionary<int, List<JobResourceInfo>> job_resource_dict;
+        List<Cell> manage_cell_list;
+
+        Task? create_job_resource_task;
         public CancellationTokenSource cts;
 
-        public MapController()
+        public MapController(MapID map_id)
         {
-            this.object_position_map = new();
+            this.map_id = map_id;
+            this.object_position_dict = new();
+            this.job_resource_dict = new();
+            this.manage_cell_list = new();
+
             this.cts = new();
         }
 
@@ -30,38 +38,123 @@ namespace game_server
             this.nats_client = nats_client;
 
             this.nats_client.Subscribe(
-                $"move_object_{Program.server_id}",
-                (subject, msg) => MoveManageObject(msg)
+                MapHelper.GetMoveManageSubject(this.map_id, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        MoveManageObject(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
             );
 
             this.nats_client.Subscribe(
-                $"leave_object_{Program.server_id}",
-                (subject, msg) => LeaveManageObject(msg)
+                MapHelper.GetLeaveManageSubject(this.map_id, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        LeaveManageObject(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
             );
 
             this.nats_client.Subscribe(
-                $"spawn_object_{Program.server_id}",
-                (subject, msg) => SpawnManageObject(msg)
+                MapHelper.GetSpawnManageSubject(this.map_id, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        SpawnManageObject(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
             );
 
             this.nats_client.Subscribe(
-                $"destroy_object_{Program.server_id}",
-                (subject, msg) => DestroyManageObject(msg)
+                MapHelper.GetDestroyObjectSubject(this.map_id, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        DestroyManageObject(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
             );
 
             this.nats_client.Subscribe(
-                $"update_player_{Program.server_id}",
-                (subject, msg) => UpdatePlayerInfo(msg)
+                MapHelper.GetUpdatePlayerSubject(this.map_id, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        UpdatePlayerInfo(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
             );
 
             this.nats_client.Subscribe(
-                $"update_{Program.server_id}",
-                (subject, msg) => BroadcastUpdateObject(msg)
+                MapHelper.GetUpdateJobResourceSubject(this.map_id, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        UpdateJobResourceInfo(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
             );
 
             this.nats_client.Subscribe(
-                $"destroy_{Program.server_id}",
-                (subject, msg) => BroadcastDestroyObject(msg)
+                MapHelper.GetBrodcastMoveSubject(this.map_id, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        BroadcastUpdateObject(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
+            );
+
+            this.nats_client.Subscribe(
+                MapHelper.GetBrodcastDestroySubject(this.map_id, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        BroadcastDestroyObject(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
             );
 
             var manage_part_list = MapHelper.GetManagePartList(
@@ -73,31 +166,115 @@ namespace game_server
 
             foreach (var manage_part in manage_part_list)
             {
-                manage_position_key_list.AddRange(MapHelper.position_list_by_part[manage_part]);
+                manage_position_key_list.AddRange(
+                    MapHelper.position_list_by_map_part[this.map_id][manage_part]
+                );
+
+                this.job_resource_dict[manage_part] = new();
             }
 
             foreach (var position_key in manage_position_key_list)
             {
-                this.object_position_map[position_key] = new();
+                this.object_position_dict[position_key] = new();
+                manage_cell_list.Add(MapHelper.GetCell(position_key));
+            }
+
+            if (this.map_id == MapID.FOREST_1)
+            {
+                this.create_job_resource_task = Task.Run(CreateJobResourceTask, this.cts.Token);
             }
         }
 
-        public string GetMapKey()
-        {
-            return $"map_{MAP_ID}";
-        }
-
-        public static string GetMapKey(int map_id)
-        {
-            return $"map_{map_id}";
-        }
-
-        public string GetPositionKey(Cell cell)
-        {
-            return $"{GetMapKey()}|{cell.x},{cell.y}";
-        }
-
         object position_lock = new();
+
+        async Task CreateJobResourceTask()
+        {
+            Random random = new();
+
+            while (!this.cts.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    foreach (var part_resource_info in this.job_resource_dict)
+                    {
+                        // TODO 3 Config로 분리..
+                        if (3 <= part_resource_info.Value.Count)
+                        {
+                            continue;
+                        }
+
+                        // TODO csv로 정리
+                        if (50 < random.Next(0, 100))
+                        {
+                            continue;
+                        }
+
+                        var create_cell = this.manage_cell_list[
+                            random.Next(0, this.manage_cell_list.Count)
+                        ];
+
+                        var create_position_key = MapHelper.GetPositionKey(
+                            this.map_id,
+                            create_cell
+                        );
+
+                        long resource_uid = await this.cache_helper!.StringIncrement(
+                            "temp_job_resource_uid"
+                        );
+
+                        GameObjectInfo object_info =
+                            new()
+                            {
+                                object_type = ObjectType.JOBRESOURCE,
+                                object_id = resource_uid,
+                                current_cell = create_cell,
+                                target_cell = create_cell,
+                                map_id = MapID.FOREST_1,
+                            };
+
+                        // TODO resource_id 정리, 확률 기반으로 종류 결정
+                        JobResourceInfo job_resource_info = new(resource_uid, 10001, object_info);
+                        this.job_resource_dict[part_resource_info.Key].Add(job_resource_info);
+                        this.object_position_dict[create_position_key].Add(
+                            object_info.GetHashField()
+                        );
+
+                        await JobResourceController.Save(this.cache_helper, job_resource_info);
+
+                        // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
+                        var target_server_list = MapHelper.GetBoundServerList(
+                            this.map_id,
+                            Program.game_server_num,
+                            object_info.current_cell
+                        );
+
+                        foreach (var target_server in target_server_list)
+                        {
+                            this.nats_client!.Publish(
+                                MapHelper.GetBrodcastMoveSubject(this.map_id, target_server),
+                                MessagePackSerializer.Serialize((create_position_key, object_info))
+                            );
+                        }
+                    }
+
+                    await Task.Delay(1000);
+                }
+                catch (Exception e)
+                {
+                    LogManager.WriteErrorLog(e);
+                    break;
+                }
+            }
+
+            try
+            {
+                this.create_job_resource_task!.Wait();
+            }
+            catch (AggregateException e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+        }
 
         public void MoveManageObject(RedisValue message)
         {
@@ -107,23 +284,27 @@ namespace game_server
             )>(message);
 
             var object_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, object_info.object_id);
-            var current_position_key = MapHelper.GetPositionKey(object_info.current_cell);
+            var current_position_key = MapHelper.GetPositionKey(
+                object_info.map_id,
+                object_info.current_cell
+            );
 
             // 위치 갱신
             lock (position_lock)
             {
                 // last를 관리하는 서버가 본인이면 지움
-                if (this.object_position_map.TryGetValue(last_position_key, out _))
+                if (this.object_position_dict.TryGetValue(last_position_key, out _))
                 {
-                    this.object_position_map[last_position_key].Remove(object_key);
+                    this.object_position_dict[last_position_key].Remove(object_key);
                 }
 
                 // current 추가
-                this.object_position_map[current_position_key].Add(object_key);
+                this.object_position_dict[current_position_key].Add(object_key);
             }
 
             // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
             var target_server_list = MapHelper.GetBoundServerList(
+                this.map_id,
                 Program.game_server_num,
                 object_info.current_cell
             );
@@ -131,16 +312,10 @@ namespace game_server
             foreach (var target_server in target_server_list)
             {
                 this.nats_client!.Publish(
-                    $"update_{target_server}",
+                    MapHelper.GetBrodcastMoveSubject(this.map_id, target_server),
                     MessagePackSerializer.Serialize((current_position_key, object_info))
                 );
             }
-        }
-
-        public int GetCellManagePart(string cell_key)
-        {
-            MapHelper.part_by_position_key.TryGetValue(cell_key, out var part_id);
-            return part_id;
         }
 
         public void LeaveManageObject(RedisValue message)
@@ -152,7 +327,7 @@ namespace game_server
 
             lock (position_lock)
             {
-                this.object_position_map[position_key].Remove(object_key);
+                this.object_position_dict[position_key].Remove(object_key);
             }
         }
 
@@ -164,7 +339,7 @@ namespace game_server
             var spawn_list = new List<string>();
             foreach (var position_key in position_key_list)
             {
-                spawn_list.AddRange(this.object_position_map[position_key]);
+                spawn_list.AddRange(this.object_position_dict[position_key]);
             }
 
             if (spawn_list.Count > 0)
@@ -184,11 +359,12 @@ namespace game_server
 
             lock (position_lock)
             {
-                this.object_position_map[position_key].Remove(object_key);
+                var result = this.object_position_dict[position_key].Remove(object_key);
             }
 
             Cell position_cell = MapHelper.GetCell(position_key);
             var target_server_list = MapHelper.GetBoundServerList(
+                this.map_id,
                 Program.game_server_num,
                 position_cell
             );
@@ -196,7 +372,7 @@ namespace game_server
             foreach (var target_server in target_server_list)
             {
                 this.nats_client!.Publish(
-                    $"destroy_{target_server}",
+                    MapHelper.GetBrodcastDestroySubject(this.map_id, target_server),
                     MessagePackSerializer.Serialize((position_key, object_key))
                 );
             }
@@ -216,8 +392,44 @@ namespace game_server
 
             foreach (var bound_cell in bound_cell_list)
             {
-                var bound_position_key = MapHelper.GetPositionKey(bound_cell);
-                if (!this.object_position_map.TryGetValue(bound_position_key, out var channel_list))
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
+                if (
+                    !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
+                )
+                {
+                    continue;
+                }
+
+                if (channel_list.Count <= 0)
+                {
+                    continue;
+                }
+
+                foreach (var channel in channel_list)
+                {
+                    this.nats_client!.Publish(channel, packet.ToBytes());
+                }
+            }
+
+            Packet.Destroy(packet);
+        }
+
+        public void UpdateJobResourceInfo(RedisValue message)
+        {
+            (string position_key, JobResourceInfo job_resource_info) =
+                MessagePackSerializer.Deserialize<(string, JobResourceInfo)>(message);
+
+            Packet packet = PacketMaker.G_TO_U_JOB_RESOURCE_INFO(job_resource_info);
+
+            var pivot_cell = MapHelper.GetCell(position_key);
+            var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
+
+            foreach (var bound_cell in bound_cell_list)
+            {
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
+                if (
+                    !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
+                )
                 {
                     continue;
                 }
@@ -250,8 +462,10 @@ namespace game_server
 
             foreach (var bound_cell in bound_cell_list)
             {
-                var bound_position_key = MapHelper.GetPositionKey(bound_cell);
-                if (!this.object_position_map.TryGetValue(bound_position_key, out var channel_list))
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
+                if (
+                    !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
+                )
                 {
                     continue;
                 }
@@ -261,7 +475,7 @@ namespace game_server
                     continue;
                 }
 
-                foreach (var channel in channel_list)
+                foreach (var channel in channel_list.ToList())
                 {
                     this.nats_client!.Publish(channel, packet.ToBytes());
                 }
@@ -283,8 +497,10 @@ namespace game_server
 
             foreach (var bound_cell in bound_cell_list)
             {
-                var bound_position_key = MapHelper.GetPositionKey(bound_cell);
-                if (!this.object_position_map.TryGetValue(bound_position_key, out var channel_list))
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
+                if (
+                    !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
+                )
                 {
                     continue;
                 }

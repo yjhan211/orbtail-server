@@ -25,9 +25,16 @@ namespace network
 
         [Key("job_info")]
         public JobInfo job_info { get; set; }
+    }
 
-        [Key("inventory_info")]
-        public InventoryInfo inventory_info { get; set; }
+    [MessagePackObject]
+    public class U_TO_C_INVENTORY_ITEM_LIST : IMessagePackObject
+    {
+        [Key("item_list")]
+        public List<ItemInfo> item_list { get; set; }
+
+        [Key("is_ended")]
+        public bool is_end { get; set; }
     }
 
     [MessagePackObject]
@@ -137,6 +144,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class G_TO_U_JOB_RESOURCE_INFO : IMessagePackObject
+    {
+        [Key("job_resource_info")]
+        public JobResourceInfo job_resource_info { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_U_OBJECT_INFO : IMessagePackObject
     {
         [Key("object_key_list")]
@@ -148,6 +162,54 @@ namespace network
     {
         [Key("object_info_list")]
         public List<GameObjectInfo> object_info_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_JOB_RESOURCE_INFO : IMessagePackObject
+    {
+        [Key("job_resource_id_list")]
+        public List<long> job_resource_id_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_JOB_RESOURCE_INFO : IMessagePackObject
+    {
+        [Key("job_resource_info")]
+        public List<JobResourceInfo> job_resource_info_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_USE_SKILL : IMessagePackObject
+    {
+        [Key("target_job_resource_uid")]
+        public long resource_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_USE_SKILL : IMessagePackObject
+    {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+
+        [Key("job_info")]
+        public JobInfo? job_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_G_USE_SKILL : IMessagePackObject
+    {
+        [Key("resource_uid")]
+        public long resource_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_USE_SKILL_COMPLETE : IMessagePackObject
+    {
+        [Key("item_info")]
+        public ItemInfo item_info { get; set; }
+
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
     }
 
     [MessagePackObject]
@@ -176,9 +238,33 @@ namespace network
     {
         [Key("player_info")]
         public PlayerInfo player_info { get; set; }
+    }
 
-        [Key("inventory_info")]
-        public InventoryInfo inventory_info { get; set; }
+    [MessagePackObject]
+    public class C_TO_U_USE_ITEM : IMessagePackObject
+    {
+        [Key("item_uid")]
+        public long item_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_USE_ITEM : IMessagePackObject
+    {
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_CHANGE_MAP : IMessagePackObject
+    {
+        [Key("map_id")]
+        public MapID map_id { get; set; }
+
+        [Key("spawn_cell")]
+        public Cell spawn_cell { get; set; }
+
+        [Key("is_flip")]
+        public bool is_flip { get; set; }
     }
 
     [MessagePackObject]

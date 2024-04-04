@@ -1,6 +1,7 @@
 namespace user_server
 {
     using MessagePack;
+    using NATS.Client.JetStream;
     using network;
 
     public static class PacketMaker
@@ -14,7 +15,6 @@ namespace user_server
                     object_info = player_info.object_info,
                     player_info = player_info,
                     job_info = player_info.job_info,
-                    inventory_info = player_info.inventory_info,
                 };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -30,11 +30,28 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_INVENTORY_ITEM_LIST(List<ItemInfo> item_list, bool is_end)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_INVENTORY_ITEM_LIST);
+            U_TO_C_INVENTORY_ITEM_LIST body = new() { item_list = item_list, is_end = is_end };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_C_WEAR_ITEM(PlayerInfo player_info)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_WEAR_ITEM);
-            U_TO_C_WEAR_ITEM body =
-                new() { player_info = player_info, inventory_info = player_info.inventory_info, };
+            U_TO_C_WEAR_ITEM body = new() { player_info = player_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_USE_ITEM(JobInfo job_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_USE_ITEM);
+            U_TO_C_USE_ITEM body = new() { job_info = job_info };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -44,6 +61,15 @@ namespace user_server
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_PLAYER_INFO);
             U_TO_C_PLAYER_INFO body = new() { player_info_list = player_info_list };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_JOB_RESOURCE_INFO(List<JobResourceInfo> job_resource_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_JOB_RESOURCE_INFO);
+            U_TO_C_JOB_RESOURCE_INFO body = new() { job_resource_info_list = job_resource_list };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -64,10 +90,22 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_GET_JOB(long player_id, ErrorCode error_code, JobInfo job_info)
+        public static Packet U_TO_C_GET_JOB(
+            long player_id,
+            ErrorCode error_code,
+            JobInfo? job_info = null
+        )
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_GET_JOB, player_id);
-            U_TO_C_GET_JOB body = new() { error_code = error_code, job_info = job_info };
+            U_TO_C_GET_JOB body;
+            if (error_code == ErrorCode.SUCCESS)
+            {
+                body = new() { error_code = error_code, job_info = job_info! };
+            }
+            else
+            {
+                body = new() { error_code = error_code };
+            }
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -104,6 +142,15 @@ namespace user_server
             return packet;
         }
 
+        public static Packet G_TO_U_JOB_RESOURCE_INFO(JobResourceInfo job_resource_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_JOB_RESOURCE_INFO);
+            G_TO_U_JOB_RESOURCE_INFO body = new() { job_resource_info = job_resource_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet G_TO_U_SPAWN(List<string> object_key_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_SPAWN);
@@ -135,6 +182,39 @@ namespace user_server
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_DESTROY);
             U_TO_C_DESTROY body = new() { object_key = object_key };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_CHANGE_MAP(MapID map_id, Cell spawn_cell, bool is_flip)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CHANGE_MAP);
+            U_TO_C_CHANGE_MAP body =
+                new()
+                {
+                    map_id = map_id,
+                    spawn_cell = spawn_cell,
+                    is_flip = is_flip
+                };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_USE_SKILL(ErrorCode error_code, JobInfo? job_info = null)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_USE_SKILL);
+            U_TO_C_USE_SKILL body = new() { error_code = error_code, job_info = job_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_USE_SKILL_COMPLETE(ItemInfo item_info, JobInfo job_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_USE_SKILL_COMPLETE);
+            U_TO_C_USE_SKILL_COMPLETE body = new() { item_info = item_info, job_info = job_info };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

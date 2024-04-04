@@ -22,7 +22,7 @@ namespace network
         public static short USER_SERVER_PORT = 7900;
         public static short GAME_SERVER_PORT = 8000;
         public static int MAX_CHAT_LINE = 2000;
-        public static int BROADCAST_CHUNK_SIZE = 150;
+        public static int BROADCAST_CHUNK_SIZE = 200;
         public static int BROADCAST_UNIT = BUFFER_SIZE / BROADCAST_CHUNK_SIZE;
         public static bool HEARTBEAT_ACTIVE = false;
         public static TimeSpan LOCK_TTL = TimeSpan.FromSeconds(30);
