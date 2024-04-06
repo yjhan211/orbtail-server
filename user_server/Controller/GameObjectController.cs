@@ -34,6 +34,12 @@ namespace user_server
         // 다른 객체의 이동 정보 구독. RecvMoveObjectTask에서 일괄 전송
         public void SubscribeMove(GameUser _, G_TO_U_MOVE body)
         {
+            // 자기꺼는 PublishMove할때 이미 넣음
+            if (body.object_info.object_id == this.object_info.object_id)
+            {
+                return;
+            }
+
             this.move_object_queue.Enqueue(body.object_info);
         }
 
@@ -56,7 +62,11 @@ namespace user_server
 
                     if (game_object_list.Count > 0)
                     {
-                        Packet packet = PacketMaker.U_TO_C_MAP_UPDATE(game_object_list);
+                        Packet packet = PacketMaker.U_TO_C_MAP_UPDATE(
+                            game_object_list,
+                            DateTime.UtcNow
+                        );
+
                         user.SendToClient(packet);
                     }
 
@@ -126,52 +136,52 @@ namespace user_server
             user.SendToClient(packet);
         }
 
-        // 마지막 이동 요청 후처리
-        public async Task HeartBeat()
-        {
-            if (this.object_info == null)
-            {
-                return;
-            }
-
-            if (this.object_info.current_cell.Equals(this.object_info.target_cell))
-            {
-                return;
-            }
-
-            if (this.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
-            {
-                return;
-            }
-
-            await Move(this.object_info.target_cell, DirectionType.NONE);
-        }
-
         // 클라의 이동 요청
         public async Task RequestMove(GameUser _, C_TO_U_MOVE body)
         {
-            // 아직 이동이 완료되지 않음
-            if (this.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+            try
             {
-                return;
+                var next_target_cell = MapHelper.CalcTargetCell(
+                    this.object_info.target_cell,
+                    body.direction
+                );
+
+                var next_position_key = MapHelper.GetPositionKey(
+                    this.object_info.map_id,
+                    next_target_cell
+                );
+
+                // 아직 이동이 완료되지 않음
+                if (this.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                {
+                    throw new Exception(
+                        $"{next_position_key} | {this.object_info.GetMoveElapsedTime()}"
+                    );
+                }
+
+                if (
+                    MapHelper.GetServerIdByPositionKey(Program.game_server_num, next_position_key)
+                    == 0
+                )
+                {
+                    throw new Exception($"not found server id from manage part");
+                }
+
+                await Move(next_target_cell, body.direction);
+
+                Packet packet = PacketMaker.U_TO_C_MOVE(user.player_id, ErrorCode.SUCCESS);
+                user.SendToClient(packet);
             }
-
-            var next_target_cell = MapHelper.CalcTargetCell(
-                this.object_info.target_cell,
-                body.direction
-            );
-
-            var next_position_key = MapHelper.GetPositionKey(
-                this.object_info.map_id,
-                next_target_cell
-            );
-
-            if (MapHelper.GetServerIdByPositionKey(Program.game_server_num, next_position_key) == 0)
+            catch (Exception e)
             {
-                return;
+                LogManager.WriteErrorLog(e);
+                Packet packet = PacketMaker.U_TO_C_MOVE(user.player_id, ErrorCode.FATAL);
+                user.SendToClient(packet);
             }
-
-            await Move(next_target_cell, body.direction);
+            finally
+            {
+                this.object_lock.Release();
+            }
         }
 
         public async Task SetFlip(DirectionType direction)
@@ -181,12 +191,8 @@ namespace user_server
                 return;
             }
 
-            await this.object_lock.WaitAsync();
-
             this.object_info.SetFlip(direction);
             await GameObjectInfoController.Save(user.cache_helper, this.object_info);
-
-            this.object_lock.Release();
 
             var current_position_key = MapHelper.GetPositionKey(
                 this.object_info.map_id,
@@ -215,7 +221,7 @@ namespace user_server
                 return;
             }
 
-            await this.object_lock.WaitAsync();
+            // await this.object_lock.WaitAsync();
 
             // 과거 위치 챙겨놓고
             this.last_cell = Cell.Clone(this.object_info.current_cell);
@@ -253,7 +259,7 @@ namespace user_server
 
             await GameObjectInfoController.Save(user.cache_helper, this.object_info);
 
-            this.object_lock.Release();
+            // this.object_lock.Release();
 
             if (last_manage_server != current_manage_server)
             {
@@ -347,6 +353,8 @@ namespace user_server
                 MapHelper.GetMoveManageSubject(this.object_info.map_id, manage_server),
                 MessagePackSerializer.Serialize((last_position_key, this.object_info))
             );
+
+            this.move_object_queue.Enqueue(this.object_info);
         }
 
         // 최초 맵 입장 or 이동 시 새로운 영역에 대한 오브젝트 정보 요청

@@ -137,7 +137,16 @@ namespace user_server
                         return;
                     }
 
-                    var player_current_cell = player_info.object_info.current_cell;
+                    Cell player_current_cell;
+                    if (player_info.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                    {
+                        player_current_cell = player_info.object_info.current_cell;
+                    }
+                    else
+                    {
+                        player_current_cell = player_info.object_info.target_cell;
+                    }
+
                     var job_resource_current_cell = job_resource_info.object_info.current_cell;
                     if (1 < MapHelper.GetDistance(player_current_cell, job_resource_current_cell))
                     {

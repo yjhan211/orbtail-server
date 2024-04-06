@@ -246,11 +246,6 @@
         {
             this.token.is_alive = true;
 
-            if (this.object_controller != null)
-            {
-                await this.object_controller.HeartBeat();
-            }
-
             if (this.current_job_resource != null)
             {
                 await JobController.JobSkillEnd(this);
@@ -289,6 +284,9 @@
                     player_info.object_info.map_id = MapID.CITY_1;
                     player_info.job_info.hp = 50;
                 }
+
+                player_info.object_info.current_cell = player_info.object_info.target_cell;
+
                 await PlayerInfoController.Save(this.cache_helper, player_info);
                 await GameObjectInfoController.Save(this.cache_helper, player_info.object_info);
 

@@ -21,10 +21,10 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_MAP_UPDATE(List<GameObjectInfo> object_list)
+        public static Packet U_TO_C_MAP_UPDATE(List<GameObjectInfo> object_list, DateTime utcnow)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_MAP_UPDATE);
-            U_TO_C_MAP_UPDATE body = new() { object_list = object_list };
+            U_TO_C_MAP_UPDATE body = new() { object_list = object_list, server_timestamp = utcnow };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -119,6 +119,15 @@ namespace user_server
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_G_MOVE, player_id);
             U_TO_G_MOVE body = new() { object_info = object_info, target_cell = target_cell };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_MOVE(long player_id, ErrorCode error_code)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_MOVE, player_id);
+            U_TO_C_MOVE body = new() { error_code = error_code };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

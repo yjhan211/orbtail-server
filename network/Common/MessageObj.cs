@@ -85,6 +85,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class U_TO_C_MOVE : IMessagePackObject
+    {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+    }
+
+    [MessagePackObject]
     public class G_TO_U_SPAWN : IMessagePackObject
     {
         [Key("object_key_list")]
@@ -120,6 +127,9 @@ namespace network
     {
         [Key("object_list")]
         public List<GameObjectInfo> object_list { get; set; }
+
+        [Key("server_timestamp")]
+        public DateTime server_timestamp { get; set; }
     }
 
     [MessagePackObject]
