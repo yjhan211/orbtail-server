@@ -37,6 +37,8 @@ namespace network
         U_TO_C_USE_SKILL_COMPLETE,
         C_TO_U_GET_JOB,
         U_TO_C_GET_JOB,
+        C_TO_U_UPGRADE_JOB,
+        U_TO_C_UPGRADE_JOB,
         C_TO_U_WEAR_ITEM,
         U_TO_C_WEAR_ITEM,
         C_TO_U_USE_ITEM,
@@ -132,5 +134,6 @@ namespace network
         NONE = 0,
         GEO_WORK_1,
         BOTAN_WORK_1,
+        RESEARCH_1,
     }
 }

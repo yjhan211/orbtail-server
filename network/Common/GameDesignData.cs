@@ -24,8 +24,26 @@
                     result = ("식물학자의 모자", "수습 이상 식물학자", "채집 Lv1 사용 가능", "100", "식물학 입문자의 든든한 파트너");
                     break;
 
+                case 103000001:
+                    result = (
+                        "낡은 탐험복",
+                        "연구원 이상",
+                        "조사 Lv1 사용 가능",
+                        "100",
+                        "낡았지만 부담없이 입을 수 있어 오히려 좋아요."
+                    );
+                    break;
+
                 case 201000001:
                     result = ("밤양갱", "조건 없음", "컨디션 20 회복", "", "우리는 너무 많이 생각하고는 해요.");
+                    break;
+
+                case 301000001:
+                    result = ("점토", "제작 재료", "", "", "물과 혼합하면 쉽게 모양을 변형할 수 있어요.");
+                    break;
+
+                case 301000002:
+                    result = ("미나리", "제작 재료", "", "", "무수한 효능이 있는 다년생 식물.");
                     break;
             }
 
@@ -44,6 +62,10 @@
                 case 20001:
                     result = ("채집 Lv1: 식물로부터 자원을 얻는 기술", true, PlayerState.BOTAN_WORK_1);
                     break;
+
+                case 100001:
+                    result = ("조사 Lv1: 자원을 조사하여 다른 자원으로 변환시키는 기술", true, PlayerState.RESEARCH_1);
+                    break;
             }
 
             return result;
@@ -59,12 +81,45 @@
             {
                 case 10001:
                     reward_item_list.Add(301000001);
-                    result = ("무른 암석", 20, 10000, "채광 스킬이 필요해요.", reward_item_list);
+                    result = ("암석", 20, 10000, "채광 스킬이 필요해요.", reward_item_list);
+                    break;
+
+                case 10002:
+                    reward_item_list.Add(301000001);
+                    reward_item_list.Add(301000003);
+                    reward_item_list.Add(301000005);
+                    result = ("이암", 20, 10000, "채광 스킬이 필요해요.", reward_item_list);
                     break;
 
                 case 20001:
                     reward_item_list.Add(301000002);
                     result = ("들풀", 20, 20000, "채집 스킬이 필요해요.", reward_item_list);
+                    break;
+
+                case 20002:
+                    reward_item_list.Add(301000002);
+                    reward_item_list.Add(301000004);
+                    reward_item_list.Add(301000006);
+                    result = ("산나물", 20, 20000, "채집 스킬이 필요해요.", reward_item_list);
+                    break;
+            }
+
+            return result;
+        }
+
+        // TODO 일단 하드코딩
+        // 원래 resource_id보다는 반드시 높으며 job_id보다는 높아지지 않음 .. 으로 바꿀 것
+        public static List<int> GetJobResourceUpgradePool(int job_resource_id)
+        {
+            var result = new List<int>();
+            switch (job_resource_id)
+            {
+                case 10001:
+                    result.Add(10002);
+                    break;
+
+                case 20001:
+                    result.Add(20002);
                     break;
             }
 
@@ -82,20 +137,26 @@
             return item_type;
         }
 
-        public static (string, string) GetWearItemSpriteInfo(int item_id)
+        public static List<(string, string)> GetWearItemSpriteInfo(int item_id)
         {
             int item_type = (int)(item_id / 1000000);
-            var lavel_number = (int)(item_id % 100000);
+            var label_number = (int)(item_id % 1000000);
 
-            (string, string) result = ("none", "none");
+            List<(string, string)> result = new();
             switch (item_type)
             {
-                case 1001:
-                    result = ("hair", $"hair_{lavel_number}");
+                case 101:
+                    result.Add(("hair", $"hair_{label_number}"));
                     break;
 
-                case 1002:
-                    result = ("hat", $"hat_{lavel_number}");
+                case 102:
+                    result.Add(("hat", $"hat_{label_number}"));
+                    break;
+
+                case 103:
+                    result.Add(("body", $"body_{label_number}"));
+                    result.Add(("left_arm", $"left_arm_{label_number}"));
+                    result.Add(("right_arm", $"right_arm_{label_number}"));
                     break;
             }
 
@@ -113,6 +174,10 @@
 
                 case PlayerState.BOTAN_WORK_1:
                     result = ("tool", "tool_2");
+                    break;
+
+                case PlayerState.RESEARCH_1:
+                    result = ("tool", "tool_3");
                     break;
             }
 
@@ -203,7 +268,11 @@
                     break;
 
                 case 102000002: // 식물학자의 모자
-                    result = 20001; //채집 레벨 1
+                    result = 20001; // 채집 레벨 1
+                    break;
+
+                case 103000001:
+                    result = 100001; // 조사 레벨 1
                     break;
             }
 
@@ -237,6 +306,19 @@
             }
 
             return target_job_type == job_type;
+        }
+
+        public static bool IsWearableJobGrade(int item_id, JobGrade grade)
+        {
+            JobGrade job_grade = JobGrade.TRAINEE;
+            switch (item_id)
+            {
+                case 103000001:
+                    job_grade = JobGrade.RESEARCHER;
+                    break;
+            }
+
+            return job_grade <= grade;
         }
 
         public static bool IsUseableItem(int item_id)
