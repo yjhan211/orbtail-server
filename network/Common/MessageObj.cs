@@ -85,6 +85,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class U_TO_C_MOVE : IMessagePackObject
+    {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+    }
+
+    [MessagePackObject]
     public class G_TO_U_SPAWN : IMessagePackObject
     {
         [Key("object_key_list")]
@@ -120,6 +127,9 @@ namespace network
     {
         [Key("object_list")]
         public List<GameObjectInfo> object_list { get; set; }
+
+        [Key("server_timestamp")]
+        public DateTime server_timestamp { get; set; }
     }
 
     [MessagePackObject]
@@ -183,6 +193,9 @@ namespace network
     {
         [Key("target_job_resource_uid")]
         public long resource_uid { get; set; }
+
+        [Key("skill_id")]
+        public int skill_id { get; set; }
     }
 
     [MessagePackObject]
@@ -205,6 +218,9 @@ namespace network
     [MessagePackObject]
     public class U_TO_C_USE_SKILL_COMPLETE : IMessagePackObject
     {
+        [Key("is_success")]
+        public bool is_success { get; set; }
+
         [Key("item_info")]
         public ItemInfo item_info { get; set; }
 
@@ -224,6 +240,26 @@ namespace network
     {
         [Key("job_type")]
         public JobType job_type { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_GET_JOB : IMessagePackObject
+    {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_UPGRADE_JOB : IMessagePackObject
+    {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
     }
 
     [MessagePackObject]
@@ -265,15 +301,5 @@ namespace network
 
         [Key("is_flip")]
         public bool is_flip { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_GET_JOB : IMessagePackObject
-    {
-        [Key("error_code")]
-        public ErrorCode error_code { get; set; }
-
-        [Key("job_info")]
-        public JobInfo job_info { get; set; }
     }
 }

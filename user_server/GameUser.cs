@@ -23,7 +23,7 @@
 
         /*-------------------------------------------------------------*/
         public bool in_action { get; set; }
-        public JobResourceInfo? current_job_resource { get; set; }
+        public (int, JobResourceInfo)? current_progress_job { get; set; }
 
         public GameUser(UserToken token)
         {
@@ -152,6 +152,10 @@
                             await HandleMessage<C_TO_U_GET_JOB>(body, JobController.GetJob);
                             break;
 
+                        case PROTOCOL.C_TO_U_UPGRADE_JOB:
+                            await JobController.UpgradeJob(this);
+                            break;
+
                         case PROTOCOL.C_TO_U_WEAR_ITEM:
                             await HandleMessage<C_TO_U_WEAR_ITEM>(
                                 body,
@@ -246,14 +250,13 @@
         {
             this.token.is_alive = true;
 
-            if (this.object_controller != null)
+            if (this.current_progress_job != null)
             {
-                await this.object_controller.HeartBeat();
-            }
-
-            if (this.current_job_resource != null)
-            {
-                await JobController.JobSkillEnd(this);
+                await JobController.JobSkillEnd(
+                    this,
+                    this.current_progress_job.Value.Item1,
+                    this.current_progress_job.Value.Item2
+                );
             }
         }
 
@@ -289,6 +292,10 @@
                     player_info.object_info.map_id = MapID.CITY_1;
                     player_info.job_info.hp = 50;
                 }
+
+                player_info.object_info.current_cell = player_info.object_info.target_cell;
+                player_info.state = PlayerState.NONE;
+
                 await PlayerInfoController.Save(this.cache_helper, player_info);
                 await GameObjectInfoController.Save(this.cache_helper, player_info.object_info);
 

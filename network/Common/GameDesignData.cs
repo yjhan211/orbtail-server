@@ -17,54 +17,168 @@
                     break;
 
                 case 102000001:
-                    result = ("지질학자의 모자", "수습 이상 지질학자", "채광 Lv1 사용 가능", "100", "지질학 입문자의 든든한 파트너");
+                    result = (
+                        "수습 지질학자의 모자",
+                        "수습 이상 지질학자",
+                        "채광 Lv1 사용 가능",
+                        "100",
+                        "지질학 입문자의 든든한 파트너"
+                    );
                     break;
 
                 case 102000002:
-                    result = ("식물학자의 모자", "수습 이상 식물학자", "채집 Lv1 사용 가능", "100", "식물학 입문자의 든든한 파트너");
+                    result = (
+                        "수습 식물학자의 모자",
+                        "수습 이상 식물학자",
+                        "채집 Lv1 사용 가능",
+                        "100",
+                        "식물학 입문자의 든든한 파트너"
+                    );
+                    break;
+
+                case 103000001:
+                    result = (
+                        "낡은 탐험복",
+                        "연구원 이상",
+                        "조사 Lv1 사용 가능",
+                        "100",
+                        "낡았지만 부담없이 입을 수 있어 오히려 좋아요."
+                    );
                     break;
 
                 case 201000001:
                     result = ("밤양갱", "조건 없음", "컨디션 20 회복", "", "우리는 너무 많이 생각하고는 해요.");
                     break;
+
+                case 301000001:
+                    result = ("점토", "제작 재료", "", "", "물과 혼합하면 쉽게 모양을 변형할 수 있어요.");
+                    break;
+
+                case 301000002:
+                    result = ("미나리", "제작 재료", "", "", "무수한 효능이 있는 다년생 식물.");
+                    break;
             }
 
             return result;
         }
 
-        public static (string, bool, PlayerState) GetSkillDetail(int skill_id)
+        public static (string, int, PlayerState) GetSkillDetail(int skill_id)
         {
-            var result = ("", false, PlayerState.NONE);
+            var result = ("", 0, PlayerState.NONE);
             switch (skill_id)
             {
                 case 10001:
-                    result = ("채광 Lv1: 암석으로부터 자원을 얻는 기술", true, PlayerState.GEO_WORK_1);
+                    result = ("채광 Lv1: 암석으로부터 자원을 얻는 기술", 1, PlayerState.GEO_WORK_1);
                     break;
 
                 case 20001:
-                    result = ("채집 Lv1: 식물로부터 자원을 얻는 기술", true, PlayerState.BOTAN_WORK_1);
+                    result = ("채집 Lv1: 식물로부터 자원을 얻는 기술", 1, PlayerState.BOTAN_WORK_1);
+                    break;
+
+                case 100001:
+                    result = ("조사 Lv1: 자원을 조사하여 다른 자원으로 변환시키는 기술", 1, PlayerState.RESEARCH_1);
                     break;
             }
 
             return result;
         }
 
-        public static (string, int, int, string, List<int>) GetJobResourceDetail(
+        public static string GetJobDetail(JobType job_type)
+        {
+            string result = "";
+            switch (job_type)
+            {
+                case JobType.GEOIOGIST:
+                    result = "암석을 수집하고 분석하는 연구원";
+                    break;
+
+                case JobType.BOTANIST:
+                    result = "식물을 채집하고 분석하는 연구원";
+                    break;
+            }
+
+            return result;
+        }
+
+        public static string GetJobGradeDetail(JobGrade job_grade)
+        {
+            string result = "";
+            switch (job_grade)
+            {
+                case JobGrade.TRAINEE:
+                    result = "열정 가득한 수습 연구원";
+                    break;
+                case JobGrade.RESEARCHER:
+                    result = "수습 단계를 통과한 정식 연구원";
+                    break;
+                case JobGrade.ASSOCIATE:
+                    result = "연구 분야에 대한 전문성을 갖춘 주임 연구원";
+                    break;
+                case JobGrade.SENIOR_ASSOCIATE:
+                    result = "높은 수준의 연구 능력을 보유한 선임 연구원";
+                    break;
+                case JobGrade.PRINCIPAL:
+                    result = "연구의 권위자로 인정받는 책임 연구원";
+                    break;
+                case JobGrade.LEAD:
+                    result = "학계 전체를 이끄는 수석 연구원";
+                    break;
+                case JobGrade.CHIEF:
+                    result = "최고 수준의 연구 역량을 갖춘 대가";
+                    break;
+            }
+            return result;
+        }
+
+        public static (string, int, JobType, int, string, List<int>) GetJobResourceDetail(
             int job_resource_id
         )
         {
             var reward_item_list = new List<int>();
-            var result = ("", 0, 0, "", reward_item_list);
+            var result = ("", 0, JobType.NONE, 0, "", reward_item_list);
             switch (job_resource_id)
             {
                 case 10001:
                     reward_item_list.Add(301000001);
-                    result = ("무른 암석", 20, 10000, "채광 스킬이 필요해요.", reward_item_list);
+                    result = ("암석", 20, JobType.GEOIOGIST, 1, "채광 Lv1 스킬이 필요해요.", reward_item_list);
+                    break;
+
+                case 10002:
+                    reward_item_list.Add(301000001);
+                    reward_item_list.Add(301000003);
+                    reward_item_list.Add(301000005);
+                    result = ("이암", 20, JobType.GEOIOGIST, 2, "채광 Lv2 스킬이 필요해요.", reward_item_list);
                     break;
 
                 case 20001:
                     reward_item_list.Add(301000002);
-                    result = ("들풀", 20, 20000, "채집 스킬이 필요해요.", reward_item_list);
+                    result = ("들풀", 20, JobType.BOTANIST, 1, "채집 Lv1 스킬이 필요해요.", reward_item_list);
+                    break;
+
+                case 20002:
+                    reward_item_list.Add(301000002);
+                    reward_item_list.Add(301000004);
+                    reward_item_list.Add(301000006);
+                    result = ("산나물", 20, JobType.BOTANIST, 2, "채집 Lv2 스킬이 필요해요.", reward_item_list);
+                    break;
+            }
+
+            return result;
+        }
+
+        // TODO 일단 하드코딩
+        // 원래 resource_id보다는 반드시 높으며 job_id보다는 높아지지 않음 .. 으로 바꿀 것
+        public static List<int> GetJobResourceUpgradePool(int job_resource_id)
+        {
+            var result = new List<int>();
+            switch (job_resource_id)
+            {
+                case 10001:
+                    result.Add(10002);
+                    break;
+
+                case 20001:
+                    result.Add(20002);
                     break;
             }
 
@@ -82,20 +196,26 @@
             return item_type;
         }
 
-        public static (string, string) GetWearItemSpriteInfo(int item_id)
+        public static List<(string, string)> GetWearItemSpriteInfo(int item_id)
         {
             int item_type = (int)(item_id / 1000000);
-            var lavel_number = (int)(item_id % 100000);
+            var label_number = (int)(item_id % 1000000);
 
-            (string, string) result = ("none", "none");
+            List<(string, string)> result = new();
             switch (item_type)
             {
-                case 1001:
-                    result = ("hair", $"hair_{lavel_number}");
+                case 101:
+                    result.Add(("hair", $"hair_{label_number}"));
                     break;
 
-                case 1002:
-                    result = ("hat", $"hat_{lavel_number}");
+                case 102:
+                    result.Add(("hat", $"hat_{label_number}"));
+                    break;
+
+                case 103:
+                    result.Add(("body", $"body_{label_number}"));
+                    result.Add(("left_arm", $"left_arm_{label_number}"));
+                    result.Add(("right_arm", $"right_arm_{label_number}"));
                     break;
             }
 
@@ -113,6 +233,10 @@
 
                 case PlayerState.BOTAN_WORK_1:
                     result = ("tool", "tool_2");
+                    break;
+
+                case PlayerState.RESEARCH_1:
+                    result = ("tool", "tool_3");
                     break;
             }
 
@@ -203,7 +327,11 @@
                     break;
 
                 case 102000002: // 식물학자의 모자
-                    result = 20001; //채집 레벨 1
+                    result = 20001; // 채집 레벨 1
+                    break;
+
+                case 103000001:
+                    result = 100001; // 조사 레벨 1
                     break;
             }
 
@@ -237,6 +365,19 @@
             }
 
             return target_job_type == job_type;
+        }
+
+        public static bool IsWearableJobGrade(int item_id, JobGrade grade)
+        {
+            JobGrade job_grade = JobGrade.TRAINEE;
+            switch (item_id)
+            {
+                case 103000001:
+                    job_grade = JobGrade.RESEARCHER;
+                    break;
+            }
+
+            return job_grade <= grade;
         }
 
         public static bool IsUseableItem(int item_id)
