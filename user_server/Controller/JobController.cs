@@ -176,6 +176,7 @@ namespace user_server
                     return;
                 }
 
+                var skill_detail = GameDesignData.GetSkillDetail(body.skill_id);
                 using (await JobResourceController.Lock(user.redlock, body.resource_uid))
                 {
                     job_resource_info = await JobResourceController.Load(
@@ -233,67 +234,31 @@ namespace user_server
 
                     var job_resource_name = job_resource_detail.Item1;
                     var job_resource_maxHp = job_resource_detail.Item2;
-                    var job_resource_skill_type = job_resource_detail.Item3;
+                    var job_resource_type = job_resource_detail.Item3;
+                    var job_resource_level = job_resource_detail.Item4;
 
-                    // TODO 일단 하드코딩
-                    switch (job_resource_skill_type)
+                    if (job_resource_type != player_info.job_info.job_type)
                     {
-                        case 10000:
-                            if (player_info.job_info.job_type != JobType.GEOIOGIST)
-                            {
-                                Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                                user.SendToClient(error_packet);
-                                return;
-                            }
-                            break;
-
-                        case 20000:
-                            if (player_info.job_info.job_type != JobType.BOTANIST)
-                            {
-                                Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                                user.SendToClient(error_packet);
-                                return;
-                            }
-                            break;
+                        Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
+                        user.SendToClient(error_packet);
+                        return;
                     }
 
-                    int skill_type = (body.skill_id / 10000) * 10000;
-                    switch (skill_type)
+                    if (skill_detail.Item2 < job_resource_level)
                     {
-                        // 채광,채집 스킬은 리소스랑 맞는지 검사
-                        case 10000:
-                        case 20000:
-                            if (job_resource_skill_type != skill_type)
-                            {
-                                Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                                user.SendToClient(error_packet);
-                                return;
-                            }
-                            break;
-                        // 조사 스킬은 검사 안함
-                        case 100000:
-                            if (
-                                job_resource_info.resource_id == 10002
-                                || job_resource_info.resource_id == 20002 // 일단 하드코딩
-                            )
-                            {
-                                Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                                user.SendToClient(error_packet);
-                                return;
-                            }
-                            break;
+                        Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
+                        user.SendToClient(error_packet);
+                        return;
                     }
 
                     job_resource_info.player_id = user.player_id;
                     job_resource_info.end_timestamp = DateTime.UtcNow.AddSeconds(10);
 
-                    user.current_progress_job = (skill_type, job_resource_info);
+                    user.current_progress_job = (body.skill_id, job_resource_info);
                     await JobResourceController.Save(user.cache_helper, job_resource_info);
                 }
 
                 user.in_action = true;
-
-                var skill_detail = GameDesignData.GetSkillDetail(body.skill_id);
                 player_info.state = skill_detail.Item3;
                 player_info.job_info.hp -= 1;
 
@@ -311,7 +276,7 @@ namespace user_server
 
         public static async Task JobSkillEnd(
             GameUser user,
-            int skill_type,
+            int skill_id,
             JobResourceInfo job_resource_info
         )
         {
@@ -342,9 +307,27 @@ namespace user_server
                 ItemInfo? item_info = null;
                 bool is_success = true;
 
-                switch (skill_type)
+                switch (skill_id)
                 {
-                    case 100000:
+                    case 10001:
+                    case 20001:
+                        // 아이템 뽑기
+                        var reward_item = job_resource_detail.Item6[
+                            random.Next(0, job_resource_detail.Item6.Count)
+                        ];
+                        // 아이템 주기
+                        item_info = await InventoryController.CreateItem(user, reward_item, 1);
+                        // TODO 이거 진짜 이상한데 일단 나중에 고치자
+                        player_info = InventoryController.AddItem(player_info, item_info);
+                        // 자원 지우고
+                        await JobResourceController.Delete(
+                            user.cache_helper,
+                            job_resource_info.resource_uid
+                        );
+                        BroadcastJobResourceDestroy(user, job_resource_info);
+                        break;
+
+                    case 100001:
                         is_success = random.Next(0, 100) < 50;
                         if (is_success)
                         {
@@ -359,27 +342,6 @@ namespace user_server
                         job_resource_info.player_id = 0;
                         await JobResourceController.Save(user.cache_helper, job_resource_info);
                         user.BroadcastUpdateJobResourceInfo(job_resource_info);
-                        break;
-
-                    default:
-                        // 아이템 뽑기
-                        var reward_item = job_resource_detail.Item5[
-                            random.Next(0, job_resource_detail.Item5.Count)
-                        ];
-
-                        // 아이템 주기
-                        item_info = await InventoryController.CreateItem(user, reward_item, 1);
-
-                        // TODO 이거 진짜 이상한데 일단 나중에 고치자
-                        player_info = InventoryController.AddItem(player_info, item_info);
-
-                        // 자원 지우고
-                        await JobResourceController.Delete(
-                            user.cache_helper,
-                            job_resource_info.resource_uid
-                        );
-
-                        BroadcastJobResourceDestroy(user, job_resource_info);
                         break;
                 }
 
