@@ -302,4 +302,18 @@ namespace network
         [Key("is_flip")]
         public bool is_flip { get; set; }
     }
+
+    [MessagePackObject]
+    public class C_TO_U_CREATE_LAB : IMessagePackObject
+    {
+        [Key("lab_name")]
+        public string lab_name { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_CREATE_LAB : IMessagePackObject
+    {
+        [Key("player_info")]
+        public PlayerInfo player_info { get; set; }
+    }
 }

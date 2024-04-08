@@ -259,6 +259,15 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_CREATE_LAB(long player_id, PlayerInfo player_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CREATE_LAB);
+            U_TO_C_CREATE_LAB body = new() { player_info = player_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_G_LOGOUT(long player_id)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_G_LOGOUT, player_id);

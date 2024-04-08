@@ -45,6 +45,8 @@ namespace network
         U_TO_C_USE_ITEM,
         U_TO_C_CHANGE_MAP,
         C_TO_U_CHANGE_MAP_SUCCESS,
+        C_TO_U_CREATE_LAB,
+        U_TO_C_CREATE_LAB,
         U_TO_G_LOGOUT,
         END
     }
@@ -54,6 +56,7 @@ namespace network
         NONE,
         CITY_1,
         FOREST_1,
+        LAB_1,
     }
 
     public enum ObjectType : int
@@ -95,6 +98,12 @@ namespace network
         PRINCIPAL, // 책임 연구원
         LEAD, // 수석 연구원
         CHIEF // 대가
+    }
+
+    public enum LabGrade : byte
+    {
+        NONE,
+        CLUB, // 동아리
     }
 
     public enum PlayerGrade : byte

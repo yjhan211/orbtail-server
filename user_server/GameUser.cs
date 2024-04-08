@@ -177,6 +177,10 @@
                         case PROTOCOL.C_TO_U_CHAT_MSG:
                             await HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
                             break;
+
+                        case PROTOCOL.C_TO_U_CREATE_LAB:
+                            await HandleMessage<C_TO_U_CREATE_LAB>(body, CreateLab);
+                            break;
                     }
                 }
 
@@ -285,7 +289,7 @@
                         name: request.account_token == "dummy"
                             ? $"더미{temp_player_id}"
                             : $"플레이어{temp_player_id}",
-                        new(90, 140)
+                        new(122, 102)
                     );
 
                     is_new = true;
@@ -399,6 +403,41 @@
                     await Task.Delay(100);
                 }
             }
+        }
+
+        async Task CreateLab(GameUser _, C_TO_U_CREATE_LAB body)
+        {
+            PlayerInfo? player_info;
+            using (await PlayerInfoController.Lock(this.redlock, this.player_id))
+            {
+                player_info = await PlayerInfoController.Load(this.cache_helper, this.player_id);
+                if (player_info == null)
+                {
+                    throw new Exception("player_info not exists");
+                }
+
+                if (player_info.job_info.job_grade < JobGrade.RESEARCHER)
+                {
+                    throw new Exception("not enough job grade");
+                }
+
+                if (player_info.lab_id != 0)
+                {
+                    throw new Exception("Already joined lab");
+                }
+
+                // TODO RDB PK로 교체 예정
+                long lab_id = await this.cache_helper.StringIncrement("lab_id");
+                LabInfo lab_info = new(lab_id, player_id, body.lab_name);
+                await LabInfoController.Save(this.cache_helper, lab_info);
+
+                player_info.lab_id = lab_id;
+                player_info.lab_name = body.lab_name;
+                await PlayerInfoController.Save(this.cache_helper, player_info);
+            }
+
+            Packet packet = PacketMaker.U_TO_C_CREATE_LAB(this.player_id, player_info);
+            this.SendToClient(packet);
         }
 
         void SubscribePlayerInfo(GameUser _, G_TO_U_PLAYER_INFO body)
