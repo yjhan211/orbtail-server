@@ -104,6 +104,7 @@ namespace network
     public enum LabGrade : byte
     {
         NONE,
+        ALONE, // 개인 동아리
         CLUB, // 동아리
     }
 

@@ -58,6 +58,7 @@ namespace user_server
                     gift_item_list
                 );
 
+                job_info.exp = 100;
                 await JobInfoController.Save(user.cache_helper, job_info);
             }
 

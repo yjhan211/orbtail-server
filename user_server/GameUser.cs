@@ -356,8 +356,10 @@
                 (channel, message) => OnMessageFromSubscribe(message)
             );
 
+            var lab_info = await LabInfoController.Load(this.cache_helper, player_info.lab_id);
+
             // 계정 정보 전송
-            Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info);
+            Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info, lab_info ?? new());
             SendToClient(login_packet);
 
             // 인벤토리 정보 전송
@@ -453,6 +455,7 @@
         async Task CreateLab(GameUser _, C_TO_U_CREATE_LAB body)
         {
             PlayerInfo? player_info;
+            LabInfo? lab_info;
             using (await PlayerInfoController.Lock(this.redlock, this.player_id))
             {
                 player_info = await PlayerInfoController.Load(this.cache_helper, this.player_id);
@@ -473,7 +476,7 @@
 
                 // TODO RDB PK로 교체 예정
                 long lab_id = await this.cache_helper.StringIncrement("lab_id");
-                LabInfo lab_info = new(lab_id, player_id, body.lab_name);
+                lab_info = new(lab_id, player_id, player_info.name, body.lab_name);
                 await LabInfoController.Save(this.cache_helper, lab_info);
 
                 player_info.lab_id = lab_id;
@@ -481,7 +484,7 @@
                 await PlayerInfoController.Save(this.cache_helper, player_info);
             }
 
-            Packet packet = PacketMaker.U_TO_C_CREATE_LAB(this.player_id, player_info);
+            Packet packet = PacketMaker.U_TO_C_CREATE_LAB(this.player_id, player_info, lab_info);
             this.SendToClient(packet);
         }
 

@@ -25,6 +25,9 @@ namespace network
 
         [Key("job_info")]
         public JobInfo job_info { get; set; }
+
+        [Key("lab_info")]
+        public LabInfo lab_info { get; set; }
     }
 
     [MessagePackObject]
@@ -321,6 +324,9 @@ namespace network
     {
         [Key("player_info")]
         public PlayerInfo player_info { get; set; }
+
+        [Key("lab_info")]
+        public LabInfo lab_info { get; set; }
     }
 
     [MessagePackObject]

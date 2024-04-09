@@ -5,7 +5,7 @@ namespace user_server
 
     public static class PacketMaker
     {
-        public static Packet U_TO_C_LOGIN(PlayerInfo player_info)
+        public static Packet U_TO_C_LOGIN(PlayerInfo player_info, LabInfo lab_info)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LOGIN);
             U_TO_C_LOGIN body =
@@ -14,6 +14,7 @@ namespace user_server
                     object_info = player_info.object_info,
                     player_info = player_info,
                     job_info = player_info.job_info,
+                    lab_info = lab_info,
                 };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -269,10 +270,14 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_CREATE_LAB(long player_id, PlayerInfo player_info)
+        public static Packet U_TO_C_CREATE_LAB(
+            long player_id,
+            PlayerInfo player_info,
+            LabInfo lab_info
+        )
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CREATE_LAB, player_id);
-            U_TO_C_CREATE_LAB body = new() { player_info = player_info };
+            U_TO_C_CREATE_LAB body = new() { player_info = player_info, lab_info = lab_info };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

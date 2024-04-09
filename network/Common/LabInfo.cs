@@ -17,8 +17,8 @@ namespace network
         [Key("master_player_id")]
         public long master_player_id { get; set; }
 
-        [Key("member_id_list")]
-        public List<long> member_id_list { get; set; }
+        [Key("member_dict")]
+        public Dictionary<long, string> member_dict { get; set; }
 
         [Key("grade")]
         public LabGrade lab_grade { get; set; }
@@ -28,17 +28,22 @@ namespace network
             this.lab_id = 0;
             this.lab_name = "";
             this.master_player_id = 0;
-            this.member_id_list = new();
+            this.member_dict = new();
             this.lab_grade = new();
         }
 
-        public LabInfo(long lab_id, long master_player_id, string lab_name)
+        public LabInfo(
+            long lab_id,
+            long master_player_id,
+            string master_player_name,
+            string lab_name
+        )
         {
             this.lab_id = lab_id;
             this.lab_name = lab_name;
             this.master_player_id = master_player_id;
-            this.member_id_list = new() { master_player_id };
-            this.lab_grade = LabGrade.CLUB;
+            this.member_dict = new() { { master_player_id, master_player_name } };
+            this.lab_grade = LabGrade.ALONE;
         }
     }
 }
