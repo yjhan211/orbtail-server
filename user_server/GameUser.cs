@@ -24,6 +24,7 @@
         /*-------------------------------------------------------------*/
         public bool in_action { get; set; }
         public (int, JobResourceInfo)? current_progress_job { get; set; }
+        public (DateTime, (MapID, long, Cell, bool))? change_map_task { get; set; }
 
         public GameUser(UserToken token)
         {
@@ -239,6 +240,13 @@
                     case PROTOCOL.G_TO_U_JOB_RESOURCE_INFO:
                         HandleMessage<G_TO_U_JOB_RESOURCE_INFO>(body, SubscribeJobResourceInfo);
                         break;
+
+                    case PROTOCOL.G_TO_U_CREATE_INSTANCE_SUCCESS:
+                        HandleMessage<G_TO_U_CREATE_INSTANCE_SUCCESS>(
+                            body,
+                            this.object_controller.SubscribeCreateinstanceSuccess
+                        );
+                        break;
                 }
 
                 Packet.Destroy(packet);
@@ -261,6 +269,25 @@
                     this.current_progress_job.Value.Item1,
                     this.current_progress_job.Value.Item2
                 );
+            }
+
+            if (this.change_map_task != null)
+            {
+                var change_time = this.change_map_task.Value.Item1;
+                if (DateTime.UtcNow < change_time)
+                {
+                    return;
+                }
+
+                var change_info = this.change_map_task.Value.Item2;
+                await this.object_controller!.ChangeMap(
+                    change_info.Item1,
+                    change_info.Item2,
+                    change_info.Item3,
+                    change_info.Item4
+                );
+
+                this.change_map_task = null;
             }
         }
 
@@ -295,6 +322,7 @@
                     is_new = true;
                     player_info.object_info.map_id = MapID.CITY_1;
                     player_info.job_info.hp = 50;
+                    player_info.lab_id = 777; // TODO 테스트코드
                 }
 
                 player_info.object_info.current_cell = player_info.object_info.target_cell;
@@ -335,13 +363,31 @@
 
             // 인벤토리 정보 전송
             await InventoryController.GetCurrentItemList(this);
+
+            await this.object_controller.ChangeMap(
+                player_info.object_info.map_id,
+                player_info.object_info.map_sub_id,
+                player_info.object_info.current_cell,
+                player_info.object_info.is_flip
+            );
+
+            // TODO 테스트코드
+            C_TO_U_GET_JOB test_body = new() { job_type = JobType.BOTANIST };
+            await JobController.GetJob(this, test_body);
         }
 
         async Task ChangeMapSuccess()
         {
+            var player_info = await PlayerInfoController.Load(this.cache_helper, this.player_id);
+            if (player_info == null)
+            {
+                throw new Exception("not found player info");
+            }
+
             await this.object_controller!.Move(
                 this.object_controller.object_info.current_cell,
                 DirectionType.NONE,
+                player_info,
                 true
             );
         }

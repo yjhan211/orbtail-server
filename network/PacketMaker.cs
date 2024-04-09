@@ -144,10 +144,14 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_MOVE(long player_id, ErrorCode error_code)
+        public static Packet U_TO_C_MOVE(
+            long player_id,
+            ErrorCode error_code,
+            GameObjectInfo object_info
+        )
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_MOVE, player_id);
-            U_TO_C_MOVE body = new() { error_code = error_code };
+            U_TO_C_MOVE body = new() { error_code = error_code, object_info = object_info };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -267,8 +271,18 @@ namespace user_server
 
         public static Packet U_TO_C_CREATE_LAB(long player_id, PlayerInfo player_info)
         {
-            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CREATE_LAB);
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CREATE_LAB, player_id);
             U_TO_C_CREATE_LAB body = new() { player_info = player_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet G_TO_U_CREATE_INSTANCE_SUCCESS(MapID map_id, long map_sub_id)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_CREATE_INSTANCE_SUCCESS);
+            G_TO_U_CREATE_INSTANCE_SUCCESS body =
+                new() { map_id = map_id, map_sub_id = map_sub_id };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

@@ -112,6 +112,8 @@ namespace network
                     GetPositionKey(MapID.FOREST_1, 0, new(59, 69)),
                     (MapID.CITY_1, new(89, 139), true)
                 },
+                { GetPositionKey(MapID.CITY_1, 0, new(85, 109)), (MapID.LAB_1, new(90, 96), true) },
+                { GetPositionKey(MapID.CITY_1, 0, new(88, 106)), (MapID.LAB_1, new(90, 96), true) },
             };
 
         public static void Initialize()
@@ -183,6 +185,11 @@ namespace network
         public static string GetBrodcastDestroySubject(MapID map_id, long map_sub_id, int server_id)
         {
             return $"broadcast_destroy_{map_id}_{map_sub_id}_{server_id}";
+        }
+
+        public static string GetCreateInstanceSubject(int server_id)
+        {
+            return $"create_instance_{server_id}";
         }
 
         public static List<int> GetManagePartList(int total_server, int game_server_id)
@@ -300,10 +307,15 @@ namespace network
             return $"map_{map_id}|{map_sub_id}|{cell.x},{cell.y}";
         }
 
-        public static string GetInstanceKey(string position_key)
+        public static string ConvertToInstanceKey(string position_key)
         {
             string[] parts = position_key.Split('|');
             return $"{parts[0]}|{parts[1]}";
+        }
+
+        public static string GetInstanceKey(MapID map_id, long map_sub_id)
+        {
+            return $"map_{map_id}|{map_sub_id}";
         }
 
         public static Cell GetCell(string position_key)

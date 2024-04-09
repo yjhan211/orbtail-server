@@ -47,6 +47,7 @@ namespace network
         C_TO_U_CHANGE_MAP_SUCCESS,
         C_TO_U_CREATE_LAB,
         U_TO_C_CREATE_LAB,
+        G_TO_U_CREATE_INSTANCE_SUCCESS,
         U_TO_G_LOGOUT,
         END
     }
@@ -135,6 +136,7 @@ namespace network
         SUCCESS = 0,
         ALREADY_HAS_JOB,
         ALREADY_ANOTHER_USE_SKILL,
+        INVALID_POSITION,
         FATAL
     }
 

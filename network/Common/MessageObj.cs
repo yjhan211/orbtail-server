@@ -89,6 +89,9 @@ namespace network
     {
         [Key("error_code")]
         public ErrorCode error_code { get; set; }
+
+        [Key("object_info")]
+        public GameObjectInfo object_info { get; set; }
     }
 
     [MessagePackObject]
@@ -318,5 +321,15 @@ namespace network
     {
         [Key("player_info")]
         public PlayerInfo player_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_U_CREATE_INSTANCE_SUCCESS : IMessagePackObject
+    {
+        [Key("map_id")]
+        public MapID map_id { get; set; }
+
+        [Key("map_sub_id")]
+        public long map_sub_id { get; set; }
     }
 }
