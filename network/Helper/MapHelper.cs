@@ -77,43 +77,26 @@ namespace network
             new int[] { 39, 40 }
         };
 
+        public static string GetPortalKey(MapID map_id, Cell cell)
+        {
+            return $"{map_id}|{cell.x},{cell.y}";
+        }
+
         public static Dictionary<string, (MapID, Cell, bool)> portal_info =
             new()
             {
-                {
-                    GetPositionKey(MapID.CITY_1, 0, new(89, 141)),
-                    (MapID.FOREST_1, new(59, 66), true)
-                },
-                {
-                    GetPositionKey(MapID.CITY_1, 0, new(89, 142)),
-                    (MapID.FOREST_1, new(59, 66), true)
-                },
-                {
-                    GetPositionKey(MapID.CITY_1, 0, new(90, 141)),
-                    (MapID.FOREST_1, new(59, 66), true)
-                },
-                {
-                    GetPositionKey(MapID.CITY_1, 0, new(90, 142)),
-                    (MapID.FOREST_1, new(59, 66), true)
-                },
-                {
-                    GetPositionKey(MapID.FOREST_1, 0, new(60, 69)),
-                    (MapID.CITY_1, new(89, 139), true)
-                },
-                {
-                    GetPositionKey(MapID.FOREST_1, 0, new(60, 70)),
-                    (MapID.CITY_1, new(89, 139), true)
-                },
-                {
-                    GetPositionKey(MapID.FOREST_1, 0, new(59, 70)),
-                    (MapID.CITY_1, new(89, 139), true)
-                },
-                {
-                    GetPositionKey(MapID.FOREST_1, 0, new(59, 69)),
-                    (MapID.CITY_1, new(89, 139), true)
-                },
-                { GetPositionKey(MapID.CITY_1, 0, new(85, 109)), (MapID.LAB_1, new(90, 96), true) },
-                { GetPositionKey(MapID.CITY_1, 0, new(88, 106)), (MapID.LAB_1, new(90, 96), true) },
+                { GetPortalKey(MapID.CITY_1, new(89, 141)), (MapID.FOREST_1, new(59, 66), true) },
+                { GetPortalKey(MapID.CITY_1, new(89, 142)), (MapID.FOREST_1, new(59, 66), true) },
+                { GetPortalKey(MapID.CITY_1, new(90, 141)), (MapID.FOREST_1, new(59, 66), true) },
+                { GetPortalKey(MapID.CITY_1, new(90, 142)), (MapID.FOREST_1, new(59, 66), true) },
+                { GetPortalKey(MapID.FOREST_1, new(60, 69)), (MapID.CITY_1, new(89, 139), true) },
+                { GetPortalKey(MapID.FOREST_1, new(60, 70)), (MapID.CITY_1, new(89, 139), true) },
+                { GetPortalKey(MapID.FOREST_1, new(59, 70)), (MapID.CITY_1, new(89, 139), true) },
+                { GetPortalKey(MapID.FOREST_1, new(59, 69)), (MapID.CITY_1, new(89, 139), true) },
+                { GetPortalKey(MapID.CITY_1, new(85, 109)), (MapID.LAB_1, new(90, 96), true) },
+                { GetPortalKey(MapID.CITY_1, new(88, 106)), (MapID.LAB_1, new(90, 96), true) },
+                { GetPortalKey(MapID.LAB_1, new(90, 100)), (MapID.CITY_1, new(81, 108), false) },
+                { GetPortalKey(MapID.LAB_1, new(91, 100)), (MapID.CITY_1, new(81, 108), false) },
             };
 
         public static void Initialize()

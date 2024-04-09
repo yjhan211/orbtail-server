@@ -216,7 +216,8 @@ namespace user_server
                     throw new Exception($"not found player info");
                 }
 
-                var target_cell_update = IsMoveAblePosition(next_position_key, player_info);
+                var portal_key = MapHelper.GetPortalKey(this.object_info.map_id, next_target_cell);
+                var target_cell_update = IsMoveAblePosition(portal_key, player_info);
                 if (!target_cell_update)
                 {
                     next_target_cell = this.object_info.target_cell;
@@ -253,9 +254,9 @@ namespace user_server
             }
         }
 
-        public static bool IsMoveAblePosition(string next_position_key, PlayerInfo player_info)
+        public static bool IsMoveAblePosition(string portal_key, PlayerInfo player_info)
         {
-            if (MapHelper.portal_info.TryGetValue(next_position_key, out var portal_result))
+            if (MapHelper.portal_info.TryGetValue(portal_key, out var portal_result))
             {
                 var map_id = portal_result.Item1;
                 switch (map_id)
@@ -417,14 +418,13 @@ namespace user_server
                     break;
             }
 
-            var target_position_key = MapHelper.GetPositionKey(
+            // target_cell이 포탈 좌표면 맵 이동 예약
+            var portal_key = MapHelper.GetPortalKey(
                 this.object_info.map_id,
-                this.object_info.map_sub_id,
                 this.object_info.target_cell
             );
 
-            // target_cell이 포탈 좌표면 맵 이동 예약
-            if (MapHelper.portal_info.TryGetValue(target_position_key, out var portal_result))
+            if (MapHelper.portal_info.TryGetValue(portal_key, out var portal_result))
             {
                 var map_id = portal_result.Item1;
                 var spawn_position = portal_result.Item2;
