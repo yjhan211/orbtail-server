@@ -35,10 +35,11 @@ namespace user_server
         public void SubscribeMove(GameUser _, G_TO_U_MOVE body)
         {
             // 자기꺼는 PublishMove할때 이미 넣음
-            if (body.object_info.object_id == this.object_info.object_id)
-            {
-                return;
-            }
+            // TODO 개발 완료되면 풀어놓을 것
+            // if (body.object_info.object_id == this.object_info.object_id)
+            // {
+            //     return;
+            // }
 
             this.move_object_queue.Enqueue(body.object_info);
         }
@@ -91,7 +92,7 @@ namespace user_server
         }
 
         // 이 함수가 호출되는 경우: G_TO_U_SPAWN_LIST의 object_key_list에는 있으나 클라에는 GameObjectInfo가 없을 때
-        // 어떤 경우에 생기는가: 이미 접속해서 잠수타고 있는 오브젝트를 만났을 때
+        // 어떤 경우에 생기는가: 이미 스폰되어 있는 오브젝트를 만났을 때
         public async Task GetObjectInfo(GameUser _, C_TO_U_OBJECT_INFO body)
         {
             RedisValue[] keys = body.object_key_list.ConvertAll(x => (RedisValue)x).ToArray();
@@ -148,6 +149,7 @@ namespace user_server
 
                 var next_position_key = MapHelper.GetPositionKey(
                     this.object_info.map_id,
+                    this.object_info.map_sub_id,
                     next_target_cell
                 );
 
@@ -196,6 +198,7 @@ namespace user_server
 
             var current_position_key = MapHelper.GetPositionKey(
                 this.object_info.map_id,
+                this.object_info.map_sub_id,
                 this.object_info.current_cell
             );
 
@@ -211,13 +214,37 @@ namespace user_server
         {
             var target_position_key = MapHelper.GetPositionKey(
                 this.object_info.map_id,
+                this.object_info.map_sub_id,
                 this.object_info.target_cell
             );
 
             // target_cell이 포탈 좌표면 맵 이동
             if (MapHelper.portal_info.TryGetValue(target_position_key, out var portal_result))
             {
-                await ChangeMap(portal_result);
+                var map_id = portal_result.Item1;
+                var spawn_position = portal_result.Item2;
+                var is_flip = portal_result.Item3;
+
+                long map_sub_id = 0;
+                switch (map_id)
+                {
+                    case MapID.LAB_1:
+                        var player_info = await PlayerInfoController.Load(
+                            user.cache_helper,
+                            user.player_id
+                        );
+                        if (player_info == null || player_info.lab_id == 0)
+                        {
+                            // 소속 연구소가 없음
+                            return;
+                        }
+                        map_sub_id = player_info.lab_id;
+                        break;
+
+                    default:
+                        break;
+                }
+                await ChangeMap(map_id, map_sub_id, spawn_position, is_flip);
                 return;
             }
 
@@ -228,12 +255,8 @@ namespace user_server
 
             var last_position_key = MapHelper.GetPositionKey(
                 this.object_info.map_id,
+                this.object_info.map_sub_id,
                 this.object_info.current_cell
-            );
-
-            var last_manage_server = MapHelper.GetServerIdByPositionKey(
-                Program.game_server_num,
-                last_position_key
             );
 
             // current_cell을 target_cell로 변경
@@ -241,13 +264,33 @@ namespace user_server
 
             var current_position_key = MapHelper.GetPositionKey(
                 this.object_info.map_id,
+                this.object_info.map_sub_id,
                 this.object_info.current_cell
             );
 
-            var current_manage_server = MapHelper.GetServerIdByPositionKey(
-                Program.game_server_num,
-                current_position_key
-            );
+            int last_manage_server;
+            int current_manage_server;
+
+            switch (this.object_info.map_id)
+            {
+                case MapID.LAB_1:
+                    last_manage_server = MapHelper.GetServerIdByMapSubID(
+                        Program.game_server_num,
+                        this.object_info.map_sub_id
+                    );
+                    current_manage_server = last_manage_server;
+                    break;
+                default:
+                    last_manage_server = MapHelper.GetServerIdByPositionKey(
+                        Program.game_server_num,
+                        last_position_key
+                    );
+                    current_manage_server = MapHelper.GetServerIdByPositionKey(
+                        Program.game_server_num,
+                        current_position_key
+                    );
+                    break;
+            }
 
             // target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
             this.object_info.move_timestamp = DateTime.UtcNow;
@@ -261,15 +304,46 @@ namespace user_server
 
             // this.object_lock.Release();
 
+            // 과거 담당 서버에는 영역을 떠났다고 전송
             if (last_manage_server != current_manage_server)
             {
-                // 과거 담당 서버에는 영역을 떠났다고 전송
-                PublishLeave(last_position_key);
+                user.nats_client.Publish(
+                    MapHelper.GetLeaveManageSubject(
+                        this.object_info.map_id,
+                        this.object_info.map_sub_id,
+                        last_manage_server
+                    ),
+                    MessagePackSerializer.Serialize(
+                        (last_position_key, this.object_info.GetHashField())
+                    )
+                );
             }
 
-            // 현재 담당 서버에 전송 - 같은 서버에 PublishLeave 따로 보내면 순서 뒤바뀔 수 있음
-            PublishMove(last_position_key, current_position_key);
+            // 현재 담당 서버에 전송
+            user.nats_client.Publish(
+                MapHelper.GetMoveManageSubject(
+                    this.object_info.map_id,
+                    this.object_info.map_sub_id,
+                    current_manage_server
+                ),
+                MessagePackSerializer.Serialize((last_position_key, this.object_info))
+            );
+            // this.move_object_queue.Enqueue(this.object_info); // TODO 개발 완료되면 풀어놓을 것
 
+            switch (this.object_info.map_id)
+            {
+                case MapID.LAB_1:
+                    RequestSpawnObjectList(current_manage_server);
+                    break;
+
+                default:
+                    RequestCommmonMapSpawnList(all_bound);
+                    break;
+            }
+        }
+
+        public void RequestCommmonMapSpawnList(bool all_bound)
+        {
             var last_bound_cell_list = all_bound
                 ? new()
                 : MapHelper.GetBoundCellList(this.last_cell, true);
@@ -284,7 +358,7 @@ namespace user_server
                 .Except(last_bound_cell_list)
                 .Select(
                     (last_bound_cell) =>
-                        MapHelper.GetPositionKey(this.object_info.map_id, last_bound_cell)
+                        MapHelper.GetPositionKey(this.object_info.map_id, 0, last_bound_cell)
                 )
                 .Select(
                     position_key =>
@@ -306,35 +380,38 @@ namespace user_server
             }
         }
 
-        public async Task ChangeMap((MapID map_id, Cell spawn_cell, bool is_flip) change_info)
+        public async Task ChangeMap(MapID map_id, long map_sub_id, Cell spawn_cell, bool is_flip)
         {
             // 기존 맵에 삭제 요청
             await PublishDestroy();
 
-            var packet = PacketMaker.U_TO_C_CHANGE_MAP(
-                change_info.map_id,
-                change_info.spawn_cell,
-                change_info.is_flip
-            );
+            var packet = PacketMaker.U_TO_C_CHANGE_MAP(map_id, map_sub_id, spawn_cell, is_flip);
 
             user.SendToClient(packet);
 
-            this.object_info.map_id = change_info.map_id;
-            this.object_info.current_cell = Cell.Clone(change_info.spawn_cell);
-            this.object_info.target_cell = Cell.Clone(change_info.spawn_cell);
-            this.object_info.is_flip = change_info.is_flip;
+            this.object_info.map_id = map_id;
+            this.object_info.map_sub_id = map_sub_id;
+            this.object_info.current_cell = Cell.Clone(spawn_cell);
+            this.object_info.target_cell = Cell.Clone(spawn_cell);
+            this.object_info.is_flip = is_flip;
         }
 
         // 다른 서버의 할당 영역으로 넘어갈 때, 기존 할당되어있던 서버에 삭제 요청
         public void PublishLeave(string leave_position_key)
         {
-            var manage_sever = MapHelper.GetServerIdByPositionKey(
+            var manage_server = MapHelper.GetServerIdByPositionKey(
                 Program.game_server_num,
                 leave_position_key
             );
 
+            var subject = MapHelper.GetLeaveManageSubject(
+                this.object_info.map_id,
+                this.object_info.map_sub_id,
+                manage_server
+            );
+
             user.nats_client.Publish(
-                MapHelper.GetLeaveManageSubject(this.object_info.map_id, manage_sever),
+                subject,
                 MessagePackSerializer.Serialize(
                     (leave_position_key, this.object_info.GetHashField())
                 )
@@ -349,8 +426,14 @@ namespace user_server
                 current_position_key
             );
 
+            var subject = MapHelper.GetMoveManageSubject(
+                this.object_info.map_id,
+                this.object_info.map_sub_id,
+                manage_server
+            );
+
             user.nats_client.Publish(
-                MapHelper.GetMoveManageSubject(this.object_info.map_id, manage_server),
+                subject,
                 MessagePackSerializer.Serialize((last_position_key, this.object_info))
             );
 
@@ -358,12 +441,16 @@ namespace user_server
         }
 
         // 최초 맵 입장 or 이동 시 새로운 영역에 대한 오브젝트 정보 요청
-        void RequestSpawnObjectList(int server_id, List<string> position_key_list)
+        void RequestSpawnObjectList(int server_id, List<string>? position_key_list = null)
         {
             user.nats_client.Publish(
-                MapHelper.GetSpawnManageSubject(this.object_info.map_id, server_id),
+                MapHelper.GetSpawnManageSubject(
+                    this.object_info.map_id,
+                    this.object_info.map_sub_id,
+                    server_id
+                ),
                 MessagePackSerializer.Serialize(
-                    (this.object_info.GetHashField(), position_key_list)
+                    (this.object_info.GetHashField(), position_key_list ?? new())
                 )
             );
         }
@@ -375,6 +462,7 @@ namespace user_server
 
             var position_key = MapHelper.GetPositionKey(
                 this.object_info.map_id,
+                this.object_info.map_sub_id,
                 this.object_info.current_cell
             );
 
@@ -384,7 +472,11 @@ namespace user_server
             );
 
             user.nats_client.Publish(
-                MapHelper.GetDestroyObjectSubject(this.object_info.map_id, manage_server),
+                MapHelper.GetDestroyObjectSubject(
+                    this.object_info.map_id,
+                    this.object_info.map_sub_id,
+                    manage_server
+                ),
                 MessagePackSerializer.Serialize((position_key, this.object_info.GetHashField()))
             );
         }

@@ -296,6 +296,9 @@ namespace network
         [Key("map_id")]
         public MapID map_id { get; set; }
 
+        [Key("map_sub_id")]
+        public long map_sub_id { get; set; }
+
         [Key("spawn_cell")]
         public Cell spawn_cell { get; set; }
 

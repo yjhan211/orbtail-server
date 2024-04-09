@@ -80,14 +80,38 @@ namespace network
         public static Dictionary<string, (MapID, Cell, bool)> portal_info =
             new()
             {
-                { GetPositionKey(MapID.CITY_1, new(89, 141)), (MapID.FOREST_1, new(59, 66), true) },
-                { GetPositionKey(MapID.CITY_1, new(89, 142)), (MapID.FOREST_1, new(59, 66), true) },
-                { GetPositionKey(MapID.CITY_1, new(90, 141)), (MapID.FOREST_1, new(59, 66), true) },
-                { GetPositionKey(MapID.CITY_1, new(90, 142)), (MapID.FOREST_1, new(59, 66), true) },
-                { GetPositionKey(MapID.FOREST_1, new(60, 69)), (MapID.CITY_1, new(89, 139), true) },
-                { GetPositionKey(MapID.FOREST_1, new(60, 70)), (MapID.CITY_1, new(89, 139), true) },
-                { GetPositionKey(MapID.FOREST_1, new(59, 70)), (MapID.CITY_1, new(89, 139), true) },
-                { GetPositionKey(MapID.FOREST_1, new(59, 69)), (MapID.CITY_1, new(89, 139), true) },
+                {
+                    GetPositionKey(MapID.CITY_1, 0, new(89, 141)),
+                    (MapID.FOREST_1, new(59, 66), true)
+                },
+                {
+                    GetPositionKey(MapID.CITY_1, 0, new(89, 142)),
+                    (MapID.FOREST_1, new(59, 66), true)
+                },
+                {
+                    GetPositionKey(MapID.CITY_1, 0, new(90, 141)),
+                    (MapID.FOREST_1, new(59, 66), true)
+                },
+                {
+                    GetPositionKey(MapID.CITY_1, 0, new(90, 142)),
+                    (MapID.FOREST_1, new(59, 66), true)
+                },
+                {
+                    GetPositionKey(MapID.FOREST_1, 0, new(60, 69)),
+                    (MapID.CITY_1, new(89, 139), true)
+                },
+                {
+                    GetPositionKey(MapID.FOREST_1, 0, new(60, 70)),
+                    (MapID.CITY_1, new(89, 139), true)
+                },
+                {
+                    GetPositionKey(MapID.FOREST_1, 0, new(59, 70)),
+                    (MapID.CITY_1, new(89, 139), true)
+                },
+                {
+                    GetPositionKey(MapID.FOREST_1, 0, new(59, 69)),
+                    (MapID.CITY_1, new(89, 139), true)
+                },
             };
 
         public static void Initialize()
@@ -105,7 +129,7 @@ namespace network
                     position_list_by_map_part[map_id][part_number] = new();
                     foreach (var cell in cell_list)
                     {
-                        var position_key = GetPositionKey(map_id, cell);
+                        var position_key = GetPositionKey(map_id, 0, cell);
                         if (!part_by_position_key.TryGetValue(position_key, out var duplicate))
                         {
                             part_by_position_key.Add(position_key, part_number);
@@ -117,44 +141,48 @@ namespace network
             }
         }
 
-        public static string GetMoveManageSubject(MapID map_id, int server_id)
+        public static string GetMoveManageSubject(MapID map_id, long map_sub_id, int server_id)
         {
-            return $"move_object_{map_id}_{server_id}";
+            return $"move_object_{map_id}_{map_sub_id}_{server_id}";
         }
 
-        public static string GetLeaveManageSubject(MapID map_id, int server_id)
+        public static string GetLeaveManageSubject(MapID map_id, long map_sub_id, int server_id)
         {
-            return $"leave_object_{map_id}_{server_id}";
+            return $"leave_object_{map_id}_{map_sub_id}_{server_id}";
         }
 
-        public static string GetSpawnManageSubject(MapID map_id, int server_id)
+        public static string GetSpawnManageSubject(MapID map_id, long map_sub_id, int server_id)
         {
-            return $"spawn_object_{map_id}_{server_id}";
+            return $"spawn_object_{map_id}_{map_sub_id}_{server_id}";
         }
 
-        public static string GetDestroyObjectSubject(MapID map_id, int server_id)
+        public static string GetDestroyObjectSubject(MapID map_id, long map_sub_id, int server_id)
         {
-            return $"destroy_object_{map_id}_{server_id}";
+            return $"destroy_object_{map_id}_{map_sub_id}_{server_id}";
         }
 
-        public static string GetUpdatePlayerSubject(MapID map_id, int server_id)
+        public static string GetUpdatePlayerSubject(MapID map_id, long map_sub_id, int server_id)
         {
-            return $"update_player_{map_id}_{server_id}";
+            return $"update_player_{map_id}_{map_sub_id}_{server_id}";
         }
 
-        public static string GetUpdateJobResourceSubject(MapID map_id, int server_id)
+        public static string GetUpdateJobResourceSubject(
+            MapID map_id,
+            long map_sub_id,
+            int server_id
+        )
         {
-            return $"update_job_resource_{map_id}_{server_id}";
+            return $"update_job_resource_{map_id}_{map_sub_id}_{server_id}";
         }
 
-        public static string GetBrodcastMoveSubject(MapID map_id, int server_id)
+        public static string GetBrodcastMoveSubject(MapID map_id, long map_sub_id, int server_id)
         {
-            return $"broadcast_move_{map_id}_{server_id}";
+            return $"broadcast_move_{map_id}_{map_sub_id}_{server_id}";
         }
 
-        public static string GetBrodcastDestroySubject(MapID map_id, int server_id)
+        public static string GetBrodcastDestroySubject(MapID map_id, long map_sub_id, int server_id)
         {
-            return $"broadcast_destroy_{map_id}_{server_id}";
+            return $"broadcast_destroy_{map_id}_{map_sub_id}_{server_id}";
         }
 
         public static List<int> GetManagePartList(int total_server, int game_server_id)
@@ -203,11 +231,16 @@ namespace network
         public static List<int> GetBoundServerList(MapID map_id, int total_server_num, Cell cell)
         {
             return GetBoundCellList(cell)
-                .Select((bound_cell) => GetPositionKey(map_id, bound_cell))
+                .Select((bound_cell) => GetPositionKey(map_id, 0, bound_cell)) // 여기 타면 무조건 공통맵임
                 .Select((position_key) => GetServerIdByPositionKey(total_server_num, position_key))
                 .Where((server_id) => server_id != 0)
                 .Distinct()
                 .ToList();
+        }
+
+        public static int GetServerIdByMapSubID(int total_server_num, long map_sub_id)
+        {
+            return (int)((map_sub_id - 1) % total_server_num) + 1;
         }
 
         public static int GetServerIdByPositionKey(int total_server_num, string position_key)
@@ -262,15 +295,21 @@ namespace network
             return server_id;
         }
 
-        public static string GetPositionKey(MapID map_id, Cell cell)
+        public static string GetPositionKey(MapID map_id, long map_sub_id, Cell cell)
         {
-            return $"map_{map_id}|{cell.x},{cell.y}";
+            return $"map_{map_id}|{map_sub_id}|{cell.x},{cell.y}";
+        }
+
+        public static string GetInstanceKey(string position_key)
+        {
+            string[] parts = position_key.Split('|');
+            return $"{parts[0]}|{parts[1]}";
         }
 
         public static Cell GetCell(string position_key)
         {
             var split = position_key.Split("|");
-            var position = split[1].Split(",");
+            var position = split[2].Split(",");
 
             return new Cell(Int32.Parse(position[0]), Int32.Parse(position[1]));
         }

@@ -469,6 +469,7 @@
         {
             var position_key = MapHelper.GetPositionKey(
                 player_info.object_info.map_id,
+                player_info.object_info.map_sub_id,
                 player_info.object_info.current_cell
             );
 
@@ -481,7 +482,11 @@
             foreach (var target_server in target_server_list)
             {
                 this.nats_client!.Publish(
-                    MapHelper.GetUpdatePlayerSubject(player_info.object_info.map_id, target_server),
+                    MapHelper.GetUpdatePlayerSubject(
+                        player_info.object_info.map_id,
+                        player_info.object_info.map_sub_id,
+                        target_server
+                    ),
                     MessagePackSerializer.Serialize((position_key, player_info))
                 );
             }
@@ -491,6 +496,7 @@
         {
             var position_key = MapHelper.GetPositionKey(
                 job_resource_info.object_info.map_id,
+                job_resource_info.object_info.map_sub_id,
                 job_resource_info.object_info.current_cell
             );
 
@@ -505,6 +511,7 @@
                 this.nats_client!.Publish(
                     MapHelper.GetUpdateJobResourceSubject(
                         job_resource_info.object_info.map_id,
+                        job_resource_info.object_info.map_sub_id,
                         target_server
                     ),
                     MessagePackSerializer.Serialize((position_key, job_resource_info))

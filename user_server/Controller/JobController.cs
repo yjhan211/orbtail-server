@@ -384,6 +384,7 @@ namespace user_server
         {
             var position_key = MapHelper.GetPositionKey(
                 job_resource_info.object_info.map_id,
+                job_resource_info.object_info.map_sub_id,
                 job_resource_info.object_info.current_cell
             );
 
@@ -395,6 +396,7 @@ namespace user_server
             user.nats_client.Publish(
                 MapHelper.GetDestroyObjectSubject(
                     job_resource_info.object_info.map_id,
+                    job_resource_info.object_info.map_sub_id,
                     manage_server
                 ),
                 MessagePackSerializer.Serialize(

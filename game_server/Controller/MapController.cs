@@ -39,7 +39,7 @@ namespace game_server
             this.nats_client = nats_client;
 
             this.nats_client.Subscribe(
-                MapHelper.GetMoveManageSubject(this.map_id, Program.server_id),
+                MapHelper.GetMoveManageSubject(this.map_id, 0, Program.server_id),
                 (subject, msg) =>
                 {
                     try
@@ -54,7 +54,7 @@ namespace game_server
             );
 
             this.nats_client.Subscribe(
-                MapHelper.GetLeaveManageSubject(this.map_id, Program.server_id),
+                MapHelper.GetLeaveManageSubject(this.map_id, 0, Program.server_id),
                 (subject, msg) =>
                 {
                     try
@@ -69,7 +69,7 @@ namespace game_server
             );
 
             this.nats_client.Subscribe(
-                MapHelper.GetSpawnManageSubject(this.map_id, Program.server_id),
+                MapHelper.GetSpawnManageSubject(this.map_id, 0, Program.server_id),
                 (subject, msg) =>
                 {
                     try
@@ -84,7 +84,7 @@ namespace game_server
             );
 
             this.nats_client.Subscribe(
-                MapHelper.GetDestroyObjectSubject(this.map_id, Program.server_id),
+                MapHelper.GetDestroyObjectSubject(this.map_id, 0, Program.server_id),
                 (subject, msg) =>
                 {
                     try
@@ -99,7 +99,7 @@ namespace game_server
             );
 
             this.nats_client.Subscribe(
-                MapHelper.GetUpdatePlayerSubject(this.map_id, Program.server_id),
+                MapHelper.GetUpdatePlayerSubject(this.map_id, 0, Program.server_id),
                 (subject, msg) =>
                 {
                     try
@@ -114,7 +114,7 @@ namespace game_server
             );
 
             this.nats_client.Subscribe(
-                MapHelper.GetUpdateJobResourceSubject(this.map_id, Program.server_id),
+                MapHelper.GetUpdateJobResourceSubject(this.map_id, 0, Program.server_id),
                 (subject, msg) =>
                 {
                     try
@@ -129,7 +129,7 @@ namespace game_server
             );
 
             this.nats_client.Subscribe(
-                MapHelper.GetBrodcastMoveSubject(this.map_id, Program.server_id),
+                MapHelper.GetBrodcastMoveSubject(this.map_id, 0, Program.server_id),
                 (subject, msg) =>
                 {
                     try
@@ -144,7 +144,7 @@ namespace game_server
             );
 
             this.nats_client.Subscribe(
-                MapHelper.GetBrodcastDestroySubject(this.map_id, Program.server_id),
+                MapHelper.GetBrodcastDestroySubject(this.map_id, 0, Program.server_id),
                 (subject, msg) =>
                 {
                     try
@@ -216,6 +216,7 @@ namespace game_server
 
                         var create_position_key = MapHelper.GetPositionKey(
                             this.map_id,
+                            0,
                             create_cell
                         );
 
@@ -261,7 +262,7 @@ namespace game_server
                         foreach (var target_server in target_server_list)
                         {
                             this.nats_client!.Publish(
-                                MapHelper.GetBrodcastMoveSubject(this.map_id, target_server),
+                                MapHelper.GetBrodcastMoveSubject(this.map_id, 0, target_server),
                                 MessagePackSerializer.Serialize((create_position_key, object_info))
                             );
                         }
@@ -296,6 +297,7 @@ namespace game_server
             var object_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, object_info.object_id);
             var current_position_key = MapHelper.GetPositionKey(
                 object_info.map_id,
+                0,
                 object_info.current_cell
             );
 
@@ -322,7 +324,7 @@ namespace game_server
             foreach (var target_server in target_server_list)
             {
                 this.nats_client!.Publish(
-                    MapHelper.GetBrodcastMoveSubject(this.map_id, target_server),
+                    MapHelper.GetBrodcastMoveSubject(this.map_id, 0, target_server),
                     MessagePackSerializer.Serialize((current_position_key, object_info))
                 );
             }
@@ -382,7 +384,7 @@ namespace game_server
             foreach (var target_server in target_server_list)
             {
                 this.nats_client!.Publish(
-                    MapHelper.GetBrodcastDestroySubject(this.map_id, target_server),
+                    MapHelper.GetBrodcastDestroySubject(this.map_id, 0, target_server),
                     MessagePackSerializer.Serialize((position_key, object_key))
                 );
             }
@@ -402,7 +404,7 @@ namespace game_server
 
             foreach (var bound_cell in bound_cell_list)
             {
-                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, 0, bound_cell);
                 if (
                     !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
                 )
@@ -436,7 +438,7 @@ namespace game_server
 
             foreach (var bound_cell in bound_cell_list)
             {
-                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, 0, bound_cell);
                 if (
                     !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
                 )
@@ -472,7 +474,7 @@ namespace game_server
 
             foreach (var bound_cell in bound_cell_list)
             {
-                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, 0, bound_cell);
                 if (
                     !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
                 )
@@ -507,7 +509,7 @@ namespace game_server
 
             foreach (var bound_cell in bound_cell_list)
             {
-                var bound_position_key = MapHelper.GetPositionKey(this.map_id, bound_cell);
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, 0, bound_cell);
                 if (
                     !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
                 )

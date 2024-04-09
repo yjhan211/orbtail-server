@@ -216,13 +216,19 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_CHANGE_MAP(MapID map_id, Cell spawn_cell, bool is_flip)
+        public static Packet U_TO_C_CHANGE_MAP(
+            MapID map_id,
+            long map_sub_id,
+            Cell spawn_cell,
+            bool is_flip
+        )
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CHANGE_MAP);
             U_TO_C_CHANGE_MAP body =
                 new()
                 {
                     map_id = map_id,
+                    map_sub_id = map_sub_id,
                     spawn_cell = spawn_cell,
                     is_flip = is_flip
                 };

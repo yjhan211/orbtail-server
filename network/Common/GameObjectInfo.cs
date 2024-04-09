@@ -17,6 +17,9 @@ namespace network
         [Key("map_id")]
         public MapID map_id { get; set; }
 
+        [Key("map_subid")]
+        public long map_sub_id { get; set; }
+
         [Key("current_cell")]
         public Cell current_cell { get; set; }
 
