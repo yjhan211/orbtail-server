@@ -23,6 +23,9 @@ namespace network
         [Key("grade")]
         public LabGrade lab_grade { get; set; }
 
+        [Key("reserach_info_dict")]
+        public Dictionary<int, ReserachInfo> reserach_info_dict { get; set; }
+
         public LabInfo()
         {
             this.lab_id = 0;
@@ -30,12 +33,14 @@ namespace network
             this.master_player_id = 0;
             this.member_dict = new();
             this.lab_grade = new();
+            this.reserach_info_dict = new();
         }
 
         public LabInfo(
             long lab_id,
             long master_player_id,
             string master_player_name,
+            JobType master_player_job_type,
             string lab_name
         )
         {
@@ -44,6 +49,44 @@ namespace network
             this.master_player_id = master_player_id;
             this.member_dict = new() { { master_player_id, master_player_name } };
             this.lab_grade = LabGrade.ALONE;
+            this.reserach_info_dict = new();
+
+            ReserachInfo reserach = new ReserachInfo();
+            switch (master_player_job_type)
+            {
+                case JobType.GEOIOGIST:
+                    reserach.reserach_id = 1;
+                    reserach.geo_level = 1;
+                    break;
+
+                case JobType.BOTANIST:
+                    reserach.reserach_id = 1;
+                    reserach.botan_level = 1;
+                    break;
+
+                case JobType.BIOLOGY:
+                    reserach.reserach_id = 1;
+                    reserach.bio_level = 1;
+                    break;
+            }
+
+            this.reserach_info_dict.Add(reserach.reserach_id, reserach);
         }
+    }
+
+    [MessagePackObject]
+    public class ReserachInfo : IMessagePackObject
+    {
+        [Key("reserach_id")]
+        public int reserach_id { get; set; }
+
+        [Key("geo_level")]
+        public int geo_level { get; set; }
+
+        [Key("botan_level")]
+        public int botan_level { get; set; }
+
+        [Key("bio_level")]
+        public int bio_level { get; set; }
     }
 }

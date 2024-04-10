@@ -476,7 +476,13 @@
 
                 // TODO RDB PK로 교체 예정
                 long lab_id = await this.cache_helper.StringIncrement("lab_id");
-                lab_info = new(lab_id, player_id, player_info.name, body.lab_name);
+                lab_info = new(
+                    lab_id,
+                    player_id,
+                    player_info.name,
+                    player_info.job_info.job_type,
+                    body.lab_name
+                );
                 await LabInfoController.Save(this.cache_helper, lab_info);
 
                 player_info.lab_id = lab_id;

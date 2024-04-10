@@ -48,6 +48,8 @@ namespace network
         C_TO_U_CREATE_LAB,
         U_TO_C_CREATE_LAB,
         G_TO_U_CREATE_INSTANCE_SUCCESS,
+        C_TO_U_RESEARCH,
+        U_TO_C_RESEARCH,
         U_TO_G_LOGOUT,
         END
     }
@@ -87,6 +89,7 @@ namespace network
         NONE,
         GEOIOGIST, // 지질학자
         BOTANIST, // 식물학자
+        BIOLOGY, // 생물학자
     }
 
     public enum JobGrade : byte
