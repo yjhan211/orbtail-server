@@ -180,7 +180,18 @@
                             break;
 
                         case PROTOCOL.C_TO_U_CREATE_LAB:
-                            await HandleMessage<C_TO_U_CREATE_LAB>(body, CreateLab);
+                            await HandleMessage<C_TO_U_CREATE_LAB>(body, LabController.CreateLab);
+                            break;
+
+                        case PROTOCOL.C_TO_U_UPGRADE_RESEARCH:
+                            await HandleMessage<C_TO_U_UPGRADE_RESEARCH>(
+                                body,
+                                LabController.UpgradeResearch
+                            );
+                            break;
+
+                        case PROTOCOL.C_TO_U_MAKE:
+                            await HandleMessage<C_TO_U_MAKE>(body, LabController.Make);
                             break;
                     }
                 }
@@ -373,8 +384,8 @@
             );
 
             // TODO 테스트코드
-            C_TO_U_GET_JOB test_body = new() { job_type = JobType.BOTANIST };
-            await JobController.GetJob(this, test_body);
+            // C_TO_U_GET_JOB test_body = new() { job_type = JobType.BOTANIST };
+            // await JobController.GetJob(this, test_body);
         }
 
         async Task ChangeMapSuccess()
@@ -452,48 +463,6 @@
             }
         }
 
-        async Task CreateLab(GameUser _, C_TO_U_CREATE_LAB body)
-        {
-            PlayerInfo? player_info;
-            LabInfo? lab_info;
-            using (await PlayerInfoController.Lock(this.redlock, this.player_id))
-            {
-                player_info = await PlayerInfoController.Load(this.cache_helper, this.player_id);
-                if (player_info == null)
-                {
-                    throw new Exception("player_info not exists");
-                }
-
-                if (player_info.job_info.job_grade < JobGrade.RESEARCHER)
-                {
-                    throw new Exception("not enough job grade");
-                }
-
-                if (player_info.lab_id != 0)
-                {
-                    throw new Exception("Already joined lab");
-                }
-
-                // TODO RDB PK로 교체 예정
-                long lab_id = await this.cache_helper.StringIncrement("lab_id");
-                lab_info = new(
-                    lab_id,
-                    player_id,
-                    player_info.name,
-                    player_info.job_info.job_type,
-                    body.lab_name
-                );
-                await LabInfoController.Save(this.cache_helper, lab_info);
-
-                player_info.lab_id = lab_id;
-                player_info.lab_name = body.lab_name;
-                await PlayerInfoController.Save(this.cache_helper, player_info);
-            }
-
-            Packet packet = PacketMaker.U_TO_C_CREATE_LAB(this.player_id, player_info, lab_info);
-            this.SendToClient(packet);
-        }
-
         void SubscribePlayerInfo(GameUser _, G_TO_U_PLAYER_INFO body)
         {
             var player_info_list = new List<PlayerInfo> { body.player_info };
@@ -521,28 +490,52 @@
 
         public void BroadcastUpdatePlayerInfo(PlayerInfo player_info)
         {
-            var position_key = MapHelper.GetPositionKey(
-                player_info.object_info.map_id,
-                player_info.object_info.map_sub_id,
-                player_info.object_info.current_cell
-            );
-
-            var target_server_list = MapHelper.GetBoundServerList(
-                player_info.object_info.map_id,
-                Program.game_server_num,
-                MapHelper.GetCell(position_key)
-            );
-
-            foreach (var target_server in target_server_list)
+            switch (player_info.object_info.map_id)
             {
-                this.nats_client!.Publish(
-                    MapHelper.GetUpdatePlayerSubject(
+                case MapID.LAB_1:
+                    var instance_key = MapHelper.GetInstanceKey(
+                        player_info.object_info.map_id,
+                        player_info.object_info.map_sub_id
+                    );
+                    var instance_server = MapHelper.GetServerIdByMapSubID(
+                        Program.game_server_num,
+                        player_info.object_info.map_sub_id
+                    );
+                    this.nats_client!.Publish(
+                        MapHelper.GetUpdatePlayerSubject(
+                            player_info.object_info.map_id,
+                            player_info.object_info.map_sub_id,
+                            instance_server
+                        ),
+                        MessagePackSerializer.Serialize((instance_key, player_info))
+                    );
+                    break;
+
+                default:
+                    var position_key = MapHelper.GetPositionKey(
                         player_info.object_info.map_id,
                         player_info.object_info.map_sub_id,
-                        target_server
-                    ),
-                    MessagePackSerializer.Serialize((position_key, player_info))
-                );
+                        player_info.object_info.current_cell
+                    );
+
+                    var target_server_list = MapHelper.GetBoundServerList(
+                        player_info.object_info.map_id,
+                        Program.game_server_num,
+                        MapHelper.GetCell(position_key)
+                    );
+
+                    foreach (var target_server in target_server_list)
+                    {
+                        this.nats_client!.Publish(
+                            MapHelper.GetUpdatePlayerSubject(
+                                player_info.object_info.map_id,
+                                player_info.object_info.map_sub_id,
+                                target_server
+                            ),
+                            MessagePackSerializer.Serialize((position_key, player_info))
+                        );
+                    }
+                    break;
             }
         }
 

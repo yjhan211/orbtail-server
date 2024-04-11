@@ -12,7 +12,7 @@ namespace network
         public long player_id { get; set; }
 
         [Key("item_list")]
-        public List<ItemInfo> item_list { get; set; }
+        public List<ItemInfo> item_list { get; set; } // TODO dict로 바꾸는게 나을듯
 
         // 이거 없애면 안됨 MessagePack에서 씀
         public InventoryInfo()

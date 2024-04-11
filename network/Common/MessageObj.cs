@@ -338,4 +338,32 @@ namespace network
         [Key("map_sub_id")]
         public long map_sub_id { get; set; }
     }
+
+    [MessagePackObject]
+    public class C_TO_U_UPGRADE_RESEARCH : IMessagePackObject
+    {
+        [Key("research_id")]
+        public int research_id { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_UPGRADE_RESEARCH : IMessagePackObject
+    {
+        [Key("reserach_info_dict")]
+        public Dictionary<int, ResearchInfo> reserach_info_dict { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_MAKE : IMessagePackObject
+    {
+        [Key("materials")]
+        public Dictionary<long, int> materials { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_MAKE : IMessagePackObject
+    {
+        [Key("is_success")]
+        public bool is_success { get; set; }
+    }
 }

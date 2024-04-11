@@ -48,8 +48,10 @@ namespace network
         C_TO_U_CREATE_LAB,
         U_TO_C_CREATE_LAB,
         G_TO_U_CREATE_INSTANCE_SUCCESS,
-        C_TO_U_RESEARCH,
-        U_TO_C_RESEARCH,
+        C_TO_U_UPGRADE_RESEARCH,
+        U_TO_C_UPGRADE_RESEARCH,
+        C_TO_U_MAKE,
+        U_TO_C_MAKE,
         U_TO_G_LOGOUT,
         END
     }

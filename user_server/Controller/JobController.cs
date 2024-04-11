@@ -58,7 +58,7 @@ namespace user_server
                     gift_item_list
                 );
 
-                job_info.exp = 100;
+                // job_info.exp = 100;
                 await JobInfoController.Save(user.cache_helper, job_info);
             }
 
@@ -312,6 +312,8 @@ namespace user_server
                 {
                     case 10001:
                     case 20001:
+                    case 10002:
+                    case 20002:
                         // 아이템 뽑기
                         var reward_item = job_resource_detail.Item6[
                             random.Next(0, job_resource_detail.Item6.Count)

@@ -1,9 +1,16 @@
 namespace network
 {
     using MessagePack;
+    using RedLockNet.SERedis;
+    using RedLockNet;
 
     public static class LabInfoController
     {
+        public static async Task<IRedLock> Lock(RedLockFactory redlock, long lab_id)
+        {
+            return await redlock.CreateLockAsync(LabInfo.GetLockKey(lab_id), Config.LOCK_TTL);
+        }
+
         public static async Task Save(CacheHelper cache_helper, LabInfo lab_info)
         {
             await cache_helper.HashSet(

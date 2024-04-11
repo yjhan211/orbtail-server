@@ -19,7 +19,7 @@
                 case 102000001:
                     result = (
                         "수습 지질학자의 모자",
-                        "수습 이상 지질학자",
+                        "수습 지질학자 이상",
                         "채광 Lv1 사용 가능",
                         "100",
                         "지질학 입문자의 든든한 파트너"
@@ -29,10 +29,30 @@
                 case 102000002:
                     result = (
                         "수습 식물학자의 모자",
-                        "수습 이상 식물학자",
+                        "수습 식물학자 이상",
                         "채집 Lv1 사용 가능",
                         "100",
                         "식물학 입문자의 든든한 파트너"
+                    );
+                    break;
+
+                case 102000003:
+                    result = (
+                        "지질학자의 모자",
+                        "지질학자 이상",
+                        "채광 Lv2 사용 가능",
+                        "100",
+                        "이제 연구자 태가 좀 나는 것 같아요."
+                    );
+                    break;
+
+                case 102000004:
+                    result = (
+                        "식물학자의 모자",
+                        "식물학자 이상",
+                        "채집 Lv2 사용 가능",
+                        "100",
+                        "이제 연구자 태가 좀 나는 것 같아요."
                     );
                     break;
 
@@ -51,11 +71,35 @@
                     break;
 
                 case 301000001:
-                    result = ("점토", "제작 재료", "", "", "물과 혼합하면 쉽게 모양을 변형할 수 있어요.");
+                    result = ("조약돌", "제작 재료", "", "", "재료보다는 수집품으로 인기가 많아요.");
                     break;
 
                 case 301000002:
-                    result = ("미나리", "제작 재료", "", "", "무수한 효능이 있는 다년생 식물.");
+                    result = ("잡초", "제작 재료", "", "", "잡초도 약에 쓰려면 없다는 말이 있어요.");
+                    break;
+
+                case 301000003:
+                    result = ("점토암", "제작 재료", "", "", "물과 혼합하면 쉽게 모양을 변형할 수 있어요.");
+                    break;
+
+                case 301000004:
+                    result = ("미나리", "제작 재료", "", "", "물가나 습지에서 잘 자라는 전통 식재료.");
+                    break;
+
+                case 301000005:
+                    result = ("실트암", "제작 재료", "", "", "단단하지는 않지만 가공이 쉽고 다루기 편해요.");
+                    break;
+
+                case 301000006:
+                    result = ("민들레", "제작 재료", "", "", "뿌리가 깊고 번식력이 강해요.");
+                    break;
+
+                case 301000007:
+                    result = ("돌구슬", "제작 재료", "", "", "경쾌한 소리가 나요.");
+                    break;
+
+                case 301000008:
+                    result = ("건초", "제작 재료", "", "", "정성스럽게 수분을 바싹 말렸어요.");
                     break;
             }
 
@@ -75,8 +119,20 @@
                     result = ("채집 Lv1: 식물로부터 자원을 얻는 기술", 1, PlayerState.BOTAN_WORK_1);
                     break;
 
+                case 10002:
+                    result = ("채광 Lv2: 암석으로부터 자원을 얻는 기술", 2, PlayerState.GEO_WORK_1);
+                    break;
+
+                case 20002:
+                    result = ("채집 Lv2: 식물로부터 자원을 얻는 기술", 2, PlayerState.BOTAN_WORK_1);
+                    break;
+
                 case 100001:
-                    result = ("조사 Lv1: 자원을 조사하여 다른 자원으로 변환시키는 기술", 1, PlayerState.RESEARCH_1);
+                    result = ("조사 Lv1: 자원의 가능성을 발견하는 기술", 1, PlayerState.RESEARCH_1);
+                    break;
+
+                case 200001:
+                    result = ("제작: 연구 일지를 기반으로 제작하는 기술", 0, PlayerState.NONE);
                     break;
             }
 
@@ -330,6 +386,14 @@
                     result = 20001; // 채집 레벨 1
                     break;
 
+                case 102000003: // 식물학자의 모자
+                    result = 10002; // 채광 레벨 2
+                    break;
+
+                case 102000004: // 식물학자의 모자
+                    result = 20002; // 채광 레벨 2
+                    break;
+
                 case 103000001:
                     result = 100001; // 조사 레벨 1
                     break;
@@ -353,10 +417,12 @@
             switch (item_id)
             {
                 case 102000001:
+                case 102000003:
                     target_job_type = JobType.GEOIOGIST;
                     break;
 
                 case 102000002:
+                case 102000004:
                     target_job_type = JobType.BOTANIST;
                     break;
 
@@ -503,6 +569,42 @@
             return result;
         }
 
+        public static string ConvertLabGrade(LabGrade lab_grade)
+        {
+            var result = "";
+
+            switch (lab_grade)
+            {
+                case LabGrade.ALONE:
+                    result = "개인 동아리";
+                    break;
+
+                case LabGrade.CLUB:
+                    result = "동아리";
+                    break;
+            }
+
+            return result;
+        }
+
+        public static int GetMaxLabMemberNum(LabGrade lab_grade)
+        {
+            var result = 0;
+
+            switch (lab_grade)
+            {
+                case LabGrade.ALONE:
+                    result = 1;
+                    break;
+
+                case LabGrade.CLUB:
+                    result = 3;
+                    break;
+            }
+
+            return result;
+        }
+
         public static string ConvertJobName(JobType job_type)
         {
             var result = "무직";
@@ -523,6 +625,152 @@
             }
 
             return result;
+        }
+
+        public static string GetResearchName(int research_id)
+        {
+            switch (research_id)
+            {
+                case 4:
+                    return "암석 가공";
+
+                case 5:
+                    return "식물 가공";
+
+                case 7:
+                    return "텐트 제작";
+            }
+
+            return "미정";
+        }
+
+        public static List<(int, int, int)> GetRequireResearch(int research_id)
+        {
+            var result = new List<(int, int, int)>();
+
+            switch (research_id)
+            {
+                case 4:
+                    result.Add((1, 1, 1));
+                    break;
+                case 5:
+                    result.Add((2, 2, 1));
+                    break;
+
+                case 7:
+                    result.Add((4, 1, 1));
+                    result.Add((5, 2, 1));
+                    break;
+            }
+
+            return result;
+        }
+
+        public static List<(int, int)> GetResearchUpgradeCharge(
+            JobType job_type,
+            ResearchInfo research_info
+        )
+        {
+            var key = "";
+            switch (job_type)
+            {
+                case JobType.GEOIOGIST:
+                    key = $"{research_info.research_id}_1_{research_info.geo_level + 1}";
+                    break;
+
+                case JobType.BOTANIST:
+                    key = $"{research_info.research_id}_2_{research_info.botan_level + 1}";
+                    break;
+
+                case JobType.BIOLOGY:
+                    key = $"{research_info.research_id}_3_{research_info.bio_level + 1}";
+                    break;
+            }
+
+            if (!research_upgarde_item_dictionary.TryGetValue(key, out var require_list))
+            {
+                return new();
+            }
+
+            return require_list;
+        }
+
+        public static Dictionary<string, List<(int, int)>> research_upgarde_item_dictionary =
+            new()
+            {
+                {
+                    "4_1_1",
+                    new() { (301000001, 10) }
+                },
+                {
+                    "4_1_2",
+                    new() { (301000001, 100) }
+                },
+                {
+                    "5_2_1",
+                    new() { (301000002, 10) }
+                },
+                {
+                    "5_2_2",
+                    new() { (301000002, 100) }
+                },
+                {
+                    "7_1_1",
+                    new() { (301000003, 10), (301000005, 10) }
+                },
+                {
+                    "7_2_1",
+                    new() { (301000004, 10), (301000006, 10) }
+                },
+            };
+
+        public static int GetMakableItemId(List<(int, int)> make_materials)
+        {
+            var conditions = new Dictionary<int, List<(int, int)>>
+            {
+                {
+                    301000007,
+                    new List<(int, int)> { (301000001, 3) }
+                },
+                {
+                    301000008,
+                    new List<(int, int)> { (301000002, 3) }
+                },
+                {
+                    102000003,
+                    new List<(int, int)> { (102000001, 1), (301000007, 1) }
+                },
+                {
+                    102000004,
+                    new List<(int, int)> { (102000002, 1), (301000008, 1) }
+                },
+            };
+
+            foreach (var (key, conditionList) in conditions)
+            {
+                if (make_materials.Count != conditionList.Count)
+                {
+                    continue;
+                }
+
+                bool isMakable = true;
+                foreach (var (itemId, count) in conditionList)
+                {
+                    var material = make_materials.Find(x => x.Item1 == itemId);
+                    if (material.Item1 == 0 || material.Item2 != count)
+                    {
+                        isMakable = false;
+                        break;
+                    }
+                }
+
+                if (isMakable)
+                {
+                    return key;
+                }
+            }
+
+            return 0;
         }
     }
 }

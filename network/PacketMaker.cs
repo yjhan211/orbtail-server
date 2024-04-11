@@ -293,6 +293,26 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_UPGRADE_RESEARCH(
+            Dictionary<int, ResearchInfo> research_info_dict
+        )
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_UPGRADE_RESEARCH);
+            U_TO_C_UPGRADE_RESEARCH body = new() { reserach_info_dict = research_info_dict };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_MAKE(bool is_success)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_MAKE);
+            U_TO_C_MAKE body = new() { is_success = is_success };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_G_LOGOUT(long player_id)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_G_LOGOUT, player_id);

@@ -1,6 +1,7 @@
 namespace network
 {
     using MessagePack;
+    using System.Collections.Generic;
 
     [MessagePackObject]
     public class LabInfo : IMessagePackObject
@@ -24,7 +25,7 @@ namespace network
         public LabGrade lab_grade { get; set; }
 
         [Key("reserach_info_dict")]
-        public Dictionary<int, ReserachInfo> reserach_info_dict { get; set; }
+        public Dictionary<int, ResearchInfo> reserach_info_dict { get; set; }
 
         public LabInfo()
         {
@@ -51,34 +52,44 @@ namespace network
             this.lab_grade = LabGrade.ALONE;
             this.reserach_info_dict = new();
 
-            ReserachInfo reserach = new ReserachInfo();
+            ResearchInfo reserach = new ResearchInfo();
             switch (master_player_job_type)
             {
                 case JobType.GEOIOGIST:
-                    reserach.reserach_id = 1;
+                    reserach.research_id = 1;
                     reserach.geo_level = 1;
                     break;
 
                 case JobType.BOTANIST:
-                    reserach.reserach_id = 1;
+                    reserach.research_id = 2;
                     reserach.botan_level = 1;
                     break;
 
                 case JobType.BIOLOGY:
-                    reserach.reserach_id = 1;
+                    reserach.research_id = 3;
                     reserach.bio_level = 1;
                     break;
             }
 
-            this.reserach_info_dict.Add(reserach.reserach_id, reserach);
+            this.reserach_info_dict.Add(reserach.research_id, reserach);
+        }
+
+        public string GetLockKey()
+        {
+            return $"lab_lock_{this.lab_id}";
+        }
+
+        public static string GetLockKey(long player_id)
+        {
+            return $"lab_lock_{player_id}";
         }
     }
 
     [MessagePackObject]
-    public class ReserachInfo : IMessagePackObject
+    public class ResearchInfo : IMessagePackObject
     {
-        [Key("reserach_id")]
-        public int reserach_id { get; set; }
+        [Key("research_id")]
+        public int research_id { get; set; }
 
         [Key("geo_level")]
         public int geo_level { get; set; }
