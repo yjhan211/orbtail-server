@@ -81,7 +81,8 @@ namespace user_server
                     validator.Add((slot_item_info.item_id, material_slot.Value));
                 }
 
-                makeable_item_id = GameDesignData.GetMakableItemId(validator);
+                var research_list = await GetUseableResearchList(user, player_info);
+                makeable_item_id = GameDesignData.GetMakableItemId(research_list, validator);
                 if (makeable_item_id != 0)
                 {
                     ItemInfo item_info = await InventoryController.CreateItem(
@@ -123,6 +124,48 @@ namespace user_server
             user.SendToClient(packet);
 
             await InventoryController.GetCurrentItemList(user);
+        }
+
+        public static async Task<List<int>> GetUseableResearchList(
+            GameUser user,
+            PlayerInfo player_info
+        )
+        {
+            var result = new List<int>();
+            var lab_info = await LabInfoController.Load(user.cache_helper, player_info.lab_id);
+            if (lab_info == null)
+            {
+                return result;
+            }
+
+            foreach (var lab_skill in lab_info.reserach_info_dict)
+            {
+                switch (player_info.job_info.job_type)
+                {
+                    case JobType.GEOIOGIST:
+                        if (0 < lab_skill.Value.geo_level)
+                        {
+                            result.Add(lab_skill.Value.research_id);
+                        }
+                        break;
+
+                    case JobType.BOTANIST:
+                        if (0 < lab_skill.Value.botan_level)
+                        {
+                            result.Add(lab_skill.Value.research_id);
+                        }
+                        break;
+
+                    case JobType.BIOLOGY:
+                        if (0 < lab_skill.Value.bio_level)
+                        {
+                            result.Add(lab_skill.Value.research_id);
+                        }
+                        break;
+                }
+            }
+
+            return result;
         }
 
         public static async Task UpgradeResearch(GameUser user, C_TO_U_UPGRADE_RESEARCH body)

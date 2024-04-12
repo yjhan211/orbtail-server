@@ -724,27 +724,30 @@
                 },
             };
 
-        public static int GetMakableItemId(List<(int, int)> make_materials)
+        public static int GetMakableItemId(
+            List<int> research_id_list,
+            List<(int, int)> make_materials
+        )
         {
-            var conditions = new Dictionary<int, List<(int, int)>>
+            var conditions = new Dictionary<int, List<(int, int)>>();
+            foreach (var research_id in research_id_list)
             {
+                switch (research_id)
                 {
-                    301000007,
-                    new List<(int, int)> { (301000001, 3) }
-                },
-                {
-                    301000008,
-                    new List<(int, int)> { (301000002, 3) }
-                },
-                {
-                    102000003,
-                    new List<(int, int)> { (102000001, 1), (301000007, 1) }
-                },
-                {
-                    102000004,
-                    new List<(int, int)> { (102000002, 1), (301000008, 1) }
-                },
-            };
+                    case 4:
+                        conditions.Add(301000007, new() { (301000001, 3) });
+                        conditions.Add(102000003, new() { (102000001, 1), (301000007, 1) });
+                        break;
+
+                    case 5:
+                        conditions.Add(301000008, new() { (301000002, 3) });
+                        conditions.Add(102000004, new() { (102000002, 1), (301000008, 1) });
+                        break;
+
+                    case 7:
+                        break;
+                }
+            }
 
             foreach (var (key, conditionList) in conditions)
             {
