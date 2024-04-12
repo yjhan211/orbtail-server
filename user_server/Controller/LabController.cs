@@ -198,6 +198,7 @@ namespace user_server
 
                     // 랩 이전
                     player_info.lab_id = lab_info.lab_id;
+                    player_info.lab_name = lab_info.lab_name;
                     lab_info.member_dict.Add(player_info.player_id, player_info.name);
                     await LabInfoController.Save(user.cache_helper, lab_info);
                     await PlayerInfoController.Save(user.cache_helper, player_info);
