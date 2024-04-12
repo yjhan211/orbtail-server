@@ -193,6 +193,21 @@
                         case PROTOCOL.C_TO_U_MAKE:
                             await HandleMessage<C_TO_U_MAKE>(body, LabController.Make);
                             break;
+
+                        case PROTOCOL.C_TO_U_WRITE_LAB_HIRE:
+                            await HandleMessage<C_TO_U_WRITE_LAB_HIRE>(
+                                body,
+                                LabController.WriteLabHire
+                            );
+                            break;
+
+                        case PROTOCOL.C_TO_U_LAB_HIRE_LIST:
+                            await LabController.LabHireList(this);
+                            break;
+
+                        case PROTOCOL.C_TO_U_JOIN_LAB:
+                            await HandleMessage<C_TO_U_JOIN_LAB>(body, LabController.JoinLab);
+                            break;
                     }
                 }
 
@@ -257,6 +272,10 @@
                             body,
                             this.object_controller.SubscribeCreateinstanceSuccess
                         );
+                        break;
+
+                    case PROTOCOL.U_TO_C_LAB_INFO:
+                        HandleMessage<U_TO_C_LAB_INFO>(body, SubscribeLabInfo);
                         break;
                 }
 
@@ -485,6 +504,12 @@
                 body.chat_message
             );
 
+            this.SendToClient(packet);
+        }
+
+        void SubscribeLabInfo(GameUser _, U_TO_C_LAB_INFO body)
+        {
+            Packet packet = PacketMaker.U_TO_C_LAB_INFO(body.join_player_info, body.lab_info);
             this.SendToClient(packet);
         }
 

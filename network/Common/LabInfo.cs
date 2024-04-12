@@ -49,7 +49,7 @@ namespace network
             this.lab_name = lab_name;
             this.master_player_id = master_player_id;
             this.member_dict = new() { { master_player_id, master_player_name } };
-            this.lab_grade = LabGrade.ALONE;
+            this.lab_grade = LabGrade.CLUB;
             this.reserach_info_dict = new();
 
             ResearchInfo reserach = new ResearchInfo();

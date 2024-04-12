@@ -313,6 +313,34 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_WRITE_LAB_HIRE(ErrorCode error_code)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_WRITE_LAB_HIRE);
+            U_TO_C_WRITE_LAB_HIRE body = new() { error_code = error_code };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_LAB_HIRE_LIST(List<(long, string, string)> hire_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LAB_HIRE_LIST);
+            U_TO_C_LAB_HIRE_LIST body = new() { hire_list = hire_list };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_LAB_INFO(PlayerInfo join_player_info, LabInfo lab_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LAB_INFO);
+            U_TO_C_LAB_INFO body =
+                new() { join_player_info = join_player_info, lab_info = lab_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_G_LOGOUT(long player_id)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_G_LOGOUT, player_id);

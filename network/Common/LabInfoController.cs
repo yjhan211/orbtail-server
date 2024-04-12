@@ -20,9 +20,9 @@ namespace network
             );
         }
 
-        public static async Task<LabInfo?> Load(CacheHelper cache_helper, long player_id)
+        public static async Task<LabInfo?> Load(CacheHelper cache_helper, long lab_id)
         {
-            var serialized_data = await cache_helper.HashGet(LabInfo.HASH_KEY, player_id);
+            var serialized_data = await cache_helper.HashGet(LabInfo.HASH_KEY, lab_id);
 
             if (serialized_data.IsNull)
             {

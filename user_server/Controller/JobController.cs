@@ -35,6 +35,15 @@ namespace user_server
 
                         var gift_geo = await InventoryController.CreateItem(user, 102000001, 1);
                         gift_item_list.Add(gift_geo);
+
+                        // TODO 테스트코드
+                        var test = await InventoryController.CreateItem(user, 301000001, 100);
+                        var test11 = await InventoryController.CreateItem(user, 301000003, 100);
+                        var test111 = await InventoryController.CreateItem(user, 301000005, 100);
+
+                        gift_item_list.Add(test);
+                        gift_item_list.Add(test11);
+                        gift_item_list.Add(test111);
                         break;
 
                     case JobType.BOTANIST:
@@ -43,6 +52,15 @@ namespace user_server
 
                         var gift_botan = await InventoryController.CreateItem(user, 102000002, 1);
                         gift_item_list.Add(gift_botan);
+
+                        // TODO 테스트코드
+                        var test2 = await InventoryController.CreateItem(user, 301000002, 100);
+                        var test22 = await InventoryController.CreateItem(user, 301000004, 100);
+                        var test2222 = await InventoryController.CreateItem(user, 301000006, 100);
+
+                        gift_item_list.Add(test2);
+                        gift_item_list.Add(test22);
+                        gift_item_list.Add(test2222);
                         break;
 
                     default:
@@ -58,7 +76,7 @@ namespace user_server
                     gift_item_list
                 );
 
-                // job_info.exp = 100;
+                job_info.exp = 100; // TODO 테스트코드
                 await JobInfoController.Save(user.cache_helper, job_info);
             }
 

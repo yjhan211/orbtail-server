@@ -366,4 +366,42 @@ namespace network
         [Key("is_success")]
         public bool is_success { get; set; }
     }
+
+    [MessagePackObject]
+    public class C_TO_U_WRITE_LAB_HIRE : IMessagePackObject
+    {
+        [Key("comment")]
+        public string comment { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_WRITE_LAB_HIRE : IMessagePackObject
+    {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_LAB_HIRE_LIST : IMessagePackObject
+    {
+        [Key("hire_list")]
+        public List<(long, string, string)> hire_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_JOIN_LAB : IMessagePackObject
+    {
+        [Key("lab_id")]
+        public long lab_id { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_LAB_INFO : IMessagePackObject
+    {
+        [Key("join_player_info")]
+        public PlayerInfo join_player_info { get; set; }
+
+        [Key("lab_info")]
+        public LabInfo lab_info { get; set; }
+    }
 }

@@ -52,6 +52,12 @@ namespace network
         U_TO_C_UPGRADE_RESEARCH,
         C_TO_U_MAKE,
         U_TO_C_MAKE,
+        C_TO_U_WRITE_LAB_HIRE,
+        U_TO_C_WRITE_LAB_HIRE,
+        C_TO_U_LAB_HIRE_LIST,
+        U_TO_C_LAB_HIRE_LIST,
+        C_TO_U_JOIN_LAB,
+        U_TO_C_LAB_INFO,
         U_TO_G_LOGOUT,
         END
     }

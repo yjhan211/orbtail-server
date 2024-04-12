@@ -598,7 +598,7 @@
                     break;
 
                 case LabGrade.CLUB:
-                    result = 3;
+                    result = 2;
                     break;
             }
 
