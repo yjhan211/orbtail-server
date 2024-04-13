@@ -441,11 +441,16 @@ namespace user_server
                     player_info.object_info,
                     target_item,
                     player_info.object_info.target_cell
-                );
+                )
+                {
+                    add_hp_timestamp = DateTime.UtcNow.AddSeconds(5)
+                };
 
                 player_info.state = PlayerState.CAMIPING_1;
                 await CampInfoController.Save(user.cache_helper, camp_info);
                 await PlayerInfoController.Save(user.cache_helper, player_info);
+
+                user.current_camp_info = camp_info;
             }
 
             var current_position_key = MapHelper.GetPositionKey(
@@ -501,6 +506,8 @@ namespace user_server
                 player_info.state = PlayerState.NONE;
                 await CampInfoController.Delete(user.cache_helper, camp_info.player_id);
                 await PlayerInfoController.Save(user.cache_helper, player_info);
+
+                user.current_camp_info = null;
             }
 
             user.BroadcastUpdatePlayerInfo(player_info);

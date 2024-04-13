@@ -377,6 +377,15 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_UPDATE_HP(int add_hp, int current_hp)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_UPDATE_HP);
+            U_TO_C_UPDATE_HP body = new() { add_hp = add_hp, current_hp = current_hp };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_G_LOGOUT(long player_id)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_G_LOGOUT, player_id);

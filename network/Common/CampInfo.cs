@@ -22,6 +22,9 @@ namespace network
         [Key("item_info")]
         public ItemInfo item_info { get; set; }
 
+        [Key("add_hp_timestamp")]
+        public DateTime add_hp_timestamp { get; set; } // 피 채워지는 시간
+
         public CampInfo()
         {
             this.object_info = new();

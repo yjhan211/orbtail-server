@@ -463,4 +463,14 @@ namespace network
         [Key("camp_id_list")]
         public List<long> camp_id_list { get; set; }
     }
+
+    [MessagePackObject]
+    public class U_TO_C_UPDATE_HP : IMessagePackObject
+    {
+        [Key("add_hp")]
+        public int add_hp { get; set; }
+
+        [Key("current_hp")]
+        public int current_hp { get; set; }
+    }
 }

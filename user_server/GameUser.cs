@@ -26,6 +26,7 @@
         public bool in_action { get; set; }
         public (int, JobResourceInfo)? current_progress_job { get; set; }
         public (DateTime, (MapID, long, Cell, bool))? change_map_task { get; set; }
+        public CampInfo? current_camp_info { get; set; }
 
         public GameUser(UserToken token)
         {
@@ -357,6 +358,38 @@
                 );
 
                 this.change_map_task = null;
+            }
+
+            if (current_camp_info != null)
+            {
+                if (DateTime.UtcNow <= current_camp_info.add_hp_timestamp)
+                {
+                    return;
+                }
+
+                JobInfo? job_info;
+                using (await PlayerInfoController.Lock(this.redlock, this.player_id))
+                {
+                    job_info = await JobInfoController.Load(this.cache_helper, this.player_id);
+                    if (job_info == null)
+                    {
+                        return;
+                    }
+
+                    if (GameDesignData.GetMaxHP(job_info.job_grade) <= job_info.hp)
+                    {
+                        return;
+                    }
+
+                    job_info.hp += 1;
+                    current_camp_info.add_hp_timestamp = DateTime.UtcNow.AddSeconds(5);
+
+                    await JobInfoController.Save(this.cache_helper, job_info);
+                    await CampInfoController.Save(this.cache_helper, current_camp_info);
+                }
+
+                Packet packet = PacketMaker.U_TO_C_UPDATE_HP(1, job_info.hp);
+                this.SendToClient(packet);
             }
         }
 
@@ -745,6 +778,15 @@
             if (this.object_controller != null)
             {
                 await this.object_controller.PublishDestroy();
+            }
+
+            if (current_progress_job != null)
+            {
+                await JobResourceController.Delete(
+                    this.cache_helper,
+                    current_progress_job.Value.Item2.resource_uid
+                );
+                JobController.BroadcastJobResourceDestroy(this, current_progress_job.Value.Item2);
             }
 
             await JobController.Decamp(this);

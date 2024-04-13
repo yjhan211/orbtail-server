@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace network
+﻿namespace network
 {
     public enum PROTOCOL : int
     {
@@ -68,6 +62,7 @@ namespace network
         G_TO_U_CAMP_INFO,
         U_TO_C_CAMP_INFO,
         C_TO_U_CAMP_INFO,
+        U_TO_C_UPDATE_HP,
         U_TO_G_LOGOUT,
         END
     }
