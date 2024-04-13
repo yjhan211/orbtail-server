@@ -39,6 +39,24 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_U_LAB_INVENTORY(List<ItemInfo> item_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_U_LAB_INVENTORY);
+            U_TO_U_LAB_INVENTORY body = new() { item_list = item_list };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_LAB_INVENTORY(List<ItemInfo> item_list, bool is_end)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LAB_INVENTORY);
+            U_TO_C_LAB_INVENTORY body = new() { item_list = item_list, is_end = is_end };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_C_WEAR_ITEM(PlayerInfo player_info)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_WEAR_ITEM);

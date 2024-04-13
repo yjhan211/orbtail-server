@@ -13,6 +13,7 @@ namespace network
 
         public static async Task Save(CacheHelper cache_helper, LabInfo lab_info)
         {
+            await InventoryInfoController.Save(cache_helper, lab_info.inventory_info);
             await cache_helper.HashSet(
                 LabInfo.HASH_KEY,
                 lab_info.lab_id,
@@ -30,6 +31,15 @@ namespace network
             }
 
             var lab_info = MessagePackSerializer.Deserialize<LabInfo?>(serialized_data);
+            if (lab_info == null)
+            {
+                return null;
+            }
+
+            lab_info.inventory_info =
+                await InventoryInfoController.Load(cache_helper, InventoryOwnerType.LAB, lab_id)
+                ?? new InventoryInfo(InventoryOwnerType.LAB, lab_id);
+
             return lab_info;
         }
 

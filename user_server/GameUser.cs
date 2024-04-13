@@ -5,6 +5,7 @@
     using StackExchange.Redis;
     using game_server;
     using RedLockNet.SERedis;
+    using System.Diagnostics;
 
     public class GameUser : IPeer
     {
@@ -208,6 +209,24 @@
                         case PROTOCOL.C_TO_U_JOIN_LAB:
                             await HandleMessage<C_TO_U_JOIN_LAB>(body, LabController.JoinLab);
                             break;
+
+                        case PROTOCOL.C_TO_U_LAB_INVENTORY:
+                            await InventoryController.GetLabInventory(this);
+                            break;
+
+                        case PROTOCOL.C_TO_U_LAB_INVENTORY_ADD_ITEM:
+                            await HandleMessage<C_TO_U_LAB_INVENTORY_ADD_ITEM>(
+                                body,
+                                InventoryController.AddLabItem
+                            );
+                            break;
+
+                        case PROTOCOL.C_TO_U_LAB_INVENTORY_TAKE_ITEM:
+                            await HandleMessage<C_TO_U_LAB_INVENTORY_TAKE_ITEM>(
+                                body,
+                                InventoryController.TakeLabItem
+                            );
+                            break;
                     }
                 }
 
@@ -276,6 +295,10 @@
 
                     case PROTOCOL.U_TO_C_LAB_INFO:
                         HandleMessage<U_TO_C_LAB_INFO>(body, SubscribeLabInfo);
+                        break;
+
+                    case PROTOCOL.U_TO_U_LAB_INVENTORY:
+                        HandleMessage<U_TO_U_LAB_INVENTORY>(body, SubscribeLabInventory);
                         break;
                 }
 
@@ -357,21 +380,23 @@
                 player_info.object_info.current_cell = player_info.object_info.target_cell;
                 player_info.state = PlayerState.NONE;
 
+                if (is_new)
+                {
+                    // 기본 아이템 증정
+                    var default_hair = await InventoryController.CreateItem(this, 101000001, 1);
+                    player_info = InventoryController.AddPlayerItem(
+                        player_info,
+                        new List<ItemInfo>() { default_hair }
+                    );
+                    player_info = InventoryController.WearItem(player_info, default_hair.item_uid);
+                }
+
                 await PlayerInfoController.Save(this.cache_helper, player_info);
                 await GameObjectInfoController.Save(this.cache_helper, player_info.object_info);
 
                 this.player_id = player_info.player_id;
                 this.object_controller = new(this, player_info.object_info);
                 this.in_action = false;
-
-                if (is_new)
-                {
-                    // 기본 아이템 증정
-                    var default_hair = await InventoryController.CreateItem(this, 101000001, 1);
-
-                    await InventoryController.AddItem(this, this.player_id, default_hair);
-                    player_info = await InventoryController.WearItem(this, default_hair.item_uid);
-                }
             }
 
             // 개인 구독 시작
@@ -511,6 +536,33 @@
         {
             Packet packet = PacketMaker.U_TO_C_LAB_INFO(body.join_player_info, body.lab_info);
             this.SendToClient(packet);
+        }
+
+        void SubscribeLabInventory(GameUser _, U_TO_U_LAB_INVENTORY body)
+        {
+            SendLabItemList(body.item_list);
+        }
+
+        public void SendLabItemList(List<ItemInfo> item_list)
+        {
+            LogManager.WriteDebugLog($"item_list.Count:{item_list.Count}");
+
+            if (item_list.Count == 0)
+            {
+                Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(new(), true);
+                this.SendToClient(packet);
+            }
+
+            for (int i = 0; i < item_list.Count; i += Config.BROADCAST_UNIT)
+            {
+                List<ItemInfo> batch = item_list.Skip(i).Take(Config.BROADCAST_UNIT).ToList();
+
+                var remain = item_list.Count - i - Config.BROADCAST_UNIT;
+                var is_ended = remain <= 0;
+
+                Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(batch, is_ended);
+                this.SendToClient(packet);
+            }
         }
 
         public void BroadcastUpdatePlayerInfo(PlayerInfo player_info)

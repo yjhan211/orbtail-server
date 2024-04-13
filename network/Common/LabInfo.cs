@@ -27,6 +27,9 @@ namespace network
         [Key("reserach_info_dict")]
         public Dictionary<int, ResearchInfo> reserach_info_dict { get; set; }
 
+        [Key("inventory_info")]
+        public InventoryInfo inventory_info { get; set; }
+
         public LabInfo()
         {
             this.lab_id = 0;
@@ -35,6 +38,7 @@ namespace network
             this.member_dict = new();
             this.lab_grade = new();
             this.reserach_info_dict = new();
+            this.inventory_info = new();
         }
 
         public LabInfo(
@@ -51,6 +55,7 @@ namespace network
             this.member_dict = new() { { master_player_id, master_player_name } };
             this.lab_grade = LabGrade.CLUB;
             this.reserach_info_dict = new();
+            this.inventory_info = new(InventoryOwnerType.LAB, lab_id);
 
             ResearchInfo reserach = new ResearchInfo();
             switch (master_player_job_type)

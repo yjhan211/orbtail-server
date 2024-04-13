@@ -8,27 +8,38 @@ namespace network
         {
             await cache_helper.HashSet(
                 InventoryInfo.HASH_KEY,
-                inventory_info.player_id,
+                $"{inventory_info.owner_type}_{inventory_info.owner_id}",
                 MessagePackSerializer.Serialize(inventory_info)
             );
         }
 
-        public static async Task<InventoryInfo?> Load(CacheHelper cache_helper, long player_id)
+        public static async Task<InventoryInfo?> Load(
+            CacheHelper cache_helper,
+            InventoryOwnerType owner_type,
+            long owner_id
+        )
         {
-            var serialized_data = await cache_helper.HashGet(InventoryInfo.HASH_KEY, player_id);
+            var serialized_data = await cache_helper.HashGet(
+                InventoryInfo.HASH_KEY,
+                $"{owner_type}_{owner_id}"
+            );
 
             if (serialized_data.IsNull)
             {
-                return null;
+                return new InventoryInfo(owner_type, owner_id);
             }
 
-            var job_info = MessagePackSerializer.Deserialize<InventoryInfo?>(serialized_data);
-            return job_info;
+            var inventory_info = MessagePackSerializer.Deserialize<InventoryInfo?>(serialized_data);
+            return inventory_info;
         }
 
-        public static async Task Delete(CacheHelper cache_helper, long player_id)
+        public static async Task Delete(
+            CacheHelper cache_helper,
+            InventoryOwnerType owner_type,
+            long owner_id
+        )
         {
-            await cache_helper.HashDelete(InventoryInfo.HASH_KEY, player_id);
+            await cache_helper.HashDelete(InventoryInfo.HASH_KEY, $"{owner_type}_{owner_id}");
         }
     }
 }

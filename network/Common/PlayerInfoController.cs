@@ -59,8 +59,11 @@ namespace game_server
                     await JobInfoController.Load(cache_helper, player_id) ?? new JobInfo(player_id);
 
                 player_info.inventory_info =
-                    await InventoryInfoController.Load(cache_helper, player_id)
-                    ?? new InventoryInfo(player_id);
+                    await InventoryInfoController.Load(
+                        cache_helper,
+                        InventoryOwnerType.PLAYER,
+                        player_id
+                    ) ?? new InventoryInfo(InventoryOwnerType.PLAYER, player_id);
 
                 return player_info;
             }

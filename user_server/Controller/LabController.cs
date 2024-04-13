@@ -215,7 +215,6 @@ namespace user_server
                     packet.ToBytes()
                 );
             }
-
             Packet.Destroy(packet);
         }
 
@@ -262,7 +261,7 @@ namespace user_server
                         1
                     );
 
-                    player_info = InventoryController.AddItem(player_info, item_info);
+                    player_info = InventoryController.AddPlayerItem(player_info, item_info);
                 }
 
                 foreach (var material_info in body.materials)

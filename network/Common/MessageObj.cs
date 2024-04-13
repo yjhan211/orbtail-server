@@ -404,4 +404,35 @@ namespace network
         [Key("lab_info")]
         public LabInfo lab_info { get; set; }
     }
+
+    [MessagePackObject]
+    public class C_TO_U_LAB_INVENTORY_ADD_ITEM : IMessagePackObject
+    {
+        [Key("item_uid")]
+        public long item_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_LAB_INVENTORY_TAKE_ITEM : IMessagePackObject
+    {
+        [Key("item_uid")]
+        public long item_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_U_LAB_INVENTORY : IMessagePackObject
+    {
+        [Key("item_list")]
+        public List<ItemInfo> item_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_LAB_INVENTORY : IMessagePackObject
+    {
+        [Key("item_list")]
+        public List<ItemInfo> item_list { get; set; }
+
+        [Key("is_ended")]
+        public bool is_end { get; set; }
+    }
 }

@@ -58,6 +58,11 @@ namespace network
         U_TO_C_LAB_HIRE_LIST,
         C_TO_U_JOIN_LAB,
         U_TO_C_LAB_INFO,
+        C_TO_U_LAB_INVENTORY,
+        C_TO_U_LAB_INVENTORY_ADD_ITEM,
+        C_TO_U_LAB_INVENTORY_TAKE_ITEM,
+        U_TO_U_LAB_INVENTORY,
+        U_TO_C_LAB_INVENTORY,
         U_TO_G_LOGOUT,
         END
     }
@@ -76,6 +81,13 @@ namespace network
         PLAYER,
         ITEM,
         JOBRESOURCE,
+    }
+
+    public enum InventoryOwnerType : int
+    {
+        NONE,
+        PLAYER,
+        LAB,
     }
 
     public enum TileType : int

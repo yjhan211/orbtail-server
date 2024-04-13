@@ -411,26 +411,46 @@
             return wearable;
         }
 
-        public static bool IsWearableJobType(int item_id, JobType job_type)
+        public static bool IsWearableJobInfo(int item_id, JobType job_type, JobGrade job_grade)
         {
             JobType target_job_type = JobType.NONE;
+            JobGrade target_job_grade = JobGrade.NONE;
             switch (item_id)
             {
                 case 102000001:
+                    target_job_type = JobType.GEOIOGIST;
+                    target_job_grade = JobGrade.TRAINEE;
+                    break;
+
                 case 102000003:
                     target_job_type = JobType.GEOIOGIST;
+                    target_job_grade = JobGrade.RESEARCHER;
                     break;
 
                 case 102000002:
+                    target_job_type = JobType.BOTANIST;
+                    target_job_grade = JobGrade.TRAINEE;
+                    break;
+
                 case 102000004:
                     target_job_type = JobType.BOTANIST;
+                    target_job_grade = JobGrade.RESEARCHER;
+                    break;
+
+                case 103000001:
+                    target_job_grade = JobGrade.RESEARCHER;
                     break;
 
                 default:
                     return true;
             }
 
-            return target_job_type == job_type;
+            if (target_job_type == JobType.NONE)
+            {
+                target_job_type = job_type;
+            }
+
+            return target_job_type == job_type && target_job_grade <= job_grade;
         }
 
         public static bool IsWearableJobGrade(int item_id, JobGrade grade)
@@ -721,6 +741,14 @@
                 {
                     "7_2_1",
                     new() { (301000004, 10), (301000006, 10) }
+                },
+                {
+                    "7_1_2",
+                    new() { (301000003, 100), (301000005, 100) }
+                },
+                {
+                    "7_2_2",
+                    new() { (301000004, 100), (301000006, 100) }
                 },
             };
 

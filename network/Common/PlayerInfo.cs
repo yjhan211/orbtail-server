@@ -69,7 +69,7 @@ namespace network
 
             this.object_info = new GameObjectInfo(ObjectType.PLAYER, player_id, cell);
             this.job_info = new JobInfo(player_id);
-            this.inventory_info = new InventoryInfo(player_id);
+            this.inventory_info = new InventoryInfo(InventoryOwnerType.PLAYER, player_id);
 
             this.lab_id = 0;
             this.lab_name = "";

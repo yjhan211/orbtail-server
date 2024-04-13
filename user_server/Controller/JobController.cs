@@ -70,7 +70,7 @@ namespace user_server
                 var gift_food = await InventoryController.CreateItem(user, 201000001, 1);
                 gift_item_list.Add(gift_food);
 
-                inventory_info = await InventoryController.AddItem(
+                inventory_info = await InventoryController.AddPlayerItem(
                     user,
                     user.player_id,
                     gift_item_list
@@ -134,7 +134,7 @@ namespace user_server
                         break;
                 }
 
-                inventory_info = await InventoryController.AddItem(
+                inventory_info = await InventoryController.AddPlayerItem(
                     user,
                     user.player_id,
                     gift_item_list
@@ -339,7 +339,7 @@ namespace user_server
                         // 아이템 주기
                         item_info = await InventoryController.CreateItem(user, reward_item, 1);
                         // TODO 이거 진짜 이상한데 일단 나중에 고치자
-                        player_info = InventoryController.AddItem(player_info, item_info);
+                        player_info = InventoryController.AddPlayerItem(player_info, item_info);
                         // 자원 지우고
                         await JobResourceController.Delete(
                             user.cache_helper,
