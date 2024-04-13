@@ -11,7 +11,7 @@ namespace user_server
             var job_info = await JobInfoController.Load(user.cache_helper, user.player_id);
             if (job_info == null)
             {
-                throw new Exception("player_info not exists");
+                throw new Exception("job_info not exists");
             }
 
             if (job_info!.job_type != JobType.NONE)
@@ -398,6 +398,115 @@ namespace user_server
             user.in_action = false;
         }
 
+        public static async Task Encamp(GameUser user, C_TO_U_ENCAMP body)
+        {
+            PlayerInfo? player_info;
+            CampInfo? camp_info;
+            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            {
+                player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+                if (player_info == null)
+                {
+                    throw new Exception("player_info not exists");
+                }
+
+                if (player_info.object_info.map_id != MapID.FOREST_1)
+                {
+                    throw new Exception("invalid map id");
+                }
+
+                if (player_info.job_info.job_type == JobType.NONE)
+                {
+                    throw new Exception("invalid job type");
+                }
+
+                var target_item_index = player_info.inventory_info.item_list.FindIndex(
+                    (item) => item.item_uid == body.item_uid
+                );
+
+                if (target_item_index < 0)
+                {
+                    throw new Exception("not found item info");
+                }
+
+                var target_item = player_info.inventory_info.item_list[target_item_index];
+                if (await CampInfoController.Load(user.cache_helper, user.player_id) != null)
+                {
+                    throw new Exception("already encamp");
+                }
+
+                camp_info = new CampInfo(
+                    player_info.player_id,
+                    player_info.name,
+                    player_info.object_info,
+                    target_item,
+                    player_info.object_info.target_cell
+                );
+
+                player_info.state = PlayerState.CAMIPING_1;
+                await CampInfoController.Save(user.cache_helper, camp_info);
+                await PlayerInfoController.Save(user.cache_helper, player_info);
+            }
+
+            var current_position_key = MapHelper.GetPositionKey(
+                camp_info.object_info.map_id,
+                camp_info.object_info.map_sub_id,
+                camp_info.object_info.current_cell
+            );
+
+            var current_manage_server = MapHelper.GetServerIdByPositionKey(
+                Program.game_server_num,
+                current_position_key
+            );
+
+            var move_manage_subject = MapHelper.GetMoveManageSubject(
+                camp_info.object_info.map_id,
+                camp_info.object_info.map_sub_id,
+                current_manage_server
+            );
+
+            // 현재 담당 서버에 전송
+            user.nats_client.Publish(
+                move_manage_subject,
+                MessagePackSerializer.Serialize((current_position_key, camp_info.object_info))
+            );
+
+            user.BroadcastUpdatePlayerInfo(player_info);
+            // user.BroadcastUpdateCampInfo(camp_info);
+        }
+
+        public static async Task Decamp(GameUser user)
+        {
+            PlayerInfo? player_info;
+            CampInfo? camp_info;
+            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            {
+                player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+                if (player_info == null)
+                {
+                    return;
+                }
+
+                if (player_info.job_info.job_type == JobType.NONE)
+                {
+                    return;
+                }
+
+                camp_info = await CampInfoController.Load(user.cache_helper, user.player_id);
+                if (camp_info == null)
+                {
+                    return;
+                }
+
+                player_info.state = PlayerState.NONE;
+                await CampInfoController.Delete(user.cache_helper, camp_info.player_id);
+                await PlayerInfoController.Save(user.cache_helper, player_info);
+            }
+
+            user.BroadcastUpdatePlayerInfo(player_info);
+            BroadCastCampDestroy(user, camp_info);
+        }
+
         public static void BroadcastJobResourceDestroy(
             GameUser user,
             JobResourceInfo job_resource_info
@@ -422,6 +531,31 @@ namespace user_server
                 ),
                 MessagePackSerializer.Serialize(
                     (position_key, job_resource_info.object_info.GetHashField())
+                )
+            );
+        }
+
+        public static void BroadCastCampDestroy(GameUser user, CampInfo camp_info)
+        {
+            var position_key = MapHelper.GetPositionKey(
+                camp_info.object_info.map_id,
+                camp_info.object_info.map_sub_id,
+                camp_info.object_info.current_cell
+            );
+
+            var manage_server = MapHelper.GetServerIdByPositionKey(
+                Program.game_server_num,
+                position_key
+            );
+
+            user.nats_client.Publish(
+                MapHelper.GetDestroyObjectSubject(
+                    camp_info.object_info.map_id,
+                    camp_info.object_info.map_sub_id,
+                    manage_server
+                ),
+                MessagePackSerializer.Serialize(
+                    (position_key, camp_info.object_info.GetHashField())
                 )
             );
         }

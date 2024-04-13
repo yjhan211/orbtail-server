@@ -167,6 +167,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class G_TO_U_CAMP_INFO : IMessagePackObject
+    {
+        [Key("camp_info")]
+        public CampInfo camp_info { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_U_OBJECT_INFO : IMessagePackObject
     {
         [Key("object_key_list")]
@@ -434,5 +441,26 @@ namespace network
 
         [Key("is_ended")]
         public bool is_end { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_ENCAMP : IMessagePackObject
+    {
+        [Key("item_uid")]
+        public long item_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_CAMP_INFO : IMessagePackObject
+    {
+        [Key("camp_info_list")]
+        public List<CampInfo> camp_info_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_CAMP_INFO : IMessagePackObject
+    {
+        [Key("camp_id_list")]
+        public List<long> camp_id_list { get; set; }
     }
 }

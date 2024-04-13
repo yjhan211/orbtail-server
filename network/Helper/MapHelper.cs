@@ -160,6 +160,11 @@ namespace network
             return $"update_job_resource_{map_id}_{map_sub_id}_{server_id}";
         }
 
+        public static string GetUpdateCampSubject(MapID map_id, long map_sub_id, int server_id)
+        {
+            return $"update_camp_{map_id}_{map_sub_id}_{server_id}";
+        }
+
         public static string GetBrodcastMoveSubject(MapID map_id, long map_sub_id, int server_id)
         {
             return $"broadcast_move_{map_id}_{map_sub_id}_{server_id}";

@@ -85,9 +85,6 @@ namespace user_server
             }
 
             await GetCurrentItemList(user);
-
-            LogManager.WriteDebugLog($"add : {lab_info.inventory_info.item_list.Count}");
-
             Packet packet = PacketMaker.U_TO_U_LAB_INVENTORY(lab_info.inventory_info.item_list);
             foreach (var lab_member in lab_info.member_dict)
             {
@@ -120,8 +117,13 @@ namespace user_server
                     }
 
                     var target_item_index = lab_info.inventory_info.item_list.FindIndex(
-                        item => item.item_uid == body.item_uid
+                        (item) => item.item_uid == body.item_uid
                     );
+
+                    if (target_item_index < 0)
+                    {
+                        throw new Exception("not found item info");
+                    }
 
                     var target_item = lab_info.inventory_info.item_list[target_item_index];
                     if (target_item == null)
@@ -499,10 +501,6 @@ namespace user_server
         {
             var target_item_index = player_info.inventory_info.item_list.FindIndex(
                 item => item.item_uid == item_uid
-            );
-
-            LogManager.WriteDebugLog(
-                $"inventory_info.count: {player_info.inventory_info.item_list.Count}"
             );
 
             var target_item = player_info.inventory_info.item_list[target_item_index];

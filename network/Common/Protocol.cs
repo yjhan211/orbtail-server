@@ -63,6 +63,11 @@ namespace network
         C_TO_U_LAB_INVENTORY_TAKE_ITEM,
         U_TO_U_LAB_INVENTORY,
         U_TO_C_LAB_INVENTORY,
+        C_TO_U_ENCAMP,
+        C_TO_U_DECAMP,
+        G_TO_U_CAMP_INFO,
+        U_TO_C_CAMP_INFO,
+        C_TO_U_CAMP_INFO,
         U_TO_G_LOGOUT,
         END
     }
@@ -81,6 +86,7 @@ namespace network
         PLAYER,
         ITEM,
         JOBRESOURCE,
+        CAMP,
     }
 
     public enum InventoryOwnerType : int
@@ -170,5 +176,6 @@ namespace network
         GEO_WORK_1,
         BOTAN_WORK_1,
         RESEARCH_1,
+        CAMIPING_1,
     }
 }

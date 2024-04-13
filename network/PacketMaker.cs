@@ -203,6 +203,24 @@ namespace user_server
             return packet;
         }
 
+        public static Packet G_TO_U_CAMP_INFO(CampInfo camp_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_CAMP_INFO);
+            G_TO_U_CAMP_INFO body = new() { camp_info = camp_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_CAMP_INFO(List<CampInfo> camp_info_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CAMP_INFO);
+            U_TO_C_CAMP_INFO body = new() { camp_info_list = camp_info_list };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet G_TO_U_SPAWN(List<string> object_key_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_SPAWN);

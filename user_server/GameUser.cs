@@ -227,6 +227,18 @@
                                 InventoryController.TakeLabItem
                             );
                             break;
+
+                        case PROTOCOL.C_TO_U_ENCAMP:
+                            await HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
+                            break;
+
+                        case PROTOCOL.C_TO_U_DECAMP:
+                            await JobController.Decamp(this);
+                            break;
+
+                        case PROTOCOL.C_TO_U_CAMP_INFO:
+                            await HandleMessage<C_TO_U_CAMP_INFO>(body, GetCampInfo);
+                            break;
                     }
                 }
 
@@ -299,6 +311,10 @@
 
                     case PROTOCOL.U_TO_U_LAB_INVENTORY:
                         HandleMessage<U_TO_U_LAB_INVENTORY>(body, SubscribeLabInventory);
+                        break;
+
+                    case PROTOCOL.G_TO_U_CAMP_INFO:
+                        HandleMessage<G_TO_U_CAMP_INFO>(body, SubscribeCampInfo);
                         break;
                 }
 
@@ -384,10 +400,15 @@
                 {
                     // 기본 아이템 증정
                     var default_hair = await InventoryController.CreateItem(this, 101000001, 1);
+
+                    // TODO 테스트아이템
+                    var test_item = await InventoryController.CreateItem(this, 401000001, 1);
+
                     player_info = InventoryController.AddPlayerItem(
                         player_info,
-                        new List<ItemInfo>() { default_hair }
+                        new List<ItemInfo>() { default_hair, test_item }
                     );
+
                     player_info = InventoryController.WearItem(player_info, default_hair.item_uid);
                 }
 
@@ -502,7 +523,40 @@
                     Packet packet = PacketMaker.U_TO_C_JOB_RESOURCE_INFO(job_resource_info_list);
                     this.SendToClient(packet);
 
-                    await Task.Delay(100);
+                    job_resource_info_list.Clear();
+                }
+            }
+        }
+
+        async Task GetCampInfo(GameUser _, C_TO_U_CAMP_INFO body)
+        {
+            var camp_id_list = body.camp_id_list;
+            var camp_info_list = new List<CampInfo>();
+
+            for (int i = 0; i < camp_id_list.Count; i++)
+            {
+                var target_camp_id = camp_id_list[i];
+                CampInfo? target_camp_info = await CampInfoController.Load(
+                    cache_helper,
+                    target_camp_id
+                );
+
+                if (target_camp_info == null)
+                {
+                    continue;
+                }
+
+                camp_info_list.Add(target_camp_info);
+
+                bool is_max = camp_info_list.Count >= Config.BROADCAST_UNIT;
+                bool is_ended = i == camp_info_list.Count - 1;
+
+                if (is_max || is_ended)
+                {
+                    Packet packet = PacketMaker.U_TO_C_CAMP_INFO(camp_info_list);
+                    this.SendToClient(packet);
+
+                    camp_info_list.Clear();
                 }
             }
         }
@@ -543,10 +597,14 @@
             SendLabItemList(body.item_list);
         }
 
+        void SubscribeCampInfo(GameUser _, G_TO_U_CAMP_INFO body)
+        {
+            Packet packet = PacketMaker.U_TO_C_CAMP_INFO(new() { body.camp_info });
+            this.SendToClient(packet);
+        }
+
         public void SendLabItemList(List<ItemInfo> item_list)
         {
-            LogManager.WriteDebugLog($"item_list.Count:{item_list.Count}");
-
             if (item_list.Count == 0)
             {
                 Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(new(), true);
@@ -643,6 +701,33 @@
             }
         }
 
+        // public void BroadcastUpdateCampInfo(CampInfo camp_info)
+        // {
+        //     var position_key = MapHelper.GetPositionKey(
+        //         camp_info.object_info.map_id,
+        //         camp_info.object_info.map_sub_id,
+        //         camp_info.object_info.current_cell
+        //     );
+
+        //     var target_server_list = MapHelper.GetBoundServerList(
+        //         camp_info.object_info.map_id,
+        //         Program.game_server_num,
+        //         MapHelper.GetCell(position_key)
+        //     );
+
+        //     foreach (var target_server in target_server_list)
+        //     {
+        //         this.nats_client!.Publish(
+        //             MapHelper.GetUpdateCampSubject(
+        //                 camp_info.object_info.map_id,
+        //                 camp_info.object_info.map_sub_id,
+        //                 target_server
+        //             ),
+        //             MessagePackSerializer.Serialize((position_key, camp_info))
+        //         );
+        //     }
+        // }
+
         public void SendToClient(Packet msg)
         {
             this.token.Send(msg);
@@ -661,6 +746,8 @@
             {
                 await this.object_controller.PublishDestroy();
             }
+
+            await JobController.Decamp(this);
 
             Packet packet = PacketMaker.U_TO_G_LOGOUT(this.player_id);
             _ = this.SendToGameServer(packet);

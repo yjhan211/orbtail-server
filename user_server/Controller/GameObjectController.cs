@@ -34,8 +34,11 @@ namespace user_server
         // 다른 객체의 이동 정보 구독. RecvMoveObjectTask에서 일괄 전송
         public void SubscribeMove(GameUser _, G_TO_U_MOVE body)
         {
-            // 자기꺼는 PublishMove할때 이미 넣음
-            if (body.object_info.object_id == this.object_info.object_id)
+            // 자기 캐릭터는 PublishMove할때 이미 넣음
+            if (
+                body.object_info.object_type == ObjectType.PLAYER
+                && body.object_info.object_id == this.object_info.object_id
+            )
             {
                 return;
             }

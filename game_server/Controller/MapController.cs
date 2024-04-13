@@ -1,6 +1,7 @@
 namespace game_server
 {
     using System.Collections.Concurrent;
+    using System.Diagnostics;
     using MessagePack;
     using network;
     using StackExchange.Redis;
@@ -119,6 +120,21 @@ namespace game_server
                     try
                     {
                         UpdateJobResourceInfo(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
+            );
+
+            this.nats_client.Subscribe(
+                MapHelper.GetUpdateCampSubject(this.map_id, 0, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        UpdateCampInfo(msg);
                     }
                     catch (Exception e)
                     {
@@ -293,7 +309,11 @@ namespace game_server
                 GameObjectInfo
             )>(message);
 
-            var object_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, object_info.object_id);
+            var object_key = GameObjectInfo.MakeHashField(
+                object_info.object_type,
+                object_info.object_id
+            );
+
             var current_position_key = MapHelper.GetPositionKey(
                 object_info.map_id,
                 0,
@@ -431,6 +451,42 @@ namespace game_server
                 MessagePackSerializer.Deserialize<(string, JobResourceInfo)>(message);
 
             Packet packet = PacketMaker.G_TO_U_JOB_RESOURCE_INFO(job_resource_info);
+
+            var pivot_cell = MapHelper.GetCell(position_key);
+            var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
+
+            foreach (var bound_cell in bound_cell_list)
+            {
+                var bound_position_key = MapHelper.GetPositionKey(this.map_id, 0, bound_cell);
+                if (
+                    !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
+                )
+                {
+                    continue;
+                }
+
+                if (channel_list.Count <= 0)
+                {
+                    continue;
+                }
+
+                foreach (var channel in channel_list)
+                {
+                    this.nats_client!.Publish(channel, packet.ToBytes());
+                }
+            }
+
+            Packet.Destroy(packet);
+        }
+
+        public void UpdateCampInfo(RedisValue message)
+        {
+            (string position_key, CampInfo camp_info) = MessagePackSerializer.Deserialize<(
+                string,
+                CampInfo
+            )>(message);
+
+            Packet packet = PacketMaker.G_TO_U_CAMP_INFO(camp_info);
 
             var pivot_cell = MapHelper.GetCell(position_key);
             var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
