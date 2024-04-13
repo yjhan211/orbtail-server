@@ -310,24 +310,30 @@ namespace user_server
 
             foreach (var lab_skill in lab_info.reserach_info_dict)
             {
-                switch (player_info.job_info.job_type)
+                switch (lab_skill.Value.research_id)
                 {
-                    case JobType.GEOIOGIST:
-                        if (0 < lab_skill.Value.geo_level)
+                    case 4:
+                        if (
+                            player_info.job_info.job_type == JobType.GEOIOGIST
+                            && 0 < lab_skill.Value.geo_level
+                        )
                         {
                             result.Add(lab_skill.Value.research_id);
                         }
                         break;
 
-                    case JobType.BOTANIST:
-                        if (0 < lab_skill.Value.botan_level)
+                    case 5:
+                        if (
+                            player_info.job_info.job_type == JobType.BOTANIST
+                            && 0 < lab_skill.Value.botan_level
+                        )
                         {
                             result.Add(lab_skill.Value.research_id);
                         }
                         break;
 
-                    case JobType.BIOLOGY:
-                        if (0 < lab_skill.Value.bio_level)
+                    case 7:
+                        if (0 < lab_skill.Value.geo_level && 0 < lab_skill.Value.botan_level)
                         {
                             result.Add(lab_skill.Value.research_id);
                         }
