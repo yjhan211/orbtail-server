@@ -75,7 +75,8 @@ namespace user_server
 
                     if (is_create)
                     {
-                        lab_info.inventory_info.item_list.Add(target_item);
+                        var add_item = await CreateItem(user, target_item.item_id, 1);
+                        lab_info.inventory_info.item_list.Add(add_item);
                     }
 
                     await LabInfoController.Save(user.cache_helper, lab_info);
@@ -163,7 +164,8 @@ namespace user_server
 
                     if (is_create)
                     {
-                        player_info.inventory_info.item_list.Add(target_item);
+                        var add_item = await CreateItem(user, target_item.item_id, 1);
+                        player_info.inventory_info.item_list.Add(add_item);
                     }
 
                     await InventoryInfoController.Save(user.cache_helper, lab_info.inventory_info);
