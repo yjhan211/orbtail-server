@@ -433,13 +433,9 @@
                 {
                     // 기본 아이템 증정
                     var default_hair = await InventoryController.CreateItem(this, 101000001, 1);
-
-                    // TODO 테스트아이템
-                    var test_item = await InventoryController.CreateItem(this, 401000001, 1);
-
                     player_info = InventoryController.AddPlayerItem(
                         player_info,
-                        new List<ItemInfo>() { default_hair, test_item }
+                        new List<ItemInfo>() { default_hair }
                     );
 
                     player_info = InventoryController.WearItem(player_info, default_hair.item_uid);
@@ -480,10 +476,6 @@
                 player_info.object_info.current_cell,
                 player_info.object_info.is_flip
             );
-
-            // TODO 테스트코드
-            // C_TO_U_GET_JOB test_body = new() { job_type = JobType.BOTANIST };
-            // await JobController.GetJob(this, test_body);
         }
 
         async Task ChangeMapSuccess()
