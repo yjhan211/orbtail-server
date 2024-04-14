@@ -317,6 +317,10 @@
                     case PROTOCOL.G_TO_U_CAMP_INFO:
                         HandleMessage<G_TO_U_CAMP_INFO>(body, SubscribeCampInfo);
                         break;
+
+                    case PROTOCOL.U_TO_U_DUPLICATE:
+                        this.RecvDuplicate();
+                        break;
                 }
 
                 Packet.Destroy(packet);
@@ -324,7 +328,7 @@
             catch (Exception e)
             {
                 LogManager.WriteErrorLog(e);
-                this.OnRemoved();
+                // this.OnRemoved();
             }
         }
 
@@ -402,7 +406,7 @@
 
             long temp_player_id =
                 request.account_token == "dummy"
-                    ? await cache_helper.StringIncrement("temp_player_id")
+                    ? await cache_helper.StringIncrement("temp_player_id") + 1000
                     : long.Parse(request.account_token);
 
             bool is_new = false;
@@ -418,7 +422,7 @@
                         name: request.account_token == "dummy"
                             ? $"더미{temp_player_id}"
                             : $"플레이어{temp_player_id}",
-                        new(122, 102)
+                        request.account_token == "dummy" ? MapHelper.GetRandomCell() : new(117, 95)
                     );
 
                     is_new = true;
@@ -439,6 +443,17 @@
                     );
 
                     player_info = InventoryController.WearItem(player_info, default_hair.item_uid);
+                }
+                else
+                {
+                    // TODO 중복로그인 처리 임시
+                    Packet packet = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
+                    this.nats_client.Publish(
+                        player_info.object_info.GetHashField(),
+                        packet.ToBytes()
+                    );
+
+                    Packet.Destroy(packet);
                 }
 
                 await PlayerInfoController.Save(this.cache_helper, player_info);
@@ -788,6 +803,14 @@
 
             this.player_id = 0;
             this.nats_client.Close();
+        }
+
+        public void RecvDuplicate()
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
+            this.SendToClient(packet);
+
+            OnRemoved();
         }
 
         public void OnRemoved()

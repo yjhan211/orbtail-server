@@ -63,6 +63,7 @@
         U_TO_C_CAMP_INFO,
         C_TO_U_CAMP_INFO,
         U_TO_C_UPDATE_HP,
+        U_TO_U_DUPLICATE,
         U_TO_G_LOGOUT,
         END
     }
