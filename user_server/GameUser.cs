@@ -427,7 +427,7 @@
 
                     is_new = true;
                     player_info.object_info.map_id = MapID.CITY_1;
-                    player_info.job_info.hp = 50;
+                    player_info.job_info.hp = 100;
                 }
 
                 player_info.object_info.current_cell = player_info.object_info.target_cell;
