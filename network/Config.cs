@@ -24,7 +24,7 @@ namespace network
         public static int MAX_CHAT_LINE = 2000;
         public static int BROADCAST_CHUNK_SIZE = 200;
         public static int BROADCAST_UNIT = BUFFER_SIZE / BROADCAST_CHUNK_SIZE;
-        public static bool HEARTBEAT_ACTIVE = false;
+        public static bool HEARTBEAT_ACTIVE = true;
         public static TimeSpan LOCK_TTL = TimeSpan.FromSeconds(30);
 
         public static int MAX_CHAT_LENGTH = 100;
