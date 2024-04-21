@@ -36,6 +36,12 @@ namespace network
         [Key("state")]
         public PlayerState state { get; set; }
 
+        [Key("lab_id")]
+        public long lab_id { get; set; }
+
+        [Key("lab_name")]
+        public string lab_name { get; set; }
+
         // 이거 없애면 안됨 MessagePack에서 씀
         public PlayerInfo()
         {
@@ -48,6 +54,9 @@ namespace network
             this.object_info = new GameObjectInfo();
             this.job_info = new JobInfo();
             this.inventory_info = new InventoryInfo();
+
+            this.lab_id = 0;
+            this.lab_name = "";
         }
 
         public PlayerInfo(long player_id, string name, Cell cell)
@@ -58,9 +67,19 @@ namespace network
             this.wear_items = new List<int>();
             this.state = PlayerState.NONE;
 
-            this.object_info = new GameObjectInfo(ObjectType.PLAYER, player_id, cell);
+            this.object_info = new GameObjectInfo(
+                ObjectType.PLAYER,
+                player_id,
+                MapID.CITY_1,
+                0,
+                cell
+            );
+
             this.job_info = new JobInfo(player_id);
-            this.inventory_info = new InventoryInfo(player_id);
+            this.inventory_info = new InventoryInfo(InventoryOwnerType.PLAYER, player_id);
+
+            this.lab_id = 0;
+            this.lab_name = "";
         }
 
         public string GetLockKey()

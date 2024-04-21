@@ -17,6 +17,9 @@ namespace network
         [Key("map_id")]
         public MapID map_id { get; set; }
 
+        [Key("map_sub_id")]
+        public long map_sub_id { get; set; }
+
         [Key("current_cell")]
         public Cell current_cell { get; set; }
 
@@ -60,14 +63,23 @@ namespace network
             this.is_flip = false;
         }
 
-        public GameObjectInfo(ObjectType object_type, long object_id, Cell cell)
+        public GameObjectInfo(
+            ObjectType object_type,
+            long object_id,
+            MapID map_id,
+            long map_sub_id,
+            Cell cell,
+            bool is_flip = false
+        )
         {
             this.object_type = object_type;
             this.object_id = object_id;
             this.current_cell = Cell.Clone(cell);
             this.target_cell = Cell.Clone(cell);
+            this.map_id = map_id;
+            this.map_sub_id = map_sub_id;
             this.move_timestamp = DateTime.MinValue;
-            this.is_flip = false;
+            this.is_flip = is_flip;
         }
 
         public double GetMoveElapsedTime()

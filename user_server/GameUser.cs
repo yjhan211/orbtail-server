@@ -5,6 +5,7 @@
     using StackExchange.Redis;
     using game_server;
     using RedLockNet.SERedis;
+    using System.Diagnostics;
 
     public class GameUser : IPeer
     {
@@ -24,6 +25,8 @@
         /*-------------------------------------------------------------*/
         public bool in_action { get; set; }
         public (int, JobResourceInfo)? current_progress_job { get; set; }
+        public (DateTime, (MapID, long, Cell, bool))? change_map_task { get; set; }
+        public CampInfo? current_camp_info { get; set; }
 
         public GameUser(UserToken token)
         {
@@ -177,6 +180,66 @@
                         case PROTOCOL.C_TO_U_CHAT_MSG:
                             await HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
                             break;
+
+                        case PROTOCOL.C_TO_U_CREATE_LAB:
+                            await HandleMessage<C_TO_U_CREATE_LAB>(body, LabController.CreateLab);
+                            break;
+
+                        case PROTOCOL.C_TO_U_UPGRADE_RESEARCH:
+                            await HandleMessage<C_TO_U_UPGRADE_RESEARCH>(
+                                body,
+                                LabController.UpgradeResearch
+                            );
+                            break;
+
+                        case PROTOCOL.C_TO_U_MAKE:
+                            await HandleMessage<C_TO_U_MAKE>(body, LabController.Make);
+                            break;
+
+                        case PROTOCOL.C_TO_U_WRITE_LAB_HIRE:
+                            await HandleMessage<C_TO_U_WRITE_LAB_HIRE>(
+                                body,
+                                LabController.WriteLabHire
+                            );
+                            break;
+
+                        case PROTOCOL.C_TO_U_LAB_HIRE_LIST:
+                            await LabController.LabHireList(this);
+                            break;
+
+                        case PROTOCOL.C_TO_U_JOIN_LAB:
+                            await HandleMessage<C_TO_U_JOIN_LAB>(body, LabController.JoinLab);
+                            break;
+
+                        case PROTOCOL.C_TO_U_LAB_INVENTORY:
+                            await InventoryController.GetLabInventory(this);
+                            break;
+
+                        case PROTOCOL.C_TO_U_LAB_INVENTORY_ADD_ITEM:
+                            await HandleMessage<C_TO_U_LAB_INVENTORY_ADD_ITEM>(
+                                body,
+                                InventoryController.AddLabItem
+                            );
+                            break;
+
+                        case PROTOCOL.C_TO_U_LAB_INVENTORY_TAKE_ITEM:
+                            await HandleMessage<C_TO_U_LAB_INVENTORY_TAKE_ITEM>(
+                                body,
+                                InventoryController.TakeLabItem
+                            );
+                            break;
+
+                        case PROTOCOL.C_TO_U_ENCAMP:
+                            await HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
+                            break;
+
+                        case PROTOCOL.C_TO_U_DECAMP:
+                            await JobController.Decamp(this);
+                            break;
+
+                        case PROTOCOL.C_TO_U_CAMP_INFO:
+                            await HandleMessage<C_TO_U_CAMP_INFO>(body, GetCampInfo);
+                            break;
                     }
                 }
 
@@ -235,6 +298,29 @@
                     case PROTOCOL.G_TO_U_JOB_RESOURCE_INFO:
                         HandleMessage<G_TO_U_JOB_RESOURCE_INFO>(body, SubscribeJobResourceInfo);
                         break;
+
+                    case PROTOCOL.G_TO_U_CREATE_INSTANCE_SUCCESS:
+                        HandleMessage<G_TO_U_CREATE_INSTANCE_SUCCESS>(
+                            body,
+                            this.object_controller.SubscribeCreateinstanceSuccess
+                        );
+                        break;
+
+                    case PROTOCOL.U_TO_C_LAB_INFO:
+                        HandleMessage<U_TO_C_LAB_INFO>(body, SubscribeLabInfo);
+                        break;
+
+                    case PROTOCOL.U_TO_U_LAB_INVENTORY:
+                        HandleMessage<U_TO_U_LAB_INVENTORY>(body, SubscribeLabInventory);
+                        break;
+
+                    case PROTOCOL.G_TO_U_CAMP_INFO:
+                        HandleMessage<G_TO_U_CAMP_INFO>(body, SubscribeCampInfo);
+                        break;
+
+                    case PROTOCOL.U_TO_U_DUPLICATE:
+                        this.RecvDuplicate();
+                        break;
                 }
 
                 Packet.Destroy(packet);
@@ -242,7 +328,7 @@
             catch (Exception e)
             {
                 LogManager.WriteErrorLog(e);
-                this.OnRemoved();
+                // this.OnRemoved();
             }
         }
 
@@ -258,6 +344,57 @@
                     this.current_progress_job.Value.Item2
                 );
             }
+
+            if (this.change_map_task != null)
+            {
+                var change_time = this.change_map_task.Value.Item1;
+                if (DateTime.UtcNow < change_time)
+                {
+                    return;
+                }
+
+                var change_info = this.change_map_task.Value.Item2;
+                await this.object_controller!.ChangeMap(
+                    change_info.Item1,
+                    change_info.Item2,
+                    change_info.Item3,
+                    change_info.Item4
+                );
+
+                this.change_map_task = null;
+            }
+
+            if (current_camp_info != null)
+            {
+                if (DateTime.UtcNow <= current_camp_info.add_hp_timestamp)
+                {
+                    return;
+                }
+
+                JobInfo? job_info;
+                using (await PlayerInfoController.Lock(this.redlock, this.player_id))
+                {
+                    job_info = await JobInfoController.Load(this.cache_helper, this.player_id);
+                    if (job_info == null)
+                    {
+                        return;
+                    }
+
+                    if (GameDesignData.GetMaxHP(job_info.job_grade) <= job_info.hp)
+                    {
+                        return;
+                    }
+
+                    job_info.hp += 1;
+                    current_camp_info.add_hp_timestamp = DateTime.UtcNow.AddSeconds(5);
+
+                    await JobInfoController.Save(this.cache_helper, job_info);
+                    await CampInfoController.Save(this.cache_helper, current_camp_info);
+                }
+
+                Packet packet = PacketMaker.U_TO_C_UPDATE_HP(1, job_info.hp);
+                this.SendToClient(packet);
+            }
         }
 
         async Task Login(GameUser _, C_TO_U_LOGIN request)
@@ -269,7 +406,7 @@
 
             long temp_player_id =
                 request.account_token == "dummy"
-                    ? await cache_helper.StringIncrement("temp_player_id")
+                    ? await cache_helper.StringIncrement("temp_player_id") + 1000
                     : long.Parse(request.account_token);
 
             bool is_new = false;
@@ -285,16 +422,39 @@
                         name: request.account_token == "dummy"
                             ? $"더미{temp_player_id}"
                             : $"플레이어{temp_player_id}",
-                        new(90, 140)
+                        request.account_token == "dummy" ? MapHelper.GetRandomCell() : new(117, 95)
                     );
 
                     is_new = true;
                     player_info.object_info.map_id = MapID.CITY_1;
-                    player_info.job_info.hp = 50;
+                    player_info.job_info.hp = 100;
                 }
 
                 player_info.object_info.current_cell = player_info.object_info.target_cell;
                 player_info.state = PlayerState.NONE;
+
+                if (is_new)
+                {
+                    // 기본 아이템 증정
+                    var default_hair = await InventoryController.CreateItem(this, 101000001, 1);
+                    player_info = InventoryController.AddPlayerItem(
+                        player_info,
+                        new List<ItemInfo>() { default_hair }
+                    );
+
+                    player_info = InventoryController.WearItem(player_info, default_hair.item_uid);
+                }
+                else
+                {
+                    // TODO 중복로그인 처리 임시
+                    Packet packet = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
+                    this.nats_client.Publish(
+                        player_info.object_info.GetHashField(),
+                        packet.ToBytes()
+                    );
+
+                    Packet.Destroy(packet);
+                }
 
                 await PlayerInfoController.Save(this.cache_helper, player_info);
                 await GameObjectInfoController.Save(this.cache_helper, player_info.object_info);
@@ -302,15 +462,6 @@
                 this.player_id = player_info.player_id;
                 this.object_controller = new(this, player_info.object_info);
                 this.in_action = false;
-
-                if (is_new)
-                {
-                    // 기본 아이템 증정
-                    var default_hair = await InventoryController.CreateItem(this, 101000001, 1);
-
-                    await InventoryController.AddItem(this, this.player_id, default_hair);
-                    player_info = await InventoryController.WearItem(this, default_hair.item_uid);
-                }
             }
 
             // 개인 구독 시작
@@ -325,19 +476,35 @@
                 (channel, message) => OnMessageFromSubscribe(message)
             );
 
+            var lab_info = await LabInfoController.Load(this.cache_helper, player_info.lab_id);
+
             // 계정 정보 전송
-            Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info);
+            Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info, lab_info ?? new());
             SendToClient(login_packet);
 
             // 인벤토리 정보 전송
             await InventoryController.GetCurrentItemList(this);
+
+            await this.object_controller.ChangeMap(
+                player_info.object_info.map_id,
+                player_info.object_info.map_sub_id,
+                player_info.object_info.current_cell,
+                player_info.object_info.is_flip
+            );
         }
 
         async Task ChangeMapSuccess()
         {
+            var player_info = await PlayerInfoController.Load(this.cache_helper, this.player_id);
+            if (player_info == null)
+            {
+                throw new Exception("not found player info");
+            }
+
             await this.object_controller!.Move(
                 this.object_controller.object_info.current_cell,
                 DirectionType.NONE,
+                player_info,
                 true
             );
         }
@@ -396,7 +563,40 @@
                     Packet packet = PacketMaker.U_TO_C_JOB_RESOURCE_INFO(job_resource_info_list);
                     this.SendToClient(packet);
 
-                    await Task.Delay(100);
+                    job_resource_info_list.Clear();
+                }
+            }
+        }
+
+        async Task GetCampInfo(GameUser _, C_TO_U_CAMP_INFO body)
+        {
+            var camp_id_list = body.camp_id_list;
+            var camp_info_list = new List<CampInfo>();
+
+            for (int i = 0; i < camp_id_list.Count; i++)
+            {
+                var target_camp_id = camp_id_list[i];
+                CampInfo? target_camp_info = await CampInfoController.Load(
+                    cache_helper,
+                    target_camp_id
+                );
+
+                if (target_camp_info == null)
+                {
+                    continue;
+                }
+
+                camp_info_list.Add(target_camp_info);
+
+                bool is_max = camp_info_list.Count >= Config.BROADCAST_UNIT;
+                bool is_ended = i == camp_info_list.Count - 1;
+
+                if (is_max || is_ended)
+                {
+                    Packet packet = PacketMaker.U_TO_C_CAMP_INFO(camp_info_list);
+                    this.SendToClient(packet);
+
+                    camp_info_list.Clear();
                 }
             }
         }
@@ -426,25 +626,91 @@
             this.SendToClient(packet);
         }
 
+        void SubscribeLabInfo(GameUser _, U_TO_C_LAB_INFO body)
+        {
+            Packet packet = PacketMaker.U_TO_C_LAB_INFO(body.join_player_info, body.lab_info);
+            this.SendToClient(packet);
+        }
+
+        void SubscribeLabInventory(GameUser _, U_TO_U_LAB_INVENTORY body)
+        {
+            SendLabItemList(body.item_list);
+        }
+
+        void SubscribeCampInfo(GameUser _, G_TO_U_CAMP_INFO body)
+        {
+            Packet packet = PacketMaker.U_TO_C_CAMP_INFO(new() { body.camp_info });
+            this.SendToClient(packet);
+        }
+
+        public void SendLabItemList(List<ItemInfo> item_list)
+        {
+            if (item_list.Count == 0)
+            {
+                Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(new(), true);
+                this.SendToClient(packet);
+            }
+
+            for (int i = 0; i < item_list.Count; i += Config.BROADCAST_UNIT)
+            {
+                List<ItemInfo> batch = item_list.Skip(i).Take(Config.BROADCAST_UNIT).ToList();
+
+                var remain = item_list.Count - i - Config.BROADCAST_UNIT;
+                var is_ended = remain <= 0;
+
+                Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(batch, is_ended);
+                this.SendToClient(packet);
+            }
+        }
+
         public void BroadcastUpdatePlayerInfo(PlayerInfo player_info)
         {
-            var position_key = MapHelper.GetPositionKey(
-                player_info.object_info.map_id,
-                player_info.object_info.current_cell
-            );
-
-            var target_server_list = MapHelper.GetBoundServerList(
-                player_info.object_info.map_id,
-                Program.game_server_num,
-                MapHelper.GetCell(position_key)
-            );
-
-            foreach (var target_server in target_server_list)
+            switch (player_info.object_info.map_id)
             {
-                this.nats_client!.Publish(
-                    MapHelper.GetUpdatePlayerSubject(player_info.object_info.map_id, target_server),
-                    MessagePackSerializer.Serialize((position_key, player_info))
-                );
+                case MapID.LAB_1:
+                    var instance_key = MapHelper.GetInstanceKey(
+                        player_info.object_info.map_id,
+                        player_info.object_info.map_sub_id
+                    );
+                    var instance_server = MapHelper.GetServerIdByMapSubID(
+                        Program.game_server_num,
+                        player_info.object_info.map_sub_id
+                    );
+                    this.nats_client!.Publish(
+                        MapHelper.GetUpdatePlayerSubject(
+                            player_info.object_info.map_id,
+                            player_info.object_info.map_sub_id,
+                            instance_server
+                        ),
+                        MessagePackSerializer.Serialize((instance_key, player_info))
+                    );
+                    break;
+
+                default:
+                    var position_key = MapHelper.GetPositionKey(
+                        player_info.object_info.map_id,
+                        player_info.object_info.map_sub_id,
+                        player_info.object_info.current_cell
+                    );
+
+                    var target_server_list = MapHelper.GetBoundServerList(
+                        player_info.object_info.map_id,
+                        Program.game_server_num,
+                        MapHelper.GetCell(position_key)
+                    );
+
+                    foreach (var target_server in target_server_list)
+                    {
+                        this.nats_client!.Publish(
+                            MapHelper.GetUpdatePlayerSubject(
+                                player_info.object_info.map_id,
+                                player_info.object_info.map_sub_id,
+                                target_server
+                            ),
+                            MessagePackSerializer.Serialize((position_key, player_info))
+                        );
+                    }
+                    break;
             }
         }
 
@@ -452,6 +718,7 @@
         {
             var position_key = MapHelper.GetPositionKey(
                 job_resource_info.object_info.map_id,
+                job_resource_info.object_info.map_sub_id,
                 job_resource_info.object_info.current_cell
             );
 
@@ -466,12 +733,40 @@
                 this.nats_client!.Publish(
                     MapHelper.GetUpdateJobResourceSubject(
                         job_resource_info.object_info.map_id,
+                        job_resource_info.object_info.map_sub_id,
                         target_server
                     ),
                     MessagePackSerializer.Serialize((position_key, job_resource_info))
                 );
             }
         }
+
+        // public void BroadcastUpdateCampInfo(CampInfo camp_info)
+        // {
+        //     var position_key = MapHelper.GetPositionKey(
+        //         camp_info.object_info.map_id,
+        //         camp_info.object_info.map_sub_id,
+        //         camp_info.object_info.current_cell
+        //     );
+
+        //     var target_server_list = MapHelper.GetBoundServerList(
+        //         camp_info.object_info.map_id,
+        //         Program.game_server_num,
+        //         MapHelper.GetCell(position_key)
+        //     );
+
+        //     foreach (var target_server in target_server_list)
+        //     {
+        //         this.nats_client!.Publish(
+        //             MapHelper.GetUpdateCampSubject(
+        //                 camp_info.object_info.map_id,
+        //                 camp_info.object_info.map_sub_id,
+        //                 target_server
+        //             ),
+        //             MessagePackSerializer.Serialize((position_key, camp_info))
+        //         );
+        //     }
+        // }
 
         public void SendToClient(Packet msg)
         {
@@ -492,11 +787,30 @@
                 await this.object_controller.PublishDestroy();
             }
 
+            if (current_progress_job != null)
+            {
+                await JobResourceController.Delete(
+                    this.cache_helper,
+                    current_progress_job.Value.Item2.resource_uid
+                );
+                JobController.BroadcastJobResourceDestroy(this, current_progress_job.Value.Item2);
+            }
+
+            await JobController.Decamp(this);
+
             Packet packet = PacketMaker.U_TO_G_LOGOUT(this.player_id);
             _ = this.SendToGameServer(packet);
 
             this.player_id = 0;
             this.nats_client.Close();
+        }
+
+        public void RecvDuplicate()
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
+            this.SendToClient(packet);
+
+            OnRemoved();
         }
 
         public void OnRemoved()

@@ -11,6 +11,7 @@ namespace game_server
         CancellationTokenSource cts;
         Task? logic_thread;
         List<MapController> map_controller_list;
+        InstanceController instance_controller;
         ConnectionMultiplexer redis_connection;
         CacheHelper cache_helper;
 
@@ -21,6 +22,7 @@ namespace game_server
 
             this.map_controller_list.Add(new(MapID.CITY_1));
             this.map_controller_list.Add(new(MapID.FOREST_1));
+            this.instance_controller = new();
 
             this.redis_connection = RedisConnectionPool.GetConnection();
             this.cache_helper = new(this.redis_connection);
@@ -30,10 +32,10 @@ namespace game_server
         {
             foreach (var map_controller in this.map_controller_list)
             {
-                NatsClient nats_client = new(Program.nats_endpoint);
-                map_controller.Initialize(nats_client);
+                map_controller.Initialize(new(Program.nats_endpoint));
             }
 
+            this.instance_controller.Initialize(new(Program.nats_endpoint));
             this.logic_thread = Task.Run(GameLoop, this.cts.Token);
         }
 

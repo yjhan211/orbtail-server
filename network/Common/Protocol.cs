@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace network
+﻿namespace network
 {
     public enum PROTOCOL : int
     {
@@ -45,6 +39,31 @@ namespace network
         U_TO_C_USE_ITEM,
         U_TO_C_CHANGE_MAP,
         C_TO_U_CHANGE_MAP_SUCCESS,
+        C_TO_U_CREATE_LAB,
+        U_TO_C_CREATE_LAB,
+        G_TO_U_CREATE_INSTANCE_SUCCESS,
+        C_TO_U_UPGRADE_RESEARCH,
+        U_TO_C_UPGRADE_RESEARCH,
+        C_TO_U_MAKE,
+        U_TO_C_MAKE,
+        C_TO_U_WRITE_LAB_HIRE,
+        U_TO_C_WRITE_LAB_HIRE,
+        C_TO_U_LAB_HIRE_LIST,
+        U_TO_C_LAB_HIRE_LIST,
+        C_TO_U_JOIN_LAB,
+        U_TO_C_LAB_INFO,
+        C_TO_U_LAB_INVENTORY,
+        C_TO_U_LAB_INVENTORY_ADD_ITEM,
+        C_TO_U_LAB_INVENTORY_TAKE_ITEM,
+        U_TO_U_LAB_INVENTORY,
+        U_TO_C_LAB_INVENTORY,
+        C_TO_U_ENCAMP,
+        C_TO_U_DECAMP,
+        G_TO_U_CAMP_INFO,
+        U_TO_C_CAMP_INFO,
+        C_TO_U_CAMP_INFO,
+        U_TO_C_UPDATE_HP,
+        U_TO_U_DUPLICATE,
         U_TO_G_LOGOUT,
         END
     }
@@ -54,6 +73,7 @@ namespace network
         NONE,
         CITY_1,
         FOREST_1,
+        LAB_1,
     }
 
     public enum ObjectType : int
@@ -62,6 +82,14 @@ namespace network
         PLAYER,
         ITEM,
         JOBRESOURCE,
+        CAMP,
+    }
+
+    public enum InventoryOwnerType : int
+    {
+        NONE,
+        PLAYER,
+        LAB,
     }
 
     public enum TileType : int
@@ -83,6 +111,7 @@ namespace network
         NONE,
         GEOIOGIST, // 지질학자
         BOTANIST, // 식물학자
+        BIOLOGY, // 생물학자
     }
 
     public enum JobGrade : byte
@@ -95,6 +124,13 @@ namespace network
         PRINCIPAL, // 책임 연구원
         LEAD, // 수석 연구원
         CHIEF // 대가
+    }
+
+    public enum LabGrade : byte
+    {
+        NONE,
+        ALONE, // 개인 동아리
+        CLUB, // 동아리
     }
 
     public enum PlayerGrade : byte
@@ -126,6 +162,7 @@ namespace network
         SUCCESS = 0,
         ALREADY_HAS_JOB,
         ALREADY_ANOTHER_USE_SKILL,
+        INVALID_POSITION,
         FATAL
     }
 
@@ -135,5 +172,6 @@ namespace network
         GEO_WORK_1,
         BOTAN_WORK_1,
         RESEARCH_1,
+        CAMIPING_1,
     }
 }

@@ -5,7 +5,7 @@ namespace user_server
 
     public static class PacketMaker
     {
-        public static Packet U_TO_C_LOGIN(PlayerInfo player_info)
+        public static Packet U_TO_C_LOGIN(PlayerInfo player_info, LabInfo lab_info)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LOGIN);
             U_TO_C_LOGIN body =
@@ -14,6 +14,7 @@ namespace user_server
                     object_info = player_info.object_info,
                     player_info = player_info,
                     job_info = player_info.job_info,
+                    lab_info = lab_info,
                 };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -33,6 +34,24 @@ namespace user_server
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_INVENTORY_ITEM_LIST);
             U_TO_C_INVENTORY_ITEM_LIST body = new() { item_list = item_list, is_end = is_end };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_U_LAB_INVENTORY(List<ItemInfo> item_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_U_LAB_INVENTORY);
+            U_TO_U_LAB_INVENTORY body = new() { item_list = item_list };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_LAB_INVENTORY(List<ItemInfo> item_list, bool is_end)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LAB_INVENTORY);
+            U_TO_C_LAB_INVENTORY body = new() { item_list = item_list, is_end = is_end };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -144,10 +163,14 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_MOVE(long player_id, ErrorCode error_code)
+        public static Packet U_TO_C_MOVE(
+            long player_id,
+            ErrorCode error_code,
+            GameObjectInfo object_info
+        )
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_MOVE, player_id);
-            U_TO_C_MOVE body = new() { error_code = error_code };
+            U_TO_C_MOVE body = new() { error_code = error_code, object_info = object_info };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -175,6 +198,24 @@ namespace user_server
         {
             Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_JOB_RESOURCE_INFO);
             G_TO_U_JOB_RESOURCE_INFO body = new() { job_resource_info = job_resource_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet G_TO_U_CAMP_INFO(CampInfo camp_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_CAMP_INFO);
+            G_TO_U_CAMP_INFO body = new() { camp_info = camp_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_CAMP_INFO(List<CampInfo> camp_info_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CAMP_INFO);
+            U_TO_C_CAMP_INFO body = new() { camp_info_list = camp_info_list };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
@@ -216,13 +257,19 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_CHANGE_MAP(MapID map_id, Cell spawn_cell, bool is_flip)
+        public static Packet U_TO_C_CHANGE_MAP(
+            MapID map_id,
+            long map_sub_id,
+            Cell spawn_cell,
+            bool is_flip
+        )
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CHANGE_MAP);
             U_TO_C_CHANGE_MAP body =
                 new()
                 {
                     map_id = map_id,
+                    map_sub_id = map_sub_id,
                     spawn_cell = spawn_cell,
                     is_flip = is_flip
                 };
@@ -254,6 +301,86 @@ namespace user_server
                     item_info = item_info ?? new(),
                     job_info = job_info
                 };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_CREATE_LAB(
+            long player_id,
+            PlayerInfo player_info,
+            LabInfo lab_info
+        )
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_CREATE_LAB, player_id);
+            U_TO_C_CREATE_LAB body = new() { player_info = player_info, lab_info = lab_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet G_TO_U_CREATE_INSTANCE_SUCCESS(MapID map_id, long map_sub_id)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_CREATE_INSTANCE_SUCCESS);
+            G_TO_U_CREATE_INSTANCE_SUCCESS body =
+                new() { map_id = map_id, map_sub_id = map_sub_id };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_UPGRADE_RESEARCH(
+            Dictionary<int, ResearchInfo> research_info_dict
+        )
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_UPGRADE_RESEARCH);
+            U_TO_C_UPGRADE_RESEARCH body = new() { reserach_info_dict = research_info_dict };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_MAKE(bool is_success)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_MAKE);
+            U_TO_C_MAKE body = new() { is_success = is_success };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_WRITE_LAB_HIRE(ErrorCode error_code)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_WRITE_LAB_HIRE);
+            U_TO_C_WRITE_LAB_HIRE body = new() { error_code = error_code };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_LAB_HIRE_LIST(List<(long, string, string)> hire_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LAB_HIRE_LIST);
+            U_TO_C_LAB_HIRE_LIST body = new() { hire_list = hire_list };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_LAB_INFO(PlayerInfo join_player_info, LabInfo lab_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LAB_INFO);
+            U_TO_C_LAB_INFO body =
+                new() { join_player_info = join_player_info, lab_info = lab_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_UPDATE_HP(int add_hp, int current_hp)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_UPDATE_HP);
+            U_TO_C_UPDATE_HP body = new() { add_hp = add_hp, current_hp = current_hp };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

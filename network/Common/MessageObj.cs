@@ -25,6 +25,9 @@ namespace network
 
         [Key("job_info")]
         public JobInfo job_info { get; set; }
+
+        [Key("lab_info")]
+        public LabInfo lab_info { get; set; }
     }
 
     [MessagePackObject]
@@ -89,6 +92,9 @@ namespace network
     {
         [Key("error_code")]
         public ErrorCode error_code { get; set; }
+
+        [Key("object_info")]
+        public GameObjectInfo object_info { get; set; }
     }
 
     [MessagePackObject]
@@ -158,6 +164,13 @@ namespace network
     {
         [Key("job_resource_info")]
         public JobResourceInfo job_resource_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_U_CAMP_INFO : IMessagePackObject
+    {
+        [Key("camp_info")]
+        public CampInfo camp_info { get; set; }
     }
 
     [MessagePackObject]
@@ -296,10 +309,168 @@ namespace network
         [Key("map_id")]
         public MapID map_id { get; set; }
 
+        [Key("map_sub_id")]
+        public long map_sub_id { get; set; }
+
         [Key("spawn_cell")]
         public Cell spawn_cell { get; set; }
 
         [Key("is_flip")]
         public bool is_flip { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_CREATE_LAB : IMessagePackObject
+    {
+        [Key("lab_name")]
+        public string lab_name { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_CREATE_LAB : IMessagePackObject
+    {
+        [Key("player_info")]
+        public PlayerInfo player_info { get; set; }
+
+        [Key("lab_info")]
+        public LabInfo lab_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_U_CREATE_INSTANCE_SUCCESS : IMessagePackObject
+    {
+        [Key("map_id")]
+        public MapID map_id { get; set; }
+
+        [Key("map_sub_id")]
+        public long map_sub_id { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_UPGRADE_RESEARCH : IMessagePackObject
+    {
+        [Key("research_id")]
+        public int research_id { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_UPGRADE_RESEARCH : IMessagePackObject
+    {
+        [Key("reserach_info_dict")]
+        public Dictionary<int, ResearchInfo> reserach_info_dict { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_MAKE : IMessagePackObject
+    {
+        [Key("materials")]
+        public Dictionary<long, int> materials { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_MAKE : IMessagePackObject
+    {
+        [Key("is_success")]
+        public bool is_success { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_WRITE_LAB_HIRE : IMessagePackObject
+    {
+        [Key("comment")]
+        public string comment { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_WRITE_LAB_HIRE : IMessagePackObject
+    {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_LAB_HIRE_LIST : IMessagePackObject
+    {
+        [Key("hire_list")]
+        public List<(long, string, string)> hire_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_JOIN_LAB : IMessagePackObject
+    {
+        [Key("lab_id")]
+        public long lab_id { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_LAB_INFO : IMessagePackObject
+    {
+        [Key("join_player_info")]
+        public PlayerInfo join_player_info { get; set; }
+
+        [Key("lab_info")]
+        public LabInfo lab_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_LAB_INVENTORY_ADD_ITEM : IMessagePackObject
+    {
+        [Key("item_uid")]
+        public long item_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_LAB_INVENTORY_TAKE_ITEM : IMessagePackObject
+    {
+        [Key("item_uid")]
+        public long item_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_U_LAB_INVENTORY : IMessagePackObject
+    {
+        [Key("item_list")]
+        public List<ItemInfo> item_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_LAB_INVENTORY : IMessagePackObject
+    {
+        [Key("item_list")]
+        public List<ItemInfo> item_list { get; set; }
+
+        [Key("is_ended")]
+        public bool is_end { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_ENCAMP : IMessagePackObject
+    {
+        [Key("item_uid")]
+        public long item_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_CAMP_INFO : IMessagePackObject
+    {
+        [Key("camp_info_list")]
+        public List<CampInfo> camp_info_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_CAMP_INFO : IMessagePackObject
+    {
+        [Key("camp_id_list")]
+        public List<long> camp_id_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_UPDATE_HP : IMessagePackObject
+    {
+        [Key("add_hp")]
+        public int add_hp { get; set; }
+
+        [Key("current_hp")]
+        public int current_hp { get; set; }
     }
 }

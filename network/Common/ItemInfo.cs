@@ -48,7 +48,7 @@ namespace network
             this.durability = 100;
             this.skill_id = 0;
 
-            this.object_info = new(player_id);
+            this.object_info = new(item_uid);
         }
     }
 }
