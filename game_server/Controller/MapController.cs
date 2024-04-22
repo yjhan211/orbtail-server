@@ -326,7 +326,10 @@ namespace game_server
                 // last를 관리하는 서버가 본인이면 지움
                 if (this.object_position_dict.TryGetValue(last_position_key, out _))
                 {
-                    this.object_position_dict[last_position_key].Remove(object_key);
+                    foreach (var kvp in this.object_position_dict.ToList())
+                    {
+                        kvp.Value.Remove(object_key);
+                    }
                 }
 
                 // current 추가
@@ -358,7 +361,10 @@ namespace game_server
 
             lock (position_lock)
             {
-                this.object_position_dict[position_key].Remove(object_key);
+                foreach (var kvp in this.object_position_dict.ToList())
+                {
+                    kvp.Value.Remove(object_key);
+                }
             }
         }
 
@@ -390,7 +396,10 @@ namespace game_server
 
             lock (position_lock)
             {
-                var result = this.object_position_dict[position_key].Remove(object_key);
+                foreach (var kvp in this.object_position_dict.ToList())
+                {
+                    kvp.Value.Remove(object_key);
+                }
             }
 
             Cell position_cell = MapHelper.GetCell(position_key);
