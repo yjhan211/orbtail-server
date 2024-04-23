@@ -348,52 +348,48 @@
             if (this.change_map_task != null)
             {
                 var change_time = this.change_map_task.Value.Item1;
-                if (DateTime.UtcNow < change_time)
+                if (DateTime.UtcNow >= change_time)
                 {
-                    return;
+                    var change_info = this.change_map_task.Value.Item2;
+                    await this.object_controller!.ChangeMap(
+                        change_info.Item1,
+                        change_info.Item2,
+                        change_info.Item3,
+                        change_info.Item4
+                    );
+
+                    this.change_map_task = null;
                 }
-
-                var change_info = this.change_map_task.Value.Item2;
-                await this.object_controller!.ChangeMap(
-                    change_info.Item1,
-                    change_info.Item2,
-                    change_info.Item3,
-                    change_info.Item4
-                );
-
-                this.change_map_task = null;
             }
 
             if (current_camp_info != null)
             {
-                if (DateTime.UtcNow <= current_camp_info.add_hp_timestamp)
+                if (DateTime.UtcNow >= current_camp_info.add_hp_timestamp)
                 {
-                    return;
-                }
-
-                JobInfo? job_info;
-                using (await PlayerInfoController.Lock(this.redlock, this.player_id))
-                {
-                    job_info = await JobInfoController.Load(this.cache_helper, this.player_id);
-                    if (job_info == null)
+                    JobInfo? job_info;
+                    using (await PlayerInfoController.Lock(this.redlock, this.player_id))
                     {
-                        return;
+                        job_info = await JobInfoController.Load(this.cache_helper, this.player_id);
+                        if (job_info == null)
+                        {
+                            return;
+                        }
+
+                        if (GameDesignData.GetMaxHP(job_info.job_grade) <= job_info.hp)
+                        {
+                            return;
+                        }
+
+                        job_info.hp += 1;
+                        current_camp_info.add_hp_timestamp = DateTime.UtcNow.AddSeconds(5);
+
+                        await JobInfoController.Save(this.cache_helper, job_info);
+                        await CampInfoController.Save(this.cache_helper, current_camp_info);
                     }
 
-                    if (GameDesignData.GetMaxHP(job_info.job_grade) <= job_info.hp)
-                    {
-                        return;
-                    }
-
-                    job_info.hp += 1;
-                    current_camp_info.add_hp_timestamp = DateTime.UtcNow.AddSeconds(5);
-
-                    await JobInfoController.Save(this.cache_helper, job_info);
-                    await CampInfoController.Save(this.cache_helper, current_camp_info);
+                    Packet packet = PacketMaker.U_TO_C_UPDATE_HP(1, job_info.hp);
+                    this.SendToClient(packet);
                 }
-
-                Packet packet = PacketMaker.U_TO_C_UPDATE_HP(1, job_info.hp);
-                this.SendToClient(packet);
             }
         }
 

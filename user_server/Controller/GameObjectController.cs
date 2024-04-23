@@ -10,20 +10,19 @@ namespace user_server
     {
         GameUser user;
         readonly ConcurrentQueue<GameObjectInfo> move_object_queue;
-        readonly SemaphoreSlim object_lock;
 
         /*-------------------------------------------------------------*/
 
         public GameObjectInfo object_info { get; private set; }
         Cell last_cell;
         Task move_object_task;
+        CancellationTokenSource? move_finish_cts;
 
         public GameObjectController(GameUser user, GameObjectInfo object_info)
         {
             this.user = user;
 
             this.move_object_queue = new();
-            this.object_lock = new(1);
 
             this.object_info = object_info;
             this.last_cell = Cell.Clone(object_info.current_cell);
@@ -320,10 +319,17 @@ namespace user_server
         public async Task Move(
             Cell next_target_cell,
             DirectionType direction,
-            PlayerInfo player_info,
+            PlayerInfo? player_info = null,
             bool all_bound = false
         )
         {
+            // 진행중인 MoveFinish 취소
+            if (this.move_finish_cts != null && !this.move_finish_cts.IsCancellationRequested)
+            {
+                this.move_finish_cts.Cancel();
+                this.move_finish_cts.Dispose();
+            }
+
             // 과거 위치 챙겨놓고
             this.last_cell = Cell.Clone(this.object_info.current_cell);
 
@@ -437,7 +443,7 @@ namespace user_server
                 switch (map_id)
                 {
                     case MapID.LAB_1:
-                        map_sub_id = player_info.lab_id;
+                        map_sub_id = player_info!.lab_id;
                         break;
 
                     default:
@@ -448,19 +454,52 @@ namespace user_server
                     this.object_info.move_timestamp.AddSeconds(Config.MOVE_ELAPSED_TIME),
                     (map_id, map_sub_id, spawn_position, is_flip)
                 );
+
+                return;
             }
+
+            // 마지막 이동 요청이면 MoveFinish로 Move를 한번 더 호출해야 함. current_cell을 target_cell이랑 일치시키기 위함
+            if (direction != DirectionType.NONE)
+            {
+                this.move_finish_cts = new();
+                _ = Task.Run(() => MoveFinish(move_finish_cts.Token));
+            }
+        }
+
+        async Task MoveFinish(CancellationToken ct)
+        {
+            var delayTask = Task.Delay(TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME * 2), ct);
+
+            while (!ct.IsCancellationRequested && !delayTask.IsCompleted)
+            {
+                await Task.Yield();
+            }
+
+            if (ct.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (this.object_info == null)
+            {
+                return;
+            }
+
+            if (this.object_info.current_cell.Equals(this.object_info.target_cell))
+            {
+                return;
+            }
+
+            _ = Move(this.object_info.target_cell, DirectionType.NONE);
         }
 
         public void RequestCommmonMapSpawnList(bool all_bound)
         {
             var last_bound_cell_list = all_bound
                 ? new()
-                : MapHelper.GetBoundCellList(this.last_cell, true);
+                : MapHelper.GetBoundCellList(this.last_cell);
 
-            var current_bound_cell_list = MapHelper.GetBoundCellList(
-                this.object_info.current_cell,
-                true
-            );
+            var current_bound_cell_list = MapHelper.GetBoundCellList(this.object_info.current_cell);
 
             // 현재 바운드 - 이전 바운드 = spawn 대상 TODO map_id
             var object_spawn_list = current_bound_cell_list
