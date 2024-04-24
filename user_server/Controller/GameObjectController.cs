@@ -166,6 +166,11 @@ namespace user_server
                     throw new Exception("in change map task");
                 }
 
+                if (body.direction == DirectionType.NONE)
+                {
+                    throw new Exception("invalid direction type");
+                }
+
                 var next_target_cell = MapHelper.CalcTargetCell(
                     this.object_info.target_cell,
                     body.direction
@@ -374,11 +379,11 @@ namespace user_server
             }
 
             // target_cell을 새로운 target_cell로 변경 및 move_timestamp 업데이트
-            this.object_info.move_timestamp = DateTime.UtcNow;
             this.object_info.target_cell = Cell.Clone(next_target_cell);
             if (direction != DirectionType.NONE)
             {
                 this.object_info.SetFlip(direction);
+                this.object_info.move_timestamp = DateTime.UtcNow;
             }
 
             await GameObjectInfoController.Save(user.cache_helper, this.object_info);
