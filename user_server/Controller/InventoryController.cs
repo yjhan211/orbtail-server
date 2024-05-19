@@ -2,7 +2,6 @@ namespace user_server
 {
     using game_server;
     using network;
-    using MessagePack;
 
     public static class InventoryController
     {
@@ -216,143 +215,6 @@ namespace user_server
             user.SendLabItemList(item_list);
         }
 
-        public static PlayerInfo AddPlayerItem(PlayerInfo player_info, ItemInfo item_info)
-        {
-            var is_create = true;
-            var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
-            if (is_countable)
-            {
-                for (int i = 0; i < player_info.inventory_info.item_list.Count; i++)
-                {
-                    if (player_info.inventory_info.item_list[i].item_id == item_info.item_id)
-                    {
-                        player_info.inventory_info.item_list[i].count += item_info.count;
-                        is_create = false;
-                        break;
-                    }
-                }
-            }
-
-            if (is_create)
-            {
-                player_info.inventory_info.item_list.Add(item_info);
-            }
-
-            return player_info;
-        }
-
-        public static async Task<InventoryInfo> AddPlayerItem(
-            GameUser user,
-            long player_id,
-            ItemInfo item_info
-        )
-        {
-            var inventory_info = await InventoryInfoController.Load(
-                user.cache_helper,
-                InventoryOwnerType.PLAYER,
-                player_id
-            );
-
-            if (inventory_info == null)
-            {
-                throw new Exception("inventory_info not exists");
-            }
-
-            var is_create = true;
-            var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
-            if (is_countable)
-            {
-                for (int i = 0; i < inventory_info.item_list.Count; i++)
-                {
-                    if (inventory_info.item_list[i].item_id == item_info.item_id)
-                    {
-                        inventory_info.item_list[i].count += item_info.count;
-                        is_create = false;
-                        break;
-                    }
-                }
-            }
-
-            if (is_create)
-            {
-                inventory_info.item_list.Add(item_info);
-            }
-            await InventoryInfoController.Save(user.cache_helper, inventory_info);
-
-            return inventory_info;
-        }
-
-        public static PlayerInfo AddPlayerItem(
-            PlayerInfo player_info,
-            List<ItemInfo> item_info_list
-        )
-        {
-            foreach (var item_info in item_info_list)
-            {
-                var is_create = true;
-                var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
-                if (is_countable)
-                {
-                    for (int i = 0; i < player_info.inventory_info.item_list.Count; i++)
-                    {
-                        if (player_info.inventory_info.item_list[i].item_id == item_info.item_id)
-                        {
-                            player_info.inventory_info.item_list[i].count += item_info.count;
-                            is_create = false;
-                            break;
-                        }
-                    }
-                }
-                if (is_create)
-                {
-                    player_info.inventory_info.item_list.Add(item_info);
-                }
-            }
-
-            return player_info;
-        }
-
-        public static async Task<InventoryInfo> AddPlayerItem(
-            GameUser user,
-            long player_id,
-            List<ItemInfo> item_info_list
-        )
-        {
-            var inventory_info = await InventoryInfoController.Load(
-                user.cache_helper,
-                InventoryOwnerType.PLAYER,
-                player_id
-            );
-            if (inventory_info == null)
-            {
-                throw new Exception("inventory_info not exists");
-            }
-
-            foreach (var item_info in item_info_list)
-            {
-                var is_create = true;
-                var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
-                if (is_countable)
-                {
-                    for (int i = 0; i < inventory_info.item_list.Count; i++)
-                    {
-                        if (inventory_info.item_list[i].item_id == item_info.item_id)
-                        {
-                            inventory_info.item_list[i].count += item_info.count;
-                            is_create = false;
-                            break;
-                        }
-                    }
-                }
-                if (is_create)
-                {
-                    inventory_info.item_list.Add(item_info);
-                }
-            }
-            await InventoryInfoController.Save(user.cache_helper, inventory_info);
-            return inventory_info;
-        }
-
         public static async Task RequestWearItem(GameUser user, C_TO_U_WEAR_ITEM body)
         {
             if (user.in_action)
@@ -360,10 +222,20 @@ namespace user_server
                 throw new Exception("player in action");
             }
 
-            PlayerInfo player_info;
+            PlayerInfo? player_info = await PlayerInfoController.Load(
+                user.cache_helper,
+                user.player_id
+            );
+
+            if (player_info == null)
+            {
+                throw new Exception("cannot found player info");
+            }
+
             using (await PlayerInfoController.Lock(user.redlock, user.player_id))
             {
-                player_info = await WearItem(user, body.item_uid);
+                player_info.WearItem(body.item_uid);
+                await PlayerInfoController.Save(user.cache_helper, player_info);
             }
 
             Packet packet = PacketMaker.U_TO_C_WEAR_ITEM(player_info);
@@ -433,198 +305,23 @@ namespace user_server
 
         public static async Task RequestUseItem(GameUser user, C_TO_U_USE_ITEM body)
         {
-            PlayerInfo player_info;
+            PlayerInfo? player_info;
             using (await PlayerInfoController.Lock(user.redlock, user.player_id))
             {
-                player_info = await UseItem(user, body.item_uid);
+                player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+                if (player_info == null)
+                {
+                    throw new Exception("cannot found player info");
+                }
+
+                player_info.UseItem(body.item_uid);
+                await PlayerInfoController.Save(user.cache_helper, player_info);
             }
 
             Packet packet = PacketMaker.U_TO_C_USE_ITEM(player_info.job_info);
             user.SendToClient(packet);
 
             await GetCurrentItemList(user);
-        }
-
-        public static async Task<PlayerInfo> UseItem(GameUser user, long item_uid)
-        {
-            var player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
-            if (player_info == null)
-            {
-                throw new Exception("player_info not exists");
-            }
-
-            var target_item_index = player_info.inventory_info.item_list.FindIndex(
-                item => item.item_uid == item_uid
-            );
-
-            var target_item = player_info.inventory_info.item_list[target_item_index];
-            if (target_item == null)
-            {
-                throw new Exception($"Item with uid {item_uid} not found");
-            }
-            if (target_item.count <= 0)
-            {
-                throw new Exception($"Item {item_uid} count invalid");
-            }
-
-            if (!GameDesignData.IsUseableItem(target_item.item_id))
-            {
-                throw new Exception($"not useable item {target_item.item_id}");
-            }
-
-            switch (target_item.item_id)
-            {
-                case 201000001:
-                    player_info.job_info.hp = Math.Min(
-                        GameDesignData.GetMaxHP(player_info.job_info.job_grade),
-                        player_info.job_info.hp + 20
-                    );
-                    break;
-            }
-
-            if (target_item.count <= 1)
-            {
-                player_info.inventory_info.item_list.RemoveAt(target_item_index);
-            }
-            else
-            {
-                // TODO 일괄사용
-                player_info.inventory_info.item_list[target_item_index].count -= 1;
-            }
-
-            await PlayerInfoController.Save(user.cache_helper, player_info);
-
-            return player_info;
-        }
-
-        public static PlayerInfo WearItem(PlayerInfo player_info, long item_uid)
-        {
-            var target_item_index = player_info.inventory_info.item_list.FindIndex(
-                item => item.item_uid == item_uid
-            );
-
-            var target_item = player_info.inventory_info.item_list[target_item_index];
-            if (target_item == null)
-            {
-                throw new Exception($"Item with uid {item_uid} not found");
-            }
-
-            if (!GameDesignData.IsWearableItem(target_item.item_id))
-            {
-                throw new Exception($"not wearable item {target_item.item_id}");
-            }
-
-            if (
-                !GameDesignData.IsWearableJobInfo(
-                    target_item.item_id,
-                    player_info.job_info.job_type,
-                    player_info.job_info.job_grade
-                )
-            )
-            {
-                throw new Exception($"not wearable job type. {target_item.item_id}");
-            }
-
-            if (target_item.is_wear)
-            {
-                // 착용 해제
-                player_info.wear_items.Remove(target_item.item_id);
-                target_item.is_wear = false;
-            }
-            else
-            {
-                // 같은 종류의 아이템 인덱스 찾기
-                var last_wear_item_index = player_info.inventory_info.item_list.FindIndex(
-                    item =>
-                        GameDesignData.IsSameTypeItem(item.item_id, target_item.item_id)
-                        && item.is_wear
-                );
-
-                if (last_wear_item_index != -1)
-                {
-                    // 같은 종류 아이템 착용 해제
-                    player_info.inventory_info.item_list[last_wear_item_index].is_wear = false;
-                    player_info.wear_items.Remove(
-                        player_info.inventory_info.item_list[last_wear_item_index].item_id
-                    );
-                }
-
-                // 새로운 아이템 착용
-                player_info.inventory_info.item_list[target_item_index].is_wear = true;
-                player_info.wear_items.Add(target_item.item_id);
-            }
-
-            // await PlayerInfoController.Save(user.cache_helper, player_info);
-
-            return player_info;
-        }
-
-        public static async Task<PlayerInfo> WearItem(GameUser user, long item_uid)
-        {
-            var player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
-            if (player_info == null)
-            {
-                throw new Exception("player_info not exists");
-            }
-
-            var target_item_index = player_info.inventory_info.item_list.FindIndex(
-                item => item.item_uid == item_uid
-            );
-
-            var target_item = player_info.inventory_info.item_list[target_item_index];
-            if (target_item == null)
-            {
-                throw new Exception($"Item with uid {item_uid} not found");
-            }
-
-            if (!GameDesignData.IsWearableItem(target_item.item_id))
-            {
-                throw new Exception($"not wearable item {target_item.item_id}");
-            }
-
-            if (
-                !GameDesignData.IsWearableJobInfo(
-                    target_item.item_id,
-                    player_info.job_info.job_type,
-                    player_info.job_info.job_grade
-                )
-            )
-            {
-                throw new Exception($"not wearable job type. {target_item.item_id}");
-            }
-
-            if (target_item.is_wear)
-            {
-                // 착용 해제
-                player_info.wear_items.Remove(target_item.item_id);
-                target_item.is_wear = false;
-            }
-            else
-            {
-                // 같은 종류의 아이템 인덱스 찾기
-                var last_wear_item_index = player_info.inventory_info.item_list.FindIndex(
-                    item =>
-                        GameDesignData.IsSameTypeItem(item.item_id, target_item.item_id)
-                        && item.is_wear
-                );
-
-                if (last_wear_item_index != -1)
-                {
-                    // 같은 종류 아이템 착용 해제
-                    player_info.inventory_info.item_list[last_wear_item_index].is_wear = false;
-                    player_info.wear_items.Remove(
-                        player_info.inventory_info.item_list[last_wear_item_index].item_id
-                    );
-                }
-
-                // 새로운 아이템 착용
-                player_info.inventory_info.item_list[target_item_index].is_wear = true;
-                player_info.wear_items.Add(target_item.item_id);
-            }
-
-            await PlayerInfoController.Save(user.cache_helper, player_info);
-
-            return player_info;
         }
     }
 }

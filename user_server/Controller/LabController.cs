@@ -261,7 +261,7 @@ namespace user_server
                         1
                     );
 
-                    player_info = InventoryController.AddPlayerItem(player_info, item_info);
+                    player_info.inventory_info.AddItem(item_info);
                 }
 
                 foreach (var material_info in body.materials)
@@ -346,7 +346,6 @@ namespace user_server
 
         public static async Task UpgradeResearch(GameUser user, C_TO_U_UPGRADE_RESEARCH body)
         {
-            // 여기서부터
             PlayerInfo? player_info;
             LabInfo? lab_info;
             using (await PlayerInfoController.Lock(user.redlock, user.player_id))
@@ -413,8 +412,7 @@ namespace user_server
                         }
                     }
 
-                    research_info = new();
-                    research_info.research_id = body.research_id;
+                    research_info = new() { research_id = body.research_id };
                 }
                 else // 기존 연구 업그레이드면 비용 확인 후 차감
                 {
@@ -491,19 +489,13 @@ namespace user_server
                 await PlayerInfoController.Save(user.cache_helper, player_info);
             }
 
-            Packet packet = PacketMaker.U_TO_C_UPGRADE_RESEARCH(lab_info.reserach_info_dict);
-            user.SendToClient(packet);
+            Packet research_packet = PacketMaker.U_TO_C_UPGRADE_RESEARCH(
+                lab_info.reserach_info_dict
+            );
+            user.SendToClient(research_packet);
 
-            Packet packet_2 = PacketMaker.U_TO_C_LAB_INFO(new(), lab_info);
-            foreach (var lab_member in lab_info.member_dict)
-            {
-                user.nats_client.Publish(
-                    GameObjectInfo.MakeHashField(ObjectType.PLAYER, lab_member.Key),
-                    packet.ToBytes()
-                );
-            }
-
-            Packet.Destroy(packet_2);
+            Packet lab_info_packet = PacketMaker.U_TO_C_LAB_INFO(new(), lab_info);
+            user.PublishToClients(lab_info_packet, lab_info.member_dict.Keys.ToList());
 
             await InventoryController.GetCurrentItemList(user);
         }

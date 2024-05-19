@@ -5,7 +5,6 @@
     using StackExchange.Redis;
     using game_server;
     using RedLockNet.SERedis;
-    using System.Diagnostics;
 
     public class GameUser : IPeer
     {
@@ -433,12 +432,8 @@
                 {
                     // 기본 아이템 증정
                     var default_hair = await InventoryController.CreateItem(this, 101000001, 1);
-                    player_info = InventoryController.AddPlayerItem(
-                        player_info,
-                        new List<ItemInfo>() { default_hair }
-                    );
-
-                    player_info = InventoryController.WearItem(player_info, default_hair.item_uid);
+                    player_info.inventory_info.AddItem(default_hair);
+                    player_info.WearItem(default_hair.item_uid);
                 }
                 else
                 {
@@ -585,7 +580,7 @@
                 camp_info_list.Add(target_camp_info);
 
                 bool is_max = camp_info_list.Count >= Config.BROADCAST_UNIT;
-                bool is_ended = i == camp_info_list.Count - 1;
+                bool is_ended = i == (camp_info_list.Count - 1);
 
                 if (is_max || is_ended)
                 {
@@ -737,37 +732,23 @@
             }
         }
 
-        // public void BroadcastUpdateCampInfo(CampInfo camp_info)
-        // {
-        //     var position_key = MapHelper.GetPositionKey(
-        //         camp_info.object_info.map_id,
-        //         camp_info.object_info.map_sub_id,
-        //         camp_info.object_info.current_cell
-        //     );
-
-        //     var target_server_list = MapHelper.GetBoundServerList(
-        //         camp_info.object_info.map_id,
-        //         Program.game_server_num,
-        //         MapHelper.GetCell(position_key)
-        //     );
-
-        //     foreach (var target_server in target_server_list)
-        //     {
-        //         this.nats_client!.Publish(
-        //             MapHelper.GetUpdateCampSubject(
-        //                 camp_info.object_info.map_id,
-        //                 camp_info.object_info.map_sub_id,
-        //                 target_server
-        //             ),
-        //             MessagePackSerializer.Serialize((position_key, camp_info))
-        //         );
-        //     }
-        // }
-
         public void SendToClient(Packet msg)
         {
             this.token.Send(msg);
             Packet.Destroy(msg);
+        }
+
+        public void PublishToClients(Packet packet, List<long> user_id_list)
+        {
+            foreach (var user_id in user_id_list)
+            {
+                this.nats_client.Publish(
+                    GameObjectInfo.MakeHashField(ObjectType.PLAYER, user_id),
+                    packet.ToBytes()
+                );
+            }
+
+            Packet.Destroy(packet);
         }
 
         public async Task SendToGameServer(Packet msg)
