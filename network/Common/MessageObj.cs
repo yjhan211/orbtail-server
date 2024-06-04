@@ -40,8 +40,8 @@ namespace network
     [MessagePackObject]
     public class U_TO_C_INVENTORY_ITEM_LIST : IMessagePackObject
     {
-        [Key("item_list")]
-        public List<ItemInfo> item_list { get; set; }
+        [Key("item_dict")]
+        public Dictionary<long, ItemInfo> item_dict { get; set; }
 
         [Key("is_ended")]
         public bool is_end { get; set; }
@@ -436,15 +436,15 @@ namespace network
     [MessagePackObject]
     public class U_TO_U_LAB_INVENTORY : IMessagePackObject
     {
-        [Key("item_list")]
-        public List<ItemInfo> item_list { get; set; }
+        [Key("item_dict")]
+        public Dictionary<long, ItemInfo> item_list { get; set; }
     }
 
     [MessagePackObject]
     public class U_TO_C_LAB_INVENTORY : IMessagePackObject
     {
-        [Key("item_list")]
-        public List<ItemInfo> item_list { get; set; }
+        [Key("item_dict")]
+        public Dictionary<long, ItemInfo> item_dict { get; set; }
 
         [Key("is_ended")]
         public bool is_end { get; set; }

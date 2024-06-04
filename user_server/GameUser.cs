@@ -637,23 +637,33 @@
             this.SendToClient(packet);
         }
 
-        public void SendLabItemList(List<ItemInfo> item_list)
+        public void SendLabItemList(Dictionary<long, ItemInfo> item_dict)
         {
-            if (item_list.Count == 0)
+            if (item_dict.Count == 0)
             {
                 Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(new(), true);
                 this.SendToClient(packet);
             }
 
-            for (int i = 0; i < item_list.Count; i += Config.BROADCAST_UNIT)
+            int index = 0;
+            var item_keys = item_dict.Keys.ToArray();
+
+            while (index < item_keys.Length)
             {
-                List<ItemInfo> batch = item_list.Skip(i).Take(Config.BROADCAST_UNIT).ToList();
+                var batch_dict = new Dictionary<long, ItemInfo>();
 
-                var remain = item_list.Count - i - Config.BROADCAST_UNIT;
-                var is_ended = remain <= 0;
+                for (int i = index; i < index + Config.BROADCAST_UNIT && i < item_keys.Length; i++)
+                {
+                    var key = item_keys[i];
+                    batch_dict[key] = item_dict[key];
+                }
 
-                Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(batch, is_ended);
+                var is_ended = index + Config.BROADCAST_UNIT >= item_keys.Length;
+
+                Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(batch_dict, is_ended);
                 this.SendToClient(packet);
+
+                index += Config.BROADCAST_UNIT;
             }
         }
 

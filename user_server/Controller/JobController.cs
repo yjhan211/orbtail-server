@@ -394,16 +394,16 @@ namespace user_server
                     throw new Exception("invalid job type");
                 }
 
-                var target_item_index = player_info.inventory_info.item_list.FindIndex(
-                    (item) => item.item_uid == body.item_uid
-                );
-
-                if (target_item_index < 0)
+                if (
+                    !player_info.inventory_info.item_dict.TryGetValue(
+                        body.item_uid,
+                        out var target_item
+                    )
+                )
                 {
                     throw new Exception("not found item info");
                 }
 
-                var target_item = player_info.inventory_info.item_list[target_item_index];
                 if (await CampInfoController.Load(user.cache_helper, user.player_id) != null)
                 {
                     throw new Exception("already encamp");

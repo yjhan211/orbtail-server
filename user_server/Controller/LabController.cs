@@ -233,22 +233,15 @@ namespace user_server
                 List<(int, int)> validator = new();
                 foreach (var material_slot in body.materials)
                 {
-                    ItemInfo? slot_item_info = null;
-                    foreach (var user_item_info in player_info.inventory_info.item_list)
+                    if (
+                        player_info.inventory_info.item_dict.TryGetValue(
+                            material_slot.Key,
+                            out var slot_item_info
+                        )
+                    )
                     {
-                        if (material_slot.Key == user_item_info.item_uid)
-                        {
-                            slot_item_info = user_item_info;
-                            break;
-                        }
+                        validator.Add((slot_item_info.item_id, material_slot.Value));
                     }
-
-                    if (slot_item_info == null)
-                    {
-                        continue;
-                    }
-
-                    validator.Add((slot_item_info.item_id, material_slot.Value));
                 }
 
                 var research_list = await GetUseableResearchList(user, player_info);
@@ -260,7 +253,6 @@ namespace user_server
                         makeable_item_id,
                         1
                     );
-
                     player_info.inventory_info.AddItem(item_info);
                 }
 
@@ -269,21 +261,18 @@ namespace user_server
                     var material_item_uid = material_info.Key;
                     var material_item_count = material_info.Value;
 
-                    int remove_index = -1;
-                    for (int i = 0; i < player_info.inventory_info.item_list.Count; i++)
+                    if (
+                        player_info.inventory_info.item_dict.TryGetValue(
+                            material_item_uid,
+                            out var material_item
+                        )
+                    )
                     {
-                        if (player_info.inventory_info.item_list[i].item_uid == material_item_uid)
+                        material_item.count -= material_item_count;
+                        if (material_item.count == 0)
                         {
-                            player_info.inventory_info.item_list[i].count -= material_item_count;
-                            if (player_info.inventory_info.item_list[i].count == 0)
-                            {
-                                remove_index = i;
-                            }
+                            player_info.inventory_info.item_dict.Remove(material_item_uid);
                         }
-                    }
-                    if (0 < remove_index)
-                    {
-                        player_info.inventory_info.item_list.RemoveAt(remove_index);
                     }
                 }
 
@@ -427,22 +416,16 @@ namespace user_server
                         throw new Exception("not found research charge");
                     }
 
-                    int check = 0;
-                    foreach (var item in player_info.inventory_info.item_list)
-                    {
-                        foreach (var charge_info in research_charge_list)
-                        {
-                            var charge_item_id = charge_info.Item1;
-                            var charge_item_count = charge_info.Item2;
+                    bool has_enough_items = research_charge_list.All(
+                        charge_info =>
+                            player_info.inventory_info.item_dict.Values.Any(
+                                item =>
+                                    item.item_id == charge_info.Item1
+                                    && item.count >= charge_info.Item2
+                            )
+                    );
 
-                            if (charge_item_id == item.item_id && charge_item_count <= item.count)
-                            {
-                                check++;
-                            }
-                        }
-                    }
-
-                    if (check < research_charge_list.Count)
+                    if (!has_enough_items)
                     {
                         throw new Exception("not enough items");
                     }
@@ -452,24 +435,25 @@ namespace user_server
                         var charge_item_id = charge_info.Item1;
                         var charge_item_count = charge_info.Item2;
 
-                        int remove_index = -1;
-                        for (int i = 0; i < player_info.inventory_info.item_list.Count; i++)
+                        var items_to_remove = player_info.inventory_info.item_dict
+                            .Where(item => item.Value.item_id == charge_item_id)
+                            .ToDictionary(item => item.Key, item => item.Value);
+
+                        foreach (var item in items_to_remove)
                         {
-                            if (player_info.inventory_info.item_list[i].item_id == charge_item_id)
+                            if (item.Value.count <= charge_item_count)
                             {
-                                player_info.inventory_info.item_list[i].count -= charge_item_count;
-                                if (player_info.inventory_info.item_list[i].count == 0)
-                                {
-                                    remove_index = i;
-                                }
+                                player_info.inventory_info.item_dict.Remove(item.Key);
+                                charge_item_count -= item.Value.count;
+                            }
+                            else
+                            {
+                                player_info.inventory_info.item_dict[item.Key].count -=
+                                    charge_item_count;
+                                break;
                             }
                         }
-                        if (0 < remove_index)
-                        {
-                            player_info.inventory_info.item_list.RemoveAt(remove_index);
-                        }
                     }
-
                     switch (job_type)
                     {
                         case JobType.GEOIOGIST:
