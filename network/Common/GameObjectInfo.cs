@@ -82,22 +82,6 @@ namespace network
             this.is_flip = is_flip;
         }
 
-        public double GetMoveElapsedTime()
-        {
-            double elapsed_time = 0;
-            switch (this.object_type)
-            {
-                case ObjectType.PLAYER:
-                    elapsed_time = (DateTime.UtcNow - this.move_timestamp).TotalSeconds;
-                    break;
-
-                default:
-                    break;
-            }
-
-            return elapsed_time;
-        }
-
         public void SetFlip(DirectionType direction)
         {
             switch (direction)

@@ -79,12 +79,12 @@
 
                 await this.player_lock.WaitAsync();
 
-                var non_auth_protocol = new[] { PROTOCOL.HEART_BEAT, PROTOCOL.C_TO_U_LOGIN };
+                var non_auth_protocol = new[] { PROTOCOL.C_TO_U_HEART_BEAT, PROTOCOL.C_TO_U_LOGIN };
                 if (non_auth_protocol.Contains(protocol_id))
                 {
                     switch (protocol_id)
                     {
-                        case PROTOCOL.HEART_BEAT:
+                        case PROTOCOL.C_TO_U_HEART_BEAT:
                             await HeartBeat();
                             break;
 
@@ -333,6 +333,9 @@
 
         async Task HeartBeat()
         {
+            Packet heart_beat_packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
+            this.SendToClient(heart_beat_packet);
+
             this.token.is_alive = true;
 
             if (this.current_progress_job != null)
@@ -386,8 +389,8 @@
                         await CampInfoController.Save(this.cache_helper, current_camp_info);
                     }
 
-                    Packet packet = PacketMaker.U_TO_C_UPDATE_HP(1, job_info.hp);
-                    this.SendToClient(packet);
+                    Packet update_hp_packet = PacketMaker.U_TO_C_UPDATE_HP(1, job_info.hp);
+                    this.SendToClient(update_hp_packet);
                 }
             }
         }

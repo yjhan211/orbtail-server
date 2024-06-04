@@ -8,6 +8,13 @@ namespace network
     public interface IMessagePackObject { }
 
     [MessagePackObject]
+    public class U_TO_C_HEART_BEAT : IMessagePackObject
+    {
+        [Key("utc_now")]
+        public DateTime utc_now { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_U_LOGIN : IMessagePackObject
     {
         [Key("token")]

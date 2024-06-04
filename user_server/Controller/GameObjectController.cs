@@ -30,6 +30,22 @@ namespace user_server
             this.move_object_task = Task.Run(RecvMoveObjectTask, user.cts.Token);
         }
 
+        public double GetMoveElapsedTime()
+        {
+            double elapsed_time = 0;
+            switch (this.object_info.object_type)
+            {
+                case ObjectType.PLAYER:
+                    elapsed_time = (DateTime.UtcNow - this.object_info.move_timestamp).TotalSeconds;
+                    break;
+
+                default:
+                    break;
+            }
+
+            return elapsed_time;
+        }
+
         // 다른 객체의 이동 정보 구독. RecvMoveObjectTask에서 일괄 전송
         public void SubscribeMove(GameUser _, G_TO_U_MOVE body)
         {
@@ -183,11 +199,9 @@ namespace user_server
                 );
 
                 // 아직 이동이 완료되지 않음
-                if (this.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                if (this.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
                 {
-                    throw new Exception(
-                        $"{next_position_key} | {this.object_info.GetMoveElapsedTime()}"
-                    );
+                    throw new Exception($"{next_position_key} | {this.GetMoveElapsedTime()}");
                 }
 
                 int manage_server_id = 0;

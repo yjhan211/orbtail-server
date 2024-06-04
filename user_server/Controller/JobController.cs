@@ -193,7 +193,7 @@ namespace user_server
                     }
 
                     Cell player_current_cell;
-                    if (player_info.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                    if (user.object_controller!.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
                     {
                         player_current_cell = player_info.object_info.current_cell;
                     }

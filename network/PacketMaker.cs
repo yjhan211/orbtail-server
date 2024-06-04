@@ -5,6 +5,15 @@ namespace user_server
 
     public static class PacketMaker
     {
+        public static Packet U_TO_C_HEART_BEAT(DateTime utc_now)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_HEART_BEAT);
+            U_TO_C_HEART_BEAT body = new() { utc_now = utc_now };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_C_LOGIN(PlayerInfo player_info, LabInfo lab_info)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LOGIN);
