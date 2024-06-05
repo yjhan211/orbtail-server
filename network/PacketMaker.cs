@@ -5,6 +5,15 @@ namespace user_server
 
     public static class PacketMaker
     {
+        public static Packet U_TO_C_HEART_BEAT(DateTime utc_now)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_HEART_BEAT);
+            U_TO_C_HEART_BEAT body = new() { utc_now = utc_now };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_C_LOGIN(PlayerInfo player_info, LabInfo lab_info)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LOGIN);
@@ -30,16 +39,19 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_INVENTORY_ITEM_LIST(List<ItemInfo> item_list, bool is_end)
+        public static Packet U_TO_C_INVENTORY_ITEM_LIST(
+            Dictionary<long, ItemInfo> item_dict,
+            bool is_end
+        )
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_INVENTORY_ITEM_LIST);
-            U_TO_C_INVENTORY_ITEM_LIST body = new() { item_list = item_list, is_end = is_end };
+            U_TO_C_INVENTORY_ITEM_LIST body = new() { item_dict = item_dict, is_end = is_end };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;
         }
 
-        public static Packet U_TO_U_LAB_INVENTORY(List<ItemInfo> item_list)
+        public static Packet U_TO_U_LAB_INVENTORY(Dictionary<long, ItemInfo> item_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_U_LAB_INVENTORY);
             U_TO_U_LAB_INVENTORY body = new() { item_list = item_list };
@@ -48,10 +60,10 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_LAB_INVENTORY(List<ItemInfo> item_list, bool is_end)
+        public static Packet U_TO_C_LAB_INVENTORY(Dictionary<long, ItemInfo> item_dict, bool is_end)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_LAB_INVENTORY);
-            U_TO_C_LAB_INVENTORY body = new() { item_list = item_list, is_end = is_end };
+            U_TO_C_LAB_INVENTORY body = new() { item_dict = item_dict, is_end = is_end };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

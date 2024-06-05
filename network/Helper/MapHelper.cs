@@ -340,7 +340,7 @@ namespace network
             return clone;
         }
 
-        public static List<Cell> GetBoundCellList(Cell pivot_cell, bool client_view = false)
+        public static List<Cell> GetBoundCellList(Cell pivot_cell, bool client_view = true)
         {
             List<Cell> result = new();
 

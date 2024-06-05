@@ -5,7 +5,6 @@
     using StackExchange.Redis;
     using game_server;
     using RedLockNet.SERedis;
-    using System.Diagnostics;
 
     public class GameUser : IPeer
     {
@@ -80,12 +79,12 @@
 
                 await this.player_lock.WaitAsync();
 
-                var non_auth_protocol = new[] { PROTOCOL.HEART_BEAT, PROTOCOL.C_TO_U_LOGIN };
+                var non_auth_protocol = new[] { PROTOCOL.C_TO_U_HEART_BEAT, PROTOCOL.C_TO_U_LOGIN };
                 if (non_auth_protocol.Contains(protocol_id))
                 {
                     switch (protocol_id)
                     {
-                        case PROTOCOL.HEART_BEAT:
+                        case PROTOCOL.C_TO_U_HEART_BEAT:
                             await HeartBeat();
                             break;
 
@@ -334,6 +333,9 @@
 
         async Task HeartBeat()
         {
+            Packet heart_beat_packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
+            this.SendToClient(heart_beat_packet);
+
             this.token.is_alive = true;
 
             if (this.current_progress_job != null)
@@ -348,52 +350,48 @@
             if (this.change_map_task != null)
             {
                 var change_time = this.change_map_task.Value.Item1;
-                if (DateTime.UtcNow < change_time)
+                if (DateTime.UtcNow >= change_time)
                 {
-                    return;
+                    var change_info = this.change_map_task.Value.Item2;
+                    await this.object_controller!.ChangeMap(
+                        change_info.Item1,
+                        change_info.Item2,
+                        change_info.Item3,
+                        change_info.Item4
+                    );
+
+                    this.change_map_task = null;
                 }
-
-                var change_info = this.change_map_task.Value.Item2;
-                await this.object_controller!.ChangeMap(
-                    change_info.Item1,
-                    change_info.Item2,
-                    change_info.Item3,
-                    change_info.Item4
-                );
-
-                this.change_map_task = null;
             }
 
             if (current_camp_info != null)
             {
-                if (DateTime.UtcNow <= current_camp_info.add_hp_timestamp)
+                if (DateTime.UtcNow >= current_camp_info.add_hp_timestamp)
                 {
-                    return;
-                }
-
-                JobInfo? job_info;
-                using (await PlayerInfoController.Lock(this.redlock, this.player_id))
-                {
-                    job_info = await JobInfoController.Load(this.cache_helper, this.player_id);
-                    if (job_info == null)
+                    JobInfo? job_info;
+                    using (await PlayerInfoController.Lock(this.redlock, this.player_id))
                     {
-                        return;
+                        job_info = await JobInfoController.Load(this.cache_helper, this.player_id);
+                        if (job_info == null)
+                        {
+                            return;
+                        }
+
+                        if (GameDesignData.GetMaxHP(job_info.job_grade) <= job_info.hp)
+                        {
+                            return;
+                        }
+
+                        job_info.hp += 1;
+                        current_camp_info.add_hp_timestamp = DateTime.UtcNow.AddSeconds(5);
+
+                        await JobInfoController.Save(this.cache_helper, job_info);
+                        await CampInfoController.Save(this.cache_helper, current_camp_info);
                     }
 
-                    if (GameDesignData.GetMaxHP(job_info.job_grade) <= job_info.hp)
-                    {
-                        return;
-                    }
-
-                    job_info.hp += 1;
-                    current_camp_info.add_hp_timestamp = DateTime.UtcNow.AddSeconds(5);
-
-                    await JobInfoController.Save(this.cache_helper, job_info);
-                    await CampInfoController.Save(this.cache_helper, current_camp_info);
+                    Packet update_hp_packet = PacketMaker.U_TO_C_UPDATE_HP(1, job_info.hp);
+                    this.SendToClient(update_hp_packet);
                 }
-
-                Packet packet = PacketMaker.U_TO_C_UPDATE_HP(1, job_info.hp);
-                this.SendToClient(packet);
             }
         }
 
@@ -437,12 +435,8 @@
                 {
                     // 기본 아이템 증정
                     var default_hair = await InventoryController.CreateItem(this, 101000001, 1);
-                    player_info = InventoryController.AddPlayerItem(
-                        player_info,
-                        new List<ItemInfo>() { default_hair }
-                    );
-
-                    player_info = InventoryController.WearItem(player_info, default_hair.item_uid);
+                    player_info.inventory_info.AddItem(default_hair);
+                    player_info.WearItem(default_hair.item_uid);
                 }
                 else
                 {
@@ -484,6 +478,12 @@
 
             // 인벤토리 정보 전송
             await InventoryController.GetCurrentItemList(this);
+
+            // 연구소 가입된경우 랩 인벤토리 정보 전송
+            if (player_info.lab_id != 0)
+            {
+                await InventoryController.GetLabInventory(this);
+            }
 
             await this.object_controller.ChangeMap(
                 player_info.object_info.map_id,
@@ -589,7 +589,7 @@
                 camp_info_list.Add(target_camp_info);
 
                 bool is_max = camp_info_list.Count >= Config.BROADCAST_UNIT;
-                bool is_ended = i == camp_info_list.Count - 1;
+                bool is_ended = i == (camp_info_list.Count - 1);
 
                 if (is_max || is_ended)
                 {
@@ -643,23 +643,33 @@
             this.SendToClient(packet);
         }
 
-        public void SendLabItemList(List<ItemInfo> item_list)
+        public void SendLabItemList(Dictionary<long, ItemInfo> item_dict)
         {
-            if (item_list.Count == 0)
+            if (item_dict.Count == 0)
             {
                 Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(new(), true);
                 this.SendToClient(packet);
             }
 
-            for (int i = 0; i < item_list.Count; i += Config.BROADCAST_UNIT)
+            int index = 0;
+            var item_keys = item_dict.Keys.ToArray();
+
+            while (index < item_keys.Length)
             {
-                List<ItemInfo> batch = item_list.Skip(i).Take(Config.BROADCAST_UNIT).ToList();
+                var batch_dict = new Dictionary<long, ItemInfo>();
 
-                var remain = item_list.Count - i - Config.BROADCAST_UNIT;
-                var is_ended = remain <= 0;
+                for (int i = index; i < index + Config.BROADCAST_UNIT && i < item_keys.Length; i++)
+                {
+                    var key = item_keys[i];
+                    batch_dict[key] = item_dict[key];
+                }
 
-                Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(batch, is_ended);
+                var is_ended = index + Config.BROADCAST_UNIT >= item_keys.Length;
+
+                Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(batch_dict, is_ended);
                 this.SendToClient(packet);
+
+                index += Config.BROADCAST_UNIT;
             }
         }
 
@@ -741,37 +751,23 @@
             }
         }
 
-        // public void BroadcastUpdateCampInfo(CampInfo camp_info)
-        // {
-        //     var position_key = MapHelper.GetPositionKey(
-        //         camp_info.object_info.map_id,
-        //         camp_info.object_info.map_sub_id,
-        //         camp_info.object_info.current_cell
-        //     );
-
-        //     var target_server_list = MapHelper.GetBoundServerList(
-        //         camp_info.object_info.map_id,
-        //         Program.game_server_num,
-        //         MapHelper.GetCell(position_key)
-        //     );
-
-        //     foreach (var target_server in target_server_list)
-        //     {
-        //         this.nats_client!.Publish(
-        //             MapHelper.GetUpdateCampSubject(
-        //                 camp_info.object_info.map_id,
-        //                 camp_info.object_info.map_sub_id,
-        //                 target_server
-        //             ),
-        //             MessagePackSerializer.Serialize((position_key, camp_info))
-        //         );
-        //     }
-        // }
-
         public void SendToClient(Packet msg)
         {
             this.token.Send(msg);
             Packet.Destroy(msg);
+        }
+
+        public void PublishToClients(Packet packet, List<long> user_id_list)
+        {
+            foreach (var user_id in user_id_list)
+            {
+                this.nats_client.Publish(
+                    GameObjectInfo.MakeHashField(ObjectType.PLAYER, user_id),
+                    packet.ToBytes()
+                );
+            }
+
+            Packet.Destroy(packet);
         }
 
         public async Task SendToGameServer(Packet msg)

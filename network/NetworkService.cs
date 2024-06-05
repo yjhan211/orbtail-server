@@ -72,7 +72,7 @@ namespace network
             user_token.heartbeat_timer = new Timer(
                 (object _) =>
                 {
-                    Packet msg = Packet.Create((int)PROTOCOL.HEART_BEAT, 0);
+                    Packet msg = Packet.Create((int)PROTOCOL.C_TO_U_HEART_BEAT, 0);
                     user_token.Send(msg);
                 },
                 null,

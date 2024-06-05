@@ -8,13 +8,13 @@ namespace user_server
     {
         public static async Task GetJob(GameUser user, C_TO_U_GET_JOB body)
         {
-            var job_info = await JobInfoController.Load(user.cache_helper, user.player_id);
-            if (job_info == null)
+            var player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+            if (player_info == null)
             {
-                throw new Exception("job_info not exists");
+                throw new Exception("player_info is not exists");
             }
 
-            if (job_info!.job_type != JobType.NONE)
+            if (player_info.job_info!.job_type != JobType.NONE)
             {
                 user.SendToClient(
                     PacketMaker.U_TO_C_GET_JOB(user.player_id, ErrorCode.ALREADY_HAS_JOB)
@@ -22,7 +22,6 @@ namespace user_server
                 return;
             }
 
-            InventoryInfo inventory_info;
             using (await PlayerInfoController.Lock(user.redlock, user.player_id))
             {
                 List<ItemInfo> gift_item_list = new();
@@ -30,16 +29,16 @@ namespace user_server
                 switch (body.job_type)
                 {
                     case JobType.GEOIOGIST:
-                        job_info.job_type = JobType.GEOIOGIST;
-                        job_info.job_grade = JobGrade.TRAINEE;
+                        player_info.job_info.job_type = JobType.GEOIOGIST;
+                        player_info.job_info.job_grade = JobGrade.TRAINEE;
 
                         var gift_geo = await InventoryController.CreateItem(user, 102000001, 1);
                         gift_item_list.Add(gift_geo);
                         break;
 
                     case JobType.BOTANIST:
-                        job_info.job_type = JobType.BOTANIST;
-                        job_info.job_grade = JobGrade.TRAINEE;
+                        player_info.job_info.job_type = JobType.BOTANIST;
+                        player_info.job_info.job_grade = JobGrade.TRAINEE;
 
                         var gift_botan = await InventoryController.CreateItem(user, 102000002, 1);
                         gift_item_list.Add(gift_botan);
@@ -52,17 +51,12 @@ namespace user_server
                 var gift_food = await InventoryController.CreateItem(user, 201000001, 1);
                 gift_item_list.Add(gift_food);
 
-                inventory_info = await InventoryController.AddPlayerItem(
-                    user,
-                    user.player_id,
-                    gift_item_list
-                );
-
-                await JobInfoController.Save(user.cache_helper, job_info);
+                player_info.inventory_info.AddItem(gift_item_list);
+                await PlayerInfoController.Save(user.cache_helper, player_info);
             }
 
             user.SendToClient(
-                PacketMaker.U_TO_C_GET_JOB(user.player_id, ErrorCode.SUCCESS, job_info)
+                PacketMaker.U_TO_C_GET_JOB(user.player_id, ErrorCode.SUCCESS, player_info.job_info)
             );
 
             await InventoryController.GetCurrentItemList(user);
@@ -70,33 +64,32 @@ namespace user_server
 
         public static async Task UpgradeJob(GameUser user)
         {
-            var job_info = await JobInfoController.Load(user.cache_helper, user.player_id);
-            if (job_info == null)
+            var player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+            if (player_info == null)
             {
-                throw new Exception("player_info not exists");
+                throw new Exception("player_info is not exists");
             }
 
-            if (job_info!.job_type == JobType.NONE)
-            {
-                user.SendToClient(PacketMaker.U_TO_C_UPGRADE_JOB(user.player_id, ErrorCode.FATAL));
-                return;
-            }
-
-            var max_exp = GameDesignData.GetMaxExp(job_info.job_grade);
-            if (job_info.exp < max_exp)
+            if (player_info.job_info!.job_type == JobType.NONE)
             {
                 user.SendToClient(PacketMaker.U_TO_C_UPGRADE_JOB(user.player_id, ErrorCode.FATAL));
                 return;
             }
 
-            if (JobGrade.CHIEF <= job_info.job_grade)
+            var max_exp = GameDesignData.GetMaxExp(player_info.job_info.job_grade);
+            if (player_info.job_info.exp < max_exp)
             {
                 user.SendToClient(PacketMaker.U_TO_C_UPGRADE_JOB(user.player_id, ErrorCode.FATAL));
                 return;
             }
 
-            JobGrade target_grade = job_info.job_grade + 1;
-            InventoryInfo inventory_info;
+            if (JobGrade.CHIEF <= player_info.job_info.job_grade)
+            {
+                user.SendToClient(PacketMaker.U_TO_C_UPGRADE_JOB(user.player_id, ErrorCode.FATAL));
+                return;
+            }
+
+            JobGrade target_grade = player_info.job_info.job_grade + 1;
             using (await PlayerInfoController.Lock(user.redlock, user.player_id))
             {
                 List<ItemInfo> gift_item_list = new();
@@ -104,8 +97,8 @@ namespace user_server
                 switch (target_grade)
                 {
                     case JobGrade.RESEARCHER:
-                        job_info.job_grade = JobGrade.RESEARCHER;
-                        job_info.exp = 0;
+                        player_info.job_info.job_grade = JobGrade.RESEARCHER;
+                        player_info.job_info.exp = 0;
 
                         var gift_geo = await InventoryController.CreateItem(user, 103000001, 1);
                         gift_item_list.Add(gift_geo);
@@ -115,17 +108,16 @@ namespace user_server
                         break;
                 }
 
-                inventory_info = await InventoryController.AddPlayerItem(
-                    user,
-                    user.player_id,
-                    gift_item_list
-                );
-
-                await JobInfoController.Save(user.cache_helper, job_info);
+                player_info.inventory_info.AddItem(gift_item_list);
+                await PlayerInfoController.Save(user.cache_helper, player_info);
             }
 
             user.SendToClient(
-                PacketMaker.U_TO_C_UPGRADE_JOB(user.player_id, ErrorCode.SUCCESS, job_info)
+                PacketMaker.U_TO_C_UPGRADE_JOB(
+                    user.player_id,
+                    ErrorCode.SUCCESS,
+                    player_info.job_info
+                )
             );
 
             await InventoryController.GetCurrentItemList(user);
@@ -201,7 +193,7 @@ namespace user_server
                     }
 
                     Cell player_current_cell;
-                    if (player_info.object_info.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                    if (user.object_controller!.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
                     {
                         player_current_cell = player_info.object_info.current_cell;
                     }
@@ -319,8 +311,8 @@ namespace user_server
                         ];
                         // 아이템 주기
                         item_info = await InventoryController.CreateItem(user, reward_item, 1);
-                        // TODO 이거 진짜 이상한데 일단 나중에 고치자
-                        player_info = InventoryController.AddPlayerItem(player_info, item_info);
+                        player_info.inventory_info.AddItem(item_info);
+
                         // 자원 지우고
                         await JobResourceController.Delete(
                             user.cache_helper,
@@ -401,16 +393,16 @@ namespace user_server
                     throw new Exception("invalid job type");
                 }
 
-                var target_item_index = player_info.inventory_info.item_list.FindIndex(
-                    (item) => item.item_uid == body.item_uid
-                );
-
-                if (target_item_index < 0)
+                if (
+                    !player_info.inventory_info.item_dict.TryGetValue(
+                        body.item_uid,
+                        out var target_item
+                    )
+                )
                 {
                     throw new Exception("not found item info");
                 }
 
-                var target_item = player_info.inventory_info.item_list[target_item_index];
                 if (await CampInfoController.Load(user.cache_helper, user.player_id) != null)
                 {
                     throw new Exception("already encamp");

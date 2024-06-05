@@ -31,12 +31,37 @@ namespace game_server
             this.cts = new();
         }
 
-        public void Initialize(NatsClient nats_client)
+        public async void Initialize(NatsClient nats_client)
         {
             this.redis_connection = RedisConnectionPool.GetConnection();
             this.cache_helper = new CacheHelper(redis_connection);
-
             this.nats_client = nats_client;
+
+            // 임시
+            if (Program.server_id == 1)
+            {
+                var job_resource_values = await this.cache_helper.HashGetAll("job_resource_info");
+                if (job_resource_values != null)
+                {
+                    foreach (HashEntry entry in job_resource_values)
+                    {
+                        if (!long.TryParse(entry.Name, out long job_resource_id))
+                        {
+                            continue;
+                        }
+
+                        await JobResourceController.Delete(this.cache_helper, job_resource_id);
+                        await GameObjectInfoController.Delete(
+                            this.cache_helper,
+                            GameObjectInfo.MakeHashField(ObjectType.JOBRESOURCE, job_resource_id)
+                        );
+                    }
+                }
+            }
+            else
+            {
+                await Task.Delay(10000);
+            }
 
             this.nats_client.Subscribe(
                 MapHelper.GetMoveManageSubject(this.map_id, 0, Program.server_id),
@@ -219,11 +244,11 @@ namespace game_server
                             continue;
                         }
 
-                        // TODO csv로 정리
-                        if (50 < random.Next(0, 100))
-                        {
-                            continue;
-                        }
+                        // // TODO csv로 정리
+                        // if (50 < random.Next(0, 100))
+                        // {
+                        //     continue;
+                        // }
 
                         var create_cell = this.manage_cell_list[
                             random.Next(0, this.manage_cell_list.Count)
@@ -326,7 +351,10 @@ namespace game_server
                 // last를 관리하는 서버가 본인이면 지움
                 if (this.object_position_dict.TryGetValue(last_position_key, out _))
                 {
-                    this.object_position_dict[last_position_key].Remove(object_key);
+                    foreach (var kvp in this.object_position_dict.ToList())
+                    {
+                        kvp.Value.Remove(object_key);
+                    }
                 }
 
                 // current 추가
@@ -358,7 +386,10 @@ namespace game_server
 
             lock (position_lock)
             {
-                this.object_position_dict[position_key].Remove(object_key);
+                foreach (var kvp in this.object_position_dict.ToList())
+                {
+                    kvp.Value.Remove(object_key);
+                }
             }
         }
 
@@ -390,7 +421,17 @@ namespace game_server
 
             lock (position_lock)
             {
-                var result = this.object_position_dict[position_key].Remove(object_key);
+                foreach (var kvp in this.object_position_dict.ToList())
+                {
+                    kvp.Value.Remove(object_key);
+                }
+
+                foreach (var kvp in this.job_resource_dict.ToList())
+                {
+                    var result = kvp.Value.RemoveAll(
+                        job_resource => job_resource.object_info.GetHashField() == object_key
+                    );
+                }
             }
 
             Cell position_cell = MapHelper.GetCell(position_key);

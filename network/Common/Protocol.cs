@@ -2,7 +2,8 @@
 {
     public enum PROTOCOL : int
     {
-        HEART_BEAT = 0,
+        C_TO_U_HEART_BEAT = 0,
+        U_TO_C_HEART_BEAT,
         C_TO_U_LOGIN,
         U_TO_C_LOGIN,
         U_TO_C_INVENTORY_ITEM_LIST,
