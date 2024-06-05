@@ -311,8 +311,7 @@ namespace user_server
                         ];
                         // 아이템 주기
                         item_info = await InventoryController.CreateItem(user, reward_item, 1);
-
-                        // player_info.inventory_info.item_list.Add(item_info);
+                        player_info.inventory_info.AddItem(item_info);
 
                         // 자원 지우고
                         await JobResourceController.Delete(
