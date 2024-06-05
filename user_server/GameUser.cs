@@ -479,6 +479,12 @@
             // 인벤토리 정보 전송
             await InventoryController.GetCurrentItemList(this);
 
+            // 연구소 가입된경우 랩 인벤토리 정보 전송
+            if (player_info.lab_id != 0)
+            {
+                await InventoryController.GetLabInventory(this);
+            }
+
             await this.object_controller.ChangeMap(
                 player_info.object_info.map_id,
                 player_info.object_info.map_sub_id,

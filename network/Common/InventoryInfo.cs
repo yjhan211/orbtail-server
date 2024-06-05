@@ -38,9 +38,13 @@ namespace network
             var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
             if (is_countable)
             {
-                if (this.item_dict.ContainsKey(item_info.item_uid))
+                var exist_item = this.item_dict.Values.FirstOrDefault(
+                    item => item.item_id == item_info.item_id
+                );
+
+                if (exist_item != null)
                 {
-                    this.item_dict[item_info.item_uid].count += item_info.count;
+                    exist_item.count += item_info.count;
                     return;
                 }
             }
@@ -55,9 +59,13 @@ namespace network
                 var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
                 if (is_countable)
                 {
-                    if (this.item_dict.ContainsKey(item_info.item_uid))
+                    var exist_item = this.item_dict.Values.FirstOrDefault(
+                        item => item.item_id == item_info.item_id
+                    );
+
+                    if (exist_item != null)
                     {
-                        this.item_dict[item_info.item_uid].count += item_info.count;
+                        exist_item.count += item_info.count;
                         continue;
                     }
                 }

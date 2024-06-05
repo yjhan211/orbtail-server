@@ -216,6 +216,9 @@ namespace user_server
                 );
             }
             Packet.Destroy(packet);
+
+            // 랩 인벤토리 정보 전송
+            await InventoryController.GetLabInventory(user);
         }
 
         public static async Task Make(GameUser user, C_TO_U_MAKE body)
