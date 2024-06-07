@@ -220,7 +220,7 @@ namespace game_server
                 manage_cell_list.Add(MapHelper.GetCell(position_key));
             }
 
-            if (this.map_id == MapID.FOREST_1)
+            if (this.map_id == MapID.FACTORY_1)
             {
                 this.create_job_resource_task = Task.Run(CreateJobResourceTask, this.cts.Token);
             }
@@ -271,7 +271,7 @@ namespace game_server
                                 object_id = resource_uid,
                                 current_cell = create_cell,
                                 target_cell = create_cell,
-                                map_id = MapID.FOREST_1,
+                                map_id = MapID.FACTORY_1,
                             };
 
                         // TODO resource_id 정리, 확률 기반으로 종류 결정

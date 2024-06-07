@@ -58,23 +58,25 @@ namespace network
             this.inventory_info = new(InventoryOwnerType.LAB, lab_id);
 
             ResearchInfo reserach = new ResearchInfo();
-            switch (master_player_job_type)
-            {
-                case JobType.GEOIOGIST:
-                    reserach.research_id = 1;
-                    reserach.geo_level = 1;
-                    break;
 
-                case JobType.BOTANIST:
-                    reserach.research_id = 2;
-                    reserach.botan_level = 1;
-                    break;
+            // TODO 연구소 개선
+            // switch (master_player_job_type)
+            // {
+            //     case JobType.GEOIOGIST:
+            //         reserach.research_id = 1;
+            //         reserach.geo_level = 1;
+            //         break;
 
-                case JobType.BIOLOGY:
-                    reserach.research_id = 3;
-                    reserach.bio_level = 1;
-                    break;
-            }
+            //     case JobType.BOTANIST:
+            //         reserach.research_id = 2;
+            //         reserach.botan_level = 1;
+            //         break;
+
+            //     case JobType.BIOLOGY:
+            //         reserach.research_id = 3;
+            //         reserach.bio_level = 1;
+            //         break;
+            // }
 
             this.reserach_info_dict.Add(reserach.research_id, reserach);
         }

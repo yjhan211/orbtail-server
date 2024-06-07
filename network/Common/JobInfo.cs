@@ -11,35 +11,35 @@ namespace network
         [Key("player_id")]
         public long player_id { get; set; }
 
-        [Key("job_type")]
-        public JobType job_type { get; set; }
-
-        [Key("grade")]
-        public JobGrade job_grade { get; set; }
+        [Key("job_stat_dict")]
+        public Dictionary<JobType, JobStat> job_stat_dict { get; set; }
 
         [Key("hp")]
         public int hp { get; set; }
-
-        [Key("exp")]
-        public int exp { get; set; }
 
         // 이거 없애면 안됨 MessagePack에서 씀
         public JobInfo()
         {
             this.player_id = 0;
-            this.job_type = JobType.NONE;
-            this.job_grade = JobGrade.NONE;
+            this.job_stat_dict = new();
             this.hp = 0;
-            this.exp = 0;
         }
 
         public JobInfo(long player_id)
         {
             this.player_id = player_id;
-            this.job_type = JobType.NONE;
-            this.job_grade = JobGrade.NONE;
+            this.job_stat_dict = new();
             this.hp = 0;
-            this.exp = 0;
         }
+    }
+
+    [MessagePackObject]
+    public class JobStat : IMessagePackObject
+    {
+        [Key("grade")]
+        public JobGrade job_grade { get; set; }
+
+        [Key("exp")]
+        public int exp { get; set; }
     }
 }

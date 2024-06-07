@@ -12,35 +12,19 @@
                     result = ("수습 연구원의 머리", "조건 없음", "", "100", "초심자의 결의는 언제나 반짝여요.");
                     break;
 
-                case 101000002:
-                    result = ("지질학자의 머리", "조건 없음", "", "100", "사실 돌을 좋아한다기 보단 돌이 되고 싶었어요.");
-                    break;
-
                 case 102000001:
-                    result = (
-                        "수습 지질학자의 모자",
-                        "수습 지질학자 이상",
-                        "채광 Lv1 사용 가능",
-                        "100",
-                        "지질학 입문자의 든든한 파트너"
-                    );
+                    result = ("수습 공학자의 헬멧", "제한 없음", " 분해 Lv1 사용 가능", "100", "공학 입문자의 든든한 파트너");
                     break;
 
                 case 102000002:
-                    result = (
-                        "수습 식물학자의 모자",
-                        "수습 식물학자 이상",
-                        "채집 Lv1 사용 가능",
-                        "100",
-                        "식물학 입문자의 든든한 파트너"
-                    );
+                    result = ("수습 화학자의 고글", "제한 없음", "정화 Lv1 사용 가능", "100", "화학 입문자의 든든한 파트너");
                     break;
 
                 case 102000003:
                     result = (
-                        "지질학자의 모자",
-                        "지질학자 이상",
-                        "채광 Lv2 사용 가능",
+                        "공학자의 헬멧",
+                        "일반 공학자 이상",
+                        "분해 Lv2 사용 가능",
                         "100",
                         "이제 연구자 태가 좀 나는 것 같아요."
                     );
@@ -48,21 +32,25 @@
 
                 case 102000004:
                     result = (
-                        "식물학자의 모자",
-                        "식물학자 이상",
-                        "채집 Lv2 사용 가능",
+                        "화학자의 고글",
+                        "일반 식물학자 이상",
+                        "정화 Lv2 사용 가능",
                         "100",
                         "이제 연구자 태가 좀 나는 것 같아요."
                     );
                     break;
 
                 case 103000001:
+                    result = ("수습 연구원의 제복", "제한 없음", "조사 Lv1 사용 가능", "100", "실수는 성장의 밑거름이 될 거에요.");
+                    break;
+
+                case 103000002:
                     result = (
-                        "낡은 탐험복",
-                        "연구원 이상",
-                        "조사 Lv1 사용 가능",
+                        "연구원의 제복",
+                        "일반 연구원 이상",
+                        "조사 Lv2 사용 가능",
                         "100",
-                        "낡았지만 부담없이 입을 수 있어 오히려 좋아요."
+                        "이제 연구자 태가 좀 나는 것 같아요."
                     );
                     break;
 
@@ -71,46 +59,70 @@
                     break;
 
                 case 301000001:
-                    result = ("조약돌", "제작 재료", "", "", "재료보다는 수집품으로 인기가 많아요.");
+                    result = ("진동 모터", "제작 재료", "", "", "들리지 않아도 알 수 있어요");
                     break;
 
                 case 301000002:
-                    result = ("잡초", "제작 재료", "", "", "잡초도 약에 쓰려면 없다는 말이 있어요.");
+                    result = ("단순 안테나", "제작 재료", "", "", "소통은 단순하고 명료한 게 좋아요.");
                     break;
 
                 case 301000003:
-                    result = ("점토암", "제작 재료", "", "", "물과 혼합하면 쉽게 모양을 변형할 수 있어요.");
+                    result = ("저품질 태양 전지", "제작 재료", "", "", "가늘지만 그만큼 오래 갈 수 있어요.");
                     break;
 
                 case 301000004:
-                    result = ("미나리", "제작 재료", "", "", "물가나 습지에서 잘 자라는 전통 식재료.");
+                    result = ("단순 키패드", "제작 재료", "", "", "세상의 모든 것을 0과 1만으로 표현해봐요.");
                     break;
 
                 case 301000005:
-                    result = ("실트암", "제작 재료", "", "", "단단하지는 않지만 가공이 쉽고 다루기 편해요.");
+                    result = ("저품질 스피커", "제작 재료", "", "", "잡음도 나름의 낭만을 주고는 해요.");
                     break;
 
                 case 301000006:
-                    result = ("민들레", "제작 재료", "", "", "뿌리가 깊고 번식력이 강해요.");
+                    result = ("저품질 가변콘덴서", "제작 재료", "", "", "주파수를 조정할 수 있어요.");
                     break;
 
                 case 301000007:
-                    result = ("돌구슬", "제작 재료", "", "", "경쾌한 소리가 나요.");
+                    result = ("소형 LCD 화면", "제작 재료", "", "", "작지만 선명한 화면이에요.");
                     break;
 
                 case 301000008:
-                    result = ("건초", "제작 재료", "", "", "정성스럽게 수분을 바싹 말렸어요.");
+                    result = ("저용량 메모리", "제작 재료", "", "", "기억할 건 적지만 잊지 않아요");
                     break;
 
                 case 301000009:
-                    result = ("무른 지지대", "제작 재료", "", "", "무거운 걸 지지하기엔 부적절해요");
+                    result = ("저화질 이미지 센서", "제작 재료", "", "", "영상의 질은 떨어져도 순간을 포착할 수 있어요.");
                     break;
 
                 case 301000010:
-                    result = ("노란 염료", "제작 재료", "", "", "화사한 색감의 노란 염료");
+                    result = ("소형 렌즈", "제작 재료", "", "", "작은 세상을 보여줄 수 있어요");
                     break;
 
-                case 401000001:
+                case 301000011:
+                    result = ("저성능 프로세서", "제작 재료", "", "", "느리지만 꾸준히 처리할 수 있어요.");
+                    break;
+
+                case 301000012:
+                    result = ("소형 배터리", "제작 재료", "", "", "작지만 오래 버틸 수 있어요");
+                    break;
+
+                case 301000013:
+                    result = ("마그네트론", "제작 재료", "", "", "전자기파의 힘으로 요리를 도와요");
+                    break;
+
+                case 301000014:
+                    result = ("소형 변압기", "제작 재료", "", "", "다양한 장치에게 도움을 줄 수 있어요");
+                    break;
+
+                case 301000015:
+                    result = ("저출력 모터", "제작 재료", "", "", "느리지만 꾸준히 돌아갈 수 있어요");
+                    break;
+
+                case 301000016:
+                    result = ("필터", "제작 재료", "", "", "불순물을 걸러내 깨끗하게 만들어요");
+                    break;
+
+                case 401000001: // 교체 예정
                     result = ("허름한 텐트", "텐트", "5초마다 컨디션 1 회복", "", "허름하지만 아늑한 느낌이 들어요.");
                     break;
             }
@@ -118,33 +130,58 @@
             return result;
         }
 
-        public static (string, int, PlayerState) GetSkillDetail(int skill_id)
+        // name, level, job_type, state
+        public static (string, int, JobType, PlayerState) GetSkillDetail(int skill_id)
         {
-            var result = ("", 0, PlayerState.NONE);
+            var result = ("", 0, JobType.NONE, PlayerState.NONE);
             switch (skill_id)
             {
                 case 10001:
-                    result = ("채광 Lv1: 암석으로부터 자원을 얻는 기술", 1, PlayerState.GEO_WORK_1);
+                    result = (
+                        "분해 Lv1: 전자기기로부터 자원을 얻는 기술",
+                        1,
+                        JobType.ENGINEER,
+                        PlayerState.ENGINEER_WORK_1
+                    );
                     break;
 
                 case 20001:
-                    result = ("채집 Lv1: 식물로부터 자원을 얻는 기술", 1, PlayerState.BOTAN_WORK_1);
+                    result = (
+                        "정제 Lv1: 환경자원을 정제하는 기술",
+                        1,
+                        JobType.CHEMIST,
+                        PlayerState.CHEMIST_WORK_1
+                    );
                     break;
 
                 case 10002:
-                    result = ("채광 Lv2: 암석으로부터 자원을 얻는 기술", 2, PlayerState.GEO_WORK_1);
+                    result = (
+                        "분해 Lv2: 전자기기로부터 자원을 얻는 기술",
+                        2,
+                        JobType.ENGINEER,
+                        PlayerState.ENGINEER_WORK_1
+                    );
                     break;
 
                 case 20002:
-                    result = ("채집 Lv2: 식물로부터 자원을 얻는 기술", 2, PlayerState.BOTAN_WORK_1);
+                    result = (
+                        "정제 Lv2: 환경자원을 정제하는 기술",
+                        2,
+                        JobType.CHEMIST,
+                        PlayerState.CHEMIST_WORK_1
+                    );
                     break;
 
                 case 100001:
-                    result = ("조사 Lv1: 자원의 가능성을 발견하는 기술", 1, PlayerState.RESEARCH_1);
+                    result = ("조사 Lv1: 잠재된 자원을 발견하는 기술", 1, JobType.NONE, PlayerState.EXPLORE_1);
+                    break;
+
+                case 100002:
+                    result = ("조사 Lv2: 잠재된 자원을 발견하는 기술", 1, JobType.NONE, PlayerState.EXPLORE_1);
                     break;
 
                 case 200001:
-                    result = ("제작: 연구 일지를 기반으로 제작하는 기술", 0, PlayerState.NONE);
+                    result = ("제작: 연구 일지를 기반으로 제작하는 기술", 0, JobType.NONE, PlayerState.NONE);
                     break;
             }
 
@@ -156,12 +193,12 @@
             string result = "";
             switch (job_type)
             {
-                case JobType.GEOIOGIST:
-                    result = "암석을 수집하고 분석하는 연구원";
+                case JobType.ENGINEER:
+                    result = "전자기기 자원의 활용 방안을 모색하는 연구원";
                     break;
 
-                case JobType.BOTANIST:
-                    result = "식물을 채집하고 분석하는 연구원";
+                case JobType.CHEMIST:
+                    result = "환경 자원의 정제 방안을 모색하는 연구원 ";
                     break;
             }
 
@@ -208,45 +245,218 @@
             {
                 case 10001:
                     reward_item_list.Add(301000001);
-                    result = ("암석", 20, JobType.GEOIOGIST, 1, "채광 Lv1 스킬이 필요해요.", reward_item_list);
+                    reward_item_list.Add(301000002);
+                    result = ("삐삐", 20, JobType.ENGINEER, 1, "분해 Lv1 스킬이 필요해요.", reward_item_list);
                     break;
 
                 case 10002:
-                    reward_item_list.Add(301000001);
                     reward_item_list.Add(301000003);
+                    reward_item_list.Add(301000004);
+                    result = (
+                        "전자 계산기",
+                        20,
+                        JobType.ENGINEER,
+                        1,
+                        "분해 Lv1 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 10003:
                     reward_item_list.Add(301000005);
-                    result = ("이암", 20, JobType.GEOIOGIST, 2, "채광 Lv2 스킬이 필요해요.", reward_item_list);
+                    reward_item_list.Add(301000006);
+                    result = ("라디오", 20, JobType.ENGINEER, 1, "분해 Lv1 스킬이 필요해요.", reward_item_list);
+                    break;
+
+                case 10004:
+                    reward_item_list.Add(301000007);
+                    reward_item_list.Add(301000008);
+                    result = (
+                        "MP3 플레이어",
+                        20,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 10005:
+                    reward_item_list.Add(301000009);
+                    reward_item_list.Add(301000010);
+                    result = (
+                        "휴대용 게임기",
+                        20,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 10006:
+                    reward_item_list.Add(301000011);
+                    reward_item_list.Add(301000012);
+                    result = (
+                        "디지털 카메라",
+                        20,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 10007:
+                    reward_item_list.Add(301000013);
+                    reward_item_list.Add(301000014);
+                    result = (
+                        "전자레인지",
+                        20,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 10008:
+                    reward_item_list.Add(301000015);
+                    reward_item_list.Add(301000016);
+                    result = (
+                        "진공청소기",
+                        20,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
                     break;
 
                 case 20001:
-                    reward_item_list.Add(301000002);
-                    result = ("들풀", 20, JobType.BOTANIST, 1, "채집 Lv1 스킬이 필요해요.", reward_item_list);
+                    reward_item_list.Add(301000017);
+                    reward_item_list.Add(301000018);
+                    result = ("정제수", 20, JobType.CHEMIST, 1, "정제 Lv1 스킬이 필요해요.", reward_item_list);
                     break;
 
                 case 20002:
-                    reward_item_list.Add(301000002);
-                    reward_item_list.Add(301000004);
-                    reward_item_list.Add(301000006);
-                    result = ("산나물", 20, JobType.BOTANIST, 2, "채집 Lv2 스킬이 필요해요.", reward_item_list);
+                    reward_item_list.Add(301000019);
+                    reward_item_list.Add(301000020);
+                    result = (
+                        "산성 폐기물",
+                        20,
+                        JobType.CHEMIST,
+                        1,
+                        "정제 Lv1 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 20003:
+                    reward_item_list.Add(301000021);
+                    reward_item_list.Add(301000022);
+                    result = (
+                        "중금속 잔류물",
+                        20,
+                        JobType.CHEMIST,
+                        1,
+                        "정제 Lv1 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 20004:
+                    reward_item_list.Add(301000023);
+                    reward_item_list.Add(301000024);
+                    result = (
+                        "재생 연료유",
+                        20,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 20005:
+                    reward_item_list.Add(301000025);
+                    reward_item_list.Add(301000026);
+                    result = ("윤활유", 20, JobType.CHEMIST, 2, "정제 Lv2 스킬이 필요해요.", reward_item_list);
+                    break;
+
+                case 20006:
+                    reward_item_list.Add(301000027);
+                    reward_item_list.Add(301000028);
+                    result = ("타르", 20, JobType.CHEMIST, 2, "정제 Lv2 스킬이 필요해요.", reward_item_list);
+                    break;
+
+                case 20007:
+                    reward_item_list.Add(301000029);
+                    reward_item_list.Add(301000030);
+                    result = (
+                        "정화된 토양",
+                        20,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 20008:
+                    reward_item_list.Add(301000031);
+                    reward_item_list.Add(301000032);
+                    result = (
+                        "유기물 분해 토양",
+                        20,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
                     break;
             }
 
             return result;
         }
 
-        // TODO 일단 하드코딩
-        // 원래 resource_id보다는 반드시 높으며 job_id보다는 높아지지 않음 .. 으로 바꿀 것
         public static List<int> GetJobResourceUpgradePool(int job_resource_id)
         {
             var result = new List<int>();
             switch (job_resource_id)
             {
-                case 10001:
-                    result.Add(10002);
+                case 100001: // 잔해더미
+                    result.Add(10001); // 삐삐
+                    result.Add(10002); // 전자 계산기
+                    result.Add(10003); // 라디오
                     break;
 
-                case 20001:
-                    result.Add(20002);
+                case 100002: // 버려진 기계
+                    result.Add(10004); // MP3 플레이어
+                    result.Add(10005); // 휴대용 게임기
+                    result.Add(10006); // 디지털 카메라
+                    break;
+
+                case 100003: // 오래된 유물
+                    result.Add(10007); // 전자레인지
+                    result.Add(10008); // 진공청소기
+                    break;
+
+                case 200001: // 산성 폐수
+                    result.Add(20001); // 정제수
+                    result.Add(20002); // 산성 폐기물
+                    result.Add(20003); // 중금속 잔류물
+                    break;
+
+                case 200002: // 오래된 기름통
+                    result.Add(20004); // 재생 연료유
+                    result.Add(20005); // 윤활유
+                    result.Add(20006); // 타르
+                    break;
+
+                case 200003: // 오염된 토양
+                    result.Add(20007); // 정화된 토양
+                    result.Add(20008); // 유기물 분해 토양
                     break;
             }
 
@@ -295,15 +505,15 @@
             (string, string) result = ("tool", "none");
             switch (player_state)
             {
-                case PlayerState.GEO_WORK_1:
+                case PlayerState.ENGINEER_WORK_1:
                     result = ("tool", "tool_1");
                     break;
 
-                case PlayerState.BOTAN_WORK_1:
+                case PlayerState.CHEMIST_WORK_1:
                     result = ("tool", "tool_2");
                     break;
 
-                case PlayerState.RESEARCH_1:
+                case PlayerState.EXPLORE_1:
                     result = ("tool", "tool_3");
                     break;
             }
@@ -385,29 +595,33 @@
             return result;
         }
 
-        public static int GetSkill(int item_id)
+        public static (JobType, int) GetSkill(int item_id)
         {
-            int result = 0;
+            (JobType, int) result = (JobType.NONE, 0);
             switch (item_id)
             {
-                case 102000001: // 지질학자의 모자
-                    result = 10001; // 채광 레벨 1
+                case 102000001: // 수습 공학자의 헬멧
+                    result = (JobType.ENGINEER, 10001); // 분해 레벨 1
                     break;
 
-                case 102000002: // 식물학자의 모자
-                    result = 20001; // 채집 레벨 1
+                case 102000002: // 수습 화학자의 고글
+                    result = (JobType.CHEMIST, 20001); // 정제 레벨 1
                     break;
 
-                case 102000003: // 식물학자의 모자
-                    result = 10002; // 채광 레벨 2
+                case 102000003: // 공학자의 헬멧
+                    result = (JobType.ENGINEER, 10002); // 분해 레벨 2
                     break;
 
-                case 102000004: // 식물학자의 모자
-                    result = 20002; // 채광 레벨 2
+                case 102000004: // 화학자의 고글
+                    result = (JobType.CHEMIST, 20002); // 정제 레벨 2
                     break;
 
-                case 103000001:
-                    result = 100001; // 조사 레벨 1
+                case 103000001: // 수습 연구원의 제복
+                    result = (JobType.NONE, 100001); // 조사 레벨 1
+                    break;
+
+                case 103000002: // 연구원의 제복
+                    result = (JobType.NONE, 100002); // 조사 레벨 2
                     break;
             }
 
@@ -423,33 +637,26 @@
             return wearable;
         }
 
-        public static bool IsWearableJobInfo(int item_id, JobType job_type, JobGrade job_grade)
+        public static bool IsWearableJobInfo(
+            int item_id,
+            Dictionary<JobType, JobStat> job_stat_dict
+        )
         {
             JobType target_job_type = JobType.NONE;
-            JobGrade target_job_grade = JobGrade.NONE;
+            JobGrade target_job_grade;
             switch (item_id)
             {
-                case 102000001:
-                    target_job_type = JobType.GEOIOGIST;
-                    target_job_grade = JobGrade.TRAINEE;
-                    break;
-
                 case 102000003:
-                    target_job_type = JobType.GEOIOGIST;
+                    target_job_type = JobType.ENGINEER;
                     target_job_grade = JobGrade.RESEARCHER;
-                    break;
-
-                case 102000002:
-                    target_job_type = JobType.BOTANIST;
-                    target_job_grade = JobGrade.TRAINEE;
                     break;
 
                 case 102000004:
-                    target_job_type = JobType.BOTANIST;
+                    target_job_type = JobType.CHEMIST;
                     target_job_grade = JobGrade.RESEARCHER;
                     break;
 
-                case 103000001:
+                case 103000002:
                     target_job_grade = JobGrade.RESEARCHER;
                     break;
 
@@ -457,25 +664,12 @@
                     return true;
             }
 
-            if (target_job_type == JobType.NONE)
+            if (!job_stat_dict.TryGetValue(target_job_type, out var job_stat))
             {
-                target_job_type = job_type;
+                return false;
             }
 
-            return target_job_type == job_type && target_job_grade <= job_grade;
-        }
-
-        public static bool IsWearableJobGrade(int item_id, JobGrade grade)
-        {
-            JobGrade job_grade = JobGrade.TRAINEE;
-            switch (item_id)
-            {
-                case 103000001:
-                    job_grade = JobGrade.RESEARCHER;
-                    break;
-            }
-
-            return job_grade <= grade;
+            return target_job_grade <= job_stat.job_grade;
         }
 
         public static bool IsUseableItem(int item_id)
@@ -647,12 +841,12 @@
                     result = "무직";
                     break;
 
-                case JobType.GEOIOGIST:
-                    result = "지질학";
+                case JobType.ENGINEER:
+                    result = "공학자";
                     break;
 
-                case JobType.BOTANIST:
-                    result = "식물학";
+                case JobType.CHEMIST:
+                    result = "화학자";
                     break;
             }
 
@@ -706,16 +900,12 @@
             var key = "";
             switch (job_type)
             {
-                case JobType.GEOIOGIST:
+                case JobType.ENGINEER:
                     key = $"{research_info.research_id}_1_{research_info.geo_level + 1}";
                     break;
 
-                case JobType.BOTANIST:
+                case JobType.CHEMIST:
                     key = $"{research_info.research_id}_2_{research_info.botan_level + 1}";
-                    break;
-
-                case JobType.BIOLOGY:
-                    key = $"{research_info.research_id}_3_{research_info.bio_level + 1}";
                     break;
             }
 
@@ -817,6 +1007,34 @@
             }
 
             return 0;
+        }
+
+        public static JobType GetJobType(int skill_id)
+        {
+            var result = JobType.NONE;
+            switch (skill_id)
+            {
+                case 10001:
+                case 10002:
+                    result = JobType.ENGINEER;
+                    break;
+
+                case 20001:
+                case 20002:
+                    result = JobType.CHEMIST;
+                    break;
+            }
+
+            return result;
+        }
+
+        public static bool IsInstallableItem(int item_id)
+        {
+            int item_type = (int)(item_id / 1000000);
+            int kind = (int)(item_type / 100);
+
+            var installable = kind == 4;
+            return installable;
         }
     }
 }

@@ -273,6 +273,13 @@ namespace network
     }
 
     [MessagePackObject]
+    public class C_TO_U_UPGRADE_JOB : IMessagePackObject
+    {
+        [Key("job_type")]
+        public JobType job_type { get; set; }
+    }
+
+    [MessagePackObject]
     public class U_TO_C_UPGRADE_JOB : IMessagePackObject
     {
         [Key("error_code")]

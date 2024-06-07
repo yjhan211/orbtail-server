@@ -30,8 +30,6 @@
         U_TO_C_USE_SKILL,
         U_TO_G_USE_SKILL,
         U_TO_C_USE_SKILL_COMPLETE,
-        C_TO_U_GET_JOB,
-        U_TO_C_GET_JOB,
         C_TO_U_UPGRADE_JOB,
         U_TO_C_UPGRADE_JOB,
         C_TO_U_WEAR_ITEM,
@@ -72,8 +70,8 @@
     public enum MapID : int
     {
         NONE,
-        CITY_1,
-        FOREST_1,
+        CAMPUS_1,
+        FACTORY_1,
         LAB_1,
     }
 
@@ -110,9 +108,8 @@
     public enum JobType : byte
     {
         NONE,
-        GEOIOGIST, // 지질학자
-        BOTANIST, // 식물학자
-        BIOLOGY, // 생물학자
+        ENGINEER, // 공학자
+        CHEMIST, // 화학자
     }
 
     public enum JobGrade : byte
@@ -170,9 +167,9 @@
     public enum PlayerState : short
     {
         NONE = 0,
-        GEO_WORK_1,
-        BOTAN_WORK_1,
-        RESEARCH_1,
+        ENGINEER_WORK_1,
+        CHEMIST_WORK_1,
+        EXPLORE_1,
         CAMIPING_1,
     }
 }

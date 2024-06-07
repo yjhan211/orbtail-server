@@ -70,7 +70,7 @@ namespace network
             this.object_info = new GameObjectInfo(
                 ObjectType.PLAYER,
                 player_id,
-                MapID.CITY_1,
+                MapID.CAMPUS_1,
                 0,
                 cell
             );
@@ -106,13 +106,7 @@ namespace network
                 throw new Exception($"not wearable item {target_item.item_id}");
             }
 
-            if (
-                !GameDesignData.IsWearableJobInfo(
-                    target_item.item_id,
-                    job_info.job_type,
-                    job_info.job_grade
-                )
-            )
+            if (!GameDesignData.IsWearableJobInfo(target_item.item_id, job_info.job_stat_dict))
             {
                 throw new Exception($"not wearable job type. {target_item.item_id}");
             }
@@ -165,10 +159,7 @@ namespace network
             switch (target_item.item_id)
             {
                 case 201000001:
-                    this.job_info.hp = Math.Min(
-                        GameDesignData.GetMaxHP(this.job_info.job_grade),
-                        this.job_info.hp + 20
-                    );
+                    this.job_info.hp = Math.Min(100, this.job_info.hp + 20); // TODO MaxHP 시민등급 따라가도록
                     break;
             }
 

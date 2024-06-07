@@ -109,7 +109,6 @@
                     {
                         PROTOCOL.C_TO_U_MOVE,
                         PROTOCOL.C_TO_U_WEAR_ITEM,
-                        PROTOCOL.C_TO_U_GET_JOB,
                         PROTOCOL.C_TO_U_USE_SKILL
                     };
 
@@ -150,12 +149,8 @@
                             await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, GetJobResourceInfo);
                             break;
 
-                        case PROTOCOL.C_TO_U_GET_JOB:
-                            await HandleMessage<C_TO_U_GET_JOB>(body, JobController.GetJob);
-                            break;
-
                         case PROTOCOL.C_TO_U_UPGRADE_JOB:
-                            await JobController.UpgradeJob(this);
+                            await HandleMessage<C_TO_U_UPGRADE_JOB>(body, JobController.UpgradeJob);
                             break;
 
                         case PROTOCOL.C_TO_U_WEAR_ITEM:
@@ -377,7 +372,7 @@
                             return;
                         }
 
-                        if (GameDesignData.GetMaxHP(job_info.job_grade) <= job_info.hp)
+                        if (100 <= job_info.hp) // TODO 임시 하드코딩
                         {
                             return;
                         }
@@ -424,7 +419,7 @@
                     );
 
                     is_new = true;
-                    player_info.object_info.map_id = MapID.CITY_1;
+                    player_info.object_info.map_id = MapID.CAMPUS_1;
                     player_info.job_info.hp = 100;
                 }
 
@@ -434,9 +429,20 @@
                 if (is_new)
                 {
                     // 기본 아이템 증정
+                    List<ItemInfo> gift_item_list = new();
+
+                    // 수습 연구원의 머리
                     var default_hair = await InventoryController.CreateItem(this, 101000001, 1);
+                    // 수습 연구원의 제복
+                    var default_top = await InventoryController.CreateItem(this, 103000001, 1);
+                    // 수습 공학자의 헬멧
+                    var default_hat_1 = await InventoryController.CreateItem(this, 102000001, 1);
+                    // 수습 화학자의 고글
+                    var default_hat_2 = await InventoryController.CreateItem(this, 102000002, 1);
+
                     player_info.inventory_info.AddItem(default_hair);
                     player_info.WearItem(default_hair.item_uid);
+                    player_info.WearItem(default_top.item_uid);
                 }
                 else
                 {

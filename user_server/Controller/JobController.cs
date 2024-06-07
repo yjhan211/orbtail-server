@@ -6,7 +6,7 @@ namespace user_server
 
     public static class JobController
     {
-        public static async Task GetJob(GameUser user, C_TO_U_GET_JOB body)
+        public static async Task UpgradeJob(GameUser user, C_TO_U_UPGRADE_JOB body)
         {
             var player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
             if (player_info == null)
@@ -14,82 +14,26 @@ namespace user_server
                 throw new Exception("player_info is not exists");
             }
 
-            if (player_info.job_info!.job_type != JobType.NONE)
-            {
-                user.SendToClient(
-                    PacketMaker.U_TO_C_GET_JOB(user.player_id, ErrorCode.ALREADY_HAS_JOB)
-                );
-                return;
-            }
-
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
-            {
-                List<ItemInfo> gift_item_list = new();
-
-                switch (body.job_type)
-                {
-                    case JobType.GEOIOGIST:
-                        player_info.job_info.job_type = JobType.GEOIOGIST;
-                        player_info.job_info.job_grade = JobGrade.TRAINEE;
-
-                        var gift_geo = await InventoryController.CreateItem(user, 102000001, 1);
-                        gift_item_list.Add(gift_geo);
-                        break;
-
-                    case JobType.BOTANIST:
-                        player_info.job_info.job_type = JobType.BOTANIST;
-                        player_info.job_info.job_grade = JobGrade.TRAINEE;
-
-                        var gift_botan = await InventoryController.CreateItem(user, 102000002, 1);
-                        gift_item_list.Add(gift_botan);
-                        break;
-
-                    default:
-                        break;
-                }
-
-                var gift_food = await InventoryController.CreateItem(user, 201000001, 1);
-                gift_item_list.Add(gift_food);
-
-                player_info.inventory_info.AddItem(gift_item_list);
-                await PlayerInfoController.Save(user.cache_helper, player_info);
-            }
-
-            user.SendToClient(
-                PacketMaker.U_TO_C_GET_JOB(user.player_id, ErrorCode.SUCCESS, player_info.job_info)
-            );
-
-            await InventoryController.GetCurrentItemList(user);
-        }
-
-        public static async Task UpgradeJob(GameUser user)
-        {
-            var player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
-            if (player_info == null)
-            {
-                throw new Exception("player_info is not exists");
-            }
-
-            if (player_info.job_info!.job_type == JobType.NONE)
+            if (!player_info.job_info.job_stat_dict.TryGetValue(body.job_type, out var job_stat))
             {
                 user.SendToClient(PacketMaker.U_TO_C_UPGRADE_JOB(user.player_id, ErrorCode.FATAL));
                 return;
             }
 
-            var max_exp = GameDesignData.GetMaxExp(player_info.job_info.job_grade);
-            if (player_info.job_info.exp < max_exp)
+            var max_exp = GameDesignData.GetMaxExp(job_stat.job_grade);
+            if (job_stat.exp < max_exp)
             {
                 user.SendToClient(PacketMaker.U_TO_C_UPGRADE_JOB(user.player_id, ErrorCode.FATAL));
                 return;
             }
 
-            if (JobGrade.CHIEF <= player_info.job_info.job_grade)
+            if (JobGrade.CHIEF <= job_stat.job_grade)
             {
                 user.SendToClient(PacketMaker.U_TO_C_UPGRADE_JOB(user.player_id, ErrorCode.FATAL));
                 return;
             }
 
-            JobGrade target_grade = player_info.job_info.job_grade + 1;
+            JobGrade target_grade = job_stat.job_grade + 1;
             using (await PlayerInfoController.Lock(user.redlock, user.player_id))
             {
                 List<ItemInfo> gift_item_list = new();
@@ -97,10 +41,11 @@ namespace user_server
                 switch (target_grade)
                 {
                     case JobGrade.RESEARCHER:
-                        player_info.job_info.job_grade = JobGrade.RESEARCHER;
-                        player_info.job_info.exp = 0;
+                        job_stat.job_grade = JobGrade.RESEARCHER;
+                        job_stat.exp = 0;
 
-                        var gift_geo = await InventoryController.CreateItem(user, 103000001, 1);
+                        // 연구원의 제복
+                        var gift_geo = await InventoryController.CreateItem(user, 103000002, 1);
                         gift_item_list.Add(gift_geo);
                         break;
 
@@ -128,7 +73,7 @@ namespace user_server
             var result = new List<int>();
             foreach (var wear_item in player_info.wear_items)
             {
-                var skill_id = GameDesignData.GetSkill(wear_item);
+                var (_, skill_id) = GameDesignData.GetSkill(wear_item);
                 if (skill_id == 0)
                 {
                     continue;
@@ -169,6 +114,7 @@ namespace user_server
                 }
 
                 var skill_detail = GameDesignData.GetSkillDetail(body.skill_id);
+
                 using (await JobResourceController.Lock(user.redlock, body.resource_uid))
                 {
                     job_resource_info = await JobResourceController.Load(
@@ -177,6 +123,23 @@ namespace user_server
                     );
 
                     if (job_resource_info == null)
+                    {
+                        Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
+                        user.SendToClient(error_packet);
+                        return;
+                    }
+
+                    JobType skill_type = skill_detail.Item3;
+
+                    var job_resource_detail = GameDesignData.GetJobResourceDetail(
+                        job_resource_info.resource_id
+                    );
+                    var job_resource_name = job_resource_detail.Item1;
+                    var job_resource_maxHp = job_resource_detail.Item2;
+                    var job_resource_type = job_resource_detail.Item3;
+                    var job_resource_level = job_resource_detail.Item4;
+
+                    if (skill_type != job_resource_type)
                     {
                         Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
                         user.SendToClient(error_packet);
@@ -220,22 +183,6 @@ namespace user_server
                         return;
                     }
 
-                    var job_resource_detail = GameDesignData.GetJobResourceDetail(
-                        job_resource_info.resource_id
-                    );
-
-                    var job_resource_name = job_resource_detail.Item1;
-                    var job_resource_maxHp = job_resource_detail.Item2;
-                    var job_resource_type = job_resource_detail.Item3;
-                    var job_resource_level = job_resource_detail.Item4;
-
-                    if (job_resource_type != player_info.job_info.job_type)
-                    {
-                        Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                        user.SendToClient(error_packet);
-                        return;
-                    }
-
                     if (skill_detail.Item2 < job_resource_level)
                     {
                         Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
@@ -244,14 +191,14 @@ namespace user_server
                     }
 
                     job_resource_info.player_id = user.player_id;
-                    job_resource_info.end_timestamp = DateTime.UtcNow.AddSeconds(10);
+                    job_resource_info.end_timestamp = DateTime.UtcNow.AddSeconds(10); // TODO 임시 하드코딩
 
                     user.current_progress_job = (body.skill_id, job_resource_info);
                     await JobResourceController.Save(user.cache_helper, job_resource_info);
                 }
 
                 user.in_action = true;
-                player_info.state = skill_detail.Item3;
+                player_info.state = skill_detail.Item4;
                 player_info.job_info.hp -= 1;
 
                 await PlayerInfoController.Save(user.cache_helper, player_info);
@@ -272,103 +219,120 @@ namespace user_server
             JobResourceInfo job_resource_info
         )
         {
-            if (DateTime.UtcNow <= job_resource_info.end_timestamp)
+            try
             {
-                return;
-            }
-
-            var job_resource_detail = GameDesignData.GetJobResourceDetail(
-                job_resource_info.resource_id
-            );
-
-            Random random = new();
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
-            {
-                user.current_progress_job = null;
-
-                var player_info = await PlayerInfoController.Load(
-                    user.cache_helper,
-                    user.player_id
-                );
-
-                if (player_info == null)
+                if (DateTime.UtcNow <= job_resource_info.end_timestamp)
                 {
-                    return;
+                    throw new Exception("invalid end timestamp");
                 }
 
-                ItemInfo? item_info = null;
-                bool is_success = true;
+                var job_resource_detail = GameDesignData.GetJobResourceDetail(
+                    job_resource_info.resource_id
+                );
 
-                switch (skill_id)
+                Random random = new();
+                using (await PlayerInfoController.Lock(user.redlock, user.player_id))
                 {
-                    case 10001:
-                    case 20001:
-                    case 10002:
-                    case 20002:
-                        // 아이템 뽑기
-                        var reward_item = job_resource_detail.Item6[
-                            random.Next(0, job_resource_detail.Item6.Count)
-                        ];
-                        // 아이템 주기
-                        item_info = await InventoryController.CreateItem(user, reward_item, 1);
-                        player_info.inventory_info.AddItem(item_info);
+                    user.current_progress_job = null;
 
-                        // 자원 지우고
-                        await JobResourceController.Delete(
-                            user.cache_helper,
-                            job_resource_info.resource_uid
-                        );
-                        BroadcastJobResourceDestroy(user, job_resource_info);
-                        break;
+                    var player_info = await PlayerInfoController.Load(
+                        user.cache_helper,
+                        user.player_id
+                    );
 
-                    case 100001:
-                        is_success = random.Next(0, 100) < 50;
-                        if (is_success)
-                        {
-                            var upgrade_pool = GameDesignData.GetJobResourceUpgradePool(
-                                job_resource_info.resource_id
-                            );
+                    if (player_info == null)
+                    {
+                        throw new Exception("cannot find player info");
+                    }
 
-                            job_resource_info.resource_id = upgrade_pool[
-                                random.Next(0, upgrade_pool.Count)
+                    ItemInfo? item_info = null;
+                    bool is_success = true;
+
+                    switch (skill_id)
+                    {
+                        case 10001:
+                        case 20001:
+                        case 10002:
+                        case 20002:
+                            // 아이템 뽑기
+                            var reward_item = job_resource_detail.Item6[
+                                random.Next(0, job_resource_detail.Item6.Count)
                             ];
-                        }
-                        job_resource_info.player_id = 0;
-                        await JobResourceController.Save(user.cache_helper, job_resource_info);
-                        user.BroadcastUpdateJobResourceInfo(job_resource_info);
-                        break;
-                }
+                            // 아이템 주기
+                            item_info = await InventoryController.CreateItem(user, reward_item, 1);
+                            player_info.inventory_info.AddItem(item_info);
 
-                // TODO 경험치량 조정
-                var add_exp = player_info.job_info.job_grade == JobGrade.TRAINEE ? 10 : 1;
+                            // 자원 지우고
+                            await JobResourceController.Delete(
+                                user.cache_helper,
+                                job_resource_info.resource_uid
+                            );
+                            BroadcastJobResourceDestroy(user, job_resource_info);
+                            break;
 
-                // 경험치 올리고
-                player_info.job_info.exp += add_exp;
+                        case 100001:
+                        case 100002:
+                            is_success = random.Next(0, 100) < 50;
+                            if (is_success)
+                            {
+                                var upgrade_pool = GameDesignData.GetJobResourceUpgradePool(
+                                    job_resource_info.resource_id
+                                );
 
-                // 스테이트 초기화
-                player_info.state = PlayerState.NONE;
+                                job_resource_info.resource_id = upgrade_pool[
+                                    random.Next(0, upgrade_pool.Count)
+                                ];
+                            }
+                            job_resource_info.player_id = 0;
+                            await JobResourceController.Save(user.cache_helper, job_resource_info);
+                            user.BroadcastUpdateJobResourceInfo(job_resource_info);
+                            break;
+                    }
 
-                // 저장
-                await PlayerInfoController.Save(user.cache_helper, player_info);
+                    // TODO 경험치량 조정
+                    var job_type = job_resource_detail.Item3;
+                    if (!player_info.job_info.job_stat_dict.TryGetValue(job_type, out var job_stat))
+                    {
+                        throw new Exception($"cannot found job stat : {job_type}");
+                    }
 
-                // 완료 패킷 전송
-                Packet packet = PacketMaker.U_TO_C_USE_SKILL_COMPLETE(
-                    is_success,
-                    item_info,
-                    player_info.job_info
-                );
+                    var add_exp = job_stat.job_grade == JobGrade.TRAINEE ? 10 : 1;
 
-                user.SendToClient(packet);
-                user.BroadcastUpdatePlayerInfo(player_info);
+                    // 경험치 올리고
+                    job_stat.exp += add_exp;
 
-                if (item_info != null)
-                {
-                    await InventoryController.GetCurrentItemList(user);
+                    // 스테이트 초기화
+                    player_info.state = PlayerState.NONE;
+
+                    // 저장
+                    await PlayerInfoController.Save(user.cache_helper, player_info);
+
+                    // 완료 패킷 전송
+                    Packet packet = PacketMaker.U_TO_C_USE_SKILL_COMPLETE(
+                        is_success,
+                        item_info,
+                        player_info.job_info
+                    );
+
+                    user.SendToClient(packet);
+                    user.BroadcastUpdatePlayerInfo(player_info);
+
+                    if (item_info != null)
+                    {
+                        await InventoryController.GetCurrentItemList(user);
+                    }
                 }
             }
-
-            // 액션 풀기
-            user.in_action = false;
+            catch (Exception e)
+            {
+                // TODO 스테이트 초기화 및 잡리소스 초기화
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                // 액션 풀기
+                user.in_action = false;
+            }
         }
 
         public static async Task Encamp(GameUser user, C_TO_U_ENCAMP body)
@@ -383,14 +347,9 @@ namespace user_server
                     throw new Exception("player_info not exists");
                 }
 
-                if (player_info.object_info.map_id != MapID.FOREST_1)
+                if (player_info.object_info.map_id == MapID.CAMPUS_1)
                 {
                     throw new Exception("invalid map id");
-                }
-
-                if (player_info.job_info.job_type == JobType.NONE)
-                {
-                    throw new Exception("invalid job type");
                 }
 
                 if (
@@ -450,7 +409,6 @@ namespace user_server
             );
 
             user.BroadcastUpdatePlayerInfo(player_info);
-            // user.BroadcastUpdateCampInfo(camp_info);
         }
 
         public static async Task Decamp(GameUser user)
@@ -461,11 +419,6 @@ namespace user_server
             {
                 player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
                 if (player_info == null)
-                {
-                    return;
-                }
-
-                if (player_info.job_info.job_type == JobType.NONE)
                 {
                     return;
                 }

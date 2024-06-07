@@ -85,23 +85,47 @@ namespace network
         public static Dictionary<string, (MapID, Cell, bool)> portal_info =
             new()
             {
-                { GetPortalKey(MapID.CITY_1, new(89, 141)), (MapID.FOREST_1, new(59, 66), true) },
-                { GetPortalKey(MapID.CITY_1, new(89, 142)), (MapID.FOREST_1, new(59, 66), true) },
-                { GetPortalKey(MapID.CITY_1, new(90, 141)), (MapID.FOREST_1, new(59, 66), true) },
-                { GetPortalKey(MapID.CITY_1, new(90, 142)), (MapID.FOREST_1, new(59, 66), true) },
-                { GetPortalKey(MapID.FOREST_1, new(60, 69)), (MapID.CITY_1, new(89, 139), true) },
-                { GetPortalKey(MapID.FOREST_1, new(60, 70)), (MapID.CITY_1, new(89, 139), true) },
-                { GetPortalKey(MapID.FOREST_1, new(59, 70)), (MapID.CITY_1, new(89, 139), true) },
-                { GetPortalKey(MapID.FOREST_1, new(59, 69)), (MapID.CITY_1, new(89, 139), true) },
-                { GetPortalKey(MapID.CITY_1, new(85, 109)), (MapID.LAB_1, new(90, 96), true) },
-                { GetPortalKey(MapID.CITY_1, new(88, 106)), (MapID.LAB_1, new(90, 96), true) },
-                { GetPortalKey(MapID.LAB_1, new(90, 100)), (MapID.CITY_1, new(81, 108), false) },
-                { GetPortalKey(MapID.LAB_1, new(91, 100)), (MapID.CITY_1, new(81, 108), false) },
+                {
+                    GetPortalKey(MapID.CAMPUS_1, new(89, 141)),
+                    (MapID.FACTORY_1, new(59, 66), true)
+                },
+                {
+                    GetPortalKey(MapID.CAMPUS_1, new(89, 142)),
+                    (MapID.FACTORY_1, new(59, 66), true)
+                },
+                {
+                    GetPortalKey(MapID.CAMPUS_1, new(90, 141)),
+                    (MapID.FACTORY_1, new(59, 66), true)
+                },
+                {
+                    GetPortalKey(MapID.CAMPUS_1, new(90, 142)),
+                    (MapID.FACTORY_1, new(59, 66), true)
+                },
+                {
+                    GetPortalKey(MapID.FACTORY_1, new(60, 69)),
+                    (MapID.CAMPUS_1, new(89, 139), true)
+                },
+                {
+                    GetPortalKey(MapID.FACTORY_1, new(60, 70)),
+                    (MapID.CAMPUS_1, new(89, 139), true)
+                },
+                {
+                    GetPortalKey(MapID.FACTORY_1, new(59, 70)),
+                    (MapID.CAMPUS_1, new(89, 139), true)
+                },
+                {
+                    GetPortalKey(MapID.FACTORY_1, new(59, 69)),
+                    (MapID.CAMPUS_1, new(89, 139), true)
+                },
+                { GetPortalKey(MapID.CAMPUS_1, new(85, 109)), (MapID.LAB_1, new(90, 96), true) },
+                { GetPortalKey(MapID.CAMPUS_1, new(88, 106)), (MapID.LAB_1, new(90, 96), true) },
+                { GetPortalKey(MapID.LAB_1, new(90, 100)), (MapID.CAMPUS_1, new(81, 108), false) },
+                { GetPortalKey(MapID.LAB_1, new(91, 100)), (MapID.CAMPUS_1, new(81, 108), false) },
             };
 
         public static void Initialize()
         {
-            foreach (var map_id in new List<MapID>() { MapID.CITY_1, MapID.FOREST_1 })
+            foreach (var map_id in new List<MapID>() { MapID.CAMPUS_1, MapID.FACTORY_1 })
             {
                 position_list_by_map_part[map_id] = new();
 
