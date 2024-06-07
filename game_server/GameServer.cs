@@ -20,8 +20,8 @@ namespace game_server
             this.cts = new();
             this.map_controller_list = new();
 
-            this.map_controller_list.Add(new(MapID.CITY_1));
-            this.map_controller_list.Add(new(MapID.FOREST_1));
+            this.map_controller_list.Add(new(MapID.CAMPUS_1));
+            this.map_controller_list.Add(new(MapID.FACTORY_1));
             this.instance_controller = new();
 
             this.redis_connection = RedisConnectionPool.GetConnection();
