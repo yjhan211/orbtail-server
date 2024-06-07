@@ -120,27 +120,6 @@ namespace user_server
             return packet;
         }
 
-        public static Packet U_TO_C_GET_JOB(
-            long player_id,
-            ErrorCode error_code,
-            JobInfo? job_info = null
-        )
-        {
-            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_GET_JOB, player_id);
-            U_TO_C_GET_JOB body;
-            if (error_code == ErrorCode.SUCCESS)
-            {
-                body = new() { error_code = error_code, job_info = job_info! };
-            }
-            else
-            {
-                body = new() { error_code = error_code };
-            }
-
-            packet.SetBody(MessagePackSerializer.Serialize(body));
-            return packet;
-        }
-
         public static Packet U_TO_C_UPGRADE_JOB(
             long player_id,
             ErrorCode error_code,
