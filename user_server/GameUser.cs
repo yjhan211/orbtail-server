@@ -440,7 +440,11 @@
                     // 수습 화학자의 고글
                     var default_hat_2 = await InventoryController.CreateItem(this, 102000002, 1);
 
-                    player_info.inventory_info.AddItem(default_hair);
+                    gift_item_list.AddRange(
+                        new[] { default_hair, default_top, default_hat_1, default_hat_2 }
+                    );
+
+                    player_info.inventory_info.AddItem(gift_item_list);
                     player_info.WearItem(default_hair.item_uid);
                     player_info.WearItem(default_top.item_uid);
                 }

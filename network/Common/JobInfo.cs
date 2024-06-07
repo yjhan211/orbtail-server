@@ -29,6 +29,10 @@ namespace network
         {
             this.player_id = player_id;
             this.job_stat_dict = new();
+
+            this.job_stat_dict[JobType.ENGINEER] = new();
+            this.job_stat_dict[JobType.CHEMIST] = new();
+
             this.hp = 0;
         }
     }
@@ -41,5 +45,11 @@ namespace network
 
         [Key("exp")]
         public int exp { get; set; }
+
+        public JobStat()
+        {
+            job_grade = JobGrade.TRAINEE;
+            exp = 0;
+        }
     }
 }
