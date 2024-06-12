@@ -11,138 +11,139 @@ namespace network
             this.conn = conn;
         }
 
-        public async Task HashSet(string key, string field, int value)
+        public void HashSet(string key, string field, int value)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            await this.QueryRedisAsync((db) => db.HashSetAsync(key, field, value));
+            this.QueryRedis((db) => db.HashSet(key, field, value));
         }
 
-        public async Task HashSet(string key, string field, byte[] value)
+        public void HashSet(string key, string field, byte[] value)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            await this.QueryRedisAsync((db) => db.HashSetAsync(key, field, value));
+            this.QueryRedis((db) => db.HashSet(key, field, value));
         }
 
-        public async Task HashSet(string key, long field, byte[] value)
+        public void HashSet(string key, long field, byte[] value)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            await this.QueryRedisAsync((db) => db.HashSetAsync(key, field, value));
+            this.QueryRedis((db) => db.HashSet(key, field, value));
         }
 
-        public async Task<RedisValue> HashGet(string key, string field)
+        public RedisValue HashGet(string key, string field)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            return await this.QueryRedisAsync(
-                (db) => db.HashGetAsync(key, field, CommandFlags.PreferReplica)
-            );
+            return this.QueryRedis((db) => db.HashGet(key, field, CommandFlags.PreferReplica));
         }
 
-        public async Task<RedisValue> HashGet(string key, long field)
+        public RedisValue HashGet(string key, long field)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            return await this.QueryRedisAsync(
-                (db) => db.HashGetAsync(key, field, CommandFlags.PreferReplica)
-            );
+            return this.QueryRedis((db) => db.HashGet(key, field, CommandFlags.PreferReplica));
         }
 
-        public async Task<RedisValue[]?> HashGet(string key, RedisValue[] fields)
+        public RedisValue[]? HashGet(string key, RedisValue[] fields)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            var result = await this.QueryRedisAsync(
-                async (db) =>
+            var result = Task.Run(async () =>
                 {
-                    var pipeline = db.CreateBatch();
-                    var task = pipeline.HashGetAsync(key, fields, CommandFlags.PreferReplica);
+                    return await this.QueryRedis(
+                        async (db) =>
+                        {
+                            var pipeline = db.CreateBatch();
+                            var task = pipeline.HashGetAsync(
+                                key,
+                                fields,
+                                CommandFlags.PreferReplica
+                            );
 
-                    pipeline.Execute();
-                    return await task;
-                }
-            );
+                            pipeline.Execute();
+                            return await task;
+                        }
+                    );
+                })
+                .GetAwaiter()
+                .GetResult();
 
             return result;
         }
 
-        public async Task<HashEntry[]?> HashGetAll(string key)
+        public HashEntry[] HashGetAll(string key)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            return await this.QueryRedisAsync(
-                (db) => db.HashGetAllAsync(key, CommandFlags.PreferReplica)
+            return this.QueryRedis((db) => db.HashGetAll(key, CommandFlags.PreferReplica));
+        }
+
+        public bool HashDelete(string key, string field)
+        {
+            if (this.conn == null)
+            {
+                throw new Exception("RedisHelper.conn is null");
+            }
+
+            return this.QueryRedis((db) => db.HashDelete(key, field));
+        }
+
+        public bool HashDelete(string key, long field)
+        {
+            if (this.conn == null)
+            {
+                throw new Exception("RedisHelper.conn is null");
+            }
+
+            return this.QueryRedis((db) => db.HashDelete(key, field));
+        }
+
+        public bool HashExists(string key, string field)
+        {
+            if (this.conn == null)
+            {
+                throw new Exception("RedisHelper.conn is null");
+            }
+
+            return this.QueryRedis((db) => db.HashExists(key, field, CommandFlags.PreferReplica));
+        }
+
+        public RedisValue[] ListRange(string key, int start = 0, int end = -1)
+        {
+            if (this.conn == null)
+            {
+                throw new Exception("RedisHelper.conn is null");
+            }
+
+            return this.QueryRedis(
+                (db) => db.ListRange(key, start, end, CommandFlags.PreferReplica)
             );
         }
 
-        public async Task HashDelete(string key, string field)
-        {
-            if (this.conn == null)
-            {
-                throw new Exception("RedisHelper.conn is null");
-            }
-
-            await this.QueryRedisAsync((db) => db.HashDeleteAsync(key, field));
-        }
-
-        public async Task HashDelete(string key, long field)
-        {
-            if (this.conn == null)
-            {
-                throw new Exception("RedisHelper.conn is null");
-            }
-
-            await this.QueryRedisAsync((db) => db.HashDeleteAsync(key, field));
-        }
-
-        public async Task<bool> HashExists(string key, string field)
-        {
-            if (this.conn == null)
-            {
-                throw new Exception("RedisHelper.conn is null");
-            }
-
-            return await this.QueryRedisAsync(
-                (db) => db.HashExistsAsync(key, field, CommandFlags.PreferReplica)
-            );
-        }
-
-        public async Task<RedisValue[]> ListRange(string key, int start = 0, int end = -1)
-        {
-            if (this.conn == null)
-            {
-                throw new Exception("RedisHelper.conn is null");
-            }
-
-            return await this.QueryRedisAsync(
-                (db) => db.ListRangeAsync(key, start, end, CommandFlags.PreferReplica)
-            );
-        }
-
-        public async Task<RedisValue[]> ListRange(List<string> keys, int start = 0, int end = -1)
+        public RedisValue[] ListRange(List<string> keys, int start = 0, int end = -1)
         {
             if (this.conn == null)
             {
@@ -162,20 +163,20 @@ namespace network
                     .Take(Config.BATCH_SIZE)
                     .ToList()
                     .Select(
-                        async key =>
-                            await this.QueryRedisAsync(
-                                db => db.ListRangeAsync(key, start, end, CommandFlags.PreferReplica)
+                        key =>
+                            this.QueryRedis(
+                                db => db.ListRange(key, start, end, CommandFlags.PreferReplica)
                             )
                     );
 
-                var batch_results = await Task.WhenAll(batch_tasks);
-                results.AddRange(batch_results.SelectMany(r => r));
+                // var batch_results = await Task.WhenAll(batch_tasks);
+                results.AddRange(batch_tasks.SelectMany(r => r));
             }
 
             return results.ToArray();
         }
 
-        public async Task<List<(string key, RedisValue value)>> ListRangeWithKey(
+        public List<(string key, RedisValue value)> ListRangeWithKey(
             List<string> keys,
             int start = 0,
             int end = -1
@@ -195,100 +196,99 @@ namespace network
 
             for (int i = 0; i < keys.Count; i += Config.BATCH_SIZE)
             {
-                var batch_tasks = keys.Skip(i)
+                var batch_results = keys.Skip(i)
                     .Take(Config.BATCH_SIZE)
                     .ToList()
-                    .Select(async key =>
+                    .Select(key =>
                     {
-                        var range = await this.QueryRedisAsync(
-                            db => db.ListRangeAsync(key, start, end, CommandFlags.PreferReplica)
+                        var range = this.QueryRedis(
+                            db => db.ListRange(key, start, end, CommandFlags.PreferReplica)
                         );
                         return range.Select(value => (key, value));
                     });
 
-                var batchResults = await Task.WhenAll(batch_tasks);
-                results.AddRange(batchResults.SelectMany(x => x));
+                results.AddRange(batch_results.SelectMany(x => x));
             }
 
             return results;
         }
 
-        public async Task ListPush(string key, string value)
+        public void ListPush(string key, string value)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            await this.QueryRedisAsync((db) => db.ListRightPushAsync(key, value));
+            this.QueryRedis((db) => db.ListRightPush(key, value));
         }
 
-        public async Task ListRemove(string key, string value)
+        public void ListRemove(string key, string value)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            await this.QueryRedisAsync((db) => db.ListRemoveAsync(key, value));
+            this.QueryRedis((db) => db.ListRemove(key, value));
         }
 
-        public async Task Enqueue(string key, byte[] value)
+        public void Enqueue(string key, byte[] value)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            await this.QueryRedisAsync((db) => db.ListRightPushAsync(key, value));
+            this.QueryRedis((db) => db.ListRightPush(key, value));
         }
 
-        public async Task<byte[]?> Dequeue(string key)
+        public byte[]? Dequeue(string key)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            return await this.QueryRedisAsync((db) => db.ListLeftPopAsync(key));
+            return this.QueryRedis((db) => db.ListLeftPop(key));
         }
 
-        public async Task<long> ListLength(string key)
+        public long ListLength(string key)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            return await this.QueryRedisAsync((db) => db.ListLengthAsync(key));
+            return this.QueryRedis((db) => db.ListLength(key));
         }
 
-        public async Task<long> StringIncrement(string key)
+        public long StringIncrement(string key)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            return await this.QueryRedisAsync((db) => db.StringIncrementAsync(key));
+            return this.QueryRedis((db) => db.StringIncrement(key));
         }
 
-        public async Task KeyDelete(string key)
+        public void KeyDelete(string key)
         {
             if (this.conn == null)
             {
                 throw new Exception("RedisHelper.conn is null");
             }
 
-            await this.QueryRedisAsync((db) => db.KeyDeleteAsync(key));
+            this.QueryRedis((db) => db.KeyDelete(key));
         }
 
-        public async Task<T> QueryRedisAsync<T>(Func<IDatabase, Task<T>> action)
+        public T QueryRedis<T>(Func<IDatabase, T> action)
         {
             try
             {
                 var database = this.conn.GetDatabase();
-                return await action(database);
+                return action(database);
             }
             catch (Exception ex)
             {

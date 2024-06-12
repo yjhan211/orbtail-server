@@ -9,12 +9,14 @@ namespace user_server
         static string server_type = "user_server";
 
 #pragma warning disable CS8618
+#pragma warning disable CS0649
         public static NetworkService network_service;
         public static ConcurrentQueue<GameUser>? leave_user_queue;
         public static int game_server_num;
         public static string[] redis_endpoints;
         public static string nats_endpoint;
 #pragma warning restore
+        public static CancellationTokenSource cts;
 
         static void Main()
         {
@@ -51,8 +53,6 @@ namespace user_server
             network_service = new();
             leave_user_queue = new();
 
-            Task.Run(ProcessLeaveUser);
-
             network_service.Initialize();
             network_service.session_created_callback += (UserToken token) =>
             {
@@ -68,24 +68,61 @@ namespace user_server
 
             network_service.Listen(IPAddress.Any, Config.USER_SERVER_PORT);
 
+            cts = new();
+            var leave_user_thread = Task.Run(LeaveUser, cts.Token);
+
             LogManager.WriteInfoLog($"user server start. max_connection: {Config.MAX_CONNECTION}");
         }
 
-        public static async Task ProcessLeaveUser()
-        {
-            while (true)
-            {
-                while (leave_user_queue!.TryDequeue(out GameUser? user))
-                {
-                    if (user == null)
-                    {
-                        continue;
-                    }
+        static ManualResetEventSlim leave_event = new();
+        static Timer? leave_user_timer;
 
-                    LogManager.WriteInfoLog($"client disconnect. player_id: {user.player_id}");
-                    await user.Release();
+        public static void LeaveUser()
+        {
+            leave_user_timer = new System.Threading.Timer(
+                ProcessLeaveUser,
+                null,
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(10)
+            );
+
+            while (!cts.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    leave_event.Wait(cts.Token);
+                    leave_event.Reset();
                 }
-                await Task.Delay(10);
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception e)
+                {
+                    LogManager.WriteErrorLog(e);
+                }
+            }
+
+            leave_user_timer.Dispose();
+        }
+
+        static void ProcessLeaveUser(object? state)
+        {
+            try
+            {
+                if (leave_user_queue!.TryDequeue(out GameUser? user))
+                {
+                    LogManager.WriteInfoLog($"client disconnect. player_id: {user.player_id}");
+                    user.Release();
+                }
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                leave_event.Set();
             }
         }
     }

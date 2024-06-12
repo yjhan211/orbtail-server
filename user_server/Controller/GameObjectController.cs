@@ -17,6 +17,7 @@ namespace user_server
         Cell last_cell;
         Task move_object_task;
         CancellationTokenSource? move_finish_cts;
+        Timer? move_finish_timer;
 
         public GameObjectController(GameUser user, GameObjectInfo object_info)
         {
@@ -110,10 +111,10 @@ namespace user_server
 
         // 이 함수가 호출되는 경우: G_TO_U_SPAWN_LIST의 object_key_list에는 있으나 클라에는 GameObjectInfo가 없을 때
         // 어떤 경우에 생기는가: 이미 스폰되어 있는 오브젝트를 만났을 때
-        public async Task GetObjectInfo(GameUser _, C_TO_U_OBJECT_INFO body)
+        public void GetObjectInfo(GameUser _, C_TO_U_OBJECT_INFO body)
         {
             RedisValue[] keys = body.object_key_list.ConvertAll(x => (RedisValue)x).ToArray();
-            var object_info_list = await GameObjectInfoController.LoadAll(user.cache_helper, keys);
+            var object_info_list = GameObjectInfoController.LoadAll(user.cache_helper, keys);
             foreach (var object_info in object_info_list)
             {
                 this.move_object_queue.Enqueue(object_info);
@@ -173,7 +174,7 @@ namespace user_server
         }
 
         // 클라의 이동 요청
-        public async Task RequestMove(GameUser _, C_TO_U_MOVE body)
+        public void RequestMove(GameUser _, C_TO_U_MOVE body)
         {
             try
             {
@@ -227,7 +228,7 @@ namespace user_server
                     throw new Exception($"not found server id from manage part");
                 }
 
-                PlayerInfo? player_info = await PlayerInfoController.Load(
+                PlayerInfo? player_info = PlayerInfoController.Load(
                     user.cache_helper,
                     user.player_id
                 );
@@ -244,7 +245,7 @@ namespace user_server
                     next_target_cell = this.object_info.target_cell;
                 }
 
-                await Move(next_target_cell, body.direction, player_info);
+                Move(next_target_cell, body.direction, player_info);
 
                 var error_code = target_cell_update
                     ? ErrorCode.SUCCESS
@@ -299,7 +300,7 @@ namespace user_server
         }
 
         // 공통맵에서만 쓰고 있어서 일단 냅둠
-        public async Task SetFlip(DirectionType direction)
+        public void SetFlip(DirectionType direction)
         {
             if (direction == DirectionType.NONE)
             {
@@ -307,7 +308,7 @@ namespace user_server
             }
 
             this.object_info.SetFlip(direction);
-            await GameObjectInfoController.Save(user.cache_helper, this.object_info);
+            GameObjectInfoController.Save(user.cache_helper, this.object_info);
 
             var current_position_key = MapHelper.GetPositionKey(
                 this.object_info.map_id,
@@ -335,7 +336,7 @@ namespace user_server
         }
 
         // 이동
-        public async Task Move(
+        public void Move(
             Cell next_target_cell,
             DirectionType direction,
             PlayerInfo? player_info = null,
@@ -400,7 +401,7 @@ namespace user_server
                 this.object_info.move_timestamp = DateTime.UtcNow;
             }
 
-            await GameObjectInfoController.Save(user.cache_helper, this.object_info);
+            GameObjectInfoController.Save(user.cache_helper, this.object_info);
 
             // 과거 담당 서버에는 영역을 떠났다고 전송
             if (last_manage_server != current_manage_server)
@@ -481,35 +482,45 @@ namespace user_server
             if (direction != DirectionType.NONE)
             {
                 this.move_finish_cts = new();
-                _ = Task.Run(() => MoveFinish(move_finish_cts.Token));
+                this.move_finish_timer = new(
+                    _ => MoveFinish(move_finish_cts.Token),
+                    null,
+                    TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME * 2),
+                    Timeout.InfiniteTimeSpan
+                );
             }
         }
 
-        async Task MoveFinish(CancellationToken ct)
+        void MoveFinish(CancellationToken ct)
         {
-            var delayTask = Task.Delay(TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME * 2), ct);
-
-            while (!ct.IsCancellationRequested && !delayTask.IsCompleted)
+            try
             {
-                await Task.Yield();
-            }
+                if (ct.IsCancellationRequested)
+                {
+                    return;
+                }
 
-            if (ct.IsCancellationRequested)
+                if (this.object_info == null)
+                {
+                    return;
+                }
+
+                if (this.object_info.current_cell.Equals(this.object_info.target_cell))
+                {
+                    return;
+                }
+
+                Move(this.object_info.target_cell, DirectionType.NONE);
+            }
+            catch (Exception ex)
             {
-                return;
+                // 예외 처리 로직 추가
+                LogManager.WriteErrorLog(ex);
             }
-
-            if (this.object_info == null)
+            finally
             {
-                return;
+                this.move_finish_timer?.Dispose();
             }
-
-            if (this.object_info.current_cell.Equals(this.object_info.target_cell))
-            {
-                return;
-            }
-
-            _ = Move(this.object_info.target_cell, DirectionType.NONE);
         }
 
         public void RequestCommmonMapSpawnList(bool all_bound)
@@ -547,10 +558,10 @@ namespace user_server
             }
         }
 
-        public async Task ChangeMap(MapID map_id, long map_sub_id, Cell spawn_cell, bool is_flip)
+        public void ChangeMap(MapID map_id, long map_sub_id, Cell spawn_cell, bool is_flip)
         {
             // 기존 맵에 삭제 요청
-            await PublishDestroy();
+            PublishDestroy();
 
             this.object_info.map_id = map_id;
             this.object_info.map_sub_id = map_sub_id;
@@ -605,9 +616,9 @@ namespace user_server
         }
 
         // 접속 종료 시 자신의 object_info 삭제 요청 (PublishLeave랑 다른 점 - 후에 Broadcast 처리가 됨)
-        public async Task PublishDestroy()
+        public void PublishDestroy()
         {
-            await GameObjectInfoController.Save(user.cache_helper, this.object_info);
+            GameObjectInfoController.Save(user.cache_helper, this.object_info);
 
             string? key;
             int manage_server;

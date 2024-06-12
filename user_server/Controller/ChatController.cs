@@ -24,31 +24,27 @@ namespace user_server
             return $"chat_{chat_type}_history";
         }
 
-        public static async Task AddChatHistory(
-            ChatType chat_type,
-            string sender_name,
-            string message
-        )
+        public static void AddChatHistory(ChatType chat_type, string sender_name, string message)
         {
             var key = GetChatHistoryKey(ChatType.ALL);
-            var history_length = await cache_helper!.ListLength(key);
+            var history_length = cache_helper!.ListLength(key);
 
             while (history_length >= HISTORY_NUM)
             {
-                await cache_helper.Dequeue(key);
+                cache_helper.Dequeue(key);
                 history_length--;
             }
 
-            await cache_helper.Enqueue(
+            cache_helper.Enqueue(
                 key,
                 MessagePackSerializer.Serialize((chat_type, sender_name, message))
             );
         }
 
-        public static async Task<List<Packet>> GetChatHistory(GameUser user, ChatType chat_type)
+        public static List<Packet> GetChatHistory(GameUser user, ChatType chat_type)
         {
             var key = GetChatHistoryKey(chat_type);
-            var redis_values = await user.cache_helper.ListRange(key);
+            var redis_values = user.cache_helper.ListRange(key);
             var result = new List<Packet>();
 
             foreach (var redis_value in redis_values)
@@ -83,7 +79,7 @@ namespace user_server
             return result;
         }
 
-        public static async Task SendChat(GameUser user, C_TO_U_CHAT_MSG body)
+        public static void SendChat(GameUser user, C_TO_U_CHAT_MSG body)
         {
             if (body.chat_message.Length >= Config.MAX_CHAT_LENGTH)
             {
@@ -93,7 +89,7 @@ namespace user_server
             var player_name = "";
             if (!user_name_map.TryGet(user.player_id, out player_name))
             {
-                var player_info = await PlayerInfoController.Load(cache_helper!, user.player_id);
+                var player_info = PlayerInfoController.Load(cache_helper!, user.player_id);
                 if (player_info == null)
                 {
                     return;
@@ -112,7 +108,7 @@ namespace user_server
             switch (body.chat_type)
             {
                 case ChatType.ALL:
-                    await AddChatHistory(body.chat_type, player_name, body.chat_message);
+                    AddChatHistory(body.chat_type, player_name, body.chat_message);
                     user.nats_client.Publish("all", packet.ToBytes());
                     break;
 

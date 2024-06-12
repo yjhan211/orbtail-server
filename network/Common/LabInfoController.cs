@@ -11,19 +11,19 @@ namespace network
             return await redlock.CreateLockAsync(LabInfo.GetLockKey(lab_id), Config.LOCK_TTL);
         }
 
-        public static async Task Save(CacheHelper cache_helper, LabInfo lab_info)
+        public static void Save(CacheHelper cache_helper, LabInfo lab_info)
         {
-            await InventoryInfoController.Save(cache_helper, lab_info.inventory_info);
-            await cache_helper.HashSet(
+            InventoryInfoController.Save(cache_helper, lab_info.inventory_info);
+            cache_helper.HashSet(
                 LabInfo.HASH_KEY,
                 lab_info.lab_id,
                 MessagePackSerializer.Serialize(lab_info)
             );
         }
 
-        public static async Task<LabInfo?> Load(CacheHelper cache_helper, long lab_id)
+        public static LabInfo? Load(CacheHelper cache_helper, long lab_id)
         {
-            var serialized_data = await cache_helper.HashGet(LabInfo.HASH_KEY, lab_id);
+            var serialized_data = cache_helper.HashGet(LabInfo.HASH_KEY, lab_id);
 
             if (serialized_data.IsNull)
             {
@@ -37,15 +37,15 @@ namespace network
             }
 
             lab_info.inventory_info =
-                await InventoryInfoController.Load(cache_helper, InventoryOwnerType.LAB, lab_id)
+                InventoryInfoController.Load(cache_helper, InventoryOwnerType.LAB, lab_id)
                 ?? new InventoryInfo(InventoryOwnerType.LAB, lab_id);
 
             return lab_info;
         }
 
-        public static async Task Delete(CacheHelper cache_helper, long lab_id)
+        public static void Delete(CacheHelper cache_helper, long lab_id)
         {
-            await cache_helper.HashDelete(LabInfo.HASH_KEY, lab_id);
+            cache_helper.HashDelete(LabInfo.HASH_KEY, lab_id);
         }
     }
 }

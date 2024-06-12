@@ -5,28 +5,28 @@ namespace user_server
 
     public static class InventoryController
     {
-        public static async Task<ItemInfo> CreateItem(GameUser user, int item_id, int count)
+        public static ItemInfo CreateItem(GameUser user, int item_id, int count)
         {
             // TODO RDB PK로 교체 예정
-            long item_uid = await user.cache_helper.StringIncrement("temp_item_uid");
+            long item_uid = user.cache_helper.StringIncrement("temp_item_uid");
             return new ItemInfo(item_uid, item_id, count);
         }
 
-        public static async Task AddLabItem(GameUser user, C_TO_U_LAB_INVENTORY_ADD_ITEM body)
+        public static void AddLabItem(GameUser user, C_TO_U_LAB_INVENTORY_ADD_ITEM body)
         {
             PlayerInfo? player_info;
             LabInfo? lab_info;
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (PlayerInfoController.Lock(user.redlock, user.player_id))
             {
-                player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+                player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
                 if (player_info == null)
                 {
                     throw new Exception("player_info not exists");
                 }
 
-                using (await LabInfoController.Lock(user.redlock, player_info.lab_id))
+                using (LabInfoController.Lock(user.redlock, player_info.lab_id))
                 {
-                    lab_info = await LabInfoController.Load(user.cache_helper, player_info.lab_id);
+                    lab_info = LabInfoController.Load(user.cache_helper, player_info.lab_id);
                     if (lab_info == null)
                     {
                         throw new Exception("lab_info not exists");
@@ -68,16 +68,16 @@ namespace user_server
                     }
                     else
                     {
-                        var add_item = await CreateItem(user, target_item.item_id, 1);
+                        var add_item = CreateItem(user, target_item.item_id, 1);
                         lab_info.inventory_info.item_dict[add_item.item_uid] = add_item;
                     }
 
-                    await LabInfoController.Save(user.cache_helper, lab_info);
-                    await PlayerInfoController.Save(user.cache_helper, player_info);
+                    LabInfoController.Save(user.cache_helper, lab_info);
+                    PlayerInfoController.Save(user.cache_helper, player_info);
                 }
             }
 
-            await GetCurrentItemList(user);
+            GetCurrentItemList(user);
 
             Packet packet = PacketMaker.U_TO_U_LAB_INVENTORY(lab_info.inventory_info.item_dict);
             foreach (var lab_member in lab_info.member_dict)
@@ -91,21 +91,21 @@ namespace user_server
             Packet.Destroy(packet);
         }
 
-        public static async Task TakeLabItem(GameUser user, C_TO_U_LAB_INVENTORY_TAKE_ITEM body)
+        public static void TakeLabItem(GameUser user, C_TO_U_LAB_INVENTORY_TAKE_ITEM body)
         {
             PlayerInfo? player_info;
             LabInfo? lab_info;
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (PlayerInfoController.Lock(user.redlock, user.player_id))
             {
-                player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+                player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
                 if (player_info == null)
                 {
                     throw new Exception("player_info not exists");
                 }
 
-                using (await LabInfoController.Lock(user.redlock, player_info.lab_id))
+                using (LabInfoController.Lock(user.redlock, player_info.lab_id))
                 {
-                    lab_info = await LabInfoController.Load(user.cache_helper, player_info.lab_id);
+                    lab_info = LabInfoController.Load(user.cache_helper, player_info.lab_id);
                     if (lab_info == null)
                     {
                         throw new Exception("lab_info not exists");
@@ -148,16 +148,16 @@ namespace user_server
                     }
                     else
                     {
-                        var add_item = await CreateItem(user, target_item.item_id, 1);
+                        var add_item = CreateItem(user, target_item.item_id, 1);
                         player_info.inventory_info.item_dict[add_item.item_uid] = add_item;
                     }
 
-                    await InventoryInfoController.Save(user.cache_helper, lab_info.inventory_info);
-                    await PlayerInfoController.Save(user.cache_helper, player_info);
+                    InventoryInfoController.Save(user.cache_helper, lab_info.inventory_info);
+                    PlayerInfoController.Save(user.cache_helper, player_info);
                 }
             }
 
-            await GetCurrentItemList(user);
+            GetCurrentItemList(user);
 
             Packet packet = PacketMaker.U_TO_U_LAB_INVENTORY(lab_info.inventory_info.item_dict);
             foreach (var lab_member in lab_info.member_dict)
@@ -170,22 +170,22 @@ namespace user_server
             Packet.Destroy(packet);
         }
 
-        public static async Task GetLabInventory(GameUser user)
+        public static void GetLabInventory(GameUser user)
         {
             PlayerInfo? player_info;
             LabInfo? lab_info;
             Dictionary<long, ItemInfo> item_dict = new();
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (PlayerInfoController.Lock(user.redlock, user.player_id))
             {
-                player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+                player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
                 if (player_info == null)
                 {
                     throw new Exception("player_info not exists");
                 }
 
-                using (await LabInfoController.Lock(user.redlock, player_info.lab_id))
+                using (LabInfoController.Lock(user.redlock, player_info.lab_id))
                 {
-                    lab_info = await LabInfoController.Load(user.cache_helper, player_info.lab_id);
+                    lab_info = LabInfoController.Load(user.cache_helper, player_info.lab_id);
                     if (lab_info == null)
                     {
                         throw new Exception("lab_info not exists");
@@ -198,39 +198,36 @@ namespace user_server
             user.SendLabItemList(item_dict);
         }
 
-        public static async Task RequestWearItem(GameUser user, C_TO_U_WEAR_ITEM body)
+        public static void RequestWearItem(GameUser user, C_TO_U_WEAR_ITEM body)
         {
             if (user.in_action)
             {
                 throw new Exception("player in action");
             }
 
-            PlayerInfo? player_info = await PlayerInfoController.Load(
-                user.cache_helper,
-                user.player_id
-            );
+            PlayerInfo? player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
 
             if (player_info == null)
             {
                 throw new Exception("cannot found player info");
             }
 
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (PlayerInfoController.Lock(user.redlock, user.player_id))
             {
                 player_info.WearItem(body.item_uid);
-                await PlayerInfoController.Save(user.cache_helper, player_info);
+                PlayerInfoController.Save(user.cache_helper, player_info);
             }
 
             Packet packet = PacketMaker.U_TO_C_WEAR_ITEM(player_info);
             user.SendToClient(packet);
-            await GetCurrentItemList(user);
+            GetCurrentItemList(user);
 
             user.BroadcastUpdatePlayerInfo(player_info);
         }
 
-        public static async Task GetCurrentItemList(GameUser user)
+        public static void GetCurrentItemList(GameUser user)
         {
-            var player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+            var player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
             if (player_info == null)
             {
                 throw new Exception("player_info not exists");
@@ -301,25 +298,25 @@ namespace user_server
             }
         }
 
-        public static async Task RequestUseItem(GameUser user, C_TO_U_USE_ITEM body)
+        public static void RequestUseItem(GameUser user, C_TO_U_USE_ITEM body)
         {
             PlayerInfo? player_info;
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (PlayerInfoController.Lock(user.redlock, user.player_id))
             {
-                player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+                player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
                 if (player_info == null)
                 {
                     throw new Exception("cannot found player info");
                 }
 
                 player_info.UseItem(body.item_uid);
-                await PlayerInfoController.Save(user.cache_helper, player_info);
+                PlayerInfoController.Save(user.cache_helper, player_info);
             }
 
             Packet packet = PacketMaker.U_TO_C_USE_ITEM(player_info.job_info);
             user.SendToClient(packet);
 
-            await GetCurrentItemList(user);
+            GetCurrentItemList(user);
         }
     }
 }

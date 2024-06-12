@@ -6,22 +6,22 @@ namespace game_server
 
     public static class GameObjectInfoController
     {
-        public static async Task Save(CacheHelper cache_helper, GameObjectInfo object_info)
+        public static void Save(CacheHelper cache_helper, GameObjectInfo object_info)
         {
-            await cache_helper.HashSet(
+            cache_helper.HashSet(
                 GameObjectInfo.HASH_KEY,
                 object_info.GetHashField(),
                 MessagePackSerializer.Serialize(object_info)
             );
         }
 
-        public static async Task<GameObjectInfo?> Load(
+        public static GameObjectInfo? Load(
             CacheHelper cache_helper,
             ObjectType type,
             long object_id
         )
         {
-            var serialized_data = await cache_helper.HashGet(
+            var serialized_data = cache_helper.HashGet(
                 GameObjectInfo.HASH_KEY,
                 GameObjectInfo.MakeHashField(type, object_id)
             );
@@ -35,12 +35,12 @@ namespace game_server
             return object_info;
         }
 
-        public static async Task<List<GameObjectInfo>> LoadAll(
+        public static List<GameObjectInfo> LoadAll(
             CacheHelper cache_helper,
             RedisValue[] object_keys
         )
         {
-            var hash_entries = await cache_helper.HashGet(GameObjectInfo.HASH_KEY, object_keys);
+            var hash_entries = cache_helper.HashGet(GameObjectInfo.HASH_KEY, object_keys);
 
             if (hash_entries == null)
             {
@@ -70,19 +70,19 @@ namespace game_server
             return result;
         }
 
-        public static async Task Delete(CacheHelper cache_helper, GameObjectInfo object_info)
+        public static void Delete(CacheHelper cache_helper, GameObjectInfo object_info)
         {
-            await cache_helper.HashDelete(GameObjectInfo.HASH_KEY, object_info.GetHashField());
+            cache_helper.HashDelete(GameObjectInfo.HASH_KEY, object_info.GetHashField());
         }
 
-        public static async Task Delete(CacheHelper cache_helper, string hash_field)
+        public static void Delete(CacheHelper cache_helper, string hash_field)
         {
-            await cache_helper.HashDelete(GameObjectInfo.HASH_KEY, hash_field);
+            cache_helper.HashDelete(GameObjectInfo.HASH_KEY, hash_field);
         }
 
-        public static async Task<bool> Exist(CacheHelper cache_helper, string hash_field)
+        public static bool Exist(CacheHelper cache_helper, string hash_field)
         {
-            return await cache_helper.HashExists(GameObjectInfo.HASH_KEY, hash_field);
+            return cache_helper.HashExists(GameObjectInfo.HASH_KEY, hash_field);
         }
     }
 }

@@ -9,7 +9,8 @@ namespace game_server
     public class GameServer
     {
         CancellationTokenSource cts;
-        Task? logic_thread;
+
+        // Task? logic_thread;
         List<MapController> map_controller_list;
         InstanceController instance_controller;
         ConnectionMultiplexer redis_connection;
@@ -28,41 +29,39 @@ namespace game_server
             this.cache_helper = new(this.redis_connection);
         }
 
-        public void Start()
+        public async Task Start()
         {
             foreach (var map_controller in this.map_controller_list)
             {
-                map_controller.Initialize(new(Program.nats_endpoint));
+                await map_controller.Initialize(new(Program.nats_endpoint));
             }
 
             this.instance_controller.Initialize(new(Program.nats_endpoint));
-            this.logic_thread = Task.Run(GameLoop, this.cts.Token);
+            var logic_thread = Task.Run(GameLoop, this.cts.Token);
         }
 
-        async Task GameLoop()
+        ManualResetEventSlim message_event = new();
+        Timer? message_timer;
+
+        void GameLoop()
         {
+            this.message_timer = new Timer(
+                ProcessMessages,
+                null,
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(10)
+            );
+
             while (!this.cts.Token.IsCancellationRequested)
             {
                 try
                 {
-                    while (true)
-                    {
-                        byte[]? message = await cache_helper.Dequeue("game_server_queue");
-                        if (message == null)
-                        {
-                            await Task.Delay(10);
-                            continue;
-                        }
-
-                        Packet? packet = new(message);
-                        if (packet == null)
-                        {
-                            continue;
-                        }
-
-                        await ProcessReceiveAsync(cache_helper, packet);
-                        Packet.Destroy(packet);
-                    }
+                    this.message_event.Wait(this.cts.Token);
+                    this.message_event.Reset();
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
                 }
                 catch (Exception e)
                 {
@@ -70,13 +69,31 @@ namespace game_server
                 }
             }
 
+            this.message_timer.Dispose();
+        }
+
+        async void ProcessMessages(object? state)
+        {
             try
             {
-                this.logic_thread!.Wait();
+                byte[]? message = cache_helper.Dequeue("game_server_queue");
+                if (message != null)
+                {
+                    Packet? packet = new(message);
+                    if (packet != null)
+                    {
+                        await ProcessReceiveAsync(cache_helper, packet).ConfigureAwait(false);
+                        Packet.Destroy(packet);
+                    }
+                }
             }
-            catch (AggregateException e)
+            catch (Exception e)
             {
                 LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                this.message_event.Set();
             }
         }
 
@@ -111,10 +128,7 @@ namespace game_server
 
             using (var player_lock = await PlayerInfoController.Lock(redlock, player_id))
             {
-                PlayerInfo? player_info = await PlayerInfoController.Load(
-                    cache_helper,
-                    msg.player_id
-                );
+                PlayerInfo? player_info = PlayerInfoController.Load(cache_helper, msg.player_id);
 
                 if (player_info == null)
                 {

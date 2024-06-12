@@ -15,23 +15,20 @@ namespace network
             );
         }
 
-        public static async Task Save(CacheHelper cache_helper, JobResourceInfo job_resource_info)
+        public static void Save(CacheHelper cache_helper, JobResourceInfo job_resource_info)
         {
-            await GameObjectInfoController.Save(cache_helper, job_resource_info.object_info);
+            GameObjectInfoController.Save(cache_helper, job_resource_info.object_info);
 
-            await cache_helper.HashSet(
+            cache_helper.HashSet(
                 JobResourceInfo.HASH_KEY,
                 job_resource_info.resource_uid,
                 MessagePackSerializer.Serialize(job_resource_info)
             );
         }
 
-        public static async Task<JobResourceInfo?> Load(CacheHelper cache_helper, long resource_uid)
+        public static JobResourceInfo? Load(CacheHelper cache_helper, long resource_uid)
         {
-            var serialized_data = await cache_helper.HashGet(
-                JobResourceInfo.HASH_KEY,
-                resource_uid
-            );
+            var serialized_data = cache_helper.HashGet(JobResourceInfo.HASH_KEY, resource_uid);
 
             if (serialized_data.IsNull)
             {
@@ -47,7 +44,7 @@ namespace network
                 return null;
             }
 
-            var object_info = await GameObjectInfoController.Load(
+            var object_info = GameObjectInfoController.Load(
                 cache_helper,
                 ObjectType.JOBRESOURCE,
                 resource_uid
@@ -64,9 +61,9 @@ namespace network
             return resource_info;
         }
 
-        public static async Task Delete(CacheHelper cache_helper, long resource_uid)
+        public static void Delete(CacheHelper cache_helper, long resource_uid)
         {
-            await cache_helper.HashDelete(JobResourceInfo.HASH_KEY, resource_uid);
+            cache_helper.HashDelete(JobResourceInfo.HASH_KEY, resource_uid);
         }
     }
 }

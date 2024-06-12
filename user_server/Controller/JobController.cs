@@ -6,9 +6,9 @@ namespace user_server
 
     public static class JobController
     {
-        public static async Task UpgradeJob(GameUser user, C_TO_U_UPGRADE_JOB body)
+        public static void UpgradeJob(GameUser user, C_TO_U_UPGRADE_JOB body)
         {
-            var player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+            var player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
             if (player_info == null)
             {
                 throw new Exception("player_info is not exists");
@@ -34,7 +34,7 @@ namespace user_server
             }
 
             JobGrade target_grade = job_stat.job_grade + 1;
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (PlayerInfoController.Lock(user.redlock, user.player_id))
             {
                 List<ItemInfo> gift_item_list = new();
 
@@ -45,7 +45,7 @@ namespace user_server
                         job_stat.exp = 0;
 
                         // 연구원의 제복
-                        var gift_geo = await InventoryController.CreateItem(user, 103000002, 1);
+                        var gift_geo = InventoryController.CreateItem(user, 103000002, 1);
                         gift_item_list.Add(gift_geo);
                         break;
 
@@ -54,7 +54,7 @@ namespace user_server
                 }
 
                 player_info.inventory_info.AddItem(gift_item_list);
-                await PlayerInfoController.Save(user.cache_helper, player_info);
+                PlayerInfoController.Save(user.cache_helper, player_info);
             }
 
             user.SendToClient(
@@ -65,7 +65,7 @@ namespace user_server
                 )
             );
 
-            await InventoryController.GetCurrentItemList(user);
+            InventoryController.GetCurrentItemList(user);
         }
 
         public static List<int> GetSkillList(PlayerInfo player_info)
@@ -85,15 +85,15 @@ namespace user_server
             return result;
         }
 
-        public static async Task UseJobSkill(GameUser user, C_TO_U_USE_SKILL body)
+        public static void UseJobSkill(GameUser user, C_TO_U_USE_SKILL body)
         {
             PlayerInfo? player_info;
             JobResourceInfo? job_resource_info;
             var direction = DirectionType.NONE;
 
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (PlayerInfoController.Lock(user.redlock, user.player_id))
             {
-                player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+                player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
                 if (player_info == null)
                 {
                     Packet error_packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
@@ -115,9 +115,9 @@ namespace user_server
 
                 var skill_detail = GameDesignData.GetSkillDetail(body.skill_id);
 
-                using (await JobResourceController.Lock(user.redlock, body.resource_uid))
+                using (JobResourceController.Lock(user.redlock, body.resource_uid))
                 {
-                    job_resource_info = await JobResourceController.Load(
+                    job_resource_info = JobResourceController.Load(
                         user.cache_helper,
                         body.resource_uid
                     );
@@ -194,17 +194,17 @@ namespace user_server
                     job_resource_info.end_timestamp = DateTime.UtcNow.AddSeconds(10); // TODO 임시 하드코딩
 
                     user.current_progress_job = (body.skill_id, job_resource_info);
-                    await JobResourceController.Save(user.cache_helper, job_resource_info);
+                    JobResourceController.Save(user.cache_helper, job_resource_info);
                 }
 
                 user.in_action = true;
                 player_info.state = skill_detail.Item4;
                 player_info.job_info.hp -= 1;
 
-                await PlayerInfoController.Save(user.cache_helper, player_info);
+                PlayerInfoController.Save(user.cache_helper, player_info);
             }
 
-            await user.object_controller!.SetFlip(direction);
+            user.object_controller!.SetFlip(direction);
 
             Packet packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.SUCCESS, player_info.job_info);
 
@@ -213,7 +213,7 @@ namespace user_server
             user.BroadcastUpdateJobResourceInfo(job_resource_info);
         }
 
-        public static async Task JobSkillEnd(
+        public static void JobSkillEnd(
             GameUser user,
             int skill_id,
             JobResourceInfo job_resource_info
@@ -229,14 +229,11 @@ namespace user_server
             );
 
             Random random = new();
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (PlayerInfoController.Lock(user.redlock, user.player_id))
             {
                 user.current_progress_job = null;
 
-                var player_info = await PlayerInfoController.Load(
-                    user.cache_helper,
-                    user.player_id
-                );
+                var player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
 
                 if (player_info == null)
                 {
@@ -258,11 +255,11 @@ namespace user_server
                             random.Next(0, job_resource_detail.Item6.Count)
                         ];
                         // 아이템 주기
-                        item_info = await InventoryController.CreateItem(user, reward_item, 1);
+                        item_info = InventoryController.CreateItem(user, reward_item, 1);
                         player_info.inventory_info.AddItem(item_info);
 
                         // 자원 지우고
-                        await JobResourceController.Delete(
+                        JobResourceController.Delete(
                             user.cache_helper,
                             job_resource_info.resource_uid
                         );
@@ -283,7 +280,7 @@ namespace user_server
                             ];
                         }
                         job_resource_info.player_id = 0;
-                        await JobResourceController.Save(user.cache_helper, job_resource_info);
+                        JobResourceController.Save(user.cache_helper, job_resource_info);
                         user.BroadcastUpdateJobResourceInfo(job_resource_info);
                         break;
                 }
@@ -305,7 +302,7 @@ namespace user_server
                 player_info.state = PlayerState.NONE;
 
                 // 저장
-                await PlayerInfoController.Save(user.cache_helper, player_info);
+                PlayerInfoController.Save(user.cache_helper, player_info);
                 user.in_action = false;
 
                 // 완료 패킷 전송
@@ -320,18 +317,18 @@ namespace user_server
 
                 if (item_info != null)
                 {
-                    await InventoryController.GetCurrentItemList(user);
+                    InventoryController.GetCurrentItemList(user);
                 }
             }
         }
 
-        public static async Task Encamp(GameUser user, C_TO_U_ENCAMP body)
+        public static void Encamp(GameUser user, C_TO_U_ENCAMP body)
         {
             PlayerInfo? player_info;
             CampInfo? camp_info;
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (PlayerInfoController.Lock(user.redlock, user.player_id))
             {
-                player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+                player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
                 if (player_info == null)
                 {
                     throw new Exception("player_info not exists");
@@ -352,7 +349,7 @@ namespace user_server
                     throw new Exception("not found item info");
                 }
 
-                if (await CampInfoController.Load(user.cache_helper, user.player_id) != null)
+                if (CampInfoController.Load(user.cache_helper, user.player_id) != null)
                 {
                     throw new Exception("already encamp");
                 }
@@ -369,8 +366,8 @@ namespace user_server
                 };
 
                 player_info.state = PlayerState.CAMIPING_1;
-                await CampInfoController.Save(user.cache_helper, camp_info);
-                await PlayerInfoController.Save(user.cache_helper, player_info);
+                CampInfoController.Save(user.cache_helper, camp_info);
+                PlayerInfoController.Save(user.cache_helper, player_info);
 
                 user.current_camp_info = camp_info;
             }
@@ -401,27 +398,27 @@ namespace user_server
             user.BroadcastUpdatePlayerInfo(player_info);
         }
 
-        public static async Task Decamp(GameUser user)
+        public static void Decamp(GameUser user)
         {
             PlayerInfo? player_info;
             CampInfo? camp_info;
-            using (await PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (PlayerInfoController.Lock(user.redlock, user.player_id))
             {
-                player_info = await PlayerInfoController.Load(user.cache_helper, user.player_id);
+                player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
                 if (player_info == null)
                 {
                     return;
                 }
 
-                camp_info = await CampInfoController.Load(user.cache_helper, user.player_id);
+                camp_info = CampInfoController.Load(user.cache_helper, user.player_id);
                 if (camp_info == null)
                 {
                     return;
                 }
 
                 player_info.state = PlayerState.NONE;
-                await CampInfoController.Delete(user.cache_helper, camp_info.player_id);
-                await PlayerInfoController.Save(user.cache_helper, player_info);
+                CampInfoController.Delete(user.cache_helper, camp_info.player_id);
+                PlayerInfoController.Save(user.cache_helper, player_info);
 
                 user.current_camp_info = null;
             }

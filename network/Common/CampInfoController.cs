@@ -7,20 +7,20 @@ namespace network
 
     public static class CampInfoController
     {
-        public static async Task Save(CacheHelper cache_helper, CampInfo camp_info)
+        public static void Save(CacheHelper cache_helper, CampInfo camp_info)
         {
-            await GameObjectInfoController.Save(cache_helper, camp_info.object_info);
+            GameObjectInfoController.Save(cache_helper, camp_info.object_info);
 
-            await cache_helper.HashSet(
+            cache_helper.HashSet(
                 CampInfo.HASH_KEY,
                 camp_info.player_id,
                 MessagePackSerializer.Serialize(camp_info)
             );
         }
 
-        public static async Task<CampInfo?> Load(CacheHelper cache_helper, long player_id)
+        public static CampInfo? Load(CacheHelper cache_helper, long player_id)
         {
-            var serialized_data = await cache_helper.HashGet(CampInfo.HASH_KEY, player_id);
+            var serialized_data = cache_helper.HashGet(CampInfo.HASH_KEY, player_id);
 
             if (serialized_data.IsNull)
             {
@@ -34,7 +34,7 @@ namespace network
                 return null;
             }
 
-            var object_info = await GameObjectInfoController.Load(
+            var object_info = GameObjectInfoController.Load(
                 cache_helper,
                 ObjectType.CAMP,
                 player_id
@@ -50,9 +50,9 @@ namespace network
             return camp_info;
         }
 
-        public static async Task Delete(CacheHelper cache_helper, long player_id)
+        public static void Delete(CacheHelper cache_helper, long player_id)
         {
-            await cache_helper.HashDelete(CampInfo.HASH_KEY, player_id);
+            cache_helper.HashDelete(CampInfo.HASH_KEY, player_id);
         }
     }
 }

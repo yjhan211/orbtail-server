@@ -1,7 +1,6 @@
 namespace game_server
 {
     using System.Collections.Concurrent;
-    using System.Diagnostics;
     using MessagePack;
     using network;
     using StackExchange.Redis;
@@ -31,16 +30,16 @@ namespace game_server
             this.cts = new();
         }
 
-        public async void Initialize(NatsClient nats_client)
+        public async Task Initialize(NatsClient nats_client)
         {
             this.redis_connection = RedisConnectionPool.GetConnection();
             this.cache_helper = new CacheHelper(redis_connection);
             this.nats_client = nats_client;
 
             // 임시
-            if (Program.server_id == 1)
+            if (Program.server_id != 1)
             {
-                var job_resource_values = await this.cache_helper.HashGetAll("job_resource_info");
+                var job_resource_values = this.cache_helper.HashGetAll("job_resource_info");
                 if (job_resource_values != null)
                 {
                     foreach (HashEntry entry in job_resource_values)
@@ -50,12 +49,14 @@ namespace game_server
                             continue;
                         }
 
-                        await JobResourceController.Delete(this.cache_helper, job_resource_id);
-                        await GameObjectInfoController.Delete(
+                        JobResourceController.Delete(this.cache_helper, job_resource_id);
+                        GameObjectInfoController.Delete(
                             this.cache_helper,
                             GameObjectInfo.MakeHashField(ObjectType.JOBRESOURCE, job_resource_id)
                         );
                     }
+
+                    job_resource_values = null;
                 }
             }
             else
@@ -228,102 +229,112 @@ namespace game_server
 
         object position_lock = new();
 
-        async Task CreateJobResourceTask()
+        private ManualResetEventSlim jobResourceEvent = new ManualResetEventSlim();
+        private Timer? jobResourceTimer;
+
+        void CreateJobResourceTask()
         {
-            Random random = new();
+            jobResourceTimer = new Timer(
+                CreateJobResource,
+                null,
+                TimeSpan.Zero,
+                TimeSpan.FromSeconds(1)
+            );
 
             while (!this.cts.Token.IsCancellationRequested)
             {
                 try
                 {
-                    foreach (var part_resource_info in this.job_resource_dict)
-                    {
-                        // TODO 3 Config로 분리..
-                        if (3 <= part_resource_info.Value.Count)
-                        {
-                            continue;
-                        }
-
-                        // // TODO csv로 정리
-                        // if (50 < random.Next(0, 100))
-                        // {
-                        //     continue;
-                        // }
-
-                        var create_cell = this.manage_cell_list[
-                            random.Next(0, this.manage_cell_list.Count)
-                        ];
-
-                        var create_position_key = MapHelper.GetPositionKey(
-                            this.map_id,
-                            0,
-                            create_cell
-                        );
-
-                        long resource_uid = await this.cache_helper!.StringIncrement(
-                            "temp_job_resource_uid"
-                        );
-
-                        GameObjectInfo object_info =
-                            new()
-                            {
-                                object_type = ObjectType.JOBRESOURCE,
-                                object_id = resource_uid,
-                                current_cell = create_cell,
-                                target_cell = create_cell,
-                                map_id = MapID.FACTORY_1,
-                            };
-
-                        // TODO resource_id 정리, 확률 기반으로 종류 결정
-                        List<int> gen_resource_type_list = new() { 10001, 20001 };
-                        JobResourceInfo job_resource_info =
-                            new(
-                                resource_uid,
-                                gen_resource_type_list[
-                                    random.Next(0, gen_resource_type_list.Count)
-                                ],
-                                object_info
-                            );
-
-                        this.job_resource_dict[part_resource_info.Key].Add(job_resource_info);
-                        this.object_position_dict[create_position_key].Add(
-                            object_info.GetHashField()
-                        );
-
-                        await JobResourceController.Save(this.cache_helper, job_resource_info);
-
-                        // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
-                        var target_server_list = MapHelper.GetBoundServerList(
-                            this.map_id,
-                            Program.game_server_num,
-                            object_info.current_cell
-                        );
-
-                        foreach (var target_server in target_server_list)
-                        {
-                            this.nats_client!.Publish(
-                                MapHelper.GetBrodcastMoveSubject(this.map_id, 0, target_server),
-                                MessagePackSerializer.Serialize((create_position_key, object_info))
-                            );
-                        }
-                    }
-
-                    await Task.Delay(1000);
+                    jobResourceEvent.Wait(this.cts.Token);
+                    jobResourceEvent.Reset();
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
                 }
                 catch (Exception e)
                 {
                     LogManager.WriteErrorLog(e);
-                    break;
                 }
             }
 
+            jobResourceTimer.Dispose();
+        }
+
+        async void CreateJobResource(object? state)
+        {
             try
             {
-                this.create_job_resource_task!.Wait();
+                Random random = new();
+                foreach (var part_resource_info in this.job_resource_dict)
+                {
+                    // TODO 3 Config로 분리..
+                    if (3 <= part_resource_info.Value.Count)
+                    {
+                        continue;
+                    }
+
+                    // // TODO csv로 정리
+                    // if (50 < random.Next(0, 100))
+                    // {
+                    //     continue;
+                    // }
+
+                    var create_cell = this.manage_cell_list[
+                        random.Next(0, this.manage_cell_list.Count)
+                    ];
+
+                    var create_position_key = MapHelper.GetPositionKey(this.map_id, 0, create_cell);
+
+                    long resource_uid = this.cache_helper!.StringIncrement("temp_job_resource_uid");
+
+                    GameObjectInfo object_info =
+                        new()
+                        {
+                            object_type = ObjectType.JOBRESOURCE,
+                            object_id = resource_uid,
+                            current_cell = create_cell,
+                            target_cell = create_cell,
+                            map_id = MapID.FACTORY_1,
+                        };
+
+                    // TODO resource_id 정리, 확률 기반으로 종류 결정
+                    List<int> gen_resource_type_list = new() { 10001, 20001 };
+                    JobResourceInfo job_resource_info =
+                        new(
+                            resource_uid,
+                            gen_resource_type_list[random.Next(0, gen_resource_type_list.Count)],
+                            object_info
+                        );
+
+                    this.job_resource_dict[part_resource_info.Key].Add(job_resource_info);
+                    this.object_position_dict[create_position_key].Add(object_info.GetHashField());
+
+                    JobResourceController.Save(this.cache_helper, job_resource_info);
+
+                    // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
+                    var target_server_list = MapHelper.GetBoundServerList(
+                        this.map_id,
+                        Program.game_server_num,
+                        object_info.current_cell
+                    );
+
+                    foreach (var target_server in target_server_list)
+                    {
+                        this.nats_client!.Publish(
+                            MapHelper.GetBrodcastMoveSubject(this.map_id, 0, target_server),
+                            MessagePackSerializer.Serialize((create_position_key, object_info))
+                        );
+                    }
+                }
             }
-            catch (AggregateException e)
+            catch (Exception e)
             {
                 LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                jobResourceEvent.Set();
             }
         }
 
