@@ -1,19 +1,18 @@
 namespace user_server
 {
-    using game_server;
     using MessagePack;
     using network;
     using StackExchange.Redis;
 
     public static class LabController
     {
-        public static void CreateLab(GameUser user, C_TO_U_CREATE_LAB body)
+        public static async Task CreateLab(GameUser user, C_TO_U_CREATE_LAB body)
         {
             PlayerInfo? player_info;
             LabInfo? lab_info;
-            using (PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (await PlayerInfo.Lock(user.redlock, user.player_id))
             {
-                player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
+                player_info = await PlayerInfo.Load(user.player_id);
                 if (player_info == null)
                 {
                     throw new Exception("player_info not exists");
@@ -34,7 +33,7 @@ namespace user_server
                 }
 
                 // TODO RDB PK로 교체 예정
-                long lab_id = user.cache_helper.StringIncrement("lab_id");
+                long lab_id = await CacheHelper.Instance.StringIncrementAsync("lab_id");
                 lab_info = new(
                     lab_id,
                     player_info.player_id,
@@ -42,22 +41,37 @@ namespace user_server
                     JobType.NONE, // TODO 연구소 개선
                     body.lab_name
                 );
-                LabInfoController.Save(user.cache_helper, lab_info);
+                await lab_info.Save();
 
                 player_info.lab_id = lab_id;
                 player_info.lab_name = body.lab_name;
-                PlayerInfoController.Save(user.cache_helper, player_info);
+                await player_info.Save();
             }
 
-            Packet packet = PacketMaker.U_TO_C_CREATE_LAB(user.player_id, player_info, lab_info);
-            user.SendToClient(packet);
+            Packet? packet = null;
+            try
+            {
+                packet = PacketMaker.U_TO_C_CREATE_LAB(user.player_id, player_info, lab_info);
+                user.SendToClient(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
         }
 
         static string hire_key = "lab_hire_list";
 
-        public static void WriteLabHire(GameUser user, C_TO_U_WRITE_LAB_HIRE body)
+        public static async Task WriteLabHire(GameUser user, C_TO_U_WRITE_LAB_HIRE body)
         {
-            PlayerInfo? player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
+            PlayerInfo? player_info = await PlayerInfo.Load(user.player_id);
 
             if (player_info == null)
             {
@@ -69,20 +83,34 @@ namespace user_server
                 throw new Exception("not joined lab");
             }
 
-            user.cache_helper.HashSet(
+            await CacheHelper.Instance.HashSetAsync(
                 hire_key,
                 $"{player_info.lab_id}",
                 MessagePackSerializer.Serialize(body.comment)
             );
 
-            Packet packet = PacketMaker.U_TO_C_WRITE_LAB_HIRE(ErrorCode.SUCCESS);
-            user.SendToClient(packet);
+            Packet? packet = null;
+            try
+            {
+                packet = PacketMaker.U_TO_C_WRITE_LAB_HIRE(ErrorCode.SUCCESS);
+                user.SendToClient(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
         }
 
-        public static void LabHireList(GameUser user)
+        public static async Task LabHireList(GameUser user)
         {
-            PlayerInfo? player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
-
+            PlayerInfo? player_info = await PlayerInfo.Load(user.player_id);
             if (player_info == null)
             {
                 throw new Exception("player_info not exists");
@@ -90,7 +118,7 @@ namespace user_server
 
             List<(long, string, string)> hire_list = new();
 
-            var redis_values = user.cache_helper.HashGetAll(hire_key);
+            var redis_values = await CacheHelper.Instance.HashGetAllAsync(hire_key);
             if (redis_values != null)
             {
                 foreach (HashEntry entry in redis_values)
@@ -101,7 +129,7 @@ namespace user_server
                         continue;
                     }
                     // TODO 길드명도 그렇고 유저명도 캐싱 필드 분리해야됨 일단 시간이 없어서 그냥 둠..
-                    var lab_info = LabInfoController.Load(user.cache_helper, lab_id);
+                    var lab_info = await LabInfo.Load(lab_id);
                     if (lab_info == null)
                     {
                         continue;
@@ -111,17 +139,32 @@ namespace user_server
                 }
             }
 
-            Packet packet = PacketMaker.U_TO_C_LAB_HIRE_LIST(hire_list);
-            user.SendToClient(packet);
+            Packet? packet = null;
+            try
+            {
+                packet = PacketMaker.U_TO_C_LAB_HIRE_LIST(hire_list);
+                user.SendToClient(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
         }
 
-        public static void JoinLab(GameUser user, C_TO_U_JOIN_LAB body)
+        public static async Task JoinLab(GameUser user, C_TO_U_JOIN_LAB body)
         {
             PlayerInfo? player_info;
             LabInfo? lab_info;
-            using (PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (await PlayerInfo.Lock(user.redlock, user.player_id))
             {
-                player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
+                player_info = await PlayerInfo.Load(user.player_id);
                 if (player_info == null)
                 {
                     throw new Exception("player_info not exists");
@@ -132,9 +175,9 @@ namespace user_server
                     throw new Exception("same lab id");
                 }
 
-                using (LabInfoController.Lock(user.redlock, body.lab_id))
+                using (await LabInfo.Lock(user.redlock, body.lab_id))
                 {
-                    lab_info = LabInfoController.Load(user.cache_helper, body.lab_id);
+                    lab_info = await LabInfo.Load(body.lab_id);
                     if (lab_info == null)
                     {
                         throw new Exception("player_info not exists");
@@ -151,13 +194,9 @@ namespace user_server
                     // 과거 랩
                     if (player_info.lab_id != 0)
                     {
-                        using (LabInfoController.Lock(user.redlock, player_info.lab_id))
+                        using (await LabInfo.Lock(user.redlock, player_info.lab_id))
                         {
-                            var last_lab_info = LabInfoController.Load(
-                                user.cache_helper,
-                                player_info.lab_id
-                            );
-
+                            var last_lab_info = await LabInfo.Load(player_info.lab_id);
                             if (last_lab_info != null)
                             {
                                 // 기술 이전
@@ -170,7 +209,7 @@ namespace user_server
                             }
 
                             // 기존 랩 탈퇴
-                            LabInfoController.Delete(user.cache_helper, player_info.lab_id);
+                            await LabInfo.Delete(player_info.lab_id);
                         }
                     }
 
@@ -199,34 +238,49 @@ namespace user_server
                     player_info.lab_id = lab_info.lab_id;
                     player_info.lab_name = lab_info.lab_name;
                     lab_info.member_dict.Add(player_info.player_id, player_info.name);
-                    LabInfoController.Save(user.cache_helper, lab_info);
-                    PlayerInfoController.Save(user.cache_helper, player_info);
+
+                    await lab_info.Save();
+                    await player_info.Save();
                 }
             }
 
-            user.cache_helper.HashDelete(hire_key, $"{player_info.lab_id}");
+            await CacheHelper.Instance.HashDeleteAsync(hire_key, $"{player_info.lab_id}");
 
-            Packet packet = PacketMaker.U_TO_C_LAB_INFO(player_info, lab_info);
-            foreach (var lab_member in lab_info.member_dict)
+            Packet? packet = null;
+            try
             {
-                user.nats_client.Publish(
-                    GameObjectInfo.MakeHashField(ObjectType.PLAYER, lab_member.Key),
-                    packet.ToBytes()
-                );
+                packet = PacketMaker.U_TO_C_LAB_INFO(player_info, lab_info);
+                foreach (var lab_member in lab_info.member_dict)
+                {
+                    user.nats_client.Publish(
+                        GameObjectInfo.MakeHashField(ObjectType.PLAYER, lab_member.Key),
+                        packet.ToBytes()
+                    );
+                }
             }
-            Packet.Destroy(packet);
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
 
             // 랩 인벤토리 정보 전송
-            InventoryController.GetLabInventory(user);
+            await InventoryController.GetLabInventory(user);
         }
 
-        public static void Make(GameUser user, C_TO_U_MAKE body)
+        public static async Task Make(GameUser user, C_TO_U_MAKE body)
         {
             var makeable_item_id = 0;
             PlayerInfo? player_info;
-            using (PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (await PlayerInfo.Lock(user.redlock, user.player_id))
             {
-                player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
+                player_info = await PlayerInfo.Load(user.player_id);
                 if (player_info == null)
                 {
                     throw new Exception("player_info not exists");
@@ -246,11 +300,15 @@ namespace user_server
                     }
                 }
 
-                var research_list = GetUseableResearchList(user, player_info);
+                var research_list = await GetUseableResearchList(player_info);
                 makeable_item_id = GameDesignData.GetMakableItemId(research_list, validator);
                 if (makeable_item_id != 0)
                 {
-                    ItemInfo item_info = InventoryController.CreateItem(user, makeable_item_id, 1);
+                    ItemInfo item_info = await InventoryController.CreateItem(
+                        user,
+                        makeable_item_id,
+                        1
+                    );
                     player_info.inventory_info.AddItem(item_info);
                 }
 
@@ -274,19 +332,34 @@ namespace user_server
                     }
                 }
 
-                PlayerInfoController.Save(user.cache_helper, player_info);
+                await player_info.Save();
             }
 
-            Packet packet = PacketMaker.U_TO_C_MAKE(makeable_item_id != 0);
-            user.SendToClient(packet);
+            Packet? packet = null;
+            try
+            {
+                packet = PacketMaker.U_TO_C_MAKE(makeable_item_id != 0);
+                user.SendToClient(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
 
-            InventoryController.GetCurrentItemList(user);
+            await InventoryController.GetCurrentItemList(user);
         }
 
-        public static List<int> GetUseableResearchList(GameUser user, PlayerInfo player_info)
+        public static async Task<List<int>> GetUseableResearchList(PlayerInfo player_info)
         {
             var result = new List<int>();
-            var lab_info = LabInfoController.Load(user.cache_helper, player_info.lab_id);
+            var lab_info = await LabInfo.Load(player_info.lab_id);
             if (lab_info == null)
             {
                 return result;
@@ -329,13 +402,13 @@ namespace user_server
             return result;
         }
 
-        public static void UpgradeResearch(GameUser user, C_TO_U_UPGRADE_RESEARCH body)
+        public static async Task UpgradeResearch(GameUser user, C_TO_U_UPGRADE_RESEARCH body)
         {
             PlayerInfo? player_info;
             LabInfo? lab_info;
-            using (PlayerInfoController.Lock(user.redlock, user.player_id))
+            using (await PlayerInfo.Lock(user.redlock, user.player_id))
             {
-                player_info = PlayerInfoController.Load(user.cache_helper, user.player_id);
+                player_info = await PlayerInfo.Load(user.player_id);
                 if (player_info == null)
                 {
                     throw new Exception("player_info not exists");
@@ -346,7 +419,7 @@ namespace user_server
                     throw new Exception("not joined lab");
                 }
 
-                lab_info = LabInfoController.Load(user.cache_helper, player_info.lab_id);
+                lab_info = await LabInfo.Load(player_info.lab_id);
                 if (lab_info == null)
                 {
                     throw new Exception("lab info load fail.");
@@ -467,19 +540,48 @@ namespace user_server
                 }
 
                 lab_info.reserach_info_dict[research_info.research_id] = research_info;
-                LabInfoController.Save(user.cache_helper, lab_info);
-                PlayerInfoController.Save(user.cache_helper, player_info);
+
+                await lab_info.Save();
+                await player_info.Save();
             }
 
-            Packet research_packet = PacketMaker.U_TO_C_UPGRADE_RESEARCH(
-                lab_info.reserach_info_dict
-            );
-            user.SendToClient(research_packet);
+            Packet? packet = null;
+            try
+            {
+                packet = PacketMaker.U_TO_C_UPGRADE_RESEARCH(lab_info.reserach_info_dict);
+                user.SendToClient(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
 
-            Packet lab_info_packet = PacketMaker.U_TO_C_LAB_INFO(new(), lab_info);
-            user.PublishToClients(lab_info_packet, lab_info.member_dict.Keys.ToList());
+            Packet? lab_info_packet = null;
+            try
+            {
+                lab_info_packet = PacketMaker.U_TO_C_LAB_INFO(new(), lab_info);
+                user.PublishToClients(lab_info_packet, lab_info.member_dict.Keys.ToList());
 
-            InventoryController.GetCurrentItemList(user);
+                await InventoryController.GetCurrentItemList(user);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (lab_info_packet != null)
+                {
+                    Packet.Destroy(lab_info_packet);
+                }
+            }
         }
     }
 }

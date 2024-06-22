@@ -1,6 +1,9 @@
 namespace network
 {
     using MessagePack;
+    using RedLockNet;
+    using RedLockNet.SERedis;
+    using StackExchange.Redis;
 
     [MessagePackObject]
     public class PlayerInfo : IMessagePackObject
@@ -172,6 +175,126 @@ namespace network
                 // TODO 일괄사용
                 target_item.count -= 1;
             }
+        }
+
+        public static async Task<IRedLock> Lock(RedLockFactory redlock, long player_id)
+        {
+            return await redlock.CreateLockAsync(PlayerInfo.GetLockKey(player_id), Config.LOCK_TTL);
+        }
+
+        public async Task<IRedLock> Lock(RedLockFactory redlock)
+        {
+            return await redlock.CreateLockAsync(this.GetLockKey(), Config.LOCK_TTL);
+        }
+
+        public async Task Save()
+        {
+            // 조회가 빈번해서 메모리에 올려뒀음. 따로 Save함
+            // await GameObjectInfoController.Save(cache_helper, player_info.object_info);
+
+            await this.job_info.Save();
+            await this.inventory_info.Save();
+            await CacheHelper.Instance.HashSetAsync(
+                PlayerInfo.HASH_KEY,
+                this.player_id,
+                MessagePackSerializer.Serialize(this)
+            );
+        }
+
+        public static async Task<PlayerInfo?> Load(long player_id)
+        {
+            // TODO from DB
+            try
+            {
+                var serialized = await CacheHelper.Instance.HashGetAsync(
+                    PlayerInfo.HASH_KEY,
+                    player_id
+                );
+
+                if (serialized == RedisValue.Null)
+                {
+                    return null;
+                }
+
+                var player_info = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
+                if (player_info == null)
+                {
+                    return null;
+                }
+
+                player_info.object_info =
+                    await GameObjectInfo.Load(ObjectType.PLAYER, player_id)
+                    ?? new GameObjectInfo(player_id);
+
+                player_info.job_info = await JobInfo.Load(player_id) ?? new JobInfo(player_id);
+
+                player_info.inventory_info =
+                    await InventoryInfo.Load(InventoryOwnerType.PLAYER, player_id)
+                    ?? new InventoryInfo(InventoryOwnerType.PLAYER, player_id);
+
+                return player_info;
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+                return null;
+            }
+        }
+
+        public static async Task<List<PlayerInfo>> LoadAll(RedisValue[] object_keys)
+        {
+            try
+            {
+                var hash_entries = await CacheHelper.Instance.HashGetAsync(
+                    PlayerInfo.HASH_KEY,
+                    object_keys
+                );
+
+                if (hash_entries == null)
+                {
+                    return new();
+                }
+
+                List<RedisValue> hash_strings = hash_entries
+                    .Where(entry => entry != RedisValue.Null)
+                    .Select(entry => entry)
+                    .ToList();
+
+                List<PlayerInfo> result = new();
+
+                foreach (var hash_string in hash_strings)
+                {
+                    var player_info = MessagePackSerializer.Deserialize<PlayerInfo>(hash_string);
+                    if (player_info == null)
+                    {
+                        continue;
+                    }
+
+                    result.Add(player_info);
+                }
+
+                return result;
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+                return new();
+            }
+        }
+
+        public async Task Delete(PlayerInfo player_info)
+        {
+            await player_info.object_info.Delete();
+            await CacheHelper.Instance.HashDeleteAsync(PlayerInfo.HASH_KEY, player_info.player_id);
+        }
+
+        public static async Task Delete(long player_id)
+        {
+            var object_field = GameObjectInfo.MakeHashField(ObjectType.PLAYER, player_id);
+
+            await GameObjectInfo.Delete(object_field);
+            await JobInfo.Delete(player_id);
+            await CacheHelper.Instance.HashDeleteAsync(PlayerInfo.HASH_KEY, player_id);
         }
     }
 }

@@ -1,6 +1,8 @@
 namespace network
 {
     using MessagePack;
+    using RedLockNet;
+    using RedLockNet.SERedis;
 
     [MessagePackObject]
     public class JobResourceInfo : IMessagePackObject
@@ -48,6 +50,65 @@ namespace network
         public static string GetLockKey(long resource_uid)
         {
             return $"job_resource_lock_{resource_uid}";
+        }
+
+        public static async Task<IRedLock> Lock(RedLockFactory redlock, long resource_uid)
+        {
+            return await redlock.CreateLockAsync(
+                JobResourceInfo.GetLockKey(resource_uid),
+                Config.LOCK_TTL
+            );
+        }
+
+        public async Task Save()
+        {
+            await this.object_info.Save();
+            await CacheHelper.Instance.HashSetAsync(
+                JobResourceInfo.HASH_KEY,
+                this.resource_uid,
+                MessagePackSerializer.Serialize(this)
+            );
+        }
+
+        public static async Task<JobResourceInfo?> Load(long resource_uid)
+        {
+            var serialized_data = await CacheHelper.Instance.HashGetAsync(
+                JobResourceInfo.HASH_KEY,
+                resource_uid
+            );
+
+            if (serialized_data.IsNull)
+            {
+                return null;
+            }
+
+            var resource_info = MessagePackSerializer.Deserialize<JobResourceInfo?>(
+                serialized_data
+            );
+
+            if (resource_info == null)
+            {
+                return null;
+            }
+
+            var object_info = await GameObjectInfo.Load(ObjectType.JOBRESOURCE, resource_uid);
+            if (object_info == null)
+            {
+                return null;
+            }
+
+            resource_info.object_info = object_info;
+            return resource_info;
+        }
+
+        public async Task Delete()
+        {
+            await CacheHelper.Instance.HashDeleteAsync(JobResourceInfo.HASH_KEY, this.resource_uid);
+        }
+
+        public static async Task Delete(long resource_uid)
+        {
+            await CacheHelper.Instance.HashDeleteAsync(JobResourceInfo.HASH_KEY, resource_uid);
         }
     }
 }

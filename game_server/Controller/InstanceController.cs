@@ -8,8 +8,6 @@ namespace game_server
 
     public class InstanceController
     {
-        ConnectionMultiplexer? redis_connection;
-        CacheHelper? cache_helper;
         NatsClient? nats_client;
 
         ConcurrentDictionary<string, List<string>> object_instacne_dict; // Instance_id, [object_key, ..]
@@ -21,10 +19,7 @@ namespace game_server
 
         public void Initialize(NatsClient nats_client)
         {
-            this.redis_connection = RedisConnectionPool.GetConnection();
-            this.cache_helper = new CacheHelper(redis_connection);
             this.nats_client = nats_client;
-
             this.nats_client.Subscribe(
                 MapHelper.GetCreateInstanceSubject(Program.server_id),
                 (subject, msg) =>

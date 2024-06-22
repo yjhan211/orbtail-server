@@ -1,6 +1,7 @@
 namespace network
 {
     using MessagePack;
+    using StackExchange.Redis;
 
     [MessagePackObject]
     public class GameObjectInfo : IMessagePackObject
@@ -32,14 +33,11 @@ namespace network
         [Key("is_flip")]
         public bool is_flip { get; set; }
 
+        public string GetHashField() => $"{(int)this.object_type}_{this.object_id}";
+
         public static string MakeHashField(ObjectType type, long object_id)
         {
             return $"{(int)type}_{object_id}";
-        }
-
-        public string GetHashField()
-        {
-            return $"{(int)this.object_type}_{this.object_id}";
         }
 
         // 이거 없애면 안됨 MessagePack에서 씀
@@ -95,6 +93,83 @@ namespace network
                     this.is_flip = false;
                     break;
             }
+        }
+
+        public static async Task<GameObjectInfo?> Load(ObjectType type, long object_id)
+        {
+            var serialized_data = await CacheHelper.Instance.HashGetAsync(
+                GameObjectInfo.HASH_KEY,
+                GameObjectInfo.MakeHashField(type, object_id)
+            );
+
+            if (serialized_data.IsNull)
+            {
+                return null;
+            }
+
+            return MessagePackSerializer.Deserialize<GameObjectInfo?>(serialized_data);
+        }
+
+        public static async Task<List<GameObjectInfo>> LoadAll(RedisValue[] object_keys)
+        {
+            var hash_entries = await CacheHelper.Instance.HashGetAsync(
+                GameObjectInfo.HASH_KEY,
+                object_keys
+            );
+
+            if (hash_entries == null)
+            {
+                return new();
+            }
+
+            List<RedisValue> hash_strings = hash_entries
+                .Where(entry => entry != RedisValue.Null)
+                .Select(entry => entry)
+                .ToList();
+
+            List<GameObjectInfo> result = new();
+
+            foreach (var hash_string in hash_strings)
+            {
+                var game_object_info = MessagePackSerializer.Deserialize<GameObjectInfo>(
+                    hash_string
+                );
+                if (game_object_info == null)
+                {
+                    continue;
+                }
+
+                result.Add(game_object_info);
+            }
+
+            return result;
+        }
+
+        public static async Task Delete(string hash_field)
+        {
+            await CacheHelper.Instance.HashDeleteAsync(GameObjectInfo.HASH_KEY, hash_field);
+        }
+
+        public static async Task<bool> Exist(string hash_field)
+        {
+            return await CacheHelper.Instance.HashExistsAsync(GameObjectInfo.HASH_KEY, hash_field);
+        }
+
+        public async Task Save()
+        {
+            await CacheHelper.Instance.HashSetAsync(
+                GameObjectInfo.HASH_KEY,
+                this.GetHashField(),
+                MessagePackSerializer.Serialize(this)
+            );
+        }
+
+        public async Task Delete()
+        {
+            await CacheHelper.Instance.HashDeleteAsync(
+                GameObjectInfo.HASH_KEY,
+                this.GetHashField()
+            );
         }
     }
 }

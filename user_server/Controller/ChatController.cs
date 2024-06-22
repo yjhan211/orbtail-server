@@ -1,6 +1,5 @@
 namespace user_server
 {
-    using game_server;
     using MessagePack;
     using network;
     using network.manager;
@@ -9,43 +8,39 @@ namespace user_server
     // TODO 도배금지, 채팅금지 등
     public static class ChatController
     {
-        static CacheHelper? cache_helper;
         const int HISTORY_NUM = 30;
         public static LRUCache<long, string> user_name_map = new(1000);
-
-        public static void Initialize()
-        {
-            var connection = RedisConnectionPool.GetConnection();
-            cache_helper = new(connection);
-        }
 
         static string GetChatHistoryKey(ChatType chat_type)
         {
             return $"chat_{chat_type}_history";
         }
 
-        public static void AddChatHistory(ChatType chat_type, string sender_name, string message)
+        public static async Task AddChatHistory(
+            ChatType chat_type,
+            string sender_name,
+            string message
+        )
         {
             var key = GetChatHistoryKey(ChatType.ALL);
-            var history_length = cache_helper!.ListLength(key);
+            var history_length = await CacheHelper.Instance.ListLengthAsync(key);
 
             while (history_length >= HISTORY_NUM)
             {
-                cache_helper.Dequeue(key);
+                await CacheHelper.Instance.DequeueAsync(key);
                 history_length--;
             }
 
-            cache_helper.Enqueue(
+            await CacheHelper.Instance.EnqueueAsync(
                 key,
                 MessagePackSerializer.Serialize((chat_type, sender_name, message))
             );
         }
 
-        public static List<Packet> GetChatHistory(GameUser user, ChatType chat_type)
+        public static async Task GetChatHistory(GameUser user, ChatType chat_type)
         {
             var key = GetChatHistoryKey(chat_type);
-            var redis_values = user.cache_helper.ListRange(key);
-            var result = new List<Packet>();
+            var redis_values = await CacheHelper.Instance.ListRangeAsync(key);
 
             foreach (var redis_value in redis_values)
             {
@@ -67,19 +62,32 @@ namespace user_server
                     continue;
                 }
 
-                var packet = PacketMaker.U_TO_C_CHAT_MSG(
-                    deserialize.Item1,
-                    deserialize.Item2,
-                    deserialize.Item3
-                );
+                Packet? packet = null;
+                try
+                {
+                    packet = PacketMaker.U_TO_C_CHAT_MSG(
+                        deserialize.Item1,
+                        deserialize.Item2,
+                        deserialize.Item3
+                    );
 
-                result.Add(packet);
+                    user.SendToClient(packet);
+                }
+                catch (Exception e)
+                {
+                    LogManager.WriteErrorLog(e);
+                }
+                finally
+                {
+                    if (packet != null)
+                    {
+                        Packet.Destroy(packet);
+                    }
+                }
             }
-
-            return result;
         }
 
-        public static void SendChat(GameUser user, C_TO_U_CHAT_MSG body)
+        public static async Task SendChat(GameUser user, C_TO_U_CHAT_MSG body)
         {
             if (body.chat_message.Length >= Config.MAX_CHAT_LENGTH)
             {
@@ -89,7 +97,7 @@ namespace user_server
             var player_name = "";
             if (!user_name_map.TryGet(user.player_id, out player_name))
             {
-                var player_info = PlayerInfoController.Load(cache_helper!, user.player_id);
+                var player_info = await PlayerInfo.Load(user.player_id);
                 if (player_info == null)
                 {
                     return;
@@ -99,27 +107,40 @@ namespace user_server
                 player_name = player_info.name;
             }
 
-            Packet packet = PacketMaker.U_TO_C_CHAT_MSG(
-                body.chat_type,
-                player_name,
-                body.chat_message
-            );
-
-            switch (body.chat_type)
+            Packet? packet = null;
+            try
             {
-                case ChatType.ALL:
-                    AddChatHistory(body.chat_type, player_name, body.chat_message);
-                    user.nats_client.Publish("all", packet.ToBytes());
-                    break;
+                packet = PacketMaker.U_TO_C_CHAT_MSG(
+                    body.chat_type,
+                    player_name,
+                    body.chat_message
+                );
 
-                case ChatType.NOMAL:
-                    break;
+                switch (body.chat_type)
+                {
+                    case ChatType.ALL:
+                        await AddChatHistory(body.chat_type, player_name, body.chat_message);
+                        user.nats_client.Publish("all", packet.ToBytes());
+                        break;
 
-                case ChatType.GUILD:
-                    break;
+                    case ChatType.NOMAL:
+                        break;
+
+                    case ChatType.GUILD:
+                        break;
+                }
             }
-
-            Packet.Destroy(packet);
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
         }
     }
 }

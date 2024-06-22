@@ -8,7 +8,7 @@ namespace network
 {
     public interface IPeer
     {
-        void OnMessageFromClient(Const<byte[]> buffer);
+        Task OnMessageFromClient(Const<byte[]> buffer);
 
         void OnRemoved();
 

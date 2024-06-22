@@ -53,5 +53,55 @@ namespace network
                 player_object_info.is_flip
             );
         }
+
+        public async Task Save()
+        {
+            await this.object_info.Save();
+            await CacheHelper.Instance.HashSetAsync(
+                CampInfo.HASH_KEY,
+                this.player_id,
+                MessagePackSerializer.Serialize(this)
+            );
+        }
+
+        public static async Task<CampInfo?> Load(long player_id)
+        {
+            var serialized_data = await CacheHelper.Instance.HashGetAsync(
+                CampInfo.HASH_KEY,
+                player_id
+            );
+
+            if (serialized_data.IsNull)
+            {
+                return null;
+            }
+
+            var camp_info = MessagePackSerializer.Deserialize<CampInfo?>(serialized_data);
+
+            if (camp_info == null)
+            {
+                return null;
+            }
+
+            var object_info = await GameObjectInfo.Load(ObjectType.CAMP, player_id);
+            if (object_info == null)
+            {
+                return null;
+            }
+
+            camp_info.object_info = object_info;
+
+            return camp_info;
+        }
+
+        public async Task Delete()
+        {
+            await CacheHelper.Instance.HashDeleteAsync(CampInfo.HASH_KEY, this.player_id);
+        }
+
+        public static async Task Delete(long player_id)
+        {
+            await CacheHelper.Instance.HashDeleteAsync(CampInfo.HASH_KEY, player_id);
+        }
     }
 }

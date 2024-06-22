@@ -13,8 +13,6 @@ namespace game_server
         // Task? logic_thread;
         List<MapController> map_controller_list;
         InstanceController instance_controller;
-        ConnectionMultiplexer redis_connection;
-        CacheHelper cache_helper;
 
         public GameServer()
         {
@@ -24,9 +22,6 @@ namespace game_server
             this.map_controller_list.Add(new(MapID.CAMPUS_1));
             this.map_controller_list.Add(new(MapID.FACTORY_1));
             this.instance_controller = new();
-
-            this.redis_connection = RedisConnectionPool.GetConnection();
-            this.cache_helper = new(this.redis_connection);
         }
 
         public async Task Start()
@@ -37,7 +32,7 @@ namespace game_server
             }
 
             this.instance_controller.Initialize(new(Program.nats_endpoint));
-            var logic_thread = Task.Run(GameLoop, this.cts.Token);
+            // var logic_thread = Task.Run(GameLoop, this.cts.Token);
         }
 
         ManualResetEventSlim message_event = new();
@@ -45,8 +40,8 @@ namespace game_server
 
         void GameLoop()
         {
-            this.message_timer = new Timer(
-                ProcessMessages,
+            this.message_timer = new(
+                async _ => await ProcessMessages(),
                 null,
                 TimeSpan.Zero,
                 TimeSpan.FromMilliseconds(10)
@@ -56,8 +51,7 @@ namespace game_server
             {
                 try
                 {
-                    this.message_event.Wait(this.cts.Token);
-                    this.message_event.Reset();
+                    this.cts.Token.WaitHandle.WaitOne();
                 }
                 catch (OperationCanceledException)
                 {
@@ -72,18 +66,18 @@ namespace game_server
             this.message_timer.Dispose();
         }
 
-        async void ProcessMessages(object? state)
+        async Task ProcessMessages()
         {
+            Packet? packet = null;
             try
             {
-                byte[]? message = cache_helper.Dequeue("game_server_queue");
+                byte[]? message = await CacheHelper.Instance.DequeueAsync("game_server_queue");
                 if (message != null)
                 {
-                    Packet? packet = new(message);
+                    packet = new(message);
                     if (packet != null)
                     {
-                        await ProcessReceiveAsync(cache_helper, packet).ConfigureAwait(false);
-                        Packet.Destroy(packet);
+                        await ProcessReceiveAsync(packet);
                     }
                 }
             }
@@ -94,21 +88,21 @@ namespace game_server
             finally
             {
                 this.message_event.Set();
+
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
             }
         }
 
-        async Task HandleMessage<T>(
-            CacheHelper cache_helper,
-            long player_id,
-            byte[] body,
-            Func<CacheHelper, long, T, Task> handleMessage
-        )
+        async Task HandleMessage<T>(long player_id, byte[] body, Func<long, T, Task> handleMessage)
         {
             T msg = MessagePackSerializer.Deserialize<T>(body);
-            await handleMessage(cache_helper, player_id, msg);
+            await handleMessage(player_id, msg);
         }
 
-        async Task ProcessReceiveAsync(CacheHelper cache_helper, Packet packet)
+        async Task ProcessReceiveAsync(Packet packet)
         {
             PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
             long player_id = packet.PopPlayerId();
@@ -117,19 +111,17 @@ namespace game_server
             switch (protocol_id)
             {
                 case PROTOCOL.U_TO_G_LOGOUT:
-                    await HandleMessage<U_TO_G_LOGOUT>(cache_helper, player_id, body, Logout);
+                    await HandleMessage<U_TO_G_LOGOUT>(player_id, body, Logout);
                     break;
             }
         }
 
-        public async Task Logout(CacheHelper cache_helper, long player_id, U_TO_G_LOGOUT msg)
+        public async Task Logout(long player_id, U_TO_G_LOGOUT msg)
         {
-            var redlock = RedisConnectionPool.GetRedLockFactory(this.redis_connection);
-
-            using (var player_lock = await PlayerInfoController.Lock(redlock, player_id))
+            var redlock = RedisConnectionPool.GetRedLockFactory();
+            using (var player_lock = PlayerInfo.Lock(redlock, player_id))
             {
-                PlayerInfo? player_info = PlayerInfoController.Load(cache_helper, msg.player_id);
-
+                PlayerInfo? player_info = await PlayerInfo.Load(msg.player_id);
                 if (player_info == null)
                 {
                     throw new Exception($"can't find player_info. player_id : {player_id}");

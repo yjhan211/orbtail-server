@@ -73,5 +73,38 @@ namespace network
                 this.item_dict[item_info.item_uid] = item_info;
             }
         }
+
+        public async Task Save()
+        {
+            await CacheHelper.Instance.HashSetAsync(
+                InventoryInfo.HASH_KEY,
+                $"{this.owner_type}_{this.owner_id}",
+                MessagePackSerializer.Serialize(this)
+            );
+        }
+
+        public static async Task<InventoryInfo?> Load(InventoryOwnerType owner_type, long owner_id)
+        {
+            var serialized_data = await CacheHelper.Instance.HashGetAsync(
+                InventoryInfo.HASH_KEY,
+                $"{owner_type}_{owner_id}"
+            );
+
+            if (serialized_data.IsNull)
+            {
+                return new InventoryInfo(owner_type, owner_id);
+            }
+
+            var inventory_info = MessagePackSerializer.Deserialize<InventoryInfo?>(serialized_data);
+            return inventory_info;
+        }
+
+        public static async Task Delete(InventoryOwnerType owner_type, long owner_id)
+        {
+            await CacheHelper.Instance.HashDeleteAsync(
+                InventoryInfo.HASH_KEY,
+                $"{owner_type}_{owner_id}"
+            );
+        }
     }
 }

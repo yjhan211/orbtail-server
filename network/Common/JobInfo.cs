@@ -35,6 +35,36 @@ namespace network
 
             this.hp = 0;
         }
+
+        public async Task Save()
+        {
+            await CacheHelper.Instance.HashSetAsync(
+                JobInfo.HASH_KEY,
+                this.player_id,
+                MessagePackSerializer.Serialize(this)
+            );
+        }
+
+        public static async Task<JobInfo?> Load(long player_id)
+        {
+            var serialized_data = await CacheHelper.Instance.HashGetAsync(
+                JobInfo.HASH_KEY,
+                player_id
+            );
+
+            if (serialized_data.IsNull)
+            {
+                return null;
+            }
+
+            var job_info = MessagePackSerializer.Deserialize<JobInfo?>(serialized_data);
+            return job_info;
+        }
+
+        public static async Task Delete(long player_id)
+        {
+            await CacheHelper.Instance.HashDeleteAsync(JobInfo.HASH_KEY, player_id);
+        }
     }
 
     [MessagePackObject]

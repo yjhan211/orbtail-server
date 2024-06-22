@@ -15,11 +15,14 @@ namespace user_server
         public static int game_server_num;
         public static string[] redis_endpoints;
         public static string nats_endpoint;
-#pragma warning restore
         public static CancellationTokenSource cts;
+#pragma warning restore
+
 
         static void Main()
         {
+            cts = new();
+
             string? game_server_env = Environment.GetEnvironmentVariable("GAME_SERVER_NUM");
             if (!Int32.TryParse(game_server_env, out game_server_num))
             {
@@ -48,7 +51,6 @@ namespace user_server
 
             PacketBufferManager.Initialize(Config.MAX_CONNECTION);
             MapHelper.Initialize();
-            ChatController.Initialize();
 
             network_service = new();
             leave_user_queue = new();
@@ -79,8 +81,8 @@ namespace user_server
 
         public static void LeaveUser()
         {
-            leave_user_timer = new System.Threading.Timer(
-                ProcessLeaveUser,
+            leave_user_timer = new Timer(
+                async _ => await ProcessLeaveUser(),
                 null,
                 TimeSpan.Zero,
                 TimeSpan.FromMilliseconds(10)
@@ -90,8 +92,7 @@ namespace user_server
             {
                 try
                 {
-                    leave_event.Wait(cts.Token);
-                    leave_event.Reset();
+                    cts.Token.WaitHandle.WaitOne();
                 }
                 catch (OperationCanceledException)
                 {
@@ -106,14 +107,14 @@ namespace user_server
             leave_user_timer.Dispose();
         }
 
-        static void ProcessLeaveUser(object? state)
+        static async Task ProcessLeaveUser()
         {
             try
             {
                 if (leave_user_queue!.TryDequeue(out GameUser? user))
                 {
                     LogManager.WriteInfoLog($"client disconnect. player_id: {user.player_id}");
-                    user.Release();
+                    await user.Release();
                 }
             }
             catch (Exception e)

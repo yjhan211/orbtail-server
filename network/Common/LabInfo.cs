@@ -1,6 +1,8 @@
 namespace network
 {
     using MessagePack;
+    using RedLockNet;
+    using RedLockNet.SERedis;
     using System.Collections.Generic;
 
     [MessagePackObject]
@@ -89,6 +91,47 @@ namespace network
         public static string GetLockKey(long player_id)
         {
             return $"lab_lock_{player_id}";
+        }
+
+        public static async Task<IRedLock> Lock(RedLockFactory redlock, long lab_id)
+        {
+            return await redlock.CreateLockAsync(LabInfo.GetLockKey(lab_id), Config.LOCK_TTL);
+        }
+
+        public async Task Save()
+        {
+            await this.inventory_info.Save();
+            await CacheHelper.Instance.HashSetAsync(
+                LabInfo.HASH_KEY,
+                this.lab_id,
+                MessagePackSerializer.Serialize(this)
+            );
+        }
+
+        public static async Task<LabInfo?> Load(long lab_id)
+        {
+            var serialized_data = await CacheHelper.Instance.HashGetAsync(LabInfo.HASH_KEY, lab_id);
+            if (serialized_data.IsNull)
+            {
+                return null;
+            }
+
+            var lab_info = MessagePackSerializer.Deserialize<LabInfo?>(serialized_data);
+            if (lab_info == null)
+            {
+                return null;
+            }
+
+            lab_info.inventory_info =
+                await InventoryInfo.Load(InventoryOwnerType.LAB, lab_id)
+                ?? new InventoryInfo(InventoryOwnerType.LAB, lab_id);
+
+            return lab_info;
+        }
+
+        public static async Task Delete(long lab_id)
+        {
+            await CacheHelper.Instance.HashDeleteAsync(LabInfo.HASH_KEY, lab_id);
         }
     }
 

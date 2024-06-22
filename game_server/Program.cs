@@ -4,6 +4,7 @@ namespace game_server
 {
     class Program
     {
+#pragma warning disable CS0649
 #pragma warning disable CS8618
         public static GameServer game_server;
         public static int server_id = 0;
@@ -49,7 +50,7 @@ namespace game_server
             MapHelper.Initialize();
 
             game_server = new();
-            game_server.Start();
+            await game_server.Start();
 
             LogManager.WriteInfoLog($"Server Start. server_id: {server_id}");
             await Task.Delay(-1);

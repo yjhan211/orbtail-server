@@ -9,8 +9,6 @@ namespace game_server
     public class MapController
     {
         public MapID map_id; // TODO 채널 확장
-        ConnectionMultiplexer? redis_connection;
-        CacheHelper? cache_helper;
         NatsClient? nats_client;
 
         ConcurrentDictionary<string, List<string>> object_position_dict;
@@ -32,14 +30,15 @@ namespace game_server
 
         public async Task Initialize(NatsClient nats_client)
         {
-            this.redis_connection = RedisConnectionPool.GetConnection();
-            this.cache_helper = new CacheHelper(redis_connection);
             this.nats_client = nats_client;
 
             // 임시
             if (Program.server_id != 1)
             {
-                var job_resource_values = this.cache_helper.HashGetAll("job_resource_info");
+                var job_resource_values = await CacheHelper.Instance.HashGetAllAsync(
+                    "job_resource_info"
+                );
+
                 if (job_resource_values != null)
                 {
                     foreach (HashEntry entry in job_resource_values)
@@ -49,11 +48,13 @@ namespace game_server
                             continue;
                         }
 
-                        JobResourceController.Delete(this.cache_helper, job_resource_id);
-                        GameObjectInfoController.Delete(
-                            this.cache_helper,
-                            GameObjectInfo.MakeHashField(ObjectType.JOBRESOURCE, job_resource_id)
+                        await JobResourceInfo.Delete(job_resource_id);
+
+                        var objecte_field = GameObjectInfo.MakeHashField(
+                            ObjectType.JOBRESOURCE,
+                            job_resource_id
                         );
+                        await GameObjectInfo.Delete(objecte_field);
                     }
 
                     job_resource_values = null;
@@ -230,12 +231,12 @@ namespace game_server
         object position_lock = new();
 
         private ManualResetEventSlim jobResourceEvent = new ManualResetEventSlim();
-        private Timer? jobResourceTimer;
+        private Timer? job_resource_timer;
 
         void CreateJobResourceTask()
         {
-            jobResourceTimer = new Timer(
-                CreateJobResource,
+            this.job_resource_timer = new(
+                async _ => await CreateJobResource(),
                 null,
                 TimeSpan.Zero,
                 TimeSpan.FromSeconds(1)
@@ -245,8 +246,7 @@ namespace game_server
             {
                 try
                 {
-                    jobResourceEvent.Wait(this.cts.Token);
-                    jobResourceEvent.Reset();
+                    this.cts.Token.WaitHandle.WaitOne();
                 }
                 catch (OperationCanceledException)
                 {
@@ -258,10 +258,10 @@ namespace game_server
                 }
             }
 
-            jobResourceTimer.Dispose();
+            this.job_resource_timer.Dispose();
         }
 
-        async void CreateJobResource(object? state)
+        async Task CreateJobResource()
         {
             try
             {
@@ -286,7 +286,9 @@ namespace game_server
 
                     var create_position_key = MapHelper.GetPositionKey(this.map_id, 0, create_cell);
 
-                    long resource_uid = this.cache_helper!.StringIncrement("temp_job_resource_uid");
+                    long resource_uid = await CacheHelper.Instance.StringIncrementAsync(
+                        "temp_job_resource_uid"
+                    );
 
                     GameObjectInfo object_info =
                         new()
@@ -310,7 +312,7 @@ namespace game_server
                     this.job_resource_dict[part_resource_info.Key].Add(job_resource_info);
                     this.object_position_dict[create_position_key].Add(object_info.GetHashField());
 
-                    JobResourceController.Save(this.cache_helper, job_resource_info);
+                    await job_resource_info.Save();
 
                     // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
                     var target_server_list = MapHelper.GetBoundServerList(
