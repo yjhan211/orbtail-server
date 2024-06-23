@@ -28,5 +28,8 @@ namespace network
         public static TimeSpan LOCK_TTL = TimeSpan.FromSeconds(30);
 
         public static int MAX_CHAT_LENGTH = 100;
+
+        public const int MAX_CONNECTIONS_PER_IP = 5;
+        public const int CONNECTION_TIMEOUT_SECONDS = 300; // 5분
     }
 }

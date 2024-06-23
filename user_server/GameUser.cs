@@ -71,7 +71,7 @@
                 long player_id = packet.PopPlayerId();
                 byte[] body = packet.PopBody();
 
-                LogManager.WriteDebugLog($"PROTOCOL: {protocol_id}");
+                // LogManager.WriteDebugLog($"PROTOCOL: {protocol_id}");
 
                 var non_auth_protocol = new[] { PROTOCOL.C_TO_U_HEART_BEAT, PROTOCOL.C_TO_U_LOGIN };
                 if (non_auth_protocol.Contains(protocol_id))

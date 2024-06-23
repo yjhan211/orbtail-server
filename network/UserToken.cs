@@ -1,6 +1,7 @@
 ﻿#pragma warning disable CS8604
 #pragma warning disable CS8618
 
+using System.Net;
 using System.Net.Sockets;
 
 namespace network
@@ -19,6 +20,8 @@ namespace network
         public bool is_released = true;
         public object lock_disconnect;
         public NetworkService network_service;
+        public string ip_address { get; set; }
+        public DateTime last_activity_time { get; private set; }
 
         public UserToken(NetworkService network_service)
         {
@@ -27,6 +30,7 @@ namespace network
             this.sending_queue = new();
             this.lock_disconnect = new();
             this.network_service = network_service;
+            this.last_activity_time = DateTime.UtcNow;
         }
 
         public void SetPeer(IPeer peer)
@@ -172,6 +176,11 @@ namespace network
                 // 예외 처리 및 로깅
                 Console.WriteLine($"Error in OnRemoved: {ex.Message}");
             }
+        }
+
+        public void UpdateActivityTime()
+        {
+            this.last_activity_time = DateTime.Now;
         }
     }
 }

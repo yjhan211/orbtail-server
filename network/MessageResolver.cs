@@ -33,7 +33,18 @@
                             return (ErrorCode.SUCCESS, null);
                         }
 
-                        this.target_position += this.ParseHeader();
+                        int message_size = this.ParseHeader();
+                        if (message_size > Config.BUFFER_SIZE)
+                        {
+                            return (ErrorCode.FATAL, "Message size exceeds maximum allowed size");
+                        }
+
+                        this.target_position += message_size;
+                    }
+
+                    if (this.target_position > Config.BUFFER_SIZE)
+                    {
+                        return (ErrorCode.FATAL, "Target position exceeds buffer size");
                     }
 
                     // 메세지 복사
@@ -53,10 +64,8 @@
             }
             catch (Exception e)
             {
-                Log error_log = new(e);
-                error_log.SetClassInfo(this);
-
-                return (ErrorCode.FATAL, error_log.ParseString());
+                LogManager.WriteErrorLog(e);
+                return (ErrorCode.FATAL, null);
             }
         }
 

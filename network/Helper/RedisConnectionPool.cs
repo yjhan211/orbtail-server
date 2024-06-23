@@ -22,7 +22,6 @@ namespace network
             _options.ConnectTimeout = 5000;
             _options.SyncTimeout = 5000;
             _options.AllowAdmin = true;
-            _options.Ssl = true; // 필요한 경우
 
             _lazyConnection = new Lazy<ConnectionMultiplexer>(
                 () => ConnectionMultiplexer.Connect(_options)
