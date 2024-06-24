@@ -86,41 +86,25 @@ namespace network
             new()
             {
                 {
-                    GetPortalKey(MapID.CAMPUS_1, new(89, 141)),
-                    (MapID.FACTORY_1, new(59, 66), true)
+                    GetPortalKey(MapID.CAMPUS_1, new(118, 110)),
+                    (MapID.FACTORY_1, new(37, 85), true)
                 },
                 {
-                    GetPortalKey(MapID.CAMPUS_1, new(89, 142)),
-                    (MapID.FACTORY_1, new(59, 66), true)
+                    GetPortalKey(MapID.CAMPUS_1, new(119, 110)),
+                    (MapID.FACTORY_1, new(37, 85), true)
                 },
                 {
-                    GetPortalKey(MapID.CAMPUS_1, new(90, 141)),
-                    (MapID.FACTORY_1, new(59, 66), true)
+                    GetPortalKey(MapID.FACTORY_1, new(37, 88)),
+                    (MapID.CAMPUS_1, new(116, 106), true)
                 },
                 {
-                    GetPortalKey(MapID.CAMPUS_1, new(90, 142)),
-                    (MapID.FACTORY_1, new(59, 66), true)
+                    GetPortalKey(MapID.FACTORY_1, new(38, 88)),
+                    (MapID.CAMPUS_1, new(116, 106), true)
                 },
-                {
-                    GetPortalKey(MapID.FACTORY_1, new(60, 69)),
-                    (MapID.CAMPUS_1, new(89, 139), true)
-                },
-                {
-                    GetPortalKey(MapID.FACTORY_1, new(60, 70)),
-                    (MapID.CAMPUS_1, new(89, 139), true)
-                },
-                {
-                    GetPortalKey(MapID.FACTORY_1, new(59, 70)),
-                    (MapID.CAMPUS_1, new(89, 139), true)
-                },
-                {
-                    GetPortalKey(MapID.FACTORY_1, new(59, 69)),
-                    (MapID.CAMPUS_1, new(89, 139), true)
-                },
-                { GetPortalKey(MapID.CAMPUS_1, new(85, 109)), (MapID.LAB_1, new(90, 96), true) },
-                { GetPortalKey(MapID.CAMPUS_1, new(88, 106)), (MapID.LAB_1, new(90, 96), true) },
-                { GetPortalKey(MapID.LAB_1, new(90, 100)), (MapID.CAMPUS_1, new(81, 108), false) },
-                { GetPortalKey(MapID.LAB_1, new(91, 100)), (MapID.CAMPUS_1, new(81, 108), false) },
+                // { GetPortalKey(MapID.CAMPUS_1, new(85, 109)), (MapID.LAB_1, new(90, 96), true) },
+                // { GetPortalKey(MapID.CAMPUS_1, new(88, 106)), (MapID.LAB_1, new(90, 96), true) },
+                // { GetPortalKey(MapID.LAB_1, new(90, 100)), (MapID.CAMPUS_1, new(81, 108), false) },
+                // { GetPortalKey(MapID.LAB_1, new(91, 100)), (MapID.CAMPUS_1, new(81, 108), false) },
             };
 
         public static void Initialize()

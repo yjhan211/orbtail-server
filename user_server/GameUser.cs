@@ -409,7 +409,7 @@
                         name: request.account_token == "dummy"
                             ? $"더미{temp_player_id}"
                             : $"플레이어{temp_player_id}",
-                        request.account_token == "dummy" ? MapHelper.GetRandomCell() : new(117, 95)
+                        request.account_token == "dummy" ? MapHelper.GetRandomCell() : new(88, 132)
                     );
 
                     is_new = true;
