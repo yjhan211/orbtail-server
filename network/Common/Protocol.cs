@@ -80,6 +80,7 @@
         NONE,
         PLAYER,
         ITEM,
+        EXPLORE_TARGET,
         JOBRESOURCE,
         CAMP,
     }

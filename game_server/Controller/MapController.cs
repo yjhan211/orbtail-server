@@ -12,19 +12,21 @@ namespace game_server
         NatsClient? nats_client;
 
         readonly ConcurrentDictionary<string, ConcurrentBag<string>> object_position_dict;
+        readonly ConcurrentDictionary<int, ConcurrentBag<ExploreTargetInfo>> explore_target_dict;
         readonly ConcurrentDictionary<int, ConcurrentBag<JobResourceInfo>> job_resource_dict;
         readonly List<Cell> manage_cell_list;
         readonly CancellationTokenSource cts;
-        readonly SemaphoreSlim job_resource_semaphore;
+        readonly SemaphoreSlim explore_target_semaphore;
 
         public MapController(MapID map_id)
         {
             this.map_id = map_id;
             this.object_position_dict = new();
             this.job_resource_dict = new();
+            this.explore_target_dict = new();
             this.manage_cell_list = new();
             this.cts = new();
-            this.job_resource_semaphore = new SemaphoreSlim(1, 1);
+            this.explore_target_semaphore = new(1, 1);
         }
 
         public async Task Initialize(NatsClient nats_client)
@@ -34,29 +36,29 @@ namespace game_server
             // 임시
             if (Program.server_id != 1)
             {
-                var job_resource_values = await CacheHelper.Instance.HashGetAllAsync(
-                    "job_resource_info"
+                var explore_target_values = await CacheHelper.Instance.HashGetAllAsync(
+                    ExploreTargetInfo.HASH_KEY
                 );
 
-                if (job_resource_values != null)
+                if (explore_target_values != null)
                 {
-                    foreach (HashEntry entry in job_resource_values)
+                    foreach (HashEntry entry in explore_target_values)
                     {
-                        if (!long.TryParse(entry.Name, out long job_resource_id))
+                        if (!long.TryParse(entry.Name, out long explore_target_id))
                         {
                             continue;
                         }
 
-                        await JobResourceInfo.Delete(job_resource_id);
+                        await ExploreTargetInfo.Delete(explore_target_id);
 
                         var objecte_field = GameObjectInfo.MakeHashField(
-                            ObjectType.JOBRESOURCE,
-                            job_resource_id
+                            ObjectType.EXPLORE_TARGET,
+                            explore_target_id
                         );
                         await GameObjectInfo.Delete(objecte_field);
                     }
 
-                    job_resource_values = null;
+                    explore_target_values = null;
                 }
             }
             else
@@ -139,6 +141,7 @@ namespace game_server
                 }
             );
 
+            // TODO 잡리소스 -> 잡리소스 인데 조사대상 -> 잡리소스로 변경 예정
             this.nats_client.Subscribe(
                 MapHelper.GetUpdateJobResourceSubject(this.map_id, 0, Program.server_id),
                 (subject, msg) =>
@@ -203,7 +206,7 @@ namespace game_server
 
             if (this.map_id == MapID.FACTORY_1)
             {
-                _ = Task.Run(CreateJobResourceTask, this.cts.Token);
+                _ = Task.Run(CreateExploreTargetTask, this.cts.Token);
             }
         }
 
@@ -220,24 +223,24 @@ namespace game_server
                 manage_position_key_list.AddRange(
                     MapHelper.position_list_by_map_part[this.map_id][manage_part]
                 );
-                this.job_resource_dict[manage_part] = new ConcurrentBag<JobResourceInfo>();
+                this.explore_target_dict[manage_part] = new();
             }
 
             foreach (var position_key in manage_position_key_list)
             {
-                this.object_position_dict[position_key] = new ConcurrentBag<string>();
+                this.object_position_dict[position_key] = new();
                 manage_cell_list.Add(MapHelper.GetCell(position_key));
             }
         }
 
-        async Task CreateJobResourceTask()
+        async Task CreateExploreTargetTask()
         {
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
             while (await timer.WaitForNextTickAsync(this.cts.Token))
             {
                 try
                 {
-                    await CreateJobResource();
+                    await CreateExploreTarget();
                 }
                 catch (OperationCanceledException)
                 {
@@ -250,16 +253,16 @@ namespace game_server
             }
         }
 
-        async Task CreateJobResource()
+        async Task CreateExploreTarget()
         {
-            await this.job_resource_semaphore.WaitAsync();
+            await this.explore_target_semaphore.WaitAsync();
             try
             {
                 Random random = new();
-                foreach (var part_resource_info in this.job_resource_dict)
+                foreach (var part_explore_target_info in this.explore_target_dict)
                 {
                     // TODO 3 Config로 분리..
-                    if (3 <= part_resource_info.Value.Count)
+                    if (3 <= part_explore_target_info.Value.Count)
                     {
                         continue;
                     }
@@ -275,30 +278,46 @@ namespace game_server
                     ];
                     var create_position_key = MapHelper.GetPositionKey(this.map_id, 0, create_cell);
 
-                    long resource_uid = await CacheHelper.Instance.StringIncrementAsync(
-                        "temp_job_resource_uid"
+                    long explore_target_uid = await CacheHelper.Instance.StringIncrementAsync(
+                        "temp_explore_target_uid"
                     );
 
                     GameObjectInfo object_info =
                         new()
                         {
-                            object_type = ObjectType.JOBRESOURCE,
-                            object_id = resource_uid,
+                            object_type = ObjectType.EXPLORE_TARGET,
+                            object_id = explore_target_uid,
                             current_cell = create_cell,
                             target_cell = create_cell,
                             map_id = MapID.FACTORY_1,
                         };
 
-                    // TODO resource_id 정리, 확률 기반으로 종류 결정
-                    List<int> gen_resource_type_list = new() { 10001, 20001 };
-                    JobResourceInfo job_resource_info =
+                    // TODO explore_target_id 정리, 확률 기반으로 종류 결정
+                    List<int> gen_explore_id_list =
+                        new()
+                        {
+                            100001,
+                            100002,
+                            100003,
+                            100004,
+                            100005,
+                            100006,
+                            200001,
+                            200002,
+                            200003,
+                            200004,
+                            200005,
+                            200006
+                        };
+
+                    ExploreTargetInfo explore_target_info =
                         new(
-                            resource_uid,
-                            gen_resource_type_list[random.Next(0, gen_resource_type_list.Count)],
+                            explore_target_uid,
+                            gen_explore_id_list[random.Next(0, gen_explore_id_list.Count)],
                             object_info
                         );
 
-                    part_resource_info.Value.Add(job_resource_info);
+                    part_explore_target_info.Value.Add(explore_target_info);
                     this.object_position_dict.AddOrUpdate(
                         create_position_key,
                         new ConcurrentBag<string> { object_info.GetHashField() },
@@ -309,7 +328,7 @@ namespace game_server
                         }
                     );
 
-                    await job_resource_info.Save();
+                    await explore_target_info.Save();
 
                     // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
                     var target_server_list = MapHelper.GetBoundServerList(
@@ -333,7 +352,7 @@ namespace game_server
             }
             finally
             {
-                this.job_resource_semaphore.Release();
+                this.explore_target_semaphore.Release();
             }
         }
 
@@ -597,11 +616,13 @@ namespace game_server
                 // Update job_resource_dict
                 foreach (var kvp in this.job_resource_dict)
                 {
-                    var updatedBag = new ConcurrentBag<JobResourceInfo>(
-                        kvp.Value.Where(
-                            job_resource => job_resource.object_info.GetHashField() != object_key
-                        )
-                    );
+                    ConcurrentBag<JobResourceInfo> updatedBag =
+                        new(
+                            kvp.Value.Where(
+                                job_resource =>
+                                    job_resource.object_info.GetHashField() != object_key
+                            )
+                        );
                     this.job_resource_dict[kvp.Key] = updatedBag;
                 }
 
