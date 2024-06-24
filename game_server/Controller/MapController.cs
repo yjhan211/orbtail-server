@@ -11,12 +11,11 @@ namespace game_server
         public MapID map_id; // TODO 채널 확장
         NatsClient? nats_client;
 
-        ConcurrentDictionary<string, List<string>> object_position_dict;
-        ConcurrentDictionary<int, List<JobResourceInfo>> job_resource_dict;
-        List<Cell> manage_cell_list;
-
-        Task? create_job_resource_task;
-        public CancellationTokenSource cts;
+        readonly ConcurrentDictionary<string, ConcurrentBag<string>> object_position_dict;
+        readonly ConcurrentDictionary<int, ConcurrentBag<JobResourceInfo>> job_resource_dict;
+        readonly List<Cell> manage_cell_list;
+        readonly CancellationTokenSource cts;
+        readonly SemaphoreSlim job_resource_semaphore;
 
         public MapController(MapID map_id)
         {
@@ -24,8 +23,8 @@ namespace game_server
             this.object_position_dict = new();
             this.job_resource_dict = new();
             this.manage_cell_list = new();
-
             this.cts = new();
+            this.job_resource_semaphore = new SemaphoreSlim(1, 1);
         }
 
         public async Task Initialize(NatsClient nats_client)
@@ -200,11 +199,20 @@ namespace game_server
                 }
             );
 
+            InitializeManageParts();
+
+            if (this.map_id == MapID.FACTORY_1)
+            {
+                _ = Task.Run(CreateJobResourceTask, this.cts.Token);
+            }
+        }
+
+        void InitializeManageParts()
+        {
             var manage_part_list = MapHelper.GetManagePartList(
                 Program.game_server_num,
                 Program.server_id
             );
-
             var manage_position_key_list = new List<string>();
 
             foreach (var manage_part in manage_part_list)
@@ -212,41 +220,24 @@ namespace game_server
                 manage_position_key_list.AddRange(
                     MapHelper.position_list_by_map_part[this.map_id][manage_part]
                 );
-
-                this.job_resource_dict[manage_part] = new();
+                this.job_resource_dict[manage_part] = new ConcurrentBag<JobResourceInfo>();
             }
 
             foreach (var position_key in manage_position_key_list)
             {
-                this.object_position_dict[position_key] = new();
+                this.object_position_dict[position_key] = new ConcurrentBag<string>();
                 manage_cell_list.Add(MapHelper.GetCell(position_key));
-            }
-
-            if (this.map_id == MapID.FACTORY_1)
-            {
-                this.create_job_resource_task = Task.Run(CreateJobResourceTask, this.cts.Token);
             }
         }
 
-        object position_lock = new();
-
-        private ManualResetEventSlim jobResourceEvent = new ManualResetEventSlim();
-        private Timer? job_resource_timer;
-
-        void CreateJobResourceTask()
+        async Task CreateJobResourceTask()
         {
-            this.job_resource_timer = new(
-                async _ => await CreateJobResource(),
-                null,
-                TimeSpan.Zero,
-                TimeSpan.FromSeconds(1)
-            );
-
-            while (!this.cts.Token.IsCancellationRequested)
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(this.cts.Token))
             {
                 try
                 {
-                    this.cts.Token.WaitHandle.WaitOne();
+                    await CreateJobResource();
                 }
                 catch (OperationCanceledException)
                 {
@@ -257,12 +248,11 @@ namespace game_server
                     LogManager.WriteErrorLog(e);
                 }
             }
-
-            this.job_resource_timer.Dispose();
         }
 
         async Task CreateJobResource()
         {
+            await this.job_resource_semaphore.WaitAsync();
             try
             {
                 Random random = new();
@@ -283,7 +273,6 @@ namespace game_server
                     var create_cell = this.manage_cell_list[
                         random.Next(0, this.manage_cell_list.Count)
                     ];
-
                     var create_position_key = MapHelper.GetPositionKey(this.map_id, 0, create_cell);
 
                     long resource_uid = await CacheHelper.Instance.StringIncrementAsync(
@@ -309,8 +298,16 @@ namespace game_server
                             object_info
                         );
 
-                    this.job_resource_dict[part_resource_info.Key].Add(job_resource_info);
-                    this.object_position_dict[create_position_key].Add(object_info.GetHashField());
+                    part_resource_info.Value.Add(job_resource_info);
+                    this.object_position_dict.AddOrUpdate(
+                        create_position_key,
+                        new ConcurrentBag<string> { object_info.GetHashField() },
+                        (_, bag) =>
+                        {
+                            bag.Add(object_info.GetHashField());
+                            return bag;
+                        }
+                    );
 
                     await job_resource_info.Save();
 
@@ -336,308 +333,367 @@ namespace game_server
             }
             finally
             {
-                jobResourceEvent.Set();
+                this.job_resource_semaphore.Release();
             }
         }
 
-        public void MoveManageObject(RedisValue message)
+        private void BroadcastToChannels(string position_key, Packet packet)
         {
-            var (last_position_key, object_info) = MessagePackSerializer.Deserialize<(
-                string,
-                GameObjectInfo
-            )>(message);
-
-            var object_key = GameObjectInfo.MakeHashField(
-                object_info.object_type,
-                object_info.object_id
-            );
-
-            var current_position_key = MapHelper.GetPositionKey(
-                object_info.map_id,
-                0,
-                object_info.current_cell
-            );
-
-            // 위치 갱신
-            lock (position_lock)
+            try
             {
-                // last를 관리하는 서버가 본인이면 지움
-                if (this.object_position_dict.TryGetValue(last_position_key, out _))
+                var pivot_cell = MapHelper.GetCell(position_key);
+                var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
+
+                foreach (var bound_cell in bound_cell_list)
                 {
-                    foreach (var kvp in this.object_position_dict.ToList())
+                    var bound_position_key = MapHelper.GetPositionKey(this.map_id, 0, bound_cell);
+                    if (
+                        this.object_position_dict.TryGetValue(
+                            bound_position_key,
+                            out var channel_list
+                        ) && channel_list.Any()
+                    )
                     {
-                        kvp.Value.Remove(object_key);
+                        foreach (var channel in channel_list)
+                        {
+                            try
+                            {
+                                this.nats_client!.Publish(channel, packet.ToBytes());
+                            }
+                            catch (Exception e)
+                            {
+                                LogManager.WriteErrorLog(e);
+                            }
+                        }
                     }
                 }
-
-                // current 추가
-                this.object_position_dict[current_position_key].Add(object_key);
             }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+        }
 
-            // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
+        public void UpdateJobResourceInfo(RedisValue message)
+        {
+            Packet? packet = null;
+            try
+            {
+                (string position_key, JobResourceInfo job_resource_info) =
+                    MessagePackSerializer.Deserialize<(string, JobResourceInfo)>(message);
+                packet = PacketMaker.G_TO_U_JOB_RESOURCE_INFO(job_resource_info);
+                BroadcastToChannels(position_key, packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
+        }
+
+        public void UpdateCampInfo(RedisValue message)
+        {
+            Packet? packet = null;
+            try
+            {
+                (string position_key, CampInfo camp_info) = MessagePackSerializer.Deserialize<(
+                    string,
+                    CampInfo
+                )>(message);
+                packet = PacketMaker.G_TO_U_CAMP_INFO(camp_info);
+                BroadcastToChannels(position_key, packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
+        }
+
+        public void BroadcastUpdateObject(RedisValue message)
+        {
+            Packet? packet = null;
+            try
+            {
+                var (position_key, object_info) = MessagePackSerializer.Deserialize<(
+                    string,
+                    GameObjectInfo
+                )>(message);
+                packet = PacketMaker.G_TO_U_MOVE(object_info);
+                BroadcastToChannels(position_key, packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
+        }
+
+        void BroadcastObjectMove(string current_position_key, GameObjectInfo object_info)
+        {
             var target_server_list = MapHelper.GetBoundServerList(
                 this.map_id,
                 Program.game_server_num,
                 object_info.current_cell
             );
 
+            var message = MessagePackSerializer.Serialize((current_position_key, object_info));
             foreach (var target_server in target_server_list)
             {
                 this.nats_client!.Publish(
                     MapHelper.GetBrodcastMoveSubject(this.map_id, 0, target_server),
-                    MessagePackSerializer.Serialize((current_position_key, object_info))
+                    message
                 );
+            }
+        }
+
+        void UpdateObjectPosition(
+            string last_position_key,
+            string current_position_key,
+            string object_key
+        )
+        {
+            if (this.object_position_dict.TryGetValue(last_position_key, out var lastPositionBag))
+            {
+                var updatedBag = new ConcurrentBag<string>(
+                    lastPositionBag.Where(x => x != object_key)
+                );
+                this.object_position_dict[last_position_key] = updatedBag;
+            }
+
+            this.object_position_dict.AddOrUpdate(
+                current_position_key,
+                new ConcurrentBag<string> { object_key },
+                (_, bag) =>
+                {
+                    bag.Add(object_key);
+                    return bag;
+                }
+            );
+        }
+
+        public void MoveManageObject(RedisValue message)
+        {
+            try
+            {
+                var (last_position_key, object_info) = MessagePackSerializer.Deserialize<(
+                    string,
+                    GameObjectInfo
+                )>(message);
+                var object_key = GameObjectInfo.MakeHashField(
+                    object_info.object_type,
+                    object_info.object_id
+                );
+                var current_position_key = MapHelper.GetPositionKey(
+                    object_info.map_id,
+                    0,
+                    object_info.current_cell
+                );
+
+                UpdateObjectPosition(last_position_key, current_position_key, object_key);
+                BroadcastObjectMove(current_position_key, object_info);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
             }
         }
 
         public void LeaveManageObject(RedisValue message)
         {
-            (string position_key, string object_key) = MessagePackSerializer.Deserialize<(
-                string,
-                string
-            )>(message);
-
-            lock (position_lock)
+            try
             {
-                foreach (var kvp in this.object_position_dict.ToList())
+                (string position_key, string object_key) = MessagePackSerializer.Deserialize<(
+                    string,
+                    string
+                )>(message);
+
+                foreach (var kvp in this.object_position_dict)
                 {
-                    kvp.Value.Remove(object_key);
+                    var updatedBag = new ConcurrentBag<string>(
+                        kvp.Value.Where(x => x != object_key)
+                    );
+                    this.object_position_dict[kvp.Key] = updatedBag;
                 }
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
             }
         }
 
         public void SpawnManageObject(RedisValue message)
         {
-            (string user_subject, List<string> position_key_list) =
-                MessagePackSerializer.Deserialize<(string, List<string>)>(message);
-
-            var spawn_list = new List<string>();
-            foreach (var position_key in position_key_list)
+            Packet? packet = null;
+            try
             {
-                spawn_list.AddRange(this.object_position_dict[position_key]);
+                (string user_subject, List<string> position_key_list) =
+                    MessagePackSerializer.Deserialize<(string, List<string>)>(message);
+
+                var spawn_list = new List<string>();
+                foreach (var position_key in position_key_list)
+                {
+                    if (this.object_position_dict.TryGetValue(position_key, out var objects))
+                    {
+                        spawn_list.AddRange(objects);
+                    }
+                }
+
+                if (spawn_list.Count > 0)
+                {
+                    packet = PacketMaker.G_TO_U_SPAWN(spawn_list);
+                    this.nats_client!.Publish(user_subject, packet.ToBytes());
+                }
             }
-
-            if (spawn_list.Count > 0)
+            catch (Exception e)
             {
-                Packet packet = PacketMaker.G_TO_U_SPAWN(spawn_list);
-                this.nats_client!.Publish(user_subject, packet.ToBytes());
-                Packet.Destroy(packet);
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
             }
         }
 
         public void DestroyManageObject(RedisValue message)
         {
-            (string position_key, string object_key) = MessagePackSerializer.Deserialize<(
-                string,
-                string
-            )>(message);
-
-            lock (position_lock)
+            try
             {
-                foreach (var kvp in this.object_position_dict.ToList())
+                var (position_key, object_key) = MessagePackSerializer.Deserialize<(
+                    string,
+                    string
+                )>(message);
+
+                // Update object_position_dict
+                foreach (var kvp in this.object_position_dict)
                 {
-                    kvp.Value.Remove(object_key);
+                    var updatedBag = new ConcurrentBag<string>(
+                        kvp.Value.Where(x => x != object_key)
+                    );
+                    this.object_position_dict[kvp.Key] = updatedBag;
                 }
 
-                foreach (var kvp in this.job_resource_dict.ToList())
+                // Update job_resource_dict
+                foreach (var kvp in this.job_resource_dict)
                 {
-                    var result = kvp.Value.RemoveAll(
-                        job_resource => job_resource.object_info.GetHashField() == object_key
+                    var updatedBag = new ConcurrentBag<JobResourceInfo>(
+                        kvp.Value.Where(
+                            job_resource => job_resource.object_info.GetHashField() != object_key
+                        )
+                    );
+                    this.job_resource_dict[kvp.Key] = updatedBag;
+                }
+
+                // Broadcast destroy message
+                Cell position_cell = MapHelper.GetCell(position_key);
+                var target_server_list = MapHelper.GetBoundServerList(
+                    this.map_id,
+                    Program.game_server_num,
+                    position_cell
+                );
+
+                var destroyMessage = MessagePackSerializer.Serialize((position_key, object_key));
+                foreach (var target_server in target_server_list)
+                {
+                    this.nats_client!.Publish(
+                        MapHelper.GetBrodcastDestroySubject(this.map_id, 0, target_server),
+                        destroyMessage
                     );
                 }
+
+                Packet? packet = null;
+                try
+                {
+                    packet = PacketMaker.G_TO_U_DESTROY(object_key);
+                    BroadcastToChannels(position_key, packet);
+                }
+                catch (Exception e)
+                {
+                    LogManager.WriteErrorLog(e);
+                }
+                finally
+                {
+                    if (packet != null)
+                    {
+                        Packet.Destroy(packet);
+                    }
+                }
             }
-
-            Cell position_cell = MapHelper.GetCell(position_key);
-            var target_server_list = MapHelper.GetBoundServerList(
-                this.map_id,
-                Program.game_server_num,
-                position_cell
-            );
-
-            foreach (var target_server in target_server_list)
+            catch (Exception e)
             {
-                this.nats_client!.Publish(
-                    MapHelper.GetBrodcastDestroySubject(this.map_id, 0, target_server),
-                    MessagePackSerializer.Serialize((position_key, object_key))
-                );
+                LogManager.WriteErrorLog(e);
             }
         }
 
         public void UpdatePlayerInfo(RedisValue message)
         {
-            (string position_key, PlayerInfo player_info) = MessagePackSerializer.Deserialize<(
-                string,
-                PlayerInfo
-            )>(message);
-
-            Packet packet = PacketMaker.G_TO_U_PLAYER_INFO(player_info);
-
-            var pivot_cell = MapHelper.GetCell(position_key);
-            var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
-
-            foreach (var bound_cell in bound_cell_list)
+            Packet? packet = null;
+            try
             {
-                var bound_position_key = MapHelper.GetPositionKey(this.map_id, 0, bound_cell);
-                if (
-                    !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
-                )
+                (string position_key, PlayerInfo player_info) = MessagePackSerializer.Deserialize<(
+                    string,
+                    PlayerInfo
+                )>(message);
+                packet = PacketMaker.G_TO_U_PLAYER_INFO(player_info);
+                BroadcastToChannels(position_key, packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
                 {
-                    continue;
-                }
-
-                if (channel_list.Count <= 0)
-                {
-                    continue;
-                }
-
-                foreach (var channel in channel_list)
-                {
-                    this.nats_client!.Publish(channel, packet.ToBytes());
+                    Packet.Destroy(packet);
                 }
             }
-
-            Packet.Destroy(packet);
-        }
-
-        public void UpdateJobResourceInfo(RedisValue message)
-        {
-            (string position_key, JobResourceInfo job_resource_info) =
-                MessagePackSerializer.Deserialize<(string, JobResourceInfo)>(message);
-
-            Packet packet = PacketMaker.G_TO_U_JOB_RESOURCE_INFO(job_resource_info);
-
-            var pivot_cell = MapHelper.GetCell(position_key);
-            var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
-
-            foreach (var bound_cell in bound_cell_list)
-            {
-                var bound_position_key = MapHelper.GetPositionKey(this.map_id, 0, bound_cell);
-                if (
-                    !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
-                )
-                {
-                    continue;
-                }
-
-                if (channel_list.Count <= 0)
-                {
-                    continue;
-                }
-
-                foreach (var channel in channel_list)
-                {
-                    this.nats_client!.Publish(channel, packet.ToBytes());
-                }
-            }
-
-            Packet.Destroy(packet);
-        }
-
-        public void UpdateCampInfo(RedisValue message)
-        {
-            (string position_key, CampInfo camp_info) = MessagePackSerializer.Deserialize<(
-                string,
-                CampInfo
-            )>(message);
-
-            Packet packet = PacketMaker.G_TO_U_CAMP_INFO(camp_info);
-
-            var pivot_cell = MapHelper.GetCell(position_key);
-            var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
-
-            foreach (var bound_cell in bound_cell_list)
-            {
-                var bound_position_key = MapHelper.GetPositionKey(this.map_id, 0, bound_cell);
-                if (
-                    !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
-                )
-                {
-                    continue;
-                }
-
-                if (channel_list.Count <= 0)
-                {
-                    continue;
-                }
-
-                foreach (var channel in channel_list)
-                {
-                    this.nats_client!.Publish(channel, packet.ToBytes());
-                }
-            }
-
-            Packet.Destroy(packet);
-        }
-
-        public void BroadcastUpdateObject(RedisValue message)
-        {
-            var (position_key, object_info) = MessagePackSerializer.Deserialize<(
-                string,
-                GameObjectInfo
-            )>(message);
-
-            Packet packet = PacketMaker.G_TO_U_MOVE(object_info);
-
-            var pivot_cell = MapHelper.GetCell(position_key);
-            var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
-
-            foreach (var bound_cell in bound_cell_list)
-            {
-                var bound_position_key = MapHelper.GetPositionKey(this.map_id, 0, bound_cell);
-                if (
-                    !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
-                )
-                {
-                    continue;
-                }
-
-                if (channel_list.Count <= 0)
-                {
-                    continue;
-                }
-
-                foreach (var channel in channel_list.ToList())
-                {
-                    this.nats_client!.Publish(channel, packet.ToBytes());
-                }
-            }
-
-            Packet.Destroy(packet);
         }
 
         public void BroadcastDestroyObject(RedisValue message)
         {
-            var (position_key, object_key) = MessagePackSerializer.Deserialize<(string, string)>(
-                message
-            );
-
-            Packet packet = PacketMaker.G_TO_U_DESTROY(object_key);
-
-            var pivot_cell = MapHelper.GetCell(position_key);
-            var bound_cell_list = MapHelper.GetBoundCellList(pivot_cell);
-
-            foreach (var bound_cell in bound_cell_list)
+            Packet? packet = null;
+            try
             {
-                var bound_position_key = MapHelper.GetPositionKey(this.map_id, 0, bound_cell);
-                if (
-                    !this.object_position_dict.TryGetValue(bound_position_key, out var channel_list)
-                )
+                var (position_key, object_key) = MessagePackSerializer.Deserialize<(
+                    string,
+                    string
+                )>(message);
+                packet = PacketMaker.G_TO_U_DESTROY(object_key);
+                BroadcastToChannels(position_key, packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
                 {
-                    continue;
-                }
-
-                if (channel_list.Count <= 0)
-                {
-                    continue;
-                }
-
-                foreach (var channel in channel_list)
-                {
-                    this.nats_client!.Publish(channel, packet.ToBytes());
+                    Packet.Destroy(packet);
                 }
             }
-
-            Packet.Destroy(packet);
         }
     }
 }

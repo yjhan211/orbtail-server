@@ -941,6 +941,7 @@
             if (this.object_controller != null)
             {
                 await this.object_controller.PublishDestroy();
+                this.object_controller.HandleClientDisconnect();
             }
 
             if (current_progress_job != null)

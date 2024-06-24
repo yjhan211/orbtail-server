@@ -9,12 +9,12 @@ namespace game_server
     public class InstanceController
     {
         NatsClient? nats_client;
-
-        ConcurrentDictionary<string, List<string>> object_instacne_dict; // Instance_id, [object_key, ..]
+        readonly ConcurrentDictionary<string, ConcurrentBag<string>> object_instance_dict; // Instance_id, [object_key, ..]
+        readonly object position_lock = new object();
 
         public InstanceController()
         {
-            this.object_instacne_dict = new();
+            this.object_instance_dict = new ConcurrentDictionary<string, ConcurrentBag<string>>();
         }
 
         public void Initialize(NatsClient nats_client)
@@ -38,217 +38,290 @@ namespace game_server
 
         void CreateInstance(RedisValue message)
         {
-            var (user_subject, map_id, map_sub_id) = MessagePackSerializer.Deserialize<(
-                string,
-                MapID,
-                long
-            )>(message);
-
-            switch (map_id)
+            Packet? packet = null;
+            try
             {
-                case MapID.LAB_1:
-                    var instance_key = MapHelper.GetInstanceKey(map_id, map_sub_id);
-                    if (!this.object_instacne_dict.TryGetValue(instance_key, out var _))
-                    {
-                        this.object_instacne_dict[instance_key] = new();
+                var (user_subject, map_id, map_sub_id) = MessagePackSerializer.Deserialize<(
+                    string,
+                    MapID,
+                    long
+                )>(message);
+
+                switch (map_id)
+                {
+                    case MapID.LAB_1:
+                        var instance_key = MapHelper.GetInstanceKey(map_id, map_sub_id);
+                        this.object_instance_dict.GetOrAdd(
+                            instance_key,
+                            _ => new ConcurrentBag<string>()
+                        );
                         SubscribeInstance(map_id, map_sub_id);
-                    }
-                    break;
+                        break;
 
-                default:
-                    throw new Exception("inavlid map id");
+                    default:
+                        throw new Exception("Invalid map id");
+                }
+
+                packet = PacketMaker.G_TO_U_CREATE_INSTANCE_SUCCESS(map_id, map_sub_id);
+                this.nats_client!.Publish(user_subject, packet.ToBytes());
             }
-
-            Packet packet = PacketMaker.G_TO_U_CREATE_INSTANCE_SUCCESS(map_id, map_sub_id);
-            this.nats_client!.Publish(user_subject, packet.ToBytes());
-
-            Packet.Destroy(packet);
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
         }
-
-        object position_lock = new();
 
         public void MoveManageObject(RedisValue message)
         {
-            var (last_position_key, object_info) = MessagePackSerializer.Deserialize<(
-                string,
-                GameObjectInfo
-            )>(message);
-
-            var object_key = GameObjectInfo.MakeHashField(ObjectType.PLAYER, object_info.object_id);
-            var last_instance_key = MapHelper.ConvertToInstanceKey(last_position_key);
-            var current_instance_key = MapHelper.GetInstanceKey(
-                object_info.map_id,
-                object_info.map_sub_id
-            );
-
-            // 위치 갱신
-            lock (position_lock)
+            Packet? packet = null;
+            try
             {
-                // last를 관리하는 서버가 본인이면 지움
-                if (this.object_instacne_dict.TryGetValue(last_instance_key, out _))
+                var (last_position_key, object_info) = MessagePackSerializer.Deserialize<(
+                    string,
+                    GameObjectInfo
+                )>(message);
+
+                var object_key = GameObjectInfo.MakeHashField(
+                    ObjectType.PLAYER,
+                    object_info.object_id
+                );
+                var last_instance_key = MapHelper.ConvertToInstanceKey(last_position_key);
+                var current_instance_key = MapHelper.GetInstanceKey(
+                    object_info.map_id,
+                    object_info.map_sub_id
+                );
+
+                UpdateObjectPosition(last_instance_key, current_instance_key, object_key);
+
+                packet = PacketMaker.G_TO_U_MOVE(object_info);
+                BroadcastToInstance(current_instance_key, packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
                 {
-                    this.object_instacne_dict[last_instance_key].Remove(object_key);
+                    Packet.Destroy(packet);
                 }
-
-                // current 추가
-                this.object_instacne_dict[current_instance_key].Add(object_key);
             }
+        }
 
-            Packet packet = PacketMaker.G_TO_U_MOVE(object_info);
-            foreach (var user_subject in this.object_instacne_dict[current_instance_key].ToList())
+        private void UpdateObjectPosition(
+            string last_instance_key,
+            string current_instance_key,
+            string object_key
+        )
+        {
+            if (this.object_instance_dict.TryGetValue(last_instance_key, out var lastInstanceBag))
             {
-                this.nats_client!.Publish(user_subject, packet.ToBytes());
+                var updatedBag = new ConcurrentBag<string>(
+                    lastInstanceBag.Where(x => x != object_key)
+                );
+                this.object_instance_dict[last_instance_key] = updatedBag;
             }
 
-            Packet.Destroy(packet);
+            this.object_instance_dict.AddOrUpdate(
+                current_instance_key,
+                new ConcurrentBag<string> { object_key },
+                (_, bag) =>
+                {
+                    bag.Add(object_key);
+                    return bag;
+                }
+            );
         }
 
         public void LeaveManageObject(RedisValue message)
         {
-            (string position_key, string object_key) = MessagePackSerializer.Deserialize<(
-                string,
-                string
-            )>(message);
-
-            var instacen_key = MapHelper.ConvertToInstanceKey(position_key);
-            lock (position_lock)
+            try
             {
-                this.object_instacne_dict[instacen_key].Remove(object_key);
+                (string position_key, string object_key) = MessagePackSerializer.Deserialize<(
+                    string,
+                    string
+                )>(message);
+
+                var instance_key = MapHelper.ConvertToInstanceKey(position_key);
+                if (this.object_instance_dict.TryGetValue(instance_key, out var instanceBag))
+                {
+                    var updatedBag = new ConcurrentBag<string>(
+                        instanceBag.Where(x => x != object_key)
+                    );
+                    this.object_instance_dict[instance_key] = updatedBag;
+                }
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
             }
         }
 
         public void SpawnManageObject(RedisValue message)
         {
-            (string user_subject, List<string> instance_key_list) =
-                MessagePackSerializer.Deserialize<(string, List<string>)>(message);
-
-            var spawn_list = new List<string>();
-            foreach (var instance_key in instance_key_list)
+            Packet? packet = null;
+            try
             {
-                spawn_list.AddRange(this.object_instacne_dict[instance_key]);
+                (string user_subject, List<string> instance_key_list) =
+                    MessagePackSerializer.Deserialize<(string, List<string>)>(message);
+
+                var spawn_list = new List<string>();
+                foreach (var instance_key in instance_key_list)
+                {
+                    if (this.object_instance_dict.TryGetValue(instance_key, out var objects))
+                    {
+                        spawn_list.AddRange(objects);
+                    }
+                }
+
+                if (spawn_list.Count > 0)
+                {
+                    packet = PacketMaker.G_TO_U_SPAWN(spawn_list);
+                    this.nats_client!.Publish(user_subject, packet.ToBytes());
+                }
             }
-
-            if (spawn_list.Count > 0)
+            catch (Exception e)
             {
-                Packet packet = PacketMaker.G_TO_U_SPAWN(spawn_list);
-                this.nats_client!.Publish(user_subject, packet.ToBytes());
-                Packet.Destroy(packet);
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
             }
         }
 
         public void DestroyManageObject(RedisValue message)
         {
-            (string instance_key, string object_key) = MessagePackSerializer.Deserialize<(
-                string,
-                string
-            )>(message);
-
-            lock (position_lock)
+            Packet? packet = null;
+            try
             {
-                var result = this.object_instacne_dict[instance_key].Remove(object_key);
-            }
+                (string instance_key, string object_key) = MessagePackSerializer.Deserialize<(
+                    string,
+                    string
+                )>(message);
 
-            Packet packet = PacketMaker.G_TO_U_DESTROY(object_key);
-            foreach (var user_subject in this.object_instacne_dict[instance_key].ToList())
+                if (this.object_instance_dict.TryGetValue(instance_key, out var instanceBag))
+                {
+                    var updatedBag = new ConcurrentBag<string>(
+                        instanceBag.Where(x => x != object_key)
+                    );
+                    this.object_instance_dict[instance_key] = updatedBag;
+                }
+
+                packet = PacketMaker.G_TO_U_DESTROY(object_key);
+                BroadcastToInstance(instance_key, packet);
+            }
+            catch (Exception e)
             {
-                this.nats_client!.Publish(user_subject, packet.ToBytes());
+                LogManager.WriteErrorLog(e);
             }
-
-            Packet.Destroy(packet);
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
         }
 
         public void UpdatePlayerInfo(RedisValue message)
         {
-            (string instance_key, PlayerInfo player_info) = MessagePackSerializer.Deserialize<(
-                string,
-                PlayerInfo
-            )>(message);
-
-            Packet packet = PacketMaker.G_TO_U_PLAYER_INFO(player_info);
-            foreach (var channel in this.object_instacne_dict[instance_key].ToList())
+            Packet? packet = null;
+            try
             {
-                this.nats_client!.Publish(channel, packet.ToBytes());
-            }
+                (string instance_key, PlayerInfo player_info) = MessagePackSerializer.Deserialize<(
+                    string,
+                    PlayerInfo
+                )>(message);
 
-            Packet.Destroy(packet);
+                packet = PacketMaker.G_TO_U_PLAYER_INFO(player_info);
+                BroadcastToInstance(instance_key, packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
+        }
+
+        private void BroadcastToInstance(string instance_key, Packet packet)
+        {
+            if (this.object_instance_dict.TryGetValue(instance_key, out var channels))
+            {
+                foreach (var channel in channels)
+                {
+                    try
+                    {
+                        this.nats_client!.Publish(channel, packet.ToBytes());
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
+            }
         }
 
         void SubscribeInstance(MapID map_id, long map_sub_id)
         {
-            this.nats_client!.Subscribe(
-                MapHelper.GetMoveManageSubject(map_id, map_sub_id, Program.server_id),
-                (subject, msg) =>
+            var subscriptions = new Dictionary<string, Action<RedisValue>>
+            {
                 {
-                    try
-                    {
-                        MoveManageObject(msg);
-                    }
-                    catch (Exception e)
-                    {
-                        LogManager.WriteErrorLog(e);
-                    }
+                    MapHelper.GetMoveManageSubject(map_id, map_sub_id, Program.server_id),
+                    MoveManageObject
+                },
+                {
+                    MapHelper.GetLeaveManageSubject(map_id, map_sub_id, Program.server_id),
+                    LeaveManageObject
+                },
+                {
+                    MapHelper.GetSpawnManageSubject(map_id, map_sub_id, Program.server_id),
+                    SpawnManageObject
+                },
+                {
+                    MapHelper.GetDestroyObjectSubject(map_id, map_sub_id, Program.server_id),
+                    DestroyManageObject
+                },
+                {
+                    MapHelper.GetUpdatePlayerSubject(map_id, map_sub_id, Program.server_id),
+                    UpdatePlayerInfo
                 }
-            );
+            };
 
-            this.nats_client.Subscribe(
-                MapHelper.GetLeaveManageSubject(map_id, map_sub_id, Program.server_id),
-                (subject, msg) =>
-                {
-                    try
+            foreach (var subscription in subscriptions)
+            {
+                this.nats_client!.Subscribe(
+                    subscription.Key,
+                    (_, msg) =>
                     {
-                        LeaveManageObject(msg);
+                        try
+                        {
+                            subscription.Value(msg);
+                        }
+                        catch (Exception e)
+                        {
+                            LogManager.WriteErrorLog(e);
+                        }
                     }
-                    catch (Exception e)
-                    {
-                        LogManager.WriteErrorLog(e);
-                    }
-                }
-            );
-
-            this.nats_client.Subscribe(
-                MapHelper.GetSpawnManageSubject(map_id, map_sub_id, Program.server_id),
-                (subject, msg) =>
-                {
-                    try
-                    {
-                        SpawnManageObject(msg);
-                    }
-                    catch (Exception e)
-                    {
-                        LogManager.WriteErrorLog(e);
-                    }
-                }
-            );
-
-            this.nats_client.Subscribe(
-                MapHelper.GetDestroyObjectSubject(map_id, map_sub_id, Program.server_id),
-                (subject, msg) =>
-                {
-                    try
-                    {
-                        DestroyManageObject(msg);
-                    }
-                    catch (Exception e)
-                    {
-                        LogManager.WriteErrorLog(e);
-                    }
-                }
-            );
-
-            this.nats_client.Subscribe(
-                MapHelper.GetUpdatePlayerSubject(map_id, map_sub_id, Program.server_id),
-                (subject, msg) =>
-                {
-                    try
-                    {
-                        UpdatePlayerInfo(msg);
-                    }
-                    catch (Exception e)
-                    {
-                        LogManager.WriteErrorLog(e);
-                    }
-                }
-            );
+                );
+            }
         }
     }
 }
