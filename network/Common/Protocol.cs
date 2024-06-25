@@ -23,6 +23,9 @@
         U_TO_C_PLAYER_INFO,
         G_TO_U_PLAYER_INFO,
         C_TO_U_OBJECT_INFO,
+        C_TO_U_EXPLORE_TARGET_INFO,
+        U_TO_C_EXPLORE_TARGET_INFO,
+        G_TO_U_EXPLORE_TARGET_INFO,
         C_TO_U_JOB_RESOURCE_INFO,
         U_TO_C_JOB_RESOURCE_INFO,
         G_TO_U_JOB_RESOURCE_INFO,
@@ -75,12 +78,13 @@
         LAB_1,
     }
 
+    // 주의사항_ 붙이지 말 것
     public enum ObjectType : int
     {
         NONE,
         PLAYER,
         ITEM,
-        EXPLORE_TARGET,
+        EXPLORETARGET,
         JOBRESOURCE,
         CAMP,
     }

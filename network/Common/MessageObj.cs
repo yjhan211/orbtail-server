@@ -167,13 +167,6 @@ namespace network
     }
 
     [MessagePackObject]
-    public class G_TO_U_JOB_RESOURCE_INFO : IMessagePackObject
-    {
-        [Key("job_resource_info")]
-        public JobResourceInfo job_resource_info { get; set; }
-    }
-
-    [MessagePackObject]
     public class G_TO_U_CAMP_INFO : IMessagePackObject
     {
         [Key("camp_info")]
@@ -195,6 +188,27 @@ namespace network
     }
 
     [MessagePackObject]
+    public class C_TO_U_EXPLORE_TARGET_INFO : IMessagePackObject
+    {
+        [Key("explore_target_id_list")]
+        public List<long> explore_target_id_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_EXPLORE_TARGET_INFO : IMessagePackObject
+    {
+        [Key("explore_target_info")]
+        public List<ExploreTargetInfo> explore_target_info_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_U_EXPLORE_TARGET_INFO : IMessagePackObject
+    {
+        [Key("explore_target_info")]
+        public ExploreTargetInfo explore_target_info { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_U_JOB_RESOURCE_INFO : IMessagePackObject
     {
         [Key("job_resource_id_list")]
@@ -206,6 +220,13 @@ namespace network
     {
         [Key("job_resource_info")]
         public List<JobResourceInfo> job_resource_info_list { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_U_JOB_RESOURCE_INFO : IMessagePackObject
+    {
+        [Key("job_resource_info")]
+        public JobResourceInfo job_resource_info { get; set; }
     }
 
     [MessagePackObject]

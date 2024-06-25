@@ -159,6 +159,15 @@ namespace network
             return $"update_player_{map_id}_{map_sub_id}_{server_id}";
         }
 
+        public static string GetUpdateExploreTargetSubject(
+            MapID map_id,
+            long map_sub_id,
+            int server_id
+        )
+        {
+            return $"update_explore_target_{map_id}_{map_sub_id}_{server_id}";
+        }
+
         public static string GetUpdateJobResourceSubject(
             MapID map_id,
             long map_sub_id,

@@ -95,7 +95,10 @@ namespace network
                 return null;
             }
 
-            var object_info = await GameObjectInfo.Load(ObjectType.JOBRESOURCE, explore_target_uid);
+            var object_info = await GameObjectInfo.Load(
+                ObjectType.EXPLORETARGET,
+                explore_target_uid
+            );
             if (object_info == null)
             {
                 return null;

@@ -96,6 +96,16 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_EXPLORE_TARGET_INFO(List<ExploreTargetInfo> explore_target_list)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_EXPLORE_TARGET_INFO);
+            U_TO_C_EXPLORE_TARGET_INFO body =
+                new() { explore_target_info_list = explore_target_list };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_C_JOB_RESOURCE_INFO(List<JobResourceInfo> job_resource_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_JOB_RESOURCE_INFO);
@@ -180,6 +190,15 @@ namespace user_server
         {
             Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_PLAYER_INFO, player_info.player_id);
             G_TO_U_PLAYER_INFO body = new() { player_info = player_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet G_TO_U_EXPLORE_TARGET_INFO(ExploreTargetInfo explore_target_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.G_TO_U_EXPLORE_TARGET_INFO);
+            G_TO_U_EXPLORE_TARGET_INFO body = new() { explore_target_info = explore_target_info };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

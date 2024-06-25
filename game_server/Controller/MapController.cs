@@ -52,7 +52,7 @@ namespace game_server
                         await ExploreTargetInfo.Delete(explore_target_id);
 
                         var objecte_field = GameObjectInfo.MakeHashField(
-                            ObjectType.EXPLORE_TARGET,
+                            ObjectType.EXPLORETARGET,
                             explore_target_id
                         );
                         await GameObjectInfo.Delete(objecte_field);
@@ -141,7 +141,21 @@ namespace game_server
                 }
             );
 
-            // TODO 잡리소스 -> 잡리소스 인데 조사대상 -> 잡리소스로 변경 예정
+            this.nats_client.Subscribe(
+                MapHelper.GetUpdateExploreTargetSubject(this.map_id, 0, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        UpdateExploreTargetInfo(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
+            );
+
             this.nats_client.Subscribe(
                 MapHelper.GetUpdateJobResourceSubject(this.map_id, 0, Program.server_id),
                 (subject, msg) =>
@@ -285,7 +299,7 @@ namespace game_server
                     GameObjectInfo object_info =
                         new()
                         {
-                            object_type = ObjectType.EXPLORE_TARGET,
+                            object_type = ObjectType.EXPLORETARGET,
                             object_id = explore_target_uid,
                             current_cell = create_cell,
                             target_cell = create_cell,
@@ -390,6 +404,29 @@ namespace game_server
             catch (Exception e)
             {
                 LogManager.WriteErrorLog(e);
+            }
+        }
+
+        public void UpdateExploreTargetInfo(RedisValue message)
+        {
+            Packet? packet = null;
+            try
+            {
+                (string position_key, ExploreTargetInfo explore_target_info) =
+                    MessagePackSerializer.Deserialize<(string, ExploreTargetInfo)>(message);
+                packet = PacketMaker.G_TO_U_EXPLORE_TARGET_INFO(explore_target_info);
+                BroadcastToChannels(position_key, packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
             }
         }
 

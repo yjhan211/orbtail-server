@@ -4,6 +4,7 @@
     using MessagePack;
     using StackExchange.Redis;
     using RedLockNet.SERedis;
+    using System.Diagnostics;
 
     public class GameUser : IPeer
     {
@@ -130,6 +131,9 @@
                                 this.object_controller.GetObjectInfo
                             );
                             break;
+                        case PROTOCOL.C_TO_U_EXPLORE_TARGET_INFO:
+                            HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(body, GetExploreTargetInfo);
+                            break;
                         case PROTOCOL.C_TO_U_JOB_RESOURCE_INFO:
                             HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, GetJobResourceInfo);
                             break;
@@ -251,6 +255,10 @@
 
                     case PROTOCOL.G_TO_U_PLAYER_INFO:
                         HandleMessage<G_TO_U_PLAYER_INFO>(body, SubscribePlayerInfo);
+                        break;
+
+                    case PROTOCOL.G_TO_U_EXPLORE_TARGET_INFO:
+                        HandleMessage<G_TO_U_EXPLORE_TARGET_INFO>(body, SubscribeExploreTargetInfo);
                         break;
 
                     case PROTOCOL.G_TO_U_JOB_RESOURCE_INFO:
@@ -562,6 +570,58 @@
             }
         }
 
+        async Task GetExploreTargetInfo(GameUser _, C_TO_U_EXPLORE_TARGET_INFO body)
+        {
+            var explore_target_id_list = body.explore_target_id_list;
+            var explore_target_info_list = new List<ExploreTargetInfo>();
+
+            for (int i = 0; i < explore_target_id_list.Count; i++)
+            {
+                var target_explore_uid = explore_target_id_list[i];
+                ExploreTargetInfo? target_explore_info;
+
+                using (await ExploreTargetInfo.Lock(this.redlock, target_explore_uid))
+                {
+                    target_explore_info = await ExploreTargetInfo.Load(target_explore_uid);
+                }
+
+                if (target_explore_info == null)
+                {
+                    LogManager.WriteDebugLog("target explore info null");
+                    continue;
+                }
+
+                explore_target_info_list.Add(target_explore_info);
+
+                bool is_max = explore_target_info_list.Count >= Config.BROADCAST_UNIT;
+                bool is_ended =
+                    i == explore_target_id_list.Count - 1
+                    || explore_target_info_list.Count == explore_target_id_list.Count;
+
+                if (is_max || is_ended)
+                {
+                    Packet? packet = null;
+                    try
+                    {
+                        packet = PacketMaker.U_TO_C_EXPLORE_TARGET_INFO(explore_target_info_list);
+                        this.SendToClient(packet);
+                        explore_target_info_list.Clear();
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                    finally
+                    {
+                        if (packet != null)
+                        {
+                            Packet.Destroy(packet);
+                        }
+                    }
+                }
+            }
+        }
+
         async Task GetJobResourceInfo(GameUser _, C_TO_U_JOB_RESOURCE_INFO body)
         {
             var job_resource_id_list = body.job_resource_id_list;
@@ -584,8 +644,10 @@
 
                 job_resource_info_list.Add(target_resource_info);
 
-                bool is_max = job_resource_id_list.Count >= Config.BROADCAST_UNIT;
-                bool is_ended = i == job_resource_id_list.Count - 1;
+                bool is_max = job_resource_info_list.Count >= Config.BROADCAST_UNIT;
+                bool is_ended =
+                    i == job_resource_id_list.Count - 1
+                    || job_resource_info_list.Count == job_resource_id_list.Count;
 
                 if (is_max || is_ended)
                 {
@@ -665,6 +727,27 @@
             try
             {
                 packet = PacketMaker.U_TO_C_PLAYER_INFO(player_info_list);
+                this.SendToClient(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
+        }
+
+        void SubscribeExploreTargetInfo(GameUser _, G_TO_U_EXPLORE_TARGET_INFO body)
+        {
+            Packet? packet = null;
+            try
+            {
+                packet = PacketMaker.U_TO_C_EXPLORE_TARGET_INFO(new() { body.explore_target_info });
                 this.SendToClient(packet);
             }
             catch (Exception e)
@@ -877,6 +960,33 @@
                         );
                     }
                     break;
+            }
+        }
+
+        public void BroadcastUpdateExploreTargetInfo(ExploreTargetInfo explore_target_info)
+        {
+            var position_key = MapHelper.GetPositionKey(
+                explore_target_info.object_info.map_id,
+                explore_target_info.object_info.map_sub_id,
+                explore_target_info.object_info.current_cell
+            );
+
+            var target_server_list = MapHelper.GetBoundServerList(
+                explore_target_info.object_info.map_id,
+                Program.game_server_num,
+                MapHelper.GetCell(position_key)
+            );
+
+            foreach (var target_server in target_server_list)
+            {
+                this.nats_client!.Publish(
+                    MapHelper.GetUpdateExploreTargetSubject(
+                        explore_target_info.object_info.map_id,
+                        explore_target_info.object_info.map_sub_id,
+                        target_server
+                    ),
+                    MessagePackSerializer.Serialize((position_key, explore_target_info))
+                );
             }
         }
 
