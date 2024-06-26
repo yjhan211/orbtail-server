@@ -168,6 +168,15 @@ namespace network
             return $"update_explore_target_{map_id}_{map_sub_id}_{server_id}";
         }
 
+        public static string GetCreateJobResourceSubject(
+            MapID map_id,
+            long map_sub_id,
+            int server_id
+        )
+        {
+            return $"create_job_resource_{map_id}_{map_sub_id}_{server_id}";
+        }
+
         public static string GetUpdateJobResourceSubject(
             MapID map_id,
             long map_sub_id,
@@ -305,6 +314,47 @@ namespace network
             }
 
             return server_id;
+        }
+
+        public static int GetManagePartByPositionKey(int total_server_num, string position_key)
+        {
+            if (!part_by_position_key.TryGetValue(position_key, out int part_number))
+            {
+                throw new Exception($"Can't find part_number for position_key: {position_key}");
+            }
+
+            int server_id = GetServerIdByPositionKey(total_server_num, position_key);
+
+            // server_id를 사용하여 manage_part 계산
+            int manage_part = 0;
+
+            switch (total_server_num)
+            {
+                case 40:
+                    manage_part = part_number;
+                    break;
+
+                case 20:
+                    manage_part = map_partition[server_id - 1][0];
+                    break;
+
+                case 10:
+                    manage_part = map_partition[(server_id - 1) * 2][0];
+                    break;
+
+                case 5:
+                    manage_part = map_partition[(server_id - 1) * 4][0];
+                    break;
+
+                case 2:
+                    manage_part = server_id == 1 ? map_partition[0][0] : map_partition[10][0];
+                    break;
+
+                default:
+                    throw new Exception("Invalid total server num");
+            }
+
+            return manage_part;
         }
 
         public static string GetPositionKey(MapID map_id, long map_sub_id, Cell cell)

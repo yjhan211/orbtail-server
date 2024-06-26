@@ -288,6 +288,24 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_EXPLORE(ErrorCode error_code, JobInfo? job_info = null)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_EXPLORE);
+            U_TO_C_EXPLORE body = new() { error_code = error_code, job_info = job_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_EXPLORE_COMPLETE(bool is_success, JobInfo? job_info = null)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_EXPLORE_COMPLETE);
+            U_TO_C_EXPLORE_COMPLETE body = new() { is_success = is_success, job_info = job_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_C_USE_SKILL(ErrorCode error_code, JobInfo? job_info = null)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_USE_SKILL);

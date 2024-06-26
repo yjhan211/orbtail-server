@@ -14,6 +14,9 @@ namespace network
         [Key("job_stat_dict")]
         public Dictionary<JobType, JobStat> job_stat_dict { get; set; }
 
+        [Key("research_point_dict")]
+        public Dictionary<JobType, long> research_point_dict { get; set; }
+
         [Key("hp")]
         public int hp { get; set; }
 
@@ -22,6 +25,7 @@ namespace network
         {
             this.player_id = 0;
             this.job_stat_dict = new();
+            this.research_point_dict = new();
             this.hp = 0;
         }
 
@@ -29,9 +33,13 @@ namespace network
         {
             this.player_id = player_id;
             this.job_stat_dict = new();
+            this.research_point_dict = new();
 
             this.job_stat_dict[JobType.ENGINEER] = new();
             this.job_stat_dict[JobType.CHEMIST] = new();
+
+            this.research_point_dict[JobType.ENGINEER] = 0;
+            this.research_point_dict[JobType.CHEMIST] = 0;
 
             this.hp = 0;
         }

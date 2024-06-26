@@ -1,5 +1,6 @@
 namespace user_server
 {
+    using System.Diagnostics;
     using MessagePack;
     using network;
 
@@ -130,7 +131,7 @@ namespace user_server
             var result = new List<int>();
             foreach (var wear_item in player_info.wear_items)
             {
-                var (_, skill_id) = GameDesignData.GetSkill(wear_item);
+                var (_, skill_id, _) = GameDesignData.GetSkill(wear_item);
                 if (skill_id == 0)
                 {
                     continue;
@@ -140,6 +141,251 @@ namespace user_server
             }
 
             return result;
+        }
+
+        public static async Task Explore(GameUser user, C_TO_U_EXPLORE body)
+        {
+            LogManager.WriteDebugLog("1111");
+
+            PlayerInfo? player_info;
+            ExploreTargetInfo? explore_target_info;
+
+            var direction = DirectionType.NONE;
+
+            Packet? packet = null;
+            using (await PlayerInfo.Lock(user.redlock, user.player_id))
+            {
+                player_info = await PlayerInfo.Load(user.player_id);
+                if (player_info == null)
+                {
+                    try
+                    {
+                        LogManager.WriteDebugLog("1");
+                        packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
+                        user.SendToClient(packet);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                    finally
+                    {
+                        if (packet != null)
+                        {
+                            Packet.Destroy(packet);
+                        }
+                    }
+                    return;
+                }
+                if (player_info.job_info == null)
+                {
+                    try
+                    {
+                        LogManager.WriteDebugLog("2");
+                        packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
+                        user.SendToClient(packet);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                    finally
+                    {
+                        if (packet != null)
+                        {
+                            Packet.Destroy(packet);
+                        }
+                    }
+                    return;
+                }
+                if (player_info.job_info.hp <= 0)
+                {
+                    try
+                    {
+                        LogManager.WriteDebugLog("3");
+                        packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
+                        user.SendToClient(packet);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                    finally
+                    {
+                        if (packet != null)
+                        {
+                            Packet.Destroy(packet);
+                        }
+                    }
+                    return;
+                }
+
+                using (await ExploreTargetInfo.Lock(user.redlock, body.explore_target_uid))
+                {
+                    explore_target_info = await ExploreTargetInfo.Load(body.explore_target_uid);
+                    if (explore_target_info == null)
+                    {
+                        try
+                        {
+                            LogManager.WriteDebugLog("4");
+                            packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
+                            user.SendToClient(packet);
+                        }
+                        catch (Exception e)
+                        {
+                            LogManager.WriteErrorLog(e);
+                        }
+                        finally
+                        {
+                            if (packet != null)
+                            {
+                                Packet.Destroy(packet);
+                            }
+                        }
+                        return;
+                    }
+
+                    if (explore_target_info.player_id != 0)
+                    {
+                        try
+                        {
+                            LogManager.WriteDebugLog("5");
+                            packet = PacketMaker.U_TO_C_EXPLORE(
+                                ErrorCode.ALREADY_ANOTHER_USE_SKILL
+                            );
+                            user.SendToClient(packet);
+                        }
+                        catch (Exception e)
+                        {
+                            LogManager.WriteErrorLog(e);
+                        }
+                        finally
+                        {
+                            if (packet != null)
+                            {
+                                Packet.Destroy(packet);
+                            }
+                        }
+                        return;
+                    }
+
+                    var explore_target_detail = GameDesignData.GetExploreTargetDetail(
+                        explore_target_info.explore_target_id
+                    );
+
+                    var job_type = explore_target_detail.Item3;
+                    var require_level = explore_target_detail.Item4;
+
+                    var (is_valid_job_type, is_explore_able, is_enough_level) =
+                        player_info.wear_items.Aggregate(
+                            (false, false, false),
+                            (acc, wear_item) =>
+                            {
+                                var (skill_type, skill_id, skill_level) = GameDesignData.GetSkill(
+                                    wear_item
+                                );
+                                return (
+                                    acc.Item1 || skill_type == job_type,
+                                    acc.Item2 || skill_id == 100001 || skill_id == 100002,
+                                    acc.Item3 || require_level <= skill_level
+                                );
+                            }
+                        );
+
+                    if (!is_valid_job_type || !is_explore_able || !is_enough_level)
+                    {
+                        try
+                        {
+                            LogManager.WriteDebugLog("6");
+                            packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
+                            user.SendToClient(packet);
+                        }
+                        catch (Exception e)
+                        {
+                            LogManager.WriteErrorLog(e);
+                        }
+                        finally
+                        {
+                            if (packet != null)
+                            {
+                                Packet.Destroy(packet);
+                            }
+                        }
+                        return;
+                    }
+
+                    Cell player_current_cell;
+                    if (user.object_controller!.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                    {
+                        player_current_cell = player_info.object_info.current_cell;
+                    }
+                    else
+                    {
+                        player_current_cell = player_info.object_info.target_cell;
+                    }
+
+                    var explore_target_current_cell = explore_target_info.object_info.current_cell;
+                    if (1 < MapHelper.GetDistance(player_current_cell, explore_target_current_cell))
+                    {
+                        try
+                        {
+                            LogManager.WriteDebugLog("7");
+                            packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
+                            user.SendToClient(packet);
+                        }
+                        catch (Exception e)
+                        {
+                            LogManager.WriteErrorLog(e);
+                        }
+                        finally
+                        {
+                            if (packet != null)
+                            {
+                                Packet.Destroy(packet);
+                            }
+                        }
+                        return;
+                    }
+
+                    direction = CalcSkillDirection(
+                        player_current_cell,
+                        explore_target_current_cell
+                    );
+
+                    explore_target_info.player_id = user.player_id;
+                    explore_target_info.end_timestamp = DateTime.UtcNow.AddSeconds(10); // TODO 임시 하드코딩
+
+                    user.current_progress_explore = explore_target_info;
+                    await explore_target_info.Save();
+                }
+
+                user.in_action = true;
+                player_info.state = PlayerState.EXPLORE_1;
+                player_info.job_info.hp -= 1;
+
+                await player_info.Save();
+            }
+
+            await user.object_controller!.SetFlip(direction);
+
+            try
+            {
+                packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.SUCCESS, player_info.job_info);
+                user.SendToClient(packet);
+                user.BroadcastUpdatePlayerInfo(player_info);
+                user.BroadcastUpdateExploreTargetInfo(explore_target_info);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
         }
 
         public static async Task UseJobSkill(GameUser user, C_TO_U_USE_SKILL body)
@@ -405,6 +651,107 @@ namespace user_server
             }
         }
 
+        public static async Task ExploreEnd(GameUser user, ExploreTargetInfo explore_target_info)
+        {
+            if (DateTime.UtcNow <= explore_target_info.end_timestamp)
+            {
+                return;
+            }
+
+            Random random = new();
+            Packet? packet = null;
+            using (await PlayerInfo.Lock(user.redlock, user.player_id))
+            {
+                user.current_progress_explore = null;
+
+                var player_info = await PlayerInfo.Load(user.player_id);
+                if (player_info == null)
+                {
+                    user.in_action = false;
+                    throw new Exception("cannot find player info");
+                }
+
+                bool is_success = random.Next(0, 100) < 50;
+                if (is_success)
+                {
+                    // 잡리소스 생성
+                    var upgrade_pool = GameDesignData.GetExploreResultPool(
+                        explore_target_info.explore_target_id
+                    );
+
+                    long job_resource_uid = await CacheHelper.Instance.StringIncrementAsync(
+                        "temp_job_resource_uid"
+                    );
+
+                    JobResourceInfo job_resource_info =
+                        new(
+                            job_resource_uid,
+                            upgrade_pool[random.Next(0, upgrade_pool.Count)],
+                            new()
+                            {
+                                object_type = ObjectType.JOBRESOURCE,
+                                object_id = job_resource_uid,
+                                current_cell = explore_target_info.object_info.current_cell,
+                                target_cell = explore_target_info.object_info.current_cell,
+                                map_id = explore_target_info.object_info.map_id,
+                                map_sub_id = explore_target_info.object_info.map_sub_id
+                            }
+                        );
+
+                    await job_resource_info.Save();
+
+                    // 매니지 서버로 전송
+                    BroadcastJobResourceCreate(user, job_resource_info);
+
+                    // 조사대상 삭제
+                    await explore_target_info.Delete();
+                    BroadcastObjectDestroy(user, explore_target_info.object_info);
+                }
+                else
+                {
+                    // 조사대상 소유권 해제
+                    explore_target_info.player_id = 0;
+                    await explore_target_info.Save();
+
+                    user.BroadcastUpdateExploreTargetInfo(explore_target_info);
+                }
+
+                var explore_target_detail = GameDesignData.GetExploreTargetDetail(
+                    explore_target_info.explore_target_id
+                );
+
+                // 경험치 올리고
+                var job_type = explore_target_detail.Item3;
+                long research_point = player_info.job_info.research_point_dict[job_type];
+                player_info.job_info.research_point_dict[job_type] = research_point + 1;
+
+                // 스테이트 초기화
+                player_info.state = PlayerState.NONE;
+
+                // 저장
+                await player_info.Save();
+                user.in_action = false;
+
+                try
+                {
+                    packet = PacketMaker.U_TO_C_EXPLORE_COMPLETE(is_success, player_info.job_info);
+                    user.SendToClient(packet);
+                    user.BroadcastUpdatePlayerInfo(player_info);
+                }
+                catch (Exception e)
+                {
+                    LogManager.WriteErrorLog(e);
+                }
+                finally
+                {
+                    if (packet != null)
+                    {
+                        Packet.Destroy(packet);
+                    }
+                }
+            }
+        }
+
         public static async Task JobSkillEnd(
             GameUser user,
             int skill_id,
@@ -451,25 +798,7 @@ namespace user_server
 
                         // 자원 지우고
                         await job_resource_info.Delete();
-                        BroadcastJobResourceDestroy(user, job_resource_info);
-                        break;
-
-                    case 100001:
-                    case 100002:
-                        is_success = random.Next(0, 100) < 50;
-                        if (is_success)
-                        {
-                            var upgrade_pool = GameDesignData.GetJobResourceUpgradePool(
-                                job_resource_info.resource_id
-                            );
-
-                            job_resource_info.resource_id = upgrade_pool[
-                                random.Next(0, upgrade_pool.Count)
-                            ];
-                        }
-                        job_resource_info.player_id = 0;
-                        await job_resource_info.Save();
-                        user.BroadcastUpdateJobResourceInfo(job_resource_info);
+                        BroadcastObjectDestroy(user, job_resource_info.object_info);
                         break;
                 }
 
@@ -625,10 +954,10 @@ namespace user_server
             }
 
             user.BroadcastUpdatePlayerInfo(player_info);
-            BroadCastCampDestroy(user, camp_info);
+            BroadcastObjectDestroy(user, camp_info.object_info);
         }
 
-        public static void BroadcastJobResourceDestroy(
+        public static void BroadcastJobResourceCreate(
             GameUser user,
             JobResourceInfo job_resource_info
         )
@@ -645,23 +974,23 @@ namespace user_server
             );
 
             user.nats_client.Publish(
-                MapHelper.GetDestroyObjectSubject(
+                MapHelper.GetCreateJobResourceSubject(
                     job_resource_info.object_info.map_id,
                     job_resource_info.object_info.map_sub_id,
                     manage_server
                 ),
                 MessagePackSerializer.Serialize(
-                    (position_key, job_resource_info.object_info.GetHashField())
+                    (position_key, job_resource_info, job_resource_info.object_info)
                 )
             );
         }
 
-        public static void BroadCastCampDestroy(GameUser user, CampInfo camp_info)
+        public static void BroadcastObjectDestroy(GameUser user, GameObjectInfo object_info)
         {
             var position_key = MapHelper.GetPositionKey(
-                camp_info.object_info.map_id,
-                camp_info.object_info.map_sub_id,
-                camp_info.object_info.current_cell
+                object_info.map_id,
+                object_info.map_sub_id,
+                object_info.current_cell
             );
 
             var manage_server = MapHelper.GetServerIdByPositionKey(
@@ -671,13 +1000,11 @@ namespace user_server
 
             user.nats_client.Publish(
                 MapHelper.GetDestroyObjectSubject(
-                    camp_info.object_info.map_id,
-                    camp_info.object_info.map_sub_id,
+                    object_info.map_id,
+                    object_info.map_sub_id,
                     manage_server
                 ),
-                MessagePackSerializer.Serialize(
-                    (position_key, camp_info.object_info.GetHashField())
-                )
+                MessagePackSerializer.Serialize((position_key, object_info.GetHashField()))
             );
         }
 

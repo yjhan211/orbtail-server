@@ -21,6 +21,7 @@
 
         /*-------------------------------------------------------------*/
         public bool in_action { get; set; }
+        public ExploreTargetInfo? current_progress_explore { get; set; }
         public (int, JobResourceInfo)? current_progress_job { get; set; }
         public (DateTime, (MapID, long, Cell, bool))? change_map_task { get; set; }
         public CampInfo? current_camp_info { get; set; }
@@ -151,6 +152,9 @@
                                 body,
                                 InventoryController.RequestUseItem
                             );
+                            break;
+                        case PROTOCOL.C_TO_U_EXPLORE:
+                            HandleMessage<C_TO_U_EXPLORE>(body, JobController.Explore);
                             break;
                         case PROTOCOL.C_TO_U_USE_SKILL:
                             HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
@@ -317,6 +321,11 @@
                 {
                     Packet.Destroy(packet);
                 }
+            }
+
+            if (this.current_progress_explore != null)
+            {
+                await JobController.ExploreEnd(this, this.current_progress_explore);
             }
 
             if (this.current_progress_job != null)
@@ -1057,7 +1066,10 @@
             if (current_progress_job != null)
             {
                 await JobResourceInfo.Delete(current_progress_job.Value.Item2.resource_uid);
-                JobController.BroadcastJobResourceDestroy(this, current_progress_job.Value.Item2);
+                JobController.BroadcastObjectDestroy(
+                    this,
+                    current_progress_job.Value.Item2.object_info
+                );
             }
 
             await JobController.Decamp(this);

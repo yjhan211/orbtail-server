@@ -33,6 +33,9 @@
         U_TO_C_USE_SKILL,
         U_TO_G_USE_SKILL,
         U_TO_C_USE_SKILL_COMPLETE,
+        C_TO_U_EXPLORE,
+        U_TO_C_EXPLORE,
+        U_TO_C_EXPLORE_COMPLETE,
         C_TO_U_UPGRADE_JOB,
         U_TO_C_UPGRADE_JOB,
         C_TO_U_WEAR_ITEM,
@@ -75,6 +78,7 @@
         NONE,
         CAMPUS_1,
         FACTORY_1,
+        WETLAND_1,
         LAB_1,
     }
 

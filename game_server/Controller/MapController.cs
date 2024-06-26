@@ -157,6 +157,21 @@ namespace game_server
             );
 
             this.nats_client.Subscribe(
+                MapHelper.GetCreateJobResourceSubject(this.map_id, 0, Program.server_id),
+                (subject, msg) =>
+                {
+                    try
+                    {
+                        CreateJobResourceInfo(msg);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.WriteErrorLog(e);
+                    }
+                }
+            );
+
+            this.nats_client.Subscribe(
                 MapHelper.GetUpdateJobResourceSubject(this.map_id, 0, Program.server_id),
                 (subject, msg) =>
                 {
@@ -238,6 +253,7 @@ namespace game_server
                     MapHelper.position_list_by_map_part[this.map_id][manage_part]
                 );
                 this.explore_target_dict[manage_part] = new();
+                this.job_resource_dict[manage_part] = new();
             }
 
             foreach (var position_key in manage_position_key_list)
@@ -430,6 +446,70 @@ namespace game_server
             }
         }
 
+        public void CreateJobResourceInfo(RedisValue message)
+        {
+            Packet? packet = null;
+            try
+            {
+                (
+                    string create_position_key,
+                    JobResourceInfo job_resource_info,
+                    GameObjectInfo object_info
+                ) = MessagePackSerializer.Deserialize<(string, JobResourceInfo, GameObjectInfo)>(
+                    message
+                );
+
+                var part_id = MapHelper.GetManagePartByPositionKey(
+                    Program.game_server_num,
+                    create_position_key
+                );
+
+                this.job_resource_dict[part_id].Add(job_resource_info);
+                this.object_position_dict.AddOrUpdate(
+                    create_position_key,
+                    new ConcurrentBag<string> { object_info.GetHashField() },
+                    (_, bag) =>
+                    {
+                        bag.Add(object_info.GetHashField());
+                        return bag;
+                    }
+                );
+
+                // bound_cell이 포함된 서버에는 브로드캐스트 명령을 보냄
+                var target_server_list = MapHelper.GetBoundServerList(
+                    this.map_id,
+                    Program.game_server_num,
+                    object_info.current_cell
+                );
+
+                LogManager.WriteDebugLog(
+                    $"cell: {object_info.current_cell.x}, {object_info.current_cell.y}"
+                );
+                LogManager.WriteDebugLog($"send object info to {target_server_list.Count}");
+
+                foreach (var target_server in target_server_list)
+                {
+                    LogManager.WriteDebugLog($"send object info to {target_server}");
+
+                    this.nats_client!.Publish(
+                        MapHelper.GetBrodcastMoveSubject(this.map_id, 0, target_server),
+                        MessagePackSerializer.Serialize((create_position_key, object_info))
+                    );
+                }
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
+        }
+
         public void UpdateJobResourceInfo(RedisValue message)
         {
             Packet? packet = null;
@@ -488,6 +568,11 @@ namespace game_server
                     GameObjectInfo
                 )>(message);
                 packet = PacketMaker.G_TO_U_MOVE(object_info);
+
+                if (object_info.object_type == ObjectType.JOBRESOURCE)
+                {
+                    LogManager.WriteDebugLog(position_key);
+                }
                 BroadcastToChannels(position_key, packet);
             }
             catch (Exception e)

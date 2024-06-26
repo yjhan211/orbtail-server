@@ -57,137 +57,284 @@
                 case 201000001:
                     result = ("밤양갱", "조건 없음", "컨디션 20 회복", "", "우리는 너무 많이 생각하고는 해요.");
                     break;
-
                 case 301000001:
-                    result = ("진동 모터", "제작 재료", "", "", "들리지 않아도 알 수 있어요");
+                    result = ("플라스틱 케이스", "제작 재료", "", "", "가볍고 내구성 있는 보호용 케이스.");
                     break;
-
                 case 301000002:
-                    result = ("단순 안테나", "제작 재료", "", "", "소통은 단순하고 명료한 게 좋아요.");
+                    result = ("회로 기판", "제작 재료", "", "", "복잡한 회로가 새겨진 판이에요.");
                     break;
-
                 case 301000003:
-                    result = ("저품질 태양 전지", "제작 재료", "", "", "가늘지만 그만큼 오래 갈 수 있어요.");
+                    result = ("고무 키캡", "제작 재료", "", "", "키보드의 손맛을 좋게 해요.");
                     break;
-
                 case 301000004:
-                    result = ("단순 키패드", "제작 재료", "", "", "세상의 모든 것을 0과 1만으로 표현해봐요.");
+                    result = ("유리파편", "제작 재료", "", "", "깨진 유리, 조심히 다뤄요.");
                     break;
-
                 case 301000005:
-                    result = ("저품질 스피커", "제작 재료", "", "", "잡음도 나름의 낭만을 주고는 해요.");
+                    result = ("전자총", "제작 재료", "", "", "전자를 발사하는 장치예요.");
                     break;
-
                 case 301000006:
-                    result = ("저품질 가변콘덴서", "제작 재료", "", "", "주파수를 조정할 수 있어요.");
+                    result = ("구리 와이어", "제작 재료", "", "", "전기가 잘 통하는 구리 전선.");
                     break;
-
                 case 301000007:
-                    result = ("소형 LCD 화면", "제작 재료", "", "", "작지만 선명한 화면이에요.");
+                    result = ("알루미늄 봉", "제작 재료", "", "", "가볍고 강한 알루미늄 막대.");
                     break;
-
                 case 301000008:
-                    result = ("저용량 메모리", "제작 재료", "", "", "기억할 건 적지만 잊지 않아요");
+                    result = ("나사", "제작 재료", "", "", "물건을 고정하는 데 써요.");
                     break;
-
                 case 301000009:
-                    result = ("저화질 이미지 센서", "제작 재료", "", "", "영상의 질은 떨어져도 순간을 포착할 수 있어요.");
+                    result = ("철제 패널", "제작 재료", "", "", "단단한 철로 만든 판.");
                     break;
-
                 case 301000010:
-                    result = ("소형 렌즈", "제작 재료", "", "", "작은 세상을 보여줄 수 있어요");
+                    result = ("금속 손잡이", "제작 재료", "", "", "문이나 서랍을 여는 손잡이.");
                     break;
-
                 case 301000011:
-                    result = ("저성능 프로세서", "제작 재료", "", "", "느리지만 꾸준히 처리할 수 있어요.");
+                    result = ("자석 팁", "제작 재료", "", "", "작지만 강한 자성을 가져요.");
                     break;
-
                 case 301000012:
-                    result = ("소형 배터리", "제작 재료", "", "", "작지만 오래 버틸 수 있어요");
+                    result = ("녹슨 드라이버 헤드", "제작 재료", "", "", "사용한 흔적이 있는 드라이버 끝.");
                     break;
-
                 case 301000013:
-                    result = ("마그네트론", "제작 재료", "", "", "전자기파의 힘으로 요리를 도와요");
+                    result = ("스프링", "제작 재료", "", "", "탄성 있는 금속 코일.");
                     break;
-
                 case 301000014:
-                    result = ("소형 변압기", "제작 재료", "", "", "다양한 장치에게 도움을 줄 수 있어요");
+                    result = ("고무 그립", "제작 재료", "", "", "미끄럼 방지용 고무 손잡이.");
                     break;
-
                 case 301000015:
-                    result = ("저출력 모터", "제작 재료", "", "", "느리지만 꾸준히 돌아갈 수 있어요");
+                    result = ("금속 집게", "제작 재료", "", "", "물건을 집는 금속 도구.");
                     break;
-
                 case 301000016:
-                    result = ("필터", "제작 재료", "", "", "불순물을 걸러내 깨끗하게 만들어요");
+                    result = ("소형 모터", "제작 재료", "", "", "작지만 강한 회전력의 모터.");
                     break;
-
                 case 301000017:
-                    result = ("먹는 샘물", "제작 재료", "", "", "목마름을 해소해주는 깨끗한 물이에요.");
+                    result = ("배터리 팩", "제작 재료", "", "", "휴대용 전원 공급 장치.");
                     break;
-
-                case 301000018:
-                    result = ("증류수", "제작 재료", "", "", "불순물이 제거된 순수한 물이에요.");
-                    break;
-
                 case 301000019:
-                    result = ("황산", "제작 재료", "", "", "강력한 산성 물질이에요. 조심해서 다뤄야 해요.");
+                    result = ("철조각", "제작 재료", "", "", "다용도로 쓰이는 철 조각.");
                     break;
-
                 case 301000020:
-                    result = ("암모니아", "제작 재료", "", "", "자극적인 냄새가 나는 알칼리성 물질이에요.");
+                    result = ("볼트", "제작 재료", "", "", "나사와 쓰이는 고정용 부품.");
                     break;
-
                 case 301000021:
-                    result = ("납", "제작 재료", "", "", "무거운 금속이에요. 독성이 있어 주의가 필요해요.");
+                    result = ("와셔", "제작 재료", "", "", "볼트와 너트 사이의 얇은 원판.");
                     break;
-
                 case 301000022:
-                    result = ("카드뮴", "제작 재료", "", "", "은백색의 금속이에요. 독성이 강해요.");
+                    result = ("나무 조각", "제작 재료", "", "", "다용도로 쓰이는 나무 조각.");
                     break;
-
                 case 301000023:
-                    result = ("경유", "제작 재료", "", "", "디젤 엔진에 사용되는 연료에요.");
+                    result = ("못", "제작 재료", "", "", "물건을 고정하는 뾰족한 핀.");
                     break;
-
                 case 301000024:
-                    result = ("등유", "제작 재료", "", "", "램프나 난로에 사용되는 연료에요.");
+                    result = ("니스 조각", "제작 재료", "", "", "광택을 내는 데 쓰는 조각.");
                     break;
-
                 case 301000025:
-                    result = ("그리스", "제작 재료", "", "", "기계의 윤활제로 사용되는 물질이에요.");
+                    result = ("금속 레일", "제작 재료", "", "", "물건을 미끄러뜨리는 금속 막대.");
                     break;
-
-                case 301000026:
-                    result = ("엔진 오일", "제작 재료", "", "", "엔진의 윤활과 냉각을 돕는 오일이에요.");
-                    break;
-
                 case 301000027:
-                    result = ("아스팔트", "제작 재료", "", "", "도로 포장에 사용되는 검은색 물질이에요.");
+                    result = ("합판 조각", "제작 재료", "", "", "여러 겹 붙인 튼튼한 판자.");
                     break;
-
                 case 301000028:
-                    result = ("왁스", "제작 재료", "", "", "광택을 내는 데 사용되는 물질이에요.");
+                    result = ("금속 턱", "제작 재료", "", "", "물건을 고정하는 금속 부품.");
                     break;
-
-                case 301000029:
-                    result = ("모래", "제작 재료", "", "", "작은 알갱이로 이루어진 퇴적물이에요.");
-                    break;
-
                 case 301000030:
-                    result = ("점토", "제작 재료", "", "", "물과 혼합하면 점성이 생기는 부드러운 흙이에요.");
+                    result = ("회전 베이스", "제작 재료", "", "", "물건을 회전시키는 받침대.");
                     break;
-
                 case 301000031:
-                    result = ("부엽토", "제작 재료", "", "", "낙엽이 분해되어 만들어진 비옥한 흙이에요.");
+                    result = ("톱날", "제작 재료", "", "", "나무나 금속을 자르는 날.");
                     break;
-
                 case 301000032:
-                    result = ("비료", "제작 재료", "", "", "작물의 생장을 돕는 영양분이에요.");
+                    result = ("목재 손잡이", "제작 재료", "", "", "도구용 나무 손잡이.");
                     break;
-
-                case 401000001: // 교체 예정
-                    result = ("허름한 텐트", "텐트", "5초마다 컨디션 1 회복", "", "허름하지만 아늑한 느낌이 들어요.");
+                case 301000033:
+                    result = ("금속 프레임", "제작 재료", "", "", "구조물의 뼈대가 되는 틀.");
+                    break;
+                case 301000034:
+                    result = ("변압기", "제작 재료", "", "", "전압을 바꾸는 장치.");
+                    break;
+                case 301000035:
+                    result = ("전극 홀더", "제작 재료", "", "", "전극을 고정하는 홀더.");
+                    break;
+                case 301000036:
+                    result = ("케이블", "제작 재료", "", "", "전기나 신호를 전달하는 선.");
+                    break;
+                case 301000037:
+                    result = ("유리판", "제작 재료", "", "", "투명한 평평한 유리.");
+                    break;
+                case 301000038:
+                    result = ("CCD센서", "제작 재료", "", "", "빛을 전기 신호로 바꾸는 센서.");
+                    break;
+                case 301000039:
+                    result = ("스캐닝 모터", "제작 재료", "", "", "스캐너를 움직이는 모터.");
+                    break;
+                case 301000040:
+                    result = ("고무 롤러", "제작 재료", "", "", "종이를 이송하는 고무 바퀴.");
+                    break;
+                case 301000041:
+                    result = ("기어 세트", "제작 재료", "", "", "동력을 전달하는 톱니바퀴들.");
+                    break;
+                case 301000044:
+                    result = ("잉크 잔여물", "제작 재료", "", "", "프린터에 남은 잉크 찌꺼기.");
+                    break;
+                case 301000045:
+                    result = ("스펀지", "제작 재료", "", "", "물을 잘 흡수하는 다공성 물질.");
+                    break;
+                case 301000046:
+                    result = ("금속 외피", "제작 재료", "", "", "전자기기 보호용 금속 케이스.");
+                    break;
+                case 301000047:
+                    result = ("전해질 잔여물", "제작 재료", "", "", "전기 분해 후 남은 물질.");
+                    break;
+                case 301000048:
+                    result = ("탄소봉", "제작 재료", "", "", "전기가 통하는 탄소 막대.");
+                    break;
+                case 301000049:
+                    result = ("구리 접점", "제작 재료", "", "", "전기 회로 연결용 구리 부품.");
+                    break;
+                case 301000051:
+                    result = ("플라스틱 베이스", "제작 재료", "", "", "전자기기용 플라스틱 받침대.");
+                    break;
+                case 301000053:
+                    result = ("다이오드", "제작 재료", "", "", "한 방향으로만 전류가 흐르는 부품.");
+                    break;
+                case 301000055:
+                    result = ("카페인 추출물", "제작 재료", "", "", "각성 효과 있는 카페인 농축액.");
+                    break;
+                case 301000056:
+                    result = ("타우린 파우더", "제작 재료", "", "", "에너지 향상에 좋은 아미노산 가루.");
+                    break;
+                case 301000057:
+                    result = ("비타민 복합체", "제작 재료", "", "", "다양한 비타민 혼합 영양제.");
+                    break;
+                case 301000058:
+                    result = ("참치 통조림", "제작 재료", "", "", "오래 보관 가능한 참치 캔.");
+                    break;
+                case 301000059:
+                    result = ("콩 통조림", "제작 재료", "", "", "영양 높은 콩 캔.");
+                    break;
+                case 301000060:
+                    result = ("과일 통조림", "제작 재료", "", "", "오래 보관 가능한 과일 캔.");
+                    break;
+                case 301000061:
+                    result = ("인스턴스 면", "제작 재료", "", "", "빠르게 조리되는 즉석 면.");
+                    break;
+                case 301000062:
+                    result = ("건조 야채", "제작 재료", "", "", "수분 제거된 오래가는 야채.");
+                    break;
+                case 301000063:
+                    result = ("조미료 팩", "제작 재료", "", "", "다양한 맛을 내는 조미료 모음.");
+                    break;
+                case 301000064:
+                    result = ("정제 소금", "제작 재료", "", "", "불순물 없는 순수한 소금.");
+                    break;
+                case 301000065:
+                    result = ("결정화 설탕", "제작 재료", "", "", "순수 설탕의 결정체.");
+                    break;
+                case 301000066:
+                    result = ("후추 가루", "제작 재료", "", "", "음식에 풍미를 더하는 향신료.");
+                    break;
+                case 301000067:
+                    result = ("압축 단백질", "제작 재료", "", "", "고농축 단백질 보충제.");
+                    break;
+                case 301000068:
+                    result = ("견과류 조각", "제작 재료", "", "", "영양 높은 견과류 모음.");
+                    break;
+                case 301000069:
+                    result = ("건조 과일 조각", "제작 재료", "", "", "수분 제거된 오래가는 과일.");
+                    break;
+                case 301000070:
+                    result = ("초콜릿 조각", "제작 재료", "", "", "달콤한 에너지 보충용 간식.");
+                    break;
+                case 301000071:
+                    result = ("카카오 버터", "제작 재료", "", "", "초콜릿의 주 원료, 카카오 기름.");
+                    break;
+                case 301000072:
+                    result = ("김치", "제작 재료", "", "", "영양 높은 한국 전통 발효 식품.");
+                    break;
+                case 301000073:
+                    result = ("피클", "제작 재료", "", "", "식초에 절인 상큼한 채소.");
+                    break;
+                case 301000074:
+                    result = ("딸기 잼", "제작 재료", "", "", "달콤한 딸기로 만든 잼.");
+                    break;
+                case 301000075:
+                    result = ("포도 젤리", "제작 재료", "", "", "포도 맛 나는 간식용 젤리.");
+                    break;
+                case 301000076:
+                    result = ("오렌지 마말레이드", "제작 재료", "", "", "오렌지 껍질 들어간 특별한 잼.");
+                    break;
+                case 301000077:
+                    result = ("소고기 육포", "제작 재료", "", "", "오래 보관 가능한 말린 소고기.");
+                    break;
+                case 301000078:
+                    result = ("돼지고기 육포", "제작 재료", "", "", "오래 보관 가능한 말린 돼지고기.");
+                    break;
+                case 301000079:
+                    result = ("백금 와이어", "제작 재료", "", "", "고순도 백금으로 만든 가는 선.");
+                    break;
+                case 301000080:
+                    result = ("유리튜브", "제작 재료", "", "", "실험용 투명한 유리관.");
+                    break;
+                case 301000082:
+                    result = ("유리 전극", "제작 재료", "", "", "전기화학 실험용 유리 전극.");
+                    break;
+                case 301000084:
+                    result = ("디스플레이 패널", "제작 재료", "", "", "영상 표시용 평면 장치.");
+                    break;
+                case 301000085:
+                    result = ("인산염 결정", "제작 재료", "", "", "인과 산소로 된 결정체.");
+                    break;
+                case 301000086:
+                    result = ("염화물 용액", "제작 재료", "", "", "염화물이 녹아있는 액체.");
+                    break;
+                case 301000087:
+                    result = ("시약병", "제작 재료", "", "", "화학 실험용 작은 유리병.");
+                    break;
+                case 301000088:
+                    result = ("구리 조각", "제작 재료", "", "", "전기가 잘 통하는 구리 조각.");
+                    break;
+                case 301000089:
+                    result = ("부식 생성물", "제작 재료", "", "", "금속이 녹슨 후 생긴 물질.");
+                    break;
+                case 301000090:
+                    result = ("열전도 코팅", "제작 재료", "", "", "열을 잘 전달하는 특수 코팅.");
+                    break;
+                case 301000091:
+                    result = ("열전대 와이어", "제작 재료", "", "", "온도 측정용 특수 전선.");
+                    break;
+                case 301000092:
+                    result = ("세라믹 보호관", "제작 재료", "", "", "고온에 강한 세라믹 관.");
+                    break;
+                case 301000093:
+                    result = ("신호 증폭기", "제작 재료", "", "", "약한 신호를 강하게 만드는 장치.");
+                    break;
+                case 301000094:
+                    result = ("임펠러", "제작 재료", "", "", "유체를 움직이는 회전 날개.");
+                    break;
+                case 301000095:
+                    result = ("고무 호스", "제작 재료", "", "", "유연한 고무로 만든 관.");
+                    break;
+                case 301000096:
+                    result = ("실링 개스킷", "제작 재료", "", "", "틈새를 막는 밀봉재.");
+                    break;
+                case 301000097:
+                    result = ("활성탄", "제작 재료", "", "", "불순물을 잡아내는 다공성 물질.");
+                    break;
+                case 301000098:
+                    result = ("멤브레인 시트", "제작 재료", "", "", "특정 물질만 통과시키는 막.");
+                    break;
+                case 301000099:
+                    result = ("폴리프로필렌 케이스", "제작 재료", "", "", "내구성 좋은 플라스틱 케이스.");
+                    break;
+                case 301000100:
+                    result = ("실리카 겔", "제작 재료", "", "", "습기를 빨아들이는 건조제.");
+                    break;
+                case 301000101:
+                    result = ("이온 교환 수지", "제작 재료", "", "", "물속 이온을 제거하는 물질.");
+                    break;
+                case 301000102:
+                    result = ("스테인리스 스틸 용기", "제작 재료", "", "", "녹슬지 않는 강철 용기.");
+                    break;
+                case 401000001:
+                    result = ("허름한 텐트", "텐트", "5초마다 컨디션 1 회복", "", "허름해도 아늑한 느낌이 들어요.");
                     break;
             }
 
@@ -299,183 +446,178 @@
             return result;
         }
 
-        public static (string, int, JobType, int, string, List<int>) GetJobResourceDetail(
-            int job_resource_id
+        public static (string, int, JobType, int, string, List<int>) GetExploreTargetDetail(
+            int explore_target_id
         )
         {
             var reward_item_list = new List<int>();
             var result = ("", 0, JobType.NONE, 0, "", reward_item_list);
-            switch (job_resource_id)
+            switch (explore_target_id)
             {
-                case 10001:
-                    reward_item_list.Add(301000001);
-                    reward_item_list.Add(301000002);
-                    result = ("삐삐", 20, JobType.ENGINEER, 1, "분해 Lv1 스킬이 필요해요.", reward_item_list);
-                    break;
-
-                case 10002:
-                    reward_item_list.Add(301000003);
-                    reward_item_list.Add(301000004);
+                case 100001:
+                    reward_item_list.Add(10001);
+                    reward_item_list.Add(10002);
+                    reward_item_list.Add(10003);
                     result = (
-                        "전자 계산기",
+                        "뒤집힌 사무용 책상",
                         20,
                         JobType.ENGINEER,
                         1,
-                        "분해 Lv1 스킬이 필요해요.",
+                        "조사 Lv1 스킬이 필요해요.",
                         reward_item_list
                     );
                     break;
 
-                case 10003:
-                    reward_item_list.Add(301000005);
-                    reward_item_list.Add(301000006);
-                    result = ("라디오", 20, JobType.ENGINEER, 1, "분해 Lv1 스킬이 필요해요.", reward_item_list);
+                case 100002:
+                    reward_item_list.Add(10004);
+                    reward_item_list.Add(10005);
+                    reward_item_list.Add(10006);
+                    result = (
+                        "녹슨 공구함",
+                        20,
+                        JobType.ENGINEER,
+                        1,
+                        "조사 Lv1 스킬이 필요해요.",
+                        reward_item_list
+                    );
                     break;
 
-                case 10004:
-                    reward_item_list.Add(301000007);
-                    reward_item_list.Add(301000008);
+                case 100003:
+                    reward_item_list.Add(10007);
+                    reward_item_list.Add(10008);
+                    reward_item_list.Add(10009);
                     result = (
-                        "MP3 플레이어",
+                        "부서진 선반",
+                        20,
+                        JobType.ENGINEER,
+                        1,
+                        "조사 Lv1 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 100004:
+                    reward_item_list.Add(10010);
+                    reward_item_list.Add(10011);
+                    reward_item_list.Add(10012);
+                    result = (
+                        "먼지 쌓인 작업대",
                         20,
                         JobType.ENGINEER,
                         2,
-                        "분해 Lv2 스킬이 필요해요.",
+                        "조사 Lv2 스킬이 필요해요.",
                         reward_item_list
                     );
                     break;
 
-                case 10005:
-                    reward_item_list.Add(301000009);
-                    reward_item_list.Add(301000010);
+                case 100005:
+                    reward_item_list.Add(10013);
+                    reward_item_list.Add(10014);
+                    reward_item_list.Add(10015);
                     result = (
-                        "휴대용 게임기",
+                        "고장난 복사기",
                         20,
                         JobType.ENGINEER,
                         2,
-                        "분해 Lv2 스킬이 필요해요.",
+                        "조사 Lv2 스킬이 필요해요.",
                         reward_item_list
                     );
                     break;
 
-                case 10006:
-                    reward_item_list.Add(301000011);
-                    reward_item_list.Add(301000012);
+                case 100006:
+                    reward_item_list.Add(10016);
+                    reward_item_list.Add(10017);
+                    reward_item_list.Add(10018);
                     result = (
-                        "디지털 카메라",
+                        "부식된 배터리 보관함",
                         20,
                         JobType.ENGINEER,
                         2,
-                        "분해 Lv2 스킬이 필요해요.",
+                        "조사 Lv2 스킬이 필요해요.",
                         reward_item_list
                     );
                     break;
 
-                case 10007:
-                    reward_item_list.Add(301000013);
-                    reward_item_list.Add(301000014);
+                case 200001:
+                    reward_item_list.Add(20001);
+                    reward_item_list.Add(20002);
+                    reward_item_list.Add(20003);
                     result = (
-                        "전자레인지",
-                        20,
-                        JobType.ENGINEER,
-                        2,
-                        "분해 Lv2 스킬이 필요해요.",
-                        reward_item_list
-                    );
-                    break;
-
-                case 10008:
-                    reward_item_list.Add(301000015);
-                    reward_item_list.Add(301000016);
-                    result = (
-                        "진공청소기",
-                        20,
-                        JobType.ENGINEER,
-                        2,
-                        "분해 Lv2 스킬이 필요해요.",
-                        reward_item_list
-                    );
-                    break;
-
-                case 20001:
-                    reward_item_list.Add(301000017);
-                    reward_item_list.Add(301000018);
-                    result = ("정제수", 20, JobType.CHEMIST, 1, "정제 Lv1 스킬이 필요해요.", reward_item_list);
-                    break;
-
-                case 20002:
-                    reward_item_list.Add(301000019);
-                    reward_item_list.Add(301000020);
-                    result = (
-                        "산성 폐기물",
+                        "파손된 자판기",
                         20,
                         JobType.CHEMIST,
                         1,
-                        "정제 Lv1 스킬이 필요해요.",
+                        "조사 Lv1 스킬이 필요해요.",
                         reward_item_list
                     );
                     break;
 
-                case 20003:
-                    reward_item_list.Add(301000021);
-                    reward_item_list.Add(301000022);
+                case 200002:
+                    reward_item_list.Add(20004);
+                    reward_item_list.Add(20005);
+                    reward_item_list.Add(20006);
                     result = (
-                        "중금속 잔류물",
+                        "오래된 캐비닛",
                         20,
                         JobType.CHEMIST,
                         1,
-                        "정제 Lv1 스킬이 필요해요.",
+                        "조사 Lv1 스킬이 필요해요.",
                         reward_item_list
                     );
                     break;
 
-                case 20004:
-                    reward_item_list.Add(301000023);
-                    reward_item_list.Add(301000024);
+                case 200003:
+                    reward_item_list.Add(20007);
+                    reward_item_list.Add(20008);
+                    reward_item_list.Add(20009);
                     result = (
-                        "재생 연료유",
+                        "녹슨 냉장고",
                         20,
                         JobType.CHEMIST,
-                        2,
-                        "정제 Lv2 스킬이 필요해요.",
+                        1,
+                        "조사 Lv1 스킬이 필요해요.",
                         reward_item_list
                     );
                     break;
 
-                case 20005:
-                    reward_item_list.Add(301000025);
-                    reward_item_list.Add(301000026);
-                    result = ("윤활유", 20, JobType.CHEMIST, 2, "정제 Lv2 스킬이 필요해요.", reward_item_list);
-                    break;
-
-                case 20006:
-                    reward_item_list.Add(301000027);
-                    reward_item_list.Add(301000028);
-                    result = ("타르", 20, JobType.CHEMIST, 2, "정제 Lv2 스킬이 필요해요.", reward_item_list);
-                    break;
-
-                case 20007:
-                    reward_item_list.Add(301000029);
-                    reward_item_list.Add(301000030);
+                case 200004:
+                    reward_item_list.Add(20010);
+                    reward_item_list.Add(20011);
+                    reward_item_list.Add(20012);
                     result = (
-                        "정화된 토양",
+                        "고장난 pH조절 탱크",
                         20,
                         JobType.CHEMIST,
                         2,
-                        "정제 Lv2 스킬이 필요해요.",
+                        "조사 Lv2 스킬이 필요해요.",
                         reward_item_list
                     );
                     break;
 
-                case 20008:
-                    reward_item_list.Add(301000031);
-                    reward_item_list.Add(301000032);
+                case 200005:
+                    reward_item_list.Add(20013);
+                    reward_item_list.Add(20014);
+                    reward_item_list.Add(20015);
                     result = (
-                        "유기물 분해 토양",
+                        "녹슨 열교환기",
                         20,
                         JobType.CHEMIST,
                         2,
-                        "정제 Lv2 스킬이 필요해요.",
+                        "조사 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 200006:
+                    reward_item_list.Add(20016);
+                    reward_item_list.Add(20017);
+                    reward_item_list.Add(20018);
+                    result = (
+                        "오염된 여과 시스템",
+                        20,
+                        JobType.CHEMIST,
+                        2,
+                        "조사 Lv2 스킬이 필요해요.",
                         reward_item_list
                     );
                     break;
@@ -484,43 +626,457 @@
             return result;
         }
 
-        public static List<int> GetJobResourceUpgradePool(int job_resource_id)
+        public static (string, int, JobType, int, string, List<int>) GetJobResourceDetail(
+            int job_resource_id
+        )
+        {
+            var jobResources = new Dictionary<int, (string, int, JobType, int, string, List<int>)>
+            {
+                {
+                    10001,
+                    (
+                        "손상된 키보드",
+                        100001,
+                        JobType.ENGINEER,
+                        1,
+                        "분해 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000001, 301000002, 301000003 }
+                    )
+                },
+                {
+                    10002,
+                    (
+                        "깨진 모니터",
+                        100001,
+                        JobType.ENGINEER,
+                        1,
+                        "분해 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000004, 301000005, 301000006 }
+                    )
+                },
+                {
+                    10003,
+                    (
+                        "구부러진 금속 프레임",
+                        100001,
+                        JobType.ENGINEER,
+                        1,
+                        "분해 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000007, 301000008, 301000009 }
+                    )
+                },
+                {
+                    10004,
+                    (
+                        "녹슨 드라이버 세트",
+                        100002,
+                        JobType.ENGINEER,
+                        1,
+                        "분해 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000010, 301000011, 301000012 }
+                    )
+                },
+                {
+                    10005,
+                    (
+                        "부식된 플라이어",
+                        100002,
+                        JobType.ENGINEER,
+                        1,
+                        "분해 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000013, 301000014, 301000015 }
+                    )
+                },
+                {
+                    10006,
+                    (
+                        "망가진 전동 드릴",
+                        100002,
+                        JobType.ENGINEER,
+                        1,
+                        "분해 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000016, 301000017, 301000018 }
+                    )
+                },
+                {
+                    10007,
+                    (
+                        "휘어진 금속 브래킷",
+                        100003,
+                        JobType.ENGINEER,
+                        1,
+                        "분해 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000019, 301000020, 301000021 }
+                    )
+                },
+                {
+                    10008,
+                    (
+                        "깨진 나무 판자",
+                        100003,
+                        JobType.ENGINEER,
+                        1,
+                        "분해 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000022, 301000023, 301000024 }
+                    )
+                },
+                {
+                    10009,
+                    (
+                        "찌그러진 서랍",
+                        100003,
+                        JobType.ENGINEER,
+                        1,
+                        "분해 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000025, 301000026, 301000027 }
+                    )
+                },
+                {
+                    10010,
+                    (
+                        "오래된 바이스",
+                        100004,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000028, 301000029, 301000030 }
+                    )
+                },
+                {
+                    10011,
+                    (
+                        "녹슨 줄톱",
+                        100004,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000031, 301000032, 301000033 }
+                    )
+                },
+                {
+                    10012,
+                    (
+                        "부서진 용접기",
+                        100004,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000034, 301000035, 301000036 }
+                    )
+                },
+                {
+                    10013,
+                    (
+                        "파손된 스캐너",
+                        100005,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000037, 301000038, 301000039 }
+                    )
+                },
+                {
+                    10014,
+                    (
+                        "고장난 급지 장치",
+                        100005,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000040, 301000041, 301000042 }
+                    )
+                },
+                {
+                    10015,
+                    (
+                        "잉크 카트리지",
+                        100005,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000043, 301000044, 301000045 }
+                    )
+                },
+                {
+                    10016,
+                    (
+                        "누액된 배터리",
+                        100006,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000046, 301000047, 301000048 }
+                    )
+                },
+                {
+                    10017,
+                    (
+                        "부식된 단자",
+                        100006,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000049, 301000050, 301000051 }
+                    )
+                },
+                {
+                    10018,
+                    (
+                        "깨진 충전기",
+                        100006,
+                        JobType.ENGINEER,
+                        2,
+                        "분해 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000052, 301000053, 301000054 }
+                    )
+                },
+                {
+                    20001,
+                    (
+                        "에너지 드링크",
+                        200001,
+                        JobType.CHEMIST,
+                        1,
+                        "정제 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000055, 301000056, 301000057 }
+                    )
+                },
+                {
+                    20002,
+                    (
+                        "단백질 바",
+                        200001,
+                        JobType.CHEMIST,
+                        1,
+                        "정제 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000067, 301000068, 301000069 }
+                    )
+                },
+                {
+                    20003,
+                    (
+                        "초콜릿 바",
+                        200001,
+                        JobType.CHEMIST,
+                        1,
+                        "정제 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000070, 301000071 }
+                    )
+                },
+                {
+                    20004,
+                    (
+                        "통조림",
+                        200002,
+                        JobType.CHEMIST,
+                        1,
+                        "정제 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000058, 301000059, 301000060 }
+                    )
+                },
+                {
+                    20005,
+                    (
+                        "건조식품",
+                        200002,
+                        JobType.CHEMIST,
+                        1,
+                        "정제 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000061, 301000062, 301000063 }
+                    )
+                },
+                {
+                    20006,
+                    (
+                        "조미료",
+                        200002,
+                        JobType.CHEMIST,
+                        1,
+                        "정제 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000064, 301000065, 301000066 }
+                    )
+                },
+                {
+                    20007,
+                    (
+                        "발효된 채소",
+                        200003,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000072, 301000073 }
+                    )
+                },
+                {
+                    20008,
+                    (
+                        "오래된 잼",
+                        200003,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000074, 301000075, 301000076 }
+                    )
+                },
+                {
+                    20009,
+                    (
+                        "건조된 육포",
+                        200003,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000077, 301000078 }
+                    )
+                },
+                {
+                    20010,
+                    (
+                        "부식된 전극",
+                        200004,
+                        JobType.CHEMIST,
+                        1,
+                        "정제 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000079, 301000080, 301000081 }
+                    )
+                },
+                {
+                    20011,
+                    (
+                        "깨진 pH미터",
+                        200004,
+                        JobType.CHEMIST,
+                        1,
+                        "정제 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000082, 301000083, 301000084 }
+                    )
+                },
+                {
+                    20012,
+                    (
+                        "누출된 완충용액",
+                        200004,
+                        JobType.CHEMIST,
+                        1,
+                        "정제 Lv1 스킬이 필요해요.",
+                        new List<int> { 301000085, 301000086, 301000087 }
+                    )
+                },
+                {
+                    20013,
+                    (
+                        "구멍 난 열교환 파이프",
+                        200005,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000088, 301000089, 301000090 }
+                    )
+                },
+                {
+                    20014,
+                    (
+                        "망가진 온도 센서",
+                        200005,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000091, 301000092, 301000093 }
+                    )
+                },
+                {
+                    20015,
+                    (
+                        "파손된 펌프",
+                        200005,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000094, 301000095, 301000096 }
+                    )
+                },
+                {
+                    20016,
+                    (
+                        "막힌 필터 카트리지",
+                        200006,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000097, 301000098, 301000099 }
+                    )
+                },
+                {
+                    20017,
+                    (
+                        "오염된 여과조",
+                        200006,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000100, 301000101, 301000102 }
+                    )
+                },
+                {
+                    20018,
+                    (
+                        "고장난 압력 게이지",
+                        200006,
+                        JobType.CHEMIST,
+                        2,
+                        "정제 Lv2 스킬이 필요해요.",
+                        new List<int> { 301000103, 301000104, 301000105 }
+                    )
+                }
+            };
+
+            if (jobResources.TryGetValue(job_resource_id, out var result))
+            {
+                return result;
+            }
+
+            return ("", 0, JobType.NONE, 0, "", new List<int>());
+        }
+
+        public static List<int> GetExploreResultPool(int job_resource_id)
         {
             var result = new List<int>();
             switch (job_resource_id)
             {
-                case 100001: // 잔해더미
-                    result.Add(10001); // 삐삐
-                    result.Add(10002); // 전자 계산기
-                    result.Add(10003); // 라디오
+                case 100001:
+                    result.Add(10001);
+                    result.Add(10002);
+                    result.Add(10003);
                     break;
 
-                case 100002: // 버려진 기계
-                    result.Add(10004); // MP3 플레이어
-                    result.Add(10005); // 휴대용 게임기
-                    result.Add(10006); // 디지털 카메라
+                case 100002:
+                    result.Add(10004);
+                    result.Add(10005);
+                    result.Add(10006);
                     break;
 
-                case 100003: // 오래된 유물
-                    result.Add(10007); // 전자레인지
-                    result.Add(10008); // 진공청소기
+                case 100003:
+                    result.Add(10007);
+                    result.Add(10008);
+                    result.Add(10009);
                     break;
 
-                case 200001: // 산성 폐수
-                    result.Add(20001); // 정제수
-                    result.Add(20002); // 산성 폐기물
-                    result.Add(20003); // 중금속 잔류물
+                case 200001:
+                    result.Add(20001);
+                    result.Add(20002);
+                    result.Add(20003);
                     break;
 
-                case 200002: // 오래된 기름통
-                    result.Add(20004); // 재생 연료유
-                    result.Add(20005); // 윤활유
-                    result.Add(20006); // 타르
+                case 200002:
+                    result.Add(20004);
+                    result.Add(20005);
+                    result.Add(20006);
                     break;
 
-                case 200003: // 오염된 토양
-                    result.Add(20007); // 정화된 토양
-                    result.Add(20008); // 유기물 분해 토양
+                case 200003:
+                    result.Add(20007);
+                    result.Add(20008);
+                    result.Add(20009);
                     break;
             }
 
@@ -659,33 +1215,33 @@
             return result;
         }
 
-        public static (JobType, int) GetSkill(int item_id)
+        public static (JobType, int, int) GetSkill(int item_id)
         {
-            (JobType, int) result = (JobType.NONE, 0);
+            (JobType, int, int) result = (JobType.NONE, 0, 0);
             switch (item_id)
             {
                 case 102000001: // 수습 공학자의 헬멧
-                    result = (JobType.ENGINEER, 10001); // 분해 레벨 1
+                    result = (JobType.ENGINEER, 10001, 1); // 분해 레벨 1
                     break;
 
                 case 102000002: // 수습 화학자의 고글
-                    result = (JobType.CHEMIST, 20001); // 정제 레벨 1
+                    result = (JobType.CHEMIST, 20001, 1); // 정제 레벨 1
                     break;
 
                 case 102000003: // 공학자의 헬멧
-                    result = (JobType.ENGINEER, 10002); // 분해 레벨 2
+                    result = (JobType.ENGINEER, 10002, 2); // 분해 레벨 2
                     break;
 
                 case 102000004: // 화학자의 고글
-                    result = (JobType.CHEMIST, 20002); // 정제 레벨 2
+                    result = (JobType.CHEMIST, 20002, 2); // 정제 레벨 2
                     break;
 
                 case 103000001: // 수습 연구원의 제복
-                    result = (JobType.NONE, 100001); // 조사 레벨 1
+                    result = (JobType.NONE, 100001, 1); // 조사 레벨 1
                     break;
 
                 case 103000002: // 연구원의 제복
-                    result = (JobType.NONE, 100002); // 조사 레벨 2
+                    result = (JobType.NONE, 100002, 2); // 조사 레벨 2
                     break;
             }
 

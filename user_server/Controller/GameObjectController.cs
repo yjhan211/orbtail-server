@@ -75,6 +75,11 @@ namespace user_server
                     List<GameObjectInfo> game_object_list = new();
                     while (this.move_object_queue.TryDequeue(out var object_info))
                     {
+                        if (object_info.object_type == ObjectType.JOBRESOURCE)
+                        {
+                            LogManager.WriteDebugLog($"object_id: {object_info.object_id}");
+                        }
+
                         if (game_object_list.Count >= Config.BROADCAST_UNIT)
                         {
                             break;
@@ -585,9 +590,24 @@ namespace user_server
                 {
                     lock (this.move_lock)
                     {
-                        this.move_finish_cts = new();
-                        this.move_finish_timer = new(
-                            async _ => await MoveFinish(this.move_finish_cts.Token),
+                        this.move_finish_cts?.Dispose();
+                        this.move_finish_cts = new CancellationTokenSource();
+                        this.move_finish_timer?.Dispose();
+                        this.move_finish_timer = new Timer(
+                            async _ =>
+                            {
+                                try
+                                {
+                                    if (!this.move_finish_cts.IsCancellationRequested)
+                                    {
+                                        await MoveFinish(this.move_finish_cts.Token);
+                                    }
+                                }
+                                catch (ObjectDisposedException)
+                                {
+                                    // CancellationTokenSource가 이미 dispose된 경우 무시
+                                }
+                            },
                             null,
                             TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME),
                             Timeout.InfiniteTimeSpan
@@ -605,17 +625,11 @@ namespace user_server
         {
             try
             {
-                if (ct.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                if (this.object_info == null)
-                {
-                    return;
-                }
-
-                if (this.object_info.current_cell.Equals(this.object_info.target_cell))
+                if (
+                    ct.IsCancellationRequested
+                    || this.object_info == null
+                    || this.object_info.current_cell.Equals(this.object_info.target_cell)
+                )
                 {
                     return;
                 }
@@ -624,7 +638,6 @@ namespace user_server
             }
             catch (Exception ex)
             {
-                // 예외 처리 로직 추가
                 LogManager.WriteErrorLog(ex);
             }
             finally

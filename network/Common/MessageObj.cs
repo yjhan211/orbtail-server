@@ -230,6 +230,33 @@ namespace network
     }
 
     [MessagePackObject]
+    public class C_TO_U_EXPLORE : IMessagePackObject
+    {
+        [Key("explore_target_uid")]
+        public long explore_target_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_EXPLORE : IMessagePackObject
+    {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+
+        [Key("job_info")]
+        public JobInfo? job_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_EXPLORE_COMPLETE : IMessagePackObject
+    {
+        [Key("error_code")]
+        public bool is_success { get; set; }
+
+        [Key("job_info")]
+        public JobInfo? job_info { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_U_USE_SKILL : IMessagePackObject
     {
         [Key("target_job_resource_uid")]
