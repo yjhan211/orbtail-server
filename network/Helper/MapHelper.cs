@@ -88,20 +88,20 @@ namespace network
             new()
             {
                 {
+                    GetPortalKey(MapID.CAMPUS_1, new(117, 110)),
+                    (MapID.FACTORY_1, new(39, 85), true)
+                },
+                {
                     GetPortalKey(MapID.CAMPUS_1, new(118, 110)),
-                    (MapID.FACTORY_1, new(37, 85), true)
+                    (MapID.FACTORY_1, new(39, 85), true)
                 },
                 {
-                    GetPortalKey(MapID.CAMPUS_1, new(119, 110)),
-                    (MapID.FACTORY_1, new(37, 85), true)
+                    GetPortalKey(MapID.FACTORY_1, new(39, 90)),
+                    (MapID.CAMPUS_1, new(114, 108), true)
                 },
                 {
-                    GetPortalKey(MapID.FACTORY_1, new(37, 88)),
-                    (MapID.CAMPUS_1, new(116, 106), true)
-                },
-                {
-                    GetPortalKey(MapID.FACTORY_1, new(38, 88)),
-                    (MapID.CAMPUS_1, new(116, 106), true)
+                    GetPortalKey(MapID.FACTORY_1, new(40, 90)),
+                    (MapID.CAMPUS_1, new(114, 108), true)
                 },
                 {
                     GetPortalKey(MapID.CAMPUS_1, new(76, 29)),
@@ -119,11 +119,9 @@ namespace network
                     GetPortalKey(MapID.WETLAND_1, new(122, 95)),
                     (MapID.CAMPUS_1, new(69, 29), true)
                 },
-
-                // { GetPortalKey(MapID.CAMPUS_1, new(85, 109)), (MapID.LAB_1, new(90, 96), true) },
-                // { GetPortalKey(MapID.CAMPUS_1, new(88, 106)), (MapID.LAB_1, new(90, 96), true) },
-                // { GetPortalKey(MapID.LAB_1, new(90, 100)), (MapID.CAMPUS_1, new(81, 108), false) },
-                // { GetPortalKey(MapID.LAB_1, new(91, 100)), (MapID.CAMPUS_1, new(81, 108), false) },
+                { GetPortalKey(MapID.CAMPUS_1, new(114, 92)), (MapID.LAB_1, new(90, 96), true) },
+                { GetPortalKey(MapID.LAB_1, new(90, 100)), (MapID.CAMPUS_1, new(110, 91), false) },
+                { GetPortalKey(MapID.LAB_1, new(91, 100)), (MapID.CAMPUS_1, new(110, 91), false) },
             };
 
         public static void Initialize()
