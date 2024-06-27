@@ -232,11 +232,7 @@ namespace game_server
             );
 
             InitializeManageParts();
-
-            if (this.map_id == MapID.FACTORY_1)
-            {
-                _ = Task.Run(CreateExploreTargetTask, this.cts.Token);
-            }
+            _ = Task.Run(CreateExploreTargetTask, this.cts.Token);
         }
 
         void InitializeManageParts()
@@ -270,7 +266,10 @@ namespace game_server
             {
                 try
                 {
-                    await CreateExploreTarget();
+                    if (!await CreateExploreTarget())
+                    {
+                        break;
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -283,8 +282,13 @@ namespace game_server
             }
         }
 
-        async Task CreateExploreTarget()
+        async Task<bool> CreateExploreTarget()
         {
+            if (!MapHelper.gen_explore_id_list.TryGetValue(this.map_id, out var gen_list))
+            {
+                return false;
+            }
+
             await this.explore_target_semaphore.WaitAsync();
             try
             {
@@ -319,31 +323,13 @@ namespace game_server
                             object_id = explore_target_uid,
                             current_cell = create_cell,
                             target_cell = create_cell,
-                            map_id = MapID.FACTORY_1,
-                        };
-
-                    // TODO explore_target_id 정리, 확률 기반으로 종류 결정
-                    List<int> gen_explore_id_list =
-                        new()
-                        {
-                            100001,
-                            100002,
-                            100003,
-                            100004,
-                            100005,
-                            100006,
-                            200001,
-                            200002,
-                            200003,
-                            200004,
-                            200005,
-                            200006
+                            map_id = this.map_id,
                         };
 
                     ExploreTargetInfo explore_target_info =
                         new(
                             explore_target_uid,
-                            gen_explore_id_list[random.Next(0, gen_explore_id_list.Count)],
+                            gen_list[random.Next(0, gen_list.Count)],
                             object_info
                         );
 
@@ -375,10 +361,13 @@ namespace game_server
                         );
                     }
                 }
+
+                return true;
             }
             catch (Exception e)
             {
                 LogManager.WriteErrorLog(e);
+                return false;
             }
             finally
             {

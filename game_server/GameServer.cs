@@ -21,9 +21,8 @@ namespace game_server
 
             this.map_controller_list.Add(new(MapID.CAMPUS_1));
             this.map_controller_list.Add(new(MapID.FACTORY_1));
-
-            // 여기서부터
             this.map_controller_list.Add(new(MapID.WETLAND_1));
+
             this.instance_controller = new();
         }
 

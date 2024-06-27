@@ -538,6 +538,90 @@
                     );
                     break;
 
+                case 100007:
+                    reward_item_list.Add(10019);
+                    reward_item_list.Add(10020);
+                    reward_item_list.Add(10021);
+                    result = (
+                        "침수 센서",
+                        20,
+                        JobType.ENGINEER,
+                        2,
+                        "조사 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 100008:
+                    reward_item_list.Add(10022);
+                    reward_item_list.Add(10023);
+                    reward_item_list.Add(10024);
+                    result = (
+                        "부유 태양판",
+                        20,
+                        JobType.ENGINEER,
+                        2,
+                        "조사 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 100009:
+                    reward_item_list.Add(10025);
+                    reward_item_list.Add(10026);
+                    reward_item_list.Add(10027);
+                    result = (
+                        "무선 부표",
+                        20,
+                        JobType.ENGINEER,
+                        2,
+                        "조사 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 100010:
+                    reward_item_list.Add(10028);
+                    reward_item_list.Add(10029);
+                    reward_item_list.Add(10030);
+                    result = (
+                        "습지 드론",
+                        20,
+                        JobType.ENGINEER,
+                        3,
+                        "조사 Lv3 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 100011:
+                    reward_item_list.Add(10031);
+                    reward_item_list.Add(10032);
+                    reward_item_list.Add(10033);
+                    result = (
+                        "지반 스캐너",
+                        20,
+                        JobType.ENGINEER,
+                        3,
+                        "조사 Lv3 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 100012:
+                    reward_item_list.Add(10034);
+                    reward_item_list.Add(10035);
+                    reward_item_list.Add(10036);
+                    result = (
+                        "안개 포집망",
+                        20,
+                        JobType.ENGINEER,
+                        3,
+                        "조사 Lv3 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
                 case 200001:
                     reward_item_list.Add(20001);
                     reward_item_list.Add(20002);
@@ -618,6 +702,90 @@
                         JobType.CHEMIST,
                         2,
                         "조사 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 200007:
+                    reward_item_list.Add(20019);
+                    reward_item_list.Add(20020);
+                    reward_item_list.Add(20021);
+                    result = (
+                        "이끼 덩어리",
+                        20,
+                        JobType.CHEMIST,
+                        2,
+                        "조사 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 200008:
+                    reward_item_list.Add(20022);
+                    reward_item_list.Add(20023);
+                    reward_item_list.Add(20024);
+                    result = (
+                        "진흙 웅덩이",
+                        20,
+                        JobType.CHEMIST,
+                        2,
+                        "조사 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 200009:
+                    reward_item_list.Add(20025);
+                    reward_item_list.Add(20026);
+                    reward_item_list.Add(20027);
+                    result = (
+                        "부식된 배터리",
+                        20,
+                        JobType.CHEMIST,
+                        2,
+                        "조사 Lv2 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 200010:
+                    reward_item_list.Add(20028);
+                    reward_item_list.Add(20029);
+                    reward_item_list.Add(20030);
+                    result = (
+                        "빗물 집수기",
+                        20,
+                        JobType.CHEMIST,
+                        3,
+                        "조사 Lv3 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 200011:
+                    reward_item_list.Add(20031);
+                    reward_item_list.Add(20032);
+                    reward_item_list.Add(20033);
+                    result = (
+                        "부유 식물",
+                        20,
+                        JobType.CHEMIST,
+                        3,
+                        "조사 Lv3 스킬이 필요해요.",
+                        reward_item_list
+                    );
+                    break;
+
+                case 200012:
+                    reward_item_list.Add(20034);
+                    reward_item_list.Add(20035);
+                    reward_item_list.Add(20036);
+                    result = (
+                        "가스 차단기",
+                        20,
+                        JobType.CHEMIST,
+                        3,
+                        "조사 Lv3 스킬이 필요해요.",
                         reward_item_list
                     );
                     break;

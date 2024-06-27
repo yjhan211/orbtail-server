@@ -8,6 +8,8 @@ namespace network
         public static Dictionary<MapID, Dictionary<int, List<string>>> position_list_by_map_part =
             new();
 
+        public static Dictionary<MapID, List<int>> gen_explore_id_list = new();
+
         public static List<Cell> part_pivot_list =
             new()
             {
@@ -101,6 +103,23 @@ namespace network
                     GetPortalKey(MapID.FACTORY_1, new(38, 88)),
                     (MapID.CAMPUS_1, new(116, 106), true)
                 },
+                {
+                    GetPortalKey(MapID.CAMPUS_1, new(76, 29)),
+                    (MapID.WETLAND_1, new(113, 91), false)
+                },
+                {
+                    GetPortalKey(MapID.CAMPUS_1, new(76, 30)),
+                    (MapID.WETLAND_1, new(113, 91), false)
+                },
+                {
+                    GetPortalKey(MapID.WETLAND_1, new(122, 94)),
+                    (MapID.CAMPUS_1, new(69, 29), true)
+                },
+                {
+                    GetPortalKey(MapID.WETLAND_1, new(122, 95)),
+                    (MapID.CAMPUS_1, new(69, 29), true)
+                },
+
                 // { GetPortalKey(MapID.CAMPUS_1, new(85, 109)), (MapID.LAB_1, new(90, 96), true) },
                 // { GetPortalKey(MapID.CAMPUS_1, new(88, 106)), (MapID.LAB_1, new(90, 96), true) },
                 // { GetPortalKey(MapID.LAB_1, new(90, 100)), (MapID.CAMPUS_1, new(81, 108), false) },
@@ -109,7 +128,9 @@ namespace network
 
         public static void Initialize()
         {
-            foreach (var map_id in new List<MapID>() { MapID.CAMPUS_1, MapID.FACTORY_1 })
+            foreach (
+                var map_id in new List<MapID>() { MapID.CAMPUS_1, MapID.FACTORY_1, MapID.WETLAND_1 }
+            )
             {
                 position_list_by_map_part[map_id] = new();
 
@@ -132,6 +153,44 @@ namespace network
                     part_number++;
                 }
             }
+
+            gen_explore_id_list.Add(
+                MapID.FACTORY_1,
+                new()
+                {
+                    100001,
+                    100002,
+                    100003,
+                    100004,
+                    100005,
+                    100006,
+                    200001,
+                    200002,
+                    200003,
+                    200004,
+                    200005,
+                    200006
+                }
+            );
+
+            gen_explore_id_list.Add(
+                MapID.WETLAND_1,
+                new()
+                {
+                    100007,
+                    100008,
+                    100009,
+                    100010,
+                    100011,
+                    100012,
+                    200007,
+                    200008,
+                    200009,
+                    200010,
+                    200011,
+                    200012
+                }
+            );
         }
 
         public static string GetMoveManageSubject(MapID map_id, long map_sub_id, int server_id)
