@@ -34,13 +34,7 @@ namespace user_server
 
                 // TODO RDB PK로 교체 예정
                 long lab_id = await CacheHelper.Instance.StringIncrementAsync("lab_id");
-                lab_info = new(
-                    lab_id,
-                    player_info.player_id,
-                    player_info.name,
-                    JobType.NONE, // TODO 연구소 개선
-                    body.lab_name
-                );
+                lab_info = new(lab_id, player_info.player_id, player_info.name, body.lab_name);
                 await lab_info.Save();
 
                 player_info.lab_id = lab_id;
@@ -213,27 +207,6 @@ namespace user_server
                         }
                     }
 
-                    // TODO 연구소 개선
-                    // ResearchInfo reserach = new ResearchInfo();
-                    // switch (player_info.job_info.job_type)
-                    // {
-                    //     case JobType.GEOIOGIST:
-                    //         reserach.research_id = 1;
-                    //         reserach.geo_level = 1;
-                    //         break;
-
-                    //     case JobType.BOTANIST:
-                    //         reserach.research_id = 2;
-                    //         reserach.botan_level = 1;
-                    //         break;
-
-                    //     case JobType.BIOLOGY:
-                    //         reserach.research_id = 3;
-                    //         reserach.bio_level = 1;
-                    //         break;
-                    // }
-                    // lab_info.reserach_info_dict[reserach.research_id] = reserach;
-
                     // 랩 이전
                     player_info.lab_id = lab_info.lab_id;
                     player_info.lab_name = lab_info.lab_name;
@@ -358,48 +331,10 @@ namespace user_server
 
         public static async Task<List<int>> GetUseableResearchList(PlayerInfo player_info)
         {
-            var result = new List<int>();
             var lab_info = await LabInfo.Load(player_info.lab_id);
-            if (lab_info == null)
-            {
-                return result;
-            }
 
-            // TODO 연구소 개선
-            // foreach (var lab_skill in lab_info.reserach_info_dict)
-            // {
-            //     switch (lab_skill.Value.research_id)
-            //     {
-            //         case 4:
-            //             if (
-            //                 player_info.job_info.job_type == JobType.GEOIOGIST
-            //                 && 0 < lab_skill.Value.geo_level
-            //             )
-            //             {
-            //                 result.Add(lab_skill.Value.research_id);
-            //             }
-            //             break;
-
-            //         case 5:
-            //             if (
-            //                 player_info.job_info.job_type == JobType.BOTANIST
-            //                 && 0 < lab_skill.Value.botan_level
-            //             )
-            //             {
-            //                 result.Add(lab_skill.Value.research_id);
-            //             }
-            //             break;
-
-            //         case 7:
-            //             if (0 < lab_skill.Value.geo_level && 0 < lab_skill.Value.botan_level)
-            //             {
-            //                 result.Add(lab_skill.Value.research_id);
-            //             }
-            //             break;
-            //     }
-            // }
-
-            return result;
+            return lab_info?.reserach_info_dict.Select(skill => skill.Value.research_id).ToList()
+                ?? new();
         }
 
         public static async Task UpgradeResearch(GameUser user, C_TO_U_UPGRADE_RESEARCH body)
@@ -425,130 +360,99 @@ namespace user_server
                     throw new Exception("lab info load fail.");
                 }
 
-                ResearchInfo? research_info;
-
-                // 신규 생성 연구면 자격 요건 확인
-                if (!lab_info.reserach_info_dict.TryGetValue(body.research_id, out research_info))
+                using (await LabInfo.Lock(user.redlock, lab_info.lab_id))
                 {
-                    var require_research_list = GameDesignData.GetRequireResearch(body.research_id);
-                    if (require_research_list.Count == 0)
+                    ResearchInfo? research_info;
+                    // 신규 생성 연구면 자격 요건 확인 후 1레벨 생성
+                    if (
+                        !lab_info.reserach_info_dict.TryGetValue(
+                            body.research_id,
+                            out research_info
+                        )
+                    )
                     {
-                        throw new Exception("not found require research");
-                    }
-
-                    foreach (var require_research in require_research_list)
-                    {
-                        var require_id = require_research.Item1;
-                        var require_level_type = require_research.Item2;
-                        var require_level = require_research.Item3;
-
-                        if (!lab_info.reserach_info_dict.TryGetValue(require_id, out var find))
+                        var require_list = GameDesignData.GetRequireResearch(body.research_id);
+                        foreach (var require_research in require_list)
                         {
-                            throw new Exception("require research not found");
+                            if (
+                                !lab_info.reserach_info_dict.TryGetValue(
+                                    require_research.research_id,
+                                    out var find_research
+                                )
+                            )
+                            {
+                                throw new Exception("require research not found");
+                            }
+
+                            if (find_research.level < require_research.level)
+                            {
+                                throw new Exception("not enough research level");
+                            }
+                        }
+                        research_info = new(body.research_id, 1);
+                    }
+                    else // 기존 연구 업그레이드면 개인 연구 포인트 차감 / 연구소 연구 포인트 증가
+                    {
+                        if (!research_info.point_dict.TryGetValue(body.job_type, out var _))
+                        {
+                            throw new Exception(
+                                $"invalid upgrade job type. job_type:{body.job_type}, research_id:{body.research_id}"
+                            );
                         }
 
-                        switch (require_level_type)
+                        if ((research_info.level * 10) <= research_info.point_dict[body.job_type])
                         {
-                            case 1:
-                                if (require_level < find.geo_level)
-                                {
-                                    throw new Exception("not enough research level");
-                                }
+                            throw new Exception(
+                                $"invalid current point. job_type:{body.job_type}, research_id:{body.research_id}, current_point:{research_info.point_dict[body.job_type]}"
+                            );
+                        }
+
+                        var total_point = player_info.job_info.research_point_dict[
+                            body.job_type
+                        ].point;
+                        var use_point = player_info.job_info.research_point_dict[
+                            body.job_type
+                        ].use_point;
+
+                        if (total_point <= use_point)
+                        {
+                            throw new Exception($"empty point");
+                        }
+
+                        player_info.job_info.research_point_dict[body.job_type].use_point += 1;
+                        research_info.point_dict[body.job_type] += 1;
+
+                        bool is_upgrade_level = true;
+                        foreach (var point in research_info.point_dict.Values)
+                        {
+                            if (point < research_info.level * 10)
+                            {
+                                is_upgrade_level = false;
                                 break;
-                            case 2:
-                                if (require_level < find.botan_level)
-                                {
-                                    throw new Exception("not enough research level");
-                                }
-                                break;
-                            case 3:
-                                if (require_level < find.bio_level)
-                                {
-                                    throw new Exception("not enough research level");
-                                }
-                                break;
+                            }
+                        }
+
+                        if (is_upgrade_level)
+                        {
+                            research_info.level += 1;
+                            research_info.InitResearchPoint();
                         }
                     }
 
-                    research_info = new() { research_id = body.research_id };
+                    lab_info.reserach_info_dict[research_info.research_id] = research_info;
+
+                    await lab_info.Save();
+                    await player_info.Save();
                 }
-                else // 기존 연구 업그레이드면 비용 확인 후 차감
-                {
-                    // TODO 연구소 개선
-
-                    // var job_type = player_info.job_info.job_type;
-                    // var research_charge_list = GameDesignData.GetResearchUpgradeCharge(
-                    //     job_type,
-                    //     research_info
-                    // );
-
-                    // if (research_charge_list == null)
-                    // {
-                    //     throw new Exception("not found research charge");
-                    // }
-
-                    // bool has_enough_items = research_charge_list.All(
-                    //     charge_info =>
-                    //         player_info.inventory_info.item_dict.Values.Any(
-                    //             item =>
-                    //                 item.item_id == charge_info.Item1
-                    //                 && item.count >= charge_info.Item2
-                    //         )
-                    // );
-
-                    // if (!has_enough_items)
-                    // {
-                    //     throw new Exception("not enough items");
-                    // }
-
-                    // foreach (var charge_info in research_charge_list)
-                    // {
-                    //     var charge_item_id = charge_info.Item1;
-                    //     var charge_item_count = charge_info.Item2;
-
-                    //     var items_to_remove = player_info.inventory_info.item_dict
-                    //         .Where(item => item.Value.item_id == charge_item_id)
-                    //         .ToDictionary(item => item.Key, item => item.Value);
-
-                    //     foreach (var item in items_to_remove)
-                    //     {
-                    //         if (item.Value.count <= charge_item_count)
-                    //         {
-                    //             player_info.inventory_info.item_dict.Remove(item.Key);
-                    //             charge_item_count -= item.Value.count;
-                    //         }
-                    //         else
-                    //         {
-                    //             player_info.inventory_info.item_dict[item.Key].count -=
-                    //                 charge_item_count;
-                    //             break;
-                    //         }
-                    //     }
-                    // }
-                    // switch (job_type)
-                    // {
-                    //     case JobType.GEOIOGIST:
-                    //         research_info.geo_level += 1;
-                    //         break;
-                    //     case JobType.BOTANIST:
-                    //         research_info.botan_level += 1;
-                    //         break;
-                    //     case JobType.BIOLOGY:
-                    //         research_info.bio_level += 1;
-                    //         break;
-                    // }
-                }
-
-                lab_info.reserach_info_dict[research_info.research_id] = research_info;
-
-                await lab_info.Save();
-                await player_info.Save();
             }
 
             Packet? packet = null;
             try
             {
-                packet = PacketMaker.U_TO_C_UPGRADE_RESEARCH(lab_info.reserach_info_dict);
+                packet = PacketMaker.U_TO_C_UPGRADE_RESEARCH(
+                    lab_info.reserach_info_dict,
+                    player_info.job_info
+                );
                 user.SendToClient(packet);
             }
             catch (Exception e)

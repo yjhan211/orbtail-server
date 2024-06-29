@@ -411,6 +411,9 @@ namespace network
     [MessagePackObject]
     public class C_TO_U_UPGRADE_RESEARCH : IMessagePackObject
     {
+        [Key("job_type")]
+        public JobType job_type { get; set; }
+
         [Key("research_id")]
         public int research_id { get; set; }
     }
@@ -420,6 +423,9 @@ namespace network
     {
         [Key("reserach_info_dict")]
         public Dictionary<int, ResearchInfo> reserach_info_dict { get; set; }
+
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
     }
 
     [MessagePackObject]

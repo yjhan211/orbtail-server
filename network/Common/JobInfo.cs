@@ -15,7 +15,7 @@ namespace network
         public Dictionary<JobType, JobStat> job_stat_dict { get; set; }
 
         [Key("research_point_dict")]
-        public Dictionary<JobType, long> research_point_dict { get; set; }
+        public Dictionary<JobType, ReserachPoint> research_point_dict { get; set; }
 
         [Key("hp")]
         public int hp { get; set; }
@@ -38,8 +38,8 @@ namespace network
             this.job_stat_dict[JobType.ENGINEER] = new();
             this.job_stat_dict[JobType.CHEMIST] = new();
 
-            this.research_point_dict[JobType.ENGINEER] = 0;
-            this.research_point_dict[JobType.CHEMIST] = 0;
+            this.research_point_dict[JobType.ENGINEER] = new();
+            this.research_point_dict[JobType.CHEMIST] = new();
 
             this.hp = 0;
         }
@@ -89,5 +89,15 @@ namespace network
             job_grade = JobGrade.TRAINEE;
             exp = 0;
         }
+    }
+
+    [MessagePackObject]
+    public class ReserachPoint : IMessagePackObject
+    {
+        [Key("point")]
+        public long point { get; set; }
+
+        [Key("use_point")]
+        public long use_point { get; set; }
     }
 }

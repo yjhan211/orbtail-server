@@ -47,7 +47,6 @@ namespace network
             long lab_id,
             long master_player_id,
             string master_player_name,
-            JobType master_player_job_type,
             string lab_name
         )
         {
@@ -58,29 +57,6 @@ namespace network
             this.lab_grade = LabGrade.CLUB;
             this.reserach_info_dict = new();
             this.inventory_info = new(InventoryOwnerType.LAB, lab_id);
-
-            ResearchInfo reserach = new ResearchInfo();
-
-            // TODO 연구소 개선
-            // switch (master_player_job_type)
-            // {
-            //     case JobType.GEOIOGIST:
-            //         reserach.research_id = 1;
-            //         reserach.geo_level = 1;
-            //         break;
-
-            //     case JobType.BOTANIST:
-            //         reserach.research_id = 2;
-            //         reserach.botan_level = 1;
-            //         break;
-
-            //     case JobType.BIOLOGY:
-            //         reserach.research_id = 3;
-            //         reserach.bio_level = 1;
-            //         break;
-            // }
-
-            this.reserach_info_dict.Add(reserach.research_id, reserach);
         }
 
         public string GetLockKey()
@@ -141,13 +117,75 @@ namespace network
         [Key("research_id")]
         public int research_id { get; set; }
 
-        [Key("geo_level")]
-        public int geo_level { get; set; }
+        [Key("level")]
+        public int level { get; set; }
 
-        [Key("botan_level")]
-        public int botan_level { get; set; }
+        [Key("point_dict")]
+        public Dictionary<JobType, int> point_dict { get; set; }
 
-        [Key("bio_level")]
-        public int bio_level { get; set; }
+        public ResearchInfo()
+        {
+            this.research_id = 0;
+            this.level = 0;
+            this.point_dict = new();
+        }
+
+        public ResearchInfo(int reserach_id, int level)
+        {
+            this.research_id = reserach_id;
+            this.level = level;
+            this.point_dict = new();
+
+            this.InitResearchPoint();
+        }
+
+        public void InitResearchPoint()
+        {
+            this.point_dict.Clear();
+
+            switch (this.research_id)
+            {
+                case 1:
+                    this.point_dict[JobType.ENGINEER] = 0;
+                    break;
+                case 2:
+                    this.point_dict[JobType.ENGINEER] = 0;
+                    this.point_dict[JobType.CHEMIST] = 0;
+                    break;
+                case 3:
+                    this.point_dict[JobType.CHEMIST] = 0;
+                    break;
+                case 4:
+                    this.point_dict[JobType.ENGINEER] = 0;
+                    break;
+                case 5:
+                    this.point_dict[JobType.ENGINEER] = 0;
+                    this.point_dict[JobType.CHEMIST] = 0;
+                    break;
+                case 6:
+                    this.point_dict[JobType.CHEMIST] = 0;
+                    break;
+                case 7:
+                    this.point_dict[JobType.ENGINEER] = 0;
+                    break;
+                case 8:
+                    this.point_dict[JobType.ENGINEER] = 0;
+                    this.point_dict[JobType.CHEMIST] = 0;
+                    break;
+                case 9:
+                    this.point_dict[JobType.CHEMIST] = 0;
+                    break;
+                case 10:
+                    this.point_dict[JobType.ENGINEER] = 0;
+                    break;
+                case 11:
+                    this.point_dict[JobType.ENGINEER] = 0;
+                    this.point_dict[JobType.CHEMIST] = 0;
+                    break;
+                case 12:
+                    this.point_dict[JobType.CHEMIST] = 0;
+                    break;
+            }
+        }
     }
 }

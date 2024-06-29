@@ -722,8 +722,8 @@ namespace user_server
 
                 // 경험치 올리고
                 var job_type = explore_target_detail.Item3;
-                long research_point = player_info.job_info.research_point_dict[job_type];
-                player_info.job_info.research_point_dict[job_type] = research_point + 1;
+                long research_point = player_info.job_info.research_point_dict[job_type].point;
+                player_info.job_info.research_point_dict[job_type].point = research_point + 1;
 
                 // 스테이트 초기화
                 player_info.state = PlayerState.NONE;

@@ -358,11 +358,13 @@ namespace user_server
         }
 
         public static Packet U_TO_C_UPGRADE_RESEARCH(
-            Dictionary<int, ResearchInfo> research_info_dict
+            Dictionary<int, ResearchInfo> research_info_dict,
+            JobInfo job_info
         )
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_UPGRADE_RESEARCH);
-            U_TO_C_UPGRADE_RESEARCH body = new() { reserach_info_dict = research_info_dict };
+            U_TO_C_UPGRADE_RESEARCH body =
+                new() { reserach_info_dict = research_info_dict, job_info = job_info };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

@@ -348,51 +348,31 @@
             switch (skill_id)
             {
                 case 10001:
-                    result = (
-                        "분해 Lv1: 전자기기로부터 자원을 얻는 기술",
-                        1,
-                        JobType.ENGINEER,
-                        PlayerState.ENGINEER_WORK_1
-                    );
+                    result = ("분해", 1, JobType.ENGINEER, PlayerState.ENGINEER_WORK_1);
                     break;
 
                 case 20001:
-                    result = (
-                        "정제 Lv1: 환경자원을 정제하는 기술",
-                        1,
-                        JobType.CHEMIST,
-                        PlayerState.CHEMIST_WORK_1
-                    );
+                    result = ("정제", 1, JobType.CHEMIST, PlayerState.CHEMIST_WORK_1);
                     break;
 
                 case 10002:
-                    result = (
-                        "분해 Lv2: 전자기기로부터 자원을 얻는 기술",
-                        2,
-                        JobType.ENGINEER,
-                        PlayerState.ENGINEER_WORK_1
-                    );
+                    result = ("분해", 2, JobType.ENGINEER, PlayerState.ENGINEER_WORK_1);
                     break;
 
                 case 20002:
-                    result = (
-                        "정제 Lv2: 환경자원을 정제하는 기술",
-                        2,
-                        JobType.CHEMIST,
-                        PlayerState.CHEMIST_WORK_1
-                    );
+                    result = ("정제", 2, JobType.CHEMIST, PlayerState.CHEMIST_WORK_1);
                     break;
 
                 case 100001:
-                    result = ("조사 Lv1: 잠재된 자원을 발견하는 기술", 1, JobType.NONE, PlayerState.EXPLORE_1);
+                    result = ("조사", 1, JobType.NONE, PlayerState.EXPLORE_1);
                     break;
 
                 case 100002:
-                    result = ("조사 Lv2: 잠재된 자원을 발견하는 기술", 1, JobType.NONE, PlayerState.EXPLORE_1);
+                    result = ("조사", 1, JobType.NONE, PlayerState.EXPLORE_1);
                     break;
 
                 case 200001:
-                    result = ("제작: 연구 일지를 기반으로 제작하는 기술", 0, JobType.NONE, PlayerState.NONE);
+                    result = ("제작", 0, JobType.NONE, PlayerState.NONE);
                     break;
             }
 
@@ -405,11 +385,11 @@
             switch (job_type)
             {
                 case JobType.ENGINEER:
-                    result = "전자기기 자원의 활용 방안을 모색하는 연구원";
+                    result = "공학자";
                     break;
 
                 case JobType.CHEMIST:
-                    result = "환경 자원의 정제 방안을 모색하는 연구원 ";
+                    result = "화학자";
                     break;
             }
 
@@ -1552,31 +1532,31 @@
             switch (job_grade)
             {
                 case JobGrade.TRAINEE:
-                    result = " 수습 연구원";
+                    result = "수습";
                     break;
 
                 case JobGrade.RESEARCHER:
-                    result = " 연구원";
+                    result = "일반";
                     break;
 
                 case JobGrade.ASSOCIATE:
-                    result = " 주임 연구원";
+                    result = "주임";
                     break;
 
                 case JobGrade.SENIOR_ASSOCIATE:
-                    result = " 선임 연구원";
+                    result = "선임";
                     break;
 
                 case JobGrade.PRINCIPAL:
-                    result = " 책임 연구원";
+                    result = "책임";
                     break;
 
                 case JobGrade.LEAD:
-                    result = " 수석 연구원";
+                    result = "수석";
                     break;
 
                 case JobGrade.CHIEF:
-                    result = "의 대가";
+                    result = "대가";
                     break;
             }
 
@@ -1641,106 +1621,70 @@
             return result;
         }
 
-        public static string GetResearchName(int research_id)
+        public static List<ResearchInfo> GetRequireResearch(int research_id)
         {
+            var result = new List<ResearchInfo>();
             switch (research_id)
             {
-                case 4:
-                    return "암석 가공";
-
-                case 5:
-                    return "식물 가공";
-
-                case 7:
-                    return "텐트 제작";
-            }
-
-            return "미정";
-        }
-
-        public static List<(int, int, int)> GetRequireResearch(int research_id)
-        {
-            var result = new List<(int, int, int)>();
-
-            switch (research_id)
-            {
-                case 4:
-                    result.Add((1, 1, 1));
-                    break;
-                case 5:
-                    result.Add((2, 2, 1));
+                case 1: // 재료 공학
                     break;
 
-                case 7:
-                    result.Add((4, 1, 1));
-                    result.Add((5, 2, 1));
+                case 2: // 식량 제작
+                    result.Add(new(1, 1)); // 재료 공학 1레벨
+                    result.Add(new(3, 1)); // 분석 화학 1레벨
+                    break;
+
+                case 3: // 분석 화학
+                    break;
+
+                case 4: // 기계 공학
+                    result.Add(new(1, 2)); // 재료 공학 2레벨
+                    break;
+
+                case 5: // 장비 제작
+                    result.Add(new(4, 1)); // 기계 공학 1레벨
+                    result.Add(new(6, 1)); // 유기 화학 1레벨
+                    break;
+
+                case 6: // 유기 화학
+                    result.Add(new(3, 2)); // 분석 화학 2레벨
+                    break;
+
+                case 7: // 제어 공학
+                    result.Add(new(1, 5)); // 재료 공학 5레벨
+                    result.Add(new(4, 5)); // 기계 공학 5레벨
+                    break;
+
+                case 8: // 에너지 제작
+                    result.Add(new(7, 1)); // 제어 공학 1레벨
+                    result.Add(new(9, 1)); // 무기 화학 1레벨
+                    break;
+
+                case 9: // 무기 화학
+                    result.Add(new(3, 5)); // 분석 화학 5레벨
+                    result.Add(new(6, 5)); // 유기 화학 5레벨
+                    break;
+
+                case 10: // 전자 공학
+                    result.Add(new(1, 8)); // 재료 공학 8레벨
+                    result.Add(new(4, 8)); // 기계 공학 8레벨
+                    result.Add(new(7, 8)); // 제어 공학 8레벨
+                    break;
+
+                case 11: // 의약품 제작
+                    result.Add(new(10, 1)); // 전자 공학 1레벨
+                    result.Add(new(12, 1)); // 생화학 1레벨
+                    break;
+
+                case 12: // 생화학
+                    result.Add(new(3, 8)); // 분석 화학 8레벨
+                    result.Add(new(6, 8)); // 유기 화학 8레벨
+                    result.Add(new(9, 8)); // 무기 화학 8레벨
                     break;
             }
 
             return result;
         }
-
-        public static List<(int, int)> GetResearchUpgradeCharge(
-            JobType job_type,
-            ResearchInfo research_info
-        )
-        {
-            var key = "";
-            switch (job_type)
-            {
-                case JobType.ENGINEER:
-                    key = $"{research_info.research_id}_1_{research_info.geo_level + 1}";
-                    break;
-
-                case JobType.CHEMIST:
-                    key = $"{research_info.research_id}_2_{research_info.botan_level + 1}";
-                    break;
-            }
-
-            if (!research_upgarde_item_dictionary.TryGetValue(key, out var require_list))
-            {
-                return new();
-            }
-
-            return require_list;
-        }
-
-        public static Dictionary<string, List<(int, int)>> research_upgarde_item_dictionary =
-            new()
-            {
-                {
-                    "4_1_1",
-                    new() { (301000001, 10) }
-                },
-                {
-                    "4_1_2",
-                    new() { (301000001, 100) }
-                },
-                {
-                    "5_2_1",
-                    new() { (301000002, 10) }
-                },
-                {
-                    "5_2_2",
-                    new() { (301000002, 100) }
-                },
-                {
-                    "7_1_1",
-                    new() { (301000003, 1) }
-                },
-                {
-                    "7_2_1",
-                    new() { (301000004, 1) }
-                },
-                {
-                    "7_1_2",
-                    new() { (301000003, 100), (301000005, 100) }
-                },
-                {
-                    "7_2_2",
-                    new() { (301000004, 100), (301000006, 100) }
-                },
-            };
 
         public static int GetMakableItemId(
             List<int> research_id_list,

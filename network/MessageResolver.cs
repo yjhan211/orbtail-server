@@ -34,9 +34,12 @@
                         }
 
                         int message_size = this.ParseHeader();
-                        if (message_size > Config.BUFFER_SIZE)
+                        if (
+                            message_size <= 0
+                            || message_size > Config.BUFFER_SIZE - Config.HEADER_SIZE
+                        )
                         {
-                            return (ErrorCode.FATAL, "Message size exceeds maximum allowed size");
+                            return (ErrorCode.FATAL, "Invalid message size");
                         }
 
                         this.target_position += message_size;
@@ -72,6 +75,11 @@
         bool CopyBuffer(byte[] buffer, ref int start_position)
         {
             int copy_size = this.target_position - this.current_position;
+            if (copy_size < 0 || this.remain_bytes < 0)
+            {
+                return false;
+            }
+
             if (this.remain_bytes < copy_size)
             {
                 copy_size = this.remain_bytes;
