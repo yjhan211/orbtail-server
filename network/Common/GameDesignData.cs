@@ -333,6 +333,24 @@
                 case 301000102:
                     result = ("스테인리스 스틸 용기", "제작 재료", "", "", "녹슬지 않는 강철 용기.");
                     break;
+                case 302000001:
+                    result = ("강화 플라스틱", "제작 재료", "", "", "내구성이 향상된 플라스틱 소재.");
+                    break;
+                case 302000002:
+                    result = ("유연성 강화 키트", "제작 재료", "", "", "재료의 유연성을 높이는 키트.");
+                    break;
+                case 302000003:
+                    result = ("전도성 섬유", "제작 재료", "", "", "전기를 전도하는 특수 섬유.");
+                    break;
+                case 302000004:
+                    result = ("내화 섬유", "제작 재료", "", "", "열에 강한 특수 섬유.");
+                    break;
+                case 302000005:
+                    result = ("충격 흡수 패드", "제작 재료", "", "", "충격을 효과적으로 흡수하는 패드.");
+                    break;
+                case 302000006:
+                    result = ("방탄 섬유", "제작 재료", "", "", "부상을 막을 수 있는 고강도 섬유.");
+                    break;
                 case 401000001:
                     result = ("허름한 텐트", "텐트", "5초마다 컨디션 1 회복", "", "허름해도 아늑한 느낌이 들어요.");
                     break;
@@ -1192,39 +1210,76 @@
             switch (job_resource_id)
             {
                 case 100001:
-                    result.Add(10001);
-                    result.Add(10002);
-                    result.Add(10003);
+                    result.AddRange(new[] { 10001, 10002, 10003 });
                     break;
-
                 case 100002:
-                    result.Add(10004);
-                    result.Add(10005);
-                    result.Add(10006);
+                    result.AddRange(new[] { 10004, 10005, 10006 });
                     break;
-
                 case 100003:
-                    result.Add(10007);
-                    result.Add(10008);
-                    result.Add(10009);
+                    result.AddRange(new[] { 10007, 10008, 10009 });
                     break;
-
+                case 100004:
+                    result.AddRange(new[] { 10010, 10011, 10012 });
+                    break;
+                case 100005:
+                    result.AddRange(new[] { 10013, 10014, 10015 });
+                    break;
+                case 100006:
+                    result.AddRange(new[] { 10016, 10017, 10018 });
+                    break;
+                case 100007:
+                    result.AddRange(new[] { 10019, 10020, 10021 });
+                    break;
+                case 100008:
+                    result.AddRange(new[] { 10022, 10023, 10024 });
+                    break;
+                case 100009:
+                    result.AddRange(new[] { 10025, 10026, 10027 });
+                    break;
+                case 100010:
+                    result.AddRange(new[] { 10028, 10029, 10030 });
+                    break;
+                case 100011:
+                    result.AddRange(new[] { 10031, 10032, 10033 });
+                    break;
+                case 100012:
+                    result.AddRange(new[] { 10034, 10035, 10036 });
+                    break;
                 case 200001:
-                    result.Add(20001);
-                    result.Add(20002);
-                    result.Add(20003);
+                    result.AddRange(new[] { 20001, 20002, 20003 });
                     break;
-
                 case 200002:
-                    result.Add(20004);
-                    result.Add(20005);
-                    result.Add(20006);
+                    result.AddRange(new[] { 20004, 20005, 20006 });
                     break;
-
                 case 200003:
-                    result.Add(20007);
-                    result.Add(20008);
-                    result.Add(20009);
+                    result.AddRange(new[] { 20007, 20008, 20009 });
+                    break;
+                case 200004:
+                    result.AddRange(new[] { 20010, 20011, 20012 });
+                    break;
+                case 200005:
+                    result.AddRange(new[] { 20013, 20014, 20015 });
+                    break;
+                case 200006:
+                    result.AddRange(new[] { 20016, 20017, 20018 });
+                    break;
+                case 200007:
+                    result.AddRange(new[] { 20019, 20020, 20021 });
+                    break;
+                case 200008:
+                    result.AddRange(new[] { 20022, 20023, 20024 });
+                    break;
+                case 200009:
+                    result.AddRange(new[] { 20025, 20026, 20027 });
+                    break;
+                case 200010:
+                    result.AddRange(new[] { 20028, 20029, 20030 });
+                    break;
+                case 200011:
+                    result.AddRange(new[] { 20031, 20032, 20033 });
+                    break;
+                case 200012:
+                    result.AddRange(new[] { 20034, 20035, 20036 });
                     break;
             }
 
@@ -1411,7 +1466,8 @@
         )
         {
             JobType target_job_type = JobType.NONE;
-            JobGrade target_job_grade;
+            JobGrade target_job_grade = JobGrade.NONE;
+
             switch (item_id)
             {
                 case 102000003:
@@ -1432,12 +1488,18 @@
                     return true;
             }
 
-            if (!job_stat_dict.TryGetValue(target_job_type, out var job_stat))
+            if (target_job_type == JobType.NONE)
             {
-                return false;
+                return job_stat_dict.Any(kvp => kvp.Value.job_grade >= target_job_grade);
             }
-
-            return target_job_grade <= job_stat.job_grade;
+            else
+            {
+                if (!job_stat_dict.TryGetValue(target_job_type, out var job_stat))
+                {
+                    return false;
+                }
+                return job_stat.job_grade >= target_job_grade;
+            }
         }
 
         public static bool IsUseableItem(int item_id)
@@ -1637,12 +1699,12 @@
                 case 3: // 분석 화학
                     break;
 
-                case 4: // 기계 공학
+                case 4: // 소재 공학
                     result.Add(new(1, 2)); // 재료 공학 2레벨
                     break;
 
                 case 5: // 장비 제작
-                    result.Add(new(4, 1)); // 기계 공학 1레벨
+                    result.Add(new(4, 1)); // 소재 공학 1레벨
                     result.Add(new(6, 1)); // 유기 화학 1레벨
                     break;
 
@@ -1652,7 +1714,7 @@
 
                 case 7: // 제어 공학
                     result.Add(new(1, 5)); // 재료 공학 5레벨
-                    result.Add(new(4, 5)); // 기계 공학 5레벨
+                    result.Add(new(4, 5)); // 소재 공학 5레벨
                     break;
 
                 case 8: // 에너지 제작
@@ -1667,7 +1729,7 @@
 
                 case 10: // 전자 공학
                     result.Add(new(1, 8)); // 재료 공학 8레벨
-                    result.Add(new(4, 8)); // 기계 공학 8레벨
+                    result.Add(new(4, 8)); // 소재 공학 8레벨
                     result.Add(new(7, 8)); // 제어 공학 8레벨
                     break;
 
@@ -1687,31 +1749,39 @@
         }
 
         public static int GetMakableItemId(
-            List<int> research_id_list,
-            List<(int, int)> make_materials
+            List<(int id, int level)> researches,
+            List<(int id, int count)> make_materials
         )
         {
-            var conditions = new Dictionary<int, List<(int, int)>>();
-            foreach (var research_id in research_id_list)
+            var conditions = new Dictionary<int, List<(int id, int count)>>();
+
+            // 재료 공학 레벨 1
+            if (researches.Any(r => r.id == 1 && r.level >= 1))
             {
-                switch (research_id)
-                {
-                    case 4:
-                        conditions.Add(301000007, new() { (301000001, 3) });
-                        conditions.Add(102000003, new() { (102000001, 1), (301000007, 1) });
-                        conditions.Add(301000009, new() { (301000003, 3) });
-                        break;
+                conditions.Add(302000001, new() { (301000001, 1), (301000008, 1) }); // 강화 플라스틱 (플라스틱 케이스 + 나사)
+                conditions.Add(302000002, new() { (301000003, 1), (301000013, 1) }); // 유연성 강화 키트 (고무 키캡 + 스프링)
+            }
 
-                    case 5:
-                        conditions.Add(301000008, new() { (301000002, 3) });
-                        conditions.Add(102000004, new() { (102000002, 1), (301000008, 1) });
-                        conditions.Add(301000010, new() { (301000006, 3) });
-                        break;
+            // 재료 공학 레벨 2
+            if (researches.Any(r => r.id == 1 && r.level >= 2))
+            {
+                conditions.Add(302000003, new() { (301000006, 1), (301000014, 1) }); // 전도성 섬유 (구리 와이어 + 고무 그립)
+                conditions.Add(302000004, new() { (301000027, 1), (301000024, 1) }); // 내화 섬유 (합판 조각 + 니스 조각)
+            }
 
-                    case 7:
-                        conditions.Add(401000001, new() { (301000009, 1), (301000010, 1) });
-                        break;
-                }
+            // 소재 공학 레벨 1
+            if (researches.Any(r => r.id == 4 && r.level >= 1))
+            {
+                conditions.Add(302000005, new() { (302000001, 1), (302000003, 1) }); // 충격 흡수 패드 (강화 플라스틱 + 전도성 섬유)
+                conditions.Add(302000006, new() { (302000002, 1), (302000004, 1) }); // 방탄 섬유 (유연성 강화 키트 + 내화 섬유)
+            }
+
+            // 장비 제작 레벨 1
+            if (researches.Any(r => r.id == 5 && r.level >= 1))
+            {
+                conditions.Add(102000003, new() { (102000001, 1), (302000005, 1) }); // 정식 공학자의 헬멧 (수습 공학자의 헬멧 + 충격 흡수 패드)
+                conditions.Add(102000004, new() { (102000002, 1), (302000005, 1) }); // 정식 화학자의 고글 (수습 화학자의 고글 + 충격 흡수 패드)
+                conditions.Add(103000002, new() { (103000001, 1), (302000006, 1) }); // 정식 연구원의 제복 (수습 연구원의 제복 + 방탄 섬유)
             }
 
             foreach (var (key, conditionList) in conditions)
@@ -1724,8 +1794,8 @@
                 bool isMakable = true;
                 foreach (var (itemId, count) in conditionList)
                 {
-                    var material = make_materials.Find(x => x.Item1 == itemId);
-                    if (material.Item1 == 0 || material.Item2 != count)
+                    var material = make_materials.Find(x => x.id == itemId);
+                    if (material.id == 0 || material.count < count)
                     {
                         isMakable = false;
                         break;

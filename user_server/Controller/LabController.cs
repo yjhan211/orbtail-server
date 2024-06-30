@@ -273,7 +273,16 @@ namespace user_server
                     }
                 }
 
-                var research_list = await GetUseableResearchList(player_info);
+                var lab_info = await LabInfo.Load(player_info.player_id);
+                if (lab_info == null)
+                {
+                    throw new Exception("lab_info not exists");
+                }
+
+                var research_list = lab_info.reserach_info_dict.Values
+                    .Select((x) => (x.research_id, x.level))
+                    .ToList();
+
                 makeable_item_id = GameDesignData.GetMakableItemId(research_list, validator);
                 if (makeable_item_id != 0)
                 {

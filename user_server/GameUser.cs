@@ -480,6 +480,9 @@
                     }
                 }
 
+                // TODO 임시
+                player_info.job_info.hp = 100;
+
                 await player_info.Save();
                 await player_info.object_info.Save();
 
