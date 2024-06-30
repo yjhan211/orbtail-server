@@ -145,8 +145,6 @@ namespace user_server
 
         public static async Task Explore(GameUser user, C_TO_U_EXPLORE body)
         {
-            LogManager.WriteDebugLog("1111");
-
             PlayerInfo? player_info;
             ExploreTargetInfo? explore_target_info;
 
@@ -314,8 +312,9 @@ namespace user_server
                         return;
                     }
 
+                    var move_elapsed_time = await user.object_controller!.CalcMoveElapsedTime();
                     Cell player_current_cell;
-                    if (user.object_controller!.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                    if (user.object_controller!.GetMoveElapsedTime() < move_elapsed_time)
                     {
                         player_current_cell = player_info.object_info.current_cell;
                     }
@@ -538,8 +537,14 @@ namespace user_server
                         return;
                     }
 
+                    var move_elapsed_time = await user.object_controller!.CalcMoveElapsedTime();
+                    if (player_info.object_info.map_id == MapID.WETLAND_1)
+                    {
+                        move_elapsed_time *= 2;
+                    }
+
                     Cell player_current_cell;
-                    if (user.object_controller!.GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                    if (user.object_controller!.GetMoveElapsedTime() < move_elapsed_time)
                     {
                         player_current_cell = player_info.object_info.current_cell;
                     }

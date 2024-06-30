@@ -26,6 +26,8 @@
         public (DateTime, (MapID, long, Cell, bool))? change_map_task { get; set; }
         public CampInfo? current_camp_info { get; set; }
 
+        public DateTime debuff_task { get; set; }
+
         public GameUser(UserToken token)
         {
             this.token = token;
@@ -354,6 +356,56 @@
                 }
             }
 
+            if (this.object_controller != null)
+            {
+                if (this.object_controller.object_info.map_id == MapID.WETLAND_1)
+                {
+                    if (DateTime.UtcNow >= debuff_task)
+                    {
+                        PlayerInfo? player_info;
+                        using (await PlayerInfo.Lock(this.redlock, this.player_id))
+                        {
+                            player_info = await PlayerInfo.Load(this.player_id);
+                            if (player_info == null)
+                            {
+                                throw new Exception("cannot found player info");
+                            }
+
+                            bool has_item = player_info.wear_items.Contains(103000004);
+                            if (!has_item)
+                            {
+                                player_info.job_info.hp -= 1;
+                                await player_info.Save();
+
+                                Packet? update_hp_packet = null;
+                                try
+                                {
+                                    update_hp_packet = PacketMaker.U_TO_C_UPDATE_HP(
+                                        -1,
+                                        player_info.job_info.hp
+                                    );
+                                    this.SendToClient(update_hp_packet);
+                                    this.token.is_alive = true;
+                                }
+                                catch (Exception e)
+                                {
+                                    LogManager.WriteErrorLog(e);
+                                }
+                                finally
+                                {
+                                    if (update_hp_packet != null)
+                                    {
+                                        Packet.Destroy(update_hp_packet);
+                                    }
+                                }
+                            }
+                        }
+
+                        debuff_task = DateTime.UtcNow.AddSeconds(5);
+                    }
+                }
+            }
+
             if (current_camp_info != null)
             {
                 if (DateTime.UtcNow >= current_camp_info.add_hp_timestamp)
@@ -364,19 +416,17 @@
                         job_info = await JobInfo.Load(this.player_id);
                         if (job_info == null)
                         {
-                            return;
+                            throw new Exception("cannot found job info");
                         }
 
-                        if (100 <= job_info.hp) // TODO 임시 하드코딩
+                        if (100 > job_info.hp) // TODO 임시 하드코딩
                         {
-                            return;
+                            job_info.hp += 1;
+                            current_camp_info.add_hp_timestamp = DateTime.UtcNow.AddSeconds(5);
+
+                            await job_info.Save();
+                            await current_camp_info.Save();
                         }
-
-                        job_info.hp += 1;
-                        current_camp_info.add_hp_timestamp = DateTime.UtcNow.AddSeconds(5);
-
-                        await job_info.Save();
-                        await current_camp_info.Save();
                     }
 
                     Packet? update_hp_packet = null;
@@ -451,8 +501,21 @@
                     // 수습 화학자의 고글
                     var default_hat_2 = await InventoryController.CreateItem(this, 102000002, 1);
 
+                    // TODO 테스트 장화
+                    var test_item = await InventoryController.CreateItem(this, 104000004, 1);
+                    // TODO 테스트 우비
+                    var test_item_2 = await InventoryController.CreateItem(this, 103000004, 1);
+
                     gift_item_list.AddRange(
-                        new[] { default_hair, default_top, default_hat_1, default_hat_2 }
+                        new[]
+                        {
+                            default_hair,
+                            default_top,
+                            default_hat_1,
+                            default_hat_2,
+                            test_item,
+                            test_item_2
+                        }
                     );
 
                     player_info.inventory_info.AddItem(gift_item_list);

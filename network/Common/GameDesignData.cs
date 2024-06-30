@@ -33,10 +33,30 @@
                 case 102000004:
                     result = (
                         "화학자의 고글",
-                        "일반 식물학자 이상",
+                        "일반 화학자 이상",
                         "정화 Lv2 사용 가능",
                         "100",
                         "이제 연구자 태가 좀 나는 것 같아요."
+                    );
+                    break;
+
+                case 102000006:
+                    result = (
+                        "오토바이 헬멧",
+                        "일반 공학자 이상",
+                        "분해 Lv3 사용 가능",
+                        "100",
+                        "빠른 속도 못지않게 안전도 중요하죠."
+                    );
+                    break;
+
+                case 102000007:
+                    result = (
+                        "오토바이 고글",
+                        "일반 식물학자 이상",
+                        "정화 Lv3 사용 가능",
+                        "100",
+                        "빠른 속도 못지않게 안전도 중요하죠."
                     );
                     break;
 
@@ -51,6 +71,30 @@
                         "조사 Lv2 사용 가능",
                         "100",
                         "이제 연구자 태가 좀 나는 것 같아요."
+                    );
+                    break;
+
+                case 103000004:
+                    result = (
+                        "습지 탐사 우비",
+                        "일반 연구원 이상",
+                        "조사 Lv3 사용 가능, 습지 패널티 해제-컨디션",
+                        "100",
+                        "비바람 불어도 괜찮아요."
+                    );
+                    break;
+
+                case 104000001:
+                    result = ("연구원의 구두", "수습 연구원 이상", "", "100", "편한 착용감과 격식을 모두 갖췄어요.");
+                    break;
+
+                case 104000004:
+                    result = (
+                        "습지 탐사 장화",
+                        "일반 연구원 이상",
+                        "습지 패널티 해제-이동속도",
+                        "100",
+                        "진흙 위에서도 당당하게 걸어요."
                     );
                     break;
 
@@ -381,12 +425,24 @@
                     result = ("정제", 2, JobType.CHEMIST, PlayerState.CHEMIST_WORK_1);
                     break;
 
+                case 30001:
+                    result = ("분해", 3, JobType.ENGINEER, PlayerState.ENGINEER_WORK_1);
+                    break;
+
+                case 30002:
+                    result = ("정제", 3, JobType.CHEMIST, PlayerState.CHEMIST_WORK_1);
+                    break;
+
                 case 100001:
                     result = ("조사", 1, JobType.NONE, PlayerState.EXPLORE_1);
                     break;
 
                 case 100002:
-                    result = ("조사", 1, JobType.NONE, PlayerState.EXPLORE_1);
+                    result = ("조사", 2, JobType.NONE, PlayerState.EXPLORE_1);
+                    break;
+
+                case 100003:
+                    result = ("조사", 3, JobType.NONE, PlayerState.EXPLORE_1);
                     break;
 
                 case 200001:
@@ -1439,12 +1495,24 @@
                     result = (JobType.CHEMIST, 20002, 2); // 정제 레벨 2
                     break;
 
+                case 102000006: // 오토바이 헬멧
+                    result = (JobType.ENGINEER, 10003, 3); // 분해 레벨 3
+                    break;
+
+                case 102000007: // 오토바이 고글
+                    result = (JobType.CHEMIST, 20003, 3); // 정제 레벨 3
+                    break;
+
                 case 103000001: // 수습 연구원의 제복
                     result = (JobType.NONE, 100001, 1); // 조사 레벨 1
                     break;
 
                 case 103000002: // 연구원의 제복
                     result = (JobType.NONE, 100002, 2); // 조사 레벨 2
+                    break;
+
+                case 103000004: // 습지 탐사 우비
+                    result = (JobType.NONE, 100003, 3); // 조사 레벨 3
                     break;
             }
 
@@ -1471,16 +1539,20 @@
             switch (item_id)
             {
                 case 102000003:
+                case 102000006:
                     target_job_type = JobType.ENGINEER;
                     target_job_grade = JobGrade.RESEARCHER;
                     break;
 
                 case 102000004:
+                case 102000007:
                     target_job_type = JobType.CHEMIST;
                     target_job_grade = JobGrade.RESEARCHER;
                     break;
 
                 case 103000002:
+                case 103000004:
+                case 104000004:
                     target_job_grade = JobGrade.RESEARCHER;
                     break;
 
@@ -1782,6 +1854,15 @@
                 conditions.Add(102000003, new() { (102000001, 1), (302000005, 1) }); // 정식 공학자의 헬멧 (수습 공학자의 헬멧 + 충격 흡수 패드)
                 conditions.Add(102000004, new() { (102000002, 1), (302000005, 1) }); // 정식 화학자의 고글 (수습 화학자의 고글 + 충격 흡수 패드)
                 conditions.Add(103000002, new() { (103000001, 1), (302000006, 1) }); // 정식 연구원의 제복 (수습 연구원의 제복 + 방탄 섬유)
+            }
+
+            // 장비 제작 레벨 2
+            if (researches.Any(r => r.id == 5 && r.level >= 2))
+            {
+                conditions.Add(102000006, new() { (102000003, 1), (302000005, 1), (302000006, 1) }); // 오토바이 헬멧 (정식 공학자의 헬멧 + 충격 흡수 패드 + 방탄 섬유)
+                conditions.Add(102000007, new() { (102000004, 1), (302000005, 1), (302000006, 1) }); // 오토바이 고글 (정식 공학자의 고글 + 충격 흡수 패드 + 방탄 섬유)
+                conditions.Add(103000004, new() { (103000002, 1), (302000005, 1), (302000006, 1) }); // 습지 탐사 우비 (정식 연구원의 제복 + 충격 흡수 패드 + 방탄 섬유)
+                conditions.Add(104000002, new() { (104000004, 1), (302000005, 1), (302000006, 1) }); // 습지 탐사 장화 (연구원의 구두 + 충격 흡수 패드 + 방탄 섬유)
             }
 
             foreach (var (key, conditionList) in conditions)

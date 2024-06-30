@@ -259,6 +259,32 @@ namespace user_server
             }
         }
 
+        public async Task<float> CalcMoveElapsedTime()
+        {
+            var move_elapsed_time = Config.MOVE_ELAPSED_TIME;
+            switch (this.object_info.map_id)
+            {
+                case MapID.WETLAND_1:
+                    PlayerInfo? player = await PlayerInfo.Load(this.object_info.object_id);
+                    if (player == null)
+                    {
+                        throw new Exception("cannot find player info");
+                    }
+
+                    bool has_spped_boost = player.wear_items.Contains(104000004);
+                    if (!has_spped_boost)
+                    {
+                        move_elapsed_time *= 2;
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+
+            return move_elapsed_time;
+        }
+
         private async Task ProcessMoveQueue()
         {
             isProcessingMove = true;
@@ -267,11 +293,12 @@ namespace user_server
             {
                 var moveRequest = moveQueue.Peek();
 
-                if (GetMoveElapsedTime() < Config.MOVE_ELAPSED_TIME)
+                var move_elapsed_time = await CalcMoveElapsedTime();
+                if (GetMoveElapsedTime() < move_elapsed_time)
                 {
                     // 아직 이동 쿨다운이 끝나지 않았으면 대기
                     await Task.Delay(
-                        TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME - GetMoveElapsedTime())
+                        TimeSpan.FromSeconds(move_elapsed_time - GetMoveElapsedTime())
                     );
                     continue;
                 }
@@ -560,6 +587,7 @@ namespace user_server
                     this.object_info.target_cell
                 );
 
+                var move_elapsed_time = await CalcMoveElapsedTime();
                 if (MapHelper.portal_info.TryGetValue(portal_key, out var portal_result))
                 {
                     var map_id = portal_result.Item1;
@@ -578,7 +606,7 @@ namespace user_server
                     }
 
                     this.user.change_map_task = (
-                        this.object_info.move_timestamp.AddSeconds(Config.MOVE_ELAPSED_TIME),
+                        this.object_info.move_timestamp.AddSeconds(move_elapsed_time),
                         (map_id, map_sub_id, spawn_position, is_flip)
                     );
 
@@ -609,7 +637,7 @@ namespace user_server
                                 }
                             },
                             null,
-                            TimeSpan.FromSeconds(Config.MOVE_ELAPSED_TIME),
+                            TimeSpan.FromSeconds(move_elapsed_time),
                             Timeout.InfiniteTimeSpan
                         );
                     }
