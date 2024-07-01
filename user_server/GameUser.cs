@@ -406,49 +406,49 @@
                 }
             }
 
-            if (current_camp_info != null)
-            {
-                if (DateTime.UtcNow >= current_camp_info.add_hp_timestamp)
-                {
-                    JobInfo? job_info;
-                    using (await PlayerInfo.Lock(this.redlock, this.player_id))
-                    {
-                        job_info = await JobInfo.Load(this.player_id);
-                        if (job_info == null)
-                        {
-                            throw new Exception("cannot found job info");
-                        }
+            // if (current_camp_info != null)
+            // {
+            //     if (DateTime.UtcNow >= current_camp_info.add_hp_timestamp)
+            //     {
+            //         JobInfo? job_info;
+            //         using (await PlayerInfo.Lock(this.redlock, this.player_id))
+            //         {
+            //             job_info = await JobInfo.Load(this.player_id);
+            //             if (job_info == null)
+            //             {
+            //                 throw new Exception("cannot found job info");
+            //             }
 
-                        if (100 > job_info.hp) // TODO 임시 하드코딩
-                        {
-                            job_info.hp += 1;
-                            current_camp_info.add_hp_timestamp = DateTime.UtcNow.AddSeconds(5);
+            //             if (100 > job_info.hp) // TODO 임시 하드코딩
+            //             {
+            //                 job_info.hp += 1;
+            //                 current_camp_info.add_hp_timestamp = DateTime.UtcNow.AddSeconds(60);
 
-                            await job_info.Save();
-                            await current_camp_info.Save();
-                        }
-                    }
+            //                 await job_info.Save();
+            //                 await current_camp_info.Save();
 
-                    Packet? update_hp_packet = null;
-                    try
-                    {
-                        update_hp_packet = PacketMaker.U_TO_C_UPDATE_HP(1, job_info.hp);
-                        this.SendToClient(update_hp_packet);
-                        this.token.is_alive = true;
-                    }
-                    catch (Exception e)
-                    {
-                        LogManager.WriteErrorLog(e);
-                    }
-                    finally
-                    {
-                        if (update_hp_packet != null)
-                        {
-                            Packet.Destroy(update_hp_packet);
-                        }
-                    }
-                }
-            }
+            //                 Packet? update_hp_packet = null;
+            //                 try
+            //                 {
+            //                     update_hp_packet = PacketMaker.U_TO_C_UPDATE_HP(1, job_info.hp);
+            //                     this.SendToClient(update_hp_packet);
+            //                     this.token.is_alive = true;
+            //                 }
+            //                 catch (Exception e)
+            //                 {
+            //                     LogManager.WriteErrorLog(e);
+            //                 }
+            //                 finally
+            //                 {
+            //                     if (update_hp_packet != null)
+            //                     {
+            //                         Packet.Destroy(update_hp_packet);
+            //                     }
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
         }
 
         async Task Login(GameUser _, C_TO_U_LOGIN request)
@@ -505,6 +505,8 @@
                     var test_item = await InventoryController.CreateItem(this, 104000004, 1);
                     // TODO 테스트 우비
                     var test_item_2 = await InventoryController.CreateItem(this, 103000004, 1);
+                    // TODO 테스트 좌판
+                    var test_item_3 = await InventoryController.CreateItem(this, 401000002, 1);
 
                     gift_item_list.AddRange(
                         new[]
@@ -514,7 +516,8 @@
                             default_hat_1,
                             default_hat_2,
                             test_item,
-                            test_item_2
+                            test_item_2,
+                            test_item_3,
                         }
                     );
 
@@ -528,7 +531,10 @@
                     try
                     {
                         duplicate_packet = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
-                        this.SendToClient(duplicate_packet);
+                        this.nats_client.Publish(
+                            player_info.object_info.GetHashField(),
+                            duplicate_packet.ToBytes()
+                        );
                     }
                     catch (Exception e)
                     {

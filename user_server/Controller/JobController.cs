@@ -869,10 +869,10 @@ namespace user_server
                     throw new Exception("player_info not exists");
                 }
 
-                if (player_info.object_info.map_id == MapID.CAMPUS_1)
-                {
-                    throw new Exception("invalid map id");
-                }
+                // if (player_info.object_info.map_id == MapID.CAMPUS_1)
+                // {
+                //     throw new Exception("invalid map id");
+                // }
 
                 if (
                     !player_info.inventory_info.item_dict.TryGetValue(
