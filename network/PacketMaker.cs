@@ -87,6 +87,15 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_U_PLAYER_INFO(PlayerInfo player_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_U_PLAYER_INFO);
+            U_TO_U_PLAYER_INFO body = new() { player_info = player_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_C_PLAYER_INFO(List<PlayerInfo> player_info_list)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_PLAYER_INFO);
@@ -146,6 +155,27 @@ namespace user_server
             {
                 body = new() { error_code = error_code };
             }
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_ADD_SELL_ITEM(long player_id)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_ADD_SELL_ITEM, player_id);
+            return packet;
+        }
+
+        public static Packet U_TO_C_DELETE_SELL_ITEM(long player_id)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_DELETE_SELL_ITEM, player_id);
+            return packet;
+        }
+
+        public static Packet U_TO_C_BUY_ITEM(long player_id, PlayerInfo player_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_BUY_ITEM, player_id);
+            U_TO_C_BUY_ITEM body = new() { player_info = player_info };
 
             packet.SetBody(MessagePackSerializer.Serialize(body));
             return packet;

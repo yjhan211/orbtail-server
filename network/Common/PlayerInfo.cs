@@ -45,6 +45,9 @@ namespace network
         [Key("lab_name")]
         public string lab_name { get; set; }
 
+        [Key("gold")]
+        public long gold { get; set; }
+
         // 이거 없애면 안됨 MessagePack에서 씀
         public PlayerInfo()
         {
@@ -60,6 +63,7 @@ namespace network
 
             this.lab_id = 0;
             this.lab_name = "";
+            this.gold = 0;
         }
 
         public PlayerInfo(long player_id, string name, Cell cell)
@@ -83,6 +87,8 @@ namespace network
 
             this.lab_id = 0;
             this.lab_name = "";
+
+            this.gold = 0;
         }
 
         public string GetLockKey()
@@ -162,7 +168,29 @@ namespace network
             switch (target_item.item_id)
             {
                 case 201000001:
-                    this.job_info.hp = Math.Min(100, this.job_info.hp + 20); // TODO MaxHP 시민등급 따라가도록
+                    this.job_info.hp = Math.Min(100, this.job_info.hp + 1);
+                    break;
+                case 202000007:
+                case 202000008:
+                    this.job_info.hp = Math.Min(100, this.job_info.hp + 5);
+                    break;
+                case 202000009:
+                case 202000010:
+                case 202000011:
+                case 202000012:
+                    this.job_info.hp = Math.Min(100, this.job_info.hp + 10);
+                    break;
+                case 202000013:
+                case 202000014:
+                    this.job_info.hp = Math.Min(100, this.job_info.hp + 20);
+                    break;
+                case 202000015:
+                case 202000016:
+                    this.job_info.hp = Math.Min(100, this.job_info.hp + 30);
+                    break;
+                case 202000017:
+                case 202000018:
+                    this.job_info.hp = Math.Min(100, this.job_info.hp + 40);
                     break;
             }
 

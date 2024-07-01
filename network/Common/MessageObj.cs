@@ -533,6 +533,40 @@ namespace network
     }
 
     [MessagePackObject]
+    public class C_TO_U_ADD_SELL_ITEM : IMessagePackObject
+    {
+        [Key("item_uid")]
+        public long item_uid { get; set; }
+
+        [Key("price")]
+        public int price { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_DELETE_SELL_ITEM : IMessagePackObject
+    {
+        [Key("item_uid")]
+        public long item_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_BUY_ITEM : IMessagePackObject
+    {
+        [Key("seller_id")]
+        public long seller_id { get; set; }
+
+        [Key("sell_item_uid")]
+        public long sell_item_uid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_BUY_ITEM : IMessagePackObject
+    {
+        [Key("player_info")]
+        public PlayerInfo player_info { get; set; }
+    }
+
+    [MessagePackObject]
     public class U_TO_C_UPDATE_HP : IMessagePackObject
     {
         [Key("add_hp")]
@@ -540,5 +574,12 @@ namespace network
 
         [Key("current_hp")]
         public int current_hp { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_U_PLAYER_INFO : IMessagePackObject
+    {
+        [Key("player_info")]
+        public PlayerInfo player_info { get; set; }
     }
 }

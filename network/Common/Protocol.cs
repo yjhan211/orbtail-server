@@ -68,6 +68,13 @@
         U_TO_C_CAMP_INFO,
         C_TO_U_CAMP_INFO,
         U_TO_C_UPDATE_HP,
+        C_TO_U_ADD_SELL_ITEM,
+        U_TO_C_ADD_SELL_ITEM,
+        C_TO_U_DELETE_SELL_ITEM,
+        U_TO_C_DELETE_SELL_ITEM,
+        C_TO_U_BUY_ITEM,
+        U_TO_C_BUY_ITEM,
+        U_TO_U_PLAYER_INFO,
         U_TO_U_DUPLICATE,
         U_TO_G_LOGOUT,
         END

@@ -206,6 +206,18 @@
                         case PROTOCOL.C_TO_U_DECAMP:
                             await JobController.Decamp(this);
                             break;
+                        case PROTOCOL.C_TO_U_ADD_SELL_ITEM:
+                            HandleMessage<C_TO_U_ADD_SELL_ITEM>(body, JobController.AddSellItem);
+                            break;
+                        case PROTOCOL.C_TO_U_DELETE_SELL_ITEM:
+                            HandleMessage<C_TO_U_DELETE_SELL_ITEM>(
+                                body,
+                                JobController.DeleteSellItem
+                            );
+                            break;
+                        case PROTOCOL.C_TO_U_BUY_ITEM:
+                            HandleMessage<C_TO_U_BUY_ITEM>(body, JobController.BuyItem);
+                            break;
                         case PROTOCOL.C_TO_U_CAMP_INFO:
                             HandleMessage<C_TO_U_CAMP_INFO>(body, GetCampInfo);
                             break;
@@ -288,6 +300,10 @@
 
                     case PROTOCOL.G_TO_U_CAMP_INFO:
                         HandleMessage<G_TO_U_CAMP_INFO>(body, SubscribeCampInfo);
+                        break;
+
+                    case PROTOCOL.U_TO_U_PLAYER_INFO:
+                        HandleMessage<U_TO_U_PLAYER_INFO>(body, SubscribePlayerInfo);
                         break;
 
                     case PROTOCOL.U_TO_U_DUPLICATE:
@@ -482,6 +498,7 @@
                     is_new = true;
                     player_info.object_info.map_id = MapID.CAMPUS_1;
                     player_info.job_info.hp = 100;
+                    player_info.gold = 10000;
                 }
 
                 player_info.object_info.current_cell = player_info.object_info.target_cell;
@@ -507,6 +524,19 @@
                     var test_item_2 = await InventoryController.CreateItem(this, 103000004, 1);
                     // TODO 테스트 좌판
                     var test_item_3 = await InventoryController.CreateItem(this, 401000002, 1);
+                    // TODO 테스트 음식
+                    var test_item_4 = await InventoryController.CreateItem(this, 202000007, 1);
+                    var test_item_5 = await InventoryController.CreateItem(this, 202000008, 1);
+                    var test_item_6 = await InventoryController.CreateItem(this, 202000009, 1);
+                    var test_item_7 = await InventoryController.CreateItem(this, 202000010, 1);
+                    var test_item_8 = await InventoryController.CreateItem(this, 202000011, 1);
+                    var test_item_9 = await InventoryController.CreateItem(this, 202000012, 1);
+                    var test_item_10 = await InventoryController.CreateItem(this, 202000013, 1);
+                    var test_item_11 = await InventoryController.CreateItem(this, 202000014, 1);
+                    var test_item_12 = await InventoryController.CreateItem(this, 202000015, 1);
+                    var test_item_13 = await InventoryController.CreateItem(this, 202000016, 1);
+                    var test_item_14 = await InventoryController.CreateItem(this, 202000017, 1);
+                    var test_item_15 = await InventoryController.CreateItem(this, 202000018, 1);
 
                     gift_item_list.AddRange(
                         new[]
@@ -518,6 +548,18 @@
                             test_item,
                             test_item_2,
                             test_item_3,
+                            test_item_4,
+                            test_item_5,
+                            test_item_6,
+                            test_item_7,
+                            test_item_8,
+                            test_item_9,
+                            test_item_10,
+                            test_item_11,
+                            test_item_12,
+                            test_item_13,
+                            test_item_14,
+                            test_item_15
                         }
                     );
 
@@ -910,6 +952,29 @@
         void SubscribeLabInventory(GameUser _, U_TO_U_LAB_INVENTORY body)
         {
             SendLabItemList(body.item_list);
+        }
+
+        void SubscribePlayerInfo(GameUser user, U_TO_U_PLAYER_INFO body)
+        {
+            Packet? packet = null;
+            try
+            {
+                packet = PacketMaker.U_TO_C_PLAYER_INFO(new() { body.player_info });
+                this.SendToClient(packet);
+
+                _ = InventoryController.GetCurrentItemList(user);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
         }
 
         void SubscribeCampInfo(GameUser _, G_TO_U_CAMP_INFO body)

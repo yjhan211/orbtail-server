@@ -22,6 +22,9 @@ namespace network
         [Key("item_info")]
         public ItemInfo item_info { get; set; }
 
+        [Key("cell_dict")]
+        public Dictionary<long, (ItemInfo, int)> cell_dict { get; set; }
+
         [Key("add_hp_timestamp")]
         public DateTime add_hp_timestamp { get; set; } // 피 채워지는 시간
 
@@ -31,6 +34,7 @@ namespace network
             this.item_info = new();
             this.player_id = new();
             this.player_name = "";
+            this.cell_dict = new();
         }
 
         public CampInfo(
@@ -52,6 +56,7 @@ namespace network
                 Cell.Clone(cell),
                 player_object_info.is_flip
             );
+            this.cell_dict = new();
         }
 
         public async Task Save()

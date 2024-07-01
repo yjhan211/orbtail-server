@@ -158,7 +158,6 @@ namespace user_server
                 {
                     try
                     {
-                        LogManager.WriteDebugLog("1");
                         packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
                         user.SendToClient(packet);
                     }
@@ -179,7 +178,6 @@ namespace user_server
                 {
                     try
                     {
-                        LogManager.WriteDebugLog("2");
                         packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
                         user.SendToClient(packet);
                     }
@@ -200,7 +198,6 @@ namespace user_server
                 {
                     try
                     {
-                        LogManager.WriteDebugLog("3");
                         packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
                         user.SendToClient(packet);
                     }
@@ -225,7 +222,6 @@ namespace user_server
                     {
                         try
                         {
-                            LogManager.WriteDebugLog("4");
                             packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
                             user.SendToClient(packet);
                         }
@@ -247,7 +243,6 @@ namespace user_server
                     {
                         try
                         {
-                            LogManager.WriteDebugLog("5");
                             packet = PacketMaker.U_TO_C_EXPLORE(
                                 ErrorCode.ALREADY_ANOTHER_USE_SKILL
                             );
@@ -294,7 +289,6 @@ namespace user_server
                     {
                         try
                         {
-                            LogManager.WriteDebugLog("6");
                             packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
                             user.SendToClient(packet);
                         }
@@ -328,7 +322,6 @@ namespace user_server
                     {
                         try
                         {
-                            LogManager.WriteDebugLog("7");
                             packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
                             user.SendToClient(packet);
                         }
@@ -960,6 +953,290 @@ namespace user_server
 
             user.BroadcastUpdatePlayerInfo(player_info);
             BroadcastObjectDestroy(user, camp_info.object_info);
+        }
+
+        public static async Task AddSellItem(GameUser user, C_TO_U_ADD_SELL_ITEM body)
+        {
+            PlayerInfo? player_info;
+            CampInfo? camp_info;
+            ItemInfo? item_info;
+            using (await PlayerInfo.Lock(user.redlock, user.player_id))
+            {
+                player_info = await PlayerInfo.Load(user.player_id);
+                if (player_info == null)
+                {
+                    return;
+                }
+
+                camp_info = await CampInfo.Load(user.player_id);
+                if (camp_info == null)
+                {
+                    return;
+                }
+
+                if (!player_info.inventory_info.item_dict.TryGetValue(body.item_uid, out item_info))
+                {
+                    return;
+                }
+
+                if (3 <= camp_info.cell_dict.Count)
+                {
+                    return;
+                }
+
+                if (item_info.is_wear || item_info.count <= 0)
+                {
+                    return;
+                }
+
+                camp_info.cell_dict[body.item_uid] = (item_info, body.price);
+                await camp_info.Save();
+            }
+
+            var current_position_key = MapHelper.GetPositionKey(
+                camp_info.object_info.map_id,
+                camp_info.object_info.map_sub_id,
+                camp_info.object_info.current_cell
+            );
+
+            var current_manage_server = MapHelper.GetServerIdByPositionKey(
+                Program.game_server_num,
+                current_position_key
+            );
+
+            var update_camp_subject = MapHelper.GetUpdateCampSubject(
+                camp_info.object_info.map_id,
+                camp_info.object_info.map_sub_id,
+                current_manage_server
+            );
+
+            // 현재 담당 서버에 전송
+            user.nats_client.Publish(
+                update_camp_subject,
+                MessagePackSerializer.Serialize((current_position_key, camp_info))
+            );
+
+            Packet? packet = null;
+            try
+            {
+                packet = PacketMaker.U_TO_C_ADD_SELL_ITEM(user.player_id);
+                user.SendToClient(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
+        }
+
+        public static async Task DeleteSellItem(GameUser user, C_TO_U_DELETE_SELL_ITEM body)
+        {
+            PlayerInfo? player_info;
+            CampInfo? camp_info;
+            ItemInfo? item_info;
+            using (await PlayerInfo.Lock(user.redlock, user.player_id))
+            {
+                player_info = await PlayerInfo.Load(user.player_id);
+                if (player_info == null)
+                {
+                    return;
+                }
+
+                camp_info = await CampInfo.Load(user.player_id);
+                if (camp_info == null)
+                {
+                    return;
+                }
+
+                if (!player_info.inventory_info.item_dict.TryGetValue(body.item_uid, out item_info))
+                {
+                    return;
+                }
+
+                if (item_info.is_wear || item_info.count <= 0)
+                {
+                    return;
+                }
+
+                camp_info.cell_dict.Remove(body.item_uid);
+                await camp_info.Save();
+            }
+
+            var current_position_key = MapHelper.GetPositionKey(
+                camp_info.object_info.map_id,
+                camp_info.object_info.map_sub_id,
+                camp_info.object_info.current_cell
+            );
+
+            var current_manage_server = MapHelper.GetServerIdByPositionKey(
+                Program.game_server_num,
+                current_position_key
+            );
+
+            var update_camp_subject = MapHelper.GetUpdateCampSubject(
+                camp_info.object_info.map_id,
+                camp_info.object_info.map_sub_id,
+                current_manage_server
+            );
+
+            // 현재 담당 서버에 전송
+            user.nats_client.Publish(
+                update_camp_subject,
+                MessagePackSerializer.Serialize((current_position_key, camp_info))
+            );
+
+            Packet? packet = null;
+            try
+            {
+                packet = PacketMaker.U_TO_C_DELETE_SELL_ITEM(user.player_id);
+                user.SendToClient(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
+        }
+
+        public static async Task BuyItem(GameUser user, C_TO_U_BUY_ITEM body)
+        {
+            PlayerInfo? player_info;
+            PlayerInfo? seller_info;
+            CampInfo? camp_info;
+            LogManager.WriteDebugLog("0");
+            using (await PlayerInfo.Lock(user.redlock, user.player_id))
+            {
+                player_info = await PlayerInfo.Load(user.player_id);
+                if (player_info == null)
+                {
+                    LogManager.WriteDebugLog("1");
+                    return;
+                }
+
+                camp_info = await CampInfo.Load(body.seller_id);
+                if (camp_info == null)
+                {
+                    LogManager.WriteDebugLog("2");
+                    return;
+                }
+
+                if (!camp_info.cell_dict.TryGetValue(body.sell_item_uid, out var sell_item_info))
+                {
+                    LogManager.WriteDebugLog("3");
+                    return;
+                }
+
+                var price = sell_item_info.Item2;
+                if (player_info.gold < price)
+                {
+                    LogManager.WriteDebugLog("4");
+                    return;
+                }
+
+                using (await PlayerInfo.Lock(user.redlock, body.seller_id))
+                {
+                    var item_info = sell_item_info.Item1;
+                    if (item_info == null)
+                    {
+                        return;
+                    }
+
+                    seller_info = await PlayerInfo.Load(body.seller_id);
+                    if (seller_info == null)
+                    {
+                        return;
+                    }
+
+                    seller_info.gold += price;
+                    player_info.gold -= price;
+
+                    camp_info.cell_dict.Remove(body.sell_item_uid);
+                    seller_info.inventory_info.item_dict.Remove(body.sell_item_uid);
+                    player_info.inventory_info.AddItem(sell_item_info.Item1);
+
+                    await camp_info.Save();
+                    await seller_info.Save();
+                    await player_info.Save();
+                }
+            }
+
+            // 텐트 업데이트
+            var current_position_key = MapHelper.GetPositionKey(
+                camp_info.object_info.map_id,
+                camp_info.object_info.map_sub_id,
+                camp_info.object_info.current_cell
+            );
+
+            var current_manage_server = MapHelper.GetServerIdByPositionKey(
+                Program.game_server_num,
+                current_position_key
+            );
+
+            var update_camp_subject = MapHelper.GetUpdateCampSubject(
+                camp_info.object_info.map_id,
+                camp_info.object_info.map_sub_id,
+                current_manage_server
+            );
+
+            // 현재 담당 서버에 전송
+            user.nats_client.Publish(
+                update_camp_subject,
+                MessagePackSerializer.Serialize((current_position_key, camp_info))
+            );
+
+            Packet? packet = null;
+            try
+            {
+                await InventoryController.GetCurrentItemList(user);
+
+                packet = PacketMaker.U_TO_C_BUY_ITEM(user.player_id, player_info);
+                user.SendToClient(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
+
+            // 셀러 업데이트
+            Packet? packet_2 = null;
+            try
+            {
+                packet_2 = PacketMaker.U_TO_U_PLAYER_INFO(seller_info);
+                user.nats_client.Publish(
+                    seller_info.object_info.GetHashField(),
+                    packet_2.ToBytes()
+                );
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet_2 != null)
+                {
+                    Packet.Destroy(packet_2);
+                }
+            }
         }
 
         public static void BroadcastJobResourceCreate(
