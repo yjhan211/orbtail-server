@@ -547,26 +547,26 @@ namespace user_server
                     }
 
                     var job_resource_current_cell = job_resource_info.object_info.current_cell;
-                    if (1 < MapHelper.GetDistance(player_current_cell, job_resource_current_cell))
-                    {
-                        try
-                        {
-                            packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                            user.SendToClient(packet);
-                        }
-                        catch (Exception e)
-                        {
-                            LogManager.WriteErrorLog(e);
-                        }
-                        finally
-                        {
-                            if (packet != null)
-                            {
-                                Packet.Destroy(packet);
-                            }
-                        }
-                        return;
-                    }
+                    // if (1 < MapHelper.GetDistance(player_current_cell, job_resource_current_cell))
+                    // {
+                    //     try
+                    //     {
+                    //         packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
+                    //         user.SendToClient(packet);
+                    //     }
+                    //     catch (Exception e)
+                    //     {
+                    //         LogManager.WriteErrorLog(e);
+                    //     }
+                    //     finally
+                    //     {
+                    //         if (packet != null)
+                    //         {
+                    //             Packet.Destroy(packet);
+                    //         }
+                    //     }
+                    //     return;
+                    // }
 
                     direction = CalcSkillDirection(player_current_cell, job_resource_current_cell);
 
