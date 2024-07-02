@@ -699,16 +699,6 @@
                 switch (player_info.tutorial_index)
                 {
                     case 2:
-                    case 52:
-                    case 64:
-                    case 69:
-                    case 71:
-                    case 74:
-                    case 79:
-                    case 81:
-                    case 83:
-                    case 85:
-                    case 94:
                         return;
 
                     case 26:
@@ -737,6 +727,8 @@
                         player_info.job_info.job_stat_dict[job_type].job_grade =
                             JobGrade.RESEARCHER;
                         player_info.job_info.job_stat_dict[job_type].exp = 0;
+                        player_info.job_info.research_point_dict[JobType.ENGINEER].point = 100;
+                        player_info.job_info.research_point_dict[JobType.CHEMIST].point = 100;
                         await player_info.Save();
                         break;
 
