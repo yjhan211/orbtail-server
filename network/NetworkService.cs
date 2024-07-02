@@ -100,12 +100,12 @@ namespace network
             try
             {
                 string ip_address = ((IPEndPoint)client_socket.RemoteEndPoint!).Address.ToString();
-                if (!this.connection_manager.CanAcceptConnection(ip_address))
-                {
-                    LogManager.WriteDebugLog($"Connection limit exceeded for IP: {ip_address}");
-                    client_socket.Close();
-                    return;
-                }
+                // if (!this.connection_manager.CanAcceptConnection(ip_address))
+                // {
+                //     LogManager.WriteDebugLog($"Connection limit exceeded for IP: {ip_address}");
+                //     client_socket.Close();
+                //     return;
+                // }
 
                 LogManager.WriteDebugLog($"on new client from {ip_address}");
 

@@ -60,6 +60,8 @@
         {
             try
             {
+                await this.player_lock.WaitAsync();
+
                 if (Config.BUFFER_SIZE < buffer.Value.Length)
                 {
                     throw new Exception(
