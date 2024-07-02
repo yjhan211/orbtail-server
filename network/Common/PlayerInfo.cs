@@ -48,6 +48,9 @@ namespace network
         [Key("gold")]
         public long gold { get; set; }
 
+        [Key("tutorial_index")]
+        public int tutorial_index { get; set; }
+
         // 이거 없애면 안됨 MessagePack에서 씀
         public PlayerInfo()
         {
@@ -64,6 +67,8 @@ namespace network
             this.lab_id = 0;
             this.lab_name = "";
             this.gold = 0;
+
+            this.tutorial_index = 0;
         }
 
         public PlayerInfo(long player_id, string name, Cell cell)
@@ -89,6 +94,8 @@ namespace network
             this.lab_name = "";
 
             this.gold = 0;
+
+            this.tutorial_index = 0;
         }
 
         public string GetLockKey()

@@ -2,6 +2,7 @@
 #pragma warning disable IDE1006
 
 using MessagePack;
+using NATS.Client.JetStream;
 
 namespace network
 {
@@ -35,6 +36,33 @@ namespace network
 
         [Key("lab_info")]
         public LabInfo lab_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_SET_NAME : IMessagePackObject
+    {
+        [Key("name")]
+        public string name { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_SET_NAME : IMessagePackObject
+    {
+        [Key("error_code")]
+        public ErrorCode error_code { get; set; }
+
+        [Key("player_info")]
+        public PlayerInfo player_info { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_UPDATE_TUTORIAL : IMessagePackObject
+    {
+        [Key("player_info")]
+        public PlayerInfo player_info { get; set; }
+
+        [Key("job_info")]
+        public JobInfo job_info { get; set; }
     }
 
     [MessagePackObject]

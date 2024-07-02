@@ -91,8 +91,8 @@ namespace user_server
                         job_stat.exp = 0;
 
                         // 연구원의 제복
-                        var gift_geo = await InventoryController.CreateItem(user, 103000002, 1);
-                        gift_item_list.Add(gift_geo);
+                        // var gift_geo = await InventoryController.CreateItem(user, 103000002, 1);
+                        // gift_item_list.Add(gift_geo);
                         break;
 
                     default:

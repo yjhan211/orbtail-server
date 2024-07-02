@@ -221,6 +221,14 @@
                         case PROTOCOL.C_TO_U_CAMP_INFO:
                             HandleMessage<C_TO_U_CAMP_INFO>(body, GetCampInfo);
                             break;
+
+                        case PROTOCOL.C_TO_U_SET_NAME:
+                            HandleMessage<C_TO_U_SET_NAME>(body, SetName);
+                            break;
+
+                        case PROTOCOL.C_TO_U_UPDATE_TUTORIAL:
+                            await this.UpdateTutorial();
+                            break;
                     }
                 }
 
@@ -498,6 +506,13 @@
                     is_new = true;
                     player_info.object_info.map_id = MapID.CAMPUS_1;
                     player_info.job_info.hp = 100;
+
+                    // TODO 임시코드
+                    Random random = new();
+                    var random_int = random.Next(1, 2);
+                    JobType job_type = (JobType)random_int;
+
+                    player_info.job_info.job_stat_dict[job_type].exp = 100;
                     player_info.gold = 10000;
                 }
 
@@ -518,25 +533,27 @@
                     // 수습 화학자의 고글
                     var default_hat_2 = await InventoryController.CreateItem(this, 102000002, 1);
 
-                    // TODO 테스트 장화
-                    var test_item = await InventoryController.CreateItem(this, 104000004, 1);
-                    // TODO 테스트 우비
-                    var test_item_2 = await InventoryController.CreateItem(this, 103000004, 1);
-                    // TODO 테스트 좌판
-                    var test_item_3 = await InventoryController.CreateItem(this, 401000002, 1);
+                    // // TODO 테스트 장화
+                    // var test_item = await InventoryController.CreateItem(this, 104000004, 1);
+                    // // TODO 테스트 우비
+                    // var test_item_2 = await InventoryController.CreateItem(this, 103000004, 1);
+                    // // TODO 테스트 좌판
+                    // var test_item_3 = await InventoryController.CreateItem(this, 401000002, 1);
                     // TODO 테스트 음식
-                    var test_item_4 = await InventoryController.CreateItem(this, 202000007, 1);
-                    var test_item_5 = await InventoryController.CreateItem(this, 202000008, 1);
-                    var test_item_6 = await InventoryController.CreateItem(this, 202000009, 1);
-                    var test_item_7 = await InventoryController.CreateItem(this, 202000010, 1);
-                    var test_item_8 = await InventoryController.CreateItem(this, 202000011, 1);
-                    var test_item_9 = await InventoryController.CreateItem(this, 202000012, 1);
-                    var test_item_10 = await InventoryController.CreateItem(this, 202000013, 1);
-                    var test_item_11 = await InventoryController.CreateItem(this, 202000014, 1);
-                    var test_item_12 = await InventoryController.CreateItem(this, 202000015, 1);
-                    var test_item_13 = await InventoryController.CreateItem(this, 202000016, 1);
-                    var test_item_14 = await InventoryController.CreateItem(this, 202000017, 1);
-                    var test_item_15 = await InventoryController.CreateItem(this, 202000018, 1);
+                    var test_item_4 = await InventoryController.CreateItem(this, 301000001, 10);
+                    var test_item_5 = await InventoryController.CreateItem(this, 301000008, 10);
+                    var test_item_6 = await InventoryController.CreateItem(this, 301000003, 10);
+                    var test_item_7 = await InventoryController.CreateItem(this, 301000013, 10);
+                    var test_item_8 = await InventoryController.CreateItem(this, 301000006, 10);
+                    var test_item_9 = await InventoryController.CreateItem(this, 301000014, 10);
+                    var test_item_10 = await InventoryController.CreateItem(this, 301000027, 10);
+                    var test_item_11 = await InventoryController.CreateItem(this, 301000024, 10);
+                    var test_item_12 = await InventoryController.CreateItem(this, 302000001, 10);
+                    var test_item_13 = await InventoryController.CreateItem(this, 302000003, 10);
+                    var test_item_14 = await InventoryController.CreateItem(this, 302000002, 10);
+                    var test_item_15 = await InventoryController.CreateItem(this, 302000004, 10);
+                    var test_item_16 = await InventoryController.CreateItem(this, 302000005, 10);
+                    var test_item_17 = await InventoryController.CreateItem(this, 302000006, 10);
 
                     gift_item_list.AddRange(
                         new[]
@@ -545,9 +562,9 @@
                             default_top,
                             default_hat_1,
                             default_hat_2,
-                            test_item,
-                            test_item_2,
-                            test_item_3,
+                            // test_item,
+                            // test_item_2,
+                            // test_item_3,
                             test_item_4,
                             test_item_5,
                             test_item_6,
@@ -559,7 +576,9 @@
                             test_item_12,
                             test_item_13,
                             test_item_14,
-                            test_item_15
+                            test_item_15,
+                            test_item_16,
+                            test_item_17
                         }
                     );
 
@@ -665,6 +684,123 @@
                 player_info,
                 true
             );
+        }
+
+        async Task UpdateTutorial()
+        {
+            var player_info = await PlayerInfo.Load(this.player_id);
+            if (player_info == null)
+            {
+                throw new Exception("not found player info");
+            }
+
+            using (await PlayerInfo.Lock(this.redlock, this.player_id))
+            {
+                switch (player_info.tutorial_index)
+                {
+                    case 2:
+                    case 52:
+                    case 64:
+                    case 69:
+                    case 71:
+                    case 74:
+                    case 79:
+                    case 81:
+                    case 83:
+                    case 85:
+                    case 94:
+                        return;
+
+                    case 26:
+                        var item_26 = await InventoryController.CreateItem(this, 104000001, 1);
+                        player_info.inventory_info.AddItem(item_26);
+                        player_info.tutorial_index += 1;
+                        await player_info.Save();
+                        await InventoryController.GetCurrentItemList(this);
+                        break;
+
+                    case 42:
+                        player_info.tutorial_index += 1;
+                        JobType job_type = JobType.NONE;
+                        foreach (var job_stat in player_info.job_info.job_stat_dict)
+                        {
+                            if (job_stat.Value.exp == 100)
+                            {
+                                job_type = job_stat.Key;
+                                break;
+                            }
+                        }
+                        if (job_type == JobType.NONE)
+                        {
+                            return;
+                        }
+                        player_info.job_info.job_stat_dict[job_type].job_grade =
+                            JobGrade.RESEARCHER;
+                        player_info.job_info.job_stat_dict[job_type].exp = 0;
+                        await player_info.Save();
+                        break;
+
+                    default:
+                        player_info.tutorial_index += 1;
+                        await player_info.Save();
+                        break;
+                }
+            }
+
+            Packet? packet = null;
+            try
+            {
+                packet = PacketMaker.U_TO_C_UPDATE_TUTORIAL(player_info, player_info.job_info);
+                this.SendToClient(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
+        }
+
+        async Task SetName(GameUser _, C_TO_U_SET_NAME body)
+        {
+            var player_info = await PlayerInfo.Load(this.player_id);
+            if (player_info == null)
+            {
+                throw new Exception("not found player info");
+            }
+
+            using (await PlayerInfo.Lock(this.redlock, this.player_id))
+            {
+                player_info.name = body.name;
+                player_info.tutorial_index = 3;
+                await player_info.Save();
+            }
+
+            Packet? packet = null;
+            try
+            {
+                // TODO 중복막기
+                packet = PacketMaker.U_TO_C_SET_NAME(ErrorCode.SUCCESS, player_info);
+                this.SendToClient(packet);
+            }
+            catch (Exception e)
+            {
+                LogManager.WriteErrorLog(e);
+            }
+            finally
+            {
+                if (packet != null)
+                {
+                    Packet.Destroy(packet);
+                }
+            }
+
+            this.BroadcastUpdatePlayerInfo(player_info);
         }
 
         async Task GetPlayerInfo(GameUser _, C_TO_U_PLAYER_INFO body)

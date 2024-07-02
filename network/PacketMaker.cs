@@ -446,6 +446,24 @@ namespace user_server
             return packet;
         }
 
+        public static Packet U_TO_C_SET_NAME(ErrorCode error_code, PlayerInfo player_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_SET_NAME);
+            U_TO_C_SET_NAME body = new() { error_code = error_code, player_info = player_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
+        public static Packet U_TO_C_UPDATE_TUTORIAL(PlayerInfo player_info, JobInfo job_info)
+        {
+            Packet packet = Packet.Create((int)PROTOCOL.U_TO_C_UPDATE_TUTORIAL);
+            U_TO_C_UPDATE_TUTORIAL body = new() { player_info = player_info, job_info = job_info };
+
+            packet.SetBody(MessagePackSerializer.Serialize(body));
+            return packet;
+        }
+
         public static Packet U_TO_G_LOGOUT(long player_id)
         {
             Packet packet = Packet.Create((int)PROTOCOL.U_TO_G_LOGOUT, player_id);

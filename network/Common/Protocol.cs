@@ -6,6 +6,8 @@
         U_TO_C_HEART_BEAT,
         C_TO_U_LOGIN,
         U_TO_C_LOGIN,
+        C_TO_U_SET_NAME,
+        U_TO_C_SET_NAME,
         U_TO_C_INVENTORY_ITEM_LIST,
         C_TO_U_CHAT_MSG,
         U_TO_C_CHAT_MSG,
@@ -77,6 +79,8 @@
         U_TO_U_PLAYER_INFO,
         U_TO_U_DUPLICATE,
         U_TO_G_LOGOUT,
+        C_TO_U_UPDATE_TUTORIAL,
+        U_TO_C_UPDATE_TUTORIAL,
         END
     }
 
