@@ -540,20 +540,20 @@
                     // // TODO 테스트 좌판
                     // var test_item_3 = await InventoryController.CreateItem(this, 401000002, 1);
                     // TODO 테스트 음식
-                    var test_item_4 = await InventoryController.CreateItem(this, 301000001, 10);
-                    var test_item_5 = await InventoryController.CreateItem(this, 301000008, 10);
-                    var test_item_6 = await InventoryController.CreateItem(this, 301000003, 10);
-                    var test_item_7 = await InventoryController.CreateItem(this, 301000013, 10);
-                    var test_item_8 = await InventoryController.CreateItem(this, 301000006, 10);
-                    var test_item_9 = await InventoryController.CreateItem(this, 301000014, 10);
-                    var test_item_10 = await InventoryController.CreateItem(this, 301000027, 10);
-                    var test_item_11 = await InventoryController.CreateItem(this, 301000024, 10);
-                    var test_item_12 = await InventoryController.CreateItem(this, 302000001, 10);
-                    var test_item_13 = await InventoryController.CreateItem(this, 302000003, 10);
-                    var test_item_14 = await InventoryController.CreateItem(this, 302000002, 10);
-                    var test_item_15 = await InventoryController.CreateItem(this, 302000004, 10);
-                    var test_item_16 = await InventoryController.CreateItem(this, 302000005, 10);
-                    var test_item_17 = await InventoryController.CreateItem(this, 302000006, 10);
+                    // var test_item_4 = await InventoryController.CreateItem(this, 301000001, 10);
+                    // var test_item_5 = await InventoryController.CreateItem(this, 301000008, 10);
+                    // var test_item_6 = await InventoryController.CreateItem(this, 301000003, 10);
+                    // var test_item_7 = await InventoryController.CreateItem(this, 301000013, 10);
+                    // var test_item_8 = await InventoryController.CreateItem(this, 301000006, 10);
+                    // var test_item_9 = await InventoryController.CreateItem(this, 301000014, 10);
+                    // var test_item_10 = await InventoryController.CreateItem(this, 301000027, 10);
+                    // var test_item_11 = await InventoryController.CreateItem(this, 301000024, 10);
+                    // var test_item_12 = await InventoryController.CreateItem(this, 302000001, 10);
+                    // var test_item_13 = await InventoryController.CreateItem(this, 302000003, 10);
+                    // var test_item_14 = await InventoryController.CreateItem(this, 302000002, 10);
+                    // var test_item_15 = await InventoryController.CreateItem(this, 302000004, 10);
+                    // var test_item_16 = await InventoryController.CreateItem(this, 302000005, 10);
+                    // var test_item_17 = await InventoryController.CreateItem(this, 302000006, 10);
 
                     gift_item_list.AddRange(
                         new[]
@@ -565,20 +565,20 @@
                             // test_item,
                             // test_item_2,
                             // test_item_3,
-                            test_item_4,
-                            test_item_5,
-                            test_item_6,
-                            test_item_7,
-                            test_item_8,
-                            test_item_9,
-                            test_item_10,
-                            test_item_11,
-                            test_item_12,
-                            test_item_13,
-                            test_item_14,
-                            test_item_15,
-                            test_item_16,
-                            test_item_17
+                            // test_item_4,
+                            // test_item_5,
+                            // test_item_6,
+                            // test_item_7,
+                            // test_item_8,
+                            // test_item_9,
+                            // test_item_10,
+                            // test_item_11,
+                            // test_item_12,
+                            // test_item_13,
+                            // test_item_14,
+                            // test_item_15,
+                            // test_item_16,
+                            // test_item_17
                         }
                     );
 

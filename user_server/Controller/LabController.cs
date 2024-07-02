@@ -250,19 +250,16 @@ namespace user_server
 
         public static async Task Make(GameUser user, C_TO_U_MAKE body)
         {
-            LogManager.WriteDebugLog("1111");
             var makeable_item_id = 0;
             PlayerInfo? player_info;
             using (await PlayerInfo.Lock(user.redlock, user.player_id))
             {
-                LogManager.WriteDebugLog("2222");
                 player_info = await PlayerInfo.Load(user.player_id);
                 if (player_info == null)
                 {
                     throw new Exception("player_info not exists");
                 }
 
-                LogManager.WriteDebugLog("3333");
                 List<(int, int)> validator = new();
                 foreach (var material_slot in body.materials)
                 {
@@ -277,20 +274,15 @@ namespace user_server
                     }
                 }
 
-                LogManager.WriteDebugLog("4444");
                 var lab_info = await LabInfo.Load(player_info.lab_id);
                 if (lab_info == null)
                 {
                     throw new Exception("lab_info not exists");
                 }
 
-                LogManager.WriteDebugLog("555");
-
                 var research_list = lab_info.reserach_info_dict.Values
                     .Select((x) => (x.research_id, x.level))
                     .ToList();
-
-                LogManager.WriteDebugLog("6666");
 
                 makeable_item_id = GameDesignData.GetMakableItemId(research_list, validator);
                 if (makeable_item_id != 0)
@@ -301,11 +293,7 @@ namespace user_server
                         1
                     );
                     player_info.inventory_info.AddItem(item_info);
-
-                    LogManager.WriteDebugLog("7777");
                 }
-
-                LogManager.WriteDebugLog("88888");
 
                 foreach (var material_info in body.materials)
                 {
@@ -325,8 +313,6 @@ namespace user_server
                             player_info.inventory_info.item_dict.Remove(material_item_uid);
                         }
                     }
-
-                    LogManager.WriteDebugLog("999999");
                 }
 
                 await player_info.Save();
