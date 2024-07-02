@@ -508,12 +508,12 @@
                     player_info.job_info.hp = 100;
 
                     // TODO 임시코드
-                    Random random = new();
-                    var random_int = random.Next(1, 2);
-                    JobType job_type = (JobType)random_int;
+                    // Random random = new();
+                    // var random_int = random.Next(1, 2);
+                    // JobType job_type = (JobType)random_int;
 
-                    player_info.job_info.job_stat_dict[job_type].exp = 100;
-                    player_info.gold = 10000;
+                    // player_info.job_info.job_stat_dict[job_type].exp = 100;
+                    player_info.gold = 1000;
                 }
 
                 player_info.object_info.current_cell = player_info.object_info.target_cell;
