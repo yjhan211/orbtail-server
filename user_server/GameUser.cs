@@ -534,54 +534,8 @@
                     var default_hat_1 = await InventoryController.CreateItem(this, 102000001, 1);
                     // 수습 화학자의 고글
                     var default_hat_2 = await InventoryController.CreateItem(this, 102000002, 1);
-
-                    // // TODO 테스트 장화
-                    // var test_item = await InventoryController.CreateItem(this, 104000004, 1);
-                    // // TODO 테스트 우비
-                    // var test_item_2 = await InventoryController.CreateItem(this, 103000004, 1);
-                    // // TODO 테스트 좌판
-                    // var test_item_3 = await InventoryController.CreateItem(this, 401000002, 1);
-                    // TODO 테스트 음식
-                    // var test_item_4 = await InventoryController.CreateItem(this, 301000001, 10);
-                    // var test_item_5 = await InventoryController.CreateItem(this, 301000008, 10);
-                    // var test_item_6 = await InventoryController.CreateItem(this, 301000003, 10);
-                    // var test_item_7 = await InventoryController.CreateItem(this, 301000013, 10);
-                    // var test_item_8 = await InventoryController.CreateItem(this, 301000006, 10);
-                    // var test_item_9 = await InventoryController.CreateItem(this, 301000014, 10);
-                    // var test_item_10 = await InventoryController.CreateItem(this, 301000027, 10);
-                    // var test_item_11 = await InventoryController.CreateItem(this, 301000024, 10);
-                    // var test_item_12 = await InventoryController.CreateItem(this, 302000001, 10);
-                    // var test_item_13 = await InventoryController.CreateItem(this, 302000003, 10);
-                    // var test_item_14 = await InventoryController.CreateItem(this, 302000002, 10);
-                    // var test_item_15 = await InventoryController.CreateItem(this, 302000004, 10);
-                    // var test_item_16 = await InventoryController.CreateItem(this, 302000005, 10);
-                    // var test_item_17 = await InventoryController.CreateItem(this, 302000006, 10);
-
                     gift_item_list.AddRange(
-                        new[]
-                        {
-                            default_hair,
-                            default_top,
-                            default_hat_1,
-                            default_hat_2,
-                            // test_item,
-                            // test_item_2,
-                            // test_item_3,
-                            // test_item_4,
-                            // test_item_5,
-                            // test_item_6,
-                            // test_item_7,
-                            // test_item_8,
-                            // test_item_9,
-                            // test_item_10,
-                            // test_item_11,
-                            // test_item_12,
-                            // test_item_13,
-                            // test_item_14,
-                            // test_item_15,
-                            // test_item_16,
-                            // test_item_17
-                        }
+                        new[] { default_hair, default_top, default_hat_1, default_hat_2, }
                     );
 
                     player_info.inventory_info.AddItem(gift_item_list);
@@ -590,6 +544,72 @@
                 }
                 else
                 {
+                    // if (player_id == 1)
+                    {
+                        // var test_item_100 = await InventoryController.CreateItem(
+                        //     this,
+                        //     301000006,
+                        //     1
+                        // );
+
+                        var test_item_4 = await InventoryController.CreateItem(this, 102000007, 1);
+                        var test_item_5 = await InventoryController.CreateItem(this, 103000004, 1);
+                        var test_item_6 = await InventoryController.CreateItem(this, 104000004, 1);
+
+                        // var test_item_6 = await InventoryController.CreateItem(this, 301000056, 10);
+
+                        // var test_item_7 = await InventoryController.CreateItem(this, 301000060, 10);
+
+                        // var test_item_8 = await InventoryController.CreateItem(this, 301000058, 1);
+                        // var test_item_9 = await InventoryController.CreateItem(this, 301000063, 1);
+                        // var test_item_10 = await InventoryController.CreateItem(this, 301000061, 1);
+                        // var test_item_11 = await InventoryController.CreateItem(this, 301000062, 1);
+                        // var test_item_12 = await InventoryController.CreateItem(this, 301000060, 1);
+                        // var test_item_13 = await InventoryController.CreateItem(this, 301000065, 1);
+                        // var test_item_14 = await InventoryController.CreateItem(this, 301000067, 1);
+                        // var test_item_15 = await InventoryController.CreateItem(this, 301000068, 1);
+
+                        // var test_item_16 = await InventoryController.CreateItem(this, 301000072, 1);
+                        // var test_item_17 = await InventoryController.CreateItem(this, 301000077, 1);
+
+                        // var test_item_18 = await InventoryController.CreateItem(this, 301000070, 1);
+                        // var test_item_19 = await InventoryController.CreateItem(this, 301000071, 1);
+
+                        // var test_item_20 = await InventoryController.CreateItem(this, 301000069, 1);
+                        // var test_item_21 = await InventoryController.CreateItem(this, 301000057, 1);
+
+                        // var test_item_22 = await InventoryController.CreateItem(this, 301000055, 1);
+                        // var test_item_23 = await InventoryController.CreateItem(this, 301000060, 1);
+
+                        List<ItemInfo> test_item_list = new();
+                        test_item_list.AddRange(
+                            new[]
+                            {
+                                test_item_4,
+                                test_item_5,
+                                test_item_6,
+                                // test_item_7,
+                                // test_item_8,
+                                // test_item_9,
+                                // test_item_10,
+                                // test_item_11,
+                                // test_item_12,
+                                // test_item_13,
+                                // test_item_14,
+                                // test_item_15,
+                                // test_item_16,
+                                // test_item_17,
+                                // test_item_18,
+                                // test_item_19,
+                                // test_item_20,
+                                // test_item_21,
+                                // test_item_22,
+                                // test_item_23
+                            }
+                        );
+                        player_info.inventory_info.AddItem(test_item_list);
+                    }
+
                     Packet? duplicate_packet = null;
                     try
                     {
@@ -613,7 +633,7 @@
                 }
 
                 // TODO 임시
-                player_info.job_info.hp = 100;
+                // player_info.job_info.hp = 100;
 
                 await player_info.Save();
                 await player_info.object_info.Save();
@@ -716,7 +736,7 @@
                         JobType job_type = JobType.NONE;
                         foreach (var job_stat in player_info.job_info.job_stat_dict)
                         {
-                            if (job_stat.Value.exp == 100)
+                            if (job_stat.Value.exp >= 100)
                             {
                                 job_type = job_stat.Key;
                                 break;
@@ -729,8 +749,6 @@
                         player_info.job_info.job_stat_dict[job_type].job_grade =
                             JobGrade.RESEARCHER;
                         player_info.job_info.job_stat_dict[job_type].exp = 0;
-                        player_info.job_info.research_point_dict[JobType.ENGINEER].point = 100;
-                        player_info.job_info.research_point_dict[JobType.CHEMIST].point = 100;
                         await player_info.Save();
                         break;
 

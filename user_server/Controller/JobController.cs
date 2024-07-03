@@ -279,7 +279,10 @@ namespace user_server
                                 );
                                 return (
                                     acc.Item1 || skill_type == job_type,
-                                    acc.Item2 || skill_id == 100001 || skill_id == 100002,
+                                    acc.Item2
+                                        || skill_id == 100001
+                                        || skill_id == 100002
+                                        || skill_id == 100003,
                                     acc.Item3 || require_level <= skill_level
                                 );
                             }
@@ -786,6 +789,8 @@ namespace user_server
                     case 20001:
                     case 10002:
                     case 20002:
+                    case 10003:
+                    case 20003:
                         // 아이템 뽑기
                         var reward_item = job_resource_detail.Item6[
                             random.Next(0, job_resource_detail.Item6.Count)
@@ -811,7 +816,7 @@ namespace user_server
                 var add_exp = job_stat.job_grade == JobGrade.TRAINEE ? 10 : 1;
 
                 // 경험치 올리고
-                job_stat.exp += add_exp;
+                job_stat.exp = Math.Min((job_stat.exp + add_exp), 100);
 
                 // 스테이트 초기화
                 player_info.state = PlayerState.NONE;
