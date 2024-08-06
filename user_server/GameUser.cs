@@ -552,9 +552,9 @@
                         //     1
                         // );
 
-                        var test_item_4 = await InventoryController.CreateItem(this, 102000007, 1);
-                        var test_item_5 = await InventoryController.CreateItem(this, 103000004, 1);
-                        var test_item_6 = await InventoryController.CreateItem(this, 104000004, 1);
+                        // var test_item_4 = await InventoryController.CreateItem(this, 102000007, 1);
+                        // var test_item_5 = await InventoryController.CreateItem(this, 103000004, 1);
+                        // var test_item_6 = await InventoryController.CreateItem(this, 104000004, 1);
 
                         // var test_item_6 = await InventoryController.CreateItem(this, 301000056, 10);
 
@@ -581,33 +581,33 @@
                         // var test_item_22 = await InventoryController.CreateItem(this, 301000055, 1);
                         // var test_item_23 = await InventoryController.CreateItem(this, 301000060, 1);
 
-                        List<ItemInfo> test_item_list = new();
-                        test_item_list.AddRange(
-                            new[]
-                            {
-                                test_item_4,
-                                test_item_5,
-                                test_item_6,
-                                // test_item_7,
-                                // test_item_8,
-                                // test_item_9,
-                                // test_item_10,
-                                // test_item_11,
-                                // test_item_12,
-                                // test_item_13,
-                                // test_item_14,
-                                // test_item_15,
-                                // test_item_16,
-                                // test_item_17,
-                                // test_item_18,
-                                // test_item_19,
-                                // test_item_20,
-                                // test_item_21,
-                                // test_item_22,
-                                // test_item_23
-                            }
-                        );
-                        player_info.inventory_info.AddItem(test_item_list);
+                        // List<ItemInfo> test_item_list = new();
+                        // test_item_list.AddRange(
+                        //     new[]
+                        //     {
+                        //         test_item_4,
+                        //         test_item_5,
+                        //         test_item_6,
+                        //         // test_item_7,
+                        //         // test_item_8,
+                        //         // test_item_9,
+                        //         // test_item_10,
+                        //         // test_item_11,
+                        //         // test_item_12,
+                        //         // test_item_13,
+                        //         // test_item_14,
+                        //         // test_item_15,
+                        //         // test_item_16,
+                        //         // test_item_17,
+                        //         // test_item_18,
+                        //         // test_item_19,
+                        //         // test_item_20,
+                        //         // test_item_21,
+                        //         // test_item_22,
+                        //         // test_item_23
+                        //     }
+                        // );
+                        // player_info.inventory_info.AddItem(test_item_list);
                     }
 
                     Packet? duplicate_packet = null;
