@@ -2,3 +2,5 @@
 .vscode/sftp.json
 .vs/
 *.config.json
+*/node_modules
+*study.html
