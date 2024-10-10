@@ -1,4 +1,4 @@
-﻿namespace network
+﻿namespace network.common
 {
     public enum PROTOCOL : int
     {
@@ -14,7 +14,7 @@
         C_TO_U_CHAT_LOG,
         C_TO_U_MOVE,
         U_TO_G_MOVE,
-        G_TO_U_MOVE,
+        G_TO_U_UPDATE_OBJECT,
         U_TO_C_MOVE,
         G_TO_U_SPAWN,
         U_TO_C_SPAWN,
@@ -187,6 +187,7 @@
     public enum PlayerState : short
     {
         NONE = 0,
+        IDLE,
         ENGINEER_WORK_1,
         CHEMIST_WORK_1,
         EXPLORE_1,

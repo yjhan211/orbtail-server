@@ -1,4 +1,4 @@
-﻿namespace network
+﻿namespace network.common
 {
     // TODO CSV
     public static class GameDesignData
@@ -1997,7 +1997,7 @@
 
             if (target_job_type == JobType.NONE)
             {
-                return job_stat_dict.Any(kvp => kvp.Value.job_grade >= target_job_grade);
+                return job_stat_dict.Any(kvp => kvp.Value.JobGrade >= target_job_grade);
             }
             else
             {
@@ -2005,7 +2005,7 @@
                 {
                     return false;
                 }
-                return job_stat.job_grade >= target_job_grade;
+                return job_stat.JobGrade >= target_job_grade;
             }
         }
 

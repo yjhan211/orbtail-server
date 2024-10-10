@@ -1,0 +1,289 @@
+using network.common;
+using network.packets;
+using network.helpers;
+
+namespace user_server.controllers
+{
+    public static class InventoryController
+    {
+        public const string ITEM_UID_KEY = "lab_hire_list";
+
+        public static async Task<ItemInfo> CreateItem(int itemId, int count)
+        {
+            // TODO RDB PK로 교체 예정
+            long itemUid = await CacheHelper.Instance.StringIncrementAsync(ITEM_UID_KEY);
+            return new ItemInfo(itemUid, itemId, count);
+        }
+
+        public static async Task RequestWearItem(GameUser user, C_TO_U_WEAR_ITEM body)
+        {
+            if (user.PlayerState != PlayerState.IDLE)
+            {
+                throw new Exception("Invalid Player State");
+            }
+
+            PlayerInfo? player_info = await PlayerInfo.Load(user.PlayerId);
+            if (player_info == null)
+            {
+                throw new Exception("cannot found player info");
+            }
+
+            using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+            {
+                player_info.WearItem(body.ItemUid);
+                await player_info.Save();
+            }
+
+            using var packet = PacketMaker.U_TO_C_WEAR_ITEM(player_info);
+            user.SendToClient(packet);
+
+            await GetCurrentItemList(user);
+            user.BroadcastUpdatePlayerInfo(player_info);
+        }
+
+        public static async Task RequestUseItem(GameUser user, C_TO_U_USE_ITEM body)
+        {
+            PlayerInfo? player_info;
+            using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+            {
+                player_info = await PlayerInfo.Load(user.PlayerId);
+                if (player_info == null)
+                {
+                    throw new Exception("cannot found player info");
+                }
+
+                player_info.UseItem(body.ItemUid);
+                await player_info.Save();
+            }
+
+            using var packet = PacketMaker.U_TO_C_USE_ITEM(player_info.JobInfo);
+            user.SendToClient(packet);
+
+            await GetCurrentItemList(user);
+        }
+
+
+        public static async Task AddLabItem(GameUser user, C_TO_U_LAB_INVENTORY_ADD_ITEM body)
+        {
+            PlayerInfo? playerInfo;
+            LabInfo? labInfo;
+            using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+            {
+                playerInfo = await PlayerInfo.Load(user.PlayerId);
+                if (playerInfo == null)
+                {
+                    throw new Exception("player_info not exists");
+                }
+
+                using (await LabInfo.Lock(user.RedLock, playerInfo.LabId))
+                {
+                    labInfo = await LabInfo.Load(playerInfo.LabId);
+                    if (labInfo == null)
+                    {
+                        throw new Exception("lab_info not exists");
+                    }
+
+                    if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.ItemUid, out var targetItem))
+                    {
+                        throw new Exception($"Item with uid {body.ItemUid} not found");
+                    }
+
+                    if (targetItem.Count <= 0)
+                    {
+                        throw new Exception($"Item {body.ItemUid} count invalid");
+                    }
+
+                    if (targetItem.Count <= 1)
+                    {
+                        playerInfo.InventoryInfo.ItemDict.Remove(body.ItemUid);
+                    }
+                    else
+                    {
+                        // TODO 일괄사용
+                        targetItem.Count -= 1;
+                    }
+
+                    var isCountable = !GameDesignData.IsWearableItem(targetItem.ItemId);
+                    var isExist = labInfo.InventoryInfo.ItemDict.ContainsKey(targetItem.ItemUid);
+                    if (isCountable && isExist)
+                    {
+                        labInfo.InventoryInfo.ItemDict[targetItem.ItemUid].Count += 1;
+                    }
+                    else
+                    {
+                        var addItem = await CreateItem(targetItem.ItemId, 1);
+                        labInfo.InventoryInfo.ItemDict[addItem.ItemUid] = addItem;
+                    }
+
+                    await labInfo.Save();
+                    await playerInfo.Save();
+                }
+            }
+
+            await GetCurrentItemList(user);
+
+            using var packet = PacketMaker.U_TO_U_LAB_INVENTORY(labInfo.InventoryInfo.ItemDict);
+            foreach (var lab_member in labInfo.MemberDict)
+            {
+                user.NatsClient.Publish(GameObjectInfo.MakeHashField(ObjectType.PLAYER, lab_member.Key), packet.ToBytes());
+            }
+        }
+
+        public static async Task TakeLabItem(GameUser user, C_TO_U_LAB_INVENTORY_TAKE_ITEM body)
+        {
+            PlayerInfo? playerInfo;
+            LabInfo? labInfo;
+            using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+            {
+                playerInfo = await PlayerInfo.Load(user.PlayerId);
+                if (playerInfo == null)
+                {
+                    throw new Exception("player_info not exists");
+                }
+
+                using (await LabInfo.Lock(user.RedLock, playerInfo.LabId))
+                {
+                    labInfo = await LabInfo.Load(playerInfo.LabId);
+                    if (labInfo == null)
+                    {
+                        throw new Exception("lab_info not exists");
+                    }
+
+                    if (!labInfo.InventoryInfo.ItemDict.TryGetValue(body.ItemUid, out var targetItem))
+                    {
+                        throw new Exception("not found item info");
+                    }
+
+                    if (targetItem.Count <= 0)
+                    {
+                        throw new Exception($"Item {body.ItemUid} count invalid");
+                    }
+
+                    if (targetItem.Count <= 1)
+                    {
+                        labInfo.InventoryInfo.ItemDict.Remove(body.ItemUid);
+                    }
+                    else
+                    {
+                        // TODO 일괄사용
+                        labInfo.InventoryInfo.ItemDict[body.ItemUid].Count -= 1;
+                    }
+
+                    var isCountable = !GameDesignData.IsWearableItem(targetItem.ItemId);
+                    var isExist = labInfo.InventoryInfo.ItemDict.ContainsKey(targetItem.ItemUid);
+                    if (isCountable && isExist)
+                    {
+                        playerInfo.InventoryInfo.ItemDict[targetItem.ItemUid].Count += targetItem.Count;
+                    }
+                    else
+                    {
+                        var addItem = await CreateItem(targetItem.ItemId, 1);
+                        playerInfo.InventoryInfo.ItemDict[addItem.ItemUid] = addItem;
+                    }
+
+                    await labInfo.InventoryInfo.Save();
+                    await playerInfo.Save();
+                }
+            }
+
+            await GetCurrentItemList(user);
+            using var packet = PacketMaker.U_TO_U_LAB_INVENTORY(labInfo.InventoryInfo.ItemDict);
+            foreach (var lab_member in labInfo.MemberDict)
+            {
+                user.NatsClient.Publish(GameObjectInfo.MakeHashField(ObjectType.PLAYER, lab_member.Key), packet.ToBytes());
+            }
+        }
+
+        public static async Task GetLabInventory(GameUser user)
+        {
+            Dictionary<long, ItemInfo> itemDict = new();
+            using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+            {
+                var playerInfo = await PlayerInfo.Load(user.PlayerId);
+                if (playerInfo == null)
+                {
+                    throw new Exception("player_info not exists");
+                }
+
+                using (await LabInfo.Lock(user.RedLock, playerInfo.LabId))
+                {
+                    var labInfo = await LabInfo.Load(playerInfo.LabId);
+                    if (labInfo == null)
+                    {
+                        throw new Exception("lab_info not exists");
+                    }
+
+                    itemDict = labInfo.InventoryInfo.ItemDict;
+                }
+            }
+
+            LabController.SendLabItemList(user, itemDict);
+        }
+
+        public static async Task GetCurrentItemList(GameUser user)
+        {
+            var playerInfo = await PlayerInfo.Load(user.PlayerId);
+            if (playerInfo == null)
+            {
+                throw new Exception("player_info not exists");
+            }
+
+            var inventoryInfo = playerInfo.InventoryInfo;
+            if (inventoryInfo == null)
+            {
+                throw new Exception("inventory_info not exists");
+            }
+
+            if (inventoryInfo.ItemDict.Count == 0)
+            {
+                using var packet = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(new(), true);
+                user.SendToClient(packet);
+                return;
+            }
+
+            int index = 0;
+            var itemKeys = inventoryInfo.ItemDict.Keys.ToArray();
+            while (index < itemKeys.Length)
+            {
+                var batchDict = new Dictionary<long, ItemInfo>();
+                for (int i = index; i < index + Config.BROADCAST_UNIT && i < itemKeys.Length; i++)
+                {
+                    var key = itemKeys[i];
+                    batchDict[key] = inventoryInfo.ItemDict[key];
+                }
+
+                var isEnded = index + Config.BROADCAST_UNIT >= itemKeys.Length;
+
+                using var packet = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(batchDict, isEnded);
+                user.SendToClient(packet);
+            }
+        }
+
+        public static void BroadcastCurrentLabItemList(GameUser user, LabInfo labInfo)
+        {
+            var inventoryInfo = labInfo.InventoryInfo;
+            if (inventoryInfo == null)
+            {
+                throw new Exception("inventory_info not exists");
+            }
+
+            int index = 0;
+            var itemKeys = inventoryInfo.ItemDict.Keys.ToArray();
+            while (index < itemKeys.Length)
+            {
+                var batchDict = new Dictionary<long, ItemInfo>();
+                for (int i = index; i < index + Config.BROADCAST_UNIT && i < itemKeys.Length; i++)
+                {
+                    var key = itemKeys[i];
+                    batchDict[key] = inventoryInfo.ItemDict[key];
+                }
+
+                var isEnded = index + Config.BROADCAST_UNIT >= itemKeys.Length;
+                var packet = PacketMaker.U_TO_C_LAB_INVENTORY(batchDict, isEnded);
+                user.SendToClient(packet);
+
+                index += Config.BROADCAST_UNIT;
+            }
+        }
+    }
+}

@@ -1,4 +1,4 @@
-.vscode/settings.json
-.vscode/sftp.json
+.vscode/
 .vs/
 *.config.json
+*/node_modules

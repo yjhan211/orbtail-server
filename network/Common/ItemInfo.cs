@@ -1,54 +1,52 @@
-namespace network
-{
-    using MessagePack;
+using MessagePack;
 
+namespace network.common
+{
     [MessagePackObject]
     public class ItemInfo : IMessagePackObject
     {
         [IgnoreMember]
-        public GameObjectInfo object_info { get; set; }
+        public GameObjectInfo ObjectInfo { get; set; }
 
-        [Key("item_uid")]
-        public long item_uid { get; set; } // 유니크 아이디
+        [Key("itemUid")]
+        public long ItemUid { get; set; } // 유니크 아이디
 
-        [Key("item_id")]
-        public int item_id { get; set; } // 아이템 종류
+        [Key("itemId")]
+        public int ItemId { get; set; } // 아이템 종류
 
         [Key("count")]
-        public int count { get; set; } // 수량
+        public int Count { get; set; } // 수량
 
-        [Key("is_wear")]
-        public bool is_wear { get; set; } // 착용 여부
+        [Key("isWear")]
+        public bool IsWear { get; set; } // 착용 여부
 
         [Key("durability")]
-        public int durability { get; set; } // 내구도
+        public int Durability { get; set; } // 내구도
 
-        [Key("skill_id")]
-        public int skill_id { get; set; } // 장비에 붙어있는 스킬
+        [Key("skillId")]
+        public int SkillId { get; set; } // 장비에 붙어있는 스킬
 
         // 이거 없애면 안됨 MessagePack에서 씀
         public ItemInfo()
         {
-            this.item_uid = 0;
-            this.item_id = 0;
-            this.count = 0;
-            this.is_wear = false;
-            this.durability = 0;
-            this.skill_id = 0;
-
-            this.object_info = new();
+            ItemUid = 0;
+            ItemId = 0;
+            Count = 0;
+            IsWear = false;
+            Durability = 0;
+            SkillId = 0;
+            ObjectInfo = new();
         }
 
-        public ItemInfo(long item_uid, int item_id, int count, long player_id = 0)
+        public ItemInfo(long itemUid, int itemId, int count)
         {
-            this.item_uid = item_uid;
-            this.item_id = item_id;
-            this.count = count;
-            this.is_wear = false;
-            this.durability = 100;
-            this.skill_id = 0;
-
-            this.object_info = new(item_uid);
+            ItemUid = itemUid;
+            ItemId = itemId;
+            Count = count;
+            IsWear = false;
+            Durability = 100;
+            SkillId = 0;
+            ObjectInfo = new(itemUid);
         }
     }
 }

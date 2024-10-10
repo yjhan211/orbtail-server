@@ -1,77 +1,67 @@
-namespace network
-{
-    using MessagePack;
+using MessagePack;
+using network.helpers;
 
+namespace network.common
+{
     [MessagePackObject]
     public class JobInfo : IMessagePackObject
     {
         [IgnoreMember]
-        public const string HASH_KEY = "job_info";
+        public const string HASH_KEY = "JobInfo";
 
-        [Key("player_id")]
-        public long player_id { get; set; }
+        [Key("playerId")]
+        public long PlayerId { get; set; }
 
-        [Key("job_stat_dict")]
-        public Dictionary<JobType, JobStat> job_stat_dict { get; set; }
+        [Key("jobStatDict")]
+        public Dictionary<JobType, JobStat> JobStatDict { get; set; }
 
-        [Key("research_point_dict")]
-        public Dictionary<JobType, ReserachPoint> research_point_dict { get; set; }
+        [Key("researchPointDict")]
+        public Dictionary<JobType, ReserachPoint> ResearchPointDict { get; set; }
 
         [Key("hp")]
-        public int hp { get; set; }
+        public int Hp { get; set; }
 
         // 이거 없애면 안됨 MessagePack에서 씀
         public JobInfo()
         {
-            this.player_id = 0;
-            this.job_stat_dict = new();
-            this.research_point_dict = new();
-            this.hp = 0;
+            PlayerId = 0;
+            JobStatDict = new();
+            ResearchPointDict = new();
+            Hp = 0;
         }
 
-        public JobInfo(long player_id)
+        public JobInfo(long playerId)
         {
-            this.player_id = player_id;
-            this.job_stat_dict = new();
-            this.research_point_dict = new();
-
-            this.job_stat_dict[JobType.ENGINEER] = new();
-            this.job_stat_dict[JobType.CHEMIST] = new();
-
-            this.research_point_dict[JobType.ENGINEER] = new();
-            this.research_point_dict[JobType.CHEMIST] = new();
-
-            this.hp = 0;
+            PlayerId = playerId;
+            JobStatDict = new();
+            ResearchPointDict = new();
+            JobStatDict[JobType.ENGINEER] = new();
+            JobStatDict[JobType.CHEMIST] = new();
+            ResearchPointDict[JobType.ENGINEER] = new();
+            ResearchPointDict[JobType.CHEMIST] = new();
+            Hp = 100;
         }
 
         public async Task Save()
         {
-            await CacheHelper.Instance.HashSetAsync(
-                JobInfo.HASH_KEY,
-                this.player_id,
-                MessagePackSerializer.Serialize(this)
-            );
+            await CacheHelper.Instance.HashSetAsync(JobInfo.HASH_KEY, PlayerId, MessagePackSerializer.Serialize(this));
         }
 
-        public static async Task<JobInfo?> Load(long player_id)
+        public static async Task<JobInfo?> Load(long playerId)
         {
-            var serialized_data = await CacheHelper.Instance.HashGetAsync(
-                JobInfo.HASH_KEY,
-                player_id
-            );
-
-            if (serialized_data.IsNull)
+            var serializedData = await CacheHelper.Instance.HashGetAsync(JobInfo.HASH_KEY, playerId);
+            if (serializedData.IsNull)
             {
                 return null;
             }
 
-            var job_info = MessagePackSerializer.Deserialize<JobInfo?>(serialized_data);
-            return job_info;
+            var jobInfo = MessagePackSerializer.Deserialize<JobInfo?>(serializedData);
+            return jobInfo;
         }
 
-        public static async Task Delete(long player_id)
+        public static async Task Delete(long playerId)
         {
-            await CacheHelper.Instance.HashDeleteAsync(JobInfo.HASH_KEY, player_id);
+            await CacheHelper.Instance.HashDeleteAsync(JobInfo.HASH_KEY, playerId);
         }
     }
 
@@ -79,15 +69,15 @@ namespace network
     public class JobStat : IMessagePackObject
     {
         [Key("grade")]
-        public JobGrade job_grade { get; set; }
+        public JobGrade JobGrade { get; set; }
 
         [Key("exp")]
-        public int exp { get; set; }
+        public int Exp { get; set; }
 
         public JobStat()
         {
-            job_grade = JobGrade.TRAINEE;
-            exp = 0;
+            JobGrade = JobGrade.TRAINEE;
+            Exp = 0;
         }
     }
 
@@ -95,9 +85,9 @@ namespace network
     public class ReserachPoint : IMessagePackObject
     {
         [Key("point")]
-        public long point { get; set; }
+        public long Point { get; set; }
 
-        [Key("use_point")]
-        public long use_point { get; set; }
+        [Key("usePoint")]
+        public long UsePoint { get; set; }
     }
 }
