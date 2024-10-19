@@ -3,13 +3,19 @@ using MessagePack;
 namespace network.common
 {
     [MessagePackObject]
-    public class Cell(int x, int y) : IMessagePackObject, IEquatable<Cell>
+    public class Cell : IMessagePackObject, IEquatable<Cell>
     {
         [Key("x")]
-        public int X { get; set; } = x;
+        public int X { get; set; }
 
         [Key("y")]
-        public int Y { get; set; } = y;
+        public int Y { get; set; }
+
+        public Cell(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
 
         public override bool Equals(object? obj) => Equals(obj as Cell);
 

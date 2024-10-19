@@ -13,7 +13,7 @@ namespace user_server.managers
         private readonly SendPacketDelegate _sendToClient;
         private readonly Channel<GameObjectInfo> _updateObjectChannel;
         private readonly Task _task;
-        private bool _disposed;
+        private bool _disposed = false;
 
         public UpdateObjectManager(CancellationTokenSource cts, LogManager logManager, SendPacketDelegate sendToClient, Channel<GameObjectInfo> updateObjectReader)
         {
@@ -94,14 +94,17 @@ namespace user_server.managers
         protected virtual void Dispose(bool disposing)
         {
             if (_disposed)
-                return;
-
-            if (disposing)
             {
-                StopUpdateObjectTask().GetAwaiter().GetResult();
-                _cts.Dispose();
-                _updateObjectChannel.Writer.Complete();
+                return;
             }
+
+            while (_updateObjectChannel.Reader.TryRead(out _)) { }
+            _updateObjectChannel.Writer.Complete();
+            if (_updateObjectChannel is IDisposable disposableChannel)
+            {
+                disposableChannel.Dispose();
+            }
+            StopUpdateObjectTask().GetAwaiter().GetResult();
 
             _disposed = true;
         }

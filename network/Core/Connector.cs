@@ -1,14 +1,22 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using network.managers;
 
 namespace network.core
 {
-    public class Connector(NetworkService networkService)
+    public class Connector
     {
-        private readonly NetworkService _networkService = networkService;
+        private readonly NetworkService _networkService;
+        private readonly LogManager _logManager;
         private Socket? _client;
         public delegate void ConnectEventHandler(UserToken token);
         public event ConnectEventHandler? Connected;
+
+        public Connector(NetworkService networkService, LogManager logManager)
+        {
+            _networkService = networkService;
+            _logManager = logManager;
+        }
 
         public void Connect(IPEndPoint remoteEndpoint)
         {
@@ -30,7 +38,7 @@ namespace network.core
                 throw new Exception($"[Connector/OnCommectCompleted] {args.SocketError}");
             }
 
-            UserToken token = new();
+            var token = new UserToken(1, _logManager);
             _networkService.OnConnectCompleted(_client, token);
             Connected(token);
         }

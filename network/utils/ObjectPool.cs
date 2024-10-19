@@ -1,6 +1,7 @@
+using System.Collections.Concurrent;
+
 namespace network.utils
 {
-    using System.Collections.Concurrent;
     class ObjectPool<T>
     {
         private readonly ConcurrentBag<T> _objects;

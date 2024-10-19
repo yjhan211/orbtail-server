@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using network.core;
 using network.managers;
 using network.infrastructure;
+using System.Text.RegularExpressions;
 
 namespace game_server
 {
@@ -33,14 +34,28 @@ namespace game_server
                 services.AddSingleton(sp =>
                 {
                     var config = sp.GetRequiredService<IConfiguration>();
-                    var serverType = config["ServerType"] ?? "none";
-                    GameServerNum = config.GetValue<int>("GameServerNum");
-                    GameServerId = config.GetValue<int>("GameServerId");
+                    var serverType = config["serverType"] ?? "none";
+                    GameServerNum = config.GetValue<int>("gameServerNum");
+                    GameServerId = ExtractGameServerId(config["gameServerId"] ?? "");
+                    if (GameServerId <= 0)
+                    {
+                        throw new Exception($"Invalid Game Server Id: {GameServerId}");
+                    }
                     return new LogManager(serverType, GameServerNum);
                 });
                 services.AddHostedService<GameServer>();
             })
             .RunConsoleAsync();
+        }
+
+        private static int ExtractGameServerId(string podName)
+        {
+            var match = Regex.Match(podName, @"-(\d+)$");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int id))
+            {
+                return id + 1;
+            }
+            return 0;
         }
     }
 }

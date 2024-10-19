@@ -80,7 +80,7 @@ namespace network.common
 
         public static async Task<InventoryInfo?> Load(InventoryOwnerType ownerType, long ownerId)
         {
-            var serializedData = await CacheHelper.Instance.HashGetAsync(InventoryInfo.HASH_KEY, $"{ownerType}_{ownerId}");
+            var serializedData = await CacheHelper.Instance.HashGetAsync(InventoryInfo.HASH_KEY, $"{(int)ownerType}_{ownerId}");
             if (serializedData.IsNull)
             {
                 return new InventoryInfo(ownerType, ownerId);
@@ -92,7 +92,7 @@ namespace network.common
 
         public static async Task Delete(InventoryOwnerType ownerType, long ownerId)
         {
-            await CacheHelper.Instance.HashDeleteAsync(InventoryInfo.HASH_KEY, $"{ownerType}_{ownerId}");
+            await CacheHelper.Instance.HashDeleteAsync(InventoryInfo.HASH_KEY, $"{(int)ownerType}_{ownerId}");
         }
     }
 }

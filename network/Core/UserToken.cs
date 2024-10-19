@@ -9,6 +9,8 @@ namespace network.core
 {
     public class UserToken
     {
+        private LogManager _logManager;
+        public int TokenId { get; }
         private readonly MessageResolver _messageResolver;
         private readonly Queue<Packet> _sendingQueue;
         private readonly object _lockSendingQueue;
@@ -18,11 +20,15 @@ namespace network.core
         public SocketAsyncEventArgs? RecvEventArgs { get; private set; }
         public SocketAsyncEventArgs? SendEventArgs { get; private set; }
         public Socket? Socket { get; set; }
-        public bool IsAlive = true;
-        public bool IsReleased = true;
+        public bool IsAlive { get; set; } = true;
+        public bool IsReleased { get; private set; } = false;
 
-        public UserToken()
+        public event Action<UserToken>? Disconnected;
+
+        public UserToken(int tokenId, LogManager logManager)
         {
+            _logManager = logManager;
+            TokenId = tokenId;
             _messageResolver = new();
             _sendingQueue = new();
             _lockSendingQueue = new();
@@ -32,15 +38,15 @@ namespace network.core
         public void SetPeer(IPeer peer)
         {
             _peer = peer;
+            IsReleased = false;
         }
-
         public void SetHeartbeatTimer(LogManager logManager)
         {
             _heartbeatTimer = new Timer((_) =>
                 {
                     try
                     {
-                        Packet msg = Packet.Create((int)PROTOCOL.C_TO_U_HEART_BEAT, 0);
+                        var msg = Packet.Create((int)PROTOCOL.C_TO_U_HEART_BEAT, 0);
                         Send(msg);
                     }
                     catch (Exception ex)
@@ -53,7 +59,6 @@ namespace network.core
                 TimeSpan.FromSeconds(3)
             );
         }
-
         public void SetEventArgs(SocketAsyncEventArgs receiveEventArgs, SocketAsyncEventArgs sendEventArgs)
         {
             RecvEventArgs = receiveEventArgs;
@@ -153,6 +158,36 @@ namespace network.core
             }
         }
 
+        public void Disconnect()
+        {
+            lock (_lockDisconnect)
+            {
+                if (IsReleased)
+                {
+                    return;
+                }
+
+                IsReleased = true;
+                IsAlive = false;
+
+                try
+                {
+                    if (Socket != null && Socket.Connected)
+                    {
+                        Socket.Shutdown(SocketShutdown.Both);
+                        Socket.Close();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logManager.WriteErrorLog(ex);
+                }
+
+                OnRemoved();
+                Disconnected?.Invoke(this);
+            }
+        }
+
         public void OnRemoved()
         {
             lock (_lockSendingQueue)
@@ -161,8 +196,15 @@ namespace network.core
                 _sendingQueue.Clear();
             }
 
+            if (_heartbeatTimer != null)
+            {
+                using var waitHandle = new ManualResetEvent(false);
+                _heartbeatTimer.Dispose(waitHandle);
+                waitHandle.WaitOne();  // 타이머가 완전히 종료될 때까지 대기
+                _heartbeatTimer = null;
+            }
+
             _peer?.OnRemoved();
-            _heartbeatTimer?.Dispose();
         }
     }
 }

@@ -17,7 +17,7 @@ namespace game_server
         private readonly RedisConnectionPool _redisPool;
         private readonly NatsClientFactory _natsClientFactory;
         private readonly List<MapController> _mapControllerList;
-        private readonly InstanceController _instanceController;
+        private readonly List<InstanceController> _instanceControllerList;
         private CancellationTokenSource _cts;
         private Timer? _messageTimer;
 
@@ -30,7 +30,7 @@ namespace game_server
             _cts = new();
 
             _mapControllerList = new();
-            _instanceController = new(_logManager, natsClientFactory.Create(), _cts);
+            _instanceControllerList = new();
         }
 
         public async Task StartAsync(CancellationToken cancellationToken)
@@ -62,7 +62,7 @@ namespace game_server
             _messageTimer?.Dispose();
 
             await Task.WhenAll(_mapControllerList.Select(c => c.ShutdownAsync()));
-            await _instanceController.ShutdownAsync();
+            await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
             _cts?.Dispose();
 
@@ -71,8 +71,8 @@ namespace game_server
 
         private void InitializeServices()
         {
-            var redisEndpoints = _configuration["RedisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
-            var natsEndpoint = _configuration["NatsEndPoint"] ?? throw new InvalidOperationException("NatsEndpoint is not configured or is invalid.");
+            var redisEndpoints = _configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
+            var natsEndpoint = _configuration["natsEndPoint"] ?? throw new InvalidOperationException("NatsEndpoint is not configured or is invalid.");
 
             try
             {
@@ -99,7 +99,11 @@ namespace game_server
                 await mapController.Initialize();
             }
 
-            _instanceController.Initialize();
+            _instanceControllerList.Add(new(_logManager, _natsClientFactory.Create(), _cts));
+            foreach (var instanceController in _instanceControllerList)
+            {
+                instanceController.Initialize();
+            }
         }
 
         private void StartMessageProcessing()
@@ -156,17 +160,17 @@ namespace game_server
         private async Task Logout(long playerId, U_TO_G_LOGOUT msg)
         {
             var redlock = _redisPool.GetRedLockFactory();
-            using var playerLock = PlayerInfo.Lock(redlock, playerId);
+            await using var playerLock = await PlayerInfo.Lock(redlock, playerId);
             var playerInfo = await PlayerInfo.Load(msg.PlayerId);
             if (playerInfo == null)
             {
-                throw new Exception($"can't find player_info. player_id : {playerId}");
+                return;
             }
 
             GameObjectInfo objectInfo = playerInfo.ObjectInfo;
             if (objectInfo == null)
             {
-                throw new Exception($"can't find object_info. player_id : {playerId}");
+                return;
             }
 
             // TODO DB 붙이기 전까지 일단 안지움

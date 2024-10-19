@@ -39,6 +39,8 @@ namespace user_server
         public GameUser(UserToken token, RedLockFactory redLockFactory, NatsClient natsClient, LogManager logManager, Action<GameUser> onLeaveCallback)
         {
             _token = token;
+            _token.SetPeer(this);
+
             RedLock = redLockFactory;
             NatsClient = natsClient;
             _logManager = logManager;
@@ -49,8 +51,10 @@ namespace user_server
             _updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new() { SingleReader = false, SingleWriter = false });
             _updateObjectManager = new(_cts, _logManager, SendToClient, _updateObjectChannel);
 
-            _playerManager = new(NatsClient, SendToClient, _updateObjectManager);
+            _playerManager = new(_logManager, NatsClient, SendToClient, _updateObjectManager);
             _onLeaveCallback = onLeaveCallback;
+
+            _logManager.WriteDebugLog("new GameUser");
         }
 
         private void HandleMessage<T>(byte[] body, Func<GameUser, T, Task> handleMessage)
@@ -94,7 +98,7 @@ namespace user_server
                     switch (protocolId)
                     {
                         case PROTOCOL.C_TO_U_HEART_BEAT:
-                            HeartBeat();
+                            // HeartBeat();
                             break;
                         case PROTOCOL.C_TO_U_LOGIN:
                             HandleMessage<C_TO_U_LOGIN>(body, Login);
@@ -116,7 +120,7 @@ namespace user_server
                 switch (protocolId)
                 {
                     case PROTOCOL.C_TO_U_CHANGE_MAP_SUCCESS:
-                        await _playerManager.SpawnSuccess();
+                        await _playerManager.Spawn();
                         break;
                     case PROTOCOL.C_TO_U_CHAT_LOG:
                         await ChatController.GetChatHistory(this, ChatType.ALL);
@@ -242,7 +246,7 @@ namespace user_server
             }
 
             PlayerInfo? playerInfo = null;
-            using (await PlayerInfo.Lock(RedLock, _playerManager.PlayerId))
+            using (await PlayerInfo.Lock(RedLock, tempPlayerId))
             {
                 playerInfo = await PlayerInfo.Load(tempPlayerId);
                 if (playerInfo == null)
@@ -262,9 +266,12 @@ namespace user_server
                     playerInfo.WearItem(giftItemList[1].ItemUid);
                 }
 
-                var movementHandler = new MovementHandler(playerInfo.ObjectInfo, NatsClient, _updateObjectManager, _playerManager.Spawn);
-                var environmentHandler = new EnvironmentHandler(_logManager, _cts, RedLock, SendToClient, playerInfo.ObjectInfo);
-                await _playerManager.Initialize(playerInfo.ObjectInfo, movementHandler, environmentHandler);
+                var movementHandler = new MovementHandler(_logManager, playerInfo.ObjectInfo, NatsClient, _updateObjectManager, _playerManager.ChangeMap);
+                var environmentHandler = new EnvironmentHandler(_cts, RedLock, SendToClient, playerInfo.ObjectInfo);
+
+                await environmentHandler.StartAsync();
+
+                _playerManager.Initialize(playerInfo.ObjectInfo, movementHandler, environmentHandler);
 
                 using var duplicatePacket = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
                 NatsClient.Publish(_playerManager.ObjectInfo.GetHashField(), duplicatePacket.ToBytes());
@@ -273,7 +280,7 @@ namespace user_server
                 await playerInfo.ObjectInfo.Save();
             }
 
-            NatsClient.Subscribe(playerInfo.ObjectInfo.GetHashField(), (channel, message) => OnMessageFromSubscribe(message));
+            NatsClient.Subscribe(_playerManager.ObjectInfo.GetHashField(), (channel, message) => OnMessageFromSubscribe(message));
             NatsClient.Subscribe("all", (channel, message) => OnMessageFromSubscribe(message));
 
             var labInfo = await LabInfo.Load(playerInfo.LabId);
@@ -283,12 +290,13 @@ namespace user_server
 
             // 인벤토리 정보 전송
             await InventoryController.GetCurrentItemList(this);
+
             if (labInfo != null)
             {
                 await InventoryController.GetLabInventory(this);
             }
 
-            await _playerManager.Spawn();
+            await _playerManager.ChangeMap();
         }
 
         public void BroadcastUpdatePlayerInfo(PlayerInfo playerInfo)
@@ -341,7 +349,9 @@ namespace user_server
             if (msg is Packet packet)
             {
                 _token.Send(packet);
+                return;
             }
+
             throw new NotImplementedException();
         }
 
@@ -367,18 +377,15 @@ namespace user_server
 
         public void OnRemoved()
         {
-            _cts.Cancel();
-            _cts.Dispose();
-
+            _logManager.WriteDebugLog("GameUser OnRemoved");
             _onLeaveCallback(this);
         }
 
         public async Task<UserToken> Release()
         {
-            await JobController.Decamp(this);
-
             if (_playerManager != null)
             {
+                await JobController.Decamp(this);
                 await _playerManager.Dispose();
                 _progressManager.Dispose();
                 _updateObjectManager.Dispose();
@@ -388,6 +395,9 @@ namespace user_server
             await SendToGameServer(packet);
 
             NatsClient.Close();
+
+            _cts.Cancel();
+            _cts.Dispose();
 
             return _token;
         }

@@ -29,17 +29,17 @@ namespace network.core
         {
             for (int i = 0; i < Config.MAX_CONNECTION; i++)
             {
-                UserToken user_token = new();
+                var userToken = new UserToken(i, _logManager);
 
                 SocketAsyncEventArgs recvArgs = new();
                 recvArgs.Completed += (sender, e) => RecvCompleted(sender!, e);
-                recvArgs.UserToken = user_token;
+                recvArgs.UserToken = userToken;
                 _bufferManager.SetBuffer(recvArgs);
                 _recvEventArgsManager.Push(recvArgs);
 
                 SocketAsyncEventArgs sendArgs = new();
                 sendArgs.Completed += (sender, e) => SendCompleted(sender!, e);
-                sendArgs.UserToken = user_token;
+                sendArgs.UserToken = userToken;
                 _bufferManager.SetBuffer(sendArgs);
                 _sendEventArgsManager.Push(sendArgs);
             }
@@ -68,12 +68,10 @@ namespace network.core
         }
 
         // from Listener
-        private void OnNewClient(Socket client_socket, object _)
+        private void OnNewClient(Socket clientSocket, object _)
         {
             try
             {
-                _logManager.WriteDebugLog($"on new client");
-
                 SocketAsyncEventArgs recvArgs;
                 SocketAsyncEventArgs sendArgs;
 
@@ -89,14 +87,10 @@ namespace network.core
                     throw new Exception("[OnNewClient] Invalid UserToken");
                 }
 
+
                 var userToken = (UserToken)argsToken;
                 SessionCreatedCallback?.Invoke(userToken);
-                BeginRecv(userToken, client_socket, recvArgs, sendArgs);
-
-                if (Config.HEARTBEAT_ACTIVE)
-                {
-                    userToken.SetHeartbeatTimer(_logManager);
-                }
+                BeginRecv(userToken, clientSocket, recvArgs, sendArgs);
             }
             catch (Exception e)
             {
@@ -109,21 +103,18 @@ namespace network.core
             userToken.SetEventArgs(recvArgs, sendArgs);
             userToken.Socket = socket;
 
-            if (!socket.ReceiveAsync(recvArgs))
+            bool willRaiseEvent = socket.ReceiveAsync(recvArgs);
+            if (!willRaiseEvent)
             {
-                ProcessRecv(sendArgs);
+                ProcessRecv(recvArgs);
             }
-
-            userToken.SetHeartbeatTimer(_logManager);
         }
 
         private void RecvCompleted(object sender, SocketAsyncEventArgs args)
         {
             if (args.LastOperation != SocketAsyncOperation.Receive)
             {
-                throw new ArgumentException(
-                    "The last operation completed on the socket was not a receive."
-                );
+                throw new ArgumentException("The last operation completed on the socket was not a receive.");
             }
 
             ProcessRecv(args);
@@ -141,7 +132,7 @@ namespace network.core
                 }
 
                 userToken = (UserToken)argsToken;
-                if (recvArgs.SocketError != SocketError.Success || recvArgs.BytesTransferred <= 0)
+                if (recvArgs.SocketError != SocketError.Success)
                 {
                     CloseClientSocket(userToken);
                     return;
@@ -152,23 +143,31 @@ namespace network.core
                     throw new Exception("[ProcessRecv] invalid Buffer");
                 }
 
-                (ErrorCode error_code, string? error_log)
-                 = userToken.OnReceived(recvArgs.Buffer, recvArgs.Offset, recvArgs.BytesTransferred);
-
-                if (error_code != ErrorCode.SUCCESS)
+                if (recvArgs.BytesTransferred > 0)
                 {
-                    throw new Exception(error_log);
+                    (ErrorCode errorCode, string? errorLog) = userToken.OnReceived(recvArgs.Buffer, recvArgs.Offset, recvArgs.BytesTransferred);
+                    if (errorCode != ErrorCode.SUCCESS)
+                    {
+                        _logManager.WriteErrorLog(new Exception($"errorCode:{errorCode}, errorLog:{errorLog}"));
+                    }
+                }
+                else if (recvArgs.BytesTransferred == 0)
+                {
+                    // 연결이 종료되었을 수 있음
+                    CloseClientSocket(userToken);
+                    return;
                 }
 
                 // 다음 패킷 수신 대기
-                if (!userToken.Socket!.ReceiveAsync(recvArgs))
+                bool willRaiseEvent = userToken.Socket!.ReceiveAsync(recvArgs);
+                if (!willRaiseEvent)
                 {
                     ProcessRecv(recvArgs);
                 }
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                _logManager.WriteErrorLog(e);
+                _logManager.WriteErrorLog(ex);
                 CloseClientSocket(userToken);
             }
         }
@@ -198,22 +197,12 @@ namespace network.core
 
             try
             {
-                lock (userToken._lockDisconnect)
+                userToken.Disconnect();
+
+                lock (_initEventArgsLock)
                 {
-                    userToken.IsReleased = true;
-                    if (userToken.Socket!.Connected)
-                    {
-                        userToken.Socket.Shutdown(SocketShutdown.Both);
-                    }
-
-                    userToken.Socket.Close();
-                    userToken.OnRemoved();
-
-                    lock (_initEventArgsLock)
-                    {
-                        _recvEventArgsManager.Push(userToken.RecvEventArgs!);
-                        _sendEventArgsManager.Push(userToken.SendEventArgs!);
-                    }
+                    _recvEventArgsManager.Push(userToken.RecvEventArgs!);
+                    _sendEventArgsManager.Push(userToken.SendEventArgs!);
                 }
             }
             catch (Exception ex)

@@ -25,6 +25,8 @@ namespace user_server
         {
             try
             {
+                _logManager.WriteInfoLog("User Server starting...");
+
                 InitializeServices();
                 StartNetworkService();
 
@@ -61,8 +63,8 @@ namespace user_server
 
         private void InitializeServices()
         {
-            var redisEndpoints = _configuration["RedisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
-            var natsEndpoint = _configuration["NatsEndPoint"] ?? throw new InvalidOperationException("NatsEndpoint is not configured or is invalid.");
+            var redisEndpoints = _configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
+            var natsEndpoint = _configuration["natsEndPoint"] ?? throw new InvalidOperationException("NatsEndpoint is not configured or is invalid.");
 
             try
             {
@@ -80,8 +82,9 @@ namespace user_server
 
         private void StartNetworkService()
         {
+            var port = _configuration.GetValue<short>("servicePort");
             _networkService.SessionCreatedCallback += OnSessionCreated;
-            _networkService.Listen(IPAddress.Any, _configuration.GetValue<short>("UserServerPort"));
+            _networkService.Listen(IPAddress.Any, port);
         }
 
         private void OnSessionCreated(UserToken token)
@@ -125,7 +128,7 @@ namespace user_server
                 if (_leaveUserQueue.TryDequeue(out GameUser? user))
                 {
                     var token = await user.Release();
-                    _networkService.CloseClientSocket(token);
+                    token.Disconnect();
                 }
             }
             catch (Exception ex)

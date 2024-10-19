@@ -31,10 +31,10 @@ namespace network.packets
                             return (ErrorCode.SUCCESS, null);
                         }
 
-                        int messageSize = this.ParseHeader();
+                        int messageSize = ParseHeader();
                         if (messageSize <= 0 || messageSize > Config.BUFFER_SIZE - Config.HEADER_SIZE)
                         {
-                            return (ErrorCode.FATAL, "[MessageResolver/OnReceived] Invalid message size");
+                            return (ErrorCode.FATAL, $"[MessageResolver/OnReceived] Invalid message size {messageSize}");
                         }
 
                         _targetPosition += messageSize;

@@ -12,20 +12,19 @@ namespace game_server.controllers
     public class InstanceController
     {
         private readonly LogManager _logManager;
-        private readonly ConcurrentDictionary<string, ConcurrentBag<string>> _objectInstanceDict; // Instance_id, [object_key, ..]
-        private readonly SemaphoreSlim _positionLock;
+        private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict;
+        private readonly SemaphoreSlim _mapLock;
         private readonly NatsClient _natsClient;
         private readonly CancellationTokenSource _cts;
-
         public static string CreateInstanceSubject => MapHelper.GetCreateInstanceSubject(Program.GameServerId);
 
         public InstanceController(LogManager logManager, NatsClient natsClient, CancellationTokenSource cts)
         {
             _logManager = logManager;
             _natsClient = natsClient;
-            _objectInstanceDict = new();
-            _positionLock = new(1, 1);
             _cts = cts;
+            _objectInstanceDict = new();
+            _mapLock = new(1, 1);
         }
 
         public void Initialize()
@@ -35,11 +34,11 @@ namespace game_server.controllers
 
         private void SubscribeToCreateInstance()
         {
-            _natsClient.Subscribe(CreateInstanceSubject, (_, msg) =>
+            _natsClient.Subscribe(CreateInstanceSubject, async (_, msg) =>
             {
                 try
                 {
-                    CreateInstance(msg);
+                    await CreateInstance(msg);
                 }
                 catch (Exception ex)
                 {
@@ -48,19 +47,28 @@ namespace game_server.controllers
             });
         }
 
-        private void CreateInstance(RedisValue message)
+        private async Task CreateInstance(RedisValue message)
         {
             var (userSubject, mapId, mapSubId) = MessagePackSerializer.Deserialize<(string, MapID, long)>(message);
-            switch (mapId)
-            {
-                case MapID.LAB_1:
-                    var instance_key = MapHelper.GetInstanceKey(mapId, mapSubId);
-                    _objectInstanceDict.GetOrAdd(instance_key, _ => new());
-                    SubscribeToInstanceEvents(mapId, mapSubId);
-                    break;
 
-                default:
-                    throw new Exception("Invalid map id");
+            await _mapLock.WaitAsync();
+            try
+            {
+                switch (mapId)
+                {
+                    case MapID.LAB_1:
+                        var instanceKey = MapHelper.GetInstanceKey(mapId, mapSubId);
+                        _objectInstanceDict.GetOrAdd(instanceKey, _ => new HashSet<string>());
+                        SubscribeToInstanceEvents(mapId, mapSubId);
+                        break;
+
+                    default:
+                        throw new Exception("Invalid map id");
+                }
+            }
+            finally
+            {
+                _mapLock.Release();
             }
 
             using var packet = PacketMaker.G_TO_U_CREATE_INSTANCE_SUCCESS(mapId, mapSubId);
@@ -69,36 +77,49 @@ namespace game_server.controllers
 
         private void SubscribeToInstanceEvents(MapID mapId, long mapSubId)
         {
-            var subscriptions = new Dictionary<string, Func<RedisValue, Task>>
+            var immediateHandlers = new Dictionary<string, Action<RedisValue>>
+            {
+                { MapHelper.GetSpawnManageSubject(mapId, mapSubId, Program.GameServerId), SpawnManageObject },
+                { MapHelper.GetUpdatePlayerSubject(mapId, mapSubId, Program.GameServerId), UpdatePlayerInfo }
+            };
+
+            var asyncHandlers = new Dictionary<string, Func<RedisValue, Task>>
             {
                 { MapHelper.GetMoveManageSubject(mapId, mapSubId, Program.GameServerId), MoveManageObjectAsync },
                 { MapHelper.GetLeaveManageSubject(mapId, mapSubId, Program.GameServerId), LeaveManageObjectAsync },
-                { MapHelper.GetSpawnManageSubject(mapId, mapSubId, Program.GameServerId), msg => Task.Run(() => SpawnManageObject(msg)) },
-                { MapHelper.GetDestroyObjectSubject(mapId, mapSubId, Program.GameServerId), DestroyManageObjectAsync },
-                { MapHelper.GetUpdatePlayerSubject(mapId, mapSubId, Program.GameServerId), msg => Task.Run(() => UpdatePlayerInfo(msg)) }
+                { MapHelper.GetDestroyObjectSubject(mapId, mapSubId, Program.GameServerId), DestroyManageObjectAsync }
             };
 
-            foreach (var (subject, handler) in subscriptions)
+            foreach (var (subject, handler) in immediateHandlers)
             {
-                SubscribeWithErrorHandling(subject, handler);
+                _natsClient.Subscribe(subject, (_, msg) =>
+                {
+                    try
+                    {
+                        handler(msg);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logManager.WriteErrorLog(ex);
+                    }
+                });
+            }
+
+            foreach (var (subject, handler) in asyncHandlers)
+            {
+                _natsClient.Subscribe(subject, async (_, msg) =>
+                {
+                    try
+                    {
+                        await handler(msg);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logManager.WriteErrorLog(ex);
+                    }
+                });
             }
         }
-
-        private void SubscribeWithErrorHandling(string subject, Func<RedisValue, Task> handler)
-        {
-            _natsClient.Subscribe(subject, (_, msg) =>
-            {
-                try
-                {
-                    handler(msg);
-                }
-                catch (Exception ex)
-                {
-                    _logManager.WriteErrorLog(ex);
-                }
-            });
-        }
-
         private async Task MoveManageObjectAsync(RedisValue message)
         {
             var (lastPositionKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
@@ -109,32 +130,32 @@ namespace game_server.controllers
             await UpdateObjectPositionAsync(lastInstanceKey, currentInstanceKey, objectKey);
 
             using var packet = PacketMaker.G_TO_U_MOVE(objectInfo);
-            BroadcastToInstance(currentInstanceKey, packet);
+            BroadcastPacket(currentInstanceKey, packet);
         }
 
         private async Task UpdateObjectPositionAsync(string lastInstanceKey, string currentInstanceKey, string objectKey)
         {
-            await _positionLock.WaitAsync();
+            await _mapLock.WaitAsync();
             try
             {
-                if (_objectInstanceDict.TryGetValue(lastInstanceKey, out var lastInstanceBag))
+                if (_objectInstanceDict.TryGetValue(lastInstanceKey, out var lastInstanceSet))
                 {
-                    var updatedBag = new ConcurrentBag<string>(lastInstanceBag.Where(x => x != objectKey));
-                    _objectInstanceDict[lastInstanceKey] = updatedBag;
+                    lastInstanceSet.Remove(objectKey);
                 }
 
-                _objectInstanceDict.AddOrUpdate(currentInstanceKey,
-                    new ConcurrentBag<string> { objectKey },
-                    (_, bag) =>
+                _objectInstanceDict.AddOrUpdate(
+                    currentInstanceKey,
+                    new HashSet<string> { objectKey },
+                    (_, set) =>
                     {
-                        bag.Add(objectKey);
-                        return bag;
+                        set.Add(objectKey);
+                        return set;
                     }
                 );
             }
             finally
             {
-                _positionLock.Release();
+                _mapLock.Release();
             }
         }
 
@@ -143,18 +164,17 @@ namespace game_server.controllers
             (string positionKey, string objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
             var instanceKey = MapHelper.ConvertToInstanceKey(positionKey);
 
-            await _positionLock.WaitAsync();
+            await _mapLock.WaitAsync();
             try
             {
-                if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceBag))
+                if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet))
                 {
-                    var updatedBag = new ConcurrentBag<string>(instanceBag.Where(x => x != objectKey));
-                    _objectInstanceDict[instanceKey] = updatedBag;
+                    instanceSet.Remove(objectKey);
                 }
             }
             finally
             {
-                _positionLock.Release();
+                _mapLock.Release();
             }
         }
 
@@ -184,22 +204,21 @@ namespace game_server.controllers
         {
             var (instanceKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
 
-            await _positionLock.WaitAsync();
+            await _mapLock.WaitAsync();
             try
             {
-                if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceBag))
+                if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet))
                 {
-                    var updatedBag = new ConcurrentBag<string>(instanceBag.Where(x => x != objectKey));
-                    _objectInstanceDict[instanceKey] = updatedBag;
+                    instanceSet.Remove(objectKey);
                 }
             }
             finally
             {
-                _positionLock.Release();
+                _mapLock.Release();
             }
 
             using var packet = PacketMaker.G_TO_U_DESTROY(objectKey);
-            BroadcastToInstance(instanceKey, packet);
+            BroadcastPacket(instanceKey, packet);
         }
 
         private void UpdatePlayerInfo(RedisValue message)
@@ -207,10 +226,10 @@ namespace game_server.controllers
             (string instanceKey, PlayerInfo playerInfo) = MessagePackSerializer.Deserialize<(string, PlayerInfo)>(message);
 
             using var packet = PacketMaker.G_TO_U_PLAYER_INFO(playerInfo);
-            BroadcastToInstance(instanceKey, packet);
+            BroadcastPacket(instanceKey, packet);
         }
 
-        private void BroadcastToInstance(string instanceKey, Packet packet)
+        private void BroadcastPacket(string instanceKey, Packet packet)
         {
             if (_objectInstanceDict.TryGetValue(instanceKey, out var channels))
             {
@@ -223,10 +242,8 @@ namespace game_server.controllers
 
         public async Task ShutdownAsync()
         {
-            _cts.Cancel();
-            await _positionLock.WaitAsync();
-            _positionLock.Release();
-            _cts.Dispose();
+            await _mapLock.WaitAsync();
+            _mapLock.Release();
         }
     }
 }

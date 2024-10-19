@@ -1,15 +1,17 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using MessagePack;
 using network.common;
 using network.helpers;
+using network.managers;
 using network.infrastructure;
-using network.interfaces;
 using user_server.managers;
 
 namespace user_server.handlers
 {
-    public class MovementHandler : IHandler
+    public class MovementHandler
     {
+        private readonly LogManager _logManager;
         private readonly ConcurrentQueue<C_TO_U_MOVE> _moveQueue = new();
         private readonly SemaphoreSlim _moveLock = new(1, 1);
         private Cell? _lastCell;
@@ -20,8 +22,9 @@ namespace user_server.handlers
         private readonly Func<ChangeMapInfo, Task> _spawn;
         private bool _disposed = false;
 
-        public MovementHandler(GameObjectInfo objectInfo, NatsClient natsClient, UpdateObjectManager updateObjectManager, Func<ChangeMapInfo, Task> spawn)
+        public MovementHandler(LogManager logManager, GameObjectInfo objectInfo, NatsClient natsClient, UpdateObjectManager updateObjectManager, Func<ChangeMapInfo, Task> spawn)
         {
+            _logManager = logManager;
             _objectInfo = objectInfo;
             _natsClient = natsClient;
             _updateObjectManager = updateObjectManager;
@@ -30,13 +33,16 @@ namespace user_server.handlers
 
         public Task Initialize() => Task.CompletedTask;
         public Task Stop() => Task.CompletedTask;
-        public Task ProcessAsync(object request)
+
+        public async Task ProcessAsync(C_TO_U_MOVE request)
         {
-            if (request is C_TO_U_MOVE moveRequest)
-            {
-                return Move(moveRequest);
-            }
-            return Task.CompletedTask;
+            await Move(request);
+        }
+
+        public async Task Spawn()
+        {
+            await ProcessAsync(new C_TO_U_MOVE { Direction = DirectionType.NONE });
+            RequestSpawnInfo(_objectInfo.MapId, true);
         }
 
         public async Task Move(C_TO_U_MOVE body)
@@ -65,22 +71,14 @@ namespace user_server.handlers
 
         private async Task ProcessMoveAsync(C_TO_U_MOVE moveRequest)
         {
-            _lastCell = Cell.Clone(_objectInfo.CurrentCell);
+            _lastCell ??= Cell.Clone(_objectInfo.CurrentCell);
             _objectInfo.CurrentCell = Cell.Clone(_objectInfo.TargetCell);
             _objectInfo.TargetCell = MapHelper.CalcTargetCell(_objectInfo.TargetCell, moveRequest.Direction);
+
             _objectInfo.SetFlip(moveRequest.Direction);
             _objectInfo.MoveTimestamp = DateTime.UtcNow;
             await _objectInfo.Save();
-            UpdateObjectState();
 
-            var moveElapsedTime = await CalcMoveElapsedTime();
-            await Task.Delay((int)(moveElapsedTime * 1000));
-
-            await ProcessNextMoveAsync();
-        }
-
-        private void UpdateObjectState()
-        {
             var lastPositionKey = MapHelper.GetPositionKey(_objectInfo.MapId, _objectInfo.MapSubId, _lastCell!);
             var currentPositionKey = MapHelper.GetPositionKey(_objectInfo.MapId, _objectInfo.MapSubId, _objectInfo.CurrentCell);
 
@@ -112,40 +110,34 @@ namespace user_server.handlers
 
             // 자신의 이동이므로 큐에 즉시 넣음
             _updateObjectManager.EnqueueUpdateObject(_objectInfo);
-        }
 
-        private async Task ProcessNextMoveAsync()
-        {
-            await _moveLock.WaitAsync();
-            try
+            var moveElapsedTime = await CalcMoveElapsedTime();
+            await Task.Delay((int)(moveElapsedTime * 1000));
+
+            // 포탈 여부 확인 및 맵 이동
+            var isChangedMap = await TryHandleMapChange();
+            if (isChangedMap)
             {
-                // 포탈 여부 확인 및 맵 이동
-                var isChangedMap = await TryHandleMapChange();
-                if (isChangedMap)
-                {
-                    return;
-                }
+                return;
+            }
 
-                // 큐에 있는 다음 이동요청 처리
-                if (_moveQueue.TryDequeue(out var nextMove))
-                {
-                    await ProcessMoveAsync(nextMove);
-                    return;
-                }
+            bool isArrive = true;
+            while (_moveQueue.TryDequeue(out var nextMove))
+            {
+                // 큐에 있는 모든 이동요청 순차적으로 처리
+                await ProcessMoveAsync(nextMove);
+                isArrive = false;
+            }
 
+            if (isArrive)
+            {
                 // 이동 완료 처리
-                await FinalizeMoveAsync();
-            }
-            finally
-            {
-                _moveLock.Release();
-            }
-        }
+                _lastCell = Cell.Clone(_objectInfo.CurrentCell);
+                _objectInfo.CurrentCell = Cell.Clone(_objectInfo.TargetCell);
+                await _objectInfo.Save();
 
-        private async Task FinalizeMoveAsync()
-        {
-            _objectInfo.CurrentCell = Cell.Clone(_objectInfo.TargetCell);
-            await _objectInfo.Save();
+                RequestSpawnInfo(_objectInfo.MapId);
+            }
         }
 
         private async Task<long> GetMapSubId(MapID mapId)
@@ -166,7 +158,7 @@ namespace user_server.handlers
         {
             if (!MapHelper.PortalInfo.TryGetValue(MapHelper.GetPortalKey(_objectInfo.MapId, _objectInfo.TargetCell), out var portalResult))
             {
-                RequestSpawnInfo(_objectInfo.MapId, false);
+                RequestSpawnInfo(_objectInfo.MapId);
                 return false;
             }
 
@@ -176,22 +168,22 @@ namespace user_server.handlers
             var mapChangeInfo = new ChangeMapInfo(mapId, mapSubId, spawnPosition, isFlip);
             await _spawn.Invoke(mapChangeInfo);
             _moveQueue.Clear();
-            RequestSpawnInfo(mapChangeInfo.MapId, true);
+            RequestSpawnInfo(mapChangeInfo.MapId);
 
             return true;
         }
 
-        private void RequestSpawnInfo(MapID targetMapId, bool isMapChange)
+        private void RequestSpawnInfo(MapID targetMapId, bool isSpawn = false)
         {
             if (targetMapId == MapID.LAB_1)
             {
                 var serverId = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, _objectInfo.MapSubId);
                 var instanceKey = MapHelper.GetInstanceKey(_objectInfo.MapId, _objectInfo.MapSubId);
-                RequestSpawnObjectList(serverId, new List<string> { instanceKey });
+                RequestSpawnObjectList(serverId, new() { instanceKey });
                 return;
             }
 
-            RequestCommmonMapSpawnList(isMapChange);
+            RequestCommmonMapSpawnList(isSpawn);
         }
 
         // 최초 맵 입장 or 이동 시 새로운 영역에 대한 오브젝트 정보 요청
@@ -202,10 +194,10 @@ namespace user_server.handlers
             _natsClient.Publish(subject, message);
         }
 
-        private void RequestCommmonMapSpawnList(bool isMapChange)
+        private void RequestCommmonMapSpawnList(bool isSpawn)
         {
             // 현재 바운드 - 이전 바운드 = spawn 대상
-            List<Cell> lastBoundCellList = isMapChange ? new() : MapHelper.GetBoundCellList(_objectInfo.CurrentCell);
+            List<Cell> lastBoundCellList = isSpawn || _lastCell == null ? new() : MapHelper.GetBoundCellList(_lastCell);
             var currentBoundCellList = MapHelper.GetBoundCellList(_objectInfo.CurrentCell);
             var objectSpawnList = currentBoundCellList
                 .Except(lastBoundCellList)
@@ -251,15 +243,16 @@ namespace user_server.handlers
         protected virtual void Dispose(bool disposing)
         {
             if (_disposed)
+            {
                 return;
+            }
 
             if (disposing)
             {
                 // 관리되는 리소스 해제
                 _moveLock.Dispose();
+                _moveQueue.Clear();
             }
-
-            // 비관리 리소스 해제 (이 클래스에는 없음)
 
             _disposed = true;
         }

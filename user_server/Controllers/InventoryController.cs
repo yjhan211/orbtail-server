@@ -196,27 +196,19 @@ namespace user_server.controllers
 
         public static async Task GetLabInventory(GameUser user)
         {
-            Dictionary<long, ItemInfo> itemDict = new();
-            using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+            var playerInfo = await PlayerInfo.Load(user.PlayerId);
+            if (playerInfo == null)
             {
-                var playerInfo = await PlayerInfo.Load(user.PlayerId);
-                if (playerInfo == null)
-                {
-                    throw new Exception("player_info not exists");
-                }
-
-                using (await LabInfo.Lock(user.RedLock, playerInfo.LabId))
-                {
-                    var labInfo = await LabInfo.Load(playerInfo.LabId);
-                    if (labInfo == null)
-                    {
-                        throw new Exception("lab_info not exists");
-                    }
-
-                    itemDict = labInfo.InventoryInfo.ItemDict;
-                }
+                throw new Exception("player_info not exists");
             }
 
+            var labInfo = await LabInfo.Load(playerInfo.LabId);
+            if (labInfo == null)
+            {
+                throw new Exception("lab_info not exists");
+            }
+
+            var itemDict = labInfo.InventoryInfo.ItemDict;
             LabController.SendLabItemList(user, itemDict);
         }
 

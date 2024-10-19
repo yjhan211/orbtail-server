@@ -1,12 +1,11 @@
 using System.Diagnostics.CodeAnalysis;
 using MessagePack;
-using RedLockNet.SERedis;
 using network.common;
 using network.helpers;
 using network.infrastructure;
 using network.packets;
 using network.managers;
-using network.interfaces;
+using user_server.handlers;
 
 namespace user_server.managers
 {
@@ -14,11 +13,12 @@ namespace user_server.managers
 
     public class PlayerManager
     {
+        private readonly LogManager _logManager;
         private readonly NatsClient _natsClient;
         private readonly SendPacketDelegate _sendToClient;
         private readonly UpdateObjectManager _updateObjectManager;
-        private IHandler? _movementHandler;
-        private IHandler? _environmentHandler;
+        private MovementHandler? _movementHandler;
+        private EnvironmentHandler? _environmentHandler;
 
         public GameObjectInfo? ObjectInfo { get; private set; }
         public long PlayerId => ObjectInfo?.ObjectId ?? 0;
@@ -28,15 +28,16 @@ namespace user_server.managers
         public bool IsFlip => ObjectInfo?.IsFlip ?? false;
         public PlayerState State { get; private set; }
 
-        public PlayerManager(NatsClient natsClient, SendPacketDelegate sendToClient, UpdateObjectManager updateObjectManager)
+        public PlayerManager(LogManager logManager, NatsClient natsClient, SendPacketDelegate sendToClient, UpdateObjectManager updateObjectManager)
         {
+            _logManager = logManager;
             _natsClient = natsClient;
             _sendToClient = sendToClient;
             _updateObjectManager = updateObjectManager;
         }
 
         [MemberNotNull(nameof(ObjectInfo))]
-        public async Task Initialize(GameObjectInfo objectInfo, IHandler movementHandler, IHandler enviromentHandler)
+        public void Initialize(GameObjectInfo objectInfo, MovementHandler movementHandler, EnvironmentHandler enviromentHandler)
         {
             ObjectInfo = objectInfo;
             ObjectInfo.CurrentCell = ObjectInfo.TargetCell;
@@ -44,12 +45,9 @@ namespace user_server.managers
 
             _movementHandler = movementHandler;
             _environmentHandler = enviromentHandler;
-
-            await _movementHandler.Initialize();
-            await _environmentHandler.Initialize();
         }
 
-        public async Task Spawn(ChangeMapInfo? changeMapInfo = null)
+        public async Task ChangeMap(ChangeMapInfo? changeMapInfo = null)
         {
             // 기존 맵에 삭제 요청
             await PublishDestroy();
@@ -67,8 +65,8 @@ namespace user_server.managers
             switch (MapId)
             {
                 case MapID.LAB_1:
-                    var server_id = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, MapSubId);
-                    var subject = MapHelper.GetCreateInstanceSubject(server_id);
+                    var serverId = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, MapSubId);
+                    var subject = MapHelper.GetCreateInstanceSubject(serverId);
                     var publishObj = MessagePackSerializer.Serialize((ObjectInfo!.GetHashField(), MapId, MapSubId));
                     _natsClient.Publish(subject, publishObj);
                     break;
@@ -82,17 +80,15 @@ namespace user_server.managers
             }
         }
 
-        public async Task SpawnSuccess()
+        public async Task Spawn()
         {
             if (_movementHandler == null)
             {
                 return;
             }
 
-            C_TO_U_MOVE body = new() { Direction = DirectionType.NONE };
-            await _movementHandler.ProcessAsync(body);
+            await _movementHandler.Spawn();
         }
-
 
         public async Task RequestMove(GameUser _, C_TO_U_MOVE body)
         {

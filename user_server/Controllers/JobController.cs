@@ -492,13 +492,13 @@ namespace user_server.controllers
                 playerInfo = await PlayerInfo.Load(user.PlayerId);
                 if (playerInfo == null)
                 {
-                    throw new Exception("playerInfo not exists");
+                    return;
                 }
 
                 campInfo = await CampInfo.Load(user.PlayerId);
                 if (campInfo == null)
                 {
-                    throw new Exception("campInfo not exists");
+                    return;
                 }
 
                 playerInfo.State = PlayerState.NONE;

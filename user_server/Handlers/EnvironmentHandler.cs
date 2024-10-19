@@ -1,31 +1,37 @@
 using RedLockNet.SERedis;
 using network.common;
-using network.packets;
-using network.managers;
-using network.interfaces;
 using user_server.managers;
 
 namespace user_server.handlers
 {
-    public class EnvironmentHandler : IHandler
+    public class EnvironmentHandler
     {
-        private readonly LogManager _logManager;
         private readonly CancellationTokenSource _cts;
         private readonly RedLockFactory _redLock;
         private readonly SendPacketDelegate _sendToClient;
         private readonly GameObjectInfo _objectInfo;
-        private readonly Task? _task;
+        private Task? _task;
         private bool _disposed;
+        private bool _stopping;
 
-        public EnvironmentHandler(LogManager logManager, CancellationTokenSource cts, RedLockFactory redLock, SendPacketDelegate sendToClient, GameObjectInfo objectInfo)
+        public EnvironmentHandler(CancellationTokenSource cts, RedLockFactory redLock, SendPacketDelegate sendToClient, GameObjectInfo objectInfo)
         {
-            _logManager = logManager;
             _cts = cts;
             _redLock = redLock;
             _sendToClient = sendToClient;
             _objectInfo = objectInfo;
 
+            // _task = Initialize();
+        }
+
+        public async Task StartAsync()
+        {
             _task = Initialize();
+            await Task.Delay(100);
+            if (_task.Status == TaskStatus.Created)
+            {
+                throw new InvalidOperationException("Initialize task did not start");
+            }
         }
 
         public Task ProcessAsync(object request) => Task.CompletedTask;
@@ -37,77 +43,85 @@ namespace user_server.handlers
                 {
                     while (!_cts.Token.IsCancellationRequested)
                     {
-                        await ProcessMapEnvironmentTask();
+                        // await ProcessMapEnvironmentTask();
                         await Task.Delay(TimeSpan.FromSeconds(1), _cts.Token);
                     }
                 }
                 catch (Exception e)
                 {
-                    _logManager.WriteErrorLog(e);
+                    throw;
                 }
             }, _cts.Token);
         }
 
-        private async Task ProcessMapEnvironmentTask()
+        // private async Task ProcessMapEnvironmentTask()
+        // {
+        //     switch (_objectInfo.MapId)
+        //     {
+        //         case MapID.WETLAND_1:
+        //             if (DateTime.UtcNow < _objectInfo.DebuffTimestamp)
+        //             {
+        //                 return;
+        //             }
+
+        //             // var playerId = _objectInfo.ObjectId;
+        //             // using (await PlayerInfo.Lock(_redLock, _objectInfo.ObjectId))
+        //             // {
+        //             //     var playerInfo = await PlayerInfo.Load(playerId);
+        //             //     if (playerInfo == null)
+        //             //     {
+        //             //         throw new Exception("cannot found player info");
+        //             //     }
+
+        //             //     if (playerInfo.WearItemIdList.Contains(103000004))
+        //             //     {
+        //             //         return;
+        //             //     }
+
+        //             //     playerInfo.JobInfo.Hp -= 1;
+        //             //     await playerInfo.Save();
+
+        //             //     using var updateHpPacket = PacketMaker.U_TO_C_UPDATE_HP(-1, playerInfo.JobInfo.Hp);
+        //             //     _sendToClient(updateHpPacket);
+        //             // }
+
+        //             _objectInfo.DebuffTimestamp = _objectInfo.DebuffTimestamp.AddSeconds(5);
+        //             break;
+
+        //         default:
+        //             break;
+        //     }
+        // }
+
+        public async Task StopAsync()
         {
-            switch (_objectInfo.MapId)
-            {
-                case MapID.WETLAND_1:
-                    if (DateTime.UtcNow < _objectInfo.DebuffTimestamp)
-                    {
-                        return;
-                    }
-
-                    var playerId = _objectInfo.ObjectId;
-                    using (await PlayerInfo.Lock(_redLock, _objectInfo.ObjectId))
-                    {
-                        var playerInfo = await PlayerInfo.Load(playerId);
-                        if (playerInfo == null)
-                        {
-                            throw new Exception("cannot found player info");
-                        }
-
-                        if (playerInfo.WearItemIdList.Contains(103000004))
-                        {
-                            return;
-                        }
-
-                        playerInfo.JobInfo.Hp -= 1;
-                        await playerInfo.Save();
-
-                        using var updateHpPacket = PacketMaker.U_TO_C_UPDATE_HP(-1, playerInfo.JobInfo.Hp);
-                        _sendToClient(updateHpPacket);
-                    }
-
-                    _objectInfo.DebuffTimestamp = _objectInfo.DebuffTimestamp.AddSeconds(5);
-                    break;
-
-                default:
-                    break;
-            }
-        }
-
-        public async Task Stop()
-        {
-            if (_task == null)
+            if (_stopping || _task == null)
             {
                 return;
             }
 
+            _stopping = true;
             _cts.Cancel();
-            await _task;
-            _cts.Dispose();
+            try
+            {
+                await _task;
+            }
+            catch (OperationCanceledException)
+            {
+
+            }
         }
 
         protected virtual void Dispose(bool disposing)
         {
             if (_disposed)
+            {
                 return;
+            }
 
             if (disposing)
             {
-                Stop().GetAwaiter().GetResult();
-                _cts.Dispose();
+                StopAsync().GetAwaiter().GetResult();
             }
 
             _disposed = true;

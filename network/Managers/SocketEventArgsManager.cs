@@ -2,9 +2,14 @@
 
 namespace network.managers
 {
-    public class SocketAsyncEventArgsManager(int capacity)
+    public class SocketAsyncEventArgsManager
     {
-        private readonly Stack<SocketAsyncEventArgs> _pool = new Stack<SocketAsyncEventArgs>(capacity);
+        private readonly Stack<SocketAsyncEventArgs> _pool;
+
+        public SocketAsyncEventArgsManager(int capacity)
+        {
+            _pool = new Stack<SocketAsyncEventArgs>(capacity);
+        }
 
         public void Push(SocketAsyncEventArgs item)
         {
