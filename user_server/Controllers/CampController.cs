@@ -26,7 +26,7 @@ namespace user_server.controllers
                 if (isMax || isEnded)
                 {
                     using var packet = PacketMaker.U_TO_C_CAMP_INFO(campInfoList);
-                    user.SendToClient(packet);
+                    user.Send(packet);
                 }
             }
         }

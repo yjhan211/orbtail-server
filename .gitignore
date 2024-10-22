@@ -2,3 +2,4 @@
 .vs/
 *.config.json
 */node_modules
+client_clone_*/

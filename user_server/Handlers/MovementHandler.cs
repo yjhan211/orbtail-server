@@ -6,6 +6,7 @@ using network.helpers;
 using network.managers;
 using network.infrastructure;
 using user_server.managers;
+using network.packets;
 
 namespace user_server.handlers
 {
@@ -18,15 +19,17 @@ namespace user_server.handlers
 
         private readonly GameObjectInfo _objectInfo;
         private readonly NatsClient _natsClient;
+        private readonly SendPacketDelegate _sendToClient;
         private readonly UpdateObjectManager _updateObjectManager;
         private readonly Func<ChangeMapInfo, Task> _spawn;
         private bool _disposed = false;
 
-        public MovementHandler(LogManager logManager, GameObjectInfo objectInfo, NatsClient natsClient, UpdateObjectManager updateObjectManager, Func<ChangeMapInfo, Task> spawn)
+        public MovementHandler(LogManager logManager, GameObjectInfo objectInfo, NatsClient natsClient, SendPacketDelegate sendToClient, UpdateObjectManager updateObjectManager, Func<ChangeMapInfo, Task> spawn)
         {
             _logManager = logManager;
             _objectInfo = objectInfo;
             _natsClient = natsClient;
+            _sendToClient = sendToClient;
             _updateObjectManager = updateObjectManager;
             _spawn = spawn;
         }
@@ -137,6 +140,8 @@ namespace user_server.handlers
                 await _objectInfo.Save();
 
                 RequestSpawnInfo(_objectInfo.MapId);
+                using var packet = PacketMaker.U_TO_C_MOVE(_objectInfo.ObjectId, ErrorCode.SUCCESS, _objectInfo);
+                _sendToClient(packet);
             }
         }
 

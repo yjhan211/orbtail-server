@@ -6,6 +6,6 @@ namespace network.interfaces
     {
         Task OnMessageFromClient(Const<byte[]> buffer);
         void OnRemoved();
-        void SendToClient(IPacket msg);
+        void Send(IPacket msg);
     }
 }

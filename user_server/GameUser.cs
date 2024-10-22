@@ -17,8 +17,8 @@ namespace user_server
 {
     public partial class GameUser : IPeer
     {
+        public readonly LogManager LogManager;
         private readonly UserToken _token;
-        private readonly LogManager _logManager;
         private readonly SemaphoreSlim _userLock;
         private readonly CancellationTokenSource _cts;
         public readonly RedLockFactory RedLock;
@@ -28,7 +28,6 @@ namespace user_server
         private readonly UpdateObjectManager _updateObjectManager;
         private readonly PlayerManager _playerManager;
         private readonly Action<GameUser> _onLeaveCallback;
-
         public long PlayerId => _playerManager.PlayerId;
         public PlayerState PlayerState => _playerManager.State;
         public Cell CurrentCell => _playerManager.CurrentCell;
@@ -43,18 +42,18 @@ namespace user_server
 
             RedLock = redLockFactory;
             NatsClient = natsClient;
-            _logManager = logManager;
+            LogManager = logManager;
             _userLock = new(1);
             _cts = new();
 
-            _progressManager = new(_logManager);
+            _progressManager = new(LogManager);
             _updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new() { SingleReader = false, SingleWriter = false });
-            _updateObjectManager = new(_cts, _logManager, SendToClient, _updateObjectChannel);
+            _updateObjectManager = new(_cts, LogManager, Send, _updateObjectChannel);
 
-            _playerManager = new(_logManager, NatsClient, SendToClient, _updateObjectManager);
+            _playerManager = new(LogManager, NatsClient, Send, _updateObjectManager);
             _onLeaveCallback = onLeaveCallback;
 
-            _logManager.WriteDebugLog("new GameUser");
+            LogManager.WriteInfoLog("Create GameUser Success!");
         }
 
         private void HandleMessage<T>(byte[] body, Func<GameUser, T, Task> handleMessage)
@@ -215,7 +214,7 @@ namespace user_server
             }
             catch (Exception e)
             {
-                _logManager.WriteErrorLog(e);
+                LogManager.WriteErrorLog(e);
             }
             finally
             {
@@ -228,7 +227,7 @@ namespace user_server
             _token.IsAlive = true;
 
             using var packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
-            SendToClient(packet);
+            Send(packet);
         }
 
         private async Task Login(GameUser _, C_TO_U_LOGIN request)
@@ -266,8 +265,8 @@ namespace user_server
                     playerInfo.WearItem(giftItemList[1].ItemUid);
                 }
 
-                var movementHandler = new MovementHandler(_logManager, playerInfo.ObjectInfo, NatsClient, _updateObjectManager, _playerManager.ChangeMap);
-                var environmentHandler = new EnvironmentHandler(_cts, RedLock, SendToClient, playerInfo.ObjectInfo);
+                var movementHandler = new MovementHandler(LogManager, playerInfo.ObjectInfo, NatsClient, Send, _updateObjectManager, _playerManager.ChangeMap);
+                var environmentHandler = new EnvironmentHandler(LogManager, _cts, RedLock, Send, playerInfo.ObjectInfo);
 
                 await environmentHandler.StartAsync();
 
@@ -286,11 +285,10 @@ namespace user_server
             var labInfo = await LabInfo.Load(playerInfo.LabId);
 
             using var loginPacket = PacketMaker.U_TO_C_LOGIN(playerInfo, labInfo ?? new());
-            SendToClient(loginPacket);
+            Send(loginPacket);
 
             // 인벤토리 정보 전송
-            await InventoryController.GetCurrentItemList(this);
-
+            var sendItemCount = await InventoryController.GetCurrentItemList(this);
             if (labInfo != null)
             {
                 await InventoryController.GetLabInventory(this);
@@ -344,7 +342,7 @@ namespace user_server
             }
         }
 
-        public void SendToClient(IPacket msg)
+        public void Send(IPacket msg)
         {
             if (msg is Packet packet)
             {
@@ -371,13 +369,13 @@ namespace user_server
         public void RecvDuplicate()
         {
             using var packet = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
-            SendToClient(packet);
+            Send(packet);
             OnRemoved();
         }
 
         public void OnRemoved()
         {
-            _logManager.WriteDebugLog("GameUser OnRemoved");
+            LogManager.WriteInfoLog($"GameUser Removed. PlayerId:{PlayerId}");
             _onLeaveCallback(this);
         }
 

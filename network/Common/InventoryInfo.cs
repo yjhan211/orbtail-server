@@ -38,9 +38,7 @@ namespace network.common
             var isCountable = !GameDesignData.IsWearableItem(itemInfo.ItemId);
             if (isCountable)
             {
-                var existItem = ItemDict.Values.FirstOrDefault(
-                    item => item.ItemId == itemInfo.ItemId
-                );
+                var existItem = ItemDict.Values.FirstOrDefault(item => item.ItemId == itemInfo.ItemId);
                 if (existItem != null)
                 {
                     existItem.Count += itemInfo.Count;
@@ -75,7 +73,7 @@ namespace network.common
 
         public async Task Save()
         {
-            await CacheHelper.Instance.HashSetAsync(InventoryInfo.HASH_KEY, $"{OwnerType}_{OwnerId}", MessagePackSerializer.Serialize(this));
+            await CacheHelper.Instance.HashSetAsync(InventoryInfo.HASH_KEY, $"{(int)OwnerType}_{OwnerId}", MessagePackSerializer.Serialize(this));
         }
 
         public static async Task<InventoryInfo?> Load(InventoryOwnerType ownerType, long ownerId)

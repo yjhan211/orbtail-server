@@ -3,6 +3,7 @@ using StackExchange.Redis;
 using network.common;
 using network.packets;
 using network.managers;
+using System.Diagnostics;
 
 namespace user_server.managers
 {
@@ -63,7 +64,7 @@ namespace user_server.managers
         {
             while (await _updateObjectChannel.Reader.WaitToReadAsync(_cts.Token))
             {
-                List<GameObjectInfo> updateObjectList = new();
+                var updateObjectList = new List<GameObjectInfo>();
                 while (updateObjectList.Count < Config.BROADCAST_UNIT && _updateObjectChannel.Reader.TryRead(out var updateObjectInfo))
                 {
                     updateObjectList.Add(updateObjectInfo);

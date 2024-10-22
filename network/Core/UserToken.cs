@@ -22,7 +22,6 @@ namespace network.core
         public Socket? Socket { get; set; }
         public bool IsAlive { get; set; } = true;
         public bool IsReleased { get; private set; } = false;
-
         public event Action<UserToken>? Disconnected;
 
         public UserToken(int tokenId, LogManager logManager)
@@ -40,6 +39,7 @@ namespace network.core
             _peer = peer;
             IsReleased = false;
         }
+
         public void SetHeartbeatTimer(LogManager logManager)
         {
             _heartbeatTimer = new Timer((_) =>
@@ -59,6 +59,7 @@ namespace network.core
                 TimeSpan.FromSeconds(3)
             );
         }
+
         public void SetEventArgs(SocketAsyncEventArgs receiveEventArgs, SocketAsyncEventArgs sendEventArgs)
         {
             RecvEventArgs = receiveEventArgs;

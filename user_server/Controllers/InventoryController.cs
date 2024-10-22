@@ -35,7 +35,7 @@ namespace user_server.controllers
             }
 
             using var packet = PacketMaker.U_TO_C_WEAR_ITEM(player_info);
-            user.SendToClient(packet);
+            user.Send(packet);
 
             await GetCurrentItemList(user);
             user.BroadcastUpdatePlayerInfo(player_info);
@@ -57,7 +57,7 @@ namespace user_server.controllers
             }
 
             using var packet = PacketMaker.U_TO_C_USE_ITEM(player_info.JobInfo);
-            user.SendToClient(packet);
+            user.Send(packet);
 
             await GetCurrentItemList(user);
         }
@@ -212,7 +212,7 @@ namespace user_server.controllers
             LabController.SendLabItemList(user, itemDict);
         }
 
-        public static async Task GetCurrentItemList(GameUser user)
+        public static async Task<int> GetCurrentItemList(GameUser user)
         {
             var playerInfo = await PlayerInfo.Load(user.PlayerId);
             if (playerInfo == null)
@@ -229,26 +229,23 @@ namespace user_server.controllers
             if (inventoryInfo.ItemDict.Count == 0)
             {
                 using var packet = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(new(), true);
-                user.SendToClient(packet);
-                return;
+                user.Send(packet);
+                return 0;
             }
 
-            int index = 0;
             var itemKeys = inventoryInfo.ItemDict.Keys.ToArray();
-            while (index < itemKeys.Length)
+            for (int i = 0; i < itemKeys.Length; i += Config.BROADCAST_UNIT)
             {
-                var batchDict = new Dictionary<long, ItemInfo>();
-                for (int i = index; i < index + Config.BROADCAST_UNIT && i < itemKeys.Length; i++)
-                {
-                    var key = itemKeys[i];
-                    batchDict[key] = inventoryInfo.ItemDict[key];
-                }
+                var batchDict = itemKeys.Skip(i).Take(Config.BROADCAST_UNIT)
+                    .ToDictionary(key => key, key => inventoryInfo.ItemDict[key]);
 
-                var isEnded = index + Config.BROADCAST_UNIT >= itemKeys.Length;
+                var isEnded = i + Config.BROADCAST_UNIT >= itemKeys.Length;
 
                 using var packet = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(batchDict, isEnded);
-                user.SendToClient(packet);
+                user.Send(packet);
             }
+
+            return itemKeys.Length;
         }
 
         public static void BroadcastCurrentLabItemList(GameUser user, LabInfo labInfo)
@@ -272,7 +269,7 @@ namespace user_server.controllers
 
                 var isEnded = index + Config.BROADCAST_UNIT >= itemKeys.Length;
                 var packet = PacketMaker.U_TO_C_LAB_INVENTORY(batchDict, isEnded);
-                user.SendToClient(packet);
+                user.Send(packet);
 
                 index += Config.BROADCAST_UNIT;
             }

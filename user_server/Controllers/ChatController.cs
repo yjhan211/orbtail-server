@@ -55,7 +55,7 @@ namespace user_server.controllers
                 }
 
                 using var packet = PacketMaker.U_TO_C_CHAT_MSG(deserialize.Item1, deserialize.Item2, deserialize.Item3);
-                user.SendToClient(packet);
+                user.Send(packet);
             }
         }
 

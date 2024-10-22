@@ -22,7 +22,7 @@ namespace user_server.controllers
             }
 
             using var packet = PacketMaker.U_TO_C_SET_NAME(ErrorCode.SUCCESS, playerInfo);
-            user.SendToClient(packet);
+            user.Send(packet);
 
             user.BroadcastUpdatePlayerInfo(playerInfo);
         }
@@ -33,7 +33,7 @@ namespace user_server.controllers
             var playerInfoList = await PlayerInfo.LoadAll(keys);
 
             using var packet = PacketMaker.U_TO_C_PLAYER_INFO(playerInfoList);
-            user.SendToClient(packet);
+            user.Send(packet);
         }
 
 
@@ -90,7 +90,7 @@ namespace user_server.controllers
             }
 
             using var packet = PacketMaker.U_TO_C_UPDATE_TUTORIAL(playerInfo, playerInfo.JobInfo);
-            user.SendToClient(packet);
+            user.Send(packet);
         }
 
     }

@@ -1,11 +1,13 @@
 using RedLockNet.SERedis;
 using network.common;
+using network.managers;
 using user_server.managers;
 
 namespace user_server.handlers
 {
     public class EnvironmentHandler
     {
+        private readonly LogManager _logManager;
         private readonly CancellationTokenSource _cts;
         private readonly RedLockFactory _redLock;
         private readonly SendPacketDelegate _sendToClient;
@@ -14,8 +16,9 @@ namespace user_server.handlers
         private bool _disposed;
         private bool _stopping;
 
-        public EnvironmentHandler(CancellationTokenSource cts, RedLockFactory redLock, SendPacketDelegate sendToClient, GameObjectInfo objectInfo)
+        public EnvironmentHandler(LogManager logManager, CancellationTokenSource cts, RedLockFactory redLock, SendPacketDelegate sendToClient, GameObjectInfo objectInfo)
         {
+            _logManager = logManager;
             _cts = cts;
             _redLock = redLock;
             _sendToClient = sendToClient;
@@ -47,9 +50,9 @@ namespace user_server.handlers
                         await Task.Delay(TimeSpan.FromSeconds(1), _cts.Token);
                     }
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    throw;
+                    _logManager.WriteErrorLog(ex);
                 }
             }, _cts.Token);
         }

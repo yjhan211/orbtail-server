@@ -33,7 +33,7 @@ namespace user_server.controllers
                 if (isMax || isEnded)
                 {
                     using var packet = PacketMaker.U_TO_C_EXPLORE_TARGET_INFO(targetInfoList);
-                    user.SendToClient(packet);
+                    user.Send(packet);
                     targetInfoList.Clear();
                 }
             }
@@ -65,7 +65,7 @@ namespace user_server.controllers
                 if (isMax || isEnded)
                 {
                     using var packet = PacketMaker.U_TO_C_JOB_RESOURCE_INFO(targetInfoList);
-                    user.SendToClient(packet);
+                    user.Send(packet);
                     targetInfoList.Clear();
                 }
             }
@@ -82,7 +82,7 @@ namespace user_server.controllers
             if (!playerInfo.JobInfo.JobStatDict.TryGetValue(body.JobType, out var jobStat))
             {
                 using var errorPacket = PacketMaker.U_TO_C_UPGRADE_JOB(user.PlayerId, ErrorCode.FATAL);
-                user.SendToClient(errorPacket);
+                user.Send(errorPacket);
                 return;
             }
 
@@ -90,14 +90,14 @@ namespace user_server.controllers
             if (jobStat.Exp < maxExp)
             {
                 using var errorPacket = PacketMaker.U_TO_C_UPGRADE_JOB(user.PlayerId, ErrorCode.FATAL);
-                user.SendToClient(errorPacket);
+                user.Send(errorPacket);
                 return;
             }
 
             if (JobGrade.CHIEF <= jobStat.JobGrade)
             {
                 using var errorPacket = PacketMaker.U_TO_C_UPGRADE_JOB(user.PlayerId, ErrorCode.FATAL);
-                user.SendToClient(errorPacket);
+                user.Send(errorPacket);
                 return;
             }
 
@@ -118,7 +118,7 @@ namespace user_server.controllers
             }
 
             using var packet = PacketMaker.U_TO_C_UPGRADE_JOB(user.PlayerId, ErrorCode.SUCCESS, playerInfo.JobInfo);
-            user.SendToClient(packet);
+            user.Send(packet);
         }
 
         public static List<int> GetSkillList(PlayerInfo playerInfo)
@@ -151,21 +151,21 @@ namespace user_server.controllers
                 if (playerInfo == null)
                 {
                     using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
-                    user.SendToClient(errorPacket);
+                    user.Send(errorPacket);
                     return;
                 }
 
                 if (playerInfo.JobInfo == null)
                 {
                     using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
-                    user.SendToClient(errorPacket);
+                    user.Send(errorPacket);
                     return;
                 }
 
                 if (playerInfo.JobInfo.Hp <= 0)
                 {
                     using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
-                    user.SendToClient(errorPacket);
+                    user.Send(errorPacket);
                     return;
                 }
 
@@ -175,14 +175,14 @@ namespace user_server.controllers
                     if (exploreTargetInfo == null)
                     {
                         using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
-                        user.SendToClient(errorPacket);
+                        user.Send(errorPacket);
                         return;
                     }
 
                     if (exploreTargetInfo.PlayerId > 0)
                     {
                         using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.ALREADY_ANOTHER_USE_SKILL);
-                        user.SendToClient(errorPacket);
+                        user.Send(errorPacket);
                         return;
                     }
 
@@ -210,14 +210,14 @@ namespace user_server.controllers
                     if (!isValidJobType || !isExploreAble || !isEnoughLevel)
                     {
                         using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
-                        user.SendToClient(errorPacket);
+                        user.Send(errorPacket);
                         return;
                     }
 
                     if (1 < MapHelper.GetDistance(user.CurrentCell, exploreTargetInfo.ObjectInfo.CurrentCell))
                     {
                         using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
-                        user.SendToClient(errorPacket);
+                        user.Send(errorPacket);
                         return;
                     }
 
@@ -236,7 +236,7 @@ namespace user_server.controllers
             await user.SetFlip(direction);
 
             using var packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.SUCCESS, playerInfo.JobInfo);
-            user.SendToClient(packet);
+            user.Send(packet);
             user.BroadcastUpdatePlayerInfo(playerInfo);
             user.BroadcastUpdateExploreTargetInfo(exploreTargetInfo);
         }
@@ -296,7 +296,7 @@ namespace user_server.controllers
                 await playerInfo.Save();
 
                 using var packet = PacketMaker.U_TO_C_EXPLORE_COMPLETE(isSuccess, playerInfo.JobInfo);
-                user.SendToClient(packet);
+                user.Send(packet);
                 user.BroadcastUpdatePlayerInfo(playerInfo);
             }
         }
@@ -314,21 +314,21 @@ namespace user_server.controllers
                 if (playerInfo == null)
                 {
                     using var errorPacket = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                    user.SendToClient(errorPacket);
+                    user.Send(errorPacket);
                     return;
                 }
 
                 if (playerInfo.JobInfo == null)
                 {
                     using var errorPacket = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                    user.SendToClient(errorPacket);
+                    user.Send(errorPacket);
                     return;
                 }
 
                 if (playerInfo.JobInfo.Hp <= 0)
                 {
                     using var errorPacket = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                    user.SendToClient(errorPacket);
+                    user.Send(errorPacket);
                     return;
                 }
 
@@ -339,14 +339,14 @@ namespace user_server.controllers
                     if (jobResourceInfo == null)
                     {
                         using var errorPacket = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                        user.SendToClient(errorPacket);
+                        user.Send(errorPacket);
                         return;
                     }
 
                     if (jobResourceInfo.PlayerId != 0)
                     {
                         using var errorPacket = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                        user.SendToClient(errorPacket);
+                        user.Send(errorPacket);
                         return;
                     }
 
@@ -358,7 +358,7 @@ namespace user_server.controllers
                     if (skillType != JobType.NONE && skillType != jobResourceType)
                     {
                         using var errorPacket = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                        user.SendToClient(errorPacket);
+                        user.Send(errorPacket);
                         return;
                     }
 
@@ -366,14 +366,14 @@ namespace user_server.controllers
                     if (!skillList.Contains(body.SkillId))
                     {
                         using var errorPacket = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                        user.SendToClient(errorPacket);
+                        user.Send(errorPacket);
                         return;
                     }
 
                     if (skillDetail.Item2 < jobResourceLevel)
                     {
                         using var errorPacket = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.FATAL);
-                        user.SendToClient(errorPacket);
+                        user.Send(errorPacket);
                         return;
                     }
 
@@ -392,7 +392,7 @@ namespace user_server.controllers
             await user.SetFlip(direction);
 
             using var packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.SUCCESS, playerInfo.JobInfo);
-            user.SendToClient(packet);
+            user.Send(packet);
             user.BroadcastUpdatePlayerInfo(playerInfo);
             user.BroadcastUpdateJobResourceInfo(jobResourceInfo);
         }
@@ -438,7 +438,7 @@ namespace user_server.controllers
                 await playerInfo.Save();
 
                 using var packet = PacketMaker.U_TO_C_USE_SKILL_COMPLETE(true, itemInfo, playerInfo.JobInfo);
-                user.SendToClient(packet);
+                user.Send(packet);
                 user.BroadcastUpdatePlayerInfo(playerInfo);
 
                 await InventoryController.GetCurrentItemList(user);
@@ -556,7 +556,7 @@ namespace user_server.controllers
             user.NatsClient.Publish(updateCampSubject, MessagePackSerializer.Serialize((currentPositionKey, campInfo)));
 
             using var packet = PacketMaker.U_TO_C_ADD_SELL_ITEM(user.PlayerId);
-            user.SendToClient(packet);
+            user.Send(packet);
         }
 
         public static async Task DeleteSellItem(GameUser user, C_TO_U_DELETE_SELL_ITEM body)
@@ -599,7 +599,7 @@ namespace user_server.controllers
             user.NatsClient.Publish(updateCampSubject, MessagePackSerializer.Serialize((currentPositionKey, campInfo)));
 
             using var packet = PacketMaker.U_TO_C_DELETE_SELL_ITEM(user.PlayerId);
-            user.SendToClient(packet);
+            user.Send(packet);
         }
 
         public static async Task BuyItem(GameUser user, C_TO_U_BUY_ITEM body)
@@ -669,7 +669,7 @@ namespace user_server.controllers
             user.NatsClient.Publish(updateCampSubject, MessagePackSerializer.Serialize((currentPositionKey, campInfo)));
 
             using var buyPacket = PacketMaker.U_TO_C_BUY_ITEM(user.PlayerId, playerInfo);
-            user.SendToClient(buyPacket);
+            user.Send(buyPacket);
 
             await InventoryController.GetCurrentItemList(user);
 

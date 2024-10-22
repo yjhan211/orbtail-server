@@ -75,7 +75,7 @@ namespace user_server
             }
             catch (Exception e)
             {
-                _logManager.WriteErrorLog(e);
+                LogManager.WriteErrorLog(e);
             }
         }
 
@@ -103,38 +103,38 @@ namespace user_server
                 var isEnded = remain <= 0;
 
                 using var packet = PacketMaker.U_TO_C_SPAWN(batch.Select((item) => item.ToString()).ToList(), isEnded);
-                SendToClient(packet);
+                Send(packet);
             }
         }
 
         private void SubscribeDestroy(GameUser _, G_TO_U_DESTROY body)
         {
             using var packet = PacketMaker.U_TO_C_DESTROY(body.ObjectKey);
-            SendToClient(packet);
+            Send(packet);
         }
 
         private void SubscribeChatMsg(GameUser _, U_TO_C_CHAT_MSG body)
         {
             using var packet = PacketMaker.U_TO_C_CHAT_MSG(body.ChatType, body.Name, body.ChatMessage);
-            SendToClient(packet);
+            Send(packet);
         }
 
         private void SubscribePlayerInfo(GameUser _, U_TO_U_PLAYER_INFO body)
         {
             using var packet = PacketMaker.U_TO_C_PLAYER_INFO(new() { body.PlayerInfo });
-            SendToClient(packet);
+            Send(packet);
         }
 
         private void SubscribePlayerInfo(GameUser _, G_TO_U_PLAYER_INFO body)
         {
             using var packet = PacketMaker.U_TO_C_PLAYER_INFO(new() { body.PlayerInfo });
-            SendToClient(packet);
+            Send(packet);
         }
 
         private void SubscribeExploreTargetInfo(GameUser _, G_TO_U_EXPLORE_TARGET_INFO body)
         {
             using var packet = PacketMaker.U_TO_C_EXPLORE_TARGET_INFO(new() { body.ExploreTargetInfo });
-            SendToClient(packet);
+            Send(packet);
         }
 
         private void SubscribeCreateinstanceSuccess(GameUser _, G_TO_U_CREATE_INSTANCE_SUCCESS body)
@@ -150,13 +150,13 @@ namespace user_server
                 _playerManager.IsFlip
             );
 
-            SendToClient(packet);
+            Send(packet);
         }
 
         private void SubscribeLabInfo(GameUser _, U_TO_C_LAB_INFO body)
         {
             using var packet = PacketMaker.U_TO_C_LAB_INFO(body.JoinPlayerInfo, body.LabInfo);
-            SendToClient(packet);
+            Send(packet);
         }
 
         private void SubscribeLabInventory(GameUser user, U_TO_U_LAB_INVENTORY body)
@@ -167,7 +167,7 @@ namespace user_server
         private void SubscribeCampInfo(GameUser _, G_TO_U_CAMP_INFO body)
         {
             using var packet = PacketMaker.U_TO_C_CAMP_INFO(new() { body.CampInfo });
-            SendToClient(packet);
+            Send(packet);
         }
     }
 }

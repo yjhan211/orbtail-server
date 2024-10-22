@@ -34,6 +34,8 @@ namespace network.managers
         public void WriteDebugLog(string message, bool includeStackTrace = false)
         {
             var logBuilder = new StringBuilder();
+            logBuilder.Append(message);
+
             if (includeStackTrace)
             {
                 var stackTrace = new StackTrace(true);

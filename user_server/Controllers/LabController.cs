@@ -44,7 +44,7 @@ namespace user_server.controllers
             }
 
             using var packet = PacketMaker.U_TO_C_CREATE_LAB(user.PlayerId, playerInfo, labInfo);
-            user.SendToClient(packet);
+            user.Send(packet);
         }
 
         public static async Task UpgradeResearch(GameUser user, C_TO_U_UPGRADE_RESEARCH body)
@@ -137,7 +137,7 @@ namespace user_server.controllers
             }
 
             using var researchPacket = PacketMaker.U_TO_C_UPGRADE_RESEARCH(labInfo.ResearchInfoDict, playerInfo.JobInfo);
-            user.SendToClient(researchPacket);
+            user.Send(researchPacket);
 
             using var labInfoPacket = PacketMaker.U_TO_C_LAB_INFO(new(), labInfo);
             user.PublishToClients(labInfoPacket, labInfo.MemberDict.Keys.ToList());
@@ -157,7 +157,7 @@ namespace user_server.controllers
                     throw new Exception("player_info not exists");
                 }
 
-                List<(int, int)> validator = new();
+                var validator = new List<(int, int)>();
                 foreach (var materialSlot in body.Materials)
                 {
                     if (playerInfo.InventoryInfo.ItemDict.TryGetValue(materialSlot.Key, out var slotItemInfo))
@@ -166,14 +166,15 @@ namespace user_server.controllers
                     }
                 }
 
-                var labInfo = await LabInfo.Load(playerInfo.LabId);
-                if (labInfo == null)
-                {
-                    throw new Exception("lab_info not exists");
-                }
+                // var labInfo = await LabInfo.Load(playerInfo.LabId);
+                // if (labInfo == null)
+                // {
+                //     throw new Exception("lab_info not exists");
+                // }
 
-                var research_list = labInfo.ResearchInfoDict.Values.Select((x) => (x.ResearchId, x.Level)).ToList();
-                makeableItemId = GameDesignData.GetMakableItemId(research_list, validator);
+                // var researchList = labInfo.ResearchInfoDict.Values.Select((x) => (x.ResearchId, x.Level)).ToList();
+                // makeableItemId = GameDesignData.GetMakableItemId(researchList, validator);
+
                 if (makeableItemId != 0)
                 {
                     var itenInfo = await InventoryController.CreateItem(makeableItemId, 1);
@@ -199,7 +200,7 @@ namespace user_server.controllers
             }
 
             using var packet = PacketMaker.U_TO_C_MAKE(makeableItemId != 0);
-            user.SendToClient(packet);
+            user.Send(packet);
 
             await InventoryController.GetCurrentItemList(user);
         }
@@ -220,7 +221,7 @@ namespace user_server.controllers
             await CacheHelper.Instance.HashSetAsync(HIRE_KEY, $"{playerInfo.LabId}", MessagePackSerializer.Serialize(body.Comment));
 
             var packet = PacketMaker.U_TO_C_WRITE_LAB_HIRE(ErrorCode.SUCCESS);
-            user.SendToClient(packet);
+            user.Send(packet);
         }
 
         public static async Task LabHireList(GameUser user)
@@ -254,7 +255,7 @@ namespace user_server.controllers
             }
 
             using var packet = PacketMaker.U_TO_C_LAB_HIRE_LIST(hireList);
-            user.SendToClient(packet);
+            user.Send(packet);
         }
 
         public static async Task JoinLab(GameUser user, C_TO_U_JOIN_LAB body)
@@ -340,7 +341,7 @@ namespace user_server.controllers
             if (itemDict.Count == 0)
             {
                 using var packet = PacketMaker.U_TO_C_LAB_INVENTORY(new(), true);
-                user.SendToClient(packet);
+                user.Send(packet);
             }
 
             int index = 0;
@@ -358,7 +359,7 @@ namespace user_server.controllers
                 var isEnded = index + Config.BROADCAST_UNIT >= itemKeys.Length;
 
                 using var inventoryPacket = PacketMaker.U_TO_C_LAB_INVENTORY(batchDict, isEnded);
-                user.SendToClient(inventoryPacket);
+                user.Send(inventoryPacket);
 
                 index += Config.BROADCAST_UNIT;
             }
