@@ -1,135 +1,180 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using MessagePack;
+using network.common;
+using network.managers;
+using network.helpers;
+using network.infrastructure;
+using network.packets;
+using game_server.controllers;
+
 namespace game_server
 {
-    using System;
-    using System.Threading.Tasks;
-    using MessagePack;
-    using network;
-    using StackExchange.Redis;
-
-    public class GameServer
+    public class GameServer : IHostedService
     {
-        CancellationTokenSource cts;
-        Task? logic_thread;
-        List<MapController> map_controller_list;
-        InstanceController instance_controller;
-        ConnectionMultiplexer redis_connection;
-        CacheHelper cache_helper;
+        private readonly IConfiguration _configuration;
+        private readonly LogManager _logManager;
+        private readonly RedisConnectionPool _redisPool;
+        private readonly NatsClientFactory _natsClientFactory;
+        private readonly List<MapController> _mapControllerList;
+        private readonly List<InstanceController> _instanceControllerList;
+        private CancellationTokenSource _cts;
+        private Timer? _messageTimer;
 
-        public GameServer()
+        public GameServer(IConfiguration configuration, LogManager logManager, RedisConnectionPool redisPool, NatsClientFactory natsClientFactory)
         {
-            this.cts = new();
-            this.map_controller_list = new();
+            _configuration = configuration;
+            _logManager = logManager;
+            _redisPool = redisPool;
+            _natsClientFactory = natsClientFactory;
+            _cts = new();
 
-            this.map_controller_list.Add(new(MapID.CITY_1));
-            this.map_controller_list.Add(new(MapID.FOREST_1));
-            this.instance_controller = new();
-
-            this.redis_connection = RedisConnectionPool.GetConnection();
-            this.cache_helper = new(this.redis_connection);
+            _mapControllerList = new();
+            _instanceControllerList = new();
         }
 
-        public void Start()
+        public async Task StartAsync(CancellationToken cancellationToken)
         {
-            foreach (var map_controller in this.map_controller_list)
+            try
             {
-                map_controller.Initialize(new(Program.nats_endpoint));
-            }
+                _logManager.WriteInfoLog("Game server starting...");
 
-            this.instance_controller.Initialize(new(Program.nats_endpoint));
-            this.logic_thread = Task.Run(GameLoop, this.cts.Token);
+                InitializeServices();
+                await InitializeControllers();
+
+                _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                StartMessageProcessing();
+
+                _logManager.WriteInfoLog("Game server started successfully.");
+            }
+            catch (Exception ex)
+            {
+                _logManager.WriteErrorLog(ex);
+                throw;
+            }
         }
 
-        async Task GameLoop()
+        public async Task StopAsync(CancellationToken cancellationToken)
         {
-            while (!this.cts.Token.IsCancellationRequested)
-            {
-                try
-                {
-                    while (true)
-                    {
-                        byte[]? message = await cache_helper.Dequeue("game_server_queue");
-                        if (message == null)
-                        {
-                            await Task.Delay(10);
-                            continue;
-                        }
+            _logManager.WriteInfoLog("Game server stopping...");
 
-                        Packet? packet = new(message);
-                        if (packet == null)
-                        {
-                            continue;
-                        }
+            _cts?.Cancel();
+            _messageTimer?.Dispose();
 
-                        await ProcessReceiveAsync(cache_helper, packet);
-                        Packet.Destroy(packet);
-                    }
-                }
-                catch (Exception e)
-                {
-                    LogManager.WriteErrorLog(e);
-                }
-            }
+            await Task.WhenAll(_mapControllerList.Select(c => c.ShutdownAsync()));
+            await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
+
+            _cts?.Dispose();
+
+            _logManager.WriteInfoLog("Game server stopped.");
+        }
+
+        private void InitializeServices()
+        {
+            var redisEndpoints = _configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
+            var natsEndpoint = _configuration["natsEndPoint"] ?? throw new InvalidOperationException("NatsEndpoint is not configured or is invalid.");
 
             try
             {
-                this.logic_thread!.Wait();
+                _redisPool.Initialize(redisEndpoints);
+                _natsClientFactory.Initialize(natsEndpoint);
+
+                MapHelper.Initialize();
+                CacheHelper.Initialize(_redisPool);
             }
-            catch (AggregateException e)
+            catch (Exception ex)
             {
-                LogManager.WriteErrorLog(e);
+                throw new InvalidOperationException("Failed to initialize services.", ex);
             }
         }
 
-        async Task HandleMessage<T>(
-            CacheHelper cache_helper,
-            long player_id,
-            byte[] body,
-            Func<CacheHelper, long, T, Task> handleMessage
-        )
+        private async Task InitializeControllers()
         {
-            T msg = MessagePackSerializer.Deserialize<T>(body);
-            await handleMessage(cache_helper, player_id, msg);
+            _mapControllerList.Add(new(_logManager, _natsClientFactory.Create(), _cts, MapID.CAMPUS_1));
+            _mapControllerList.Add(new(_logManager, _natsClientFactory.Create(), _cts, MapID.FACTORY_1));
+            _mapControllerList.Add(new(_logManager, _natsClientFactory.Create(), _cts, MapID.WETLAND_1));
+
+            foreach (var mapController in _mapControllerList)
+            {
+                await mapController.Initialize();
+            }
+
+            _instanceControllerList.Add(new(_logManager, _natsClientFactory.Create(), _cts));
+            foreach (var instanceController in _instanceControllerList)
+            {
+                instanceController.Initialize();
+            }
         }
 
-        async Task ProcessReceiveAsync(CacheHelper cache_helper, Packet packet)
+        private void StartMessageProcessing()
         {
-            PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
-            long player_id = packet.PopPlayerId();
+            _messageTimer = new Timer(
+                async _ => await ProcessMessages(),
+                null,
+                TimeSpan.Zero,
+                TimeSpan.FromMilliseconds(10)
+            );
+        }
+
+        private async Task ProcessMessages()
+        {
+            try
+            {
+                byte[]? message = await CacheHelper.Instance.DequeueAsync("game_server_queue");
+                if (message != null)
+                {
+                    using var packet = new Packet(message);
+                    await ProcessReceiveAsync(packet);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logManager.WriteErrorLog(ex);
+            }
+        }
+
+
+        private async Task ProcessReceiveAsync(Packet packet)
+        {
+            PROTOCOL protocolId = (PROTOCOL)packet.PopProtocolId();
+            long playerId = packet.PopPlayerId();
             byte[] body = packet.PopBody();
 
-            switch (protocol_id)
+            switch (protocolId)
             {
                 case PROTOCOL.U_TO_G_LOGOUT:
-                    await HandleMessage<U_TO_G_LOGOUT>(cache_helper, player_id, body, Logout);
+                    await HandleMessage<U_TO_G_LOGOUT>(playerId, body, Logout);
+                    break;
+
+                default:
                     break;
             }
         }
 
-        public async Task Logout(CacheHelper cache_helper, long player_id, U_TO_G_LOGOUT msg)
+        private static async Task HandleMessage<T>(long player_id, byte[] body, Func<long, T, Task> handleMessage)
         {
-            var redlock = RedisConnectionPool.GetRedLockFactory(this.redis_connection);
+            T msg = MessagePackSerializer.Deserialize<T>(body);
+            await handleMessage(player_id, msg);
+        }
 
-            using (var player_lock = await PlayerInfoController.Lock(redlock, player_id))
+        private async Task Logout(long playerId, U_TO_G_LOGOUT msg)
+        {
+            var redlock = _redisPool.GetRedLockFactory();
+            await using var playerLock = await PlayerInfo.Lock(redlock, playerId);
+            var playerInfo = await PlayerInfo.Load(msg.PlayerId);
+            if (playerInfo == null)
             {
-                PlayerInfo? player_info = await PlayerInfoController.Load(
-                    cache_helper,
-                    msg.player_id
-                );
-
-                if (player_info == null)
-                {
-                    throw new Exception($"can't find player_info. player_id : {player_id}");
-                }
-
-                GameObjectInfo object_info = player_info.object_info;
-                if (object_info == null)
-                {
-                    throw new Exception($"can't find object_info. player_id : {player_id}");
-                }
-
-                // TODO DB 붙이기 전까지 일단 안지움
-                // await PlayerInfoController.Delete(cache_helper, player_id);
+                return;
             }
+
+            GameObjectInfo objectInfo = playerInfo.ObjectInfo;
+            if (objectInfo == null)
+            {
+                return;
+            }
+
+            // TODO DB 붙이기 전까지 일단 안지움
+            // await PlayerInfoController.Delete(cache_helper, player_id);
         }
     }
 }

@@ -1,77 +1,96 @@
-namespace network
-{
-    using MessagePack;
+using MessagePack;
+using network.helpers;
 
+namespace network.common
+{
     [MessagePackObject]
     public class InventoryInfo : IMessagePackObject
     {
         [IgnoreMember]
-        public const string HASH_KEY = "inventory_info";
+        public const string HASH_KEY = "InventoryInfo";
 
-        /*-----------------------------------------------------------------*/
+        [Key("ownerType")]
+        public InventoryOwnerType OwnerType { get; set; }
 
-        [Key("owner_type")]
-        public InventoryOwnerType owner_type { get; set; }
+        [Key("ownerId")]
+        public long OwnerId { get; set; }
 
-        [Key("owner_id")]
-        public long owner_id { get; set; }
-
-        [Key("item_dict")]
-        public Dictionary<long, ItemInfo> item_dict { get; set; }
+        [Key("itemDict")]
+        public Dictionary<long, ItemInfo> ItemDict { get; set; }
 
         // 이거 없애면 안됨 MessagePack에서 씀
         public InventoryInfo()
         {
-            this.owner_id = 0;
-            this.item_dict = new();
+            OwnerType = InventoryOwnerType.NONE;
+            OwnerId = 0;
+            ItemDict = new();
         }
 
-        public InventoryInfo(InventoryOwnerType owner_type, long owner_id)
+        public InventoryInfo(InventoryOwnerType ownerType, long ownerId)
         {
-            this.owner_type = owner_type;
-            this.owner_id = owner_id;
-            this.item_dict = new();
+            OwnerType = ownerType;
+            OwnerId = ownerId;
+            ItemDict = new();
         }
 
-        public void AddItem(ItemInfo item_info)
+        public void AddItem(ItemInfo itemInfo)
         {
-            var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
-            if (is_countable)
+            var isCountable = !GameDesignData.IsWearableItem(itemInfo.ItemId);
+            if (isCountable)
             {
-                var exist_item = this.item_dict.Values.FirstOrDefault(
-                    item => item.item_id == item_info.item_id
-                );
-
-                if (exist_item != null)
+                var existItem = ItemDict.Values.FirstOrDefault(item => item.ItemId == itemInfo.ItemId);
+                if (existItem != null)
                 {
-                    exist_item.count += item_info.count;
+                    existItem.Count += itemInfo.Count;
                     return;
                 }
             }
 
-            this.item_dict[item_info.item_uid] = item_info;
+            ItemDict[itemInfo.ItemUid] = itemInfo;
         }
 
-        public void AddItem(List<ItemInfo> item_info_list)
+        public void AddItem(List<ItemInfo> itemInfoList)
         {
-            foreach (var item_info in item_info_list)
+            foreach (var itemInfo in itemInfoList)
             {
-                var is_countable = !GameDesignData.IsWearableItem(item_info.item_id);
-                if (is_countable)
+                var isCountable = !GameDesignData.IsWearableItem(itemInfo.ItemId);
+                if (isCountable)
                 {
-                    var exist_item = this.item_dict.Values.FirstOrDefault(
-                        item => item.item_id == item_info.item_id
+                    var existItem = ItemDict.Values.FirstOrDefault(
+                        item => item.ItemId == itemInfo.ItemId
                     );
 
-                    if (exist_item != null)
+                    if (existItem != null)
                     {
-                        exist_item.count += item_info.count;
+                        existItem.Count += itemInfo.Count;
                         continue;
                     }
                 }
 
-                this.item_dict[item_info.item_uid] = item_info;
+                ItemDict[itemInfo.ItemUid] = itemInfo;
             }
+        }
+
+        public async Task Save()
+        {
+            await CacheHelper.Instance.HashSetAsync(InventoryInfo.HASH_KEY, $"{(int)OwnerType}_{OwnerId}", MessagePackSerializer.Serialize(this));
+        }
+
+        public static async Task<InventoryInfo?> Load(InventoryOwnerType ownerType, long ownerId)
+        {
+            var serializedData = await CacheHelper.Instance.HashGetAsync(InventoryInfo.HASH_KEY, $"{(int)ownerType}_{ownerId}");
+            if (serializedData.IsNull)
+            {
+                return new InventoryInfo(ownerType, ownerId);
+            }
+
+            var inventoryInfo = MessagePackSerializer.Deserialize<InventoryInfo?>(serializedData);
+            return inventoryInfo;
+        }
+
+        public static async Task Delete(InventoryOwnerType ownerType, long ownerId)
+        {
+            await CacheHelper.Instance.HashDeleteAsync(InventoryInfo.HASH_KEY, $"{(int)ownerType}_{ownerId}");
         }
     }
 }

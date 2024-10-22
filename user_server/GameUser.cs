@@ -1,821 +1,403 @@
-﻿namespace user_server
+﻿using System.Threading.Channels;
+using RedLockNet.SERedis;
+using MessagePack;
+using network.core;
+using network.common;
+using network.utils;
+using network.infrastructure;
+using network.interfaces;
+using network.helpers;
+using network.managers;
+using network.packets;
+using user_server.managers;
+using user_server.controllers;
+using user_server.handlers;
+
+namespace user_server
 {
-    using network;
-    using MessagePack;
-    using StackExchange.Redis;
-    using game_server;
-    using RedLockNet.SERedis;
-
-    public class GameUser : IPeer
+    public partial class GameUser : IPeer
     {
-        public UserToken token { get; private set; }
-        public ConnectionMultiplexer redis_connection { get; private set; }
-        public CacheHelper cache_helper { get; private set; }
-        public RedLockFactory redlock { get; private set; }
-        public SemaphoreSlim player_lock { get; private set; }
-        public CancellationTokenSource cts { get; private set; }
-        public NatsClient nats_client { get; private set; }
+        public readonly LogManager LogManager;
+        private readonly UserToken _token;
+        private readonly SemaphoreSlim _userLock;
+        private readonly CancellationTokenSource _cts;
+        public readonly RedLockFactory RedLock;
+        public readonly NatsClient NatsClient;
+        private readonly Channel<GameObjectInfo> _updateObjectChannel;
+        private readonly ProgressManager _progressManager;
+        private readonly UpdateObjectManager _updateObjectManager;
+        private readonly PlayerManager _playerManager;
+        private readonly Action<GameUser> _onLeaveCallback;
+        public long PlayerId => _playerManager.PlayerId;
+        public PlayerState PlayerState => _playerManager.State;
+        public Cell CurrentCell => _playerManager.CurrentCell;
 
-        /*-------------------------------------------------------------*/
+        public void SetState(PlayerInfo playerInfo, PlayerState state) => _playerManager.SetState(playerInfo, state);
+        public async Task SetFlip(DirectionType direction) => await _playerManager.SetFlip(direction);
 
-        public long player_id { get; private set; }
-        public GameObjectController? object_controller { get; set; }
-
-        /*-------------------------------------------------------------*/
-        public bool in_action { get; set; }
-        public (int, JobResourceInfo)? current_progress_job { get; set; }
-        public (DateTime, (MapID, long, Cell, bool))? change_map_task { get; set; }
-        public CampInfo? current_camp_info { get; set; }
-
-        public GameUser(UserToken token)
+        public GameUser(UserToken token, RedLockFactory redLockFactory, NatsClient natsClient, LogManager logManager, Action<GameUser> onLeaveCallback)
         {
-            this.token = token;
-            this.token.is_alive = true;
-            this.token.is_released = false;
-            this.token.SetPeer(this);
+            _token = token;
+            _token.SetPeer(this);
 
-            this.redis_connection = RedisConnectionPool.GetConnection();
-            this.cache_helper = new(this.redis_connection);
-            this.redlock = RedisConnectionPool.GetRedLockFactory(this.redis_connection);
+            RedLock = redLockFactory;
+            NatsClient = natsClient;
+            LogManager = logManager;
+            _userLock = new(1);
+            _cts = new();
 
-            this.nats_client = new(Program.nats_endpoint);
+            _progressManager = new(LogManager);
+            _updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new() { SingleReader = false, SingleWriter = false });
+            _updateObjectManager = new(_cts, LogManager, Send, _updateObjectChannel);
 
-            this.player_id = 0;
-            this.player_lock = new(1);
+            _playerManager = new(LogManager, NatsClient, Send, _updateObjectManager);
+            _onLeaveCallback = onLeaveCallback;
 
-            this.cts = new();
+            LogManager.WriteInfoLog("Create GameUser Success!");
         }
 
-        async Task HandleMessage<T>(byte[] body, Func<GameUser, T, Task> handleMessage)
-        {
-            T msg = MessagePackSerializer.Deserialize<T>(body);
-            await handleMessage(this, msg);
-        }
-
-        void HandleMessage<T>(byte[] body, Action<GameUser, T> handleMessage)
+        private void HandleMessage<T>(byte[] body, Func<GameUser, T, Task> handleMessage)
         {
             T msg = MessagePackSerializer.Deserialize<T>(body);
             handleMessage(this, msg);
         }
 
+        private void HandleMessage<T>(byte[] body, Action<GameUser, T> handleMessage)
+        {
+            T msg = MessagePackSerializer.Deserialize<T>(body);
+            handleMessage(this, msg);
+        }
+
+        private static readonly IReadOnlyList<PROTOCOL> NonAuthProtocol = new List<PROTOCOL>
+        {
+            PROTOCOL.C_TO_U_HEART_BEAT,
+            PROTOCOL.C_TO_U_LOGIN
+        };
+
+        private static readonly IReadOnlyList<PROTOCOL> ActionProtocol = new List<PROTOCOL>
+        {
+            PROTOCOL.C_TO_U_MOVE,
+            PROTOCOL.C_TO_U_WEAR_ITEM,
+            PROTOCOL.C_TO_U_USE_SKILL
+        };
+
         public async Task OnMessageFromClient(Const<byte[]> buffer)
         {
             try
             {
-                if (Config.BUFFER_SIZE < buffer.Value.Length)
+                await _userLock.WaitAsync();
+
+                using var packet = Packet.Create(buffer);
+                var protocolId = (PROTOCOL)packet.PopProtocolId();
+                _ = packet.PopPlayerId();
+                var body = packet.PopBody();
+
+                if (NonAuthProtocol.Contains(protocolId))
                 {
-                    throw new Exception(
-                        $"Invalid Buffer Size. player id: {this.player_id}, size: {buffer.Value.Length}"
-                    );
-                }
-
-                byte[] clone = new byte[Config.BUFFER_SIZE];
-                Array.Copy(buffer.Value, clone, buffer.Value.Length);
-
-                Packet packet = new(clone, this);
-                PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
-                long player_id = packet.PopPlayerId();
-                byte[] body = packet.PopBody();
-
-                await this.player_lock.WaitAsync();
-
-                var non_auth_protocol = new[] { PROTOCOL.C_TO_U_HEART_BEAT, PROTOCOL.C_TO_U_LOGIN };
-                if (non_auth_protocol.Contains(protocol_id))
-                {
-                    switch (protocol_id)
+                    switch (protocolId)
                     {
                         case PROTOCOL.C_TO_U_HEART_BEAT:
-                            await HeartBeat();
+                            // HeartBeat();
                             break;
-
                         case PROTOCOL.C_TO_U_LOGIN:
-                            await HandleMessage<C_TO_U_LOGIN>(body, Login);
+                            HandleMessage<C_TO_U_LOGIN>(body, Login);
                             break;
                     }
-                }
-                else
-                {
-                    if (player_id == 0 || this.player_id != player_id)
-                    {
-                        throw new Exception($"Invalid ID: {this.player_id}, {player_id}");
-                    }
-
-                    if (this.object_controller == null)
-                    {
-                        throw new Exception($"not initialize state {this.player_id}, {player_id}");
-                    }
-
-                    var action_protocol = new[]
-                    {
-                        PROTOCOL.C_TO_U_MOVE,
-                        PROTOCOL.C_TO_U_WEAR_ITEM,
-                        PROTOCOL.C_TO_U_GET_JOB,
-                        PROTOCOL.C_TO_U_USE_SKILL
-                    };
-
-                    if (action_protocol.Contains(protocol_id) && this.in_action)
-                    {
-                        throw new Exception($"in action. {this.player_id}");
-                    }
-
-                    switch (protocol_id)
-                    {
-                        case PROTOCOL.C_TO_U_CHANGE_MAP_SUCCESS:
-                            await ChangeMapSuccess();
-                            break;
-
-                        case PROTOCOL.C_TO_U_CHAT_LOG:
-                            await ChatLog();
-                            break;
-
-                        case PROTOCOL.C_TO_U_MOVE:
-                            await HandleMessage<C_TO_U_MOVE>(
-                                body,
-                                this.object_controller.RequestMove
-                            );
-                            break;
-
-                        case PROTOCOL.C_TO_U_PLAYER_INFO:
-                            await HandleMessage<C_TO_U_PLAYER_INFO>(body, GetPlayerInfo);
-                            break;
-
-                        case PROTOCOL.C_TO_U_OBJECT_INFO:
-                            await HandleMessage<C_TO_U_OBJECT_INFO>(
-                                body,
-                                this.object_controller.GetObjectInfo
-                            );
-                            break;
-
-                        case PROTOCOL.C_TO_U_JOB_RESOURCE_INFO:
-                            await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, GetJobResourceInfo);
-                            break;
-
-                        case PROTOCOL.C_TO_U_GET_JOB:
-                            await HandleMessage<C_TO_U_GET_JOB>(body, JobController.GetJob);
-                            break;
-
-                        case PROTOCOL.C_TO_U_UPGRADE_JOB:
-                            await JobController.UpgradeJob(this);
-                            break;
-
-                        case PROTOCOL.C_TO_U_WEAR_ITEM:
-                            await HandleMessage<C_TO_U_WEAR_ITEM>(
-                                body,
-                                InventoryController.RequestWearItem
-                            );
-                            break;
-
-                        case PROTOCOL.C_TO_U_USE_ITEM:
-                            await HandleMessage<C_TO_U_USE_ITEM>(
-                                body,
-                                InventoryController.RequestUseItem
-                            );
-                            break;
-
-                        case PROTOCOL.C_TO_U_USE_SKILL:
-                            await HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
-                            break;
-
-                        case PROTOCOL.C_TO_U_CHAT_MSG:
-                            await HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
-                            break;
-
-                        case PROTOCOL.C_TO_U_CREATE_LAB:
-                            await HandleMessage<C_TO_U_CREATE_LAB>(body, LabController.CreateLab);
-                            break;
-
-                        case PROTOCOL.C_TO_U_UPGRADE_RESEARCH:
-                            await HandleMessage<C_TO_U_UPGRADE_RESEARCH>(
-                                body,
-                                LabController.UpgradeResearch
-                            );
-                            break;
-
-                        case PROTOCOL.C_TO_U_MAKE:
-                            await HandleMessage<C_TO_U_MAKE>(body, LabController.Make);
-                            break;
-
-                        case PROTOCOL.C_TO_U_WRITE_LAB_HIRE:
-                            await HandleMessage<C_TO_U_WRITE_LAB_HIRE>(
-                                body,
-                                LabController.WriteLabHire
-                            );
-                            break;
-
-                        case PROTOCOL.C_TO_U_LAB_HIRE_LIST:
-                            await LabController.LabHireList(this);
-                            break;
-
-                        case PROTOCOL.C_TO_U_JOIN_LAB:
-                            await HandleMessage<C_TO_U_JOIN_LAB>(body, LabController.JoinLab);
-                            break;
-
-                        case PROTOCOL.C_TO_U_LAB_INVENTORY:
-                            await InventoryController.GetLabInventory(this);
-                            break;
-
-                        case PROTOCOL.C_TO_U_LAB_INVENTORY_ADD_ITEM:
-                            await HandleMessage<C_TO_U_LAB_INVENTORY_ADD_ITEM>(
-                                body,
-                                InventoryController.AddLabItem
-                            );
-                            break;
-
-                        case PROTOCOL.C_TO_U_LAB_INVENTORY_TAKE_ITEM:
-                            await HandleMessage<C_TO_U_LAB_INVENTORY_TAKE_ITEM>(
-                                body,
-                                InventoryController.TakeLabItem
-                            );
-                            break;
-
-                        case PROTOCOL.C_TO_U_ENCAMP:
-                            await HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
-                            break;
-
-                        case PROTOCOL.C_TO_U_DECAMP:
-                            await JobController.Decamp(this);
-                            break;
-
-                        case PROTOCOL.C_TO_U_CAMP_INFO:
-                            await HandleMessage<C_TO_U_CAMP_INFO>(body, GetCampInfo);
-                            break;
-                    }
-                }
-
-                Packet.Destroy(packet);
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-                // this.OnRemoved();
-            }
-            finally
-            {
-                this.player_lock.Release();
-            }
-        }
-
-        public void OnMessageFromSubscribe(RedisValue message)
-        {
-            try
-            {
-                if (this.object_controller == null)
-                {
                     return;
                 }
 
-                Packet packet = new((byte[])message!);
-                PROTOCOL protocol_id = (PROTOCOL)packet.PopProtocolId();
-                long player_id = packet.PopPlayerId();
-                var body = packet.PopBody();
-
-                switch (protocol_id)
+                if (_playerManager.State == PlayerState.NONE)
                 {
-                    case PROTOCOL.G_TO_U_MOVE:
-                        HandleMessage<G_TO_U_MOVE>(body, this.object_controller.SubscribeMove);
-                        break;
-
-                    case PROTOCOL.G_TO_U_SPAWN:
-                        HandleMessage<G_TO_U_SPAWN>(body, this.object_controller.SubscribeSpawn);
-                        break;
-
-                    case PROTOCOL.G_TO_U_DESTROY:
-                        HandleMessage<G_TO_U_DESTROY>(
-                            body,
-                            this.object_controller.SubscribeDestroy
-                        );
-                        break;
-
-                    case PROTOCOL.U_TO_C_CHAT_MSG:
-                        HandleMessage<U_TO_C_CHAT_MSG>(body, SubscribeChatMsg);
-                        break;
-
-                    case PROTOCOL.G_TO_U_PLAYER_INFO:
-                        HandleMessage<G_TO_U_PLAYER_INFO>(body, SubscribePlayerInfo);
-                        break;
-
-                    case PROTOCOL.G_TO_U_JOB_RESOURCE_INFO:
-                        HandleMessage<G_TO_U_JOB_RESOURCE_INFO>(body, SubscribeJobResourceInfo);
-                        break;
-
-                    case PROTOCOL.G_TO_U_CREATE_INSTANCE_SUCCESS:
-                        HandleMessage<G_TO_U_CREATE_INSTANCE_SUCCESS>(
-                            body,
-                            this.object_controller.SubscribeCreateinstanceSuccess
-                        );
-                        break;
-
-                    case PROTOCOL.U_TO_C_LAB_INFO:
-                        HandleMessage<U_TO_C_LAB_INFO>(body, SubscribeLabInfo);
-                        break;
-
-                    case PROTOCOL.U_TO_U_LAB_INVENTORY:
-                        HandleMessage<U_TO_U_LAB_INVENTORY>(body, SubscribeLabInventory);
-                        break;
-
-                    case PROTOCOL.G_TO_U_CAMP_INFO:
-                        HandleMessage<G_TO_U_CAMP_INFO>(body, SubscribeCampInfo);
-                        break;
-
-                    case PROTOCOL.U_TO_U_DUPLICATE:
-                        this.RecvDuplicate();
-                        break;
+                    throw new Exception($"invalid PlayerState");
                 }
 
-                Packet.Destroy(packet);
+                if (ActionProtocol.Contains(protocolId) && _playerManager.State != PlayerState.IDLE)
+                {
+                    throw new Exception($"in action. {_playerManager.PlayerId}");
+                }
+
+                switch (protocolId)
+                {
+                    case PROTOCOL.C_TO_U_CHANGE_MAP_SUCCESS:
+                        await _playerManager.Spawn();
+                        break;
+                    case PROTOCOL.C_TO_U_CHAT_LOG:
+                        await ChatController.GetChatHistory(this, ChatType.ALL);
+                        break;
+                    case PROTOCOL.C_TO_U_MOVE:
+                        HandleMessage<C_TO_U_MOVE>(body, _playerManager.RequestMove);
+                        break;
+                    case PROTOCOL.C_TO_U_PLAYER_INFO:
+                        HandleMessage<C_TO_U_PLAYER_INFO>(body, PlayerController.GetPlayerInfo);
+                        break;
+                    case PROTOCOL.C_TO_U_OBJECT_INFO:
+                        HandleMessage<C_TO_U_OBJECT_INFO>(body, _updateObjectManager.GetObjectInfo);
+                        break;
+                    case PROTOCOL.C_TO_U_EXPLORE_TARGET_INFO:
+                        HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(body, JobController.GetExploreTargetInfo);
+                        break;
+                    case PROTOCOL.C_TO_U_JOB_RESOURCE_INFO:
+                        HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, JobController.GetJobResourceInfo);
+                        break;
+                    case PROTOCOL.C_TO_U_UPGRADE_JOB:
+                        HandleMessage<C_TO_U_UPGRADE_JOB>(body, JobController.UpgradeJob);
+                        break;
+                    case PROTOCOL.C_TO_U_WEAR_ITEM:
+                        HandleMessage<C_TO_U_WEAR_ITEM>(body, InventoryController.RequestWearItem);
+                        break;
+                    case PROTOCOL.C_TO_U_USE_ITEM:
+                        HandleMessage<C_TO_U_USE_ITEM>(body, InventoryController.RequestUseItem);
+                        break;
+                    case PROTOCOL.C_TO_U_EXPLORE:
+                        HandleMessage<C_TO_U_EXPLORE>(body, JobController.Explore);
+                        break;
+                    case PROTOCOL.C_TO_U_USE_SKILL:
+                        HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
+                        break;
+                    case PROTOCOL.C_TO_U_CHAT_MSG:
+                        HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
+                        break;
+                    case PROTOCOL.C_TO_U_CREATE_LAB:
+                        HandleMessage<C_TO_U_CREATE_LAB>(body, LabController.CreateLab);
+                        break;
+                    case PROTOCOL.C_TO_U_UPGRADE_RESEARCH:
+                        HandleMessage<C_TO_U_UPGRADE_RESEARCH>(body, LabController.UpgradeResearch);
+                        break;
+                    case PROTOCOL.C_TO_U_MAKE:
+                        HandleMessage<C_TO_U_MAKE>(body, LabController.Make);
+                        break;
+                    case PROTOCOL.C_TO_U_WRITE_LAB_HIRE:
+                        HandleMessage<C_TO_U_WRITE_LAB_HIRE>(body, LabController.WriteLabHire);
+                        break;
+                    case PROTOCOL.C_TO_U_LAB_HIRE_LIST:
+                        await LabController.LabHireList(this);
+                        break;
+                    case PROTOCOL.C_TO_U_JOIN_LAB:
+                        HandleMessage<C_TO_U_JOIN_LAB>(body, LabController.JoinLab);
+                        break;
+                    case PROTOCOL.C_TO_U_LAB_INVENTORY:
+                        await InventoryController.GetLabInventory(this);
+                        break;
+                    case PROTOCOL.C_TO_U_LAB_INVENTORY_ADD_ITEM:
+                        HandleMessage<C_TO_U_LAB_INVENTORY_ADD_ITEM>(body, InventoryController.AddLabItem);
+                        break;
+                    case PROTOCOL.C_TO_U_LAB_INVENTORY_TAKE_ITEM:
+                        HandleMessage<C_TO_U_LAB_INVENTORY_TAKE_ITEM>(body, InventoryController.TakeLabItem);
+                        break;
+                    case PROTOCOL.C_TO_U_ENCAMP:
+                        HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
+                        break;
+                    case PROTOCOL.C_TO_U_DECAMP:
+                        await JobController.Decamp(this);
+                        break;
+                    case PROTOCOL.C_TO_U_ADD_SELL_ITEM:
+                        HandleMessage<C_TO_U_ADD_SELL_ITEM>(body, JobController.AddSellItem);
+                        break;
+                    case PROTOCOL.C_TO_U_DELETE_SELL_ITEM:
+                        HandleMessage<C_TO_U_DELETE_SELL_ITEM>(body, JobController.DeleteSellItem);
+                        break;
+                    case PROTOCOL.C_TO_U_BUY_ITEM:
+                        HandleMessage<C_TO_U_BUY_ITEM>(body, JobController.BuyItem);
+                        break;
+                    case PROTOCOL.C_TO_U_CAMP_INFO:
+                        HandleMessage<C_TO_U_CAMP_INFO>(body, CampController.GetCampInfo);
+                        break;
+
+                    case PROTOCOL.C_TO_U_SET_NAME:
+                        HandleMessage<C_TO_U_SET_NAME>(body, PlayerController.SetName);
+                        break;
+
+                    case PROTOCOL.C_TO_U_UPDATE_TUTORIAL:
+                        await PlayerController.UpdateTutorial(this);
+                        break;
+                }
             }
             catch (Exception e)
             {
                 LogManager.WriteErrorLog(e);
-                // this.OnRemoved();
+            }
+            finally
+            {
+                _userLock.Release();
             }
         }
 
-        async Task HeartBeat()
+        private void HeartBeat()
         {
-            Packet heart_beat_packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
-            this.SendToClient(heart_beat_packet);
+            _token.IsAlive = true;
 
-            this.token.is_alive = true;
+            using var packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
+            Send(packet);
+        }
 
-            if (this.current_progress_job != null)
+        private async Task Login(GameUser _, C_TO_U_LOGIN request)
+        {
+            if (_playerManager.State != PlayerState.NONE)
             {
-                await JobController.JobSkillEnd(
-                    this,
-                    this.current_progress_job.Value.Item1,
-                    this.current_progress_job.Value.Item2
-                );
+                throw new Exception($"Already Initialized. {_playerManager.PlayerId}");
             }
 
-            if (this.change_map_task != null)
+            bool isDummy = false;
+            if (!long.TryParse(request.AccountToken, out long tempPlayerId))
             {
-                var change_time = this.change_map_task.Value.Item1;
-                if (DateTime.UtcNow >= change_time)
-                {
-                    var change_info = this.change_map_task.Value.Item2;
-                    await this.object_controller!.ChangeMap(
-                        change_info.Item1,
-                        change_info.Item2,
-                        change_info.Item3,
-                        change_info.Item4
-                    );
-
-                    this.change_map_task = null;
-                }
+                tempPlayerId = await CacheHelper.Instance.StringIncrementAsync("temp_player_id") + 1000;
+                isDummy = true;
             }
 
-            if (current_camp_info != null)
+            PlayerInfo? playerInfo = null;
+            using (await PlayerInfo.Lock(RedLock, tempPlayerId))
             {
-                if (DateTime.UtcNow >= current_camp_info.add_hp_timestamp)
+                playerInfo = await PlayerInfo.Load(tempPlayerId);
+                if (playerInfo == null)
                 {
-                    JobInfo? job_info;
-                    using (await PlayerInfoController.Lock(this.redlock, this.player_id))
+                    playerInfo = new(tempPlayerId, isDummy);
+
+                    // 기본템 지급
+                    List<ItemInfo> giftItemList = new();
+                    foreach (var (itemId, count) in Config.DEFAULT_ITEM_LIST)
                     {
-                        job_info = await JobInfoController.Load(this.cache_helper, this.player_id);
-                        if (job_info == null)
-                        {
-                            return;
-                        }
-
-                        if (GameDesignData.GetMaxHP(job_info.job_grade) <= job_info.hp)
-                        {
-                            return;
-                        }
-
-                        job_info.hp += 1;
-                        current_camp_info.add_hp_timestamp = DateTime.UtcNow.AddSeconds(5);
-
-                        await JobInfoController.Save(this.cache_helper, job_info);
-                        await CampInfoController.Save(this.cache_helper, current_camp_info);
+                        var item = await InventoryController.CreateItem(itemId, count);
+                        giftItemList.Add(item);
                     }
 
-                    Packet update_hp_packet = PacketMaker.U_TO_C_UPDATE_HP(1, job_info.hp);
-                    this.SendToClient(update_hp_packet);
-                }
-            }
-        }
-
-        async Task Login(GameUser _, C_TO_U_LOGIN request)
-        {
-            if (this.player_id != 0)
-            {
-                throw new Exception("Already Has Player id");
-            }
-
-            long temp_player_id =
-                request.account_token == "dummy"
-                    ? await cache_helper.StringIncrement("temp_player_id") + 1000
-                    : long.Parse(request.account_token);
-
-            bool is_new = false;
-            PlayerInfo? player_info = null;
-            using (await PlayerInfoController.Lock(this.redlock, this.player_id))
-            {
-                player_info = await PlayerInfoController.Load(cache_helper, temp_player_id);
-                if (player_info == null)
-                {
-                    // 플레이어 생성
-                    player_info = new(
-                        temp_player_id,
-                        name: request.account_token == "dummy"
-                            ? $"더미{temp_player_id}"
-                            : $"플레이어{temp_player_id}",
-                        request.account_token == "dummy" ? MapHelper.GetRandomCell() : new(117, 95)
-                    );
-
-                    is_new = true;
-                    player_info.object_info.map_id = MapID.CITY_1;
-                    player_info.job_info.hp = 100;
+                    playerInfo.InventoryInfo.AddItem(giftItemList);
+                    playerInfo.WearItem(giftItemList[0].ItemUid);
+                    playerInfo.WearItem(giftItemList[1].ItemUid);
                 }
 
-                player_info.object_info.current_cell = player_info.object_info.target_cell;
-                player_info.state = PlayerState.NONE;
+                var movementHandler = new MovementHandler(LogManager, playerInfo.ObjectInfo, NatsClient, Send, _updateObjectManager, _playerManager.ChangeMap);
+                var environmentHandler = new EnvironmentHandler(LogManager, _cts, RedLock, Send, playerInfo.ObjectInfo);
 
-                if (is_new)
-                {
-                    // 기본 아이템 증정
-                    var default_hair = await InventoryController.CreateItem(this, 101000001, 1);
-                    player_info.inventory_info.AddItem(default_hair);
-                    player_info.WearItem(default_hair.item_uid);
-                }
-                else
-                {
-                    // TODO 중복로그인 처리 임시
-                    Packet packet = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
-                    this.nats_client.Publish(
-                        player_info.object_info.GetHashField(),
-                        packet.ToBytes()
-                    );
+                await environmentHandler.StartAsync();
 
-                    Packet.Destroy(packet);
-                }
+                _playerManager.Initialize(playerInfo.ObjectInfo, movementHandler, environmentHandler);
 
-                await PlayerInfoController.Save(this.cache_helper, player_info);
-                await GameObjectInfoController.Save(this.cache_helper, player_info.object_info);
+                using var duplicatePacket = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
+                NatsClient.Publish(_playerManager.ObjectInfo.GetHashField(), duplicatePacket.ToBytes());
 
-                this.player_id = player_info.player_id;
-                this.object_controller = new(this, player_info.object_info);
-                this.in_action = false;
+                await playerInfo.Save();
+                await playerInfo.ObjectInfo.Save();
             }
 
-            // 개인 구독 시작
-            this.nats_client.Subscribe(
-                player_info.object_info.GetHashField(),
-                (channel, message) => OnMessageFromSubscribe(message)
-            );
+            NatsClient.Subscribe(_playerManager.ObjectInfo.GetHashField(), (channel, message) => OnMessageFromSubscribe(message));
+            NatsClient.Subscribe("all", (channel, message) => OnMessageFromSubscribe(message));
 
-            // 공용 구독 시작
-            this.nats_client.Subscribe(
-                "all",
-                (channel, message) => OnMessageFromSubscribe(message)
-            );
+            var labInfo = await LabInfo.Load(playerInfo.LabId);
 
-            var lab_info = await LabInfoController.Load(this.cache_helper, player_info.lab_id);
-
-            // 계정 정보 전송
-            Packet login_packet = PacketMaker.U_TO_C_LOGIN(player_info, lab_info ?? new());
-            SendToClient(login_packet);
+            using var loginPacket = PacketMaker.U_TO_C_LOGIN(playerInfo, labInfo ?? new());
+            Send(loginPacket);
 
             // 인벤토리 정보 전송
-            await InventoryController.GetCurrentItemList(this);
-
-            // 연구소 가입된경우 랩 인벤토리 정보 전송
-            if (player_info.lab_id != 0)
+            var sendItemCount = await InventoryController.GetCurrentItemList(this);
+            if (labInfo != null)
             {
                 await InventoryController.GetLabInventory(this);
             }
 
-            await this.object_controller.ChangeMap(
-                player_info.object_info.map_id,
-                player_info.object_info.map_sub_id,
-                player_info.object_info.current_cell,
-                player_info.object_info.is_flip
-            );
+            await _playerManager.ChangeMap();
         }
 
-        async Task ChangeMapSuccess()
+        public void BroadcastUpdatePlayerInfo(PlayerInfo playerInfo)
         {
-            var player_info = await PlayerInfoController.Load(this.cache_helper, this.player_id);
-            if (player_info == null)
-            {
-                throw new Exception("not found player info");
-            }
-
-            await this.object_controller!.Move(
-                this.object_controller.object_info.current_cell,
-                DirectionType.NONE,
-                player_info,
-                true
-            );
-        }
-
-        async Task ChatLog()
-        {
-            // 이전 채팅기록 불러오기
-            var chat_history = await ChatController.GetChatHistory(this, ChatType.ALL);
-            foreach (var chat_packet in chat_history)
-            {
-                SendToClient(chat_packet);
-            }
-        }
-
-        async Task GetPlayerInfo(GameUser _, C_TO_U_PLAYER_INFO body)
-        {
-            var player_id_list = body.player_id_list;
-
-            RedisValue[] keys = body.player_id_list.ConvertAll(x => (RedisValue)x).ToArray();
-            var player_info_list = await PlayerInfoController.LoadAll(cache_helper, keys);
-
-            Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(player_info_list);
-            this.SendToClient(packet);
-        }
-
-        async Task GetJobResourceInfo(GameUser _, C_TO_U_JOB_RESOURCE_INFO body)
-        {
-            var job_resource_id_list = body.job_resource_id_list;
-            var job_resource_info_list = new List<JobResourceInfo>();
-
-            for (int i = 0; i < job_resource_id_list.Count; i++)
-            {
-                var target_resource_id = job_resource_id_list[i];
-                JobResourceInfo? target_resource_info;
-
-                using (await JobResourceController.Lock(this.redlock, target_resource_id))
-                {
-                    target_resource_info = await JobResourceController.Load(
-                        cache_helper,
-                        target_resource_id
-                    );
-                }
-
-                if (target_resource_info == null)
-                {
-                    continue;
-                }
-
-                job_resource_info_list.Add(target_resource_info);
-
-                bool is_max = job_resource_id_list.Count >= Config.BROADCAST_UNIT;
-                bool is_ended = i == job_resource_id_list.Count - 1;
-
-                if (is_max || is_ended)
-                {
-                    Packet packet = PacketMaker.U_TO_C_JOB_RESOURCE_INFO(job_resource_info_list);
-                    this.SendToClient(packet);
-
-                    job_resource_info_list.Clear();
-                }
-            }
-        }
-
-        async Task GetCampInfo(GameUser _, C_TO_U_CAMP_INFO body)
-        {
-            var camp_id_list = body.camp_id_list;
-            var camp_info_list = new List<CampInfo>();
-
-            for (int i = 0; i < camp_id_list.Count; i++)
-            {
-                var target_camp_id = camp_id_list[i];
-                CampInfo? target_camp_info = await CampInfoController.Load(
-                    cache_helper,
-                    target_camp_id
-                );
-
-                if (target_camp_info == null)
-                {
-                    continue;
-                }
-
-                camp_info_list.Add(target_camp_info);
-
-                bool is_max = camp_info_list.Count >= Config.BROADCAST_UNIT;
-                bool is_ended = i == (camp_info_list.Count - 1);
-
-                if (is_max || is_ended)
-                {
-                    Packet packet = PacketMaker.U_TO_C_CAMP_INFO(camp_info_list);
-                    this.SendToClient(packet);
-
-                    camp_info_list.Clear();
-                }
-            }
-        }
-
-        void SubscribePlayerInfo(GameUser _, G_TO_U_PLAYER_INFO body)
-        {
-            var player_info_list = new List<PlayerInfo> { body.player_info };
-
-            Packet packet = PacketMaker.U_TO_C_PLAYER_INFO(player_info_list);
-            this.SendToClient(packet);
-        }
-
-        void SubscribeJobResourceInfo(GameUser _, G_TO_U_JOB_RESOURCE_INFO body)
-        {
-            Packet packet = PacketMaker.U_TO_C_JOB_RESOURCE_INFO(new() { body.job_resource_info });
-            this.SendToClient(packet);
-        }
-
-        void SubscribeChatMsg(GameUser _, U_TO_C_CHAT_MSG body)
-        {
-            Packet packet = PacketMaker.U_TO_C_CHAT_MSG(
-                body.chat_type,
-                body.name,
-                body.chat_message
-            );
-
-            this.SendToClient(packet);
-        }
-
-        void SubscribeLabInfo(GameUser _, U_TO_C_LAB_INFO body)
-        {
-            Packet packet = PacketMaker.U_TO_C_LAB_INFO(body.join_player_info, body.lab_info);
-            this.SendToClient(packet);
-        }
-
-        void SubscribeLabInventory(GameUser _, U_TO_U_LAB_INVENTORY body)
-        {
-            SendLabItemList(body.item_list);
-        }
-
-        void SubscribeCampInfo(GameUser _, G_TO_U_CAMP_INFO body)
-        {
-            Packet packet = PacketMaker.U_TO_C_CAMP_INFO(new() { body.camp_info });
-            this.SendToClient(packet);
-        }
-
-        public void SendLabItemList(Dictionary<long, ItemInfo> item_dict)
-        {
-            if (item_dict.Count == 0)
-            {
-                Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(new(), true);
-                this.SendToClient(packet);
-            }
-
-            int index = 0;
-            var item_keys = item_dict.Keys.ToArray();
-
-            while (index < item_keys.Length)
-            {
-                var batch_dict = new Dictionary<long, ItemInfo>();
-
-                for (int i = index; i < index + Config.BROADCAST_UNIT && i < item_keys.Length; i++)
-                {
-                    var key = item_keys[i];
-                    batch_dict[key] = item_dict[key];
-                }
-
-                var is_ended = index + Config.BROADCAST_UNIT >= item_keys.Length;
-
-                Packet packet = PacketMaker.U_TO_C_LAB_INVENTORY(batch_dict, is_ended);
-                this.SendToClient(packet);
-
-                index += Config.BROADCAST_UNIT;
-            }
-        }
-
-        public void BroadcastUpdatePlayerInfo(PlayerInfo player_info)
-        {
-            switch (player_info.object_info.map_id)
+            switch (playerInfo.ObjectInfo.MapId)
             {
                 case MapID.LAB_1:
-                    var instance_key = MapHelper.GetInstanceKey(
-                        player_info.object_info.map_id,
-                        player_info.object_info.map_sub_id
-                    );
-                    var instance_server = MapHelper.GetServerIdByMapSubID(
-                        Program.game_server_num,
-                        player_info.object_info.map_sub_id
-                    );
-                    this.nats_client!.Publish(
-                        MapHelper.GetUpdatePlayerSubject(
-                            player_info.object_info.map_id,
-                            player_info.object_info.map_sub_id,
-                            instance_server
-                        ),
-                        MessagePackSerializer.Serialize((instance_key, player_info))
-                    );
+                    var instanceKey = MapHelper.GetInstanceKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
+                    var instanceServer = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, playerInfo.ObjectInfo.MapSubId);
+                    var labSubject = MapHelper.GetUpdatePlayerSubject(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, instanceServer);
+                    NatsClient.Publish(labSubject, MessagePackSerializer.Serialize((instanceKey, playerInfo)));
                     break;
 
                 default:
-                    var position_key = MapHelper.GetPositionKey(
-                        player_info.object_info.map_id,
-                        player_info.object_info.map_sub_id,
-                        player_info.object_info.current_cell
-                    );
-
-                    var target_server_list = MapHelper.GetBoundServerList(
-                        player_info.object_info.map_id,
-                        Program.game_server_num,
-                        MapHelper.GetCell(position_key)
-                    );
-
-                    foreach (var target_server in target_server_list)
+                    var position_key = MapHelper.GetPositionKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, playerInfo.ObjectInfo.CurrentCell);
+                    var targetServerList = MapHelper.GetBoundServerList(playerInfo.ObjectInfo.MapId, Program.GameServerNum, MapHelper.GetCell(position_key));
+                    foreach (var targetServer in targetServerList)
                     {
-                        this.nats_client!.Publish(
-                            MapHelper.GetUpdatePlayerSubject(
-                                player_info.object_info.map_id,
-                                player_info.object_info.map_sub_id,
-                                target_server
-                            ),
-                            MessagePackSerializer.Serialize((position_key, player_info))
-                        );
+                        var subject = MapHelper.GetUpdatePlayerSubject(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, targetServer);
+                        NatsClient.Publish(subject, MessagePackSerializer.Serialize((position_key, playerInfo)));
                     }
                     break;
             }
         }
 
-        public void BroadcastUpdateJobResourceInfo(JobResourceInfo job_resource_info)
+        public void BroadcastUpdateExploreTargetInfo(ExploreTargetInfo exploreTargetInfo)
         {
-            var position_key = MapHelper.GetPositionKey(
-                job_resource_info.object_info.map_id,
-                job_resource_info.object_info.map_sub_id,
-                job_resource_info.object_info.current_cell
-            );
-
-            var target_server_list = MapHelper.GetBoundServerList(
-                job_resource_info.object_info.map_id,
-                Program.game_server_num,
-                MapHelper.GetCell(position_key)
-            );
-
-            foreach (var target_server in target_server_list)
+            var positionKey = MapHelper.GetPositionKey(exploreTargetInfo.ObjectInfo.MapId, exploreTargetInfo.ObjectInfo.MapSubId, exploreTargetInfo.ObjectInfo.CurrentCell);
+            var targetServerList = MapHelper.GetBoundServerList(exploreTargetInfo.ObjectInfo.MapId, Program.GameServerNum, MapHelper.GetCell(positionKey));
+            foreach (var targetServer in targetServerList)
             {
-                this.nats_client!.Publish(
-                    MapHelper.GetUpdateJobResourceSubject(
-                        job_resource_info.object_info.map_id,
-                        job_resource_info.object_info.map_sub_id,
-                        target_server
-                    ),
-                    MessagePackSerializer.Serialize((position_key, job_resource_info))
-                );
+                var subject = MapHelper.GetUpdateExploreTargetSubject(exploreTargetInfo.ObjectInfo.MapId, exploreTargetInfo.ObjectInfo.MapSubId, targetServer);
+                NatsClient.Publish(subject, MessagePackSerializer.Serialize((positionKey, exploreTargetInfo)));
             }
         }
 
-        public void SendToClient(Packet msg)
+        public void BroadcastUpdateJobResourceInfo(JobResourceInfo jobResourceInfo)
         {
-            this.token.Send(msg);
-            Packet.Destroy(msg);
+            var positionKey = MapHelper.GetPositionKey(jobResourceInfo.ObjectInfo.MapId, jobResourceInfo.ObjectInfo.MapSubId, jobResourceInfo.ObjectInfo.CurrentCell);
+            var targetServerList = MapHelper.GetBoundServerList(jobResourceInfo.ObjectInfo.MapId, Program.GameServerNum, MapHelper.GetCell(positionKey));
+            foreach (var targetServer in targetServerList)
+            {
+                var subject = MapHelper.GetUpdateJobResourceSubject(jobResourceInfo.ObjectInfo.MapId, jobResourceInfo.ObjectInfo.MapSubId, targetServer);
+                NatsClient.Publish(subject, MessagePackSerializer.Serialize((positionKey, jobResourceInfo)));
+            }
         }
 
-        public void PublishToClients(Packet packet, List<long> user_id_list)
+        public void Send(IPacket msg)
         {
-            foreach (var user_id in user_id_list)
+            if (msg is Packet packet)
             {
-                this.nats_client.Publish(
-                    GameObjectInfo.MakeHashField(ObjectType.PLAYER, user_id),
-                    packet.ToBytes()
-                );
+                _token.Send(packet);
+                return;
             }
 
-            Packet.Destroy(packet);
+            throw new NotImplementedException();
         }
 
-        public async Task SendToGameServer(Packet msg)
+        public void PublishToClients(Packet packet, List<long> userIdList)
         {
-            await this.cache_helper.Enqueue("game_server_queue", msg.ToBytes());
-            Packet.Destroy(msg);
+            foreach (var userId in userIdList)
+            {
+                NatsClient.Publish(GameObjectInfo.MakeHashField(ObjectType.PLAYER, userId), packet.ToBytes());
+            }
         }
 
-        public async Task Release()
+        public static async Task SendToGameServer(Packet msg)
         {
-            if (this.object_controller != null)
-            {
-                await this.object_controller.PublishDestroy();
-            }
-
-            if (current_progress_job != null)
-            {
-                await JobResourceController.Delete(
-                    this.cache_helper,
-                    current_progress_job.Value.Item2.resource_uid
-                );
-                JobController.BroadcastJobResourceDestroy(this, current_progress_job.Value.Item2);
-            }
-
-            await JobController.Decamp(this);
-
-            Packet packet = PacketMaker.U_TO_G_LOGOUT(this.player_id);
-            _ = this.SendToGameServer(packet);
-
-            this.player_id = 0;
-            this.nats_client.Close();
+            await CacheHelper.Instance.EnqueueAsync("game_server_queue", msg.ToBytes());
         }
 
         public void RecvDuplicate()
         {
-            Packet packet = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
-            this.SendToClient(packet);
-
+            using var packet = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
+            Send(packet);
             OnRemoved();
         }
 
         public void OnRemoved()
         {
-            this.cts!.Cancel();
-            this.cts.Dispose();
+            LogManager.WriteInfoLog($"GameUser Removed. PlayerId:{PlayerId}");
+            _onLeaveCallback(this);
+        }
 
-            Program.leave_user_queue!.Enqueue(this);
-            this.token.network_service.CloseClientSocket(this.token);
+        public async Task<UserToken> Release()
+        {
+            if (_playerManager != null)
+            {
+                await JobController.Decamp(this);
+                await _playerManager.Dispose();
+                _progressManager.Dispose();
+                _updateObjectManager.Dispose();
+            }
+
+            using var packet = PacketMaker.U_TO_G_LOGOUT(PlayerId);
+            await SendToGameServer(packet);
+
+            NatsClient.Close();
+
+            _cts.Cancel();
+            _cts.Dispose();
+
+            return _token;
         }
     }
 }

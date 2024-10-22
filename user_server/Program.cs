@@ -1,92 +1,44 @@
-﻿using System.Collections.Concurrent;
-using System.Net;
-using network;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using network.core;
+using network.managers;
+using network.infrastructure;
 
 namespace user_server
 {
     class Program
     {
-        static string server_type = "user_server";
-
-#pragma warning disable CS8618
-        public static NetworkService network_service;
-        public static ConcurrentQueue<GameUser>? leave_user_queue;
-        public static int game_server_num;
-        public static string[] redis_endpoints;
-        public static string nats_endpoint;
-#pragma warning restore
-
-        static void Main()
+        public static int GameServerNum { get; private set; }
+        public static async Task Main(string[] args)
         {
-            string? game_server_env = Environment.GetEnvironmentVariable("GAME_SERVER_NUM");
-            if (!Int32.TryParse(game_server_env, out game_server_num))
+            await Host.CreateDefaultBuilder(args)
+            .ConfigureAppConfiguration((hostingContext, config) =>
             {
-                LogManager.WriteErrorLog(new Exception("Invalid Game Server Num"));
-                return;
-            }
-            LogManager.Initialize(server_type, 0);
-
-            string? redis_endpoints_env = Environment.GetEnvironmentVariable("REDIS_ENDPOINTS");
-            if (string.IsNullOrEmpty(redis_endpoints_env))
+                config.AddEnvironmentVariables();
+            })
+            .ConfigureLogging((hostingContext, logging) =>
             {
-                LogManager.WriteErrorLog(new Exception("Invalid Redis EndPoint"));
-                return;
-            }
-
-            RedisConnectionPool.Initialize(redis_endpoints_env);
-
-            string? nats_endpoint_env = Environment.GetEnvironmentVariable("NATS_ENDPOINT");
-            if (string.IsNullOrEmpty(nats_endpoint_env))
+                logging.ClearProviders();
+                logging.AddConfiguration(hostingContext.Configuration.GetSection("Logging"));
+                logging.AddConsole();
+            })
+            .ConfigureServices((hostingContext, services) =>
             {
-                LogManager.WriteErrorLog(new Exception("Invalid Nats EndPoint"));
-                return;
-            }
-
-            nats_endpoint = nats_endpoint_env;
-
-            PacketBufferManager.Initialize(Config.MAX_CONNECTION);
-            MapHelper.Initialize();
-            ChatController.Initialize();
-
-            network_service = new();
-            leave_user_queue = new();
-
-            Task.Run(ProcessLeaveUser);
-
-            network_service.Initialize();
-            network_service.session_created_callback += (UserToken token) =>
-            {
-                try
+                services.AddSingleton<NetworkService>();
+                services.AddSingleton<RedisConnectionPool>();
+                services.AddSingleton<NatsClientFactory>();
+                services.AddSingleton(sp =>
                 {
-                    GameUser user = new(token);
-                }
-                catch (Exception e)
-                {
-                    LogManager.WriteErrorLog(e);
-                }
-            };
-
-            network_service.Listen(IPAddress.Any, Config.USER_SERVER_PORT);
-
-            LogManager.WriteInfoLog($"user server start. max_connection: {Config.MAX_CONNECTION}");
-        }
-
-        public static async Task ProcessLeaveUser()
-        {
-            while (true)
-            {
-                while (leave_user_queue!.TryDequeue(out GameUser? user))
-                {
-                    if (user == null)
-                    {
-                        continue;
-                    }
-
-                    LogManager.WriteInfoLog($"client disconnect. player_id: {user.player_id}");
-                    await user.Release();
-                }
-                await Task.Delay(10);
-            }
+                    var config = sp.GetRequiredService<IConfiguration>();
+                    var serverType = config["ServerType"] ?? "none";
+                    GameServerNum = config.GetValue<int>("GameServerNum");
+                    return new LogManager(serverType, GameServerNum);
+                });
+                services.AddHostedService<UserServer>();
+            })
+            .RunConsoleAsync();
         }
     }
 }

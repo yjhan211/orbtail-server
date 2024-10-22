@@ -1,39 +1,42 @@
-namespace network
+using MessagePack;
+
+namespace network.common
 {
-    using MessagePack;
-
     [MessagePackObject]
-    public class Cell : IMessagePackObject
+    public class Cell : IMessagePackObject, IEquatable<Cell>
     {
-        public Cell(int x, int y)
-        {
-            this.x = x;
-            this.y = y;
-        }
-
         [Key("x")]
-        public int x { get; set; }
+        public int X { get; set; }
 
         [Key("y")]
-        public int y { get; set; }
+        public int Y { get; set; }
 
-        public override bool Equals(object? obj)
+        public Cell(int x, int y)
         {
-            if (obj == null || GetType() != obj.GetType())
-                return false;
-
-            var other = (Cell)obj;
-            return this.x == other.x && this.y == other.y;
+            X = x;
+            Y = y;
         }
 
-        public override int GetHashCode()
+        public override bool Equals(object? obj) => Equals(obj as Cell);
+
+        public bool Equals(Cell? other)
         {
-            return HashCode.Combine(this.x, this.y);
+            return other != null && X == other.X && Y == other.Y;
         }
 
-        public static Cell Clone(Cell cell)
+        public override int GetHashCode() => HashCode.Combine(X, Y);
+
+        public static Cell Clone(Cell cell) => new(cell.X, cell.Y);
+        public Cell Clone() => new(X, Y);
+
+        public static bool operator ==(Cell? left, Cell? right)
         {
-            return new Cell(cell.x, cell.y);
+            return EqualityComparer<Cell>.Default.Equals(left, right);
+        }
+
+        public static bool operator !=(Cell? left, Cell? right)
+        {
+            return !(left == right);
         }
     }
 }

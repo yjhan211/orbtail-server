@@ -1,108 +1,141 @@
-namespace network
-{
-    using MessagePack;
-    using System.Collections.Generic;
+using MessagePack;
+using RedLockNet;
+using RedLockNet.SERedis;
+using network.helpers;
 
+namespace network.common
+{
     [MessagePackObject]
     public class LabInfo : IMessagePackObject
     {
         [IgnoreMember]
-        public const string HASH_KEY = "lab_info";
+        public const string HASH_KEY = "LabInfo";
 
-        [Key("lab_id")]
-        public long lab_id { get; set; }
+        [Key("labId")]
+        public long LabId { get; set; }
 
-        [Key("lab_name")]
-        public string lab_name { get; set; }
+        [Key("labName")]
+        public string LabName { get; set; }
 
-        [Key("master_player_id")]
-        public long master_player_id { get; set; }
+        [Key("masterPlayerId")]
+        public long MasterPlayerId { get; set; }
 
-        [Key("member_dict")]
-        public Dictionary<long, string> member_dict { get; set; }
+        [Key("masterPlayerName")]
+        public string MasterPlayerName { get; set; }
 
-        [Key("grade")]
-        public LabGrade lab_grade { get; set; }
+        [Key("memberDict")]
+        public Dictionary<long, string> MemberDict { get; set; }
 
-        [Key("reserach_info_dict")]
-        public Dictionary<int, ResearchInfo> reserach_info_dict { get; set; }
+        [Key("labGrade")]
+        public LabGrade LabGrade { get; set; }
 
-        [Key("inventory_info")]
-        public InventoryInfo inventory_info { get; set; }
+        [Key("reserachInfoDict")]
+        public Dictionary<int, ResearchInfo> ResearchInfoDict { get; set; }
+
+        [Key("inventoryInfo")]
+        public InventoryInfo InventoryInfo { get; set; }
 
         public LabInfo()
         {
-            this.lab_id = 0;
-            this.lab_name = "";
-            this.master_player_id = 0;
-            this.member_dict = new();
-            this.lab_grade = new();
-            this.reserach_info_dict = new();
-            this.inventory_info = new();
+            LabId = 0;
+            LabName = "";
+            MasterPlayerId = 0;
+            MasterPlayerName = "";
+            MemberDict = new();
+            LabGrade = LabGrade.NONE;
+            ResearchInfoDict = new();
+            InventoryInfo = new();
         }
 
-        public LabInfo(
-            long lab_id,
-            long master_player_id,
-            string master_player_name,
-            JobType master_player_job_type,
-            string lab_name
-        )
+        public LabInfo(long labId, long masterPlayerId, string masterPlayerName, string labName)
         {
-            this.lab_id = lab_id;
-            this.lab_name = lab_name;
-            this.master_player_id = master_player_id;
-            this.member_dict = new() { { master_player_id, master_player_name } };
-            this.lab_grade = LabGrade.CLUB;
-            this.reserach_info_dict = new();
-            this.inventory_info = new(InventoryOwnerType.LAB, lab_id);
-
-            ResearchInfo reserach = new ResearchInfo();
-            switch (master_player_job_type)
-            {
-                case JobType.GEOIOGIST:
-                    reserach.research_id = 1;
-                    reserach.geo_level = 1;
-                    break;
-
-                case JobType.BOTANIST:
-                    reserach.research_id = 2;
-                    reserach.botan_level = 1;
-                    break;
-
-                case JobType.BIOLOGY:
-                    reserach.research_id = 3;
-                    reserach.bio_level = 1;
-                    break;
-            }
-
-            this.reserach_info_dict.Add(reserach.research_id, reserach);
+            LabId = labId;
+            LabName = labName;
+            MasterPlayerId = masterPlayerId;
+            MasterPlayerName = masterPlayerName;
+            MemberDict = new() { { MasterPlayerId, MasterPlayerName } };
+            LabGrade = LabGrade.CLUB;
+            ResearchInfoDict = new();
+            InventoryInfo = new(InventoryOwnerType.LAB, LabId);
         }
 
         public string GetLockKey()
         {
-            return $"lab_lock_{this.lab_id}";
+            return $"lab_lock_{LabId}";
         }
 
-        public static string GetLockKey(long player_id)
+        public static string GetLockKey(long labId)
         {
-            return $"lab_lock_{player_id}";
+            return $"lab_lock_{labId}";
+        }
+
+        public static async Task<IRedLock> Lock(RedLockFactory redlock, long labId)
+        {
+            return await redlock.CreateLockAsync(LabInfo.GetLockKey(labId), Config.LOCK_TTL);
+        }
+
+        public async Task Save()
+        {
+            await InventoryInfo.Save();
+            await CacheHelper.Instance.HashSetAsync(LabInfo.HASH_KEY, LabId, MessagePackSerializer.Serialize(this));
+        }
+
+        public static async Task<LabInfo?> Load(long labId)
+        {
+            var serializedData = await CacheHelper.Instance.HashGetAsync(LabInfo.HASH_KEY, labId);
+            if (serializedData.IsNull)
+            {
+                return null;
+            }
+
+            var labInfo = MessagePackSerializer.Deserialize<LabInfo?>(serializedData);
+            if (labInfo == null)
+            {
+                return null;
+            }
+
+            labInfo.InventoryInfo = await InventoryInfo.Load(InventoryOwnerType.LAB, labId) ?? new InventoryInfo(InventoryOwnerType.LAB, labId);
+            return labInfo;
+        }
+
+        public static async Task Delete(long labId)
+        {
+            await CacheHelper.Instance.HashDeleteAsync(LabInfo.HASH_KEY, labId);
         }
     }
 
     [MessagePackObject]
     public class ResearchInfo : IMessagePackObject
     {
-        [Key("research_id")]
-        public int research_id { get; set; }
+        [Key("researchId")]
+        public int ResearchId { get; set; }
 
-        [Key("geo_level")]
-        public int geo_level { get; set; }
+        [Key("level")]
+        public int Level { get; set; }
 
-        [Key("botan_level")]
-        public int botan_level { get; set; }
+        [Key("pointDict")]
+        public Dictionary<JobType, int> PointDict { get; set; }
 
-        [Key("bio_level")]
-        public int bio_level { get; set; }
+        public ResearchInfo()
+        {
+            ResearchId = 0;
+            Level = 0;
+            PointDict = new();
+        }
+
+        public ResearchInfo(int reserachId, int level)
+        {
+            ResearchId = reserachId;
+            Level = level;
+            PointDict = new();
+            InitResearchPoint();
+        }
+
+        public void InitResearchPoint()
+        {
+            PointDict.Clear();
+
+            // 기획 변경 예정
+        }
     }
 }

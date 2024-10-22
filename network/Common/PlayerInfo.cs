@@ -1,186 +1,242 @@
-namespace network
-{
-    using MessagePack;
+using MessagePack;
+using RedLockNet;
+using RedLockNet.SERedis;
+using StackExchange.Redis;
+using network.helpers;
 
+namespace network.common
+{
     [MessagePackObject]
     public class PlayerInfo : IMessagePackObject
     {
-        // 원래는 PlayerInfo가 GameObjectInfo를 상속받는 형식을 의도했으나
-        // MessagePackObject 역직렬화 과정에 문제가 있어서 이렇게 됨
         [IgnoreMember]
-        public GameObjectInfo object_info { get; set; }
+        public GameObjectInfo ObjectInfo { get; set; }
 
         [IgnoreMember]
-        public JobInfo job_info { get; set; }
+        public JobInfo JobInfo { get; set; }
 
         [IgnoreMember]
-        public InventoryInfo inventory_info { get; set; }
-
-        /*-----------------------------------------------------------------*/
+        public InventoryInfo InventoryInfo { get; set; }
 
         [IgnoreMember]
-        public const string HASH_KEY = "player_info";
+        public const string HASH_KEY = "PlayerInfo";
 
-        [Key("player_id")]
-        public long player_id { get; set; }
+        [Key("playerId")]
+        public long PlayerId { get; set; }
 
         [Key("name")]
-        public string name { get; set; }
+        public string Name { get; set; }
 
         [Key("grade")]
-        public PlayerGrade grade { get; set; }
+        public PlayerGrade Grade { get; set; }
 
-        [Key("wear_item_id_list")]
-        public List<int> wear_items { get; set; }
+        [Key("wearItemIdList")]
+        public List<int> WearItemIdList { get; set; }
 
         [Key("state")]
-        public PlayerState state { get; set; }
+        public PlayerState State { get; set; }
 
-        [Key("lab_id")]
-        public long lab_id { get; set; }
+        [Key("labId")]
+        public long LabId { get; set; }
 
-        [Key("lab_name")]
-        public string lab_name { get; set; }
+        [Key("labName")]
+        public string LabName { get; set; }
+
+        [Key("gold")]
+        public long Gold { get; set; }
+
+        [Key("tutorialIndex")]
+        public int TutorialIndex { get; set; }
 
         // 이거 없애면 안됨 MessagePack에서 씀
         public PlayerInfo()
         {
-            this.player_id = 0;
-            this.name = "";
-            this.grade = PlayerGrade.NONE;
-            this.wear_items = new List<int>();
-            this.state = PlayerState.NONE;
-
-            this.object_info = new GameObjectInfo();
-            this.job_info = new JobInfo();
-            this.inventory_info = new InventoryInfo();
-
-            this.lab_id = 0;
-            this.lab_name = "";
+            PlayerId = 0;
+            Name = "";
+            Grade = PlayerGrade.NONE;
+            WearItemIdList = new();
+            State = PlayerState.NONE;
+            ObjectInfo = new();
+            JobInfo = new();
+            InventoryInfo = new();
+            LabId = 0;
+            LabName = "";
+            Gold = 0;
+            TutorialIndex = 0;
         }
 
-        public PlayerInfo(long player_id, string name, Cell cell)
+        public PlayerInfo(long playerId, bool isDummy)
         {
-            this.player_id = player_id;
-            this.name = name;
-            this.grade = PlayerGrade.COMMONER;
-            this.wear_items = new List<int>();
-            this.state = PlayerState.NONE;
+            string name = isDummy ? $"더미{playerId}" : $"플레이어{playerId}";
+            Cell initCell = isDummy ? MapHelper.GetRandomCell() : Config.START_POSITION;
 
-            this.object_info = new GameObjectInfo(
-                ObjectType.PLAYER,
-                player_id,
-                MapID.CITY_1,
-                0,
-                cell
-            );
-
-            this.job_info = new JobInfo(player_id);
-            this.inventory_info = new InventoryInfo(InventoryOwnerType.PLAYER, player_id);
-
-            this.lab_id = 0;
-            this.lab_name = "";
+            PlayerId = playerId;
+            Name = name;
+            Grade = PlayerGrade.COMMONER;
+            WearItemIdList = new();
+            State = PlayerState.NONE;
+            ObjectInfo = new(ObjectType.PLAYER, PlayerId, MapID.CAMPUS_1, 0, initCell);
+            JobInfo = new(PlayerId);
+            InventoryInfo = new(InventoryOwnerType.PLAYER, PlayerId);
+            LabId = 0;
+            LabName = "";
+            Gold = 1000;
+            TutorialIndex = 0;
         }
 
         public string GetLockKey()
         {
-            return $"player_lock_{this.player_id}";
+            return $"player_lock_{PlayerId}";
         }
 
-        public static string GetLockKey(long player_id)
+        public static string GetLockKey(long playerId)
         {
-            return $"player_lock_{player_id}";
+            return $"player_lock_{playerId}";
         }
 
-        /*-----------------------------------------------------------------*/
-
-        public void WearItem(long item_uid)
+        public void WearItem(long itemUid)
         {
-            if (!this.inventory_info.item_dict.TryGetValue(item_uid, out var target_item))
+            if (!InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
             {
-                throw new Exception($"Item with uid {item_uid} not found");
+                throw new Exception($"Item with uid {itemUid} not found");
             }
 
-            if (!GameDesignData.IsWearableItem(target_item.item_id))
+            if (!GameDesignData.IsWearableItem(targetItem.ItemId))
             {
-                throw new Exception($"not wearable item {target_item.item_id}");
+                throw new Exception($"not wearable item {targetItem.ItemId}");
             }
 
-            if (
-                !GameDesignData.IsWearableJobInfo(
-                    target_item.item_id,
-                    job_info.job_type,
-                    job_info.job_grade
-                )
-            )
+            if (!GameDesignData.IsWearableJobInfo(targetItem.ItemId, JobInfo.JobStatDict))
             {
-                throw new Exception($"not wearable job type. {target_item.item_id}");
+                throw new Exception($"not wearable job type. {targetItem.ItemId}");
             }
 
-            if (target_item.is_wear)
+            if (targetItem.IsWear)
             {
                 // 착용 해제
-                this.wear_items.Remove(target_item.item_id);
-                target_item.is_wear = false;
+                WearItemIdList.Remove(targetItem.ItemId);
+                targetItem.IsWear = false;
+                return;
             }
-            else
+
+            // 같은 종류의 아이템 인덱스 찾기
+            var lastWearItem = InventoryInfo.ItemDict.Values.FirstOrDefault(
+                item => GameDesignData.IsSameTypeItem(item.ItemId, targetItem.ItemId) && item.IsWear
+            );
+
+            if (lastWearItem != null)
             {
-                // 같은 종류의 아이템 인덱스 찾기
-                var last_wear_item = this.inventory_info.item_dict.Values.FirstOrDefault(
-                    item =>
-                        GameDesignData.IsSameTypeItem(item.item_id, target_item.item_id)
-                        && item.is_wear
-                );
-
-                if (last_wear_item != null)
-                {
-                    // 같은 종류 아이템 착용 해제
-                    last_wear_item.is_wear = false;
-                    this.wear_items.Remove(last_wear_item.item_id);
-                }
-
-                // 새로운 아이템 착용
-                this.inventory_info.item_dict[item_uid].is_wear = true;
-                this.wear_items.Add(target_item.item_id);
+                // 같은 종류 아이템 착용 해제
+                lastWearItem.IsWear = false;
+                WearItemIdList.Remove(lastWearItem.ItemId);
             }
+
+            // 새로운 아이템 착용
+            InventoryInfo.ItemDict[itemUid].IsWear = true;
+            WearItemIdList.Add(targetItem.ItemId);
         }
 
-        public void UseItem(long item_uid)
+        public void UseItem(long itemUid, int count = 1)
         {
-            if (!this.inventory_info.item_dict.TryGetValue(item_uid, out var target_item))
+            if (!InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
             {
-                throw new Exception($"Item with uid {item_uid} not found");
+                throw new Exception($"Item with uid {itemUid} not found");
             }
 
-            if (target_item.count <= 0)
+            if (targetItem.Count <= 0)
             {
-                throw new Exception($"Item {item_uid} count invalid");
+                throw new Exception($"Item {itemUid} count invalid");
             }
 
-            if (!GameDesignData.IsUseableItem(target_item.item_id))
+            if (!GameDesignData.IsUseableItem(targetItem.ItemId))
             {
-                throw new Exception($"not useable item {target_item.item_id}");
+                throw new Exception($"not useable item {targetItem.ItemId}");
             }
 
-            switch (target_item.item_id)
+            // TODO
+        }
+
+        public static async Task<IRedLock> Lock(RedLockFactory redlock, long playerId)
+        {
+            return await redlock.CreateLockAsync(PlayerInfo.GetLockKey(playerId), Config.LOCK_TTL);
+        }
+
+        public async Task<IRedLock> Lock(RedLockFactory redlock)
+        {
+            return await redlock.CreateLockAsync(this.GetLockKey(), Config.LOCK_TTL);
+        }
+
+        public async Task Save()
+        {
+            // 조회가 빈번해서 메모리에 올려뒀음. 따로 Save함
+            // await GameObjectInfoController.Save(cache_helper, player_info.object_info);
+
+            await JobInfo.Save();
+            await InventoryInfo.Save();
+            await CacheHelper.Instance.HashSetAsync(PlayerInfo.HASH_KEY, PlayerId, MessagePackSerializer.Serialize(this));
+        }
+
+        public static async Task<PlayerInfo?> Load(long playerId)
+        {
+            var serialized = await CacheHelper.Instance.HashGetAsync(PlayerInfo.HASH_KEY, playerId);
+            if (serialized == RedisValue.Null)
             {
-                case 201000001:
-                    this.job_info.hp = Math.Min(
-                        GameDesignData.GetMaxHP(this.job_info.job_grade),
-                        this.job_info.hp + 20
-                    );
-                    break;
+                return null;
             }
 
-            if (target_item.count <= 1)
+            var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
+            if (playerInfo == null)
             {
-                this.inventory_info.item_dict.Remove(target_item.item_uid);
+                return null;
             }
-            else
+
+            playerInfo.ObjectInfo = await GameObjectInfo.Load(ObjectType.PLAYER, playerId) ?? new GameObjectInfo(playerId);
+            playerInfo.JobInfo = await JobInfo.Load(playerId) ?? new JobInfo(playerId);
+            playerInfo.InventoryInfo = await InventoryInfo.Load(InventoryOwnerType.PLAYER, playerId) ?? new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
+
+            return playerInfo;
+        }
+
+        public static async Task<List<PlayerInfo>> LoadAll(RedisValue[] objectKeys)
+        {
+            var hashEntries = await CacheHelper.Instance.HashGetAsync(PlayerInfo.HASH_KEY, objectKeys);
+            if (hashEntries == null)
             {
-                // TODO 일괄사용
-                target_item.count -= 1;
+                return new();
             }
+
+            List<RedisValue> hashStrings = hashEntries
+                .Where(entry => entry != RedisValue.Null)
+                .Select(entry => entry)
+                .ToList();
+
+            List<PlayerInfo> result = new();
+            foreach (var hashString in hashStrings)
+            {
+                var player_info = MessagePackSerializer.Deserialize<PlayerInfo>(hashString);
+                if (player_info == null)
+                {
+                    continue;
+                }
+                result.Add(player_info);
+            }
+
+            return result;
+        }
+
+        public async Task Delete(PlayerInfo playerInfo)
+        {
+            await playerInfo.ObjectInfo.Delete();
+            await CacheHelper.Instance.HashDeleteAsync(PlayerInfo.HASH_KEY, playerInfo.PlayerId);
+        }
+
+        public static async Task Delete(long playerId)
+        {
+            var objectField = GameObjectInfo.MakeHashField(ObjectType.PLAYER, playerId);
+
+            await GameObjectInfo.Delete(objectField);
+            await JobInfo.Delete(playerId);
+            await CacheHelper.Instance.HashDeleteAsync(PlayerInfo.HASH_KEY, playerId);
         }
     }
 }

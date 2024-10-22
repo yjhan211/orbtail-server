@@ -1,53 +1,101 @@
-namespace network
-{
-    using MessagePack;
+using MessagePack;
+using RedLockNet;
+using RedLockNet.SERedis;
+using network.helpers;
 
+namespace network.common
+{
     [MessagePackObject]
     public class JobResourceInfo : IMessagePackObject
     {
         [IgnoreMember]
-        public const string HASH_KEY = "job_resource_info";
+        public const string HASH_KEY = "JobResourceInfo";
 
         [IgnoreMember]
-        public GameObjectInfo object_info { get; set; }
+        public GameObjectInfo ObjectInfo { get; set; }
 
-        [Key("resource_uid")]
-        public long resource_uid { get; set; } // 유니크 아이디
+        [Key("resourceUid")]
+        public long ResourceUid { get; set; } // 유니크 아이디
 
-        [Key("resource_id")]
-        public int resource_id { get; set; } // 리소스 종류. 네모난 돌, 동그란 돌, 잡초..
+        [Key("resourceId")]
+        public int ResourceId { get; set; } // 리소스 종류. 네모난 돌, 동그란 돌, 잡초..
 
-        [Key("player_id")]
-        public long player_id { get; set; } // 점유중인 플레이어 아이디
+        [Key("playerId")]
+        public long PlayerId { get; set; } // 점유중인 플레이어 아이디
 
-        [Key("end_timestamp")]
-        public DateTime end_timestamp { get; set; } // 점유 끝나는 시간
+        [Key("endTimestamp")]
+        public DateTime EndTimestamp { get; set; } // 점유 끝나는 시간
 
         // 이거 없애면 안됨 MessagePack에서 씀
         public JobResourceInfo()
         {
-            this.object_info = new();
-            this.resource_uid = 0;
-            this.resource_id = 0;
-            this.player_id = 0;
+            ObjectInfo = new();
+            ResourceUid = 0;
+            ResourceId = 0;
+            PlayerId = 0;
         }
 
-        public JobResourceInfo(long resource_uid, int resource_id, GameObjectInfo object_info)
+        public JobResourceInfo(long resourceUid, int resourceId, GameObjectInfo objectInfo)
         {
-            this.object_info = object_info;
-            this.resource_uid = resource_uid;
-            this.resource_id = resource_id;
-            this.player_id = 0;
+            ObjectInfo = objectInfo;
+            ResourceUid = resourceUid;
+            ResourceId = resourceId;
+            PlayerId = 0;
         }
 
         public string GetLockKey()
         {
-            return $"job_resource_lock_{this.resource_uid}";
+            return $"job_resource_lock_{ResourceUid}";
         }
 
-        public static string GetLockKey(long resource_uid)
+        public static string GetLockKey(long resourceUid)
         {
-            return $"job_resource_lock_{resource_uid}";
+            return $"job_resource_lock_{resourceUid}";
+        }
+
+        public static async Task<IRedLock> Lock(RedLockFactory redlock, long resourceUid)
+        {
+            return await redlock.CreateLockAsync(JobResourceInfo.GetLockKey(resourceUid), Config.LOCK_TTL);
+        }
+
+        public async Task Save()
+        {
+            await ObjectInfo.Save();
+            await CacheHelper.Instance.HashSetAsync(JobResourceInfo.HASH_KEY, ResourceUid, MessagePackSerializer.Serialize(this));
+        }
+
+        public static async Task<JobResourceInfo?> Load(long resourceUid)
+        {
+            var serializedData = await CacheHelper.Instance.HashGetAsync(JobResourceInfo.HASH_KEY, resourceUid);
+            if (serializedData.IsNull)
+            {
+                return null;
+            }
+
+            var resourceInfo = MessagePackSerializer.Deserialize<JobResourceInfo?>(serializedData);
+            if (resourceInfo == null)
+            {
+                return null;
+            }
+
+            var objectInfo = await GameObjectInfo.Load(ObjectType.JOBRESOURCE, resourceUid);
+            if (objectInfo == null)
+            {
+                return null;
+            }
+
+            resourceInfo.ObjectInfo = objectInfo;
+            return resourceInfo;
+        }
+
+        public async Task Delete()
+        {
+            await CacheHelper.Instance.HashDeleteAsync(JobResourceInfo.HASH_KEY, ResourceUid);
+        }
+
+        public static async Task Delete(long resourceUid)
+        {
+            await CacheHelper.Instance.HashDeleteAsync(JobResourceInfo.HASH_KEY, resourceUid);
         }
     }
 }

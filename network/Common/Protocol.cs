@@ -1,4 +1,4 @@
-﻿namespace network
+﻿namespace network.common
 {
     public enum PROTOCOL : int
     {
@@ -6,13 +6,15 @@
         U_TO_C_HEART_BEAT,
         C_TO_U_LOGIN,
         U_TO_C_LOGIN,
+        C_TO_U_SET_NAME,
+        U_TO_C_SET_NAME,
         U_TO_C_INVENTORY_ITEM_LIST,
         C_TO_U_CHAT_MSG,
         U_TO_C_CHAT_MSG,
         C_TO_U_CHAT_LOG,
         C_TO_U_MOVE,
         U_TO_G_MOVE,
-        G_TO_U_MOVE,
+        G_TO_U_UPDATE_OBJECT,
         U_TO_C_MOVE,
         G_TO_U_SPAWN,
         U_TO_C_SPAWN,
@@ -23,6 +25,9 @@
         U_TO_C_PLAYER_INFO,
         G_TO_U_PLAYER_INFO,
         C_TO_U_OBJECT_INFO,
+        C_TO_U_EXPLORE_TARGET_INFO,
+        U_TO_C_EXPLORE_TARGET_INFO,
+        G_TO_U_EXPLORE_TARGET_INFO,
         C_TO_U_JOB_RESOURCE_INFO,
         U_TO_C_JOB_RESOURCE_INFO,
         G_TO_U_JOB_RESOURCE_INFO,
@@ -30,8 +35,9 @@
         U_TO_C_USE_SKILL,
         U_TO_G_USE_SKILL,
         U_TO_C_USE_SKILL_COMPLETE,
-        C_TO_U_GET_JOB,
-        U_TO_C_GET_JOB,
+        C_TO_U_EXPLORE,
+        U_TO_C_EXPLORE,
+        U_TO_C_EXPLORE_COMPLETE,
         C_TO_U_UPGRADE_JOB,
         U_TO_C_UPGRADE_JOB,
         C_TO_U_WEAR_ITEM,
@@ -64,24 +70,36 @@
         U_TO_C_CAMP_INFO,
         C_TO_U_CAMP_INFO,
         U_TO_C_UPDATE_HP,
+        C_TO_U_ADD_SELL_ITEM,
+        U_TO_C_ADD_SELL_ITEM,
+        C_TO_U_DELETE_SELL_ITEM,
+        U_TO_C_DELETE_SELL_ITEM,
+        C_TO_U_BUY_ITEM,
+        U_TO_C_BUY_ITEM,
+        U_TO_U_PLAYER_INFO,
         U_TO_U_DUPLICATE,
         U_TO_G_LOGOUT,
+        C_TO_U_UPDATE_TUTORIAL,
+        U_TO_C_UPDATE_TUTORIAL,
         END
     }
 
     public enum MapID : int
     {
         NONE,
-        CITY_1,
-        FOREST_1,
+        CAMPUS_1,
+        FACTORY_1,
+        WETLAND_1,
         LAB_1,
     }
 
+    // 주의사항_ 붙이지 말 것
     public enum ObjectType : int
     {
         NONE,
         PLAYER,
         ITEM,
+        EXPLORETARGET,
         JOBRESOURCE,
         CAMP,
     }
@@ -110,9 +128,8 @@
     public enum JobType : byte
     {
         NONE,
-        GEOIOGIST, // 지질학자
-        BOTANIST, // 식물학자
-        BIOLOGY, // 생물학자
+        ENGINEER, // 공학자
+        CHEMIST, // 화학자
     }
 
     public enum JobGrade : byte
@@ -170,9 +187,10 @@
     public enum PlayerState : short
     {
         NONE = 0,
-        GEO_WORK_1,
-        BOTAN_WORK_1,
-        RESEARCH_1,
+        IDLE,
+        ENGINEER_WORK_1,
+        CHEMIST_WORK_1,
+        EXPLORE_1,
         CAMIPING_1,
     }
 }

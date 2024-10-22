@@ -1,57 +1,93 @@
-namespace network
-{
-    using MessagePack;
+using MessagePack;
+using network.helpers;
 
+namespace network.common
+{
     [MessagePackObject]
     public class CampInfo : IMessagePackObject
     {
         [IgnoreMember]
-        public const string HASH_KEY = "camp_info";
+        public const string HASH_KEY = "CampInfo";
 
         [IgnoreMember]
-        public GameObjectInfo object_info { get; set; }
+        public GameObjectInfo ObjectInfo { get; set; }
 
-        /*-----------------------------------------------------------------*/
+        [Key("playerId")]
+        public long PlayerId { get; set; }
 
-        [Key("player_id")]
-        public long player_id { get; set; }
+        [Key("playerName")]
+        public string PlayerName { get; set; }
 
-        [Key("player_name")]
-        public string player_name { get; set; }
+        [Key("itemInfo")]
+        public ItemInfo ItemInfo { get; set; }
 
-        [Key("item_info")]
-        public ItemInfo item_info { get; set; }
-
-        [Key("add_hp_timestamp")]
-        public DateTime add_hp_timestamp { get; set; } // 피 채워지는 시간
+        [Key("cellDict")]
+        public Dictionary<long, (ItemInfo, int)> CellDict { get; set; }
 
         public CampInfo()
         {
-            this.object_info = new();
-            this.item_info = new();
-            this.player_id = new();
-            this.player_name = "";
+            ObjectInfo = new();
+            PlayerId = new();
+            PlayerName = "";
+            ItemInfo = new();
+            CellDict = new();
         }
 
-        public CampInfo(
-            long player_id,
-            string player_name,
-            GameObjectInfo player_object_info,
-            ItemInfo item_info,
-            Cell cell
-        )
+        public CampInfo(long playerId, string playerName, GameObjectInfo playerObjectInfo, ItemInfo itemInfo, Cell cell)
         {
-            this.player_id = player_id;
-            this.player_name = player_name;
-            this.item_info = item_info;
-            this.object_info = new(
+            ObjectInfo = new(
                 ObjectType.CAMP,
-                this.player_id,
-                player_object_info.map_id,
-                player_object_info.map_sub_id,
+                playerId,
+                playerObjectInfo.MapId,
+                playerObjectInfo.MapSubId,
                 Cell.Clone(cell),
-                player_object_info.is_flip
+                playerObjectInfo.IsFlip
             );
+
+            PlayerId = playerId;
+            PlayerName = playerName;
+            ItemInfo = itemInfo;
+            CellDict = new();
+        }
+
+        public async Task Save()
+        {
+            await ObjectInfo.Save();
+            await CacheHelper.Instance.HashSetAsync(CampInfo.HASH_KEY, PlayerId, MessagePackSerializer.Serialize(this));
+        }
+
+        public static async Task<CampInfo?> Load(long playerId)
+        {
+            var serializedData = await CacheHelper.Instance.HashGetAsync(CampInfo.HASH_KEY, playerId);
+            if (serializedData.IsNull)
+            {
+                return null;
+            }
+
+            var campInfo = MessagePackSerializer.Deserialize<CampInfo?>(serializedData);
+            if (campInfo == null)
+            {
+                return null;
+            }
+
+            var objectInfo = await GameObjectInfo.Load(ObjectType.CAMP, playerId);
+            if (objectInfo == null)
+            {
+                return null;
+            }
+
+            campInfo.ObjectInfo = objectInfo;
+            return campInfo;
+        }
+
+        public async Task Delete()
+        {
+            await CacheHelper.Instance.HashDeleteAsync(CampInfo.HASH_KEY, PlayerId);
+        }
+
+        public static async Task Delete(long playerId)
+        {
+            await CacheHelper.Instance.HashDeleteAsync(CampInfo.HASH_KEY, playerId);
         }
     }
 }
