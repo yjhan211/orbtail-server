@@ -8,7 +8,7 @@
         public static readonly int HEADER_SIZE = 4;
         public static readonly int BACK_LOG = 100;
         public static readonly int BATCH_SIZE = 10;
-        public static readonly float SPEED = 1f;
+        public static readonly float SPEED = 1.5f;
         public static readonly float MOVE_ELAPSED_TIME = 0.5f / SPEED;
         public static readonly int BROADCAST_CHUNK_SIZE = 200;
         public static readonly int BROADCAST_UNIT = BUFFER_SIZE / BROADCAST_CHUNK_SIZE;

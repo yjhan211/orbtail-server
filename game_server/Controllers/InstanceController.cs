@@ -6,6 +6,7 @@ using network.helpers;
 using network.infrastructure;
 using network.managers;
 using network.packets;
+using System.Diagnostics;
 
 namespace game_server.controllers
 {
@@ -50,15 +51,15 @@ namespace game_server.controllers
         private async Task CreateInstance(RedisValue message)
         {
             var (userSubject, mapId, mapSubId) = MessagePackSerializer.Deserialize<(string, MapID, long)>(message);
-
             await _mapLock.WaitAsync();
             try
             {
                 switch (mapId)
                 {
                     case MapID.LAB_1:
+                    case MapID.LIBRARY:
                         var instanceKey = MapHelper.GetInstanceKey(mapId, mapSubId);
-                        _objectInstanceDict.GetOrAdd(instanceKey, _ => new HashSet<string>());
+                        _objectInstanceDict.GetOrAdd(instanceKey, _ => new());
                         SubscribeToInstanceEvents(mapId, mapSubId);
                         break;
 
@@ -83,9 +84,10 @@ namespace game_server.controllers
                 { MapHelper.GetUpdatePlayerSubject(mapId, mapSubId, Program.GameServerId), UpdatePlayerInfo }
             };
 
+            var moveSubject = MapHelper.GetMoveManageSubject(mapId, mapSubId, Program.GameServerId);
             var asyncHandlers = new Dictionary<string, Func<RedisValue, Task>>
             {
-                { MapHelper.GetMoveManageSubject(mapId, mapSubId, Program.GameServerId), MoveManageObjectAsync },
+                { moveSubject, MoveManageObjectAsync },
                 { MapHelper.GetLeaveManageSubject(mapId, mapSubId, Program.GameServerId), LeaveManageObjectAsync },
                 { MapHelper.GetDestroyObjectSubject(mapId, mapSubId, Program.GameServerId), DestroyManageObjectAsync }
             };
@@ -233,7 +235,8 @@ namespace game_server.controllers
         {
             if (_objectInstanceDict.TryGetValue(instanceKey, out var channels))
             {
-                foreach (var channel in channels)
+                var channelsCopy = channels.ToList();
+                foreach (var channel in channelsCopy)
                 {
                     _natsClient.Publish(channel, packet.ToBytes());
                 }

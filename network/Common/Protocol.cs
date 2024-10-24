@@ -91,6 +91,7 @@
         FACTORY_1,
         WETLAND_1,
         LAB_1,
+        LIBRARY,
     }
 
     // 주의사항_ 붙이지 말 것

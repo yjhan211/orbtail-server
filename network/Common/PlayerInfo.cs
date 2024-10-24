@@ -68,14 +68,15 @@ namespace network.common
         public PlayerInfo(long playerId, bool isDummy)
         {
             string name = isDummy ? $"더미{playerId}" : $"플레이어{playerId}";
-            Cell initCell = isDummy ? MapHelper.GetRandomCell() : Config.START_POSITION;
+            // Cell initCell = isDummy ? MapHelper.GetRandomCell() : Config.START_POSITION;
+            var initCell = new Cell(90, 96);
 
             PlayerId = playerId;
             Name = name;
             Grade = PlayerGrade.COMMONER;
             WearItemIdList = new();
             State = PlayerState.NONE;
-            ObjectInfo = new(ObjectType.PLAYER, PlayerId, MapID.CAMPUS_1, 0, initCell);
+            ObjectInfo = new(ObjectType.PLAYER, PlayerId, MapID.LIBRARY, 0, initCell);
             JobInfo = new(PlayerId);
             InventoryInfo = new(InventoryOwnerType.PLAYER, PlayerId);
             LabId = 0;

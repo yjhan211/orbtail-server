@@ -39,20 +39,35 @@ namespace network.managers
             if (includeStackTrace)
             {
                 var stackTrace = new StackTrace(true);
-                logBuilder.AppendLine("Stack Trace:");
+                logBuilder.AppendLine("\nStack Trace:");
                 for (int i = 1; i < stackTrace.FrameCount; i++)
                 {
                     StackFrame? frame = stackTrace.GetFrame(i);
-                    if (frame == null)
+                    if (frame == null) continue;
+
+                    var method = frame.GetMethod();
+                    if (method == null) continue;
+
+                    string fileName = frame.GetFileName() ?? "Unknown File";
+                    int lineNumber = frame.GetFileLineNumber();
+                    string className = method.DeclaringType?.FullName ?? "Unknown Class";
+                    string methodName = method.Name;
+
+                    if (lineNumber > 0)
                     {
-                        continue;
+                        logBuilder.AppendLine($"   at {className}.{methodName} in {fileName}:line {lineNumber}");
                     }
-                    logBuilder.AppendLine($"in {frame.GetFileName()}:line {frame.GetFileLineNumber()}");
+                    else
+                    {
+                        logBuilder.AppendLine($"   at {className}.{methodName}");
+                    }
                 }
             }
 
             _logger.LogDebug(logBuilder.ToString());
         }
+
+
         public void WriteErrorLog(Exception exception)
         {
             _logger.LogError(exception, exception.Message);

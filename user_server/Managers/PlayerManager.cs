@@ -27,6 +27,7 @@ namespace user_server.managers
         public Cell CurrentCell => ObjectInfo?.CurrentCell ?? new Cell(0, 0);
         public bool IsFlip => ObjectInfo?.IsFlip ?? false;
         public PlayerState State { get; private set; }
+        public string ObjectKey => ObjectInfo?.GetHashField() ?? string.Empty;
 
         public PlayerManager(LogManager logManager, NatsClient natsClient, SendPacketDelegate sendToClient, UpdateObjectManager updateObjectManager)
         {
@@ -69,6 +70,11 @@ namespace user_server.managers
                     var subject = MapHelper.GetCreateInstanceSubject(serverId);
                     var publishObj = MessagePackSerializer.Serialize((ObjectInfo!.GetHashField(), MapId, MapSubId));
                     _natsClient.Publish(subject, publishObj);
+                    break;
+
+                case MapID.LIBRARY:
+                    var publishLibraryObj = MessagePackSerializer.Serialize((ObjectInfo!.GetHashField(), MapId, MapSubId));
+                    _natsClient.Publish(MapHelper.GetCreateInstanceSubject(1), publishLibraryObj);
                     break;
 
                 default:
@@ -158,6 +164,11 @@ namespace user_server.managers
                 case MapID.LAB_1:
                     key = MapHelper.GetInstanceKey(MapId, MapSubId);
                     manageServer = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, ObjectInfo.MapSubId);
+                    break;
+
+                case MapID.LIBRARY:
+                    key = MapHelper.GetInstanceKey(MapId, MapSubId);
+                    manageServer = 1;
                     break;
 
                 default:

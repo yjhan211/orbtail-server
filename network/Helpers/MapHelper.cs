@@ -6,6 +6,18 @@ namespace network.helpers
     // 추후 달라진다면 MapHelper 분리 필요
     public static class MapHelper
     {
+        public static bool IsCommonMap(MapID mapId)
+        {
+            switch (mapId)
+            {
+                case MapID.LAB_1:
+                case MapID.LIBRARY:
+                    return false;
+            }
+
+            return true;
+        }
+
         public static Dictionary<string, int> part_by_position_key = new();
         public static Dictionary<MapID, Dictionary<int, List<string>>> position_list_by_map_part = new();
         public static Dictionary<MapID, List<int>> GenExploreIdList = new();

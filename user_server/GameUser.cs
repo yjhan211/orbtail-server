@@ -299,13 +299,18 @@ namespace user_server
 
         public void BroadcastUpdatePlayerInfo(PlayerInfo playerInfo)
         {
+            var instanceKey = MapHelper.GetInstanceKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
             switch (playerInfo.ObjectInfo.MapId)
             {
                 case MapID.LAB_1:
-                    var instanceKey = MapHelper.GetInstanceKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
                     var instanceServer = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, playerInfo.ObjectInfo.MapSubId);
                     var labSubject = MapHelper.GetUpdatePlayerSubject(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, instanceServer);
                     NatsClient.Publish(labSubject, MessagePackSerializer.Serialize((instanceKey, playerInfo)));
+                    break;
+
+                case MapID.LIBRARY:
+                    var librarySubject = MapHelper.GetUpdatePlayerSubject(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, 1);
+                    NatsClient.Publish(librarySubject, MessagePackSerializer.Serialize((instanceKey, playerInfo)));
                     break;
 
                 default:

@@ -79,7 +79,7 @@ namespace user_server.handlers
             _objectInfo.TargetCell = MapHelper.CalcTargetCell(_objectInfo.TargetCell, moveRequest.Direction);
 
             _objectInfo.SetFlip(moveRequest.Direction);
-            _objectInfo.MoveTimestamp = DateTime.UtcNow;
+            _objectInfo.MoveTimestamp = moveRequest.Direction == DirectionType.NONE ? default : DateTime.UtcNow;
             await _objectInfo.Save();
 
             var lastPositionKey = MapHelper.GetPositionKey(_objectInfo.MapId, _objectInfo.MapSubId, _lastCell!);
@@ -92,6 +92,11 @@ namespace user_server.handlers
                 case MapID.LAB_1:
                     lastManageServer = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, _objectInfo.MapSubId);
                     currentManageServer = lastManageServer;
+                    break;
+
+                case MapID.LIBRARY:
+                    lastManageServer = 1;
+                    currentManageServer = 1;
                     break;
 
                 default:
@@ -132,16 +137,26 @@ namespace user_server.handlers
                 isArrive = false;
             }
 
-            if (isArrive)
+            if (!isArrive)
             {
-                // 이동 완료 처리
-                _lastCell = Cell.Clone(_objectInfo.CurrentCell);
-                _objectInfo.CurrentCell = Cell.Clone(_objectInfo.TargetCell);
-                await _objectInfo.Save();
+                return;
+            }
 
+            await CompleteMovement();
+        }
+
+        private async Task CompleteMovement()
+        {
+            _lastCell = Cell.Clone(_objectInfo.CurrentCell);
+            _objectInfo.CurrentCell = Cell.Clone(_objectInfo.TargetCell);
+            await _objectInfo.Save();
+
+            using var packet = PacketMaker.U_TO_C_MOVE(_objectInfo.ObjectId, ErrorCode.SUCCESS, _objectInfo);
+            _sendToClient(packet);
+
+            if (MapHelper.IsCommonMap(_objectInfo.MapId))
+            {
                 RequestSpawnInfo(_objectInfo.MapId);
-                using var packet = PacketMaker.U_TO_C_MOVE(_objectInfo.ObjectId, ErrorCode.SUCCESS, _objectInfo);
-                _sendToClient(packet);
             }
         }
 
@@ -156,6 +171,10 @@ namespace user_server.handlers
                 }
                 return playerInfo.LabId;
             }
+            if (mapId == MapID.LIBRARY)
+            {
+                return 0;
+            }
             return 0;
         }
 
@@ -163,7 +182,6 @@ namespace user_server.handlers
         {
             if (!MapHelper.PortalInfo.TryGetValue(MapHelper.GetPortalKey(_objectInfo.MapId, _objectInfo.TargetCell), out var portalResult))
             {
-                RequestSpawnInfo(_objectInfo.MapId);
                 return false;
             }
 
@@ -173,7 +191,6 @@ namespace user_server.handlers
             var mapChangeInfo = new ChangeMapInfo(mapId, mapSubId, spawnPosition, isFlip);
             await _spawn.Invoke(mapChangeInfo);
             _moveQueue.Clear();
-            RequestSpawnInfo(mapChangeInfo.MapId);
 
             return true;
         }
@@ -183,6 +200,14 @@ namespace user_server.handlers
             if (targetMapId == MapID.LAB_1)
             {
                 var serverId = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, _objectInfo.MapSubId);
+                var instanceKey = MapHelper.GetInstanceKey(_objectInfo.MapId, _objectInfo.MapSubId);
+                RequestSpawnObjectList(serverId, new() { instanceKey });
+                return;
+            }
+
+            if (targetMapId == MapID.LIBRARY)
+            {
+                var serverId = 1;
                 var instanceKey = MapHelper.GetInstanceKey(_objectInfo.MapId, _objectInfo.MapSubId);
                 RequestSpawnObjectList(serverId, new() { instanceKey });
                 return;
