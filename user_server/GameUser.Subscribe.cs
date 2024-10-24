@@ -95,27 +95,15 @@ namespace user_server
 
         private void SubscribeSpawn(GameUser _, G_TO_U_SPAWN body)
         {
-            var count = 0;
-            var batchList = new List<string>(Config.BROADCAST_UNIT);
-
-            for (int i = 0; i < body.ObjectKeyList.Count; i++)
+            var objectKeys = body.ObjectKeyList.Where((key) => key != _playerManager.ObjectKey).ToList();
+            for (int i = 0; i < objectKeys.Count; i += Config.BROADCAST_UNIT)
             {
-                var key = body.ObjectKeyList[i];
-                if (key == _playerManager.ObjectKey)
-                    continue;
+                var batch = objectKeys.Skip(i).Take(Config.BROADCAST_UNIT).ToList();
+                var remain = objectKeys.Count - i - Config.BROADCAST_UNIT;
+                var isEnded = remain <= 0;
 
-                batchList.Add(key.ToString());
-                count++;
-
-                if (count == Config.BROADCAST_UNIT || i == body.ObjectKeyList.Count - 1)
-                {
-                    var isEnded = i == body.ObjectKeyList.Count - 1;
-                    using var packet = PacketMaker.U_TO_C_SPAWN(batchList, isEnded);
-                    Send(packet);
-
-                    batchList.Clear();
-                    count = 0;
-                }
+                using var packet = PacketMaker.U_TO_C_SPAWN(batch.Select((item) => item.ToString()).ToList(), isEnded);
+                Send(packet);
             }
         }
 
