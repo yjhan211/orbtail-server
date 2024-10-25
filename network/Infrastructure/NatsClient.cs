@@ -5,6 +5,7 @@ namespace network.infrastructure
     public class NatsClient
     {
         private readonly IConnection _connection;
+        private readonly List<IAsyncSubscription> _subscriptions;
 
         public NatsClient(string url)
         {
@@ -12,6 +13,7 @@ namespace network.infrastructure
             options.Url = url;
 
             _connection = new ConnectionFactory().CreateConnection(options);
+            _subscriptions = new();
         }
 
         public void Publish(string subject, byte[] message)
@@ -21,16 +23,25 @@ namespace network.infrastructure
 
         public IAsyncSubscription Subscribe(string subject, Action<string, byte[]> messageHandler)
         {
-            EventHandler<MsgHandlerEventArgs> handler = (sender, args) =>
+            void handler(object? sender, MsgHandlerEventArgs args)
             {
                 messageHandler(args.Message.Subject, args.Message.Data);
-            };
+            }
 
-            return _connection.SubscribeAsync(subject, handler);
+            var subscription = _connection.SubscribeAsync(subject, handler);
+            _subscriptions.Add(subscription);
+            return subscription;
         }
 
         public void Close()
         {
+            Console.WriteLine(_subscriptions.Count);
+            foreach (var subscription in _subscriptions)
+            {
+                subscription.Unsubscribe();
+                Console.WriteLine("Unsubscribe !!!");
+            }
+            _subscriptions.Clear();
             _connection?.Close();
         }
     }

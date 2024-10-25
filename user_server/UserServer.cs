@@ -127,7 +127,11 @@ namespace user_server
             {
                 if (_leaveUserQueue.TryDequeue(out GameUser? user))
                 {
-                    await user.Release();
+                    var token = await user.Release();
+                    if (token != null)
+                    {
+                        _networkService.CloseClientSocket(token);
+                    }
                 }
             }
             catch (Exception ex)

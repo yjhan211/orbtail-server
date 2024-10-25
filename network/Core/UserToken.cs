@@ -182,7 +182,6 @@ namespace network.core
         {
             lock (_lockSendingQueue)
             {
-                IsReleased = true;
                 _sendingQueue.Clear();
             }
 

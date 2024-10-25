@@ -58,8 +58,10 @@ namespace game_server.controllers
                     case MapID.LAB_1:
                     case MapID.LIBRARY:
                         var instanceKey = MapHelper.GetInstanceKey(mapId, mapSubId);
-                        _objectInstanceDict.GetOrAdd(instanceKey, _ => new());
-                        SubscribeToInstanceEvents(mapId, mapSubId);
+                        if (_objectInstanceDict.TryAdd(instanceKey, new()))
+                        {
+                            SubscribeToInstanceEvents(mapId, mapSubId);
+                        }
                         break;
 
                     default:

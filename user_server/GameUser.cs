@@ -49,7 +49,6 @@ namespace user_server
             _progressManager = new(LogManager);
             _updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new() { SingleReader = false, SingleWriter = false });
             _updateObjectManager = new(_cts, LogManager, Send, _updateObjectChannel);
-
             _playerManager = new(LogManager, NatsClient, Send, _updateObjectManager);
             _onLeaveCallback = onLeaveCallback;
 
@@ -253,7 +252,7 @@ namespace user_server
                     playerInfo = new(tempPlayerId, isDummy);
 
                     // 기본템 지급
-                    List<ItemInfo> giftItemList = new();
+                    var giftItemList = new List<ItemInfo>();
                     foreach (var (itemId, count) in Config.DEFAULT_ITEM_LIST)
                     {
                         var item = await InventoryController.CreateItem(itemId, count);
@@ -384,38 +383,43 @@ namespace user_server
             _onLeaveCallback(this);
         }
 
-        public async Task Release()
+        public async Task<UserToken?> Release()
         {
             await _token.LockDisconnect.WaitAsync();
             try
             {
                 if (_token.IsReleased)
                 {
-                    return;
+                    return null;
                 }
                 _token.IsReleased = true;
                 _token.IsAlive = false;
+
+                if (_playerManager != null)
+                {
+                    await JobController.Decamp(this);
+                    await _playerManager.Dispose();
+                    _progressManager.Dispose();
+                    _updateObjectManager.Dispose();
+                }
+
+                using var packet = PacketMaker.U_TO_G_LOGOUT(PlayerId);
+                await SendToGameServer(packet);
+
+                _cts.Cancel();
+                NatsClient.Close();
+                _cts.Dispose();
+            }
+            catch (Exception ex)
+            {
+                LogManager.WriteErrorLog(ex);
             }
             finally
             {
                 _token.LockDisconnect.Release();
             }
 
-            if (_playerManager != null)
-            {
-                await JobController.Decamp(this);
-                await _playerManager.Dispose();
-                _progressManager.Dispose();
-                _updateObjectManager.Dispose();
-            }
-
-            using var packet = PacketMaker.U_TO_G_LOGOUT(PlayerId);
-            await SendToGameServer(packet);
-
-            _cts.Cancel();
-            NatsClient.Close();
-            _cts.Dispose();
-            _token.Disconnect();
+            return _token;
         }
     }
 }

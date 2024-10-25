@@ -134,7 +134,7 @@ namespace network.core
                 userToken = (UserToken)argsToken;
                 if (recvArgs.SocketError != SocketError.Success)
                 {
-                    CloseClientSocket(userToken);
+                    userToken?.OnRemoved();
                     return;
                 }
 
@@ -154,7 +154,7 @@ namespace network.core
                 else if (recvArgs.BytesTransferred == 0)
                 {
                     // 연결이 종료되었을 수 있음
-                    CloseClientSocket(userToken);
+                    userToken?.OnRemoved();
                     return;
                 }
 
@@ -168,7 +168,7 @@ namespace network.core
             catch (Exception ex)
             {
                 _logManager.WriteErrorLog(ex);
-                CloseClientSocket(userToken);
+                userToken?.OnRemoved();
             }
         }
 
