@@ -14,15 +14,15 @@ namespace network.core
         private readonly MessageResolver _messageResolver;
         private readonly Queue<Packet> _sendingQueue;
         private readonly object _lockSendingQueue;
-        public object _lockDisconnect;
         private IPeer? _peer;
         private Timer? _heartbeatTimer;
         public SocketAsyncEventArgs? RecvEventArgs { get; private set; }
         public SocketAsyncEventArgs? SendEventArgs { get; private set; }
         public Socket? Socket { get; set; }
         public bool IsAlive { get; set; } = true;
-        public bool IsReleased { get; private set; } = false;
+        public bool IsReleased { get; set; } = false;
         public event Action<UserToken>? Disconnected;
+        public SemaphoreSlim LockDisconnect;
 
         public UserToken(int tokenId, LogManager logManager)
         {
@@ -31,7 +31,7 @@ namespace network.core
             _messageResolver = new();
             _sendingQueue = new();
             _lockSendingQueue = new();
-            _lockDisconnect = new();
+            LockDisconnect = new(1);
         }
 
         public void SetPeer(IPeer peer)
@@ -161,32 +161,21 @@ namespace network.core
 
         public void Disconnect()
         {
-            lock (_lockDisconnect)
+            try
             {
-                if (IsReleased)
+                if (Socket != null && Socket.Connected)
                 {
-                    return;
+                    Socket.Shutdown(SocketShutdown.Both);
+                    Socket.Close();
                 }
-
-                IsReleased = true;
-                IsAlive = false;
-
-                try
-                {
-                    if (Socket != null && Socket.Connected)
-                    {
-                        Socket.Shutdown(SocketShutdown.Both);
-                        Socket.Close();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logManager.WriteErrorLog(ex);
-                }
-
-                OnRemoved();
-                Disconnected?.Invoke(this);
             }
+            catch (Exception ex)
+            {
+                _logManager.WriteErrorLog(ex);
+            }
+
+            OnRemoved();
+            Disconnected?.Invoke(this);
         }
 
         public void OnRemoved()

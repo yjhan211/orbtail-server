@@ -127,8 +127,7 @@ namespace user_server
             {
                 if (_leaveUserQueue.TryDequeue(out GameUser? user))
                 {
-                    var token = await user.Release();
-                    token.Disconnect();
+                    await user.Release();
                 }
             }
             catch (Exception ex)

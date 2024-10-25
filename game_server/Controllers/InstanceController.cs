@@ -6,7 +6,6 @@ using network.helpers;
 using network.infrastructure;
 using network.managers;
 using network.packets;
-using System.Diagnostics;
 
 namespace game_server.controllers
 {

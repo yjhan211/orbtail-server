@@ -384,8 +384,23 @@ namespace user_server
             _onLeaveCallback(this);
         }
 
-        public async Task<UserToken> Release()
+        public async Task Release()
         {
+            await _token.LockDisconnect.WaitAsync();
+            try
+            {
+                if (_token.IsReleased)
+                {
+                    return;
+                }
+                _token.IsReleased = true;
+                _token.IsAlive = false;
+            }
+            finally
+            {
+                _token.LockDisconnect.Release();
+            }
+
             if (_playerManager != null)
             {
                 await JobController.Decamp(this);
@@ -397,12 +412,10 @@ namespace user_server
             using var packet = PacketMaker.U_TO_G_LOGOUT(PlayerId);
             await SendToGameServer(packet);
 
-            NatsClient.Close();
-
             _cts.Cancel();
+            NatsClient.Close();
             _cts.Dispose();
-
-            return _token;
+            _token.Disconnect();
         }
     }
 }
