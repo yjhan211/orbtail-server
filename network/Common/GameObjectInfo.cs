@@ -37,9 +37,9 @@ namespace network.common
         [Key("isFlip")]
         public bool IsFlip { get; set; }
 
-        public string GetHashField() => $"{(int)ObjectType}_{ObjectId}";
+        public string GetGameObjectKey() => $"{(int)ObjectType}_{ObjectId}";
 
-        public static string MakeHashField(ObjectType type, long objectId)
+        public static string MakeObjectKey(ObjectType type, long objectId)
         {
             return $"{(int)type}_{objectId}";
         }
@@ -97,7 +97,7 @@ namespace network.common
 
         public static async Task<GameObjectInfo?> Load(ObjectType type, long objectId)
         {
-            var serializedData = await CacheHelper.Instance.HashGetAsync(GameObjectInfo.HASH_KEY, GameObjectInfo.MakeHashField(type, objectId));
+            var serializedData = await CacheHelper.Instance.HashGetAsync(GameObjectInfo.HASH_KEY, GameObjectInfo.MakeObjectKey(type, objectId));
             if (serializedData.IsNull)
             {
                 return null;
@@ -146,12 +146,12 @@ namespace network.common
 
         public async Task Save()
         {
-            await CacheHelper.Instance.HashSetAsync(GameObjectInfo.HASH_KEY, this.GetHashField(), MessagePackSerializer.Serialize(this));
+            await CacheHelper.Instance.HashSetAsync(GameObjectInfo.HASH_KEY, this.GetGameObjectKey(), MessagePackSerializer.Serialize(this));
         }
 
         public async Task Delete()
         {
-            await CacheHelper.Instance.HashDeleteAsync(GameObjectInfo.HASH_KEY, this.GetHashField());
+            await CacheHelper.Instance.HashDeleteAsync(GameObjectInfo.HASH_KEY, this.GetGameObjectKey());
         }
     }
 }

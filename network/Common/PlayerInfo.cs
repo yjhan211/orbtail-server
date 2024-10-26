@@ -76,7 +76,7 @@ namespace network.common
             Grade = PlayerGrade.COMMONER;
             WearItemIdList = new();
             State = PlayerState.NONE;
-            ObjectInfo = new(ObjectType.PLAYER, PlayerId, MapID.LIBRARY, 0, initCell);
+            ObjectInfo = new(ObjectType.PLAYER, PlayerId, MapID.LIBRARY, 1, initCell);
             JobInfo = new(PlayerId);
             InventoryInfo = new(InventoryOwnerType.PLAYER, PlayerId);
             LabId = 0;
@@ -233,7 +233,7 @@ namespace network.common
 
         public static async Task Delete(long playerId)
         {
-            var objectField = GameObjectInfo.MakeHashField(ObjectType.PLAYER, playerId);
+            var objectField = GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, playerId);
 
             await GameObjectInfo.Delete(objectField);
             await JobInfo.Delete(playerId);

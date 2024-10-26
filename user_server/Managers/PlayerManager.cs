@@ -27,7 +27,7 @@ namespace user_server.managers
         public Cell CurrentCell => ObjectInfo?.CurrentCell ?? new Cell(0, 0);
         public bool IsFlip => ObjectInfo?.IsFlip ?? false;
         public PlayerState State { get; private set; }
-        public string ObjectKey => ObjectInfo?.GetHashField() ?? string.Empty;
+        public string ObjectKey => ObjectInfo?.GetGameObjectKey() ?? string.Empty;
 
         public PlayerManager(LogManager logManager, NatsClient natsClient, SendPacketDelegate sendToClient, UpdateObjectManager updateObjectManager)
         {
@@ -63,27 +63,19 @@ namespace user_server.managers
                 await ObjectInfo.Save();
             }
 
-            switch (MapId)
+            if (CommonMapHelper.IsCommonMap(MapId))
             {
-                case MapID.LAB_1:
-                    var serverId = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, MapSubId);
-                    var subject = MapHelper.GetCreateInstanceSubject(serverId);
-                    var publishObj = MessagePackSerializer.Serialize((ObjectInfo!.GetHashField(), MapId, MapSubId));
-                    _natsClient.Publish(subject, publishObj);
-                    break;
-
-                case MapID.LIBRARY:
-                    var publishLibraryObj = MessagePackSerializer.Serialize((ObjectInfo!.GetHashField(), MapId, MapSubId));
-                    _natsClient.Publish(MapHelper.GetCreateInstanceSubject(1), publishLibraryObj);
-                    break;
-
-                default:
-                    using (var packet = PacketMaker.U_TO_C_CHANGE_MAP(MapId, MapSubId, CurrentCell, IsFlip))
-                    {
-                        _sendToClient(packet);
-                    }
-                    break;
+                using (var packet = PacketMaker.U_TO_C_CHANGE_MAP(MapId, MapSubId, CurrentCell, IsFlip))
+                {
+                    _sendToClient(packet);
+                }
+                return;
             }
+
+            var serverId = InstanceMapHelper.GetManageServerId(MapSubId);
+            var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
+            var publishObj = MessagePackSerializer.Serialize((ObjectInfo!.GetGameObjectKey(), MapId, MapSubId));
+            _natsClient.Publish(subject, publishObj);
         }
 
         public async Task Spawn()
@@ -113,7 +105,6 @@ namespace user_server.managers
         }
 
 
-        // 공통맵에서만 쓰고 있어서 일단 냅둠
         public async Task SetFlip(DirectionType direction)
         {
             if (direction == DirectionType.NONE || ObjectInfo == null)
@@ -124,11 +115,12 @@ namespace user_server.managers
             ObjectInfo.SetFlip(direction);
             await ObjectInfo.Save();
 
-            var currentPositionKey = MapHelper.GetPositionKey(MapId, MapSubId, CurrentCell);
-            var manageServer = MapHelper.GetServerIdByPositionKey(Program.GameServerNum, currentPositionKey);
-            var subject = MapHelper.GetMoveManageSubject(MapId, MapSubId, manageServer);
+            var isCommonMap = CommonMapHelper.IsCommonMap(MapId);
+            var mamagePartKey = isCommonMap ? CommonMapHelper.CreatePartKey(MapId, CurrentCell) : InstanceMapHelper.CreatePartKey(MapId, MapSubId);
+            var manageServer = isCommonMap ? CommonMapHelper.GetManageServerId(mamagePartKey) : InstanceMapHelper.GetManageServerId(MapSubId);
+            var subject = SubjectHelper.GetMoveManageSubject(ObjectInfo, manageServer);
 
-            _natsClient.Publish(subject, MessagePackSerializer.Serialize((currentPositionKey, ObjectInfo)));
+            _natsClient.Publish(subject, MessagePackSerializer.Serialize((mamagePartKey, ObjectInfo)));
             _updateObjectManager.EnqueueUpdateObject(ObjectInfo);
         }
 
@@ -157,28 +149,12 @@ namespace user_server.managers
 
             await ObjectInfo.Save();
 
-            string key;
-            int manageServer;
-            switch (MapId)
-            {
-                case MapID.LAB_1:
-                    key = MapHelper.GetInstanceKey(MapId, MapSubId);
-                    manageServer = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, ObjectInfo.MapSubId);
-                    break;
+            var isCommonMap = CommonMapHelper.IsCommonMap(MapId);
+            string key = isCommonMap ? CommonMapHelper.CreatePartKey(MapId, CurrentCell) : InstanceMapHelper.CreatePartKey(MapId, MapSubId);
+            int manageServer = isCommonMap ? CommonMapHelper.GetManageServerId(key) : InstanceMapHelper.GetManageServerId(MapSubId);
 
-                case MapID.LIBRARY:
-                    key = MapHelper.GetInstanceKey(MapId, MapSubId);
-                    manageServer = 1;
-                    break;
-
-                default:
-                    key = MapHelper.GetPositionKey(ObjectInfo.MapId, ObjectInfo.MapSubId, ObjectInfo.CurrentCell);
-                    manageServer = MapHelper.GetServerIdByPositionKey(Program.GameServerNum, key);
-                    break;
-            }
-
-            var subject = MapHelper.GetDestroyObjectSubject(MapId, MapSubId, manageServer);
-            var message = MessagePackSerializer.Serialize((key, ObjectInfo.GetHashField()));
+            var subject = SubjectHelper.GetDestroyObjectSubject(ObjectInfo, manageServer);
+            var message = MessagePackSerializer.Serialize((key, ObjectInfo.GetGameObjectKey()));
             _natsClient.Publish(subject, message);
         }
     }

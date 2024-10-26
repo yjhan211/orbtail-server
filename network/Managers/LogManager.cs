@@ -16,9 +16,6 @@ namespace network.managers
                 .MinimumLevel.Debug()
                 .Enrich.WithProperty("serverType", serverType)
                 .Enrich.WithProperty("serverId", serverId)
-                .Enrich.WithProperty("@t_kst", () => DateTimeOffset.UtcNow
-                    .ToOffset(TimeSpan.FromHours(9))
-                    .ToString("yyyy-MM-dd HH:mm:ss"))
                 .WriteTo.Console(new Serilog.Formatting.Compact.CompactJsonFormatter())
                 .CreateLogger();
 

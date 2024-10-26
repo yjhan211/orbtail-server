@@ -16,8 +16,8 @@ namespace game_server
         private readonly LogManager _logManager;
         private readonly RedisConnectionPool _redisPool;
         private readonly NatsClientFactory _natsClientFactory;
-        private readonly List<MapController> _mapControllerList;
-        private readonly List<InstanceController> _instanceControllerList;
+        private readonly List<CommonMapController> _mapControllerList;
+        private readonly List<InstanceMapController> _instanceControllerList;
         private CancellationTokenSource _cts;
         private Timer? _messageTimer;
 
@@ -79,7 +79,8 @@ namespace game_server
                 _redisPool.Initialize(redisEndpoints);
                 _natsClientFactory.Initialize(natsEndpoint);
 
-                MapHelper.Initialize();
+                CommonMapHelper.Initialize(Program.GameServerNum);
+                InstanceMapHelper.Initialize(Program.GameServerNum);
                 CacheHelper.Initialize(_redisPool);
             }
             catch (Exception ex)
@@ -91,9 +92,6 @@ namespace game_server
         private async Task InitializeControllers()
         {
             _mapControllerList.Add(new(_logManager, _natsClientFactory.Create(), _cts, MapID.CAMPUS_1));
-            _mapControllerList.Add(new(_logManager, _natsClientFactory.Create(), _cts, MapID.FACTORY_1));
-            _mapControllerList.Add(new(_logManager, _natsClientFactory.Create(), _cts, MapID.WETLAND_1));
-
             foreach (var mapController in _mapControllerList)
             {
                 await mapController.Initialize();

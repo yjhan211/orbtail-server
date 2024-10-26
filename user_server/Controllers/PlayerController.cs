@@ -24,7 +24,7 @@ namespace user_server.controllers
             using var packet = PacketMaker.U_TO_C_SET_NAME(ErrorCode.SUCCESS, playerInfo);
             user.Send(packet);
 
-            user.BroadcastUpdatePlayerInfo(playerInfo);
+            user.BroadcastUpdateInfo(playerInfo);
         }
 
         public static async Task GetPlayerInfo(GameUser user, C_TO_U_PLAYER_INFO body)

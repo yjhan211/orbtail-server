@@ -34,14 +34,14 @@ namespace game_server
                 services.AddSingleton(sp =>
                 {
                     var config = sp.GetRequiredService<IConfiguration>();
-                    var serverType = config["serverType"] ?? "none";
+                    var serverType = config["serverType"] ?? "GameServer";
                     GameServerNum = config.GetValue<int>("gameServerNum");
                     GameServerId = ExtractGameServerId(config["gameServerId"] ?? "");
                     if (GameServerId <= 0)
                     {
                         throw new Exception($"Invalid Game Server Id: {GameServerId}");
                     }
-                    return new LogManager(serverType, GameServerNum);
+                    return new LogManager(serverType, GameServerId);
                 });
                 services.AddHostedService<GameServer>();
             })

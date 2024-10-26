@@ -38,7 +38,7 @@ namespace user_server.controllers
             user.Send(packet);
 
             await GetCurrentItemList(user);
-            user.BroadcastUpdatePlayerInfo(player_info);
+            user.BroadcastUpdateInfo(player_info);
         }
 
         public static async Task RequestUseItem(GameUser user, C_TO_U_USE_ITEM body)
@@ -125,7 +125,7 @@ namespace user_server.controllers
             using var packet = PacketMaker.U_TO_U_LAB_INVENTORY(labInfo.InventoryInfo.ItemDict);
             foreach (var lab_member in labInfo.MemberDict)
             {
-                user.NatsClient.Publish(GameObjectInfo.MakeHashField(ObjectType.PLAYER, lab_member.Key), packet.ToBytes());
+                user.NatsClient.Publish(GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, lab_member.Key), packet.ToBytes());
             }
         }
 
@@ -190,7 +190,7 @@ namespace user_server.controllers
             using var packet = PacketMaker.U_TO_U_LAB_INVENTORY(labInfo.InventoryInfo.ItemDict);
             foreach (var lab_member in labInfo.MemberDict)
             {
-                user.NatsClient.Publish(GameObjectInfo.MakeHashField(ObjectType.PLAYER, lab_member.Key), packet.ToBytes());
+                user.NatsClient.Publish(GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, lab_member.Key), packet.ToBytes());
             }
         }
 

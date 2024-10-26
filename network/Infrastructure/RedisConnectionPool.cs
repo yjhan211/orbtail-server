@@ -9,15 +9,27 @@ namespace network.infrastructure
     {
         private readonly object _lock = new();
         private readonly ConcurrentDictionary<int, IDatabase> _databases = new();
-        private readonly ConfigurationOptions _options = new();
+        private ConfigurationOptions? _options;
         private Lazy<ConnectionMultiplexer>? _lazyConnection;
 
         public void Initialize(string connectionString)
         {
-            _options.EndPoints.Add(connectionString);
+            _options = ConfigurationOptions.Parse(connectionString);
+            _options.AbortOnConnectFail = false;
+            _options.ConnectTimeout = 5000;
+            _options.SyncTimeout = 5000;
+            _options.ConnectRetry = 3;
+
             _lazyConnection = new Lazy<ConnectionMultiplexer>(() =>
             {
-                return ConnectionMultiplexer.Connect(_options);
+                try
+                {
+                    return ConnectionMultiplexer.Connect(_options);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException($"Failed to connect to Redis: {ex.Message}", ex);
+                }
             }, LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
@@ -65,6 +77,8 @@ namespace network.infrastructure
 
         public async Task<T> ExecuteWithRetryAsync<T>(Func<IDatabase, Task<T>> action, int db = -1, int retryCount = 3)
         {
+            var delay = 100;  // 시작 딜레이
+
             for (int i = 0; i < retryCount; i++)
             {
                 try
@@ -75,13 +89,21 @@ namespace network.infrastructure
                 catch (RedisTimeoutException)
                 {
                     if (i == retryCount - 1)
-                    {
                         throw;
-                    }
-                    await Task.Delay(100 * (i + 1));
+
+                    await Task.Delay(delay);
+                    delay *= 2;  // 지수 백오프
+                }
+                catch (RedisConnectionException)
+                {
+                    if (i == retryCount - 1)
+                        throw;
+
+                    await Task.Delay(delay);
+                    delay *= 2;  // 지수 백오프
                 }
             }
-            throw new Exception("Redis operation failed after retries");
+            throw new Exception($"Redis operation failed after {retryCount} retries");
         }
     }
 }

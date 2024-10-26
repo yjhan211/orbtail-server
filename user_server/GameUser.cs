@@ -272,13 +272,13 @@ namespace user_server
                 _playerManager.Initialize(playerInfo.ObjectInfo, movementHandler, environmentHandler);
 
                 using var duplicatePacket = Packet.Create((int)PROTOCOL.U_TO_U_DUPLICATE);
-                NatsClient.Publish(_playerManager.ObjectInfo.GetHashField(), duplicatePacket.ToBytes());
+                NatsClient.Publish(_playerManager.ObjectInfo.GetGameObjectKey(), duplicatePacket.ToBytes());
 
                 await playerInfo.Save();
                 await playerInfo.ObjectInfo.Save();
             }
 
-            NatsClient.Subscribe(_playerManager.ObjectInfo.GetHashField(), (channel, message) => OnMessageFromSubscribe(message));
+            NatsClient.Subscribe(_playerManager.ObjectInfo.GetGameObjectKey(), (channel, message) => OnMessageFromSubscribe(message));
             NatsClient.Subscribe("all", (channel, message) => OnMessageFromSubscribe(message));
 
             var labInfo = await LabInfo.Load(playerInfo.LabId);
@@ -296,54 +296,33 @@ namespace user_server
             await _playerManager.ChangeMap();
         }
 
-        public void BroadcastUpdatePlayerInfo(PlayerInfo playerInfo)
+        public void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject
         {
-            var instanceKey = MapHelper.GetInstanceKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
-            switch (playerInfo.ObjectInfo.MapId)
+            var objectInfo = info switch
             {
-                case MapID.LAB_1:
-                    var instanceServer = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, playerInfo.ObjectInfo.MapSubId);
-                    var labSubject = MapHelper.GetUpdatePlayerSubject(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, instanceServer);
-                    NatsClient.Publish(labSubject, MessagePackSerializer.Serialize((instanceKey, playerInfo)));
-                    break;
+                PlayerInfo p => p.ObjectInfo,
+                ExploreTargetInfo e => e.ObjectInfo,
+                JobResourceInfo j => j.ObjectInfo,
+                CampInfo c => c.ObjectInfo,
+                _ => throw new ArgumentException($"Unsupported type: {typeof(T)}")
+            };
 
-                case MapID.LIBRARY:
-                    var librarySubject = MapHelper.GetUpdatePlayerSubject(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, 1);
-                    NatsClient.Publish(librarySubject, MessagePackSerializer.Serialize((instanceKey, playerInfo)));
-                    break;
-
-                default:
-                    var position_key = MapHelper.GetPositionKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, playerInfo.ObjectInfo.CurrentCell);
-                    var targetServerList = MapHelper.GetBoundServerList(playerInfo.ObjectInfo.MapId, Program.GameServerNum, MapHelper.GetCell(position_key));
-                    foreach (var targetServer in targetServerList)
-                    {
-                        var subject = MapHelper.GetUpdatePlayerSubject(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, targetServer);
-                        NatsClient.Publish(subject, MessagePackSerializer.Serialize((position_key, playerInfo)));
-                    }
-                    break;
-            }
-        }
-
-        public void BroadcastUpdateExploreTargetInfo(ExploreTargetInfo exploreTargetInfo)
-        {
-            var positionKey = MapHelper.GetPositionKey(exploreTargetInfo.ObjectInfo.MapId, exploreTargetInfo.ObjectInfo.MapSubId, exploreTargetInfo.ObjectInfo.CurrentCell);
-            var targetServerList = MapHelper.GetBoundServerList(exploreTargetInfo.ObjectInfo.MapId, Program.GameServerNum, MapHelper.GetCell(positionKey));
-            foreach (var targetServer in targetServerList)
+            if (CommonMapHelper.IsCommonMap(objectInfo.MapId))
             {
-                var subject = MapHelper.GetUpdateExploreTargetSubject(exploreTargetInfo.ObjectInfo.MapId, exploreTargetInfo.ObjectInfo.MapSubId, targetServer);
-                NatsClient.Publish(subject, MessagePackSerializer.Serialize((positionKey, exploreTargetInfo)));
+                var partKey = CommonMapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+                var targetServerList = CommonMapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
+                foreach (var targetServer in targetServerList)
+                {
+                    var subject = SubjectHelper.GetUpdateInfoSubject(objectInfo, targetServer);
+                    NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, info)));
+                }
+                return;
             }
-        }
 
-        public void BroadcastUpdateJobResourceInfo(JobResourceInfo jobResourceInfo)
-        {
-            var positionKey = MapHelper.GetPositionKey(jobResourceInfo.ObjectInfo.MapId, jobResourceInfo.ObjectInfo.MapSubId, jobResourceInfo.ObjectInfo.CurrentCell);
-            var targetServerList = MapHelper.GetBoundServerList(jobResourceInfo.ObjectInfo.MapId, Program.GameServerNum, MapHelper.GetCell(positionKey));
-            foreach (var targetServer in targetServerList)
-            {
-                var subject = MapHelper.GetUpdateJobResourceSubject(jobResourceInfo.ObjectInfo.MapId, jobResourceInfo.ObjectInfo.MapSubId, targetServer);
-                NatsClient.Publish(subject, MessagePackSerializer.Serialize((positionKey, jobResourceInfo)));
-            }
+            var instancePartKey = InstanceMapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+            var manageServer = InstanceMapHelper.GetManageServerId(objectInfo.MapSubId);
+            var instanceSubject = SubjectHelper.GetUpdateInfoSubject(objectInfo, manageServer);
+            NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, info)));
         }
 
         public void Send(IPacket msg)
@@ -361,7 +340,7 @@ namespace user_server
         {
             foreach (var userId in userIdList)
             {
-                NatsClient.Publish(GameObjectInfo.MakeHashField(ObjectType.PLAYER, userId), packet.ToBytes());
+                NatsClient.Publish(GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, userId), packet.ToBytes());
             }
         }
 

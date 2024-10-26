@@ -326,7 +326,7 @@ namespace user_server.controllers
             using var packet = PacketMaker.U_TO_C_LAB_INFO(playerInfo, labInfo);
             foreach (var labMenber in labInfo.MemberDict)
             {
-                user.NatsClient.Publish(GameObjectInfo.MakeHashField(ObjectType.PLAYER, labMenber.Key), packet.ToBytes());
+                user.NatsClient.Publish(GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, labMenber.Key), packet.ToBytes());
             }
         }
 

@@ -3,7 +3,6 @@ using StackExchange.Redis;
 using network.common;
 using network.packets;
 using network.managers;
-using System.Diagnostics;
 
 namespace user_server.managers
 {

@@ -71,7 +71,8 @@ namespace user_server
                 _redisPool.Initialize(redisEndpoints);
                 _natsClientFactory.Initialize(natsEndpoint);
 
-                MapHelper.Initialize();
+                CommonMapHelper.Initialize(Program.GameServerNum);
+                InstanceMapHelper.Initialize(Program.GameServerNum);
                 CacheHelper.Initialize(_redisPool);
             }
             catch (Exception ex)

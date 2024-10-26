@@ -76,45 +76,40 @@ namespace user_server.handlers
         {
             _lastCell ??= Cell.Clone(_objectInfo.CurrentCell);
             _objectInfo.CurrentCell = Cell.Clone(_objectInfo.TargetCell);
-            _objectInfo.TargetCell = MapHelper.CalcTargetCell(_objectInfo.TargetCell, moveRequest.Direction);
+            _objectInfo.TargetCell = _objectInfo.TargetCell.GetNextCell(moveRequest.Direction);
 
             _objectInfo.SetFlip(moveRequest.Direction);
             _objectInfo.MoveTimestamp = moveRequest.Direction == DirectionType.NONE ? default : DateTime.UtcNow;
             await _objectInfo.Save();
 
-            var lastPositionKey = MapHelper.GetPositionKey(_objectInfo.MapId, _objectInfo.MapSubId, _lastCell!);
-            var currentPositionKey = MapHelper.GetPositionKey(_objectInfo.MapId, _objectInfo.MapSubId, _objectInfo.CurrentCell);
+            var isCommonMap = CommonMapHelper.IsCommonMap(_objectInfo.MapId);
 
-            int lastManageServer;
-            int currentManageServer;
-            switch (_objectInfo.MapId)
-            {
-                case MapID.LAB_1:
-                    lastManageServer = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, _objectInfo.MapSubId);
-                    currentManageServer = lastManageServer;
-                    break;
+            var lastPartKey = isCommonMap
+                ? CommonMapHelper.CreatePartKey(_objectInfo.MapId, _lastCell!)
+                : InstanceMapHelper.CreatePartKey(_objectInfo.MapId, _objectInfo.MapSubId);
 
-                case MapID.LIBRARY:
-                    lastManageServer = 1;
-                    currentManageServer = 1;
-                    break;
+            var currentPartKey = isCommonMap
+                ? CommonMapHelper.CreatePartKey(_objectInfo.MapId, _objectInfo.CurrentCell!)
+                : InstanceMapHelper.CreatePartKey(_objectInfo.MapId, _objectInfo.MapSubId);
 
-                default:
-                    lastManageServer = MapHelper.GetServerIdByPositionKey(Program.GameServerNum, lastPositionKey);
-                    currentManageServer = MapHelper.GetServerIdByPositionKey(Program.GameServerNum, currentPositionKey);
-                    break;
-            }
+            int lastManageServer = isCommonMap
+                ? CommonMapHelper.GetManageServerId(lastPartKey)
+                : InstanceMapHelper.GetManageServerId(_objectInfo.MapSubId);
+
+            int currentManageServer = isCommonMap
+                ? CommonMapHelper.GetManageServerId(currentPartKey)
+                : InstanceMapHelper.GetManageServerId(_objectInfo.MapSubId);
 
             // 담당 서버가 변경되었을 경우 이전 서버에게 떠났음을 알림
             if (lastManageServer != currentManageServer)
             {
-                var leaveSubject = MapHelper.GetLeaveManageSubject(_objectInfo.MapId, _objectInfo.MapSubId, lastManageServer);
-                _natsClient.Publish(leaveSubject, MessagePackSerializer.Serialize((lastPositionKey, _objectInfo.GetHashField())));
+                var leaveSubject = SubjectHelper.GetLeaveManageSubject(_objectInfo, lastManageServer);
+                _natsClient.Publish(leaveSubject, MessagePackSerializer.Serialize((lastPartKey, _objectInfo.GetGameObjectKey())));
             }
 
             // 현재 서버에 이동 처리 요청
-            var moveSubject = MapHelper.GetMoveManageSubject(_objectInfo.MapId, _objectInfo.MapSubId, currentManageServer);
-            _natsClient.Publish(moveSubject, MessagePackSerializer.Serialize((lastPositionKey, _objectInfo)));
+            var moveSubject = SubjectHelper.GetMoveManageSubject(_objectInfo, currentManageServer);
+            _natsClient.Publish(moveSubject, MessagePackSerializer.Serialize((lastPartKey, _objectInfo)));
 
             // 자신의 이동이므로 큐에 즉시 넣음
             _updateObjectManager.EnqueueUpdateObject(_objectInfo);
@@ -154,7 +149,7 @@ namespace user_server.handlers
             using var packet = PacketMaker.U_TO_C_MOVE(_objectInfo.ObjectId, ErrorCode.SUCCESS, _objectInfo);
             _sendToClient(packet);
 
-            if (MapHelper.IsCommonMap(_objectInfo.MapId))
+            if (CommonMapHelper.IsCommonMap(_objectInfo.MapId))
             {
                 RequestSpawnInfo(_objectInfo.MapId);
             }
@@ -180,12 +175,13 @@ namespace user_server.handlers
 
         private async Task<bool> TryHandleMapChange()
         {
-            if (!MapHelper.PortalInfo.TryGetValue(MapHelper.GetPortalKey(_objectInfo.MapId, _objectInfo.TargetCell), out var portalResult))
+            var portalInfo = CommonMapHelper.GetPortalOrNull(_objectInfo);
+            if (portalInfo == null)
             {
                 return false;
             }
 
-            var (mapId, spawnPosition, isFlip) = portalResult;
+            (MapID mapId, Cell spawnPosition, bool isFlip) = portalInfo.Value;
             long mapSubId = await GetMapSubId(mapId);
 
             var mapChangeInfo = new ChangeMapInfo(mapId, mapSubId, spawnPosition, isFlip);
@@ -197,18 +193,10 @@ namespace user_server.handlers
 
         private void RequestSpawnInfo(MapID targetMapId, bool isSpawn = false)
         {
-            if (targetMapId == MapID.LAB_1)
+            if (!CommonMapHelper.IsCommonMap(targetMapId))
             {
-                var serverId = MapHelper.GetServerIdByMapSubID(Program.GameServerNum, _objectInfo.MapSubId);
-                var instanceKey = MapHelper.GetInstanceKey(_objectInfo.MapId, _objectInfo.MapSubId);
-                RequestSpawnObjectList(serverId, new() { instanceKey });
-                return;
-            }
-
-            if (targetMapId == MapID.LIBRARY)
-            {
-                var serverId = 1;
-                var instanceKey = MapHelper.GetInstanceKey(_objectInfo.MapId, _objectInfo.MapSubId);
+                var serverId = InstanceMapHelper.GetManageServerId(_objectInfo.MapSubId);
+                var instanceKey = InstanceMapHelper.CreatePartKey(_objectInfo.MapId, _objectInfo.MapSubId);
                 RequestSpawnObjectList(serverId, new() { instanceKey });
                 return;
             }
@@ -219,22 +207,21 @@ namespace user_server.handlers
         // 최초 맵 입장 or 이동 시 새로운 영역에 대한 오브젝트 정보 요청
         private void RequestSpawnObjectList(int serverId, List<string>? positionKeyList = null)
         {
-            var subject = MapHelper.GetSpawnManageSubject(_objectInfo.MapId, _objectInfo.MapSubId, serverId);
-            var message = MessagePackSerializer.Serialize((_objectInfo.GetHashField(), positionKeyList ?? new()));
+            var subject = SubjectHelper.GetSpawnManageSubject(_objectInfo, serverId);
+            var message = MessagePackSerializer.Serialize((_objectInfo.GetGameObjectKey(), positionKeyList ?? new()));
             _natsClient.Publish(subject, message);
         }
 
         private void RequestCommmonMapSpawnList(bool isSpawn)
         {
             // 현재 바운드 - 이전 바운드 = spawn 대상
-            List<Cell> lastBoundCellList = isSpawn || _lastCell == null ? new() : MapHelper.GetBoundCellList(_lastCell);
-            var currentBoundCellList = MapHelper.GetBoundCellList(_objectInfo.CurrentCell);
+            var lastBoundCellList = isSpawn || _lastCell == null ? new List<Cell>() : _lastCell.GetBoundCellList();
+            var currentBoundCellList = _objectInfo.CurrentCell.GetBoundCellList();
             var objectSpawnList = currentBoundCellList
                 .Except(lastBoundCellList)
-                .Select(lastBoundCell => MapHelper.GetPositionKey(_objectInfo.MapId, 0, lastBoundCell))
+                .Select(lastBoundCell => CommonMapHelper.CreatePartKey(_objectInfo.MapId, lastBoundCell))
                 .GroupBy(
-                    positionKey => MapHelper.GetServerIdByPositionKey(Program.GameServerNum, positionKey),
-                    positionKey => positionKey,
+                    CommonMapHelper.GetManageServerId,
                     (serverId, positionKeys) => new { serverId, positionKeyList = positionKeys.ToList() }
                 );
 

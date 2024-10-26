@@ -214,16 +214,16 @@ namespace user_server.controllers
                         return;
                     }
 
-                    if (1 < MapHelper.GetDistance(user.CurrentCell, exploreTargetInfo.ObjectInfo.CurrentCell))
+                    if (1 < user.CurrentCell.GetDistance(exploreTargetInfo.ObjectInfo.CurrentCell))
                     {
                         using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
                         user.Send(errorPacket);
                         return;
                     }
 
-                    direction = CalcSkillDirection(user.CurrentCell, exploreTargetInfo.ObjectInfo.CurrentCell);
+                    direction = user.CurrentCell.GetDirection(exploreTargetInfo.ObjectInfo.CurrentCell);
                     exploreTargetInfo.PlayerId = user.PlayerId;
-                    exploreTargetInfo.EndTimestamp = DateTime.UtcNow.AddSeconds(10); // TODO 임시 하드코딩
+                    exploreTargetInfo.EndTimestamp = DateTime.UtcNow.AddSeconds(10); // TODO csv
                     user.StartExplore(exploreTargetInfo);
                     await exploreTargetInfo.Save();
                 }
@@ -237,8 +237,8 @@ namespace user_server.controllers
 
             using var packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.SUCCESS, playerInfo.JobInfo);
             user.Send(packet);
-            user.BroadcastUpdatePlayerInfo(playerInfo);
-            user.BroadcastUpdateExploreTargetInfo(exploreTargetInfo);
+            user.BroadcastUpdateInfo(playerInfo);
+            user.BroadcastUpdateInfo(exploreTargetInfo);
         }
 
         public static async Task ExploreEnd(GameUser user, ExploreTargetInfo exploreTargetInfo)
@@ -284,7 +284,7 @@ namespace user_server.controllers
                     exploreTargetInfo.PlayerId = 0;
                     await exploreTargetInfo.Save();
 
-                    user.BroadcastUpdateExploreTargetInfo(exploreTargetInfo);
+                    user.BroadcastUpdateInfo(exploreTargetInfo);
                 }
 
                 var exploreTargetDetail = GameDesignData.GetExploreTargetDetail(exploreTargetInfo.ExploreTargetId);
@@ -297,7 +297,7 @@ namespace user_server.controllers
 
                 using var packet = PacketMaker.U_TO_C_EXPLORE_COMPLETE(isSuccess, playerInfo.JobInfo);
                 user.Send(packet);
-                user.BroadcastUpdatePlayerInfo(playerInfo);
+                user.BroadcastUpdateInfo(playerInfo);
             }
         }
 
@@ -377,9 +377,9 @@ namespace user_server.controllers
                         return;
                     }
 
-                    direction = CalcSkillDirection(user.CurrentCell, jobResourceInfo.ObjectInfo.CurrentCell);
+                    direction = user.CurrentCell.GetDirection(jobResourceInfo.ObjectInfo.CurrentCell);
                     jobResourceInfo.PlayerId = user.PlayerId;
-                    jobResourceInfo.EndTimestamp = DateTime.UtcNow.AddSeconds(10); // TODO 임시 하드코딩
+                    jobResourceInfo.EndTimestamp = DateTime.UtcNow.AddSeconds(10); // TODO csv
                     user.StartJobSkill(jobResourceInfo);
                     await jobResourceInfo.Save();
                 }
@@ -393,8 +393,8 @@ namespace user_server.controllers
 
             using var packet = PacketMaker.U_TO_C_USE_SKILL(ErrorCode.SUCCESS, playerInfo.JobInfo);
             user.Send(packet);
-            user.BroadcastUpdatePlayerInfo(playerInfo);
-            user.BroadcastUpdateJobResourceInfo(jobResourceInfo);
+            user.BroadcastUpdateInfo(playerInfo);
+            user.BroadcastUpdateInfo(jobResourceInfo);
         }
 
 
@@ -439,7 +439,7 @@ namespace user_server.controllers
 
                 using var packet = PacketMaker.U_TO_C_USE_SKILL_COMPLETE(true, itemInfo, playerInfo.JobInfo);
                 user.Send(packet);
-                user.BroadcastUpdatePlayerInfo(playerInfo);
+                user.BroadcastUpdateInfo(playerInfo);
 
                 await InventoryController.GetCurrentItemList(user);
             }
@@ -474,13 +474,13 @@ namespace user_server.controllers
                 await playerInfo.Save();
             }
 
-            var currentPositionKey = MapHelper.GetPositionKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId, campInfo.ObjectInfo.CurrentCell);
-            var currentManageServer = MapHelper.GetServerIdByPositionKey(Program.GameServerNum, currentPositionKey);
-            var moveManageSubject = MapHelper.GetMoveManageSubject(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId, currentManageServer);
+            var partKey = CommonMapHelper.CreatePartKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.CurrentCell);
+            var currentManageServer = CommonMapHelper.GetManageServerId(partKey);
+            var moveManageSubject = SubjectHelper.GetMoveManageSubject(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId, currentManageServer);
 
             // 현재 담당 서버에 전송
-            user.NatsClient.Publish(moveManageSubject, MessagePackSerializer.Serialize((currentPositionKey, campInfo.ObjectInfo)));
-            user.BroadcastUpdatePlayerInfo(playerInfo);
+            user.NatsClient.Publish(moveManageSubject, MessagePackSerializer.Serialize((partKey, campInfo.ObjectInfo)));
+            user.BroadcastUpdateInfo(playerInfo);
         }
 
         public static async Task Decamp(GameUser user)
@@ -506,7 +506,7 @@ namespace user_server.controllers
                 await playerInfo.Save();
             }
 
-            user.BroadcastUpdatePlayerInfo(playerInfo);
+            user.BroadcastUpdateInfo(playerInfo);
             BroadcastObjectDestroy(user, campInfo.ObjectInfo);
         }
 
@@ -548,15 +548,9 @@ namespace user_server.controllers
                 await campInfo.Save();
             }
 
-            var currentPositionKey = MapHelper.GetPositionKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId, campInfo.ObjectInfo.CurrentCell);
-            var currentManageServer = MapHelper.GetServerIdByPositionKey(Program.GameServerNum, currentPositionKey);
-            var updateCampSubject = MapHelper.GetUpdateCampSubject(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId, currentManageServer);
-
-            // 현재 담당 서버에 전송
-            user.NatsClient.Publish(updateCampSubject, MessagePackSerializer.Serialize((currentPositionKey, campInfo)));
-
             using var packet = PacketMaker.U_TO_C_ADD_SELL_ITEM(user.PlayerId);
             user.Send(packet);
+            user.BroadcastUpdateInfo(campInfo);
         }
 
         public static async Task DeleteSellItem(GameUser user, C_TO_U_DELETE_SELL_ITEM body)
@@ -591,15 +585,9 @@ namespace user_server.controllers
                 await campInfo.Save();
             }
 
-            var currentPositionKey = MapHelper.GetPositionKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId, campInfo.ObjectInfo.CurrentCell);
-            var currentManageServer = MapHelper.GetServerIdByPositionKey(Program.GameServerNum, currentPositionKey);
-            var updateCampSubject = MapHelper.GetUpdateCampSubject(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId, currentManageServer);
-
-            // 현재 담당 서버에 전송
-            user.NatsClient.Publish(updateCampSubject, MessagePackSerializer.Serialize((currentPositionKey, campInfo)));
-
             using var packet = PacketMaker.U_TO_C_DELETE_SELL_ITEM(user.PlayerId);
             user.Send(packet);
+            user.BroadcastUpdateInfo(campInfo);
         }
 
         public static async Task BuyItem(GameUser user, C_TO_U_BUY_ITEM body)
@@ -660,28 +648,22 @@ namespace user_server.controllers
                 }
             }
 
-            // 텐트 업데이트
-            var currentPositionKey = MapHelper.GetPositionKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId, campInfo.ObjectInfo.CurrentCell);
-            var currentManageServer = MapHelper.GetServerIdByPositionKey(Program.GameServerNum, currentPositionKey);
-            var updateCampSubject = MapHelper.GetUpdateCampSubject(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId, currentManageServer);
-
-            // 현재 담당 서버에 전송
-            user.NatsClient.Publish(updateCampSubject, MessagePackSerializer.Serialize((currentPositionKey, campInfo)));
-
             using var buyPacket = PacketMaker.U_TO_C_BUY_ITEM(user.PlayerId, playerInfo);
             user.Send(buyPacket);
 
             await InventoryController.GetCurrentItemList(user);
 
             using var sellerPacket = PacketMaker.U_TO_U_PLAYER_INFO(sellerInfo);
-            user.NatsClient.Publish(sellerInfo.ObjectInfo.GetHashField(), sellerPacket.ToBytes());
+            user.NatsClient.Publish(sellerInfo.ObjectInfo.GetGameObjectKey(), sellerPacket.ToBytes());
+            user.BroadcastUpdateInfo(campInfo);
+
         }
 
         public static void BroadcastJobResourceCreate(GameUser user, JobResourceInfo jobResourceInfo)
         {
-            var positionKey = MapHelper.GetPositionKey(jobResourceInfo.ObjectInfo.MapId, jobResourceInfo.ObjectInfo.MapSubId, jobResourceInfo.ObjectInfo.CurrentCell);
-            var manage_server = MapHelper.GetServerIdByPositionKey(Program.GameServerNum, positionKey);
-            var subject = MapHelper.GetCreateJobResourceSubject(jobResourceInfo.ObjectInfo.MapId, jobResourceInfo.ObjectInfo.MapSubId, manage_server);
+            var positionKey = CommonMapHelper.CreatePartKey(jobResourceInfo.ObjectInfo.MapId, jobResourceInfo.ObjectInfo.CurrentCell);
+            var manageServer = CommonMapHelper.GetManageServerId(positionKey);
+            var subject = SubjectHelper.GetCreateJobResourceSubject(jobResourceInfo.ObjectInfo.MapId, jobResourceInfo.ObjectInfo.MapSubId, manageServer);
             var message = MessagePackSerializer.Serialize((positionKey, jobResourceInfo, jobResourceInfo.ObjectInfo));
 
             user.NatsClient.Publish(subject, message);
@@ -689,37 +671,12 @@ namespace user_server.controllers
 
         public static void BroadcastObjectDestroy(GameUser user, GameObjectInfo objectInfo)
         {
-            var position_key = MapHelper.GetPositionKey(objectInfo.MapId, objectInfo.MapSubId, objectInfo.CurrentCell);
-            var manage_server = MapHelper.GetServerIdByPositionKey(Program.GameServerNum, position_key);
-            var subject = MapHelper.GetDestroyObjectSubject(objectInfo.MapId, objectInfo.MapSubId, manage_server);
-            var message = MessagePackSerializer.Serialize((position_key, objectInfo.GetHashField()));
+            var positionKey = CommonMapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+            var manage_server = CommonMapHelper.GetManageServerId(positionKey);
+            var subject = SubjectHelper.GetDestroyObjectSubject(objectInfo.MapId, objectInfo.MapSubId, manage_server);
+            var message = MessagePackSerializer.Serialize((positionKey, objectInfo.GetGameObjectKey()));
 
             user.NatsClient.Publish(subject, message);
-        }
-
-        public static DirectionType CalcSkillDirection(Cell fromCell, Cell toCell)
-        {
-            int deltaX = toCell.X - fromCell.X;
-            int deltaY = toCell.Y - fromCell.Y;
-
-            if (deltaX > 0 && deltaY == 0)
-            {
-                return DirectionType.TOP_LEFT;
-            }
-            if (deltaX < 0 && deltaY == 0)
-            {
-                return DirectionType.TOP_RIGHT;
-            }
-            if (deltaX == 0 && deltaY < 0)
-            {
-                return DirectionType.BOTTOM_LEFT;
-            }
-            if (deltaX == 0 && deltaY > 0)
-            {
-                return DirectionType.BOTTOM_RIGHT;
-            }
-
-            return DirectionType.NONE;
         }
     }
 }
