@@ -3,7 +3,7 @@
 using MessagePack;
 
 // ReSharper disable All
-namespace network.common.models;
+namespace network.common.data.models;
 
 public interface IMessagePackObject
 {

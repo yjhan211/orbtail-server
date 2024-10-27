@@ -6,7 +6,7 @@ using RedLockNet;
 using RedLockNet.SERedis;
 using StackExchange.Redis;
 
-namespace network.common.models;
+namespace network.common.data.models;
 
 [MessagePackObject]
 [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]

@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using MessagePack;
 using network.helpers;
 
-namespace network.common.models;
+namespace network.common.data.models;
 
 [MessagePackObject]
 [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]

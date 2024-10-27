@@ -1,4 +1,4 @@
-using network.common.models;
+using network.common.data.models;
 using user_server.controllers;
 using user_server.managers;
 

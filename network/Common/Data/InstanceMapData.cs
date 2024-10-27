@@ -1,4 +1,4 @@
-using network.common.models;
+using network.common.data.models;
 
 namespace network.common.data;
 

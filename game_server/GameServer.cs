@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using network.common;
 using network.common.data;
-using network.common.models;
+using network.common.data.models;
 using network.helpers;
 using network.infrastructure;
 using network.managers;

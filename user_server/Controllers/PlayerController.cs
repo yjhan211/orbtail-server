@@ -1,5 +1,5 @@
 using network.common;
-using network.common.models;
+using network.common.data.models;
 using network.packets;
 using StackExchange.Redis;
 

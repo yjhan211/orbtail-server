@@ -1,5 +1,5 @@
 using network.common;
-using network.common.models;
+using network.common.data.models;
 
 namespace network.helpers;
 

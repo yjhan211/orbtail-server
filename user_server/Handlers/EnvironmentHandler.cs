@@ -1,4 +1,4 @@
-using network.common.models;
+using network.common.data.models;
 using network.managers;
 using RedLockNet.SERedis;
 using user_server.managers;

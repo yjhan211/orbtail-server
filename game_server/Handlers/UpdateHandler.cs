@@ -1,4 +1,4 @@
-using network.common.models;
+using network.common.data.models;
 using network.interfaces;
 
 namespace game_server.handlers;

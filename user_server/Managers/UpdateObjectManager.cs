@@ -1,6 +1,6 @@
 using System.Threading.Channels;
 using network.common;
-using network.common.models;
+using network.common.data.models;
 using network.managers;
 using network.packets;
 using StackExchange.Redis;
