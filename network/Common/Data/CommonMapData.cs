@@ -1,9 +1,9 @@
-using network.common;
+using network.common.models;
 
-namespace network.helpers;
+namespace network.common.data;
 
 // 현재 공통맵은 동일한 맵 크기, 동일한 파티셔닝 구조로 감. 추후 달라진다면 MapHelper 분리 필요
-public static class CommonMapHelper
+public static class CommonMapData
 {
     private static int _totalServerNum;
     private static readonly Dictionary<string, int> PartByPositionKey = new();
@@ -54,7 +54,9 @@ public static class CommonMapHelper
     public static void Initialize(int totalServerNum)
     {
         _totalServerNum = totalServerNum;
-        foreach (var mapId in new List<MapId> { MapId.CAMPUS_1 })
+        // TODO 공통맵 생기면 추가
+        // ReSharper disable once RedundantEmptyObjectOrCollectionInitializer
+        foreach (var mapId in new List<MapId> { })
         {
             PositionListByMapPart[mapId] = new Dictionary<int, List<string>>();
 
@@ -64,9 +66,9 @@ public static class CommonMapHelper
             {
                 PositionListByMapPart[mapId][partNumber] = [];
 
-                var uniquePositionKeys  = cellList.Select(cell => CreatePartKey(mapId, cell))
+                var uniquePositionKeys = cellList.Select(cell => CreatePartKey(mapId, cell))
                     .Where(positionKey => !PartByPositionKey.TryGetValue(positionKey, out _));
-                
+
                 foreach (var positionKey in uniquePositionKeys)
                 {
                     PartByPositionKey.Add(positionKey, partNumber);
@@ -77,14 +79,15 @@ public static class CommonMapHelper
             }
         }
 
-        GenExploreIdList.Add(MapId.CAMPUS_1, [100001]);
+        // TODO 공통맵 생기면 추가
+        // GenExploreIdList.Add(MapId.CAMPUS_1, [100001]);
     }
 
     public static bool IsCommonMap(MapId mapId)
     {
         return mapId switch
         {
-            MapId.LAB_1 or MapId.LIBRARY => false,
+            MapId.LIBRARY => false,
             _ => true
         };
     }

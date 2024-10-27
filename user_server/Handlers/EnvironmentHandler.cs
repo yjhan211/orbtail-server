@@ -1,4 +1,4 @@
-using network.common;
+using network.common.models;
 using network.managers;
 using RedLockNet.SERedis;
 using user_server.managers;
@@ -6,7 +6,7 @@ using user_server.managers;
 namespace user_server.handlers;
 
 public sealed class EnvironmentHandler(
-    LogManager logManager,
+    LogManager? logManager,
     CancellationTokenSource cts,
     RedLockFactory redLock,
     SendPacketDelegate sendToClient,

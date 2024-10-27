@@ -1,8 +1,9 @@
 #pragma warning disable CS8618
 
 using MessagePack;
+
 // ReSharper disable All
-namespace network.common;
+namespace network.common.models;
 
 public interface IMessagePackObject
 {

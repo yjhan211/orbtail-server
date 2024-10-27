@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using network.common;
+using network.common.models;
 using network.managers;
 
 namespace user_server.managers;
@@ -39,10 +39,10 @@ public sealed class ProgressManager : IDisposable
 {
     private readonly ConcurrentDictionary<Guid, ProgressItem> _activeProgressItems = new();
     private readonly Timer _cleanupTimer;
-    private readonly LogManager _logManager;
+    private readonly LogManager? _logManager;
     private bool _disposed;
 
-    public ProgressManager(LogManager logManager)
+    public ProgressManager(LogManager? logManager)
     {
         _cleanupTimer = new Timer(CleanupExpiredItems, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
         _logManager = logManager;

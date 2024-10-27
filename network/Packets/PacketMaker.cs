@@ -1,5 +1,6 @@
 using MessagePack;
 using network.common;
+using network.common.models;
 
 namespace network.packets;
 

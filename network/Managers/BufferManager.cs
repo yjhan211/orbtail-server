@@ -18,11 +18,8 @@ internal class BufferManager
 
     public bool SetBuffer(SocketAsyncEventArgs args)
     {
-        if (_numBytes - _bufferSize < _currentIndex)
-        {
-            return false;
-        }
-        
+        if (_numBytes - _bufferSize < _currentIndex) return false;
+
         args.SetBuffer(_buffer, _currentIndex, _bufferSize);
         _currentIndex += _bufferSize;
         return true;

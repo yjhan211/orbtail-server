@@ -1,4 +1,5 @@
 using network.common;
+using network.common.models;
 
 namespace network.helpers;
 
@@ -11,7 +12,7 @@ public static class SubjectHelper
     private const string UpdateInfo = "update_info";
     private const string BroadcastUpdate = "broadcast_update";
     private const string BroadcastDestroy = "broadcast_destroy";
-    
+
     private const string CreateJobResource = "create_job_resource"; // TODO
 
     private static string BuildSubject(string prefix, MapId mapId, long mapSubId, int serverId)

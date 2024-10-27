@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using network.common.data;
+using network.common.helpers;
 using network.core;
 using network.helpers;
 using network.infrastructure;
@@ -16,12 +18,7 @@ public class UserServer(
     LogManager logManager,
     IConfiguration configuration) : IHostedService
 {
-    private readonly IConfiguration _configuration = configuration;
     private readonly ConcurrentQueue<GameUser> _leaveUserQueue = new();
-    private readonly LogManager _logManager = logManager;
-    private readonly NatsClientFactory _natsClientFactory = natsClientFactory;
-    private readonly NetworkService _networkService = networkService;
-    private readonly RedisConnectionPool _redisPool = redisPool;
     private CancellationTokenSource? _cts;
     private Task? _leaveUserTask;
 
@@ -29,7 +26,7 @@ public class UserServer(
     {
         try
         {
-            _logManager.WriteInfoLog("User Server starting...");
+            logManager.WriteInfoLog("User Server starting...");
 
             InitializeServices();
             StartNetworkService();
@@ -41,14 +38,14 @@ public class UserServer(
         }
         catch (Exception ex)
         {
-            _logManager.WriteErrorLog(ex);
+            logManager.WriteErrorLog(ex);
             return Task.FromException(ex);
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logManager.WriteInfoLog("User server stopping...");
+        logManager.WriteInfoLog("User server stopping...");
 
         await _cts?.CancelAsync()!;
         if (_leaveUserTask != null) await _leaveUserTask;
@@ -63,19 +60,20 @@ public class UserServer(
 
     private void InitializeServices()
     {
-        var redisEndpoints = _configuration["redisEndpoints"] ??
+        var redisEndpoints = configuration["redisEndpoints"] ??
                              throw new InvalidOperationException("RedisEndpoints is not configured.");
-        var natsEndpoint = _configuration["natsEndPoint"] ??
+        var natsEndpoint = configuration["natsEndPoint"] ??
                            throw new InvalidOperationException("NatsEndpoint is not configured or is invalid.");
 
         try
         {
-            _redisPool.Initialize(redisEndpoints);
-            _natsClientFactory.Initialize(natsEndpoint);
+            redisPool.Initialize(redisEndpoints);
+            natsClientFactory.Initialize(natsEndpoint);
 
-            CommonMapHelper.Initialize(Program.GameServerNum);
-            InstanceMapHelper.Initialize(Program.GameServerNum);
-            CacheHelper.Initialize(_redisPool);
+            GameDataHelper.Initialize(logManager);
+            CommonMapData.Initialize(Program.GameServerNum);
+            InstanceMapData.Initialize(Program.GameServerNum);
+            CacheHelper.Initialize(redisPool);
         }
         catch (Exception ex)
         {
@@ -85,22 +83,22 @@ public class UserServer(
 
     private void StartNetworkService()
     {
-        var port = _configuration.GetValue<short>("servicePort");
-        _networkService.SessionCreatedCallback += OnSessionCreated;
-        _networkService.Listen(IPAddress.Any, port);
+        var port = configuration.GetValue<short>("servicePort");
+        networkService.SessionCreatedCallback += OnSessionCreated;
+        networkService.Listen(IPAddress.Any, port);
     }
 
     private void OnSessionCreated(UserToken token)
     {
         try
         {
-            var redLockFactory = _redisPool.GetRedLockFactory();
-            var natsClient = _natsClientFactory.Create();
-            _ = new GameUser(token, redLockFactory, natsClient, _logManager, EnqueueUserLeave);
+            var redLockFactory = redisPool.GetRedLockFactory();
+            var natsClient = natsClientFactory.Create();
+            _ = new GameUser(token, redLockFactory, natsClient, logManager, EnqueueUserLeave);
         }
         catch (Exception ex)
         {
-            _logManager.WriteErrorLog(ex);
+            logManager.WriteErrorLog(ex);
         }
     }
 
@@ -118,7 +116,7 @@ public class UserServer(
             }
             catch (Exception ex)
             {
-                _logManager.WriteErrorLog(ex);
+                logManager.WriteErrorLog(ex);
             }
     }
 
@@ -129,12 +127,12 @@ public class UserServer(
             if (_leaveUserQueue.TryDequeue(out var user))
             {
                 var token = await user.Release();
-                if (token != null) _networkService.CloseClientSocket(token);
+                if (token != null) networkService.CloseClientSocket(token);
             }
         }
         catch (Exception ex)
         {
-            _logManager.WriteErrorLog(ex);
+            logManager.WriteErrorLog(ex);
         }
     }
 }

@@ -1,4 +1,5 @@
 using network.common;
+using network.common.models;
 using network.packets;
 using StackExchange.Redis;
 using user_server.controllers;

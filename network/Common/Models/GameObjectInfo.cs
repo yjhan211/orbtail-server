@@ -3,7 +3,7 @@ using MessagePack;
 using network.helpers;
 using StackExchange.Redis;
 
-namespace network.common;
+namespace network.common.models;
 
 [MessagePackObject]
 [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]

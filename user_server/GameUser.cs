@@ -1,6 +1,8 @@
 ﻿using System.Threading.Channels;
 using MessagePack;
 using network.common;
+using network.common.data;
+using network.common.models;
 using network.core;
 using network.helpers;
 using network.infrastructure;
@@ -87,7 +89,7 @@ public partial class GameUser : IPeer
                         HeartBeat();
                         break;
                     case Protocol.C_TO_U_LOGIN:
-                        HandleMessage<C_TO_U_LOGIN>(body, Login);
+                        await HandleMessage<C_TO_U_LOGIN>(body, Login);
                         break;
                 }
 
@@ -108,86 +110,86 @@ public partial class GameUser : IPeer
                     await ChatController.GetChatHistory(this, ChatType.ALL);
                     break;
                 case Protocol.C_TO_U_MOVE:
-                    HandleMessage<C_TO_U_MOVE>(body, _playerManager.RequestMove);
+                    await HandleMessage<C_TO_U_MOVE>(body, _playerManager.RequestMove);
                     break;
                 case Protocol.C_TO_U_PLAYER_INFO:
-                    HandleMessage<C_TO_U_PLAYER_INFO>(body, PlayerController.GetPlayerInfo);
+                    await HandleMessage<C_TO_U_PLAYER_INFO>(body, PlayerController.GetPlayerInfo);
                     break;
                 case Protocol.C_TO_U_OBJECT_INFO:
-                    HandleMessage<C_TO_U_OBJECT_INFO>(body, _updateObjectManager.GetObjectInfo);
+                    await HandleMessage<C_TO_U_OBJECT_INFO>(body, _updateObjectManager.GetObjectInfo);
                     break;
                 case Protocol.C_TO_U_EXPLORE_TARGET_INFO:
-                    HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(body, JobController.GetExploreTargetInfo);
+                    await HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(body, JobController.GetExploreTargetInfo);
                     break;
                 case Protocol.C_TO_U_JOB_RESOURCE_INFO:
-                    HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, JobController.GetJobResourceInfo);
+                    await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, JobController.GetJobResourceInfo);
                     break;
                 case Protocol.C_TO_U_UPGRADE_JOB:
-                    HandleMessage<C_TO_U_UPGRADE_JOB>(body, JobController.UpgradeJob);
+                    await HandleMessage<C_TO_U_UPGRADE_JOB>(body, JobController.UpgradeJob);
                     break;
                 case Protocol.C_TO_U_WEAR_ITEM:
-                    HandleMessage<C_TO_U_WEAR_ITEM>(body, InventoryController.RequestWearItem);
+                    await HandleMessage<C_TO_U_WEAR_ITEM>(body, InventoryController.RequestWearItem);
                     break;
                 case Protocol.C_TO_U_USE_ITEM:
-                    HandleMessage<C_TO_U_USE_ITEM>(body, InventoryController.RequestUseItem);
+                    await HandleMessage<C_TO_U_USE_ITEM>(body, InventoryController.RequestUseItem);
                     break;
                 case Protocol.C_TO_U_EXPLORE:
-                    HandleMessage<C_TO_U_EXPLORE>(body, JobController.Explore);
+                    await HandleMessage<C_TO_U_EXPLORE>(body, JobController.Explore);
                     break;
                 case Protocol.C_TO_U_USE_SKILL:
-                    HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
+                    await HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
                     break;
                 case Protocol.C_TO_U_CHAT_MSG:
-                    HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
+                    await HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
                     break;
                 case Protocol.C_TO_U_CREATE_LAB:
-                    HandleMessage<C_TO_U_CREATE_LAB>(body, LabController.CreateLab);
+                    await HandleMessage<C_TO_U_CREATE_LAB>(body, LabController.CreateLab);
                     break;
                 case Protocol.C_TO_U_UPGRADE_RESEARCH:
-                    HandleMessage<C_TO_U_UPGRADE_RESEARCH>(body, LabController.UpgradeResearch);
+                    await HandleMessage<C_TO_U_UPGRADE_RESEARCH>(body, LabController.UpgradeResearch);
                     break;
                 case Protocol.C_TO_U_MAKE:
-                    HandleMessage<C_TO_U_MAKE>(body, LabController.Make);
+                    await HandleMessage<C_TO_U_MAKE>(body, LabController.Make);
                     break;
                 case Protocol.C_TO_U_WRITE_LAB_HIRE:
-                    HandleMessage<C_TO_U_WRITE_LAB_HIRE>(body, LabController.WriteLabHire);
+                    await HandleMessage<C_TO_U_WRITE_LAB_HIRE>(body, LabController.WriteLabHire);
                     break;
                 case Protocol.C_TO_U_LAB_HIRE_LIST:
                     await LabController.LabHireList(this);
                     break;
                 case Protocol.C_TO_U_JOIN_LAB:
-                    HandleMessage<C_TO_U_JOIN_LAB>(body, LabController.JoinLab);
+                    await HandleMessage<C_TO_U_JOIN_LAB>(body, LabController.JoinLab);
                     break;
                 case Protocol.C_TO_U_LAB_INVENTORY:
                     await InventoryController.GetLabInventory(this);
                     break;
                 case Protocol.C_TO_U_LAB_INVENTORY_ADD_ITEM:
-                    HandleMessage<C_TO_U_LAB_INVENTORY_ADD_ITEM>(body, InventoryController.AddLabItem);
+                    await HandleMessage<C_TO_U_LAB_INVENTORY_ADD_ITEM>(body, InventoryController.AddLabItem);
                     break;
                 case Protocol.C_TO_U_LAB_INVENTORY_TAKE_ITEM:
-                    HandleMessage<C_TO_U_LAB_INVENTORY_TAKE_ITEM>(body, InventoryController.TakeLabItem);
+                    await HandleMessage<C_TO_U_LAB_INVENTORY_TAKE_ITEM>(body, InventoryController.TakeLabItem);
                     break;
                 case Protocol.C_TO_U_ENCAMP:
-                    HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
+                    await HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
                     break;
                 case Protocol.C_TO_U_DECAMP:
                     await JobController.Decamp(this);
                     break;
                 case Protocol.C_TO_U_ADD_SELL_ITEM:
-                    HandleMessage<C_TO_U_ADD_SELL_ITEM>(body, JobController.AddSellItem);
+                    await HandleMessage<C_TO_U_ADD_SELL_ITEM>(body, JobController.AddSellItem);
                     break;
                 case Protocol.C_TO_U_DELETE_SELL_ITEM:
-                    HandleMessage<C_TO_U_DELETE_SELL_ITEM>(body, JobController.DeleteSellItem);
+                    await HandleMessage<C_TO_U_DELETE_SELL_ITEM>(body, JobController.DeleteSellItem);
                     break;
                 case Protocol.C_TO_U_BUY_ITEM:
-                    HandleMessage<C_TO_U_BUY_ITEM>(body, JobController.BuyItem);
+                    await HandleMessage<C_TO_U_BUY_ITEM>(body, JobController.BuyItem);
                     break;
                 case Protocol.C_TO_U_CAMP_INFO:
-                    HandleMessage<C_TO_U_CAMP_INFO>(body, CampController.GetCampInfo);
+                    await HandleMessage<C_TO_U_CAMP_INFO>(body, CampController.GetCampInfo);
                     break;
 
                 case Protocol.C_TO_U_SET_NAME:
-                    HandleMessage<C_TO_U_SET_NAME>(body, PlayerController.SetName);
+                    await HandleMessage<C_TO_U_SET_NAME>(body, PlayerController.SetName);
                     break;
 
                 case Protocol.C_TO_U_UPDATE_TUTORIAL:
@@ -207,13 +209,9 @@ public partial class GameUser : IPeer
 
     public void Send(IPacket msg)
     {
-        if (msg is Packet packet)
-        {
-            _token.Send(packet);
-            return;
-        }
+        if (msg is not Packet packet) throw new NotImplementedException();
 
-        throw new NotImplementedException();
+        _token.Send(packet);
     }
 
     public void OnRemoved()
@@ -232,10 +230,10 @@ public partial class GameUser : IPeer
         await _playerManager.SetFlip(direction);
     }
 
-    private void HandleMessage<T>(byte[] body, Func<GameUser, T, Task> handleMessage)
+    private async Task HandleMessage<T>(byte[] body, Func<GameUser, T, Task> handleMessage)
     {
         var msg = MessagePackSerializer.Deserialize<T>(body);
-        handleMessage(this, msg);
+        await handleMessage(this, msg);
     }
 
     private void HandleMessage<T>(byte[] body, Action<GameUser, T> handleMessage)
@@ -272,15 +270,14 @@ public partial class GameUser : IPeer
 
                 // 기본템 지급
                 var giftItemList = new List<ItemInfo>();
-                foreach (var (itemId, count) in Config.DEFAULT_ITEM_LIST)
+                foreach (var (itemId, count) in GameRuleData.DefaultItemList)
                 {
                     var item = await InventoryController.CreateItem(itemId, count);
                     giftItemList.Add(item);
                 }
 
                 playerInfo.InventoryInfo.AddItem(giftItemList);
-                playerInfo.WearItem(giftItemList[0].ItemUid);
-                playerInfo.WearItem(giftItemList[1].ItemUid);
+                // playerInfo.WearItem(giftItemList[0].ItemUid); // TODO 기본템 입히기
             }
 
             var movementHandler = new MovementHandler(_logManager, playerInfo.ObjectInfo, NatsClient, Send,
@@ -325,10 +322,10 @@ public partial class GameUser : IPeer
             _ => throw new ArgumentException($"Unsupported type: {typeof(T)}")
         };
 
-        if (CommonMapHelper.IsCommonMap(objectInfo.MapId))
+        if (CommonMapData.IsCommonMap(objectInfo.MapId))
         {
-            var partKey = CommonMapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-            var targetServerList = CommonMapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
+            var partKey = CommonMapData.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+            var targetServerList = CommonMapData.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
             foreach (var targetServer in targetServerList)
             {
                 var subject = SubjectHelper.GetUpdateInfoSubject(objectInfo, targetServer);
@@ -338,8 +335,8 @@ public partial class GameUser : IPeer
             return;
         }
 
-        var instancePartKey = InstanceMapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
-        var manageServer = InstanceMapHelper.GetManageServerId(objectInfo.MapSubId);
+        var instancePartKey = InstanceMapData.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+        var manageServer = InstanceMapData.GetManageServerId(objectInfo.MapSubId);
         var instanceSubject = SubjectHelper.GetUpdateInfoSubject(objectInfo, manageServer);
         NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, info)));
     }

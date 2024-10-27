@@ -1,4 +1,5 @@
 using network.common;
+using network.common.models;
 using network.packets;
 
 namespace user_server.controllers;
@@ -19,11 +20,8 @@ public static class CampController
 
             var isMax = campInfoList.Count >= Config.BROADCAST_UNIT;
             var isEnded = i == campInfoList.Count - 1;
-            if (!isMax && !isEnded)
-            {
-                continue;
-            }
-            
+            if (!isMax && !isEnded) continue;
+
             using var packet = PacketMaker.U_TO_C_CAMP_INFO(campInfoList);
             user.Send(packet);
         }

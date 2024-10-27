@@ -4,7 +4,7 @@ using network.helpers;
 using RedLockNet;
 using RedLockNet.SERedis;
 
-namespace network.common;
+namespace network.common.models;
 
 [MessagePackObject]
 [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]

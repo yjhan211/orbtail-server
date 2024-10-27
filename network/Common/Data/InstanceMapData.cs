@@ -1,8 +1,8 @@
-using network.common;
+using network.common.models;
 
-namespace network.helpers;
+namespace network.common.data;
 
-public static class InstanceMapHelper
+public static class InstanceMapData
 {
     private static int _totalServerNum;
 
@@ -30,7 +30,7 @@ public static class InstanceMapHelper
     public static (MapId mapId, Cell spawnPosition, bool isFlip)? GetPortalOrNull(GameObjectInfo objectInfo)
     {
         var portalKey = GetPortalKey(objectInfo.MapId, objectInfo.TargetCell);
-        if (InstanceMapHelper.PortalInfo.TryGetValue(portalKey, out var portalInfo)) return portalInfo;
+        if (PortalInfo.TryGetValue(portalKey, out var portalInfo)) return portalInfo;
 
         return null;
     }

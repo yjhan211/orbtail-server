@@ -1,4 +1,4 @@
-using network.common;
+using network.common.models;
 
 namespace network.interfaces;
 

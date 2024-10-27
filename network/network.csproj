@@ -25,4 +25,9 @@
         <PackageReference Include="Serilog.Formatting.Compact" Version="2.0.0"/>
         <PackageReference Include="StackExchange.Redis.MultiplexerPool" Version="2.0.1"/>
     </ItemGroup>
+    <ItemGroup>
+        <None Include="Common\csv\**">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
 </Project>

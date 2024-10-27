@@ -12,9 +12,9 @@ public class UserToken(int tokenId, LogManager logManager)
     private readonly object _lockSendingQueue = new();
     private readonly MessageResolver _messageResolver = new();
     private readonly Queue<Packet> _sendingQueue = new();
+    public readonly SemaphoreSlim LockDisconnect = new(1);
     private Timer? _heartbeatTimer;
     private IPeer? _peer;
-    public readonly SemaphoreSlim LockDisconnect = new(1);
 
     public int TokenId { get; } = tokenId;
     public SocketAsyncEventArgs? RecvEventArgs { get; private set; }

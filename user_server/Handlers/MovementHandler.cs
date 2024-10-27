@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using MessagePack;
 using network.common;
+using network.common.data;
+using network.common.models;
 using network.helpers;
 using network.infrastructure;
 using network.managers;
@@ -10,7 +12,7 @@ using user_server.managers;
 namespace user_server.handlers;
 
 public sealed class MovementHandler(
-    LogManager logManager,
+    LogManager? logManager,
     GameObjectInfo objectInfo,
     NatsClient natsClient,
     SendPacketDelegate sendToClient,
@@ -18,7 +20,7 @@ public sealed class MovementHandler(
     Func<ChangeMapInfo, Task> spawn)
 {
     // ReSharper disable once UnusedMember.Local
-    private readonly LogManager _logManager = logManager;
+    private readonly LogManager? _logManager = logManager;
     private readonly SemaphoreSlim _moveLock = new(1, 1);
     private readonly ConcurrentQueue<C_TO_U_MOVE> _moveQueue = new();
 
@@ -47,7 +49,7 @@ public sealed class MovementHandler(
                 return;
             }
 
-            if (_moveQueue.Count > Config.MAX_QUEUE_SIZE)
+            if (_moveQueue.Count > Config.MAX_MOVE_QUEUE_SIZE)
                 // TODO 싱크 완전히 깨진 상태이므로 위치 강제보정
                 throw new Exception("[RequestMove] moveQueue is Full.");
             _moveQueue.Enqueue(body);
@@ -68,23 +70,23 @@ public sealed class MovementHandler(
         objectInfo.MoveTimestamp = moveRequest.Direction == DirectionType.NONE ? default : DateTime.UtcNow;
         await objectInfo.Save();
 
-        var isCommonMap = CommonMapHelper.IsCommonMap(objectInfo.MapId);
+        var isCommonMap = CommonMapData.IsCommonMap(objectInfo.MapId);
 
         var lastPartKey = isCommonMap
-            ? CommonMapHelper.CreatePartKey(objectInfo.MapId, _lastCell)
-            : InstanceMapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+            ? CommonMapData.CreatePartKey(objectInfo.MapId, _lastCell)
+            : InstanceMapData.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
 
         var currentPartKey = isCommonMap
-            ? CommonMapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell)
-            : InstanceMapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+            ? CommonMapData.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell)
+            : InstanceMapData.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
 
         var lastManageServer = isCommonMap
-            ? CommonMapHelper.GetManageServerId(lastPartKey)
-            : InstanceMapHelper.GetManageServerId(objectInfo.MapSubId);
+            ? CommonMapData.GetManageServerId(lastPartKey)
+            : InstanceMapData.GetManageServerId(objectInfo.MapSubId);
 
         var currentManageServer = isCommonMap
-            ? CommonMapHelper.GetManageServerId(currentPartKey)
-            : InstanceMapHelper.GetManageServerId(objectInfo.MapSubId);
+            ? CommonMapData.GetManageServerId(currentPartKey)
+            : InstanceMapData.GetManageServerId(objectInfo.MapSubId);
 
         // 담당 서버가 변경되었을 경우 이전 서버에게 떠났음을 알림
         if (lastManageServer != currentManageServer)
@@ -101,7 +103,7 @@ public sealed class MovementHandler(
         // 자신의 이동이므로 큐에 즉시 넣음
         updateObjectManager.EnqueueUpdateObject(objectInfo);
 
-        var moveElapsedTime = await CalcMoveElapsedTime();
+        var moveElapsedTime = CalcMoveElapsedTime();
         await Task.Delay((int)(moveElapsedTime * 1000));
 
         // 포탈 여부 확인 및 맵 이동
@@ -130,30 +132,16 @@ public sealed class MovementHandler(
         using var packet = PacketMaker.U_TO_C_MOVE(objectInfo.ObjectId, ErrorCode.SUCCESS, objectInfo);
         sendToClient(packet);
 
-        if (CommonMapHelper.IsCommonMap(objectInfo.MapId)) RequestSpawnInfo(objectInfo.MapId);
-    }
-
-    private async Task<long> GetMapSubId(MapId mapId)
-    {
-        if (mapId == MapId.LAB_1)
-        {
-            var playerInfo = await PlayerInfo.Load(objectInfo.ObjectId);
-            if (playerInfo == null || playerInfo.LabId <= 0)
-                throw new Exception($"Invalid player info for LAB. PlayerId: {objectInfo.ObjectId}");
-            return playerInfo.LabId;
-        }
-
-        if (mapId == MapId.LIBRARY) return 0;
-        return 0;
+        if (CommonMapData.IsCommonMap(objectInfo.MapId)) RequestSpawnInfo(objectInfo.MapId);
     }
 
     private async Task<bool> TryHandleMapChange()
     {
-        var portalInfo = CommonMapHelper.GetPortalOrNull(objectInfo);
+        var portalInfo = CommonMapData.GetPortalOrNull(objectInfo);
         if (portalInfo == null) return false;
 
         var (mapId, spawnPosition, isFlip) = portalInfo.Value;
-        var mapSubId = await GetMapSubId(mapId);
+        var mapSubId = 1; // TODO 포탈 구현 시 재작업
 
         var mapChangeInfo = new ChangeMapInfo(mapId, mapSubId, spawnPosition, isFlip);
         await spawn.Invoke(mapChangeInfo);
@@ -164,10 +152,10 @@ public sealed class MovementHandler(
 
     private void RequestSpawnInfo(MapId targetMapId, bool isSpawn = false)
     {
-        if (!CommonMapHelper.IsCommonMap(targetMapId))
+        if (!CommonMapData.IsCommonMap(targetMapId))
         {
-            var serverId = InstanceMapHelper.GetManageServerId(objectInfo.MapSubId);
-            var instanceKey = InstanceMapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+            var serverId = InstanceMapData.GetManageServerId(objectInfo.MapSubId);
+            var instanceKey = InstanceMapData.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
             RequestSpawnObjectList(serverId, [instanceKey]);
             return;
         }
@@ -190,37 +178,37 @@ public sealed class MovementHandler(
         var currentBoundCellList = objectInfo.CurrentCell.GetBoundCellList();
         var objectSpawnList = currentBoundCellList
             .Except(lastBoundCellList)
-            .Select(lastBoundCell => CommonMapHelper.CreatePartKey(objectInfo.MapId, lastBoundCell))
+            .Select(lastBoundCell => CommonMapData.CreatePartKey(objectInfo.MapId, lastBoundCell))
             .GroupBy(
-                CommonMapHelper.GetManageServerId,
+                CommonMapData.GetManageServerId,
                 (serverId, positionKeys) => new { serverId, positionKeyList = positionKeys.ToList() }
             );
 
         foreach (var item in objectSpawnList) RequestSpawnObjectList(item.serverId, item.positionKeyList);
     }
 
-    private async Task<float> CalcMoveElapsedTime()
+    private float CalcMoveElapsedTime()
     {
-        var moveElapsedTime = Config.MOVE_ELAPSED_TIME;
-        switch (objectInfo.MapId)
-        {
-            case MapId.WETLAND_1:
-                var player = await PlayerInfo.Load(objectInfo.ObjectId);
-                if (player == null) throw new Exception("cannot find player info");
-
-                var hasSpeedBoost = player.WearItemIdList.Contains(104000004);
-                if (!hasSpeedBoost) moveElapsedTime *= 2;
-                break;
-
-            case MapId.NONE:
-            case MapId.CAMPUS_1:
-            case MapId.FACTORY_1:
-            case MapId.LAB_1:
-            case MapId.LIBRARY:
-                break;
-            default:
-                throw new ArgumentOutOfRangeException();
-        }
+        var moveElapsedTime = GameRuleData.MoveElapsedTime;
+        // switch (objectInfo.MapId)
+        // {
+        //     case MapId.WETLAND_1:
+        //         var player = await PlayerInfo.Load(objectInfo.ObjectId);
+        //         if (player == null) throw new Exception("cannot find player info");
+        //
+        //         var hasSpeedBoost = player.WearItemIdList.Contains(104000004);
+        //         if (!hasSpeedBoost) moveElapsedTime *= 2;
+        //         break;
+        //
+        //     case MapId.NONE:
+        //     case MapId.CAMPUS_1:
+        //     case MapId.FACTORY_1:
+        //     case MapId.LAB_1:
+        //     case MapId.LIBRARY:
+        //         break;
+        //     default:
+        //         throw new ArgumentOutOfRangeException();
+        // }
 
         return moveElapsedTime;
     }

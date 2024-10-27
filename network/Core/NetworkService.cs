@@ -120,11 +120,8 @@ public class NetworkService
         UserToken? userToken = null;
         try
         {
-            if (recvArgs.UserToken is not UserToken token)
-            {
-                return;
-            }
-            
+            if (recvArgs.UserToken is not UserToken token) return;
+
             userToken = token;
             if (recvArgs.SocketError != SocketError.Success)
             {
@@ -136,11 +133,10 @@ public class NetworkService
 
             if (recvArgs.BytesTransferred <= 0)
             {
-                // 연결이 종료되었을 수 있음
                 userToken.OnRemoved();
                 return;
             }
-            
+
             var (errorCode, errorLog) =
                 userToken.OnReceived(recvArgs.Buffer, recvArgs.Offset, recvArgs.BytesTransferred);
             if (errorCode != ErrorCode.SUCCESS)

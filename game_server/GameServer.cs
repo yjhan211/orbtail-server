@@ -3,6 +3,8 @@ using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using network.common;
+using network.common.data;
+using network.common.models;
 using network.helpers;
 using network.infrastructure;
 using network.managers;
@@ -14,8 +16,7 @@ public class GameServer(
     IConfiguration configuration,
     LogManager logManager,
     RedisConnectionPool redisPool,
-    NatsClientFactory natsClientFactory)
-    : IHostedService
+    NatsClientFactory natsClientFactory) : IHostedService
 {
     private readonly List<InstanceMapController> _instanceControllerList = [];
     private readonly List<CommonMapController> _mapControllerList = [];
@@ -29,7 +30,7 @@ public class GameServer(
             logManager.WriteInfoLog("Game server starting...");
 
             InitializeServices();
-            await InitializeControllers();
+            InitializeControllers();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             StartMessageProcessing();
@@ -48,10 +49,7 @@ public class GameServer(
         logManager.WriteInfoLog("Game server stopping...");
 
         await _cts.CancelAsync();
-        if (_messageTimer != null)
-        {
-            await _messageTimer.DisposeAsync();
-        }
+        if (_messageTimer != null) await _messageTimer.DisposeAsync();
 
         await Task.WhenAll(_mapControllerList.Select(c => c.ShutdownAsync()));
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
@@ -73,8 +71,8 @@ public class GameServer(
             redisPool.Initialize(redisEndpoints);
             natsClientFactory.Initialize(natsEndpoint);
 
-            CommonMapHelper.Initialize(Program.GameServerNum);
-            InstanceMapHelper.Initialize(Program.GameServerNum);
+            CommonMapData.Initialize(Program.GameServerNum);
+            InstanceMapData.Initialize(Program.GameServerNum);
             CacheHelper.Initialize(redisPool);
         }
         catch (Exception ex)
@@ -85,7 +83,8 @@ public class GameServer(
 
     private async Task InitializeControllers()
     {
-        _mapControllerList.Add(new CommonMapController(logManager, natsClientFactory.Create(), _cts, MapId.CAMPUS_1));
+        // TODO 공통맵 생기면 활성화
+        // _mapControllerList.Add(new CommonMapController(logManager, natsClientFactory.Create(), _cts, MapId.CAMPUS_1));
         foreach (var mapController in _mapControllerList) await mapController.Initialize();
 
         _instanceControllerList.Add(new InstanceMapController(logManager, natsClientFactory.Create(), _cts));
@@ -155,7 +154,7 @@ public class GameServer(
         var redLock = redisPool.GetRedLockFactory();
         await using var playerLock = await PlayerInfo.Lock(redLock, playerId);
         var playerInfo = await PlayerInfo.Load(msg.PlayerId);
-        
+
         // TODO DB 붙이기 전까지 일단 안지움
         // ReSharper disable once RedundantJumpStatement
         if (playerInfo == null) return;

@@ -1,4 +1,4 @@
-namespace network.common;
+namespace network.common.models;
 
 public class ChangeMapInfo(MapId mapId, long mapSubId, Cell spawnCell, bool isFlip)
 {

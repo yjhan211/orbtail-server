@@ -1,4 +1,5 @@
 using network.common;
+using network.common.models;
 using network.helpers;
 using network.packets;
 
@@ -78,17 +79,17 @@ public static class InventoryController
                     // TODO 일괄사용
                     targetItem.Count -= 1;
 
-                var isCountable = !GameDesignData.IsWearableItem(targetItem.ItemId);
-                var isExist = labInfo.InventoryInfo.ItemDict.ContainsKey(targetItem.ItemUid);
-                if (isCountable && isExist)
-                {
-                    labInfo.InventoryInfo.ItemDict[targetItem.ItemUid].Count += 1;
-                }
-                else
-                {
-                    var addItem = await CreateItem(targetItem.ItemId, 1);
-                    labInfo.InventoryInfo.ItemDict[addItem.ItemUid] = addItem;
-                }
+                // var isCountable = !GameDataHelper.IsWearableItem(targetItem.ItemId);
+                // var isExist = labInfo.InventoryInfo.ItemDict.ContainsKey(targetItem.ItemUid);
+                // if (isCountable && isExist)
+                // {
+                //     labInfo.InventoryInfo.ItemDict[targetItem.ItemUid].Count += 1;
+                // }
+                // else
+                // {
+                //     var addItem = await CreateItem(targetItem.ItemId, 1);
+                //     labInfo.InventoryInfo.ItemDict[addItem.ItemUid] = addItem;
+                // }
 
                 await labInfo.Save();
                 await playerInfo.Save();
@@ -126,17 +127,17 @@ public static class InventoryController
                     // TODO 일괄사용
                     labInfo.InventoryInfo.ItemDict[body.ItemUid].Count -= 1;
 
-                var isCountable = !GameDesignData.IsWearableItem(targetItem.ItemId);
-                var isExist = labInfo.InventoryInfo.ItemDict.ContainsKey(targetItem.ItemUid);
-                if (isCountable && isExist)
-                {
-                    playerInfo.InventoryInfo.ItemDict[targetItem.ItemUid].Count += targetItem.Count;
-                }
-                else
-                {
-                    var addItem = await CreateItem(targetItem.ItemId, 1);
-                    playerInfo.InventoryInfo.ItemDict[addItem.ItemUid] = addItem;
-                }
+                // var isCountable = !GameDataHelper.IsWearableItem(targetItem.ItemId);
+                // var isExist = labInfo.InventoryInfo.ItemDict.ContainsKey(targetItem.ItemUid);
+                // if (isCountable && isExist)
+                // {
+                //     playerInfo.InventoryInfo.ItemDict[targetItem.ItemUid].Count += targetItem.Count;
+                // }
+                // else
+                // {
+                //     var addItem = await CreateItem(targetItem.ItemId, 1);
+                //     playerInfo.InventoryInfo.ItemDict[addItem.ItemUid] = addItem;
+                // }
 
                 await labInfo.InventoryInfo.Save();
                 await playerInfo.Save();

@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using MessagePack;
 using network.helpers;
 
-namespace network.common;
+namespace network.common.models;
 
 [MessagePackObject]
 [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
@@ -37,16 +37,16 @@ public class InventoryInfo : IMessagePackObject
 
     public void AddItem(ItemInfo itemInfo)
     {
-        var isCountable = !GameDesignData.IsWearableItem(itemInfo.ItemId);
-        if (isCountable)
-        {
-            var existItem = ItemDict.Values.FirstOrDefault(item => item.ItemId == itemInfo.ItemId);
-            if (existItem != null)
-            {
-                existItem.Count += itemInfo.Count;
-                return;
-            }
-        }
+        // var isCountable = !GameDataHelper.IsWearableItem(itemInfo.ItemId);
+        // if (isCountable)
+        // {
+        //     var existItem = ItemDict.Values.FirstOrDefault(item => item.ItemId == itemInfo.ItemId);
+        //     if (existItem != null)
+        //     {
+        //         existItem.Count += itemInfo.Count;
+        //         return;
+        //     }
+        // }
 
         ItemDict[itemInfo.ItemUid] = itemInfo;
     }
@@ -54,23 +54,20 @@ public class InventoryInfo : IMessagePackObject
     public void AddItem(List<ItemInfo> itemInfoList)
     {
         foreach (var itemInfo in itemInfoList)
-        {
-            var isCountable = !GameDesignData.IsWearableItem(itemInfo.ItemId);
-            if (isCountable)
-            {
-                var existItem = ItemDict.Values.FirstOrDefault(
-                    item => item.ItemId == itemInfo.ItemId
-                );
-
-                if (existItem != null)
-                {
-                    existItem.Count += itemInfo.Count;
-                    continue;
-                }
-            }
-
+            // var isCountable = !GameDataHelper.IsWearableItem(itemInfo.ItemId);
+            // if (isCountable)
+            // {
+            //     var existItem = ItemDict.Values.FirstOrDefault(
+            //         item => item.ItemId == itemInfo.ItemId
+            //     );
+            //
+            //     if (existItem != null)
+            //     {
+            //         existItem.Count += itemInfo.Count;
+            //         continue;
+            //     }
+            // }
             ItemDict[itemInfo.ItemUid] = itemInfo;
-        }
     }
 
     public async Task Save()

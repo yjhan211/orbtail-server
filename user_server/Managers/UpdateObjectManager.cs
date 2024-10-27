@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using network.common;
+using network.common.models;
 using network.managers;
 using network.packets;
 using StackExchange.Redis;
@@ -9,13 +10,13 @@ namespace user_server.managers;
 public sealed class UpdateObjectManager : IDisposable
 {
     private readonly CancellationTokenSource _cts;
-    private readonly LogManager _logManager;
+    private readonly LogManager? _logManager;
     private readonly SendPacketDelegate _sendToClient;
     private readonly Task _task;
     private readonly Channel<GameObjectInfo> _updateObjectChannel;
     private bool _disposed;
 
-    public UpdateObjectManager(CancellationTokenSource cts, LogManager logManager, SendPacketDelegate sendToClient,
+    public UpdateObjectManager(CancellationTokenSource cts, LogManager? logManager, SendPacketDelegate sendToClient,
         Channel<GameObjectInfo> updateObjectReader)
     {
         _cts = cts;

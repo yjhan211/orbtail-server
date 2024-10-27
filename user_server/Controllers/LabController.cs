@@ -1,5 +1,6 @@
 using MessagePack;
 using network.common;
+using network.common.models;
 using network.helpers;
 using network.packets;
 
@@ -54,51 +55,51 @@ public static class LabController
             await using (await LabInfo.Lock(user.RedLock, labInfo.LabId))
             {
                 // 신규 생성 연구면 자격 요건 확인 후 1레벨 생성
-                if (!labInfo.ResearchInfoDict.TryGetValue(body.ResearchId, out var researchInfo))
-                {
-                    var requireList = GameDesignData.GetRequireResearch(body.ResearchId);
-                    foreach (var requireResearch in requireList)
-                    {
-                        if (!labInfo.ResearchInfoDict.TryGetValue(requireResearch.ResearchId, out var findResearch))
-                            throw new Exception("require research not found");
+                // if (!labInfo.ResearchInfoDict.TryGetValue(body.ResearchId, out var researchInfo))
+                // {
+                //     var requireList = GameDataHelper.GetRequireResearch(body.ResearchId);
+                //     foreach (var requireResearch in requireList)
+                //     {
+                //         if (!labInfo.ResearchInfoDict.TryGetValue(requireResearch.ResearchId, out var findResearch))
+                //             throw new Exception("require research not found");
+                //
+                //         if (findResearch.Level < requireResearch.Level)
+                //             throw new Exception("not enough research level");
+                //     }
+                //
+                //     researchInfo = new ResearchInfo(body.ResearchId, 1);
+                // }
+                // else // 기존 연구 업그레이드면 개인 연구 포인트 차감 / 연구소 연구 포인트 증가
+                // {
+                //     if (!researchInfo.PointDict.TryGetValue(body.JobType, out _))
+                //         throw new Exception("invalid upgrade job type");
+                //
+                //     if (researchInfo.Level * 10 <= researchInfo.PointDict[body.JobType])
+                //         throw new Exception("invalid current point.");
+                //
+                //     var totalPoint = playerInfo.JobInfo.ResearchPointDict[body.JobType].Point;
+                //     var usePoint = playerInfo.JobInfo.ResearchPointDict[body.JobType].UsePoint;
+                //     if (totalPoint <= usePoint) throw new Exception("empty point");
+                //
+                //     playerInfo.JobInfo.ResearchPointDict[body.JobType].UsePoint += 1;
+                //     researchInfo.PointDict[body.JobType] += 1;
+                //
+                //     var isUpgradeLevel = true;
+                //     foreach (var point in researchInfo.PointDict.Values)
+                //         if (point < researchInfo.Level * 10)
+                //         {
+                //             isUpgradeLevel = false;
+                //             break;
+                //         }
+                //
+                //     if (isUpgradeLevel)
+                //     {
+                //         researchInfo.Level += 1;
+                //         researchInfo.InitResearchPoint();
+                //     }
+                // }
 
-                        if (findResearch.Level < requireResearch.Level)
-                            throw new Exception("not enough research level");
-                    }
-
-                    researchInfo = new ResearchInfo(body.ResearchId, 1);
-                }
-                else // 기존 연구 업그레이드면 개인 연구 포인트 차감 / 연구소 연구 포인트 증가
-                {
-                    if (!researchInfo.PointDict.TryGetValue(body.JobType, out _))
-                        throw new Exception("invalid upgrade job type");
-
-                    if (researchInfo.Level * 10 <= researchInfo.PointDict[body.JobType])
-                        throw new Exception("invalid current point.");
-
-                    var totalPoint = playerInfo.JobInfo.ResearchPointDict[body.JobType].Point;
-                    var usePoint = playerInfo.JobInfo.ResearchPointDict[body.JobType].UsePoint;
-                    if (totalPoint <= usePoint) throw new Exception("empty point");
-
-                    playerInfo.JobInfo.ResearchPointDict[body.JobType].UsePoint += 1;
-                    researchInfo.PointDict[body.JobType] += 1;
-
-                    var isUpgradeLevel = true;
-                    foreach (var point in researchInfo.PointDict.Values)
-                        if (point < researchInfo.Level * 10)
-                        {
-                            isUpgradeLevel = false;
-                            break;
-                        }
-
-                    if (isUpgradeLevel)
-                    {
-                        researchInfo.Level += 1;
-                        researchInfo.InitResearchPoint();
-                    }
-                }
-
-                labInfo.ResearchInfoDict[researchInfo.ResearchId] = researchInfo;
+                // labInfo.ResearchInfoDict[researchInfo.ResearchId] = researchInfo;
 
                 await labInfo.Save();
                 await playerInfo.Save();
@@ -116,48 +117,48 @@ public static class LabController
 
     public static async Task Make(GameUser user, C_TO_U_MAKE body)
     {
-        int makeItemId;
-        await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
-        {
-            var playerInfo = await PlayerInfo.Load(user.PlayerId);
-            if (playerInfo == null) throw new Exception("player_info not exists");
+        // int makeItemId;
+        // await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+        // {
+        //     var playerInfo = await PlayerInfo.Load(user.PlayerId);
+        //     if (playerInfo == null) throw new Exception("player_info not exists");
+        //
+        //     var validator = new List<(int, int)>();
+        //     foreach (var materialSlot in body.Materials)
+        //         if (playerInfo.InventoryInfo.ItemDict.TryGetValue(materialSlot.Key, out var slotItemInfo))
+        //             validator.Add((slotItemInfo.ItemId, materialSlot.Value));
+        //
+        //     var labInfo = await LabInfo.Load(playerInfo.LabId);
+        //     if (labInfo == null) throw new Exception("lab_info not exists");
+        //
+        //     var researchList = labInfo.ResearchInfoDict.Values.Select(x => (x.ResearchId, x.Level)).ToList();
+        //     makeItemId = GameDataHelper.GetMakableItemId(researchList, validator);
+        //
+        //     if (makeItemId != 0)
+        //     {
+        //         var itemInfo = await InventoryController.CreateItem(makeItemId, 1);
+        //         playerInfo.InventoryInfo.AddItem(itemInfo);
+        //     }
+        //
+        //     foreach (var materialInfo in body.Materials)
+        //     {
+        //         var materialItemUid = materialInfo.Key;
+        //         var materialItemCount = materialInfo.Value;
+        //
+        //         if (playerInfo.InventoryInfo.ItemDict.TryGetValue(materialItemUid, out var materialItem))
+        //         {
+        //             materialItem.Count -= materialItemCount;
+        //             if (materialItem.Count == 0) playerInfo.InventoryInfo.ItemDict.Remove(materialItemUid);
+        //         }
+        //     }
+        //
+        //     await playerInfo.Save();
+        // }
 
-            var validator = new List<(int, int)>();
-            foreach (var materialSlot in body.Materials)
-                if (playerInfo.InventoryInfo.ItemDict.TryGetValue(materialSlot.Key, out var slotItemInfo))
-                    validator.Add((slotItemInfo.ItemId, materialSlot.Value));
-
-            var labInfo = await LabInfo.Load(playerInfo.LabId);
-            if (labInfo == null) throw new Exception("lab_info not exists");
-
-            var researchList = labInfo.ResearchInfoDict.Values.Select(x => (x.ResearchId, x.Level)).ToList();
-            makeItemId = GameDesignData.GetMakableItemId(researchList, validator);
-
-            if (makeItemId != 0)
-            {
-                var itemInfo = await InventoryController.CreateItem(makeItemId, 1);
-                playerInfo.InventoryInfo.AddItem(itemInfo);
-            }
-
-            foreach (var materialInfo in body.Materials)
-            {
-                var materialItemUid = materialInfo.Key;
-                var materialItemCount = materialInfo.Value;
-
-                if (playerInfo.InventoryInfo.ItemDict.TryGetValue(materialItemUid, out var materialItem))
-                {
-                    materialItem.Count -= materialItemCount;
-                    if (materialItem.Count == 0) playerInfo.InventoryInfo.ItemDict.Remove(materialItemUid);
-                }
-            }
-
-            await playerInfo.Save();
-        }
-
-        using var packet = PacketMaker.U_TO_C_MAKE(makeItemId != 0);
-        user.Send(packet);
-
-        await InventoryController.GetCurrentItemList(user);
+        // using var packet = PacketMaker.U_TO_C_MAKE(makeItemId != 0);
+        // user.Send(packet);
+        //
+        // await InventoryController.GetCurrentItemList(user);
     }
 
     public static async Task WriteLabHire(GameUser user, C_TO_U_WRITE_LAB_HIRE body)
@@ -198,57 +199,57 @@ public static class LabController
 
     public static async Task JoinLab(GameUser user, C_TO_U_JOIN_LAB body)
     {
-        PlayerInfo? playerInfo;
-        LabInfo? labInfo;
-        await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
-        {
-            playerInfo = await PlayerInfo.Load(user.PlayerId);
-            if (playerInfo == null) throw new Exception("player_info not exists");
+        // PlayerInfo? playerInfo;
+        // LabInfo? labInfo;
+        // await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+        // {
+        //     playerInfo = await PlayerInfo.Load(user.PlayerId);
+        //     if (playerInfo == null) throw new Exception("player_info not exists");
+        //
+        //     if (playerInfo.LabId == body.LabId) throw new Exception("same lab id");
+        //
+        //     await using (await LabInfo.Lock(user.RedLock, body.LabId))
+        //     {
+        //         labInfo = await LabInfo.Load(body.LabId);
+        //         if (labInfo == null) throw new Exception("player_info not exists");
+        //
+        //         if (GameDataHelper.GetMaxLabMemberNum(labInfo.LabGrade) <= labInfo.MemberDict.Count)
+        //             throw new Exception("member full");
+        //
+        //         // 과거 랩
+        //         if (playerInfo.LabId != 0)
+        //             await using (await LabInfo.Lock(user.RedLock, playerInfo.LabId))
+        //             {
+        //                 var lastLabInfo = await LabInfo.Load(playerInfo.LabId);
+        //                 if (lastLabInfo != null)
+        //                     // 기술 이전
+        //                     // TODO 길드탈퇴 고려
+        //                     foreach (var lastResearch in lastLabInfo.ResearchInfoDict)
+        //                     {
+        //                         var research = lastResearch.Value;
+        //                         labInfo.ResearchInfoDict[research.ResearchId] = research;
+        //                     }
+        //
+        //                 // 기존 랩 탈퇴
+        //                 await LabInfo.Delete(playerInfo.LabId);
+        //             }
+        //
+        //         // 랩 이전
+        //         playerInfo.LabId = labInfo.LabId;
+        //         playerInfo.LabName = labInfo.LabName;
+        //         labInfo.MemberDict.Add(playerInfo.PlayerId, playerInfo.Name);
+        //
+        //         await labInfo.Save();
+        //         await playerInfo.Save();
+        //     }
+        // }
 
-            if (playerInfo.LabId == body.LabId) throw new Exception("same lab id");
-
-            await using (await LabInfo.Lock(user.RedLock, body.LabId))
-            {
-                labInfo = await LabInfo.Load(body.LabId);
-                if (labInfo == null) throw new Exception("player_info not exists");
-
-                if (GameDesignData.GetMaxLabMemberNum(labInfo.LabGrade) <= labInfo.MemberDict.Count)
-                    throw new Exception("member full");
-
-                // 과거 랩
-                if (playerInfo.LabId != 0)
-                    await using (await LabInfo.Lock(user.RedLock, playerInfo.LabId))
-                    {
-                        var lastLabInfo = await LabInfo.Load(playerInfo.LabId);
-                        if (lastLabInfo != null)
-                            // 기술 이전
-                            // TODO 길드탈퇴 고려
-                            foreach (var lastResearch in lastLabInfo.ResearchInfoDict)
-                            {
-                                var research = lastResearch.Value;
-                                labInfo.ResearchInfoDict[research.ResearchId] = research;
-                            }
-
-                        // 기존 랩 탈퇴
-                        await LabInfo.Delete(playerInfo.LabId);
-                    }
-
-                // 랩 이전
-                playerInfo.LabId = labInfo.LabId;
-                playerInfo.LabName = labInfo.LabName;
-                labInfo.MemberDict.Add(playerInfo.PlayerId, playerInfo.Name);
-
-                await labInfo.Save();
-                await playerInfo.Save();
-            }
-        }
-
-        await CacheHelper.Instance.HashDeleteAsync(HireKey, $"{playerInfo.LabId}");
-        await InventoryController.GetLabInventory(user);
-
-        using var packet = PacketMaker.U_TO_C_LAB_INFO(playerInfo, labInfo);
-        foreach (var labMember in labInfo.MemberDict)
-            user.NatsClient.Publish(GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, labMember.Key), packet.ToBytes());
+        // await CacheHelper.Instance.HashDeleteAsync(HireKey, $"{playerInfo.LabId}");
+        // await InventoryController.GetLabInventory(user);
+        //
+        // using var packet = PacketMaker.U_TO_C_LAB_INFO(playerInfo, labInfo);
+        // foreach (var labMember in labInfo.MemberDict)
+        //     user.NatsClient.Publish(GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, labMember.Key), packet.ToBytes());
     }
 
     public static void SendLabItemList(GameUser user, Dictionary<long, ItemInfo> itemDict)

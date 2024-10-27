@@ -1,5 +1,6 @@
 using MessagePack;
 using network.common;
+using network.common.models;
 using network.helpers;
 using network.packets;
 using network.utils;

@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using game_server.handlers;
 using MessagePack;
 using network.common;
+using network.common.data;
+using network.common.models;
 using network.helpers;
 using network.infrastructure;
 using network.interfaces;
@@ -73,12 +75,12 @@ public class CommonMapController
 
     private void InitializeManageParts()
     {
-        var managePartList = CommonMapHelper.GetManagePartList(Program.GameServerId);
+        var managePartList = CommonMapData.GetManagePartList(Program.GameServerId);
         var managePositionKeyList = new List<string>();
 
         foreach (var managePart in managePartList)
         {
-            var positionList = CommonMapHelper.GetPositionListByMapByPart(_mapId, managePart);
+            var positionList = CommonMapData.GetPositionListByMapByPart(_mapId, managePart);
             managePositionKeyList.AddRange(positionList);
             _exploreTargetDict[managePart] = [];
             _jobResourceDict[managePart] = [];
@@ -87,7 +89,7 @@ public class CommonMapController
         foreach (var positionKey in managePositionKeyList)
         {
             _objectPositionDict[positionKey] = [];
-            _manageCellList.Add(CommonMapHelper.CreateCell(positionKey));
+            _manageCellList.Add(CommonMapData.CreateCell(positionKey));
         }
     }
 
@@ -128,7 +130,7 @@ public class CommonMapController
 
     private async Task<bool> CreateExploreTarget()
     {
-        var genList = CommonMapHelper.GetGenExploreIdList(_mapId);
+        var genList = CommonMapData.GetGenExploreIdList(_mapId);
         if (genList == null) return false;
 
         await _mapLock.WaitAsync();
@@ -140,7 +142,7 @@ public class CommonMapController
                 if (3 <= partExploreTargetInfo.Value.Count) continue;
 
                 var createCell = _manageCellList[random.Next(0, _manageCellList.Count)];
-                var createPositionKey = CommonMapHelper.CreatePartKey(_mapId, createCell);
+                var createPositionKey = CommonMapData.CreatePartKey(_mapId, createCell);
                 var exploreTargetUid = await CacheHelper.Instance.StringIncrementAsync("temp_explore_target_uid");
 
                 var objectInfo = new GameObjectInfo
@@ -168,13 +170,11 @@ public class CommonMapController
 
                 await exploreTargetInfo.Save();
 
-                var targetServerList = CommonMapHelper.GetBoundServerList(_mapId, objectInfo.CurrentCell);
+                var targetServerList = CommonMapData.GetBoundServerList(_mapId, objectInfo.CurrentCell);
                 var targetSubjectList = targetServerList.Select(targetServer =>
                     SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, targetServer));
                 foreach (var subject in targetSubjectList)
-                {
                     _natsClient.Publish(subject, MessagePackSerializer.Serialize((createPositionKey, objectInfo)));
-                }
             }
 
             return true;
@@ -232,7 +232,7 @@ public class CommonMapController
     {
         var (lastPositionKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
         var objectKey = GameObjectInfo.MakeObjectKey(objectInfo.ObjectType, objectInfo.ObjectId);
-        var currentPositionKey = CommonMapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+        var currentPositionKey = CommonMapData.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
 
         await UpdateObjectPositionAsync(lastPositionKey, currentPositionKey, objectKey);
         BroadcastObjectMove(lastPositionKey, objectInfo);
@@ -241,12 +241,12 @@ public class CommonMapController
 
     private void BroadcastPacket(string positionKey, IPacket packet)
     {
-        var pivotCell = CommonMapHelper.CreateCell(positionKey);
+        var pivotCell = CommonMapData.CreateCell(positionKey);
         var boundCellList = pivotCell.GetBoundCellList();
 
         foreach (var boundCell in boundCellList)
         {
-            var boundPositionKey = CommonMapHelper.CreatePartKey(_mapId, boundCell);
+            var boundPositionKey = CommonMapData.CreatePartKey(_mapId, boundCell);
             if (_objectPositionDict.TryGetValue(boundPositionKey, out var channelSet) && channelSet.Count > 0)
                 foreach (var channel in channelSet)
                     _natsClient.Publish(channel, packet.ToBytes());
@@ -264,7 +264,7 @@ public class CommonMapController
 
     private void BroadcastObjectMove(string positionKey, GameObjectInfo objectInfo)
     {
-        var targetServerList = CommonMapHelper.GetBoundServerList(_mapId, objectInfo.CurrentCell);
+        var targetServerList = CommonMapData.GetBoundServerList(_mapId, objectInfo.CurrentCell);
         var message = MessagePackSerializer.Serialize((positionKey, objectInfo));
         foreach (var targetServer in targetServerList)
         {
@@ -358,8 +358,8 @@ public class CommonMapController
             _mapLock.Release();
         }
 
-        var positionCell = CommonMapHelper.CreateCell(positionKey);
-        var targetServerList = CommonMapHelper.GetBoundServerList(_mapId, positionCell);
+        var positionCell = CommonMapData.CreateCell(positionKey);
+        var targetServerList = CommonMapData.GetBoundServerList(_mapId, positionCell);
 
         var destroyMessage = MessagePackSerializer.Serialize((positionKey, objectKey));
         BroadcastObjectDestroy(targetServerList, destroyMessage);
@@ -373,7 +373,7 @@ public class CommonMapController
         var (createPositionKey, jobResourceInfo, objectInfo)
             = MessagePackSerializer.Deserialize<(string, JobResourceInfo, GameObjectInfo)>(message);
 
-        var partId = CommonMapHelper.GetManagePartByPositionKey(createPositionKey);
+        var partId = CommonMapData.GetManagePartByPositionKey(createPositionKey);
 
         await _mapLock.WaitAsync();
         try

@@ -36,10 +36,7 @@ public class NatsClient
     public void Close()
     {
         Console.WriteLine(_subscriptions.Count);
-        foreach (var subscription in _subscriptions)
-        {
-            subscription.Unsubscribe();
-        }
+        foreach (var subscription in _subscriptions) subscription.Unsubscribe();
 
         _subscriptions.Clear();
         _connection.Close();

@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using MessagePack;
 using network.common;
+using network.common.data;
+using network.common.models;
 using network.helpers;
 using network.infrastructure;
 using network.managers;
@@ -12,13 +14,13 @@ namespace user_server.managers;
 public delegate void SendPacketDelegate(Packet msg);
 
 public class PlayerManager(
-    LogManager logManager,
+    LogManager? logManager,
     NatsClient natsClient,
     SendPacketDelegate sendToClient,
     UpdateObjectManager updateObjectManager)
 {
     // ReSharper disable once UnusedMember.Local
-    private readonly LogManager _logManager = logManager;
+    private readonly LogManager? _logManager = logManager;
     private EnvironmentHandler? _environmentHandler;
     private MovementHandler? _movementHandler;
 
@@ -58,14 +60,14 @@ public class PlayerManager(
             await ObjectInfo.Save();
         }
 
-        if (CommonMapHelper.IsCommonMap(MapId))
+        if (CommonMapData.IsCommonMap(MapId))
         {
             using var packet = PacketMaker.U_TO_C_CHANGE_MAP(MapId, MapSubId, CurrentCell, IsFlip);
             sendToClient(packet);
             return;
         }
 
-        var serverId = InstanceMapHelper.GetManageServerId(MapSubId);
+        var serverId = InstanceMapData.GetManageServerId(MapSubId);
         var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
         var publishObj = MessagePackSerializer.Serialize((ObjectInfo!.GetGameObjectKey(), MapId, MapSubId));
         natsClient.Publish(subject, publishObj);
@@ -99,13 +101,13 @@ public class PlayerManager(
         ObjectInfo.SetFlip(direction);
         await ObjectInfo.Save();
 
-        var isCommonMap = CommonMapHelper.IsCommonMap(MapId);
+        var isCommonMap = CommonMapData.IsCommonMap(MapId);
         var managePartKey = isCommonMap
-            ? CommonMapHelper.CreatePartKey(MapId, CurrentCell)
-            : InstanceMapHelper.CreatePartKey(MapId, MapSubId);
+            ? CommonMapData.CreatePartKey(MapId, CurrentCell)
+            : InstanceMapData.CreatePartKey(MapId, MapSubId);
         var manageServer = isCommonMap
-            ? CommonMapHelper.GetManageServerId(managePartKey)
-            : InstanceMapHelper.GetManageServerId(MapSubId);
+            ? CommonMapData.GetManageServerId(managePartKey)
+            : InstanceMapData.GetManageServerId(MapSubId);
         var subject = SubjectHelper.GetUpdateManageSubject(ObjectInfo, manageServer);
 
         natsClient.Publish(subject, MessagePackSerializer.Serialize((mamagePartKey: managePartKey, ObjectInfo)));
@@ -128,13 +130,13 @@ public class PlayerManager(
 
         await ObjectInfo.Save();
 
-        var isCommonMap = CommonMapHelper.IsCommonMap(MapId);
+        var isCommonMap = CommonMapData.IsCommonMap(MapId);
         var key = isCommonMap
-            ? CommonMapHelper.CreatePartKey(MapId, CurrentCell)
-            : InstanceMapHelper.CreatePartKey(MapId, MapSubId);
+            ? CommonMapData.CreatePartKey(MapId, CurrentCell)
+            : InstanceMapData.CreatePartKey(MapId, MapSubId);
         var manageServer = isCommonMap
-            ? CommonMapHelper.GetManageServerId(key)
-            : InstanceMapHelper.GetManageServerId(MapSubId);
+            ? CommonMapData.GetManageServerId(key)
+            : InstanceMapData.GetManageServerId(MapSubId);
 
         var subject = SubjectHelper.GetDestroyObjectSubject(ObjectInfo, manageServer);
         var message = MessagePackSerializer.Serialize((key, ObjectInfo.GetGameObjectKey()));

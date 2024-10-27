@@ -1,11 +1,12 @@
 using System.Diagnostics.CodeAnalysis;
 using MessagePack;
+using network.common.data;
 using network.helpers;
 using RedLockNet;
 using RedLockNet.SERedis;
 using StackExchange.Redis;
 
-namespace network.common;
+namespace network.common.models;
 
 [MessagePackObject]
 [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
@@ -38,9 +39,8 @@ public class PlayerInfo : IMessagePackObject
     public PlayerInfo(long playerId, bool isDummy)
     {
         var name = isDummy ? $"더미{playerId}" : $"플레이어{playerId}";
-        // Cell initCell = isDummy ? MapHelper.GetRandomCell() : Config.START_POSITION;
-        var initCell = new Cell(90, 96);
 
+        var initCell = isDummy ? CommonMapData.GetRandomCell() : GameRuleData.StartPosition;
         PlayerId = playerId;
         Name = name;
         Grade = PlayerGrade.COMMONER;
@@ -67,6 +67,7 @@ public class PlayerInfo : IMessagePackObject
 
     [Key("grade")] public PlayerGrade Grade { get; set; }
 
+    // ReSharper disable once CollectionNeverUpdated.Global
     [Key("wearItemIdList")] public List<int> WearItemIdList { get; set; }
 
     [Key("state")] public PlayerState State { get; set; }
@@ -91,49 +92,49 @@ public class PlayerInfo : IMessagePackObject
 
     public void WearItem(long itemUid)
     {
-        if (!InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
-            throw new Exception($"Item with uid {itemUid} not found");
-
-        if (!GameDesignData.IsWearableItem(targetItem.ItemId))
-            throw new Exception($"not wearable item {targetItem.ItemId}");
-
-        if (!GameDesignData.IsWearableJobInfo(targetItem.ItemId, JobInfo.JobStatDict))
-            throw new Exception($"not wearable job type. {targetItem.ItemId}");
-
-        if (targetItem.IsWear)
-        {
-            // 착용 해제
-            WearItemIdList.Remove(targetItem.ItemId);
-            targetItem.IsWear = false;
-            return;
-        }
-
-        // 같은 종류의 아이템 인덱스 찾기
-        var lastWearItem = InventoryInfo.ItemDict.Values.FirstOrDefault(
-            item => GameDesignData.IsSameTypeItem(item.ItemId, targetItem.ItemId) && item.IsWear
-        );
-
-        if (lastWearItem != null)
-        {
-            // 같은 종류 아이템 착용 해제
-            lastWearItem.IsWear = false;
-            WearItemIdList.Remove(lastWearItem.ItemId);
-        }
-
-        // 새로운 아이템 착용
-        InventoryInfo.ItemDict[itemUid].IsWear = true;
-        WearItemIdList.Add(targetItem.ItemId);
+        // if (!InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
+        //     throw new Exception($"Item with uid {itemUid} not found");
+        //
+        // if (!GameDataHelper.IsWearableItem(targetItem.ItemId))
+        //     throw new Exception($"not wearable item {targetItem.ItemId}");
+        //
+        // if (!GameDataHelper.IsWearableJobInfo(targetItem.ItemId, JobInfo.JobStatDict))
+        //     throw new Exception($"not wearable job type. {targetItem.ItemId}");
+        //
+        // if (targetItem.IsWear)
+        // {
+        //     // 착용 해제
+        //     WearItemIdList.Remove(targetItem.ItemId);
+        //     targetItem.IsWear = false;
+        //     return;
+        // }
+        //
+        // // 같은 종류의 아이템 인덱스 찾기
+        // var lastWearItem = InventoryInfo.ItemDict.Values.FirstOrDefault(
+        //     item => GameDataHelper.IsSameTypeItem(item.ItemId, targetItem.ItemId) && item.IsWear
+        // );
+        //
+        // if (lastWearItem != null)
+        // {
+        //     // 같은 종류 아이템 착용 해제
+        //     lastWearItem.IsWear = false;
+        //     WearItemIdList.Remove(lastWearItem.ItemId);
+        // }
+        //
+        // // 새로운 아이템 착용
+        // InventoryInfo.ItemDict[itemUid].IsWear = true;
+        // WearItemIdList.Add(targetItem.ItemId);
     }
 
     public void UseItem(long itemUid, int count = 1)
     {
-        if (!InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
-            throw new Exception($"Item with uid {itemUid} not found");
-
-        if (targetItem.Count <= 0) throw new Exception($"Item {itemUid} count invalid");
-
-        if (!GameDesignData.IsUseableItem(targetItem.ItemId))
-            throw new Exception($"not usable item {targetItem.ItemId}");
+        // if (!InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
+        //     throw new Exception($"Item with uid {itemUid} not found");
+        //
+        // if (targetItem.Count <= 0) throw new Exception($"Item {itemUid} count invalid");
+        //
+        // if (!GameDataHelper.IsUseableItem(targetItem.ItemId))
+        //     throw new Exception($"not usable item {targetItem.ItemId}");
 
         // TODO
     }

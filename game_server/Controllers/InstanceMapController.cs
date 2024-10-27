@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using game_server.handlers;
 using MessagePack;
 using network.common;
+using network.common.data;
+using network.common.models;
 using network.helpers;
 using network.infrastructure;
 using network.interfaces;
@@ -25,7 +27,9 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
         { typeof(JobResourceInfo), new UpdateHandler<JobResourceInfo>(PacketMaker.G_TO_U_JOB_RESOURCE_INFO) },
         { typeof(CampInfo), new UpdateHandler<CampInfo>(PacketMaker.G_TO_U_CAMP_INFO) }
     };
-    
+
+    private static string EnterInstanceSubject => SubjectHelper.GetEnterInstanceSubject(Program.GameServerId);
+
     public void Initialize()
     {
         SubscribeToCreateInstance();
@@ -88,8 +92,6 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
                 }
             });
     }
-    
-    private static string EnterInstanceSubject => SubjectHelper.GetEnterInstanceSubject(Program.GameServerId);
 
     private async Task EnterInstance(RedisValue message)
     {
@@ -97,7 +99,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
         await _mapLock.WaitAsync();
         try
         {
-            var instanceKey = InstanceMapHelper.CreatePartKey(mapId, mapSubId);
+            var instanceKey = InstanceMapData.CreatePartKey(mapId, mapSubId);
             if (_objectInstanceDict.TryAdd(instanceKey, []))
                 SubscribeToInstanceEvents(mapId, mapSubId);
             _objectInstanceDict[instanceKey].Add(userSubject);
@@ -124,7 +126,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
     {
         var (_, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
         var objectKey = GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, objectInfo.ObjectId);
-        var currentInstanceKey = InstanceMapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+        var currentInstanceKey = InstanceMapData.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
 
         await UpdateObjectPositionAsync(currentInstanceKey, objectKey);
 
