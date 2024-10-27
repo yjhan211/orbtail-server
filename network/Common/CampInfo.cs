@@ -1,93 +1,82 @@
+using System.Diagnostics.CodeAnalysis;
 using MessagePack;
 using network.helpers;
 
-namespace network.common
+namespace network.common;
+
+[MessagePackObject]
+[SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
+[SuppressMessage("ReSharper", "UnusedMember.Global")]
+[SuppressMessage("ReSharper", "AutoPropertyCanBeMadeGetOnly.Global")]
+[SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
+public class CampInfo : IMessagePackObject
 {
-    [MessagePackObject]
-    public class CampInfo : IMessagePackObject
+    [IgnoreMember] public const string HashKey = "CampInfo";
+
+    public CampInfo()
     {
-        [IgnoreMember]
-        public const string HASH_KEY = "CampInfo";
+        ObjectInfo = new GameObjectInfo();
+        PlayerId = new long();
+        PlayerName = "";
+        ItemInfo = new ItemInfo();
+        CellDict = new Dictionary<long, (ItemInfo, int)>();
+    }
 
-        [IgnoreMember]
-        public GameObjectInfo ObjectInfo { get; set; }
+    public CampInfo(long playerId, string playerName, GameObjectInfo playerObjectInfo, ItemInfo itemInfo, Cell cell)
+    {
+        ObjectInfo = new GameObjectInfo(
+            ObjectType.CAMP,
+            playerId,
+            playerObjectInfo.MapId,
+            playerObjectInfo.MapSubId,
+            Cell.Clone(cell),
+            playerObjectInfo.IsFlip
+        );
 
-        [Key("playerId")]
-        public long PlayerId { get; set; }
+        PlayerId = playerId;
+        PlayerName = playerName;
+        ItemInfo = itemInfo;
+        CellDict = new Dictionary<long, (ItemInfo, int)>();
+    }
 
-        [Key("playerName")]
-        public string PlayerName { get; set; }
+    [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
 
-        [Key("itemInfo")]
-        public ItemInfo ItemInfo { get; set; }
+    [Key("playerId")] public long PlayerId { get; set; }
 
-        [Key("cellDict")]
-        public Dictionary<long, (ItemInfo, int)> CellDict { get; set; }
+    [Key("playerName")] public string PlayerName { get; set; }
 
-        public CampInfo()
-        {
-            ObjectInfo = new();
-            PlayerId = new();
-            PlayerName = "";
-            ItemInfo = new();
-            CellDict = new();
-        }
+    [Key("itemInfo")] public ItemInfo ItemInfo { get; set; }
 
-        public CampInfo(long playerId, string playerName, GameObjectInfo playerObjectInfo, ItemInfo itemInfo, Cell cell)
-        {
-            ObjectInfo = new(
-                ObjectType.CAMP,
-                playerId,
-                playerObjectInfo.MapId,
-                playerObjectInfo.MapSubId,
-                Cell.Clone(cell),
-                playerObjectInfo.IsFlip
-            );
+    [Key("cellDict")] public Dictionary<long, (ItemInfo, int)> CellDict { get; set; }
 
-            PlayerId = playerId;
-            PlayerName = playerName;
-            ItemInfo = itemInfo;
-            CellDict = new();
-        }
+    public async Task Save()
+    {
+        await ObjectInfo.Save();
+        await CacheHelper.Instance.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
+    }
 
-        public async Task Save()
-        {
-            await ObjectInfo.Save();
-            await CacheHelper.Instance.HashSetAsync(CampInfo.HASH_KEY, PlayerId, MessagePackSerializer.Serialize(this));
-        }
+    public static async Task<CampInfo?> Load(long playerId)
+    {
+        var serializedData = await CacheHelper.Instance.HashGetAsync(HashKey, playerId);
+        if (serializedData.IsNull) return null;
 
-        public static async Task<CampInfo?> Load(long playerId)
-        {
-            var serializedData = await CacheHelper.Instance.HashGetAsync(CampInfo.HASH_KEY, playerId);
-            if (serializedData.IsNull)
-            {
-                return null;
-            }
+        var campInfo = MessagePackSerializer.Deserialize<CampInfo?>(serializedData);
+        if (campInfo == null) return null;
 
-            var campInfo = MessagePackSerializer.Deserialize<CampInfo?>(serializedData);
-            if (campInfo == null)
-            {
-                return null;
-            }
+        var objectInfo = await GameObjectInfo.Load(ObjectType.CAMP, playerId);
+        if (objectInfo == null) return null;
 
-            var objectInfo = await GameObjectInfo.Load(ObjectType.CAMP, playerId);
-            if (objectInfo == null)
-            {
-                return null;
-            }
+        campInfo.ObjectInfo = objectInfo;
+        return campInfo;
+    }
 
-            campInfo.ObjectInfo = objectInfo;
-            return campInfo;
-        }
+    public async Task Delete()
+    {
+        await CacheHelper.Instance.HashDeleteAsync(HashKey, PlayerId);
+    }
 
-        public async Task Delete()
-        {
-            await CacheHelper.Instance.HashDeleteAsync(CampInfo.HASH_KEY, PlayerId);
-        }
-
-        public static async Task Delete(long playerId)
-        {
-            await CacheHelper.Instance.HashDeleteAsync(CampInfo.HASH_KEY, playerId);
-        }
+    public static async Task Delete(long playerId)
+    {
+        await CacheHelper.Instance.HashDeleteAsync(HashKey, playerId);
     }
 }

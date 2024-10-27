@@ -1,178 +1,166 @@
+using game_server.controllers;
+using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
-using MessagePack;
 using network.common;
-using network.managers;
 using network.helpers;
 using network.infrastructure;
+using network.managers;
 using network.packets;
-using game_server.controllers;
 
-namespace game_server
+namespace game_server;
+
+public class GameServer(
+    IConfiguration configuration,
+    LogManager logManager,
+    RedisConnectionPool redisPool,
+    NatsClientFactory natsClientFactory)
+    : IHostedService
 {
-    public class GameServer : IHostedService
+    private readonly List<InstanceMapController> _instanceControllerList = [];
+    private readonly List<CommonMapController> _mapControllerList = [];
+    private CancellationTokenSource _cts = new();
+    private Timer? _messageTimer;
+
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        private readonly IConfiguration _configuration;
-        private readonly LogManager _logManager;
-        private readonly RedisConnectionPool _redisPool;
-        private readonly NatsClientFactory _natsClientFactory;
-        private readonly List<CommonMapController> _mapControllerList;
-        private readonly List<InstanceMapController> _instanceControllerList;
-        private CancellationTokenSource _cts;
-        private Timer? _messageTimer;
-
-        public GameServer(IConfiguration configuration, LogManager logManager, RedisConnectionPool redisPool, NatsClientFactory natsClientFactory)
+        try
         {
-            _configuration = configuration;
-            _logManager = logManager;
-            _redisPool = redisPool;
-            _natsClientFactory = natsClientFactory;
-            _cts = new();
+            logManager.WriteInfoLog("Game server starting...");
 
-            _mapControllerList = new();
-            _instanceControllerList = new();
+            InitializeServices();
+            await InitializeControllers();
+
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            StartMessageProcessing();
+
+            logManager.WriteInfoLog("Game server started successfully.");
+        }
+        catch (Exception ex)
+        {
+            logManager.WriteErrorLog(ex);
+            throw;
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        logManager.WriteInfoLog("Game server stopping...");
+
+        await _cts.CancelAsync();
+        if (_messageTimer != null)
+        {
+            await _messageTimer.DisposeAsync();
         }
 
-        public async Task StartAsync(CancellationToken cancellationToken)
+        await Task.WhenAll(_mapControllerList.Select(c => c.ShutdownAsync()));
+        await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
+
+        _cts.Dispose();
+
+        logManager.WriteInfoLog("Game server stopped.");
+    }
+
+    private void InitializeServices()
+    {
+        var redisEndpoints = configuration["redisEndpoints"] ??
+                             throw new InvalidOperationException("RedisEndpoints is not configured.");
+        var natsEndpoint = configuration["natsEndPoint"] ??
+                           throw new InvalidOperationException("NatsEndpoint is not configured or is invalid.");
+
+        try
         {
-            try
-            {
-                _logManager.WriteInfoLog("Game server starting...");
+            redisPool.Initialize(redisEndpoints);
+            natsClientFactory.Initialize(natsEndpoint);
 
-                InitializeServices();
-                await InitializeControllers();
-
-                _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                StartMessageProcessing();
-
-                _logManager.WriteInfoLog("Game server started successfully.");
-            }
-            catch (Exception ex)
-            {
-                _logManager.WriteErrorLog(ex);
-                throw;
-            }
+            CommonMapHelper.Initialize(Program.GameServerNum);
+            InstanceMapHelper.Initialize(Program.GameServerNum);
+            CacheHelper.Initialize(redisPool);
         }
-
-        public async Task StopAsync(CancellationToken cancellationToken)
+        catch (Exception ex)
         {
-            _logManager.WriteInfoLog("Game server stopping...");
-
-            _cts?.Cancel();
-            _messageTimer?.Dispose();
-
-            await Task.WhenAll(_mapControllerList.Select(c => c.ShutdownAsync()));
-            await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
-
-            _cts?.Dispose();
-
-            _logManager.WriteInfoLog("Game server stopped.");
+            throw new InvalidOperationException("Failed to initialize services.", ex);
         }
+    }
 
-        private void InitializeServices()
-        {
-            var redisEndpoints = _configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
-            var natsEndpoint = _configuration["natsEndPoint"] ?? throw new InvalidOperationException("NatsEndpoint is not configured or is invalid.");
+    private async Task InitializeControllers()
+    {
+        _mapControllerList.Add(new CommonMapController(logManager, natsClientFactory.Create(), _cts, MapId.CAMPUS_1));
+        foreach (var mapController in _mapControllerList) await mapController.Initialize();
 
-            try
+        _instanceControllerList.Add(new InstanceMapController(logManager, natsClientFactory.Create(), _cts));
+        foreach (var instanceController in _instanceControllerList) instanceController.Initialize();
+    }
+
+    private void StartMessageProcessing()
+    {
+        _messageTimer = new Timer(
+            async void (_) =>
             {
-                _redisPool.Initialize(redisEndpoints);
-                _natsClientFactory.Initialize(natsEndpoint);
-
-                CommonMapHelper.Initialize(Program.GameServerNum);
-                InstanceMapHelper.Initialize(Program.GameServerNum);
-                CacheHelper.Initialize(_redisPool);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException("Failed to initialize services.", ex);
-            }
-        }
-
-        private async Task InitializeControllers()
-        {
-            _mapControllerList.Add(new(_logManager, _natsClientFactory.Create(), _cts, MapID.CAMPUS_1));
-            foreach (var mapController in _mapControllerList)
-            {
-                await mapController.Initialize();
-            }
-
-            _instanceControllerList.Add(new(_logManager, _natsClientFactory.Create(), _cts));
-            foreach (var instanceController in _instanceControllerList)
-            {
-                instanceController.Initialize();
-            }
-        }
-
-        private void StartMessageProcessing()
-        {
-            _messageTimer = new Timer(
-                async _ => await ProcessMessages(),
-                null,
-                TimeSpan.Zero,
-                TimeSpan.FromMilliseconds(10)
-            );
-        }
-
-        private async Task ProcessMessages()
-        {
-            try
-            {
-                byte[]? message = await CacheHelper.Instance.DequeueAsync("game_server_queue");
-                if (message != null)
+                try
                 {
-                    using var packet = new Packet(message);
-                    await ProcessReceiveAsync(packet);
+                    await ProcessMessages();
                 }
-            }
-            catch (Exception ex)
-            {
-                _logManager.WriteErrorLog(ex);
-            }
-        }
+                catch (Exception e)
+                {
+                    logManager.WriteErrorLog(e);
+                }
+            },
+            null,
+            TimeSpan.Zero,
+            TimeSpan.FromMilliseconds(10)
+        );
+    }
 
-
-        private async Task ProcessReceiveAsync(Packet packet)
+    private async Task ProcessMessages()
+    {
+        try
         {
-            PROTOCOL protocolId = (PROTOCOL)packet.PopProtocolId();
-            long playerId = packet.PopPlayerId();
-            byte[] body = packet.PopBody();
-
-            switch (protocolId)
+            var message = await CacheHelper.Instance.DequeueAsync("game_server_queue");
+            if (message != null)
             {
-                case PROTOCOL.U_TO_G_LOGOUT:
-                    await HandleMessage<U_TO_G_LOGOUT>(playerId, body, Logout);
-                    break;
-
-                default:
-                    break;
+                using var packet = new Packet(message);
+                await ProcessReceiveAsync(packet);
             }
         }
-
-        private static async Task HandleMessage<T>(long player_id, byte[] body, Func<long, T, Task> handleMessage)
+        catch (Exception ex)
         {
-            T msg = MessagePackSerializer.Deserialize<T>(body);
-            await handleMessage(player_id, msg);
+            logManager.WriteErrorLog(ex);
         }
+    }
 
-        private async Task Logout(long playerId, U_TO_G_LOGOUT msg)
+
+    private async Task ProcessReceiveAsync(Packet packet)
+    {
+        var protocolId = (Protocol)packet.PopProtocolId();
+        var playerId = packet.PopPlayerId();
+        var body = packet.PopBody();
+
+        switch (protocolId)
         {
-            var redlock = _redisPool.GetRedLockFactory();
-            await using var playerLock = await PlayerInfo.Lock(redlock, playerId);
-            var playerInfo = await PlayerInfo.Load(msg.PlayerId);
-            if (playerInfo == null)
-            {
-                return;
-            }
-
-            GameObjectInfo objectInfo = playerInfo.ObjectInfo;
-            if (objectInfo == null)
-            {
-                return;
-            }
-
-            // TODO DB 붙이기 전까지 일단 안지움
-            // await PlayerInfoController.Delete(cache_helper, player_id);
+            case Protocol.U_TO_G_LOGOUT:
+                await HandleMessage<U_TO_G_LOGOUT>(playerId, body, Logout);
+                break;
         }
+    }
+
+    private static async Task HandleMessage<T>(long playerId, byte[] body, Func<long, T, Task> handleMessage)
+    {
+        var msg = MessagePackSerializer.Deserialize<T>(body);
+        await handleMessage(playerId, msg);
+    }
+
+    private async Task Logout(long playerId, U_TO_G_LOGOUT msg)
+    {
+        var redLock = redisPool.GetRedLockFactory();
+        await using var playerLock = await PlayerInfo.Lock(redLock, playerId);
+        var playerInfo = await PlayerInfo.Load(msg.PlayerId);
+        
+        // TODO DB 붙이기 전까지 일단 안지움
+        // ReSharper disable once RedundantJumpStatement
+        if (playerInfo == null) return;
+
+        // var objectInfo = playerInfo.ObjectInfo;
+        // await PlayerInfoController.Delete(cache_helper, player_id);
     }
 }

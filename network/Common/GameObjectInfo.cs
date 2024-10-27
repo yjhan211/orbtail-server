@@ -1,157 +1,137 @@
+using System.Diagnostics.CodeAnalysis;
 using MessagePack;
-using StackExchange.Redis;
 using network.helpers;
+using StackExchange.Redis;
 
-namespace network.common
+namespace network.common;
+
+[MessagePackObject]
+[SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
+[SuppressMessage("ReSharper", "UnusedMember.Global")]
+[SuppressMessage("ReSharper", "AutoPropertyCanBeMadeGetOnly.Global")]
+[SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
+[SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
+[SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Global")]
+public class GameObjectInfo : IMessagePackObject
 {
-    [MessagePackObject]
-    public class GameObjectInfo : IMessagePackObject
+    [IgnoreMember] public const string HashKey = "GameObjectInfo";
+
+    // 기본 생성자는 MessagePack에서 사용되므로 제거하지 않을 것
+    public GameObjectInfo()
     {
-        [IgnoreMember]
-        public const string HASH_KEY = "GameObjectInfo";
+        ObjectType = ObjectType.NONE;
+        ObjectId = 0;
+        CurrentCell = new Cell(0, 0);
+        TargetCell = new Cell(0, 0);
+        MoveTimestamp = default;
+        DebuffTimestamp = default;
+        IsFlip = false;
+    }
 
-        [Key("objectType")]
-        public ObjectType ObjectType { get; set; }
+    public GameObjectInfo(long objectId)
+    {
+        ObjectType = ObjectType.NONE;
+        ObjectId = objectId;
+        CurrentCell = new Cell(0, 0);
+        TargetCell = new Cell(0, 0);
+        MoveTimestamp = default;
+        DebuffTimestamp = default;
+        IsFlip = false;
+    }
 
-        [Key("objectId")]
-        public long ObjectId { get; set; }
+    public GameObjectInfo(ObjectType objectType, long objectId, MapId mapId, long mapSubId, Cell cell,
+        bool isFlip = false)
+    {
+        ObjectType = objectType;
+        ObjectId = objectId;
+        CurrentCell = Cell.Clone(cell);
+        TargetCell = Cell.Clone(cell);
+        MapId = mapId;
+        MapSubId = mapSubId;
+        MoveTimestamp = DateTime.MinValue;
+        DebuffTimestamp = DateTime.MinValue;
+        IsFlip = isFlip;
+    }
 
-        [Key("mapId")]
-        public MapID MapId { get; set; }
+    [Key("objectType")] public ObjectType ObjectType { get; set; }
 
-        [Key("mapSubId")]
-        public long MapSubId { get; set; }
+    [Key("objectId")] public long ObjectId { get; set; }
 
-        [Key("currentCell")]
-        public Cell CurrentCell { get; set; }
+    [Key("mapId")] public MapId MapId { get; set; }
 
-        [Key("targetCell")]
-        public Cell TargetCell { get; set; }
+    [Key("mapSubId")] public long MapSubId { get; set; }
 
-        [Key("moveTimestamp")]
-        public DateTime MoveTimestamp { get; set; }
+    [Key("currentCell")] public Cell CurrentCell { get; set; }
 
-        [Key("debuffTimestamp")]
-        public DateTime DebuffTimestamp { get; set; }
+    [Key("targetCell")] public Cell TargetCell { get; set; }
 
-        [Key("isFlip")]
-        public bool IsFlip { get; set; }
+    [Key("moveTimestamp")] public DateTime MoveTimestamp { get; set; }
 
-        public string GetGameObjectKey() => $"{(int)ObjectType}_{ObjectId}";
+    [Key("debuffTimestamp")] public DateTime DebuffTimestamp { get; set; }
 
-        public static string MakeObjectKey(ObjectType type, long objectId)
+    [Key("isFlip")] public bool IsFlip { get; set; }
+
+    public string GetGameObjectKey()
+    {
+        return $"{(int)ObjectType}_{ObjectId}";
+    }
+
+    public static string MakeObjectKey(ObjectType type, long objectId)
+    {
+        return $"{(int)type}_{objectId}";
+    }
+
+    public void SetFlip(DirectionType direction)
+    {
+        switch (direction)
         {
-            return $"{(int)type}_{objectId}";
+            case DirectionType.TOP_LEFT:
+            case DirectionType.BOTTOM_LEFT:
+                IsFlip = true;
+                break;
+
+            default:
+                IsFlip = false;
+                break;
         }
+    }
 
-        // 이거 없애면 안됨 MessagePack에서 씀
-        public GameObjectInfo()
-        {
-            ObjectType = ObjectType.NONE;
-            ObjectId = 0;
-            CurrentCell = new Cell(0, 0);
-            TargetCell = new Cell(0, 0);
-            MoveTimestamp = default;
-            DebuffTimestamp = default;
-            IsFlip = false;
-        }
+    public static async Task<GameObjectInfo?> Load(ObjectType type, long objectId)
+    {
+        var serializedData = await CacheHelper.Instance.HashGetAsync(HashKey, MakeObjectKey(type, objectId));
+        if (serializedData.IsNull) return null;
 
-        public GameObjectInfo(long objectId)
-        {
-            ObjectType = ObjectType.NONE;
-            ObjectId = objectId;
-            CurrentCell = new Cell(0, 0);
-            TargetCell = new Cell(0, 0);
-            MoveTimestamp = default;
-            DebuffTimestamp = default;
-            IsFlip = false;
-        }
+        return MessagePackSerializer.Deserialize<GameObjectInfo?>(serializedData);
+    }
 
-        public GameObjectInfo(ObjectType objectType, long objectId, MapID mapId, long mapSubId, Cell cell, bool isFlip = false)
-        {
-            ObjectType = objectType;
-            ObjectId = objectId;
-            CurrentCell = Cell.Clone(cell);
-            TargetCell = Cell.Clone(cell);
-            MapId = mapId;
-            MapSubId = mapSubId;
-            MoveTimestamp = DateTime.MinValue;
-            DebuffTimestamp = DateTime.MinValue;
-            IsFlip = isFlip;
-        }
+    public static async Task<List<GameObjectInfo>> LoadAll(RedisValue[] objectKeys)
+    {
+        var hashEntries = await CacheHelper.Instance.HashGetAsync(HashKey, objectKeys);
+        var hashStrings = hashEntries
+            .Where(entry => entry != RedisValue.Null)
+            .Select(entry => entry)
+            .ToList();
 
-        public void SetFlip(DirectionType direction)
-        {
-            switch (direction)
-            {
-                case DirectionType.TOP_LEFT:
-                case DirectionType.BOTTOM_LEFT:
-                    IsFlip = true;
-                    break;
+        return hashStrings.Select(hashString => MessagePackSerializer.Deserialize<GameObjectInfo>(hashString)).ToList();
+    }
 
-                default:
-                    IsFlip = false;
-                    break;
-            }
-        }
+    public static async Task Delete(string hashField)
+    {
+        await CacheHelper.Instance.HashDeleteAsync(HashKey, hashField);
+    }
 
-        public static async Task<GameObjectInfo?> Load(ObjectType type, long objectId)
-        {
-            var serializedData = await CacheHelper.Instance.HashGetAsync(GameObjectInfo.HASH_KEY, GameObjectInfo.MakeObjectKey(type, objectId));
-            if (serializedData.IsNull)
-            {
-                return null;
-            }
+    public static async Task<bool> Exist(string hashField)
+    {
+        return await CacheHelper.Instance.HashExistsAsync(HashKey, hashField);
+    }
 
-            return MessagePackSerializer.Deserialize<GameObjectInfo?>(serializedData);
-        }
+    public async Task Save()
+    {
+        await CacheHelper.Instance.HashSetAsync(HashKey, GetGameObjectKey(), MessagePackSerializer.Serialize(this));
+    }
 
-        public static async Task<List<GameObjectInfo>> LoadAll(RedisValue[] objectKeys)
-        {
-            var hashEntries = await CacheHelper.Instance.HashGetAsync(GameObjectInfo.HASH_KEY, objectKeys);
-            if (hashEntries == null)
-            {
-                return new();
-            }
-
-            List<RedisValue> hashStrings = hashEntries
-                .Where(entry => entry != RedisValue.Null)
-                .Select(entry => entry)
-                .ToList();
-
-            List<GameObjectInfo> result = new();
-            foreach (var hashString in hashStrings)
-            {
-                var gameObjectInfo = MessagePackSerializer.Deserialize<GameObjectInfo>(hashString);
-                if (gameObjectInfo == null)
-                {
-                    continue;
-                }
-
-                result.Add(gameObjectInfo);
-            }
-
-            return result;
-        }
-
-        public static async Task Delete(string hashField)
-        {
-            await CacheHelper.Instance.HashDeleteAsync(GameObjectInfo.HASH_KEY, hashField);
-        }
-
-        public static async Task<bool> Exist(string hashField)
-        {
-            return await CacheHelper.Instance.HashExistsAsync(GameObjectInfo.HASH_KEY, hashField);
-        }
-
-        public async Task Save()
-        {
-            await CacheHelper.Instance.HashSetAsync(GameObjectInfo.HASH_KEY, this.GetGameObjectKey(), MessagePackSerializer.Serialize(this));
-        }
-
-        public async Task Delete()
-        {
-            await CacheHelper.Instance.HashDeleteAsync(GameObjectInfo.HASH_KEY, this.GetGameObjectKey());
-        }
+    public async Task Delete()
+    {
+        await CacheHelper.Instance.HashDeleteAsync(HashKey, GetGameObjectKey());
     }
 }

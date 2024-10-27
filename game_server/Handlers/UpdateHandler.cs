@@ -1,19 +1,13 @@
-using network.interfaces;
 using network.common;
+using network.interfaces;
 
-namespace game_server.handlers
+namespace game_server.handlers;
+
+public class UpdateHandler<T>(Func<T, IPacket> packetMaker) : IUpdateHandler<T>
+    where T : IMessagePackObject
 {
-    public class UpdateHandler<T> : IUpdateHandler<T> where T : IMessagePackObject
+    public IPacket MakePacket(T info)
     {
-        private readonly Func<T, IPacket> _packetMaker;
-
-        public UpdateHandler(Func<T, IPacket> packetMaker)
-        {
-            _packetMaker = packetMaker;
-        }
-
-        public IPacket MakePacket(T info) => _packetMaker(info);
+        return packetMaker(info);
     }
-
-
 }

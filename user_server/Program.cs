@@ -3,28 +3,26 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.core;
-using network.managers;
 using network.infrastructure;
+using network.managers;
 
-namespace user_server
+namespace user_server;
+
+public static class Program
 {
-    class Program
+    public static int GameServerNum { get; private set; }
+
+    public static async Task Main(string[] args)
     {
-        public static int GameServerNum { get; private set; }
-        public static async Task Main(string[] args)
-        {
-            await Host.CreateDefaultBuilder(args)
-            .ConfigureAppConfiguration((hostingContext, config) =>
-            {
-                config.AddEnvironmentVariables();
-            })
+        await Host.CreateDefaultBuilder(args)
+            .ConfigureAppConfiguration((_, config) => { config.AddEnvironmentVariables(); })
             .ConfigureLogging((hostingContext, logging) =>
             {
                 logging.ClearProviders();
                 logging.AddConfiguration(hostingContext.Configuration.GetSection("Logging"));
                 logging.AddConsole();
             })
-            .ConfigureServices((hostingContext, services) =>
+            .ConfigureServices((_, services) =>
             {
                 services.AddSingleton<NetworkService>();
                 services.AddSingleton<RedisConnectionPool>();
@@ -39,6 +37,5 @@ namespace user_server
                 services.AddHostedService<UserServer>();
             })
             .RunConsoleAsync();
-        }
     }
 }

@@ -1,18 +1,9 @@
-namespace network.common
-{
-    public class ChangeMapInfo
-    {
-        public MapID MapId { get; set; }
-        public long MapSubId { get; set; }
-        public Cell SpawnCell { get; set; }
-        public bool IsFlip { get; set; }
+namespace network.common;
 
-        public ChangeMapInfo(MapID mapId, long mapSubId, Cell spawnCell, bool isFlip)
-        {
-            MapId = mapId;
-            MapSubId = mapSubId;
-            SpawnCell = spawnCell;
-            IsFlip = isFlip;
-        }
-    }
+public class ChangeMapInfo(MapId mapId, long mapSubId, Cell spawnCell, bool isFlip)
+{
+    public MapId MapId { get; set; } = mapId;
+    public long MapSubId { get; set; } = mapSubId;
+    public Cell SpawnCell { get; set; } = spawnCell;
+    public bool IsFlip { get; set; } = isFlip;
 }

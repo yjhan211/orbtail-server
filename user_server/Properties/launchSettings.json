@@ -2,13 +2,6 @@
   "profiles": {
     "server": {
       "commandName": "Project"
-    },
-    "Docker": {
-      "commandName": "Docker"
-    },
-    "WSL": {
-      "commandName": "WSL2",
-      "distributionName": ""
     }
   }
 }

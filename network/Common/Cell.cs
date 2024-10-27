@@ -1,172 +1,171 @@
+using System.Diagnostics.CodeAnalysis;
 using MessagePack;
 
-namespace network.common
+namespace network.common;
+
+[MessagePackObject]
+[SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
+[SuppressMessage("ReSharper", "UnusedMember.Global")]
+[SuppressMessage("ReSharper", "AutoPropertyCanBeMadeGetOnly.Global")]
+[SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
+[SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
+public class Cell(int x, int y) : IMessagePackObject, IEquatable<Cell>
 {
-    [MessagePackObject]
-    public class Cell : IMessagePackObject, IEquatable<Cell>
+    [Key("x")] public int X { get; set; } = x;
+
+    [Key("y")] public int Y { get; set; } = y;
+
+    public bool Equals(Cell? other)
     {
-        [Key("x")]
-        public int X { get; set; }
+        return other != null && X == other.X && Y == other.Y;
+    }
 
-        [Key("y")]
-        public int Y { get; set; }
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as Cell);
+    }
 
-        public Cell(int x, int y)
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(X, Y);
+    }
+
+    public static Cell Clone(Cell cell)
+    {
+        return new Cell(cell.X, cell.Y);
+    }
+
+    public Cell Clone()
+    {
+        return new Cell(X, Y);
+    }
+
+    public static bool operator ==(Cell? left, Cell? right)
+    {
+        return EqualityComparer<Cell>.Default.Equals(left, right);
+    }
+
+    public static bool operator !=(Cell? left, Cell? right)
+    {
+        return !(left == right);
+    }
+
+    public int GetDistance(Cell targetCell)
+    {
+        var deltaX = Math.Abs(X - targetCell.X);
+        var deltaY = Math.Abs(Y - targetCell.Y);
+
+        return deltaX + deltaY;
+    }
+
+    public DirectionType GetDirection(Cell targetCell)
+    {
+        var deltaX = X - targetCell.X;
+        var deltaY = Y - targetCell.Y;
+
+        if (deltaX > 0 && deltaY == 0) return DirectionType.TOP_LEFT;
+        if (deltaX < 0 && deltaY == 0) return DirectionType.TOP_RIGHT;
+        if (deltaX == 0 && deltaY < 0) return DirectionType.BOTTOM_LEFT;
+        if (deltaX == 0 && deltaY > 0) return DirectionType.BOTTOM_RIGHT;
+
+        return DirectionType.NONE;
+    }
+
+    public Cell GetNextCell(DirectionType direction)
+    {
+        var clone = Clone(this);
+        switch (direction)
         {
-            X = x;
-            Y = y;
+            case DirectionType.TOP_LEFT:
+                clone.X += 1;
+                break;
+
+            case DirectionType.TOP_RIGHT:
+                clone.X -= 1;
+                break;
+
+            case DirectionType.BOTTOM_LEFT:
+                clone.Y -= 1;
+                break;
+
+            case DirectionType.BOTTOM_RIGHT:
+                clone.Y += 1;
+                break;
         }
 
-        public override bool Equals(object? obj) => Equals(obj as Cell);
+        return clone;
+    }
 
-        public bool Equals(Cell? other)
+    public List<Cell> GetBoundCellList()
+    {
+        var result = new List<Cell>();
+
+        var minX = X - 13;
+        var maxX = X + 14;
+        var minY = Y - 7;
+        var maxY = Y - 9;
+
+        var line = 0;
+        for (var x = minX; x <= maxX; x++)
         {
-            return other != null && X == other.X && Y == other.Y;
-        }
+            line += 1;
 
-        public override int GetHashCode() => HashCode.Combine(X, Y);
-        public static Cell Clone(Cell cell) => new(cell.X, cell.Y);
-        public Cell Clone() => new(X, Y);
-
-        public static bool operator ==(Cell? left, Cell? right)
-        {
-            return EqualityComparer<Cell>.Default.Equals(left, right);
-        }
-
-        public static bool operator !=(Cell? left, Cell? right)
-        {
-            return !(left == right);
-        }
-
-        public int GetDistance(Cell targetCell)
-        {
-            int deltaX = Math.Abs(X - targetCell.X);
-            int deltaY = Math.Abs(Y - targetCell.Y);
-
-            return deltaX + deltaY;
-        }
-
-        public DirectionType GetDirection(Cell targetCell)
-        {
-            int deltaX = X - targetCell.X;
-            int deltaY = Y - targetCell.Y;
-
-            if (deltaX > 0 && deltaY == 0)
+            if (line <= 1)
             {
-                return DirectionType.TOP_LEFT;
+                minY -= 1;
+                maxY += 2;
             }
-            if (deltaX < 0 && deltaY == 0)
+            else if (line <= 4)
             {
-                return DirectionType.TOP_RIGHT;
+                minY -= 1;
+                maxY += 1;
             }
-            if (deltaX == 0 && deltaY < 0)
+            else if (line == 5)
             {
-                return DirectionType.BOTTOM_LEFT;
+                minY -= 1;
+                maxY += 1;
             }
-            if (deltaX == 0 && deltaY > 0)
+            else if (line == 6)
             {
-                return DirectionType.BOTTOM_RIGHT;
+                minY -= 1;
+                maxY += 1;
             }
-
-            return DirectionType.NONE;
-        }
-
-        public Cell GetNextCell(DirectionType direction)
-        {
-            var clone = Clone(this);
-            switch (direction)
+            else if (line == 7)
             {
-                case DirectionType.TOP_LEFT:
-                    clone.X += 1;
-                    break;
-
-                case DirectionType.TOP_RIGHT:
-                    clone.X -= 1;
-                    break;
-
-                case DirectionType.BOTTOM_LEFT:
-                    clone.Y -= 1;
-                    break;
-
-                case DirectionType.BOTTOM_RIGHT:
-                    clone.Y += 1;
-                    break;
+                maxY += 1;
             }
-
-            return clone;
-        }
-
-        public List<Cell> GetBoundCellList()
-        {
-            var result = new List<Cell>();
-
-            int minX = X - 13;
-            int maxX = X + 14;
-            int minY = Y - 7;
-            int maxY = Y - 9;
-
-            int line = 0;
-            for (int x = minX; x <= maxX; x++)
+            else if (line == 8)
             {
-                line += 1;
-
-                if (line <= 1)
-                {
-                    minY -= 1;
-                    maxY += 2;
-                }
-                else if (line <= 4)
-                {
-                    minY -= 1;
-                    maxY += 1;
-                }
-                else if (line == 5)
-                {
-                    minY -= 1;
-                    maxY += 1;
-                }
-                else if (line == 6)
-                {
-                    minY -= 1;
-                    maxY += 1;
-                }
-                else if (line == 7)
-                {
-                    maxY += 1;
-                }
-                else if (line == 8)
-                {
-                    minY += 1;
-                    maxY += 1;
-                }
-                else if (line == 9)
-                {
-                    minY += 1;
-                    maxY += 1;
-                }
-                else if (line <= 22)
-                {
-                    minY += 1;
-                    maxY += 1;
-                }
-                else if (line == 23)
-                {
-                    minY += 1;
-                }
-                else
-                {
-                    minY += 1;
-                    maxY -= 1;
-                }
-
-                for (int y = minY; y <= maxY; y++)
-                {
-                    var cell = new Cell(x, y);
-                    result.Add(cell);
-                }
+                minY += 1;
+                maxY += 1;
+            }
+            else if (line == 9)
+            {
+                minY += 1;
+                maxY += 1;
+            }
+            else if (line <= 22)
+            {
+                minY += 1;
+                maxY += 1;
+            }
+            else if (line == 23)
+            {
+                minY += 1;
+            }
+            else
+            {
+                minY += 1;
+                maxY -= 1;
             }
 
-            return result;
+            for (var y = minY; y <= maxY; y++)
+            {
+                var cell = new Cell(x, y);
+                result.Add(cell);
+            }
         }
+
+        return result;
     }
 }

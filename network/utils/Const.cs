@@ -1,12 +1,6 @@
-﻿namespace network.utils
-{
-    public struct Const<T>
-    {
-        public T Value { get; private set; }
+﻿namespace network.utils;
 
-        public Const(T value) : this()
-        {
-            Value = value;
-        }
-    }
+public struct Const<T>(T value)
+{
+    public T Value { get; private set; } = value;
 }
