@@ -1,9 +1,19 @@
-namespace network.common.data.models;
-
-public class ChangeMapInfo(MapId mapId, long mapSubId, Cell spawnCell, bool isFlip)
+// ReSharper disable All
+namespace network.common.data.models
 {
-    public MapId MapId { get; set; } = mapId;
-    public long MapSubId { get; set; } = mapSubId;
-    public Cell SpawnCell { get; set; } = spawnCell;
-    public bool IsFlip { get; set; } = isFlip;
+    public class ChangeMapInfo
+    {
+        public ChangeMapInfo(MapId mapId, long mapSubId, Cell spawnCell, bool isFlip)
+        {
+            MapId = mapId;
+            MapSubId = mapSubId;
+            SpawnCell = spawnCell;
+            IsFlip = isFlip;
+        }
+
+        public MapId MapId { get; set; }
+        public long MapSubId { get; set; }
+        public Cell SpawnCell { get; set; }
+        public bool IsFlip { get; set; }
+    }
 }

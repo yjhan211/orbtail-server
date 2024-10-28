@@ -3,7 +3,7 @@ using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using network.common.data;
-using network.common.helpers;
+using network.common.data.helpers;
 using network.core;
 using network.helpers;
 using network.infrastructure;

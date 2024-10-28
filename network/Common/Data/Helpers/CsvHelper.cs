@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace network.common.helpers;
+namespace network.common.data.helpers;
 
 public static class CsvHelper
 {
