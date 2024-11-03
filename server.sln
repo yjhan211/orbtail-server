@@ -11,6 +11,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "dummy_client", "dummy_clien
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "game_server", "game_server\game_server.csproj", "{D9326058-CA01-475A-A255-6177730E2611}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ScholarCamp", "ScholarCamp", "{2AEF1E16-C02C-484E-B40C-1AE915D8C6A4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
