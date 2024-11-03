@@ -26,12 +26,22 @@ namespace network.common.data.helpers
 
             // 모든 CSV 데이터 로드
             var loadedData = new Dictionary<string, Dictionary<string, CsvRow>>();
-
+            
+#if UNITY_EDITOR
+   var commonPath = Path.Combine(Application.dataPath, "Scripts/Common/csv");
+#elif UNITY_STANDALONE
+   var commonPath = Path.Combine(Application.streamingAssetsPath, "Common/csv");
+#else
+            var commonPath = Path.Combine(NetworkPath, "Common/csv"); 
+#endif
+            
+            _logManager.WriteInfoLog(commonPath);
             // 일반 데이터 파일 로드
             foreach (var (fileName, _, _) in StandardDataDefinitions)
             {
                 var filePath = Path.Combine(NetworkPath, "Common/csv", fileName);
                 loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                _logManager.WriteInfoLog(filePath);
             }
 
             // 아이템 관련 파일 로드

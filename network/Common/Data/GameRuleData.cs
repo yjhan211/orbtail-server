@@ -24,6 +24,7 @@ namespace network.common.data
         public static void Initialize(Dictionary<string, CsvRow> csvData)
         {
             Speed = float.Parse(csvData["Speed"]["value"]);
+            MoveElapsedTime = 0.5f / Speed;
             SkillCompleteTime = float.Parse(csvData["SkillCompleteTime"]["value"]);
             HeartBeatActive = int.Parse(csvData["HeartBeatActive"]["value"]) == 1;
 
