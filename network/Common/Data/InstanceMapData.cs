@@ -18,7 +18,6 @@ namespace network.common.data
     {
         private static int _totalServerNum;
 
-        // ReSharper disable once CollectionNeverUpdated.Local
         private static readonly Dictionary<string, (MapId, Cell, bool)> PortalInfo = new()
         {
             // { GetPortalKey(MapID.LAB_1, new(91, 100)), (MapID.CAMPUS_1, new(110, 91), false) }
