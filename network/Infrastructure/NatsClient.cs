@@ -1,59 +1,66 @@
 using NATS.Client;
 
-namespace network.infrastructure
+namespace network.infrastructure;
+
+public class NatsClient
 {
-    public class NatsClient
+    private readonly IConnection _connection;
+    private readonly List<IAsyncSubscription> _subscriptions;
+
+    public NatsClient(string url)
     {
-        private readonly IConnection _connection;
+        var options = ConnectionFactory.GetDefaultOptions();
+        options.Url = url;
 
-        public NatsClient(string url)
+        _connection = new ConnectionFactory().CreateConnection(options);
+        _subscriptions = [];
+    }
+
+    public void Publish(string subject, byte[] message)
+    {
+        _connection.Publish(subject, message);
+    }
+
+    public void Subscribe(string subject, Action<string, byte[]> messageHandler)
+    {
+        var subscription = _connection.SubscribeAsync(subject, Handler);
+        _subscriptions.Add(subscription);
+        return;
+
+        void Handler(object? sender, MsgHandlerEventArgs args)
         {
-            var options = ConnectionFactory.GetDefaultOptions();
-            options.Url = url;
-
-            _connection = new ConnectionFactory().CreateConnection(options);
-        }
-
-        public void Publish(string subject, byte[] message)
-        {
-            _connection.Publish(subject, message);
-        }
-
-        public IAsyncSubscription Subscribe(string subject, Action<string, byte[]> messageHandler)
-        {
-            EventHandler<MsgHandlerEventArgs> handler = (sender, args) =>
-            {
-                messageHandler(args.Message.Subject, args.Message.Data);
-            };
-
-            return _connection.SubscribeAsync(subject, handler);
-        }
-
-        public void Close()
-        {
-            _connection?.Close();
+            messageHandler(args.Message.Subject, args.Message.Data);
         }
     }
 
-    public class NatsClientFactory
+    public void Close()
     {
-        private string _natsEndpoint = "";
+        Console.WriteLine(_subscriptions.Count);
+        foreach (var subscription in _subscriptions) subscription.Unsubscribe();
 
-        public void Initialize(string NatsEndPoint)
+        _subscriptions.Clear();
+        _connection.Close();
+    }
+}
+
+public class NatsClientFactory
+{
+    private string _natsEndpoint = "";
+
+    public void Initialize(string natsEndPoint)
+    {
+        _natsEndpoint = natsEndPoint;
+    }
+
+    public NatsClient Create()
+    {
+        try
         {
-            _natsEndpoint = NatsEndPoint;
+            return new NatsClient(_natsEndpoint);
         }
-
-        public NatsClient Create()
+        catch (Exception ex)
         {
-            try
-            {
-                return new NatsClient(_natsEndpoint);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException("Failed to create NatsClient", ex);
-            }
+            throw new InvalidOperationException("Failed to create NatsClient", ex);
         }
     }
 }

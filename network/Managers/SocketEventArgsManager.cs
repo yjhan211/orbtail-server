@@ -1,45 +1,30 @@
 ﻿using System.Net.Sockets;
 
-namespace network.managers
+namespace network.managers;
+
+public class SocketAsyncEventArgsManager(int capacity)
 {
-    public class SocketAsyncEventArgsManager
+    private readonly Stack<SocketAsyncEventArgs> _pool = new(capacity);
+
+    public void Push(SocketAsyncEventArgs item)
     {
-        private readonly Stack<SocketAsyncEventArgs> _pool;
+        if (item == null)
+            throw new ArgumentNullException(nameof(item),
+                "Items added to a SocketAsyncEventArgsManager cannot be null");
 
-        public SocketAsyncEventArgsManager(int capacity)
+        lock (_pool)
         {
-            _pool = new Stack<SocketAsyncEventArgs>(capacity);
+            _pool.Push(item);
         }
+    }
 
-        public void Push(SocketAsyncEventArgs item)
+    public SocketAsyncEventArgs Pop()
+    {
+        lock (_pool)
         {
-            if (item == null)
-            {
-                throw new ArgumentNullException(nameof(item), "Items added to a SocketAsyncEventArgsManager cannot be null");
-            }
+            if (_pool.Count == 0) throw new InvalidOperationException("[SocketAsyncEventArgsManager] Pool is empty");
 
-            lock (_pool)
-            {
-                _pool.Push(item);
-            }
-        }
-
-        public SocketAsyncEventArgs Pop()
-        {
-            lock (_pool)
-            {
-                if (_pool.Count == 0)
-                {
-                    throw new InvalidOperationException("[SocketAsyncEventArgsManager] Pool is empty");
-                }
-
-                return _pool.Pop();
-            }
-        }
-
-        public int Count
-        {
-            get { return _pool.Count; }
+            return _pool.Pop();
         }
     }
 }

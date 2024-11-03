@@ -1,5 +1,54 @@
+# IDE and Editor Files
 .vscode/
 .vs/
-*.config.json
+.idea/
+*.suo
+*.user
+*.sln.docstates
+*.userprefs
+*.iml
+*.iws
+
+# Build and Binary Files
+[Dd]ebug/
+[Rr]elease/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+
+# Dependencies and Packages
 */node_modules
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nupkg
+*.snupkg
+
+# Configuration and Local Settings
+*.config.json
+publish/
+*.pubxml
+*.publishproj
+*.publishsettings
+
+# Temporary and Cache Files
+[Tt]emp/
+.sass-cache/
+*.cache
+*~
+*.tmp
+*.log
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# Project Specific
 client_clone_*/

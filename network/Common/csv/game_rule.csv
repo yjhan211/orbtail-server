@@ -1,0 +1,6 @@
+id,value,comment
+SkillCompleteTime,10,스킬 사용 시간
+Speed,1.5,기본 이동 속도
+HeartBeatActive,0,하트비트 활성 여부
+StartPosition,"(90, 96)",최초 스폰 지점
+DefaultItemList,"[(201000001, 1)]",최초 지급 아이템
