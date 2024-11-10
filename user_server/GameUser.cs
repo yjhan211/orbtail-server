@@ -19,13 +19,13 @@ namespace user_server;
 
 public partial class GameUser : IPeer
 {
-    private static readonly IReadOnlyList<Protocol> NonAuthProtocol = new List<Protocol>
+    private static readonly IReadOnlyList<Protocol> _nonAuthProtocol = new List<Protocol>
     {
         Protocol.C_TO_U_HEART_BEAT,
         Protocol.C_TO_U_LOGIN
     };
 
-    private static readonly IReadOnlyList<Protocol> ActionProtocol = new List<Protocol>
+    private static readonly IReadOnlyList<Protocol> _actionProtocol = new List<Protocol>
     {
         Protocol.C_TO_U_MOVE,
         Protocol.C_TO_U_WEAR_ITEM,
@@ -81,7 +81,7 @@ public partial class GameUser : IPeer
             _ = packet.PopPlayerId();
             var body = packet.PopBody();
 
-            if (NonAuthProtocol.Contains(protocolId))
+            if (_nonAuthProtocol.Contains(protocolId))
             {
                 switch (protocolId)
                 {
@@ -98,7 +98,7 @@ public partial class GameUser : IPeer
 
             if (_playerManager.State == PlayerState.NONE) throw new Exception("invalid PlayerState");
 
-            if (ActionProtocol.Contains(protocolId) && _playerManager.State != PlayerState.IDLE)
+            if (_actionProtocol.Contains(protocolId) && _playerManager.State != PlayerState.IDLE)
                 throw new Exception($"in action. {_playerManager.PlayerId}");
 
             switch (protocolId)
