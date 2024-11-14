@@ -18,12 +18,12 @@ namespace network.common.data
     {
         private static readonly Dictionary<int, BuffInfoData> Buffs = new();
 
-        public static void Initialize(Dictionary<string, CsvRow> csvData)
+        public static void Initialize(List<CsvRow> csvData)
         {
-            var buffInfos = csvData.Values.Select(BuffInfoData.CreateFromData);
+            var buffInfos = csvData.Select(BuffInfoData.CreateFromData);
             foreach (var buffInfo in buffInfos) Buffs[buffInfo.Id] = buffInfo;
         }
-
+        
         [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
         public static BuffInfoData Get(int id)
         {
@@ -58,8 +58,7 @@ namespace network.common.data
                     default:
                         throw new InvalidDataException($"Buff {id} has invalid subType: {buff.SubType}");
                 }
-
-
+                
                 logManager.WriteDebugLog("");
             }
 

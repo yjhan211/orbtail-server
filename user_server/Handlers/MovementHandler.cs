@@ -70,23 +70,23 @@ public sealed class MovementHandler(
         objectInfo.MoveTimestamp = moveRequest.Direction == DirectionType.NONE ? default : DateTime.UtcNow;
         await objectInfo.Save();
 
-        var isCommonMap = CommonMapData.IsCommonMap(objectInfo.MapId);
+        var isCommonMap = GameMapData.IsCommonMap(objectInfo.MapId);
 
         var lastPartKey = isCommonMap
-            ? CommonMapData.CreatePartKey(objectInfo.MapId, _lastCell)
-            : InstanceMapData.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+            ? MapHelper.CreatePartKey(objectInfo.MapId, _lastCell)
+            : MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
 
         var currentPartKey = isCommonMap
-            ? CommonMapData.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell)
-            : InstanceMapData.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+            ? MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell)
+            : MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
 
         var lastManageServer = isCommonMap
-            ? CommonMapData.GetManageServerId(lastPartKey)
-            : InstanceMapData.GetManageServerId(objectInfo.MapSubId);
+            ? MapHelper.GetManageServerId(lastPartKey)
+            : MapHelper.GetManageServerId(objectInfo.MapSubId);
 
         var currentManageServer = isCommonMap
-            ? CommonMapData.GetManageServerId(currentPartKey)
-            : InstanceMapData.GetManageServerId(objectInfo.MapSubId);
+            ? MapHelper.GetManageServerId(currentPartKey)
+            : MapHelper.GetManageServerId(objectInfo.MapSubId);
 
         // 담당 서버가 변경되었을 경우 이전 서버에게 떠났음을 알림
         if (lastManageServer != currentManageServer)
@@ -132,12 +132,12 @@ public sealed class MovementHandler(
         using var packet = PacketMaker.U_TO_C_MOVE(objectInfo.ObjectId, ErrorCode.SUCCESS, objectInfo);
         sendToClient(packet);
 
-        if (CommonMapData.IsCommonMap(objectInfo.MapId)) RequestSpawnInfo(objectInfo.MapId);
+        if (GameMapData.IsCommonMap(objectInfo.MapId)) RequestSpawnInfo(objectInfo.MapId);
     }
 
     private async Task<bool> TryHandleMapChange()
     {
-        var portalInfo = CommonMapData.GetPortalOrNull(objectInfo);
+        var portalInfo = GameMapData.GetPortalOrNull(objectInfo);
         if (portalInfo == null) return false;
 
         var (mapId, spawnPosition, isFlip) = portalInfo.Value;
@@ -152,10 +152,10 @@ public sealed class MovementHandler(
 
     private void RequestSpawnInfo(MapId targetMapId, bool isSpawn = false)
     {
-        if (!CommonMapData.IsCommonMap(targetMapId))
+        if (!GameMapData.IsCommonMap(targetMapId))
         {
-            var serverId = InstanceMapData.GetManageServerId(objectInfo.MapSubId);
-            var instanceKey = InstanceMapData.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+            var serverId = MapHelper.GetManageServerId(objectInfo.MapSubId);
+            var instanceKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
             RequestSpawnObjectList(serverId, [instanceKey]);
             return;
         }
@@ -178,9 +178,9 @@ public sealed class MovementHandler(
         var currentBoundCellList = objectInfo.CurrentCell.GetBoundCellList();
         var objectSpawnList = currentBoundCellList
             .Except(lastBoundCellList)
-            .Select(lastBoundCell => CommonMapData.CreatePartKey(objectInfo.MapId, lastBoundCell))
+            .Select(lastBoundCell => MapHelper.CreatePartKey(objectInfo.MapId, lastBoundCell))
             .GroupBy(
-                CommonMapData.GetManageServerId,
+                MapHelper.GetManageServerId,
                 (serverId, positionKeys) => new { serverId, positionKeyList = positionKeys.ToList() }
             );
 

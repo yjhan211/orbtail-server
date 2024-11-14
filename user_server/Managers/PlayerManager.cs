@@ -60,14 +60,14 @@ public class PlayerManager(
             await ObjectInfo.Save();
         }
 
-        if (CommonMapData.IsCommonMap(MapId))
+        if (GameMapData.IsCommonMap(MapId))
         {
             using var packet = PacketMaker.U_TO_C_CHANGE_MAP(MapId, MapSubId, CurrentCell, IsFlip);
             sendToClient(packet);
             return;
         }
 
-        var serverId = InstanceMapData.GetManageServerId(MapSubId);
+        var serverId = MapHelper.GetManageServerId(MapSubId);
         var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
         var publishObj = MessagePackSerializer.Serialize((ObjectInfo!.GetGameObjectKey(), MapId, MapSubId));
         natsClient.Publish(subject, publishObj);
@@ -101,13 +101,13 @@ public class PlayerManager(
         ObjectInfo.SetFlip(direction);
         await ObjectInfo.Save();
 
-        var isCommonMap = CommonMapData.IsCommonMap(MapId);
+        var isCommonMap = GameMapData.IsCommonMap(MapId);
         var managePartKey = isCommonMap
-            ? CommonMapData.CreatePartKey(MapId, CurrentCell)
-            : InstanceMapData.CreatePartKey(MapId, MapSubId);
+            ? MapHelper.CreatePartKey(MapId, CurrentCell)
+            : MapHelper.CreatePartKey(MapId, MapSubId);
         var manageServer = isCommonMap
-            ? CommonMapData.GetManageServerId(managePartKey)
-            : InstanceMapData.GetManageServerId(MapSubId);
+            ? MapHelper.GetManageServerId(managePartKey)
+            : MapHelper.GetManageServerId(MapSubId);
         var subject = SubjectHelper.GetUpdateManageSubject(ObjectInfo, manageServer);
 
         natsClient.Publish(subject, MessagePackSerializer.Serialize((mamagePartKey: managePartKey, ObjectInfo)));
@@ -130,13 +130,13 @@ public class PlayerManager(
 
         await ObjectInfo.Save();
 
-        var isCommonMap = CommonMapData.IsCommonMap(MapId);
+        var isCommonMap = GameMapData.IsCommonMap(MapId);
         var key = isCommonMap
-            ? CommonMapData.CreatePartKey(MapId, CurrentCell)
-            : InstanceMapData.CreatePartKey(MapId, MapSubId);
+            ? MapHelper.CreatePartKey(MapId, CurrentCell)
+            : MapHelper.CreatePartKey(MapId, MapSubId);
         var manageServer = isCommonMap
-            ? CommonMapData.GetManageServerId(key)
-            : InstanceMapData.GetManageServerId(MapSubId);
+            ? MapHelper.GetManageServerId(key)
+            : MapHelper.GetManageServerId(MapSubId);
 
         var subject = SubjectHelper.GetDestroyObjectSubject(ObjectInfo, manageServer);
         var message = MessagePackSerializer.Serialize((key, ObjectInfo.GetGameObjectKey()));

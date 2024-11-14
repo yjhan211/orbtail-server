@@ -432,8 +432,8 @@ public static class JobController
             await playerInfo.Save();
         }
 
-        var partKey = CommonMapData.CreatePartKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.CurrentCell);
-        var currentManageServer = CommonMapData.GetManageServerId(partKey);
+        var partKey = MapHelper.CreatePartKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.CurrentCell);
+        var currentManageServer = MapHelper.GetManageServerId(partKey);
         var moveManageSubject = SubjectHelper.GetUpdateManageSubject(campInfo.ObjectInfo.MapId,
             campInfo.ObjectInfo.MapSubId, currentManageServer);
 
@@ -563,8 +563,8 @@ public static class JobController
     private static void BroadcastJobResourceCreate(GameUser user, JobResourceInfo jobResourceInfo)
     {
         var positionKey =
-            CommonMapData.CreatePartKey(jobResourceInfo.ObjectInfo.MapId, jobResourceInfo.ObjectInfo.CurrentCell);
-        var manageServer = CommonMapData.GetManageServerId(positionKey);
+            MapHelper.CreatePartKey(jobResourceInfo.ObjectInfo.MapId, jobResourceInfo.ObjectInfo.CurrentCell);
+        var manageServer = MapHelper.GetManageServerId(positionKey);
         var subject = SubjectHelper.GetCreateJobResourceSubject(jobResourceInfo.ObjectInfo.MapId,
             jobResourceInfo.ObjectInfo.MapSubId, manageServer);
         var message = MessagePackSerializer.Serialize((positionKey, jobResourceInfo, jobResourceInfo.ObjectInfo));
@@ -574,8 +574,8 @@ public static class JobController
 
     private static void BroadcastObjectDestroy(GameUser user, GameObjectInfo objectInfo)
     {
-        var positionKey = CommonMapData.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-        var manageServer = CommonMapData.GetManageServerId(positionKey);
+        var positionKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+        var manageServer = MapHelper.GetManageServerId(positionKey);
         var subject = SubjectHelper.GetDestroyObjectSubject(objectInfo.MapId, objectInfo.MapSubId, manageServer);
         var message = MessagePackSerializer.Serialize((positionKey, objectInfo.GetGameObjectKey()));
 

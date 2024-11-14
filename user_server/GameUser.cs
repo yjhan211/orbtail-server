@@ -322,10 +322,10 @@ public partial class GameUser : IPeer
             _ => throw new ArgumentException($"Unsupported type: {typeof(T)}")
         };
 
-        if (CommonMapData.IsCommonMap(objectInfo.MapId))
+        if (GameMapData.IsCommonMap(objectInfo.MapId))
         {
-            var partKey = CommonMapData.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-            var targetServerList = CommonMapData.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
+            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
             foreach (var targetServer in targetServerList)
             {
                 var subject = SubjectHelper.GetUpdateInfoSubject(objectInfo, targetServer);
@@ -335,8 +335,8 @@ public partial class GameUser : IPeer
             return;
         }
 
-        var instancePartKey = InstanceMapData.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
-        var manageServer = InstanceMapData.GetManageServerId(objectInfo.MapSubId);
+        var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+        var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
         var instanceSubject = SubjectHelper.GetUpdateInfoSubject(objectInfo, manageServer);
         NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, info)));
     }

@@ -25,15 +25,17 @@ namespace network.common.data.models
             InventoryInfo = new InventoryInfo();
             LabId = 0;
             LabName = "";
-            Gold = 0;
+            Gold = 0; 
             TutorialIndex = 0;
         }
 
         public PlayerInfo(long playerId, bool isDummy)
         {
             var name = isDummy ? $"더미{playerId}" : $"플레이어{playerId}";
-
-            var initCell = isDummy ? CommonMapData.GetRandomCell() : GameRuleData.StartPosition;
+            
+            // TODO 공통맵 추가 이후 활성화
+            // var initCell = isDummy ? CommonMapData.GetRandomCell() : GameRuleData.StartPosition;
+            var initCell = GameRuleData.StartPosition;
             PlayerId = playerId;
             Name = name;
             Grade = PlayerGrade.COMMONER;
