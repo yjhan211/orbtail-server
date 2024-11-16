@@ -61,9 +61,9 @@ public class PlayerManager(
         await PublishDestroy();
         
         ObjectInfo.MapId = changeMapInfo.Value.mapId;
-        ObjectInfo.MapSubId = GetMapSubId(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnCell);
-        ObjectInfo.CurrentCell = changeMapInfo.Value.spawnCell;
-        ObjectInfo.TargetCell = changeMapInfo.Value.spawnCell;
+        ObjectInfo.MapSubId = GetMapSubId(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition);
+        ObjectInfo.CurrentCell = changeMapInfo.Value.spawnPosition;
+        ObjectInfo.TargetCell = changeMapInfo.Value.spawnPosition;
         ObjectInfo.IsFlip = changeMapInfo.Value.isFlip;
         await ObjectInfo.Save();
 
@@ -71,7 +71,7 @@ public class PlayerManager(
         {
             using var packet = PacketMaker.U_TO_C_CHANGE_MAP(MapId, MapSubId, CurrentCell, IsFlip);
             sendToClient(packet);
-            _logManager.WriteDebugLog("U_TO_C_CHANGE_MAP");
+            _logManager?.WriteDebugLog("U_TO_C_CHANGE_MAP");
             return;
         }
 
@@ -80,7 +80,7 @@ public class PlayerManager(
         var publishObj = MessagePackSerializer.Serialize((ObjectInfo.GetGameObjectKey(), MapId, MapSubId));
         natsClient.Publish(subject, publishObj);
         
-        _logManager.WriteDebugLog("publish");
+        _logManager?.WriteDebugLog("publish");
     }
 
     private long GetMapSubId(MapId mapId, Cell spawnCell)
