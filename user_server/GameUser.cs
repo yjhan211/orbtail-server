@@ -19,13 +19,13 @@ namespace user_server;
 
 public partial class GameUser : IPeer
 {
-    private static readonly IReadOnlyList<Protocol> _nonAuthProtocol = new List<Protocol>
+    private static readonly IReadOnlyList<Protocol> NonAuthProtocol = new List<Protocol>
     {
         Protocol.C_TO_U_HEART_BEAT,
         Protocol.C_TO_U_LOGIN
     };
 
-    private static readonly IReadOnlyList<Protocol> _actionProtocol = new List<Protocol>
+    private static readonly IReadOnlyList<Protocol> ActionProtocol = new List<Protocol>
     {
         Protocol.C_TO_U_MOVE,
         Protocol.C_TO_U_WEAR_ITEM,
@@ -81,7 +81,7 @@ public partial class GameUser : IPeer
             _ = packet.PopPlayerId();
             var body = packet.PopBody();
 
-            if (_nonAuthProtocol.Contains(protocolId))
+            if (NonAuthProtocol.Contains(protocolId))
             {
                 switch (protocolId)
                 {
@@ -98,7 +98,7 @@ public partial class GameUser : IPeer
 
             if (_playerManager.State == PlayerState.NONE) throw new Exception("invalid PlayerState");
 
-            if (_actionProtocol.Contains(protocolId) && _playerManager.State != PlayerState.IDLE)
+            if (ActionProtocol.Contains(protocolId) && _playerManager.State != PlayerState.IDLE)
                 throw new Exception($"in action. {_playerManager.PlayerId}");
 
             switch (protocolId)
@@ -132,6 +132,10 @@ public partial class GameUser : IPeer
                     break;
                 case Protocol.C_TO_U_USE_ITEM:
                     await HandleMessage<C_TO_U_USE_ITEM>(body, InventoryController.RequestUseItem);
+                    break;
+                case Protocol.C_TO_U_CHANGE_MAP:
+                    _logManager.WriteDebugLog("changemap");
+                    await _playerManager.ChangeMap();
                     break;
                 case Protocol.C_TO_U_EXPLORE:
                     await HandleMessage<C_TO_U_EXPLORE>(body, JobController.Explore);
@@ -187,11 +191,9 @@ public partial class GameUser : IPeer
                 case Protocol.C_TO_U_CAMP_INFO:
                     await HandleMessage<C_TO_U_CAMP_INFO>(body, CampController.GetCampInfo);
                     break;
-
                 case Protocol.C_TO_U_SET_NAME:
                     await HandleMessage<C_TO_U_SET_NAME>(body, PlayerController.SetName);
                     break;
-
                 case Protocol.C_TO_U_UPDATE_TUTORIAL:
                     await PlayerController.UpdateTutorial(this);
                     break;

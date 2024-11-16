@@ -7,12 +7,10 @@ namespace network.helpers;
 public static class MapHelper
 {
     private static int _totalServerNum;
-    private static readonly Dictionary<string, int> _partByPositionKey = new();
-    private static readonly Dictionary<MapId, Dictionary<int, List<string>>> _positionListByMapPart = new();
-    private static readonly List<Cell> _partPivotList = [];
+    private static readonly Dictionary<string, int> PartByKey = new();
+    private static readonly Dictionary<MapId, Dictionary<int, List<string>>> PositionListByMapPart = new();
+    private static readonly List<Cell> PartPivotList = [];
     
-    private static readonly Dictionary<string, (MapId, Cell, bool)> _instancePortalInfo = new();
-
     public static void Initialize(int totalServerNum)
     {
         _totalServerNum = totalServerNum;
@@ -24,18 +22,18 @@ public static class MapHelper
         CalculatePartPivots();
         foreach (var mapId in GameMapData.GetCommonMapList())
         {
-            _positionListByMapPart[mapId] = new Dictionary<int, List<string>>();
+            PositionListByMapPart[mapId] = new Dictionary<int, List<string>>();
             var partNumber = 1;
 
-            foreach (var cellList in _partPivotList.Select(partPivotCell => partPivotCell.GetBoundCellList()))
+            foreach (var cellList in PartPivotList.Select(partPivotCell => partPivotCell.GetBoundCellList()))
             {
-                _positionListByMapPart[mapId][partNumber] = [];
+                PositionListByMapPart[mapId][partNumber] = [];
 
                 foreach (var positionKey in cellList.Select(cell => CreatePartKey(mapId, cell))
-                             .Where(positionKey => !_partByPositionKey.TryGetValue(positionKey, out _)))
+                             .Where(positionKey => !PartByKey.TryGetValue(positionKey, out _)))
                 {
-                    _partByPositionKey.Add(positionKey, partNumber);
-                    _positionListByMapPart[mapId][partNumber].Add(positionKey);
+                    PartByKey.Add(positionKey, partNumber);
+                    PositionListByMapPart[mapId][partNumber].Add(positionKey);
                 }
 
                 partNumber++;
@@ -61,7 +59,7 @@ public static class MapHelper
                     
                     for (var col = 0; col < 10; col++)
                     {
-                        _partPivotList.Add(new Cell(
+                        PartPivotList.Add(new Cell(
                             rowBaseX + (col * colXOffset),
                             rowBaseY + (col * colYOffset)
                         ));
@@ -78,7 +76,7 @@ public static class MapHelper
                     
                     for (var col = 0; col < 5; col++)
                     {
-                        _partPivotList.Add(new Cell(
+                        PartPivotList.Add(new Cell(
                             rowBaseX + (col * colXOffset),
                             rowBaseY + (col * colYOffset)
                         ));
@@ -94,7 +92,7 @@ public static class MapHelper
                     
                     for (var col = 0; col < 5; col++)
                     {
-                        _partPivotList.Add(new Cell(
+                        PartPivotList.Add(new Cell(
                             rowBaseX + (col * colXOffset),
                             rowBaseY + (col * colYOffset)
                         ));
@@ -105,7 +103,7 @@ public static class MapHelper
             case 5:
                 for (var col = 0; col < 5; col++)
                 {
-                    _partPivotList.Add(new Cell(
+                    PartPivotList.Add(new Cell(
                         baseCell.X + (col * colXOffset),
                         baseCell.Y + (col * colYOffset)
                     ));
@@ -118,7 +116,7 @@ public static class MapHelper
     }
 
     public static List<string> GetPositionListByMapByPart(MapId mapId, int part) => 
-        _positionListByMapPart[mapId][part];
+        PositionListByMapPart[mapId][part];
 
     public static string CreatePartKey(MapId mapId, Cell cell)
     {
@@ -147,9 +145,9 @@ public static class MapHelper
             .ToList();
     }
 
-    public static int GetManageServerId(string positionKey)
+    public static int GetManageServerId(string partKey)
     {
-        if (!_partByPositionKey.TryGetValue(positionKey, out var partNumber))
+        if (!PartByKey.TryGetValue(partKey, out var partNumber))
             return 0;
 
         return _totalServerNum switch
@@ -168,12 +166,12 @@ public static class MapHelper
         return (int)((mapSubId - 1) % _totalServerNum) + 1;
     }
 
-    public static int GetManagePartByPositionKey(string positionKey)
+    public static int GetManagePartByKey(string partKey)
     {
-        if (!_partByPositionKey.TryGetValue(positionKey, out var partNumber))
-            throw new Exception($"Can't find part_number for position_key: {positionKey}");
+        if (!PartByKey.TryGetValue(partKey, out var partNumber))
+            throw new Exception($"Can't find part_number for position_key: {partKey}");
 
-        var serverId = GetManageServerId(positionKey);
+        var serverId = GetManageServerId(partKey);
         
         return _totalServerNum switch
         {

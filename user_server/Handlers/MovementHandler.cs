@@ -17,7 +17,7 @@ public sealed class MovementHandler(
     NatsClient natsClient,
     SendPacketDelegate sendToClient,
     UpdateObjectManager updateObjectManager,
-    Func<ChangeMapInfo, Task> spawn)
+    Func<Task> spawn)
 {
     // ReSharper disable once UnusedMember.Local
     private readonly LogManager? _logManager = logManager;
@@ -50,8 +50,10 @@ public sealed class MovementHandler(
             }
 
             if (_moveQueue.Count > Config.MAX_MOVE_QUEUE_SIZE)
+            {
                 // TODO 싱크 완전히 깨진 상태이므로 위치 강제보정
-                throw new Exception("[RequestMove] moveQueue is Full.");
+                throw new Exception("[RequestMove] moveQueue is Full.");   
+            }
             _moveQueue.Enqueue(body);
         }
         finally
@@ -106,10 +108,6 @@ public sealed class MovementHandler(
         var moveElapsedTime = CalcMoveElapsedTime();
         await Task.Delay((int)(moveElapsedTime * 1000));
 
-        // 포탈 여부 확인 및 맵 이동
-        var isChangedMap = await TryHandleMapChange();
-        if (isChangedMap) return;
-
         var isArrive = true;
         while (_moveQueue.TryDequeue(out var nextMove))
         {
@@ -133,21 +131,6 @@ public sealed class MovementHandler(
         sendToClient(packet);
 
         if (GameMapData.IsCommonMap(objectInfo.MapId)) RequestSpawnInfo(objectInfo.MapId);
-    }
-
-    private async Task<bool> TryHandleMapChange()
-    {
-        var portalInfo = GameMapData.GetPortalOrNull(objectInfo);
-        if (portalInfo == null) return false;
-
-        var (mapId, spawnPosition, isFlip) = portalInfo.Value;
-        var mapSubId = 1; // TODO 포탈 구현 시 재작업
-
-        var mapChangeInfo = new ChangeMapInfo(mapId, mapSubId, spawnPosition, isFlip);
-        await spawn.Invoke(mapChangeInfo);
-        _moveQueue.Clear();
-
-        return true;
     }
 
     private void RequestSpawnInfo(MapId targetMapId, bool isSpawn = false)
@@ -174,10 +157,10 @@ public sealed class MovementHandler(
     private void RequestCommonMapSpawnList(bool isSpawn)
     {
         // 현재 바운드 - 이전 바운드 = spawn 대상
-        var lastBoundCellList = isSpawn || _lastCell == null ? [] : _lastCell.GetBoundCellList();
+        var lastBoundCellList = isSpawn ? [] : _lastCell?.GetBoundCellList();
         var currentBoundCellList = objectInfo.CurrentCell.GetBoundCellList();
         var objectSpawnList = currentBoundCellList
-            .Except(lastBoundCellList)
+            .Except(lastBoundCellList!)
             .Select(lastBoundCell => MapHelper.CreatePartKey(objectInfo.MapId, lastBoundCell))
             .GroupBy(
                 MapHelper.GetManageServerId,

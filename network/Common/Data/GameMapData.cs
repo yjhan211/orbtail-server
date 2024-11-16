@@ -128,7 +128,7 @@ namespace network.common.data
             return true;
         }
 
-        public static (MapId mapId, Cell spawnPosition, bool isFlip)? GetPortalOrNull(GameObjectInfo objectInfo)
+        public static (MapId mapId, Cell spawnCell, bool isFlip)? GetPortalOrNull(GameObjectInfo objectInfo)
         {
             var portalKey = GetPortalKey(objectInfo.MapId, objectInfo.TargetCell);
             return _portalInfo.TryGetValue(portalKey, out var portalInfo) ? portalInfo : null;

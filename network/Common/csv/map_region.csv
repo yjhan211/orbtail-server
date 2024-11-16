@@ -3,3 +3,4 @@ map_id,region_type,start_x,start_y,end_x,end_y,warp_to
 1,portal,102,90,102,90,2
 1,portal,102,91,102,91,2
 1,portal,102,92,102,92,2
+2,ground,84,90,102,107,0
