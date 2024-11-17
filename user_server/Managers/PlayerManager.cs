@@ -34,8 +34,7 @@ public class PlayerManager(
     public string ObjectKey => ObjectInfo?.GetGameObjectKey() ?? string.Empty;
 
     [MemberNotNull(nameof(ObjectInfo))]
-    public void Initialize(GameObjectInfo objectInfo, MovementHandler movementHandler,
-        EnvironmentHandler environmentHandler)
+    public void Initialize(GameObjectInfo objectInfo, MovementHandler movementHandler, EnvironmentHandler environmentHandler)
     {
         ObjectInfo = objectInfo;
         ObjectInfo.CurrentCell = ObjectInfo.TargetCell;
@@ -45,32 +44,62 @@ public class PlayerManager(
         _environmentHandler = environmentHandler;
     }
 
-    public async Task ChangeMap(ChangeMapInfo? changeMapInfo = null)
+    public async Task ChangeMap()
     {
+        if (ObjectInfo == null)
+        {
+            return;
+        }
+        
+        var changeMapInfo = GameMapData.GetPortalOrNull(ObjectInfo);
+        if (changeMapInfo == null)
+        {
+            return;
+        }
+        
         // 기존 맵에 삭제 요청
         await PublishDestroy();
+        
+        ObjectInfo.MapId = changeMapInfo.Value.mapId;
+        ObjectInfo.MapSubId = GetMapSubId(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition);
+        ObjectInfo.CurrentCell = changeMapInfo.Value.spawnPosition;
+        ObjectInfo.TargetCell = changeMapInfo.Value.spawnPosition;
+        ObjectInfo.IsFlip = changeMapInfo.Value.isFlip;
+        await ObjectInfo.Save();
 
-        if (changeMapInfo != null)
-        {
-            ObjectInfo!.MapId = changeMapInfo.MapId;
-            ObjectInfo.MapSubId = changeMapInfo.MapSubId;
-            ObjectInfo.CurrentCell = changeMapInfo.SpawnCell;
-            ObjectInfo.TargetCell = changeMapInfo.SpawnCell;
-            ObjectInfo.IsFlip = changeMapInfo.IsFlip;
-            await ObjectInfo.Save();
-        }
-
-        if (CommonMapData.IsCommonMap(MapId))
+        if (GameMapData.IsCommonMap(MapId))
         {
             using var packet = PacketMaker.U_TO_C_CHANGE_MAP(MapId, MapSubId, CurrentCell, IsFlip);
             sendToClient(packet);
+            _logManager?.WriteDebugLog("U_TO_C_CHANGE_MAP");
             return;
         }
 
-        var serverId = InstanceMapData.GetManageServerId(MapSubId);
+        var serverId = MapHelper.GetManageServerId(MapSubId);
         var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
-        var publishObj = MessagePackSerializer.Serialize((ObjectInfo!.GetGameObjectKey(), MapId, MapSubId));
+        var publishObj = MessagePackSerializer.Serialize((ObjectInfo.GetGameObjectKey(), MapId, MapSubId));
         natsClient.Publish(subject, publishObj);
+        
+        _logManager?.WriteDebugLog("publish");
+    }
+
+    private long GetMapSubId(MapId mapId, Cell spawnCell)
+    {
+        long result = 0;
+        if (GameMapData.IsCommonMap(mapId))
+        {
+            var partKey = MapHelper.CreatePartKey(mapId, spawnCell);
+            result = MapHelper.GetManageServerId(partKey);
+        }
+
+        result = mapId switch
+        {
+            MapId.LIBRARY => // 도서관은 개인맵
+                ObjectInfo!.ObjectId,
+            _ => result
+        };
+
+        return result;
     }
 
     public async Task Spawn()
@@ -101,13 +130,13 @@ public class PlayerManager(
         ObjectInfo.SetFlip(direction);
         await ObjectInfo.Save();
 
-        var isCommonMap = CommonMapData.IsCommonMap(MapId);
+        var isCommonMap = GameMapData.IsCommonMap(MapId);
         var managePartKey = isCommonMap
-            ? CommonMapData.CreatePartKey(MapId, CurrentCell)
-            : InstanceMapData.CreatePartKey(MapId, MapSubId);
+            ? MapHelper.CreatePartKey(MapId, CurrentCell)
+            : MapHelper.CreatePartKey(MapId, MapSubId);
         var manageServer = isCommonMap
-            ? CommonMapData.GetManageServerId(managePartKey)
-            : InstanceMapData.GetManageServerId(MapSubId);
+            ? MapHelper.GetManageServerId(managePartKey)
+            : MapHelper.GetManageServerId(MapSubId);
         var subject = SubjectHelper.GetUpdateManageSubject(ObjectInfo, manageServer);
 
         natsClient.Publish(subject, MessagePackSerializer.Serialize((mamagePartKey: managePartKey, ObjectInfo)));
@@ -118,9 +147,8 @@ public class PlayerManager(
     {
         await PublishDestroy();
 
-        if (_movementHandler != null) _movementHandler.Dispose();
-
-        if (_environmentHandler != null) _environmentHandler.Dispose();
+        _movementHandler?.Dispose();
+        _environmentHandler?.Dispose();
     }
 
     // 접속 종료 시 자신의 object_info 삭제 요청 (PublishLeave랑 다른 점 - 후에 Broadcast 처리가 됨)
@@ -130,13 +158,13 @@ public class PlayerManager(
 
         await ObjectInfo.Save();
 
-        var isCommonMap = CommonMapData.IsCommonMap(MapId);
+        var isCommonMap = GameMapData.IsCommonMap(MapId);
         var key = isCommonMap
-            ? CommonMapData.CreatePartKey(MapId, CurrentCell)
-            : InstanceMapData.CreatePartKey(MapId, MapSubId);
+            ? MapHelper.CreatePartKey(MapId, CurrentCell)
+            : MapHelper.CreatePartKey(MapId, MapSubId);
         var manageServer = isCommonMap
-            ? CommonMapData.GetManageServerId(key)
-            : InstanceMapData.GetManageServerId(MapSubId);
+            ? MapHelper.GetManageServerId(key)
+            : MapHelper.GetManageServerId(MapSubId);
 
         var subject = SubjectHelper.GetDestroyObjectSubject(ObjectInfo, manageServer);
         var message = MessagePackSerializer.Serialize((key, ObjectInfo.GetGameObjectKey()));

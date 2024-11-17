@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using game_server.handlers;
 using MessagePack;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.helpers;
 using network.infrastructure;
@@ -37,7 +36,10 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
     private void SubscribeToCreateInstance()
     {
-        natsClient.Subscribe(EnterInstanceSubject, async void (_, msg) =>
+        natsClient.Subscribe(EnterInstanceSubject, MessageHandler);
+        return;
+
+        async void MessageHandler(string _, byte[] msg)
         {
             try
             {
@@ -47,7 +49,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
             {
                 logManager.WriteErrorLog(ex);
             }
-        });
+        }
     }
 
     private void SubscribeToInstanceEvents(MapId mapId, long mapSubId)
@@ -80,7 +82,11 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
             });
 
         foreach (var (subject, handler) in asyncHandlers)
-            natsClient.Subscribe(subject, async void (_, msg) =>
+        {
+            natsClient.Subscribe(subject, MessageHandler);
+            continue;
+
+            async void MessageHandler(string _, byte[] msg)
             {
                 try
                 {
@@ -90,7 +96,8 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
                 {
                     logManager.WriteErrorLog(ex);
                 }
-            });
+            }
+        }
     }
 
     private async Task EnterInstance(RedisValue message)
@@ -99,7 +106,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
         await _mapLock.WaitAsync();
         try
         {
-            var instanceKey = InstanceMapData.CreatePartKey(mapId, mapSubId);
+            var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
             if (_objectInstanceDict.TryAdd(instanceKey, []))
                 SubscribeToInstanceEvents(mapId, mapSubId);
             _objectInstanceDict[instanceKey].Add(userSubject);
@@ -126,7 +133,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
     {
         var (_, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
         var objectKey = GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, objectInfo.ObjectId);
-        var currentInstanceKey = InstanceMapData.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+        var currentInstanceKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
 
         await UpdateObjectPositionAsync(currentInstanceKey, objectKey);
 

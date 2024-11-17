@@ -17,37 +17,42 @@ namespace network.common.data
     {
         private static readonly Dictionary<int, ItemInfoData> Items = new();
 
-        public static void Initialize(Dictionary<string, CsvRow> baseItemData, Dictionary<string, CsvRow> equipmentData,
-            Dictionary<string, CsvRow> consumableData, Dictionary<string, CsvRow> installationData,
-            Dictionary<string, CsvRow> shopData)
+        public static void Initialize(List<CsvRow> baseItemData, List<CsvRow> equipmentData,
+            List<CsvRow> consumableData, List<CsvRow> installationData,
+            List<CsvRow> shopData)
         {
-            foreach (var (id, baseInfo) in baseItemData)
+            foreach (var baseInfo in baseItemData)
             {
-                var additionalData = new Dictionary<string, CsvRow>();
-                var itemId = int.Parse(id); // string id를 int로 변환
+                var itemId = int.Parse(baseInfo["id"]);
                 var itemType = (ItemType)(itemId / 100000000);
+                var additionalData = new Dictionary<string, CsvRow>();
 
                 switch (itemType)
                 {
-                    case ItemType.EQUIPMENT when equipmentData.ContainsKey(id):
-                        additionalData["item_info_equipment"] = equipmentData[id];
+                    case ItemType.EQUIPMENT:
+                        var equipInfo = equipmentData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
+                        if (equipInfo != null)
+                            additionalData["item_info_equipment"] = equipInfo;
                         break;
 
-                    case ItemType.CONSUMABLE when consumableData.ContainsKey(id):
-                        additionalData["item_info_consumable"] = consumableData[id];
+                    case ItemType.CONSUMABLE:
+                        var consumableInfo = consumableData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
+                        if (consumableInfo != null)
+                            additionalData["item_info_consumable"] = consumableInfo;
                         break;
 
                     case ItemType.INSTALLATION:
-                        if (installationData.TryGetValue(id, out var value))
-                            additionalData["item_info_installation"] = value;
-                        if (shopData.TryGetValue(id, out var value1))
-                            additionalData["installation_shop_info"] = value1;
+                        var installInfo = installationData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
+                        if (installInfo != null)
+                            additionalData["item_info_installation"] = installInfo;
+                
+                        var shopInfo = shopData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
+                        if (shopInfo != null)
+                            additionalData["installation_shop_info"] = shopInfo;
                         break;
                 }
 
-                // 현재 아이템의 baseInfo만 전달
-                var singleItemData = new Dictionary<string, CsvRow> { { id, baseInfo } };
-                Items[itemId] = ItemInfoData.CreateFromData(singleItemData, additionalData);
+                Items[itemId] = ItemInfoData.CreateFromData(baseInfo, additionalData);
             }
         }
 
@@ -110,10 +115,8 @@ namespace network.common.data
         public bool IsInstallation => Type == ItemType.INSTALLATION;
         public bool IsMaterial => Type == ItemType.MATERIAL;
 
-        public static ItemInfoData CreateFromData(Dictionary<string, CsvRow> baseItemData,
-            Dictionary<string, CsvRow> additionalData = null)
+        public static ItemInfoData CreateFromData(CsvRow baseInfo, Dictionary<string, CsvRow> additionalData = null)
         {
-            var baseInfo = baseItemData.Values.First();
             var id = int.Parse(baseInfo["id"]);
             var itemType = (ItemType)(id / 100000000);
 
@@ -122,7 +125,7 @@ namespace network.common.data
                 Id = id,
                 Type = itemType,
                 Name = new LocalizedText(baseInfo["name"]),
-                Requirements = JsonConvert.DeserializeObject<List<int>>(baseInfo["requirements"]) ?? new (),
+                Requirements = JsonConvert.DeserializeObject<List<int>>(baseInfo["requirements"]) ?? new(),
                 Reusable = int.Parse(baseInfo["reusable"]) == 1
             };
 
@@ -134,12 +137,12 @@ namespace network.common.data
                         item.BuffList = ParseBuffList(equipInfo["buff_list"]);
                         break;
 
-                    case ItemType.CONSUMABLE
+                    case ItemType.CONSUMABLE 
                         when additionalData.TryGetValue("item_info_consumable", out var consumableInfo):
                         item.ConsumableBuffList = ParseConsumableBuffList(consumableInfo["buff_list"]);
                         break;
 
-                    case ItemType.INSTALLATION
+                    case ItemType.INSTALLATION 
                         when additionalData.TryGetValue("item_info_installation", out var installInfo):
                         item.MaxDurability = int.Parse(installInfo["max_durability"]);
                         item.BuffList = ParseBuffList(installInfo["buff_list"]) ?? throw new ArgumentException();
@@ -150,7 +153,7 @@ namespace network.common.data
 
             return item;
         }
-
+        
         private static List<(int id, int coolTime, int value)> ParseBuffList(string jsonString)
         {
             if (string.IsNullOrEmpty(jsonString) || jsonString == "[]") return new();

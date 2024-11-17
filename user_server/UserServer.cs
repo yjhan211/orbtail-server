@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
-using network.common.data;
 using network.common.data.helpers;
 using network.core;
 using network.helpers;
@@ -71,8 +70,7 @@ public class UserServer(
             natsClientFactory.Initialize(natsEndpoint);
 
             GameDataHelper.Initialize(logManager);
-            CommonMapData.Initialize(Program.GameServerNum);
-            InstanceMapData.Initialize(Program.GameServerNum);
+            MapHelper.Initialize(Program.GameServerNum);
             CacheHelper.Initialize(redisPool);
         }
         catch (Exception ex)

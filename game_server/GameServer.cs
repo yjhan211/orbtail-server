@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using network.common;
 using network.common.data;
+using network.common.data.helpers;
 using network.common.data.models;
 using network.helpers;
 using network.infrastructure;
@@ -18,8 +19,8 @@ public class GameServer(
     RedisConnectionPool redisPool,
     NatsClientFactory natsClientFactory) : IHostedService
 {
+    private readonly List<CommonMapController> _commonMapControllerList = [];
     private readonly List<InstanceMapController> _instanceControllerList = [];
-    private readonly List<CommonMapController> _mapControllerList = [];
     private CancellationTokenSource _cts = new();
     private Timer? _messageTimer;
 
@@ -51,7 +52,7 @@ public class GameServer(
         await _cts.CancelAsync();
         if (_messageTimer != null) await _messageTimer.DisposeAsync();
 
-        await Task.WhenAll(_mapControllerList.Select(c => c.ShutdownAsync()));
+        await Task.WhenAll(_commonMapControllerList.Select(c => c.ShutdownAsync()));
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
         _cts.Dispose();
@@ -71,8 +72,8 @@ public class GameServer(
             redisPool.Initialize(redisEndpoints);
             natsClientFactory.Initialize(natsEndpoint);
 
-            CommonMapData.Initialize(Program.GameServerNum);
-            InstanceMapData.Initialize(Program.GameServerNum);
+            GameDataHelper.Initialize(logManager);
+            MapHelper.Initialize(Program.GameServerNum);
             CacheHelper.Initialize(redisPool);
         }
         catch (Exception ex)
@@ -81,14 +82,20 @@ public class GameServer(
         }
     }
 
-    private async Task InitializeControllers()
+    private void InitializeControllers()
     {
         // TODO 공통맵 생기면 활성화
         // _mapControllerList.Add(new CommonMapController(logManager, natsClientFactory.Create(), _cts, MapId.CAMPUS_1));
-        foreach (var mapController in _mapControllerList) await mapController.Initialize();
+        foreach (var mapController in _commonMapControllerList)
+        {
+            mapController.Initialize();
+        }
 
         _instanceControllerList.Add(new InstanceMapController(logManager, natsClientFactory.Create(), _cts));
-        foreach (var instanceController in _instanceControllerList) instanceController.Initialize();
+        foreach (var instanceController in _instanceControllerList)
+        {
+            instanceController.Initialize();
+        }
     }
 
     private void StartMessageProcessing()
@@ -140,6 +147,9 @@ public class GameServer(
             case Protocol.U_TO_G_LOGOUT:
                 await HandleMessage<U_TO_G_LOGOUT>(playerId, body, Logout);
                 break;
+            
+            default:
+                throw new ArgumentOutOfRangeException();
         }
     }
 

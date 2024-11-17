@@ -133,6 +133,10 @@ public partial class GameUser : IPeer
                 case Protocol.C_TO_U_USE_ITEM:
                     await HandleMessage<C_TO_U_USE_ITEM>(body, InventoryController.RequestUseItem);
                     break;
+                case Protocol.C_TO_U_CHANGE_MAP:
+                    _logManager.WriteDebugLog("changemap");
+                    await _playerManager.ChangeMap();
+                    break;
                 case Protocol.C_TO_U_EXPLORE:
                     await HandleMessage<C_TO_U_EXPLORE>(body, JobController.Explore);
                     break;
@@ -187,11 +191,9 @@ public partial class GameUser : IPeer
                 case Protocol.C_TO_U_CAMP_INFO:
                     await HandleMessage<C_TO_U_CAMP_INFO>(body, CampController.GetCampInfo);
                     break;
-
                 case Protocol.C_TO_U_SET_NAME:
                     await HandleMessage<C_TO_U_SET_NAME>(body, PlayerController.SetName);
                     break;
-
                 case Protocol.C_TO_U_UPDATE_TUTORIAL:
                     await PlayerController.UpdateTutorial(this);
                     break;
@@ -322,10 +324,10 @@ public partial class GameUser : IPeer
             _ => throw new ArgumentException($"Unsupported type: {typeof(T)}")
         };
 
-        if (CommonMapData.IsCommonMap(objectInfo.MapId))
+        if (GameMapData.IsCommonMap(objectInfo.MapId))
         {
-            var partKey = CommonMapData.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-            var targetServerList = CommonMapData.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
+            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
             foreach (var targetServer in targetServerList)
             {
                 var subject = SubjectHelper.GetUpdateInfoSubject(objectInfo, targetServer);
@@ -335,8 +337,8 @@ public partial class GameUser : IPeer
             return;
         }
 
-        var instancePartKey = InstanceMapData.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
-        var manageServer = InstanceMapData.GetManageServerId(objectInfo.MapSubId);
+        var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+        var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
         var instanceSubject = SubjectHelper.GetUpdateInfoSubject(objectInfo, manageServer);
         NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, info)));
     }

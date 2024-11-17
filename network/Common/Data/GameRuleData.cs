@@ -21,27 +21,34 @@ namespace network.common.data
         public static float SkillCompleteTime { get; private set; }
         public static bool HeartBeatActive { get; private set; } // TODO
 
-        public static void Initialize(Dictionary<string, CsvRow> csvData)
+        public static void Initialize(List<CsvRow> csvData)
         {
-            Speed = float.Parse(csvData["Speed"]["value"]);
+            var speedRow = csvData.First(row => row["id"] == "Speed");
+            Speed = float.Parse(speedRow["value"]);
             MoveElapsedTime = 0.5f / Speed;
-            SkillCompleteTime = float.Parse(csvData["SkillCompleteTime"]["value"]);
-            HeartBeatActive = int.Parse(csvData["HeartBeatActive"]["value"]) == 1;
 
-            var posStr = csvData["StartPosition"]["value"]
-                .Trim('"') // 바깥쪽 따옴표 제거
-                .Trim('(', ')') // 괄호 제거
+            var skillCompleteRow = csvData.First(row => row["id"] == "SkillCompleteTime");
+            SkillCompleteTime = float.Parse(skillCompleteRow["value"]);
+
+            var heartBeatRow = csvData.First(row => row["id"] == "HeartBeatActive");
+            HeartBeatActive = int.Parse(heartBeatRow["value"]) == 1;
+
+            var startPosRow = csvData.First(row => row["id"] == "StartPosition");
+            var posStr = startPosRow["value"]
+                .Trim('"')
+                .Trim('(', ')')
                 .Split(',');
             StartPosition = new Cell(
                 int.Parse(posStr[0].Trim()),
                 int.Parse(posStr[1].Trim())
             );
 
-            var itemListStr = csvData["DefaultItemList"]["value"]
-                .Trim('"') // 바깥쪽 따옴표 제거
-                .Trim('[', ']'); // 대괄호 제거
+            var itemListRow = csvData.First(row => row["id"] == "DefaultItemList");
+            var itemListStr = itemListRow["value"]
+                .Trim('"')
+                .Trim('[', ']');
             if (string.IsNullOrEmpty(itemListStr))
-                DefaultItemList = new ();
+                DefaultItemList = new();
             else
                 DefaultItemList = itemListStr.Split("),")
                     .Select(item =>

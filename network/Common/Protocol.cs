@@ -45,6 +45,7 @@ namespace network.common
         U_TO_C_WEAR_ITEM,
         C_TO_U_USE_ITEM,
         U_TO_C_USE_ITEM,
+        C_TO_U_CHANGE_MAP,
         U_TO_C_CHANGE_MAP,
         C_TO_U_CHANGE_MAP_SUCCESS,
         C_TO_U_CREATE_LAB,

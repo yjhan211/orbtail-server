@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using game_server.handlers;
 using MessagePack;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.helpers;
 using network.infrastructure;
@@ -17,15 +16,18 @@ public class CommonMapController
 {
     private readonly Dictionary<string, Func<RedisValue, Task>> _asyncHandlers;
     private readonly CancellationTokenSource _cts;
-    private readonly ConcurrentDictionary<int, HashSet<ExploreTargetInfo>> _exploreTargetDict;
     private readonly Dictionary<string, Action<RedisValue>> _immediateHandlers;
-    private readonly ConcurrentDictionary<int, HashSet<JobResourceInfo>> _jobResourceDict;
     private readonly LogManager _logManager;
-    private readonly List<Cell> _manageCellList;
-    private readonly MapId _mapId;
-    private readonly SemaphoreSlim _mapLock;
     private readonly NatsClient _natsClient;
+    
+    private readonly SemaphoreSlim _mapLock;
+    private readonly MapId _mapId;
+
     private readonly ConcurrentDictionary<string, HashSet<string>> _objectPositionDict;
+    
+    // private readonly ConcurrentDictionary<int, HashSet<ExploreTargetInfo>> _exploreTargetDict;
+    // private readonly ConcurrentDictionary<int, HashSet<JobResourceInfo>> _jobResourceDict;
+    // private readonly List<Cell> _manageCellList;
 
     private readonly Dictionary<Type, object> _updateHandlers = new()
     {
@@ -42,10 +44,11 @@ public class CommonMapController
         _cts = cts;
         _mapId = mapId;
         _objectPositionDict = new ConcurrentDictionary<string, HashSet<string>>();
-        _exploreTargetDict = new ConcurrentDictionary<int, HashSet<ExploreTargetInfo>>();
-        _jobResourceDict = new ConcurrentDictionary<int, HashSet<JobResourceInfo>>();
-        _manageCellList = [];
         _mapLock = new SemaphoreSlim(1, 1);
+        
+        // _exploreTargetDict = new ConcurrentDictionary<int, HashSet<ExploreTargetInfo>>();
+        // _jobResourceDict = new ConcurrentDictionary<int, HashSet<JobResourceInfo>>();
+        // _manageCellList = [];
 
         _immediateHandlers = new Dictionary<string, Action<RedisValue>>
         {
@@ -60,36 +63,34 @@ public class CommonMapController
             { SubjectHelper.GetLeaveManageSubject(_mapId, 0, Program.GameServerId), LeaveManageObjectAsync },
             { SubjectHelper.GetSpawnManageSubject(_mapId, 0, Program.GameServerId), SpawnManageObjectAsync },
             { SubjectHelper.GetDestroyObjectSubject(_mapId, 0, Program.GameServerId), DestroyManageObjectAsync },
-            { SubjectHelper.GetCreateJobResourceSubject(_mapId, 0, Program.GameServerId), CreateJobResourceInfoAsync }
+            // { SubjectHelper.GetCreateJobResourceSubject(_mapId, 0, Program.GameServerId), CreateJobResourceInfoAsync }
         };
     }
 
-    public async Task Initialize()
+    public void Initialize()
     {
         InitializeManageParts();
         SubscribeToMapEvents();
-
-        await CleanUpMapResource();
-        _ = Task.Run(CreateExploreTargetTask, _cts.Token);
+        
+        // TODO 채집 시스템
+        // await CleanUpMapResource();
+        // _ = Task.Run(CreateExploreTargetTask, _cts.Token);
     }
 
     private void InitializeManageParts()
     {
-        var managePartList = CommonMapData.GetManagePartList(Program.GameServerId);
+        var managePartList = MapHelper.GetManagePartList(Program.GameServerId);
         var managePositionKeyList = new List<string>();
 
-        foreach (var managePart in managePartList)
+        foreach (var positionList in managePartList.Select(managePart => MapHelper.GetPositionListByMapByPart(_mapId, managePart)))
         {
-            var positionList = CommonMapData.GetPositionListByMapByPart(_mapId, managePart);
             managePositionKeyList.AddRange(positionList);
-            _exploreTargetDict[managePart] = [];
-            _jobResourceDict[managePart] = [];
         }
 
         foreach (var positionKey in managePositionKeyList)
         {
             _objectPositionDict[positionKey] = [];
-            _manageCellList.Add(CommonMapData.CreateCell(positionKey));
+            // _manageCellList.Add(MapHelper.CreateCell(positionKey));
         }
     }
 
@@ -113,82 +114,83 @@ public class CommonMapController
             await Task.Delay(10000);
         }
     }
-
-    private async Task CreateExploreTargetTask()
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
-        while (await timer.WaitForNextTickAsync(_cts.Token))
-            try
-            {
-                if (!await CreateExploreTarget()) break;
-            }
-            catch (Exception ex)
-            {
-                _logManager.WriteErrorLog(ex);
-            }
-    }
-
-    private async Task<bool> CreateExploreTarget()
-    {
-        var genList = CommonMapData.GetGenExploreIdList(_mapId);
-        if (genList == null) return false;
-
-        await _mapLock.WaitAsync();
-        try
-        {
-            Random random = new();
-            foreach (var partExploreTargetInfo in _exploreTargetDict)
-            {
-                if (3 <= partExploreTargetInfo.Value.Count) continue;
-
-                var createCell = _manageCellList[random.Next(0, _manageCellList.Count)];
-                var createPositionKey = CommonMapData.CreatePartKey(_mapId, createCell);
-                var exploreTargetUid = await CacheHelper.Instance.StringIncrementAsync("temp_explore_target_uid");
-
-                var objectInfo = new GameObjectInfo
-                {
-                    ObjectType = ObjectType.EXPLORETARGET,
-                    ObjectId = exploreTargetUid,
-                    CurrentCell = createCell,
-                    TargetCell = createCell,
-                    MapId = _mapId
-                };
-
-                var exploreTargetInfo =
-                    new ExploreTargetInfo(exploreTargetUid, genList[random.Next(0, genList.Count)], objectInfo);
-                partExploreTargetInfo.Value.Add(exploreTargetInfo);
-
-                _objectPositionDict.AddOrUpdate(
-                    createPositionKey,
-                    [objectInfo.GetGameObjectKey()],
-                    (_, set) =>
-                    {
-                        set.Add(objectInfo.GetGameObjectKey());
-                        return set;
-                    }
-                );
-
-                await exploreTargetInfo.Save();
-
-                var targetServerList = CommonMapData.GetBoundServerList(_mapId, objectInfo.CurrentCell);
-                var targetSubjectList = targetServerList.Select(targetServer =>
-                    SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, targetServer));
-                foreach (var subject in targetSubjectList)
-                    _natsClient.Publish(subject, MessagePackSerializer.Serialize((createPositionKey, objectInfo)));
-            }
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logManager.WriteErrorLog(ex);
-            return false;
-        }
-        finally
-        {
-            _mapLock.Release();
-        }
-    }
+    
+    // TODO 채집 시스템
+    // private async Task CreateExploreTargetTask()
+    // {
+    //     using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+    //     while (await timer.WaitForNextTickAsync(_cts.Token))
+    //         try
+    //         {
+    //             if (!await CreateExploreTarget()) break;
+    //         }
+    //         catch (Exception ex)
+    //         {
+    //             _logManager.WriteErrorLog(ex);
+    //         }
+    // }
+    
+    // private async Task<bool> CreateExploreTarget()
+    // {
+        // var genList = CommonMapData.GetGenExploreIdList(_mapId);
+        // if (genList == null) return false;
+        //
+        // await _mapLock.WaitAsync();
+        // try
+        // {
+        //     Random random = new();
+        //     foreach (var partExploreTargetInfo in _exploreTargetDict)
+        //     {
+        //         if (3 <= partExploreTargetInfo.Value.Count) continue;
+        //
+        //         var createCell = _manageCellList[random.Next(0, _manageCellList.Count)];
+        //         var createPositionKey = CommonMapData.CreatePartKey(_mapId, createCell);
+        //         var exploreTargetUid = await CacheHelper.Instance.StringIncrementAsync("temp_explore_target_uid");
+        //
+        //         var objectInfo = new GameObjectInfo
+        //         {
+        //             ObjectType = ObjectType.EXPLORETARGET,
+        //             ObjectId = exploreTargetUid,
+        //             CurrentCell = createCell,
+        //             TargetCell = createCell,
+        //             MapId = _mapId
+        //         };
+        //
+        //         var exploreTargetInfo =
+        //             new ExploreTargetInfo(exploreTargetUid, genList[random.Next(0, genList.Count)], objectInfo);
+        //         partExploreTargetInfo.Value.Add(exploreTargetInfo);
+        //
+        //         _objectPositionDict.AddOrUpdate(
+        //             createPositionKey,
+        //             [objectInfo.GetGameObjectKey()],
+        //             (_, set) =>
+        //             {
+        //                 set.Add(objectInfo.GetGameObjectKey());
+        //                 return set;
+        //             }
+        //         );
+        //
+        //         await exploreTargetInfo.Save();
+        //
+        //         var targetServerList = CommonMapData.GetBoundServerList(_mapId, objectInfo.CurrentCell);
+        //         var targetSubjectList = targetServerList.Select(targetServer =>
+        //             SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, targetServer));
+        //         foreach (var subject in targetSubjectList)
+        //             _natsClient.Publish(subject, MessagePackSerializer.Serialize((createPositionKey, objectInfo)));
+        //     }
+        //
+        //     return true;
+        // }
+        // catch (Exception ex)
+        // {
+        //     _logManager.WriteErrorLog(ex);
+        //     return false;
+        // }
+        // finally
+        // {
+        //     _mapLock.Release();
+        // }
+    // }
 
     private void SubscribeToMapEvents()
     {
@@ -206,7 +208,11 @@ public class CommonMapController
             });
 
         foreach (var (subject, handler) in _asyncHandlers)
-            _natsClient.Subscribe(subject, async void (_, msg) =>
+        {
+            _natsClient.Subscribe(subject, MessageHandler);
+            continue;
+
+            async void MessageHandler(string _, byte[] msg)
             {
                 try
                 {
@@ -216,7 +222,8 @@ public class CommonMapController
                 {
                     _logManager.WriteErrorLog(ex);
                 }
-            });
+            }
+        }
     }
 
     private void HandleUpdateInfo(RedisValue message)
@@ -232,7 +239,7 @@ public class CommonMapController
     {
         var (lastPositionKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
         var objectKey = GameObjectInfo.MakeObjectKey(objectInfo.ObjectType, objectInfo.ObjectId);
-        var currentPositionKey = CommonMapData.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+        var currentPositionKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
 
         await UpdateObjectPositionAsync(lastPositionKey, currentPositionKey, objectKey);
         BroadcastObjectMove(lastPositionKey, objectInfo);
@@ -241,34 +248,36 @@ public class CommonMapController
 
     private void BroadcastPacket(string positionKey, IPacket packet)
     {
-        var pivotCell = CommonMapData.CreateCell(positionKey);
+        var pivotCell = MapHelper.CreateCell(positionKey);
         var boundCellList = pivotCell.GetBoundCellList();
 
-        foreach (var boundCell in boundCellList)
+        foreach (var boundPositionKey in boundCellList.Select(boundCell => MapHelper.CreatePartKey(_mapId, boundCell)))
         {
-            var boundPositionKey = CommonMapData.CreatePartKey(_mapId, boundCell);
-            if (_objectPositionDict.TryGetValue(boundPositionKey, out var channelSet) && channelSet.Count > 0)
-                foreach (var channel in channelSet)
-                    _natsClient.Publish(channel, packet.ToBytes());
+            if (!_objectPositionDict.TryGetValue(boundPositionKey, out var channelSet) || channelSet.Count <= 0)
+            {
+                continue;
+            }
+            foreach (var channel in channelSet)
+            {
+                _natsClient.Publish(channel, packet.ToBytes());
+            }
         }
     }
 
     private void BroadcastObjectDestroy(List<int> targetServerList, byte[] message)
     {
-        foreach (var targetServer in targetServerList)
+        foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetBroadcastDestroySubject(_mapId, 0, targetServer)))
         {
-            var subject = SubjectHelper.GetBroadcastDestroySubject(_mapId, 0, targetServer);
             _natsClient.Publish(subject, message);
         }
     }
 
     private void BroadcastObjectMove(string positionKey, GameObjectInfo objectInfo)
     {
-        var targetServerList = CommonMapData.GetBoundServerList(_mapId, objectInfo.CurrentCell);
+        var targetServerList = MapHelper.GetBoundServerList(_mapId, objectInfo.CurrentCell);
         var message = MessagePackSerializer.Serialize((positionKey, objectInfo));
-        foreach (var targetServer in targetServerList)
+        foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, targetServer)))
         {
-            var subject = SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, targetServer);
             _natsClient.Publish(subject, message);
         }
     }
@@ -350,16 +359,16 @@ public class CommonMapController
 
             if (!removeSuccess) _logManager.WriteDebugLog($"remove FAIL {objectKey}");
 
-            foreach (var set in _jobResourceDict.Values)
-                set.RemoveWhere(jobResourceInfo => jobResourceInfo.ObjectInfo.GetGameObjectKey() == objectKey);
+            // foreach (var set in _jobResourceDict.Values)
+                // set.RemoveWhere(jobResourceInfo => jobResourceInfo.ObjectInfo.GetGameObjectKey() == objectKey);
         }
         finally
         {
             _mapLock.Release();
         }
 
-        var positionCell = CommonMapData.CreateCell(positionKey);
-        var targetServerList = CommonMapData.GetBoundServerList(_mapId, positionCell);
+        var positionCell = MapHelper.CreateCell(positionKey);
+        var targetServerList = MapHelper.GetBoundServerList(_mapId, positionCell);
 
         var destroyMessage = MessagePackSerializer.Serialize((positionKey, objectKey));
         BroadcastObjectDestroy(targetServerList, destroyMessage);
@@ -368,34 +377,34 @@ public class CommonMapController
         BroadcastPacket(positionKey, packet);
     }
 
-    private async Task CreateJobResourceInfoAsync(RedisValue message)
-    {
-        var (createPositionKey, jobResourceInfo, objectInfo)
-            = MessagePackSerializer.Deserialize<(string, JobResourceInfo, GameObjectInfo)>(message);
-
-        var partId = CommonMapData.GetManagePartByPositionKey(createPositionKey);
-
-        await _mapLock.WaitAsync();
-        try
-        {
-            _jobResourceDict[partId].Add(jobResourceInfo);
-            _objectPositionDict.AddOrUpdate(
-                createPositionKey,
-                [objectInfo.GetGameObjectKey()],
-                (_, set) =>
-                {
-                    set.Add(objectInfo.GetGameObjectKey());
-                    return set;
-                }
-            );
-        }
-        finally
-        {
-            _mapLock.Release();
-        }
-
-        BroadcastObjectMove(createPositionKey, objectInfo);
-    }
+    // private async Task CreateJobResourceInfoAsync(RedisValue message)
+    // {
+    //     var (createPositionKey, jobResourceInfo, objectInfo)
+    //         = MessagePackSerializer.Deserialize<(string, JobResourceInfo, GameObjectInfo)>(message);
+    //
+    //     var partId = MapHelper.GetManagePartByPositionKey(createPositionKey);
+    //
+    //     await _mapLock.WaitAsync();
+    //     try
+    //     {
+    //         _jobResourceDict[partId].Add(jobResourceInfo);
+    //         _objectPositionDict.AddOrUpdate(
+    //             createPositionKey,
+    //             [objectInfo.GetGameObjectKey()],
+    //             (_, set) =>
+    //             {
+    //                 set.Add(objectInfo.GetGameObjectKey());
+    //                 return set;
+    //             }
+    //         );
+    //     }
+    //     finally
+    //     {
+    //         _mapLock.Release();
+    //     }
+    //
+    //     BroadcastObjectMove(createPositionKey, objectInfo);
+    // }
 
     private void BroadcastUpdateObject(RedisValue message)
     {

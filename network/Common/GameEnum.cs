@@ -1,11 +1,13 @@
-// ReSharper disable All
+﻿// ReSharper disable All
 namespace network.common
 {
     public enum MapId
     {
         NONE = 0,
-        LIBRARY
+        LIBRARY,
+        SCHOOL,
     }
+
 
     public enum BuffType
     {

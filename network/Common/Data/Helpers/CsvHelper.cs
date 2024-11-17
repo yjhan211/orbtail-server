@@ -8,12 +8,12 @@ namespace network.common.data.helpers
 {
     public static class CsvHelper
     {
-        public static Dictionary<string, CsvRow> LoadCsv(string filePath)
+        public static List<CsvRow> LoadCsv(string filePath)
         {
             if (!File.Exists(filePath))
                 throw new FileNotFoundException($"CSV file not found: {filePath}");
 
-            var result = new Dictionary<string, CsvRow>();
+            var result = new List<CsvRow>();
             var lines = File.ReadAllLines(filePath, Encoding.UTF8);
 
             // Parse header
@@ -28,7 +28,7 @@ namespace network.common.data.helpers
                         $"Line {i + 1}: Column count mismatch. Expected {headers.Length}, got {values.Length}");
 
                 var row = new CsvRow(headers, values);
-                result[values[0]] = row; // Assuming first column is ID
+                result.Add(row);
             }
 
             return result;

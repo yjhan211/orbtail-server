@@ -17,9 +17,5 @@ namespace network.common
         public static readonly int MAX_MOVE_QUEUE_SIZE = 10;
         public static readonly int MAX_CHAT_LENGTH = 30;
         public static readonly TimeSpan LOCK_TTL = TimeSpan.FromSeconds(30);
-        
-        // TODO
-        public static readonly string GAME_SERVER_IP = "34.64.253.199";
-        public static readonly int GAME_SERVER_PORT = 7000;
     }
 }
