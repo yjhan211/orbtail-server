@@ -58,7 +58,8 @@ namespace network.common.data
                     default:
                         throw new InvalidDataException($"Buff {id} has invalid subType: {buff.SubType}");
                 }
-                
+
+
                 logManager.WriteDebugLog("");
             }
 
