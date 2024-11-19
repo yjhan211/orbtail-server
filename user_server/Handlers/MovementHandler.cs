@@ -102,6 +102,7 @@ public sealed class MovementHandler(
         var moveSubject = SubjectHelper.GetUpdateManageSubject(objectInfo, currentManageServer);
         natsClient.Publish(moveSubject, MessagePackSerializer.Serialize((lastPartKey, _objectInfo: objectInfo)));
         
+        // 이동 과정에서 새로 스폰되는 오브젝트 정보 전송
         if (GameMapData.IsCommonMap(objectInfo.MapId))
         {
             RequestSpawnInfo(objectInfo.MapId);
@@ -137,9 +138,15 @@ public sealed class MovementHandler(
 
         using var packet = PacketMaker.U_TO_C_MOVE(objectInfo.ObjectId, ErrorCode.SUCCESS, objectInfo);
         sendToClient(packet);
+        
+        // 이동 완료 시 스폰정보 한번 더 전송
+        if (GameMapData.IsCommonMap(objectInfo.MapId))
+        {
+            RequestSpawnInfo(objectInfo.MapId);
+        }
     }
 
-    private void RequestSpawnInfo(MapId targetMapId, bool isSpawn = false)
+    private void RequestSpawnInfo(MapId targetMapId, bool isAll = false)
     {
         if (!GameMapData.IsCommonMap(targetMapId))
         {
@@ -149,7 +156,7 @@ public sealed class MovementHandler(
             return;
         }
 
-        RequestCommonMapSpawnList(isSpawn);
+        RequestCommonMapSpawnList(isAll);
     }
 
     // 최초 맵 입장 or 이동 시 새로운 영역에 대한 오브젝트 정보 요청
@@ -160,10 +167,10 @@ public sealed class MovementHandler(
         natsClient.Publish(subject, message);
     }
 
-    private void RequestCommonMapSpawnList(bool isSpawn)
+    private void RequestCommonMapSpawnList(bool isAll)
     {
         // 현재 바운드 - 이전 바운드 = spawn 대상
-        var lastBoundCellList = isSpawn ? [] : _lastCell?.GetBoundCellList();
+        var lastBoundCellList = isAll ? [] : _lastCell?.GetBoundCellList();
         var currentBoundCellList = objectInfo.CurrentCell.GetBoundCellList();
         var objectSpawnList = currentBoundCellList
             .Except(lastBoundCellList!)
