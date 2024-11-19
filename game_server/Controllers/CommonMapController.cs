@@ -12,6 +12,7 @@ using StackExchange.Redis;
 
 namespace game_server.controllers;
 
+// TODO GetBoundSpawn 로직 없애는 방향으로 고민
 public class CommonMapController
 {
     private readonly Dictionary<string, Func<RedisValue, Task>> _asyncHandlers;
