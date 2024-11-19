@@ -13,8 +13,7 @@ internal class MessageResolver
     private int _startPosition;
     private int _targetPosition;
 
-    public (ErrorCode errorCode, string? errorLog) OnReceived(byte[] buffer, int offset, int transferred,
-        CompleteMessageCallback callback)
+    public (ErrorCode errorCode, string? errorLog) OnReceived(byte[] buffer, int offset, int transferred, CompleteMessageCallback callback)
     {
         _startPosition = offset;
         _remainBytes = transferred;
@@ -28,26 +27,38 @@ internal class MessageResolver
                 {
                     _targetPosition = Config.HEADER_SIZE;
                     if (!CopyBuffer(buffer, ref _startPosition))
+                    {
                         // 헤더가 덜 왔음. 다음 수신 기다림
                         return (ErrorCode.SUCCESS, null);
+                    }
 
                     var messageSize = ParseHeader();
                     if (messageSize <= 0 || messageSize > Config.BUFFER_SIZE - Config.HEADER_SIZE)
+                    {
                         return (ErrorCode.FATAL, $"[MessageResolver/OnReceived] Invalid message size {messageSize}");
+                    }
 
                     _targetPosition += messageSize;
                 }
 
                 if (_targetPosition > Config.BUFFER_SIZE)
+                {
                     return (ErrorCode.FATAL, "[MessageResolver/OnReceived] Target position exceeds buffer size");
+                }
 
                 // 메세지 복사
                 if (!CopyBuffer(buffer, ref _startPosition))
+                {
                     // 메세지가 덜 왔음. 다음 수신 기다림
                     return (ErrorCode.SUCCESS, null);
+                }
+                
+                // 메시지 처리 전에 버퍼 복사
+                var messageBufferCopy = new byte[_targetPosition];
+                Array.Copy(_messageBuffer, 0, messageBufferCopy, 0, _targetPosition);
 
                 // 메세지 처리
-                callback(new Const<byte[]>(_messageBuffer));
+                callback(new Const<byte[]>(messageBufferCopy));
 
                 // 메세지 초기화
                 ClearBuffer();

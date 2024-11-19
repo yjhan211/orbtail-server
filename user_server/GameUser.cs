@@ -75,9 +75,10 @@ public partial class GameUser : IPeer
 
             using var packet = Packet.Create(buffer);
             var protocolId = (Protocol)packet.PopProtocolId();
-            _ = packet.PopPlayerId();
+            var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
-            _logManager.WriteDebugLog($"PROTOCOL: {protocolId}");
+            
+            _logManager.WriteDebugLog($"playerId: {playerId} | PROTOCOL: {protocolId}");
 
             if (NonAuthProtocol.Contains(protocolId))
             {

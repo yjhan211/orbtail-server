@@ -15,8 +15,6 @@ public class UserToken(int tokenId, LogManager logManager)
     public readonly SemaphoreSlim LockDisconnect = new(1);
     private Timer? _heartbeatTimer;
     private IPeer? _peer;
-
-    public int TokenId { get; } = tokenId;
     public SocketAsyncEventArgs? RecvEventArgs { get; private set; }
     public SocketAsyncEventArgs? SendEventArgs { get; private set; }
     public Socket? Socket { get; set; }
@@ -63,8 +61,11 @@ public class UserToken(int tokenId, LogManager logManager)
 
     private void OnMessage(Const<byte[]> buffer)
     {
-        if (_peer == null) throw new Exception("[UserToken/OnMessage] peer is null");
-
+        if (_peer == null)
+        {
+            throw new Exception("[UserToken/OnMessage] peer is null");
+        }
+        
         _peer.OnMessageFromClient(buffer);
     }
 
@@ -101,8 +102,9 @@ public class UserToken(int tokenId, LogManager logManager)
     public void ProcessSend(SocketAsyncEventArgs sendArgs)
     {
         if (sendArgs.SocketError != SocketError.Success || sendArgs.BytesTransferred <= 0)
-            throw new Exception(
-                $"[ProcessSend] SocketError:{sendArgs.SocketError}, bytesTransferred:{sendArgs.BytesTransferred}");
+        {
+            throw new Exception($"[ProcessSend] SocketError:{sendArgs.SocketError}, bytesTransferred:{sendArgs.BytesTransferred}");   
+        }
 
         lock (_lockSendingQueue)
         {
