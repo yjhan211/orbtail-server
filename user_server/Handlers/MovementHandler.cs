@@ -101,6 +101,11 @@ public sealed class MovementHandler(
         // 현재 서버에 이동 처리 요청
         var moveSubject = SubjectHelper.GetUpdateManageSubject(objectInfo, currentManageServer);
         natsClient.Publish(moveSubject, MessagePackSerializer.Serialize((lastPartKey, _objectInfo: objectInfo)));
+        
+        if (GameMapData.IsCommonMap(objectInfo.MapId))
+        {
+            RequestSpawnInfo(objectInfo.MapId);
+        }
 
         // 자신의 이동이므로 큐에 즉시 넣음
         updateObjectManager.EnqueueUpdateObject(objectInfo);
@@ -116,7 +121,10 @@ public sealed class MovementHandler(
             isArrive = false;
         }
 
-        if (!isArrive) return;
+        if (!isArrive)
+        {
+            return;
+        }
 
         await CompleteMovement();
     }
@@ -129,8 +137,6 @@ public sealed class MovementHandler(
 
         using var packet = PacketMaker.U_TO_C_MOVE(objectInfo.ObjectId, ErrorCode.SUCCESS, objectInfo);
         sendToClient(packet);
-
-        if (GameMapData.IsCommonMap(objectInfo.MapId)) RequestSpawnInfo(objectInfo.MapId);
     }
 
     private void RequestSpawnInfo(MapId targetMapId, bool isSpawn = false)
@@ -167,7 +173,10 @@ public sealed class MovementHandler(
                 (serverId, positionKeys) => new { serverId, positionKeyList = positionKeys.ToList() }
             );
 
-        foreach (var item in objectSpawnList) RequestSpawnObjectList(item.serverId, item.positionKeyList);
+        foreach (var item in objectSpawnList)
+        {
+            RequestSpawnObjectList(item.serverId, item.positionKeyList);
+        }
     }
 
     private float CalcMoveElapsedTime()
