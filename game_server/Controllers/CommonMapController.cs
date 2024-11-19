@@ -288,31 +288,27 @@ public class CommonMapController
                 lastPositionSet.Remove(objectKey);
             }
 
-            _objectPositionDict.AddOrUpdate(
-                currentPositionKey,
-                [objectKey],
-                (_, set) =>
-                {
-                    set.Add(objectKey);
-                    return set;
-                }
-            );
+            if (!_objectPositionDict.TryGetValue(currentPositionKey, out var currentSet))
+            {
+                throw new Exception($"Invalid position key: {currentPositionKey}");
+            }
+        
+            currentSet.Add(objectKey);
         }
         finally
         {
             _mapLock.Release();
         }
     }
-
     private async Task LeaveManageObjectAsync(RedisValue message)
     {
         var (positionKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
         await _mapLock.WaitAsync();
         try
         {
-            foreach (var set in _objectPositionDict.Values)
+            if (_objectPositionDict.TryGetValue(positionKey, out var positionSet))
             {
-                set.Remove(objectKey);
+                positionSet.Remove(objectKey);
             }
         }
         finally
@@ -357,15 +353,10 @@ public class CommonMapController
         await _mapLock.WaitAsync();
         try
         {
-            var removeSuccess = false;
             foreach (var set in _objectPositionDict.Values)
             {
                 set.Remove(objectKey);
-                removeSuccess = true;
             }
-
-            if (!removeSuccess) _logManager.WriteDebugLog($"remove FAIL {objectKey}");
-
             // foreach (var set in _jobResourceDict.Values)
                 // set.RemoveWhere(jobResourceInfo => jobResourceInfo.ObjectInfo.GetGameObjectKey() == objectKey);
         }
