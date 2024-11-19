@@ -310,9 +310,9 @@ public class CommonMapController
         await _mapLock.WaitAsync();
         try
         {
-            if (_objectPositionDict.TryGetValue(positionKey, out var objectSet))
+            foreach (var set in _objectPositionDict.Values)
             {
-                objectSet.Remove(objectKey);
+                set.Remove(objectKey);
             }
         }
         finally
