@@ -43,7 +43,10 @@ public sealed class UpdateObjectManager : IDisposable
     {
         var keys = body.ObjectKeyList.ConvertAll(x => (RedisValue)x).ToArray();
         var objectInfoList = await GameObjectInfo.LoadAll(keys);
-        foreach (var objectInfo in objectInfoList) EnqueueUpdateObject(objectInfo);
+        foreach (var objectInfo in objectInfoList)
+        {
+            EnqueueUpdateObject(objectInfo);
+        }
     }
 
     private Task StartTask()

@@ -49,7 +49,6 @@ public class CommonMapController
         // _exploreTargetDict = new ConcurrentDictionary<int, HashSet<ExploreTargetInfo>>();
         // _jobResourceDict = new ConcurrentDictionary<int, HashSet<JobResourceInfo>>();
         // _manageCellList = [];
-
         _immediateHandlers = new Dictionary<string, Action<RedisValue>>
         {
             { SubjectHelper.GetUpdateInfoSubject(_mapId, 0, Program.GameServerId), HandleUpdateInfo },
@@ -63,7 +62,7 @@ public class CommonMapController
             { SubjectHelper.GetLeaveManageSubject(_mapId, 0, Program.GameServerId), LeaveManageObjectAsync },
             { SubjectHelper.GetSpawnManageSubject(_mapId, 0, Program.GameServerId), SpawnManageObjectAsync },
             { SubjectHelper.GetDestroyObjectSubject(_mapId, 0, Program.GameServerId), DestroyManageObjectAsync },
-            // { SubjectHelper.GetCreateJobResourceSubject(_mapId, 0, Program.GameServerId), CreateJobResourceInfoAsync }
+            // { SubjectHelper.GetCreateJobResourceSubject(_mapId, 0, Program.GameServerId), CreateJobResourceInfoAsync }_
         };
     }
 
@@ -81,41 +80,38 @@ public class CommonMapController
     {
         var managePartList = MapHelper.GetManagePartList(Program.GameServerId);
         var managePositionKeyList = new List<string>();
-
-        foreach (var positionList in managePartList.Select(managePart => MapHelper.GetPositionListByMapByPart(_mapId, managePart)))
+        foreach (var positions in managePartList.Values)
         {
-            managePositionKeyList.AddRange(positionList);
+            managePositionKeyList.AddRange(positions);
         }
-
         foreach (var positionKey in managePositionKeyList)
         {
             _objectPositionDict[positionKey] = [];
-            // _manageCellList.Add(MapHelper.CreateCell(positionKey));
-        }
-    }
-
-    private static async Task CleanUpMapResource()
-    {
-        if (Program.GameServerId == 1)
-        {
-            var exploreTargetValues = await CacheHelper.Instance.HashGetAllAsync(ExploreTargetInfo.HashKey);
-            foreach (var entry in exploreTargetValues)
-            {
-                if (!long.TryParse(entry.Name, out var exploreTargetId)) continue;
-
-                await ExploreTargetInfo.Delete(exploreTargetId);
-
-                var objectField = GameObjectInfo.MakeObjectKey(ObjectType.EXPLORETARGET, exploreTargetId);
-                await GameObjectInfo.Delete(objectField);
-            }
-        }
-        else
-        {
-            await Task.Delay(10000);
         }
     }
     
     // TODO 채집 시스템
+    // private static async Task CleanUpMapResource()
+    // {
+    //     if (Program.GameServerId == 1)
+    //     {
+    //         var exploreTargetValues = await CacheHelper.Instance.HashGetAllAsync(ExploreTargetInfo.HashKey);
+    //         foreach (var entry in exploreTargetValues)
+    //         {
+    //             if (!long.TryParse(entry.Name, out var exploreTargetId)) continue;
+    //
+    //             await ExploreTargetInfo.Delete(exploreTargetId);
+    //
+    //             var objectField = GameObjectInfo.MakeObjectKey(ObjectType.EXPLORETARGET, exploreTargetId);
+    //             await GameObjectInfo.Delete(objectField);
+    //         }
+    //     }
+    //     else
+    //     {
+    //         await Task.Delay(10000);
+    //     }
+    // }
+    
     // private async Task CreateExploreTargetTask()
     // {
     //     using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
@@ -288,7 +284,9 @@ public class CommonMapController
         try
         {
             if (_objectPositionDict.TryGetValue(lastPositionKey, out var lastPositionSet))
+            {
                 lastPositionSet.Remove(objectKey);
+            }
 
             _objectPositionDict.AddOrUpdate(
                 currentPositionKey,
@@ -308,11 +306,14 @@ public class CommonMapController
 
     private async Task LeaveManageObjectAsync(RedisValue message)
     {
-        var (_, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
+        var (positionKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
         await _mapLock.WaitAsync();
         try
         {
-            foreach (var set in _objectPositionDict.Values) set.Remove(objectKey);
+            if (_objectPositionDict.TryGetValue(positionKey, out var objectSet))
+            {
+                objectSet.Remove(objectKey);
+            }
         }
         finally
         {
@@ -330,11 +331,17 @@ public class CommonMapController
         {
             var spawnList = new List<string>();
             foreach (var positionKey in positionKeyList)
+            {
                 if (_objectPositionDict.TryGetValue(positionKey, out var objects))
+                {
                     spawnList.AddRange(objects);
+                }
+            }
 
-            if (spawnList.Count <= 0) return;
-
+            if (spawnList.Count <= 0)
+            {
+                return;
+            }
             using var packet = PacketMaker.G_TO_U_SPAWN(spawnList);
             _natsClient.Publish(userSubject, packet.ToBytes());
         }

@@ -61,7 +61,7 @@ public class PlayerManager(
         await PublishDestroy();
         
         ObjectInfo.MapId = changeMapInfo.Value.mapId;
-        ObjectInfo.MapSubId = GetMapSubId(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition);
+        ObjectInfo.MapSubId = GameMapData.IsCommonMap(changeMapInfo.Value.mapId) ? 0 : GetInstanceMapSubId();
         ObjectInfo.CurrentCell = changeMapInfo.Value.spawnPosition;
         ObjectInfo.TargetCell = changeMapInfo.Value.spawnPosition;
         ObjectInfo.IsFlip = changeMapInfo.Value.isFlip;
@@ -71,7 +71,6 @@ public class PlayerManager(
         {
             using var packet = PacketMaker.U_TO_C_CHANGE_MAP(MapId, MapSubId, CurrentCell, IsFlip);
             sendToClient(packet);
-            _logManager?.WriteDebugLog("U_TO_C_CHANGE_MAP");
             return;
         }
 
@@ -79,27 +78,21 @@ public class PlayerManager(
         var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
         var publishObj = MessagePackSerializer.Serialize((ObjectInfo.GetGameObjectKey(), MapId, MapSubId));
         natsClient.Publish(subject, publishObj);
-        
-        _logManager?.WriteDebugLog("publish");
     }
 
-    private long GetMapSubId(MapId mapId, Cell spawnCell)
+    private long GetInstanceMapSubId()
     {
-        long result = 0;
-        if (GameMapData.IsCommonMap(mapId))
+        if (ObjectInfo == null)
         {
-            var partKey = MapHelper.CreatePartKey(mapId, spawnCell);
-            result = MapHelper.GetManageServerId(partKey);
+            throw new Exception("ObjectInfo is null");
         }
-
-        result = mapId switch
+        
+        return ObjectInfo.MapId switch
         {
             MapId.LIBRARY => // 도서관은 개인맵
                 ObjectInfo!.ObjectId,
-            _ => result
+            _ => throw new ArgumentOutOfRangeException($"Invalid InstanceMap")
         };
-
-        return result;
     }
 
     public async Task Spawn()

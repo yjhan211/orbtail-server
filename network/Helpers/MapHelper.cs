@@ -9,7 +9,6 @@ public static class MapHelper
     private static int _totalServerNum;
     private static readonly Dictionary<string, int> PartByKey = new();
     private static readonly Dictionary<MapId, Dictionary<int, List<string>>> PositionListByMapPart = new();
-    private static readonly List<Cell> PartPivotList = [];
     
     public static void Initialize(int totalServerNum)
     {
@@ -19,104 +18,54 @@ public static class MapHelper
 
     private static void InitializeCommonMapData()
     {
-        CalculatePartPivots();
         foreach (var mapId in GameMapData.GetCommonMapList())
         {
-            PositionListByMapPart[mapId] = new Dictionary<int, List<string>>();
-            var partNumber = 1;
+            var groundRegions = GameMapData.GetMapRegions(mapId)
+                .Where(r => r.RegionType.Equals("ground", StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
-            foreach (var cellList in PartPivotList.Select(partPivotCell => partPivotCell.GetBoundCellList()))
+            if (!groundRegions.Any()) continue;
+
+            var minX = groundRegions.Min(r => r.Start.X);
+            var maxX = groundRegions.Max(r => r.End.X);
+            var minY = groundRegions.Min(r => r.Start.Y);
+            var maxY = groundRegions.Max(r => r.End.Y);
+            
+            PositionListByMapPart[mapId] = new();
+            var mapWidth = maxX - minX + 1;
+            var partWidth = mapWidth / _totalServerNum;
+
+            for (var part = 1; part <= _totalServerNum; part++)
             {
-                PositionListByMapPart[mapId][partNumber] = [];
-
-                foreach (var positionKey in cellList.Select(cell => CreatePartKey(mapId, cell))
-                             .Where(positionKey => !PartByKey.TryGetValue(positionKey, out _)))
+                var startX = minX + (part - 1) * partWidth;
+                var endX = part == _totalServerNum ? maxX : startX + partWidth - 1;
+            
+                var cells = new List<string>();
+                for (var x = startX; x <= endX; x++)
                 {
-                    PartByKey.Add(positionKey, partNumber);
-                    PositionListByMapPart[mapId][partNumber].Add(positionKey);
+                    for (var y = minY; y <= maxY; y++)
+                    {
+                        if (!IsInGroundRegions(new Cell(x, y), groundRegions)) continue;
+                        var key = CreatePartKey(mapId, new Cell(x, y));
+                        cells.Add(key);
+                        PartByKey[key] = part;
+                    }
                 }
-
-                partNumber++;
+            
+                PositionListByMapPart[mapId][part] = cells;
+                Console.WriteLine($"Part {part}: {cells.Count} cells, X({startX}~{endX})");
             }
         }
+
+        Console.WriteLine("\n[End] Common map partitioning");
     }
 
-    private static void CalculatePartPivots()
+    private static bool IsInGroundRegions(Cell cell, List<MapRegion> groundRegions)
     {
-        const int colXOffset = 6;
-        const int colYOffset = -6;
-        const int rowXOffset = 6;
-        const int rowYOffset = 20;
-        var baseCell = new Cell(25, 85);
-        
-        switch (_totalServerNum)
-        {
-            case 40:
-                for (var row = 0; row < 4; row++)
-                {
-                    var rowBaseX = baseCell.X + (row * rowXOffset);
-                    var rowBaseY = baseCell.Y + (row * rowYOffset);
-                    
-                    for (var col = 0; col < 10; col++)
-                    {
-                        PartPivotList.Add(new Cell(
-                            rowBaseX + (col * colXOffset),
-                            rowBaseY + (col * colYOffset)
-                        ));
-                    }
-                }
-                break;
-                
-            case 20:
-            case 2:
-                for (var row = 0; row < 4; row++)
-                {
-                    var rowBaseX = baseCell.X + (row * rowXOffset);
-                    var rowBaseY = baseCell.Y + (row * rowYOffset);
-                    
-                    for (var col = 0; col < 5; col++)
-                    {
-                        PartPivotList.Add(new Cell(
-                            rowBaseX + (col * colXOffset),
-                            rowBaseY + (col * colYOffset)
-                        ));
-                    }
-                }
-                break;
-                
-            case 10:
-                for (var row = 0; row < 2; row++)
-                {
-                    var rowBaseX = baseCell.X + (row * rowXOffset);
-                    var rowBaseY = baseCell.Y + (row * rowYOffset);
-                    
-                    for (var col = 0; col < 5; col++)
-                    {
-                        PartPivotList.Add(new Cell(
-                            rowBaseX + (col * colXOffset),
-                            rowBaseY + (col * colYOffset)
-                        ));
-                    }
-                }
-                break;
-                
-            case 5:
-                for (var col = 0; col < 5; col++)
-                {
-                    PartPivotList.Add(new Cell(
-                        baseCell.X + (col * colXOffset),
-                        baseCell.Y + (col * colYOffset)
-                    ));
-                }
-                break;
-                
-            default:
-                throw new Exception("Invalid total server number");
-        }
+        return groundRegions.Any(region => 
+            cell.X >= region.Start.X && cell.X <= region.End.X &&
+            cell.Y >= region.Start.Y && cell.Y <= region.End.Y);
     }
-
-    public static List<string> GetPositionListByMapByPart(MapId mapId, int part) => 
-        PositionListByMapPart[mapId][part];
 
     public static string CreatePartKey(MapId mapId, Cell cell)
     {
@@ -147,76 +96,29 @@ public static class MapHelper
 
     public static int GetManageServerId(string partKey)
     {
-        if (!PartByKey.TryGetValue(partKey, out var partNumber))
-            return 0;
-
-        return _totalServerNum switch
-        {
-            40 => partNumber,
-            20 => ((partNumber - 1) / 2) + 1,
-            10 => ((partNumber - 1) / 4) + 1,
-            5 => ((partNumber - 1) / 8) + 1,
-            2 => partNumber <= 20 ? 1 : 2,
-            _ => throw new Exception("Invalid TotalServerNum")
-        };
+        var result = PartByKey.GetValueOrDefault(partKey, 0);
+        return result;
     }
 
     public static int GetManageServerId(long mapSubId)
     {
-        return (int)((mapSubId - 1) % _totalServerNum) + 1;
+        var result = (int)((mapSubId - 1) % _totalServerNum) + 1;
+        return result;
     }
 
-    public static int GetManagePartByKey(string partKey)
+    public static Dictionary<MapId, List<string>> GetManagePartList(int serverId)
     {
-        if (!PartByKey.TryGetValue(partKey, out var partNumber))
-            throw new Exception($"Can't find part_number for position_key: {partKey}");
-
-        var serverId = GetManageServerId(partKey);
-        
-        return _totalServerNum switch
+        var result = new Dictionary<MapId, List<string>>();
+    
+        foreach (var mapEntry in PositionListByMapPart)
         {
-            40 => partNumber,
-            20 => ((serverId - 1) * 2) + 1,
-            10 => ((serverId - 1) * 4) + 1,
-            5 => ((serverId - 1) * 8) + 1,
-            2 => serverId == 1 ? 1 : 21,
-            _ => throw new Exception("Invalid TotalServerNum")
-        };
-    }
-
-    public static List<int> GetManagePartList(int gameServerId)
-    {
-        var result = new List<int>();
-        
-        switch (_totalServerNum)
-        {
-            case 40:
-                result.Add(gameServerId);
-                break;
-            case 20:
-                var start20 = (gameServerId - 1) * 2 + 1;
-                result.Add(start20);
-                result.Add(start20 + 1);
-                break;
-            case 10:
-                var start10 = (gameServerId - 1) * 4 + 1;
-                for (var i = 0; i < 4; i++)
-                    result.Add(start10 + i);
-                break;
-            case 5:
-                var start5 = (gameServerId - 1) * 8 + 1;
-                for (var i = 0; i < 8; i++)
-                    result.Add(start5 + i);
-                break;
-            case 2:
-                var start2 = gameServerId == 1 ? 1 : 21;
-                for (var i = 0; i < 20; i++)
-                    result.Add(start2 + i);
-                break;
-            default:
-                throw new Exception("Invalid TotalServerNum");
+            var mapId = mapEntry.Key;
+            if (mapEntry.Value.TryGetValue(serverId, out var positions))
+            {
+                result[mapId] = positions;
+            }
         }
-        
+
         return result;
     }
 }
