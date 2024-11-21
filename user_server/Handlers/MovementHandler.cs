@@ -16,8 +16,7 @@ public sealed class MovementHandler(
     GameObjectInfo objectInfo,
     NatsClient natsClient,
     SendPacketDelegate sendToClient,
-    UpdateObjectManager updateObjectManager,
-    Func<Task> spawn)
+    UpdateObjectManager updateObjectManager)
 {
     // ReSharper disable once UnusedMember.Local
     private readonly LogManager? _logManager = logManager;
@@ -35,7 +34,7 @@ public sealed class MovementHandler(
     public async Task Spawn()
     {
         await ProcessAsync(new C_TO_U_MOVE { Direction = DirectionType.NONE });
-        RequestSpawnInfo(objectInfo.MapId, true);
+        RequestSpawnInfo(objectInfo.MapId, [], true);
     }
 
     private async Task Move(C_TO_U_MOVE body)
@@ -67,6 +66,11 @@ public sealed class MovementHandler(
         _lastCell ??= Cell.Clone(objectInfo.CurrentCell);
         objectInfo.CurrentCell = Cell.Clone(objectInfo.TargetCell);
         objectInfo.TargetCell = objectInfo.TargetCell.GetNextCell(moveRequest.Direction);
+        
+        // 삭제할 cell 계산
+        var lastBoundCells = _lastCell?.GetBoundCellList() ?? new List<Cell>();
+        var currentBoundCells = objectInfo.CurrentCell.GetBoundCellList();
+        var cellsToRemove = lastBoundCells.Except(currentBoundCells).ToList();
 
         objectInfo.SetFlip(moveRequest.Direction);
         objectInfo.MoveTimestamp = moveRequest.Direction == DirectionType.NONE ? default : DateTime.UtcNow;
@@ -75,7 +79,7 @@ public sealed class MovementHandler(
         var isCommonMap = GameMapData.IsCommonMap(objectInfo.MapId);
 
         var lastPartKey = isCommonMap
-            ? MapHelper.CreatePartKey(objectInfo.MapId, _lastCell)
+            ? MapHelper.CreatePartKey(objectInfo.MapId, _lastCell!)
             : MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
 
         var currentPartKey = isCommonMap
@@ -94,8 +98,7 @@ public sealed class MovementHandler(
         if (lastManageServer != currentManageServer)
         {
             var leaveSubject = SubjectHelper.GetLeaveManageSubject(objectInfo, lastManageServer);
-            natsClient.Publish(leaveSubject,
-                MessagePackSerializer.Serialize((lastPartKey, objectInfo.GetGameObjectKey())));
+            natsClient.Publish(leaveSubject, MessagePackSerializer.Serialize((lastPartKey, objectInfo.GetGameObjectKey())));
         }
 
         // 현재 서버에 이동 처리 요청
@@ -105,7 +108,7 @@ public sealed class MovementHandler(
         // 이동 과정에서 새로 스폰되는 오브젝트 정보 전송
         if (GameMapData.IsCommonMap(objectInfo.MapId))
         {
-            RequestSpawnInfo(objectInfo.MapId);
+            RequestSpawnInfo(objectInfo.MapId, cellsToRemove);
         }
 
         // 자신의 이동이므로 큐에 즉시 넣음
@@ -138,52 +141,66 @@ public sealed class MovementHandler(
 
         using var packet = PacketMaker.U_TO_C_MOVE(objectInfo.ObjectId, ErrorCode.SUCCESS, objectInfo);
         sendToClient(packet);
-        
-        // 이동 완료 시 스폰정보 한번 더 전송
-        if (GameMapData.IsCommonMap(objectInfo.MapId))
-        {
-            RequestSpawnInfo(objectInfo.MapId);
-        }
     }
 
-    private void RequestSpawnInfo(MapId targetMapId, bool isAll = false)
+    private void RequestSpawnInfo(MapId targetMapId, List<Cell> cellsToRemove, bool isAll = false)
     {
         if (!GameMapData.IsCommonMap(targetMapId))
         {
             var serverId = MapHelper.GetManageServerId(objectInfo.MapSubId);
             var instanceKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
-            RequestSpawnObjectList(serverId, [instanceKey]);
+            RequestSpawnObjectList(serverId, [instanceKey], []);
             return;
         }
 
-        RequestCommonMapSpawnList(isAll);
+        RequestCommonMapSpawnList(cellsToRemove, isAll);
     }
 
-    // 최초 맵 입장 or 이동 시 새로운 영역에 대한 오브젝트 정보 요청
-    private void RequestSpawnObjectList(int serverId, List<string>? positionKeyList = null)
+    private void RequestCommonMapSpawnList(List<Cell> cellsToRemove, bool isAll)
     {
-        var subject = SubjectHelper.GetSpawnManageSubject(objectInfo, serverId);
-        var message = MessagePackSerializer.Serialize((objectInfo.GetGameObjectKey(), positionKeyList ?? []));
-        natsClient.Publish(subject, message);
-    }
-
-    private void RequestCommonMapSpawnList(bool isAll)
-    {
-        // 현재 바운드 - 이전 바운드 = spawn 대상
         var lastBoundCellList = isAll ? [] : _lastCell?.GetBoundCellList();
         var currentBoundCellList = objectInfo.CurrentCell.GetBoundCellList();
+
         var objectSpawnList = currentBoundCellList
             .Except(lastBoundCellList!)
-            .Select(lastBoundCell => MapHelper.CreatePartKey(objectInfo.MapId, lastBoundCell))
+            .Select(cell => MapHelper.CreatePartKey(objectInfo.MapId, cell))
             .GroupBy(
                 MapHelper.GetManageServerId,
                 (serverId, positionKeys) => new { serverId, positionKeyList = positionKeys.ToList() }
             );
+       
+        var removeCellsByServer = cellsToRemove
+            .GroupBy(
+                cell => MapHelper.GetManageServerId(MapHelper.CreatePartKey(objectInfo.MapId, cell)),
+                (serverId, cells) => new { serverId, cells = cells.ToList() }
+            );
 
-        foreach (var item in objectSpawnList)
+        var allServers = objectSpawnList
+            .Select(x => x.serverId)
+            .Union(removeCellsByServer.Select(x => x.serverId))
+            .Distinct();
+
+        foreach (var serverId in allServers)
         {
-            RequestSpawnObjectList(item.serverId, item.positionKeyList);
+            var spawnPositions = objectSpawnList
+                .FirstOrDefault(x => x.serverId == serverId)?.positionKeyList ?? [];
+            var removeCells = removeCellsByServer
+                .FirstOrDefault(x => x.serverId == serverId)?.cells ?? [];
+           
+            RequestSpawnObjectList(serverId, spawnPositions, removeCells);
         }
+    }
+    
+    // 최초 맵 입장 or 이동 시 새로운 영역에 대한 오브젝트 정보 요청
+    private void RequestSpawnObjectList(int serverId, List<string>? positionKeyList, List<Cell>? cellsToRemove)
+    {
+        var subject = SubjectHelper.GetSpawnManageSubject(objectInfo, serverId);
+        var message = MessagePackSerializer.Serialize((
+            objectInfo.GetGameObjectKey(), 
+            positionKeyList ?? [], 
+            cellsToRemove ?? []
+        ));
+        natsClient.Publish(subject, message);
     }
 
     private float CalcMoveElapsedTime()

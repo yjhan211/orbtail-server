@@ -8,11 +8,16 @@ namespace user_server;
 
 public partial class GameUser
 {
-    private void OnMessageFromSubscribe(RedisValue message)
+    private async Task OnMessageFromSubscribe(RedisValue message)
     {
         try
         {
-            if (_playerManager.State == PlayerState.NONE) throw new Exception("invalid PlayerState");
+            if (_playerManager.State == PlayerState.NONE)
+            {
+                throw new Exception("invalid PlayerState");
+            }
+
+            await _userLock.WaitAsync();
 
             using var packet = new Packet((byte[])message!);
             var protocolId = (Protocol)packet.PopProtocolId();
@@ -74,6 +79,10 @@ public partial class GameUser
         {
             _logManager.WriteErrorLog(e);
         }
+        finally
+        {
+            _userLock.Release();
+        }
     }
 
     private void SubscribeUpdateObject(GameUser _, G_TO_U_MOVE body)
@@ -86,17 +95,37 @@ public partial class GameUser
         _updateObjectManager.EnqueueUpdateObject(body.ObjectInfo);
     }
 
-    private void SubscribeSpawn(GameUser _, G_TO_U_SPAWN body)
+    private void SubscribeSpawn(GameUser user, G_TO_U_SPAWN body)
     {
+        _logManager.WriteDebugLog($"[SubscribeSpawn] {body.ObjectKeyList.Count} | {body.CellsToRemove.Count}");
+    
         var objectKeys = body.ObjectKeyList.Where(key => key != _playerManager.ObjectKey).ToList();
-        for (var i = 0; i < objectKeys.Count; i += Config.BROADCAST_UNIT)
-        {
-            var batch = objectKeys.Skip(i).Take(Config.BROADCAST_UNIT).ToList();
-            var remain = objectKeys.Count - i - Config.BROADCAST_UNIT;
-            var isEnded = remain <= 0;
+        var cellsToRemove = body.CellsToRemove ?? [];
 
-            using var packet = PacketMaker.U_TO_C_SPAWN(batch.Select(item => item.ToString()).ToList(), isEnded);
+        var batchCount = (int)Math.Ceiling((double)Math.Max(objectKeys.Count, cellsToRemove.Count) / Config.BROADCAST_UNIT);
+    
+        for (var i = 0; i < batchCount; i++)
+        {
+            var batch = objectKeys
+                .Skip(i * Config.BROADCAST_UNIT)
+                .Take(Config.BROADCAST_UNIT)
+                .ToList();
+            
+            var cellBatch = cellsToRemove
+                .Skip(i * Config.BROADCAST_UNIT)
+                .Take(Config.BROADCAST_UNIT)
+                .ToList();
+
+            var isEnded = i == batchCount - 1;
+        
+            using var packet = PacketMaker.U_TO_C_SPAWN(
+                batch.Select(item => item.ToString()).ToList(), 
+                isEnded,
+                cellBatch
+            );
             Send(packet);
+        
+            _logManager.WriteDebugLog($"[SubscribeSpawn] Send {batch.Count} | {cellBatch.Count}");
         }
     }
 

@@ -285,8 +285,7 @@ public partial class GameUser : IPeer
                 // playerInfo.WearItem(giftItemList[0].ItemUid); // TODO 기본템 입히기
             }
 
-            var movementHandler = new MovementHandler(_logManager, playerInfo.ObjectInfo, NatsClient, Send,
-                _updateObjectManager, _playerManager.ChangeMap);
+            var movementHandler = new MovementHandler(_logManager, playerInfo.ObjectInfo, NatsClient, Send, _updateObjectManager);
             var environmentHandler = new EnvironmentHandler(_logManager, _cts, RedLock, Send, playerInfo.ObjectInfo);
 
             await environmentHandler.StartAsync();

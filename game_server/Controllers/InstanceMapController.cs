@@ -188,7 +188,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
         if (spawnList.Count <= 0) return;
 
-        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList);
+        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);
         natsClient.Publish(userSubject, packet.ToBytes());
     }
 
