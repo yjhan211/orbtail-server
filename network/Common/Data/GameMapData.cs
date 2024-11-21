@@ -157,12 +157,30 @@ namespace network.common.data
                 if (currentCell.X >= portal.Start.X && currentCell.X <= portal.End.X && 
                     currentCell.Y >= portal.Start.Y && currentCell.Y <= portal.End.Y)
                 {
-                    var targetMapInfo = GetMapInfo(portal.WarpTo);
-                    return (portal.WarpTo, targetMapInfo.GetInitialPosition(objectInfo.MapId), true);
+                    var spawnPosition = GetMapSpawnPosition(portal.WarpTo, objectInfo.MapId);
+                    return (portal.WarpTo, spawnPosition, true);
                 }
             }
     
             return null;
+        }
+        
+        public static Cell GetMapSpawnPosition(MapId mapId, MapId fromMap)
+        {
+            var mapInfo = GetMapInfo(mapId);
+            if (mapInfo == null)
+                throw new Exception($"Map ID {mapId} not found");
+
+            if (mapInfo.InitCells.TryGetValue(fromMap, out var spawnPosition))
+                return spawnPosition;
+            
+            if (mapInfo.InitCells.TryGetValue(MapId.NONE, out var defaultSpawnPosition))
+                return defaultSpawnPosition;
+
+            if (mapInfo.InitCells.Any())
+                return mapInfo.InitCells.First().Value;
+
+            throw new Exception($"No spawn position found for map {mapId}");
         }
         
         public static void Validate(LogManager logManager)
