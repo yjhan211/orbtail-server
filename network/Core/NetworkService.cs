@@ -129,22 +129,30 @@ public class NetworkService
                 return;
             }
 
-            if (recvArgs.Buffer == null) throw new Exception("[ProcessRecv] invalid Buffer");
+            if (recvArgs.Buffer == null)
+            {
+                throw new Exception("[ProcessRecv] invalid Buffer");
+            }
 
             if (recvArgs.BytesTransferred <= 0)
             {
                 userToken.OnRemoved();
                 return;
             }
-
-            var (errorCode, errorLog) =
-                userToken.OnReceived(recvArgs.Buffer, recvArgs.Offset, recvArgs.BytesTransferred);
+            
+            var (errorCode, errorLog) = userToken.OnReceived(recvArgs.Buffer, recvArgs.Offset, recvArgs.BytesTransferred);
             if (errorCode != ErrorCode.SUCCESS)
+            {
                 _logManager.WriteErrorLog(new Exception($"errorCode:{errorCode}, errorLog:{errorLog}"));
+                return;
+            }
 
             // 다음 패킷 수신 대기
             var willRaiseEvent = userToken.Socket!.ReceiveAsync(recvArgs);
-            if (!willRaiseEvent) ProcessRecv(recvArgs);
+            if (!willRaiseEvent)
+            {
+                ProcessRecv(recvArgs);
+            }
         }
         catch (Exception ex)
         {
@@ -158,7 +166,9 @@ public class NetworkService
         try
         {
             if (sendArgs.UserToken is not UserToken token)
+            {
                 throw new Exception($"invalid args.UserToken : {sendArgs.UserToken}");
+            }
             token.ProcessSend(sendArgs);
         }
         catch (Exception e)

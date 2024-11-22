@@ -233,19 +233,19 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_U_SPAWN(List<string> objectKeyList)
+    public static Packet G_TO_U_SPAWN(List<string> objectKeyList, List<Cell> cellsToRemove)
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_SPAWN);
-        G_TO_U_SPAWN body = new() { ObjectKeyList = objectKeyList };
+        G_TO_U_SPAWN body = new() { ObjectKeyList = objectKeyList, CellsToRemove = cellsToRemove };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
 
-    public static Packet U_TO_C_SPAWN(List<string> objectKeyList, bool isEnd)
+    public static Packet U_TO_C_SPAWN(List<string> objectKeyList, bool isEnd, List<Cell> cellsToRemove)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_SPAWN);
-        U_TO_C_SPAWN body = new() { ObjectKeyList = objectKeyList, IsEnd = isEnd };
+        U_TO_C_SPAWN body = new() { ObjectKeyList = objectKeyList, IsEnd = isEnd, CellsToRemove = cellsToRemove };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

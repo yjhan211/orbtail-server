@@ -24,7 +24,7 @@ public class GameServer(
     private CancellationTokenSource _cts = new();
     private Timer? _messageTimer;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -37,6 +37,7 @@ public class GameServer(
             StartMessageProcessing();
 
             logManager.WriteInfoLog("Game server started successfully.");
+            return Task.CompletedTask;
         }
         catch (Exception ex)
         {
@@ -84,8 +85,11 @@ public class GameServer(
 
     private void InitializeControllers()
     {
-        // TODO 공통맵 생기면 활성화
-        // _mapControllerList.Add(new CommonMapController(logManager, natsClientFactory.Create(), _cts, MapId.CAMPUS_1));
+        foreach (var mapId in GameMapData.GetCommonMapList())
+        {
+            _commonMapControllerList.Add(new CommonMapController(logManager, natsClientFactory.Create(), _cts, mapId));
+        }
+        
         foreach (var mapController in _commonMapControllerList)
         {
             mapController.Initialize();

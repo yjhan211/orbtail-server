@@ -115,6 +115,7 @@ namespace network.common.data.models
     public class G_TO_U_SPAWN : IMessagePackObject
     {
         [Key("objectKeyList")] public List<string> ObjectKeyList { get; set; }
+        [Key("cellsToRemove")] public List<Cell> CellsToRemove { get; set; }
     }
 
     [MessagePackObject]
@@ -127,8 +128,8 @@ namespace network.common.data.models
     public class U_TO_C_SPAWN : IMessagePackObject
     {
         [Key("objectKeyList")] public List<string> ObjectKeyList { get; set; }
-
         [Key("isEnd")] public bool IsEnd { get; set; }
+        [Key("cellsToRemove")] public List<Cell> CellsToRemove { get; set; }
     }
 
     [MessagePackObject]

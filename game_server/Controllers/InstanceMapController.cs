@@ -178,8 +178,8 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
     private void SpawnManageObject(RedisValue message)
     {
-        (var userSubject, List<string> instanceKeyList) =
-            MessagePackSerializer.Deserialize<(string, List<string>)>(message);
+        var (userSubject, instanceKeyList, cellsToRemove) =
+            MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
 
         var spawnList = new List<string>();
         foreach (var instancePartKey in instanceKeyList)
@@ -188,7 +188,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
         if (spawnList.Count <= 0) return;
 
-        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList);
+        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);
         natsClient.Publish(userSubject, packet.ToBytes());
     }
 

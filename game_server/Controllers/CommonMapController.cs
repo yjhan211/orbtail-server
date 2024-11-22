@@ -12,6 +12,7 @@ using StackExchange.Redis;
 
 namespace game_server.controllers;
 
+// TODO GetBoundSpawn 로직 없애는 방향으로 고민
 public class CommonMapController
 {
     private readonly Dictionary<string, Func<RedisValue, Task>> _asyncHandlers;
@@ -49,7 +50,6 @@ public class CommonMapController
         // _exploreTargetDict = new ConcurrentDictionary<int, HashSet<ExploreTargetInfo>>();
         // _jobResourceDict = new ConcurrentDictionary<int, HashSet<JobResourceInfo>>();
         // _manageCellList = [];
-
         _immediateHandlers = new Dictionary<string, Action<RedisValue>>
         {
             { SubjectHelper.GetUpdateInfoSubject(_mapId, 0, Program.GameServerId), HandleUpdateInfo },
@@ -63,7 +63,7 @@ public class CommonMapController
             { SubjectHelper.GetLeaveManageSubject(_mapId, 0, Program.GameServerId), LeaveManageObjectAsync },
             { SubjectHelper.GetSpawnManageSubject(_mapId, 0, Program.GameServerId), SpawnManageObjectAsync },
             { SubjectHelper.GetDestroyObjectSubject(_mapId, 0, Program.GameServerId), DestroyManageObjectAsync },
-            // { SubjectHelper.GetCreateJobResourceSubject(_mapId, 0, Program.GameServerId), CreateJobResourceInfoAsync }
+            // { SubjectHelper.GetCreateJobResourceSubject(_mapId, 0, Program.GameServerId), CreateJobResourceInfoAsync }_
         };
     }
 
@@ -81,41 +81,38 @@ public class CommonMapController
     {
         var managePartList = MapHelper.GetManagePartList(Program.GameServerId);
         var managePositionKeyList = new List<string>();
-
-        foreach (var positionList in managePartList.Select(managePart => MapHelper.GetPositionListByMapByPart(_mapId, managePart)))
+        foreach (var positions in managePartList.Values)
         {
-            managePositionKeyList.AddRange(positionList);
+            managePositionKeyList.AddRange(positions);
         }
-
         foreach (var positionKey in managePositionKeyList)
         {
             _objectPositionDict[positionKey] = [];
-            // _manageCellList.Add(MapHelper.CreateCell(positionKey));
-        }
-    }
-
-    private static async Task CleanUpMapResource()
-    {
-        if (Program.GameServerId == 1)
-        {
-            var exploreTargetValues = await CacheHelper.Instance.HashGetAllAsync(ExploreTargetInfo.HashKey);
-            foreach (var entry in exploreTargetValues)
-            {
-                if (!long.TryParse(entry.Name, out var exploreTargetId)) continue;
-
-                await ExploreTargetInfo.Delete(exploreTargetId);
-
-                var objectField = GameObjectInfo.MakeObjectKey(ObjectType.EXPLORETARGET, exploreTargetId);
-                await GameObjectInfo.Delete(objectField);
-            }
-        }
-        else
-        {
-            await Task.Delay(10000);
         }
     }
     
     // TODO 채집 시스템
+    // private static async Task CleanUpMapResource()
+    // {
+    //     if (Program.GameServerId == 1)
+    //     {
+    //         var exploreTargetValues = await CacheHelper.Instance.HashGetAllAsync(ExploreTargetInfo.HashKey);
+    //         foreach (var entry in exploreTargetValues)
+    //         {
+    //             if (!long.TryParse(entry.Name, out var exploreTargetId)) continue;
+    //
+    //             await ExploreTargetInfo.Delete(exploreTargetId);
+    //
+    //             var objectField = GameObjectInfo.MakeObjectKey(ObjectType.EXPLORETARGET, exploreTargetId);
+    //             await GameObjectInfo.Delete(objectField);
+    //         }
+    //     }
+    //     else
+    //     {
+    //         await Task.Delay(10000);
+    //     }
+    // }
+    
     // private async Task CreateExploreTargetTask()
     // {
     //     using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
@@ -272,47 +269,111 @@ public class CommonMapController
         }
     }
 
-    private void BroadcastObjectMove(string positionKey, GameObjectInfo objectInfo)
+    private async Task BroadcastObjectMove(string positionKey, GameObjectInfo objectInfo)
     {
-        var targetServerList = MapHelper.GetBoundServerList(_mapId, objectInfo.CurrentCell);
-        var message = MessagePackSerializer.Serialize((positionKey, objectInfo));
-        foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, targetServer)))
+        var movedCell = objectInfo.CurrentCell;
+        var lastCell = MapHelper.CreateCell(positionKey);
+        
+        _logManager.WriteDebugLog($"=== BroadcastObjectMove Start ===");
+        _logManager.WriteDebugLog($"Object: {objectInfo.GetGameObjectKey()}, LastPosition: {positionKey}, NewPosition: {MapHelper.CreatePartKey(_mapId, movedCell)}");
+
+        var lastBoundCells = lastCell.GetBoundCellList();
+        var newBoundCells = movedCell.GetBoundCellList();
+
+        // 움직이는 유저의 bound 영역 안에 있는 가만히 있는 유저들에게도 스폰 체크 메시지 전송
+        await _mapLock.WaitAsync();
+        try 
         {
+            var allBoundCells = lastBoundCells.Union(newBoundCells);
+
+            foreach(var cell in allBoundCells)
+            {
+                var key = MapHelper.CreatePartKey(_mapId, cell);
+                if(!_objectPositionDict.TryGetValue(key, out var objects))
+                    continue;
+
+                // 이 셀에 있는 플레이어들에게도 스폰 체크 메시지 전송
+                foreach(var obj in objects.Where(obj => obj.StartsWith("1_")))
+                {
+                    if (obj == objectInfo.GetGameObjectKey()) continue;  // 자기 자신 제외
+
+                    var serverId = MapHelper.GetManageServerId(key);
+                    var playerPositionKeys = new List<string>();
+                    var playerCellsToRemove = new List<Cell>();
+
+                    // 이전 bound에 있었고 새 bound에는 없는 경우
+                    if (lastBoundCells.Contains(cell) && !newBoundCells.Contains(cell))
+                    {
+                        playerCellsToRemove.Add(movedCell);
+                    }
+                    // 새 bound에 있고 이전 bound에는 없는 경우
+                    else if (newBoundCells.Contains(cell) && !lastBoundCells.Contains(cell))
+                    {
+                        playerPositionKeys.Add(MapHelper.CreatePartKey(_mapId, movedCell));
+                    }
+
+                    var spawnMessage = MessagePackSerializer.Serialize((obj, playerPositionKeys, playerCellsToRemove));
+                    var spawnSubject = SubjectHelper.GetSpawnManageSubject(_mapId, 0, serverId);
+                    _natsClient.Publish(spawnSubject, spawnMessage);
+                }
+            }
+        }
+        finally 
+        {
+            _mapLock.Release();
+        }
+
+        // 서버간 broadcast 메시지 전송
+        var affectedServers = newBoundCells
+            .Select(cell => MapHelper.CreatePartKey(_mapId, cell))
+            .GroupBy(
+                MapHelper.GetManageServerId,
+                (serverId, cells) => new { serverId, cells = cells.ToList() }
+            );
+
+        foreach (var serverGroup in affectedServers)
+        {
+            _logManager.WriteDebugLog($"Server {serverGroup.serverId}: {serverGroup.cells.Count} cells");
+            var subject = SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, serverGroup.serverId);
+            var message = MessagePackSerializer.Serialize((positionKey, objectInfo));
             _natsClient.Publish(subject, message);
         }
+        
+        _logManager.WriteDebugLog("=== BroadcastObjectMove End ===");
     }
-
+    
     private async Task UpdateObjectPositionAsync(string lastPositionKey, string currentPositionKey, string objectKey)
     {
         await _mapLock.WaitAsync();
         try
         {
             if (_objectPositionDict.TryGetValue(lastPositionKey, out var lastPositionSet))
+            {
                 lastPositionSet.Remove(objectKey);
+            }
 
-            _objectPositionDict.AddOrUpdate(
-                currentPositionKey,
-                [objectKey],
-                (_, set) =>
-                {
-                    set.Add(objectKey);
-                    return set;
-                }
-            );
+            if (!_objectPositionDict.TryGetValue(currentPositionKey, out var currentSet))
+            {
+                throw new Exception($"Invalid position key: {currentPositionKey}");
+            }
+        
+            currentSet.Add(objectKey);
         }
         finally
         {
             _mapLock.Release();
         }
     }
-
     private async Task LeaveManageObjectAsync(RedisValue message)
     {
-        var (_, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
+        var (positionKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
         await _mapLock.WaitAsync();
         try
         {
-            foreach (var set in _objectPositionDict.Values) set.Remove(objectKey);
+            if (_objectPositionDict.TryGetValue(positionKey, out var positionSet))
+            {
+                positionSet.Remove(objectKey);
+            }
         }
         finally
         {
@@ -322,26 +383,61 @@ public class CommonMapController
 
     private async Task SpawnManageObjectAsync(RedisValue message)
     {
-        (var userSubject, List<string> positionKeyList) =
-            MessagePackSerializer.Deserialize<(string, List<string>)>(message);
+        var (userSubject, positionKeyList, cellsToRemove) = MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
+           
+        _logManager.WriteDebugLog($"=== SpawnManage Start ===");
+        _logManager.WriteDebugLog($"User: {userSubject}, PositionKeys: {string.Join(",", positionKeyList)}");
+        _logManager.WriteDebugLog($"CellsToRemove: {string.Join(",", cellsToRemove.Select(c => $"{c.X},{c.Y}"))}");
+
+        var spawnList = new HashSet<string>();
+        var cellsWithObjects = new List<Cell>();
 
         await _mapLock.WaitAsync();
         try
         {
-            var spawnList = new List<string>();
+            // 새로운 bound 영역의 오브젝트들 수집
             foreach (var positionKey in positionKeyList)
+            {
                 if (_objectPositionDict.TryGetValue(positionKey, out var objects))
-                    spawnList.AddRange(objects);
+                {
+                    foreach(var obj in objects)
+                    {
+                        spawnList.Add(obj);
+                    }
+                    _logManager.WriteDebugLog($"Position {positionKey} objects: {string.Join(",", objects)}");
+                }
+            }
 
-            if (spawnList.Count <= 0) return;
-
-            using var packet = PacketMaker.G_TO_U_SPAWN(spawnList);
-            _natsClient.Publish(userSubject, packet.ToBytes());
+            // cellsToRemove에서 현재 오브젝트가 있는 셀 확인
+            if (cellsToRemove != null)
+            {
+                foreach(var cell in cellsToRemove)
+                {
+                    var key = MapHelper.CreatePartKey(_mapId, cell);
+                    if (_objectPositionDict.TryGetValue(key, out var objects) && objects.Count > 0)
+                    {
+                        cellsWithObjects.Add(cell);
+                        _logManager.WriteDebugLog($"Cell {cell.X},{cell.Y} has objects: {string.Join(",", objects)}");
+                    }
+                }
+            }
         }
         finally
         {
             _mapLock.Release();
         }
+
+        if (spawnList.Count <= 0 && cellsWithObjects.Count == 0)
+        {
+            _logManager.WriteDebugLog("No objects to spawn or remove");
+            return;
+        }
+
+        _logManager.WriteDebugLog($"Sending packet - userSubject: {userSubject}, Spawn count: {spawnList.Count}, Remove cells: {cellsWithObjects.Count}");
+        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList.ToList(), cellsWithObjects);
+        _natsClient.Publish(userSubject, packet.ToBytes());
+        
+        _logManager.WriteDebugLog("=== SpawnManage End ===");
     }
 
     private async Task DestroyManageObjectAsync(RedisValue message)
@@ -350,15 +446,10 @@ public class CommonMapController
         await _mapLock.WaitAsync();
         try
         {
-            var removeSuccess = false;
             foreach (var set in _objectPositionDict.Values)
             {
                 set.Remove(objectKey);
-                removeSuccess = true;
             }
-
-            if (!removeSuccess) _logManager.WriteDebugLog($"remove FAIL {objectKey}");
-
             // foreach (var set in _jobResourceDict.Values)
                 // set.RemoveWhere(jobResourceInfo => jobResourceInfo.ObjectInfo.GetGameObjectKey() == objectKey);
         }

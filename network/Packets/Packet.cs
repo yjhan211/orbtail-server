@@ -49,8 +49,10 @@ public class Packet : IPacket
     public static Packet Create(Const<byte[]> buffer)
     {
         if (Config.BUFFER_SIZE < buffer.Value.Length)
+        {
             throw new Exception($"Invalid Buffer Size. size:{buffer.Value.Length}");
-
+        }
+        
         var clone = new byte[Config.BUFFER_SIZE];
         Array.Copy(buffer.Value, clone, buffer.Value.Length);
         return new Packet(clone);

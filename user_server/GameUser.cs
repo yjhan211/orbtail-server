@@ -43,8 +43,7 @@ public partial class GameUser : IPeer
     public readonly NatsClient NatsClient;
     public readonly RedLockFactory RedLock;
 
-    public GameUser(UserToken token, RedLockFactory redLockFactory, NatsClient natsClient, LogManager logManager,
-        Action<GameUser> onLeaveCallback)
+    public GameUser(UserToken token, RedLockFactory redLockFactory, NatsClient natsClient, LogManager logManager, Action<GameUser> onLeaveCallback)
     {
         _token = token;
         _token.SetPeer(this);
@@ -56,9 +55,7 @@ public partial class GameUser : IPeer
         _cts = new CancellationTokenSource();
 
         _progressManager = new ProgressManager(_logManager);
-        Channel<GameObjectInfo> updateObjectChannel =
-            Channel.CreateUnbounded<GameObjectInfo>(new UnboundedChannelOptions
-                { SingleReader = false, SingleWriter = false });
+        var updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
         _updateObjectManager = new UpdateObjectManager(_cts, _logManager, Send, updateObjectChannel);
         _playerManager = new PlayerManager(_logManager, NatsClient, Send, _updateObjectManager);
         _onLeaveCallback = onLeaveCallback;
@@ -78,8 +75,10 @@ public partial class GameUser : IPeer
 
             using var packet = Packet.Create(buffer);
             var protocolId = (Protocol)packet.PopProtocolId();
-            _ = packet.PopPlayerId();
+            var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
+            
+            _logManager.WriteDebugLog($"playerId: {playerId} | PROTOCOL: {protocolId}");
 
             if (NonAuthProtocol.Contains(protocolId))
             {
@@ -96,10 +95,15 @@ public partial class GameUser : IPeer
                 return;
             }
 
-            if (_playerManager.State == PlayerState.NONE) throw new Exception("invalid PlayerState");
+            if (_playerManager.State == PlayerState.NONE)
+            {
+                throw new Exception("invalid PlayerState");
+            }
 
             if (ActionProtocol.Contains(protocolId) && _playerManager.State != PlayerState.IDLE)
+            {
                 throw new Exception($"in action. {_playerManager.PlayerId}");
+            }
 
             switch (protocolId)
             {
@@ -134,7 +138,6 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_USE_ITEM>(body, InventoryController.RequestUseItem);
                     break;
                 case Protocol.C_TO_U_CHANGE_MAP:
-                    _logManager.WriteDebugLog("changemap");
                     await _playerManager.ChangeMap();
                     break;
                 case Protocol.C_TO_U_EXPLORE:
@@ -282,8 +285,7 @@ public partial class GameUser : IPeer
                 // playerInfo.WearItem(giftItemList[0].ItemUid); // TODO 기본템 입히기
             }
 
-            var movementHandler = new MovementHandler(_logManager, playerInfo.ObjectInfo, NatsClient, Send,
-                _updateObjectManager, _playerManager.ChangeMap);
+            var movementHandler = new MovementHandler(_logManager, playerInfo.ObjectInfo, NatsClient, Send, _updateObjectManager);
             var environmentHandler = new EnvironmentHandler(_logManager, _cts, RedLock, Send, playerInfo.ObjectInfo);
 
             await environmentHandler.StartAsync();
@@ -298,8 +300,29 @@ public partial class GameUser : IPeer
         }
 
         NatsClient.Subscribe(_playerManager.ObjectInfo.GetGameObjectKey(),
-            (_, message) => OnMessageFromSubscribe(message));
-        NatsClient.Subscribe("all", (_, message) => OnMessageFromSubscribe(message));
+            async void (_, message) =>
+            {
+                try
+                {
+                    await OnMessageFromSubscribe(message);
+                }
+                catch (Exception e)
+                {
+                    throw; // TODO 예외 처리
+                }
+            });
+        
+        NatsClient.Subscribe("all", async void (_, message) =>
+        {
+            try
+            {
+                await OnMessageFromSubscribe(message);
+            }
+            catch (Exception e)
+            {
+                throw; // TODO 예외 처리
+            }
+        });
 
         var labInfo = await LabInfo.Load(playerInfo.LabId);
 
@@ -328,9 +351,8 @@ public partial class GameUser : IPeer
         {
             var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
             var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
-            foreach (var targetServer in targetServerList)
+            foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetUpdateInfoSubject(objectInfo, targetServer)))
             {
-                var subject = SubjectHelper.GetUpdateInfoSubject(objectInfo, targetServer);
                 NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, info)));
             }
 
