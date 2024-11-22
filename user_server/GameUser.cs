@@ -104,7 +104,7 @@ public partial class GameUser : IPeer
             {
                 throw new Exception($"in action. {_playerManager.PlayerId}");
             }
-            
+
             switch (protocolId)
             {
                 case Protocol.C_TO_U_CHANGE_MAP_SUCCESS:
@@ -300,8 +300,29 @@ public partial class GameUser : IPeer
         }
 
         NatsClient.Subscribe(_playerManager.ObjectInfo.GetGameObjectKey(),
-            (_, message) => OnMessageFromSubscribe(message));
-        NatsClient.Subscribe("all", (_, message) => OnMessageFromSubscribe(message));
+            async void (_, message) =>
+            {
+                try
+                {
+                    await OnMessageFromSubscribe(message);
+                }
+                catch (Exception e)
+                {
+                    throw; // TODO 예외 처리
+                }
+            });
+        
+        NatsClient.Subscribe("all", async void (_, message) =>
+        {
+            try
+            {
+                await OnMessageFromSubscribe(message);
+            }
+            catch (Exception e)
+            {
+                throw; // TODO 예외 처리
+            }
+        });
 
         var labInfo = await LabInfo.Load(playerInfo.LabId);
 

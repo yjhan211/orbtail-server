@@ -111,8 +111,11 @@ public sealed class MovementHandler(
             RequestSpawnInfo(objectInfo.MapId, cellsToRemove);
         }
 
-        // 자신의 이동이므로 큐에 즉시 넣음
-        updateObjectManager.EnqueueUpdateObject(objectInfo);
+        if (moveRequest.Direction != DirectionType.NONE)
+        {
+            // 자신의 이동이므로 큐에 즉시 넣음
+            updateObjectManager.EnqueueUpdateObject(objectInfo);
+        }
 
         var moveElapsedTime = CalcMoveElapsedTime();
         await Task.Delay((int)(moveElapsedTime * 1000));

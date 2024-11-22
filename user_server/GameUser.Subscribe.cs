@@ -103,7 +103,6 @@ public partial class GameUser
         var cellsToRemove = body.CellsToRemove ?? [];
 
         var batchCount = (int)Math.Ceiling((double)Math.Max(objectKeys.Count, cellsToRemove.Count) / Config.BROADCAST_UNIT);
-    
         for (var i = 0; i < batchCount; i++)
         {
             var batch = objectKeys

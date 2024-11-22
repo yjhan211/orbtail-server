@@ -35,6 +35,7 @@ public static class MapHelper
             var mapWidth = maxX - minX + 1;
             var partWidth = mapWidth / _totalServerNum;
 
+            // 각 서버별 영역 계산
             for (var part = 1; part <= _totalServerNum; part++)
             {
                 var startX = minX + (part - 1) * partWidth;
@@ -45,13 +46,27 @@ public static class MapHelper
                 {
                     for (var y = minY; y <= maxY; y++)
                     {
-                        if (!IsInGroundRegions(new Cell(x, y), groundRegions)) continue;
-                        var key = CreatePartKey(mapId, new Cell(x, y));
-                        cells.Add(key);
-                        PartByKey[key] = part;
+                        var cell = new Cell(x, y);
+                        if (!IsInGroundRegions(cell, groundRegions)) continue;
+
+                        // InitCell 위치인 경우에도 해당 영역에 포함
+                        var mapInfo = GameMapData.GetMapInfo(mapId);
+                        if (mapInfo?.InitCells != null)
+                        {
+                            if (mapInfo.InitCells.Values.Any(initCell => initCell.position.x == x && initCell.position.y == y))
+                            {
+                                var key1 = CreatePartKey(mapId, cell);
+                                cells.Add(key1);
+                                PartByKey[key1] = part;
+                            }
+                        }
+
+                        var key2 = CreatePartKey(mapId, cell);
+                        cells.Add(key2);
+                        PartByKey[key2] = part;
                     }
                 }
-            
+
                 PositionListByMapPart[mapId][part] = cells;
                 Console.WriteLine($"Part {part}: {cells.Count} cells, X({startX}~{endX})");
             }
@@ -60,7 +75,7 @@ public static class MapHelper
         Console.WriteLine("\n[End] Common map partitioning");
     }
 
-    private static bool IsInGroundRegions(Cell cell, List<MapRegion> groundRegions)
+    private static bool IsInGroundRegions(Cell cell, List<GameMapData.MapRegion> groundRegions)
     {
         return groundRegions.Any(region => 
             cell.X >= region.Start.X && cell.X <= region.End.X &&
