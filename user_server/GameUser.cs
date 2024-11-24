@@ -333,7 +333,7 @@ public partial class GameUser : IPeer
         await InventoryController.GetCurrentItemList(this);
         if (labInfo != null) await InventoryController.GetLabInventory(this);
 
-        await _playerManager.ChangeMap();
+        // await _playerManager.ChangeMap();
     }
 
     public void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject
