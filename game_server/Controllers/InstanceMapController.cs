@@ -56,7 +56,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
     {
         var immediateHandlers = new Dictionary<string, Action<RedisValue>>
         {
-            { SubjectHelper.GetUpdateInfoSubject(mapId, 0, Program.GameServerId), HandleUpdateInfo },
+            { SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, Program.GameServerId), HandleUpdateInfo },
             { SubjectHelper.GetSpawnManageSubject(mapId, mapSubId, Program.GameServerId), SpawnManageObject }
         };
 
