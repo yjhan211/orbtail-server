@@ -70,6 +70,7 @@ namespace network.common.data
             {
                 logManager.WriteDebugLog($"Item {id}:");
                 logManager.WriteDebugLog($"  Name: {item.Name}");
+                logManager.WriteDebugLog($"  Comment: {item.Comment}");
                 logManager.WriteDebugLog($"  Reusable: {item.Reusable}");
 
                 if (item.MaxDurability > 0) logManager.WriteDebugLog($"  MaxDurability: {item.MaxDurability}");
@@ -96,6 +97,7 @@ namespace network.common.data
         public int Id { get; private set; }
         public ItemType Type { get; private set; }
         public LocalizedText Name { get; private set; }
+        public LocalizedText Comment { get; private set; }
         public List<int> Requirements { get; private set; }
         public bool Reusable { get; private set; }
 
@@ -125,6 +127,7 @@ namespace network.common.data
                 Id = id,
                 Type = itemType,
                 Name = new LocalizedText(baseInfo["name"]),
+                Comment = new LocalizedText(baseInfo["comment"]),
                 Requirements = JsonConvert.DeserializeObject<List<int>>(baseInfo["requirements"]) ?? new(),
                 Reusable = int.Parse(baseInfo["reusable"]) == 1
             };
