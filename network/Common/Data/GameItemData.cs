@@ -24,7 +24,7 @@ namespace network.common.data
             foreach (var baseInfo in baseItemData)
             {
                 var itemId = int.Parse(baseInfo["id"]);
-                var itemType = (ItemType)(itemId / 100000000);
+                var itemType = GetItemType(itemId);
                 var additionalData = new Dictionary<string, CsvRow>();
 
                 switch (itemType)
@@ -87,6 +87,16 @@ namespace network.common.data
             }
 
             logManager.WriteDebugLog("All validations passed successfully!");
+        }
+        
+        public static ItemType GetItemType(int itemId)
+        {
+            return (ItemType)(itemId / 100000000);
+        }
+        
+        public static EquipType GetEquipType(int itemId) 
+        {
+            return (EquipType)(itemId / 1000000);
         }
     }
 
