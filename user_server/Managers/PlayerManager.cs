@@ -44,7 +44,7 @@ public class PlayerManager(
         _environmentHandler = environmentHandler;
     }
 
-    public async Task ChangeMap()
+    public async Task ChangeMap(bool isLogin = false)
     {
         if (ObjectInfo == null)
         {
@@ -59,15 +59,19 @@ public class PlayerManager(
         
         // 기존 맵에 삭제 요청
         await PublishDestroy();
-        
-        ObjectInfo.MapId = changeMapInfo.Value.mapId;
-        ObjectInfo.MapSubId = GameMapData.IsCommonMap(changeMapInfo.Value.mapId) ? 0 : GetInstanceMapSubId();
-        ObjectInfo.CurrentCell = changeMapInfo.Value.spawnPosition;
-        ObjectInfo.TargetCell = changeMapInfo.Value.spawnPosition;
-        ObjectInfo.IsFlip = changeMapInfo.Value.isFlip;
+        await EnterMap(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition, changeMapInfo.Value.isFlip, isLogin);
+    }
+
+    public async Task EnterMap(MapId mapId, Cell spawnPosition, bool isFlip, bool isLogin)
+    {
+        ObjectInfo!.MapId = mapId;
+        ObjectInfo.MapSubId = GameMapData.IsCommonMap(mapId) ? 0 : GetInstanceMapSubId();
+        ObjectInfo.CurrentCell = spawnPosition;
+        ObjectInfo.TargetCell = spawnPosition;
+        ObjectInfo.IsFlip = isFlip;
         await ObjectInfo.Save();
 
-        if (GameMapData.IsCommonMap(MapId))
+        if (GameMapData.IsCommonMap(MapId) && !isLogin)
         {
             using var packet = PacketMaker.U_TO_C_CHANGE_MAP(MapId, MapSubId, CurrentCell, IsFlip);
             sendToClient(packet);
@@ -76,7 +80,8 @@ public class PlayerManager(
 
         var serverId = MapHelper.GetManageServerId(MapSubId);
         var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
-        var publishObj = MessagePackSerializer.Serialize((ObjectInfo.GetGameObjectKey(), MapId, MapSubId));
+        var publishObj = MessagePackSerializer.Serialize((ObjectInfo.GetGameObjectKey(), MapId, MapSubId, isLogin));
+        _logManager?.WriteDebugLog($"EnterMap subject: {subject}");
         natsClient.Publish(subject, publishObj);
     }
 

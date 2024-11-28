@@ -12,7 +12,6 @@ using StackExchange.Redis;
 
 namespace game_server.controllers;
 
-// TODO GetBoundSpawn 로직 없애는 방향으로 고민
 public class CommonMapController
 {
     private readonly Dictionary<string, Func<RedisValue, Task>> _asyncHandlers;
@@ -225,11 +224,52 @@ public class CommonMapController
 
     private void HandleUpdateInfo(RedisValue message)
     {
-        var (positionKey, info) = MessagePackSerializer.Deserialize<(string, IMessagePackObject)>(message);
-        var handler = _updateHandlers[info.GetType()];
-
-        using var packet = ((IUpdateHandler<IMessagePackObject>)handler).MakePacket(info);
-        BroadcastPacket(positionKey, packet);
+        if (TryDeserialize<PlayerInfo>(message, out var key1, out var playerInfo))
+        {
+            var handler = _updateHandlers[typeof(PlayerInfo)];
+            using var packet = ((IUpdateHandler<PlayerInfo>)handler).MakePacket(playerInfo);
+            BroadcastPacket(key1, packet);
+            return;
+        }
+    
+        if (TryDeserialize<ExploreTargetInfo>(message, out var key2, out var exploreInfo))
+        {
+            var handler = _updateHandlers[typeof(ExploreTargetInfo)];
+            using var packet = ((IUpdateHandler<ExploreTargetInfo>)handler).MakePacket(exploreInfo);
+            BroadcastPacket(key2, packet);
+            return;
+        }
+    
+        if (TryDeserialize<JobResourceInfo>(message, out var key3, out var jobInfo))
+        {
+            var handler = _updateHandlers[typeof(JobResourceInfo)];
+            using var packet = ((IUpdateHandler<JobResourceInfo>)handler).MakePacket(jobInfo);
+            BroadcastPacket(key3, packet);
+            return;
+        }
+    
+        if (TryDeserialize<CampInfo>(message, out var key4, out var campInfo))
+        {
+            var handler = _updateHandlers[typeof(CampInfo)];
+            using var packet = ((IUpdateHandler<CampInfo>)handler).MakePacket(campInfo);
+            BroadcastPacket(key4, packet);
+            return;
+        }
+    }
+    
+    private bool TryDeserialize<T>(RedisValue message, out string key, out T info) where T : IMessagePackObject
+    {
+        try
+        {
+            (key, info) = MessagePackSerializer.Deserialize<(string, T)>(message);
+            return true;
+        }
+        catch
+        {
+            key = null;
+            info = default;
+            return false;
+        }
     }
 
     private async Task MoveManageObjectAsync(RedisValue message)
