@@ -6,6 +6,7 @@ namespace network.common
         NONE = 0,
         LIBRARY,
         SCHOOL,
+        CLASSROOM
     }
 
 
