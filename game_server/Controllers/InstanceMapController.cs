@@ -12,10 +12,12 @@ using StackExchange.Redis;
 
 namespace game_server.controllers;
 
-public class InstanceMapController(LogManager logManager, NatsClient natsClient, CancellationTokenSource cts)
+public class InstanceMapController
 {
-    // ReSharper disable once UnusedMember.Local
-    private readonly CancellationTokenSource _cts = cts;
+    private readonly CancellationTokenSource _cts;
+    private readonly LogManager _logManager;
+    private readonly NatsClient _natsClient;
+    
     private readonly SemaphoreSlim _mapLock = new(1, 1);
     private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
 
@@ -29,6 +31,14 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
     private static string EnterInstanceSubject => SubjectHelper.GetEnterInstanceSubject(Program.GameServerId);
 
+    // ReSharper disable once ConvertToPrimaryConstructor
+    public InstanceMapController(LogManager logManager, NatsClient natsClient, CancellationTokenSource cts)
+    {
+        _logManager = logManager;
+        _natsClient = natsClient;
+        _cts = cts;
+    }
+
     public void Initialize()
     {
         SubscribeToCreateInstance();
@@ -36,27 +46,25 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
     private void SubscribeToCreateInstance()
     {
-        natsClient.Subscribe(EnterInstanceSubject, MessageHandler);
-        return;
-
-        async void MessageHandler(string _, byte[] msg)
-        {
+        _logManager.WriteDebugLog($"EnterInstanceSubject: {EnterInstanceSubject}");
+        _natsClient.Subscribe(EnterInstanceSubject, (_, msg) => {        
             try
             {
-                await EnterInstance(msg);
+                EnterInstance(msg).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
-                logManager.WriteErrorLog(ex);
+                _logManager.WriteErrorLog(ex);
             }
-        }
+        });
     }
 
     private void SubscribeToInstanceEvents(MapId mapId, long mapSubId)
     {
+        _logManager.WriteDebugLog($"updateInfoSubject: {SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, Program.GameServerId)}");
         var immediateHandlers = new Dictionary<string, Action<RedisValue>>
         {
-            { SubjectHelper.GetUpdateInfoSubject(mapId, 0, Program.GameServerId), HandleUpdateInfo },
+            { SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, Program.GameServerId), HandleUpdateInfo },
             { SubjectHelper.GetSpawnManageSubject(mapId, mapSubId, Program.GameServerId), SpawnManageObject }
         };
 
@@ -69,7 +77,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
         };
 
         foreach (var (subject, handler) in immediateHandlers)
-            natsClient.Subscribe(subject, (_, msg) =>
+            _natsClient.Subscribe(subject, (_, msg) =>
             {
                 try
                 {
@@ -77,56 +85,101 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
                 }
                 catch (Exception ex)
                 {
-                    logManager.WriteErrorLog(ex);
+                    _logManager.WriteErrorLog(ex);
                 }
             });
 
         foreach (var (subject, handler) in asyncHandlers)
         {
-            natsClient.Subscribe(subject, MessageHandler);
-            continue;
-
-            async void MessageHandler(string _, byte[] msg)
+            _natsClient.Subscribe(subject, (_, msg) => 
             {
                 try
                 {
-                    await handler(msg);
+                    handler(msg).GetAwaiter().GetResult();
                 }
                 catch (Exception ex)
                 {
-                    logManager.WriteErrorLog(ex);
+                    _logManager.WriteErrorLog(ex);
                 }
-            }
+            });
         }
     }
 
     private async Task EnterInstance(RedisValue message)
     {
-        var (userSubject, mapId, mapSubId) = MessagePackSerializer.Deserialize<(string, MapId, long)>(message);
+        var (userSubject, mapId, mapSubId, isLogin) = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
         await _mapLock.WaitAsync();
         try
         {
             var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
             if (_objectInstanceDict.TryAdd(instanceKey, []))
+            {
                 SubscribeToInstanceEvents(mapId, mapSubId);
+            }
             _objectInstanceDict[instanceKey].Add(userSubject);
+            
+            _logManager.WriteDebugLog($"EnterInstance: {instanceKey}");
         }
         finally
         {
             _mapLock.Release();
         }
 
-        using var packet = PacketMaker.G_TO_U_CREATE_INSTANCE_SUCCESS(mapId, mapSubId);
-        natsClient.Publish(userSubject, packet.ToBytes());
+        if (!isLogin)
+        {
+            using var packet = PacketMaker.G_TO_U_CREATE_INSTANCE_SUCCESS(mapId, mapSubId);
+            _natsClient.Publish(userSubject, packet.ToBytes());
+        }
     }
 
     private void HandleUpdateInfo(RedisValue message)
     {
-        var (positionKey, info) = MessagePackSerializer.Deserialize<(string, IMessagePackObject)>(message);
-        var handler = _updateHandlers[info.GetType()];
+        if (TryDeserialize<PlayerInfo>(message, out var key1, out var playerInfo))
+        {
+            var handler = _updateHandlers[typeof(PlayerInfo)];
+            using var packet = ((IUpdateHandler<PlayerInfo>)handler).MakePacket(playerInfo);
+            BroadcastPacket(key1, packet);
+            return;
+        }
+    
+        if (TryDeserialize<ExploreTargetInfo>(message, out var key2, out var exploreInfo))
+        {
+            var handler = _updateHandlers[typeof(ExploreTargetInfo)];
+            using var packet = ((IUpdateHandler<ExploreTargetInfo>)handler).MakePacket(exploreInfo);
+            BroadcastPacket(key2, packet);
+            return;
+        }
+    
+        if (TryDeserialize<JobResourceInfo>(message, out var key3, out var jobInfo))
+        {
+            var handler = _updateHandlers[typeof(JobResourceInfo)];
+            using var packet = ((IUpdateHandler<JobResourceInfo>)handler).MakePacket(jobInfo);
+            BroadcastPacket(key3, packet);
+            return;
+        }
+    
+        if (TryDeserialize<CampInfo>(message, out var key4, out var campInfo))
+        {
+            var handler = _updateHandlers[typeof(CampInfo)];
+            using var packet = ((IUpdateHandler<CampInfo>)handler).MakePacket(campInfo);
+            BroadcastPacket(key4, packet);
+            return;
+        }
+    }
 
-        using var packet = ((IUpdateHandler<IMessagePackObject>)handler).MakePacket(info);
-        BroadcastPacket(positionKey, packet);
+    private bool TryDeserialize<T>(RedisValue message, out string key, out T info) where T : IMessagePackObject
+    {
+        try
+        {
+            (key, info) = MessagePackSerializer.Deserialize<(string, T)>(message);
+            return true;
+        }
+        catch
+        {
+            key = null;
+            info = default;
+            return false;
+        }
     }
 
     private async Task MoveManageObjectAsync(RedisValue message)
@@ -189,7 +242,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
         if (spawnList.Count <= 0) return;
 
         using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);
-        natsClient.Publish(userSubject, packet.ToBytes());
+        _natsClient.Publish(userSubject, packet.ToBytes());
     }
 
     private async Task DestroyManageObjectAsync(RedisValue message)
@@ -221,10 +274,15 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
     private void BroadcastPacket(string instanceKey, IPacket packet)
     {
-        if (_objectInstanceDict.TryGetValue(instanceKey, out var channels))
+        if (!_objectInstanceDict.TryGetValue(instanceKey, out var channels))
         {
-            var channelsCopy = channels.ToList();
-            foreach (var channel in channelsCopy) natsClient.Publish(channel, packet.ToBytes());
+            return;
+        }
+
+        var channelsCopy = channels.ToList();
+        foreach (var channel in channelsCopy)
+        {
+            _natsClient.Publish(channel, packet.ToBytes());
         }
     }
 

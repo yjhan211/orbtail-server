@@ -282,7 +282,15 @@ public partial class GameUser : IPeer
                 }
 
                 playerInfo.InventoryInfo.AddItem(giftItemList);
-                // playerInfo.WearItem(giftItemList[0].ItemUid); // TODO 기본템 입히기
+                
+                // 기본템 입히기
+                var defaultTop = giftItemList.First(x => x.ItemId == 104000001);
+                var defaultBottom = giftItemList.First(x => x.ItemId == 105000001);
+                var defaultShoes = giftItemList.First(x => x.ItemId == 106000001);
+
+                playerInfo.WearItem(defaultTop.ItemUid);
+                playerInfo.WearItem(defaultBottom.ItemUid);
+                playerInfo.WearItem(defaultShoes.ItemUid);
             }
 
             var movementHandler = new MovementHandler(_logManager, playerInfo.ObjectInfo, NatsClient, Send, _updateObjectManager);
@@ -333,7 +341,7 @@ public partial class GameUser : IPeer
         await InventoryController.GetCurrentItemList(this);
         if (labInfo != null) await InventoryController.GetLabInventory(this);
 
-        await _playerManager.ChangeMap();
+        await _playerManager.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
     }
 
     public void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject
@@ -346,19 +354,19 @@ public partial class GameUser : IPeer
             CampInfo c => c.ObjectInfo,
             _ => throw new ArgumentException($"Unsupported type: {typeof(T)}")
         };
-
+    
         if (GameMapData.IsCommonMap(objectInfo.MapId))
         {
             var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
             var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
-            foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetUpdateInfoSubject(objectInfo, targetServer)))
+            foreach (var targetServer in targetServerList)
             {
+                var subject = SubjectHelper.GetUpdateInfoSubject(objectInfo, targetServer);
                 NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, info)));
             }
-
             return;
         }
-
+    
         var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
         var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
         var instanceSubject = SubjectHelper.GetUpdateInfoSubject(objectInfo, manageServer);
