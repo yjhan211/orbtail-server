@@ -26,13 +26,20 @@ namespace network.common.data
                 var itemId = int.Parse(baseInfo["id"]);
                 var itemType = GetItemType(itemId);
                 var additionalData = new Dictionary<string, CsvRow>();
+                var equipType = GetEquipType(itemId);
 
                 switch (itemType)
                 {
                     case ItemType.EQUIPMENT:
                         var equipInfo = equipmentData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
                         if (equipInfo != null)
+                        {
                             additionalData["item_info_equipment"] = equipInfo;
+                            if (string.IsNullOrEmpty(equipInfo["skin_name"]))
+                            {
+                                throw new ArgumentException($"Equipment item {itemId} missing skin_name");
+                            }
+                        }
                         break;
 
                     case ItemType.CONSUMABLE:
@@ -73,7 +80,12 @@ namespace network.common.data
                 logManager.WriteDebugLog($"  Comment: {item.Comment}");
                 logManager.WriteDebugLog($"  Reusable: {item.Reusable}");
 
-                if (item.MaxDurability > 0) logManager.WriteDebugLog($"  MaxDurability: {item.MaxDurability}");
+                if (item.IsEquipment)
+                {
+                    logManager.WriteDebugLog($"  SkinName: {item.SkinName}");
+                    if (item.MaxDurability > 0) 
+                        logManager.WriteDebugLog($"  MaxDurability: {item.MaxDurability}");
+                }
 
                 if (item.BuffList != null && item.BuffList.Count != 0)
                     logManager.WriteDebugLog($"  BuffList: {string.Join(", ", item.BuffList)}");
@@ -81,7 +93,8 @@ namespace network.common.data
                 if (item.ConsumableBuffList != null)
                     logManager.WriteDebugLog($"  ConsumableBuffList: {string.Join(", ", item.ConsumableBuffList)}");
 
-                if (item.MaxSellItems > 0) logManager.WriteDebugLog($"  MaxItems: {item.MaxSellItems}");
+                if (item.MaxSellItems > 0) 
+                    logManager.WriteDebugLog($"  MaxItems: {item.MaxSellItems}");
 
                 logManager.WriteDebugLog("");
             }
@@ -110,6 +123,7 @@ namespace network.common.data
         public LocalizedText Comment { get; private set; }
         public List<int> Requirements { get; private set; }
         public bool Reusable { get; private set; }
+        public string SkinName { get; private set; }
 
         // 장비, 설치 아이템 관련
         public int? MaxDurability { get; private set; }
@@ -148,6 +162,7 @@ namespace network.common.data
                     case ItemType.EQUIPMENT when additionalData.TryGetValue("item_info_equipment", out var equipInfo):
                         item.MaxDurability = int.Parse(equipInfo["max_durability"]);
                         item.BuffList = ParseBuffList(equipInfo["buff_list"]);
+                        item.SkinName = equipInfo["skin_name"];
                         break;
 
                     case ItemType.CONSUMABLE 
