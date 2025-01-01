@@ -85,15 +85,6 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_U_PLAYER_INFO(PlayerInfo playerInfo)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_U_PLAYER_INFO);
-        U_TO_U_PLAYER_INFO body = new() { PlayerInfo = playerInfo };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
     public static Packet U_TO_C_PLAYER_INFO(List<PlayerInfo> playerInfoList)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_PLAYER_INFO);

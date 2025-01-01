@@ -35,13 +35,13 @@ public partial class GameUser : IPeer
     private readonly CancellationTokenSource _cts;
     private readonly LogManager _logManager;
     private readonly Action<GameUser> _onLeaveCallback;
-    private readonly PlayerManager _playerManager;
-    private readonly ProgressManager _progressManager;
     private readonly UserToken _token;
     private readonly UpdateObjectManager _updateObjectManager;
     private readonly SemaphoreSlim _userLock;
     public readonly NatsClient NatsClient;
     public readonly RedLockFactory RedLock;
+    public readonly PlayerManager PlayerManager;
+    public readonly ProgressManager ProgressManager;
 
     public GameUser(UserToken token, RedLockFactory redLockFactory, NatsClient natsClient, LogManager logManager, Action<GameUser> onLeaveCallback)
     {
@@ -54,18 +54,18 @@ public partial class GameUser : IPeer
         _userLock = new SemaphoreSlim(1);
         _cts = new CancellationTokenSource();
 
-        _progressManager = new ProgressManager(_logManager);
+        ProgressManager = new ProgressManager(_logManager);
         var updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
         _updateObjectManager = new UpdateObjectManager(_cts, _logManager, Send, updateObjectChannel);
-        _playerManager = new PlayerManager(_logManager, NatsClient, Send, _updateObjectManager);
+        PlayerManager = new PlayerManager(_logManager, NatsClient, Send, _updateObjectManager);
         _onLeaveCallback = onLeaveCallback;
 
         _logManager.WriteInfoLog("Create GameUser Success!");
     }
 
-    public long PlayerId => _playerManager.PlayerId;
-    public PlayerState PlayerState => _playerManager.State;
-    public Cell CurrentCell => _playerManager.CurrentCell;
+    public long PlayerId => PlayerManager.PlayerId;
+    public PlayerState PlayerState => PlayerManager.State;
+    public Cell CurrentCell => PlayerManager.CurrentCell;
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
     {
@@ -95,26 +95,26 @@ public partial class GameUser : IPeer
                 return;
             }
 
-            if (_playerManager.State == PlayerState.NONE)
+            if (PlayerManager.State == PlayerState.NONE)
             {
                 throw new Exception("invalid PlayerState");
             }
 
-            if (ActionProtocol.Contains(protocolId) && _playerManager.State != PlayerState.IDLE)
+            if (ActionProtocol.Contains(protocolId) && PlayerManager.State != PlayerState.IDLE)
             {
-                throw new Exception($"in action. {_playerManager.PlayerId}");
+                throw new Exception($"in action. {PlayerManager.PlayerId}");
             }
 
             switch (protocolId)
             {
                 case Protocol.C_TO_U_CHANGE_MAP_SUCCESS:
-                    await _playerManager.Spawn();
+                    await PlayerManager.Spawn();
                     break;
                 case Protocol.C_TO_U_CHAT_LOG:
                     await ChatController.GetChatHistory(this, ChatType.ALL);
                     break;
                 case Protocol.C_TO_U_MOVE:
-                    await HandleMessage<C_TO_U_MOVE>(body, _playerManager.RequestMove);
+                    await HandleMessage<C_TO_U_MOVE>(body, PlayerManager.RequestMove);
                     break;
                 case Protocol.C_TO_U_PLAYER_INFO:
                     await HandleMessage<C_TO_U_PLAYER_INFO>(body, PlayerController.GetPlayerInfo);
@@ -138,7 +138,7 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_USE_ITEM>(body, InventoryController.RequestUseItem);
                     break;
                 case Protocol.C_TO_U_CHANGE_MAP:
-                    await _playerManager.ChangeMap();
+                    await PlayerManager.ChangeMap();
                     break;
                 case Protocol.C_TO_U_EXPLORE:
                     await HandleMessage<C_TO_U_EXPLORE>(body, JobController.Explore);
@@ -225,14 +225,14 @@ public partial class GameUser : IPeer
         _onLeaveCallback(this);
     }
 
-    public void SetState(PlayerInfo playerInfo, PlayerState state)
+    public void SetState(PlayerState state)
     {
-        _playerManager.SetState(playerInfo, state);
+        PlayerManager.SetState(state);
     }
 
     public async Task SetFlip(DirectionType direction)
     {
-        await _playerManager.SetFlip(direction);
+        await PlayerManager.SetFlip(direction);
     }
 
     private async Task HandleMessage<T>(byte[] body, Func<GameUser, T, Task> handleMessage)
@@ -255,8 +255,10 @@ public partial class GameUser : IPeer
 
     private async Task Login(GameUser _, C_TO_U_LOGIN request)
     {
-        if (_playerManager.State != PlayerState.NONE)
-            throw new Exception($"Already Initialized. {_playerManager.PlayerId}");
+        if (PlayerManager.State != PlayerState.NONE)
+        {
+            throw new Exception($"Already Initialized. {PlayerManager.PlayerId}");
+        }
 
         var isDummy = false;
         if (!long.TryParse(request.AccountToken, out var tempPlayerId))
@@ -293,21 +295,19 @@ public partial class GameUser : IPeer
                 playerInfo.WearItem(defaultShoes.ItemUid);
             }
 
-            var movementHandler = new MovementHandler(_logManager, playerInfo.ObjectInfo, NatsClient, Send, _updateObjectManager);
             var environmentHandler = new EnvironmentHandler(_logManager, _cts, RedLock, Send, playerInfo.ObjectInfo);
-
             await environmentHandler.StartAsync();
 
-            _playerManager.Initialize(playerInfo.ObjectInfo, movementHandler, environmentHandler);
+            PlayerManager.Initialize(playerInfo, environmentHandler);
 
             using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
-            NatsClient.Publish(_playerManager.ObjectInfo.GetGameObjectKey(), duplicatePacket.ToBytes());
+            NatsClient.Publish(PlayerManager.ObjectInfo.GetGameObjectKey(), duplicatePacket.ToBytes());
 
             await playerInfo.Save();
             await playerInfo.ObjectInfo.Save();
         }
 
-        NatsClient.Subscribe(_playerManager.ObjectInfo.GetGameObjectKey(),
+        NatsClient.Subscribe(PlayerManager.ObjectInfo.GetGameObjectKey(),
             async void (_, message) =>
             {
                 try
@@ -316,7 +316,7 @@ public partial class GameUser : IPeer
                 }
                 catch (Exception e)
                 {
-                    throw; // TODO 예외 처리
+                    _logManager.WriteErrorLog(e);
                 }
             });
         
@@ -328,7 +328,7 @@ public partial class GameUser : IPeer
             }
             catch (Exception e)
             {
-                throw; // TODO 예외 처리
+                _logManager.WriteErrorLog(e);
             }
         });
 
@@ -341,7 +341,7 @@ public partial class GameUser : IPeer
         await InventoryController.GetCurrentItemList(this);
         if (labInfo != null) await InventoryController.GetLabInventory(this);
 
-        await _playerManager.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
+        await PlayerManager.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
     }
 
     public void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject
@@ -359,9 +359,8 @@ public partial class GameUser : IPeer
         {
             var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
             var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
-            foreach (var targetServer in targetServerList)
+            foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetUpdateInfoSubject(objectInfo, targetServer)))
             {
-                var subject = SubjectHelper.GetUpdateInfoSubject(objectInfo, targetServer);
                 NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, info)));
             }
             return;
@@ -400,8 +399,8 @@ public partial class GameUser : IPeer
             _token.IsReleased = true;
 
             await JobController.Decamp(this);
-            await _playerManager.Dispose();
-            _progressManager.Dispose();
+            await PlayerManager.Dispose();
+            ProgressManager.Dispose();
             _updateObjectManager.Dispose();
 
             using var packet = PacketMaker.U_TO_G_LOGOUT(PlayerId);

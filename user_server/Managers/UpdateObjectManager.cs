@@ -10,13 +10,13 @@ namespace user_server.managers;
 public sealed class UpdateObjectManager : IDisposable
 {
     private readonly CancellationTokenSource _cts;
-    private readonly LogManager? _logManager;
+    private readonly LogManager _logManager;
     private readonly SendPacketDelegate _sendToClient;
     private readonly Task _task;
     private readonly Channel<GameObjectInfo> _updateObjectChannel;
     private bool _disposed;
 
-    public UpdateObjectManager(CancellationTokenSource cts, LogManager? logManager, SendPacketDelegate sendToClient,
+    public UpdateObjectManager(CancellationTokenSource cts, LogManager logManager, SendPacketDelegate sendToClient,
         Channel<GameObjectInfo> updateObjectReader)
     {
         _cts = cts;
@@ -29,7 +29,7 @@ public sealed class UpdateObjectManager : IDisposable
     public void Dispose()
     {
         Dispose(true);
-        GC.SuppressFinalize(this);
+        // GC.SuppressFinalize(this);
     }
 
     public void EnqueueUpdateObject(GameObjectInfo objectInfo)
@@ -51,7 +51,7 @@ public sealed class UpdateObjectManager : IDisposable
 
     private Task StartTask()
     {
-        return Task.Run(async () => //
+        return Task.Run(async () =>
         {
             try
             {
@@ -74,13 +74,17 @@ public sealed class UpdateObjectManager : IDisposable
             var updateObjectList = new List<GameObjectInfo>();
             while (updateObjectList.Count < Config.BROADCAST_UNIT &&
                    _updateObjectChannel.Reader.TryRead(out var updateObjectInfo))
-                updateObjectList.Add(updateObjectInfo);
-
-            if (updateObjectList.Count > 0)
             {
-                using var packet = PacketMaker.U_TO_C_MAP_UPDATE(updateObjectList, DateTime.UtcNow);
-                _sendToClient(packet);
+                updateObjectList.Add(updateObjectInfo);
             }
+
+            if (updateObjectList.Count <= 0)
+            {
+                continue;
+            }
+            
+            using var packet = PacketMaker.U_TO_C_MAP_UPDATE(updateObjectList, DateTime.UtcNow);
+            _sendToClient(packet);
         }
     }
 
@@ -98,7 +102,7 @@ public sealed class UpdateObjectManager : IDisposable
         }
 
         _updateObjectChannel.Writer.Complete();
-        if (_updateObjectChannel is IDisposable disposableChannel) disposableChannel.Dispose();
+        // if (_updateObjectChannel is IDisposable disposableChannel) disposableChannel.Dispose();
         StopUpdateObjectTask().GetAwaiter().GetResult();
 
         _disposed = true;

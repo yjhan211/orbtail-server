@@ -11,12 +11,14 @@ using user_server.managers;
 
 namespace user_server.handlers;
 
+
 public sealed class MovementHandler(
     LogManager? logManager,
     GameObjectInfo objectInfo,
     NatsClient natsClient,
     SendPacketDelegate sendToClient,
-    UpdateObjectManager updateObjectManager)
+    UpdateObjectManager updateObjectManager,
+    IncreaseHpDelegate increaseHp)
 {
     // ReSharper disable once UnusedMember.Local
     private readonly LogManager? _logManager = logManager;
@@ -48,7 +50,7 @@ public sealed class MovementHandler(
                 return;
             }
 
-            if (_moveQueue.Count > Config.MAX_MOVE_QUEUE_SIZE)
+            if (_moveQueue.Count <= Config.MAX_MOVE_QUEUE_SIZE)
             {
                 // TODO 싱크 완전히 깨진 상태이므로 위치 강제보정
                 throw new Exception("[RequestMove] moveQueue is Full.");   
@@ -63,12 +65,14 @@ public sealed class MovementHandler(
 
     private async Task ProcessMoveAsync(C_TO_U_MOVE moveRequest)
     {
+        increaseHp(-1);
+
         _lastCell ??= Cell.Clone(objectInfo.CurrentCell);
         objectInfo.CurrentCell = Cell.Clone(objectInfo.TargetCell);
         objectInfo.TargetCell = objectInfo.TargetCell.GetNextCell(moveRequest.Direction);
         
         // 삭제할 cell 계산
-        var lastBoundCells = _lastCell?.GetBoundCellList() ?? new List<Cell>();
+        var lastBoundCells = _lastCell?.GetBoundCellList() ?? [];
         var currentBoundCells = objectInfo.CurrentCell.GetBoundCellList();
         var cellsToRemove = lastBoundCells.Except(currentBoundCells).ToList();
 

@@ -50,7 +50,7 @@ namespace network.common.data.models
             LabName = "";
             Gold = 1000;
             TutorialIndex = 0;
-            Hp = 100;
+            Hp = 10000;
             Stamina = 100;
         }
 
@@ -78,9 +78,9 @@ namespace network.common.data.models
         
         [Key("tutorialIndex")] public int TutorialIndex { get; set; }
         
-        [Key("hp")] public float Hp { get; set; }
+        [Key("hp")] public int Hp { get; set; }
         
-        [Key("stamina")] public float Stamina { get; set; }
+        [Key("stamina")] public int Stamina { get; set; }
 
         public string GetLockKey()
         {
