@@ -68,8 +68,8 @@ public sealed class MovementHandler(
     {
         var moveSpeed = getMoveSpeed();
         var moveElapsedTime = GameRuleData.MoveElapsedTime / moveSpeed;
-        
-        increaseHp((int)Math.Abs(moveSpeed) * -1);
+        var consumeHp = (int)(moveSpeed * 2 + moveSpeed - 2);
+        increaseHp(consumeHp * -1);
 
         _lastCell ??= Cell.Clone(objectInfo.CurrentCell);
         objectInfo.CurrentCell = Cell.Clone(objectInfo.TargetCell);

@@ -41,7 +41,7 @@ namespace network.common
     {
         NONE = 0,
         HEAD = 101,
-        FACE = 102, 
+        FACE = 102,
         HAT = 103,
         TOP = 104,
         BOTTOM = 105,
