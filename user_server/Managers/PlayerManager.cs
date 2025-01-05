@@ -12,6 +12,7 @@ using user_server.handlers;
 namespace user_server.managers;
 
 public delegate void SendPacketDelegate(Packet msg);
+public delegate float GetMoveSpeedDelegate();
 public delegate void IncreaseHpDelegate(int value);
 
 public class PlayerManager(
@@ -42,7 +43,7 @@ public class PlayerManager(
         PlayerInfo.ObjectInfo.CurrentCell = ObjectInfo.TargetCell;
         PlayerInfo.State = PlayerState.IDLE;
         
-        _movementHandler = new MovementHandler(_logManager, PlayerInfo.ObjectInfo, natsClient, sendToClient, updateObjectManager, IncreaseHp);
+        _movementHandler = new MovementHandler(_logManager, PlayerInfo.ObjectInfo, natsClient, sendToClient, updateObjectManager, GetMoveSpeed, IncreaseHp);
         _environmentHandler = environmentHandler;
     }
 
@@ -104,11 +105,36 @@ public class PlayerManager(
         await _movementHandler.Spawn();
     }
 
-    public async Task RequestMove(GameUser _, C_TO_U_MOVE body)
+    public async Task RequestMove(GameUser user, C_TO_U_MOVE body)
     {
         if (_movementHandler == null) return;
 
+        if (PlayerInfo.Boosts.Contains(BoostType.SPEED))
+        {
+            if (PlayerInfo.Hp < 5)
+            {
+                PlayerInfo.Boosts.Remove(BoostType.SPEED);
+                await PlayerInfo.Save();
+                user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
+            }
+        }
+
         await _movementHandler.ProcessAsync(body);
+    }
+
+    public async Task UpdateBoost(GameUser user, C_TO_U_BOOST body)
+    {
+        if (PlayerInfo.Boosts.TryGetValue(body.BoostType, out var boost))
+        {
+            PlayerInfo.Boosts.Remove(boost);
+        }
+        else
+        {
+            PlayerInfo.Boosts.Add(body.BoostType);
+        }
+
+        await PlayerInfo.Save();
+        user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
     }
     
     public async Task Wear(long itemUid)
@@ -117,9 +143,10 @@ public class PlayerManager(
         await PlayerInfo.Save();
     }
 
-    public void SetState(PlayerState newState)
+    public async Task SetState(PlayerState newState)
     {
         PlayerInfo.State = newState;
+        await PlayerInfo.Save();
     }
 
     public async Task SetFlip(DirectionType direction)
@@ -141,10 +168,26 @@ public class PlayerManager(
         updateObjectManager.EnqueueUpdateObject(ObjectInfo);
     }
 
+    private float GetMoveSpeed()
+    {
+        if (PlayerInfo.Boosts.Contains(BoostType.SPEED))
+        {
+            return 2;
+        }
+
+        if (PlayerInfo.Hp <= 0)
+        {
+            return 0.5f;
+        }
+
+        return 1;
+    }
+
     private void IncreaseHp(int value)
     {
         PlayerInfo.Hp = Math.Clamp(PlayerInfo.Hp + value, 0, 10000);
         
+        // 너무 빈번해서 레디스에는 업데이트 안하고 있음
         // TODO 레이드 시 파티 단위로 브로드캐스트
         using var packet = PacketMaker.U_TO_C_PLAYER_INFO([PlayerInfo]);
         sendToClient(packet);

@@ -9,6 +9,11 @@ namespace network.common
         CLASSROOM
     }
 
+    public enum BoostType
+    {
+        NONE = 0,
+        SPEED = 1
+    }
 
     public enum BuffType
     {

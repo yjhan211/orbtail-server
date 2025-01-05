@@ -29,6 +29,7 @@ namespace network.common.data.models
             TutorialIndex = 0;
             Hp = 0;
             Stamina = 0;
+            Boosts = new();
         }
 
         public PlayerInfo(long playerId, bool isDummy)
@@ -52,6 +53,7 @@ namespace network.common.data.models
             TutorialIndex = 0;
             Hp = 10000;
             Stamina = 100;
+            Boosts = new();
         }
 
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
@@ -81,6 +83,8 @@ namespace network.common.data.models
         [Key("hp")] public int Hp { get; set; }
         
         [Key("stamina")] public int Stamina { get; set; }
+
+        [Key("boostList")] public HashSet<BoostType> Boosts { get; set; }
 
         public string GetLockKey()
         {

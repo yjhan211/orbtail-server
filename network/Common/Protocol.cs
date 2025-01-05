@@ -83,6 +83,7 @@ namespace network.common
         U_TO_G_LOGOUT,
         C_TO_U_UPDATE_TUTORIAL,
         U_TO_C_UPDATE_TUTORIAL,
+        C_TO_U_BOOST,
         END
     }
 

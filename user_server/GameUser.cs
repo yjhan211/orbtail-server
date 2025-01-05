@@ -200,6 +200,9 @@ public partial class GameUser : IPeer
                 case Protocol.C_TO_U_UPDATE_TUTORIAL:
                     await PlayerController.UpdateTutorial(this);
                     break;
+                case Protocol.C_TO_U_BOOST:
+                    await HandleMessage<C_TO_U_BOOST>(body, PlayerManager.UpdateBoost);
+                    break;
             }
         }
         catch (Exception e)
@@ -225,9 +228,9 @@ public partial class GameUser : IPeer
         _onLeaveCallback(this);
     }
 
-    public void SetState(PlayerState state)
+    public async Task SetState(PlayerState state)
     {
-        PlayerManager.SetState(state);
+        await PlayerManager.SetState(state);
     }
 
     public async Task SetFlip(DirectionType direction)
@@ -275,11 +278,11 @@ public partial class GameUser : IPeer
             {
                 playerInfo = new PlayerInfo(tempPlayerId, isDummy);
 
-                // 기본템 지급
+                // TODO 기본템 지급 (GameRuleData.DefaultItemList)
                 var giftItemList = new List<ItemInfo>();
-                foreach (var (itemId, count) in GameRuleData.DefaultItemList)
+                foreach (var testItemInfo in GameItemData.GetAllList())
                 {
-                    var item = await InventoryController.CreateItem(itemId, count);
+                    var item = await InventoryController.CreateItem(testItemInfo.Id, 1);
                     giftItemList.Add(item);
                 }
 

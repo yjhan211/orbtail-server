@@ -18,6 +18,7 @@ public sealed class MovementHandler(
     NatsClient natsClient,
     SendPacketDelegate sendToClient,
     UpdateObjectManager updateObjectManager,
+    GetMoveSpeedDelegate getMoveSpeed,
     IncreaseHpDelegate increaseHp)
 {
     // ReSharper disable once UnusedMember.Local
@@ -65,12 +66,15 @@ public sealed class MovementHandler(
 
     private async Task ProcessMoveAsync(C_TO_U_MOVE moveRequest)
     {
-        increaseHp(-1);
+        var moveSpeed = getMoveSpeed();
+        var moveElapsedTime = GameRuleData.MoveElapsedTime / moveSpeed;
+        
+        increaseHp((int)Math.Abs(moveSpeed) * -1);
 
         _lastCell ??= Cell.Clone(objectInfo.CurrentCell);
         objectInfo.CurrentCell = Cell.Clone(objectInfo.TargetCell);
         objectInfo.TargetCell = objectInfo.TargetCell.GetNextCell(moveRequest.Direction);
-        
+
         // 삭제할 cell 계산
         var lastBoundCells = _lastCell?.GetBoundCellList() ?? [];
         var currentBoundCells = objectInfo.CurrentCell.GetBoundCellList();
@@ -121,7 +125,6 @@ public sealed class MovementHandler(
             updateObjectManager.EnqueueUpdateObject(objectInfo);
         }
 
-        var moveElapsedTime = CalcMoveElapsedTime();
         await Task.Delay((int)(moveElapsedTime * 1000));
 
         var isArrive = true;
@@ -208,32 +211,6 @@ public sealed class MovementHandler(
             cellsToRemove ?? []
         ));
         natsClient.Publish(subject, message);
-    }
-
-    private float CalcMoveElapsedTime()
-    {
-        var moveElapsedTime = GameRuleData.MoveElapsedTime;
-        // switch (objectInfo.MapId)
-        // {
-        //     case MapId.WETLAND_1:
-        //         var player = await PlayerInfo.Load(objectInfo.ObjectId);
-        //         if (player == null) throw new Exception("cannot find player info");
-        //
-        //         var hasSpeedBoost = player.WearItemIdList.Contains(104000004);
-        //         if (!hasSpeedBoost) moveElapsedTime *= 2;
-        //         break;
-        //
-        //     case MapId.NONE:
-        //     case MapId.CAMPUS_1:
-        //     case MapId.FACTORY_1:
-        //     case MapId.LAB_1:
-        //     case MapId.LIBRARY:
-        //         break;
-        //     default:
-        //         throw new ArgumentOutOfRangeException();
-        // }
-
-        return moveElapsedTime;
     }
 
     private void Dispose(bool disposing)
