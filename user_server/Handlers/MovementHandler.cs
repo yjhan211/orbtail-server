@@ -11,12 +11,15 @@ using user_server.managers;
 
 namespace user_server.handlers;
 
+
 public sealed class MovementHandler(
     LogManager? logManager,
     GameObjectInfo objectInfo,
     NatsClient natsClient,
     SendPacketDelegate sendToClient,
-    UpdateObjectManager updateObjectManager)
+    UpdateObjectManager updateObjectManager,
+    GetMoveSpeedDelegate getMoveSpeed,
+    IncreaseHpDelegate increaseHp)
 {
     // ReSharper disable once UnusedMember.Local
     private readonly LogManager? _logManager = logManager;
@@ -48,7 +51,7 @@ public sealed class MovementHandler(
                 return;
             }
 
-            if (_moveQueue.Count > Config.MAX_MOVE_QUEUE_SIZE)
+            if (_moveQueue.Count <= Config.MAX_MOVE_QUEUE_SIZE)
             {
                 // TODO 싱크 완전히 깨진 상태이므로 위치 강제보정
                 throw new Exception("[RequestMove] moveQueue is Full.");   
@@ -63,12 +66,17 @@ public sealed class MovementHandler(
 
     private async Task ProcessMoveAsync(C_TO_U_MOVE moveRequest)
     {
+        var moveSpeed = getMoveSpeed();
+        var moveElapsedTime = GameRuleData.MoveElapsedTime / moveSpeed;
+        var consumeHp = (int)(moveSpeed * 2 + moveSpeed - 2);
+        increaseHp(consumeHp * -1);
+
         _lastCell ??= Cell.Clone(objectInfo.CurrentCell);
         objectInfo.CurrentCell = Cell.Clone(objectInfo.TargetCell);
         objectInfo.TargetCell = objectInfo.TargetCell.GetNextCell(moveRequest.Direction);
-        
+
         // 삭제할 cell 계산
-        var lastBoundCells = _lastCell?.GetBoundCellList() ?? new List<Cell>();
+        var lastBoundCells = _lastCell?.GetBoundCellList() ?? [];
         var currentBoundCells = objectInfo.CurrentCell.GetBoundCellList();
         var cellsToRemove = lastBoundCells.Except(currentBoundCells).ToList();
 
@@ -117,7 +125,6 @@ public sealed class MovementHandler(
             updateObjectManager.EnqueueUpdateObject(objectInfo);
         }
 
-        var moveElapsedTime = CalcMoveElapsedTime();
         await Task.Delay((int)(moveElapsedTime * 1000));
 
         var isArrive = true;
@@ -204,32 +211,6 @@ public sealed class MovementHandler(
             cellsToRemove ?? []
         ));
         natsClient.Publish(subject, message);
-    }
-
-    private float CalcMoveElapsedTime()
-    {
-        var moveElapsedTime = GameRuleData.MoveElapsedTime;
-        // switch (objectInfo.MapId)
-        // {
-        //     case MapId.WETLAND_1:
-        //         var player = await PlayerInfo.Load(objectInfo.ObjectId);
-        //         if (player == null) throw new Exception("cannot find player info");
-        //
-        //         var hasSpeedBoost = player.WearItemIdList.Contains(104000004);
-        //         if (!hasSpeedBoost) moveElapsedTime *= 2;
-        //         break;
-        //
-        //     case MapId.NONE:
-        //     case MapId.CAMPUS_1:
-        //     case MapId.FACTORY_1:
-        //     case MapId.LAB_1:
-        //     case MapId.LIBRARY:
-        //         break;
-        //     default:
-        //         throw new ArgumentOutOfRangeException();
-        // }
-
-        return moveElapsedTime;
     }
 
     private void Dispose(bool disposing)

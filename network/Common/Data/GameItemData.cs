@@ -70,6 +70,11 @@ namespace network.common.data
             return item;
         }
 
+        public static List<ItemInfoData> GetAllList()
+        {
+            return Items.Values.ToList();
+        }
+
         public static void Validate(LogManager logManager)
         {
             logManager.WriteDebugLog("=== GameItemData Validation ===");

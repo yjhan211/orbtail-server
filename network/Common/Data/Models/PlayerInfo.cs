@@ -25,8 +25,11 @@ namespace network.common.data.models
             InventoryInfo = new InventoryInfo();
             LabId = 0;
             LabName = "";
-            Gold = 0; 
+            Gold = 0;
             TutorialIndex = 0;
+            Hp = 0;
+            Stamina = 0;
+            Boosts = new();
         }
 
         public PlayerInfo(long playerId, bool isDummy)
@@ -48,6 +51,9 @@ namespace network.common.data.models
             LabName = "";
             Gold = 1000;
             TutorialIndex = 0;
+            Hp = 10000;
+            Stamina = 100;
+            Boosts = new();
         }
 
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
@@ -62,7 +68,6 @@ namespace network.common.data.models
 
         [Key("grade")] public PlayerGrade Grade { get; set; }
 
-        // ReSharper disable once CollectionNeverUpdated.Global
         [Key("wearItemIdList")] public List<int> WearItemIdList { get; set; }
 
         [Key("state")] public PlayerState State { get; set; }
@@ -72,8 +77,14 @@ namespace network.common.data.models
         [Key("labName")] public string LabName { get; set; }
 
         [Key("gold")] public long Gold { get; set; }
-
+        
         [Key("tutorialIndex")] public int TutorialIndex { get; set; }
+        
+        [Key("hp")] public int Hp { get; set; }
+        
+        [Key("stamina")] public int Stamina { get; set; }
+
+        [Key("boostList")] public HashSet<BoostType> Boosts { get; set; }
 
         public string GetLockKey()
         {

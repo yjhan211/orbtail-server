@@ -509,4 +509,10 @@ namespace network.common.data.models
     {
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
     }
+
+    [MessagePackObject]
+    public class C_TO_U_BOOST : IMessagePackObject
+    {
+        [Key("boostType")] public BoostType BoostType { get; set; }
+    }
 }

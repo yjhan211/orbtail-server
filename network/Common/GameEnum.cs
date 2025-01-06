@@ -5,10 +5,17 @@ namespace network.common
     {
         NONE = 0,
         LIBRARY,
-        SCHOOL,
-        CLASSROOM
+        SCHOOL1,
+        SCHOOL2,
+        CLASSROOM,
+        ADMINOFFICE,
     }
 
+    public enum BoostType
+    {
+        NONE = 0,
+        SPEED = 1
+    }
 
     public enum BuffType
     {

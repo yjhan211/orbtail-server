@@ -206,7 +206,7 @@ public static class JobController
                 await exploreTargetInfo.Save();
             }
 
-            user.SetState(playerInfo, PlayerState.EXPLORE_1);
+            user.SetState(PlayerState.EXPLORE_1);
             playerInfo.JobInfo.Hp -= 1;
             await playerInfo.Save();
         }
@@ -267,7 +267,7 @@ public static class JobController
             // var jobType = exploreTargetDetail.Item3;
             // playerInfo.JobInfo.ResearchPointDict[jobType].Point += 1;
 
-            user.SetState(playerInfo, PlayerState.NONE);
+            user.SetState(PlayerState.IDLE);
             await playerInfo.Save();
 
             using var packet = PacketMaker.U_TO_C_EXPLORE_COMPLETE(isSuccess, playerInfo.JobInfo);
@@ -352,7 +352,7 @@ public static class JobController
             //     await jobResourceInfo.Save();
             // }
 
-            user.SetState(playerInfo, PlayerState.CHEMIST_WORK_1);
+            user.SetState(PlayerState.CHEMIST_WORK_1);
             playerInfo.JobInfo.Hp -= 1;
             await playerInfo.Save();
         }
@@ -426,7 +426,7 @@ public static class JobController
 
             campInfo = new CampInfo(playerInfo.PlayerId, playerInfo.Name, playerInfo.ObjectInfo, targetItem,
                 playerInfo.ObjectInfo.TargetCell);
-            user.SetState(playerInfo, PlayerState.CAMPING_1);
+            user.SetState(PlayerState.CAMPING_1);
 
             await campInfo.Save();
             await playerInfo.Save();
@@ -554,10 +554,11 @@ public static class JobController
         user.Send(buyPacket);
 
         await InventoryController.GetCurrentItemList(user);
-
-        using var sellerPacket = PacketMaker.U_TO_U_PLAYER_INFO(sellerInfo);
-        user.NatsClient.Publish(sellerInfo.ObjectInfo.GetGameObjectKey(), sellerPacket.ToBytes());
-        user.BroadcastUpdateInfo(campInfo);
+        
+        // TODO
+        // using var sellerPacket = PacketMaker.U_TO_U_PLAYER_INFO(sellerInfo);
+        // user.NatsClient.Publish(sellerInfo.ObjectInfo.GetGameObjectKey(), sellerPacket.ToBytes());
+        // user.BroadcastUpdateInfo(campInfo);
     }
 
     private static void BroadcastJobResourceCreate(GameUser user, JobResourceInfo jobResourceInfo)

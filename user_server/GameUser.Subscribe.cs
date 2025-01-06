@@ -12,7 +12,7 @@ public partial class GameUser
     {
         try
         {
-            if (_playerManager.State == PlayerState.NONE)
+            if (PlayerManager.State == PlayerState.NONE)
             {
                 throw new Exception("invalid PlayerState");
             }
@@ -66,10 +66,6 @@ public partial class GameUser
                     HandleMessage<G_TO_U_CAMP_INFO>(body, SubscribeCampInfo);
                     break;
 
-                case Protocol.U_TO_U_PLAYER_INFO:
-                    HandleMessage<U_TO_U_PLAYER_INFO>(body, SubscribePlayerInfo);
-                    break;
-
                 case Protocol.U_TO_U_DUPLICATE:
                     RecvDuplicate();
                     break;
@@ -88,7 +84,7 @@ public partial class GameUser
     private void SubscribeUpdateObject(GameUser _, G_TO_U_MOVE body)
     {
         if (body.ObjectInfo.ObjectType == ObjectType.PLAYER)
-            if (body.ObjectInfo.ObjectId == _playerManager.PlayerId)
+            if (body.ObjectInfo.ObjectId == PlayerManager.PlayerId)
                 // 자신의 이동은 RequestMove시 이미 넣음
                 return;
 
@@ -99,7 +95,7 @@ public partial class GameUser
     {
         _logManager.WriteDebugLog($"[SubscribeSpawn] {body.ObjectKeyList.Count} | {body.CellsToRemove.Count}");
     
-        var objectKeys = body.ObjectKeyList.Where(key => key != _playerManager.ObjectKey).ToList();
+        var objectKeys = body.ObjectKeyList.Where(key => key != PlayerManager.ObjectKey).ToList();
         var cellsToRemove = body.CellsToRemove ?? [];
 
         var batchCount = (int)Math.Ceiling((double)Math.Max(objectKeys.Count, cellsToRemove.Count) / Config.BROADCAST_UNIT);
@@ -140,12 +136,6 @@ public partial class GameUser
         Send(packet);
     }
 
-    private void SubscribePlayerInfo(GameUser _, U_TO_U_PLAYER_INFO body)
-    {
-        using var packet = PacketMaker.U_TO_C_PLAYER_INFO([body.PlayerInfo]);
-        Send(packet);
-    }
-
     private void SubscribePlayerInfo(GameUser _, G_TO_U_PLAYER_INFO body)
     {
         using var packet = PacketMaker.U_TO_C_PLAYER_INFO([body.PlayerInfo]);
@@ -160,12 +150,12 @@ public partial class GameUser
 
     private void SubscribeCreateInstanceSuccess(GameUser _, G_TO_U_CREATE_INSTANCE_SUCCESS body)
     {
-        if (body.MapId != _playerManager.MapId || body.MapSubId != _playerManager.MapSubId) return;
+        if (body.MapId != PlayerManager.MapId || body.MapSubId != PlayerManager.MapSubId) return;
         using var packet = PacketMaker.U_TO_C_CHANGE_MAP(
-            _playerManager.MapId,
-            _playerManager.MapSubId,
-            _playerManager.CurrentCell,
-            _playerManager.IsFlip
+            PlayerManager.MapId,
+            PlayerManager.MapSubId,
+            PlayerManager.CurrentCell,
+            PlayerManager.IsFlip
         );
 
         Send(packet);

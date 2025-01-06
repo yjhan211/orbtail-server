@@ -18,22 +18,21 @@ public static class InventoryController
 
     public static async Task RequestWearItem(GameUser user, C_TO_U_WEAR_ITEM body)
     {
-        if (user.PlayerState != PlayerState.IDLE) throw new Exception("Invalid Player State");
-
-        var playerInfo = await PlayerInfo.Load(user.PlayerId);
-        if (playerInfo == null) throw new Exception("cannot found player info");
+        if (user.PlayerState != PlayerState.IDLE)
+        {
+            throw new Exception("Invalid Player State");
+        }
 
         await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
         {
-            playerInfo.WearItem(body.ItemUid);
-            await playerInfo.Save();
+            await user.PlayerManager.Wear(body.ItemUid);
         }
 
-        using var packet = PacketMaker.U_TO_C_WEAR_ITEM(playerInfo);
+        using var packet = PacketMaker.U_TO_C_WEAR_ITEM(user.PlayerManager.PlayerInfo);
         user.Send(packet);
 
         await GetCurrentItemList(user);
-        user.BroadcastUpdateInfo(playerInfo);
+        user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
     }
 
     public static async Task RequestUseItem(GameUser user, C_TO_U_USE_ITEM body)

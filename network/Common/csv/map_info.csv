@@ -1,4 +1,6 @@
 id,scene_name,is_common,comment
 1,LIBRARY,0,도서관
-2,SCHOOL,1,학교
-3,CLASSROOM,1,교실
+2,SCHOOL1,1,본관1층
+3,SCHOOL2,1,본관2층
+4,CLASSROOM,1,교실
+5,ADMINOFFICE,1,행정실

@@ -9,7 +9,7 @@ public partial class GameUser
     public void StartExplore(ExploreTargetInfo exploreTargetInfo)
     {
         var exploreProgressInfo = new ExploreProgressInfo(exploreTargetInfo);
-        _progressManager.AddProgressItem(
+        ProgressManager.AddProgressItem(
             exploreProgressInfo,
             async trackable =>
             {
@@ -22,7 +22,7 @@ public partial class GameUser
     public void StartJobSkill(JobResourceInfo jobResourceInfo)
     {
         var jobProgressInfo = new JobProgressInfo(jobResourceInfo);
-        _progressManager.AddProgressItem(
+        ProgressManager.AddProgressItem(
             jobProgressInfo,
             async trackable =>
             {
