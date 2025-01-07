@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using MessagePack;
 using network.common.data.helpers;
+using UnityEngine;
 
 namespace network.common.data.models
 {
@@ -108,10 +109,11 @@ namespace network.common.data.models
         public List<Cell> GetBoundCellList()
         {
             var result = new List<Cell>();
+            result.Add(new Cell(X - 16, Y - 8));
 
-            var minX = X - 13;
-            var maxX = X + 14;
-            var minY = Y - 7;
+            var minX = X - 15;
+            var maxX = X + 22;
+            var minY = Y - 8;
             var maxY = Y - 9;
 
             var line = 0;
@@ -124,43 +126,15 @@ namespace network.common.data.models
                     minY -= 1;
                     maxY += 2;
                 }
-                else if (line <= 4)
+                else if (line <= 8)
                 {
                     minY -= 1;
                     maxY += 1;
                 }
-                else if (line == 5)
-                {
-                    minY -= 1;
-                    maxY += 1;
-                }
-                else if (line == 6)
-                {
-                    minY -= 1;
-                    maxY += 1;
-                }
-                else if (line == 7)
-                {
-                    maxY += 1;
-                }
-                else if (line == 8)
+                else if (line <= 28)
                 {
                     minY += 1;
                     maxY += 1;
-                }
-                else if (line == 9)
-                {
-                    minY += 1;
-                    maxY += 1;
-                }
-                else if (line <= 22)
-                {
-                    minY += 1;
-                    maxY += 1;
-                }
-                else if (line == 23)
-                {
-                    minY += 1;
                 }
                 else
                 {
