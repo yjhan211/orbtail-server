@@ -4,3 +4,5 @@ id,scene_name,is_common,comment
 3,SCHOOL2,1,본관2층
 4,CLASSROOM,1,교실
 5,ADMINOFFICE,1,행정실
+6,GYM,1,강당
+7,GYMSTORAGE,0,체육창고
