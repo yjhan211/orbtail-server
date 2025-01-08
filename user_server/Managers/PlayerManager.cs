@@ -90,12 +90,8 @@ public class PlayerManager(
             throw new Exception("ObjectInfo is null");
         }
         
-        return ObjectInfo.MapId switch
-        {
-            MapId.LIBRARY => // 도서관은 개인맵
-                ObjectInfo.ObjectId,
-            _ => throw new ArgumentOutOfRangeException($"Invalid InstanceMap")
-        };
+        // TODO 동아리
+        return ObjectInfo.ObjectId;
     }
 
     public async Task Spawn()
