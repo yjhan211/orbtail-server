@@ -10,7 +10,8 @@ namespace network.common
         CLASSROOM,
         ADMINOFFICE,
         GYM,
-        GYMSTORAGE
+        GYMSTORAGE,
+        SCHOOLGROUND,
     }
 
     public enum BoostType
