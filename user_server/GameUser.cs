@@ -77,7 +77,7 @@ public partial class GameUser : IPeer
             var protocolId = (Protocol)packet.PopProtocolId();
             var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
-            
+
             _logManager.WriteDebugLog($"playerId: {playerId} | PROTOCOL: {protocolId}");
 
             if (NonAuthProtocol.Contains(protocolId))
@@ -202,6 +202,9 @@ public partial class GameUser : IPeer
                     break;
                 case Protocol.C_TO_U_BOOST:
                     await HandleMessage<C_TO_U_BOOST>(body, PlayerManager.UpdateBoost);
+                    break;
+                case Protocol.C_TO_U_SOCIAL_ACTION:
+                    await HandleMessage<C_TO_U_SOCIAL_ACTION>(body, PlayerManager.SocialAction);
                     break;
             }
         }

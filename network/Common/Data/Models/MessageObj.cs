@@ -517,15 +517,15 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class C_TO_U_SOCIAL : IMessagePackObject
+    public class C_TO_U_SOCIAL_ACTION : IMessagePackObject
     {
-        [Key("socialType")] public string SocialType { get; set; }
+        [Key("socialType")] public SocialActionType SocialActionType { get; set; }
     }
 
     [MessagePackObject]
-    public class U_TO_C_SOCIAL : IMessagePackObject
+    public class U_TO_C_SOCIAL_ACTION : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
-        [Key("socialType")] public string SocialType { get; set; }
+        [Key("socialType")] public SocialActionType SocialActionType { get; set; }
     }
 }
