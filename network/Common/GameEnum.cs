@@ -14,6 +14,14 @@ namespace network.common
         SCHOOLGROUND,
     }
 
+    public enum SocialActionType
+    {
+        NONE = 0,
+        SITGROUND,
+        LAUGH,
+        THUMBSUP,
+    }
+
     public enum BoostType
     {
         NONE = 0,
@@ -141,6 +149,7 @@ namespace network.common
     {
         NONE = 0,
         IDLE,
+        SITGROUND,
         ENGINEER_WORK_1,
         CHEMIST_WORK_1,
         EXPLORE_1,

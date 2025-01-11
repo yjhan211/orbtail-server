@@ -515,4 +515,17 @@ namespace network.common.data.models
     {
         [Key("boostType")] public BoostType BoostType { get; set; }
     }
+
+    [MessagePackObject]
+    public class C_TO_U_SOCIAL : IMessagePackObject
+    {
+        [Key("socialType")] public string SocialType { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_SOCIAL : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("socialType")] public string SocialType { get; set; }
+    }
 }
