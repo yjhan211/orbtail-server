@@ -31,6 +31,10 @@ public partial class GameUser : IPeer
         Protocol.C_TO_U_WEAR_ITEM,
         Protocol.C_TO_U_USE_SKILL
     };
+    
+    public static readonly IReadOnlyList<PlayerState> ActionState = new List<PlayerState>
+    {
+    };
 
     private readonly CancellationTokenSource _cts;
     private readonly LogManager _logManager;
@@ -100,7 +104,7 @@ public partial class GameUser : IPeer
                 throw new Exception("invalid PlayerState");
             }
 
-            if (ActionProtocol.Contains(protocolId) && PlayerManager.State != PlayerState.IDLE)
+            if (ActionProtocol.Contains(protocolId) && ActionState.Contains(PlayerManager.State))
             {
                 throw new Exception($"in action. {PlayerManager.PlayerId}");
             }

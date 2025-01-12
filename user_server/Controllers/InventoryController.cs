@@ -18,7 +18,7 @@ public static class InventoryController
 
     public static async Task RequestWearItem(GameUser user, C_TO_U_WEAR_ITEM body)
     {
-        if (user.PlayerState != PlayerState.IDLE)
+        if (GameUser.ActionState.Contains(user.PlayerState))
         {
             throw new Exception("Invalid Player State");
         }

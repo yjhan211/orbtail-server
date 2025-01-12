@@ -147,7 +147,7 @@ public class PlayerManager(
         switch (body.SocialActionType)
         {
             case SocialActionType.SITGROUND:
-                PlayerInfo.State = PlayerState.SITGROUND;
+                PlayerInfo.State = PlayerInfo.State == PlayerState.IDLE ? PlayerState.SITGROUND : PlayerState.IDLE;
                 await PlayerInfo.Save();
                 user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
                 break;
