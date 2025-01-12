@@ -150,6 +150,7 @@ namespace network.common
         NONE = 0,
         IDLE,
         SITGROUND,
+        SITCHAIR,
         ENGINEER_WORK_1,
         CHEMIST_WORK_1,
         EXPLORE_1,

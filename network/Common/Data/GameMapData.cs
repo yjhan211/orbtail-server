@@ -25,11 +25,19 @@ namespace network.common.data
             this.isFlip = isFlip;
         }
     }
+    
+    public enum ChairDirection
+    {
+        NONE,
+        LEFT,
+        RIGHT
+    }
 
     public static class GameMapData
     {
         private static readonly Dictionary<MapId, MapInfo> _mapInfos = new();
         private static readonly Dictionary<MapId, List<MapRegion>> _mapRegions = new();
+        private static readonly Dictionary<MapId, List<ChairInfo>> _chairInfos = new();
 
         public static void Initialize(List<CsvRow> mapInfo, List<CsvRow> mapRegion)
         {
@@ -88,6 +96,26 @@ namespace network.common.data
                 var rawMapId = int.Parse(row["map_id"]);
                 var mapId = MapId.Parse<MapId>(rawMapId.ToString());
 
+                if (row["region_type"].Equals("chair", StringComparison.OrdinalIgnoreCase))
+                {
+                    // 의자 정보 처리
+                    var chairInfo = new ChairInfo(
+                        new Cell(
+                            int.Parse(row["start_x"]),
+                            int.Parse(row["start_y"])
+                        ),
+                        int.Parse(row["is_flip"]) == 1
+                    );
+
+                    if (!_chairInfos.ContainsKey(mapId))
+                    {
+                        _chairInfos[mapId] = new List<ChairInfo>();
+                    }
+                    _chairInfos[mapId].Add(chairInfo);
+                    continue;
+                }
+
+                // 기존 region 처리
                 var region = new MapRegion
                 {
                     RegionType = row["region_type"],
@@ -106,7 +134,6 @@ namespace network.common.data
                 {
                     _mapRegions[mapId] = new List<MapRegion>();
                 }
-
                 _mapRegions[mapId].Add(region);
             }
         }
@@ -186,6 +213,20 @@ namespace network.common.data
             }
 
             return null;
+        }
+        
+        public static ChairDirection GetChairDirection(MapId mapId, Cell position)
+        {
+            if (!_chairInfos.ContainsKey(mapId))
+                return ChairDirection.NONE;
+
+            var chairInfo = _chairInfos[mapId].FirstOrDefault(c => 
+                c.Position.X == position.X && c.Position.Y == position.Y);
+
+            if (chairInfo == null)
+                return ChairDirection.NONE;
+
+            return chairInfo.IsFlip ? ChairDirection.RIGHT : ChairDirection.LEFT;
         }
 
         public static void Validate(LogManager logManager)
@@ -287,6 +328,18 @@ namespace network.common.data
             public MapId WarpTo { get; set; }
 
             public bool IsPortal => RegionType.Equals("portal", StringComparison.OrdinalIgnoreCase);
+        }
+        
+        public class ChairInfo
+        {
+            public Cell Position { get; set; }
+            public bool IsFlip { get; set; }
+
+            public ChairInfo(Cell position, bool isFlip)
+            {
+                Position = position;
+                IsFlip = isFlip;
+            }
         }
     }
 }
