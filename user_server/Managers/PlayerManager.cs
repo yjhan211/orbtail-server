@@ -157,6 +157,16 @@ public class PlayerManager(
         }
     }
 
+    public async Task SetName(GameUser user, C_TO_U_SET_NAME body)
+    {
+        PlayerInfo.Name = body.Name;
+        await PlayerInfo.Save();
+        
+        using var packet = PacketMaker.U_TO_C_SET_NAME(ErrorCode.SUCCESS, PlayerInfo);
+        user.Send(packet);
+        user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
+    }
+
     public async Task Wear(long itemUid)
     {
         PlayerInfo.WearItem(itemUid);

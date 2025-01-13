@@ -31,7 +31,7 @@ public partial class GameUser : IPeer
         Protocol.C_TO_U_WEAR_ITEM,
         Protocol.C_TO_U_USE_SKILL
     };
-    
+
     public static readonly IReadOnlyList<PlayerState> ActionState = new List<PlayerState>
     {
     };
@@ -199,7 +199,7 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_CAMP_INFO>(body, CampController.GetCampInfo);
                     break;
                 case Protocol.C_TO_U_SET_NAME:
-                    await HandleMessage<C_TO_U_SET_NAME>(body, PlayerController.SetName);
+                    await HandleMessage<C_TO_U_SET_NAME>(body, PlayerManager.SetName);
                     break;
                 case Protocol.C_TO_U_UPDATE_TUTORIAL:
                     await PlayerController.UpdateTutorial(this);
