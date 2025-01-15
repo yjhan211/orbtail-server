@@ -528,4 +528,19 @@ namespace network.common.data.models
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("socialType")] public SocialActionType SocialActionType { get; set; }
     }
+
+    public class U_TO_C_QUEST_LIST : IMessagePackObject
+    {
+        [Key("questList")] public List<QuestInfo> QuestList { get; set; }
+    }
+
+    public class C_TO_U_QUEST_SUCCESS : IMessagePackObject
+    {
+        [Key("questId")] public int QuestId { get; set; }
+    }
+
+    public class U_TO_C_QUEST_SUCCESS : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
 }

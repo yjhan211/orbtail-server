@@ -156,4 +156,11 @@ namespace network.common
         EXPLORE_1,
         CAMPING_1
     }
+
+    public enum QuestState : short
+    {
+        NONE = 0,
+        SUCCESS,
+        END
+    }
 }
