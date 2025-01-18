@@ -7,7 +7,7 @@ namespace user_server.controllers;
 
 public static class InventoryController
 {
-    private const string ItemUidKey = "lab_hire_list";
+    private const string ItemUidKey = "item_uid_key";
 
     public static async Task<ItemInfo> CreateItem(int itemId, int count)
     {
@@ -161,7 +161,7 @@ public static class InventoryController
         LabController.SendLabItemList(user, itemDict);
     }
 
-    public static async Task<int> GetCurrentItemList(GameUser user)
+    public static async Task GetCurrentItemList(GameUser user)
     {
         var playerInfo = await PlayerInfo.Load(user.PlayerId);
         if (playerInfo == null) throw new Exception("player_info not exists");
@@ -173,7 +173,6 @@ public static class InventoryController
         {
             using var packet = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(new Dictionary<long, ItemInfo>(), true);
             user.Send(packet);
-            return 0;
         }
 
         var itemKeys = inventoryInfo.ItemDict.Keys.ToArray();
@@ -187,8 +186,6 @@ public static class InventoryController
             using var packet = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(batchDict, isEnded);
             user.Send(packet);
         }
-
-        return itemKeys.Length;
     }
 
     public static void BroadcastCurrentLabItemList(GameUser user, LabInfo labInfo)

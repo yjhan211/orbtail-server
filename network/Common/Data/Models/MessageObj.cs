@@ -529,18 +529,56 @@ namespace network.common.data.models
         [Key("socialType")] public SocialActionType SocialActionType { get; set; }
     }
 
+    [MessagePackObject]
     public class U_TO_C_QUEST_LIST : IMessagePackObject
     {
-        [Key("questList")] public List<QuestInfo> QuestList { get; set; }
+        [Key("questDict")] public Dictionary<int, QuestInfo> QuestDict { get; set; }
+        [Key("isEnd")] public bool IsEnd { get; set; }
     }
-
+    
+    [MessagePackObject]
+    public class C_TO_U_QUEST_INCREASE : IMessagePackObject
+    {
+        [Key("questId")] public int QuestId { get; set; }
+        [Key("count")] public int Count { get; set; }
+    }
+    
+    [MessagePackObject]
+    public class U_TO_C_QUEST_UPDATE : IMessagePackObject
+    {
+        [Key("quest")] public QuestInfo QuestInfo { get; set; }
+    }
+    
+    [MessagePackObject]
     public class C_TO_U_QUEST_SUCCESS : IMessagePackObject
     {
         [Key("questId")] public int QuestId { get; set; }
     }
-
+    
+    [MessagePackObject]
     public class U_TO_C_QUEST_SUCCESS : IMessagePackObject
     {
+        [Key("questId")] public int QuestId { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_MAIL_LIST : IMessagePackObject
+    {
+        [Key("mailDict")] public Dictionary<long, MailInfo> MailDict { get; set; }
+        [Key("isEnd")] public bool IsEnd { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_MAIL_RECEIVE : IMessagePackObject
+    {
+        [Key("mailUid")] public long MailUid { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_MAIL_RECEIVE : IMessagePackObject
+    {
+        [Key("mailUid")] public long MailUid { get; set; }
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
     }
 }

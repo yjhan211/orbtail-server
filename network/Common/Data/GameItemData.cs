@@ -80,30 +80,8 @@ namespace network.common.data
             logManager.WriteDebugLog("=== GameItemData Validation ===");
             foreach (var (id, item) in Items)
             {
-                logManager.WriteDebugLog($"Item {id}:");
-                logManager.WriteDebugLog($"  Name: {item.Name}");
-                logManager.WriteDebugLog($"  Comment: {item.Comment}");
-                logManager.WriteDebugLog($"  Reusable: {item.Reusable}");
-
-                if (item.IsEquipment)
-                {
-                    logManager.WriteDebugLog($"  SkinName: {item.SkinName}");
-                    if (item.MaxDurability > 0) 
-                        logManager.WriteDebugLog($"  MaxDurability: {item.MaxDurability}");
-                }
-
-                if (item.BuffList != null && item.BuffList.Count != 0)
-                    logManager.WriteDebugLog($"  BuffList: {string.Join(", ", item.BuffList)}");
-
-                if (item.ConsumableBuffList != null)
-                    logManager.WriteDebugLog($"  ConsumableBuffList: {string.Join(", ", item.ConsumableBuffList)}");
-
-                if (item.MaxSellItems > 0) 
-                    logManager.WriteDebugLog($"  MaxItems: {item.MaxSellItems}");
-
-                logManager.WriteDebugLog("");
+                logManager.WriteDebugLog($"[{id}] {item.Name}");
             }
-
             logManager.WriteDebugLog("All validations passed successfully!");
         }
         

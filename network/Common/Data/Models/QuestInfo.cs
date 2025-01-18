@@ -4,13 +4,30 @@ using MessagePack;
 namespace network.common.data.models
 {
     [MessagePackObject]
-    public class QuestInfo
+    public partial class QuestDiary : IMessagePackObject
     {
-        [IgnoreMember] public const string HashKey = "QuestInfo";
+        [IgnoreMember] public const string HashKey = "Quests";
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("questDict")] public Dictionary<int, QuestInfo> QuestDict { get; set; }
 
-        public QuestInfo()
+        public QuestDiary()
         {
             PlayerId = 0;
+            QuestDict = new();
+        }
+
+        public QuestDiary(long playerId)
+        {
+            PlayerId = playerId;
+            QuestDict = new();
+        }
+    }
+
+    [MessagePackObject]
+    public partial class QuestInfo : IMessagePackObject
+    {
+        public QuestInfo()
+        {
             QuestId = 0;
             Count = 0;
             State = QuestState.NONE;
@@ -18,13 +35,11 @@ namespace network.common.data.models
 
         public QuestInfo(long playerId, int questId)
         {
-            PlayerId = playerId;
             QuestId = questId;
             Count = 0;
             State = QuestState.NONE;
         }
         
-        [Key("playerId")] public long PlayerId { get; set; }
         [Key("questId")] public int QuestId { get; set; }
         [Key("count")] public int Count { get; set; }
         [Key("state")] public QuestState State { get; set; }

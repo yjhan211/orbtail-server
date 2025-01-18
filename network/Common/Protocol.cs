@@ -86,6 +86,15 @@ namespace network.common
         C_TO_U_BOOST,
         C_TO_U_SOCIAL_ACTION,
         U_TO_C_SOCIAL_ACTION,
+        U_TO_C_QUESTS,
+        C_TO_U_QUEST_INCREASE,
+        U_TO_C_QUEST_UPDATE,
+        C_TO_U_QUEST_SUCCESS,
+        U_TO_C_QUEST_SUCCESS,
+        C_TO_U_MAIL_LIST,
+        U_TO_C_MAIL_LIST,
+        C_TO_U_MAIL_RECEIVE,
+        U_TO_C_MAIL_RECEIVE,
         END
     }
 

@@ -352,7 +352,7 @@ public static class JobController
             //     await jobResourceInfo.Save();
             // }
 
-            user.SetState(PlayerState.CHEMIST_WORK_1);
+            await user.SetState(PlayerState.CHEMIST_WORK_1);
             playerInfo.JobInfo.Hp -= 1;
             await playerInfo.Save();
         }

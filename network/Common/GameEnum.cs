@@ -157,10 +157,23 @@ namespace network.common
         CAMPING_1
     }
 
+    public enum QuestType : short
+    {
+        NONE = 0,
+        MAIN,
+        SUB
+    }
+
     public enum QuestState : short
     {
         NONE = 0,
         SUCCESS,
         END
+    }
+
+    public enum MailState : short
+    {
+        NONE = 0,
+        REWARDED = 1,
     }
 }

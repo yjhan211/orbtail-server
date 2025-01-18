@@ -15,6 +15,8 @@ namespace network.common.data.helpers
         {
             public const string GameRule = "game_rule.csv";
             public const string BuffInfo = "buff_info.csv";
+            public const string QuestInfo = "quest_info.csv";
+            public const string MailInfo = "mail_info.csv";
 
             public static class Item
             {
@@ -42,9 +44,11 @@ namespace network.common.data.helpers
             StandardDataDefinitions = 
             {
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
-                (fileName: DataFiles.BuffInfo, init: GameBuffData.Initialize, validate: GameBuffData.Validate)
+                (fileName: DataFiles.BuffInfo, init: GameBuffData.Initialize, validate: GameBuffData.Validate),
+                (fileName: DataFiles.QuestInfo, init: GameQuestData.Initialize, validate: GameQuestData.Validate),
+                (fileName: DataFiles.MailInfo, init: GameMailData.Initialize, validate: GameMailData.Validate)
             };
-        
+
         public static void Initialize(LogManager logManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));

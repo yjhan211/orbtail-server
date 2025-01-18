@@ -210,6 +210,18 @@ public partial class GameUser : IPeer
                 case Protocol.C_TO_U_SOCIAL_ACTION:
                     await HandleMessage<C_TO_U_SOCIAL_ACTION>(body, PlayerManager.SocialAction);
                     break;
+                case Protocol.C_TO_U_QUEST_INCREASE:
+                    await HandleMessage<C_TO_U_QUEST_INCREASE>(body, QuestController.IncreaseQuestCount);
+                    break;
+                case Protocol.C_TO_U_QUEST_SUCCESS:
+                    await HandleMessage<C_TO_U_QUEST_INCREASE>(body, QuestController.CompleteQuest);
+                    break;
+                case Protocol.C_TO_U_MAIL_LIST:
+                    await MailBoxController.GetCurrentMailList(this);
+                    break;
+                case Protocol.C_TO_U_MAIL_RECEIVE:
+                    await HandleMessage<C_TO_U_MAIL_RECEIVE>(body, MailBoxController.ReceiveMail);
+                    break;
             }
         }
         catch (Exception e)
@@ -303,11 +315,14 @@ public partial class GameUser : IPeer
                 playerInfo.WearItem(defaultTop.ItemUid);
                 playerInfo.WearItem(defaultBottom.ItemUid);
                 playerInfo.WearItem(defaultShoes.ItemUid);
+                
+                var firstMail = await MailBoxController.CreateMail(1);
+                await MailBoxController.SendMail(this, firstMail);
+                await QuestController.StartQuest(this, 1);
             }
 
             var environmentHandler = new EnvironmentHandler(_logManager, _cts, RedLock, Send, playerInfo.ObjectInfo);
             await environmentHandler.StartAsync();
-
             PlayerManager.Initialize(playerInfo, environmentHandler);
 
             using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
@@ -350,6 +365,12 @@ public partial class GameUser : IPeer
         // 인벤토리 정보 전송
         await InventoryController.GetCurrentItemList(this);
         if (labInfo != null) await InventoryController.GetLabInventory(this);
+        
+        // 우편 정보 전송
+        await MailBoxController.GetCurrentMailList(this);
+        
+        // 퀘스트 정보 전송
+        await QuestController.GetCurrentQuestList(this);
 
         await PlayerManager.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
     }
