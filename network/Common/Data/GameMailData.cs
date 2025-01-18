@@ -21,7 +21,7 @@ namespace network.common.data
         public static void Initialize(List<CsvRow> csvData)
         {
             var mailInfos = csvData.Select(MailInfoData.CreateFromData);
-            foreach (var mailInfo in mailInfos) Mails.Add(mailInfo.Id, mailInfo);
+            foreach (var mailInfo in mailInfos) Mails[mailInfo.Id] = mailInfo;
         }
         
         public static MailInfoData Get(int id)

@@ -21,7 +21,7 @@ namespace network.common.data
         public static void Initialize(List<CsvRow> csvData)
         {
             var buffInfos = csvData.Select(BuffInfoData.CreateFromData);
-            foreach (var buffInfo in buffInfos) Buffs.Add(buffInfo.Id, buffInfo);
+            foreach (var buffInfo in buffInfos) Buffs[buffInfo.Id] = buffInfo;
         }
 
         public static BuffInfoData Get(int id)

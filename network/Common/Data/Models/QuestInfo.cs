@@ -1,4 +1,6 @@
 // ReSharper disable All
+
+using System.Collections.Generic;
 using MessagePack;
 
 namespace network.common.data.models

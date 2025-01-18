@@ -22,7 +22,7 @@ namespace network.common.data
         public static void Initialize(List<CsvRow> csvData)
         {
             var questInfos = csvData.Select(QuestInfoData.CreateFromData);
-            foreach (var questInfo in questInfos) Quests.Add(questInfo.Id, questInfo);
+            foreach (var questInfo in questInfos) Quests[questInfo.Id] = questInfo;
         }
 
         public static QuestInfoData Get(int id)
