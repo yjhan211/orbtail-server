@@ -9,9 +9,7 @@ namespace network.common.data.models
     public partial class MailBox : IMessagePackObject
     {
         [IgnoreMember] public const string HashKey = "MailBox";
-        [Key("playerId")] public long PlayerId { get; set; }
-        [Key("MailDict")] public Dictionary<long, MailInfo> MailDict { get; set; }
-
+        
         public MailBox()
         {
             PlayerId = 0;
@@ -23,13 +21,14 @@ namespace network.common.data.models
             PlayerId = playerId;
             MailDict = new();
         }
+        
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("mailDict")] public Dictionary<long, MailInfo> MailDict { get; set; }
     }
     
     [MessagePackObject]
     public class MailInfo : IMessagePackObject
     {
-        [IgnoreMember] public const string HashKey = "MailInfo";
-        
         public MailInfo()
         {
             MailUid = 0;

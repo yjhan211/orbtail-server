@@ -27,7 +27,7 @@ public partial class QuestDiary
     public static async Task<QuestDiary> Load(long playerId)
     {
         var serializedData = await CacheHelper.Instance.HashGetAsync(HashKey, playerId);
-        if (serializedData.IsNull) return new QuestDiary();
+        if (serializedData.IsNull) return new QuestDiary(playerId);
         
         var quests = MessagePackSerializer.Deserialize<QuestDiary>(serializedData);
         return quests;

@@ -65,6 +65,7 @@ public static class MailBoxController
     public static async Task GetCurrentMailList(GameUser user)
     {
         var mailBox = await MailBox.Load(user.PlayerId);
+        user.LogManager.WriteDebugLog($"Mail Count : {mailBox.MailDict.Count}");
         if (mailBox.MailDict.Count == 0)
         {
             return;

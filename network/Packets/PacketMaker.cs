@@ -406,7 +406,7 @@ public static class PacketMaker
 
     public static Packet U_TO_C_QUEST_LIST(Dictionary<int, QuestInfo> questDict, bool isEnd)
     {
-        var packet = Packet.Create((int)Protocol.U_TO_C_QUESTS);
+        var packet = Packet.Create((int)Protocol.U_TO_C_QUEST_LIST);
         U_TO_C_QUEST_LIST body = new() { QuestDict = questDict, IsEnd = isEnd };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

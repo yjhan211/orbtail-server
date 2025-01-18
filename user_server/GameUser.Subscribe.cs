@@ -73,7 +73,7 @@ public partial class GameUser
         }
         catch (Exception e)
         {
-            _logManager.WriteErrorLog(e);
+            LogManager.WriteErrorLog(e);
         }
         finally
         {
@@ -93,7 +93,7 @@ public partial class GameUser
 
     private void SubscribeSpawn(GameUser user, G_TO_U_SPAWN body)
     {
-        _logManager.WriteDebugLog($"[SubscribeSpawn] {body.ObjectKeyList.Count} | {body.CellsToRemove.Count}");
+        LogManager.WriteDebugLog($"[SubscribeSpawn] {body.ObjectKeyList.Count} | {body.CellsToRemove.Count}");
     
         var objectKeys = body.ObjectKeyList.Where(key => key != PlayerManager.ObjectKey).ToList();
         var cellsToRemove = body.CellsToRemove ?? [];
@@ -120,7 +120,7 @@ public partial class GameUser
             );
             Send(packet);
         
-            _logManager.WriteDebugLog($"[SubscribeSpawn] Send {batch.Count} | {cellBatch.Count}");
+            LogManager.WriteDebugLog($"[SubscribeSpawn] Send {batch.Count} | {cellBatch.Count}");
         }
     }
 

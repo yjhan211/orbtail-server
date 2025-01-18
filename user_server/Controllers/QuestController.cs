@@ -41,20 +41,15 @@ public static class QuestController
     public static async Task CompleteQuest(GameUser user, C_TO_U_QUEST_INCREASE body)
     {
         var questDiary = await QuestDiary.Load(user.PlayerId);
-        if (questDiary.QuestDict.ContainsKey(body.QuestId))
-        {
-            throw new Exception($"Already Started Quest. QuestId: {body.QuestId}");
-        }
-            
         if (!questDiary.QuestDict.TryGetValue(body.QuestId, out var questInfo))
         {
-            throw new Exception($"Already Started Quest. QuestId: {body.QuestId}");
+            throw new Exception($"Not Started Quest. QuestId: {body.QuestId}");
         }
             
         var questDesignData = GameQuestData.Get(body.QuestId);
         if (questInfo.Count < questDesignData.RequireCount)
         {
-            throw new Exception($"Already Started Quest. QuestId: {body.QuestId}");
+            throw new Exception($"Invalid State. QuestId: {body.QuestId}");
         }
 
         var playerInfo = await PlayerInfo.Load(user.PlayerId);
@@ -64,14 +59,16 @@ public static class QuestController
         }
             
         questInfo.State = QuestState.END;
-            
-        var rewardMail = await MailBoxController.CreateMail(2, questDesignData.RewardItemList);
 
-        await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+        if (questDesignData.RewardItemList.Count > 0)
         {
-            var mailBox = await MailBox.Load(user.PlayerId);
-            mailBox.AddMail(rewardMail);
-            await mailBox.Save();
+            var rewardMail = await MailBoxController.CreateMail(2, questDesignData.RewardItemList);
+            await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+            {
+                var mailBox = await MailBox.Load(user.PlayerId);
+                mailBox.AddMail(rewardMail);
+                await mailBox.Save();
+            }
         }
         
         foreach (var nextQuestId in questDesignData.NextIdList)

@@ -37,7 +37,7 @@ public partial class MailBox
     public static async Task<MailBox> Load(long playerId)
     {
         var serializedData = await CacheHelper.Instance.HashGetAsync(HashKey, playerId);
-        if (serializedData.IsNull) return new MailBox();
+        if (serializedData.IsNull) return new MailBox(playerId);
         
         var mails = MessagePackSerializer.Deserialize<MailBox>(serializedData);
         return mails;
