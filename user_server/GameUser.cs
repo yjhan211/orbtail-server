@@ -409,6 +409,27 @@ public partial class GameUser : IPeer
         NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, info)));
     }
 
+    public void BroadcastSocialAction(PlayerInfo playerInfo, SocialActionType socialActionType)
+    {
+        var objectInfo = playerInfo.ObjectInfo;
+        var sendTuple = (playerInfo.PlayerId, socialActionType);
+        if (GameMapData.IsCommonMap(objectInfo.MapId))
+        {
+            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
+            foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetSocialActionSubject(objectInfo, targetServer)))
+            {
+                NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, sendTuple)));
+            }
+            return;
+        }
+    
+        var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+        var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
+        var instanceSubject = SubjectHelper.GetSocialActionSubject(objectInfo, manageServer);
+        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, sendTuple)));
+    }
+
     public void PublishToClients(Packet packet, List<long> userIdList)
     {
         foreach (var userId in userIdList)

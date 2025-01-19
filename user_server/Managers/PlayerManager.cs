@@ -153,6 +153,7 @@ public class PlayerManager(
                 break;
 
             default:
+                user.BroadcastSocialAction(user.PlayerManager.PlayerInfo, body.SocialActionType);
                 break;
         }
     }

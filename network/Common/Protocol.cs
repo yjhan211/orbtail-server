@@ -85,6 +85,7 @@ namespace network.common
         U_TO_C_UPDATE_TUTORIAL,
         C_TO_U_BOOST,
         C_TO_U_SOCIAL_ACTION,
+        G_TO_U_SOCIAL_ACTION,
         U_TO_C_SOCIAL_ACTION,
         U_TO_C_QUEST_LIST,
         C_TO_U_QUEST_INCREASE,

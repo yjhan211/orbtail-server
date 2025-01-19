@@ -404,6 +404,24 @@ public static class PacketMaker
         return packet;
     }
 
+    public static Packet G_TO_U_SOCIAL_ACTION(long playerId, SocialActionType actionType)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_U_SOCIAL_ACTION);
+        G_TO_U_SOCIAL_ACTION body = new() { PlayerId = playerId, SocialActionType = actionType };
+        
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+    
+    public static Packet U_TO_C_SOCIAL_ACTION(long playerId, SocialActionType actionType)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_SOCIAL_ACTION);
+        U_TO_C_SOCIAL_ACTION body = new() { PlayerId = playerId, SocialActionType = actionType };
+        
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     public static Packet U_TO_C_QUEST_LIST(Dictionary<int, QuestInfo> questDict, bool isEnd)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_QUEST_LIST);

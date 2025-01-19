@@ -65,6 +65,10 @@ public partial class GameUser
                 case Protocol.G_TO_U_CAMP_INFO:
                     HandleMessage<G_TO_U_CAMP_INFO>(body, SubscribeCampInfo);
                     break;
+                
+                case Protocol.G_TO_U_SOCIAL_ACTION:
+                    HandleMessage<G_TO_U_SOCIAL_ACTION>(body, SubscribeSocialAction);
+                    break;
 
                 case Protocol.U_TO_U_DUPLICATE:
                     RecvDuplicate();
@@ -175,6 +179,12 @@ public partial class GameUser
     private void SubscribeCampInfo(GameUser _, G_TO_U_CAMP_INFO body)
     {
         using var packet = PacketMaker.U_TO_C_CAMP_INFO([body.CampInfo]);
+        Send(packet);
+    }
+
+    private void SubscribeSocialAction(GameUser _, G_TO_U_SOCIAL_ACTION body)
+    {
+        using var packet = PacketMaker.U_TO_C_SOCIAL_ACTION(body.PlayerId, body.SocialActionType);
         Send(packet);
     }
 }
