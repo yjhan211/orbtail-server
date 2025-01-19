@@ -23,8 +23,7 @@ namespace network.common.data
             var buffInfos = csvData.Select(BuffInfoData.CreateFromData);
             foreach (var buffInfo in buffInfos) Buffs[buffInfo.Id] = buffInfo;
         }
-        
-        [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
+
         public static BuffInfoData Get(int id)
         {
             if (!Buffs.TryGetValue(id, out var buff)) throw new KeyNotFoundException($"Buff {id} not found");

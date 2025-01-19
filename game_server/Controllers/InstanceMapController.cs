@@ -61,11 +61,11 @@ public class InstanceMapController
 
     private void SubscribeToInstanceEvents(MapId mapId, long mapSubId)
     {
-        _logManager.WriteDebugLog($"updateInfoSubject: {SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, Program.GameServerId)}");
         var immediateHandlers = new Dictionary<string, Action<RedisValue>>
         {
             { SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, Program.GameServerId), HandleUpdateInfo },
-            { SubjectHelper.GetSpawnManageSubject(mapId, mapSubId, Program.GameServerId), SpawnManageObject }
+            { SubjectHelper.GetSocialActionSubject(mapId, mapSubId, Program.GameServerId), HandleSocialAction },
+            { SubjectHelper.GetSpawnManageSubject(mapId, mapSubId, Program.GameServerId), SpawnManageObject },
         };
 
         var moveSubject = SubjectHelper.GetUpdateManageSubject(mapId, mapSubId, Program.GameServerId);
@@ -180,6 +180,14 @@ public class InstanceMapController
             info = default;
             return false;
         }
+    }
+    
+    private void HandleSocialAction(RedisValue message)
+    {
+        var (partKey, (playerId, socialActionType)) = MessagePackSerializer.Deserialize<(string, (long, SocialActionType))>(message);
+
+        using var packet = PacketMaker.G_TO_U_SOCIAL_ACTION(playerId, socialActionType);
+        BroadcastPacket(partKey, packet);
     }
 
     private async Task MoveManageObjectAsync(RedisValue message)

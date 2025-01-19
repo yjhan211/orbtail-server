@@ -404,6 +404,69 @@ public static class PacketMaker
         return packet;
     }
 
+    public static Packet G_TO_U_SOCIAL_ACTION(long playerId, SocialActionType actionType)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_U_SOCIAL_ACTION);
+        G_TO_U_SOCIAL_ACTION body = new() { PlayerId = playerId, SocialActionType = actionType };
+        
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+    
+    public static Packet U_TO_C_SOCIAL_ACTION(long playerId, SocialActionType actionType)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_SOCIAL_ACTION);
+        U_TO_C_SOCIAL_ACTION body = new() { PlayerId = playerId, SocialActionType = actionType };
+        
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet U_TO_C_QUEST_LIST(Dictionary<int, QuestInfo> questDict, bool isEnd)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_QUEST_LIST);
+        U_TO_C_QUEST_LIST body = new() { QuestDict = questDict, IsEnd = isEnd };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet U_TO_C_QUEST_UPDATE(QuestInfo questInfo)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_QUEST_UPDATE);
+        U_TO_C_QUEST_UPDATE body = new() { QuestInfo = questInfo };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet U_TO_C_QUEST_SUCCESS(int questId, ErrorCode errorCode)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_QUEST_SUCCESS);
+        U_TO_C_QUEST_SUCCESS body = new() { QuestId = questId, ErrorCode = errorCode };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+    
+    public static Packet U_TO_C_MAIL_LIST(Dictionary<long, MailInfo> mailDict, bool isEnd)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_MAIL_LIST);
+        U_TO_C_MAIL_LIST body = new() { MailDict = mailDict, IsEnd = isEnd };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet U_TO_C_MAIL_RECEIVE(long mailUid, ErrorCode errorCode)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_MAIL_RECEIVE);
+        U_TO_C_MAIL_RECEIVE body = new() { MailUid = mailUid, ErrorCode = errorCode };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     public static Packet U_TO_G_LOGOUT(long playerId)
     {
         var packet = Packet.Create((int)Protocol.U_TO_G_LOGOUT, playerId);

@@ -105,6 +105,15 @@ public class PlayerManager(
     {
         if (_movementHandler == null) return;
 
+        switch (PlayerInfo.State)
+        {
+            case PlayerState.SITGROUND:
+                PlayerInfo.State = PlayerState.IDLE;
+                await PlayerInfo.Save();
+                user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
+                break;
+        }
+
         if (PlayerInfo.Boosts.Contains(BoostType.SPEED))
         {
             if (PlayerInfo.Hp < 5)
@@ -132,7 +141,33 @@ public class PlayerManager(
         await PlayerInfo.Save();
         user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
     }
-    
+
+    public async Task SocialAction(GameUser user, C_TO_U_SOCIAL_ACTION body)
+    {
+        switch (body.SocialActionType)
+        {
+            case SocialActionType.SITGROUND:
+                PlayerInfo.State = PlayerInfo.State == PlayerState.IDLE ? PlayerState.SITGROUND : PlayerState.IDLE;
+                await PlayerInfo.Save();
+                user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
+                break;
+
+            default:
+                user.BroadcastSocialAction(user.PlayerManager.PlayerInfo, body.SocialActionType);
+                break;
+        }
+    }
+
+    public async Task SetName(GameUser user, C_TO_U_SET_NAME body)
+    {
+        PlayerInfo.Name = body.Name;
+        await PlayerInfo.Save();
+        
+        using var packet = PacketMaker.U_TO_C_SET_NAME(ErrorCode.SUCCESS, PlayerInfo);
+        user.Send(packet);
+        user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
+    }
+
     public async Task Wear(long itemUid)
     {
         PlayerInfo.WearItem(itemUid);

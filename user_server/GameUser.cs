@@ -32,14 +32,18 @@ public partial class GameUser : IPeer
         Protocol.C_TO_U_USE_SKILL
     };
 
+    public static readonly IReadOnlyList<PlayerState> ActionState = new List<PlayerState>
+    {
+    };
+
     private readonly CancellationTokenSource _cts;
-    private readonly LogManager _logManager;
     private readonly Action<GameUser> _onLeaveCallback;
     private readonly UserToken _token;
     private readonly UpdateObjectManager _updateObjectManager;
     private readonly SemaphoreSlim _userLock;
     public readonly NatsClient NatsClient;
     public readonly RedLockFactory RedLock;
+    public readonly LogManager LogManager;
     public readonly PlayerManager PlayerManager;
     public readonly ProgressManager ProgressManager;
 
@@ -50,17 +54,17 @@ public partial class GameUser : IPeer
 
         RedLock = redLockFactory;
         NatsClient = natsClient;
-        _logManager = logManager;
+        LogManager = logManager;
         _userLock = new SemaphoreSlim(1);
         _cts = new CancellationTokenSource();
 
-        ProgressManager = new ProgressManager(_logManager);
+        ProgressManager = new ProgressManager(LogManager);
         var updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
-        _updateObjectManager = new UpdateObjectManager(_cts, _logManager, Send, updateObjectChannel);
-        PlayerManager = new PlayerManager(_logManager, NatsClient, Send, _updateObjectManager);
+        _updateObjectManager = new UpdateObjectManager(_cts, LogManager, Send, updateObjectChannel);
+        PlayerManager = new PlayerManager(LogManager, NatsClient, Send, _updateObjectManager);
         _onLeaveCallback = onLeaveCallback;
 
-        _logManager.WriteInfoLog("Create GameUser Success!");
+        LogManager.WriteInfoLog("Create GameUser Success!");
     }
 
     public long PlayerId => PlayerManager.PlayerId;
@@ -77,8 +81,8 @@ public partial class GameUser : IPeer
             var protocolId = (Protocol)packet.PopProtocolId();
             var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
-            
-            _logManager.WriteDebugLog($"playerId: {playerId} | PROTOCOL: {protocolId}");
+
+            LogManager.WriteDebugLog($"playerId: {playerId} | PROTOCOL: {protocolId}");
 
             if (NonAuthProtocol.Contains(protocolId))
             {
@@ -100,7 +104,7 @@ public partial class GameUser : IPeer
                 throw new Exception("invalid PlayerState");
             }
 
-            if (ActionProtocol.Contains(protocolId) && PlayerManager.State != PlayerState.IDLE)
+            if (ActionProtocol.Contains(protocolId) && ActionState.Contains(PlayerManager.State))
             {
                 throw new Exception($"in action. {PlayerManager.PlayerId}");
             }
@@ -195,7 +199,7 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_CAMP_INFO>(body, CampController.GetCampInfo);
                     break;
                 case Protocol.C_TO_U_SET_NAME:
-                    await HandleMessage<C_TO_U_SET_NAME>(body, PlayerController.SetName);
+                    await HandleMessage<C_TO_U_SET_NAME>(body, PlayerManager.SetName);
                     break;
                 case Protocol.C_TO_U_UPDATE_TUTORIAL:
                     await PlayerController.UpdateTutorial(this);
@@ -203,11 +207,26 @@ public partial class GameUser : IPeer
                 case Protocol.C_TO_U_BOOST:
                     await HandleMessage<C_TO_U_BOOST>(body, PlayerManager.UpdateBoost);
                     break;
+                case Protocol.C_TO_U_SOCIAL_ACTION:
+                    await HandleMessage<C_TO_U_SOCIAL_ACTION>(body, PlayerManager.SocialAction);
+                    break;
+                case Protocol.C_TO_U_QUEST_INCREASE:
+                    await HandleMessage<C_TO_U_QUEST_INCREASE>(body, QuestController.IncreaseQuestCount);
+                    break;
+                case Protocol.C_TO_U_QUEST_SUCCESS:
+                    await HandleMessage<C_TO_U_QUEST_INCREASE>(body, QuestController.CompleteQuest);
+                    break;
+                case Protocol.C_TO_U_MAIL_LIST:
+                    await MailBoxController.GetCurrentMailList(this);
+                    break;
+                case Protocol.C_TO_U_MAIL_RECEIVE:
+                    await HandleMessage<C_TO_U_MAIL_RECEIVE>(body, MailBoxController.ReceiveMail);
+                    break;
             }
         }
         catch (Exception e)
         {
-            _logManager.WriteErrorLog(e);
+            LogManager.WriteErrorLog(e);
         }
         finally
         {
@@ -224,7 +243,7 @@ public partial class GameUser : IPeer
 
     public void OnRemoved()
     {
-        _logManager.WriteInfoLog($"GameUser Removed. PlayerId:{PlayerId}");
+        LogManager.WriteInfoLog($"GameUser Removed. PlayerId:{PlayerId}");
         _onLeaveCallback(this);
     }
 
@@ -273,9 +292,12 @@ public partial class GameUser : IPeer
         PlayerInfo? playerInfo;
         await using (await PlayerInfo.Lock(RedLock, tempPlayerId))
         {
+            var isInit = false;
+
             playerInfo = await PlayerInfo.Load(tempPlayerId);
             if (playerInfo == null)
             {
+                isInit = true;
                 playerInfo = new PlayerInfo(tempPlayerId, isDummy);
 
                 // TODO 기본템 지급 (GameRuleData.DefaultItemList)
@@ -298,9 +320,8 @@ public partial class GameUser : IPeer
                 playerInfo.WearItem(defaultShoes.ItemUid);
             }
 
-            var environmentHandler = new EnvironmentHandler(_logManager, _cts, RedLock, Send, playerInfo.ObjectInfo);
+            var environmentHandler = new EnvironmentHandler(LogManager, _cts, RedLock, Send, playerInfo.ObjectInfo);
             await environmentHandler.StartAsync();
-
             PlayerManager.Initialize(playerInfo, environmentHandler);
 
             using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
@@ -308,6 +329,13 @@ public partial class GameUser : IPeer
 
             await playerInfo.Save();
             await playerInfo.ObjectInfo.Save();
+
+            if (isInit)
+            {
+                var firstMail = await MailBoxController.CreateMail(1);
+                await MailBoxController.SendMail(this, firstMail);
+                await QuestController.StartQuest(this, 1);
+            }
         }
 
         NatsClient.Subscribe(PlayerManager.ObjectInfo.GetGameObjectKey(),
@@ -319,7 +347,7 @@ public partial class GameUser : IPeer
                 }
                 catch (Exception e)
                 {
-                    _logManager.WriteErrorLog(e);
+                    LogManager.WriteErrorLog(e);
                 }
             });
         
@@ -331,7 +359,7 @@ public partial class GameUser : IPeer
             }
             catch (Exception e)
             {
-                _logManager.WriteErrorLog(e);
+                LogManager.WriteErrorLog(e);
             }
         });
 
@@ -343,6 +371,12 @@ public partial class GameUser : IPeer
         // 인벤토리 정보 전송
         await InventoryController.GetCurrentItemList(this);
         if (labInfo != null) await InventoryController.GetLabInventory(this);
+        
+        // 우편 정보 전송
+        await MailBoxController.GetCurrentMailList(this);
+        
+        // 퀘스트 정보 전송
+        await QuestController.GetCurrentQuestList(this);
 
         await PlayerManager.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
     }
@@ -373,6 +407,27 @@ public partial class GameUser : IPeer
         var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
         var instanceSubject = SubjectHelper.GetUpdateInfoSubject(objectInfo, manageServer);
         NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, info)));
+    }
+
+    public void BroadcastSocialAction(PlayerInfo playerInfo, SocialActionType socialActionType)
+    {
+        var objectInfo = playerInfo.ObjectInfo;
+        var sendTuple = (playerInfo.PlayerId, socialActionType);
+        if (GameMapData.IsCommonMap(objectInfo.MapId))
+        {
+            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
+            foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetSocialActionSubject(objectInfo, targetServer)))
+            {
+                NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, sendTuple)));
+            }
+            return;
+        }
+    
+        var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+        var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
+        var instanceSubject = SubjectHelper.GetSocialActionSubject(objectInfo, manageServer);
+        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, sendTuple)));
     }
 
     public void PublishToClients(Packet packet, List<long> userIdList)
@@ -415,7 +470,7 @@ public partial class GameUser : IPeer
         }
         catch (Exception ex)
         {
-            _logManager.WriteErrorLog(ex);
+            LogManager.WriteErrorLog(ex);
         }
         finally
         {

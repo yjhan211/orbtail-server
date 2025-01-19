@@ -7,24 +7,6 @@ namespace user_server.controllers;
 
 public static class PlayerController
 {
-    public static async Task SetName(GameUser user, C_TO_U_SET_NAME body)
-    {
-        var playerInfo = await PlayerInfo.Load(user.PlayerId);
-        if (playerInfo == null) throw new Exception("not found player info");
-
-        await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
-        {
-            playerInfo.Name = body.Name;
-            playerInfo.TutorialIndex = 3;
-            await playerInfo.Save();
-        }
-
-        using var packet = PacketMaker.U_TO_C_SET_NAME(ErrorCode.SUCCESS, playerInfo);
-        user.Send(packet);
-
-        user.BroadcastUpdateInfo(playerInfo);
-    }
-
     public static async Task GetPlayerInfo(GameUser user, C_TO_U_PLAYER_INFO body)
     {
         var keys = body.PlayerIdList.ConvertAll(x => (RedisValue)x).ToArray();
@@ -33,7 +15,6 @@ public static class PlayerController
         using var packet = PacketMaker.U_TO_C_PLAYER_INFO(playerInfoList);
         user.Send(packet);
     }
-
 
     public static async Task UpdateTutorial(GameUser user)
     {
