@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using game_server.handlers;
 using MessagePack;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 using network.helpers;
 using network.infrastructure;
@@ -12,12 +13,10 @@ using StackExchange.Redis;
 
 namespace game_server.controllers;
 
-public class InstanceMapController
+public class InstanceMapController(LogManager logManager, NatsClient natsClient, CancellationTokenSource cts)
 {
-    private readonly CancellationTokenSource _cts;
-    private readonly LogManager _logManager;
-    private readonly NatsClient _natsClient;
-    
+    private readonly CancellationTokenSource _cts = cts;
+
     private readonly SemaphoreSlim _mapLock = new(1, 1);
     private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
 
@@ -31,14 +30,6 @@ public class InstanceMapController
 
     private static string EnterInstanceSubject => SubjectHelper.GetEnterInstanceSubject(Program.GameServerId);
 
-    // ReSharper disable once ConvertToPrimaryConstructor
-    public InstanceMapController(LogManager logManager, NatsClient natsClient, CancellationTokenSource cts)
-    {
-        _logManager = logManager;
-        _natsClient = natsClient;
-        _cts = cts;
-    }
-
     public void Initialize()
     {
         SubscribeToCreateInstance();
@@ -46,15 +37,15 @@ public class InstanceMapController
 
     private void SubscribeToCreateInstance()
     {
-        _logManager.WriteDebugLog($"EnterInstanceSubject: {EnterInstanceSubject}");
-        _natsClient.Subscribe(EnterInstanceSubject, (_, msg) => {        
+        logManager.WriteDebugLog($"EnterInstanceSubject: {EnterInstanceSubject}");
+        natsClient.Subscribe(EnterInstanceSubject, (_, msg) => {        
             try
             {
                 EnterInstance(msg).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
-                _logManager.WriteErrorLog(ex);
+                logManager.WriteErrorLog(ex);
             }
         });
     }
@@ -77,7 +68,7 @@ public class InstanceMapController
         };
 
         foreach (var (subject, handler) in immediateHandlers)
-            _natsClient.Subscribe(subject, (_, msg) =>
+            natsClient.Subscribe(subject, (_, msg) =>
             {
                 try
                 {
@@ -85,13 +76,13 @@ public class InstanceMapController
                 }
                 catch (Exception ex)
                 {
-                    _logManager.WriteErrorLog(ex);
+                    logManager.WriteErrorLog(ex);
                 }
             });
 
         foreach (var (subject, handler) in asyncHandlers)
         {
-            _natsClient.Subscribe(subject, (_, msg) => 
+            natsClient.Subscribe(subject, (_, msg) => 
             {
                 try
                 {
@@ -99,7 +90,7 @@ public class InstanceMapController
                 }
                 catch (Exception ex)
                 {
-                    _logManager.WriteErrorLog(ex);
+                    logManager.WriteErrorLog(ex);
                 }
             });
         }
@@ -117,8 +108,37 @@ public class InstanceMapController
                 SubscribeToInstanceEvents(mapId, mapSubId);
             }
             _objectInstanceDict[instanceKey].Add(userSubject);
+
+            var playerId = long.Parse(userSubject.Split("_")[1]);
+            var exploreTargetList = ExploreTargetData.GetListByMap(mapId);
+            foreach (var exploreTarget in exploreTargetList)
+            {
+                var exploreTargetUid = 900000000 + playerId;
+                var objectInfo = new GameObjectInfo
+                {
+                    ObjectType = ObjectType.EXPLORETARGET,
+                    ObjectId = exploreTargetUid,
+                    CurrentCell = exploreTarget.Position,
+                    TargetCell = exploreTarget.Position,
+                    MapId = mapId
+                };
+
+                var exploreTargetInfo = new ExploreTargetInfo(exploreTargetUid, 1, objectInfo);
+                var partKey = MapHelper.CreatePartKey(mapId, mapSubId);
+                _objectInstanceDict.AddOrUpdate(partKey, [objectInfo.GetGameObjectKey()],
+                    (_, set) =>
+                    {
+                        set.Add(objectInfo.GetGameObjectKey());
+                        return set;
+                    });
+                
+                await exploreTargetInfo.Save();
+                
+                using var packet = PacketMaker.G_TO_U_MOVE(objectInfo);
+                BroadcastPacket(partKey, packet);            
+            }
             
-            _logManager.WriteDebugLog($"EnterInstance: {instanceKey}");
+            logManager.WriteDebugLog($"EnterInstance: {instanceKey}");
         }
         finally
         {
@@ -128,7 +148,7 @@ public class InstanceMapController
         if (!isLogin)
         {
             using var packet = PacketMaker.G_TO_U_CREATE_INSTANCE_SUCCESS(mapId, mapSubId);
-            _natsClient.Publish(userSubject, packet.ToBytes());
+            natsClient.Publish(userSubject, packet.ToBytes());
         }
     }
 
@@ -250,7 +270,7 @@ public class InstanceMapController
         if (spawnList.Count <= 0) return;
 
         using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);
-        _natsClient.Publish(userSubject, packet.ToBytes());
+        natsClient.Publish(userSubject, packet.ToBytes());
     }
 
     private async Task DestroyManageObjectAsync(RedisValue message)
@@ -290,7 +310,7 @@ public class InstanceMapController
         var channelsCopy = channels.ToList();
         foreach (var channel in channelsCopy)
         {
-            _natsClient.Publish(channel, packet.ToBytes());
+            natsClient.Publish(channel, packet.ToBytes());
         }
     }
 

@@ -52,6 +52,7 @@ public class CommonMapController
         _immediateHandlers = new Dictionary<string, Action<RedisValue>>
         {
             { SubjectHelper.GetUpdateInfoSubject(_mapId, 0, Program.GameServerId), HandleUpdateInfo },
+            { SubjectHelper.GetSocialActionSubject(mapId, 0, Program.GameServerId), HandleSocialAction },
             { SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, Program.GameServerId), BroadcastUpdateObject },
             { SubjectHelper.GetBroadcastDestroySubject(_mapId, 0, Program.GameServerId), BroadcastDestroyObject }
         };
@@ -271,6 +272,14 @@ public class CommonMapController
             return false;
         }
     }
+    
+    private void HandleSocialAction(RedisValue message)
+    {
+        var (partKey, (playerId, socialActionType)) = MessagePackSerializer.Deserialize<(string, (long, SocialActionType))>(message);
+
+        using var packet = PacketMaker.G_TO_U_SOCIAL_ACTION(playerId, socialActionType);
+        BroadcastPacket(partKey, packet);
+    }
 
     private async Task MoveManageObjectAsync(RedisValue message)
     {
@@ -279,8 +288,8 @@ public class CommonMapController
         var currentPositionKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
 
         await UpdateObjectPositionAsync(lastPositionKey, currentPositionKey, objectKey);
-        BroadcastObjectMove(lastPositionKey, objectInfo);
-        BroadcastObjectMove(currentPositionKey, objectInfo);
+        await BroadcastObjectMove(lastPositionKey, objectInfo);
+        await BroadcastObjectMove(currentPositionKey, objectInfo);
     }
 
     private void BroadcastPacket(string positionKey, IPacket packet)

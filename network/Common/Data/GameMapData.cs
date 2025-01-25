@@ -75,7 +75,7 @@ namespace network.common.data
                 var fromMap = MapId.Parse<MapId>(int.Parse(row["from_map"]).ToString());
                 var isFlip = int.Parse(row["is_flip"]) == 1;
 
-                if (initCellX != 0 || initCellY != 0 || fromMap != MapId.NONE)
+                if (initCellX != 0 || initCellY != 0 || fromMap != MapId.None)
                 {
                     if (_mapInfos.TryGetValue(mapId, out var mapInfo))
                     {

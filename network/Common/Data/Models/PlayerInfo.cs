@@ -44,7 +44,7 @@ namespace network.common.data.models
             Grade = PlayerGrade.COMMONER;
             WearItemIdList = new();
             State = PlayerState.NONE;
-            ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.LIBRARY, 1, initCell);
+            ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.TutorialLibrary, 1, initCell);
             JobInfo = new JobInfo(PlayerId);
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
             LabId = 0;
