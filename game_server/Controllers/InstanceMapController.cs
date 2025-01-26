@@ -123,7 +123,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
                     MapId = mapId
                 };
 
-                var exploreTargetInfo = new ExploreTargetInfo(exploreTargetUid, 1, objectInfo);
+                var exploreTargetInfo = new ExploreTargetInfo(exploreTargetUid, exploreTarget.Id, objectInfo);
                 var partKey = MapHelper.CreatePartKey(mapId, mapSubId);
                 _objectInstanceDict.AddOrUpdate(partKey, [objectInfo.GetGameObjectKey()],
                     (_, set) =>

@@ -38,6 +38,18 @@ namespace network.common.data
         private static readonly Dictionary<MapId, MapInfo> _mapInfos = new();
         private static readonly Dictionary<MapId, List<MapRegion>> _mapRegions = new();
         private static readonly Dictionary<MapId, List<ChairInfo>> _chairInfos = new();
+        
+        private static readonly Dictionary<MapId, MapId> MapConversions = new()
+        {
+            { MapId.TutorialLibrary, MapId.Library },
+            { MapId.TutorialSchool1, MapId.School1 },
+            { MapId.TutorialSchool2, MapId.School2 },
+            { MapId.TutorialClassroom, MapId.Classroom },
+            { MapId.TutorialAdminoffice, MapId.Adminoffice },
+            { MapId.TutorialGym, MapId.Gym },
+            { MapId.TutorialGymstorage, MapId.Gymstorage },
+            { MapId.TutorialSchoolground, MapId.Schoolground }
+        };
 
         public static void Initialize(List<CsvRow> mapInfo, List<CsvRow> mapRegion)
         {
@@ -194,11 +206,32 @@ namespace network.common.data
 
             return true;
         }
+        
+        public static MapId ConvertMap(MapId mapId, bool toTutorial = false)
+        {
+            if (toTutorial)
+            {
+                if (mapId.ToString().StartsWith("Tutorial"))
+                {
+                    return mapId;
+                }
+           
+                return MapConversions.FirstOrDefault(x => x.Value == mapId).Key;
+            }
 
-        public static (MapId mapId, Cell spawnPosition, bool isFlip)? GetPortalOrNull(GameObjectInfo objectInfo)
+            if (!mapId.ToString().StartsWith("Tutorial"))
+            {
+                return mapId; 
+            }
+       
+            return MapConversions.TryGetValue(mapId, out var convertedMap) ? convertedMap : mapId;
+        }
+
+        public static (MapId mapId, Cell spawnPosition, bool isFlip)? GetPortalOrNull(GameObjectInfo objectInfo, bool isTutorial)
         {
             var currentCell = objectInfo.TargetCell;
-            var regions = GetMapRegions(objectInfo.MapId);
+            var currentMap = ConvertMap(objectInfo.MapId);
+            var regions = GetMapRegions(currentMap);
             var portalRegions = regions.Where(r => r.IsPortal);
 
             foreach (var portal in portalRegions)
@@ -207,7 +240,9 @@ namespace network.common.data
                     currentCell.Y >= portal.Start.Y && currentCell.Y <= portal.End.Y)
                 {
                     var targetMapInfo = GetMapInfo(portal.WarpTo);
-                    var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(objectInfo.MapId);
+                    var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(currentMap);
+                    var warpMap = ConvertMap(portal.WarpTo, isTutorial);
+                    
                     return (portal.WarpTo, spawnPosition, isFlip);
                 }
             }

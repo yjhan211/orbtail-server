@@ -69,7 +69,7 @@ public partial class GameUser : IPeer
 
     public long PlayerId => PlayerManager.PlayerId;
     public PlayerState PlayerState => PlayerManager.State;
-    public Cell CurrentCell => PlayerManager.CurrentCell;
+    public Cell CurrentCell => PlayerManager.CurrentCell ?? new(0, 0);
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
     {
@@ -381,7 +381,7 @@ public partial class GameUser : IPeer
         await PlayerManager.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
     }
 
-    public void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject
+    public void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject?
     {
         var objectInfo = info switch
         {

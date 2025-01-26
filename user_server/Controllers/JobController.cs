@@ -164,34 +164,6 @@ public static class JobController
                     return;
                 }
 
-                // var exploreTargetDetail = GameDataHelper.GetExploreTargetDetail(
-                //     exploreTargetInfo.ExploreTargetId
-                // );
-                //
-                // var jobType = exploreTargetDetail.Item3;
-                // var requireLevel = exploreTargetDetail.Item4;
-                //
-                // var (isValidJobType, isExploreAble, isEnoughLevel) =
-                //     playerInfo.WearItemIdList.Aggregate(
-                //         (false, false, false),
-                //         (acc, wearItem) =>
-                //         {
-                //             var (skillType, skillId, skillLevel) = GameDataHelper.GetSkill(wearItem);
-                //             return (
-                //                 acc.Item1 || skillType == jobType,
-                //                 acc.Item2 || skillId == 100001 || skillId == 100002 || skillId == 100003,
-                //                 acc.Item3 || requireLevel <= skillLevel
-                //             );
-                //         }
-                //     );
-                //
-                // if (!isValidJobType || !isExploreAble || !isEnoughLevel)
-                // {
-                //     using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
-                //     user.Send(errorPacket);
-                //     return;
-                // }
-
                 if (1 < user.CurrentCell.GetDistance(exploreTargetInfo.ObjectInfo.CurrentCell))
                 {
                     using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
@@ -206,7 +178,7 @@ public static class JobController
                 await exploreTargetInfo.Save();
             }
 
-            user.SetState(PlayerState.EXPLORE_1);
+            await user.SetState(PlayerState.EXPLORE_1);
             playerInfo.JobInfo.Hp -= 1;
             await playerInfo.Save();
         }
@@ -227,19 +199,19 @@ public static class JobController
             var playerInfo = await PlayerInfo.Load(user.PlayerId);
             if (playerInfo == null) throw new Exception("cannot find player info");
 
-            var isSuccess = random.Next(0, 100) < 50;
-            if (isSuccess)
-            {
-                var jobResourceUid = await CacheHelper.Instance.StringIncrementAsync("temp_job_resource_uid");
-                var jobResourceObjectInfo = new GameObjectInfo
-                {
-                    ObjectType = ObjectType.JOBRESOURCE,
-                    ObjectId = jobResourceUid,
-                    CurrentCell = exploreTargetInfo.ObjectInfo.CurrentCell,
-                    TargetCell = exploreTargetInfo.ObjectInfo.CurrentCell,
-                    MapId = exploreTargetInfo.ObjectInfo.MapId,
-                    MapSubId = exploreTargetInfo.ObjectInfo.MapSubId
-                };
+            // var isSuccess = random.Next(0, 100) < 50;
+            // if (isSuccess)
+            // {
+                // var jobResourceUid = await CacheHelper.Instance.StringIncrementAsync("temp_job_resource_uid");
+                // var jobResourceObjectInfo = new GameObjectInfo
+                // {
+                //     ObjectType = ObjectType.JOBRESOURCE,
+                //     ObjectId = jobResourceUid,
+                //     CurrentCell = exploreTargetInfo.ObjectInfo.CurrentCell,
+                //     TargetCell = exploreTargetInfo.ObjectInfo.CurrentCell,
+                //     MapId = exploreTargetInfo.ObjectInfo.MapId,
+                //     MapSubId = exploreTargetInfo.ObjectInfo.MapSubId
+                // };
 
                 // var upgradePool = GameDataHelper.GetExploreResultPool(exploreTargetInfo.ExploreTargetId);
                 // var jobResourceId = upgradePool[random.Next(0, upgradePool.Count)];
@@ -250,10 +222,10 @@ public static class JobController
                 // BroadcastJobResourceCreate(user, jobResourceInfo);
 
                 // 조사대상 삭제
-                await exploreTargetInfo.Delete();
-                BroadcastObjectDestroy(user, exploreTargetInfo.ObjectInfo);
-            }
-            else
+                // await exploreTargetInfo.Delete();
+                // BroadcastObjectDestroy(user, exploreTargetInfo.ObjectInfo);
+            // }
+            // else
             {
                 // 조사대상 소유권 해제
                 exploreTargetInfo.PlayerId = 0;
@@ -267,10 +239,10 @@ public static class JobController
             // var jobType = exploreTargetDetail.Item3;
             // playerInfo.JobInfo.ResearchPointDict[jobType].Point += 1;
 
-            user.SetState(PlayerState.IDLE);
+            await user.SetState(PlayerState.IDLE);
             await playerInfo.Save();
 
-            using var packet = PacketMaker.U_TO_C_EXPLORE_COMPLETE(isSuccess, playerInfo.JobInfo);
+            using var packet = PacketMaker.U_TO_C_EXPLORE_COMPLETE(true, playerInfo.JobInfo);
             user.Send(packet);
             user.BroadcastUpdateInfo(playerInfo);
         }
