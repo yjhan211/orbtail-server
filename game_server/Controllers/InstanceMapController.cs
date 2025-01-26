@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using game_server.handlers;
 using MessagePack;
 using network.common;
 using network.common.data;
@@ -19,14 +18,6 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
     private readonly SemaphoreSlim _mapLock = new(1, 1);
     private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
-
-    private readonly Dictionary<Type, object> _updateHandlers = new()
-    {
-        { typeof(PlayerInfo), new UpdateHandler<PlayerInfo>(PacketMaker.G_TO_U_PLAYER_INFO) },
-        { typeof(ExploreTargetInfo), new UpdateHandler<ExploreTargetInfo>(PacketMaker.G_TO_U_EXPLORE_TARGET_INFO) },
-        { typeof(JobResourceInfo), new UpdateHandler<JobResourceInfo>(PacketMaker.G_TO_U_JOB_RESOURCE_INFO) },
-        { typeof(CampInfo), new UpdateHandler<CampInfo>(PacketMaker.G_TO_U_CAMP_INFO) }
-    };
 
     private static string EnterInstanceSubject => SubjectHelper.GetEnterInstanceSubject(Program.GameServerId);
 
@@ -120,7 +111,8 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
                     ObjectId = exploreTargetUid,
                     CurrentCell = exploreTarget.Position,
                     TargetCell = exploreTarget.Position,
-                    MapId = mapId
+                    MapId = mapId,
+                    MapSubId = mapSubId,
                 };
 
                 var exploreTargetInfo = new ExploreTargetInfo(exploreTargetUid, exploreTarget.Id, objectInfo);
@@ -154,51 +146,33 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
     private void HandleUpdateInfo(RedisValue message)
     {
-        if (TryDeserialize<PlayerInfo>(message, out var key1, out var playerInfo))
-        {
-            var handler = _updateHandlers[typeof(PlayerInfo)];
-            using var packet = ((IUpdateHandler<PlayerInfo>)handler).MakePacket(playerInfo);
-            BroadcastPacket(key1, packet);
-            return;
-        }
-    
-        if (TryDeserialize<ExploreTargetInfo>(message, out var key2, out var exploreInfo))
-        {
-            var handler = _updateHandlers[typeof(ExploreTargetInfo)];
-            using var packet = ((IUpdateHandler<ExploreTargetInfo>)handler).MakePacket(exploreInfo);
-            BroadcastPacket(key2, packet);
-            return;
-        }
-    
-        if (TryDeserialize<JobResourceInfo>(message, out var key3, out var jobInfo))
-        {
-            var handler = _updateHandlers[typeof(JobResourceInfo)];
-            using var packet = ((IUpdateHandler<JobResourceInfo>)handler).MakePacket(jobInfo);
-            BroadcastPacket(key3, packet);
-            return;
-        }
-    
-        if (TryDeserialize<CampInfo>(message, out var key4, out var campInfo))
-        {
-            var handler = _updateHandlers[typeof(CampInfo)];
-            using var packet = ((IUpdateHandler<CampInfo>)handler).MakePacket(campInfo);
-            BroadcastPacket(key4, packet);
-            return;
-        }
-    }
+        var (key, type, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
 
-    private bool TryDeserialize<T>(RedisValue message, out string key, out T info) where T : IMessagePackObject
-    {
-        try
+        switch (type)
         {
-            (key, info) = MessagePackSerializer.Deserialize<(string, T)>(message);
-            return true;
-        }
-        catch
-        {
-            key = null;
-            info = default;
-            return false;
+            case ObjectType.PLAYER:
+            {
+                var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serializedInfo);
+                using var packet = PacketMaker.G_TO_U_PLAYER_INFO(playerInfo);
+                BroadcastPacket(key, packet);
+                break;
+            }
+            
+            case ObjectType.EXPLORETARGET:
+            {
+                var exploreTargetInfo = MessagePackSerializer.Deserialize<ExploreTargetInfo>(serializedInfo);
+                using var packet =  PacketMaker.G_TO_U_EXPLORE_TARGET_INFO(exploreTargetInfo);
+                BroadcastPacket(key, packet);
+                break;
+            }
+            
+            case ObjectType.CAMP:
+            {
+                var campInfo = MessagePackSerializer.Deserialize<CampInfo>(serializedInfo);
+                using var packet =  PacketMaker.G_TO_U_CAMP_INFO(campInfo);
+                BroadcastPacket(key, packet);
+                break;
+            }
         }
     }
     

@@ -23,6 +23,11 @@ public static class InventoryController
             throw new Exception("Invalid Player State");
         }
 
+        if (user.PlayerManager.PlayerInfo == null)
+        {
+            throw new Exception("Invalid PlayerInfo");
+        }
+
         await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
         {
             await user.PlayerManager.Wear(body.ItemUid);

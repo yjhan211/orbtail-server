@@ -300,11 +300,10 @@ public partial class GameUser : IPeer
                 isInit = true;
                 playerInfo = new PlayerInfo(tempPlayerId, isDummy);
 
-                // TODO 기본템 지급 (GameRuleData.DefaultItemList)
                 var giftItemList = new List<ItemInfo>();
-                foreach (var testItemInfo in GameItemData.GetAllList())
+                foreach (var (itemId, count) in GameRuleData.DefaultItemList)
                 {
-                    var item = await InventoryController.CreateItem(testItemInfo.Id, 1);
+                    var item = await InventoryController.CreateItem(itemId, count);
                     giftItemList.Add(item);
                 }
 
@@ -325,7 +324,7 @@ public partial class GameUser : IPeer
             PlayerManager.Initialize(playerInfo, environmentHandler);
 
             using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
-            NatsClient.Publish(PlayerManager.ObjectInfo.GetGameObjectKey(), duplicatePacket.ToBytes());
+            NatsClient.Publish(PlayerManager.ObjectInfo!.GetGameObjectKey(), duplicatePacket.ToBytes());
 
             await playerInfo.Save();
             await playerInfo.ObjectInfo.Save();
@@ -387,7 +386,6 @@ public partial class GameUser : IPeer
         {
             PlayerInfo p => p.ObjectInfo,
             ExploreTargetInfo e => e.ObjectInfo,
-            JobResourceInfo j => j.ObjectInfo,
             CampInfo c => c.ObjectInfo,
             _ => throw new ArgumentException($"Unsupported type: {typeof(T)}")
         };
@@ -406,7 +404,9 @@ public partial class GameUser : IPeer
         var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
         var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
         var instanceSubject = SubjectHelper.GetUpdateInfoSubject(objectInfo, manageServer);
-        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, info)));
+        
+        var serializedInfo = MessagePackSerializer.Serialize(info);
+        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, objectInfo.ObjectType, serializedInfo)));
     }
 
     public void BroadcastSocialAction(PlayerInfo playerInfo, SocialActionType socialActionType)

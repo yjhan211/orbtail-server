@@ -35,7 +35,7 @@ namespace network.common.data
 
         public static ExploreTargetInfoData Get(int id)
         {
-            if (Infos.TryGetValue(id, out var info)) throw new KeyNotFoundException($"ExploreTarget {id} not found");
+            if (!Infos.TryGetValue(id, out var info)) throw new KeyNotFoundException($"ExploreTarget {id} not found");
             return info;
         }
 
