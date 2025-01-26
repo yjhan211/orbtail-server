@@ -243,7 +243,7 @@ namespace network.common.data
                     var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(currentMap);
                     var warpMap = ConvertMap(portal.WarpTo, isTutorial);
                     
-                    return (portal.WarpTo, spawnPosition, isFlip);
+                    return (warpMap, spawnPosition, isFlip);
                 }
             }
 
