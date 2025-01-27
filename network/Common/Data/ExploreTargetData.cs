@@ -27,7 +27,7 @@ namespace network.common.data
                 Infos[info.Id] = info;
                 if (!InfosByMap.TryGetValue(info.MapId, out var mapExploreTargetList))
                 {
-                    InfosByMap[info.MapId] = [];
+                    InfosByMap[info.MapId] = new List<ExploreTargetInfoData> { };
                 }
                 InfosByMap[info.MapId].Add(info);
             }
@@ -39,9 +39,14 @@ namespace network.common.data
             return info;
         }
 
+        public static List<ExploreTargetInfoData> GetAll()
+        {
+            return Infos.Values.ToList();
+        }
+
         public static List<ExploreTargetInfoData> GetListByMap(MapId mapId)
         {
-            return InfosByMap.TryGetValue(mapId, out var list) ? list : [];
+            return InfosByMap[mapId] ?? new List<ExploreTargetInfoData> { };
         }
 
         public static void Validate(LogManager logManager)
@@ -63,6 +68,7 @@ namespace network.common.data
         public List<int> RewardItemPool { get; private set; }
         public bool Reusable { get; private set; }
         public Cell Position { get; private set; }
+        public string SpritePath { get; private set; }
         
         public static ExploreTargetInfoData CreateFromData(CsvRow row)
         {
@@ -79,6 +85,7 @@ namespace network.common.data
                 RewardItemPool = JsonConvert.DeserializeObject<List<int>>(row["reward_item_pool"]) ?? new(),
                 Reusable = int.Parse(row["id"]) == 0 ? false : true,
                 Position = new Cell(int.Parse(posStr[0].Trim()), int.Parse(posStr[1].Trim())),
+                SpritePath = row["sprite_path"],
             };
         }
     }
