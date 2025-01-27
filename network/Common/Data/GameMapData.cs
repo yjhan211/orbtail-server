@@ -175,6 +175,7 @@ namespace network.common.data
 
         public static bool IsMoveablePosition(MapId mapId, Cell position)
         {
+            mapId = ConvertMap(mapId);
             var regions = GetMapRegions(mapId);
             var groundRegions = regions.Where(r => r.RegionType.Equals("ground", StringComparison.OrdinalIgnoreCase));
             var isInGround = false;
@@ -243,7 +244,7 @@ namespace network.common.data
                     var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(currentMap);
                     var warpMap = ConvertMap(portal.WarpTo, isTutorial);
                     
-                    return (warpMap, spawnPosition, isFlip);
+                    return (portal.WarpTo, spawnPosition, isFlip);
                 }
             }
 
@@ -252,6 +253,7 @@ namespace network.common.data
         
         public static ChairDirection GetChairDirection(MapId mapId, Cell position)
         {
+            mapId = ConvertMap(mapId);
             if (!_chairInfos.ContainsKey(mapId))
                 return ChairDirection.NONE;
 
