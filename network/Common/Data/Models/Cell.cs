@@ -151,5 +151,41 @@ namespace network.common.data.models
 
             return result;
         }
+        
+        public List<Cell> GetAdjacentCells()
+        {
+            var result = new List<Cell>
+            {
+                new Cell(X, Y + 1),
+                new Cell(X, Y - 1),
+                new Cell(X - 1, Y),
+                new Cell(X + 1, Y)
+            };
+
+            return result;
+        }
+        
+        public Cell GetNearestCell(List<Cell> cellList)
+        {
+            if (cellList.Count == 0)
+            {
+                return this;
+            }
+
+            Cell nearestCell = cellList[0];
+            int minDistance = GetDistance(nearestCell);
+
+            foreach (Cell cell in cellList)
+            {
+                int distance = GetDistance(cell);
+                if (distance < minDistance)
+                {
+                    minDistance = distance;
+                    nearestCell = cell;
+                }
+            }
+
+            return nearestCell;
+        }
     }
 }
