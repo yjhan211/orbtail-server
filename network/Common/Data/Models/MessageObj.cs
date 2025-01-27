@@ -98,7 +98,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_U_MOVE : IMessagePackObject
+    public class G_TO_U_UPDATE_OBJECT : IMessagePackObject
     {
         [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
     }

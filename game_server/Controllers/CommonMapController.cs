@@ -523,7 +523,7 @@ public class CommonMapController
     {
         var (positionKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
 
-        using var packet = PacketMaker.G_TO_U_MOVE(objectInfo);
+        using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
         BroadcastPacket(positionKey, packet);
     }
 

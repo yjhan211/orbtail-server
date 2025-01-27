@@ -170,10 +170,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_U_MOVE(GameObjectInfo objectInfo)
+    public static Packet G_TO_U_UPDATE_OBJECT(GameObjectInfo objectInfo)
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_UPDATE_OBJECT, objectInfo.ObjectId);
-        G_TO_U_MOVE body = new() { ObjectInfo = objectInfo };
+        G_TO_U_UPDATE_OBJECT body = new() { ObjectInfo = objectInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

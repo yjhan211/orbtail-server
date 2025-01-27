@@ -27,9 +27,12 @@ public static class JobController
             targetInfoList.Add(targetExploreInfo);
 
             var isMax = targetInfoList.Count >= Config.BROADCAST_UNIT;
-            var isEnded = i == targetInfoList.Count - 1;
+            var isLast = i == body.ExploreTargetIdList.Count - 1;
 
-            if (!isMax && !isEnded) continue;
+            if (!isMax && !isLast)
+            {
+                continue;
+            }
 
             using var packet = PacketMaker.U_TO_C_EXPLORE_TARGET_INFO(targetInfoList);
             user.Send(packet);
