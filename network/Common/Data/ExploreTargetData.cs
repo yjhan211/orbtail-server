@@ -46,7 +46,12 @@ namespace network.common.data
 
         public static List<ExploreTargetInfoData> GetListByMap(MapId mapId)
         {
-            return InfosByMap[mapId] ?? new List<ExploreTargetInfoData> { };
+            if (!InfosByMap.TryGetValue(mapId, out var list))
+            {
+                return new List<ExploreTargetInfoData> { };
+            }
+
+            return list;
         }
 
         public static void Validate(LogManager logManager)
