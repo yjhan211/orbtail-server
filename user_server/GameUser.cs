@@ -130,10 +130,10 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(body, JobController.GetExploreTargetInfo);
                     break;
                 case Protocol.C_TO_U_JOB_RESOURCE_INFO:
-                    await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, JobController.GetJobResourceInfo);
+                    // await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, JobController.GetJobResourceInfo);
                     break;
                 case Protocol.C_TO_U_UPGRADE_JOB:
-                    await HandleMessage<C_TO_U_UPGRADE_JOB>(body, JobController.UpgradeJob);
+                    // await HandleMessage<C_TO_U_UPGRADE_JOB>(body, JobController.UpgradeJob);
                     break;
                 case Protocol.C_TO_U_WEAR_ITEM:
                     await HandleMessage<C_TO_U_WEAR_ITEM>(body, InventoryController.RequestWearItem);
@@ -148,7 +148,7 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_EXPLORE>(body, JobController.Explore);
                     break;
                 case Protocol.C_TO_U_USE_SKILL:
-                    await HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
+                    // await HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
                     break;
                 case Protocol.C_TO_U_CHAT_MSG:
                     await HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
@@ -181,19 +181,19 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_LAB_INVENTORY_TAKE_ITEM>(body, InventoryController.TakeLabItem);
                     break;
                 case Protocol.C_TO_U_ENCAMP:
-                    await HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
+                    // await HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
                     break;
                 case Protocol.C_TO_U_DECAMP:
-                    await JobController.Decamp(this);
+                    // await JobController.Decamp(this);
                     break;
                 case Protocol.C_TO_U_ADD_SELL_ITEM:
-                    await HandleMessage<C_TO_U_ADD_SELL_ITEM>(body, JobController.AddSellItem);
+                    // await HandleMessage<C_TO_U_ADD_SELL_ITEM>(body, JobController.AddSellItem);
                     break;
                 case Protocol.C_TO_U_DELETE_SELL_ITEM:
-                    await HandleMessage<C_TO_U_DELETE_SELL_ITEM>(body, JobController.DeleteSellItem);
+                    // await HandleMessage<C_TO_U_DELETE_SELL_ITEM>(body, JobController.DeleteSellItem);
                     break;
                 case Protocol.C_TO_U_BUY_ITEM:
-                    await HandleMessage<C_TO_U_BUY_ITEM>(body, JobController.BuyItem);
+                    // await HandleMessage<C_TO_U_BUY_ITEM>(body, JobController.BuyItem);
                     break;
                 case Protocol.C_TO_U_CAMP_INFO:
                     await HandleMessage<C_TO_U_CAMP_INFO>(body, CampController.GetCampInfo);
@@ -429,6 +429,16 @@ public partial class GameUser : IPeer
         var instanceSubject = SubjectHelper.GetSocialActionSubject(objectInfo, manageServer);
         NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, sendTuple)));
     }
+    
+    public void BroadcastObjectDestroy(GameObjectInfo objectInfo)
+    {
+        var positionKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+        var manageServer = MapHelper.GetManageServerId(positionKey);
+        var subject = SubjectHelper.GetDestroyObjectSubject(objectInfo.MapId, objectInfo.MapSubId, manageServer);
+        var message = MessagePackSerializer.Serialize((positionKey, objectInfo.GetGameObjectKey()));
+
+        NatsClient.Publish(subject, message);
+    }
 
     public void PublishToClients(Packet packet, List<long> userIdList)
     {
@@ -456,7 +466,7 @@ public partial class GameUser : IPeer
             if (_token.IsReleased) return null;
             _token.IsReleased = true;
 
-            await JobController.Decamp(this);
+            // await JobController.Decamp(this);
             await PlayerManager.Dispose();
             ProgressManager.Dispose();
             _updateObjectManager.Dispose();

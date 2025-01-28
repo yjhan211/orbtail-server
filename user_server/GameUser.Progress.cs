@@ -19,16 +19,16 @@ public partial class GameUser
         );
     }
 
-    public void StartJobSkill(JobResourceInfo jobResourceInfo)
-    {
-        var jobProgressInfo = new JobProgressInfo(jobResourceInfo);
-        ProgressManager.AddProgressItem(
-            jobProgressInfo,
-            async trackable =>
-            {
-                var progressInfo = (JobProgressInfo)trackable;
-                await JobController.JobSkillEnd(this, progressInfo.JobResourceInfo);
-            }
-        );
-    }
+    // public void StartJobSkill(JobResourceInfo jobResourceInfo)
+    // {
+    //     var jobProgressInfo = new JobProgressInfo(jobResourceInfo);
+    //     ProgressManager.AddProgressItem(
+    //         jobProgressInfo,
+    //         async trackable =>
+    //         {
+    //             var progressInfo = (JobProgressInfo)trackable;
+    //             await JobController.JobSkillEnd(this, progressInfo.JobResourceInfo);
+    //         }
+    //     );
+    // }
 }

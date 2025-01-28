@@ -24,7 +24,6 @@ public static class QuestController
 
     public static async Task IncreaseQuestCount(GameUser user, C_TO_U_QUEST_INCREASE body)
     {
-        // TODO 서버트리거 분리
         var questDiary = await QuestDiary.Load(user.PlayerId);
         if (!questDiary.QuestDict.TryGetValue(body.QuestId, out var quest))
         {
@@ -37,6 +36,22 @@ public static class QuestController
         using var packet = PacketMaker.U_TO_C_QUEST_UPDATE(quest);
         user.Send(packet);
     }
+    
+    public static async Task IncreaseQuestCount(GameUser user, int questId, int count)
+    {
+        var questDiary = await QuestDiary.Load(user.PlayerId);
+        if (!questDiary.QuestDict.TryGetValue(questId, out var quest))
+        {
+            return;
+        }
+
+        quest.Count += count;
+        await questDiary.Save();
+        
+        using var packet = PacketMaker.U_TO_C_QUEST_UPDATE(quest);
+        user.Send(packet);
+    }
+
 
     public static async Task CompleteQuest(GameUser user, C_TO_U_QUEST_INCREASE body)
     {
