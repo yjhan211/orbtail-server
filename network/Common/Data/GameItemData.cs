@@ -136,7 +136,9 @@ namespace network.common.data
                 Name = new LocalizedText(baseInfo["name"]),
                 Comment = new LocalizedText(baseInfo["comment"]),
                 Requirements = JsonConvert.DeserializeObject<List<int>>(baseInfo["requirements"]) ?? new(),
-                Reusable = int.Parse(baseInfo["reusable"]) == 1
+                Reusable = int.Parse(baseInfo["reusable"]) == 1,
+                BuffList = new(),
+                ConsumableBuffList = new ()
             };
 
             if (additionalData != null)
@@ -182,6 +184,34 @@ namespace network.common.data
             var arrays = JsonConvert.DeserializeObject<List<int[]>>(jsonString);
 
             return arrays?.Select(arr => (id: arr[0], value: arr[1])).ToList();
+        }
+        
+        public string GetBuffComment()
+        {
+            if (BuffList.Count <= 0 && ConsumableBuffList.Count <= 0)
+            {
+                return "발동 효과 없음";
+            }
+
+            var result = "";
+            if (IsConsumable)
+            {
+                foreach (var buffInfo in ConsumableBuffList)
+                {
+                    var buff = GameBuffData.Get(buffInfo.id);
+                    result += buff.Comment.Replace("{value1}", $"{buffInfo.value}");
+                }
+            }
+            else
+            {
+                foreach (var buffInfo in BuffList)
+                {
+                    var buff = GameBuffData.Get(buffInfo.id);
+                    result += buff.Comment.Replace("{value1}", $"{buffInfo.value1}").Replace("{value2}", $"{buffInfo.value2}");
+                }
+            }
+            
+            return result;
         }
     }
 }
