@@ -9,7 +9,7 @@ public partial class GameUser
     public void StartExplore(ExploreTargetInfo exploreTargetInfo)
     {
         var exploreProgressInfo = new ExploreProgressInfo(exploreTargetInfo);
-        ProgressManager.AddProgressItem(
+        _progressManager.AddProgressItem(
             exploreProgressInfo,
             async trackable =>
             {

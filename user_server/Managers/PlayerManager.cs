@@ -185,12 +185,101 @@ public class PlayerManager(
         user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
     }
 
-    public async Task Wear(long itemUid)
+    public async Task<List<ItemInfo>> Wear(long itemUid)
     {
-        if (PlayerInfo == null) return;
+        if (PlayerInfo == null)
+        {
+            return [];
+        }
         
-        PlayerInfo.WearItem(itemUid);
+        if (!PlayerInfo.InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
+            throw new Exception($"Item with uid {itemUid} not found");
+
+        var itemDetail = GameItemData.Get(targetItem.ItemId);
+        if (!itemDetail.IsEquipment)
+            throw new Exception($"not wearable item {targetItem.ItemId}");
+        
+        // if (!GameDataHelper.IsWearableJobInfo(targetItem.ItemId, JobInfo.JobStatDict))
+        //     throw new Exception($"not wearable job type. {targetItem.ItemId}");
+        
+        var updateItemList = new List<ItemInfo>() { targetItem };
+        if (targetItem.IsWear)
+        {
+            // 착용 해제
+            PlayerInfo.WearItemIdList.Remove(targetItem.ItemId);
+            targetItem.IsWear = false;
+            return updateItemList;
+        }
+
+        // 같은 종류의 아이템 인덱스 찾기
+        var lastWearItem = PlayerInfo.InventoryInfo.ItemDict.Values.FirstOrDefault(
+            item => GameItemData.GetEquipType(targetItem.ItemId) == GameItemData.GetEquipType(item.ItemId) && item.IsWear
+        );
+        
+        if (lastWearItem != null)
+        {
+            // 같은 종류 아이템 착용 해제
+            lastWearItem.IsWear = false;
+            PlayerInfo.WearItemIdList.Remove(lastWearItem.ItemId);
+            updateItemList.Add(lastWearItem);
+        }
+        
+        // 새로운 아이템 착용
+        targetItem.IsWear = true;
+        PlayerInfo.WearItemIdList.Add(targetItem.ItemId);
+        
         await PlayerInfo.Save();
+
+        return updateItemList;
+    }
+
+    public async Task<List<ItemInfo>> UseItem(long itemUid, int count = 1)
+    {
+        if (PlayerInfo == null)
+        {
+            return [];
+        }
+
+        if (!PlayerInfo.InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
+        {
+            throw new Exception($"Item with uid {itemUid} not found");
+        }
+
+        if (targetItem.Count < count)
+        {
+            throw new Exception($"Item with uid {itemUid} count not enough");
+        }
+
+        var itemDetail = GameItemData.Get(targetItem.ItemId);
+        if (!itemDetail.IsConsumable)
+            throw new Exception($"not consumable item {targetItem.ItemId}");
+        
+        var isDeleteSuccess = PlayerInfo.InventoryInfo.DeleteItem(itemUid, count);
+        if (!isDeleteSuccess)
+        {
+            throw new Exception($"delete item {itemUid} failed.");
+        }
+        
+        var updateItemList = new List<ItemInfo>() { targetItem };
+        foreach (var (buffId, value) in itemDetail.ConsumableBuffList)
+        {
+            var buffDetail = GameBuffData.Get(buffId);
+            if (buffDetail.Type != BuffType.INSTANT)
+            {
+                throw new NotImplementedException();
+            }
+            
+            switch (buffDetail.SubType)
+            {
+                case BuffSubType.CONDITION_ADD:
+                    PlayerInfo.JobInfo.Hp = Math.Clamp(PlayerInfo.JobInfo.Hp + value, 0, 10000);
+                    break;
+            }
+        }
+
+        await PlayerInfo.Save();
+        
+        return updateItemList;
     }
 
     public async Task SetState(PlayerState newState)

@@ -48,6 +48,15 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+    
+    public static Packet U_TO_C_INVENTORY_UPDATE(List<ItemInfo> updateItems, bool isEnd)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_INVENTORY_UPDATE);
+        U_TO_C_INVENTORY_UPDATE body = new() { UpdateItems = updateItems, IsEnd = isEnd };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
 
     public static Packet U_TO_U_LAB_INVENTORY(Dictionary<long, ItemInfo> itemDict)
     {

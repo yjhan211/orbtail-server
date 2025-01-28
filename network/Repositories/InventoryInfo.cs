@@ -6,7 +6,7 @@ namespace network.common.data.models;
 
 public partial class InventoryInfo
 {
-    public void AddItem(ItemInfo itemInfo)
+    public ItemInfo AddItem(ItemInfo itemInfo)
     {
         var itemInfoData = GameItemData.Get(itemInfo.ItemId);
         if (!itemInfoData.Reusable)
@@ -15,11 +15,12 @@ public partial class InventoryInfo
             if (existItem != null)
             {
                 existItem.Count += itemInfo.Count;
-                return;
+                return existItem;
             }
         }
 
         ItemDict[itemInfo.ItemUid] = itemInfo;
+        return itemInfo;
     }
 
     public void AddItem(List<ItemInfo> itemInfoList)
@@ -42,6 +43,28 @@ public partial class InventoryInfo
 
             ItemDict[itemInfo.ItemUid] = itemInfo;
         }
+    }
+
+    public bool DeleteItem(long itemUid, int count)
+    {
+        if (!ItemDict.TryGetValue(itemUid, out var item))
+        {
+            return false;
+        }
+
+        if (item.Count < count)
+        {
+            return false;
+        }
+
+        if (count < item.Count)
+        {
+            item.Count -= count;
+            return true;
+        }
+
+        ItemDict.Remove(itemUid);
+        return true;
     }
 
     public async Task Save()

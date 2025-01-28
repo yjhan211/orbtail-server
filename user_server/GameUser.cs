@@ -37,6 +37,8 @@ public partial class GameUser : IPeer
     };
 
     private readonly CancellationTokenSource _cts;
+    private readonly ProgressManager _progressManager;
+    
     private readonly Action<GameUser> _onLeaveCallback;
     private readonly UserToken _token;
     private readonly UpdateObjectManager _updateObjectManager;
@@ -45,7 +47,6 @@ public partial class GameUser : IPeer
     public readonly RedLockFactory RedLock;
     public readonly LogManager LogManager;
     public readonly PlayerManager PlayerManager;
-    public readonly ProgressManager ProgressManager;
 
     public GameUser(UserToken token, RedLockFactory redLockFactory, NatsClient natsClient, LogManager logManager, Action<GameUser> onLeaveCallback)
     {
@@ -58,7 +59,7 @@ public partial class GameUser : IPeer
         _userLock = new SemaphoreSlim(1);
         _cts = new CancellationTokenSource();
 
-        ProgressManager = new ProgressManager(LogManager);
+        _progressManager = new ProgressManager(LogManager);
         var updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
         _updateObjectManager = new UpdateObjectManager(_cts, LogManager, Send, updateObjectChannel);
         PlayerManager = new PlayerManager(LogManager, NatsClient, Send, _updateObjectManager);
@@ -201,9 +202,6 @@ public partial class GameUser : IPeer
                 case Protocol.C_TO_U_SET_NAME:
                     await HandleMessage<C_TO_U_SET_NAME>(body, PlayerManager.SetName);
                     break;
-                case Protocol.C_TO_U_UPDATE_TUTORIAL:
-                    await PlayerController.UpdateTutorial(this);
-                    break;
                 case Protocol.C_TO_U_BOOST:
                     await HandleMessage<C_TO_U_BOOST>(body, PlayerManager.UpdateBoost);
                     break;
@@ -293,6 +291,7 @@ public partial class GameUser : IPeer
         await using (await PlayerInfo.Lock(RedLock, tempPlayerId))
         {
             var isInit = false;
+            var giftItemList = new List<ItemInfo>();
 
             playerInfo = await PlayerInfo.Load(tempPlayerId);
             if (playerInfo == null)
@@ -300,7 +299,6 @@ public partial class GameUser : IPeer
                 isInit = true;
                 playerInfo = new PlayerInfo(tempPlayerId, isDummy);
 
-                var giftItemList = new List<ItemInfo>();
                 foreach (var (itemId, count) in GameRuleData.DefaultItemList)
                 {
                     var item = await InventoryController.CreateItem(itemId, count);
@@ -308,15 +306,6 @@ public partial class GameUser : IPeer
                 }
 
                 playerInfo.InventoryInfo.AddItem(giftItemList);
-                
-                // 기본템 입히기
-                var defaultTop = giftItemList.First(x => x.ItemId == 104000001);
-                var defaultBottom = giftItemList.First(x => x.ItemId == 105000001);
-                var defaultShoes = giftItemList.First(x => x.ItemId == 106000001);
-
-                playerInfo.WearItem(defaultTop.ItemUid);
-                playerInfo.WearItem(defaultBottom.ItemUid);
-                playerInfo.WearItem(defaultShoes.ItemUid);
             }
 
             var environmentHandler = new EnvironmentHandler(LogManager, _cts, RedLock, Send, playerInfo.ObjectInfo);
@@ -334,6 +323,15 @@ public partial class GameUser : IPeer
                 var firstMail = await MailBoxController.CreateMail(1);
                 await MailBoxController.SendMail(this, firstMail);
                 await QuestController.StartQuest(this, 1);
+                
+                // 기본템 입히기
+                var defaultTop = giftItemList.First(x => x.ItemId == 104000001);
+                var defaultBottom = giftItemList.First(x => x.ItemId == 105000001);
+                var defaultShoes = giftItemList.First(x => x.ItemId == 106000001);
+
+                await PlayerManager.Wear(defaultTop.ItemUid);
+                await PlayerManager.Wear(defaultBottom.ItemUid);
+                await PlayerManager.Wear(defaultShoes.ItemUid);
             }
         }
 
@@ -368,7 +366,7 @@ public partial class GameUser : IPeer
         Send(loginPacket);
 
         // 인벤토리 정보 전송
-        await InventoryController.GetCurrentItemList(this);
+        InventoryController.SendCurrentItems(this);
         if (labInfo != null) await InventoryController.GetLabInventory(this);
         
         // 우편 정보 전송
@@ -468,7 +466,7 @@ public partial class GameUser : IPeer
 
             // await JobController.Decamp(this);
             await PlayerManager.Dispose();
-            ProgressManager.Dispose();
+            _progressManager.Dispose();
             _updateObjectManager.Dispose();
 
             using var packet = PacketMaker.U_TO_G_LOGOUT(PlayerId);

@@ -112,7 +112,7 @@ public static class LabController
         using var labInfoPacket = PacketMaker.U_TO_C_LAB_INFO(new PlayerInfo(), labInfo);
         user.PublishToClients(labInfoPacket, labInfo.MemberDict.Keys.ToList());
 
-        await InventoryController.GetCurrentItemList(user);
+        InventoryController.SendCurrentItems(user);
     }
 
     public static async Task Make(GameUser user, C_TO_U_MAKE body)

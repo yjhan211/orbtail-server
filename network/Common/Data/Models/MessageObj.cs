@@ -64,6 +64,13 @@ namespace network.common.data.models
 
         [Key("isEnd")] public bool IsEnd { get; set; }
     }
+    
+    [MessagePackObject]
+    public class U_TO_C_INVENTORY_UPDATE : IMessagePackObject
+    {
+        [Key("updateItemDict")] public List<ItemInfo> UpdateItems { get; set; }
+        [Key("isEnd")] public bool IsEnd { get; set; }
+    }
 
     [MessagePackObject]
     public class C_TO_U_CHAT_MSG : IMessagePackObject

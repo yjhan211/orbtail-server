@@ -130,11 +130,16 @@ public static class JobController
                 user.BroadcastObjectDestroy(exploreTargetInfo.ObjectInfo);
             }
 
+
             // 수집 결과 지급
+            
             var random = new Random();
             var rewardItemId = exploreTargetData.RewardItemPool[random.Next(0, exploreTargetData.RewardItemPool.Count)];
             var rewardItem = await InventoryController.CreateItem(rewardItemId, 1);
-            user.PlayerManager.PlayerInfo.InventoryInfo.AddItem(rewardItem);
+            
+            var updateItems = new List<ItemInfo>();
+            var updateItem = user.PlayerManager.PlayerInfo.InventoryInfo.AddItem(rewardItem);
+            updateItems.Add(updateItem);
 
             await user.PlayerManager.SetState(PlayerState.IDLE);
             await user.PlayerManager.PlayerInfo.Save();
@@ -155,7 +160,7 @@ public static class JobController
             using var packet = PacketMaker.U_TO_C_EXPLORE_COMPLETE(true, user.PlayerManager.PlayerInfo.JobInfo);
             user.Send(packet);
             user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
-            await InventoryController.GetCurrentItemList(user);
+            InventoryController.SendUpdateItems(user, updateItems);
         }
     }
 

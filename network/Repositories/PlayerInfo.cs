@@ -9,56 +9,6 @@ namespace network.common.data.models;
 
 public partial class PlayerInfo
 {
-    public void WearItem(long itemUid)
-    {
-        if (!InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
-            throw new Exception($"Item with uid {itemUid} not found");
-
-        var itemDetail = GameItemData.Get(targetItem.ItemId);
-        if (!itemDetail.IsEquipment)
-            throw new Exception($"not wearable item {targetItem.ItemId}");
-        
-        // if (!GameDataHelper.IsWearableJobInfo(targetItem.ItemId, JobInfo.JobStatDict))
-        //     throw new Exception($"not wearable job type. {targetItem.ItemId}");
-        
-        if (targetItem.IsWear)
-        {
-            // 착용 해제
-            WearItemIdList.Remove(targetItem.ItemId);
-            targetItem.IsWear = false;
-            return;
-        }
-        
-        // 같은 종류의 아이템 인덱스 찾기
-        var lastWearItem = InventoryInfo.ItemDict.Values.FirstOrDefault(
-            item => GameItemData.GetEquipType(targetItem.ItemId) == GameItemData.GetEquipType(item.ItemId) && item.IsWear
-        );
-        
-        if (lastWearItem != null)
-        {
-            // 같은 종류 아이템 착용 해제
-            lastWearItem.IsWear = false;
-            WearItemIdList.Remove(lastWearItem.ItemId);
-        }
-        
-        // 새로운 아이템 착용
-        InventoryInfo.ItemDict[itemUid].IsWear = true;
-        WearItemIdList.Add(targetItem.ItemId);
-    }
-
-    public void UseItem(long itemUid, int count = 1)
-    {
-        // if (!InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
-        //     throw new Exception($"Item with uid {itemUid} not found");
-        //
-        // if (targetItem.Count <= 0) throw new Exception($"Item {itemUid} count invalid");
-        //
-        // if (!GameDataHelper.IsUsableItem(targetItem.ItemId))
-        //     throw new Exception($"not usable item {targetItem.ItemId}");
-
-        // TODO
-    }
-
     public static async Task<IRedLock> Lock(RedLockFactory redLock, long playerId)
     {
         return await redLock.CreateLockAsync(GetLockKey(playerId), Config.LOCK_TTL);
