@@ -48,6 +48,15 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+    
+    public static Packet U_TO_C_INVENTORY_UPDATE(List<ItemInfo> updateItems, bool isEnd)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_INVENTORY_UPDATE);
+        U_TO_C_INVENTORY_UPDATE body = new() { UpdateItems = updateItems, IsEnd = isEnd };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
 
     public static Packet U_TO_U_LAB_INVENTORY(Dictionary<long, ItemInfo> itemDict)
     {
@@ -76,10 +85,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_USE_ITEM(JobInfo jobInfo)
+    public static Packet U_TO_C_USE_ITEM(PlayerInfo playerInfo)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_USE_ITEM);
-        U_TO_C_USE_ITEM body = new() { JobInfo = jobInfo };
+        U_TO_C_USE_ITEM body = new() { PlayerInfo = playerInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -170,10 +179,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_U_MOVE(GameObjectInfo objectInfo)
+    public static Packet G_TO_U_UPDATE_OBJECT(GameObjectInfo objectInfo)
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_UPDATE_OBJECT, objectInfo.ObjectId);
-        G_TO_U_MOVE body = new() { ObjectInfo = objectInfo };
+        G_TO_U_UPDATE_OBJECT body = new() { ObjectInfo = objectInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

@@ -64,6 +64,13 @@ namespace network.common.data.models
 
         [Key("isEnd")] public bool IsEnd { get; set; }
     }
+    
+    [MessagePackObject]
+    public class U_TO_C_INVENTORY_UPDATE : IMessagePackObject
+    {
+        [Key("updateItemDict")] public List<ItemInfo> UpdateItems { get; set; }
+        [Key("isEnd")] public bool IsEnd { get; set; }
+    }
 
     [MessagePackObject]
     public class C_TO_U_CHAT_MSG : IMessagePackObject
@@ -98,7 +105,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_U_MOVE : IMessagePackObject
+    public class G_TO_U_UPDATE_OBJECT : IMessagePackObject
     {
         [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
     }
@@ -327,7 +334,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class U_TO_C_USE_ITEM : IMessagePackObject
     {
-        [Key("jobInfo")] public JobInfo JobInfo { get; set; }
+        [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
     }
 
     [MessagePackObject]

@@ -27,7 +27,7 @@ public partial class GameUser
             switch (protocolId)
             {
                 case Protocol.G_TO_U_UPDATE_OBJECT:
-                    HandleMessage<G_TO_U_MOVE>(body, SubscribeUpdateObject);
+                    HandleMessage<G_TO_U_UPDATE_OBJECT>(body, SubscribeUpdateObject);
                     break;
 
                 case Protocol.G_TO_U_SPAWN:
@@ -85,12 +85,16 @@ public partial class GameUser
         }
     }
 
-    private void SubscribeUpdateObject(GameUser _, G_TO_U_MOVE body)
+    private void SubscribeUpdateObject(GameUser _, G_TO_U_UPDATE_OBJECT body)
     {
         if (body.ObjectInfo.ObjectType == ObjectType.PLAYER)
+        {
             if (body.ObjectInfo.ObjectId == PlayerManager.PlayerId)
+            {
                 // 자신의 이동은 RequestMove시 이미 넣음
                 return;
+            }
+        }
 
         _updateObjectManager.EnqueueUpdateObject(body.ObjectInfo);
     }

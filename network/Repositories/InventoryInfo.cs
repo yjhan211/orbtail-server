@@ -6,39 +6,64 @@ namespace network.common.data.models;
 
 public partial class InventoryInfo
 {
-    public void AddItem(ItemInfo itemInfo)
+    public ItemInfo AddItem(ItemInfo itemInfo)
     {
-        // var isCountable = !GameDataHelper.IsWearableItem(itemInfo.ItemId);
-        // if (isCountable)
-        // {
-        //     var existItem = ItemDict.Values.FirstOrDefault(item => item.ItemId == itemInfo.ItemId);
-        //     if (existItem != null)
-        //     {
-        //         existItem.Count += itemInfo.Count;
-        //         return;
-        //     }
-        // }
+        var itemInfoData = GameItemData.Get(itemInfo.ItemId);
+        if (!itemInfoData.Reusable)
+        {
+            var existItem = ItemDict.Values.FirstOrDefault(item => item.ItemId == itemInfo.ItemId);
+            if (existItem != null)
+            {
+                existItem.Count += itemInfo.Count;
+                return existItem;
+            }
+        }
 
         ItemDict[itemInfo.ItemUid] = itemInfo;
+        return itemInfo;
     }
 
     public void AddItem(List<ItemInfo> itemInfoList)
     {
         foreach (var itemInfo in itemInfoList)
-            // var isCountable = !GameDataHelper.IsWearableItem(itemInfo.ItemId);
-            // if (isCountable)
-            // {
-            //     var existItem = ItemDict.Values.FirstOrDefault(
-            //         item => item.ItemId == itemInfo.ItemId
-            //     );
-            //
-            //     if (existItem != null)
-            //     {
-            //         existItem.Count += itemInfo.Count;
-            //         continue;
-            //     }
-            // }
+        {
+            var itemInfoData = GameItemData.Get(itemInfo.ItemId);
+            if (!itemInfoData.Reusable)
+            {
+                var existItem = ItemDict.Values.FirstOrDefault(
+                    item => item.ItemId == itemInfo.ItemId
+                );
+
+                if (existItem != null)
+                {
+                    existItem.Count += itemInfo.Count;
+                    continue;
+                }
+            }
+
             ItemDict[itemInfo.ItemUid] = itemInfo;
+        }
+    }
+
+    public bool DeleteItem(long itemUid, int count)
+    {
+        if (!ItemDict.TryGetValue(itemUid, out var item))
+        {
+            return false;
+        }
+        
+        if (item.Count < count)
+        {
+            return false;
+        }
+
+        item.Count -= count;
+        if (item.Count <= 0)
+        {
+            ItemDict.Remove(itemUid);
+        }
+        
+        return true;
     }
 
     public async Task Save()

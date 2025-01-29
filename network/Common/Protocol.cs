@@ -10,6 +10,7 @@ namespace network.common
         C_TO_U_SET_NAME,
         U_TO_C_SET_NAME,
         U_TO_C_INVENTORY_ITEM_LIST,
+        U_TO_C_INVENTORY_UPDATE,
         C_TO_U_CHAT_MSG,
         U_TO_C_CHAT_MSG,
         C_TO_U_CHAT_LOG,

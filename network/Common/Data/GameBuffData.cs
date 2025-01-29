@@ -87,6 +87,7 @@ namespace network.common.data
         public int Id { get; private set; }
         public BuffType Type { get; private set; }
         public BuffSubType SubType { get; private set; }
+        public string Comment { get; private set; }
 
         public static BuffInfoData CreateFromData(CsvRow row)
         {
@@ -94,7 +95,8 @@ namespace network.common.data
             {
                 Id = int.Parse(row["id"]),
                 Type = (BuffType)int.Parse(row["type"]),
-                SubType = (BuffSubType)int.Parse(row["sub_type"])
+                SubType = (BuffSubType)int.Parse(row["sub_type"]),
+                Comment = row["comment"],
             };
         }
     }

@@ -23,34 +23,42 @@ public static class InventoryController
             throw new Exception("Invalid Player State");
         }
 
+        if (user.PlayerManager.PlayerInfo == null)
+        {
+            throw new Exception("Invalid PlayerInfo");
+        }
+
+        List<ItemInfo> updateItems;
         await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
         {
-            await user.PlayerManager.Wear(body.ItemUid);
+            updateItems = await user.PlayerManager.Wear(body.ItemUid);
         }
 
         using var packet = PacketMaker.U_TO_C_WEAR_ITEM(user.PlayerManager.PlayerInfo);
         user.Send(packet);
 
-        await GetCurrentItemList(user);
+        SendUpdateItems(user, updateItems);
         user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
     }
 
     public static async Task RequestUseItem(GameUser user, C_TO_U_USE_ITEM body)
     {
-        PlayerInfo? playerInfo;
+        if (user.PlayerManager.PlayerInfo == null)
+        {
+            throw new Exception("Invalid PlayerInfo");
+        }
+        
+        List<ItemInfo> updateItems;
         await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
         {
-            playerInfo = await PlayerInfo.Load(user.PlayerId);
-            if (playerInfo == null) throw new Exception("cannot found player info");
-
-            playerInfo.UseItem(body.ItemUid);
-            await playerInfo.Save();
+            updateItems = await user.PlayerManager.UseItem(body.ItemUid);
+            await QuestController.IncreaseQuestCount(user, 5, 1);
         }
 
-        using var packet = PacketMaker.U_TO_C_USE_ITEM(playerInfo.JobInfo);
+        using var packet = PacketMaker.U_TO_C_USE_ITEM(user.PlayerManager.PlayerInfo);
         user.Send(packet);
 
-        await GetCurrentItemList(user);
+        SendUpdateItems(user, updateItems);
     }
 
 
@@ -95,7 +103,7 @@ public static class InventoryController
             }
         }
 
-        await GetCurrentItemList(user);
+        SendCurrentItems(user);
 
         using var packet = PacketMaker.U_TO_U_LAB_INVENTORY(labInfo.InventoryInfo.ItemDict);
         foreach (var labMember in labInfo.MemberDict)
@@ -143,7 +151,7 @@ public static class InventoryController
             }
         }
 
-        await GetCurrentItemList(user);
+        SendCurrentItems(user);
         using var packet = PacketMaker.U_TO_U_LAB_INVENTORY(labInfo.InventoryInfo.ItemDict);
         foreach (var labMember in labInfo.MemberDict)
             user.NatsClient.Publish(GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, labMember.Key), packet.ToBytes());
@@ -161,12 +169,14 @@ public static class InventoryController
         LabController.SendLabItemList(user, itemDict);
     }
 
-    public static async Task GetCurrentItemList(GameUser user)
+    public static void SendCurrentItems(GameUser user)
     {
-        var playerInfo = await PlayerInfo.Load(user.PlayerId);
-        if (playerInfo == null) throw new Exception("player_info not exists");
+        if (user.PlayerManager.PlayerInfo == null)
+        {
+            throw new Exception("player_info not exists");
+        }
 
-        var inventoryInfo = playerInfo.InventoryInfo;
+        var inventoryInfo = user.PlayerManager.PlayerInfo.InventoryInfo;
         if (inventoryInfo == null) throw new Exception("inventory_info not exists");
 
         if (inventoryInfo.ItemDict.Count == 0)
@@ -184,6 +194,22 @@ public static class InventoryController
             var isEnded = i + Config.BROADCAST_UNIT >= itemKeys.Length;
 
             using var packet = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(batchDict, isEnded);
+            user.Send(packet);
+        }
+    }
+    
+    public static void SendUpdateItems(GameUser user, List<ItemInfo> updateItems)
+    {
+        if (updateItems.Count == 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < updateItems.Count; i += Config.BROADCAST_UNIT)
+        {
+            var batchItems = updateItems.Skip(i).Take(Config.BROADCAST_UNIT).ToList();
+            var isEnded = i + Config.BROADCAST_UNIT >= updateItems.Count;
+            using var packet = PacketMaker.U_TO_C_INVENTORY_UPDATE(batchItems, isEnded);
             user.Send(packet);
         }
     }

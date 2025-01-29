@@ -37,6 +37,8 @@ public partial class GameUser : IPeer
     };
 
     private readonly CancellationTokenSource _cts;
+    private readonly ProgressManager _progressManager;
+    
     private readonly Action<GameUser> _onLeaveCallback;
     private readonly UserToken _token;
     private readonly UpdateObjectManager _updateObjectManager;
@@ -45,7 +47,6 @@ public partial class GameUser : IPeer
     public readonly RedLockFactory RedLock;
     public readonly LogManager LogManager;
     public readonly PlayerManager PlayerManager;
-    public readonly ProgressManager ProgressManager;
 
     public GameUser(UserToken token, RedLockFactory redLockFactory, NatsClient natsClient, LogManager logManager, Action<GameUser> onLeaveCallback)
     {
@@ -58,7 +59,7 @@ public partial class GameUser : IPeer
         _userLock = new SemaphoreSlim(1);
         _cts = new CancellationTokenSource();
 
-        ProgressManager = new ProgressManager(LogManager);
+        _progressManager = new ProgressManager(LogManager);
         var updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
         _updateObjectManager = new UpdateObjectManager(_cts, LogManager, Send, updateObjectChannel);
         PlayerManager = new PlayerManager(LogManager, NatsClient, Send, _updateObjectManager);
@@ -69,7 +70,7 @@ public partial class GameUser : IPeer
 
     public long PlayerId => PlayerManager.PlayerId;
     public PlayerState PlayerState => PlayerManager.State;
-    public Cell CurrentCell => PlayerManager.CurrentCell;
+    public Cell CurrentCell => PlayerManager.CurrentCell ?? new(0, 0);
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
     {
@@ -130,10 +131,10 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(body, JobController.GetExploreTargetInfo);
                     break;
                 case Protocol.C_TO_U_JOB_RESOURCE_INFO:
-                    await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, JobController.GetJobResourceInfo);
+                    // await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, JobController.GetJobResourceInfo);
                     break;
                 case Protocol.C_TO_U_UPGRADE_JOB:
-                    await HandleMessage<C_TO_U_UPGRADE_JOB>(body, JobController.UpgradeJob);
+                    // await HandleMessage<C_TO_U_UPGRADE_JOB>(body, JobController.UpgradeJob);
                     break;
                 case Protocol.C_TO_U_WEAR_ITEM:
                     await HandleMessage<C_TO_U_WEAR_ITEM>(body, InventoryController.RequestWearItem);
@@ -148,7 +149,7 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_EXPLORE>(body, JobController.Explore);
                     break;
                 case Protocol.C_TO_U_USE_SKILL:
-                    await HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
+                    // await HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
                     break;
                 case Protocol.C_TO_U_CHAT_MSG:
                     await HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
@@ -181,28 +182,25 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_LAB_INVENTORY_TAKE_ITEM>(body, InventoryController.TakeLabItem);
                     break;
                 case Protocol.C_TO_U_ENCAMP:
-                    await HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
+                    // await HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
                     break;
                 case Protocol.C_TO_U_DECAMP:
-                    await JobController.Decamp(this);
+                    // await JobController.Decamp(this);
                     break;
                 case Protocol.C_TO_U_ADD_SELL_ITEM:
-                    await HandleMessage<C_TO_U_ADD_SELL_ITEM>(body, JobController.AddSellItem);
+                    // await HandleMessage<C_TO_U_ADD_SELL_ITEM>(body, JobController.AddSellItem);
                     break;
                 case Protocol.C_TO_U_DELETE_SELL_ITEM:
-                    await HandleMessage<C_TO_U_DELETE_SELL_ITEM>(body, JobController.DeleteSellItem);
+                    // await HandleMessage<C_TO_U_DELETE_SELL_ITEM>(body, JobController.DeleteSellItem);
                     break;
                 case Protocol.C_TO_U_BUY_ITEM:
-                    await HandleMessage<C_TO_U_BUY_ITEM>(body, JobController.BuyItem);
+                    // await HandleMessage<C_TO_U_BUY_ITEM>(body, JobController.BuyItem);
                     break;
                 case Protocol.C_TO_U_CAMP_INFO:
                     await HandleMessage<C_TO_U_CAMP_INFO>(body, CampController.GetCampInfo);
                     break;
                 case Protocol.C_TO_U_SET_NAME:
                     await HandleMessage<C_TO_U_SET_NAME>(body, PlayerManager.SetName);
-                    break;
-                case Protocol.C_TO_U_UPDATE_TUTORIAL:
-                    await PlayerController.UpdateTutorial(this);
                     break;
                 case Protocol.C_TO_U_BOOST:
                     await HandleMessage<C_TO_U_BOOST>(body, PlayerManager.UpdateBoost);
@@ -293,6 +291,7 @@ public partial class GameUser : IPeer
         await using (await PlayerInfo.Lock(RedLock, tempPlayerId))
         {
             var isInit = false;
+            var giftItemList = new List<ItemInfo>();
 
             playerInfo = await PlayerInfo.Load(tempPlayerId);
             if (playerInfo == null)
@@ -300,24 +299,13 @@ public partial class GameUser : IPeer
                 isInit = true;
                 playerInfo = new PlayerInfo(tempPlayerId, isDummy);
 
-                // TODO 기본템 지급 (GameRuleData.DefaultItemList)
-                var giftItemList = new List<ItemInfo>();
-                foreach (var testItemInfo in GameItemData.GetAllList())
+                foreach (var (itemId, count) in GameRuleData.DefaultItemList)
                 {
-                    var item = await InventoryController.CreateItem(testItemInfo.Id, 1);
+                    var item = await InventoryController.CreateItem(itemId, count);
                     giftItemList.Add(item);
                 }
 
                 playerInfo.InventoryInfo.AddItem(giftItemList);
-                
-                // 기본템 입히기
-                var defaultTop = giftItemList.First(x => x.ItemId == 104000001);
-                var defaultBottom = giftItemList.First(x => x.ItemId == 105000001);
-                var defaultShoes = giftItemList.First(x => x.ItemId == 106000001);
-
-                playerInfo.WearItem(defaultTop.ItemUid);
-                playerInfo.WearItem(defaultBottom.ItemUid);
-                playerInfo.WearItem(defaultShoes.ItemUid);
             }
 
             var environmentHandler = new EnvironmentHandler(LogManager, _cts, RedLock, Send, playerInfo.ObjectInfo);
@@ -325,7 +313,7 @@ public partial class GameUser : IPeer
             PlayerManager.Initialize(playerInfo, environmentHandler);
 
             using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
-            NatsClient.Publish(PlayerManager.ObjectInfo.GetGameObjectKey(), duplicatePacket.ToBytes());
+            NatsClient.Publish(PlayerManager.ObjectInfo!.GetGameObjectKey(), duplicatePacket.ToBytes());
 
             await playerInfo.Save();
             await playerInfo.ObjectInfo.Save();
@@ -335,6 +323,15 @@ public partial class GameUser : IPeer
                 var firstMail = await MailBoxController.CreateMail(1);
                 await MailBoxController.SendMail(this, firstMail);
                 await QuestController.StartQuest(this, 1);
+                
+                // 기본템 입히기
+                var defaultTop = giftItemList.First(x => x.ItemId == 104000001);
+                var defaultBottom = giftItemList.First(x => x.ItemId == 105000001);
+                var defaultShoes = giftItemList.First(x => x.ItemId == 106000001);
+
+                await PlayerManager.Wear(defaultTop.ItemUid);
+                await PlayerManager.Wear(defaultBottom.ItemUid);
+                await PlayerManager.Wear(defaultShoes.ItemUid);
             }
         }
 
@@ -369,7 +366,7 @@ public partial class GameUser : IPeer
         Send(loginPacket);
 
         // 인벤토리 정보 전송
-        await InventoryController.GetCurrentItemList(this);
+        InventoryController.SendCurrentItems(this);
         if (labInfo != null) await InventoryController.GetLabInventory(this);
         
         // 우편 정보 전송
@@ -381,13 +378,12 @@ public partial class GameUser : IPeer
         await PlayerManager.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
     }
 
-    public void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject
+    public void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject?
     {
         var objectInfo = info switch
         {
             PlayerInfo p => p.ObjectInfo,
             ExploreTargetInfo e => e.ObjectInfo,
-            JobResourceInfo j => j.ObjectInfo,
             CampInfo c => c.ObjectInfo,
             _ => throw new ArgumentException($"Unsupported type: {typeof(T)}")
         };
@@ -406,7 +402,9 @@ public partial class GameUser : IPeer
         var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
         var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
         var instanceSubject = SubjectHelper.GetUpdateInfoSubject(objectInfo, manageServer);
-        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, info)));
+        
+        var serializedInfo = MessagePackSerializer.Serialize(info);
+        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, objectInfo.ObjectType, serializedInfo)));
     }
 
     public void BroadcastSocialAction(PlayerInfo playerInfo, SocialActionType socialActionType)
@@ -428,6 +426,16 @@ public partial class GameUser : IPeer
         var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
         var instanceSubject = SubjectHelper.GetSocialActionSubject(objectInfo, manageServer);
         NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, sendTuple)));
+    }
+    
+    public void BroadcastObjectDestroy(GameObjectInfo objectInfo)
+    {
+        var positionKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+        var manageServer = MapHelper.GetManageServerId(positionKey);
+        var subject = SubjectHelper.GetDestroyObjectSubject(objectInfo.MapId, objectInfo.MapSubId, manageServer);
+        var message = MessagePackSerializer.Serialize((positionKey, objectInfo.GetGameObjectKey()));
+
+        NatsClient.Publish(subject, message);
     }
 
     public void PublishToClients(Packet packet, List<long> userIdList)
@@ -456,9 +464,9 @@ public partial class GameUser : IPeer
             if (_token.IsReleased) return null;
             _token.IsReleased = true;
 
-            await JobController.Decamp(this);
+            // await JobController.Decamp(this);
             await PlayerManager.Dispose();
-            ProgressManager.Dispose();
+            _progressManager.Dispose();
             _updateObjectManager.Dispose();
 
             using var packet = PacketMaker.U_TO_G_LOGOUT(PlayerId);

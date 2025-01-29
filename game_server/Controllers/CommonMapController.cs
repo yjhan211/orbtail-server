@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using game_server.handlers;
 using MessagePack;
 using network.common;
 using network.common.data.models;
@@ -29,14 +28,6 @@ public class CommonMapController
     // private readonly ConcurrentDictionary<int, HashSet<JobResourceInfo>> _jobResourceDict;
     // private readonly List<Cell> _manageCellList;
 
-    private readonly Dictionary<Type, object> _updateHandlers = new()
-    {
-        { typeof(PlayerInfo), new UpdateHandler<PlayerInfo>(PacketMaker.G_TO_U_PLAYER_INFO) },
-        { typeof(ExploreTargetInfo), new UpdateHandler<ExploreTargetInfo>(PacketMaker.G_TO_U_EXPLORE_TARGET_INFO) },
-        { typeof(JobResourceInfo), new UpdateHandler<JobResourceInfo>(PacketMaker.G_TO_U_JOB_RESOURCE_INFO) },
-        { typeof(CampInfo), new UpdateHandler<CampInfo>(PacketMaker.G_TO_U_CAMP_INFO) }
-    };
-
     public CommonMapController(LogManager logManager, NatsClient natsClient, CancellationTokenSource cts, MapId mapId)
     {
         _logManager = logManager;
@@ -52,6 +43,7 @@ public class CommonMapController
         _immediateHandlers = new Dictionary<string, Action<RedisValue>>
         {
             { SubjectHelper.GetUpdateInfoSubject(_mapId, 0, Program.GameServerId), HandleUpdateInfo },
+            { SubjectHelper.GetSocialActionSubject(mapId, 0, Program.GameServerId), HandleSocialAction },
             { SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, Program.GameServerId), BroadcastUpdateObject },
             { SubjectHelper.GetBroadcastDestroySubject(_mapId, 0, Program.GameServerId), BroadcastDestroyObject }
         };
@@ -224,52 +216,42 @@ public class CommonMapController
 
     private void HandleUpdateInfo(RedisValue message)
     {
-        if (TryDeserialize<PlayerInfo>(message, out var key1, out var playerInfo))
+        var (key, type, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
+
+        switch (type)
         {
-            var handler = _updateHandlers[typeof(PlayerInfo)];
-            using var packet = ((IUpdateHandler<PlayerInfo>)handler).MakePacket(playerInfo);
-            BroadcastPacket(key1, packet);
-            return;
-        }
-    
-        if (TryDeserialize<ExploreTargetInfo>(message, out var key2, out var exploreInfo))
-        {
-            var handler = _updateHandlers[typeof(ExploreTargetInfo)];
-            using var packet = ((IUpdateHandler<ExploreTargetInfo>)handler).MakePacket(exploreInfo);
-            BroadcastPacket(key2, packet);
-            return;
-        }
-    
-        if (TryDeserialize<JobResourceInfo>(message, out var key3, out var jobInfo))
-        {
-            var handler = _updateHandlers[typeof(JobResourceInfo)];
-            using var packet = ((IUpdateHandler<JobResourceInfo>)handler).MakePacket(jobInfo);
-            BroadcastPacket(key3, packet);
-            return;
-        }
-    
-        if (TryDeserialize<CampInfo>(message, out var key4, out var campInfo))
-        {
-            var handler = _updateHandlers[typeof(CampInfo)];
-            using var packet = ((IUpdateHandler<CampInfo>)handler).MakePacket(campInfo);
-            BroadcastPacket(key4, packet);
-            return;
+            case ObjectType.PLAYER:
+            {
+                var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serializedInfo);
+                using var packet = PacketMaker.G_TO_U_PLAYER_INFO(playerInfo);
+                BroadcastPacket(key, packet);
+                break;
+            }
+            
+            case ObjectType.EXPLORETARGET:
+            {
+                var exploreTargetInfo = MessagePackSerializer.Deserialize<ExploreTargetInfo>(serializedInfo);
+                using var packet =  PacketMaker.G_TO_U_EXPLORE_TARGET_INFO(exploreTargetInfo);
+                BroadcastPacket(key, packet);
+                break;
+            }
+            
+            case ObjectType.CAMP:
+            {
+                var campInfo = MessagePackSerializer.Deserialize<CampInfo>(serializedInfo);
+                using var packet =  PacketMaker.G_TO_U_CAMP_INFO(campInfo);
+                BroadcastPacket(key, packet);
+                break;
+            }
         }
     }
     
-    private bool TryDeserialize<T>(RedisValue message, out string key, out T info) where T : IMessagePackObject
+    private void HandleSocialAction(RedisValue message)
     {
-        try
-        {
-            (key, info) = MessagePackSerializer.Deserialize<(string, T)>(message);
-            return true;
-        }
-        catch
-        {
-            key = null;
-            info = default;
-            return false;
-        }
+        var (partKey, (playerId, socialActionType)) = MessagePackSerializer.Deserialize<(string, (long, SocialActionType))>(message);
+
+        using var packet = PacketMaker.G_TO_U_SOCIAL_ACTION(playerId, socialActionType);
+        BroadcastPacket(partKey, packet);
     }
 
     private async Task MoveManageObjectAsync(RedisValue message)
@@ -279,8 +261,8 @@ public class CommonMapController
         var currentPositionKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
 
         await UpdateObjectPositionAsync(lastPositionKey, currentPositionKey, objectKey);
-        BroadcastObjectMove(lastPositionKey, objectInfo);
-        BroadcastObjectMove(currentPositionKey, objectInfo);
+        await BroadcastObjectMove(lastPositionKey, objectInfo);
+        await BroadcastObjectMove(currentPositionKey, objectInfo);
     }
 
     private void BroadcastPacket(string positionKey, IPacket packet)
@@ -541,7 +523,7 @@ public class CommonMapController
     {
         var (positionKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
 
-        using var packet = PacketMaker.G_TO_U_MOVE(objectInfo);
+        using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
         BroadcastPacket(positionKey, packet);
     }
 

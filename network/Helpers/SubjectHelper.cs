@@ -90,7 +90,7 @@ public static class SubjectHelper
     public static string GetSocialActionSubject(MapId mapId, long mapSubId, int serverId)
     {
         var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
-        return BuildSubject(UpdateInfo, mapId, convertMapSubId, serverId);
+        return BuildSubject(SocialAction, mapId, convertMapSubId, serverId);
     }
     
     public static string GetSocialActionSubject(GameObjectInfo objectInfo, int serverId)

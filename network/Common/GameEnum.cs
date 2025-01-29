@@ -3,15 +3,23 @@ namespace network.common
 {
     public enum MapId
     {
-        NONE = 0,
-        LIBRARY,
-        SCHOOL1,
-        SCHOOL2,
-        CLASSROOM,
-        ADMINOFFICE,
-        GYM,
-        GYMSTORAGE,
-        SCHOOLGROUND,
+        None = 0,
+        TutorialLibrary,
+        TutorialSchool1,
+        TutorialSchool2,
+        TutorialClassroom,
+        TutorialAdminoffice,
+        TutorialGym,
+        TutorialGymstorage,
+        TutorialSchoolground,
+        Library,
+        School1,
+        School2,
+        Classroom,
+        Adminoffice,
+        Gym,
+        Gymstorage,
+        Schoolground,
     }
 
     public enum SocialActionType
