@@ -54,7 +54,7 @@ public static class InventoryController
             updateItems = await user.PlayerManager.UseItem(body.ItemUid);
         }
 
-        using var packet = PacketMaker.U_TO_C_USE_ITEM(user.PlayerManager.PlayerInfo.JobInfo);
+        using var packet = PacketMaker.U_TO_C_USE_ITEM(user.PlayerManager.PlayerInfo);
         user.Send(packet);
 
         SendUpdateItems(user, updateItems);

@@ -85,7 +85,7 @@ public static class JobController
                     return;
                 }
 
-                direction = exploreTargetInfo.ObjectInfo.CurrentCell.GetDirection(user.CurrentCell);
+                // direction = exploreTargetInfo.ObjectInfo.CurrentCell.GetDirection(user.CurrentCell);
                 exploreTargetInfo.PlayerId = user.PlayerId;
                 exploreTargetInfo.EndTimestamp = DateTime.UtcNow.AddSeconds(GameRuleData.SkillCompleteTime);
                 user.StartExplore(exploreTargetInfo);
@@ -97,7 +97,7 @@ public static class JobController
             await user.PlayerManager.PlayerInfo.Save();
         }
 
-        await user.SetFlip(direction);
+        // await user.SetFlip(direction);
 
         using var packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.SUCCESS, user.PlayerManager.PlayerInfo.JobInfo);
         user.Send(packet);

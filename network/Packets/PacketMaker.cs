@@ -85,10 +85,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_USE_ITEM(JobInfo jobInfo)
+    public static Packet U_TO_C_USE_ITEM(PlayerInfo playerInfo)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_USE_ITEM);
-        U_TO_C_USE_ITEM body = new() { JobInfo = jobInfo };
+        U_TO_C_USE_ITEM body = new() { PlayerInfo = playerInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
