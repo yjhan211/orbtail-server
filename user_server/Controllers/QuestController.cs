@@ -52,7 +52,6 @@ public static class QuestController
         user.Send(packet);
     }
 
-
     public static async Task CompleteQuest(GameUser user, C_TO_U_QUEST_INCREASE body)
     {
         var questDiary = await QuestDiary.Load(user.PlayerId);

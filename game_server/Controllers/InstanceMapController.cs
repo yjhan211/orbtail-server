@@ -30,14 +30,17 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
     {
         logManager.WriteDebugLog($"EnterInstanceSubject: {EnterInstanceSubject}");
         natsClient.Subscribe(EnterInstanceSubject, (_, msg) => {        
-            try
+            Task.Run(async () => 
             {
-                EnterInstance(msg).GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                logManager.WriteErrorLog(ex);
-            }
+                try
+                {
+                    await EnterInstance(msg);
+                }
+                catch (Exception ex)
+                {
+                    logManager.WriteErrorLog(ex);
+                }
+            });
         });
     }
 
@@ -108,6 +111,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
                 logManager.WriteDebugLog("33");
                 var exploreTargetList = ExploreTargetData.GetListByMap(mapId);
                 logManager.WriteDebugLog("44");
+                logManager.WriteDebugLog($"Map ID: {mapId}, List count: {exploreTargetList.Count}");
                 foreach (var exploreTarget in exploreTargetList)
                 {
                     var exploreTargetUid = await CacheHelper.Instance.StringIncrementAsync("temp_explore_target_uid");

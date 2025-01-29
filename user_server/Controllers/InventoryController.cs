@@ -52,6 +52,7 @@ public static class InventoryController
         await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
         {
             updateItems = await user.PlayerManager.UseItem(body.ItemUid);
+            await QuestController.IncreaseQuestCount(user, 5, 1);
         }
 
         using var packet = PacketMaker.U_TO_C_USE_ITEM(user.PlayerManager.PlayerInfo);

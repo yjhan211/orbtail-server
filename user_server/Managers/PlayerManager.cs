@@ -272,7 +272,7 @@ public class PlayerManager(
             switch (buffDetail.SubType)
             {
                 case BuffSubType.CONDITION_ADD:
-                    PlayerInfo.Hp = Math.Clamp(PlayerInfo.Hp + value, 0, 10000);
+                    PlayerInfo.Hp = Math.Clamp(PlayerInfo.Hp + (value * 100), 0, 10000);
                     break;
             }
         }
