@@ -254,13 +254,13 @@ public class PlayerManager(
         if (!itemDetail.IsConsumable)
             throw new Exception($"not consumable item {targetItem.ItemId}");
         
+        var updateItemList = new List<ItemInfo>() { targetItem };
         var isDeleteSuccess = PlayerInfo.InventoryInfo.DeleteItem(itemUid, count);
         if (!isDeleteSuccess)
         {
             throw new Exception($"delete item {itemUid} failed.");
         }
         
-        var updateItemList = new List<ItemInfo>() { targetItem };
         foreach (var (buffId, value) in itemDetail.ConsumableBuffList)
         {
             var buffDetail = GameBuffData.Get(buffId);

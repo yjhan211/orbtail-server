@@ -51,19 +51,18 @@ public partial class InventoryInfo
         {
             return false;
         }
-
+        
         if (item.Count < count)
         {
             return false;
         }
 
-        if (count < item.Count)
+        item.Count -= count;
+        if (item.Count <= 0)
         {
-            item.Count -= count;
-            return true;
+            ItemDict.Remove(itemUid);
         }
-
-        ItemDict.Remove(itemUid);
+        
         return true;
     }
 
