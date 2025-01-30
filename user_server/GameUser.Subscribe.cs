@@ -140,7 +140,7 @@ public partial class GameUser
 
     private void SubscribeChatMsg(GameUser _, U_TO_C_CHAT_MSG body)
     {
-        using var packet = PacketMaker.U_TO_C_CHAT_MSG(body.ChatType, body.Name, body.ChatMessage);
+        using var packet = PacketMaker.U_TO_C_CHAT_MSG(body.ChatType, body.PlayerId, body.Name, body.ChatMessage);
         Send(packet);
     }
 

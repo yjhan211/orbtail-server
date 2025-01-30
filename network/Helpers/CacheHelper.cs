@@ -181,12 +181,12 @@ public class CacheHelper
 
     public Task<long> EnqueueAsync(string key, byte[] value, int db = -1)
     {
-        return ExecuteRedisCommandAsync(database => database.ListRightPushAsync(key, value), db);
+        return ExecuteRedisCommandAsync(database => database.ListLeftPushAsync(key, value), db);
     }
 
     public async Task<byte[]?> DequeueAsync(string key, int db = -1)
     {
-        var result = await ExecuteRedisCommandAsync(database => database.ListLeftPopAsync(key), db);
+        var result = await ExecuteRedisCommandAsync(database => database.ListRightPopAsync(key), db);
         return result.HasValue ? (byte[])result! : null;
     }
 
