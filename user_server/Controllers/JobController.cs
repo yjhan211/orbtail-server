@@ -1,8 +1,6 @@
-using MessagePack;
 using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.helpers;
 using network.packets;
 
 namespace user_server.controllers;
@@ -156,6 +154,7 @@ public static class JobController
                 case 4:
                 case 5: 
                 case 6:
+                case 7:    
                     await QuestController.IncreaseQuestCount(user, 8, 1);
                     break;
                 
