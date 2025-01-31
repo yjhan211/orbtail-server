@@ -18,7 +18,7 @@ public static class ChatController
         return $"chat_{chatType}_history";
     }
 
-    private static async Task AddChatHistory(ChatType chatType, string senderName, string message)
+    private static async Task AddChatHistory(ChatType chatType, long playerId, string senderName, string message)
     {
         var key = GetChatHistoryKey(ChatType.ALL);
         var historyLength = await CacheHelper.Instance.ListLengthAsync(key);
@@ -29,7 +29,7 @@ public static class ChatController
             historyLength--;
         }
 
-        await CacheHelper.Instance.EnqueueAsync(key, MessagePackSerializer.Serialize((chatType, senderName, message)));
+        await CacheHelper.Instance.EnqueueAsync(key, MessagePackSerializer.Serialize((chatType, playerId, senderName, message)));
     }
 
     public static async Task GetChatHistory(GameUser user, ChatType chatType)
@@ -41,18 +41,18 @@ public static class ChatController
         {
             if (value == RedisValue.Null) continue;
 
-            (ChatType, string, string) deserialize;
+            (ChatType, long, string, string) deserialize;
 
             try
             {
-                deserialize = MessagePackSerializer.Deserialize<(ChatType, string, string)>(value);
+                deserialize = MessagePackSerializer.Deserialize<(ChatType, long, string, string)>(value);
             }
             catch (MessagePackSerializationException)
             {
                 continue;
             }
 
-            using var packet = PacketMaker.U_TO_C_CHAT_MSG(deserialize.Item1, deserialize.Item2, deserialize.Item3);
+            using var packet = PacketMaker.U_TO_C_CHAT_MSG(deserialize.Item1, deserialize.Item2, deserialize.Item3, deserialize.Item4);
             user.Send(packet);
         }
     }
@@ -70,11 +70,11 @@ public static class ChatController
             playerName = playerInfo.Name;
         }
 
-        using var packet = PacketMaker.U_TO_C_CHAT_MSG(body.ChatType, playerName!, body.ChatMessage);
+        using var packet = PacketMaker.U_TO_C_CHAT_MSG(body.ChatType, user.PlayerId, playerName!, body.ChatMessage);
         switch (body.ChatType)
         {
             case ChatType.ALL:
-                await AddChatHistory(body.ChatType, playerName!, body.ChatMessage);
+                await AddChatHistory(body.ChatType, user.PlayerId, playerName!, body.ChatMessage);
                 user.NatsClient.Publish("all", packet.ToBytes());
                 break;
 

@@ -121,10 +121,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_CHAT_MSG(ChatType chatType, string name, string chatMessage)
+    public static Packet U_TO_C_CHAT_MSG(ChatType chatType, long playerId, string name, string chatMessage)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CHAT_MSG);
-        U_TO_C_CHAT_MSG body = new() { ChatType = chatType, Name = name, ChatMessage = chatMessage };
+        U_TO_C_CHAT_MSG body = new() { ChatType = chatType, PlayerId = playerId, Name = name, ChatMessage = chatMessage };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

@@ -84,9 +84,8 @@ namespace network.common.data.models
     public class U_TO_C_CHAT_MSG : IMessagePackObject
     {
         [Key("chatType")] public ChatType ChatType { get; set; }
-
+        [Key("playerId")] public long PlayerId { get; set; }
         [Key("name")] public string Name { get; set; }
-
         [Key("chatMessage")] public string ChatMessage { get; set; }
     }
 

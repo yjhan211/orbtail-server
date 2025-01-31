@@ -1,4 +1,7 @@
 id,map_id,name,reward_item_pool,reusable,position,sprite_path
 1,4,의자에 매달린 가방,[201000001],1,"(93, 100)",Sprites/Map/ClassRoom/P_Deskchair_002
-2,4,책상,[301000001],1,"(93, 102)",Sprites/Map/ClassRoom/P_Desk_001
+2,4,책상,[301000002],1,"(93, 102)",Sprites/Map/ClassRoom/P_Desk_001
 3,4,열린 사물함,[201000002],1,"(101, 101)",Sprites/Map/ClassRoom/P_Locker_Door_002
+4,5,사무용 서랍,[301000004],1,"(88,98)",Sprites/Map/AdminOffice/P_Shelf_004
+5,5,교사용 케비닛,[301000005],1,"(97,110)",Sprites/Map/AdminOffice/P_Shelf_007
+6,5,국어선생님 책상,[301000003],1,"(97,102)",Sprites/Map/AdminOffice/P_Desk_007
