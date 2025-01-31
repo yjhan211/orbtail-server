@@ -153,6 +153,12 @@ public static class JobController
                     await QuestController.IncreaseQuestCount(user, 4, 1);
                     break;
                 
+                case 4:
+                case 5: 
+                case 6:
+                    await QuestController.IncreaseQuestCount(user, 8, 1);
+                    break;
+                
                 default:
                     break;
             }
