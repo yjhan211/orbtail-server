@@ -78,12 +78,12 @@ public static class JobController
                     return;
                 }
 
-                if (2 < user.CurrentCell.GetDistance(exploreTargetInfo.ObjectInfo.CurrentCell))
-                {
-                    using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
-                    user.Send(errorPacket);
-                    return;
-                }
+                // if (2 < user.CurrentCell.GetDistance(exploreTargetInfo.ObjectInfo.CurrentCell))
+                // {
+                //     using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
+                //     user.Send(errorPacket);
+                //     return;
+                // }
 
                 // direction = exploreTargetInfo.ObjectInfo.CurrentCell.GetDirection(user.CurrentCell);
                 exploreTargetInfo.PlayerId = user.PlayerId;
