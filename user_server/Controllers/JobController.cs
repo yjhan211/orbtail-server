@@ -78,12 +78,12 @@ public static class JobController
                     return;
                 }
 
-                if (2 < user.CurrentCell.GetDistance(exploreTargetInfo.ObjectInfo.CurrentCell))
-                {
-                    using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
-                    user.Send(errorPacket);
-                    return;
-                }
+                // if (2 < user.CurrentCell.GetDistance(exploreTargetInfo.ObjectInfo.CurrentCell))
+                // {
+                //     using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
+                //     user.Send(errorPacket);
+                //     return;
+                // }
 
                 // direction = exploreTargetInfo.ObjectInfo.CurrentCell.GetDirection(user.CurrentCell);
                 exploreTargetInfo.PlayerId = user.PlayerId;
@@ -151,6 +151,12 @@ public static class JobController
                 case 2:
                 case 3:
                     await QuestController.IncreaseQuestCount(user, 4, 1);
+                    break;
+                
+                case 4:
+                case 5: 
+                case 6:
+                    await QuestController.IncreaseQuestCount(user, 8, 1);
                     break;
                 
                 default:
