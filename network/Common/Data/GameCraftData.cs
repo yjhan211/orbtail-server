@@ -38,6 +38,7 @@ namespace network.common.data
         public int TargetItem { get; private set; }
         public List<(int id, int count)> RequireItems { get; private set; }
         public int Stamina { get; private set; }
+        public int Seconds { get; private set; }
 
         public static CraftInfoData CreateFromData(CsvRow row)
         {
@@ -48,6 +49,7 @@ namespace network.common.data
                 TargetItem = int.Parse(row["target_item"]),
                 RequireItems = ItemInfoData.ParseTupleArray(row["require_items"]),
                 Stamina = int.Parse(row["stamina"]),
+                Seconds = int.Parse(row["seconds"]),
             };
         }
     }

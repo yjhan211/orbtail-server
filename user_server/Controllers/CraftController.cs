@@ -18,14 +18,14 @@ public static class CraftController
                 return;
             }
 
-            if (user.PlayerManager.PlayerInfo.Stamina <= 0)
+            var craftData = GameCraftData.Get(body.CraftId);
+            if (user.PlayerManager.PlayerInfo.Stamina <= craftData.Stamina)
             {
                 using var errorPacket = PacketMaker.U_TO_C_CRAFT(ErrorCode.FATAL);
                 user.Send(errorPacket);
                 return;
             }
 
-            var craftData = GameCraftData.Get(body.CraftId);
             if (!user.PlayerManager.PlayerInfo.CraftInfo.Manuals.Contains(craftData.ManualId))
             {
                 using var errorPacket = PacketMaker.U_TO_C_CRAFT(ErrorCode.FATAL);
@@ -33,9 +33,9 @@ public static class CraftController
                 return;
             }
 
-            user.StartCraft(body.CraftId, DateTime.Now.AddSeconds(10));
+            user.StartCraft(body.CraftId, DateTime.Now.AddSeconds(craftData.Seconds));
             await user.SetState(PlayerState.CRAFT_1);
-            user.PlayerManager.PlayerInfo.Stamina -= 5;
+            user.PlayerManager.PlayerInfo.Stamina -= craftData.Stamina;
             await user.PlayerManager.PlayerInfo.Save();
         }
         
