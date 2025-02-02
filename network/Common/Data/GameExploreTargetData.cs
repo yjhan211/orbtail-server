@@ -14,7 +14,7 @@ using network.managers;
 
 namespace network.common.data
 {
-    public static class ExploreTargetData
+    public static class GameExploreTargetData
     {
         private static readonly Dictionary<int, ExploreTargetInfoData> Infos = new();
         private static readonly Dictionary<MapId, List<ExploreTargetInfoData>> InfosByMap = new();

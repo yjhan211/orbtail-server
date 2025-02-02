@@ -114,53 +114,7 @@ public static class LabController
 
         InventoryController.SendCurrentItems(user);
     }
-
-    public static async Task Make(GameUser user, C_TO_U_MAKE body)
-    {
-        // int makeItemId;
-        // await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
-        // {
-        //     var playerInfo = await PlayerInfo.Load(user.PlayerId);
-        //     if (playerInfo == null) throw new Exception("player_info not exists");
-        //
-        //     var validator = new List<(int, int)>();
-        //     foreach (var materialSlot in body.Materials)
-        //         if (playerInfo.InventoryInfo.ItemDict.TryGetValue(materialSlot.Key, out var slotItemInfo))
-        //             validator.Add((slotItemInfo.ItemId, materialSlot.Value));
-        //
-        //     var labInfo = await LabInfo.Load(playerInfo.LabId);
-        //     if (labInfo == null) throw new Exception("lab_info not exists");
-        //
-        //     var researchList = labInfo.ResearchInfoDict.Values.Select(x => (x.ResearchId, x.Level)).ToList();
-        //     makeItemId = GameDataHelper.GetMakableItemId(researchList, validator);
-        //
-        //     if (makeItemId != 0)
-        //     {
-        //         var itemInfo = await InventoryController.CreateItem(makeItemId, 1);
-        //         playerInfo.InventoryInfo.AddItem(itemInfo);
-        //     }
-        //
-        //     foreach (var materialInfo in body.Materials)
-        //     {
-        //         var materialItemUid = materialInfo.Key;
-        //         var materialItemCount = materialInfo.Value;
-        //
-        //         if (playerInfo.InventoryInfo.ItemDict.TryGetValue(materialItemUid, out var materialItem))
-        //         {
-        //             materialItem.Count -= materialItemCount;
-        //             if (materialItem.Count == 0) playerInfo.InventoryInfo.ItemDict.Remove(materialItemUid);
-        //         }
-        //     }
-        //
-        //     await playerInfo.Save();
-        // }
-
-        // using var packet = PacketMaker.U_TO_C_MAKE(makeItemId != 0);
-        // user.Send(packet);
-        //
-        // await InventoryController.GetCurrentItemList(user);
-    }
-
+    
     public static async Task WriteLabHire(GameUser user, C_TO_U_WRITE_LAB_HIRE body)
     {
         var playerInfo = await PlayerInfo.Load(user.PlayerId);

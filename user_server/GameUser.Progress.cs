@@ -14,21 +14,21 @@ public partial class GameUser
             async trackable =>
             {
                 var progressInfo = (ExploreProgressInfo)trackable;
-                await JobController.ExploreEnd(this, progressInfo.ExploreTargetInfo);
+                await ExploreController.ExploreEnd(this, progressInfo.ExploreTargetInfo);
             }
         );
     }
 
-    // public void StartJobSkill(JobResourceInfo jobResourceInfo)
-    // {
-    //     var jobProgressInfo = new JobProgressInfo(jobResourceInfo);
-    //     ProgressManager.AddProgressItem(
-    //         jobProgressInfo,
-    //         async trackable =>
-    //         {
-    //             var progressInfo = (JobProgressInfo)trackable;
-    //             await JobController.JobSkillEnd(this, progressInfo.JobResourceInfo);
-    //         }
-    //     );
-    // }
+    public void StartCraft(int craftId, DateTime endTimestamp)
+    {
+        var craftProgressInfo = new CraftProgressInfo(craftId, endTimestamp);
+        _progressManager.AddProgressItem(
+            craftProgressInfo,
+            async trackable =>
+            {
+                var progressInfo = (CraftProgressInfo)trackable;
+                await CraftController.CraftEnd(this, progressInfo.CraftId);
+            }
+        );
+    }
 }

@@ -33,6 +33,8 @@ namespace network.common.data.models
         [Key("jobInfo")] public JobInfo JobInfo { get; set; }
 
         [Key("labInfo")] public LabInfo LabInfo { get; set; }
+        
+        [Key("craftInfo")] public CraftInfo CraftInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -387,13 +389,19 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class C_TO_U_MAKE : IMessagePackObject
+    public class C_TO_U_CRAFT : IMessagePackObject
     {
-        [Key("materials")] public Dictionary<long, int> Materials { get; set; }
+        [Key("craftId")] public int CraftId { get; set; }
     }
 
     [MessagePackObject]
-    public class U_TO_C_MAKE : IMessagePackObject
+    public class U_TO_C_CRAFT : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+    
+    [MessagePackObject]
+    public class U_TO_C_CRAFT_COMPLETE : IMessagePackObject
     {
         [Key("isSuccess")] public bool IsSuccess { get; set; }
     }

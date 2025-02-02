@@ -25,13 +25,12 @@ public class ExploreProgressInfo(ExploreTargetInfo exploreTargetInfo) : IProgres
     }
 }
 
-public class JobProgressInfo(JobResourceInfo jobResourceInfo) : IProgressTrackable
+public class CraftProgressInfo(int craftId, DateTime endTimestamp) : IProgressTrackable
 {
-    public JobResourceInfo JobResourceInfo { get; } = jobResourceInfo;
-
+    public readonly int CraftId = craftId;
     public DateTime GetEndTime()
     {
-        return JobResourceInfo.EndTimestamp;
+        return endTimestamp;
     }
 }
 

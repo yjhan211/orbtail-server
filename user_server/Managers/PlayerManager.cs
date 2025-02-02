@@ -253,13 +253,14 @@ public class PlayerManager(
         var itemDetail = GameItemData.Get(targetItem.ItemId);
         if (!itemDetail.IsConsumable)
             throw new Exception($"not consumable item {targetItem.ItemId}");
-        
-        var updateItemList = new List<ItemInfo>() { targetItem };
-        var isDeleteSuccess = PlayerInfo.InventoryInfo.DeleteItem(itemUid, count);
-        if (!isDeleteSuccess)
+
+        var updateItemList = new List<ItemInfo>();
+        var deleteItem = PlayerInfo.InventoryInfo.DeleteItem(itemUid, count);
+        if (deleteItem == null)
         {
             throw new Exception($"delete item {itemUid} failed.");
         }
+        updateItemList.Add(deleteItem);
         
         foreach (var (buffId, value) in itemDetail.ConsumableBuffList)
         {
@@ -273,6 +274,10 @@ public class PlayerManager(
             {
                 case BuffSubType.CONDITION_ADD:
                     PlayerInfo.Hp = Math.Clamp(PlayerInfo.Hp + (value * 100), 0, 10000);
+                    break;
+                
+                case BuffSubType.CRAFT_ADD:
+                    PlayerInfo.CraftInfo.Manuals.Add(value);
                     break;
             }
         }

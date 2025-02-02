@@ -48,7 +48,7 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.BuffInfo, init: GameBuffData.Initialize, validate: GameBuffData.Validate),
                 (fileName: DataFiles.QuestInfo, init: GameQuestData.Initialize, validate: GameQuestData.Validate),
                 (fileName: DataFiles.MailInfo, init: GameMailData.Initialize, validate: GameMailData.Validate),
-                (fileName: DataFiles.ExploreTargetInfo, init: ExploreTargetData.Initialize, ExploreTargetData.Validate)
+                (fileName: DataFiles.ExploreTargetInfo, init: GameExploreTargetData.Initialize, GameExploreTargetData.Validate)
             };
 
         public static void Initialize(LogManager logManager)
