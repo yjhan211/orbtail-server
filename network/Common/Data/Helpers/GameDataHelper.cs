@@ -18,6 +18,7 @@ namespace network.common.data.helpers
             public const string QuestInfo = "quest_info.csv";
             public const string MailInfo = "mail_info.csv";
             public const string ExploreTargetInfo = "explore_target_info.csv";
+            public const string CraftInfo = "craft_info.csv";
 
             public static class Item
             {
@@ -48,7 +49,8 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.BuffInfo, init: GameBuffData.Initialize, validate: GameBuffData.Validate),
                 (fileName: DataFiles.QuestInfo, init: GameQuestData.Initialize, validate: GameQuestData.Validate),
                 (fileName: DataFiles.MailInfo, init: GameMailData.Initialize, validate: GameMailData.Validate),
-                (fileName: DataFiles.ExploreTargetInfo, init: GameExploreTargetData.Initialize, GameExploreTargetData.Validate)
+                (fileName: DataFiles.ExploreTargetInfo, init: GameExploreTargetData.Initialize, GameExploreTargetData.Validate),
+                (fileName: DataFiles.CraftInfo, init: GameCraftData.Initialize, GameCraftData.Validate),
             };
 
         public static void Initialize(LogManager logManager)

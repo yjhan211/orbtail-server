@@ -11,23 +11,57 @@ using System.IO;
 using Newtonsoft.Json;
 using network.common.data.helpers;
 using network.managers;
+using UnityEngine;
 
 namespace network.common.data
 {
     public static class GameCraftData
     {
         private static readonly Dictionary<int, CraftInfoData> Infos = new();
+        private static readonly Dictionary<int, List<CraftInfoData>> InfosByManual= new();
         
         public static void Initialize(List<CsvRow> csvData)
         {
             var infos = csvData.Select(CraftInfoData.CreateFromData);
-            foreach (var info in infos) Infos[info.Id] = info;
+            foreach (var info in infos)
+            {
+                Infos[info.Id] = info;
+                if (!InfosByManual.TryGetValue(info.ManualId, out var _))
+                {
+                    InfosByManual[info.ManualId] = new List<CraftInfoData> { };
+                }
+
+                if (!InfosByManual[info.ManualId].Any(x => x.Id == info.Id))
+                {
+                    InfosByManual[info.ManualId].Add(info);
+                }
+            }
         }
 
         public static CraftInfoData Get(int id)
         {
             if (!Infos.TryGetValue(id, out var info)) throw new KeyNotFoundException($"CraftInfo {id} not found");
             return info;
+        }
+
+        public static List<CraftInfoData> GetListByManual(int manualId)
+        {
+            if (!InfosByManual.TryGetValue(manualId, out var list))
+            {
+                return new List<CraftInfoData> { };
+            }
+
+            return list;
+        }
+        
+        public static void Validate(LogManager logManager)
+        {
+            logManager.WriteDebugLog("=== GameCraftData Validation ===");
+            foreach (var (id, info) in Infos)
+            {
+                logManager.WriteDebugLog($"[{id}] {info.ManualId} | {info.TargetItem}");
+            }
+            logManager.WriteDebugLog("All validations passed successfully!");
         }
     }
 
