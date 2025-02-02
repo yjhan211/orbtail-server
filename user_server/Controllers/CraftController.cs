@@ -19,12 +19,13 @@ public static class CraftController
             }
 
             var craftData = GameCraftData.Get(body.CraftId);
-            if (user.PlayerManager.PlayerInfo.Stamina <= craftData.Stamina)
-            {
-                using var errorPacket = PacketMaker.U_TO_C_CRAFT(ErrorCode.FATAL);
-                user.Send(errorPacket);
-                return;
-            }
+            // TODO 주석해제
+            // if (user.PlayerManager.PlayerInfo.Stamina < craftData.Stamina)
+            // {
+            //     using var errorPacket = PacketMaker.U_TO_C_CRAFT(ErrorCode.FATAL);
+            //     user.Send(errorPacket);
+            //     return;
+            // }
 
             if (!user.PlayerManager.PlayerInfo.CraftInfo.Manuals.Contains(craftData.ManualId))
             {
@@ -35,7 +36,8 @@ public static class CraftController
 
             user.StartCraft(body.CraftId, DateTime.Now.AddSeconds(craftData.Seconds));
             await user.SetState(PlayerState.CRAFT_1);
-            user.PlayerManager.PlayerInfo.Stamina -= craftData.Stamina;
+            
+            user.PlayerManager.PlayerInfo.Stamina = Math.Clamp(user.PlayerManager.PlayerInfo.Stamina - craftData.Stamina, 0, 100);
             await user.PlayerManager.PlayerInfo.Save();
         }
         
@@ -57,12 +59,12 @@ public static class CraftController
             var craftData = GameCraftData.Get(craftId);
             var craftTargetItem = await InventoryController.CreateItem(craftData.TargetItem, 1);
 
-            user.PlayerManager.PlayerInfo.InventoryInfo.AddItem(craftTargetItem);
-            updateItems.Add(craftTargetItem);
+            var addItem = user.PlayerManager.PlayerInfo.InventoryInfo.AddItem(craftTargetItem);
+            updateItems.Add(addItem);
             
             foreach (var (itemId, count) in craftData.RequireItems)
             {
-                var deleteItem = user.PlayerManager.PlayerInfo.InventoryInfo.DeleteItem(itemId, count);
+                var deleteItem = user.PlayerManager.PlayerInfo.InventoryInfo.DeleteItemById(itemId, count);
                 if (deleteItem == null)
                 {
                     throw new Exception("cannot find delete item");
@@ -71,6 +73,17 @@ public static class CraftController
             }
             await user.PlayerManager.SetState(PlayerState.IDLE);
             await user.PlayerManager.PlayerInfo.Save();
+            
+            // 퀘스트 갱신
+            switch (craftId)
+            {
+                case 1:
+                    await QuestController.IncreaseQuestCount(user, 10, 1);
+                    break;
+                
+                default:
+                    break;
+            }
         }
         
         using var packet = PacketMaker.U_TO_C_CRAFT_COMPLETE(true);

@@ -65,6 +65,28 @@ public partial class InventoryInfo
         
         return item;
     }
+    
+    public ItemInfo? DeleteItemById(int itemId, int count)
+    {
+        var item = ItemDict.Values.FirstOrDefault(x => x.ItemId == itemId);
+        if (item == null)
+        {
+            return null;
+        }
+    
+        if (item.Count < count)
+        {
+            return null;
+        }
+
+        item.Count -= count;
+        if (item.Count <= 0)
+        {
+            ItemDict.Remove(item.ItemUid);
+        }
+    
+        return item;
+    }
 
     public async Task Save()
     {
