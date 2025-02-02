@@ -336,6 +336,7 @@ namespace network.common.data.models
     public class U_TO_C_USE_ITEM : IMessagePackObject
     {
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
+        [Key("craftInfo")] public CraftInfo CraftInfo { get; set; }
     }
 
     [MessagePackObject]

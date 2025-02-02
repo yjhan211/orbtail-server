@@ -89,7 +89,7 @@ public static class PacketMaker
     public static Packet U_TO_C_USE_ITEM(PlayerInfo playerInfo)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_USE_ITEM);
-        U_TO_C_USE_ITEM body = new() { PlayerInfo = playerInfo };
+        U_TO_C_USE_ITEM body = new() { PlayerInfo = playerInfo, CraftInfo = playerInfo.CraftInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
