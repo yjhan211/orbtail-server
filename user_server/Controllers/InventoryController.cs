@@ -51,13 +51,11 @@ public static class InventoryController
         List<ItemInfo> updateItems;
         await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
         {
-            updateItems = await user.PlayerManager.UseItem(body.ItemUid);
-            await QuestController.IncreaseQuestCount(user, 5, 1);
+            updateItems = await user.PlayerManager.UseItem(user, body.ItemUid);
         }
 
         using var packet = PacketMaker.U_TO_C_USE_ITEM(user.PlayerManager.PlayerInfo);
         user.Send(packet);
-
         SendUpdateItems(user, updateItems);
     }
 
