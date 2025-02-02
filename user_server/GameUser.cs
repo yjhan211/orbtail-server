@@ -128,7 +128,7 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_OBJECT_INFO>(body, _updateObjectManager.GetObjectInfo);
                     break;
                 case Protocol.C_TO_U_EXPLORE_TARGET_INFO:
-                    await HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(body, JobController.GetExploreTargetInfo);
+                    await HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(body, ExploreController.GetExploreTargetInfo);
                     break;
                 case Protocol.C_TO_U_JOB_RESOURCE_INFO:
                     // await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, JobController.GetJobResourceInfo);
@@ -146,7 +146,7 @@ public partial class GameUser : IPeer
                     await PlayerManager.ChangeMap();
                     break;
                 case Protocol.C_TO_U_EXPLORE:
-                    await HandleMessage<C_TO_U_EXPLORE>(body, JobController.Explore);
+                    await HandleMessage<C_TO_U_EXPLORE>(body, ExploreController.Explore);
                     break;
                 case Protocol.C_TO_U_USE_SKILL:
                     // await HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
@@ -160,8 +160,8 @@ public partial class GameUser : IPeer
                 case Protocol.C_TO_U_UPGRADE_RESEARCH:
                     await HandleMessage<C_TO_U_UPGRADE_RESEARCH>(body, LabController.UpgradeResearch);
                     break;
-                case Protocol.C_TO_U_MAKE:
-                    await HandleMessage<C_TO_U_MAKE>(body, LabController.Make);
+                case Protocol.C_TO_U_CRAFT:
+                    await HandleMessage<C_TO_U_CRAFT>(body, CraftController.Craft);
                     break;
                 case Protocol.C_TO_U_WRITE_LAB_HIRE:
                     await HandleMessage<C_TO_U_WRITE_LAB_HIRE>(body, LabController.WriteLabHire);

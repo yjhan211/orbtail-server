@@ -45,16 +45,16 @@ public partial class InventoryInfo
         }
     }
 
-    public bool DeleteItem(long itemUid, int count)
+    public ItemInfo? DeleteItem(long itemUid, int count)
     {
         if (!ItemDict.TryGetValue(itemUid, out var item))
         {
-            return false;
+            return null;
         }
         
         if (item.Count < count)
         {
-            return false;
+            return null;
         }
 
         item.Count -= count;
@@ -63,7 +63,29 @@ public partial class InventoryInfo
             ItemDict.Remove(itemUid);
         }
         
-        return true;
+        return item;
+    }
+    
+    public ItemInfo? DeleteItemById(int itemId, int count)
+    {
+        var item = ItemDict.Values.FirstOrDefault(x => x.ItemId == itemId);
+        if (item == null)
+        {
+            return null;
+        }
+    
+        if (item.Count < count)
+        {
+            return null;
+        }
+
+        item.Count -= count;
+        if (item.Count <= 0)
+        {
+            ItemDict.Remove(item.ItemUid);
+        }
+    
+        return item;
     }
 
     public async Task Save()

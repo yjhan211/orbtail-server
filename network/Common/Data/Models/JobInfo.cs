@@ -17,7 +17,6 @@ namespace network.common.data.models
             PlayerId = 0;
             JobStatDict = new Dictionary<JobType, JobStat>();
             ResearchPointDict = new Dictionary<JobType, ResearchPoint>();
-            Hp = 0;
         }
 
         public JobInfo(long playerId)
@@ -29,7 +28,6 @@ namespace network.common.data.models
             JobStatDict[JobType.CHEMIST] = new JobStat();
             ResearchPointDict[JobType.ENGINEER] = new ResearchPoint();
             ResearchPointDict[JobType.CHEMIST] = new ResearchPoint();
-            Hp = 100;
         }
 
         [Key("playerId")] public long PlayerId { get; set; }
@@ -37,8 +35,6 @@ namespace network.common.data.models
         [Key("jobStatDict")] public Dictionary<JobType, JobStat> JobStatDict { get; set; }
 
         [Key("researchPointDict")] public Dictionary<JobType, ResearchPoint> ResearchPointDict { get; set; }
-
-        [Key("hp")] public int Hp { get; set; }
     }
 
     [MessagePackObject]

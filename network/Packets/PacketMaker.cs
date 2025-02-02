@@ -24,6 +24,7 @@ public static class PacketMaker
                 ObjectInfo = playerInfo.ObjectInfo,
                 PlayerInfo = playerInfo,
                 JobInfo = playerInfo.JobInfo,
+                CraftInfo = playerInfo.CraftInfo,
                 LabInfo = labInfo
             };
 
@@ -88,7 +89,7 @@ public static class PacketMaker
     public static Packet U_TO_C_USE_ITEM(PlayerInfo playerInfo)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_USE_ITEM);
-        U_TO_C_USE_ITEM body = new() { PlayerInfo = playerInfo };
+        U_TO_C_USE_ITEM body = new() { PlayerInfo = playerInfo, CraftInfo = playerInfo.CraftInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -350,10 +351,19 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_MAKE(bool isSuccess)
+    public static Packet U_TO_C_CRAFT(ErrorCode errorCode)
     {
-        var packet = Packet.Create((int)Protocol.U_TO_C_MAKE);
-        U_TO_C_MAKE body = new() { IsSuccess = isSuccess };
+        var packet = Packet.Create((int)Protocol.U_TO_C_CRAFT);
+        U_TO_C_CRAFT body = new() { ErrorCode = errorCode };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+    
+    public static Packet U_TO_C_CRAFT_COMPLETE(bool isSuccess)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_CRAFT_COMPLETE);
+        U_TO_C_CRAFT_COMPLETE body = new() { IsSuccess = isSuccess };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

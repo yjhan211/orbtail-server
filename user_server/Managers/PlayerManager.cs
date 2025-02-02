@@ -7,6 +7,7 @@ using network.helpers;
 using network.infrastructure;
 using network.managers;
 using network.packets;
+using user_server.controllers;
 using user_server.handlers;
 
 namespace user_server.managers;
@@ -233,7 +234,7 @@ public class PlayerManager(
         return updateItemList;
     }
 
-    public async Task<List<ItemInfo>> UseItem(long itemUid, int count = 1)
+    public async Task<List<ItemInfo>> UseItem(GameUser user, long itemUid, int count = 1)
     {
         if (PlayerInfo == null)
         {
@@ -253,13 +254,14 @@ public class PlayerManager(
         var itemDetail = GameItemData.Get(targetItem.ItemId);
         if (!itemDetail.IsConsumable)
             throw new Exception($"not consumable item {targetItem.ItemId}");
-        
-        var updateItemList = new List<ItemInfo>() { targetItem };
-        var isDeleteSuccess = PlayerInfo.InventoryInfo.DeleteItem(itemUid, count);
-        if (!isDeleteSuccess)
+
+        var updateItemList = new List<ItemInfo>();
+        var deleteItem = PlayerInfo.InventoryInfo.DeleteItem(itemUid, count);
+        if (deleteItem == null)
         {
             throw new Exception($"delete item {itemUid} failed.");
         }
+        updateItemList.Add(deleteItem);
         
         foreach (var (buffId, value) in itemDetail.ConsumableBuffList)
         {
@@ -268,16 +270,29 @@ public class PlayerManager(
             {
                 throw new NotImplementedException();
             }
-            
             switch (buffDetail.SubType)
             {
                 case BuffSubType.CONDITION_ADD:
                     PlayerInfo.Hp = Math.Clamp(PlayerInfo.Hp + (value * 100), 0, 10000);
                     break;
+                
+                case BuffSubType.CRAFT_ADD:
+                    PlayerInfo.CraftInfo.Manuals.Add(value);
+                    break;
             }
         }
-
         await PlayerInfo.Save();
+
+        switch (targetItem.ItemId)
+        {
+            case 202000001:
+                await QuestController.IncreaseQuestCount(user, 9, 1);
+                break;
+            
+            default: 
+                await QuestController.IncreaseQuestCount(user, 5, 1);
+                break;
+        }
         
         return updateItemList;
     }

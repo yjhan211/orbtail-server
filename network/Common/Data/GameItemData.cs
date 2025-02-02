@@ -152,7 +152,7 @@ namespace network.common.data
 
                     case ItemType.CONSUMABLE 
                         when additionalData.TryGetValue("item_info_consumable", out var consumableInfo):
-                        item.ConsumableBuffList = ParseConsumableBuffList(consumableInfo["buff_list"]);
+                        item.ConsumableBuffList = ParseTupleArray(consumableInfo["buff_list"]);
                         break;
 
                     case ItemType.INSTALLATION 
@@ -176,7 +176,7 @@ namespace network.common.data
             return arrays?.Select(arr => (id: arr[0], coolTime: arr[1], value: arr[2])).ToList();
         }
 
-        private static List<(int id, int value)> ParseConsumableBuffList(string jsonString)
+        public static List<(int id, int value)> ParseTupleArray(string jsonString)
         {
             if (string.IsNullOrEmpty(jsonString) || jsonString == "[]") return new();
 

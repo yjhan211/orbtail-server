@@ -40,13 +40,14 @@ namespace network.common
     {
         NONE = 0,
         INSTANT,
-        PERIODIC
+        PERIODIC,
     }
 
     public enum BuffSubType
     {
         NONE = 0,
-        CONDITION_ADD = 1
+        CONDITION_ADD,
+        CRAFT_ADD,
     }
 
     public enum ItemType
@@ -55,7 +56,8 @@ namespace network.common
         EQUIPMENT,
         CONSUMABLE,
         MATERIAL,
-        INSTALLATION
+        INSTALLATION,
+        MANUAL,
     }
     
     public enum EquipType
@@ -159,9 +161,8 @@ namespace network.common
         IDLE,
         SITGROUND,
         SITCHAIR,
-        ENGINEER_WORK_1,
-        CHEMIST_WORK_1,
         EXPLORE_1,
+        CRAFT_1,
         CAMPING_1
     }
 

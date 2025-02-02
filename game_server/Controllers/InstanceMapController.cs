@@ -109,7 +109,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
                 logManager.WriteDebugLog("22");
                 SubscribeToInstanceEvents(mapId, mapSubId);
                 logManager.WriteDebugLog("33");
-                var exploreTargetList = ExploreTargetData.GetListByMap(mapId);
+                var exploreTargetList = GameExploreTargetData.GetListByMap(mapId);
                 logManager.WriteDebugLog("44");
                 logManager.WriteDebugLog($"Map ID: {mapId}, List count: {exploreTargetList.Count}");
                 foreach (var exploreTarget in exploreTargetList)

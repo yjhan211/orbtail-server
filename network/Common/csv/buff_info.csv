@@ -1,3 +1,4 @@
 id,type,sub_type,comment
 1,1,1,컨디션 +{value1}
 2,2,1,{value2}마다 컨디션 +{value1}
+3,1,2,제작 가능 아이템 추가

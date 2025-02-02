@@ -14,7 +14,7 @@ using network.managers;
 
 namespace network.common.data
 {
-    public static class ExploreTargetData
+    public static class GameExploreTargetData
     {
         private static readonly Dictionary<int, ExploreTargetInfoData> Infos = new();
         private static readonly Dictionary<MapId, List<ExploreTargetInfoData>> InfosByMap = new();
@@ -25,11 +25,14 @@ namespace network.common.data
             foreach (var info in infos)
             {
                 Infos[info.Id] = info;
-                if (!InfosByMap.TryGetValue(info.MapId, out var mapExploreTargetList))
+                if (!InfosByMap.TryGetValue(info.MapId, out var _))
                 {
                     InfosByMap[info.MapId] = new List<ExploreTargetInfoData> { };
                 }
-                InfosByMap[info.MapId].Add(info);
+                if (!InfosByMap[info.MapId].Contains(info))
+                {
+                    InfosByMap[info.MapId].Add(info);
+                }
             }
         }
 
@@ -56,7 +59,7 @@ namespace network.common.data
 
         public static void Validate(LogManager logManager)
         {
-            logManager.WriteDebugLog("=== GameQuestData Validation ===");
+            logManager.WriteDebugLog("=== GameExploreTargetData Validation ===");
             foreach (var (id, info) in Infos)
             {
                 logManager.WriteDebugLog($"[{id}] {info.Name}");

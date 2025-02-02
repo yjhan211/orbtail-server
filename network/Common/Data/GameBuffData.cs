@@ -38,28 +38,6 @@ namespace network.common.data
                 logManager.WriteDebugLog($"Buff {id}:");
                 logManager.WriteDebugLog($"  Type: {buff.Type}");
                 logManager.WriteDebugLog($"  SubType: {buff.SubType}");
-
-                switch (buff.Type)
-                {
-                    case BuffType.INSTANT:
-                    case BuffType.PERIODIC:
-                        break;
-
-                    default:
-                        throw new InvalidDataException($"Buff {id} has invalid type: {buff.Type}");
-                }
-
-                switch (buff.SubType)
-                {
-                    case BuffSubType.CONDITION_ADD:
-                        break;
-
-                    default:
-                        throw new InvalidDataException($"Buff {id} has invalid subType: {buff.SubType}");
-                }
-
-
-                logManager.WriteDebugLog("");
             }
 
             logManager.WriteDebugLog($"Total {Buffs.Count} buffs validated successfully!");

@@ -23,6 +23,7 @@ namespace network.common.data.models
             ObjectInfo = new GameObjectInfo();
             JobInfo = new JobInfo();
             InventoryInfo = new InventoryInfo();
+            CraftInfo = new CraftInfo();
             LabId = 0;
             LabName = "";
             Gold = 0;
@@ -48,6 +49,7 @@ namespace network.common.data.models
             ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.TutorialLibrary, 1, initCell);
             JobInfo = new JobInfo(PlayerId);
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
+            CraftInfo = new CraftInfo();
             LabId = 0;
             LabName = "";
             Gold = 1000;
@@ -63,7 +65,7 @@ namespace network.common.data.models
         [IgnoreMember] public JobInfo JobInfo { get; set; }
 
         [IgnoreMember] public InventoryInfo InventoryInfo { get; set; }
-
+        [IgnoreMember] public CraftInfo CraftInfo { get; set; }
         [Key("playerId")] public long PlayerId { get; set; }
 
         [Key("name")] public string Name { get; set; }
