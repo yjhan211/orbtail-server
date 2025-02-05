@@ -286,11 +286,11 @@ public class PlayerManager(
         switch (targetItem.ItemId)
         {
             case 202000001:
-                await QuestController.IncreaseQuestCount(user, 9, 1);
+                await QuestController.IncreaseQuestCount(user, 200000001, 1);
                 break;
             
             default: 
-                await QuestController.IncreaseQuestCount(user, 5, 1);
+                await QuestController.IncreaseQuestCount(user, 100000005, 1);
                 break;
         }
         
