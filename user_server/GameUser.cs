@@ -288,9 +288,9 @@ public partial class GameUser : IPeer
         }
 
         PlayerInfo? playerInfo;
+        var isInit = false;
         await using (await PlayerInfo.Lock(RedLock, tempPlayerId))
         {
-            var isInit = false;
             var giftItemList = new List<ItemInfo>();
 
             playerInfo = await PlayerInfo.Load(tempPlayerId);

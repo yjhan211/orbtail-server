@@ -101,6 +101,7 @@ public static class ExploreController
     public static async Task ExploreEnd(GameUser user, ExploreTargetInfo exploreTargetInfo)
     {
         var updateItems = new List<ItemInfo>();
+        var updateQuests = new List<QuestInfo>();
         await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
         {
             if (user.PlayerManager.PlayerInfo == null)
@@ -141,17 +142,17 @@ public static class ExploreController
                 case 1:
                 case 2:
                 case 3:
-                    await QuestController.IncreaseQuestCount(user, 100000004, 1);
+                    await QuestController.IncreaseQuestCount(user, 100000004, 1, updateQuests);
                     break;
                 
                 case 4:
                 case 5: 
                 case 6:
-                    await QuestController.IncreaseQuestCount(user, 100000008, 1);
+                    await QuestController.IncreaseQuestCount(user, 100000008, 1, updateQuests);
                     break;
                 case 7:
-                    await QuestController.IncreaseQuestCount(user, 100000008, 1);
-                    await QuestController.StartQuest(user, 200000001);
+                    await QuestController.IncreaseQuestCount(user, 100000008, 1, updateQuests);
+                    await QuestController.IncreaseQuestCount(user, 200000001, 1, updateQuests);
                     break;
                 
                 default:
@@ -162,5 +163,11 @@ public static class ExploreController
         user.Send(packet);
         user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
         InventoryController.SendUpdateItems(user, updateItems);
+
+        foreach (var updateQuest in updateQuests)
+        {
+            using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(updateQuest);
+            user.Send(packet);
+        }
     }
 }

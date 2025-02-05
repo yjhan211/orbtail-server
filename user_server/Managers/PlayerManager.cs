@@ -282,17 +282,6 @@ public class PlayerManager(
             }
         }
         await PlayerInfo.Save();
-
-        switch (targetItem.ItemId)
-        {
-            case 202000001:
-                await QuestController.IncreaseQuestCount(user, 200000001, 1);
-                break;
-            
-            default: 
-                await QuestController.IncreaseQuestCount(user, 100000005, 1);
-                break;
-        }
         
         return updateItemList;
     }
