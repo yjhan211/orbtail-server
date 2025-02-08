@@ -342,6 +342,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class U_TO_C_CHANGE_MAP : IMessagePackObject
     {
+        [Key("lastMapId")] public MapId LastMapId { get; set; }
         [Key("mapId")] public MapId MapId { get; set; }
 
         [Key("mapSubId")] public long MapSubId { get; set; }

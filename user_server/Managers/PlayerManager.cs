@@ -30,9 +30,10 @@ public class PlayerManager(
     public PlayerInfo? PlayerInfo { get; private set; }
     public GameObjectInfo? ObjectInfo => PlayerInfo?.ObjectInfo ?? null;
     public long PlayerId => PlayerInfo?.PlayerId ?? 0;
+    public MapId LastMapId = MapId.None;
     public MapId MapId => PlayerInfo?.ObjectInfo.MapId ?? MapId.None;
     public long MapSubId => PlayerInfo?.ObjectInfo.MapSubId ?? 0;
-    public Cell? CurrentCell => PlayerInfo?.ObjectInfo.CurrentCell ?? null;
+    public Cell CurrentCell => PlayerInfo?.ObjectInfo.CurrentCell ?? new(0, 0);
     public bool IsFlip => PlayerInfo?.ObjectInfo.IsFlip ?? false;
     public PlayerState State => PlayerInfo?.State ?? PlayerState.NONE;
     public string ObjectKey => PlayerInfo?.ObjectInfo.GetGameObjectKey() ?? string.Empty;
@@ -60,6 +61,8 @@ public class PlayerManager(
         {
             return;
         }
+
+        LastMapId = MapId;
         
         // 기존 맵에 삭제 요청
         await PublishDestroy();
@@ -82,7 +85,7 @@ public class PlayerManager(
 
         if (GameMapData.IsCommonMap(MapId) && !isLogin)
         {
-            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(MapId, MapSubId, PlayerInfo.ObjectInfo.CurrentCell, IsFlip);
+            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(LastMapId, MapId, MapSubId, PlayerInfo.ObjectInfo.CurrentCell, IsFlip);
             sendToClient(packet);
             return;
         }
