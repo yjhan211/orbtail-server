@@ -7,7 +7,7 @@ namespace user_server.controllers;
 
 public static class QuestController
 {
-    public static async Task StartQuest(GameUser user, int questId)
+    public static async Task StartQuest(GameUser user, int questId, List<QuestInfo> updateQuests)
     {
         var questDiary = await QuestDiary.Load(user.PlayerId);
         if (questDiary.QuestDict.ContainsKey(questId))
@@ -18,6 +18,8 @@ public static class QuestController
         var quest = new QuestInfo(user.PlayerId, questId);
         questDiary.AddQuest(quest);
         await questDiary.Save();
+        
+        updateQuests.Add(quest);
     }
 
     public static async Task IncreaseQuestCount(GameUser user, C_TO_U_QUEST_INCREASE body)
@@ -26,6 +28,11 @@ public static class QuestController
         if (!questDiary.QuestDict.TryGetValue(body.QuestId, out var quest))
         {
             throw new Exception($"Not Progressed Quest. QuestId: {body.QuestId}");
+        }
+
+        if (quest.State == QuestState.END)
+        {
+            throw new Exception($"Already End Quest. QuestId: {body.QuestId}");
         }
 
         quest.Count += body.Count;
@@ -43,9 +50,6 @@ public static class QuestController
             quest.Count += count;
             await questDiary.Save();
             updateQuests.Add(quest);
-
-            using var packet = PacketMaker.U_TO_C_QUEST_UPDATE(quest);
-            user.Send(packet);
         }
     }
 

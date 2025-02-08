@@ -322,7 +322,7 @@ public partial class GameUser : IPeer
             {
                 var firstMail = await MailBoxController.CreateMail(1);
                 await MailBoxController.SendMail(this, firstMail);
-                await QuestController.StartQuest(this, 100000001);
+                await QuestController.StartQuest(this, 100000001, []);
                 
                 // 기본템 입히기
                 var defaultTop = giftItemList.First(x => x.ItemId == 104000001);

@@ -74,7 +74,7 @@ public static class InventoryController
         foreach (var updateQuest in updateQuests)
         {
             using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(updateQuest);
-            user.Send(packet);
+            user.Send(questPacket);
         }
     }
 

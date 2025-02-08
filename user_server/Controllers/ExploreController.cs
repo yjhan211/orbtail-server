@@ -152,7 +152,7 @@ public static class ExploreController
                     break;
                 case 7:
                     await QuestController.IncreaseQuestCount(user, 100000008, 1, updateQuests);
-                    await QuestController.IncreaseQuestCount(user, 200000001, 1, updateQuests);
+                    await QuestController.StartQuest(user, 200000001, updateQuests);
                     break;
                 
                 default:
@@ -167,7 +167,7 @@ public static class ExploreController
         foreach (var updateQuest in updateQuests)
         {
             using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(updateQuest);
-            user.Send(packet);
+            user.Send(questPacket);
         }
     }
 }
