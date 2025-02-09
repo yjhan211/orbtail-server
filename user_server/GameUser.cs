@@ -182,10 +182,10 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_LAB_INVENTORY_TAKE_ITEM>(body, InventoryController.TakeLabItem);
                     break;
                 case Protocol.C_TO_U_ENCAMP:
-                    // await HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
+                    await HandleMessage<C_TO_U_ENCAMP>(body, CampController.Encamp);
                     break;
                 case Protocol.C_TO_U_DECAMP:
-                    // await JobController.Decamp(this);
+                    await CampController.Decamp(this);
                     break;
                 case Protocol.C_TO_U_ADD_SELL_ITEM:
                     // await HandleMessage<C_TO_U_ADD_SELL_ITEM>(body, JobController.AddSellItem);
