@@ -58,7 +58,7 @@ public static class InventoryController
                 switch (itemInfo.ItemId)
                 {
                     case 202000001:
-                        await QuestController.IncreaseQuestCount(user, 200000001, 1, updateQuests);
+                        await QuestController.IncreaseQuestCount(user, 100000009, 1, updateQuests);
                         break;
             
                     default: 

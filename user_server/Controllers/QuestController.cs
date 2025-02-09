@@ -88,13 +88,15 @@ public static class QuestController
             }
         }
         
-        var isAddNextQuest = false;
+        var isAddNextQuest = true;
         foreach (var requireQuestId in questDesignData.NextRequire)
         {
-            if (questDiary.QuestDict.TryGetValue(requireQuestId, out var requireQuestInfo))
+            if (!questDiary.QuestDict.TryGetValue(requireQuestId, out var requireQuestInfo))
             {
-                isAddNextQuest = requireQuestInfo.State == QuestState.END;
+                isAddNextQuest = false;
+                break;
             }
+            isAddNextQuest = requireQuestInfo.State == QuestState.END;
         }
 
         if (isAddNextQuest)
