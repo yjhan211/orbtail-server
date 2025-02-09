@@ -50,6 +50,7 @@ namespace network.common.data
         public int RequireCount { get; private set; }
         public List<(int, int)> RewardItemList { get; private set; }
         public List<int> NextIdList { get; private set; }
+        public List<int> NextRequire { get; private set; }
 
         public static QuestInfoData CreateFromData(CsvRow row)
         {
@@ -61,7 +62,8 @@ namespace network.common.data
                 Detail = row["detail"],
                 RequireCount = int.Parse(row["require_count"]),
                 RewardItemList = JsonConvert.DeserializeObject<List<(int, int)>>(row["reward_item_list"]) ?? new(),
-                NextIdList = JsonConvert.DeserializeObject<List<int>>(row["next_id_list"]) ?? new()
+                NextIdList = JsonConvert.DeserializeObject<List<int>>(row["next_id_list"]) ?? new(),
+                NextRequire = JsonConvert.DeserializeObject<List<int>>(row["next_require"]) ?? new(),
             };
         }
     }

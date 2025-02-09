@@ -79,7 +79,7 @@ public static class CraftController
             switch (craftId)
             {
                 case 1:
-                    await QuestController.IncreaseQuestCount(user, 200000002, 1, updateQuests);
+                    await QuestController.IncreaseQuestCount(user, 100000010, 1, updateQuests);
                     break;
                 
                 default:

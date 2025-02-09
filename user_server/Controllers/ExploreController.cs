@@ -144,7 +144,6 @@ public static class ExploreController
                 case 3:
                     await QuestController.IncreaseQuestCount(user, 100000004, 1, updateQuests);
                     break;
-                
                 case 4:
                 case 5: 
                 case 6:
@@ -152,7 +151,7 @@ public static class ExploreController
                     break;
                 case 7:
                     await QuestController.IncreaseQuestCount(user, 100000008, 1, updateQuests);
-                    await QuestController.StartQuest(user, 200000001, updateQuests);
+                    await QuestController.StartQuest(user, 100000009, updateQuests);
                     break;
                 
                 default:

@@ -87,13 +87,26 @@ public static class QuestController
                 await mailBox.Save();
             }
         }
-
-        foreach (var nextQuestId in questDesignData.NextIdList)
+        
+        var isAddNextQuest = false;
+        foreach (var requireQuestId in questDesignData.NextRequire)
         {
-            var nextQuestInfo = new QuestInfo(user.PlayerId, nextQuestId);
-            questDiary.AddQuest(nextQuestInfo);
-            updateQuestList.Add(nextQuestInfo);
+            if (questDiary.QuestDict.TryGetValue(requireQuestId, out var requireQuestInfo))
+            {
+                isAddNextQuest = requireQuestInfo.State == QuestState.END;
+            }
         }
+
+        if (isAddNextQuest)
+        {
+            foreach (var nextQuestId in questDesignData.NextIdList)
+            {
+                var nextQuestInfo = new QuestInfo(user.PlayerId, nextQuestId);
+                questDiary.AddQuest(nextQuestInfo);
+                updateQuestList.Add(nextQuestInfo);
+            }
+        }
+        
         await questDiary.Save();
         
         using var packet = PacketMaker.U_TO_C_QUEST_SUCCESS(body.QuestId, ErrorCode.SUCCESS);
