@@ -81,7 +81,9 @@ public static class CraftController
                 case 1:
                     await QuestController.IncreaseQuestCount(user, 100000010, 1, updateQuests);
                     break;
-                
+                case 3:
+                    await QuestController.IncreaseQuestCount(user, 100000013, 1, updateQuests);
+                    break;
                 default:
                     break;
             }
