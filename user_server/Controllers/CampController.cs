@@ -46,14 +46,12 @@ public static class CampController
                 throw new Exception("not found item info");
             }
 
-            // if (await CampInfo.Load(user.PlayerId) != null)
-            // {
-            //     throw new Exception("already encamp");
-            // }
+            if (await CampInfo.Load(user.PlayerId) != null)
+            {
+                throw new Exception("already encamp");
+            }
 
-            campInfo = new CampInfo(playerInfo.PlayerId, playerInfo.Name, playerInfo.ObjectInfo, targetItem,
-                playerInfo.ObjectInfo.TargetCell);
-
+            campInfo = new CampInfo(playerInfo.PlayerId, playerInfo.Name, playerInfo.ObjectInfo, targetItem, playerInfo.ObjectInfo.TargetCell);
             await campInfo.Save();
         }
         
@@ -61,13 +59,29 @@ public static class CampController
         var managePartKey = isCommonMap ? MapHelper.CreatePartKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.CurrentCell) : MapHelper.CreatePartKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId);
         var manageServer = isCommonMap ? MapHelper.GetManageServerId(managePartKey) : MapHelper.GetManageServerId(campInfo.ObjectInfo.MapSubId);
         var subject = SubjectHelper.GetUpdateManageSubject(campInfo.ObjectInfo, manageServer);
-        user.NatsClient.Publish(subject, MessagePackSerializer.Serialize((managePartKey, campInfo.ObjectInfo)));
         
+        user.NatsClient.Publish(subject, MessagePackSerializer.Serialize((managePartKey, campInfo.ObjectInfo)));
         user.BroadcastUpdateInfo(campInfo);
     }
     
     public static async Task Decamp(GameUser user)
     {
-        
+        CampInfo? campInfo;
+        await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+        {
+            if (user.PlayerManager.PlayerInfo == null)
+            {
+                return;
+            }
+
+            campInfo = await CampInfo.Load(user.PlayerId);
+            if (campInfo == null)
+            {
+                throw new Exception("not encamp");
+            }
+
+            await campInfo.Delete();
+        }
+        user.BroadcastObjectDestroy(campInfo.ObjectInfo);
     }
 }

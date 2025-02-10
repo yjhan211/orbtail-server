@@ -7,7 +7,6 @@ using network.helpers;
 using network.infrastructure;
 using network.managers;
 using network.packets;
-using user_server.controllers;
 using user_server.handlers;
 
 namespace user_server.managers;

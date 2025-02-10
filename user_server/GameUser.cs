@@ -430,12 +430,21 @@ public partial class GameUser : IPeer
     
     public void BroadcastObjectDestroy(GameObjectInfo objectInfo)
     {
-        var positionKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-        var manageServer = MapHelper.GetManageServerId(positionKey);
-        var subject = SubjectHelper.GetDestroyObjectSubject(objectInfo.MapId, objectInfo.MapSubId, manageServer);
-        var message = MessagePackSerializer.Serialize((positionKey, objectInfo.GetGameObjectKey()));
-
-        NatsClient.Publish(subject, message);
+        if (GameMapData.IsCommonMap(objectInfo.MapId))
+        {
+            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
+            foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetDestroyObjectSubject(objectInfo, targetServer)))
+            {
+                NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, objectInfo.GetGameObjectKey())));
+            }
+            return;
+        }
+        
+        var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+        var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
+        var instanceSubject = SubjectHelper.GetDestroyObjectSubject(objectInfo, manageServer);
+        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, objectInfo.GetGameObjectKey())));
     }
 
     public void PublishToClients(Packet packet, List<long> userIdList)
@@ -464,7 +473,7 @@ public partial class GameUser : IPeer
             if (_token.IsReleased) return null;
             _token.IsReleased = true;
 
-            // await JobController.Decamp(this);
+            await CampController.Decamp(this);
             await PlayerManager.Dispose();
             _progressManager.Dispose();
             _updateObjectManager.Dispose();

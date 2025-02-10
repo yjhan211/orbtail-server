@@ -23,19 +23,17 @@ public class NatsClient
 
     public void Subscribe(string subject, Action<string, byte[]> messageHandler)
     {
-        var subscription = _connection.SubscribeAsync(subject, Handler);
-        _subscriptions.Add(subscription);
-        return;
-
         void Handler(object? sender, MsgHandlerEventArgs args)
         {
             messageHandler(args.Message.Subject, args.Message.Data);
         }
+
+        var subscription = _connection.SubscribeAsync(subject, Handler);
+        _subscriptions.Add(subscription);
     }
 
     public void Close()
     {
-        Console.WriteLine(_subscriptions.Count);
         foreach (var subscription in _subscriptions) subscription.Unsubscribe();
 
         _subscriptions.Clear();
