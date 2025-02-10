@@ -311,6 +311,11 @@ namespace network.common.data
                             $"Invalid region coordinates in map {mapId}: Start({region.Start}) -> End({region.End})");
                     }
 
+                    if (mapId == MapId.Tent)
+                    {
+                        continue;
+                    }
+
                     if (region.IsPortal)
                     {
                         if (!_mapInfos.ContainsKey(region.WarpTo))

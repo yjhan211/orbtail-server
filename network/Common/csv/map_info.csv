@@ -15,3 +15,4 @@ id,scene_name,is_common,comment
 14,GYM,1,강당
 15,GYMSTORAGE,1,체육창고
 16,SCHOOLGROUND,1,학교외관
+17,TENT,0,텐트내부
