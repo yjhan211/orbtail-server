@@ -127,7 +127,7 @@ public partial class GameUser
                 cellBatch
             );
             Send(packet);
-        
+
             LogManager.WriteDebugLog($"[SubscribeSpawn] Send {batch.Count} | {cellBatch.Count}");
         }
     }
@@ -160,6 +160,7 @@ public partial class GameUser
     {
         if (body.MapId != PlayerManager.MapId || body.MapSubId != PlayerManager.MapSubId) return;
         using var packet = PacketMaker.U_TO_C_CHANGE_MAP(
+            PlayerManager.LastMapId,
             PlayerManager.MapId,
             PlayerManager.MapSubId,
             PlayerManager.CurrentCell,

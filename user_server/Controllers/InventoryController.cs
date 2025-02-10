@@ -47,16 +47,35 @@ public static class InventoryController
         {
             throw new Exception("Invalid PlayerInfo");
         }
-        
+
         List<ItemInfo> updateItems;
+        var updateQuests = new List<QuestInfo>();
         await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
         {
             updateItems = await user.PlayerManager.UseItem(user, body.ItemUid);
+            foreach (var itemInfo in updateItems)
+            {
+                switch (itemInfo.ItemId)
+                {
+                    case 202000001:
+                        await QuestController.IncreaseQuestCount(user, 100000009, 1, updateQuests);
+                        break;
+            
+                    default: 
+                        await QuestController.IncreaseQuestCount(user, 100000005, 1, updateQuests);
+                        break;
+                }
+            }
         }
 
         using var packet = PacketMaker.U_TO_C_USE_ITEM(user.PlayerManager.PlayerInfo);
         user.Send(packet);
         SendUpdateItems(user, updateItems);
+        foreach (var updateQuest in updateQuests)
+        {
+            using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(updateQuest);
+            user.Send(questPacket);
+        }
     }
 
 

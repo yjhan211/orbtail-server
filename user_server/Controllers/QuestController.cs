@@ -7,7 +7,7 @@ namespace user_server.controllers;
 
 public static class QuestController
 {
-    public static async Task StartQuest(GameUser user, int questId)
+    public static async Task StartQuest(GameUser user, int questId, List<QuestInfo> updateQuests)
     {
         var questDiary = await QuestDiary.Load(user.PlayerId);
         if (questDiary.QuestDict.ContainsKey(questId))
@@ -19,7 +19,7 @@ public static class QuestController
         questDiary.AddQuest(quest);
         await questDiary.Save();
         
-        // await GetCurrentQuestList(user);
+        updateQuests.Add(quest);
     }
 
     public static async Task IncreaseQuestCount(GameUser user, C_TO_U_QUEST_INCREASE body)
@@ -30,6 +30,11 @@ public static class QuestController
             throw new Exception($"Not Progressed Quest. QuestId: {body.QuestId}");
         }
 
+        if (quest.State == QuestState.END)
+        {
+            throw new Exception($"Already End Quest. QuestId: {body.QuestId}");
+        }
+
         quest.Count += body.Count;
         await questDiary.Save();
         
@@ -37,24 +42,21 @@ public static class QuestController
         user.Send(packet);
     }
     
-    public static async Task IncreaseQuestCount(GameUser user, int questId, int count)
+    public static async Task IncreaseQuestCount(GameUser user, int questId, int count, List<QuestInfo> updateQuests)
     {
         var questDiary = await QuestDiary.Load(user.PlayerId);
-        if (!questDiary.QuestDict.TryGetValue(questId, out var quest))
+        if (questDiary.QuestDict.TryGetValue(questId, out var quest))
         {
-            return;
+            quest.Count += count;
+            await questDiary.Save();
+            updateQuests.Add(quest);
         }
-
-        quest.Count += count;
-        await questDiary.Save();
-        
-        using var packet = PacketMaker.U_TO_C_QUEST_UPDATE(quest);
-        user.Send(packet);
     }
 
     public static async Task CompleteQuest(GameUser user, C_TO_U_QUEST_INCREASE body)
     {
         var questDiary = await QuestDiary.Load(user.PlayerId);
+        var updateQuestList = new List<QuestInfo>();
         if (!questDiary.QuestDict.TryGetValue(body.QuestId, out var questInfo))
         {
             throw new Exception($"Not Started Quest. QuestId: {body.QuestId}");
@@ -73,6 +75,7 @@ public static class QuestController
         }
 
         questInfo.State = QuestState.END;
+        updateQuestList.Add(questInfo);
 
         if (questDesignData.RewardItemList.Count > 0)
         {
@@ -85,17 +88,37 @@ public static class QuestController
             }
         }
         
-        foreach (var nextQuestId in questDesignData.NextIdList)
+        var isAddNextQuest = true;
+        foreach (var requireQuestId in questDesignData.NextRequire)
         {
-            var nextQuestInfo = new QuestInfo(user.PlayerId, nextQuestId);
-            questDiary.AddQuest(nextQuestInfo);
+            if (!questDiary.QuestDict.TryGetValue(requireQuestId, out var requireQuestInfo))
+            {
+                isAddNextQuest = false;
+                break;
+            }
+            isAddNextQuest = requireQuestInfo.State == QuestState.END;
         }
+
+        if (isAddNextQuest)
+        {
+            foreach (var nextQuestId in questDesignData.NextIdList)
+            {
+                var nextQuestInfo = new QuestInfo(user.PlayerId, nextQuestId);
+                questDiary.AddQuest(nextQuestInfo);
+                updateQuestList.Add(nextQuestInfo);
+            }
+        }
+        
         await questDiary.Save();
         
         using var packet = PacketMaker.U_TO_C_QUEST_SUCCESS(body.QuestId, ErrorCode.SUCCESS);
         user.Send(packet);
 
-        await GetCurrentQuestList(user);
+        foreach (var updateQuestInfo in updateQuestList)
+        {
+            using var updateQuestPacket = PacketMaker.U_TO_C_QUEST_UPDATE(updateQuestInfo);
+            user.Send(updateQuestPacket);
+        }
     }
     
     public static async Task GetCurrentQuestList(GameUser user)

@@ -182,10 +182,10 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_LAB_INVENTORY_TAKE_ITEM>(body, InventoryController.TakeLabItem);
                     break;
                 case Protocol.C_TO_U_ENCAMP:
-                    // await HandleMessage<C_TO_U_ENCAMP>(body, JobController.Encamp);
+                    await HandleMessage<C_TO_U_ENCAMP>(body, CampController.Encamp);
                     break;
                 case Protocol.C_TO_U_DECAMP:
-                    // await JobController.Decamp(this);
+                    await CampController.Decamp(this);
                     break;
                 case Protocol.C_TO_U_ADD_SELL_ITEM:
                     // await HandleMessage<C_TO_U_ADD_SELL_ITEM>(body, JobController.AddSellItem);
@@ -288,9 +288,9 @@ public partial class GameUser : IPeer
         }
 
         PlayerInfo? playerInfo;
+        var isInit = false;
         await using (await PlayerInfo.Lock(RedLock, tempPlayerId))
         {
-            var isInit = false;
             var giftItemList = new List<ItemInfo>();
 
             playerInfo = await PlayerInfo.Load(tempPlayerId);
@@ -322,7 +322,7 @@ public partial class GameUser : IPeer
             {
                 var firstMail = await MailBoxController.CreateMail(1);
                 await MailBoxController.SendMail(this, firstMail);
-                await QuestController.StartQuest(this, 1);
+                await QuestController.StartQuest(this, 100000001, []);
                 
                 // 기본템 입히기
                 var defaultTop = giftItemList.First(x => x.ItemId == 104000001);
@@ -430,12 +430,21 @@ public partial class GameUser : IPeer
     
     public void BroadcastObjectDestroy(GameObjectInfo objectInfo)
     {
-        var positionKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-        var manageServer = MapHelper.GetManageServerId(positionKey);
-        var subject = SubjectHelper.GetDestroyObjectSubject(objectInfo.MapId, objectInfo.MapSubId, manageServer);
-        var message = MessagePackSerializer.Serialize((positionKey, objectInfo.GetGameObjectKey()));
-
-        NatsClient.Publish(subject, message);
+        if (GameMapData.IsCommonMap(objectInfo.MapId))
+        {
+            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
+            foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetDestroyObjectSubject(objectInfo, targetServer)))
+            {
+                NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, objectInfo.GetGameObjectKey())));
+            }
+            return;
+        }
+        
+        var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+        var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
+        var instanceSubject = SubjectHelper.GetDestroyObjectSubject(objectInfo, manageServer);
+        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, objectInfo.GetGameObjectKey())));
     }
 
     public void PublishToClients(Packet packet, List<long> userIdList)
@@ -464,7 +473,7 @@ public partial class GameUser : IPeer
             if (_token.IsReleased) return null;
             _token.IsReleased = true;
 
-            // await JobController.Decamp(this);
+            await CampController.Decamp(this);
             await PlayerManager.Dispose();
             _progressManager.Dispose();
             _updateObjectManager.Dispose();

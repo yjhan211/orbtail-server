@@ -29,18 +29,25 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
     private void SubscribeToCreateInstance()
     {
         logManager.WriteDebugLog($"EnterInstanceSubject: {EnterInstanceSubject}");
-        natsClient.Subscribe(EnterInstanceSubject, (_, msg) => {        
-            Task.Run(async () => 
+        natsClient.Subscribe(EnterInstanceSubject, async void (_, msg) => {        
+            try 
             {
-                try
+                await Task.Run(async () => 
                 {
-                    await EnterInstance(msg);
-                }
-                catch (Exception ex)
-                {
-                    logManager.WriteErrorLog(ex);
-                }
-            });
+                    try
+                    {
+                        await EnterInstance(msg);
+                    }
+                    catch (Exception ex)
+                    {
+                        logManager.WriteErrorLog(ex);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                logManager.WriteErrorLog(ex);
+            }
         });
     }
 
@@ -126,7 +133,6 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
                     };
                     
                     logManager.WriteDebugLog("55");
-
                     var exploreTargetInfo = new ExploreTargetInfo(exploreTargetUid, exploreTarget.Id, objectInfo);
                     logManager.WriteDebugLog("66");
                     var partKey = MapHelper.CreatePartKey(mapId, mapSubId);
@@ -208,9 +214,9 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
     private async Task MoveManageObjectAsync(RedisValue message)
     {
         var (_, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
-        var objectKey = GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, objectInfo.ObjectId);
+        var objectKey = GameObjectInfo.MakeObjectKey(objectInfo.ObjectType, objectInfo.ObjectId);
         var currentInstanceKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
-
+        
         await UpdateObjectPositionAsync(currentInstanceKey, objectKey);
 
         using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
@@ -222,6 +228,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
         await _mapLock.WaitAsync();
         try
         {
+            logManager.WriteDebugLog($"UpdateObjectPositionAsync: {objectKey}");
             _objectInstanceDict.AddOrUpdate(
                 currentInstanceKey,
                 [objectKey],
@@ -254,14 +261,20 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
     private void SpawnManageObject(RedisValue message)
     {
+        logManager.WriteDebugLog($"SpawnManageObject================================================== ");
         var (userSubject, instanceKeyList, cellsToRemove) =
             MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
 
         var spawnList = new List<string>();
         foreach (var instancePartKey in instanceKeyList)
+        {
             if (_objectInstanceDict.TryGetValue(instancePartKey, out var objectKeys))
+            {
                 spawnList.AddRange(objectKeys);
-
+                logManager.WriteDebugLog($"SpawnManageObject, spawnList: {string.Join(",", objectKeys)}");
+            }
+        }
+        
         if (spawnList.Count <= 0) return;
 
         using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);

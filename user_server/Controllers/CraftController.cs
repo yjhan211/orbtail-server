@@ -49,6 +49,7 @@ public static class CraftController
     public static async Task CraftEnd(GameUser user, int craftId)
     {
         var updateItems = new List<ItemInfo>();
+        var updateQuests = new List<QuestInfo>();
         await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
         {
             if (user.PlayerManager.PlayerInfo == null)
@@ -78,9 +79,11 @@ public static class CraftController
             switch (craftId)
             {
                 case 1:
-                    await QuestController.IncreaseQuestCount(user, 10, 1);
+                    await QuestController.IncreaseQuestCount(user, 100000010, 1, updateQuests);
                     break;
-                
+                case 3:
+                    await QuestController.IncreaseQuestCount(user, 100000013, 1, updateQuests);
+                    break;
                 default:
                     break;
             }
@@ -90,5 +93,11 @@ public static class CraftController
         user.Send(packet);
         user.BroadcastUpdateInfo(user.PlayerManager.PlayerInfo);
         InventoryController.SendUpdateItems(user, updateItems);
+
+        foreach (var quest in updateQuests)
+        {
+            using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(quest);
+            user.Send(questPacket);
+        }
     }
 }

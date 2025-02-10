@@ -49,7 +49,7 @@ namespace network.common.data.models
             ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.TutorialLibrary, 1, initCell);
             JobInfo = new JobInfo(PlayerId);
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
-            CraftInfo = new CraftInfo();
+            CraftInfo = new CraftInfo(PlayerId);
             LabId = 0;
             LabName = "";
             Gold = 1000;

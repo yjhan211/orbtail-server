@@ -270,10 +270,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_CHANGE_MAP(MapId mapId, long mapSubId, Cell spawnCell, bool isFlip)
+    public static Packet U_TO_C_CHANGE_MAP(MapId lastMapId, MapId mapId, long mapSubId, Cell spawnCell, bool isFlip)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CHANGE_MAP);
-        U_TO_C_CHANGE_MAP body = new() { MapId = mapId, MapSubId = mapSubId, SpawnCell = spawnCell, IsFlip = isFlip };
+        U_TO_C_CHANGE_MAP body = new() { LastMapId = lastMapId, MapId = mapId, MapSubId = mapSubId, SpawnCell = spawnCell, IsFlip = isFlip };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

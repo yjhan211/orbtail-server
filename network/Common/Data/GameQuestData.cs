@@ -1,4 +1,3 @@
-// ReSharper disable All
 #pragma warning disable CS8618 // 생성자를 종료할 때 null을 허용하지 않는 필드에 null이 아닌 값을 포함해야 합니다. null 허용으로 선언해 보세요.
 #pragma warning disable CS8625 // Null 리터럴을 null을 허용하지 않는 참조 형식으로 변환할 수 없습니다.
 #pragma warning disable CS8603 // 가능한 null 참조 반환입니다.
@@ -51,18 +50,20 @@ namespace network.common.data
         public int RequireCount { get; private set; }
         public List<(int, int)> RewardItemList { get; private set; }
         public List<int> NextIdList { get; private set; }
+        public List<int> NextRequire { get; private set; }
 
         public static QuestInfoData CreateFromData(CsvRow row)
         {
             return new QuestInfoData
             {
                 Id = int.Parse(row["id"]),
-                QuestType = (QuestType)Enum.Parse(typeof(QuestType), row["type"]),
+                QuestType = (QuestType)(row["id"][0] - '0'),
                 Title = row["title"],
                 Detail = row["detail"],
                 RequireCount = int.Parse(row["require_count"]),
                 RewardItemList = JsonConvert.DeserializeObject<List<(int, int)>>(row["reward_item_list"]) ?? new(),
-                NextIdList = JsonConvert.DeserializeObject<List<int>>(row["next_id_list"]) ?? new()
+                NextIdList = JsonConvert.DeserializeObject<List<int>>(row["next_id_list"]) ?? new(),
+                NextRequire = JsonConvert.DeserializeObject<List<int>>(row["next_require"]) ?? new(),
             };
         }
     }
