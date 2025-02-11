@@ -143,7 +143,7 @@ public partial class GameUser : IPeer
                     await HandleMessage<C_TO_U_USE_ITEM>(body, InventoryController.RequestUseItem);
                     break;
                 case Protocol.C_TO_U_CHANGE_MAP:
-                    await PlayerManager.ChangeMap();
+                    await HandleMessage<C_TO_U_CHANGE_MAP>(body, PlayerManager.ChangeMap);
                     break;
                 case Protocol.C_TO_U_EXPLORE:
                     await HandleMessage<C_TO_U_EXPLORE>(body, ExploreController.Explore);

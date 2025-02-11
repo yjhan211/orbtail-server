@@ -50,5 +50,28 @@ namespace network.common.data.models
         [Key("itemInfo")] public ItemInfo ItemInfo { get; set; }
 
         [Key("cellDict")] public Dictionary<long, (ItemInfo, int)> CellDict { get; set; }
+        
+        private Cell CalculatePortal(bool isFlip)
+        {
+            return isFlip
+                ? new Cell(ObjectInfo.CurrentCell.X, ObjectInfo.CurrentCell.Y + 1)
+                : new Cell(ObjectInfo.CurrentCell.X + 1, ObjectInfo.CurrentCell.Y);
+        }
+
+        private (Cell start, Cell end) CalculateBound(bool isFlip)
+        {
+            if (isFlip)
+            {
+                return (
+                    new Cell(ObjectInfo.CurrentCell.X + 1, ObjectInfo.CurrentCell.Y),
+                    new Cell(ObjectInfo.CurrentCell.X + 5, ObjectInfo.CurrentCell.Y + 4)
+                );
+            }
+
+            return (
+                new Cell(ObjectInfo.CurrentCell.X, ObjectInfo.CurrentCell.Y + 1),
+                new Cell(ObjectInfo.CurrentCell.X + 4, ObjectInfo.CurrentCell.Y + 5)
+            );
+        }
     }
 }

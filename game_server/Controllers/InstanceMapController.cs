@@ -23,12 +23,11 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
     public void Initialize()
     {
-        SubscribeToCreateInstance();
+        SubscribeToEnterInstance();
     }
 
-    private void SubscribeToCreateInstance()
+    private void SubscribeToEnterInstance()
     {
-        logManager.WriteDebugLog($"EnterInstanceSubject: {EnterInstanceSubject}");
         natsClient.Subscribe(EnterInstanceSubject, async void (_, msg) => {        
             try 
             {
@@ -99,26 +98,20 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
     private async Task EnterInstance(RedisValue message)
     {
-        logManager.WriteDebugLog($"Try EnterInstance =================================================== ");
-        var (userSubject, mapId, mapSubId, isLogin) = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
+        var (userSubject, mapId, mapSubId, isLogin)
+            = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
+        var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
         
-        // await _mapLock.WaitAsync();
+        await _mapLock.WaitAsync();
         try
         {
-            var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
             var isInit = _objectInstanceDict.TryAdd(instanceKey, []);
             _objectInstanceDict[instanceKey].Add(userSubject);
-
-            logManager.WriteDebugLog("11");
-
+            
             if (isInit)
             {
-                logManager.WriteDebugLog("22");
                 SubscribeToInstanceEvents(mapId, mapSubId);
-                logManager.WriteDebugLog("33");
                 var exploreTargetList = GameExploreTargetData.GetListByMap(mapId);
-                logManager.WriteDebugLog("44");
-                logManager.WriteDebugLog($"Map ID: {mapId}, List count: {exploreTargetList.Count}");
                 foreach (var exploreTarget in exploreTargetList)
                 {
                     var exploreTargetUid = await CacheHelper.Instance.StringIncrementAsync("temp_explore_target_uid");
@@ -132,11 +125,8 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
                         MapSubId = mapSubId,
                     };
                     
-                    logManager.WriteDebugLog("55");
                     var exploreTargetInfo = new ExploreTargetInfo(exploreTargetUid, exploreTarget.Id, objectInfo);
-                    logManager.WriteDebugLog("66");
                     var partKey = MapHelper.CreatePartKey(mapId, mapSubId);
-                    logManager.WriteDebugLog("777");
                     _objectInstanceDict.AddOrUpdate(partKey, [objectInfo.GetGameObjectKey()],
                         (_, set) =>
                         {
@@ -144,16 +134,11 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
                             return set;
                         });
                     
-                    logManager.WriteDebugLog("88");
                     await exploreTargetInfo.Save();
-                    logManager.WriteDebugLog("99");
                     using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
                     BroadcastPacket(partKey, packet);
-                    logManager.WriteDebugLog("1010");
                 }
             }
-
-            logManager.WriteDebugLog($"EnterInstance Success: {instanceKey}");
         }
         catch (Exception e)
         {
@@ -161,7 +146,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
         }
         finally
         {
-            // _mapLock.Release();
+            _mapLock.Release();
         }
 
         if (!isLogin)
@@ -228,7 +213,6 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
         await _mapLock.WaitAsync();
         try
         {
-            logManager.WriteDebugLog($"UpdateObjectPositionAsync: {objectKey}");
             _objectInstanceDict.AddOrUpdate(
                 currentInstanceKey,
                 [objectKey],
@@ -261,7 +245,6 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
     private void SpawnManageObject(RedisValue message)
     {
-        logManager.WriteDebugLog($"SpawnManageObject================================================== ");
         var (userSubject, instanceKeyList, cellsToRemove) =
             MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
 
@@ -271,7 +254,6 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
             if (_objectInstanceDict.TryGetValue(instancePartKey, out var objectKeys))
             {
                 spawnList.AddRange(objectKeys);
-                logManager.WriteDebugLog($"SpawnManageObject, spawnList: {string.Join(",", objectKeys)}");
             }
         }
         

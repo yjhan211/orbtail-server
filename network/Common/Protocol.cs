@@ -51,7 +51,7 @@ namespace network.common
         C_TO_U_CHANGE_MAP_SUCCESS,
         C_TO_U_CREATE_LAB,
         U_TO_C_CREATE_LAB,
-        G_TO_U_CREATE_INSTANCE_SUCCESS,
+        G_TO_U_ENTER_INSTANCE_SUCCESS,
         C_TO_U_UPGRADE_RESEARCH,
         U_TO_C_UPGRADE_RESEARCH,
         C_TO_U_CRAFT,

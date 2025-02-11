@@ -47,11 +47,20 @@ public class PlayerManager(
         _movementHandler = new MovementHandler(_logManager, PlayerInfo.ObjectInfo, natsClient, sendToClient, updateObjectManager, GetMoveSpeed, IncreaseHp);
         _environmentHandler = environmentHandler;
     }
-
-    public async Task ChangeMap(bool isLogin = false)
+    
+    public async Task ChangeMap(GameUser user, C_TO_U_CHANGE_MAP body)
     {
         if (ObjectInfo == null || PlayerInfo == null)
         {
+            return;
+        }
+
+        if (body.MapId == MapId.Tent)
+        {
+            var serverId = MapHelper.GetManageServerId(MapSubId);
+            var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
+            var publishObj = MessagePackSerializer.Serialize((PlayerInfo.ObjectInfo.GetGameObjectKey(), body.MapId, body.MapSubId, false));
+            natsClient.Publish(subject, publishObj);
             return;
         }
         
@@ -65,9 +74,9 @@ public class PlayerManager(
         
         // 기존 맵에 삭제 요청
         await PublishDestroy();
-        await EnterMap(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition, changeMapInfo.Value.isFlip, isLogin);
+        await EnterMap(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition, changeMapInfo.Value.isFlip, false);
     }
-
+    
     public async Task EnterMap(MapId mapId, Cell spawnPosition, bool isFlip, bool isLogin)
     {
         if (PlayerInfo == null)
@@ -92,7 +101,6 @@ public class PlayerManager(
         var serverId = MapHelper.GetManageServerId(MapSubId);
         var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
         var publishObj = MessagePackSerializer.Serialize((PlayerInfo.ObjectInfo.GetGameObjectKey(), MapId, MapSubId, isLogin));
-        _logManager?.WriteDebugLog($"EnterMap subject: {subject} {MapId} {MapSubId}");
         natsClient.Publish(subject, publishObj);
     }
 

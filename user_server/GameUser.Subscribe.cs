@@ -50,7 +50,7 @@ public partial class GameUser
                     HandleMessage<G_TO_U_EXPLORE_TARGET_INFO>(body, SubscribeExploreTargetInfo);
                     break;
 
-                case Protocol.G_TO_U_CREATE_INSTANCE_SUCCESS:
+                case Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS:
                     HandleMessage<G_TO_U_CREATE_INSTANCE_SUCCESS>(body, SubscribeCreateInstanceSuccess);
                     break;
 

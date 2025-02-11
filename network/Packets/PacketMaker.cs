@@ -335,7 +335,7 @@ public static class PacketMaker
 
     public static Packet G_TO_U_CREATE_INSTANCE_SUCCESS(MapId mapId, long mapSubId)
     {
-        var packet = Packet.Create((int)Protocol.G_TO_U_CREATE_INSTANCE_SUCCESS);
+        var packet = Packet.Create((int)Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS);
         G_TO_U_CREATE_INSTANCE_SUCCESS body = new() { MapId = mapId, MapSubId = mapSubId };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

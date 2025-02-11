@@ -604,4 +604,11 @@ namespace network.common.data.models
         [Key("mailUid")] public long MailUid { get; set; }
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
     }
+
+    [MessagePackObject]
+    public class C_TO_U_CHANGE_MAP : IMessagePackObject
+    {
+        [Key("mapId")] public MapId MapId { get; set; }
+        [Key("mapSubId")] public long MapSubId { get; set; }
+    }
 }
