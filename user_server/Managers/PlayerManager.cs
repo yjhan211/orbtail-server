@@ -55,7 +55,7 @@ public class PlayerManager(
             return;
         }
 
-        if (body.MapId == MapId.Tent)
+        if (body.MapId == MapId.Camp)
         {
             var serverId = MapHelper.GetManageServerId(MapSubId);
             var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
