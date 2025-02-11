@@ -241,7 +241,9 @@ namespace network.common.data
                     currentCell.Y >= portal.Start.Y && currentCell.Y <= portal.End.Y)
                 {
                     var targetMapInfo = GetMapInfo(portal.WarpTo);
-                    var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(currentMap);
+
+                    var convertCurrentMap = portal.WarpTo == MapId.Camp ? MapId.None : currentMap;
+                    var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(convertCurrentMap);
                     var warpMap = ConvertMap(portal.WarpTo, isTutorial);
                     
                     return (warpMap, spawnPosition, isFlip);
@@ -311,7 +313,7 @@ namespace network.common.data
                             $"Invalid region coordinates in map {mapId}: Start({region.Start}) -> End({region.End})");
                     }
 
-                    if (mapId == MapId.Tent)
+                    if (mapId == MapId.Camp)
                     {
                         continue;
                     }

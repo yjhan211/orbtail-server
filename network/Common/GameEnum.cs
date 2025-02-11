@@ -20,7 +20,7 @@ namespace network.common
         Gym,
         Gymstorage,
         Schoolground,
-        Tent,
+        Camp,
     }
 
     public enum SocialActionType
