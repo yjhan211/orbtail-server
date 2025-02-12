@@ -104,6 +104,25 @@ public class PlayerManager(
         natsClient.Publish(subject, publishObj);
     }
 
+    public async Task EnterCamp(long mapSubId)
+    {
+        if (PlayerInfo == null)
+        {
+            throw new Exception("PlayerInfo is null");
+        }
+
+        PlayerInfo.ObjectInfo.MapId = MapId.Camp;
+        PlayerInfo.ObjectInfo.MapSubId = mapSubId;
+
+        var campMapInfo = GameMapData.GetMapInfo(PlayerInfo.ObjectInfo.MapId);
+        var (spawnPosition, isFlip) = campMapInfo.GetInitialPosition(MapId.None);
+        PlayerInfo.ObjectInfo.CurrentCell = spawnPosition;
+        PlayerInfo.ObjectInfo.TargetCell = spawnPosition;
+        PlayerInfo.ObjectInfo.IsFlip = isFlip;
+
+        await PlayerInfo.Save();
+    }
+
     private long GetInstanceMapSubId()
     {
         if (ObjectInfo == null)

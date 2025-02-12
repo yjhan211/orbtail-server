@@ -367,7 +367,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_U_CREATE_INSTANCE_SUCCESS : IMessagePackObject
+    public class G_TO_U_ENTER_INSTANCE_SUCCESS : IMessagePackObject
     {
         [Key("mapId")] public MapId MapId { get; set; }
 

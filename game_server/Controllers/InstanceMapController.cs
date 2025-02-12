@@ -101,7 +101,7 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
         var (userSubject, mapId, mapSubId, isLogin)
             = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
         var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
-        
+
         await _mapLock.WaitAsync();
         try
         {
@@ -151,8 +151,10 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
 
         if (!isLogin)
         {
-            using var packet = PacketMaker.G_TO_U_CREATE_INSTANCE_SUCCESS(mapId, mapSubId);
+            using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
             natsClient.Publish(userSubject, packet.ToBytes());
+            
+            logManager.WriteDebugLog($"{userSubject} {mapId} {mapSubId}");
         }
     }
 
