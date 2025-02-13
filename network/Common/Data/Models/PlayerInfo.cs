@@ -24,6 +24,7 @@ namespace network.common.data.models
             JobInfo = new JobInfo();
             InventoryInfo = new InventoryInfo();
             CraftInfo = new CraftInfo();
+            CampInfo = new CampInfo();
             LabId = 0;
             LabName = "";
             Gold = 0;
@@ -50,6 +51,7 @@ namespace network.common.data.models
             JobInfo = new JobInfo(PlayerId);
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
             CraftInfo = new CraftInfo(PlayerId);
+            CampInfo = new CampInfo(PlayerId, Name, new(), new(), new(0, 0));
             LabId = 0;
             LabName = "";
             Gold = 1000;
@@ -66,6 +68,7 @@ namespace network.common.data.models
 
         [IgnoreMember] public InventoryInfo InventoryInfo { get; set; }
         [IgnoreMember] public CraftInfo CraftInfo { get; set; }
+        [IgnoreMember] public CampInfo CampInfo { get; set; }
         [Key("playerId")] public long PlayerId { get; set; }
 
         [Key("name")] public string Name { get; set; }

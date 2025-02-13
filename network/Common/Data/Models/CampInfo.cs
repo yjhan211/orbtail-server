@@ -21,7 +21,7 @@ namespace network.common.data.models
             PlayerId = new long();
             PlayerName = "";
             ItemInfo = new ItemInfo();
-            CellDict = new Dictionary<long, (ItemInfo, int)>();
+            InteractPropDict = new Dictionary<Cell, InteractPropInfo>();
         }
 
         public CampInfo(long playerId, string playerName, GameObjectInfo playerObjectInfo, ItemInfo itemInfo, Cell cell)
@@ -38,7 +38,7 @@ namespace network.common.data.models
             PlayerId = playerId;
             PlayerName = playerName;
             ItemInfo = itemInfo;
-            CellDict = new Dictionary<long, (ItemInfo, int)>();
+            InteractPropDict = new Dictionary<Cell, InteractPropInfo>();
         }
 
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
@@ -49,7 +49,7 @@ namespace network.common.data.models
 
         [Key("itemInfo")] public ItemInfo ItemInfo { get; set; }
 
-        [Key("cellDict")] public Dictionary<long, (ItemInfo, int)> CellDict { get; set; }
+        [Key("InteractPropDict")] public Dictionary<Cell, InteractPropInfo> InteractPropDict { get; set; }
         
         private Cell CalculatePortal(bool isFlip)
         {

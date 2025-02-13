@@ -130,9 +130,6 @@ public partial class GameUser : IPeer
                 case Protocol.C_TO_U_EXPLORE_TARGET_INFO:
                     await HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(body, ExploreController.GetExploreTargetInfo);
                     break;
-                case Protocol.C_TO_U_JOB_RESOURCE_INFO:
-                    // await HandleMessage<C_TO_U_JOB_RESOURCE_INFO>(body, JobController.GetJobResourceInfo);
-                    break;
                 case Protocol.C_TO_U_UPGRADE_JOB:
                     // await HandleMessage<C_TO_U_UPGRADE_JOB>(body, JobController.UpgradeJob);
                     break;
@@ -219,6 +216,9 @@ public partial class GameUser : IPeer
                     break;
                 case Protocol.C_TO_U_MAIL_RECEIVE:
                     await HandleMessage<C_TO_U_MAIL_RECEIVE>(body, MailBoxController.ReceiveMail);
+                    break;
+                case Protocol.C_TO_U_ITEM_PUT:
+                    await HandleMessage<C_TO_U_ITEM_PUT>(body, CampController.PutItem);
                     break;
             }
         }

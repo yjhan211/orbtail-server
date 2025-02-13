@@ -9,13 +9,18 @@ namespace network.common.data.models
     [MessagePackObject]
     public class InteractPropInfo : IMessagePackObject
     {
-        [IgnoreMember] public const string HashKey = "InterfactPropInfo";
-        
         public InteractPropInfo()
         {
             ObjectInfo = new GameObjectInfo();
             InteractPropUid = 0;
             InteractPropId = 0;
+            InteractPlayers = new List<long>();
+        }
+        
+        public InteractPropInfo(GameObjectInfo objectInfo, long itemUid)
+        {
+            ObjectInfo = objectInfo;
+            InteractPropUid = itemUid;
             InteractPlayers = new List<long>();
         }
         

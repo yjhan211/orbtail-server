@@ -213,19 +213,7 @@ namespace network.common.data.models
     {
         [Key("jobResourceIdList")] public List<long> JobResourceIdList { get; set; }
     }
-
-    [MessagePackObject]
-    public class U_TO_C_JOB_RESOURCE_INFO : IMessagePackObject
-    {
-        [Key("jobResourceInfoList")] public List<JobResourceInfo> JobResourceInfoList { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_U_JOB_RESOURCE_INFO : IMessagePackObject
-    {
-        [Key("jobResourceInfo")] public JobResourceInfo JobResourceInfo { get; set; }
-    }
-
+    
     [MessagePackObject]
     public class C_TO_U_EXPLORE : IMessagePackObject
     {
@@ -610,5 +598,18 @@ namespace network.common.data.models
     {
         [Key("mapId")] public MapId MapId { get; set; }
         [Key("mapSubId")] public long MapSubId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_ITEM_PUT : IMessagePackObject
+    {
+        [Key("itemUid")] public long ItemUid { get; set; }
+        [Key("cell")] public Cell Cell { get; set; }
+    }
+    
+    [MessagePackObject]
+    public class U_TO_C_ITEM_PUT : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
     }
 }

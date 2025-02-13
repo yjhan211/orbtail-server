@@ -21,9 +21,8 @@ public partial class CampInfo
         if (campInfo == null) return null;
 
         var objectInfo = await GameObjectInfo.Load(ObjectType.CAMP, playerId);
-        if (objectInfo == null) return null;
-
-        campInfo.ObjectInfo = objectInfo;
+        campInfo.ObjectInfo = objectInfo ?? new GameObjectInfo();
+        
         return campInfo;
     }
 

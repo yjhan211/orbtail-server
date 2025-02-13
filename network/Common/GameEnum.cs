@@ -86,8 +86,8 @@ namespace network.common
         PLAYER,
         ITEM,
         EXPLORETARGET,
-        JOBRESOURCE,
-        CAMP
+        CAMP,
+        INTERACTPROP,
     }
 
     public enum InventoryOwnerType

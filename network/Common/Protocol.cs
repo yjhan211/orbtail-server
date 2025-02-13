@@ -30,9 +30,6 @@ namespace network.common
         C_TO_U_EXPLORE_TARGET_INFO,
         U_TO_C_EXPLORE_TARGET_INFO,
         G_TO_U_EXPLORE_TARGET_INFO,
-        C_TO_U_JOB_RESOURCE_INFO,
-        U_TO_C_JOB_RESOURCE_INFO,
-        G_TO_U_JOB_RESOURCE_INFO,
         C_TO_U_USE_SKILL,
         U_TO_C_USE_SKILL,
         U_TO_G_USE_SKILL,
@@ -98,6 +95,8 @@ namespace network.common
         U_TO_C_MAIL_LIST,
         C_TO_U_MAIL_RECEIVE,
         U_TO_C_MAIL_RECEIVE,
+        C_TO_U_ITEM_PUT,
+        U_TO_C_ITEM_PUT,
         END
     }
 

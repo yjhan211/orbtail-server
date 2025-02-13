@@ -111,32 +111,14 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
             if (isInit)
             {
                 SubscribeToInstanceEvents(mapId, mapSubId);
-                var exploreTargetList = GameExploreTargetData.GetListByMap(mapId);
-                foreach (var exploreTarget in exploreTargetList)
+                switch (mapId)
                 {
-                    var exploreTargetUid = await CacheHelper.Instance.StringIncrementAsync("temp_explore_target_uid");
-                    var objectInfo = new GameObjectInfo
-                    {
-                        ObjectType = ObjectType.EXPLORETARGET,
-                        ObjectId = exploreTargetUid,
-                        CurrentCell = exploreTarget.Position,
-                        TargetCell = exploreTarget.Position,
-                        MapId = mapId,
-                        MapSubId = mapSubId,
-                    };
+                    case MapId.Camp:
+                        break;
                     
-                    var exploreTargetInfo = new ExploreTargetInfo(exploreTargetUid, exploreTarget.Id, objectInfo);
-                    var partKey = MapHelper.CreatePartKey(mapId, mapSubId);
-                    _objectInstanceDict.AddOrUpdate(partKey, [objectInfo.GetGameObjectKey()],
-                        (_, set) =>
-                        {
-                            set.Add(objectInfo.GetGameObjectKey());
-                            return set;
-                        });
-                    
-                    await exploreTargetInfo.Save();
-                    using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
-                    BroadcastPacket(partKey, packet);
+                    default:
+                        await InitializeExploreTargets(mapId, mapSubId);
+                        break;
                 }
             }
         }
@@ -153,8 +135,38 @@ public class InstanceMapController(LogManager logManager, NatsClient natsClient,
         {
             using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
             natsClient.Publish(userSubject, packet.ToBytes());
-            
             logManager.WriteDebugLog($"{userSubject} {mapId} {mapSubId}");
+        }
+    }
+
+    private async Task InitializeExploreTargets(MapId mapId, long mapSubId)
+    {
+        var exploreTargetList = GameExploreTargetData.GetListByMap(mapId);
+        foreach (var exploreTarget in exploreTargetList)
+        {
+            var exploreTargetUid = await CacheHelper.Instance.StringIncrementAsync("temp_explore_target_uid");
+            var objectInfo = new GameObjectInfo
+            {
+                ObjectType = ObjectType.EXPLORETARGET,
+                ObjectId = exploreTargetUid,
+                CurrentCell = exploreTarget.Position,
+                TargetCell = exploreTarget.Position,
+                MapId = mapId,
+                MapSubId = mapSubId,
+            };
+                    
+            var exploreTargetInfo = new ExploreTargetInfo(exploreTargetUid, exploreTarget.Id, objectInfo);
+            var partKey = MapHelper.CreatePartKey(mapId, mapSubId);
+            _objectInstanceDict.AddOrUpdate(partKey, [objectInfo.GetGameObjectKey()],
+                (_, set) =>
+                {
+                    set.Add(objectInfo.GetGameObjectKey());
+                    return set;
+                });
+                    
+            await exploreTargetInfo.Save();
+            using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
+            BroadcastPacket(partKey, packet);
         }
     }
 

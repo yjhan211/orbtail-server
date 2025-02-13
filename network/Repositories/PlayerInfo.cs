@@ -27,6 +27,7 @@ public partial class PlayerInfo
         await JobInfo.Save();
         await InventoryInfo.Save();
         await CraftInfo.Save();
+        await CampInfo.Save();
         await CacheHelper.Instance.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
     }
 
@@ -42,6 +43,7 @@ public partial class PlayerInfo
         playerInfo.InventoryInfo = await InventoryInfo.Load(InventoryOwnerType.PLAYER, playerId) ??
                                    new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
         playerInfo.CraftInfo = await CraftInfo.Load(playerId) ?? new CraftInfo(playerId);
+        playerInfo.CampInfo = await CampInfo.Load(playerId) ?? new CampInfo(playerId, playerInfo.Name, new GameObjectInfo(), new(), new(0, 0));
 
         return playerInfo;
     }
@@ -70,6 +72,8 @@ public partial class PlayerInfo
         await GameObjectInfo.Delete(objectField);
         await JobInfo.Delete(playerId);
         await InventoryInfo.Delete(InventoryOwnerType.PLAYER, playerId);
+        await CraftInfo.Delete(playerId);
+        await CampInfo.Delete(playerId);
         await CacheHelper.Instance.HashDeleteAsync(HashKey, playerId);
     }
 }

@@ -112,16 +112,7 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-
-    public static Packet U_TO_C_JOB_RESOURCE_INFO(List<JobResourceInfo> jobResourceInfoList)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_JOB_RESOURCE_INFO);
-        U_TO_C_JOB_RESOURCE_INFO body = new() { JobResourceInfoList = jobResourceInfoList };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
+    
     public static Packet U_TO_C_CHAT_MSG(ChatType chatType, long playerId, string name, string chatMessage)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CHAT_MSG);
@@ -202,15 +193,6 @@ public static class PacketMaker
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_EXPLORE_TARGET_INFO);
         G_TO_U_EXPLORE_TARGET_INFO body = new() { ExploreTargetInfo = exploreTargetInfo };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet G_TO_U_JOB_RESOURCE_INFO(JobResourceInfo jobResourceInfo)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_U_JOB_RESOURCE_INFO);
-        G_TO_U_JOB_RESOURCE_INFO body = new() { JobResourceInfo = jobResourceInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

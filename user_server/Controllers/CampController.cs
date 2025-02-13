@@ -84,4 +84,46 @@ public static class CampController
         }
         user.BroadcastObjectDestroy(campInfo.ObjectInfo);
     }
+
+    public static async Task PutItem(GameUser user, C_TO_U_ITEM_PUT body)
+    {
+        CampInfo? campInfo;
+        await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
+        {
+            if (user.PlayerManager.PlayerInfo == null)
+            {
+                return;
+            }
+
+            var playerInfo = user.PlayerManager.PlayerInfo;
+            if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.ItemUid, out var targetItem))
+            {
+                throw new Exception("not found item info");
+            }
+
+            campInfo = await CampInfo.Load(user.PlayerId);
+            if (campInfo == null)
+            {
+                throw new Exception("not encamp");
+            }
+
+            if (campInfo.InteractPropDict.Values.Any((e) => e.InteractPropUid == body.ItemUid))
+            {
+                throw new Exception($"already put item: {body.ItemUid}");
+            }
+
+            if (campInfo.InteractPropDict.ContainsKey(body.Cell))
+            {
+                throw new Exception($"already cell full: {body.Cell.X}, {body.Cell.Y}");
+            }
+
+            var gameObjectInfo = new GameObjectInfo(ObjectType.INTERACTPROP, body.ItemUid, playerInfo.ObjectInfo.MapId,
+                playerInfo.ObjectInfo.MapSubId, body.Cell, false);
+            var interactPropInfo = new InteractPropInfo(gameObjectInfo, body.ItemUid);
+
+            campInfo.InteractPropDict.Add(body.Cell, interactPropInfo);
+            await campInfo.Save();
+        }
+        user.BroadcastUpdateInfo(campInfo);
+    }
 }
