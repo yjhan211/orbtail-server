@@ -164,7 +164,8 @@ namespace network.common
         SITCHAIR,
         EXPLORE_1,
         CRAFT_1,
-        CAMPING_1
+        CAMPING_1,
+        SLEEP,
     }
 
     public enum QuestType : short
