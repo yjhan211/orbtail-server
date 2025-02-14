@@ -1,12 +1,12 @@
 id,map_id,name,reward_item_pool,reusable,position,sprite_path
 1,4,의자에 매달린 가방,[201000001],1,"(93, 100)",Sprites/Map/ClassRoom/P_Deskchair_002
-2,4,책상,[301000004],1,"(93, 102)",Sprites/Map/ClassRoom/P_Desk_001
-3,4,열린 사물함,[301000002],1,"(101, 101)",Sprites/Map/ClassRoom/P_Locker_Door_002
-4,5,사무용 서랍,[301000005],1,"(88, 98)",Sprites/Map/AdminOffice/P_Shelf_004
-5,5,교사용 캐비닛,[301000006],1,"(97, 110)",Sprites/Map/AdminOffice/P_Shelf_007
+2,4,책상,[301000002],1,"(93, 102)",Sprites/Map/ClassRoom/P_Desk_001
+3,4,열린 사물함,[108000001],1,"(101, 101)",Sprites/Map/ClassRoom/P_Locker_Door_002
+4,5,사무용 서랍,[301000004],1,"(88, 98)",Sprites/Map/AdminOffice/P_Shelf_004
+5,5,교사용 캐비닛,[108000002],1,"(97, 110)",Sprites/Map/AdminOffice/P_Shelf_007
 6,5,국어 선생님의 책상,[301000003],1,"(97, 102)",Sprites/Map/AdminOffice/P_Desk_007
 7,5,사무용 선반,[202000001],1,"(98, 92)",Sprites/Map/AdminOffice/P_Shelf_017
-8,7,체육 매트,[301000007],1,"(97, 97)",Sprites/Map/Gym/P_Props_002
-9,7,박스 더미,[301000009],1,"(92, 99)",Sprites/Map/Gym/P_Box_002
-10,7,박스 더미 2,[301000008],1,"(102, 98)",Sprites/Map/Gym/P_Box_001
-11,7,체육 바구니,[301000010],1,"(88, 102)",Sprites/Map/Gym/P_Props_006
+8,7,체육 매트,[501000001],0,"(97, 97)",Sprites/Map/Gym/P_Props_002
+9,7,박스 더미,[301000006],1,"(92, 99)",Sprites/Map/Gym/P_Box_002
+10,7,박스 더미 2,[301000007],1,"(102, 98)",Sprites/Map/Gym/P_Box_001
+11,7,체육 바구니,[301000008],1,"(88, 102)",Sprites/Map/Gym/P_Props_006
