@@ -19,7 +19,7 @@ namespace network.common.data
 
         public static void Initialize(List<CsvRow> baseItemData, List<CsvRow> equipmentData,
             List<CsvRow> consumableData, List<CsvRow> installationData,
-            List<CsvRow> shopData)
+            List<CsvRow> shopData, List<CsvRow> putData)
         {
             foreach (var baseInfo in baseItemData)
             {
@@ -56,6 +56,12 @@ namespace network.common.data
                         var shopInfo = shopData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
                         if (shopInfo != null)
                             additionalData["installation_shop_info"] = shopInfo;
+                        break;
+                    
+                    case ItemType.PUTABLE:
+                        var putInfo = putData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
+                        if (putInfo != null)
+                            additionalData["item_info_put"] = putInfo;
                         break;
                 }
 
@@ -123,6 +129,12 @@ namespace network.common.data
         public bool IsConsumable => Type == ItemType.CONSUMABLE;
         public bool IsInstallation => Type == ItemType.INSTALLATION;
         public bool IsMaterial => Type == ItemType.MATERIAL;
+        public bool IsPutable => Type == ItemType.PUTABLE;
+        
+        // 하우징 아이템 관련
+        public string PutSpritePath { get; private set; }
+        public List<(float, float)> Slots { get; private set; }
+        public PlayerState SlotState { get; private set; }
 
         public static ItemInfoData CreateFromData(CsvRow baseInfo, Dictionary<string, CsvRow> additionalData = null)
         {
@@ -152,7 +164,7 @@ namespace network.common.data
 
                     case ItemType.CONSUMABLE 
                         when additionalData.TryGetValue("item_info_consumable", out var consumableInfo):
-                        item.ConsumableBuffList = ParseTupleArray(consumableInfo["buff_list"]);
+                        item.ConsumableBuffList = ParseIntTupleArray(consumableInfo["buff_list"]);
                         break;
 
                     case ItemType.INSTALLATION 
@@ -161,6 +173,13 @@ namespace network.common.data
                         item.BuffList = ParseBuffList(installInfo["buff_list"]) ?? throw new ArgumentException();
                         if (additionalData.TryGetValue("installation_shop_info", out var shopInfo))
                             item.MaxSellItems = int.Parse(shopInfo["max_items"]);
+                        break;
+                    
+                    case ItemType.PUTABLE
+                        when additionalData.TryGetValue("item_info_put", out var putInfo):
+                        item.PutSpritePath = putInfo["sprite_path"];
+                        item.Slots = ParseFloatTupleArray(putInfo["slot_list"]);
+                        item.SlotState = PlayerState.Parse<PlayerState>(int.Parse(putInfo["slot_state"]).ToString());
                         break;
                 }
 
@@ -176,12 +195,22 @@ namespace network.common.data
             return arrays?.Select(arr => (id: arr[0], coolTime: arr[1], value: arr[2])).ToList();
         }
 
-        public static List<(int id, int value)> ParseTupleArray(string jsonString)
+        public static List<(int id, int value)> ParseIntTupleArray(string jsonString)
         {
             if (string.IsNullOrEmpty(jsonString) || jsonString == "[]") return new();
 
             jsonString = jsonString.Trim('"');
             var arrays = JsonConvert.DeserializeObject<List<int[]>>(jsonString);
+
+            return arrays?.Select(arr => (id: arr[0], value: arr[1])).ToList();
+        }
+        
+        public static List<(float id, float value)> ParseFloatTupleArray(string jsonString)
+        {
+            if (string.IsNullOrEmpty(jsonString) || jsonString == "[]") return new();
+
+            jsonString = jsonString.Trim('"');
+            var arrays = JsonConvert.DeserializeObject<List<float[]>>(jsonString);
 
             return arrays?.Select(arr => (id: arr[0], value: arr[1])).ToList();
         }

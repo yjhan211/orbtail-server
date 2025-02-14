@@ -81,7 +81,7 @@ namespace network.common.data
                 Id = int.Parse(row["id"]),
                 ManualId = int.Parse(row["manual_id"]),
                 TargetItem = int.Parse(row["target_item"]),
-                RequireItems = ItemInfoData.ParseTupleArray(row["require_items"]),
+                RequireItems = ItemInfoData.ParseIntTupleArray(row["require_items"]),
                 Stamina = int.Parse(row["stamina"]),
                 Seconds = int.Parse(row["seconds"]),
             };

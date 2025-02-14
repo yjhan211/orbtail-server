@@ -27,8 +27,9 @@ namespace network.common.data.helpers
                 public const string Consumable = "item_info_consumable.csv";
                 public const string Installation = "item_info_installation.csv";
                 public const string Shop = "shop_info_installation.csv";
+                public const string Put = "item_info_put.csv";
 
-                public static readonly string[] ALL = new[] { Base, Equipment, Consumable, Installation, Shop };
+                public static readonly string[] ALL = new[] { Base, Equipment, Consumable, Installation, Shop, Put };
             }
 
             public static class Map
@@ -106,7 +107,8 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Item.Equipment],
                 loadedData[DataFiles.Item.Consumable],
                 loadedData[DataFiles.Item.Installation],
-                loadedData[DataFiles.Item.Shop]
+                loadedData[DataFiles.Item.Shop],
+                loadedData[DataFiles.Item.Put]
             );
             
             // 맵 데이터 초기화

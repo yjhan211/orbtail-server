@@ -59,6 +59,7 @@ namespace network.common
         MATERIAL,
         INSTALLATION,
         MANUAL,
+        PUTABLE,
     }
     
     public enum EquipType
@@ -69,7 +70,9 @@ namespace network.common
         HAT = 103,
         TOP = 104,
         BOTTOM = 105,
-        SHOES = 106
+        SHOES = 106,
+        TOOL = 107,
+        PASSIVE = 108,
     }
 
     public enum InstallationType
