@@ -179,7 +179,7 @@ namespace network.common.data
                         when additionalData.TryGetValue("item_info_put", out var putInfo):
                         item.PutSpritePath = putInfo["sprite_path"];
                         item.Slots = ParseFloatTupleArray(putInfo["slot_list"]);
-                        item.SlotState = PlayerState.Parse<PlayerState>(int.Parse(putInfo["slot_state"]).ToString());
+                        item.SlotState = PlayerState.Parse<PlayerState>(int.Parse(putInfo["player_state"]).ToString());
                         break;
                 }
 

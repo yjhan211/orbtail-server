@@ -58,7 +58,6 @@ namespace network.common
         CONSUMABLE,
         MATERIAL,
         INSTALLATION,
-        MANUAL,
         PUTABLE,
     }
     
