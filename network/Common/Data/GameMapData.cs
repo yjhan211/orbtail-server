@@ -242,7 +242,7 @@ namespace network.common.data
                 {
                     var targetMapInfo = GetMapInfo(portal.WarpTo);
 
-                    var convertCurrentMap = portal.WarpTo == MapId.Camp ? MapId.None : currentMap;
+                    var convertCurrentMap = (portal.WarpTo == MapId.Camp) ? MapId.None : currentMap;
                     var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(convertCurrentMap);
                     var warpMap = ConvertMap(portal.WarpTo, isTutorial);
                     
