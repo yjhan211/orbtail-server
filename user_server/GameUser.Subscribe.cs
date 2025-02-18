@@ -51,7 +51,7 @@ public partial class GameUser
                     break;
 
                 case Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS:
-                    HandleMessage<G_TO_U_ENTER_INSTANCE_SUCCESS>(body, SubscribeEnterInstanceSuccess);
+                    await HandleMessage<G_TO_U_ENTER_INSTANCE_SUCCESS>(body, SubscribeEnterInstanceSuccess);
                     break;
 
                 case Protocol.U_TO_C_LAB_INFO:
@@ -156,20 +156,20 @@ public partial class GameUser
         Send(packet);
     }
 
-    private void SubscribeEnterInstanceSuccess(GameUser _, G_TO_U_ENTER_INSTANCE_SUCCESS body)
+    private async Task SubscribeEnterInstanceSuccess(GameUser _, G_TO_U_ENTER_INSTANCE_SUCCESS body)
     {
         if (body.MapId == MapId.Camp)
         {
-            PlayerManager.EnterCamp(body.MapSubId);
+            await PlayerManager.EnterCamp(body.MapSubId);
         }
 
-        if (body.MapId != PlayerManager.MapId || body.MapSubId != PlayerManager.MapSubId)
+        if (body.MapId != PlayerManager.MapId || body.MapSubId != PlayerManager.MapSubId || PlayerManager.PlayerInfo == null)
         {
             return;
         }
         
         using var packet = PacketMaker.U_TO_C_CHANGE_MAP(
-            PlayerManager.LastMapId,
+            PlayerManager.PlayerInfo.LastMapId,
             PlayerManager.MapId,
             PlayerManager.MapSubId,
             PlayerManager.CurrentCell,

@@ -33,6 +33,9 @@ namespace network.common.data.models
             Stamina = 0;
             Boosts = new();
             IsTutorial = true;
+            LastMapId = MapId.None;
+            LastMapSubId = 0;
+            LastCell = new(0, 0);
         }
 
         public PlayerInfo(long playerId, bool isDummy)
@@ -60,12 +63,13 @@ namespace network.common.data.models
             Stamina = 100;
             Boosts = new();
             IsTutorial = true;
+            LastMapId = MapId.None;
+            LastMapSubId = 0;
+            LastCell = new(0, 0);
         }
 
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
-
         [IgnoreMember] public JobInfo JobInfo { get; set; }
-
         [IgnoreMember] public InventoryInfo InventoryInfo { get; set; }
         [IgnoreMember] public CraftInfo CraftInfo { get; set; }
         [IgnoreMember] public CampInfo CampInfo { get; set; }
@@ -93,6 +97,12 @@ namespace network.common.data.models
 
         [Key("boostList")] public HashSet<BoostType> Boosts { get; set; }
         [Key("isTutorial")] public bool IsTutorial { get; set; }
+        
+        [Key("mapId")] public MapId LastMapId { get; set; }
+        
+        [Key("mapSubId")] public long LastMapSubId { get; set; }
+        
+        [Key("lastCell")] public Cell LastCell { get; set; }
 
         public string GetLockKey()
         {

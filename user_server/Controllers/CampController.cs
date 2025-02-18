@@ -32,7 +32,6 @@ public static class CampController
 
     public static async Task Encamp(GameUser user, C_TO_U_ENCAMP body)
     {
-        CampInfo? campInfo;
         await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
         {
             if (user.PlayerManager.PlayerInfo == null)
@@ -40,21 +39,26 @@ public static class CampController
                 return;
             }
 
-            var playerInfo = user.PlayerManager.PlayerInfo;
-            if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.ItemUid, out var targetItem))
+            if (!user.PlayerManager.PlayerInfo.InventoryInfo.ItemDict.TryGetValue(body.ItemUid, out var targetItem))
             {
                 throw new Exception("not found item info");
             }
 
-            if (await CampInfo.Load(user.PlayerId) != null)
+            if (user.PlayerManager.PlayerInfo.CampInfo.IsIntall)
             {
                 throw new Exception("already encamp");
             }
-
-            campInfo = new CampInfo(playerInfo.PlayerId, playerInfo.Name, playerInfo.ObjectInfo, targetItem, playerInfo.ObjectInfo.TargetCell);
-            await campInfo.Save();
+            
+            user.PlayerManager.PlayerInfo.CampInfo.IsIntall = true;
+            user.PlayerManager.PlayerInfo.CampInfo.ObjectInfo.MapId = user.PlayerManager.PlayerInfo.ObjectInfo.MapId;
+            user.PlayerManager.PlayerInfo.CampInfo.ObjectInfo.MapSubId = user.PlayerManager.PlayerId;
+            user.PlayerManager.PlayerInfo.CampInfo.ObjectInfo.CurrentCell = user.PlayerManager.PlayerInfo.ObjectInfo.CurrentCell.Clone();
+            user.PlayerManager.PlayerInfo.CampInfo.ObjectInfo.TargetCell = user.PlayerManager.PlayerInfo.ObjectInfo.CurrentCell.Clone();
+            user.PlayerManager.PlayerInfo.CampInfo.ObjectInfo.IsFlip = user.PlayerManager.PlayerInfo.ObjectInfo.IsFlip;
+            await user.PlayerManager.PlayerInfo.CampInfo.Save();
         }
-        
+
+        var campInfo = user.PlayerManager.PlayerInfo.CampInfo;
         var isCommonMap = GameMapData.IsCommonMap(campInfo.ObjectInfo.MapId);
         var managePartKey = isCommonMap ? MapHelper.CreatePartKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.CurrentCell) : MapHelper.CreatePartKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId);
         var manageServer = isCommonMap ? MapHelper.GetManageServerId(managePartKey) : MapHelper.GetManageServerId(campInfo.ObjectInfo.MapSubId);
@@ -66,23 +70,20 @@ public static class CampController
     
     public static async Task Decamp(GameUser user)
     {
-        CampInfo? campInfo;
         await using (await PlayerInfo.Lock(user.RedLock, user.PlayerId))
         {
             if (user.PlayerManager.PlayerInfo == null)
             {
                 return;
             }
-
-            campInfo = await CampInfo.Load(user.PlayerId);
-            if (campInfo == null)
+            if (!user.PlayerManager.PlayerInfo.CampInfo.IsIntall)
             {
                 throw new Exception("not encamp");
             }
-
-            await campInfo.Delete();
+            user.PlayerManager.PlayerInfo.CampInfo.IsIntall = false;
+            await user.PlayerManager.PlayerInfo.CampInfo.Save();
         }
-        user.BroadcastObjectDestroy(campInfo.ObjectInfo);
+        user.BroadcastObjectDestroy(user.PlayerManager.PlayerInfo.CampInfo.ObjectInfo);
     }
 
     public static async Task PutItem(GameUser user, C_TO_U_ITEM_PUT body)

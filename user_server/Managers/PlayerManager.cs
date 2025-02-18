@@ -16,20 +16,18 @@ public delegate float GetMoveSpeedDelegate();
 public delegate void IncreaseHpDelegate(int value);
 
 public class PlayerManager(
-    LogManager? logManager,
+    LogManager logManager,
     NatsClient natsClient,
     SendPacketDelegate sendToClient,
     UpdateObjectManager updateObjectManager)
 {
     // ReSharper disable once UnusedMember.Local
-    private readonly LogManager? _logManager = logManager;
     private EnvironmentHandler? _environmentHandler;
     private MovementHandler? _movementHandler;
     
     public PlayerInfo? PlayerInfo { get; private set; }
     public GameObjectInfo? ObjectInfo => PlayerInfo?.ObjectInfo ?? null;
     public long PlayerId => PlayerInfo?.PlayerId ?? 0;
-    public MapId LastMapId = MapId.None;
     public MapId MapId => PlayerInfo?.ObjectInfo.MapId ?? MapId.None;
     public long MapSubId => PlayerInfo?.ObjectInfo.MapSubId ?? 0;
     public Cell CurrentCell => PlayerInfo?.ObjectInfo.CurrentCell ?? new(0, 0);
@@ -44,7 +42,7 @@ public class PlayerManager(
         PlayerInfo.ObjectInfo.CurrentCell = PlayerInfo.ObjectInfo.TargetCell;
         PlayerInfo.State = PlayerState.IDLE;
         
-        _movementHandler = new MovementHandler(_logManager, PlayerInfo.ObjectInfo, natsClient, sendToClient, updateObjectManager, GetMoveSpeed, IncreaseHp);
+        _movementHandler = new MovementHandler(logManager, PlayerInfo.ObjectInfo, natsClient, sendToClient, updateObjectManager, GetMoveSpeed, IncreaseHp);
         _environmentHandler = environmentHandler;
     }
     
@@ -57,10 +55,27 @@ public class PlayerManager(
 
         if (body.MapId == MapId.Camp)
         {
+            PlayerInfo.LastMapId = MapId;
+            PlayerInfo.LastMapSubId = MapSubId;
+            PlayerInfo.LastCell = CurrentCell.Clone();
+            await PlayerInfo.Save();
+            
             var serverId = MapHelper.GetManageServerId(MapSubId);
             var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
             var publishObj = MessagePackSerializer.Serialize((PlayerInfo.ObjectInfo.GetGameObjectKey(), body.MapId, body.MapSubId, false));
             natsClient.Publish(subject, publishObj);
+            return;
+        }
+        
+        if (ObjectInfo.MapId == MapId.Camp)
+        {
+            await PublishDestroy();
+            await EnterMap(PlayerInfo.CampInfo.ObjectInfo.MapId, PlayerInfo.CampInfo.ObjectInfo.CurrentCell, false, false);
+            
+            PlayerInfo.LastMapId = MapId;
+            PlayerInfo.LastMapSubId = MapSubId;
+            PlayerInfo.LastCell = CurrentCell.Clone();
+            await PlayerInfo.Save();
             return;
         }
         
@@ -69,12 +84,15 @@ public class PlayerManager(
         {
             return;
         }
-
-        LastMapId = MapId;
         
         // 기존 맵에 삭제 요청
         await PublishDestroy();
         await EnterMap(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition, changeMapInfo.Value.isFlip, false);
+        
+        PlayerInfo.LastMapId = MapId;
+        PlayerInfo.LastMapSubId = MapSubId;
+        PlayerInfo.LastCell = CurrentCell.Clone();
+        await PlayerInfo.Save();
     }
     
     public async Task EnterMap(MapId mapId, Cell spawnPosition, bool isFlip, bool isLogin)
@@ -93,7 +111,7 @@ public class PlayerManager(
 
         if (GameMapData.IsCommonMap(MapId) && !isLogin)
         {
-            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(LastMapId, MapId, MapSubId, PlayerInfo.ObjectInfo.CurrentCell, IsFlip);
+            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(PlayerInfo.LastMapId, MapId, MapSubId, PlayerInfo.ObjectInfo.CurrentCell, IsFlip);
             sendToClient(packet);
             return;
         }

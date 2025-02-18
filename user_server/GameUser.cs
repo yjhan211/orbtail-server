@@ -315,6 +315,18 @@ public partial class GameUser : IPeer
             using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
             NatsClient.Publish(PlayerManager.ObjectInfo!.GetGameObjectKey(), duplicatePacket.ToBytes());
 
+            if (playerInfo.ObjectInfo.MapId == MapId.Gym)
+            {
+                playerInfo.ObjectInfo.MapId = MapId.TutorialGym;
+                playerInfo.ObjectInfo.MapSubId = playerInfo.PlayerId;
+                var targetMapInfo = GameMapData.GetMapInfo(MapId.Gym);
+                
+                var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(MapId.Gym);
+                playerInfo.ObjectInfo.CurrentCell = spawnPosition;
+                playerInfo.ObjectInfo.TargetCell = spawnPosition;
+                playerInfo.ObjectInfo.IsFlip = isFlip;
+            }
+            
             await playerInfo.Save();
             await playerInfo.ObjectInfo.Save();
 
@@ -375,6 +387,7 @@ public partial class GameUser : IPeer
         // 퀘스트 정보 전송
         await QuestController.GetCurrentQuestList(this);
 
+        LogManager.WriteDebugLog($"playerInfo.ObjectInfo.MapId: {playerInfo.ObjectInfo.MapId}");
         await PlayerManager.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
     }
 
