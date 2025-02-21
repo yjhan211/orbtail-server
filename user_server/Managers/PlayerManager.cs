@@ -69,6 +69,8 @@ public class PlayerManager(
         
         if (ObjectInfo.MapId == MapId.Camp)
         {
+            logManager.WriteDebugLog($"PlayerInfo.CampInfo.ObjectInfo.MapId: {PlayerInfo.CampInfo.ObjectInfo.MapId}");
+            
             await PublishDestroy();
             await EnterMap(PlayerInfo.CampInfo.ObjectInfo.MapId, PlayerInfo.CampInfo.ObjectInfo.CurrentCell, false, false);
             
@@ -103,7 +105,8 @@ public class PlayerManager(
         }
         
         PlayerInfo.ObjectInfo.MapId = mapId;
-        PlayerInfo.ObjectInfo.MapSubId = GameMapData.IsCommonMap(mapId) ? 0 : GetInstanceMapSubId();
+        // PlayerInfo.ObjectInfo.MapSubId = GameMapData.IsCommonMap(mapId) ? 0 : GetInstanceMapSubId();
+        PlayerInfo.ObjectInfo.MapSubId = 1;
         PlayerInfo.ObjectInfo.CurrentCell = spawnPosition;
         PlayerInfo.ObjectInfo.TargetCell = spawnPosition;
         PlayerInfo.ObjectInfo.IsFlip = isFlip;

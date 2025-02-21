@@ -50,7 +50,7 @@ namespace network.common.data.models
             Grade = PlayerGrade.COMMONER;
             WearItemIdList = new();
             State = PlayerState.NONE;
-            ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.TutorialLibrary, 1, initCell);
+            ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.Classroom, 1, initCell);
             JobInfo = new JobInfo(PlayerId);
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
             CraftInfo = new CraftInfo(PlayerId);
@@ -62,7 +62,7 @@ namespace network.common.data.models
             Hp = 10000;
             Stamina = 100;
             Boosts = new();
-            IsTutorial = true;
+            IsTutorial = false;
             LastMapId = MapId.None;
             LastMapSubId = 0;
             LastCell = new(0, 0);

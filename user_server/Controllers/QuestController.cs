@@ -119,6 +119,16 @@ public static class QuestController
             using var updateQuestPacket = PacketMaker.U_TO_C_QUEST_UPDATE(updateQuestInfo);
             user.Send(updateQuestPacket);
         }
+
+        switch (body.QuestId)
+        {
+            case 100000015:
+                playerInfo.IsTutorial = false;
+                playerInfo.LastMapId = MapId.Gym;
+                playerInfo.LastMapSubId = 0;
+                await playerInfo.Save();
+                break;
+        }
     }
     
     public static async Task GetCurrentQuestList(GameUser user)

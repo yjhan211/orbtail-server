@@ -299,11 +299,21 @@ public partial class GameUser : IPeer
                 isInit = true;
                 playerInfo = new PlayerInfo(tempPlayerId, isDummy);
 
-                foreach (var (itemId, count) in GameRuleData.DefaultItemList)
+                foreach (var itemInfo in GameItemData.GetAllList())
                 {
-                    var item = await InventoryController.CreateItem(itemId, count);
+                    if (!itemInfo.IsEquipment)
+                    {
+                        continue;
+                    }
+                    var item = await InventoryController.CreateItem(itemInfo.Id, 1);
                     giftItemList.Add(item);
                 }
+                
+                // foreach (var (itemId, count) in GameRuleData.DefaultItemList)
+                // {
+                //     var item = await InventoryController.CreateItem(itemId, count);
+                //     giftItemList.Add(item);
+                // }
 
                 playerInfo.InventoryInfo.AddItem(giftItemList);
             }
@@ -315,18 +325,18 @@ public partial class GameUser : IPeer
             using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
             NatsClient.Publish(PlayerManager.ObjectInfo!.GetGameObjectKey(), duplicatePacket.ToBytes());
 
-            if (playerInfo.ObjectInfo.MapId == MapId.Gym)
-            {
-                playerInfo.ObjectInfo.MapId = MapId.TutorialGym;
-                playerInfo.ObjectInfo.MapSubId = playerInfo.PlayerId;
-                var targetMapInfo = GameMapData.GetMapInfo(MapId.Gym);
-                
-                var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(MapId.Gym);
-                playerInfo.ObjectInfo.CurrentCell = spawnPosition;
-                playerInfo.ObjectInfo.TargetCell = spawnPosition;
-                playerInfo.ObjectInfo.IsFlip = isFlip;
-            }
-            
+            // if (playerInfo.ObjectInfo.MapId == MapId.Gym)
+            // {
+            //     playerInfo.ObjectInfo.MapId = MapId.TutorialGym;
+            //     playerInfo.ObjectInfo.MapSubId = playerInfo.PlayerId;
+            //     var targetMapInfo = GameMapData.GetMapInfo(MapId.Gym);
+            //     
+            //     var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(MapId.Gym);
+            //     playerInfo.ObjectInfo.CurrentCell = spawnPosition;
+            //     playerInfo.ObjectInfo.TargetCell = spawnPosition;
+            //     playerInfo.ObjectInfo.IsFlip = isFlip;
+            // }
+            //
             await playerInfo.Save();
             await playerInfo.ObjectInfo.Save();
 

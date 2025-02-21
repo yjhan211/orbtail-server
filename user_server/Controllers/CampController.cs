@@ -50,6 +50,7 @@ public static class CampController
             }
             
             user.PlayerManager.PlayerInfo.CampInfo.IsIntall = true;
+            user.PlayerManager.PlayerInfo.CampInfo.PlayerName = user.PlayerManager.PlayerInfo.Name;
             user.PlayerManager.PlayerInfo.CampInfo.ObjectInfo.MapId = user.PlayerManager.PlayerInfo.ObjectInfo.MapId;
             user.PlayerManager.PlayerInfo.CampInfo.ObjectInfo.MapSubId = user.PlayerManager.PlayerId;
             user.PlayerManager.PlayerInfo.CampInfo.ObjectInfo.CurrentCell = user.PlayerManager.PlayerInfo.ObjectInfo.CurrentCell.Clone();
