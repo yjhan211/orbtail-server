@@ -11,7 +11,7 @@ namespace user_server.controllers;
 
 public class ChatController(CacheHelper cacheHelper)
 {
-    private readonly LruCache<long, string> UserNameMap = new(1000);
+    private readonly LruCache<long, string> _userNameMap = new(1000);
     private const int HistoryNum = 30;
 
     private static string GetChatHistoryKey(ChatType chatType)
@@ -19,7 +19,7 @@ public class ChatController(CacheHelper cacheHelper)
         return $"chat_{chatType}_history";
     }
 
-    public async Task AddChatHistory(ChatType chatType, long playerId, string senderName, string message)
+    private async Task AddChatHistory(ChatType chatType, long playerId, string senderName, string message)
     {
         var key = GetChatHistoryKey(ChatType.ALL);
         var historyLength = await cacheHelper.ListLengthAsync(key);
@@ -65,9 +65,9 @@ public class ChatController(CacheHelper cacheHelper)
     
     public async Task SendChat(long playerId, string name, ChatType chatType, string message, NatsClient natsClient)
     {
-        if (!UserNameMap.TryGet(playerId, out var _))
+        if (!_userNameMap.TryGet(playerId, out var _))
         {
-            UserNameMap.Add(playerId, name);
+            _userNameMap.Add(playerId, name);
         }
         
         using var packet = PacketMaker.U_TO_C_CHAT_MSG(chatType, playerId, name, message);
@@ -79,8 +79,6 @@ public class ChatController(CacheHelper cacheHelper)
                 break;
 
             case ChatType.NORMAL:
-                break;
-
             case ChatType.GUILD:
                 break;
         }

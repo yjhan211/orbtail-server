@@ -91,40 +91,24 @@ public class GameUser : IPeer
            { Protocol.C_TO_U_LOGIN, async (bytes) => await HandleMessage<C_TO_U_LOGIN>(bytes, Login) },
            { Protocol.C_TO_U_CHANGE_MAP_SUCCESS, async (_) => await HandlePlayerAction(pc => pc.Spawn()) },
            { Protocol.C_TO_U_CHAT_LOG, async (_) => await SendChatHistory(ChatType.ALL) },
-           { Protocol.C_TO_U_MOVE, async (bytes) => await HandleMessage<C_TO_U_MOVE>(bytes, 
-                                   msg => HandlePlayerAction(pc => pc.RequestMove(this, msg))) },
+           { Protocol.C_TO_U_MOVE, async (bytes) => await HandleMessage<C_TO_U_MOVE>(bytes, msg => HandlePlayerAction(pc => pc.RequestMove(msg))) },
            { Protocol.C_TO_U_PLAYER_INFO, async (bytes) => await HandleMessage<C_TO_U_PLAYER_INFO>(bytes, GetPlayerInfo) },
            { Protocol.C_TO_U_EXPLORE_TARGET_INFO, async (bytes) => await HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(bytes, GetExploreTargetInfo) },
-           { Protocol.C_TO_U_WEAR_ITEM, async (bytes) => await HandleMessage<C_TO_U_WEAR_ITEM>(bytes, 
-                                     msg => HandlePlayerAction(pc => pc.Wear(msg))) },
-           { Protocol.C_TO_U_USE_ITEM, async (bytes) => await HandleMessage<C_TO_U_USE_ITEM>(bytes, 
-                                  msg => HandlePlayerAction(pc => pc.Use(msg))) },
-           { Protocol.C_TO_U_CHANGE_MAP, async (bytes) => await HandleMessage<C_TO_U_CHANGE_MAP>(bytes, 
-                                      msg => HandlePlayerAction(pc => pc.ChangeMap(msg))) },
-           { Protocol.C_TO_U_EXPLORE, async (bytes) => await HandleMessage<C_TO_U_EXPLORE>(bytes, 
-                                    msg => HandlePlayerAction(pc => pc.Explore(msg))) },
+           { Protocol.C_TO_U_WEAR_ITEM, async (bytes) => await HandleMessage<C_TO_U_WEAR_ITEM>(bytes, msg => HandlePlayerAction(pc => pc.Wear(msg))) },
+           { Protocol.C_TO_U_USE_ITEM, async (bytes) => await HandleMessage<C_TO_U_USE_ITEM>(bytes, msg => HandlePlayerAction(pc => pc.Use(msg))) },
+           { Protocol.C_TO_U_CHANGE_MAP, async (bytes) => await HandleMessage<C_TO_U_CHANGE_MAP>(bytes, msg => HandlePlayerAction(pc => pc.ChangeMap(msg))) },
+           { Protocol.C_TO_U_EXPLORE, async (bytes) => await HandleMessage<C_TO_U_EXPLORE>(bytes, msg => HandlePlayerAction(pc => pc.Explore(msg))) },
            { Protocol.C_TO_U_CHAT_MSG, async (bytes) => await HandleMessage<C_TO_U_CHAT_MSG>(bytes, AppendChat) },
-           { Protocol.C_TO_U_CRAFT, async (bytes) => await HandleMessage<C_TO_U_CRAFT>(bytes, 
-                                   msg => HandlePlayerAction(pc => pc.Craft(msg))) },
-           { Protocol.C_TO_U_ENCAMP, async (bytes) => await HandleMessage<C_TO_U_ENCAMP>(bytes, 
-                                    msg => HandlePlayerAction(pc => pc.Encamp(msg))) },
-           { Protocol.C_TO_U_DECAMP, async (_) => await HandlePlayerAction(pc => pc.Decamp()) },
-           { Protocol.C_TO_U_CAMP_INFO, async (bytes) => await HandleMessage<C_TO_U_CAMP_INFO>(bytes, GetCampInfo) },
-           { Protocol.C_TO_U_SET_NAME, async (bytes) => await HandleMessage<C_TO_U_SET_NAME>(bytes, 
-                                     msg => HandlePlayerAction(pc => pc.SetName(msg))) },
-           { Protocol.C_TO_U_BOOST, async (bytes) => await HandleMessage<C_TO_U_BOOST>(bytes, 
-                                   msg => HandlePlayerAction(pc => pc.UpdateBoost(msg))) },
-           { Protocol.C_TO_U_SOCIAL_ACTION, async (bytes) => await HandleMessage<C_TO_U_SOCIAL_ACTION>(bytes, 
-                                         msg => HandlePlayerAction(pc => pc.SocialAction(msg))) },
-           { Protocol.C_TO_U_QUEST_INCREASE, async (bytes) => await HandleMessage<C_TO_U_QUEST_INCREASE>(bytes, 
-                                          msg => HandlePlayerAction(pc => pc.IncreaseQuestCount(msg))) },
-           { Protocol.C_TO_U_QUEST_SUCCESS, async (bytes) => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, 
-                                         msg => HandlePlayerAction(pc => pc.CompleteQuest(msg))) },
-           { Protocol.C_TO_U_MAIL_LIST, async (_) => await HandlePlayerAction(pc => pc.SendCurrentMails()) },
-           { Protocol.C_TO_U_MAIL_RECEIVE, async (bytes) => await HandleMessage<C_TO_U_MAIL_RECEIVE>(bytes, 
-                                        msg => HandlePlayerAction(pc => pc.ReceiveMail(msg))) },
-           { Protocol.C_TO_U_ITEM_PUT, async (bytes) => await HandleMessage<C_TO_U_ITEM_PUT>(bytes, 
-                                   msg => HandlePlayerAction(pc => pc.PutItem(msg))) },
+           { Protocol.C_TO_U_CRAFT, async (bytes) => await HandleMessage<C_TO_U_CRAFT>(bytes, msg => HandlePlayerAction(pc => pc.Craft(msg))) },
+           { Protocol.C_TO_U_ENCAMP, async (bytes) => await HandleMessage<C_TO_U_ENCAMP>(bytes, msg => HandlePlayerAction(pc => pc.Encamp(msg))) },
+           { Protocol.C_TO_U_DECAMP, async (_) => await HandlePlayerAction(pc => pc.Decamp()) }, { Protocol.C_TO_U_CAMP_INFO, async (bytes) => await HandleMessage<C_TO_U_CAMP_INFO>(bytes, GetCampInfo) },
+           { Protocol.C_TO_U_SET_NAME, async (bytes) => await HandleMessage<C_TO_U_SET_NAME>(bytes, msg => HandlePlayerAction(pc => pc.SetName(msg))) },
+           { Protocol.C_TO_U_BOOST, async (bytes) => await HandleMessage<C_TO_U_BOOST>(bytes, msg => HandlePlayerAction(pc => pc.UpdateBoost(msg))) },
+           { Protocol.C_TO_U_SOCIAL_ACTION, async (bytes) => await HandleMessage<C_TO_U_SOCIAL_ACTION>(bytes, msg => HandlePlayerAction(pc => pc.SocialAction(msg))) },
+           { Protocol.C_TO_U_QUEST_INCREASE, async (bytes) => await HandleMessage<C_TO_U_QUEST_INCREASE>(bytes, msg => HandlePlayerAction(pc => pc.IncreaseQuestCount(msg))) },
+           { Protocol.C_TO_U_QUEST_SUCCESS, async (bytes) => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, msg => HandlePlayerAction(pc => pc.CompleteQuest(msg))) },
+           { Protocol.C_TO_U_MAIL_LIST, async (_) => await HandlePlayerAction(pc => pc.SendCurrentMails()) }, { Protocol.C_TO_U_MAIL_RECEIVE, async (bytes) => await HandleMessage<C_TO_U_MAIL_RECEIVE>(bytes, msg => HandlePlayerAction(pc => pc.ReceiveMail(msg))) },
+           { Protocol.C_TO_U_ITEM_PUT, async (bytes) => await HandleMessage<C_TO_U_ITEM_PUT>(bytes, msg => HandlePlayerAction(pc => pc.PutItem(msg))) },
            { Protocol.C_TO_U_OBJECT_INFO, async (bytes) => await HandleMessage<C_TO_U_OBJECT_INFO>(bytes, UpdateObjectManager.GetObjectInfo) },
         };
     }
@@ -365,7 +349,10 @@ public class GameUser : IPeer
                 targetExploreInfo = await ExploreTargetInfo.Load(CacheHelper, targetExploreUid);
             }
 
-            if (targetExploreInfo == null) continue;
+            if (targetExploreInfo == null)
+            {
+                continue;
+            }
 
             targetInfoList.Add(targetExploreInfo);
 
@@ -383,7 +370,7 @@ public class GameUser : IPeer
         }
     }
     
-    public async Task GetCampInfo(C_TO_U_CAMP_INFO body)
+    private async Task GetCampInfo(C_TO_U_CAMP_INFO body)
     {
         var campIdList = body.CampInfoList;
         var campInfoList = new List<CampInfo>();
@@ -568,7 +555,7 @@ public class GameUser : IPeer
     #endregion
 
     #region Broadcasting Methods
-    public void BroadcastToMap<T>(GameObjectInfo objectInfo, T payload, Func<GameObjectInfo, int, string> getSubject)
+    private void BroadcastToMap<T>(GameObjectInfo objectInfo, T payload, Func<GameObjectInfo, int, string> getSubject)
     {
         if (GameMapData.IsCommonMap(objectInfo.MapId))
         {
