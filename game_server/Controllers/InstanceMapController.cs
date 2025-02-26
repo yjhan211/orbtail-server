@@ -3,324 +3,249 @@ using MessagePack;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.config;
 using network.helpers;
 using network.infrastructure;
 using network.interfaces;
 using network.managers;
 using network.packets;
-using StackExchange.Redis;
 
 namespace game_server.controllers;
 
-public class InstanceMapController(LogManager logManager, NatsClient natsClient, CancellationTokenSource cts)
+public class InstanceMapController : BaseMapController
 {
-    private readonly CancellationTokenSource _cts = cts;
+   private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
+   private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
 
-    private readonly SemaphoreSlim _mapLock = new(1, 1);
-    private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
+   private string EnterInstanceSubject => 
+       SubjectHelper.GetEnterInstanceSubject(ServerConfig.GameServerId);
 
-    private static string EnterInstanceSubject => SubjectHelper.GetEnterInstanceSubject(Program.GameServerId);
+   public InstanceMapController(
+       LogManager logManager,
+       NatsClient natsClient,
+       CancellationTokenSource cts,
+       CacheHelper cacheHelper,
+       ServerConfig serverConfig) 
+       : base(logManager, natsClient, cts, cacheHelper, serverConfig)
+   {
+       _protocolHandlers = new Dictionary<Protocol, Func<long, byte[], Task>>
+       {
+           { Protocol.U_TO_G_LOGOUT, HandleLogout }
+       };
+   }
 
-    public void Initialize()
-    {
-        SubscribeToEnterInstance();
-    }
+   public void Initialize()
+   {
+       SubscribeWithHandler(EnterInstanceSubject, EnterInstance);
+   }
 
-    private void SubscribeToEnterInstance()
-    {
-        natsClient.Subscribe(EnterInstanceSubject, async void (_, msg) => {        
-            try 
-            {
-                await Task.Run(async () => 
-                {
-                    try
-                    {
-                        await EnterInstance(msg);
-                    }
-                    catch (Exception ex)
-                    {
-                        logManager.WriteErrorLog(ex);
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                logManager.WriteErrorLog(ex);
-            }
-        });
-    }
+   private void SubscribeToInstanceEvents(MapId mapId, long mapSubId)
+   {
+       var subjects = new Dictionary<string, Func<byte[], Task>>
+       {
+           { SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, ServerConfig.GameServerId), HandleUpdateInfo },
+           { SubjectHelper.GetSocialActionSubject(mapId, mapSubId, ServerConfig.GameServerId), HandleSocialAction },
+           { SubjectHelper.GetSpawnManageSubject(mapId, mapSubId, ServerConfig.GameServerId), SpawnManageObject },
+           { SubjectHelper.GetUpdateManageSubject(mapId, mapSubId, ServerConfig.GameServerId), MoveManageObjectAsync },
+           { SubjectHelper.GetLeaveManageSubject(mapId, mapSubId, ServerConfig.GameServerId), LeaveManageObjectAsync },
+           { SubjectHelper.GetDestroyObjectSubject(mapId, mapSubId, ServerConfig.GameServerId), DestroyManageObjectAsync }
+       };
 
-    private void SubscribeToInstanceEvents(MapId mapId, long mapSubId)
-    {
-        var immediateHandlers = new Dictionary<string, Action<RedisValue>>
-        {
-            { SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, Program.GameServerId), HandleUpdateInfo },
-            { SubjectHelper.GetSocialActionSubject(mapId, mapSubId, Program.GameServerId), HandleSocialAction },
-            { SubjectHelper.GetSpawnManageSubject(mapId, mapSubId, Program.GameServerId), SpawnManageObject },
-        };
+       foreach (var (subject, handler) in subjects)
+       {
+           SubscribeWithHandler(subject, handler);
+       }
+   }
 
-        var moveSubject = SubjectHelper.GetUpdateManageSubject(mapId, mapSubId, Program.GameServerId);
-        var asyncHandlers = new Dictionary<string, Func<RedisValue, Task>>
-        {
-            { moveSubject, MoveManageObjectAsync },
-            { SubjectHelper.GetLeaveManageSubject(mapId, mapSubId, Program.GameServerId), LeaveManageObjectAsync },
-            { SubjectHelper.GetDestroyObjectSubject(mapId, mapSubId, Program.GameServerId), DestroyManageObjectAsync }
-        };
+   private async Task EnterInstance(byte[] message)
+   {
+       var (userSubject, mapId, mapSubId, isLogin)
+           = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
+       var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
 
-        foreach (var (subject, handler) in immediateHandlers)
-            natsClient.Subscribe(subject, (_, msg) =>
-            {
-                try
-                {
-                    handler(msg);
-                }
-                catch (Exception ex)
-                {
-                    logManager.WriteErrorLog(ex);
-                }
-            });
+       await MapLock.WaitAsync();
+       try
+       {
+           var isInit = _objectInstanceDict.TryAdd(instanceKey, []);
+           _objectInstanceDict[instanceKey].Add(userSubject);
+           
+           if (isInit)
+           {
+               SubscribeToInstanceEvents(mapId, mapSubId);
+               switch (mapId)
+               {
+                   case MapId.Camp:
+                       break;
+                   
+                   default:
+                       await InitializeExploreTargets(mapId, mapSubId);
+                       break;
+               }
+           }
+       }
+       catch (Exception e)
+       {
+           LogManager.WriteErrorLog(e);
+       }
+       finally
+       {
+           MapLock.Release();
+       }
 
-        foreach (var (subject, handler) in asyncHandlers)
-        {
-            natsClient.Subscribe(subject, (_, msg) => 
-            {
-                try
-                {
-                    handler(msg).GetAwaiter().GetResult();
-                }
-                catch (Exception ex)
-                {
-                    logManager.WriteErrorLog(ex);
-                }
-            });
-        }
-    }
+       if (!isLogin)
+       {
+           using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
+           NatsClient.Publish(userSubject, packet.ToBytes());
+           LogManager.WriteDebugLog($"{userSubject} {mapId} {mapSubId}");
+       }
+   }
 
-    private async Task EnterInstance(RedisValue message)
-    {
-        var (userSubject, mapId, mapSubId, isLogin)
-            = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
-        var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
+   private async Task InitializeExploreTargets(MapId mapId, long mapSubId)
+   {
+       var exploreTargetList = GameExploreTargetData.GetListByMap(mapId);
+       foreach (var exploreTarget in exploreTargetList)
+       {
+           var exploreTargetUid = await CacheHelper.StringIncrementAsync("temp_explore_target_uid");
+           var objectInfo = new GameObjectInfo
+           {
+               ObjectType = ObjectType.EXPLORETARGET,
+               ObjectId = exploreTargetUid,
+               CurrentCell = exploreTarget.Position,
+               TargetCell = exploreTarget.Position,
+               MapId = mapId,
+               MapSubId = mapSubId,
+           };
+                   
+           var exploreTargetInfo = new ExploreTargetInfo(exploreTargetUid, exploreTarget.Id, objectInfo);
+           var partKey = MapHelper.CreatePartKey(mapId, mapSubId);
+           _objectInstanceDict.AddOrUpdate(partKey, [objectInfo.GetGameObjectKey()],
+               (_, set) =>
+               {
+                   set.Add(objectInfo.GetGameObjectKey());
+                   return set;
+               });
+                   
+           await exploreTargetInfo.Save(CacheHelper);
+           using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
+           BroadcastPacket(partKey, packet);
+       }
+   }
 
-        await _mapLock.WaitAsync();
-        try
-        {
-            var isInit = _objectInstanceDict.TryAdd(instanceKey, []);
-            _objectInstanceDict[instanceKey].Add(userSubject);
-            
-            if (isInit)
-            {
-                SubscribeToInstanceEvents(mapId, mapSubId);
-                switch (mapId)
-                {
-                    case MapId.Camp:
-                        break;
-                    
-                    default:
-                        await InitializeExploreTargets(mapId, mapSubId);
-                        break;
-                }
-            }
-        }
-        catch (Exception e)
-        {
-            logManager.WriteErrorLog(e);
-        }
-        finally
-        {
-            _mapLock.Release();
-        }
+   private async Task HandleLogout(long playerId, byte[] body)
+   {
+       var msg = MessagePackSerializer.Deserialize<U_TO_G_LOGOUT>(body);
+       
+       await using var playerLock = await PlayerInfo.Lock(CacheHelper.GetRedLockFactory(), playerId);
+       var playerInfo = await PlayerInfo.Load(CacheHelper, msg.PlayerId);
+       if (playerInfo == null) return;
 
-        if (!isLogin)
-        {
-            using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
-            natsClient.Publish(userSubject, packet.ToBytes());
-            logManager.WriteDebugLog($"{userSubject} {mapId} {mapSubId}");
-        }
-    }
+       // TODO: Implement logout logic
+   }
 
-    private async Task InitializeExploreTargets(MapId mapId, long mapSubId)
-    {
-        var exploreTargetList = GameExploreTargetData.GetListByMap(mapId);
-        foreach (var exploreTarget in exploreTargetList)
-        {
-            var exploreTargetUid = await CacheHelper.Instance.StringIncrementAsync("temp_explore_target_uid");
-            var objectInfo = new GameObjectInfo
-            {
-                ObjectType = ObjectType.EXPLORETARGET,
-                ObjectId = exploreTargetUid,
-                CurrentCell = exploreTarget.Position,
-                TargetCell = exploreTarget.Position,
-                MapId = mapId,
-                MapSubId = mapSubId,
-            };
-                    
-            var exploreTargetInfo = new ExploreTargetInfo(exploreTargetUid, exploreTarget.Id, objectInfo);
-            var partKey = MapHelper.CreatePartKey(mapId, mapSubId);
-            _objectInstanceDict.AddOrUpdate(partKey, [objectInfo.GetGameObjectKey()],
-                (_, set) =>
-                {
-                    set.Add(objectInfo.GetGameObjectKey());
-                    return set;
-                });
-                    
-            await exploreTargetInfo.Save();
-            using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
-            BroadcastPacket(partKey, packet);
-        }
-    }
+   private async Task MoveManageObjectAsync(byte[] message)
+   {
+       var (_, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
+       var objectKey = GameObjectInfo.MakeObjectKey(objectInfo.ObjectType, objectInfo.ObjectId);
+       var currentInstanceKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+       
+       await UpdateObjectPositionAsync(currentInstanceKey, objectKey);
 
-    private void HandleUpdateInfo(RedisValue message)
-    {
-        var (key, type, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
+       using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
+       BroadcastPacket(currentInstanceKey, packet);
+   }
 
-        switch (type)
-        {
-            case ObjectType.PLAYER:
-            {
-                var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serializedInfo);
-                using var packet = PacketMaker.G_TO_U_PLAYER_INFO(playerInfo);
-                BroadcastPacket(key, packet);
-                break;
-            }
-            
-            case ObjectType.EXPLORETARGET:
-            {
-                var exploreTargetInfo = MessagePackSerializer.Deserialize<ExploreTargetInfo>(serializedInfo);
-                using var packet =  PacketMaker.G_TO_U_EXPLORE_TARGET_INFO(exploreTargetInfo);
-                BroadcastPacket(key, packet);
-                break;
-            }
-            
-            case ObjectType.CAMP:
-            {
-                var campInfo = MessagePackSerializer.Deserialize<CampInfo>(serializedInfo);
-                using var packet =  PacketMaker.G_TO_U_CAMP_INFO(campInfo);
-                BroadcastPacket(key, packet);
-                break;
-            }
-        }
-    }
-    
-    private void HandleSocialAction(RedisValue message)
-    {
-        var (partKey, (playerId, socialActionType)) = MessagePackSerializer.Deserialize<(string, (long, SocialActionType))>(message);
+   private async Task UpdateObjectPositionAsync(string currentInstanceKey, string objectKey)
+   {
+       await MapLock.WaitAsync();
+       try
+       {
+           _objectInstanceDict.AddOrUpdate(
+               currentInstanceKey,
+               [objectKey],
+               (_, set) =>
+               {
+                   set.Add(objectKey);
+                   return set;
+               }
+           );
+       }
+       finally
+       {
+           MapLock.Release();
+       }
+   }
 
-        using var packet = PacketMaker.G_TO_U_SOCIAL_ACTION(playerId, socialActionType);
-        BroadcastPacket(partKey, packet);
-    }
+   private async Task LeaveManageObjectAsync(byte[] message)
+   {
+       var (instanceKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
+       await MapLock.WaitAsync();
+       try
+       {
+           if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet)) 
+               instanceSet.Remove(objectKey);
+       }
+       finally
+       {
+           MapLock.Release();
+       }
+   }
 
-    private async Task MoveManageObjectAsync(RedisValue message)
-    {
-        var (_, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
-        var objectKey = GameObjectInfo.MakeObjectKey(objectInfo.ObjectType, objectInfo.ObjectId);
-        var currentInstanceKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
-        
-        await UpdateObjectPositionAsync(currentInstanceKey, objectKey);
+   private async Task SpawnManageObject(byte[] message)
+   {
+       var (userSubject, instanceKeyList, cellsToRemove) =
+           MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
 
-        using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
-        BroadcastPacket(currentInstanceKey, packet);
-    }
+       var spawnList = new List<string>();
+       foreach (var instancePartKey in instanceKeyList)
+       {
+           if (_objectInstanceDict.TryGetValue(instancePartKey, out var objectKeys))
+           {
+               spawnList.AddRange(objectKeys);
+           }
+       }
+       
+       if (spawnList.Count <= 0) return;
 
-    private async Task UpdateObjectPositionAsync(string currentInstanceKey, string objectKey)
-    {
-        await _mapLock.WaitAsync();
-        try
-        {
-            _objectInstanceDict.AddOrUpdate(
-                currentInstanceKey,
-                [objectKey],
-                (_, set) =>
-                {
-                    set.Add(objectKey);
-                    return set;
-                }
-            );
-        }
-        finally
-        {
-            _mapLock.Release();
-        }
-    }
+       using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);
+       NatsClient.Publish(userSubject, packet.ToBytes());
+   }
 
-    private async Task LeaveManageObjectAsync(RedisValue message)
-    {
-        var (instanceKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
-        await _mapLock.WaitAsync();
-        try
-        {
-            if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet)) instanceSet.Remove(objectKey);
-        }
-        finally
-        {
-            _mapLock.Release();
-        }
-    }
+   private async Task DestroyManageObjectAsync(byte[] message)
+   {
+       var (instanceKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
 
-    private void SpawnManageObject(RedisValue message)
-    {
-        var (userSubject, instanceKeyList, cellsToRemove) =
-            MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
+       await MapLock.WaitAsync();
+       try
+       {
+           if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet)) 
+               instanceSet.Remove(objectKey);
+       }
+       finally
+       {
+           MapLock.Release();
+       }
 
-        var spawnList = new List<string>();
-        foreach (var instancePartKey in instanceKeyList)
-        {
-            if (_objectInstanceDict.TryGetValue(instancePartKey, out var objectKeys))
-            {
-                spawnList.AddRange(objectKeys);
-            }
-        }
-        
-        if (spawnList.Count <= 0) return;
+       using var packet = PacketMaker.G_TO_U_DESTROY(objectKey);
+       BroadcastPacket(instanceKey, packet);
+   }
 
-        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);
-        natsClient.Publish(userSubject, packet.ToBytes());
-    }
+   protected override void BroadcastPacket(string instanceKey, IPacket packet)
+   {
+       if (!_objectInstanceDict.TryGetValue(instanceKey, out var channels))
+       {
+           return;
+       }
 
-    private async Task DestroyManageObjectAsync(RedisValue message)
-    {
-        var (instanceKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
+       var channelsCopy = channels.ToList();
+       foreach (var channel in channelsCopy)
+       {
+           NatsClient.Publish(channel, packet.ToBytes());
+       }
+   }
 
-        await _mapLock.WaitAsync();
-        try
-        {
-            if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet)) instanceSet.Remove(objectKey);
-        }
-        finally
-        {
-            _mapLock.Release();
-        }
-
-        using var packet = PacketMaker.G_TO_U_DESTROY(objectKey);
-        BroadcastPacket(instanceKey, packet);
-    }
-
-    // ReSharper disable once UnusedMember.Local
-    private void UpdatePlayerInfo(RedisValue message)
-    {
-        var (instanceKey, playerInfo) = MessagePackSerializer.Deserialize<(string, PlayerInfo)>(message);
-
-        using var packet = PacketMaker.G_TO_U_PLAYER_INFO(playerInfo);
-        BroadcastPacket(instanceKey, packet);
-    }
-
-    private void BroadcastPacket(string instanceKey, IPacket packet)
-    {
-        if (!_objectInstanceDict.TryGetValue(instanceKey, out var channels))
-        {
-            return;
-        }
-
-        var channelsCopy = channels.ToList();
-        foreach (var channel in channelsCopy)
-        {
-            natsClient.Publish(channel, packet.ToBytes());
-        }
-    }
-
-    public async Task ShutdownAsync()
-    {
-        await _mapLock.WaitAsync();
-        _mapLock.Release();
-    }
+   public override async Task ShutdownAsync()
+   {
+       await MapLock.WaitAsync();
+       MapLock.Release();
+   }
 }

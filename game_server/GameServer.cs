@@ -1,4 +1,5 @@
 using game_server.controllers;
+using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -10,25 +11,49 @@ using network.helpers;
 using network.infrastructure;
 using network.managers;
 using network.packets;
+using network.utils;
+using network.config;
 
 namespace game_server;
-
-public class GameServer(
-    IConfiguration configuration,
-    LogManager logManager,
-    RedisConnectionPool redisPool,
-    NatsClientFactory natsClientFactory) : IHostedService
+public class GameServer : IHostedService
 {
+    private readonly IConfiguration _configuration;
+    private readonly LogManager _logManager;
+    private readonly NatsClientFactory _natsClientFactory;
+    private readonly CacheHelper _cacheHelper;
+    private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
+    
     private readonly List<CommonMapController> _commonMapControllerList = [];
     private readonly List<InstanceMapController> _instanceControllerList = [];
     private CancellationTokenSource _cts = new();
-    private Timer? _messageTimer;
+    private IAsyncDisposable? _messageProcessor;
+    
+    private readonly ServerConfig _serverConfig;
+
+    public GameServer(
+        IConfiguration configuration,
+        LogManager logManager,
+        NatsClientFactory natsClientFactory,
+        CacheHelper cacheHelper,
+        ServerConfig serverConfig)
+    {
+        _configuration = configuration;
+        _logManager = logManager;
+        _natsClientFactory = natsClientFactory;
+        _cacheHelper = cacheHelper;
+        _serverConfig = serverConfig;
+        
+        _protocolHandlers = new Dictionary<Protocol, Func<long, byte[], Task>>
+        {
+            { Protocol.U_TO_G_LOGOUT, HandleLogout }
+        };
+    }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         try
         {
-            logManager.WriteInfoLog("Game server starting...");
+            _logManager.WriteInfoLog("Game server starting...");
 
             InitializeServices();
             InitializeControllers();
@@ -36,46 +61,40 @@ public class GameServer(
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             StartMessageProcessing();
 
-            logManager.WriteInfoLog("Game server started successfully.");
+            _logManager.WriteInfoLog("Game server started successfully.");
             return Task.CompletedTask;
         }
         catch (Exception ex)
         {
-            logManager.WriteErrorLog(ex);
+            _logManager.WriteErrorLog(ex);
             throw;
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        logManager.WriteInfoLog("Game server stopping...");
+        _logManager.WriteInfoLog("Game server stopping...");
 
         await _cts.CancelAsync();
-        if (_messageTimer != null) await _messageTimer.DisposeAsync();
+        if (_messageProcessor != null) await _messageProcessor.DisposeAsync();
 
         await Task.WhenAll(_commonMapControllerList.Select(c => c.ShutdownAsync()));
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
         _cts.Dispose();
 
-        logManager.WriteInfoLog("Game server stopped.");
+        _logManager.WriteInfoLog("Game server stopped.");
     }
 
     private void InitializeServices()
     {
-        var redisEndpoints = configuration["redisEndpoints"] ??
-                             throw new InvalidOperationException("RedisEndpoints is not configured.");
-        var natsEndpoint = configuration["natsEndPoint"] ??
-                           throw new InvalidOperationException("NatsEndpoint is not configured or is invalid.");
+        var natsEndpoint = _configuration.GetRequiredString("natsEndPoint");
 
         try
         {
-            redisPool.Initialize(redisEndpoints);
-            natsClientFactory.Initialize(natsEndpoint);
-
-            GameDataHelper.Initialize(logManager);
-            MapHelper.Initialize(Program.GameServerNum);
-            CacheHelper.Initialize(redisPool);
+            _natsClientFactory.Initialize(natsEndpoint);
+            GameDataHelper.Initialize(_logManager);
+            MapHelper.Initialize(_serverConfig.GameServerNum);
         }
         catch (Exception ex)
         {
@@ -87,93 +106,46 @@ public class GameServer(
     {
         foreach (var mapId in GameMapData.GetCommonMapList())
         {
-            _commonMapControllerList.Add(new CommonMapController(logManager, natsClientFactory.Create(), _cts, mapId));
-        }
-        
-        foreach (var mapController in _commonMapControllerList)
-        {
-            mapController.Initialize();
+            var controller = new CommonMapController(_logManager, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig, mapId);
+            controller.Initialize();
+            _commonMapControllerList.Add(controller);
         }
 
-        _instanceControllerList.Add(new InstanceMapController(logManager, natsClientFactory.Create(), _cts));
-        foreach (var instanceController in _instanceControllerList)
-        {
-            instanceController.Initialize();
-        }
+        var instanceController = new InstanceMapController(_logManager, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig);
+        instanceController.Initialize();
+        _instanceControllerList.Add(instanceController);
     }
 
     private void StartMessageProcessing()
     {
-        _messageTimer = new Timer(
-            async void (_) =>
-            {
-                try
-                {
-                    await ProcessMessages();
-                }
-                catch (Exception e)
-                {
-                    logManager.WriteErrorLog(e);
-                }
-            },
-            null,
-            TimeSpan.Zero,
-            TimeSpan.FromMilliseconds(10)
-        );
+        var messageProcessor = new PacketQueueService(_cacheHelper, ProcessMessage, _logManager);
+        messageProcessor.StartAsync(_cts.Token);
+        _messageProcessor = messageProcessor;
     }
 
-    private async Task ProcessMessages()
+    private async Task ProcessMessage(byte[] message)
     {
-        try
-        {
-            var message = await CacheHelper.Instance.DequeueAsync("game_server_queue");
-            if (message != null)
-            {
-                using var packet = new Packet(message);
-                await ProcessReceiveAsync(packet);
-            }
-        }
-        catch (Exception ex)
-        {
-            logManager.WriteErrorLog(ex);
-        }
-    }
-
-
-    private async Task ProcessReceiveAsync(Packet packet)
-    {
+        using var packet = new Packet(message);
         var protocolId = (Protocol)packet.PopProtocolId();
         var playerId = packet.PopPlayerId();
         var body = packet.PopBody();
 
-        switch (protocolId)
+        if (!_protocolHandlers.TryGetValue(protocolId, out var handler))
         {
-            case Protocol.U_TO_G_LOGOUT:
-                await HandleMessage<U_TO_G_LOGOUT>(playerId, body, Logout);
-                break;
-            
-            default:
-                throw new ArgumentOutOfRangeException();
+            throw new NotSupportedException($"Unsupported protocol: {protocolId}");
         }
+
+        await handler(playerId, body);
     }
 
-    private static async Task HandleMessage<T>(long playerId, byte[] body, Func<long, T, Task> handleMessage)
+    private async Task HandleLogout(long playerId, byte[] body)
     {
-        var msg = MessagePackSerializer.Deserialize<T>(body);
-        await handleMessage(playerId, msg);
-    }
-
-    private async Task Logout(long playerId, U_TO_G_LOGOUT msg)
-    {
-        var redLock = redisPool.GetRedLockFactory();
-        await using var playerLock = await PlayerInfo.Lock(redLock, playerId);
-        var playerInfo = await PlayerInfo.Load(msg.PlayerId);
-
-        // TODO DB 붙이기 전까지 일단 안지움
-        // ReSharper disable once RedundantJumpStatement
+        var msg = MessagePackSerializer.Deserialize<U_TO_G_LOGOUT>(body);
+        
+        await using var playerLock = await PlayerInfo.Lock(_cacheHelper.GetRedLockFactory(), playerId);
+        var playerInfo = await PlayerInfo.Load(_cacheHelper, msg.PlayerId);
         if (playerInfo == null) return;
-
-        // var objectInfo = playerInfo.ObjectInfo;
-        // await PlayerInfoController.Delete(cache_helper, player_id);
+        
+        // TODO: Implement logout logic
     }
 }

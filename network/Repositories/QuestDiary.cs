@@ -19,22 +19,22 @@ public partial class QuestDiary
         }
     }
 
-    public async Task Save()
+    public async Task Save(CacheHelper cacheHelper)
     {
-        await CacheHelper.Instance.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
+        await cacheHelper.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
     }
 
-    public static async Task<QuestDiary> Load(long playerId)
+    public static async Task<QuestDiary> Load(CacheHelper cacheHelper, long playerId)
     {
-        var serializedData = await CacheHelper.Instance.HashGetAsync(HashKey, playerId);
+        var serializedData = await cacheHelper.HashGetAsync(HashKey, playerId);
         if (serializedData.IsNull) return new QuestDiary(playerId);
         
         var quests = MessagePackSerializer.Deserialize<QuestDiary>(serializedData);
         return quests;
     }
 
-    public static async Task Delete(long playerId)
+    public static async Task Delete(CacheHelper cacheHelper, long playerId)
     {
-        await CacheHelper.Instance.HashDeleteAsync(HashKey, playerId);
+        await cacheHelper.HashDeleteAsync(HashKey, playerId);
     }
 }

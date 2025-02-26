@@ -88,23 +88,23 @@ public partial class InventoryInfo
         return item;
     }
 
-    public async Task Save()
+    public async Task Save(CacheHelper cacheHelper)
     {
-        await CacheHelper.Instance.HashSetAsync(HashKey, $"{(int)OwnerType}_{OwnerId}",
+        await cacheHelper.HashSetAsync(HashKey, $"{(int)OwnerType}_{OwnerId}",
             MessagePackSerializer.Serialize(this));
     }
 
-    public static async Task<InventoryInfo?> Load(InventoryOwnerType ownerType, long ownerId)
+    public static async Task<InventoryInfo?> Load(CacheHelper cacheHelper, InventoryOwnerType ownerType, long ownerId)
     {
-        var serializedData = await CacheHelper.Instance.HashGetAsync(HashKey, $"{(int)ownerType}_{ownerId}");
+        var serializedData = await cacheHelper.HashGetAsync(HashKey, $"{(int)ownerType}_{ownerId}");
         if (serializedData.IsNull) return new InventoryInfo(ownerType, ownerId);
 
         var inventoryInfo = MessagePackSerializer.Deserialize<InventoryInfo?>(serializedData);
         return inventoryInfo;
     }
 
-    public static async Task Delete(InventoryOwnerType ownerType, long ownerId)
+    public static async Task Delete(CacheHelper cacheHelper, InventoryOwnerType ownerType, long ownerId)
     {
-        await CacheHelper.Instance.HashDeleteAsync(HashKey, $"{(int)ownerType}_{ownerId}");
+        await cacheHelper.HashDeleteAsync(HashKey, $"{(int)ownerType}_{ownerId}");
     }
 }

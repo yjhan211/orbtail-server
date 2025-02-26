@@ -21,7 +21,6 @@ namespace network.common.data.models
             WearItemIdList = new();
             State = PlayerState.NONE;
             ObjectInfo = new GameObjectInfo();
-            JobInfo = new JobInfo();
             InventoryInfo = new InventoryInfo();
             CraftInfo = new CraftInfo();
             CampInfo = new CampInfo();
@@ -51,7 +50,6 @@ namespace network.common.data.models
             WearItemIdList = new();
             State = PlayerState.NONE;
             ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.Classroom, 1, initCell);
-            JobInfo = new JobInfo(PlayerId);
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
             CraftInfo = new CraftInfo(PlayerId);
             CampInfo = new CampInfo(PlayerId, Name, new(), new(), new(0, 0));
@@ -66,10 +64,10 @@ namespace network.common.data.models
             LastMapId = MapId.None;
             LastMapSubId = 0;
             LastCell = new(0, 0);
+            IsNew = true;
         }
 
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
-        [IgnoreMember] public JobInfo JobInfo { get; set; }
         [IgnoreMember] public InventoryInfo InventoryInfo { get; set; }
         [IgnoreMember] public CraftInfo CraftInfo { get; set; }
         [IgnoreMember] public CampInfo CampInfo { get; set; }
@@ -103,6 +101,7 @@ namespace network.common.data.models
         [Key("mapSubId")] public long LastMapSubId { get; set; }
         
         [Key("lastCell")] public Cell LastCell { get; set; }
+        [IgnoreMember] public bool IsNew { get; set; }
 
         public string GetLockKey()
         {

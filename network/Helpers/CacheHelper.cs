@@ -1,43 +1,17 @@
 using network.common;
 using network.infrastructure;
+using RedLockNet.SERedis;
 using StackExchange.Redis;
 
 namespace network.helpers;
 
-public class CacheHelper
+public class CacheHelper(RedisConnectionPool redisPool)
 {
-    private static readonly object Lock = new();
-    private static CacheHelper? _instance;
-    private readonly RedisConnectionPool _redisPool;
-
-    private CacheHelper(RedisConnectionPool redisPool)
-    {
-        _redisPool = redisPool;
-    }
-
-    public static CacheHelper Instance
-    {
-        get
-        {
-            if (_instance == null) throw new InvalidOperationException("[CacheHelper] CacheHelper is not initialized");
-
-            return _instance;
-        }
-    }
-
-    public static void Initialize(RedisConnectionPool redisPool)
-    {
-        lock (Lock)
-        {
-            if (_instance != null) throw new InvalidOperationException("CacheHelper is already initialized.");
-
-            _instance = new CacheHelper(redisPool);
-        }
-    }
-
+    public RedLockFactory GetRedLockFactory() => redisPool.GetRedLockFactory();
+    
     private async Task<T> ExecuteRedisCommandAsync<T>(Func<IDatabase, Task<T>> action, int db = -1)
     {
-        return await _redisPool.ExecuteWithRetryAsync(action, db);
+        return await redisPool.ExecuteWithRetryAsync(action, db);
     }
 
     public Task<bool> HashSetAsync(string key, long field, byte[] value, int db = -1)

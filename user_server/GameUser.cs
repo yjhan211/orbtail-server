@@ -1,4 +1,5 @@
-﻿using System.Threading.Channels;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Threading.Channels;
 using MessagePack;
 using network.common;
 using network.common.data;
@@ -11,67 +12,143 @@ using network.managers;
 using network.packets;
 using network.utils;
 using RedLockNet.SERedis;
+using StackExchange.Redis;
 using user_server.controllers;
-using user_server.handlers;
+using user_server.controllers.player;
 using user_server.managers;
 
 namespace user_server;
 
-public partial class GameUser : IPeer
+public class GameUser : IPeer
 {
+    #region Constants
+    private const string GlobalSubscribeChannel = "all";
+    private const string TempPlayerIdKey = "temp_player_id";
+    private const string GameServerQueue = "game_server_queue";
+    #endregion
+
+    #region Fields
+    private readonly UserToken _token;
+    private readonly SemaphoreSlim _userLock;
+    private readonly CancellationTokenSource _cts;
+    private readonly Action<GameUser> _onLeaveCallback;
+    private readonly ChatController _chatController;
+    private Dictionary<Protocol, Func<byte[], Task>> _protocolHandlers;
+    private Dictionary<Protocol, Func<byte[], Task>> _subscribeHandlers;
+    
+    private PlayerController? _playerController;
+    #endregion
+
+    #region Properties
+    public readonly CacheHelper CacheHelper;
+    public readonly NatsClient NatsClient;
+    public readonly RedLockFactory RedLock;
+    public readonly LogManager LogManager;
+    public readonly UpdateObjectManager UpdateObjectManager;
+    #endregion
+
+    #region Non-Auth Protocols
     private static readonly IReadOnlyList<Protocol> NonAuthProtocol = new List<Protocol>
     {
         Protocol.C_TO_U_HEART_BEAT,
         Protocol.C_TO_U_LOGIN
     };
+    #endregion
 
-    private static readonly IReadOnlyList<Protocol> ActionProtocol = new List<Protocol>
-    {
-        Protocol.C_TO_U_MOVE,
-        Protocol.C_TO_U_WEAR_ITEM,
-        Protocol.C_TO_U_USE_SKILL
-    };
-
-    public static readonly IReadOnlyList<PlayerState> ActionState = new List<PlayerState>
-    {
-    };
-
-    private readonly CancellationTokenSource _cts;
-    private readonly ProgressManager _progressManager;
-    
-    private readonly Action<GameUser> _onLeaveCallback;
-    private readonly UserToken _token;
-    private readonly UpdateObjectManager _updateObjectManager;
-    private readonly SemaphoreSlim _userLock;
-    public readonly NatsClient NatsClient;
-    public readonly RedLockFactory RedLock;
-    public readonly LogManager LogManager;
-    public readonly PlayerManager PlayerManager;
-
-    public GameUser(UserToken token, RedLockFactory redLockFactory, NatsClient natsClient, LogManager logManager, Action<GameUser> onLeaveCallback)
+    #region Constructor
+    public GameUser(UserToken token, RedLockFactory redLock, NatsClient natsClient, LogManager logManager, CacheHelper cacheHelper, Action<GameUser> onLeaveCallback, ChatController chatController)
     {
         _token = token;
         _token.SetPeer(this);
-
-        RedLock = redLockFactory;
-        NatsClient = natsClient;
-        LogManager = logManager;
         _userLock = new SemaphoreSlim(1);
         _cts = new CancellationTokenSource();
-
-        _progressManager = new ProgressManager(LogManager);
+        
+        CacheHelper = cacheHelper;
+        RedLock = redLock;
+        NatsClient = natsClient;
+        LogManager = logManager;
+        
         var updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
-        _updateObjectManager = new UpdateObjectManager(_cts, LogManager, Send, updateObjectChannel);
-        PlayerManager = new PlayerManager(LogManager, NatsClient, Send, _updateObjectManager);
+        UpdateObjectManager = new UpdateObjectManager(_cts, LogManager, Send, updateObjectChannel, CacheHelper);
+        
         _onLeaveCallback = onLeaveCallback;
+        _chatController = chatController;
+        
+        InitializeProtocolHandlers();
+        InitializeSubscribeHandlers();
 
         LogManager.WriteInfoLog("Create GameUser Success!");
     }
+    #endregion
 
-    public long PlayerId => PlayerManager.PlayerId;
-    public PlayerState PlayerState => PlayerManager.State;
-    public Cell CurrentCell => PlayerManager.CurrentCell ?? new(0, 0);
+    #region Handler Initialization
+    [MemberNotNull(nameof(_protocolHandlers))]
+    private void InitializeProtocolHandlers()
+    {
+        _protocolHandlers = new Dictionary<Protocol, Func<byte[], Task>>
+        {
+           { Protocol.C_TO_U_HEART_BEAT, HandleHeartBeat },
+           { Protocol.C_TO_U_LOGIN, async (bytes) => await HandleMessage<C_TO_U_LOGIN>(bytes, Login) },
+           { Protocol.C_TO_U_CHANGE_MAP_SUCCESS, async (_) => await HandlePlayerAction(pc => pc.Spawn()) },
+           { Protocol.C_TO_U_CHAT_LOG, async (_) => await SendChatHistory(ChatType.ALL) },
+           { Protocol.C_TO_U_MOVE, async (bytes) => await HandleMessage<C_TO_U_MOVE>(bytes, 
+                                   msg => HandlePlayerAction(pc => pc.RequestMove(this, msg))) },
+           { Protocol.C_TO_U_PLAYER_INFO, async (bytes) => await HandleMessage<C_TO_U_PLAYER_INFO>(bytes, GetPlayerInfo) },
+           { Protocol.C_TO_U_EXPLORE_TARGET_INFO, async (bytes) => await HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(bytes, GetExploreTargetInfo) },
+           { Protocol.C_TO_U_WEAR_ITEM, async (bytes) => await HandleMessage<C_TO_U_WEAR_ITEM>(bytes, 
+                                     msg => HandlePlayerAction(pc => pc.Wear(msg))) },
+           { Protocol.C_TO_U_USE_ITEM, async (bytes) => await HandleMessage<C_TO_U_USE_ITEM>(bytes, 
+                                  msg => HandlePlayerAction(pc => pc.Use(msg))) },
+           { Protocol.C_TO_U_CHANGE_MAP, async (bytes) => await HandleMessage<C_TO_U_CHANGE_MAP>(bytes, 
+                                      msg => HandlePlayerAction(pc => pc.ChangeMap(msg))) },
+           { Protocol.C_TO_U_EXPLORE, async (bytes) => await HandleMessage<C_TO_U_EXPLORE>(bytes, 
+                                    msg => HandlePlayerAction(pc => pc.Explore(msg))) },
+           { Protocol.C_TO_U_CHAT_MSG, async (bytes) => await HandleMessage<C_TO_U_CHAT_MSG>(bytes, AppendChat) },
+           { Protocol.C_TO_U_CRAFT, async (bytes) => await HandleMessage<C_TO_U_CRAFT>(bytes, 
+                                   msg => HandlePlayerAction(pc => pc.Craft(msg))) },
+           { Protocol.C_TO_U_ENCAMP, async (bytes) => await HandleMessage<C_TO_U_ENCAMP>(bytes, 
+                                    msg => HandlePlayerAction(pc => pc.Encamp(msg))) },
+           { Protocol.C_TO_U_DECAMP, async (_) => await HandlePlayerAction(pc => pc.Decamp()) },
+           { Protocol.C_TO_U_CAMP_INFO, async (bytes) => await HandleMessage<C_TO_U_CAMP_INFO>(bytes, GetCampInfo) },
+           { Protocol.C_TO_U_SET_NAME, async (bytes) => await HandleMessage<C_TO_U_SET_NAME>(bytes, 
+                                     msg => HandlePlayerAction(pc => pc.SetName(msg))) },
+           { Protocol.C_TO_U_BOOST, async (bytes) => await HandleMessage<C_TO_U_BOOST>(bytes, 
+                                   msg => HandlePlayerAction(pc => pc.UpdateBoost(msg))) },
+           { Protocol.C_TO_U_SOCIAL_ACTION, async (bytes) => await HandleMessage<C_TO_U_SOCIAL_ACTION>(bytes, 
+                                         msg => HandlePlayerAction(pc => pc.SocialAction(msg))) },
+           { Protocol.C_TO_U_QUEST_INCREASE, async (bytes) => await HandleMessage<C_TO_U_QUEST_INCREASE>(bytes, 
+                                          msg => HandlePlayerAction(pc => pc.IncreaseQuestCount(msg))) },
+           { Protocol.C_TO_U_QUEST_SUCCESS, async (bytes) => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, 
+                                         msg => HandlePlayerAction(pc => pc.CompleteQuest(msg))) },
+           { Protocol.C_TO_U_MAIL_LIST, async (_) => await HandlePlayerAction(pc => pc.SendCurrentMails()) },
+           { Protocol.C_TO_U_MAIL_RECEIVE, async (bytes) => await HandleMessage<C_TO_U_MAIL_RECEIVE>(bytes, 
+                                        msg => HandlePlayerAction(pc => pc.ReceiveMail(msg))) },
+           { Protocol.C_TO_U_ITEM_PUT, async (bytes) => await HandleMessage<C_TO_U_ITEM_PUT>(bytes, 
+                                   msg => HandlePlayerAction(pc => pc.PutItem(msg))) },
+           { Protocol.C_TO_U_OBJECT_INFO, async (bytes) => await HandleMessage<C_TO_U_OBJECT_INFO>(bytes, UpdateObjectManager.GetObjectInfo) },
+        };
+    }
 
+    [MemberNotNull(nameof(_subscribeHandlers))]
+    private void InitializeSubscribeHandlers()
+    {
+        _subscribeHandlers = new Dictionary<Protocol, Func<byte[], Task>>
+        {
+           { Protocol.G_TO_U_UPDATE_OBJECT, bytes => HandleMessage<G_TO_U_UPDATE_OBJECT>(bytes, SubscribeUpdateObject) },
+           { Protocol.G_TO_U_SPAWN, bytes => HandleMessage<G_TO_U_SPAWN>(bytes, SubscribeSpawn) },
+           { Protocol.G_TO_U_DESTROY, bytes => HandleMessage<G_TO_U_DESTROY>(bytes, SubscribeDestroy) },
+           { Protocol.U_TO_C_CHAT_MSG, bytes => HandleMessage<U_TO_C_CHAT_MSG>(bytes, SubscribeChatMsg) },
+           { Protocol.G_TO_U_PLAYER_INFO, bytes => HandleMessage<G_TO_U_PLAYER_INFO>(bytes, SubscribePlayerInfo) },
+           { Protocol.G_TO_U_EXPLORE_TARGET_INFO, bytes => HandleMessage<G_TO_U_EXPLORE_TARGET_INFO>(bytes, SubscribeExploreTargetInfo) },
+           { Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS, bytes => HandleMessage<G_TO_U_ENTER_INSTANCE_SUCCESS>(bytes, SubscribeEnterInstanceSuccess) },
+           { Protocol.G_TO_U_CAMP_INFO, bytes => HandleMessage<G_TO_U_CAMP_INFO>(bytes, SubscribeCampInfo) },
+           { Protocol.G_TO_U_SOCIAL_ACTION, bytes => HandleMessage<G_TO_U_SOCIAL_ACTION>(bytes, SubscribeSocialAction) },
+           { Protocol.U_TO_U_DUPLICATE, _ => { ReceiveDuplicate(); return Task.CompletedTask; }}
+        };
+    }
+    #endregion
+
+    #region Message Handling
     public async Task OnMessageFromClient(Const<byte[]> buffer)
     {
         try
@@ -83,144 +160,30 @@ public partial class GameUser : IPeer
             var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
 
-            LogManager.WriteDebugLog($"playerId: {playerId} | PROTOCOL: {protocolId}");
+            LogManager.WriteDebugLog($"[{playerId}] {protocolId}");
+
+            if (!_protocolHandlers.TryGetValue(protocolId, out var handler))
+            {
+                throw new NotSupportedException($"[{playerId}] Unsupported protocol: {protocolId}");
+            }
 
             if (NonAuthProtocol.Contains(protocolId))
             {
-                switch (protocolId)
-                {
-                    case Protocol.C_TO_U_HEART_BEAT:
-                        HeartBeat();
-                        break;
-                    case Protocol.C_TO_U_LOGIN:
-                        await HandleMessage<C_TO_U_LOGIN>(body, Login);
-                        break;
-                }
-
+                await handler(body);
                 return;
             }
 
-            if (PlayerManager.State == PlayerState.NONE)
+            if (_playerController == null)
             {
-                throw new Exception("invalid PlayerState");
+                throw new Exception($"[{playerId}] not login");
+            }
+            
+            if (_playerController.IsInvalidAction(protocolId))
+            {
+                throw new Exception($"[{playerId}] in action. protocolId: {protocolId}");
             }
 
-            if (ActionProtocol.Contains(protocolId) && ActionState.Contains(PlayerManager.State))
-            {
-                throw new Exception($"in action. {PlayerManager.PlayerId}");
-            }
-
-            switch (protocolId)
-            {
-                case Protocol.C_TO_U_CHANGE_MAP_SUCCESS:
-                    await PlayerManager.Spawn();
-                    break;
-                case Protocol.C_TO_U_CHAT_LOG:
-                    await ChatController.GetChatHistory(this, ChatType.ALL);
-                    break;
-                case Protocol.C_TO_U_MOVE:
-                    await HandleMessage<C_TO_U_MOVE>(body, PlayerManager.RequestMove);
-                    break;
-                case Protocol.C_TO_U_PLAYER_INFO:
-                    await HandleMessage<C_TO_U_PLAYER_INFO>(body, PlayerController.GetPlayerInfo);
-                    break;
-                case Protocol.C_TO_U_OBJECT_INFO:
-                    await HandleMessage<C_TO_U_OBJECT_INFO>(body, _updateObjectManager.GetObjectInfo);
-                    break;
-                case Protocol.C_TO_U_EXPLORE_TARGET_INFO:
-                    await HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(body, ExploreController.GetExploreTargetInfo);
-                    break;
-                case Protocol.C_TO_U_UPGRADE_JOB:
-                    // await HandleMessage<C_TO_U_UPGRADE_JOB>(body, JobController.UpgradeJob);
-                    break;
-                case Protocol.C_TO_U_WEAR_ITEM:
-                    await HandleMessage<C_TO_U_WEAR_ITEM>(body, InventoryController.RequestWearItem);
-                    break;
-                case Protocol.C_TO_U_USE_ITEM:
-                    await HandleMessage<C_TO_U_USE_ITEM>(body, InventoryController.RequestUseItem);
-                    break;
-                case Protocol.C_TO_U_CHANGE_MAP:
-                    await HandleMessage<C_TO_U_CHANGE_MAP>(body, PlayerManager.ChangeMap);
-                    break;
-                case Protocol.C_TO_U_EXPLORE:
-                    await HandleMessage<C_TO_U_EXPLORE>(body, ExploreController.Explore);
-                    break;
-                case Protocol.C_TO_U_USE_SKILL:
-                    // await HandleMessage<C_TO_U_USE_SKILL>(body, JobController.UseJobSkill);
-                    break;
-                case Protocol.C_TO_U_CHAT_MSG:
-                    await HandleMessage<C_TO_U_CHAT_MSG>(body, ChatController.SendChat);
-                    break;
-                case Protocol.C_TO_U_CREATE_LAB:
-                    await HandleMessage<C_TO_U_CREATE_LAB>(body, LabController.CreateLab);
-                    break;
-                case Protocol.C_TO_U_UPGRADE_RESEARCH:
-                    await HandleMessage<C_TO_U_UPGRADE_RESEARCH>(body, LabController.UpgradeResearch);
-                    break;
-                case Protocol.C_TO_U_CRAFT:
-                    await HandleMessage<C_TO_U_CRAFT>(body, CraftController.Craft);
-                    break;
-                case Protocol.C_TO_U_WRITE_LAB_HIRE:
-                    await HandleMessage<C_TO_U_WRITE_LAB_HIRE>(body, LabController.WriteLabHire);
-                    break;
-                case Protocol.C_TO_U_LAB_HIRE_LIST:
-                    await LabController.LabHireList(this);
-                    break;
-                case Protocol.C_TO_U_JOIN_LAB:
-                    await HandleMessage<C_TO_U_JOIN_LAB>(body, LabController.JoinLab);
-                    break;
-                case Protocol.C_TO_U_LAB_INVENTORY:
-                    await InventoryController.GetLabInventory(this);
-                    break;
-                case Protocol.C_TO_U_LAB_INVENTORY_ADD_ITEM:
-                    await HandleMessage<C_TO_U_LAB_INVENTORY_ADD_ITEM>(body, InventoryController.AddLabItem);
-                    break;
-                case Protocol.C_TO_U_LAB_INVENTORY_TAKE_ITEM:
-                    await HandleMessage<C_TO_U_LAB_INVENTORY_TAKE_ITEM>(body, InventoryController.TakeLabItem);
-                    break;
-                case Protocol.C_TO_U_ENCAMP:
-                    await HandleMessage<C_TO_U_ENCAMP>(body, CampController.Encamp);
-                    break;
-                case Protocol.C_TO_U_DECAMP:
-                    await CampController.Decamp(this);
-                    break;
-                case Protocol.C_TO_U_ADD_SELL_ITEM:
-                    // await HandleMessage<C_TO_U_ADD_SELL_ITEM>(body, JobController.AddSellItem);
-                    break;
-                case Protocol.C_TO_U_DELETE_SELL_ITEM:
-                    // await HandleMessage<C_TO_U_DELETE_SELL_ITEM>(body, JobController.DeleteSellItem);
-                    break;
-                case Protocol.C_TO_U_BUY_ITEM:
-                    // await HandleMessage<C_TO_U_BUY_ITEM>(body, JobController.BuyItem);
-                    break;
-                case Protocol.C_TO_U_CAMP_INFO:
-                    await HandleMessage<C_TO_U_CAMP_INFO>(body, CampController.GetCampInfo);
-                    break;
-                case Protocol.C_TO_U_SET_NAME:
-                    await HandleMessage<C_TO_U_SET_NAME>(body, PlayerManager.SetName);
-                    break;
-                case Protocol.C_TO_U_BOOST:
-                    await HandleMessage<C_TO_U_BOOST>(body, PlayerManager.UpdateBoost);
-                    break;
-                case Protocol.C_TO_U_SOCIAL_ACTION:
-                    await HandleMessage<C_TO_U_SOCIAL_ACTION>(body, PlayerManager.SocialAction);
-                    break;
-                case Protocol.C_TO_U_QUEST_INCREASE:
-                    await HandleMessage<C_TO_U_QUEST_INCREASE>(body, QuestController.IncreaseQuestCount);
-                    break;
-                case Protocol.C_TO_U_QUEST_SUCCESS:
-                    await HandleMessage<C_TO_U_QUEST_INCREASE>(body, QuestController.CompleteQuest);
-                    break;
-                case Protocol.C_TO_U_MAIL_LIST:
-                    await MailBoxController.GetCurrentMailList(this);
-                    break;
-                case Protocol.C_TO_U_MAIL_RECEIVE:
-                    await HandleMessage<C_TO_U_MAIL_RECEIVE>(body, MailBoxController.ReceiveMail);
-                    break;
-                case Protocol.C_TO_U_ITEM_PUT:
-                    await HandleMessage<C_TO_U_ITEM_PUT>(body, CampController.PutItem);
-                    break;
-            }
+            await handler(body);
         }
         catch (Exception e)
         {
@@ -232,175 +195,399 @@ public partial class GameUser : IPeer
         }
     }
 
-    public void Send(IPacket msg)
+    private async Task OnMessageFromSubscribe(byte[] message)
     {
-        if (msg is not Packet packet) throw new NotImplementedException();
-
-        _token.Send(packet);
-    }
-
-    public void OnRemoved()
-    {
-        LogManager.WriteInfoLog($"GameUser Removed. PlayerId:{PlayerId}");
-        _onLeaveCallback(this);
-    }
-
-    public async Task SetState(PlayerState state)
-    {
-        await PlayerManager.SetState(state);
-    }
-
-    public async Task SetFlip(DirectionType direction)
-    {
-        await PlayerManager.SetFlip(direction);
-    }
-
-    private async Task HandleMessage<T>(byte[] body, Func<GameUser, T, Task> handleMessage)
-    {
-        var msg = MessagePackSerializer.Deserialize<T>(body);
-        await handleMessage(this, msg);
-    }
-
-    private void HandleMessage<T>(byte[] body, Action<GameUser, T> handleMessage)
-    {
-        var msg = MessagePackSerializer.Deserialize<T>(body);
-        handleMessage(this, msg);
-    }
-
-    private void HeartBeat()
-    {
-        using var packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
-        Send(packet);
-    }
-
-    private async Task Login(GameUser _, C_TO_U_LOGIN request)
-    {
-        if (PlayerManager.State != PlayerState.NONE)
+        try
         {
-            throw new Exception($"Already Initialized. {PlayerManager.PlayerId}");
-        }
+            await _userLock.WaitAsync();
 
-        var isDummy = false;
-        if (!long.TryParse(request.AccountToken, out var tempPlayerId))
-        {
-            tempPlayerId = await CacheHelper.Instance.StringIncrementAsync("temp_player_id") + 1000;
-            isDummy = true;
-        }
+            using var packet = new Packet(message);
+            var protocolId = (Protocol)packet.PopProtocolId();
+            _ = packet.PopPlayerId();
+            var body = packet.PopBody();
 
-        PlayerInfo? playerInfo;
-        var isInit = false;
-        await using (await PlayerInfo.Lock(RedLock, tempPlayerId))
-        {
-            var giftItemList = new List<ItemInfo>();
-
-            playerInfo = await PlayerInfo.Load(tempPlayerId);
-            if (playerInfo == null)
+            if (!_subscribeHandlers.TryGetValue(protocolId, out var handler))
             {
-                isInit = true;
-                playerInfo = new PlayerInfo(tempPlayerId, isDummy);
-
-                foreach (var itemInfo in GameItemData.GetAllList())
-                {
-                    if (!itemInfo.IsEquipment)
-                    {
-                        continue;
-                    }
-                    var item = await InventoryController.CreateItem(itemInfo.Id, 1);
-                    giftItemList.Add(item);
-                }
-                
-                // foreach (var (itemId, count) in GameRuleData.DefaultItemList)
-                // {
-                //     var item = await InventoryController.CreateItem(itemId, count);
-                //     giftItemList.Add(item);
-                // }
-
-                playerInfo.InventoryInfo.AddItem(giftItemList);
+                throw new NotSupportedException($"Unsupported subscribe protocol: {protocolId}");
             }
 
-            var environmentHandler = new EnvironmentHandler(LogManager, _cts, RedLock, Send, playerInfo.ObjectInfo);
-            await environmentHandler.StartAsync();
-            PlayerManager.Initialize(playerInfo, environmentHandler);
-
-            using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
-            NatsClient.Publish(PlayerManager.ObjectInfo!.GetGameObjectKey(), duplicatePacket.ToBytes());
-
-            // if (playerInfo.ObjectInfo.MapId == MapId.Gym)
-            // {
-            //     playerInfo.ObjectInfo.MapId = MapId.TutorialGym;
-            //     playerInfo.ObjectInfo.MapSubId = playerInfo.PlayerId;
-            //     var targetMapInfo = GameMapData.GetMapInfo(MapId.Gym);
-            //     
-            //     var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(MapId.Gym);
-            //     playerInfo.ObjectInfo.CurrentCell = spawnPosition;
-            //     playerInfo.ObjectInfo.TargetCell = spawnPosition;
-            //     playerInfo.ObjectInfo.IsFlip = isFlip;
-            // }
-            //
-            await playerInfo.Save();
-            await playerInfo.ObjectInfo.Save();
-
-            if (isInit)
-            {
-                var firstMail = await MailBoxController.CreateMail(1);
-                await MailBoxController.SendMail(this, firstMail);
-                await QuestController.StartQuest(this, 100000001, []);
-                
-                // 기본템 입히기
-                var defaultTop = giftItemList.First(x => x.ItemId == 104000001);
-                var defaultBottom = giftItemList.First(x => x.ItemId == 105000001);
-                var defaultShoes = giftItemList.First(x => x.ItemId == 106000001);
-
-                await PlayerManager.Wear(defaultTop.ItemUid);
-                await PlayerManager.Wear(defaultBottom.ItemUid);
-                await PlayerManager.Wear(defaultShoes.ItemUid);
-            }
+            await handler(body);
         }
+        catch (Exception e)
+        {
+            LogManager.WriteErrorLog(e);
+        }
+        finally
+        {
+            _userLock.Release();
+        }
+    }
 
-        NatsClient.Subscribe(PlayerManager.ObjectInfo.GetGameObjectKey(),
-            async void (_, message) =>
+    private void SubscribeHandler(string subject, Func<byte[], Task> handler)
+    {
+        NatsClient.Subscribe(subject, (_, message) =>
+        {
+            var unused = Task.Run(async () =>
             {
                 try
                 {
-                    await OnMessageFromSubscribe(message);
+                    await handler(message);
                 }
                 catch (Exception e)
                 {
                     LogManager.WriteErrorLog(e);
                 }
             });
-        
-        NatsClient.Subscribe("all", async void (_, message) =>
-        {
-            try
-            {
-                await OnMessageFromSubscribe(message);
-            }
-            catch (Exception e)
-            {
-                LogManager.WriteErrorLog(e);
-            }
         });
+    }
 
-        var labInfo = await LabInfo.Load(playerInfo.LabId);
+    private async Task HandleMessage<T>(byte[] body, Func<T, Task> handleMessage)
+    {
+        var msg = MessagePackSerializer.Deserialize<T>(body);
+        await handleMessage(msg);
+    }
+
+    private async Task HandlePlayerAction(Func<PlayerController, Task> action)
+    {
+        if (_playerController == null)
+        {
+            throw new InvalidOperationException("Player controller is not initialized");
+        }
+            
+        await action(_playerController);
+    }
+    #endregion
+
+    #region Protocol Handlers
+    private Task HandleHeartBeat(byte[] _)
+    {
+        using var packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
+        Send(packet);
+        return Task.CompletedTask;
+    }
+    
+    private async Task Login(C_TO_U_LOGIN request)
+    {
+        if (_playerController != null)
+        {
+            throw new Exception($"Already Initialized. {request.AccountToken}");
+        }
+
+        var isDummy = false;
+        if (!long.TryParse(request.AccountToken, out var tempPlayerId))
+        {
+            tempPlayerId = await CacheHelper.StringIncrementAsync(TempPlayerIdKey) + 1000;
+            isDummy = true;
+        }
+
+        PlayerInfo playerInfo;
+        await using (await PlayerInfo.Lock(RedLock, tempPlayerId))
+        {
+            playerInfo = await PlayerInfo.Load(CacheHelper, tempPlayerId) ?? await Register(tempPlayerId, isDummy);
+            _playerController = new PlayerController(this, playerInfo);
+            if (playerInfo.IsNew)
+            {
+                // 기본템 입히기
+                var defaultTop = playerInfo.InventoryInfo.ItemDict.First(x => x.Value.ItemId == 104000001);
+                var defaultBottom = playerInfo.InventoryInfo.ItemDict.First(x => x.Value.ItemId == 105000001);
+                var defaultShoes = playerInfo.InventoryInfo.ItemDict.First(x => x.Value.ItemId == 106000001);
+
+                await _playerController.Wear(new C_TO_U_WEAR_ITEM(defaultTop.Value.ItemUid));
+                await _playerController.Wear(new C_TO_U_WEAR_ITEM(defaultBottom.Value.ItemUid));
+                await _playerController.Wear(new C_TO_U_WEAR_ITEM(defaultShoes.Value.ItemUid));
+            }
+            
+            using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
+            NatsClient.Publish(playerInfo.ObjectInfo.GetGameObjectKey(), duplicatePacket.ToBytes());
+            
+            await playerInfo.Save(CacheHelper);
+            await playerInfo.ObjectInfo.Save(CacheHelper);
+        }
+        
+        SubscribeHandler(playerInfo.ObjectInfo.GetGameObjectKey(), OnMessageFromSubscribe);
+        SubscribeHandler(GlobalSubscribeChannel, OnMessageFromSubscribe);
+
+        var labInfo = await LabInfo.Load(CacheHelper, playerInfo.LabId);
 
         using var loginPacket = PacketMaker.U_TO_C_LOGIN(playerInfo, labInfo ?? new LabInfo());
         Send(loginPacket);
 
-        // 인벤토리 정보 전송
-        InventoryController.SendCurrentItems(this);
-        if (labInfo != null) await InventoryController.GetLabInventory(this);
-        
-        // 우편 정보 전송
-        await MailBoxController.GetCurrentMailList(this);
-        
-        // 퀘스트 정보 전송
-        await QuestController.GetCurrentQuestList(this);
+        var mailInfo = await MailBox.Load(CacheHelper, tempPlayerId);
+        if (mailInfo.MailDict.Count <= 0)
+        {
+            var firstMail = await PlayerMailBox.CreateMail(CacheHelper, 1);
+            await _playerController.SendMail(firstMail);
+        }
 
-        LogManager.WriteDebugLog($"playerInfo.ObjectInfo.MapId: {playerInfo.ObjectInfo.MapId}");
-        await PlayerManager.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
+        var questInfo = await QuestDiary.Load(CacheHelper, tempPlayerId);
+        if (questInfo.QuestDict.Count <= 0)
+        {
+            await _playerController.StartQuest(100000001);
+        }
+
+        _playerController.SendCurrentItems();
+        await _playerController.SendCurrentMails();
+        await _playerController.SendCurrentQuests();
+        await _playerController.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
     }
 
+    private async Task<PlayerInfo> Register(long playerId, bool isDummy = false)
+    {
+        var playerInfo = new PlayerInfo(playerId, isDummy);
+        foreach (var (itemId, count) in GameRuleData.DefaultItemList)
+        {
+            var item = await PlayerInventory.CreateItem(CacheHelper, itemId, count);
+            playerInfo.InventoryInfo.ItemDict.Add(item.ItemUid, item);
+        }
+        
+        return playerInfo;
+    }
+
+    private async Task GetPlayerInfo(C_TO_U_PLAYER_INFO body)
+    {
+        var keys = body.PlayerIdList.ConvertAll(x => (RedisValue)x).ToArray();
+        var playerInfoList = await PlayerInfo.LoadAll(CacheHelper, keys);
+
+        using var packet = PacketMaker.U_TO_C_PLAYER_INFO(playerInfoList);
+        Send(packet);
+    }
+    
+    private async Task GetExploreTargetInfo(C_TO_U_EXPLORE_TARGET_INFO body)
+    {
+        var targetInfoList = new List<ExploreTargetInfo>();
+        for (var i = 0; i < body.ExploreTargetIdList.Count; i++)
+        {
+            var targetExploreUid = body.ExploreTargetIdList[i];
+            ExploreTargetInfo? targetExploreInfo;
+
+            await using (await ExploreTargetInfo.Lock(RedLock, targetExploreUid))
+            {
+                targetExploreInfo = await ExploreTargetInfo.Load(CacheHelper, targetExploreUid);
+            }
+
+            if (targetExploreInfo == null) continue;
+
+            targetInfoList.Add(targetExploreInfo);
+
+            var isMax = targetInfoList.Count >= Config.BROADCAST_UNIT;
+            var isLast = i == body.ExploreTargetIdList.Count - 1;
+
+            if (!isMax && !isLast)
+            {
+                continue;
+            }
+
+            using var packet = PacketMaker.U_TO_C_EXPLORE_TARGET_INFO(targetInfoList);
+            Send(packet);
+            targetInfoList.Clear();
+        }
+    }
+    
+    public async Task GetCampInfo(C_TO_U_CAMP_INFO body)
+    {
+        var campIdList = body.CampInfoList;
+        var campInfoList = new List<CampInfo>();
+
+        for (var i = 0; i < campIdList.Count; i++)
+        {
+            var targetCampInfo = await CampInfo.Load(CacheHelper, campIdList[i]);
+            if (targetCampInfo == null)
+            {
+                continue;
+            }
+
+            campInfoList.Add(targetCampInfo);
+
+            var isMax = campInfoList.Count >= Config.BROADCAST_UNIT;
+            var isEnded = i == campInfoList.Count - 1;
+            if (!isMax && !isEnded)
+            {
+                continue;
+            }
+
+            using var packet = PacketMaker.U_TO_C_CAMP_INFO(campInfoList);
+            Send(packet);
+        }
+    }
+
+    private async Task SendChatHistory(ChatType chatType)
+    {
+        var result = await _chatController.GetChatHistory(chatType);
+        foreach (var item in result)
+        {
+            using var packet = PacketMaker.U_TO_C_CHAT_MSG(item.Item1, item.Item2, item.Item3, item.Item4);
+            Send(packet);
+        }
+    }
+
+    private async Task AppendChat(C_TO_U_CHAT_MSG body)
+    {
+        if (body.ChatMessage.Length >= Config.MAX_CHAT_LENGTH)
+        {
+            return;
+        }
+
+        if (_playerController == null)
+        {
+            return;
+        }
+
+        await _chatController.SendChat(_playerController.PlayerId, _playerController.PlayerName, body.ChatType, body.ChatMessage, NatsClient);
+    }
+
+    private void ReceiveDuplicate()
+    {
+        using var packet = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
+        Send(packet);
+        OnRemoved();
+    }
+    #endregion
+
+    #region Subscribe Handlers
+    private Task SubscribeUpdateObject(G_TO_U_UPDATE_OBJECT body)
+    {
+        if (body.ObjectInfo.ObjectType == ObjectType.PLAYER && _playerController != null && body.ObjectInfo.ObjectId == _playerController.PlayerId)
+        {
+            return Task.CompletedTask;
+        }
+
+        UpdateObjectManager.EnqueueUpdateObject(body.ObjectInfo);
+        return Task.CompletedTask;
+    }
+
+    private Task SubscribeSpawn(G_TO_U_SPAWN body)
+    {
+        if (_playerController == null)
+        {
+            return Task.CompletedTask;
+        }
+   
+        var objectKeys = body.ObjectKeyList.Where(key => key != _playerController.ObjectKey).ToList();
+        var cellsToRemove = body.CellsToRemove;
+
+        var batchCount = (int)Math.Ceiling((double)Math.Max(objectKeys.Count, cellsToRemove.Count) / Config.BROADCAST_UNIT);
+        for (var i = 0; i < batchCount; i++)
+        {
+            SendSpawnBatch(objectKeys, cellsToRemove, Config.BROADCAST_UNIT, i, batchCount);
+        }
+       
+        return Task.CompletedTask;
+    }
+
+    private void SendSpawnBatch(List<string> objects, List<Cell> cells, int batchSize, int batchIndex, int totalBatches)
+    {
+        var batch = objects
+            .Skip(batchIndex * batchSize)
+            .Take(batchSize)
+            .Select(item => item.ToString())
+            .ToList();
+           
+        var cellBatch = cells
+            .Skip(batchIndex * batchSize)
+            .Take(batchSize)
+            .ToList();
+
+        var isEnded = batchIndex == totalBatches - 1;
+       
+        using var packet = PacketMaker.U_TO_C_SPAWN(batch, isEnded, cellBatch);
+        Send(packet);
+    
+        LogManager.WriteDebugLog($"[SubscribeSpawn] Send {batch.Count} | {cellBatch.Count}");
+    }
+
+    private Task SubscribeDestroy(G_TO_U_DESTROY body)
+    {
+        using var packet = PacketMaker.U_TO_C_DESTROY(body.ObjectKey);
+        Send(packet);
+       
+        return Task.CompletedTask;
+    }
+
+    private Task SubscribeChatMsg(U_TO_C_CHAT_MSG body)
+    {
+        using var packet = PacketMaker.U_TO_C_CHAT_MSG(body.ChatType, body.PlayerId, body.Name, body.ChatMessage);
+        Send(packet);
+       
+        return Task.CompletedTask;
+    }
+
+    private Task SubscribePlayerInfo(G_TO_U_PLAYER_INFO body)
+    {
+        using var packet = PacketMaker.U_TO_C_PLAYER_INFO([body.PlayerInfo]);
+        Send(packet);
+       
+        return Task.CompletedTask;
+    }
+
+    private Task SubscribeExploreTargetInfo(G_TO_U_EXPLORE_TARGET_INFO body)
+    {
+        using var packet = PacketMaker.U_TO_C_EXPLORE_TARGET_INFO([body.ExploreTargetInfo]);
+        Send(packet);
+       
+        return Task.CompletedTask;
+    }
+
+    private async Task SubscribeEnterInstanceSuccess(G_TO_U_ENTER_INSTANCE_SUCCESS body)
+    {
+        if (_playerController == null)
+        {
+            return;
+        }
+       
+        if (body.MapId == MapId.Camp)
+        {
+            await _playerController.EnterCamp(body.MapSubId);
+        }
+
+        var mapInfo = _playerController.CurrentMapInfo;
+        if (body.MapId != mapInfo.Item1 || body.MapSubId != mapInfo.Item2)
+        {
+            return;
+        }
+
+        var lastMapInfo = _playerController.LastMapInfo;
+        using var packet = PacketMaker.U_TO_C_CHANGE_MAP(lastMapInfo.Item1, mapInfo.Item1, mapInfo.Item2, mapInfo.Item3, mapInfo.Item4);
+        Send(packet);
+    }
+   
+    private Task SubscribeCampInfo(G_TO_U_CAMP_INFO body)
+    {
+        using var packet = PacketMaker.U_TO_C_CAMP_INFO([body.CampInfo]);
+        Send(packet);
+       
+        return Task.CompletedTask;
+    }
+
+    private Task SubscribeSocialAction(G_TO_U_SOCIAL_ACTION body)
+    {
+        using var packet = PacketMaker.U_TO_C_SOCIAL_ACTION(body.PlayerId, body.SocialActionType);
+        Send(packet);
+       
+        return Task.CompletedTask;
+    }
+    #endregion
+
+    #region Broadcasting Methods
+    public void BroadcastToMap<T>(GameObjectInfo objectInfo, T payload, Func<GameObjectInfo, int, string> getSubject)
+    {
+        if (GameMapData.IsCommonMap(objectInfo.MapId))
+        {
+            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
+            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
+            foreach (var server in targetServerList)
+            {
+                var subject = getSubject(objectInfo, server);
+                NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, payload)));
+            }
+            return;
+        }
+
+        var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
+        var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
+        var instanceSubject = getSubject(objectInfo, manageServer);
+        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, payload)));
+    }
+    
     public void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject?
     {
         var objectInfo = info switch
@@ -410,100 +597,68 @@ public partial class GameUser : IPeer
             CampInfo c => c.ObjectInfo,
             _ => throw new ArgumentException($"Unsupported type: {typeof(T)}")
         };
-    
-        if (GameMapData.IsCommonMap(objectInfo.MapId))
-        {
-            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
-            foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetUpdateInfoSubject(objectInfo, targetServer)))
-            {
-                NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, info)));
-            }
-            return;
-        }
-    
-        var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
-        var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
-        var instanceSubject = SubjectHelper.GetUpdateInfoSubject(objectInfo, manageServer);
-        
-        var serializedInfo = MessagePackSerializer.Serialize(info);
-        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, objectInfo.ObjectType, serializedInfo)));
+
+        BroadcastToMap(objectInfo, info, SubjectHelper.GetUpdateInfoSubject);
     }
 
     public void BroadcastSocialAction(PlayerInfo playerInfo, SocialActionType socialActionType)
     {
-        var objectInfo = playerInfo.ObjectInfo;
         var sendTuple = (playerInfo.PlayerId, socialActionType);
-        if (GameMapData.IsCommonMap(objectInfo.MapId))
-        {
-            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
-            foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetSocialActionSubject(objectInfo, targetServer)))
-            {
-                NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, sendTuple)));
-            }
-            return;
-        }
-    
-        var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
-        var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
-        var instanceSubject = SubjectHelper.GetSocialActionSubject(objectInfo, manageServer);
-        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, sendTuple)));
+        BroadcastToMap(playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
     }
     
     public void BroadcastObjectDestroy(GameObjectInfo objectInfo)
     {
-        if (GameMapData.IsCommonMap(objectInfo.MapId))
+        var payload = objectInfo.GetGameObjectKey();
+        BroadcastToMap(objectInfo, payload, SubjectHelper.GetDestroyObjectSubject);
+    }
+    #endregion
+
+    #region IPeer Interface
+    public void Send(IPacket msg)
+    {
+        if (msg is not Packet packet)
         {
-            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
-            foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetDestroyObjectSubject(objectInfo, targetServer)))
-            {
-                NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, objectInfo.GetGameObjectKey())));
-            }
-            return;
+            throw new NotImplementedException();
         }
-        
-        var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
-        var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
-        var instanceSubject = SubjectHelper.GetDestroyObjectSubject(objectInfo, manageServer);
-        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, objectInfo.GetGameObjectKey())));
+
+        _token.Send(packet);
     }
 
-    public void PublishToClients(Packet packet, List<long> userIdList)
+    public void OnRemoved()
     {
-        foreach (var userId in userIdList)
-            NatsClient.Publish(GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, userId), packet.ToBytes());
+        _onLeaveCallback(this);
     }
+    #endregion
 
-    private static async Task SendToGameServer(Packet msg)
+    #region Server Communication
+    private async Task SendToGameServer(Packet msg)
     {
-        await CacheHelper.Instance.EnqueueAsync("game_server_queue", msg.ToBytes());
+        await CacheHelper.EnqueueAsync(GameServerQueue, msg.ToBytes());
     }
+    #endregion
 
-    private void RecvDuplicate()
-    {
-        using var packet = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
-        Send(packet);
-        OnRemoved();
-    }
-
+    #region Dispose
     public async Task<UserToken?> Release()
     {
         await _token.LockDisconnect.WaitAsync();
         try
         {
-            if (_token.IsReleased) return null;
+            if (_token.IsReleased)
+            {
+                return null;
+            }
             _token.IsReleased = true;
 
-            await CampController.Decamp(this);
-            await PlayerManager.Dispose();
-            _progressManager.Dispose();
-            _updateObjectManager.Dispose();
-
-            using var packet = PacketMaker.U_TO_G_LOGOUT(PlayerId);
-            await SendToGameServer(packet);
-
+            if (_playerController != null)
+            {
+                LogManager.WriteInfoLog($"GameUser Removed. PlayerId:{_playerController.PlayerId}");
+                await _playerController.Dispose();
+                using var packet = PacketMaker.U_TO_G_LOGOUT(_playerController.PlayerId);
+                await SendToGameServer(packet);
+            }
+            
+            UpdateObjectManager.Dispose();
             await _cts.CancelAsync();
             NatsClient.Close();
             _cts.Dispose();
@@ -519,4 +674,5 @@ public partial class GameUser : IPeer
 
         return _token;
     }
+    #endregion
 }

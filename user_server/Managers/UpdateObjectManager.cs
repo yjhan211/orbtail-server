@@ -1,9 +1,11 @@
 using System.Threading.Channels;
 using network.common;
 using network.common.data.models;
+using network.helpers;
 using network.managers;
 using network.packets;
 using StackExchange.Redis;
+using user_server.controllers.player;
 
 namespace user_server.managers;
 
@@ -14,16 +16,18 @@ public sealed class UpdateObjectManager : IDisposable
     private readonly SendPacketDelegate _sendToClient;
     private readonly Task _task;
     private readonly Channel<GameObjectInfo> _updateObjectChannel;
+    private readonly CacheHelper _cacheHelper;
     private bool _disposed;
 
     public UpdateObjectManager(CancellationTokenSource cts, LogManager logManager, SendPacketDelegate sendToClient,
-        Channel<GameObjectInfo> updateObjectReader)
+        Channel<GameObjectInfo> updateObjectReader, CacheHelper cacheHelper)
     {
         _cts = cts;
         _sendToClient = sendToClient;
         _logManager = logManager;
         _updateObjectChannel = updateObjectReader;
         _task = StartTask();
+        _cacheHelper = cacheHelper;
     }
 
     public void Dispose()
@@ -39,10 +43,10 @@ public sealed class UpdateObjectManager : IDisposable
 
     // 이 함수가 호출되는 경우: G_TO_U_SPAWN_LIST의 objectKeyList에는 있으나 클라에는 GameObjectInfo가 없을 때
     // 어떤 경우에 생기는가: 이미 스폰되어 있는 오브젝트를 만났을 때
-    public async Task GetObjectInfo(GameUser _, C_TO_U_OBJECT_INFO body)
+    public async Task GetObjectInfo(C_TO_U_OBJECT_INFO body)
     {
         var keys = body.ObjectKeyList.ConvertAll(x => (RedisValue)x).ToArray();
-        var objectInfoList = await GameObjectInfo.LoadAll(keys);
+        var objectInfoList = await GameObjectInfo.LoadAll(_cacheHelper, keys);
         foreach (var objectInfo in objectInfoList)
         {
             EnqueueUpdateObject(objectInfo);

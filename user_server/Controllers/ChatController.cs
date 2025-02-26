@@ -2,44 +2,49 @@ using MessagePack;
 using network.common;
 using network.common.data.models;
 using network.helpers;
+using network.infrastructure;
 using network.packets;
 using network.utils;
 using StackExchange.Redis;
 
 namespace user_server.controllers;
 
-public static class ChatController
+public class ChatController(CacheHelper cacheHelper)
 {
+    private readonly LruCache<long, string> UserNameMap = new(1000);
     private const int HistoryNum = 30;
-    private static readonly LruCache<long, string> UserNameMap = new(1000);
 
     private static string GetChatHistoryKey(ChatType chatType)
     {
         return $"chat_{chatType}_history";
     }
 
-    private static async Task AddChatHistory(ChatType chatType, long playerId, string senderName, string message)
+    public async Task AddChatHistory(ChatType chatType, long playerId, string senderName, string message)
     {
         var key = GetChatHistoryKey(ChatType.ALL);
-        var historyLength = await CacheHelper.Instance.ListLengthAsync(key);
+        var historyLength = await cacheHelper.ListLengthAsync(key);
 
         while (historyLength >= HistoryNum)
         {
-            await CacheHelper.Instance.DequeueAsync(key);
+            await cacheHelper.DequeueAsync(key);
             historyLength--;
         }
 
-        await CacheHelper.Instance.EnqueueAsync(key, MessagePackSerializer.Serialize((chatType, playerId, senderName, message)));
+        await cacheHelper.EnqueueAsync(key, MessagePackSerializer.Serialize((chatType, playerId, senderName, message)));
     }
-
-    public static async Task GetChatHistory(GameUser user, ChatType chatType)
+    
+    public async Task<List<(ChatType, long, string, string)>> GetChatHistory(ChatType chatType)
     {
         var key = GetChatHistoryKey(chatType);
-        var redisValues = await CacheHelper.Instance.ListRangeAsync(key);
+        var redisValues = await cacheHelper.ListRangeAsync(key);
 
+        List<(ChatType, long, string, string)> chatHistory = [];
         foreach (var value in redisValues)
         {
-            if (value == RedisValue.Null) continue;
+            if (value == RedisValue.Null)
+            {
+                continue;
+            }
 
             (ChatType, long, string, string) deserialize;
 
@@ -52,30 +57,25 @@ public static class ChatController
                 continue;
             }
 
-            using var packet = PacketMaker.U_TO_C_CHAT_MSG(deserialize.Item1, deserialize.Item2, deserialize.Item3, deserialize.Item4);
-            user.Send(packet);
+            chatHistory.Add(deserialize);
         }
+
+        return chatHistory;
     }
-
-    public static async Task SendChat(GameUser user, C_TO_U_CHAT_MSG body)
+    
+    public async Task SendChat(long playerId, string name, ChatType chatType, string message, NatsClient natsClient)
     {
-        if (body.ChatMessage.Length >= Config.MAX_CHAT_LENGTH) return;
-
-        if (!UserNameMap.TryGet(user.PlayerId, out var playerName))
+        if (!UserNameMap.TryGet(playerId, out var _))
         {
-            var playerInfo = await PlayerInfo.Load(user.PlayerId);
-            if (playerInfo == null) return;
-
-            UserNameMap.Add(user.PlayerId, playerInfo.Name);
-            playerName = playerInfo.Name;
+            UserNameMap.Add(playerId, name);
         }
-
-        using var packet = PacketMaker.U_TO_C_CHAT_MSG(body.ChatType, user.PlayerId, playerName!, body.ChatMessage);
-        switch (body.ChatType)
+        
+        using var packet = PacketMaker.U_TO_C_CHAT_MSG(chatType, playerId, name, message);
+        switch (chatType)
         {
             case ChatType.ALL:
-                await AddChatHistory(body.ChatType, user.PlayerId, playerName!, body.ChatMessage);
-                user.NatsClient.Publish("all", packet.ToBytes());
+                await AddChatHistory(chatType, playerId, name, message);
+                natsClient.Publish("all", packet.ToBytes());
                 break;
 
             case ChatType.NORMAL:

@@ -29,11 +29,9 @@ namespace network.common.data.models
         [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
 
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
-
-        [Key("jobInfo")] public JobInfo JobInfo { get; set; }
-
-        [Key("labInfo")] public LabInfo LabInfo { get; set; }
         
+        [Key("labInfo")] public LabInfo LabInfo { get; set; }
+        [Key("campInfo")] public CampInfo CampInfo { get; set; }
         [Key("craftInfo")] public CraftInfo CraftInfo { get; set; }
     }
 
@@ -49,14 +47,6 @@ namespace network.common.data.models
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
 
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_UPDATE_TUTORIAL : IMessagePackObject
-    {
-        [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
-
-        [Key("jobInfo")] public JobInfo JobInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -224,8 +214,6 @@ namespace network.common.data.models
     public class U_TO_C_EXPLORE : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-
-        [Key("jobInfo")] public JobInfo JobInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -233,7 +221,6 @@ namespace network.common.data.models
     {
         [Key("isSuccess")] public bool IsSuccess { get; set; }
 
-        [Key("jobInfo")] public JobInfo JobInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -248,8 +235,6 @@ namespace network.common.data.models
     public class U_TO_C_USE_SKILL : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-
-        [Key("jobInfo")] public JobInfo JobInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -264,8 +249,6 @@ namespace network.common.data.models
         [Key("isSuccess")] public bool IsSuccess { get; set; }
 
         [Key("itemInfo")] public ItemInfo ItemInfo { get; set; }
-
-        [Key("jobInfo")] public JobInfo JobInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -284,8 +267,6 @@ namespace network.common.data.models
     public class U_TO_C_GET_JOB : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-
-        [Key("jobInfo")] public JobInfo JobInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -298,13 +279,15 @@ namespace network.common.data.models
     public class U_TO_C_UPGRADE_JOB : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-
-        [Key("jobInfo")] public JobInfo JobInfo { get; set; }
     }
 
     [MessagePackObject]
     public class C_TO_U_WEAR_ITEM : IMessagePackObject
     {
+        public C_TO_U_WEAR_ITEM(long itemUid)
+        {
+            ItemUid = itemUid;
+        }
         [Key("itemUid")] public long ItemUid { get; set; }
     }
 
@@ -374,8 +357,6 @@ namespace network.common.data.models
     public class U_TO_C_UPGRADE_RESEARCH : IMessagePackObject
     {
         [Key("researchInfoDict")] public Dictionary<int, ResearchInfo> ResearchInfoDict { get; set; }
-
-        [Key("jobInfo")] public JobInfo JobInfo { get; set; }
     }
 
     [MessagePackObject]
