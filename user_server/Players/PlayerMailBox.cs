@@ -3,7 +3,7 @@ using network.common.data.models;
 using network.helpers;
 using network.packets;
 
-namespace user_server.controllers.player;
+namespace user_server.players;
 
 public class PlayerMailBox(GameUser user, PlayerInfo playerInfo, PlayerInventory playerInventory)
 {

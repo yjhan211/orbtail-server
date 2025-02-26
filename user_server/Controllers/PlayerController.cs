@@ -1,18 +1,10 @@
 // ReSharper disable PrivateFieldCanBeConvertedToLocalVariable
 
-using MessagePack;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.helpers;
-using network.infrastructure;
-using network.interfaces;
-using network.managers;
 using network.packets;
-using RedLockNet.SERedis;
-using user_server.controllers.player;
-using user_server.managers;
-using user_server.progress;
+using user_server.players;
 
 namespace user_server.controllers;
 
@@ -45,7 +37,6 @@ public class PlayerController
     private readonly PlayerMap _playerMap;
     private readonly PlayerCraft _playerCraft;
     private readonly PlayerExplore _playerExplore;
-    
     private readonly PlayerInfo _playerInfo;
 
     public PlayerController(GameUser user, PlayerInfo playerInfo)

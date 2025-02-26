@@ -6,16 +6,16 @@ using network.common.data.models;
 using network.helpers;
 using network.infrastructure;
 using network.packets;
-using user_server.managers;
+using user_server.controllers;
 
-namespace user_server.controllers.player;
+namespace user_server.players;
 
 public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
 {
     private readonly CacheHelper _cacheHelper = user.CacheHelper;
     private readonly NatsClient _natsClient = user.NatsClient;
     
-    private readonly UpdateObjectManager _updateObjectManager = user.UpdateObjectManager;
+    private readonly MapObjectController _mapObjectController = user.MapObjectController;
     
     private readonly BroadcastDelegate<PlayerInfo> _broadcastUpdateInfo = user.BroadcastUpdateInfo;
     private readonly SendPacketDelegate _sendToClient = user.Send;
@@ -147,7 +147,7 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
         if (moveRequest.Direction != DirectionType.NONE)
         {
             // 자신의 이동이므로 큐에 즉시 넣음
-            _updateObjectManager.EnqueueUpdateObject(playerInfo.ObjectInfo);
+            _mapObjectController.EnqueueUpdateObject(playerInfo.ObjectInfo);
         }
 
         await Task.Delay((int)(moveElapsedTime * 1000));

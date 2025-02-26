@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics.CodeAnalysis;
-using System.Threading.Channels;
 using MessagePack;
 using network.common;
 using network.common.data;
@@ -14,74 +13,61 @@ using network.utils;
 using RedLockNet.SERedis;
 using StackExchange.Redis;
 using user_server.controllers;
-using user_server.controllers.player;
-using user_server.managers;
+using user_server.players;
 
 namespace user_server;
 
 public class GameUser : IPeer
 {
-    #region Constants
     private const string GlobalSubscribeChannel = "all";
     private const string TempPlayerIdKey = "temp_player_id";
     private const string GameServerQueue = "game_server_queue";
-    #endregion
 
-    #region Fields
     private readonly UserToken _token;
     private readonly SemaphoreSlim _userLock;
-    private readonly CancellationTokenSource _cts;
     private readonly Action<GameUser> _onLeaveCallback;
-    private readonly ChatController _chatController;
     private Dictionary<Protocol, Func<byte[], Task>> _protocolHandlers;
     private Dictionary<Protocol, Func<byte[], Task>> _subscribeHandlers;
     
+    private readonly ChatController _chatController;
     private PlayerController? _playerController;
-    #endregion
+    
+    public readonly CancellationTokenSource Cts;
 
-    #region Properties
+    public readonly MapObjectController MapObjectController;
     public readonly CacheHelper CacheHelper;
     public readonly NatsClient NatsClient;
     public readonly RedLockFactory RedLock;
     public readonly LogManager LogManager;
-    public readonly UpdateObjectManager UpdateObjectManager;
-    #endregion
 
-    #region Non-Auth Protocols
     private static readonly IReadOnlyList<Protocol> NonAuthProtocol = new List<Protocol>
     {
         Protocol.C_TO_U_HEART_BEAT,
         Protocol.C_TO_U_LOGIN
     };
-    #endregion
 
-    #region Constructor
     public GameUser(UserToken token, RedLockFactory redLock, NatsClient natsClient, LogManager logManager, CacheHelper cacheHelper, Action<GameUser> onLeaveCallback, ChatController chatController)
     {
         _token = token;
         _token.SetPeer(this);
         _userLock = new SemaphoreSlim(1);
-        _cts = new CancellationTokenSource();
+        Cts = new CancellationTokenSource();
         
         CacheHelper = cacheHelper;
         RedLock = redLock;
         NatsClient = natsClient;
         LogManager = logManager;
         
-        var updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
-        UpdateObjectManager = new UpdateObjectManager(_cts, LogManager, Send, updateObjectChannel, CacheHelper);
-        
         _onLeaveCallback = onLeaveCallback;
         _chatController = chatController;
+        MapObjectController = new MapObjectController(this);
         
         InitializeProtocolHandlers();
         InitializeSubscribeHandlers();
 
         LogManager.WriteInfoLog("Create GameUser Success!");
     }
-    #endregion
 
-    #region Handler Initialization
     [MemberNotNull(nameof(_protocolHandlers))]
     private void InitializeProtocolHandlers()
     {
@@ -109,7 +95,7 @@ public class GameUser : IPeer
            { Protocol.C_TO_U_QUEST_SUCCESS, async (bytes) => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, msg => HandlePlayerAction(pc => pc.CompleteQuest(msg))) },
            { Protocol.C_TO_U_MAIL_LIST, async (_) => await HandlePlayerAction(pc => pc.SendCurrentMails()) }, { Protocol.C_TO_U_MAIL_RECEIVE, async (bytes) => await HandleMessage<C_TO_U_MAIL_RECEIVE>(bytes, msg => HandlePlayerAction(pc => pc.ReceiveMail(msg))) },
            { Protocol.C_TO_U_ITEM_PUT, async (bytes) => await HandleMessage<C_TO_U_ITEM_PUT>(bytes, msg => HandlePlayerAction(pc => pc.PutItem(msg))) },
-           { Protocol.C_TO_U_OBJECT_INFO, async (bytes) => await HandleMessage<C_TO_U_OBJECT_INFO>(bytes, UpdateObjectManager.GetObjectInfo) },
+           { Protocol.C_TO_U_OBJECT_INFO, async (bytes) => await HandleMessage<C_TO_U_OBJECT_INFO>(bytes, MapObjectController.GetObjectInfo) },
         };
     }
 
@@ -130,9 +116,7 @@ public class GameUser : IPeer
            { Protocol.U_TO_U_DUPLICATE, _ => { ReceiveDuplicate(); return Task.CompletedTask; }}
         };
     }
-    #endregion
 
-    #region Message Handling
     public async Task OnMessageFromClient(Const<byte[]> buffer)
     {
         try
@@ -240,9 +224,7 @@ public class GameUser : IPeer
             
         await action(_playerController);
     }
-    #endregion
 
-    #region Protocol Handlers
     private Task HandleHeartBeat(byte[] _)
     {
         using var packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
@@ -428,9 +410,7 @@ public class GameUser : IPeer
         Send(packet);
         OnRemoved();
     }
-    #endregion
 
-    #region Subscribe Handlers
     private Task SubscribeUpdateObject(G_TO_U_UPDATE_OBJECT body)
     {
         if (body.ObjectInfo.ObjectType == ObjectType.PLAYER && _playerController != null && body.ObjectInfo.ObjectId == _playerController.PlayerId)
@@ -438,7 +418,7 @@ public class GameUser : IPeer
             return Task.CompletedTask;
         }
 
-        UpdateObjectManager.EnqueueUpdateObject(body.ObjectInfo);
+        MapObjectController.EnqueueUpdateObject(body.ObjectInfo);
         return Task.CompletedTask;
     }
 
@@ -552,9 +532,7 @@ public class GameUser : IPeer
        
         return Task.CompletedTask;
     }
-    #endregion
 
-    #region Broadcasting Methods
     private void BroadcastToMap<T>(GameObjectInfo objectInfo, T payload, Func<GameObjectInfo, int, string> getSubject)
     {
         if (GameMapData.IsCommonMap(objectInfo.MapId))
@@ -599,9 +577,7 @@ public class GameUser : IPeer
         var payload = objectInfo.GetGameObjectKey();
         BroadcastToMap(objectInfo, payload, SubjectHelper.GetDestroyObjectSubject);
     }
-    #endregion
 
-    #region IPeer Interface
     public void Send(IPacket msg)
     {
         if (msg is not Packet packet)
@@ -616,16 +592,12 @@ public class GameUser : IPeer
     {
         _onLeaveCallback(this);
     }
-    #endregion
 
-    #region Server Communication
     private async Task SendToGameServer(Packet msg)
     {
         await CacheHelper.EnqueueAsync(GameServerQueue, msg.ToBytes());
     }
-    #endregion
 
-    #region Dispose
     public async Task<UserToken?> Release()
     {
         await _token.LockDisconnect.WaitAsync();
@@ -645,10 +617,10 @@ public class GameUser : IPeer
                 await SendToGameServer(packet);
             }
             
-            UpdateObjectManager.Dispose();
-            await _cts.CancelAsync();
+            MapObjectController.Dispose();
+            await Cts.CancelAsync();
             NatsClient.Close();
-            _cts.Dispose();
+            Cts.Dispose();
         }
         catch (Exception ex)
         {
@@ -661,5 +633,4 @@ public class GameUser : IPeer
 
         return _token;
     }
-    #endregion
 }

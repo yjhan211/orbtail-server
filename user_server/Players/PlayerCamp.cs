@@ -1,12 +1,9 @@
-using MessagePack;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.helpers;
-using network.packets;
 using RedLockNet.SERedis;
 
-namespace user_server.controllers.player;
+namespace user_server.players;
 
 public class PlayerCamp(GameUser user, PlayerInfo playerInfo)
 {

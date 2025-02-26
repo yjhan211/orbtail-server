@@ -6,7 +6,7 @@ using network.helpers;
 using network.infrastructure;
 using network.packets;
 
-namespace user_server.controllers.player;
+namespace user_server.players;
 
 public class PlayerMap(GameUser user, PlayerInfo playerInfo)
 {

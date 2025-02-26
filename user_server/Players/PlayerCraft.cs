@@ -7,7 +7,7 @@ using network.packets;
 using RedLockNet.SERedis;
 using user_server.progress;
 
-namespace user_server.controllers.player;
+namespace user_server.players;
 
 public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playerQuest, PlayerInventory playerInventory, PlayerProgress playerProgress)
 {

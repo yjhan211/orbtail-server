@@ -1,7 +1,7 @@
 using network.common;
 using network.interfaces;
 
-namespace user_server.controllers.player;
+namespace user_server.players;
 
 using network.common.data.models;
 using network.packets;

@@ -1,15 +1,8 @@
 using System.Collections.Concurrent;
-using network.common;
-using network.common.data;
 using network.interfaces;
-using network.common.data.models;
-using network.helpers;
 using network.managers;
-using network.packets;
-using RedLockNet.SERedis;
-using user_server.progress;
 
-namespace user_server.controllers.player;
+namespace user_server.players;
 
 public sealed class PlayerProgress : IDisposable
 {

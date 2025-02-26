@@ -8,7 +8,6 @@ using network.core;
 using network.helpers;
 using network.infrastructure;
 using network.managers;
-using network.utils;
 using user_server.controllers;
 
 namespace user_server;
@@ -24,9 +23,9 @@ public class UserServer(
     : IHostedService
 {
     private CancellationTokenSource? _cts;
-    private ChatController _chatController = new(cacheHelper);
-    private readonly ConcurrentQueue<GameUser> _leaveUserQueue = new();
     private Task? _leaveUserTask;
+    private readonly ChatController _chatController = new(cacheHelper);
+    private readonly ConcurrentQueue<GameUser> _leaveUserQueue = new();
 
    public Task StartAsync(CancellationToken ct)
    {

@@ -5,7 +5,7 @@ using network.helpers;
 using network.packets;
 using RedLockNet.SERedis;
 
-namespace user_server.controllers.player;
+namespace user_server.players;
 
 public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
 {
