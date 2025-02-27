@@ -4,7 +4,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.helpers;
-using network.infrastructure;
+using network.interfaces;
 using network.packets;
 using user_server.controllers;
 
@@ -12,8 +12,8 @@ namespace user_server.players;
 
 public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
 {
-    private readonly CacheHelper _cacheHelper = user.CacheHelper;
-    private readonly NatsClient _natsClient = user.NatsClient;
+    private readonly ICacheHelper _cacheHelper = user.CacheHelper;
+    private readonly INatsClient _natsClient = user.NatsClient;
     
     private readonly MapObjectController _mapObjectController = user.MapObjectController;
     

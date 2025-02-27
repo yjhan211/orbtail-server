@@ -1,22 +1,21 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 using network.common;
+using network.interfaces;
 using network.managers;
 
 namespace network.core;
 
-public class NetworkService
+public class NetworkService : INetworkService
 {
     private readonly BufferManager _bufferManager;
     private readonly Listener _clientListener = new();
     private readonly object _initEventArgsLock = new();
-    private readonly LogManager _logManager;
     private readonly SocketAsyncEventArgsManager _recvEventArgsManager;
     private readonly SocketAsyncEventArgsManager _sendEventArgsManager;
 
-    public NetworkService(LogManager logManager)
+    public NetworkService()
     {
-        _logManager = logManager;
         _bufferManager = new BufferManager(Config.MAX_CONNECTION * Config.PRE_ALLOC_COUNT * Config.BUFFER_SIZE,
             Config.BUFFER_SIZE);
         _recvEventArgsManager = new SocketAsyncEventArgsManager(Config.MAX_CONNECTION);
@@ -31,7 +30,7 @@ public class NetworkService
     {
         for (var i = 0; i < Config.MAX_CONNECTION; i++)
         {
-            var userToken = new UserToken(i, _logManager);
+            var userToken = new UserToken();
 
             SocketAsyncEventArgs recvArgs = new();
             recvArgs.Completed += (sender, e) => RecvCompleted(sender!, e);
@@ -72,29 +71,22 @@ public class NetworkService
     // from Listener
     private void OnNewClient(Socket clientSocket, object _)
     {
-        try
+        SocketAsyncEventArgs recvArgs;
+        SocketAsyncEventArgs sendArgs;
+
+        lock (_initEventArgsLock)
         {
-            SocketAsyncEventArgs recvArgs;
-            SocketAsyncEventArgs sendArgs;
-
-            lock (_initEventArgsLock)
-            {
-                recvArgs = _recvEventArgsManager.Pop();
-                sendArgs = _sendEventArgsManager.Pop();
-            }
-
-            var argsToken = recvArgs.UserToken;
-            if (argsToken == null) throw new Exception("[OnNewClient] Invalid UserToken");
-
-
-            var userToken = (UserToken)argsToken;
-            SessionCreatedCallback?.Invoke(userToken);
-            BeginRecv(userToken, clientSocket, recvArgs, sendArgs);
+            recvArgs = _recvEventArgsManager.Pop();
+            sendArgs = _sendEventArgsManager.Pop();
         }
-        catch (Exception e)
-        {
-            _logManager.WriteErrorLog(e);
-        }
+
+        var argsToken = recvArgs.UserToken;
+        if (argsToken == null) throw new Exception("[OnNewClient] Invalid UserToken");
+
+
+        var userToken = (UserToken)argsToken;
+        SessionCreatedCallback?.Invoke(userToken);
+        BeginRecv(userToken, clientSocket, recvArgs, sendArgs);
     }
 
     private void BeginRecv(UserToken userToken, Socket socket, SocketAsyncEventArgs recvArgs,
@@ -143,7 +135,6 @@ public class NetworkService
             var (errorCode, errorLog) = userToken.OnReceived(recvArgs.Buffer, recvArgs.Offset, recvArgs.BytesTransferred);
             if (errorCode != ErrorCode.SUCCESS)
             {
-                _logManager.WriteErrorLog(new Exception($"errorCode:{errorCode}, errorLog:{errorLog}"));
                 return;
             }
 
@@ -156,44 +147,32 @@ public class NetworkService
         }
         catch (Exception ex)
         {
-            _logManager.WriteErrorLog(ex);
             userToken?.OnRemoved();
         }
     }
 
     private void SendCompleted(object _, SocketAsyncEventArgs sendArgs)
     {
-        try
+        if (sendArgs.UserToken is not UserToken token)
         {
-            if (sendArgs.UserToken is not UserToken token)
-            {
-                throw new Exception($"invalid args.UserToken : {sendArgs.UserToken}");
-            }
-            token.ProcessSend(sendArgs);
+            throw new Exception($"invalid args.UserToken : {sendArgs.UserToken}");
         }
-        catch (Exception e)
-        {
-            _logManager.WriteErrorLog(e);
-        }
+        token.ProcessSend(sendArgs);
     }
 
     public void CloseClientSocket(UserToken? userToken)
     {
-        if (userToken == null || userToken.IsReleased) return;
-
-        try
+        if (userToken == null || userToken.IsReleased)
         {
-            userToken.Disconnect();
-
-            lock (_initEventArgsLock)
-            {
-                _recvEventArgsManager.Push(userToken.RecvEventArgs!);
-                _sendEventArgsManager.Push(userToken.SendEventArgs!);
-            }
+            return;
         }
-        catch (Exception ex)
+
+        userToken.Disconnect();
+
+        lock (_initEventArgsLock)
         {
-            _logManager.WriteErrorLog(ex);
+            _recvEventArgsManager.Push(userToken.RecvEventArgs!);
+            _sendEventArgsManager.Push(userToken.SendEventArgs!);
         }
     }
 }

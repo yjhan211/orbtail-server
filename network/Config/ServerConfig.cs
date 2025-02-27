@@ -1,20 +1,21 @@
 using Microsoft.Extensions.Configuration;
+using network.interfaces;
 
 namespace network.config;
 
-public class ServerConfig
+public class ServerConfig : IServerConfig
 {
     public string ServerType { get; init; } = "";
+    public int ServerId { get; init; }
     public int GameServerNum { get; init; }
-    public int GameServerId { get; init; }
     
     public void Validate()
     {
-        if (GameServerId <= 0)
+        if (ServerType == "GameServer" && ServerId <= 0)
         {
-            throw new ArgumentException($"Invalid Game Server Id: {GameServerId}");
+            throw new ArgumentException($"Invalid Game Server Id: {ServerId}");
         }
-        if (ServerType == "GameServer" && GameServerNum <= 0)
+        if (GameServerNum <= 0)
         {
             throw new ArgumentException($"Invalid Game Server Number: {GameServerNum}");
         }

@@ -1,13 +1,11 @@
 using System.Collections.Concurrent;
-using game_server.controllers;
 using MessagePack;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
 using network.config;
 using network.helpers;
-using network.infrastructure;
 using network.interfaces;
-using network.managers;
 using network.packets;
 
 namespace game_server.controllers;
@@ -19,13 +17,13 @@ public class CommonMapController : BaseMapController
 
  // ReSharper disable once ConvertToPrimaryConstructor
     public CommonMapController(
-        LogManager logManager,
-        NatsClient natsClient,
+        ILogger logger,
+        INatsClient natsClient,
         CancellationTokenSource cts,
-        CacheHelper cacheHelper,
+        ICacheHelper cacheHelper,
         ServerConfig serverConfig,
         MapId mapId) 
-        : base(logManager, natsClient, cts, cacheHelper, serverConfig)
+        : base(logger, natsClient, cts, cacheHelper, serverConfig)
     {
         _mapId = mapId;
         _objectPositionDict = new ConcurrentDictionary<string, HashSet<string>>();
@@ -39,7 +37,7 @@ public class CommonMapController : BaseMapController
 
     private void InitializeManageParts()
     {
-        var managePartList = MapHelper.GetManagePartList(ServerConfig.GameServerId);
+        var managePartList = MapHelper.GetManagePartList(ServerConfig.ServerId);
         var managePositionKeyList = new List<string>();
         foreach (var positions in managePartList.Values)
         {
@@ -55,12 +53,12 @@ public class CommonMapController : BaseMapController
     {
         var subjects = new Dictionary<string, Func<byte[], Task>>
         {
-            { SubjectHelper.GetUpdateInfoSubject(_mapId, 0, ServerConfig.GameServerId), HandleUpdateInfo },
-            { SubjectHelper.GetSocialActionSubject(_mapId, 0, ServerConfig.GameServerId), HandleSocialAction },
-            { SubjectHelper.GetUpdateManageSubject(_mapId, 0, ServerConfig.GameServerId), MoveManageObjectAsync },
-            { SubjectHelper.GetLeaveManageSubject(_mapId, 0, ServerConfig.GameServerId), LeaveManageObjectAsync },
-            { SubjectHelper.GetSpawnManageSubject(_mapId, 0, ServerConfig.GameServerId), SpawnManageObjectAsync },
-            { SubjectHelper.GetDestroyObjectSubject(_mapId, 0, ServerConfig.GameServerId), DestroyManageObjectAsync }
+            { SubjectHelper.GetUpdateInfoSubject(_mapId, 0, ServerConfig.ServerId), HandleUpdateInfo },
+            { SubjectHelper.GetSocialActionSubject(_mapId, 0, ServerConfig.ServerId), HandleSocialAction },
+            { SubjectHelper.GetUpdateManageSubject(_mapId, 0, ServerConfig.ServerId), MoveManageObjectAsync },
+            { SubjectHelper.GetLeaveManageSubject(_mapId, 0, ServerConfig.ServerId), LeaveManageObjectAsync },
+            { SubjectHelper.GetSpawnManageSubject(_mapId, 0, ServerConfig.ServerId), SpawnManageObjectAsync },
+            { SubjectHelper.GetDestroyObjectSubject(_mapId, 0, ServerConfig.ServerId), DestroyManageObjectAsync }
         };
 
         foreach (var (subject, handler) in subjects)
@@ -70,10 +68,10 @@ public class CommonMapController : BaseMapController
 
         // 즉시 실행되는 이벤트들
         NatsClient.Subscribe(
-            SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, ServerConfig.GameServerId),
+            SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, ServerConfig.ServerId),
             BroadcastUpdateObject);
         NatsClient.Subscribe(
-            SubjectHelper.GetBroadcastDestroySubject(_mapId, 0, ServerConfig.GameServerId),
+            SubjectHelper.GetBroadcastDestroySubject(_mapId, 0, ServerConfig.ServerId),
             BroadcastDestroyObject);
     }
 
@@ -132,11 +130,7 @@ public class CommonMapController : BaseMapController
     {
         var (userSubject, positionKeyList, cellsToRemove) = 
             MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
-          
-        LogManager.WriteDebugLog($"=== SpawnManage Start ===");
-        LogManager.WriteDebugLog($"User: {userSubject}, PositionKeys: {string.Join(",", positionKeyList)}");
-        LogManager.WriteDebugLog($"CellsToRemove: {string.Join(",", cellsToRemove.Select(c => $"{c.X},{c.Y}"))}");
-
+        
         var spawnList = new HashSet<string>();
         var cellsWithObjects = new List<Cell>();
 
@@ -151,7 +145,6 @@ public class CommonMapController : BaseMapController
                     {
                         spawnList.Add(obj);
                     }
-                    LogManager.WriteDebugLog($"Position {positionKey} objects: {string.Join(",", objects)}");
                 }
             }
 
@@ -161,7 +154,6 @@ public class CommonMapController : BaseMapController
                 if (_objectPositionDict.TryGetValue(key, out var objects) && objects.Count > 0)
                 {
                     cellsWithObjects.Add(cell);
-                    LogManager.WriteDebugLog($"Cell {cell.X},{cell.Y} has objects: {string.Join(",", objects)}");
                 }
             }
         }
@@ -172,15 +164,11 @@ public class CommonMapController : BaseMapController
 
         if (spawnList.Count <= 0 && cellsWithObjects.Count == 0)
         {
-            LogManager.WriteDebugLog("No objects to spawn or remove");
             return;
         }
 
-        LogManager.WriteDebugLog($"Sending packet - userSubject: {userSubject}, Spawn count: {spawnList.Count}, Remove cells: {cellsWithObjects.Count}");
         using var packet = PacketMaker.G_TO_U_SPAWN(spawnList.ToList(), cellsWithObjects);
         NatsClient.Publish(userSubject, packet.ToBytes());
-       
-        LogManager.WriteDebugLog("=== SpawnManage End ===");
     }
 
     private async Task DestroyManageObjectAsync(byte[] message)
@@ -222,10 +210,7 @@ public class CommonMapController : BaseMapController
     {
         var movedCell = objectInfo.CurrentCell;
         var lastCell = MapHelper.CreateCell(positionKey);
-       
-        LogManager.WriteDebugLog($"=== BroadcastObjectMove Start ===");
-        LogManager.WriteDebugLog($"Object: {objectInfo.GetGameObjectKey()}, LastPosition: {positionKey}, NewPosition: {MapHelper.CreatePartKey(_mapId, movedCell)}");
-
+        
         var lastBoundCells = lastCell.GetBoundCellList();
         var newBoundCells = movedCell.GetBoundCellList();
 
@@ -277,13 +262,10 @@ public class CommonMapController : BaseMapController
 
         foreach (var serverGroup in affectedServers)
         {
-            LogManager.WriteDebugLog($"Server {serverGroup.serverId}: {serverGroup.cells.Count} cells");
             var subject = SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, serverGroup.serverId);
             var message = MessagePackSerializer.Serialize((positionKey, objectInfo));
             NatsClient.Publish(subject, message);
         }
-       
-        LogManager.WriteDebugLog("=== BroadcastObjectMove End ===");
     }
 
     protected override void BroadcastPacket(string positionKey, IPacket packet)

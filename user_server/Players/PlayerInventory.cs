@@ -1,9 +1,8 @@
 using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.helpers;
+using network.interfaces;
 using network.packets;
-using RedLockNet.SERedis;
 
 namespace user_server.players;
 
@@ -11,11 +10,9 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
 {
     private const string ItemUidKey = "item_uid_key";
     
-    private readonly CacheHelper _cacheHelper = user.CacheHelper;
-    private readonly RedLockFactory _redLock = user.RedLock;
-    private readonly SendPacketDelegate _sendToClient = user.Send;
+    private readonly ICacheHelper _cacheHelper = user.CacheHelper;
 
-    public static async Task<ItemInfo> CreateItem(CacheHelper cacheHelper, int itemId, int count)
+    public static async Task<ItemInfo> CreateItem(ICacheHelper cacheHelper, int itemId, int count)
     {
         // TODO RDB PK로 교체 예정
         var itemUid = await cacheHelper.StringIncrementAsync(ItemUidKey);

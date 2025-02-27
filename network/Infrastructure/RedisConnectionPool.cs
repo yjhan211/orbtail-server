@@ -1,11 +1,13 @@
 using System.Collections.Concurrent;
+using network.interfaces;
+using RedLockNet;
 using RedLockNet.SERedis;
 using RedLockNet.SERedis.Configuration;
 using StackExchange.Redis;
 
 namespace network.infrastructure;
 
-public class RedisConnectionPool
+public class RedisConnectionPool : IRedisConnectionPool
 {
     private readonly ConcurrentDictionary<int, IDatabase> _databases = new();
     private readonly object _lock = new();
@@ -36,7 +38,6 @@ public class RedisConnectionPool
     private ConnectionMultiplexer GetConnection()
     {
         if (_lazyConnection == null) throw new InvalidOperationException("Redis connection is not initialized.");
-
         return _lazyConnection.Value;
     }
 
@@ -54,11 +55,12 @@ public class RedisConnectionPool
     {
         lock (_lock)
         {
-            if (_lazyConnection!.IsValueCreated) _lazyConnection.Value.Dispose();
+            if (_lazyConnection != null && _lazyConnection.IsValueCreated) 
+                _lazyConnection.Value.Dispose();
         }
     }
 
-    public RedLockFactory GetRedLockFactory()
+    public IRedLockFactory GetRedLockFactory()
     {
         var connection = GetConnection();
         var endpoints = connection
@@ -66,7 +68,9 @@ public class RedisConnectionPool
             .Select(endpoint => new RedLockEndPoint { EndPoint = endpoint })
             .ToList();
 
-        return RedLockFactory.Create(endpoints);
+        // 여기서는 직접 RedLockFactory를 반환하지만,
+        // 실제 구현에서는 IRedLockFactory를 구현한 어댑터 클래스를 반환해야 함
+        return new RedLockFactoryAdapter(RedLockFactory.Create(endpoints));
     }
 
     public async Task<T> ExecuteWithRetryAsync<T>(Func<IDatabase, Task<T>> action, int db = -1, int retryCount = 3)
@@ -98,4 +102,16 @@ public class RedisConnectionPool
 
         throw new Exception($"Redis operation failed after {retryCount} retries");
     }
+}
+
+// RedLockFactory의 어댑터 클래스
+public class RedLockFactoryAdapter(RedLockFactory redLockFactory) : IRedLockFactory
+{
+    // CreateLockAsync 구현
+    public Task<IRedLock> CreateLockAsync(string resource, TimeSpan expiryTime)
+    {
+        return redLockFactory.CreateLockAsync(resource, expiryTime);
+    }
+        
+    // 필요한 경우 다른 메서드들도 구현
 }

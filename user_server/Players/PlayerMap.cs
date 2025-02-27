@@ -3,15 +3,15 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.helpers;
-using network.infrastructure;
+using network.interfaces;
 using network.packets;
 
 namespace user_server.players;
 
 public class PlayerMap(GameUser user, PlayerInfo playerInfo)
 {
-    private readonly NatsClient _natsClient = user.NatsClient;
-    private readonly CacheHelper _cacheHelper = user.CacheHelper;
+    private readonly INatsClient _natsClient = user.NatsClient;
+    private readonly ICacheHelper _cacheHelper = user.CacheHelper;
     private readonly SendPacketDelegate _sendToClient = user.Send;
 
     public (MapId, long, Cell, bool) CurrentMapInfo => 

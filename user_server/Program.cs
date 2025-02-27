@@ -6,6 +6,7 @@ using network.config;
 using network.core;
 using network.helpers;
 using network.infrastructure;
+using network.interfaces;
 using network.managers;
 
 namespace user_server;
@@ -39,22 +40,28 @@ internal static class Program
         {
             ServerType = hostContext.Configuration["serverType"] ?? "UserServer",
             GameServerNum = hostContext.Configuration.GetValue<int>("gameServerNum"),
-            GameServerId = 0
+            ServerId = 0
         };
         
         serverConfig.Validate();
 
+        services.AddSingleton<IServerConfig>(serverConfig);
         services.AddSingleton(serverConfig);
         services.AddSingleton<NetworkService>();
+        services.AddSingleton<INetworkService, NetworkService>();
         services.AddSingleton<NatsClientFactory>();
-        services.AddSingleton(sp => new LogManager(serverConfig.ServerType, serverConfig.GameServerId));
+        services.AddSingleton<INatsClientFactory, NatsClientFactory>();
+        services.AddSingleton(sp => new LogManager(serverConfig.ServerType, serverConfig.ServerId));
         services.AddHostedService<UserServer>();
         services.AddSingleton<CacheHelper>(sp => 
         {
             var redisPool = new RedisConnectionPool();
             var redisEndpoints = hostContext.Configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
             redisPool.Initialize(redisEndpoints);
+            services.AddSingleton<IRedisConnectionPool>(redisPool);
+            
             return new CacheHelper(redisPool);
         });
+        services.AddSingleton<ICacheHelper, CacheHelper>();
     }
 }

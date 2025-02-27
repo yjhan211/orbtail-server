@@ -3,24 +3,23 @@ using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.helpers;
-using network.infrastructure;
-using network.managers;
 using network.packets;
-using network.utils;
 using network.config;
+using network.interfaces;
 
 namespace game_server;
 public class GameServer : IHostedService
 {
     private readonly IConfiguration _configuration;
-    private readonly LogManager _logManager;
-    private readonly NatsClientFactory _natsClientFactory;
-    private readonly CacheHelper _cacheHelper;
+    private readonly ILogger _logger;
+    private readonly INatsClientFactory _natsClientFactory;
+    private readonly ICacheHelper _cacheHelper;
     private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
     
     private readonly List<CommonMapController> _commonMapControllerList = [];
@@ -32,13 +31,13 @@ public class GameServer : IHostedService
 
     public GameServer(
         IConfiguration configuration,
-        LogManager logManager,
-        NatsClientFactory natsClientFactory,
-        CacheHelper cacheHelper,
+        ILogger logger,
+        INatsClientFactory natsClientFactory,
+        ICacheHelper cacheHelper,
         ServerConfig serverConfig)
     {
         _configuration = configuration;
-        _logManager = logManager;
+        _logger = logger;
         _natsClientFactory = natsClientFactory;
         _cacheHelper = cacheHelper;
         _serverConfig = serverConfig;
@@ -53,7 +52,7 @@ public class GameServer : IHostedService
     {
         try
         {
-            _logManager.WriteInfoLog("Game server starting...");
+            _logger.LogInformation("Game server starting...");
 
             InitializeServices();
             InitializeControllers();
@@ -61,19 +60,19 @@ public class GameServer : IHostedService
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             StartMessageProcessing();
 
-            _logManager.WriteInfoLog("Game server started successfully.");
+            _logger.LogInformation("Game server started successfully.");
             return Task.CompletedTask;
         }
         catch (Exception ex)
         {
-            _logManager.WriteErrorLog(ex);
+            _logger.LogError(ex, "Game server starting failed.");
             throw;
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logManager.WriteInfoLog("Game server stopping...");
+        _logger.LogInformation("Game server stopping...");
 
         await _cts.CancelAsync();
         if (_messageProcessor != null) await _messageProcessor.DisposeAsync();
@@ -83,7 +82,7 @@ public class GameServer : IHostedService
 
         _cts.Dispose();
 
-        _logManager.WriteInfoLog("Game server stopped.");
+        _logger.LogInformation("Game server stopped.");
     }
 
     private void InitializeServices()
@@ -93,7 +92,7 @@ public class GameServer : IHostedService
         try
         {
             _natsClientFactory.Initialize(natsEndpoint);
-            GameDataHelper.Initialize(_logManager);
+            GameDataHelper.Initialize();
             MapHelper.Initialize(_serverConfig.GameServerNum);
         }
         catch (Exception ex)
@@ -106,19 +105,19 @@ public class GameServer : IHostedService
     {
         foreach (var mapId in GameMapData.GetCommonMapList())
         {
-            var controller = new CommonMapController(_logManager, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig, mapId);
+            var controller = new CommonMapController(_logger, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig, mapId);
             controller.Initialize();
             _commonMapControllerList.Add(controller);
         }
 
-        var instanceController = new InstanceMapController(_logManager, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig);
+        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
 
     private void StartMessageProcessing()
     {
-        var messageProcessor = new PacketQueueService(_cacheHelper, ProcessMessage, _logManager);
+        var messageProcessor = new PacketQueueService(_cacheHelper, ProcessMessage, _logger);
         messageProcessor.StartAsync(_cts.Token);
         _messageProcessor = messageProcessor;
     }

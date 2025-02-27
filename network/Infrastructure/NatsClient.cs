@@ -1,18 +1,19 @@
 using NATS.Client;
+using network.interfaces;
 
 namespace network.infrastructure;
 
-public class NatsClient
+public class NatsClient : INatsClient
 {
-    private readonly IConnection _connection;
-    private readonly List<IAsyncSubscription> _subscriptions;
+    private readonly NATS.Client.IConnection _connection;
+    private readonly List<NATS.Client.IAsyncSubscription> _subscriptions;
 
     public NatsClient(string url)
     {
-        var options = ConnectionFactory.GetDefaultOptions();
+        var options = NATS.Client.ConnectionFactory.GetDefaultOptions();
         options.Url = url;
 
-        _connection = new ConnectionFactory().CreateConnection(options);
+        _connection = new NATS.Client.ConnectionFactory().CreateConnection(options);
         _subscriptions = [];
     }
 
@@ -23,7 +24,7 @@ public class NatsClient
 
     public void Subscribe(string subject, Action<string, byte[]> messageHandler)
     {
-        void Handler(object? sender, MsgHandlerEventArgs args)
+        void Handler(object? sender, NATS.Client.MsgHandlerEventArgs args)
         {
             messageHandler(args.Message.Subject, args.Message.Data);
         }
@@ -41,7 +42,8 @@ public class NatsClient
     }
 }
 
-public class NatsClientFactory
+// 기존 NatsClientFactory 클래스 리팩터링
+public class NatsClientFactory : INatsClientFactory
 {
     private string _natsEndpoint = "";
 
@@ -50,7 +52,7 @@ public class NatsClientFactory
         _natsEndpoint = natsEndPoint;
     }
 
-    public NatsClient Create()
+    public INatsClient Create()
     {
         try
         {

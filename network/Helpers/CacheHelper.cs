@@ -1,13 +1,13 @@
 using network.common;
 using network.infrastructure;
-using RedLockNet.SERedis;
+using network.interfaces;
 using StackExchange.Redis;
 
 namespace network.helpers;
 
-public class CacheHelper(RedisConnectionPool redisPool)
+public class CacheHelper(RedisConnectionPool redisPool) : ICacheHelper
 {
-    public RedLockFactory GetRedLockFactory() => redisPool.GetRedLockFactory();
+    public IRedLockFactory GetRedLockFactory() => redisPool.GetRedLockFactory();
     
     private async Task<T> ExecuteRedisCommandAsync<T>(Func<IDatabase, Task<T>> action, int db = -1)
     {

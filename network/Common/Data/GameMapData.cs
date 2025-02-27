@@ -268,7 +268,7 @@ namespace network.common.data
             return chairInfo.IsFlip ? ChairDirection.RIGHT : ChairDirection.LEFT;
         }
 
-        public static void Validate(LogManager logManager)
+        public static void Validate()
         {
             if (_mapInfos.Count == 0)
             {
@@ -341,8 +341,6 @@ namespace network.common.data
                     }
                 }
             }
-
-            logManager.WriteDebugLog("Map data validation completed successfully!");
         }
 
         public class MapInfo

@@ -3,6 +3,7 @@
 using network.common;
 using network.common.data.models;
 using network.helpers;
+using network.interfaces;
 using network.packets;
 using user_server.players;
 
@@ -22,7 +23,7 @@ public class PlayerController
         PlayerState.EXPLORE_1,
     };
     
-    private readonly CacheHelper _cacheHelper;
+    private readonly ICacheHelper _cacheHelper;
 
     private readonly SendPacketDelegate _sendToClient;
     private readonly BroadcastDelegate<PlayerInfo> _broadcastPlayerInfo;

@@ -1,6 +1,7 @@
 using network.common;
 using network.common.data.models;
 using network.helpers;
+using network.interfaces;
 using network.packets;
 
 namespace user_server.players;
@@ -9,10 +10,10 @@ public class PlayerMailBox(GameUser user, PlayerInfo playerInfo, PlayerInventory
 {
     private const string MailUidKey = "mail_uid_key";
     
-    private readonly CacheHelper _cacheHelper = user.CacheHelper;
+    private readonly ICacheHelper _cacheHelper = user.CacheHelper;
     private readonly SendPacketDelegate _sendToClient = user.Send;
 
-    public static async Task<MailInfo> CreateMail(CacheHelper cacheHelper, int mailId, List<(int, int)>? items = null)
+    public static async Task<MailInfo> CreateMail(ICacheHelper cacheHelper, int mailId, List<(int, int)>? items = null)
     {
         // TODO RDB PK로 교체 예정
         var mailUid = await cacheHelper.StringIncrementAsync(MailUidKey);
@@ -52,7 +53,7 @@ public class PlayerMailBox(GameUser user, PlayerInfo playerInfo, PlayerInventory
         }
 
         using var packet = PacketMaker.U_TO_C_MAIL_RECEIVE(body.MailUid, ErrorCode.SUCCESS);
-        user.Send(packet);
+        _sendToClient(packet);
 
         await SendCurrentMails();
     }
@@ -74,7 +75,7 @@ public class PlayerMailBox(GameUser user, PlayerInfo playerInfo, PlayerInventory
             var isEnded = i + Config.BROADCAST_UNIT >= mailKeys.Length;
 
             using var packet = PacketMaker.U_TO_C_MAIL_LIST(batchDict, isEnded);
-            user.Send(packet);
+            _sendToClient(packet);
         }
     }
 }

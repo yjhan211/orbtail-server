@@ -1,5 +1,5 @@
 using MessagePack;
-using network.helpers;
+using network.interfaces;
 
 // ReSharper disable once CheckNamespace
 namespace network.common.data.models;
@@ -88,13 +88,13 @@ public partial class InventoryInfo
         return item;
     }
 
-    public async Task Save(CacheHelper cacheHelper)
+    public async Task Save(ICacheHelper cacheHelper)
     {
         await cacheHelper.HashSetAsync(HashKey, $"{(int)OwnerType}_{OwnerId}",
             MessagePackSerializer.Serialize(this));
     }
 
-    public static async Task<InventoryInfo?> Load(CacheHelper cacheHelper, InventoryOwnerType ownerType, long ownerId)
+    public static async Task<InventoryInfo?> Load(ICacheHelper cacheHelper, InventoryOwnerType ownerType, long ownerId)
     {
         var serializedData = await cacheHelper.HashGetAsync(HashKey, $"{(int)ownerType}_{ownerId}");
         if (serializedData.IsNull) return new InventoryInfo(ownerType, ownerId);
@@ -103,7 +103,7 @@ public partial class InventoryInfo
         return inventoryInfo;
     }
 
-    public static async Task Delete(CacheHelper cacheHelper, InventoryOwnerType ownerType, long ownerId)
+    public static async Task Delete(ICacheHelper cacheHelper, InventoryOwnerType ownerType, long ownerId)
     {
         await cacheHelper.HashDeleteAsync(HashKey, $"{(int)ownerType}_{ownerId}");
     }

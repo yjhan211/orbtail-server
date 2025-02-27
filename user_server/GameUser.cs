@@ -1,16 +1,14 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using MessagePack;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.core;
 using network.helpers;
-using network.infrastructure;
 using network.interfaces;
-using network.managers;
 using network.packets;
 using network.utils;
-using RedLockNet.SERedis;
 using StackExchange.Redis;
 using user_server.controllers;
 using user_server.players;
@@ -35,10 +33,10 @@ public class GameUser : IPeer
     public readonly CancellationTokenSource Cts;
 
     public readonly MapObjectController MapObjectController;
-    public readonly CacheHelper CacheHelper;
-    public readonly NatsClient NatsClient;
-    public readonly RedLockFactory RedLock;
-    public readonly LogManager LogManager;
+    public readonly ICacheHelper CacheHelper;
+    public readonly INatsClient NatsClient;
+    public readonly IRedLockFactory RedLock;
+    public readonly ILogger Logger;
 
     private static readonly IReadOnlyList<Protocol> NonAuthProtocol = new List<Protocol>
     {
@@ -46,7 +44,8 @@ public class GameUser : IPeer
         Protocol.C_TO_U_LOGIN
     };
 
-    public GameUser(UserToken token, RedLockFactory redLock, NatsClient natsClient, LogManager logManager, CacheHelper cacheHelper, Action<GameUser> onLeaveCallback, ChatController chatController)
+
+    public GameUser(UserToken token, IRedLockFactory redLock, INatsClient natsClient, ILogger logger, ICacheHelper cacheHelper, Action<GameUser> onLeaveCallback, ChatController chatController)
     {
         _token = token;
         _token.SetPeer(this);
@@ -56,7 +55,7 @@ public class GameUser : IPeer
         CacheHelper = cacheHelper;
         RedLock = redLock;
         NatsClient = natsClient;
-        LogManager = logManager;
+        Logger = logger;
         
         _onLeaveCallback = onLeaveCallback;
         _chatController = chatController;
@@ -65,7 +64,7 @@ public class GameUser : IPeer
         InitializeProtocolHandlers();
         InitializeSubscribeHandlers();
 
-        LogManager.WriteInfoLog("Create GameUser Success!");
+        Logger.LogInformation("Create GameUser Success!");
     }
 
     [MemberNotNull(nameof(_protocolHandlers))]
@@ -128,7 +127,7 @@ public class GameUser : IPeer
             var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
 
-            LogManager.WriteDebugLog($"[{playerId}] {protocolId}");
+            Logger.LogInformation("[{PlayerId}] {ProtocolId}", playerId, protocolId);
 
             if (!_protocolHandlers.TryGetValue(protocolId, out var handler))
             {
@@ -153,9 +152,9 @@ public class GameUser : IPeer
 
             await handler(body);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            LogManager.WriteErrorLog(e);
+            Logger.LogError(ex, "onMessageFromClient");
         }
         finally
         {
@@ -181,9 +180,9 @@ public class GameUser : IPeer
 
             await handler(body);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            LogManager.WriteErrorLog(e);
+            Logger.LogError(ex, "onMessageFromSubscribe");
         }
         finally
         {
@@ -201,9 +200,9 @@ public class GameUser : IPeer
                 {
                     await handler(message);
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    LogManager.WriteErrorLog(e);
+                    Logger.LogError(ex, "onMessageFromSubscribe");
                 }
             });
         });
@@ -458,8 +457,6 @@ public class GameUser : IPeer
        
         using var packet = PacketMaker.U_TO_C_SPAWN(batch, isEnded, cellBatch);
         Send(packet);
-    
-        LogManager.WriteDebugLog($"[SubscribeSpawn] Send {batch.Count} | {cellBatch.Count}");
     }
 
     private Task SubscribeDestroy(G_TO_U_DESTROY body)
@@ -611,7 +608,7 @@ public class GameUser : IPeer
 
             if (_playerController != null)
             {
-                LogManager.WriteInfoLog($"GameUser Removed. PlayerId:{_playerController.PlayerId}");
+                Logger.LogInformation("GameUser Removed. PlayerId:{_playerController.PlayerId}", _playerController.PlayerId);
                 await _playerController.Dispose();
                 using var packet = PacketMaker.U_TO_G_LOGOUT(_playerController.PlayerId);
                 await SendToGameServer(packet);
@@ -624,7 +621,7 @@ public class GameUser : IPeer
         }
         catch (Exception ex)
         {
-            LogManager.WriteErrorLog(ex);
+            Logger.LogError(ex, "Releasing Game User");
         }
         finally
         {

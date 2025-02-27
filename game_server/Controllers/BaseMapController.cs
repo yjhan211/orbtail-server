@@ -1,4 +1,5 @@
 using MessagePack;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
 using network.config;
@@ -12,16 +13,16 @@ using StackExchange.Redis;
 namespace game_server.controllers;
 
 public abstract class BaseMapController(
-    LogManager logManager,
-    NatsClient natsClient,
+    ILogger logger,
+    INatsClient natsClient,
     CancellationTokenSource cts,
-    CacheHelper cacheHelper,
+    ICacheHelper cacheHelper,
     ServerConfig serverConfig)
 {
-   protected readonly LogManager LogManager = logManager;
-   protected readonly NatsClient NatsClient = natsClient;
+   protected readonly ILogger Logger = logger;
+   protected readonly INatsClient NatsClient = natsClient;
    protected readonly CancellationTokenSource Cts = cts;
-   protected readonly CacheHelper CacheHelper = cacheHelper;
+   protected readonly ICacheHelper CacheHelper = cacheHelper;
    protected readonly ServerConfig ServerConfig = serverConfig;
    protected readonly SemaphoreSlim MapLock = new(1, 1);
 
@@ -37,7 +38,7 @@ public abstract class BaseMapController(
                }
                catch (Exception ex)
                {
-                   LogManager.WriteErrorLog(ex);
+                   Logger.LogError(ex, "Unhandled exception in handler");
                }
            });
        });

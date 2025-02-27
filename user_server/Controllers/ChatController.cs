@@ -1,15 +1,13 @@
 using MessagePack;
 using network.common;
-using network.common.data.models;
-using network.helpers;
-using network.infrastructure;
+using network.interfaces;
 using network.packets;
 using network.utils;
 using StackExchange.Redis;
 
 namespace user_server.controllers;
 
-public class ChatController(CacheHelper cacheHelper)
+public class ChatController(ICacheHelper cacheHelper)
 {
     private readonly LruCache<long, string> _userNameMap = new(1000);
     private const int HistoryNum = 30;
@@ -63,7 +61,7 @@ public class ChatController(CacheHelper cacheHelper)
         return chatHistory;
     }
     
-    public async Task SendChat(long playerId, string name, ChatType chatType, string message, NatsClient natsClient)
+    public async Task SendChat(long playerId, string name, ChatType chatType, string message, INatsClient natsClient)
     {
         if (!_userNameMap.TryGet(playerId, out var _))
         {

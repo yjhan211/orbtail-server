@@ -68,11 +68,8 @@ public static class MapHelper
                 }
 
                 PositionListByMapPart[mapId][part] = cells;
-                Console.WriteLine($"Part {part}: {cells.Count} cells, X({startX}~{endX})");
             }
         }
-
-        Console.WriteLine("\n[End] Common map partitioning");
     }
 
     private static bool IsInGroundRegions(Cell cell, List<GameMapData.MapRegion> groundRegions)

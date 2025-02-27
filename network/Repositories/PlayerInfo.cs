@@ -1,5 +1,6 @@
 using MessagePack;
 using network.helpers;
+using network.interfaces;
 using RedLockNet;
 using RedLockNet.SERedis;
 using StackExchange.Redis;
@@ -9,7 +10,7 @@ namespace network.common.data.models;
 
 public partial class PlayerInfo
 {
-    public static async Task<IRedLock> Lock(RedLockFactory redLock, long playerId)
+    public static async Task<IRedLock> Lock(IRedLockFactory redLock, long playerId)
     {
         return await redLock.CreateLockAsync(GetLockKey(playerId), Config.LOCK_TTL);
     }
@@ -19,7 +20,7 @@ public partial class PlayerInfo
         return await redLock.CreateLockAsync(GetLockKey(), Config.LOCK_TTL);
     }
 
-    public async Task Save(CacheHelper cacheHelper)
+    public async Task Save(ICacheHelper cacheHelper)
     {
         // 조회가 빈번해서 메모리에 올려뒀음. 따로 Save함
         // await GameObjectInfoController.Save(cache_helper, player_info.object_info);
@@ -29,7 +30,7 @@ public partial class PlayerInfo
         await cacheHelper.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
     }
 
-    public static async Task<PlayerInfo?> Load(CacheHelper cacheHelper, long playerId)
+    public static async Task<PlayerInfo?> Load(ICacheHelper cacheHelper, long playerId)
     {
         var serialized = await cacheHelper.HashGetAsync(HashKey, playerId);
         if (serialized == RedisValue.Null)
@@ -49,7 +50,7 @@ public partial class PlayerInfo
         return playerInfo;
     }
 
-    public static async Task<List<PlayerInfo>> LoadAll(CacheHelper cacheHelper, RedisValue[] objectKeys)
+    public static async Task<List<PlayerInfo>> LoadAll(ICacheHelper cacheHelper, RedisValue[] objectKeys)
     {
         var hashEntries = await cacheHelper.HashGetAsync(HashKey, objectKeys);
         var hashStrings = hashEntries
@@ -60,13 +61,13 @@ public partial class PlayerInfo
         return hashStrings.Select(hashString => MessagePackSerializer.Deserialize<PlayerInfo>(hashString)).ToList();
     }
 
-    public async Task Delete(CacheHelper cacheHelper, PlayerInfo playerInfo)
+    public async Task Delete(ICacheHelper cacheHelper, PlayerInfo playerInfo)
     {
         await playerInfo.ObjectInfo.Delete(cacheHelper);
         await cacheHelper.HashDeleteAsync(HashKey, playerInfo.PlayerId);
     }
 
-    public static async Task Delete(CacheHelper cacheHelper, long playerId)
+    public static async Task Delete(ICacheHelper cacheHelper, long playerId)
     {
         var objectField = GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, playerId);
 

@@ -8,6 +8,7 @@ using network.infrastructure;
 using network.managers;
 using network.config;
 using network.helpers;
+using network.interfaces;
 
 namespace game_server;
 
@@ -47,23 +48,29 @@ internal static partial class Program
         {
             ServerType = hostContext.Configuration["serverType"] ?? "GameServer",
             GameServerNum = hostContext.Configuration.GetValue<int>("gameServerNum"),
-            GameServerId = ExtractGameServerId(hostContext.Configuration["gameServerId"] ?? "")
+            ServerId = ExtractGameServerId(hostContext.Configuration["gameServerId"] ?? "")
         };
         
         serverConfig.Validate();
 
+        services.AddSingleton<IServerConfig>(serverConfig);
         services.AddSingleton(serverConfig);
         services.AddSingleton<NetworkService>();
+        services.AddSingleton<INetworkService, NetworkService>();
         services.AddSingleton<NatsClientFactory>();
-        services.AddSingleton(sp => new LogManager(serverConfig.ServerType, serverConfig.GameServerId));
+        services.AddSingleton<INatsClientFactory, NatsClientFactory>();
+        services.AddSingleton(sp => new LogManager(serverConfig.ServerType, serverConfig.ServerId));
         services.AddHostedService<GameServer>();
         services.AddSingleton<CacheHelper>(sp => 
         {
             var redisPool = new RedisConnectionPool();
             var redisEndpoints = hostContext.Configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
             redisPool.Initialize(redisEndpoints);
+            services.AddSingleton<IRedisConnectionPool>(redisPool);
+            
             return new CacheHelper(redisPool);
         });
+        services.AddSingleton<ICacheHelper, CacheHelper>();
     }
 
     [GeneratedRegex(@"-(\d+)$")]

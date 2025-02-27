@@ -1,16 +1,15 @@
 using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.helpers;
+using network.interfaces;
 using network.packets;
-using RedLockNet.SERedis;
 
 namespace user_server.players;
 
 public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
 {
-    private readonly CacheHelper _cacheHelper = user.CacheHelper;
-    private readonly RedLockFactory _redLock = user.RedLock;
+    private readonly ICacheHelper _cacheHelper = user.CacheHelper;
+    private readonly IRedLockFactory _redLock = user.RedLock;
     private readonly SendPacketDelegate _sendToClient = user.Send;
 
     public async Task StartQuest(int questId, List<QuestInfo>? updateQuests = null)

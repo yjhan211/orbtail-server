@@ -1,13 +1,9 @@
-using network.helpers;
-using network.managers;
+using Microsoft.Extensions.Logging;
+using network.interfaces;
 
 namespace game_server.services;
 
-public class PacketQueueService(
-    CacheHelper cacheHelper,
-    Func<byte[], Task> messageHandler,
-    LogManager logManager)
-    : IAsyncDisposable
+public class PacketQueueService(ICacheHelper cacheHelper, Func<byte[], Task> messageHandler, ILogger logger) : IAsyncDisposable
 {
     private Task? _processingTask;
     private CancellationToken _cancellationToken;
@@ -36,7 +32,7 @@ public class PacketQueueService(
             }
             catch (Exception ex)
             {
-                logManager.WriteErrorLog(ex);
+                logger.LogError(ex, "Error while processing message");
                 await Task.Delay(1000, _cancellationToken);
             }
         }

@@ -1,25 +1,24 @@
 using MessagePack;
-using network.helpers;
+using network.interfaces;
 using RedLockNet;
-using RedLockNet.SERedis;
 
 // ReSharper disable once CheckNamespace
 namespace network.common.data.models;
 
 public partial class LabInfo
 {
-    public static async Task<IRedLock> Lock(CacheHelper cacheHelper, long labId)
+    public static async Task<IRedLock> Lock(ICacheHelper cacheHelper, long labId)
     {
         return await cacheHelper.GetRedLockFactory().CreateLockAsync(GetLockKey(labId), Config.LOCK_TTL);
     }
 
-    public async Task Save(CacheHelper cacheHelper)
+    public async Task Save(ICacheHelper cacheHelper)
     {
         await InventoryInfo.Save(cacheHelper);
         await cacheHelper.HashSetAsync(HashKey, LabId, MessagePackSerializer.Serialize(this));
     }
 
-    public static async Task<LabInfo?> Load(CacheHelper cacheHelper, long labId)
+    public static async Task<LabInfo?> Load(ICacheHelper cacheHelper, long labId)
     {
         var serializedData = await cacheHelper.HashGetAsync(HashKey, labId);
         if (serializedData.IsNull) return null;
@@ -32,7 +31,7 @@ public partial class LabInfo
         return labInfo;
     }
 
-    public static async Task Delete(CacheHelper cacheHelper, long labId)
+    public static async Task Delete(ICacheHelper cacheHelper, long labId)
     {
         await cacheHelper.HashDeleteAsync(HashKey, labId);
     }

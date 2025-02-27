@@ -1,19 +1,19 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using network.interfaces;
-using network.managers;
 
 namespace user_server.players;
 
 public sealed class PlayerProgress : IDisposable
 {
-    private readonly LogManager _logManager;
+    private readonly ILogger _logger;
     private readonly ConcurrentDictionary<Guid, ProgressItem> _activeProgressItems = new();
     private readonly Timer _cleanupTimer;
     private bool _disposed;
 
     public PlayerProgress(GameUser user)
     {
-        _logManager = user.LogManager;
+        _logger = user.Logger;
         _cleanupTimer = new Timer(CleanupExpiredItems, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
     }
 
@@ -42,7 +42,7 @@ public sealed class PlayerProgress : IDisposable
         }
         catch (Exception ex)
         {
-            _logManager.WriteErrorLog(ex);
+            _logger.LogError(ex, "Error cleaning up expired items");
         }
     }
 
@@ -54,7 +54,7 @@ public sealed class PlayerProgress : IDisposable
         }
         catch (Exception ex)
         {
-            _logManager.WriteErrorLog(ex);
+            _logger.LogError(ex, "Error processing expired item");
         }
     }
 

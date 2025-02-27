@@ -4,12 +4,14 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Extensions.Logging;
 using Serilog.Formatting.Compact;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace network.managers;
 
-public class LogManager
+public class LogManager : ILogger
 {
     private readonly ILogger<LogManager> _logger;
+    private readonly SerilogLoggerProvider _loggerProvider;
 
     public LogManager(string serverType, int serverId)
     {
@@ -20,6 +22,7 @@ public class LogManager
             .WriteTo.Console(new CompactJsonFormatter())
             .CreateLogger();
 
+        _loggerProvider = new SerilogLoggerProvider(serilogLogger);
         var factory = new SerilogLoggerFactory(serilogLogger);
         _logger = factory.CreateLogger<LogManager>();
     }
@@ -61,9 +64,32 @@ public class LogManager
         _logger.LogDebug(logBuilder.ToString());
     }
 
-
     public void WriteErrorLog(Exception exception)
     {
         _logger.LogError(exception, exception.Message);
+    }
+
+    public void WriteErrorLog(string message)
+    {
+        _logger.LogError(message);
+    }
+
+    // ILogger 인터페이스 구현
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+    {
+        // Serilog의 LoggerProvider를 통해 스코프 시작
+        return _loggerProvider.CreateLogger("LogManager").BeginScope(state);
+    }
+
+    public bool IsEnabled(LogLevel logLevel)
+    {
+        // 모든 로그 레벨 활성화
+        return true;
+    }
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        // 내부 로거에 위임
+        _logger.Log(logLevel, eventId, state, exception, formatter);
     }
 }

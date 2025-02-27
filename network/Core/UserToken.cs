@@ -1,13 +1,12 @@
 ﻿using System.Net.Sockets;
 using network.common;
 using network.interfaces;
-using network.managers;
 using network.packets;
 using network.utils;
 
 namespace network.core;
 
-public class UserToken(int tokenId, LogManager logManager)
+public class UserToken
 {
     private readonly object _lockSendingQueue = new();
     private readonly MessageResolver _messageResolver = new();
@@ -21,7 +20,7 @@ public class UserToken(int tokenId, LogManager logManager)
     public bool IsReleased { get; set; }
     public event Action<UserToken>? Disconnected;
 
-    public void SetPeer(IPeer peer)
+    public virtual void SetPeer(IPeer peer)
     {
         _peer = peer;
         IsReleased = false;
@@ -32,15 +31,8 @@ public class UserToken(int tokenId, LogManager logManager)
     {
         _heartbeatTimer = new Timer(_ =>
             {
-                try
-                {
-                    var msg = Packet.Create((int)Protocol.C_TO_U_HEART_BEAT);
-                    Send(msg);
-                }
-                catch (Exception ex)
-                {
-                    logManager.WriteErrorLog(ex);
-                }
+                var msg = Packet.Create((int)Protocol.C_TO_U_HEART_BEAT);
+                Send(msg);
             },
             null,
             TimeSpan.Zero,
@@ -69,7 +61,7 @@ public class UserToken(int tokenId, LogManager logManager)
         _peer.OnMessageFromClient(buffer);
     }
 
-    public void Send(Packet msg)
+    public virtual void Send(Packet msg)
     {
         Packet clone = new();
         msg.CopyTo(clone);
@@ -139,19 +131,12 @@ public class UserToken(int tokenId, LogManager logManager)
 
     public void Disconnect()
     {
-        try
+        if (Socket is { Connected: true })
         {
-            if (Socket is { Connected: true })
-            {
-                Socket.Shutdown(SocketShutdown.Both);
-                Socket.Close();
-            }
+            Socket.Shutdown(SocketShutdown.Both);
+            Socket.Close();
         }
-        catch (Exception ex)
-        {
-            logManager.WriteErrorLog(ex);
-        }
-
+        
         OnRemoved();
         Disconnected?.Invoke(this);
     }

@@ -1,13 +1,12 @@
 using System.Collections.Concurrent;
 using MessagePack;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.config;
 using network.helpers;
-using network.infrastructure;
 using network.interfaces;
-using network.managers;
 using network.packets;
 
 namespace game_server.controllers;
@@ -18,15 +17,15 @@ public class InstanceMapController : BaseMapController
    private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
 
    private string EnterInstanceSubject => 
-       SubjectHelper.GetEnterInstanceSubject(ServerConfig.GameServerId);
+       SubjectHelper.GetEnterInstanceSubject(ServerConfig.ServerId);
 
    public InstanceMapController(
-       LogManager logManager,
-       NatsClient natsClient,
+       ILogger logger,
+       INatsClient natsClient,
        CancellationTokenSource cts,
-       CacheHelper cacheHelper,
+       ICacheHelper cacheHelper,
        ServerConfig serverConfig) 
-       : base(logManager, natsClient, cts, cacheHelper, serverConfig)
+       : base(logger, natsClient, cts, cacheHelper, serverConfig)
    {
        _protocolHandlers = new Dictionary<Protocol, Func<long, byte[], Task>>
        {
@@ -43,12 +42,12 @@ public class InstanceMapController : BaseMapController
    {
        var subjects = new Dictionary<string, Func<byte[], Task>>
        {
-           { SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, ServerConfig.GameServerId), HandleUpdateInfo },
-           { SubjectHelper.GetSocialActionSubject(mapId, mapSubId, ServerConfig.GameServerId), HandleSocialAction },
-           { SubjectHelper.GetSpawnManageSubject(mapId, mapSubId, ServerConfig.GameServerId), SpawnManageObject },
-           { SubjectHelper.GetUpdateManageSubject(mapId, mapSubId, ServerConfig.GameServerId), MoveManageObjectAsync },
-           { SubjectHelper.GetLeaveManageSubject(mapId, mapSubId, ServerConfig.GameServerId), LeaveManageObjectAsync },
-           { SubjectHelper.GetDestroyObjectSubject(mapId, mapSubId, ServerConfig.GameServerId), DestroyManageObjectAsync }
+           { SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, ServerConfig.ServerId), HandleUpdateInfo },
+           { SubjectHelper.GetSocialActionSubject(mapId, mapSubId, ServerConfig.ServerId), HandleSocialAction },
+           { SubjectHelper.GetSpawnManageSubject(mapId, mapSubId, ServerConfig.ServerId), SpawnManageObject },
+           { SubjectHelper.GetUpdateManageSubject(mapId, mapSubId, ServerConfig.ServerId), MoveManageObjectAsync },
+           { SubjectHelper.GetLeaveManageSubject(mapId, mapSubId, ServerConfig.ServerId), LeaveManageObjectAsync },
+           { SubjectHelper.GetDestroyObjectSubject(mapId, mapSubId, ServerConfig.ServerId), DestroyManageObjectAsync }
        };
 
        foreach (var (subject, handler) in subjects)
@@ -83,9 +82,9 @@ public class InstanceMapController : BaseMapController
                }
            }
        }
-       catch (Exception e)
+       catch (Exception ex)
        {
-           LogManager.WriteErrorLog(e);
+           Logger.LogError(ex, "Error while entering instance");
        }
        finally
        {
@@ -96,7 +95,6 @@ public class InstanceMapController : BaseMapController
        {
            using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
            NatsClient.Publish(userSubject, packet.ToBytes());
-           LogManager.WriteDebugLog($"{userSubject} {mapId} {mapSubId}");
        }
    }
 
@@ -137,7 +135,10 @@ public class InstanceMapController : BaseMapController
        
        await using var playerLock = await PlayerInfo.Lock(CacheHelper.GetRedLockFactory(), playerId);
        var playerInfo = await PlayerInfo.Load(CacheHelper, msg.PlayerId);
-       if (playerInfo == null) return;
+       if (playerInfo == null)
+       {
+           return;
+       }
 
        // TODO: Implement logout logic
    }

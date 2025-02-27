@@ -2,8 +2,8 @@
 using network.common.data;
 using network.common.data.models;
 using network.helpers;
+using network.interfaces;
 using network.packets;
-using RedLockNet.SERedis;
 using user_server.progress;
 
 namespace user_server.players;
@@ -15,8 +15,8 @@ public class PlayerExplore(
     PlayerInventory playerInventory,
     PlayerProgress playerProgress)
 {
-    private readonly CacheHelper _cacheHelper = user.CacheHelper;
-    private readonly RedLockFactory _redLock = user.RedLock;
+    private readonly ICacheHelper _cacheHelper = user.CacheHelper;
+    private readonly IRedLockFactory _redLock = user.RedLock;
     private readonly SendPacketDelegate _sendToClient = user.Send;
     private readonly BroadcastDelegate<PlayerInfo> _broadcastPlayerInfo = user.BroadcastUpdateInfo;
     private readonly BroadcastDelegate<ExploreTargetInfo> _broadcastExploreTargetInfo = user.BroadcastUpdateInfo;

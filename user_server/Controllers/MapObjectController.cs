@@ -1,8 +1,8 @@
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
-using network.helpers;
-using network.managers;
+using network.interfaces;
 using network.packets;
 using StackExchange.Redis;
 using user_server.players;
@@ -12,8 +12,8 @@ namespace user_server.controllers;
 public sealed class MapObjectController : IDisposable
 {
     private readonly CancellationTokenSource _cts;
-    private readonly LogManager _logManager;
-    private readonly CacheHelper _cacheHelper;
+    private readonly ILogger _logger;
+    private readonly ICacheHelper _cacheHelper;
     private readonly SendPacketDelegate _sendToClient;
     private readonly Channel<GameObjectInfo> _updateObjectChannel;
     private readonly Task _processingTask;
@@ -22,7 +22,7 @@ public sealed class MapObjectController : IDisposable
     public MapObjectController(GameUser user)
     {
         _cts = user.Cts;
-        _logManager = user.LogManager;
+        _logger = user.Logger;
         _sendToClient = user.Send;
         _updateObjectChannel = Channel.CreateUnbounded<GameObjectInfo>(new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
         _cacheHelper = user.CacheHelper;
@@ -67,7 +67,7 @@ public sealed class MapObjectController : IDisposable
             }
             catch (Exception ex)
             {
-                _logManager.WriteErrorLog(ex);
+                _logger.LogError(ex, "Error while processing objects");
             }
         }, _cts.Token);
     }

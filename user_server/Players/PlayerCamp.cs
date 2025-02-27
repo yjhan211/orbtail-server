@@ -1,20 +1,17 @@
 using network.common;
 using network.common.data.models;
-using network.helpers;
-using RedLockNet.SERedis;
+using network.interfaces;
 
 namespace user_server.players;
 
 public class PlayerCamp(GameUser user, PlayerInfo playerInfo)
 {
-    private readonly RedLockFactory _redLock = user.RedLock;
-    private readonly CacheHelper _cacheHelper = user.CacheHelper;
-    private readonly SendPacketDelegate _sendToClient = user.Send;
+    private readonly IRedLockFactory _redLock = user.RedLock;
     private readonly BroadcastDelegate<CampInfo> _broadcastCampInfo = user.BroadcastUpdateInfo;
 
     public async Task Encamp(C_TO_U_ENCAMP request)
     {
-        await using (await PlayerInfo.Lock(user.CacheHelper.GetRedLockFactory(), playerInfo.PlayerId))
+        await using (await PlayerInfo.Lock(_redLock, playerInfo.PlayerId))
         {
             if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(request.ItemUid, out _))
             {
@@ -61,7 +58,6 @@ public class PlayerCamp(GameUser user, PlayerInfo playerInfo)
 
     public async Task PutItem(C_TO_U_ITEM_PUT body)
     {
-        CampInfo? campInfo;
         await using (await PlayerInfo.Lock(_redLock, playerInfo.PlayerId))
         {
             if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.ItemUid, out _))
@@ -85,12 +81,12 @@ public class PlayerCamp(GameUser user, PlayerInfo playerInfo)
             }
 
             var gameObjectInfo = new GameObjectInfo(ObjectType.INTERACTPROP, body.ItemUid, playerInfo.ObjectInfo.MapId,
-                playerInfo.ObjectInfo.MapSubId, body.Cell, false);
+                playerInfo.ObjectInfo.MapSubId, body.Cell);
             var interactPropInfo = new InteractPropInfo(gameObjectInfo, body.ItemUid);
 
             playerInfo.CampInfo.InteractPropDict.Add(body.Cell, interactPropInfo);
             await playerInfo.CampInfo.Save(user.CacheHelper);
         }
-        user.BroadcastUpdateInfo(playerInfo.CampInfo);
+        _broadcastCampInfo(playerInfo.CampInfo);
     }
 }

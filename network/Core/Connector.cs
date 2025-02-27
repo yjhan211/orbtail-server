@@ -27,7 +27,7 @@ public class Connector(NetworkService networkService, LogManager logManager)
         if (args.SocketError != SocketError.Success || _client == null || Connected == null)
             throw new Exception($"[Connector/OnConnectCompleted] {args.SocketError}");
 
-        var token = new UserToken(1, logManager);
+        var token = new UserToken();
         networkService.OnConnectCompleted(_client, token);
         Connected(token);
     }

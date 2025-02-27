@@ -80,16 +80,6 @@ namespace network.common.data
         {
             return Items.Values.ToList();
         }
-
-        public static void Validate(LogManager logManager)
-        {
-            logManager.WriteDebugLog("=== GameItemData Validation ===");
-            foreach (var (id, item) in Items)
-            {
-                logManager.WriteDebugLog($"[{id}] {item.Name}");
-            }
-            logManager.WriteDebugLog("All validations passed successfully!");
-        }
         
         public static ItemType GetItemType(int itemId)
         {
