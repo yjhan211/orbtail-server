@@ -25,14 +25,14 @@ namespace network.common.data.models
             IsIntall = false;
         }
 
-        public CampInfo(long playerId, string playerName, GameObjectInfo playerObjectInfo, ItemInfo itemInfo, Cell cell)
+        public CampInfo(long playerId, string playerName, GameObjectInfo playerObjectInfo, ItemInfo itemInfo)
         {
             ObjectInfo = new GameObjectInfo(
                 ObjectType.CAMP,
                 playerId,
                 playerObjectInfo.MapId,
                 playerObjectInfo.MapSubId,
-                Cell.Clone(cell),
+                playerObjectInfo.CurrentCell,
                 playerObjectInfo.IsFlip
             );
 

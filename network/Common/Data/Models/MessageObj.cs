@@ -284,10 +284,6 @@ namespace network.common.data.models
     [MessagePackObject]
     public class C_TO_U_WEAR_ITEM : IMessagePackObject
     {
-        public C_TO_U_WEAR_ITEM(long itemUid)
-        {
-            ItemUid = itemUid;
-        }
         [Key("itemUid")] public long ItemUid { get; set; }
     }
 

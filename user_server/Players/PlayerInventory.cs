@@ -57,9 +57,8 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
                 // 새로운 아이템 착용
                 targetItem.IsWear = true;
                 playerInfo.WearItemIdList.Add(targetItem.ItemId);
-        
-                await playerInfo.Save(_cacheHelper);
             }
+            await playerInfo.Save(_cacheHelper);
         }
 
         using var packet = PacketMaker.U_TO_C_WEAR_ITEM(playerInfo);
@@ -166,7 +165,7 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
         }
     }
     
-    public void SendUpdateItems(List<ItemInfo> updateItems)
+    public virtual void SendUpdateItems(List<ItemInfo> updateItems)
     {
         if (updateItems.Count == 0)
         {

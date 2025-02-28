@@ -54,7 +54,7 @@ public class PlayerController
         _playerProgress = new PlayerProgress(user);
         _playerQuest = new PlayerQuest(user, _playerInfo);
         _playerInventory = new PlayerInventory(user, _playerInfo, _playerQuest);
-        _playerMailBox = new PlayerMailBox(user, _playerInfo, _playerInventory);
+        _playerMailBox = new PlayerMailBox(user, _playerInfo);
         _playerMovement = new PlayerMovement(user, _playerInfo);
         _playerCamp = new PlayerCamp(user, _playerInfo);
         _playerMap = new PlayerMap(user, _playerInfo);
@@ -77,7 +77,7 @@ public class PlayerController
     public async Task StartQuest(int questId, List<QuestInfo>? updateQuests = null) => await _playerQuest.StartQuest(questId, updateQuests);
     public void SendCurrentItems() => _playerInventory.SendCurrentItems();
     public async Task SendCurrentMails() => await _playerMailBox.SendCurrentMails();
-    public async Task SendCurrentQuests() => await _playerQuest.SendCurrentQuests();
+    public void SendCurrentQuests() => _playerQuest.SendCurrentQuests();
     public async Task Encamp(C_TO_U_ENCAMP body) => await _playerCamp.Encamp(body);
     public async Task Decamp() => await _playerCamp.Decamp();
     public async Task PutItem(C_TO_U_ITEM_PUT body) => await _playerCamp.PutItem(body);

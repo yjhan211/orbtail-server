@@ -32,11 +32,11 @@ public class GameUser : IPeer
     
     public readonly CancellationTokenSource Cts;
 
-    public readonly MapObjectController MapObjectController;
     public readonly ICacheHelper CacheHelper;
     public readonly INatsClient NatsClient;
     public readonly IRedLockFactory RedLock;
     public readonly ILogger Logger;
+    public MapObjectController MapObjectController;
 
     private static readonly IReadOnlyList<Protocol> NonAuthProtocol = new List<Protocol>
     {
@@ -256,10 +256,10 @@ public class GameUser : IPeer
                 var defaultTop = playerInfo.InventoryInfo.ItemDict.First(x => x.Value.ItemId == 104000001);
                 var defaultBottom = playerInfo.InventoryInfo.ItemDict.First(x => x.Value.ItemId == 105000001);
                 var defaultShoes = playerInfo.InventoryInfo.ItemDict.First(x => x.Value.ItemId == 106000001);
-
-                await _playerController.Wear(new C_TO_U_WEAR_ITEM(defaultTop.Value.ItemUid));
-                await _playerController.Wear(new C_TO_U_WEAR_ITEM(defaultBottom.Value.ItemUid));
-                await _playerController.Wear(new C_TO_U_WEAR_ITEM(defaultShoes.Value.ItemUid));
+                
+                await _playerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultTop.Value.ItemUid });
+                await _playerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultBottom.Value.ItemUid });
+                await _playerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultShoes.Value.ItemUid });
             }
             
             using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
@@ -291,8 +291,8 @@ public class GameUser : IPeer
         }
 
         _playerController.SendCurrentItems();
+        _playerController.SendCurrentQuests();
         await _playerController.SendCurrentMails();
-        await _playerController.SendCurrentQuests();
         await _playerController.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
     }
 
@@ -550,7 +550,7 @@ public class GameUser : IPeer
         NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, payload)));
     }
     
-    public void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject?
+    public virtual void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject?
     {
         var objectInfo = info switch
         {
@@ -563,13 +563,13 @@ public class GameUser : IPeer
         BroadcastToMap(objectInfo, info, SubjectHelper.GetUpdateInfoSubject);
     }
 
-    public void BroadcastSocialAction(PlayerInfo playerInfo, SocialActionType socialActionType)
+    public virtual void BroadcastSocialAction(PlayerInfo playerInfo, SocialActionType socialActionType)
     {
         var sendTuple = (playerInfo.PlayerId, socialActionType);
         BroadcastToMap(playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
     }
     
-    public void BroadcastObjectDestroy(GameObjectInfo objectInfo)
+    public virtual void BroadcastObjectDestroy(GameObjectInfo objectInfo)
     {
         var payload = objectInfo.GetGameObjectKey();
         BroadcastToMap(objectInfo, payload, SubjectHelper.GetDestroyObjectSubject);

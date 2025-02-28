@@ -1,12 +1,11 @@
 using network.common;
 using network.common.data.models;
-using network.helpers;
 using network.interfaces;
 using network.packets;
 
 namespace user_server.players;
 
-public class PlayerMailBox(GameUser user, PlayerInfo playerInfo, PlayerInventory playerInventory)
+public class PlayerMailBox(GameUser user, PlayerInfo playerInfo)
 {
     private const string MailUidKey = "mail_uid_key";
     
@@ -22,16 +21,15 @@ public class PlayerMailBox(GameUser user, PlayerInfo playerInfo, PlayerInventory
 
     public async Task SendMail(MailInfo mailInfo)
     {
-        var mailBox = await MailBox.Load(_cacheHelper, playerInfo.PlayerId);
-        mailBox.AddMail(mailInfo);
-        await mailBox.Save(_cacheHelper);
+        playerInfo.MailBox.AddMail(mailInfo);
+        await playerInfo.MailBox.Save(_cacheHelper);
     }
 
     public async Task ReceiveMail(C_TO_U_MAIL_RECEIVE body)
     {
         await using (await PlayerInfo.Lock(user.RedLock, playerInfo.PlayerId))
         {
-            var mailBox = await MailBox.Load(_cacheHelper, playerInfo.PlayerId);
+            var mailBox = playerInfo.MailBox;
             if (!mailBox.MailDict.TryGetValue(body.MailUid, out var mailInfo))
             {
                 throw new Exception($"Invalid Mail Info. mailUid: {body.MailUid}");
@@ -49,7 +47,6 @@ public class PlayerMailBox(GameUser user, PlayerInfo playerInfo, PlayerInventory
             }
             
             await mailBox.Save(_cacheHelper);
-            await playerInfo.Save(_cacheHelper);
         }
 
         using var packet = PacketMaker.U_TO_C_MAIL_RECEIVE(body.MailUid, ErrorCode.SUCCESS);
@@ -58,12 +55,12 @@ public class PlayerMailBox(GameUser user, PlayerInfo playerInfo, PlayerInventory
         await SendCurrentMails();
     }
     
-    public async Task SendCurrentMails()
+    public Task SendCurrentMails()
     {
-        var mailBox = await MailBox.Load(_cacheHelper, playerInfo.PlayerId);
+        var mailBox = playerInfo.MailBox;
         if (mailBox.MailDict.Count == 0)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         var mailKeys = mailBox.MailDict.Keys.ToArray();
@@ -77,5 +74,7 @@ public class PlayerMailBox(GameUser user, PlayerInfo playerInfo, PlayerInventory
             using var packet = PacketMaker.U_TO_C_MAIL_LIST(batchDict, isEnded);
             _sendToClient(packet);
         }
+        
+        return Task.CompletedTask;
     }
 }

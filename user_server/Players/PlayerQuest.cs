@@ -14,12 +14,12 @@ public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
 
     public async Task StartQuest(int questId, List<QuestInfo>? updateQuests = null)
     {
-        var questDiary = await QuestDiary.Load(_cacheHelper, playerInfo.PlayerId);
+        var questDiary = playerInfo.QuestDiary;
         if (questDiary.QuestDict.ContainsKey(questId))
         {
             throw new Exception($"Already Started Quest. QuestId: {questId}");
         }
-
+        
         var quest = new QuestInfo(playerInfo.PlayerId, questId);
         questDiary.AddQuest(quest);
         await questDiary.Save(_cacheHelper);
@@ -27,9 +27,9 @@ public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
         updateQuests?.Add(quest);
     }
 
-    public async Task IncreaseQuestCount(C_TO_U_QUEST_INCREASE body)
+    public virtual async Task IncreaseQuestCount(C_TO_U_QUEST_INCREASE body)
     {
-        var questDiary = await QuestDiary.Load(_cacheHelper, playerInfo.PlayerId);
+        var questDiary = playerInfo.QuestDiary;
         if (!questDiary.QuestDict.TryGetValue(body.QuestId, out var quest))
         {
             throw new Exception($"Not Progressed Quest. QuestId: {body.QuestId}");
@@ -49,7 +49,7 @@ public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
     
     public async Task IncreaseQuestCount(int questId, int count, List<QuestInfo> updateQuests)
     {
-        var questDiary = await QuestDiary.Load(_cacheHelper, playerInfo.PlayerId);
+        var questDiary = playerInfo.QuestDiary;
         if (questDiary.QuestDict.TryGetValue(questId, out var quest))
         {
             quest.Count += count;
@@ -60,7 +60,7 @@ public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
 
     public async Task CompleteQuest(C_TO_U_QUEST_SUCCESS body)
     {
-        var questDiary = await QuestDiary.Load(_cacheHelper, playerInfo.PlayerId);
+        var questDiary = playerInfo.QuestDiary;
         var updateQuestList = new List<QuestInfo>();
         if (!questDiary.QuestDict.TryGetValue(body.QuestId, out var questInfo))
         {
@@ -130,9 +130,9 @@ public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
         }
     }
     
-    public async Task SendCurrentQuests()
+    public void SendCurrentQuests()
     {
-        var questDiary = await QuestDiary.Load(_cacheHelper, playerInfo.PlayerId);
+        var questDiary = playerInfo.QuestDiary;
         if (questDiary.QuestDict.Count == 0)
         {
             return;

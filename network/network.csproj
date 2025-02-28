@@ -7,23 +7,26 @@
         <PlatformTarget>x64</PlatformTarget>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="MessagePack" Version="2.5.108"/>
-        <PackageReference Include="MessagePackAnalyzer" Version="2.5.108"/>
-        <PackageReference Include="MessagePack.ReactiveProperty" Version="2.5.108"/>
-        <PackageReference Include="MessagePack.UnityShims" Version="2.5.108"/>
-        <PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="2.5.108"/>
-        <PackageReference Include="log4net" Version="2.0.15"/>
-        <PackageReference Include="NATS.Client" Version="1.1.2"/>
+        <PackageReference Include="MessagePack" Version="3.1.3" />
+        <PackageReference Include="MessagePackAnalyzer" Version="3.1.3">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="MessagePack.ReactiveProperty" Version="3.1.3" />
+        <PackageReference Include="MessagePack.UnityShims" Version="3.1.3" />
+        <PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.3" />
+        <PackageReference Include="log4net" Version="3.0.4" />
+        <PackageReference Include="NATS.Client" Version="1.1.7" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>
-        <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0"/>
-        <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1"/>
-        <PackageReference Include="Serilog.Sinks.File" Version="5.0.0"/>
-        <PackageReference Include="StackExchange.Redis" Version="2.7.10"/>
-        <PackageReference Include="RedLock" Version="8.2.1"/>
+        <PackageReference Include="Serilog.Extensions.Logging" Version="9.0.1-dev-02308" />
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.0.1-dev-00953" />
+        <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+        <PackageReference Include="StackExchange.Redis" Version="2.8.24" />
+        <PackageReference Include="RedLock" Version="9.0.2" />
         <PackageReference Include="RedLock.net" Version="2.3.2"/>
-        <PackageReference Include="Serilog" Version="3.1.1"/>
-        <PackageReference Include="Serilog.Formatting.Compact" Version="2.0.0"/>
-        <PackageReference Include="StackExchange.Redis.MultiplexerPool" Version="2.0.1"/>
+        <PackageReference Include="Serilog" Version="4.2.1-dev-02340" />
+        <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
+        <PackageReference Include="StackExchange.Redis.MultiplexerPool" Version="2.2.0" />
     </ItemGroup>
     <ItemGroup>
         <None Include="Common\csv\**">

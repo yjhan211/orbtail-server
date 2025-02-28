@@ -170,7 +170,8 @@ namespace network.common.data
 
         public static bool IsCommonMap(MapId mapId)
         {
-            return GetMapInfo(mapId)?.IsCommon ?? false;
+            var mapInfo = GetMapInfo(mapId);
+            return mapInfo.IsCommon;
         }
 
         public static bool IsMoveablePosition(MapId mapId, Cell position)

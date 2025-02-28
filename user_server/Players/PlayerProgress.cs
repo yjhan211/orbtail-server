@@ -4,7 +4,7 @@ using network.interfaces;
 
 namespace user_server.players;
 
-public sealed class PlayerProgress : IDisposable
+public class PlayerProgress : IDisposable
 {
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<Guid, ProgressItem> _activeProgressItems = new();
@@ -17,7 +17,7 @@ public sealed class PlayerProgress : IDisposable
         _cleanupTimer = new Timer(CleanupExpiredItems, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
     }
 
-    public void AddProgressItem(IProgressTrackable item, Func<IProgressTrackable, Task> onComplete)
+    public virtual void AddProgressItem(IProgressTrackable item, Func<IProgressTrackable, Task> onComplete)
     {
         var id = Guid.NewGuid();
         _activeProgressItems[id] = new ProgressItem(item, onComplete);

@@ -1,29 +1,13 @@
-using System;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using network.common;
-using NUnit.Framework;
-using network.common.data;
-using network.common.data.helpers;
-using network.common.data.models;
-using network.core;
-using network.helpers;
 using network.interfaces;
 using network.packets;
 using network.utils;
 using RedLockNet;
-using StackExchange.Redis;
-using user_server;
 using user_server.controllers;
-using user_server.players;
-using user_server.tests;
+using user_server.tests.components;
 
 namespace user_server.tests;
 
@@ -94,17 +78,15 @@ public class GameUserTests
     public void Constructor_InitializesCorrectly()
     {
         // 기본 검증
-        Assert.NotNull(_gameUser);
-        Assert.NotNull(_gameUser.Cts);
-        Assert.NotNull(_gameUser.MapObjectController);
-        Assert.NotNull(_gameUser.CacheHelper);
-        Assert.NotNull(_gameUser.NatsClient);
-        Assert.NotNull(_gameUser.RedLock);
-        Assert.NotNull(_gameUser.Logger);
-    
-        // SetPeer이 호출되었는지 확인
-        Assert.NotNull(_userToken.GetPeer(), "UserToken.GetPeer() should not be null");
-    
+        Assert.That(_gameUser, Is.Not.Null);
+        Assert.That(_gameUser.Cts, Is.Not.Null);
+        Assert.That(_gameUser.MapObjectController, Is.Not.Null);
+        Assert.That(_gameUser.CacheHelper, Is.Not.Null);
+        Assert.That(_gameUser.NatsClient, Is.Not.Null);
+        Assert.That(_gameUser.RedLock, Is.Not.Null);
+        Assert.That(_gameUser.Logger, Is.Not.Null);
+        Assert.That(_userToken.GetPeer(), Is.Not.Null);
+        
         // 원본 _gameUser 인스턴스와 참조 동일성 비교
         Assert.That(_userToken.GetPeer(), Is.SameAs(_gameUser));
     }
@@ -122,7 +104,7 @@ public class GameUserTests
         await _gameUser.OnMessageFromClient(constBuffer);
         
         // Assert
-        Assert.IsTrue(_userToken.PacketWasSent, "Packet should have been sent");
+        Assert.That(_userToken.PacketWasSent, Is.True);
     }
     
     [Test]
@@ -132,7 +114,7 @@ public class GameUserTests
         var result = await _gameUser.Release();
         
         // Assert
-        Assert.NotNull(result);
+        Assert.That(result, Is.Not.Null);
         Assert.That(_userToken.IsReleased, Is.True);
         
         // 리소스가 제대로 해제되었는지 확인
@@ -161,7 +143,7 @@ public class GameUserTests
         _gameUser.Send(packet);
         
         // Assert
-        Assert.IsTrue(_userToken.PacketWasSent, "Packet should have been sent");
-        Assert.That(_userToken.LastSentPacket, Is.Not.Null);
+        Assert.That(_userToken.PacketWasSent, Is.True);
+        Assert.That(_userToken.LastSentPacketId, Is.EqualTo(Protocol.U_TO_C_HEART_BEAT));
     }
 }

@@ -32,13 +32,22 @@ public partial class ExploreTargetInfo
     public static async Task<ExploreTargetInfo?> Load(ICacheHelper cacheHelper, long exploreTargetUid)
     {
         var serializedData = await cacheHelper.HashGetAsync(HashKey, exploreTargetUid);
-        if (serializedData.IsNull) return null;
+        if (serializedData.IsNull)
+        {
+            return null;
+        }
 
         var exploreTargetInfo = MessagePackSerializer.Deserialize<ExploreTargetInfo?>(serializedData);
-        if (exploreTargetInfo == null) return null;
+        if (exploreTargetInfo == null)
+        {
+            return null;
+        }
 
         var objectInfo = await GameObjectInfo.Load(cacheHelper, ObjectType.EXPLORETARGET, exploreTargetUid);
-        if (objectInfo == null) return null;
+        if (objectInfo == null)
+        {
+            return null;
+        }
 
         exploreTargetInfo.ObjectInfo = objectInfo;
         return exploreTargetInfo;

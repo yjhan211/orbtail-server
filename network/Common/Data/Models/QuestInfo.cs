@@ -8,7 +8,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public partial class QuestDiary : IMessagePackObject
     {
-        [IgnoreMember] public const string HashKey = "Quests";
+        [IgnoreMember] public const string HashKey = "QuestDiary";
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("questDict")] public Dictionary<int, QuestInfo> QuestDict { get; set; }
 

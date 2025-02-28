@@ -27,6 +27,8 @@ public partial class PlayerInfo
         await InventoryInfo.Save(cacheHelper);
         await CraftInfo.Save(cacheHelper);
         await CampInfo.Save(cacheHelper);
+        await QuestDiary.Save(cacheHelper);
+        await MailBox.Save(cacheHelper);
         await cacheHelper.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
     }
 
@@ -44,7 +46,9 @@ public partial class PlayerInfo
         playerInfo.InventoryInfo = await InventoryInfo.Load(cacheHelper, InventoryOwnerType.PLAYER, playerId) ??
                                    new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
         playerInfo.CraftInfo = await CraftInfo.Load(cacheHelper, playerId) ?? new CraftInfo(playerId);
-        playerInfo.CampInfo = await CampInfo.Load(cacheHelper, playerId) ?? new CampInfo(playerId, playerInfo.Name, new GameObjectInfo(), new ItemInfo(), new Cell(0, 0));
+        playerInfo.CampInfo = await CampInfo.Load(cacheHelper, playerId) ?? new CampInfo(playerId, playerInfo.Name, new GameObjectInfo(), new ItemInfo());
+        playerInfo.QuestDiary = await QuestDiary.Load(cacheHelper, playerId);
+        playerInfo.MailBox = await MailBox.Load(cacheHelper, playerId);
         playerInfo.IsNew = false;
         
         return playerInfo;
@@ -75,6 +79,8 @@ public partial class PlayerInfo
         await InventoryInfo.Delete(cacheHelper, InventoryOwnerType.PLAYER, playerId);
         await CraftInfo.Delete(cacheHelper, playerId);
         await CampInfo.Delete(cacheHelper, playerId);
+        await QuestDiary.Delete(cacheHelper, playerId);
+        await MailBox.Delete(cacheHelper, playerId);
         await cacheHelper.HashDeleteAsync(HashKey, playerId);
     }
 }

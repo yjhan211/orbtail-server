@@ -26,6 +26,11 @@ public class PlayerExplore(
     private readonly SendUpdateItemsDelegate _sendUpdateItems = playerInventory.SendUpdateItems;
     private readonly AddProgressItemDelegate _addProgressItem = playerProgress.AddProgressItem;
 
+    protected virtual async Task<ExploreTargetInfo?> LoadExploreTargetInfo(long exploreTargetUid)
+    {
+        return await ExploreTargetInfo.Load(_cacheHelper, exploreTargetUid);
+    }
+    
     public async Task Explore(C_TO_U_EXPLORE body)
     {
         ExploreTargetInfo? exploreTargetInfo;
@@ -40,7 +45,7 @@ public class PlayerExplore(
 
             await using (await ExploreTargetInfo.Lock(_redLock, body.ExploreTargetUid))
             {
-                exploreTargetInfo = await ExploreTargetInfo.Load(_cacheHelper, body.ExploreTargetUid);
+                exploreTargetInfo = await LoadExploreTargetInfo(body.ExploreTargetUid);
                 if (exploreTargetInfo == null)
                 {
                     using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);

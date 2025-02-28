@@ -7,6 +7,7 @@ using network.core;
 using network.interfaces;
 using RedLockNet;
 using user_server.controllers;
+using user_server.tests.components;
 
 namespace user_server.tests
 {
@@ -182,7 +183,7 @@ namespace user_server.tests
             
             // StartAsync 호출하여 콜백 등록
             _userServer.StartAsync(CancellationToken.None).Wait();
-            Assert.NotNull(_sessionCreatedCallback, "Session created callback should be registered");
+            Assert.That(_sessionCreatedCallback, Is.Not.Null);
             
             // Act - 캡처된 콜백 실행
             _sessionCreatedCallback(_userToken);
@@ -249,7 +250,7 @@ namespace user_server.tests
             var token = await _gameUser.Release();
             
             // Assert
-            Assert.NotNull(token);
+            Assert.That(token, Is.Not.Null);
             Assert.That(_userToken.IsReleased, Is.True);
             
             // NatsClient.Close() 호출 확인

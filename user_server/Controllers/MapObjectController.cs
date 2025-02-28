@@ -9,7 +9,7 @@ using user_server.players;
 
 namespace user_server.controllers;
 
-public sealed class MapObjectController : IDisposable
+public class MapObjectController : IDisposable
 {
     private readonly CancellationTokenSource _cts;
     private readonly ILogger _logger;
@@ -29,7 +29,7 @@ public sealed class MapObjectController : IDisposable
         _processingTask = StartProcessingTask();
     }
 
-    public void EnqueueUpdateObject(GameObjectInfo objectInfo)
+    public virtual void EnqueueUpdateObject(GameObjectInfo objectInfo)
     {
         if (_disposed)
         {

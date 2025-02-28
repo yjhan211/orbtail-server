@@ -38,12 +38,12 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         
         if (playerInfo.ObjectInfo.MapId == MapId.Camp)
         {
-            await PublishDestroy();
-            await EnterMap(playerInfo.CampInfo.ObjectInfo.MapId, playerInfo.CampInfo.ObjectInfo.CurrentCell, false, false);
-            
             playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
             playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
             playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
+            
+            await PublishDestroy();
+            await EnterMap(playerInfo.CampInfo.ObjectInfo.MapId, playerInfo.CampInfo.ObjectInfo.CurrentCell, false, false);
             await playerInfo.Save(_cacheHelper);
             return;
         }
@@ -54,13 +54,13 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
             return;
         }
         
-        // 기존 맵에 삭제 요청
-        await PublishDestroy();
-        await EnterMap(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition, changeMapInfo.Value.isFlip, false);
-        
         playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
         playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
         playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
+        
+        // 기존 맵에 삭제 요청
+        await PublishDestroy();
+        await EnterMap(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition, changeMapInfo.Value.isFlip, false);
         await playerInfo.Save(_cacheHelper);
     }
     
@@ -88,11 +88,6 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
 
     public async Task EnterCamp(long mapSubId)
     {
-        if (playerInfo == null)
-        {
-            throw new Exception("PlayerInfo is null");
-        }
-
         playerInfo.ObjectInfo.MapId = MapId.Camp;
         playerInfo.ObjectInfo.MapSubId = mapSubId;
 

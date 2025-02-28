@@ -10,3 +10,4 @@ id,map_id,name,reward_item_pool,reusable,position,sprite_path
 9,7,박스 더미,[301000006],1,"(92, 99)",Sprites/Map/Gym/P_Box_002
 10,7,박스 더미 2,[301000007],1,"(102, 98)",Sprites/Map/Gym/P_Box_001
 11,7,체육 바구니,[301000005],1,"(88, 102)",Sprites/Map/Gym/P_Props_006
+100000001,7,체육 매트,[501000001],0,"(97, 97)",Sprites/Map/Gym/P_Props_002
