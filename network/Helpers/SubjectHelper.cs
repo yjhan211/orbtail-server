@@ -6,7 +6,7 @@ namespace network.helpers;
 
 public static class SubjectHelper
 {
-    private const string UpdateObject = "move_object";
+    private const string UpdateObject = "update_object";
     private const string LeaveObject = "leave_object";
     private const string SpawnObject = "spawn_object";
     private const string DestroyObject = "destroy_object";
@@ -24,7 +24,7 @@ public static class SubjectHelper
 
     public static string GetEnterInstanceSubject(int serverId)
     {
-        return $"create_instance_{serverId}";
+        return $"enter_instance_{serverId}";
     }
 
     public static string GetUpdateManageSubject(GameObjectInfo objectInfo, int serverId)

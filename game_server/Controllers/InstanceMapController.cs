@@ -58,8 +58,7 @@ public class InstanceMapController : BaseMapController
 
    private async Task EnterInstance(byte[] message)
    {
-       var (userSubject, mapId, mapSubId, isLogin)
-           = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
+       var (userSubject, mapId, mapSubId, isLogin) = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
        var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
 
        await MapLock.WaitAsync();
@@ -218,8 +217,10 @@ public class InstanceMapController : BaseMapController
        await MapLock.WaitAsync();
        try
        {
-           if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet)) 
+           if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet))
+           {
                instanceSet.Remove(objectKey);
+           }
        }
        finally
        {

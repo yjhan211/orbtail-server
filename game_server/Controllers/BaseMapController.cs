@@ -17,13 +17,13 @@ public abstract class BaseMapController(
     INatsClient natsClient,
     CancellationTokenSource cts,
     ICacheHelper cacheHelper,
-    ServerConfig serverConfig)
+    IServerConfig serverConfig)
 {
    protected readonly ILogger Logger = logger;
    protected readonly INatsClient NatsClient = natsClient;
    protected readonly CancellationTokenSource Cts = cts;
    protected readonly ICacheHelper CacheHelper = cacheHelper;
-   protected readonly ServerConfig ServerConfig = serverConfig;
+   protected readonly IServerConfig ServerConfig = serverConfig;
    protected readonly SemaphoreSlim MapLock = new(1, 1);
 
    protected void SubscribeWithHandler(string subject, Func<byte[], Task> handler)

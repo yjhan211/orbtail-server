@@ -133,7 +133,7 @@ namespace user_server.tests.controllers
             
             // 특정 키워드가 포함된 주제로 메시지가 전송되었는지 확인
             var instanceMessageSent = _testNatsClient.PublishedMessages.Exists(m => 
-                m.Subject.Contains("create_instance"));
+                m.Subject.Contains("enter_instance"));
             
             using (Assert.EnterMultipleScope())
             {

@@ -3,7 +3,6 @@ using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
-using network.config;
 using network.helpers;
 using network.interfaces;
 using network.packets;
@@ -21,7 +20,7 @@ public class CommonMapController : BaseMapController
         INatsClient natsClient,
         CancellationTokenSource cts,
         ICacheHelper cacheHelper,
-        ServerConfig serverConfig,
+        IServerConfig serverConfig,
         MapId mapId) 
         : base(logger, natsClient, cts, cacheHelper, serverConfig)
     {
@@ -55,7 +54,7 @@ public class CommonMapController : BaseMapController
         {
             { SubjectHelper.GetUpdateInfoSubject(_mapId, 0, ServerConfig.ServerId), HandleUpdateInfo },
             { SubjectHelper.GetSocialActionSubject(_mapId, 0, ServerConfig.ServerId), HandleSocialAction },
-            { SubjectHelper.GetUpdateManageSubject(_mapId, 0, ServerConfig.ServerId), MoveManageObjectAsync },
+            { SubjectHelper.GetUpdateManageSubject(_mapId, 0, ServerConfig.ServerId), UpdateManageObjectAsync },
             { SubjectHelper.GetLeaveManageSubject(_mapId, 0, ServerConfig.ServerId), LeaveManageObjectAsync },
             { SubjectHelper.GetSpawnManageSubject(_mapId, 0, ServerConfig.ServerId), SpawnManageObjectAsync },
             { SubjectHelper.GetDestroyObjectSubject(_mapId, 0, ServerConfig.ServerId), DestroyManageObjectAsync }
@@ -70,12 +69,13 @@ public class CommonMapController : BaseMapController
         NatsClient.Subscribe(
             SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, ServerConfig.ServerId),
             BroadcastUpdateObject);
+        
         NatsClient.Subscribe(
             SubjectHelper.GetBroadcastDestroySubject(_mapId, 0, ServerConfig.ServerId),
             BroadcastDestroyObject);
     }
 
-    private async Task MoveManageObjectAsync(byte[] message)
+    private async Task UpdateManageObjectAsync(byte[] message)
     {
         var (lastPositionKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
         var objectKey = GameObjectInfo.MakeObjectKey(objectInfo.ObjectType, objectInfo.ObjectId);
@@ -273,11 +273,9 @@ public class CommonMapController : BaseMapController
         var pivotCell = MapHelper.CreateCell(positionKey);
         var boundCellList = pivotCell.GetBoundCellList();
 
-        foreach (var boundPositionKey in boundCellList.Select(boundCell => 
-                     MapHelper.CreatePartKey(_mapId, boundCell)))
+        foreach (var boundPositionKey in boundCellList.Select(boundCell => MapHelper.CreatePartKey(_mapId, boundCell)))
         {
-            if (!_objectPositionDict.TryGetValue(boundPositionKey, out var channelSet) 
-                || channelSet.Count <= 0)
+            if (!_objectPositionDict.TryGetValue(boundPositionKey, out var channelSet) || channelSet.Count <= 0)
             {
                 continue;
             }
@@ -290,18 +288,18 @@ public class CommonMapController : BaseMapController
 
     private void BroadcastUpdateObject(string _, byte[] message)
     {
-        var (positionKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
+        var (partKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
 
         using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
-        BroadcastPacket(positionKey, packet);
+        BroadcastPacket(partKey, packet);
     }
 
     private void BroadcastDestroyObject(string _, byte[] message)
     {
-        var (positionKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
+        var (partKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
 
         using var packet = PacketMaker.G_TO_U_DESTROY(objectKey);
-        BroadcastPacket(positionKey, packet);
+        BroadcastPacket(partKey, packet);
     }
 
     public override async Task ShutdownAsync()
