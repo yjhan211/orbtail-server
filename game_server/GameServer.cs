@@ -17,7 +17,7 @@ namespace game_server;
 public class GameServer : IHostedService
 {
     private readonly IConfiguration _configuration;
-    private readonly ILogger _logger;
+    private readonly ILogger<GameServer> _logger;
     private readonly INatsClientFactory _natsClientFactory;
     private readonly ICacheHelper _cacheHelper;
     private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
@@ -31,7 +31,7 @@ public class GameServer : IHostedService
 
     public GameServer(
         IConfiguration configuration,
-        ILogger logger,
+        ILogger<GameServer> logger,
         INatsClientFactory natsClientFactory,
         ICacheHelper cacheHelper,
         ServerConfig serverConfig)

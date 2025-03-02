@@ -15,7 +15,7 @@ public class UserServer(
     INetworkService networkService,
     IRedisConnectionPool redisPool,
     INatsClientFactory natsClientFactory,
-    ILogger logger,
+    ILogger<UserServer> logger,
     IConfiguration configuration,
     ICacheHelper cacheHelper,
     IServerConfig serverConfig)

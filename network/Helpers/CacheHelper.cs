@@ -5,7 +5,7 @@ using StackExchange.Redis;
 
 namespace network.helpers;
 
-public class CacheHelper(RedisConnectionPool redisPool) : ICacheHelper
+public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
 {
     public IRedLockFactory GetRedLockFactory() => redisPool.GetRedLockFactory();
     

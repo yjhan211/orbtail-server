@@ -52,16 +52,15 @@ internal static class Program
         services.AddSingleton<NatsClientFactory>();
         services.AddSingleton<INatsClientFactory, NatsClientFactory>();
         services.AddSingleton(sp => new LogManager(serverConfig.ServerType, serverConfig.ServerId));
-        services.AddHostedService<UserServer>();
-        services.AddSingleton<CacheHelper>(sp => 
-        {
+        services.AddSingleton<RedisConnectionPool>(sp => {
             var redisPool = new RedisConnectionPool();
             var redisEndpoints = hostContext.Configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
             redisPool.Initialize(redisEndpoints);
-            services.AddSingleton<IRedisConnectionPool>(redisPool);
-            
-            return new CacheHelper(redisPool);
+            return redisPool;
         });
+        services.AddSingleton<IRedisConnectionPool>(sp => sp.GetRequiredService<RedisConnectionPool>());
+        services.AddSingleton<CacheHelper>();
         services.AddSingleton<ICacheHelper, CacheHelper>();
+        services.AddHostedService<UserServer>();
     }
 }
