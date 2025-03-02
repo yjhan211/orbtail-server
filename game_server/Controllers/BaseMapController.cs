@@ -23,8 +23,8 @@ public abstract class BaseMapController(
    protected readonly INatsClient NatsClient = natsClient;
    protected readonly CancellationTokenSource Cts = cts;
    protected readonly ICacheHelper CacheHelper = cacheHelper;
-   protected readonly IServerConfig ServerConfig = serverConfig;
    protected readonly SemaphoreSlim MapLock = new(1, 1);
+   public readonly IServerConfig ServerConfig = serverConfig;
 
    protected void SubscribeWithHandler(string subject, Func<byte[], Task> handler)
    {

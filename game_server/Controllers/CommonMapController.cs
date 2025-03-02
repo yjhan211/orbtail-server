@@ -80,8 +80,12 @@ public class CommonMapController : BaseMapController
         var (lastPositionKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
         var objectKey = GameObjectInfo.MakeObjectKey(objectInfo.ObjectType, objectInfo.ObjectId);
         var currentPositionKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-
-        await UpdateObjectPositionAsync(lastPositionKey, currentPositionKey, objectKey);
+        
+        if (lastPositionKey != currentPositionKey)
+        {
+            await UpdateObjectPositionAsync(lastPositionKey, currentPositionKey, objectKey);
+        }
+        
         await BroadcastObjectMove(lastPositionKey, objectInfo);
         await BroadcastObjectMove(currentPositionKey, objectInfo);
     }
@@ -93,14 +97,14 @@ public class CommonMapController : BaseMapController
         {
             if (_objectPositionDict.TryGetValue(lastPositionKey, out var lastPositionSet))
             {
-                lastPositionSet.Remove(objectKey);
+                var removed = lastPositionSet.Remove(objectKey);
             }
 
             if (!_objectPositionDict.TryGetValue(currentPositionKey, out var currentSet))
             {
                 throw new Exception($"Invalid position key: {currentPositionKey}");
             }
-       
+   
             currentSet.Add(objectKey);
         }
         finally
@@ -128,7 +132,7 @@ public class CommonMapController : BaseMapController
 
     private async Task SpawnManageObjectAsync(byte[] message)
     {
-        var (userSubject, positionKeyList, cellsToRemove) = 
+        var (objectKey, positionKeyList, cellsToRemove) = 
             MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
         
         var spawnList = new HashSet<string>();
@@ -168,7 +172,7 @@ public class CommonMapController : BaseMapController
         }
 
         using var packet = PacketMaker.G_TO_U_SPAWN(spawnList.ToList(), cellsWithObjects);
-        NatsClient.Publish(userSubject, packet.ToBytes());
+        NatsClient.Publish(objectKey, packet.ToBytes());
     }
 
     private async Task DestroyManageObjectAsync(byte[] message)
@@ -254,12 +258,18 @@ public class CommonMapController : BaseMapController
         }
 
         var affectedServers = newBoundCells
-            .Select(cell => MapHelper.CreatePartKey(_mapId, cell))
+            .Select(cell => {
+                var posKey = MapHelper.CreatePartKey(_mapId, cell);
+                var serverId = MapHelper.GetManageServerId(posKey);
+                return new { posKey, serverId };
+            })
+            .Where(item => item.serverId > 0)
             .GroupBy(
-                MapHelper.GetManageServerId,
-                (serverId, cells) => new { serverId, cells = cells.ToList() }
-            );
-
+                item => item.serverId,
+                (serverId, items) => new { serverId, cells = items.Select(i => i.posKey).ToList() }
+            )
+            .ToList();
+        
         foreach (var serverGroup in affectedServers)
         {
             var subject = SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, serverGroup.serverId);

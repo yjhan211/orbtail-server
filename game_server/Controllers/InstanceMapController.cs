@@ -58,14 +58,14 @@ public class InstanceMapController : BaseMapController
 
    private async Task EnterInstance(byte[] message)
    {
-       var (userSubject, mapId, mapSubId, isLogin) = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
+       var (objectKey, mapId, mapSubId, isLogin) = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
        var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
 
        await MapLock.WaitAsync();
        try
        {
            var isInit = _objectInstanceDict.TryAdd(instanceKey, []);
-           _objectInstanceDict[instanceKey].Add(userSubject);
+           _objectInstanceDict[instanceKey].Add(objectKey);
            
            if (isInit)
            {
@@ -93,7 +93,7 @@ public class InstanceMapController : BaseMapController
        if (!isLogin)
        {
            using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
-           NatsClient.Publish(userSubject, packet.ToBytes());
+           NatsClient.Publish(objectKey, packet.ToBytes());
        }
    }
 
@@ -192,7 +192,7 @@ public class InstanceMapController : BaseMapController
 
    private async Task SpawnManageObject(byte[] message)
    {
-       var (userSubject, instanceKeyList, cellsToRemove) =
+       var (objectKey, instanceKeyList, cellsToRemove) =
            MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
 
        var spawnList = new List<string>();
@@ -207,7 +207,7 @@ public class InstanceMapController : BaseMapController
        if (spawnList.Count <= 0) return;
 
        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);
-       NatsClient.Publish(userSubject, packet.ToBytes());
+       NatsClient.Publish(objectKey, packet.ToBytes());
    }
 
    private async Task DestroyManageObjectAsync(byte[] message)
