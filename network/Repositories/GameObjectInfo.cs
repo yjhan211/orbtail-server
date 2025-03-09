@@ -1,23 +1,23 @@
 using StackExchange.Redis;
 using MessagePack;
-using network.helpers;
+using network.interfaces;
 
 // ReSharper disable once CheckNamespace
 namespace network.common.data.models;
 
 public partial class GameObjectInfo
 {
-    public static async Task<GameObjectInfo?> Load(ObjectType type, long objectId)
+    public static async Task<GameObjectInfo?> Load(ICacheHelper cacheHelper, ObjectType type, long objectId)
     {
-        var serializedData = await CacheHelper.Instance.HashGetAsync(HashKey, MakeObjectKey(type, objectId));
+        var serializedData = await cacheHelper.HashGetAsync(HashKey, MakeObjectKey(type, objectId));
         if (serializedData.IsNull) return null;
 
         return MessagePackSerializer.Deserialize<GameObjectInfo?>(serializedData);
     }
 
-    public static async Task<List<GameObjectInfo>> LoadAll(RedisValue[] objectKeys)
+    public static async Task<List<GameObjectInfo>> LoadAll(ICacheHelper cacheHelper, RedisValue[] objectKeys)
     {
-        var hashEntries = await CacheHelper.Instance.HashGetAsync(HashKey, objectKeys);
+        var hashEntries = await cacheHelper.HashGetAsync(HashKey, objectKeys);
         var hashStrings = hashEntries
             .Where(entry => entry != RedisValue.Null)
             .Select(entry => entry)
@@ -26,23 +26,23 @@ public partial class GameObjectInfo
         return hashStrings.Select(hashString => MessagePackSerializer.Deserialize<GameObjectInfo>(hashString)).ToList();
     }
 
-    public static async Task Delete(string hashField)
+    public static async Task Delete(ICacheHelper cacheHelper, string hashField)
     {
-        await CacheHelper.Instance.HashDeleteAsync(HashKey, hashField);
+        await cacheHelper.HashDeleteAsync(HashKey, hashField);
     }
 
-    public static async Task<bool> Exist(string hashField)
+    public static async Task<bool> Exist(ICacheHelper cacheHelper, string hashField)
     {
-        return await CacheHelper.Instance.HashExistsAsync(HashKey, hashField);
+        return await cacheHelper.HashExistsAsync(HashKey, hashField);
     }
 
-    public async Task Save()
+    public async Task Save(ICacheHelper cacheHelper)
     {
-        await CacheHelper.Instance.HashSetAsync(HashKey, GetGameObjectKey(), MessagePackSerializer.Serialize(this));
+        await cacheHelper.HashSetAsync(HashKey, GetGameObjectKey(), MessagePackSerializer.Serialize(this));
     }
 
-    public async Task Delete()
+    public async Task Delete(ICacheHelper cacheHelper)
     {
-        await CacheHelper.Instance.HashDeleteAsync(HashKey, GetGameObjectKey());
+        await cacheHelper.HashDeleteAsync(HashKey, GetGameObjectKey());
     }
 }

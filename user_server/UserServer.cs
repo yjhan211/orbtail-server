@@ -2,53 +2,55 @@ using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using network.common.data.helpers;
 using network.core;
 using network.helpers;
-using network.infrastructure;
-using network.managers;
+using network.interfaces;
+using user_server.controllers;
 
 namespace user_server;
 
 public class UserServer(
-    NetworkService networkService,
-    RedisConnectionPool redisPool,
-    NatsClientFactory natsClientFactory,
-    LogManager logManager,
-    IConfiguration configuration) : IHostedService
+    INetworkService networkService,
+    IRedisConnectionPool redisPool,
+    INatsClientFactory natsClientFactory,
+    ILogger<UserServer> logger,
+    IConfiguration configuration,
+    ICacheHelper cacheHelper,
+    IServerConfig serverConfig)
+    : IHostedService
 {
-    private readonly ConcurrentQueue<GameUser> _leaveUserQueue = new();
     private CancellationTokenSource? _cts;
     private Task? _leaveUserTask;
+    private readonly ChatController _chatController = new(cacheHelper);
+    private readonly ConcurrentQueue<GameUser> _leaveUserQueue = new();
 
     public Task StartAsync(CancellationToken ct)
     {
         try
         {
-            logManager.WriteInfoLog("User Server starting...");
-
+            logger.LogInformation("User Server starting...");
+            logger.LogInformation("About to initialize services...");
             InitializeServices();
+            logger.LogInformation("Services initialized successfully");
             StartNetworkService();
-
             _cts = new CancellationTokenSource();
             _leaveUserTask = LeaveUser(_cts.Token);
-
             return Task.CompletedTask;
         }
         catch (Exception ex)
         {
-            logManager.WriteErrorLog(ex);
+            logger.LogError(ex, "User Server starting failed");
             return Task.FromException(ex);
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        logManager.WriteInfoLog("User server stopping...");
-
+        logger.LogInformation("User server stopping...");
         await _cts?.CancelAsync()!;
         if (_leaveUserTask != null) await _leaveUserTask;
-
         _cts?.Dispose();
     }
 
@@ -59,19 +61,17 @@ public class UserServer(
 
     private void InitializeServices()
     {
-        var redisEndpoints = configuration["redisEndpoints"] ??
-                             throw new InvalidOperationException("RedisEndpoints is not configured.");
+        logger.LogInformation("Getting natsEndpoint from configuration");
         var natsEndpoint = configuration["natsEndPoint"] ??
                            throw new InvalidOperationException("NatsEndpoint is not configured or is invalid.");
-
+        logger.LogInformation($"natsEndpoint: {natsEndpoint}");
         try
         {
-            redisPool.Initialize(redisEndpoints);
+            logger.LogInformation("Initializing natsClientFactory");
             natsClientFactory.Initialize(natsEndpoint);
-
-            GameDataHelper.Initialize(logManager);
-            MapHelper.Initialize(Program.GameServerNum);
-            CacheHelper.Initialize(redisPool);
+            logger.LogInformation("natsClientFactory initialized successfully");            
+            GameDataHelper.Initialize();
+            MapHelper.Initialize(serverConfig.GameServerNum);
         }
         catch (Exception ex)
         {
@@ -92,11 +92,11 @@ public class UserServer(
         {
             var redLockFactory = redisPool.GetRedLockFactory();
             var natsClient = natsClientFactory.Create();
-            _ = new GameUser(token, redLockFactory, natsClient, logManager, EnqueueUserLeave);
+            _ = new GameUser(token, redLockFactory, natsClient, logger, cacheHelper, EnqueueUserLeave, _chatController);
         }
         catch (Exception ex)
         {
-            logManager.WriteErrorLog(ex);
+            logger.LogError(ex, "Failed to create nats client");
         }
     }
 
@@ -114,7 +114,7 @@ public class UserServer(
             }
             catch (Exception ex)
             {
-                logManager.WriteErrorLog(ex);
+                logger.LogError(ex, "User Server leave failed");
             }
     }
 
@@ -130,7 +130,7 @@ public class UserServer(
         }
         catch (Exception ex)
         {
-            logManager.WriteErrorLog(ex);
+            logger.LogError(ex, "User Server leave failed");
         }
     }
 }

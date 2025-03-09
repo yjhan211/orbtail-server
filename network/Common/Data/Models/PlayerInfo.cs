@@ -21,9 +21,11 @@ namespace network.common.data.models
             WearItemIdList = new();
             State = PlayerState.NONE;
             ObjectInfo = new GameObjectInfo();
-            JobInfo = new JobInfo();
             InventoryInfo = new InventoryInfo();
             CraftInfo = new CraftInfo();
+            CampInfo = new CampInfo();
+            QuestDiary = new QuestDiary();
+            MailBox = new MailBox();
             LabId = 0;
             LabName = "";
             Gold = 0;
@@ -32,6 +34,9 @@ namespace network.common.data.models
             Stamina = 0;
             Boosts = new();
             IsTutorial = true;
+            LastMapId = MapId.None;
+            LastMapSubId = 0;
+            LastCell = new(0, 0);
         }
 
         public PlayerInfo(long playerId, bool isDummy)
@@ -46,10 +51,12 @@ namespace network.common.data.models
             Grade = PlayerGrade.COMMONER;
             WearItemIdList = new();
             State = PlayerState.NONE;
-            ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.TutorialLibrary, 1, initCell);
-            JobInfo = new JobInfo(PlayerId);
+            ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.TutorialLibrary, 0, initCell);
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
             CraftInfo = new CraftInfo(PlayerId);
+            CampInfo = new CampInfo(PlayerId, Name, new(), new());
+            QuestDiary = new QuestDiary();
+            MailBox = new MailBox();
             LabId = 0;
             LabName = "";
             Gold = 1000;
@@ -58,14 +65,19 @@ namespace network.common.data.models
             Stamina = 100;
             Boosts = new();
             IsTutorial = true;
+            LastMapId = MapId.None;
+            LastMapSubId = 0;
+            LastCell = new(0, 0);
+            IsNew = true;
         }
 
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
-
-        [IgnoreMember] public JobInfo JobInfo { get; set; }
-
         [IgnoreMember] public InventoryInfo InventoryInfo { get; set; }
         [IgnoreMember] public CraftInfo CraftInfo { get; set; }
+        [IgnoreMember] public CampInfo CampInfo { get; set; }
+        [IgnoreMember] public QuestDiary QuestDiary { get; set; }
+        [IgnoreMember] public MailBox MailBox { get; set; }
+        
         [Key("playerId")] public long PlayerId { get; set; }
 
         [Key("name")] public string Name { get; set; }
@@ -90,6 +102,13 @@ namespace network.common.data.models
 
         [Key("boostList")] public HashSet<BoostType> Boosts { get; set; }
         [Key("isTutorial")] public bool IsTutorial { get; set; }
+        
+        [Key("mapId")] public MapId LastMapId { get; set; }
+        
+        [Key("mapSubId")] public long LastMapSubId { get; set; }
+        
+        [Key("lastCell")] public Cell LastCell { get; set; }
+        [IgnoreMember] public bool IsNew { get; set; }
 
         public string GetLockKey()
         {

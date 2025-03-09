@@ -1,5 +1,6 @@
 using MessagePack;
 using network.helpers;
+using network.interfaces;
 using RedLockNet;
 using RedLockNet.SERedis;
 using StackExchange.Redis;
@@ -9,7 +10,7 @@ namespace network.common.data.models;
 
 public partial class PlayerInfo
 {
-    public static async Task<IRedLock> Lock(RedLockFactory redLock, long playerId)
+    public static async Task<IRedLock> Lock(IRedLockFactory redLock, long playerId)
     {
         return await redLock.CreateLockAsync(GetLockKey(playerId), Config.LOCK_TTL);
     }
@@ -19,36 +20,43 @@ public partial class PlayerInfo
         return await redLock.CreateLockAsync(GetLockKey(), Config.LOCK_TTL);
     }
 
-    public async Task Save()
+    public async Task Save(ICacheHelper cacheHelper)
     {
         // 조회가 빈번해서 메모리에 올려뒀음. 따로 Save함
         // await GameObjectInfoController.Save(cache_helper, player_info.object_info);
-
-        await JobInfo.Save();
-        await InventoryInfo.Save();
-        await CraftInfo.Save();
-        await CacheHelper.Instance.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
+        await InventoryInfo.Save(cacheHelper);
+        await CraftInfo.Save(cacheHelper);
+        await CampInfo.Save(cacheHelper);
+        await QuestDiary.Save(cacheHelper);
+        await MailBox.Save(cacheHelper);
+        await cacheHelper.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
     }
 
-    public static async Task<PlayerInfo?> Load(long playerId)
+    public static async Task<PlayerInfo?> Load(ICacheHelper cacheHelper, long playerId)
     {
-        var serialized = await CacheHelper.Instance.HashGetAsync(HashKey, playerId);
-        if (serialized == RedisValue.Null) return null;
+        var serialized = await cacheHelper.HashGetAsync(HashKey, playerId);
+        if (serialized == RedisValue.Null)
+        {
+            return null;
+        }
 
         var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
 
-        playerInfo.ObjectInfo = await GameObjectInfo.Load(ObjectType.PLAYER, playerId) ?? new GameObjectInfo(playerId);
-        playerInfo.JobInfo = await JobInfo.Load(playerId) ?? new JobInfo(playerId);
-        playerInfo.InventoryInfo = await InventoryInfo.Load(InventoryOwnerType.PLAYER, playerId) ??
+        playerInfo.ObjectInfo = await GameObjectInfo.Load(cacheHelper, ObjectType.PLAYER, playerId) ?? new GameObjectInfo(playerId);
+        playerInfo.InventoryInfo = await InventoryInfo.Load(cacheHelper, InventoryOwnerType.PLAYER, playerId) ??
                                    new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
-        playerInfo.CraftInfo = await CraftInfo.Load(playerId) ?? new CraftInfo(playerId);
-
+        playerInfo.CraftInfo = await CraftInfo.Load(cacheHelper, playerId) ?? new CraftInfo(playerId);
+        playerInfo.CampInfo = await CampInfo.Load(cacheHelper, playerId) ?? new CampInfo(playerId, playerInfo.Name, new GameObjectInfo(), new ItemInfo());
+        playerInfo.QuestDiary = await QuestDiary.Load(cacheHelper, playerId);
+        playerInfo.MailBox = await MailBox.Load(cacheHelper, playerId);
+        playerInfo.IsNew = false;
+        
         return playerInfo;
     }
 
-    public static async Task<List<PlayerInfo>> LoadAll(RedisValue[] objectKeys)
+    public static async Task<List<PlayerInfo>> LoadAll(ICacheHelper cacheHelper, RedisValue[] objectKeys)
     {
-        var hashEntries = await CacheHelper.Instance.HashGetAsync(HashKey, objectKeys);
+        var hashEntries = await cacheHelper.HashGetAsync(HashKey, objectKeys);
         var hashStrings = hashEntries
             .Where(entry => entry != RedisValue.Null)
             .Select(entry => entry)
@@ -57,19 +65,22 @@ public partial class PlayerInfo
         return hashStrings.Select(hashString => MessagePackSerializer.Deserialize<PlayerInfo>(hashString)).ToList();
     }
 
-    public async Task Delete(PlayerInfo playerInfo)
+    public async Task Delete(ICacheHelper cacheHelper, PlayerInfo playerInfo)
     {
-        await playerInfo.ObjectInfo.Delete();
-        await CacheHelper.Instance.HashDeleteAsync(HashKey, playerInfo.PlayerId);
+        await playerInfo.ObjectInfo.Delete(cacheHelper);
+        await cacheHelper.HashDeleteAsync(HashKey, playerInfo.PlayerId);
     }
 
-    public static async Task Delete(long playerId)
+    public static async Task Delete(ICacheHelper cacheHelper, long playerId)
     {
         var objectField = GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, playerId);
 
-        await GameObjectInfo.Delete(objectField);
-        await JobInfo.Delete(playerId);
-        await InventoryInfo.Delete(InventoryOwnerType.PLAYER, playerId);
-        await CacheHelper.Instance.HashDeleteAsync(HashKey, playerId);
+        await GameObjectInfo.Delete(cacheHelper, objectField);
+        await InventoryInfo.Delete(cacheHelper, InventoryOwnerType.PLAYER, playerId);
+        await CraftInfo.Delete(cacheHelper, playerId);
+        await CampInfo.Delete(cacheHelper, playerId);
+        await QuestDiary.Delete(cacheHelper, playerId);
+        await MailBox.Delete(cacheHelper, playerId);
+        await cacheHelper.HashDeleteAsync(HashKey, playerId);
     }
 }

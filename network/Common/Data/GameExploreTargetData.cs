@@ -91,7 +91,7 @@ namespace network.common.data
                 MapId = (MapId)Convert.ToInt32(row["map_id"]),
                 Name = row["name"],
                 RewardItemPool = JsonConvert.DeserializeObject<List<int>>(row["reward_item_pool"]) ?? new(),
-                Reusable = int.Parse(row["id"]) == 0 ? false : true,
+                Reusable = int.Parse(row["reusable"]) == 1,
                 Position = new Cell(int.Parse(posStr[0].Trim()), int.Parse(posStr[1].Trim())),
                 SpritePath = row["sprite_path"],
             };

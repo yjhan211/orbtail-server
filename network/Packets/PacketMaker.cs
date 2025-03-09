@@ -23,9 +23,9 @@ public static class PacketMaker
             {
                 ObjectInfo = playerInfo.ObjectInfo,
                 PlayerInfo = playerInfo,
-                JobInfo = playerInfo.JobInfo,
                 CraftInfo = playerInfo.CraftInfo,
-                LabInfo = labInfo
+                CampInfo = playerInfo.CampInfo,
+                LabInfo = labInfo,
             };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -112,30 +112,11 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-
-    public static Packet U_TO_C_JOB_RESOURCE_INFO(List<JobResourceInfo> jobResourceInfoList)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_JOB_RESOURCE_INFO);
-        U_TO_C_JOB_RESOURCE_INFO body = new() { JobResourceInfoList = jobResourceInfoList };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
+    
     public static Packet U_TO_C_CHAT_MSG(ChatType chatType, long playerId, string name, string chatMessage)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CHAT_MSG);
         U_TO_C_CHAT_MSG body = new() { ChatType = chatType, PlayerId = playerId, Name = name, ChatMessage = chatMessage };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_UPGRADE_JOB(long playerId, ErrorCode errorCode, JobInfo? jobInfo = null)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_UPGRADE_JOB, playerId);
-        U_TO_C_UPGRADE_JOB body = new() { ErrorCode = errorCode };
-        if (jobInfo != null) body.JobInfo = jobInfo;
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -207,15 +188,6 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_U_JOB_RESOURCE_INFO(JobResourceInfo jobResourceInfo)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_U_JOB_RESOURCE_INFO);
-        G_TO_U_JOB_RESOURCE_INFO body = new() { JobResourceInfo = jobResourceInfo };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
     public static Packet G_TO_U_CAMP_INFO(CampInfo campInfo)
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_CAMP_INFO);
@@ -279,51 +251,24 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_EXPLORE(ErrorCode errorCode, JobInfo? jobInfo = null)
+    public static Packet U_TO_C_EXPLORE(ErrorCode errorCode)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_EXPLORE);
         U_TO_C_EXPLORE body = new() { ErrorCode = errorCode };
-        if (jobInfo != null) body.JobInfo = jobInfo;
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
 
-    public static Packet U_TO_C_EXPLORE_COMPLETE(bool isSuccess, JobInfo? jobInfo = null)
+    public static Packet U_TO_C_EXPLORE_COMPLETE(bool isSuccess)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_EXPLORE_COMPLETE);
         U_TO_C_EXPLORE_COMPLETE body = new() { IsSuccess = isSuccess };
-        if (jobInfo != null) body.JobInfo = jobInfo;
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-
-    public static Packet U_TO_C_USE_SKILL(ErrorCode errorCode, JobInfo? jobInfo = null)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_USE_SKILL);
-        U_TO_C_USE_SKILL body = new() { ErrorCode = errorCode };
-        if (jobInfo != null) body.JobInfo = jobInfo;
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_USE_SKILL_COMPLETE(bool isSuccess, ItemInfo? itemInfo, JobInfo jobInfo)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_USE_SKILL_COMPLETE);
-        U_TO_C_USE_SKILL_COMPLETE body =
-            new()
-            {
-                IsSuccess = isSuccess,
-                ItemInfo = itemInfo ?? new ItemInfo(),
-                JobInfo = jobInfo
-            };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
+    
     public static Packet U_TO_C_CREATE_LAB(long playerId, PlayerInfo playerInfo, LabInfo labInfo)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CREATE_LAB, playerId);
@@ -333,19 +278,19 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_U_CREATE_INSTANCE_SUCCESS(MapId mapId, long mapSubId)
+    public static Packet G_TO_U_ENTER_INSTANCE_SUCCESS(MapId mapId, long mapSubId)
     {
-        var packet = Packet.Create((int)Protocol.G_TO_U_CREATE_INSTANCE_SUCCESS);
-        G_TO_U_CREATE_INSTANCE_SUCCESS body = new() { MapId = mapId, MapSubId = mapSubId };
+        var packet = Packet.Create((int)Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS);
+        G_TO_U_ENTER_INSTANCE_SUCCESS body = new() { MapId = mapId, MapSubId = mapSubId };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
 
-    public static Packet U_TO_C_UPGRADE_RESEARCH(Dictionary<int, ResearchInfo> researchInfoDict, JobInfo jobInfo)
+    public static Packet U_TO_C_UPGRADE_RESEARCH(Dictionary<int, ResearchInfo> researchInfoDict)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_UPGRADE_RESEARCH);
-        U_TO_C_UPGRADE_RESEARCH body = new() { ResearchInfoDict = researchInfoDict, JobInfo = jobInfo };
+        U_TO_C_UPGRADE_RESEARCH body = new() { ResearchInfoDict = researchInfoDict };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -409,15 +354,6 @@ public static class PacketMaker
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_SET_NAME);
         U_TO_C_SET_NAME body = new() { ErrorCode = errorCode, PlayerInfo = playerInfo };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_UPDATE_TUTORIAL(PlayerInfo playerInfo, JobInfo jobInfo)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_UPDATE_TUTORIAL);
-        U_TO_C_UPDATE_TUTORIAL body = new() { PlayerInfo = playerInfo, JobInfo = jobInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

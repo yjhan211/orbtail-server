@@ -1,76 +1,36 @@
 using System.Collections.Concurrent;
 using MessagePack;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
 using network.helpers;
-using network.infrastructure;
 using network.interfaces;
-using network.managers;
 using network.packets;
-using StackExchange.Redis;
 
 namespace game_server.controllers;
 
-public class CommonMapController
+public class CommonMapController(
+    ILogger logger,
+    INatsClient natsClient,
+    CancellationTokenSource cts,
+    ICacheHelper cacheHelper,
+    IServerConfig serverConfig,
+    MapId mapId)
+    : BaseMapController(logger, natsClient, cts, cacheHelper, serverConfig)
 {
-    private readonly Dictionary<string, Func<RedisValue, Task>> _asyncHandlers;
-    private readonly CancellationTokenSource _cts;
-    private readonly Dictionary<string, Action<RedisValue>> _immediateHandlers;
-    private readonly LogManager _logManager;
-    private readonly NatsClient _natsClient;
-    
-    private readonly SemaphoreSlim _mapLock;
-    private readonly MapId _mapId;
-
-    private readonly ConcurrentDictionary<string, HashSet<string>> _objectPositionDict;
-    
-    // private readonly ConcurrentDictionary<int, HashSet<ExploreTargetInfo>> _exploreTargetDict;
-    // private readonly ConcurrentDictionary<int, HashSet<JobResourceInfo>> _jobResourceDict;
-    // private readonly List<Cell> _manageCellList;
-
-    public CommonMapController(LogManager logManager, NatsClient natsClient, CancellationTokenSource cts, MapId mapId)
-    {
-        _logManager = logManager;
-        _natsClient = natsClient;
-        _cts = cts;
-        _mapId = mapId;
-        _objectPositionDict = new ConcurrentDictionary<string, HashSet<string>>();
-        _mapLock = new SemaphoreSlim(1, 1);
-        
-        // _exploreTargetDict = new ConcurrentDictionary<int, HashSet<ExploreTargetInfo>>();
-        // _jobResourceDict = new ConcurrentDictionary<int, HashSet<JobResourceInfo>>();
-        // _manageCellList = [];
-        _immediateHandlers = new Dictionary<string, Action<RedisValue>>
-        {
-            { SubjectHelper.GetUpdateInfoSubject(_mapId, 0, Program.GameServerId), HandleUpdateInfo },
-            { SubjectHelper.GetSocialActionSubject(mapId, 0, Program.GameServerId), HandleSocialAction },
-            { SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, Program.GameServerId), BroadcastUpdateObject },
-            { SubjectHelper.GetBroadcastDestroySubject(_mapId, 0, Program.GameServerId), BroadcastDestroyObject }
-        };
-
-        _asyncHandlers = new Dictionary<string, Func<RedisValue, Task>>
-        {
-            { SubjectHelper.GetUpdateManageSubject(_mapId, 0, Program.GameServerId), MoveManageObjectAsync },
-            { SubjectHelper.GetLeaveManageSubject(_mapId, 0, Program.GameServerId), LeaveManageObjectAsync },
-            { SubjectHelper.GetSpawnManageSubject(_mapId, 0, Program.GameServerId), SpawnManageObjectAsync },
-            { SubjectHelper.GetDestroyObjectSubject(_mapId, 0, Program.GameServerId), DestroyManageObjectAsync },
-            // { SubjectHelper.GetCreateJobResourceSubject(_mapId, 0, Program.GameServerId), CreateJobResourceInfoAsync }_
-        };
-    }
+    private readonly ConcurrentDictionary<string, HashSet<string>> _objectPositionDict = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _positionLocks = new();
+    private readonly ReaderWriterLockSlim _globalLock = new ReaderWriterLockSlim();
 
     public void Initialize()
     {
         InitializeManageParts();
         SubscribeToMapEvents();
-        
-        // TODO 채집 시스템
-        // await CleanUpMapResource();
-        // _ = Task.Run(CreateExploreTargetTask, _cts.Token);
     }
 
     private void InitializeManageParts()
     {
-        var managePartList = MapHelper.GetManagePartList(Program.GameServerId);
+        var managePartList = MapHelper.GetManagePartList(ServerConfig.ServerId);
         var managePositionKeyList = new List<string>();
         foreach (var positions in managePartList.Values)
         {
@@ -79,317 +39,102 @@ public class CommonMapController
         foreach (var positionKey in managePositionKeyList)
         {
             _objectPositionDict[positionKey] = [];
+            _positionLocks[positionKey] = new SemaphoreSlim(1, 1);
         }
     }
-    
-    // TODO 채집 시스템
-    // private static async Task CleanUpMapResource()
-    // {
-    //     if (Program.GameServerId == 1)
-    //     {
-    //         var exploreTargetValues = await CacheHelper.Instance.HashGetAllAsync(ExploreTargetInfo.HashKey);
-    //         foreach (var entry in exploreTargetValues)
-    //         {
-    //             if (!long.TryParse(entry.Name, out var exploreTargetId)) continue;
-    //
-    //             await ExploreTargetInfo.Delete(exploreTargetId);
-    //
-    //             var objectField = GameObjectInfo.MakeObjectKey(ObjectType.EXPLORETARGET, exploreTargetId);
-    //             await GameObjectInfo.Delete(objectField);
-    //         }
-    //     }
-    //     else
-    //     {
-    //         await Task.Delay(10000);
-    //     }
-    // }
-    
-    // private async Task CreateExploreTargetTask()
-    // {
-    //     using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
-    //     while (await timer.WaitForNextTickAsync(_cts.Token))
-    //         try
-    //         {
-    //             if (!await CreateExploreTarget()) break;
-    //         }
-    //         catch (Exception ex)
-    //         {
-    //             _logManager.WriteErrorLog(ex);
-    //         }
-    // }
-    
-    // private async Task<bool> CreateExploreTarget()
-    // {
-        // var genList = CommonMapData.GetGenExploreIdList(_mapId);
-        // if (genList == null) return false;
-        //
-        // await _mapLock.WaitAsync();
-        // try
-        // {
-        //     Random random = new();
-        //     foreach (var partExploreTargetInfo in _exploreTargetDict)
-        //     {
-        //         if (3 <= partExploreTargetInfo.Value.Count) continue;
-        //
-        //         var createCell = _manageCellList[random.Next(0, _manageCellList.Count)];
-        //         var createPositionKey = CommonMapData.CreatePartKey(_mapId, createCell);
-        //         var exploreTargetUid = await CacheHelper.Instance.StringIncrementAsync("temp_explore_target_uid");
-        //
-        //         var objectInfo = new GameObjectInfo
-        //         {
-        //             ObjectType = ObjectType.EXPLORETARGET,
-        //             ObjectId = exploreTargetUid,
-        //             CurrentCell = createCell,
-        //             TargetCell = createCell,
-        //             MapId = _mapId
-        //         };
-        //
-        //         var exploreTargetInfo =
-        //             new ExploreTargetInfo(exploreTargetUid, genList[random.Next(0, genList.Count)], objectInfo);
-        //         partExploreTargetInfo.Value.Add(exploreTargetInfo);
-        //
-        //         _objectPositionDict.AddOrUpdate(
-        //             createPositionKey,
-        //             [objectInfo.GetGameObjectKey()],
-        //             (_, set) =>
-        //             {
-        //                 set.Add(objectInfo.GetGameObjectKey());
-        //                 return set;
-        //             }
-        //         );
-        //
-        //         await exploreTargetInfo.Save();
-        //
-        //         var targetServerList = CommonMapData.GetBoundServerList(_mapId, objectInfo.CurrentCell);
-        //         var targetSubjectList = targetServerList.Select(targetServer =>
-        //             SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, targetServer));
-        //         foreach (var subject in targetSubjectList)
-        //             _natsClient.Publish(subject, MessagePackSerializer.Serialize((createPositionKey, objectInfo)));
-        //     }
-        //
-        //     return true;
-        // }
-        // catch (Exception ex)
-        // {
-        //     _logManager.WriteErrorLog(ex);
-        //     return false;
-        // }
-        // finally
-        // {
-        //     _mapLock.Release();
-        // }
-    // }
+
+    private SemaphoreSlim GetOrCreatePositionLock(string positionKey)
+    {
+        return _positionLocks.GetOrAdd(positionKey, _ => new SemaphoreSlim(1, 1));
+    }
 
     private void SubscribeToMapEvents()
     {
-        foreach (var (subject, handler) in _immediateHandlers)
-            _natsClient.Subscribe(subject, (_, msg) =>
-            {
-                try
-                {
-                    handler(msg);
-                }
-                catch (Exception ex)
-                {
-                    _logManager.WriteErrorLog(ex);
-                }
-            });
-
-        foreach (var (subject, handler) in _asyncHandlers)
+        var subjects = new Dictionary<string, Func<byte[], Task>>
         {
-            _natsClient.Subscribe(subject, MessageHandler);
-            continue;
+            { SubjectHelper.GetUpdateInfoSubject(mapId, 0, ServerConfig.ServerId), HandleUpdateInfo },
+            { SubjectHelper.GetSocialActionSubject(mapId, 0, ServerConfig.ServerId), HandleSocialAction },
+            { SubjectHelper.GetUpdateManageSubject(mapId, 0, ServerConfig.ServerId), UpdateManageObjectAsync },
+            { SubjectHelper.GetLeaveManageSubject(mapId, 0, ServerConfig.ServerId), LeaveManageObjectAsync },
+            { SubjectHelper.GetSpawnManageSubject(mapId, 0, ServerConfig.ServerId), SpawnManageObjectAsync },
+            { SubjectHelper.GetDestroyObjectSubject(mapId, 0, ServerConfig.ServerId), DestroyManageObjectAsync }
+        };
 
-            async void MessageHandler(string _, byte[] msg)
-            {
-                try
-                {
-                    await handler(msg);
-                }
-                catch (Exception ex)
-                {
-                    _logManager.WriteErrorLog(ex);
-                }
-            }
-        }
-    }
-
-    private void HandleUpdateInfo(RedisValue message)
-    {
-        var (key, type, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
-
-        switch (type)
+        foreach (var (subject, handler) in subjects)
         {
-            case ObjectType.PLAYER:
-            {
-                var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serializedInfo);
-                using var packet = PacketMaker.G_TO_U_PLAYER_INFO(playerInfo);
-                BroadcastPacket(key, packet);
-                break;
-            }
-            
-            case ObjectType.EXPLORETARGET:
-            {
-                var exploreTargetInfo = MessagePackSerializer.Deserialize<ExploreTargetInfo>(serializedInfo);
-                using var packet =  PacketMaker.G_TO_U_EXPLORE_TARGET_INFO(exploreTargetInfo);
-                BroadcastPacket(key, packet);
-                break;
-            }
-            
-            case ObjectType.CAMP:
-            {
-                var campInfo = MessagePackSerializer.Deserialize<CampInfo>(serializedInfo);
-                using var packet =  PacketMaker.G_TO_U_CAMP_INFO(campInfo);
-                BroadcastPacket(key, packet);
-                break;
-            }
+            SubscribeWithHandler(subject, handler);
         }
-    }
-    
-    private void HandleSocialAction(RedisValue message)
-    {
-        var (partKey, (playerId, socialActionType)) = MessagePackSerializer.Deserialize<(string, (long, SocialActionType))>(message);
 
-        using var packet = PacketMaker.G_TO_U_SOCIAL_ACTION(playerId, socialActionType);
-        BroadcastPacket(partKey, packet);
+        NatsClient.Subscribe(SubjectHelper.GetBroadcastUpdateSubject(mapId, 0, ServerConfig.ServerId), BroadcastUpdateObject);
+        NatsClient.Subscribe(SubjectHelper.GetBroadcastDestroySubject(mapId, 0, ServerConfig.ServerId), BroadcastDestroyObject);
     }
 
-    private async Task MoveManageObjectAsync(RedisValue message)
+    private async Task UpdateManageObjectAsync(byte[] message)
     {
         var (lastPositionKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
         var objectKey = GameObjectInfo.MakeObjectKey(objectInfo.ObjectType, objectInfo.ObjectId);
-        var currentPositionKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-
-        await UpdateObjectPositionAsync(lastPositionKey, currentPositionKey, objectKey);
-        await BroadcastObjectMove(lastPositionKey, objectInfo);
-        await BroadcastObjectMove(currentPositionKey, objectInfo);
-    }
-
-    private void BroadcastPacket(string positionKey, IPacket packet)
-    {
-        var pivotCell = MapHelper.CreateCell(positionKey);
-        var boundCellList = pivotCell.GetBoundCellList();
-
-        foreach (var boundPositionKey in boundCellList.Select(boundCell => MapHelper.CreatePartKey(_mapId, boundCell)))
-        {
-            if (!_objectPositionDict.TryGetValue(boundPositionKey, out var channelSet) || channelSet.Count <= 0)
-            {
-                continue;
-            }
-            foreach (var channel in channelSet)
-            {
-                _natsClient.Publish(channel, packet.ToBytes());
-            }
-        }
-    }
-
-    private void BroadcastObjectDestroy(List<int> targetServerList, byte[] message)
-    {
-        foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetBroadcastDestroySubject(_mapId, 0, targetServer)))
-        {
-            _natsClient.Publish(subject, message);
-        }
-    }
-
-    private async Task BroadcastObjectMove(string positionKey, GameObjectInfo objectInfo)
-    {
-        var movedCell = objectInfo.CurrentCell;
-        var lastCell = MapHelper.CreateCell(positionKey);
+        var currentPositionKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.TargetCell);
         
-        _logManager.WriteDebugLog($"=== BroadcastObjectMove Start ===");
-        _logManager.WriteDebugLog($"Object: {objectInfo.GetGameObjectKey()}, LastPosition: {positionKey}, NewPosition: {MapHelper.CreatePartKey(_mapId, movedCell)}");
+        // 락 획득 순서를 일관되게 정렬하여 데드락 방지
+        var firstKey = string.CompareOrdinal(lastPositionKey, currentPositionKey) < 0 ? lastPositionKey : currentPositionKey;
+        var secondKey = firstKey == lastPositionKey ? currentPositionKey : lastPositionKey;
 
-        var lastBoundCells = lastCell.GetBoundCellList();
-        var newBoundCells = movedCell.GetBoundCellList();
-
-        // 움직이는 유저의 bound 영역 안에 있는 가만히 있는 유저들에게도 스폰 체크 메시지 전송
-        await _mapLock.WaitAsync();
-        try 
-        {
-            var allBoundCells = lastBoundCells.Union(newBoundCells);
-
-            foreach(var cell in allBoundCells)
-            {
-                var key = MapHelper.CreatePartKey(_mapId, cell);
-                if(!_objectPositionDict.TryGetValue(key, out var objects))
-                    continue;
-
-                // 이 셀에 있는 플레이어들에게도 스폰 체크 메시지 전송
-                foreach(var obj in objects.Where(obj => obj.StartsWith("1_")))
-                {
-                    if (obj == objectInfo.GetGameObjectKey()) continue;  // 자기 자신 제외
-
-                    var serverId = MapHelper.GetManageServerId(key);
-                    var playerPositionKeys = new List<string>();
-                    var playerCellsToRemove = new List<Cell>();
-
-                    // 이전 bound에 있었고 새 bound에는 없는 경우
-                    if (lastBoundCells.Contains(cell) && !newBoundCells.Contains(cell))
-                    {
-                        playerCellsToRemove.Add(movedCell);
-                    }
-                    // 새 bound에 있고 이전 bound에는 없는 경우
-                    else if (newBoundCells.Contains(cell) && !lastBoundCells.Contains(cell))
-                    {
-                        playerPositionKeys.Add(MapHelper.CreatePartKey(_mapId, movedCell));
-                    }
-
-                    var spawnMessage = MessagePackSerializer.Serialize((obj, playerPositionKeys, playerCellsToRemove));
-                    var spawnSubject = SubjectHelper.GetSpawnManageSubject(_mapId, 0, serverId);
-                    _natsClient.Publish(spawnSubject, spawnMessage);
-                }
-            }
-        }
-        finally 
-        {
-            _mapLock.Release();
-        }
-
-        // 서버간 broadcast 메시지 전송
-        var affectedServers = newBoundCells
-            .Select(cell => MapHelper.CreatePartKey(_mapId, cell))
-            .GroupBy(
-                MapHelper.GetManageServerId,
-                (serverId, cells) => new { serverId, cells = cells.ToList() }
-            );
-
-        foreach (var serverGroup in affectedServers)
-        {
-            _logManager.WriteDebugLog($"Server {serverGroup.serverId}: {serverGroup.cells.Count} cells");
-            var subject = SubjectHelper.GetBroadcastUpdateSubject(_mapId, 0, serverGroup.serverId);
-            var message = MessagePackSerializer.Serialize((positionKey, objectInfo));
-            _natsClient.Publish(subject, message);
-        }
-        
-        _logManager.WriteDebugLog("=== BroadcastObjectMove End ===");
-    }
-    
-    private async Task UpdateObjectPositionAsync(string lastPositionKey, string currentPositionKey, string objectKey)
-    {
-        await _mapLock.WaitAsync();
+        var firstLock = GetOrCreatePositionLock(firstKey);
+        await firstLock.WaitAsync();
         try
         {
-            if (_objectPositionDict.TryGetValue(lastPositionKey, out var lastPositionSet))
+            // 두 키가 다른 경우에만 두 번째 락 획득
+            if (firstKey != secondKey)
             {
-                lastPositionSet.Remove(objectKey);
+                var secondLock = GetOrCreatePositionLock(secondKey);
+                await secondLock.WaitAsync();
+                try
+                {
+                    await UpdateObjectPositionCoreAsync(lastPositionKey, currentPositionKey, objectKey);
+                }
+                finally
+                {
+                    secondLock.Release();
+                }
             }
-
-            if (!_objectPositionDict.TryGetValue(currentPositionKey, out var currentSet))
+            else
             {
-                throw new Exception($"Invalid position key: {currentPositionKey}");
+                await UpdateObjectPositionCoreAsync(lastPositionKey, currentPositionKey, objectKey);
             }
-        
-            currentSet.Add(objectKey);
         }
         finally
         {
-            _mapLock.Release();
+            firstLock.Release();
         }
+
+        // 락 바깥에서 브로드캐스트 작업 수행
+        BroadcastObjectMove(lastPositionKey, objectInfo);
+        BroadcastObjectMove(currentPositionKey, objectInfo);
     }
-    private async Task LeaveManageObjectAsync(RedisValue message)
+
+    private Task UpdateObjectPositionCoreAsync(string lastPositionKey, string currentPositionKey, string objectKey)
+    {
+        // 실제 데이터 수정 부분만 락 내부에서 수행
+        if (_objectPositionDict.TryGetValue(lastPositionKey, out var lastPositionSet))
+        {
+            _ = lastPositionSet.Remove(objectKey);
+        }
+
+        if (!_objectPositionDict.TryGetValue(currentPositionKey, out var currentSet))
+        {
+            throw new Exception($"Invalid position key: {currentPositionKey}");
+        }
+        currentSet.Add(objectKey);
+        
+        return Task.CompletedTask;
+    }
+
+    private async Task LeaveManageObjectAsync(byte[] message)
     {
         var (positionKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
-        await _mapLock.WaitAsync();
+        
+        var positionLock = GetOrCreatePositionLock(positionKey);
+        await positionLock.WaitAsync();
         try
         {
             if (_objectPositionDict.TryGetValue(positionKey, out var positionSet))
@@ -399,145 +144,196 @@ public class CommonMapController
         }
         finally
         {
-            _mapLock.Release();
+            positionLock.Release();
         }
     }
 
-    private async Task SpawnManageObjectAsync(RedisValue message)
+    private Task SpawnManageObjectAsync(byte[] message)
     {
-        var (userSubject, positionKeyList, cellsToRemove) = MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
-           
-        _logManager.WriteDebugLog($"=== SpawnManage Start ===");
-        _logManager.WriteDebugLog($"User: {userSubject}, PositionKeys: {string.Join(",", positionKeyList)}");
-        _logManager.WriteDebugLog($"CellsToRemove: {string.Join(",", cellsToRemove.Select(c => $"{c.X},{c.Y}"))}");
-
+        var (objectKey, positionKeyList, cellsToRemove) = 
+            MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
+        
         var spawnList = new HashSet<string>();
         var cellsWithObjects = new List<Cell>();
 
-        await _mapLock.WaitAsync();
+        // 다중 위치 락을 한 번에 가져오기 위해 읽기 전용 락 사용
+        _globalLock.EnterReadLock();
         try
         {
-            // 새로운 bound 영역의 오브젝트들 수집
             foreach (var positionKey in positionKeyList)
             {
                 if (_objectPositionDict.TryGetValue(positionKey, out var objects))
                 {
-                    foreach(var obj in objects)
+                    foreach (var obj in objects)
                     {
                         spawnList.Add(obj);
                     }
-                    _logManager.WriteDebugLog($"Position {positionKey} objects: {string.Join(",", objects)}");
                 }
             }
 
-            // cellsToRemove에서 현재 오브젝트가 있는 셀 확인
-            if (cellsToRemove != null)
+            foreach (var cell in cellsToRemove)
             {
-                foreach(var cell in cellsToRemove)
+                var key = MapHelper.CreatePartKey(mapId, cell);
+                if (_objectPositionDict.TryGetValue(key, out var objects) && objects.Count > 0)
                 {
-                    var key = MapHelper.CreatePartKey(_mapId, cell);
-                    if (_objectPositionDict.TryGetValue(key, out var objects) && objects.Count > 0)
-                    {
-                        cellsWithObjects.Add(cell);
-                        _logManager.WriteDebugLog($"Cell {cell.X},{cell.Y} has objects: {string.Join(",", objects)}");
-                    }
+                    cellsWithObjects.Add(cell);
                 }
             }
         }
         finally
         {
-            _mapLock.Release();
+            _globalLock.ExitReadLock();
         }
 
-        if (spawnList.Count <= 0 && cellsWithObjects.Count == 0)
+        if (spawnList.Count <= 0 && cellsWithObjects.Count <= 0)
         {
-            _logManager.WriteDebugLog("No objects to spawn or remove");
-            return;
+            return Task.CompletedTask;
         }
-
-        _logManager.WriteDebugLog($"Sending packet - userSubject: {userSubject}, Spawn count: {spawnList.Count}, Remove cells: {cellsWithObjects.Count}");
-        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList.ToList(), cellsWithObjects);
-        _natsClient.Publish(userSubject, packet.ToBytes());
         
-        _logManager.WriteDebugLog("=== SpawnManage End ===");
+        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList.ToList(), cellsWithObjects);
+        NatsClient.Publish(objectKey, packet.ToBytes());
+
+        return Task.CompletedTask;
     }
 
-    private async Task DestroyManageObjectAsync(RedisValue message)
+    private Task DestroyManageObjectAsync(byte[] message)
     {
         var (positionKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
-        await _mapLock.WaitAsync();
+        
+        // 글로벌 정보를 수정하므로 쓰기 락 사용
+        _globalLock.EnterWriteLock();
         try
         {
             foreach (var set in _objectPositionDict.Values)
             {
                 set.Remove(objectKey);
             }
-            // foreach (var set in _jobResourceDict.Values)
-                // set.RemoveWhere(jobResourceInfo => jobResourceInfo.ObjectInfo.GetGameObjectKey() == objectKey);
         }
         finally
         {
-            _mapLock.Release();
+            _globalLock.ExitWriteLock();
         }
 
         var positionCell = MapHelper.CreateCell(positionKey);
-        var targetServerList = MapHelper.GetBoundServerList(_mapId, positionCell);
+        var targetServerList = MapHelper.GetBoundServerList(mapId, positionCell);
 
         var destroyMessage = MessagePackSerializer.Serialize((positionKey, objectKey));
         BroadcastObjectDestroy(targetServerList, destroyMessage);
 
         using var packet = PacketMaker.G_TO_U_DESTROY(objectKey);
         BroadcastPacket(positionKey, packet);
+        
+        return Task.CompletedTask;
     }
 
-    // private async Task CreateJobResourceInfoAsync(RedisValue message)
-    // {
-    //     var (createPositionKey, jobResourceInfo, objectInfo)
-    //         = MessagePackSerializer.Deserialize<(string, JobResourceInfo, GameObjectInfo)>(message);
-    //
-    //     var partId = MapHelper.GetManagePartByPositionKey(createPositionKey);
-    //
-    //     await _mapLock.WaitAsync();
-    //     try
-    //     {
-    //         _jobResourceDict[partId].Add(jobResourceInfo);
-    //         _objectPositionDict.AddOrUpdate(
-    //             createPositionKey,
-    //             [objectInfo.GetGameObjectKey()],
-    //             (_, set) =>
-    //             {
-    //                 set.Add(objectInfo.GetGameObjectKey());
-    //                 return set;
-    //             }
-    //         );
-    //     }
-    //     finally
-    //     {
-    //         _mapLock.Release();
-    //     }
-    //
-    //     BroadcastObjectMove(createPositionKey, objectInfo);
-    // }
-
-    private void BroadcastUpdateObject(RedisValue message)
+    private void BroadcastObjectDestroy(List<int> targetServerList, byte[] message)
     {
-        var (positionKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
+        foreach (var subject in targetServerList.Select(targetServer => SubjectHelper.GetBroadcastDestroySubject(mapId, 0, targetServer)))
+        {
+            NatsClient.Publish(subject, message);
+        }
+    }
+
+    private void BroadcastObjectMove(string positionKey, GameObjectInfo objectInfo)
+    {
+        var lastCell = objectInfo.CurrentCell;
+        var movedCell = objectInfo.TargetCell;
+        
+        var lastBoundCells = lastCell.GetBoundCellList();
+        var newBoundCells = movedCell.GetBoundCellList();
+
+        var allBoundCells = lastBoundCells.Union(newBoundCells);
+        var affectedServers = allBoundCells
+            .Select(cell => {
+                var posKey = MapHelper.CreatePartKey(mapId, cell);
+                var serverId = MapHelper.GetManageServerId(posKey);
+                return new { posKey, serverId };
+            })
+            .Where(item => item.serverId > 0)
+            .GroupBy(
+                item => item.serverId,
+                (serverId, items) => new { serverId, cells = items.Select(i => i.posKey).ToList() }
+            )
+            .ToList();
+        
+        foreach (var serverGroup in affectedServers)
+        {
+            var subject = SubjectHelper.GetBroadcastUpdateSubject(mapId, 0, serverGroup.serverId);
+            var message = MessagePackSerializer.Serialize((positionKey, objectInfo));
+            NatsClient.Publish(subject, message);
+        }
+    }
+
+    protected override void BroadcastPacket(string positionKey, IPacket packet)
+    {
+        var pivotCell = MapHelper.CreateCell(positionKey);
+        var boundCellList = pivotCell.GetBoundCellList();
+        var channels = new List<string>();
+
+        // 읽기 작업만 수행하므로 읽기 락 사용
+        _globalLock.EnterReadLock();
+        try
+        {
+            foreach (var boundPositionKey in boundCellList.Select(boundCell => MapHelper.CreatePartKey(mapId, boundCell)))
+            {
+                if (!_objectPositionDict.TryGetValue(boundPositionKey, out var channelSet) || channelSet.Count <= 0)
+                {
+                    continue;
+                }
+                channels.AddRange(channelSet);
+            }
+        }
+        finally
+        {
+            _globalLock.ExitReadLock();
+        }
+
+        // 락 바깥에서 발행 작업 수행
+        var packetBytes = packet.ToBytes();
+        foreach (var channel in channels)
+        {
+            NatsClient.Publish(channel, packetBytes);
+        }
+    }
+
+    private void BroadcastUpdateObject(string _, byte[] message)
+    {
+        var (partKey, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
 
         using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
-        BroadcastPacket(positionKey, packet);
+        BroadcastPacket(partKey, packet);
     }
 
-    private void BroadcastDestroyObject(RedisValue message)
+    private void BroadcastDestroyObject(string _, byte[] message)
     {
-        var (positionKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
+        var (partKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
 
         using var packet = PacketMaker.G_TO_U_DESTROY(objectKey);
-        BroadcastPacket(positionKey, packet);
+        BroadcastPacket(partKey, packet);
     }
 
-    public async Task ShutdownAsync()
+    public override async Task ShutdownAsync()
     {
-        await _mapLock.WaitAsync();
-        _mapLock.Release();
+        _globalLock.EnterWriteLock();
+        _globalLock.ExitWriteLock();
+        
+        // 필요한 경우 개별 위치 락도 확인
+        foreach (var posLock in _positionLocks.Values)
+        {
+            await posLock.WaitAsync();
+            posLock.Release();
+        }
+        
+        Dispose();
+    }
+
+    // 리소스 해제를 위한 Dispose 패턴 구현
+    public void Dispose()
+    {
+        _globalLock.Dispose();
+        foreach (var posLock in _positionLocks.Values)
+        {
+            posLock.Dispose();
+        }
     }
 }

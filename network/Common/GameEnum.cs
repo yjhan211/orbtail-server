@@ -20,7 +20,7 @@ namespace network.common
         Gym,
         Gymstorage,
         Schoolground,
-        Tent,
+        Camp,
     }
 
     public enum SocialActionType
@@ -58,7 +58,7 @@ namespace network.common
         CONSUMABLE,
         MATERIAL,
         INSTALLATION,
-        MANUAL,
+        PUTABLE,
     }
     
     public enum EquipType
@@ -69,7 +69,9 @@ namespace network.common
         HAT = 103,
         TOP = 104,
         BOTTOM = 105,
-        SHOES = 106
+        SHOES = 106,
+        TOOL = 107,
+        PASSIVE = 108,
     }
 
     public enum InstallationType
@@ -86,8 +88,8 @@ namespace network.common
         PLAYER,
         ITEM,
         EXPLORETARGET,
-        JOBRESOURCE,
-        CAMP
+        CAMP,
+        INTERACTPROP,
     }
 
     public enum InventoryOwnerType
@@ -164,7 +166,8 @@ namespace network.common
         SITCHAIR,
         EXPLORE_1,
         CRAFT_1,
-        CAMPING_1
+        CAMPING_1,
+        SLEEP,
     }
 
     public enum QuestType : short

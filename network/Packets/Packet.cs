@@ -7,7 +7,7 @@ namespace network.packets;
 public class Packet : IPacket
 {
     private long _playerId;
-    private int _protocolId;
+    public int _protocolId;
 
     public Packet(byte[] buffer)
     {

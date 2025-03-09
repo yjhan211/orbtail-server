@@ -21,24 +21,26 @@ namespace network.common.data.models
             PlayerId = new long();
             PlayerName = "";
             ItemInfo = new ItemInfo();
-            CellDict = new Dictionary<long, (ItemInfo, int)>();
+            InteractPropDict = new Dictionary<Cell, InteractPropInfo>();
+            IsIntall = false;
         }
 
-        public CampInfo(long playerId, string playerName, GameObjectInfo playerObjectInfo, ItemInfo itemInfo, Cell cell)
+        public CampInfo(long playerId, string playerName, GameObjectInfo playerObjectInfo, ItemInfo itemInfo)
         {
             ObjectInfo = new GameObjectInfo(
                 ObjectType.CAMP,
                 playerId,
                 playerObjectInfo.MapId,
                 playerObjectInfo.MapSubId,
-                Cell.Clone(cell),
+                playerObjectInfo.CurrentCell,
                 playerObjectInfo.IsFlip
             );
 
             PlayerId = playerId;
             PlayerName = playerName;
             ItemInfo = itemInfo;
-            CellDict = new Dictionary<long, (ItemInfo, int)>();
+            InteractPropDict = new Dictionary<Cell, InteractPropInfo>();
+            IsIntall = false;
         }
 
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
@@ -49,6 +51,31 @@ namespace network.common.data.models
 
         [Key("itemInfo")] public ItemInfo ItemInfo { get; set; }
 
-        [Key("cellDict")] public Dictionary<long, (ItemInfo, int)> CellDict { get; set; }
+        [Key("InteractPropDict")] public Dictionary<Cell, InteractPropInfo> InteractPropDict { get; set; }
+
+        [Key("IsInstall")] public bool IsIntall { get; set; }
+        
+        private Cell CalculatePortal(bool isFlip)
+        {
+            return isFlip
+                ? new Cell(ObjectInfo.CurrentCell.X, ObjectInfo.CurrentCell.Y + 1)
+                : new Cell(ObjectInfo.CurrentCell.X + 1, ObjectInfo.CurrentCell.Y);
+        }
+
+        private (Cell start, Cell end) CalculateBound(bool isFlip)
+        {
+            if (isFlip)
+            {
+                return (
+                    new Cell(ObjectInfo.CurrentCell.X + 1, ObjectInfo.CurrentCell.Y),
+                    new Cell(ObjectInfo.CurrentCell.X + 5, ObjectInfo.CurrentCell.Y + 4)
+                );
+            }
+
+            return (
+                new Cell(ObjectInfo.CurrentCell.X, ObjectInfo.CurrentCell.Y + 1),
+                new Cell(ObjectInfo.CurrentCell.X + 4, ObjectInfo.CurrentCell.Y + 5)
+            );
+        }
     }
 }

@@ -741,8 +741,3 @@ map_id,region_type,start_x,start_y,end_x,end_y,warp_to,init_cell_x,init_cell_y,f
 17,portal,97,103,97,103,0,0,0,0,0
 17,portal,98,103,98,103,0,0,0,0,0
 17,portal,99,103,99,103,0,0,0,0,0
-17,obstacle,92,91,92,100,0,0,0,0,0
-17,obstacle,93,91,93,100,0,0,0,0,0
-17,obstacle,94,91,94,100,0,0,0,0,0
-17,obstacle,95,91,95,100,0,0,0,0,0
-17,obstacle,96,91,96,100,0,0,0,0,0

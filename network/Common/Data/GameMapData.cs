@@ -170,7 +170,8 @@ namespace network.common.data
 
         public static bool IsCommonMap(MapId mapId)
         {
-            return GetMapInfo(mapId)?.IsCommon ?? false;
+            var mapInfo = GetMapInfo(mapId);
+            return mapInfo.IsCommon;
         }
 
         public static bool IsMoveablePosition(MapId mapId, Cell position)
@@ -241,7 +242,9 @@ namespace network.common.data
                     currentCell.Y >= portal.Start.Y && currentCell.Y <= portal.End.Y)
                 {
                     var targetMapInfo = GetMapInfo(portal.WarpTo);
-                    var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(currentMap);
+
+                    var convertCurrentMap = (portal.WarpTo == MapId.Camp) ? MapId.None : currentMap;
+                    var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(convertCurrentMap);
                     var warpMap = ConvertMap(portal.WarpTo, isTutorial);
                     
                     return (warpMap, spawnPosition, isFlip);
@@ -266,7 +269,7 @@ namespace network.common.data
             return chairInfo.IsFlip ? ChairDirection.RIGHT : ChairDirection.LEFT;
         }
 
-        public static void Validate(LogManager logManager)
+        public static void Validate()
         {
             if (_mapInfos.Count == 0)
             {
@@ -311,7 +314,7 @@ namespace network.common.data
                             $"Invalid region coordinates in map {mapId}: Start({region.Start}) -> End({region.End})");
                     }
 
-                    if (mapId == MapId.Tent)
+                    if (mapId == MapId.Camp)
                     {
                         continue;
                     }
@@ -339,8 +342,6 @@ namespace network.common.data
                     }
                 }
             }
-
-            logManager.WriteDebugLog("Map data validation completed successfully!");
         }
 
         public class MapInfo

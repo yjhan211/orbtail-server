@@ -27,8 +27,9 @@ namespace network.common.data.helpers
                 public const string Consumable = "item_info_consumable.csv";
                 public const string Installation = "item_info_installation.csv";
                 public const string Shop = "shop_info_installation.csv";
+                public const string Put = "item_info_put.csv";
 
-                public static readonly string[] ALL = new[] { Base, Equipment, Consumable, Installation, Shop };
+                public static readonly string[] ALL = new[] { Base, Equipment, Consumable, Installation, Shop, Put };
             }
 
             public static class Map
@@ -40,7 +41,6 @@ namespace network.common.data.helpers
             }
         }
         
-        private static LogManager _logManager = null!;
         private static readonly string NetworkPath = Path.GetDirectoryName(typeof(GameDataHelper).Assembly.Location)!;
         private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
             StandardDataDefinitions = 
@@ -53,10 +53,8 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.CraftInfo, init: GameCraftData.Initialize, GameCraftData.Validate),
             };
 
-        public static void Initialize(LogManager logManager)
+        public static void Initialize()
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-
             // 모든 CSV 데이터 로드
             var loadedData = new Dictionary<string, List<CsvRow>>();
             
@@ -96,7 +94,6 @@ namespace network.common.data.helpers
                 }
                 catch (Exception ex)
                 {
-                    _logManager.WriteErrorLog(new Exception($"Failed to initialize {fileName}", ex));
                     throw;
                 }
 
@@ -106,7 +103,8 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Item.Equipment],
                 loadedData[DataFiles.Item.Consumable],
                 loadedData[DataFiles.Item.Installation],
-                loadedData[DataFiles.Item.Shop]
+                loadedData[DataFiles.Item.Shop],
+                loadedData[DataFiles.Item.Put]
             );
             
             // 맵 데이터 초기화
@@ -122,29 +120,10 @@ namespace network.common.data.helpers
         {
             try
             {
-                // 일반 데이터 검증
-                foreach (var (fileName, _, validate) in StandardDataDefinitions)
-                    try
-                    {
-                        validate(_logManager);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logManager.WriteErrorLog(new Exception($"Validation failed for {fileName}", ex));
-                        throw;
-                    }
-
-                // 아이템 데이터 검증
-                GameItemData.Validate(_logManager);
-                
-                // 맵 데이터 검증
-                GameMapData.Validate(_logManager);
-
-                _logManager.WriteDebugLog("All data validations completed successfully!");
+                GameMapData.Validate();
             }
             catch (Exception ex)
             {
-                _logManager.WriteErrorLog(new Exception("Data validation failed", ex));
                 throw;
             }
         }
