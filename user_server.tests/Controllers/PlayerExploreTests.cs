@@ -321,7 +321,7 @@ namespace user_server.tests.controllers
         public async Task OnExploreComplete_WithNonReusableTarget_DeletesTargetAndGivesReward()
         {
             // Arrange
-            _exploreTargetInfo.ExploreTargetId = 100000001; // 재사용 불가능한 대상
+            _exploreTargetInfo.ExploreTargetId = 8; // 재사용 불가능한 대상
             
             // ExploreProgressInfo 생성
             var exploreProgressInfo = new ExploreProgressInfo(_exploreTargetInfo);

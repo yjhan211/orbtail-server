@@ -113,7 +113,7 @@ namespace game_server.tests.controllers
         }
 
         [Test]
-        public async Task MoveManageObjectAsync_UpdatesPositionAndBroadcasts()
+        public async Task UpdateManageObjectAsync_UpdatesPositionAndBroadcasts()
         {
             Assume.That(_validCells is { Length: >= 2 }, "Need at least 2 valid cells for this test");
             
@@ -134,7 +134,7 @@ namespace game_server.tests.controllers
             var lastPositionKey = MapHelper.CreatePartKey(_testMapId, _validCells[0]); // 첫 번째 유효한 셀
             var message = MessagePackSerializer.Serialize((lastPositionKey, objectInfo));
 
-            // GetMoveManageObjectMethodAsync 메서드 접근
+            // UpdateManageObjectAsync 메서드 접근
             var method = typeof(CommonMapController).GetMethod("UpdateManageObjectAsync",
                 BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -420,7 +420,7 @@ namespace game_server.tests.controllers
         }
 
         [Test]
-        public async Task BroadcastObjectMove_SendsUpdateToAffectedCells()
+        public void BroadcastObjectMove_SendsUpdateToAffectedCells()
         {
             Assume.That(_validCells is { Length: >= 2 }, "Need at least 2 valid cells for this test");
             
@@ -445,7 +445,7 @@ namespace game_server.tests.controllers
             // Act
             if (method != null)
             {
-                await (Task)method.Invoke(_controller, [positionKey, objectInfo])!;
+                method.Invoke(_controller, [positionKey, objectInfo]);
 
                 // Assert
                 // 브로드캐스트 확인 - 새 위치와 이전 위치에 대한 업데이트
@@ -464,7 +464,7 @@ namespace game_server.tests.controllers
         }
 
         [Test]
-        public async Task UpdateObjectPositionAsync_UpdatesPositionCorrectly()
+        public async Task UpdateObjectPositionCoreAsync_UpdatesPositionCorrectly()
         {
             Assume.That(_validCells is { Length: >= 2 }, "Need at least 2 valid cells for this test");
             
@@ -497,9 +497,16 @@ namespace game_server.tests.controllers
                 }
             }
 
-            // UpdateObjectPositionAsync 메서드 접근
-            var method = typeof(CommonMapController).GetMethod("UpdateObjectPositionAsync",
+            // UpdateObjectPositionCoreAsync 메서드 접근 (개선된 버전에서 이름 변경됨)
+            var method = typeof(CommonMapController).GetMethod("UpdateObjectPositionCoreAsync",
                 BindingFlags.NonPublic | BindingFlags.Instance);
+
+            // 메서드가 없으면 기존 이름으로 시도
+            if (method == null)
+            {
+                method = typeof(CommonMapController).GetMethod("UpdateObjectPositionAsync",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+            }
 
             // Act
             if (method != null)
@@ -519,8 +526,93 @@ namespace game_server.tests.controllers
             }
             else
             {
-                Assert.Fail("UpdateObjectPositionAsync method not found");
+                Assert.Fail("UpdateObjectPositionCoreAsync/UpdateObjectPositionAsync method not found");
             }
+        }
+        
+        [Test]
+        public void GetOrCreatePositionLock_CreatesLockWhenNeeded()
+        {
+            // Arrange
+            _controller.Initialize();
+            var positionKey = "newPosition";
+            
+            // GetOrCreatePositionLock 메서드 접근
+            var method = typeof(CommonMapController).GetMethod("GetOrCreatePositionLock", 
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            // 해당 메서드가 없으면 테스트 스킵 (기존 버전 코드에 없을 수 있음)
+            if (method == null)
+            {
+                Assert.Inconclusive("GetOrCreatePositionLock method not found - may be using different locking mechanism");
+                return;
+            }
+            
+            // _positionLocks 필드 접근
+            var field = typeof(CommonMapController).GetField("_positionLocks",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            if (field == null)
+            {
+                Assert.Inconclusive("_positionLocks field not found");
+                return;
+            }
+            
+            // Act
+            var result = method.Invoke(_controller, [positionKey]);
+            
+            // Assert
+            Assert.That(result, Is.Not.Null, "Should return a lock object");
+            
+            // 락이 추가되었는지 확인
+            var locks = (ConcurrentDictionary<string, SemaphoreSlim>)field.GetValue(_controller)!;
+            Assert.That(locks.ContainsKey(positionKey), Is.True, "Lock should be added to the dictionary");
+        }
+        
+        [Test]
+        public void ReaderWriterLockIsUsedCorrectly()
+        {
+            // Arrange
+            _controller.Initialize();
+            
+            // _globalLock 필드 접근
+            var field = typeof(CommonMapController).GetField("_globalLock",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            // 해당 필드가 없으면 테스트 스킵 (개선된 버전에만 있음)
+            if (field == null)
+            {
+                Assert.Inconclusive("_globalLock field not found - may be using different locking mechanism");
+                return;
+            }
+            
+            // Assert
+            var globalLock = field.GetValue(_controller);
+            Assert.That(globalLock, Is.Not.Null, "Global lock should be initialized");
+            Assert.That(globalLock, Is.TypeOf<ReaderWriterLockSlim>(), "Global lock should be ReaderWriterLockSlim");
+        }
+        
+        [Test]
+        public async Task ShutdownAsync_WaitsForCompletingOperations()
+        {
+            // Arrange
+            _controller.Initialize();
+            
+            // Act
+            await _controller.ShutdownAsync();
+            
+            // Assert - 주로 예외 없이 완료되는지 확인
+            Assert.Pass("ShutdownAsync completed without exceptions");
+        }
+        
+        [Test]
+        public void Dispose_ReleasesAllLocks()
+        {
+            // Arrange
+            _controller.Initialize();
+            
+            // Act & Assert - 주로 예외 없이 완료되는지 확인
+            Assert.DoesNotThrow(() => _controller.Dispose(), "Dispose should complete without exceptions");
         }
         
         [TearDown]
@@ -528,6 +620,7 @@ namespace game_server.tests.controllers
         {
             // Dispose 가능한 리소스 정리
             _cts.Dispose();
+            _controller.Dispose();
         }
     }
 }

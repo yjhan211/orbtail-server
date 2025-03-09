@@ -427,11 +427,20 @@ public class GameUser : IPeer
         {
             return Task.CompletedTask;
         }
-   
-        var objectKeys = body.ObjectKeyList.Where(key => key != _playerController.ObjectKey).ToList();
-        var cellsToRemove = body.CellsToRemove;
 
+        var objectKeys = body.ObjectKeyList
+            .Where(key => key != _playerController.ObjectKey)
+            .ToList();
+        var cellsToRemove = body.CellsToRemove.ToList();
+    
+        if (objectKeys.Count == 0 && cellsToRemove.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+    
         var batchCount = (int)Math.Ceiling((double)Math.Max(objectKeys.Count, cellsToRemove.Count) / Config.BROADCAST_UNIT);
+        batchCount = Math.Max(1, batchCount);
+    
         for (var i = 0; i < batchCount; i++)
         {
             SendSpawnBatch(objectKeys, cellsToRemove, Config.BROADCAST_UNIT, i, batchCount);
@@ -442,20 +451,30 @@ public class GameUser : IPeer
 
     private void SendSpawnBatch(List<string> objects, List<Cell> cells, int batchSize, int batchIndex, int totalBatches)
     {
-        var batch = objects
-            .Skip(batchIndex * batchSize)
-            .Take(batchSize)
-            .Select(item => item.ToString())
-            .ToList();
-           
-        var cellBatch = cells
-            .Skip(batchIndex * batchSize)
-            .Take(batchSize)
-            .ToList();
-
-        var isEnded = batchIndex == totalBatches - 1;
-       
-        using var packet = PacketMaker.U_TO_C_SPAWN(batch, isEnded, cellBatch);
+        // objects 리스트 처리 - null 체크 및 범위 검증
+        var objectBatch = new List<string>();
+        var startIndex = batchIndex * batchSize;
+        if (startIndex < objects.Count)
+        {
+            objectBatch = objects
+                .Skip(startIndex)
+                .Take(Math.Min(batchSize, objects.Count - startIndex))
+                .ToList();
+        }
+    
+        // cells 리스트 처리 - null 체크 및 범위 검증
+        var cellBatch = new List<Cell>();
+        if (startIndex < cells.Count)
+        {
+            cellBatch = cells
+                .Skip(startIndex)
+                .Take(Math.Min(batchSize, cells.Count - startIndex))
+                .ToList();
+        }
+    
+        var isEnded = batchIndex >= totalBatches - 1;
+    
+        using var packet = PacketMaker.U_TO_C_SPAWN(objectBatch, isEnded, cellBatch);
         Send(packet);
     }
 
@@ -532,14 +551,15 @@ public class GameUser : IPeer
 
     private void BroadcastToMap<T>(GameObjectInfo objectInfo, T payload, Func<GameObjectInfo, int, string> getSubject)
     {
+        var serializedPayload = MessagePackSerializer.Serialize(payload);
         if (GameMapData.IsCommonMap(objectInfo.MapId))
         {
-            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.CurrentCell);
-            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.CurrentCell);
+            var partKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.TargetCell);
+            var targetServerList = MapHelper.GetBoundServerList(objectInfo.MapId, objectInfo.TargetCell);
             foreach (var server in targetServerList)
             {
                 var subject = getSubject(objectInfo, server);
-                NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, payload)));
+                NatsClient.Publish(subject, MessagePackSerializer.Serialize((partKey, objectInfo.ObjectType, serializedPayload)));
             }
             return;
         }
@@ -547,7 +567,7 @@ public class GameUser : IPeer
         var instancePartKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
         var manageServer = MapHelper.GetManageServerId(objectInfo.MapSubId);
         var instanceSubject = getSubject(objectInfo, manageServer);
-        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, payload)));
+        NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, objectInfo.ObjectType, serializedPayload)));
     }
     
     public virtual void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject?

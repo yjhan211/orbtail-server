@@ -32,12 +32,21 @@ namespace network.common.data.models
 
         public override bool Equals(object obj)
         {
-            return Equals(obj as Cell);
+            if (obj is Cell other)
+            {
+                return X == other.X && Y == other.Y;
+            }
+            return false;
         }
 
         public override int GetHashCode()
         {
             return HashCode.Combine(X, Y);
+        }
+        
+        public override string ToString()
+        {
+            return $"Cell({X},{Y})";
         }
 
         public static Cell Clone(Cell cell)

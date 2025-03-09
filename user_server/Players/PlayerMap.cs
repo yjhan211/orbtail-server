@@ -1,4 +1,6 @@
-﻿using MessagePack;
+﻿using log4net.Repository.Hierarchy;
+using MessagePack;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -13,6 +15,7 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
     private readonly INatsClient _natsClient = user.NatsClient;
     private readonly ICacheHelper _cacheHelper = user.CacheHelper;
     private readonly SendPacketDelegate _sendToClient = user.Send;
+    private readonly ILogger _logger = user.Logger;
 
     public (MapId, long, Cell, bool) CurrentMapInfo => 
         (playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip);
@@ -73,10 +76,13 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         playerInfo.ObjectInfo.IsFlip = isFlip;
         await playerInfo.ObjectInfo.Save(_cacheHelper);
 
-        if (GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId) && !isLogin)
+        if (GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId))
         {
-            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(playerInfo.LastMapId, playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip);
-            _sendToClient(packet);
+            if (!isLogin)
+            {
+                using var packet = PacketMaker.U_TO_C_CHANGE_MAP(playerInfo.LastMapId, playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip);
+                _sendToClient(packet);
+            }
             return;
         }
 

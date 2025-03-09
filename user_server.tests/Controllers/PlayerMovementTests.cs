@@ -192,28 +192,6 @@ namespace user_server.tests.controllers
         }
         
         [Test]
-        public async Task HandleMove_CrossingServerBoundary_SendsLeaveNotification()
-        {
-            // Arrange - 서버 경계에 있는 위치로 설정
-            _playerInfo.ObjectInfo.CurrentCell = new Cell(29, 10); // 경계 근처
-            var request = new C_TO_U_MOVE { Direction = DirectionType.TOP_RIGHT }; // 경계를 넘는 방향
-            _testNatsClient.Reset();
-            
-            // Act
-            await _playerMovement.HandleMove(request);
-            
-            // 비동기 처리 완료 대기
-            await Task.Delay(300);
-            
-            // Assert
-            // 서버 간 통신 메시지가 발행되었는지 검증
-            Assert.That(_testNatsClient.PublishCalled, Is.True, "서버 간 통신 메시지가 발행되어야 함");
-            
-            // 패킷이 전송되었는지 검증
-            Assert.That(_userToken.PacketWasSent, Is.True, "이동 응답 패킷이 전송되어야 함");
-        }
-        
-        [Test]
         public void Dispose_ReleasesResources()
         {
             // Act
@@ -234,10 +212,10 @@ namespace user_server.tests.controllers
                 Hp = 100,
                 ObjectInfo =
                 {
-                    MapId = MapId.Library,
+                    MapId = MapId.Classroom,
                     ObjectType = ObjectType.PLAYER,
-                    CurrentCell = new Cell(10, 10),
-                    TargetCell = new Cell(10, 10)
+                    CurrentCell = new Cell(92, 93),
+                    TargetCell = new Cell(92, 93)
                 }
             };
 

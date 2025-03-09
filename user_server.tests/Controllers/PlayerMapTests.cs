@@ -239,7 +239,7 @@ namespace user_server.tests.controllers
         public async Task EnterMap_WithLoginFlag_DoesNotSendPacket()
         {
             // Arrange
-            var targetMapId = MapId.Library;
+            var targetMapId = MapId.Camp;
             var targetPosition = new Cell(10, 10);
             var isFlip = false;
             var isLogin = true; // 로그인 시 맵 입장

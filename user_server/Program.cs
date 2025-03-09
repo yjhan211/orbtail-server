@@ -8,6 +8,7 @@ using network.helpers;
 using network.infrastructure;
 using network.interfaces;
 using network.managers;
+using Serilog;
 
 namespace user_server;
 
@@ -29,10 +30,26 @@ internal static class Program
     
     private static void ConfigureLogging(HostBuilderContext hostingContext, ILoggingBuilder logging)
     {
+        // 서버 구성 가져오기
+        var serverType = hostingContext.Configuration["serverType"] ?? "UserServer";
+        var serverId = 0;
+    
+        // Serilog 구성
+        var serilogLogger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .Enrich.WithProperty("serverType", serverType)
+            .Enrich.WithProperty("serverId", serverId)
+            .WriteTo.Console(outputTemplate: 
+                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}")
+            .CreateLogger();
+    
+        // 기본 공급자 지우기
         logging.ClearProviders();
-        logging.AddConfiguration(hostingContext.Configuration.GetSection("Logging"));
-        logging.AddConsole();
+    
+        // 로깅 파이프라인에 Serilog 추가
+        logging.AddSerilog(serilogLogger);
     }
+
     
     private static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
@@ -42,16 +59,23 @@ internal static class Program
             GameServerNum = hostContext.Configuration.GetValue<int>("gameServerNum"),
             ServerId = 0
         };
-        
-        serverConfig.Validate();
-
+    
         services.AddSingleton<IServerConfig>(serverConfig);
         services.AddSingleton(serverConfig);
         services.AddSingleton<NetworkService>();
         services.AddSingleton<INetworkService, NetworkService>();
         services.AddSingleton<NatsClientFactory>();
         services.AddSingleton<INatsClientFactory, NatsClientFactory>();
-        services.AddSingleton(sp => new LogManager(serverConfig.ServerType, serverConfig.ServerId));
+    
+        // LogManager 등록 방법 변경
+        services.AddSingleton<LogManager>(sp => 
+            new LogManager(
+                serverConfig.ServerType, 
+                serverConfig.ServerId, 
+                sp.GetRequiredService<ILogger<LogManager>>()
+            )
+        );
+
         services.AddSingleton<RedisConnectionPool>(sp => {
             var redisPool = new RedisConnectionPool();
             var redisEndpoints = hostContext.Configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");

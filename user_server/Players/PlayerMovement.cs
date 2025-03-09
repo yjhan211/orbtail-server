@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using MessagePack;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -22,6 +23,8 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
     
     private readonly SemaphoreSlim _moveLock = new(1, 1);
     private readonly ConcurrentQueue<C_TO_U_MOVE> _moveQueue = new();
+
+    private readonly ILogger _logger = user.Logger;
     
     private bool _disposed;
     private Cell? _lastCell;
@@ -76,7 +79,7 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
                 return;
             }
 
-            if (_moveQueue.Count <= Config.MAX_MOVE_QUEUE_SIZE)
+            if (_moveQueue.Count >= Config.MAX_MOVE_QUEUE_SIZE)
             {
                 // TODO 싱크 완전히 깨진 상태이므로 위치 강제보정
                 throw new Exception("[RequestMove] moveQueue is Full.");   
@@ -95,53 +98,50 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
         var moveElapsedTime = GameRuleData.MoveElapsedTime / moveSpeed;
         var consumeHp = (int)(moveSpeed * 2 + moveSpeed - 2);
         IncreaseHp(consumeHp * -1);
+        
+        var nextTargetCell = playerInfo.ObjectInfo.TargetCell.GetNextCell(moveRequest.Direction);
+        if (!GameMapData.IsMoveablePosition(playerInfo.ObjectInfo.MapId, nextTargetCell))
+        {
+            return;
+        }
 
-        var previousCell = Cell.Clone(playerInfo.ObjectInfo.CurrentCell);
+        _lastCell = Cell.Clone(playerInfo.ObjectInfo.CurrentCell);
         playerInfo.ObjectInfo.CurrentCell = Cell.Clone(playerInfo.ObjectInfo.TargetCell);
         playerInfo.ObjectInfo.TargetCell = playerInfo.ObjectInfo.TargetCell.GetNextCell(moveRequest.Direction);
 
-        // 삭제할 cell 계산
-        var previousBoundCells = previousCell.GetBoundCellList();
         var currentBoundCells = playerInfo.ObjectInfo.CurrentCell.GetBoundCellList();
-        var cellsToRemove = previousBoundCells.Except(currentBoundCells).ToList();
+        var targetBoundCells = playerInfo.ObjectInfo.TargetCell.GetBoundCellList();
+        var cellsToRemove = currentBoundCells.Except(targetBoundCells).ToList();
 
         playerInfo.ObjectInfo.SetFlip(moveRequest.Direction);
         playerInfo.ObjectInfo.MoveTimestamp = moveRequest.Direction == DirectionType.NONE ? default : DateTime.UtcNow;
         await playerInfo.ObjectInfo.Save(_cacheHelper);
 
         var isCommonMap = GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId);
-
-        var previousPartKey = isCommonMap
-            ? MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, previousCell)
-            : MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
-
         var currentPartKey = isCommonMap
             ? MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell)
             : MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
-
-        var previousManageServer = isCommonMap
-            ? MapHelper.GetManageServerId(previousPartKey)
-            : MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
-
+        
+        var nextPartKey = isCommonMap
+            ? MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.TargetCell)
+            : MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
+        
         var currentManageServer = isCommonMap
             ? MapHelper.GetManageServerId(currentPartKey)
             : MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
-
-        // 담당 서버가 변경되었을 경우 이전 서버에게 떠났음을 알림
-        if (previousManageServer != currentManageServer)
+        
+        var nextManageServer = isCommonMap
+            ? MapHelper.GetManageServerId(nextPartKey)
+            : MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
+        
+        if (currentManageServer != nextManageServer)
         {
-            var leaveSubject = SubjectHelper.GetLeaveManageSubject(playerInfo.ObjectInfo, previousManageServer);
-            _natsClient.Publish(leaveSubject, MessagePackSerializer.Serialize((previousPartKey, playerInfo.ObjectInfo.GetGameObjectKey())));
+            var leaveSubject = SubjectHelper.GetLeaveManageSubject(playerInfo.ObjectInfo, currentManageServer);
+            _natsClient.Publish(leaveSubject, MessagePackSerializer.Serialize((currentPartKey, playerInfo.ObjectInfo.GetGameObjectKey())));
         }
 
-        // 현재 서버에 이동 처리 요청 (정확한 이전 위치 키 전달)
-        var moveSubject = SubjectHelper.GetUpdateManageSubject(playerInfo.ObjectInfo, currentManageServer);
-        _natsClient.Publish(moveSubject, MessagePackSerializer.Serialize((previousPartKey, objectInfo: playerInfo.ObjectInfo)));
-        
-        // _lastCell 업데이트를 위한 참조점으로 사용
-        _lastCell = Cell.Clone(previousCell);
-        
-        // 이동 과정에서 새로 스폰되는 오브젝트 정보 전송
+        var moveSubject = SubjectHelper.GetUpdateManageSubject(playerInfo.ObjectInfo, nextManageServer);
+        _natsClient.Publish(moveSubject, MessagePackSerializer.Serialize((currentPartKey, objectInfo: playerInfo.ObjectInfo)));
         if (GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId))
         {
             RequestSpawnInfo(playerInfo.ObjectInfo.MapId, cellsToRemove);
@@ -149,7 +149,6 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
 
         if (moveRequest.Direction != DirectionType.NONE)
         {
-            // 자신의 이동이므로 큐에 즉시 넣음
             _mapObjectController.EnqueueUpdateObject(playerInfo.ObjectInfo);
         }
 
@@ -158,9 +157,9 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
         var isArrive = true;
         while (_moveQueue.TryDequeue(out var nextMove))
         {
+            isArrive = false;
             // 큐에 있는 모든 이동요청 순차적으로 처리
             await ProcessMoveAsync(nextMove);
-            isArrive = false;
         }
 
         if (!isArrive)
@@ -173,7 +172,6 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
 
     private async Task CompleteMovement()
     {
-        _lastCell = Cell.Clone(playerInfo.ObjectInfo.CurrentCell);
         playerInfo.ObjectInfo.CurrentCell = Cell.Clone(playerInfo.ObjectInfo.TargetCell);
         await playerInfo.ObjectInfo.Save(_cacheHelper);
 
@@ -219,32 +217,25 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
     
     private void RequestCommonMapSpawnList(List<Cell> cellsToRemove, bool isAll)
     {
-        var lastBoundCellList = isAll ? [] : _lastCell?.GetBoundCellList();
-        var currentBoundCellList = playerInfo.ObjectInfo.CurrentCell.GetBoundCellList();
+        var currentBoundCellList = isAll ? [] : playerInfo.ObjectInfo.CurrentCell.GetBoundCellList();
+        var targetBoundCellList = playerInfo.ObjectInfo.TargetCell.GetBoundCellList();
 
-        var objectSpawnList = currentBoundCellList
-            .Except(lastBoundCellList!)
+        var objectSpawnList = targetBoundCellList
+            .Except(currentBoundCellList)
             .Select(cell => MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, cell))
             .GroupBy(
-                posKey => {
-                    var serverId = MapHelper.GetManageServerId(posKey);
-                    return serverId;
-                },
+                MapHelper.GetManageServerId,
                 (serverId, positionKeys) => new { serverId, positionKeyList = positionKeys.ToList() }
             )
-            .Where(group => group.serverId > 0) // 서버 ID가 0보다 큰 경우만 포함
+            .Where(group => group.serverId > 0)
             .ToList();
 
         var removeCellsByServer = cellsToRemove
             .GroupBy(
-                cell => {
-                    var posKey = MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, cell);
-                    var serverId = MapHelper.GetManageServerId(posKey);
-                    return serverId;
-                },
+                cell => MapHelper.GetManageServerId(MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, cell)),
                 (serverId, cells) => new { serverId, cells = cells.ToList() }
             )
-            .Where(group => group.serverId > 0) // 서버 ID가 0보다 큰 경우만 포함
+            .Where(group => group.serverId > 0)
             .ToList();
 
         var allServers = objectSpawnList
@@ -255,7 +246,6 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
 
         foreach (var serverId in allServers)
         {
-            // 서버 ID가 0인 경우는 이미 필터링되었으므로 여기서 확인할 필요 없음
             var spawnPositions = objectSpawnList
                 .FirstOrDefault(x => x.serverId == serverId)?.positionKeyList ?? [];
             var removeCells = removeCellsByServer
