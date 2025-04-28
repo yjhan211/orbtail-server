@@ -76,13 +76,13 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
         playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
         
+        using var packet2 = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
+        _sendToClient(packet2);
+        
         // 기존 맵에 삭제 요청
         await PublishDestroy();
         await EnterMap(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition, changeMapInfo.Value.isFlip, false);
         await playerInfo.Save(_cacheHelper);
-        
-        using var packet2 = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
-        _sendToClient(packet2);
     }
     
     public async Task EnterMap(MapId mapId, Cell spawnPosition, bool isFlip, bool isLogin)
@@ -143,9 +143,10 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         switch (mapId)
         {
             case MapId.TutorialLibrary:
-                playerInfo.QuestDiary.QuestDict.TryGetValue(100000002, out var questInfo);
+                playerInfo.QuestDiary.QuestDict.TryGetValue(100000001, out var questInfo);
                 if (questInfo is not { State: QuestState.END })
                 {
+                    _logger.LogDebug(questInfo?.State.ToString());
                     return false;
                 }
                 break;

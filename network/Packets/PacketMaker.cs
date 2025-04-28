@@ -253,7 +253,7 @@ public static class PacketMaker
     
     public static Packet U_TO_C_CHANGE_MAP_SUCCESS(MapId lastMapId, MapId mapId, long mapSubId, Cell spawnCell, bool isFlip)
     {
-        var packet = Packet.Create((int)Protocol.U_TO_C_CHANGE_MAP);
+        var packet = Packet.Create((int)Protocol.U_TO_C_CHANGE_MAP_SUCCESS);
         U_TO_C_CHANGE_MAP_SUCCESS body = new() { LastMapId = lastMapId, MapId = mapId, MapSubId = mapSubId, SpawnCell = spawnCell, IsFlip = isFlip };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
