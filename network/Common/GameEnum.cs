@@ -11,7 +11,7 @@ namespace network.common
         TutorialAdminoffice,
         TutorialGym,
         TutorialGymstorage,
-        TutorialSchoolground,
+        TutorialCity,
         Library,
         School1,
         School2,
@@ -19,7 +19,7 @@ namespace network.common
         Adminoffice,
         Gym,
         Gymstorage,
-        Schoolground,
+        City,
         Camp,
     }
 

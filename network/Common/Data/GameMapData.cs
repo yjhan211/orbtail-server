@@ -48,7 +48,7 @@ namespace network.common.data
             { MapId.TutorialAdminoffice, MapId.Adminoffice },
             { MapId.TutorialGym, MapId.Gym },
             { MapId.TutorialGymstorage, MapId.Gymstorage },
-            { MapId.TutorialSchoolground, MapId.Schoolground }
+            { MapId.TutorialCity, MapId.City }
         };
 
         public static void Initialize(List<CsvRow> mapInfo, List<CsvRow> mapRegion)
