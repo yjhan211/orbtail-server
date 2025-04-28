@@ -25,6 +25,13 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
 
     public async Task ChangeMap(C_TO_U_CHANGE_MAP body)
     {
+        if (playerInfo.IsTutorial && !IsLeaveAbleMap(playerInfo.ObjectInfo.MapId))
+        {
+            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
+            _sendToClient(packet);
+            return;
+        }
+        
         if (body.MapId == MapId.Camp)
         {
             playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
@@ -36,6 +43,9 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
             var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
             var publishObj = MessagePackSerializer.Serialize((playerInfo.ObjectInfo.GetGameObjectKey(), body.MapId, body.MapSubId, false));
             _natsClient.Publish(subject, publishObj);
+            
+            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
+            _sendToClient(packet);
             return;
         }
         
@@ -48,12 +58,17 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
             await PublishDestroy();
             await EnterMap(playerInfo.CampInfo.ObjectInfo.MapId, playerInfo.CampInfo.ObjectInfo.CurrentCell, false, false);
             await playerInfo.Save(_cacheHelper);
+            
+            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
+            _sendToClient(packet);
             return;
         }
         
         var changeMapInfo = GameMapData.GetPortalOrNull(playerInfo.ObjectInfo, playerInfo.IsTutorial);
         if (changeMapInfo == null)
         {
+            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
+            _sendToClient(packet);
             return;
         }
         
@@ -65,6 +80,9 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         await PublishDestroy();
         await EnterMap(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition, changeMapInfo.Value.isFlip, false);
         await playerInfo.Save(_cacheHelper);
+        
+        using var packet2 = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
+        _sendToClient(packet2);
     }
     
     public async Task EnterMap(MapId mapId, Cell spawnPosition, bool isFlip, bool isLogin)
@@ -80,7 +98,7 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         {
             if (!isLogin)
             {
-                using var packet = PacketMaker.U_TO_C_CHANGE_MAP(playerInfo.LastMapId, playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip);
+                using var packet = PacketMaker.U_TO_C_CHANGE_MAP_SUCCESS(playerInfo.LastMapId, playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip);
                 _sendToClient(packet);
             }
             return;
@@ -106,12 +124,6 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         await playerInfo.Save(_cacheHelper);
     }
 
-    private long GetInstanceMapSubId()
-    {
-        // TODO 동아리
-        return playerInfo.ObjectInfo.ObjectId;
-    }
-
     // 접속 종료 시 자신의 object_info 삭제 요청 (PublishLeave랑 다른 점 - 후에 Broadcast 처리가 됨)
     public async Task PublishDestroy()
     {
@@ -124,5 +136,27 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         var message = MessagePackSerializer.Serialize((key, playerInfo.ObjectInfo.GetGameObjectKey()));
 
         _natsClient.Publish(subject, message);
+    }
+    
+    private bool IsLeaveAbleMap(MapId mapId)
+    {
+        switch (mapId)
+        {
+            case MapId.TutorialLibrary:
+                playerInfo.QuestDiary.QuestDict.TryGetValue(100000002, out var questInfo);
+                if (questInfo is not { State: QuestState.END })
+                {
+                    return false;
+                }
+                break;
+        }
+        
+        return true;
+    }
+    
+    private long GetInstanceMapSubId()
+    {
+        // TODO 동아리
+        return playerInfo.ObjectInfo.ObjectId;
     }
 }

@@ -529,7 +529,7 @@ public class GameUser : IPeer
         }
 
         var lastMapInfo = _playerController.LastMapInfo;
-        using var packet = PacketMaker.U_TO_C_CHANGE_MAP(lastMapInfo.Item1, mapInfo.Item1, mapInfo.Item2, mapInfo.Item3, mapInfo.Item4);
+        using var packet = PacketMaker.U_TO_C_CHANGE_MAP_SUCCESS(lastMapInfo.Item1, mapInfo.Item1, mapInfo.Item2, mapInfo.Item3, mapInfo.Item4);
         Send(packet);
     }
    

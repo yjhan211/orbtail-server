@@ -309,6 +309,12 @@ namespace network.common.data.models
     [MessagePackObject]
     public class U_TO_C_CHANGE_MAP : IMessagePackObject
     {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_CHANGE_MAP_SUCCESS : IMessagePackObject
+    {
         [Key("lastMapId")] public MapId LastMapId { get; set; }
         [Key("mapId")] public MapId MapId { get; set; }
 

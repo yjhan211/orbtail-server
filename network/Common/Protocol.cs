@@ -39,6 +39,7 @@ namespace network.common
         U_TO_C_USE_ITEM,
         C_TO_U_CHANGE_MAP,
         U_TO_C_CHANGE_MAP,
+        U_TO_C_CHANGE_MAP_SUCCESS,
         C_TO_U_CHANGE_MAP_SUCCESS,
         C_TO_U_CREATE_LAB,
         U_TO_C_CREATE_LAB,
