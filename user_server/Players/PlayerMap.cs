@@ -25,13 +25,6 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
 
     public async Task ChangeMap(C_TO_U_CHANGE_MAP body)
     {
-        if (playerInfo.IsTutorial && !IsLeaveAbleMap(playerInfo.ObjectInfo.MapId))
-        {
-            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
-            _sendToClient(packet);
-            return;
-        }
-        
         if (body.MapId == MapId.Camp)
         {
             playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
@@ -66,6 +59,13 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         
         var changeMapInfo = GameMapData.GetPortalOrNull(playerInfo.ObjectInfo, playerInfo.IsTutorial);
         if (changeMapInfo == null)
+        {
+            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
+            _sendToClient(packet);
+            return;
+        }
+        
+        if (playerInfo.IsTutorial && !IsAbleChangeMap(playerInfo.ObjectInfo.MapId, changeMapInfo.Value.mapId))
         {
             using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
             _sendToClient(packet);
@@ -138,15 +138,63 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         _natsClient.Publish(subject, message);
     }
     
-    private bool IsLeaveAbleMap(MapId mapId)
+    private bool IsAbleChangeMap(MapId currentMapId, MapId changeMapId)
     {
-        switch (mapId)
+        _logger.LogDebug("currentMapId: {currentMapId} changeMapId: {changeMapId}", currentMapId, changeMapId);
+        switch (currentMapId)
         {
             case MapId.TutorialLibrary:
                 playerInfo.QuestDiary.QuestDict.TryGetValue(100000001, out var questInfo);
                 if (questInfo is not { State: QuestState.END })
                 {
-                    _logger.LogDebug(questInfo?.State.ToString());
+                    return false;
+                }
+                break;
+            
+            case MapId.TutorialSchool2:
+                if (changeMapId == MapId.TutorialClassroom)
+                {
+                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000002, out var questInfo2);
+                    if (questInfo2 is not { State: QuestState.END })
+                    {
+                        return false;
+                    }
+                }
+                break;
+            
+            case MapId.TutorialSchool1:
+                if (changeMapId == MapId.TutorialAdminoffice)
+                {
+                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000008, out var questInfo2);
+                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000010, out var questInfo5);
+                    if (questInfo2 is not { State: QuestState.END } || questInfo5 is not { State: QuestState.END })
+                    {
+                        return false;
+                    }
+                }
+                
+                if (changeMapId == MapId.TutorialCity)
+                {
+                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000011, out var questInfo2);
+                    if (questInfo2 is not { State: QuestState.END })
+                    {
+                        return false;
+                    }
+                }
+                break;
+            
+            case MapId.TutorialClassroom:
+                playerInfo.QuestDiary.QuestDict.TryGetValue(100000006, out var questInfo3);
+                if (questInfo3 is not { State: QuestState.END })
+                {
+                    return false;
+                }
+                break;
+            
+            case MapId.TutorialGym:
+                playerInfo.QuestDiary.QuestDict.TryGetValue(100000012, out var questInfo4);
+                if (questInfo4 is not { State: QuestState.END })
+                {
                     return false;
                 }
                 break;
