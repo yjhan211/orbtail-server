@@ -269,10 +269,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_EXPLORE_COMPLETE(bool isSuccess)
+    public static Packet U_TO_C_EXPLORE_COMPLETE(bool isSuccess, int itemId)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_EXPLORE_COMPLETE);
-        U_TO_C_EXPLORE_COMPLETE body = new() { IsSuccess = isSuccess };
+        U_TO_C_EXPLORE_COMPLETE body = new() { IsSuccess = isSuccess, ItemId = itemId };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

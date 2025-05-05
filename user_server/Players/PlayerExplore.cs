@@ -36,12 +36,12 @@ public class PlayerExplore(
         ExploreTargetInfo? exploreTargetInfo;
         await using (await PlayerInfo.Lock(_redLock, playerInfo.PlayerId))
         {
-            if (playerInfo.Stamina <= 0)
-            {
-                using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
-                _sendToClient(errorPacket);
-                return;
-            }
+            // if (playerInfo.Stamina <= 0)
+            // {
+            //     using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.FATAL);
+            //     _sendToClient(errorPacket);
+            //     return;
+            // }
 
             await using (await ExploreTargetInfo.Lock(_redLock, body.ExploreTargetUid))
             {
@@ -93,6 +93,7 @@ public class PlayerExplore(
 
     private async Task OnExploreComplete(ExploreProgressInfo exploreProgressInfo)
     {
+        var rewardItemId = 0;
         var updateItems = new List<ItemInfo>();
         var updateQuests = new List<QuestInfo>();
         var exploreTargetInfo = exploreProgressInfo.ExploreTargetInfo;
@@ -100,23 +101,29 @@ public class PlayerExplore(
         {
             // TODO 능력치 기반한 확률
             var exploreTargetData = GameExploreTargetData.Get(exploreTargetInfo.ExploreTargetId);
-            if (exploreTargetData.Reusable)
-            {
-                // 조사대상 수집 불가능하도록 TODO 재충전
-                exploreTargetInfo.PlayerId = -1;
-                await exploreTargetInfo.Save(_cacheHelper);
-                _broadcastExploreTargetInfo(exploreTargetInfo);
-            }
-            else
-            {
-                // 조사대상 삭제
-                await exploreTargetInfo.Delete(_cacheHelper);
-                _broadcastDestroy(exploreTargetInfo.ObjectInfo);
-            }
+
+            // TODO 재수집 가능하게 주석처리 (테스트용)
+            // if (exploreTargetData.Reusable)
+            // {
+            //     // 조사대상 수집 불가능하도록 TODO 재충전
+            //     exploreTargetInfo.PlayerId = -1;
+            //     await exploreTargetInfo.Save(_cacheHelper);
+            //     _broadcastExploreTargetInfo(exploreTargetInfo);
+            // }
+            // else
+            // {
+            //     // 조사대상 삭제
+            //     await exploreTargetInfo.Delete(_cacheHelper);
+            //     _broadcastDestroy(exploreTargetInfo.ObjectInfo);
+            // }
+            
+            exploreTargetInfo.PlayerId = 0;
+            await exploreTargetInfo.Save(_cacheHelper);
+            _broadcastExploreTargetInfo(exploreTargetInfo);
 
             // 수집 결과 지급
             var random = new Random();
-            var rewardItemId = exploreTargetData.RewardItemPool[random.Next(0, exploreTargetData.RewardItemPool.Count)];
+            rewardItemId = exploreTargetData.RewardItemPool[random.Next(0, exploreTargetData.RewardItemPool.Count)];
             var rewardItem = await PlayerInventory.CreateItem(_cacheHelper, rewardItemId, 1);
             
             var updateItem = playerInfo.InventoryInfo.AddItem(rewardItem);
@@ -150,7 +157,7 @@ public class PlayerExplore(
                     break;
             }
         }
-        using var packet = PacketMaker.U_TO_C_EXPLORE_COMPLETE(true);
+        using var packet = PacketMaker.U_TO_C_EXPLORE_COMPLETE(true, rewardItemId);
         _sendToClient(packet);
         _broadcastPlayerInfo(playerInfo);
         _sendUpdateItems(updateItems);
@@ -160,5 +167,15 @@ public class PlayerExplore(
             using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(updateQuest);
             _sendToClient(questPacket);
         }
+
+        var rewardItemInfo = GameItemData.Get(rewardItemId);
+        await user.ChatController.SendChat(playerInfo.PlayerId, playerInfo.Name, ChatType.ALL, $"우와~ {rewardItemInfo.Name} 수집했다!", user.NatsClient);
+        user.BroadcastSocialAction(playerInfo, SocialActionType.LAUGH);
+
+        //
+        // if (user.PlayerController != null)
+        // {
+        //     await user.PlayerController.SocialAction(socialMessage);
+        // }
     }
 }
