@@ -85,6 +85,7 @@ namespace network.common.data.models
     public class C_TO_U_MOVE : IMessagePackObject
     {
         [Key("direction")] public DirectionType Direction { get; set; }
+        [Key("isBoost")] public bool IsBoost { get; set; }
     }
 
     [MessagePackObject]
@@ -220,7 +221,7 @@ namespace network.common.data.models
     public class U_TO_C_EXPLORE_COMPLETE : IMessagePackObject
     {
         [Key("isSuccess")] public bool IsSuccess { get; set; }
-
+        [Key("itemId")] public int ItemId { get; set; }
     }
 
     [MessagePackObject]
@@ -501,6 +502,7 @@ namespace network.common.data.models
     public class C_TO_U_BOOST : IMessagePackObject
     {
         [Key("boostType")] public BoostType BoostType { get; set; }
+        [Key("isActive")] public bool IsActive { get; set; }
     }
 
     [MessagePackObject]
