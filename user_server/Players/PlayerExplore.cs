@@ -136,16 +136,19 @@ public class PlayerExplore(
             switch (exploreTargetInfo.ExploreTargetId)
             {
                 case 1:
+                    await _increaseQuestCount(100000004, 1, updateQuests);
+                    await _startQuest(100000005, updateQuests);
+                    break;
                 case 2:
                 case 3:
                     await _increaseQuestCount(100000004, 1, updateQuests);
                     break;
                 case 4:
                 case 5: 
-                case 6:
+                case 7:
                     await _increaseQuestCount(100000008, 1, updateQuests);
                     break;
-                case 7:
+                case 6:
                     await _increaseQuestCount(100000008, 1, updateQuests);
                     await _startQuest(100000009, updateQuests);
                     break;
