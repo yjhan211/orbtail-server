@@ -17,7 +17,8 @@ public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
         var questDiary = playerInfo.QuestDiary;
         if (questDiary.QuestDict.ContainsKey(questId))
         {
-            throw new Exception($"Already Started Quest. QuestId: {questId}");
+            // throw new Exception($"Already Started Quest. QuestId: {questId}");
+            return;
         }
         
         var quest = new QuestInfo(playerInfo.PlayerId, questId);
