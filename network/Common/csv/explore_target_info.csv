@@ -3,8 +3,8 @@ id,map_id,name,reward_item_pool,reusable,position,sprite_path
 2,4,책상,[301000002],1,"(93, 102)",Sprites/Map/ClassRoom/P_Desk_001
 3,4,열린 사물함,[108000001],1,"(101, 101)",Sprites/Map/ClassRoom/P_Locker_Door_002
 4,5,사무용 서랍,[301000004],1,"(88, 98)",Sprites/Map/AdminOffice/P_Shelf_004
-5,5,중형 택배 상자,[108000002],1,"(97, 110)",Sprites/Map/Gym/P_Box_004
-6,5,실과 선생님의 책더미,[201000002],1,"(94, 100)",Assets/Resources/Sprites/Map/Library/P_Props_005
+5,5,중형 택배 상자,[108000002],1,"(94, 106)",Sprites/Map/Gym/P_Box_004
+6,5,실과 선생님의 책더미,[201000002],1,"(94, 100)",Sprites/Map/Library/P_Props_005
 7,5,사무용 선반,[301000003],1,"(98, 92)",Sprites/Map/AdminOffice/P_Shelf_017
 8,7,체육 매트,[501000001],0,"(97, 97)",Sprites/Map/Gym/P_Props_002
 9,7,박스 더미,[301000006],1,"(92, 99)",Sprites/Map/Gym/P_Box_002
