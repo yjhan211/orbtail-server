@@ -54,8 +54,8 @@ namespace network.common.data.models
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
             CraftInfo = new CraftInfo(PlayerId);
             CampInfo = new CampInfo(PlayerId, Name, new(), new());
-            QuestDiary = new QuestDiary();
-            MailBox = new MailBox();
+            QuestDiary = new QuestDiary(PlayerId);
+            MailBox = new MailBox(PlayerId);
             LabId = 0;
             LabName = "";
             Gold = 1000;
