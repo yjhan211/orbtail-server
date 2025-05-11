@@ -71,7 +71,8 @@ namespace network.common
         BOTTOM = 105,
         SHOES = 106,
         TOOL = 107,
-        PASSIVE = 108,
+        PILLOW = 108,
+        BEDDING = 109,
     }
 
     public enum InstallationType
