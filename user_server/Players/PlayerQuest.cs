@@ -48,12 +48,15 @@ public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
     
     public async Task IncreaseQuestCount(int questId, int count, List<QuestInfo> updateQuests)
     {
-        if (playerInfo.QuestDiary.QuestDict.TryGetValue(questId, out var quest))
+        if (!playerInfo.QuestDiary.QuestDict.TryGetValue(questId, out var quest))
         {
-            quest.Count += count;
-            await playerInfo.QuestDiary.Save(_cacheHelper);
-            updateQuests.Add(quest);
+            quest = new QuestInfo(playerInfo.PlayerId, questId);
+            playerInfo.QuestDiary.AddQuest(quest);
         }
+        
+        quest.Count += count;
+        await playerInfo.QuestDiary.Save(_cacheHelper);
+        updateQuests.Add(quest);
     }
 
     public async Task CompleteQuest(C_TO_U_QUEST_SUCCESS body)

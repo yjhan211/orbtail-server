@@ -124,41 +124,42 @@ public class PlayerExplore(
             // 수집 결과 지급
             var random = new Random();
             rewardItemId = exploreTargetData.RewardItemPool[random.Next(0, exploreTargetData.RewardItemPool.Count)];
-            var rewardItem = await PlayerInventory.CreateItem(_cacheHelper, rewardItemId, 1);
+
+            var isQuestIncrease = playerInfo.InventoryInfo.ItemDict.FirstOrDefault(x => x.Value.ItemId == rewardItemId).Value == null;
+            if (isQuestIncrease)
+            {
+                var questMap = new Dictionary<int, (int QuestId, List<int>)>
+                {
+                    { 1, (100000004, [100000005]) },
+                    { 2, (100000004, []) },
+                    { 3, (100000004, []) },
+                    { 4, (100000008, []) },
+                    { 5, (100000008, []) },
+                    { 6, (100000008, [100000009]) },
+                    { 7, (100000008, []) },
+                    { 8, (100000012, []) },
+                    { 9, (100000012, []) },
+                    { 10, (100000012, []) },
+                    { 11, (100000012, []) }
+                };
+
+                if (questMap.TryGetValue(exploreTargetInfo.ExploreTargetId, out var questInfo))
+                {
+                    await _increaseQuestCount(questInfo.QuestId, 1, updateQuests);
+
+                    foreach (var followQuest in questInfo.Item2)
+                    {
+                        await _startQuest(followQuest, updateQuests);
+                    }
+                }
+            }
             
+            var rewardItem = await PlayerInventory.CreateItem(_cacheHelper, rewardItemId, 1);
             var updateItem = playerInfo.InventoryInfo.AddItem(rewardItem);
             updateItems.Add(updateItem);
 
             playerInfo.State = PlayerState.IDLE;
             await playerInfo.Save(_cacheHelper);
-            
-            // 퀘스트 갱신
-            switch (exploreTargetInfo.ExploreTargetId)
-            {
-                case 1:
-                    await _increaseQuestCount(100000004, 1, updateQuests);
-                    await _startQuest(100000005, updateQuests);
-                    break;
-                case 2:
-                case 3:
-                    await _increaseQuestCount(100000004, 1, updateQuests);
-                    break;
-                case 4:
-                case 5: 
-                case 7:
-                    await _increaseQuestCount(100000008, 1, updateQuests);
-                    break;
-                case 6:
-                    await _increaseQuestCount(100000008, 1, updateQuests);
-                    await _startQuest(100000009, updateQuests);
-                    break;
-                case 8:
-                case 9: 
-                case 10: 
-                case 11:
-                    await _increaseQuestCount(100000012, 1, updateQuests);
-                    break;
-            }
         }
         using var packet = PacketMaker.U_TO_C_EXPLORE_COMPLETE(true, rewardItemId);
         _sendToClient(packet);
