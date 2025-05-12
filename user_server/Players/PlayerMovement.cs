@@ -265,6 +265,7 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
             cellsToRemove ?? []
         ));
         _natsClient.Publish(subject, message);
+        _logger.LogInformation("RequestSpawnObjectList {subject}", subject);
     }
 
     public void Dispose()

@@ -71,10 +71,11 @@ public abstract class BaseMapController(
 
    protected Task HandleSocialAction(byte[] message)
    {
-       var (partKey, (playerId, socialActionType)) = 
-           MessagePackSerializer.Deserialize<(string, (long, SocialActionType))>(message);
+       var (partKey, type, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
+       var (playerId, socialActionType) = MessagePackSerializer.Deserialize<(long, SocialActionType)>(serializedInfo);
        using var packet = PacketMaker.G_TO_U_SOCIAL_ACTION(playerId, socialActionType);
        BroadcastPacket(partKey, packet);
+       
        return Task.CompletedTask;
    }
 

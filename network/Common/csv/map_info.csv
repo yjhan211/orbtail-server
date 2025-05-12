@@ -6,7 +6,7 @@ id,scene_name,is_common,comment
 5,ADMINOFFICE,0,행정실-튜토리얼
 6,GYM,0,강당-튜토리얼
 7,GYMSTORAGE,0,체육창고-튜토리얼
-8,SCHOOLGROUND,0,학교외관-튜토리얼
+8,CITY,0,학교외관-튜토리얼
 9,LIBRARY,1,도서관
 10,SCHOOL1,1,본관1층
 11,SCHOOL2,1,본관2층
@@ -14,5 +14,5 @@ id,scene_name,is_common,comment
 13,ADMINOFFICE,1,행정실
 14,GYM,1,강당
 15,GYMSTORAGE,1,체육창고
-16,SCHOOLGROUND,1,학교외관
+16,CITY,1,학교외관
 17,TENT,0,텐트내부

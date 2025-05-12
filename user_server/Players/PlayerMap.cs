@@ -36,6 +36,9 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
             var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
             var publishObj = MessagePackSerializer.Serialize((playerInfo.ObjectInfo.GetGameObjectKey(), body.MapId, body.MapSubId, false));
             _natsClient.Publish(subject, publishObj);
+            
+            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
+            _sendToClient(packet);
             return;
         }
         
@@ -48,18 +51,33 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
             await PublishDestroy();
             await EnterMap(playerInfo.CampInfo.ObjectInfo.MapId, playerInfo.CampInfo.ObjectInfo.CurrentCell, false, false);
             await playerInfo.Save(_cacheHelper);
+            
+            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
+            _sendToClient(packet);
             return;
         }
         
         var changeMapInfo = GameMapData.GetPortalOrNull(playerInfo.ObjectInfo, playerInfo.IsTutorial);
         if (changeMapInfo == null)
         {
+            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
+            _sendToClient(packet);
+            return;
+        }
+        
+        if (playerInfo.IsTutorial && !IsAbleChangeMap(playerInfo.ObjectInfo.MapId, changeMapInfo.Value.mapId))
+        {
+            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
+            _sendToClient(packet);
             return;
         }
         
         playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
         playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
         playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
+        
+        using var packet2 = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
+        _sendToClient(packet2);
         
         // 기존 맵에 삭제 요청
         await PublishDestroy();
@@ -80,7 +98,7 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         {
             if (!isLogin)
             {
-                using var packet = PacketMaker.U_TO_C_CHANGE_MAP(playerInfo.LastMapId, playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip);
+                using var packet = PacketMaker.U_TO_C_CHANGE_MAP_SUCCESS(playerInfo.LastMapId, playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip);
                 _sendToClient(packet);
             }
             return;
@@ -106,12 +124,6 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         await playerInfo.Save(_cacheHelper);
     }
 
-    private long GetInstanceMapSubId()
-    {
-        // TODO 동아리
-        return playerInfo.ObjectInfo.ObjectId;
-    }
-
     // 접속 종료 시 자신의 object_info 삭제 요청 (PublishLeave랑 다른 점 - 후에 Broadcast 처리가 됨)
     public async Task PublishDestroy()
     {
@@ -124,5 +136,83 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         var message = MessagePackSerializer.Serialize((key, playerInfo.ObjectInfo.GetGameObjectKey()));
 
         _natsClient.Publish(subject, message);
+    }
+    
+    private bool IsAbleChangeMap(MapId currentMapId, MapId changeMapId)
+    {
+        _logger.LogDebug("currentMapId: {currentMapId} changeMapId: {changeMapId}", currentMapId, changeMapId);
+        switch (currentMapId)
+        {
+            case MapId.TutorialLibrary:
+                playerInfo.QuestDiary.QuestDict.TryGetValue(100000001, out var questInfo);
+                if (questInfo is not { State: QuestState.END })
+                {
+                    return false;
+                }
+                break;
+            
+            case MapId.TutorialSchool2:
+                if (changeMapId == MapId.TutorialClassroom)
+                {
+                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000002, out var questInfo2);
+                    if (questInfo2 is not { State: QuestState.END })
+                    {
+                        return false;
+                    }
+                }
+                break;
+            
+            case MapId.TutorialSchool1:
+                if (changeMapId == MapId.TutorialAdminoffice)
+                {
+                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000006, out var questInfo2);
+                    if (questInfo2 is not { State: QuestState.END })
+                    {
+                        return false;
+                    }
+                }
+                
+                if (changeMapId == MapId.TutorialCity)
+                {
+                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000011, out var questInfo2);
+                    if (questInfo2 is not { State: QuestState.NONE })
+                    {
+                        return false;
+                    }
+                }
+                break;
+            
+            case MapId.TutorialAdminoffice:
+                playerInfo.QuestDiary.QuestDict.TryGetValue(100000011, out var questInfo5);
+                if (questInfo5 is not { State: QuestState.NONE })
+                {
+                    return false;
+                }
+                break;
+            
+            case MapId.TutorialClassroom:
+                playerInfo.QuestDiary.QuestDict.TryGetValue(100000006, out var questInfo3);
+                if (questInfo3 is not { State: QuestState.END })
+                {
+                    return false;
+                }
+                break;
+            
+            case MapId.TutorialGym:
+                playerInfo.QuestDiary.QuestDict.TryGetValue(100000012, out var questInfo4);
+                if (questInfo4 is not { State: QuestState.END })
+                {
+                    return false;
+                }
+                break;
+        }
+        
+        return true;
+    }
+    
+    private long GetInstanceMapSubId()
+    {
+        // TODO 동아리
+        return playerInfo.ObjectInfo.ObjectId;
     }
 }

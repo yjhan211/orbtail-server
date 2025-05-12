@@ -220,9 +220,9 @@ namespace network.common.data.models
     public class U_TO_C_EXPLORE_COMPLETE : IMessagePackObject
     {
         [Key("isSuccess")] public bool IsSuccess { get; set; }
-
+        [Key("itemId")] public int ItemId { get; set; }
     }
-
+    
     [MessagePackObject]
     public class C_TO_U_USE_SKILL : IMessagePackObject
     {
@@ -308,6 +308,12 @@ namespace network.common.data.models
 
     [MessagePackObject]
     public class U_TO_C_CHANGE_MAP : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_CHANGE_MAP_SUCCESS : IMessagePackObject
     {
         [Key("lastMapId")] public MapId LastMapId { get; set; }
         [Key("mapId")] public MapId MapId { get; set; }
@@ -495,6 +501,7 @@ namespace network.common.data.models
     public class C_TO_U_BOOST : IMessagePackObject
     {
         [Key("boostType")] public BoostType BoostType { get; set; }
+        [Key("isActive")] public bool IsActive { get; set; }
     }
 
     [MessagePackObject]

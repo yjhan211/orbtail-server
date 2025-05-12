@@ -27,8 +27,8 @@ public class GameUser : IPeer
     private Dictionary<Protocol, Func<byte[], Task>> _protocolHandlers;
     private Dictionary<Protocol, Func<byte[], Task>> _subscribeHandlers;
     
-    private readonly ChatController _chatController;
-    private PlayerController? _playerController;
+    public readonly ChatController ChatController;
+    public PlayerController? PlayerController;
     
     public readonly CancellationTokenSource Cts;
 
@@ -58,7 +58,7 @@ public class GameUser : IPeer
         Logger = logger;
         
         _onLeaveCallback = onLeaveCallback;
-        _chatController = chatController;
+        ChatController = chatController;
         MapObjectController = new MapObjectController(this);
         
         InitializeProtocolHandlers();
@@ -140,12 +140,12 @@ public class GameUser : IPeer
                 return;
             }
 
-            if (_playerController == null)
+            if (PlayerController == null)
             {
                 throw new Exception($"[{playerId}] not login");
             }
             
-            if (_playerController.IsInvalidAction(protocolId))
+            if (PlayerController.IsInvalidAction(protocolId))
             {
                 throw new Exception($"[{playerId}] in action. protocolId: {protocolId}");
             }
@@ -216,12 +216,12 @@ public class GameUser : IPeer
 
     private async Task HandlePlayerAction(Func<PlayerController, Task> action)
     {
-        if (_playerController == null)
+        if (PlayerController == null)
         {
             throw new InvalidOperationException("Player controller is not initialized");
         }
             
-        await action(_playerController);
+        await action(PlayerController);
     }
 
     private Task HandleHeartBeat(byte[] _)
@@ -233,7 +233,7 @@ public class GameUser : IPeer
     
     private async Task Login(C_TO_U_LOGIN request)
     {
-        if (_playerController != null)
+        if (PlayerController != null)
         {
             throw new Exception($"Already Initialized. {request.AccountToken}");
         }
@@ -249,7 +249,7 @@ public class GameUser : IPeer
         await using (await PlayerInfo.Lock(RedLock, tempPlayerId))
         {
             playerInfo = await PlayerInfo.Load(CacheHelper, tempPlayerId) ?? await Register(tempPlayerId, isDummy);
-            _playerController = new PlayerController(this, playerInfo);
+            PlayerController = new PlayerController(this, playerInfo);
             if (playerInfo.IsNew)
             {
                 // 기본템 입히기
@@ -257,9 +257,9 @@ public class GameUser : IPeer
                 var defaultBottom = playerInfo.InventoryInfo.ItemDict.First(x => x.Value.ItemId == 105000001);
                 var defaultShoes = playerInfo.InventoryInfo.ItemDict.First(x => x.Value.ItemId == 106000001);
                 
-                await _playerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultTop.Value.ItemUid });
-                await _playerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultBottom.Value.ItemUid });
-                await _playerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultShoes.Value.ItemUid });
+                await PlayerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultTop.Value.ItemUid });
+                await PlayerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultBottom.Value.ItemUid });
+                await PlayerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultShoes.Value.ItemUid });
             }
             
             using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
@@ -281,19 +281,19 @@ public class GameUser : IPeer
         if (mailInfo.MailDict.Count <= 0)
         {
             var firstMail = await PlayerMailBox.CreateMail(CacheHelper, 1);
-            await _playerController.SendMail(firstMail);
+            await PlayerController.SendMail(firstMail);
         }
 
         var questInfo = await QuestDiary.Load(CacheHelper, tempPlayerId);
         if (questInfo.QuestDict.Count <= 0)
         {
-            await _playerController.StartQuest(100000001);
+            await PlayerController.StartQuest(100000001);
         }
 
-        _playerController.SendCurrentItems();
-        _playerController.SendCurrentQuests();
-        await _playerController.SendCurrentMails();
-        await _playerController.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
+        PlayerController.SendCurrentItems();
+        PlayerController.SendCurrentQuests();
+        await PlayerController.SendCurrentMails();
+        await PlayerController.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
     }
 
     private async Task<PlayerInfo> Register(long playerId, bool isDummy = false)
@@ -380,7 +380,7 @@ public class GameUser : IPeer
 
     private async Task SendChatHistory(ChatType chatType)
     {
-        var result = await _chatController.GetChatHistory(chatType);
+        var result = await ChatController.GetChatHistory(chatType);
         foreach (var item in result)
         {
             using var packet = PacketMaker.U_TO_C_CHAT_MSG(item.Item1, item.Item2, item.Item3, item.Item4);
@@ -388,19 +388,19 @@ public class GameUser : IPeer
         }
     }
 
-    private async Task AppendChat(C_TO_U_CHAT_MSG body)
+    public async Task AppendChat(C_TO_U_CHAT_MSG body)
     {
         if (body.ChatMessage.Length >= Config.MAX_CHAT_LENGTH)
         {
             return;
         }
 
-        if (_playerController == null)
+        if (PlayerController == null)
         {
             return;
         }
 
-        await _chatController.SendChat(_playerController.PlayerId, _playerController.PlayerName, body.ChatType, body.ChatMessage, NatsClient);
+        await ChatController.SendChat(PlayerController.PlayerId, PlayerController.PlayerName, body.ChatType, body.ChatMessage, NatsClient);
     }
 
     private void ReceiveDuplicate()
@@ -412,7 +412,7 @@ public class GameUser : IPeer
 
     private Task SubscribeUpdateObject(G_TO_U_UPDATE_OBJECT body)
     {
-        if (body.ObjectInfo.ObjectType == ObjectType.PLAYER && _playerController != null && body.ObjectInfo.ObjectId == _playerController.PlayerId)
+        if (body.ObjectInfo.ObjectType == ObjectType.PLAYER && PlayerController != null && body.ObjectInfo.ObjectId == PlayerController.PlayerId)
         {
             return Task.CompletedTask;
         }
@@ -423,13 +423,13 @@ public class GameUser : IPeer
 
     private Task SubscribeSpawn(G_TO_U_SPAWN body)
     {
-        if (_playerController == null)
+        if (PlayerController == null)
         {
             return Task.CompletedTask;
         }
 
         var objectKeys = body.ObjectKeyList
-            .Where(key => key != _playerController.ObjectKey)
+            .Where(key => key != PlayerController.ObjectKey)
             .ToList();
         var cellsToRemove = body.CellsToRemove.ToList();
     
@@ -512,24 +512,24 @@ public class GameUser : IPeer
 
     private async Task SubscribeEnterInstanceSuccess(G_TO_U_ENTER_INSTANCE_SUCCESS body)
     {
-        if (_playerController == null)
+        if (PlayerController == null)
         {
             return;
         }
        
         if (body.MapId == MapId.Camp)
         {
-            await _playerController.EnterCamp(body.MapSubId);
+            await PlayerController.EnterCamp(body.MapSubId);
         }
 
-        var mapInfo = _playerController.CurrentMapInfo;
+        var mapInfo = PlayerController.CurrentMapInfo;
         if (body.MapId != mapInfo.Item1 || body.MapSubId != mapInfo.Item2)
         {
             return;
         }
 
-        var lastMapInfo = _playerController.LastMapInfo;
-        using var packet = PacketMaker.U_TO_C_CHANGE_MAP(lastMapInfo.Item1, mapInfo.Item1, mapInfo.Item2, mapInfo.Item3, mapInfo.Item4);
+        var lastMapInfo = PlayerController.LastMapInfo;
+        using var packet = PacketMaker.U_TO_C_CHANGE_MAP_SUCCESS(lastMapInfo.Item1, mapInfo.Item1, mapInfo.Item2, mapInfo.Item3, mapInfo.Item4);
         Send(packet);
     }
    
@@ -626,11 +626,11 @@ public class GameUser : IPeer
             }
             _token.IsReleased = true;
 
-            if (_playerController != null)
+            if (PlayerController != null)
             {
-                Logger.LogInformation("GameUser Removed. PlayerId:{_playerController.PlayerId}", _playerController.PlayerId);
-                await _playerController.Dispose();
-                using var packet = PacketMaker.U_TO_G_LOGOUT(_playerController.PlayerId);
+                Logger.LogInformation("GameUser Removed. PlayerId:{_playerController.PlayerId}", PlayerController.PlayerId);
+                await PlayerController.Dispose();
+                using var packet = PacketMaker.U_TO_G_LOGOUT(PlayerController.PlayerId);
                 await SendToGameServer(packet);
             }
             

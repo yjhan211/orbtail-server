@@ -1,9 +1,11 @@
 // ReSharper disable PrivateFieldCanBeConvertedToLocalVariable
 
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
 using network.helpers;
 using network.interfaces;
+using network.managers;
 using network.packets;
 using user_server.players;
 
@@ -24,6 +26,7 @@ public class PlayerController
     };
     
     private readonly ICacheHelper _cacheHelper;
+    private readonly ILogger _logger;
 
     private readonly SendPacketDelegate _sendToClient;
     private readonly BroadcastDelegate<PlayerInfo> _broadcastPlayerInfo;
@@ -43,6 +46,8 @@ public class PlayerController
     public PlayerController(GameUser user, PlayerInfo playerInfo)
     {
         _cacheHelper = user.CacheHelper;
+        _logger = user.Logger;
+        
         _sendToClient = user.Send;
         _broadcastPlayerInfo = user.BroadcastUpdateInfo;
         _broadcastSocialAction = user.BroadcastSocialAction;
@@ -93,9 +98,10 @@ public class PlayerController
     
     public async Task UpdateBoost(C_TO_U_BOOST body)
     {
-        if (_playerInfo.Boosts.TryGetValue(body.BoostType, out var boost))
+        _logger.LogWarning("boostType: {body.boostType}, active: {body.active}", body.BoostType, body.IsActive);
+        if (!body.IsActive)
         {
-            _playerInfo.Boosts.Remove(boost);
+            _playerInfo.Boosts.Remove(body.BoostType);
         }
         else
         {

@@ -29,7 +29,6 @@ namespace network.common.data.models
             LabId = 0;
             LabName = "";
             Gold = 0;
-            TutorialIndex = 0;
             Hp = 0;
             Stamina = 0;
             Boosts = new();
@@ -55,12 +54,11 @@ namespace network.common.data.models
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
             CraftInfo = new CraftInfo(PlayerId);
             CampInfo = new CampInfo(PlayerId, Name, new(), new());
-            QuestDiary = new QuestDiary();
-            MailBox = new MailBox();
+            QuestDiary = new QuestDiary(PlayerId);
+            MailBox = new MailBox(PlayerId);
             LabId = 0;
             LabName = "";
             Gold = 1000;
-            TutorialIndex = 0;
             Hp = 10000;
             Stamina = 100;
             Boosts = new();
@@ -93,8 +91,6 @@ namespace network.common.data.models
         [Key("labName")] public string LabName { get; set; }
 
         [Key("gold")] public long Gold { get; set; }
-        
-        [Key("tutorialIndex")] public int TutorialIndex { get; set; }
         
         [Key("hp")] public int Hp { get; set; }
         

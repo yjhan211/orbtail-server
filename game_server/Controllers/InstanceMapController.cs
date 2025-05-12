@@ -190,7 +190,7 @@ public class InstanceMapController : BaseMapController
        }
    }
 
-   private async Task SpawnManageObject(byte[] message)
+   private Task SpawnManageObject(byte[] message)
    {
        var (objectKey, instanceKeyList, cellsToRemove) =
            MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
@@ -203,11 +203,16 @@ public class InstanceMapController : BaseMapController
                spawnList.AddRange(objectKeys);
            }
        }
-       
-       if (spawnList.Count <= 0) return;
 
+       if (spawnList.Count <= 0)
+       {
+           return Task.CompletedTask;
+       }
+       
        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);
        NatsClient.Publish(objectKey, packet.ToBytes());
+
+       return Task.CompletedTask;
    }
 
    private async Task DestroyManageObjectAsync(byte[] message)

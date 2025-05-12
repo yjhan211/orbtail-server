@@ -58,6 +58,8 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
                 targetItem.IsWear = true;
                 playerInfo.WearItemIdList.Add(targetItem.ItemId);
             }
+
+            updateItems.Add(targetItem);
             await playerInfo.Save(_cacheHelper);
         }
 
