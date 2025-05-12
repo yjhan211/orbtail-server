@@ -155,6 +155,12 @@ public class PlayerExplore(
             }
             
             var rewardItem = await PlayerInventory.CreateItem(_cacheHelper, rewardItemId, 1);
+            switch (rewardItem.ItemId)
+            {
+                case 107000001:
+                    rewardItem.Durability = 0;
+                    break;
+            }
             var updateItem = playerInfo.InventoryInfo.AddItem(rewardItem);
             updateItems.Add(updateItem);
 
