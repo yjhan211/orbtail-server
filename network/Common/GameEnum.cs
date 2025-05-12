@@ -49,6 +49,7 @@ namespace network.common
         NONE = 0,
         CONDITION_ADD,
         CRAFT_ADD,
+        DURABILITY_ADD,
     }
 
     public enum ItemType
@@ -60,7 +61,7 @@ namespace network.common
         INSTALLATION,
         PUTABLE,
     }
-    
+
     public enum EquipType
     {
         NONE = 0,

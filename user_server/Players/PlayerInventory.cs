@@ -76,21 +76,21 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
         var updateQuests = new List<QuestInfo>();
         await using (await PlayerInfo.Lock(user.RedLock, playerInfo.PlayerId))
         {
-            if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.ItemUid, out var targetItem))
+            if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.ItemUid, out var useItem))
             {
                 throw new Exception($"Item with uid {body.ItemUid} not found");
             }
 
             const int count = 1; // TODO
-            if (targetItem.Count < count)
+            if (useItem.Count < count)
             {
                 throw new Exception($"Item with uid {body.ItemUid} count not enough");
             }
 
-            var itemDetail = GameItemData.Get(targetItem.ItemId);
+            var itemDetail = GameItemData.Get(useItem.ItemId);
             if (!itemDetail.IsConsumable)
             {
-                throw new Exception($"not consumable item {targetItem.ItemId}");
+                throw new Exception($"not consumable item {useItem.ItemId}");
             }
 
             var deleteItem = playerInfo.InventoryInfo.DeleteItem(body.ItemUid, count);
@@ -116,6 +116,19 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
                     case BuffSubType.CRAFT_ADD:
                         playerInfo.CraftInfo.Manuals.Add(value);
                         break;
+                    
+                    case BuffSubType.DURABILITY_ADD:
+                        if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.TargetItemUid, out var targetItem))
+                        {
+                            throw new Exception($"targetItem {body.TargetItemUid} not found");
+                        }
+                        if (GameItemData.GetEquipType(targetItem.ItemId) != EquipType.TOOL)
+                        {
+                            throw new Exception($"invalid targetItemType");
+                        }
+                        targetItem.Durability = Math.Clamp(targetItem.Durability + value, 0, 100);
+                        updateItems.Add(targetItem);
+                        break;
                 }
             }
             await playerInfo.Save(_cacheHelper);
@@ -126,6 +139,10 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
                 {
                     case 202000001:
                         await playerQuest.IncreaseQuestCount(100000009, 1, updateQuests);
+                        break;
+                    
+                    case 201000004:
+                        await playerQuest.IncreaseQuestCount(100000010, 1, updateQuests);;
                         break;
             
                     default: 

@@ -297,6 +297,7 @@ namespace network.common.data.models
     public class C_TO_U_USE_ITEM : IMessagePackObject
     {
         [Key("itemUid")] public long ItemUid { get; set; }
+        [Key("targetItemUid")] public long TargetItemUid { get; set; }
     }
 
     [MessagePackObject]

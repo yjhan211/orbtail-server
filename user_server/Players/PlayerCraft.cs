@@ -1,7 +1,6 @@
 ﻿using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.helpers;
 using network.interfaces;
 using network.packets;
 using user_server.progress;
@@ -89,7 +88,7 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
             switch (craftId)
             {
                 case 1:
-                    await _increaseQuestCount(100000010, 1, updateQuests);
+                    // await _increaseQuestCount(100000010, 1, updateQuests);
                     break;
                 case 3:
                     await _increaseQuestCount(100000013, 1, updateQuests);
