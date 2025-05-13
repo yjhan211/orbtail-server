@@ -96,19 +96,39 @@ namespace network.common.data.models
             switch (direction)
             {
                 case DirectionType.TOP_LEFT:
-                    clone.X += 1;
+                    clone.Y += 1;
                     break;
 
                 case DirectionType.TOP_RIGHT:
-                    clone.X -= 1;
+                    clone.X += 1;
                     break;
 
                 case DirectionType.BOTTOM_LEFT:
-                    clone.Y -= 1;
+                    clone.X -= 1;
                     break;
 
                 case DirectionType.BOTTOM_RIGHT:
+                    clone.Y -= 1;
+                    break;
+                
+                case DirectionType.TOP:
+                    clone.X += 1;
                     clone.Y += 1;
+                    break;
+                
+                case DirectionType.BOTTOM:
+                    clone.X -= 1;
+                    clone.Y -= 1;
+                    break;
+                
+                case DirectionType.LEFT:
+                    clone.X -= 1;
+                    clone.Y += 1;
+                    break;
+                
+                case DirectionType.RIGHT:
+                    clone.X += 1;
+                    clone.Y -= 1;
                     break;
             }
 
