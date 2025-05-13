@@ -181,17 +181,17 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
 
     private float GetMoveSpeed()
     {
-        if (playerInfo.Boosts.Contains(BoostType.SPEED))
-        {
-            return 2;
-        }
+        // if (playerInfo.Boosts.Contains(BoostType.SPEED))
+        // {
+        //     return 2;
+        // }
 
         if (playerInfo.Hp <= 0)
         {
-            return 0.5f;
+            return 1f;
         }
 
-        return 1;
+        return 2f;
     }
 
     private void IncreaseHp(int value)
