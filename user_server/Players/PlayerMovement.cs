@@ -94,7 +94,7 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
     
     private async Task ProcessMoveAsync(C_TO_U_MOVE moveRequest)
     {
-        var moveSpeed = GetMoveSpeed();
+        var moveSpeed = GetMoveSpeed(moveRequest.Direction);
         var moveElapsedTime = GameRuleData.MoveElapsedTime / moveSpeed;
         var consumeHp = (int)(moveSpeed * 2 + moveSpeed - 2);
         IncreaseHp(consumeHp * -1);
@@ -179,19 +179,28 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
         _sendToClient(packet);
     }
 
-    private float GetMoveSpeed()
+    private float GetMoveSpeed(DirectionType direction)
     {
         // if (playerInfo.Boosts.Contains(BoostType.SPEED))
         // {
         //     return 2;
         // }
 
-        if (playerInfo.Hp <= 0)
+        var speed = playerInfo.Hp <= 0 ? 1f : 2f;
+        switch (direction)
         {
-            return 1f;
+            case DirectionType.TOP:
+            case DirectionType.BOTTOM:
+                speed /= 1.3f;
+                break;
+            
+            case DirectionType.LEFT: 
+            case DirectionType.RIGHT:
+                speed /= 2;
+                break;
         }
 
-        return 2f;
+        return speed;
     }
 
     private void IncreaseHp(int value)
