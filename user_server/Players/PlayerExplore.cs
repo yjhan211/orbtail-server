@@ -1,9 +1,13 @@
-﻿using network.common;
+﻿using MessagePack;
+using network.common;
 using network.common.data;
 using network.common.data.models;
+using Microsoft.Extensions.Logging;
 using network.helpers;
 using network.interfaces;
+using network.managers;
 using network.packets;
+using user_server.controllers;
 using user_server.progress;
 
 namespace user_server.players;
@@ -15,7 +19,9 @@ public class PlayerExplore(
     PlayerInventory playerInventory,
     PlayerProgress playerProgress)
 {
+    private readonly INatsClient _natsClient = user.NatsClient;
     private readonly ICacheHelper _cacheHelper = user.CacheHelper;
+    
     private readonly IRedLockFactory _redLock = user.RedLock;
     private readonly SendPacketDelegate _sendToClient = user.Send;
     private readonly BroadcastDelegate<PlayerInfo> _broadcastPlayerInfo = user.BroadcastUpdateInfo;
@@ -25,7 +31,10 @@ public class PlayerExplore(
     private readonly StartQuestDelegate _startQuest = playerQuest.StartQuest;
     private readonly SendUpdateItemsDelegate _sendUpdateItems = playerInventory.SendUpdateItems;
     private readonly AddProgressItemDelegate _addProgressItem = playerProgress.AddProgressItem;
+    private readonly ILogger _logger = user.Logger;
 
+    private readonly MapObjectController _mapObjectController = user.MapObjectController;
+    
     protected virtual async Task<ExploreTargetInfo?> LoadExploreTargetInfo(long exploreTargetUid)
     {
         return await ExploreTargetInfo.Load(_cacheHelper, exploreTargetUid);
@@ -82,11 +91,30 @@ public class PlayerExplore(
 
             playerInfo.State = PlayerState.EXPLORE_1;
             playerInfo.Stamina -= 5;
+            
+            var direction = playerInfo.ObjectInfo.TargetCell.GetDirection(exploreTargetInfo.ObjectInfo.CurrentCell);
+            playerInfo.ObjectInfo.SetFlip(direction);
             await playerInfo.Save(_cacheHelper);
         }
 
         using var packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.SUCCESS);
         _sendToClient(packet);
+        
+        var isCommonMap = GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId);
+        var currentPartKey = isCommonMap
+            ? MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell)
+            : MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
+        
+        var currentManageServer = isCommonMap
+            ? MapHelper.GetManageServerId(currentPartKey)
+            : MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
+        
+        var moveSubject = SubjectHelper.GetUpdateManageSubject(playerInfo.ObjectInfo, currentManageServer);
+        _natsClient.Publish(moveSubject,
+            MessagePackSerializer.Serialize((currentPartKey, objectInfo: playerInfo.ObjectInfo)));
+        
+        _mapObjectController.EnqueueUpdateObject(playerInfo.ObjectInfo);
+        
         _broadcastPlayerInfo(playerInfo);
         _broadcastExploreTargetInfo(exploreTargetInfo);
     }
@@ -103,21 +131,21 @@ public class PlayerExplore(
             var exploreTargetData = GameExploreTargetData.Get(exploreTargetInfo.ExploreTargetId);
 
             // TODO 재수집 가능하게 주석처리 (테스트용)
-            if (exploreTargetData.Reusable)
-            {
-                // 조사대상 수집 불가능하도록 TODO 재충전
-                exploreTargetInfo.PlayerId = -1;
-                await exploreTargetInfo.Save(_cacheHelper);
-                _broadcastExploreTargetInfo(exploreTargetInfo);
-            }
-            else
-            {
-                // 조사대상 삭제
-                await exploreTargetInfo.Delete(_cacheHelper);
-                _broadcastDestroy(exploreTargetInfo.ObjectInfo);
-            }
+            // if (exploreTargetData.Reusable)
+            // {
+            //     // 조사대상 수집 불가능하도록 TODO 재충전
+            //     exploreTargetInfo.PlayerId = -1;
+            //     await exploreTargetInfo.Save(_cacheHelper);
+            //     _broadcastExploreTargetInfo(exploreTargetInfo);
+            // }
+            // else
+            // {
+            //     // 조사대상 삭제
+            //     await exploreTargetInfo.Delete(_cacheHelper);
+            //     _broadcastDestroy(exploreTargetInfo.ObjectInfo);
+            // }
             
-            // exploreTargetInfo.PlayerId = 0;
+            exploreTargetInfo.PlayerId = 0;
             await exploreTargetInfo.Save(_cacheHelper);
             _broadcastExploreTargetInfo(exploreTargetInfo);
 

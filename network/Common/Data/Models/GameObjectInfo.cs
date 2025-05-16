@@ -79,6 +79,9 @@ namespace network.common.data.models
         {
             switch (direction)
             {
+                case DirectionType.NONE:
+                    break;
+                
                 case DirectionType.TOP_LEFT:
                 case DirectionType.BOTTOM_LEFT:
                 case DirectionType.LEFT: 
