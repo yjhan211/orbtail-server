@@ -199,7 +199,7 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
                 break;
             
             case MapId.TutorialGym:
-                playerInfo.QuestDiary.QuestDict.TryGetValue(100000012, out var questInfo4);
+                playerInfo.QuestDiary.QuestDict.TryGetValue(100000011, out var questInfo4);
                 if (questInfo4 is not { State: QuestState.END })
                 {
                     return false;

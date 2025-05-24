@@ -79,13 +79,19 @@ namespace network.common.data.models
 
         public DirectionType GetDirection(Cell targetCell)
         {
+            // 타겟셀에서 현재셀로의 이동이 필요한 델타값 계산
             var deltaX = X - targetCell.X;
             var deltaY = Y - targetCell.Y;
 
-            if (deltaX > 0 && deltaY == 0) return DirectionType.TOP_LEFT;
-            if (deltaX < 0 && deltaY == 0) return DirectionType.TOP_RIGHT;
-            if (deltaX == 0 && deltaY < 0) return DirectionType.BOTTOM_LEFT;
-            if (deltaX == 0 && deltaY > 0) return DirectionType.BOTTOM_RIGHT;
+            // GetNextCell의 동작과 정확히 일치하도록 방향 결정
+            if (deltaY == -1 && deltaX == 0) return DirectionType.TOP_LEFT;       // Y 증가
+            if (deltaX == -1 && deltaY == 0) return DirectionType.TOP_RIGHT;      // X 증가
+            if (deltaX == 1 && deltaY == 0) return DirectionType.BOTTOM_LEFT;     // X 감소
+            if (deltaY == 1 && deltaX == 0) return DirectionType.BOTTOM_RIGHT;    // Y 감소
+            if (deltaX == -1 && deltaY == -1) return DirectionType.TOP;           // X 증가, Y 증가
+            if (deltaX == 1 && deltaY == 1) return DirectionType.BOTTOM;          // X 감소, Y 감소
+            if (deltaX == 1 && deltaY == -1) return DirectionType.LEFT;           // X 감소, Y 증가
+            if (deltaX == -1 && deltaY == 1) return DirectionType.RIGHT;          // X 증가, Y 감소
 
             return DirectionType.NONE;
         }
