@@ -162,6 +162,7 @@ public class PlayerController
 
     public async Task Dispose()
     {
+        await _playerInfo.Save(_cacheHelper);
         await _playerMap.PublishDestroy();
         await _playerCamp.Decamp();
         _playerMovement.Dispose();

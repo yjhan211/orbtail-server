@@ -7,6 +7,7 @@ using network.common.data.models;
 using network.helpers;
 using network.interfaces;
 using network.packets;
+using user_server.controllers;
 
 namespace user_server.players;
 
@@ -56,20 +57,29 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
             _sendToClient(packet);
             return;
         }
-        
+
         var changeMapInfo = GameMapData.GetPortalOrNull(playerInfo.ObjectInfo, playerInfo.IsTutorial);
-        if (changeMapInfo == null)
+        if (playerInfo.State != PlayerState.SLEEP)
         {
-            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
-            _sendToClient(packet);
-            return;
-        }
+            if (changeMapInfo == null)
+            {
+                using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
+                _sendToClient(packet);
+                return;
+            }
         
-        if (playerInfo.IsTutorial && !IsAbleChangeMap(playerInfo.ObjectInfo.MapId, changeMapInfo.Value.mapId))
+            if (playerInfo.IsTutorial && !IsAbleChangeMap(playerInfo.ObjectInfo.MapId, changeMapInfo.Value.mapId))
+            {
+                using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
+                _sendToClient(packet);
+                return;
+            }
+        }
+        else
         {
-            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
-            _sendToClient(packet);
-            return;
+            playerInfo.State = PlayerState.IDLE;
+            playerInfo.Hp = 1000;
+            changeMapInfo = (MapId.TutorialLibrary, new Cell(92, 99), false);
         }
         
         playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
