@@ -31,6 +31,7 @@ public class PlayerController
     private readonly SendPacketDelegate _sendToClient;
     private readonly BroadcastDelegate<PlayerInfo> _broadcastPlayerInfo;
     private readonly BroadcastSocialActionDelegate _broadcastSocialAction;
+    private readonly BroadcastTakeDamageDelegate _broadcastTakeDamage;
     
     private readonly PlayerQuest _playerQuest;
     private readonly PlayerInventory _playerInventory;
@@ -51,6 +52,7 @@ public class PlayerController
         _sendToClient = user.Send;
         _broadcastPlayerInfo = user.BroadcastUpdateInfo;
         _broadcastSocialAction = user.BroadcastSocialAction;
+        _broadcastTakeDamage = user.BroadcastTakeDamage;
         
         _playerInfo = playerInfo;
         _playerInfo.ObjectInfo.CurrentCell = _playerInfo.ObjectInfo.TargetCell;
@@ -126,6 +128,16 @@ public class PlayerController
                 _broadcastSocialAction(_playerInfo, body.SocialActionType);
                 break;
         }
+    }
+    
+    public Task SubscribeEnvironment(G_TO_U_ENVIRONMENT body)
+    {
+        const int damage = 2000;
+        _playerInfo.Hp -= damage;
+
+        // using var packet = PacketMaker.U_TO_C_TAKE_DAMAGE(body.DamageType, damage, _playerInfo);
+        _broadcastTakeDamage(_playerInfo, DamageType.DARK, damage);
+        return Task.CompletedTask;
     }
 
     public async Task SetName(C_TO_U_SET_NAME body)

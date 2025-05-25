@@ -439,4 +439,31 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+    
+    public static Packet G_TO_U_TAKE_DAMAGE(long playerId, DamageType damageType, int damage)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_U_TAKE_DAMAGE);
+        G_TO_U_TAKE_DAMAGE body = new() { PlayerId = playerId, DamageType = damageType, Damage = damage };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet U_TO_C_TAKE_DAMAGE(long playerId, DamageType damageType, int damage)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_TAKE_DAMAGE);
+        U_TO_C_TAKE_DAMAGE body = new() { PlayerId = playerId, DamageType = damageType, Damage = damage };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_U_ENVIRONMENT(DamageType damageType)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_U_ENVIRONMENT);
+        G_TO_U_ENVIRONMENT body = new() { DamageType = damageType };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
 }

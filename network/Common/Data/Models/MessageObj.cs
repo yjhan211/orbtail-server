@@ -599,10 +599,24 @@ namespace network.common.data.models
     }
     
     [MessagePackObject]
-    public class U_TO_C_TAKE_DAMAGE : IMessagePackObject
+    public class G_TO_U_TAKE_DAMAGE : IMessagePackObject
     {
+        [Key("playerId")] public long PlayerId { get; set; }
         [Key("damageType")] public DamageType DamageType { get; set; }
         [Key("damage")] public int Damage { get; set; }
-        [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
+    }
+    
+    [MessagePackObject]
+    public class U_TO_C_TAKE_DAMAGE : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("damageType")] public DamageType DamageType { get; set; }
+        [Key("damage")] public int Damage { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_U_ENVIRONMENT : IMessagePackObject
+    {
+        [Key("damageType")] public DamageType DamageType { get; set; }
     }
 }

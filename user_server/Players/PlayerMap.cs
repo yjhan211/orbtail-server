@@ -109,7 +109,7 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         var publishObj = MessagePackSerializer.Serialize((playerInfo.ObjectInfo.GetGameObjectKey(), playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, isLogin));
         _natsClient.Publish(subject, publishObj);
     }
-
+    
     public async Task EnterCamp(long mapSubId)
     {
         playerInfo.ObjectInfo.MapId = MapId.Camp;
