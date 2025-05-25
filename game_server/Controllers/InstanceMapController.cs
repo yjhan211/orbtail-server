@@ -77,6 +77,7 @@ public class InstanceMapController : BaseMapController
                    case MapId.Camp:
                        break;
                    
+                   case MapId.TutorialSchool1:
                    case MapId.School1:
                        StartEnvironmentNotificationTimer(instanceKey, mapId, mapSubId);
                        break;
@@ -137,7 +138,7 @@ public class InstanceMapController : BaseMapController
    private void StartEnvironmentNotificationTimer(string instanceKey, MapId mapId, long mapSubId)
    {
        var timer = new Timer(state => SendEnvironmentNotification(instanceKey, mapId, mapSubId), null, 
-           TimeSpan.Zero, TimeSpan.FromSeconds(1));
+           TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
        _damageTimers[instanceKey] = timer;
        Logger.LogInformation($"School1 맵 데미지 알림 타이머 시작: {instanceKey}");
    }

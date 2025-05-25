@@ -130,14 +130,24 @@ public class PlayerController
         }
     }
     
-    public Task SubscribeEnvironment(G_TO_U_ENVIRONMENT body)
+    public async Task SubscribeEnvironment(G_TO_U_ENVIRONMENT body)
     {
         const int damage = 2000;
-        _playerInfo.Hp -= damage;
+        if (_playerInfo.State == PlayerState.SLEEP)
+        {
+            return;
+        }
+        
+        _playerInfo.Hp = Math.Max(0, _playerInfo.Hp - damage);
+        if (_playerInfo.Hp <= 0)
+        {
+            _playerInfo.State = PlayerState.SLEEP;
+        }
 
-        // using var packet = PacketMaker.U_TO_C_TAKE_DAMAGE(body.DamageType, damage, _playerInfo);
+        await _playerInfo.Save(_cacheHelper);
+        
+        _broadcastPlayerInfo(_playerInfo);
         _broadcastTakeDamage(_playerInfo, DamageType.DARK, damage);
-        return Task.CompletedTask;
     }
 
     public async Task SetName(C_TO_U_SET_NAME body)
