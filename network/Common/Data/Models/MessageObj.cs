@@ -597,4 +597,12 @@ namespace network.common.data.models
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
     }
+    
+    [MessagePackObject]
+    public class U_TO_C_TAKE_DAMAGE : IMessagePackObject
+    {
+        [Key("damageType")] public DamageType DamageType { get; set; }
+        [Key("damage")] public int Damage { get; set; }
+        [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
+    }
 }

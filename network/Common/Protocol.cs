@@ -92,6 +92,7 @@ namespace network.common
         U_TO_C_MAIL_RECEIVE,
         C_TO_U_ITEM_PUT,
         U_TO_C_ITEM_PUT,
+        U_TO_C_TAKE_DAMAGE,
         END
     }
 

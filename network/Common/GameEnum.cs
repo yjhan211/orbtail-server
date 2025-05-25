@@ -195,4 +195,10 @@ namespace network.common
         NONE = 0,
         REWARDED = 1,
     }
+
+    public enum DamageType : short
+    {
+        NONE = 0,
+        DARK,
+    }
 }
