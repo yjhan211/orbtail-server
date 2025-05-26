@@ -59,7 +59,7 @@ namespace network.common.data.models
             LabId = 0;
             LabName = "";
             Gold = 1000;
-            Hp = 4000;
+            Hp = 10000;
             Stamina = 100;
             Boosts = new();
             IsTutorial = true;

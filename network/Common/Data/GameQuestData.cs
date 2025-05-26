@@ -47,6 +47,7 @@ namespace network.common.data
         public QuestType QuestType { get; private set; }
         public string Title { get; private set; }
         public string Detail { get; private set; }
+        public string Behavior { get; private set; }
         public int RequireCount { get; private set; }
         public List<(int, int)> RewardItemList { get; private set; }
         public List<int> NextIdList { get; private set; }
@@ -60,6 +61,7 @@ namespace network.common.data
                 QuestType = (QuestType)(row["id"][0] - '0'),
                 Title = row["title"],
                 Detail = row["detail"],
+                Behavior = row["behavior"],
                 RequireCount = int.Parse(row["require_count"]),
                 RewardItemList = JsonConvert.DeserializeObject<List<(int, int)>>(row["reward_item_list"]) ?? new(),
                 NextIdList = JsonConvert.DeserializeObject<List<int>>(row["next_id_list"]) ?? new(),
