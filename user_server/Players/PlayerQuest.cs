@@ -36,6 +36,7 @@ public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
 
         if (quest.State == QuestState.END)
         {
+            return;
             throw new Exception($"Already End Quest. QuestId: {body.QuestId}");
         }
 

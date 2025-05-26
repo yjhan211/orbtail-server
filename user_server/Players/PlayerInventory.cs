@@ -137,16 +137,11 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
             {
                 switch (itemInfo.ItemId)
                 {
-                    case 202000001:
-                        await playerQuest.IncreaseQuestCount(100000009, 1, updateQuests);
-                        break;
-                    
-                    case 201000004:
-                        await playerQuest.IncreaseQuestCount(100000010, 1, updateQuests);;
+                    case 201000002:
+                        await playerQuest.IncreaseQuestCount(100000004, 1, updateQuests);
                         break;
             
                     default: 
-                        await playerQuest.IncreaseQuestCount(100000005, 1, updateQuests);
                         break;
                 }
             }
