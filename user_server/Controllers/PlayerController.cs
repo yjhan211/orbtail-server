@@ -137,6 +137,19 @@ public class PlayerController
         {
             return;
         }
+
+        if (_playerInfo.QuestDiary.QuestDict.TryGetValue(100000007, out var questInfo))
+        {
+            if (questInfo.State != QuestState.END)
+            {
+                return;
+            }
+        }
+
+        if (_playerInfo.WearItemIdList.Contains(107000001))
+        {
+            return;
+        }
         
         _playerInfo.Hp = Math.Max(0, _playerInfo.Hp - damage);
         if (_playerInfo.Hp <= 0)
