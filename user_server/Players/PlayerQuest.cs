@@ -103,6 +103,10 @@ public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
         {
             foreach (var nextQuestId in questDesignData.NextIdList)
             {
+                if (playerInfo.QuestDiary.QuestDict.ContainsKey(nextQuestId))
+                {
+                    continue;
+                }
                 var nextQuestInfo = new QuestInfo(playerInfo.PlayerId, nextQuestId);
                 playerInfo.QuestDiary.AddQuest(nextQuestInfo);
                 updateQuestList.Add(nextQuestInfo);

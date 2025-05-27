@@ -147,10 +147,10 @@ public class GameUser : IPeer
                 throw new Exception($"[{playerId}] not login");
             }
             
-            if (PlayerController.IsInvalidAction(protocolId))
-            {
-                throw new Exception($"[{playerId}] in action. protocolId: {protocolId}");
-            }
+            // if (PlayerController.IsInvalidAction(protocolId))
+            // {
+            //     throw new Exception($"[{playerId}] in action. protocolId: {protocolId}");
+            // }
 
             await handler(body);
         }

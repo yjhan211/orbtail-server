@@ -140,6 +140,10 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
                     case 201000002:
                         await playerQuest.IncreaseQuestCount(100000004, 1, updateQuests);
                         break;
+                    
+                    case 201000004:
+                        await playerQuest.IncreaseQuestCount(100000009, 1, updateQuests);
+                        break;
             
                     default: 
                         break;

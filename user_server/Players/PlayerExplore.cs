@@ -131,21 +131,21 @@ public class PlayerExplore(
             var exploreTargetData = GameExploreTargetData.Get(exploreTargetInfo.ExploreTargetId);
 
             // TODO 재수집 가능하게 주석처리 (테스트용)
-            // if (exploreTargetData.Reusable)
-            // {
-            //     // 조사대상 수집 불가능하도록 TODO 재충전
-            //     exploreTargetInfo.PlayerId = -1;
-            //     await exploreTargetInfo.Save(_cacheHelper);
-            //     _broadcastExploreTargetInfo(exploreTargetInfo);
-            // }
-            // else
-            // {
-            //     // 조사대상 삭제
-            //     await exploreTargetInfo.Delete(_cacheHelper);
-            //     _broadcastDestroy(exploreTargetInfo.ObjectInfo);
-            // }
+            if (exploreTargetData.Reusable)
+            {
+                // 조사대상 수집 불가능하도록 TODO 재충전
+                exploreTargetInfo.PlayerId = -1;
+                await exploreTargetInfo.Save(_cacheHelper);
+                _broadcastExploreTargetInfo(exploreTargetInfo);
+            }
+            else
+            {
+                // 조사대상 삭제
+                await exploreTargetInfo.Delete(_cacheHelper);
+                _broadcastDestroy(exploreTargetInfo.ObjectInfo);
+            }
             
-            exploreTargetInfo.PlayerId = 0;
+            // exploreTargetInfo.PlayerId = 0;
             await exploreTargetInfo.Save(_cacheHelper);
             _broadcastExploreTargetInfo(exploreTargetInfo);
 

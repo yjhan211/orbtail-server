@@ -184,8 +184,8 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
                 
                 if (changeMapId == MapId.TutorialCity)
                 {
-                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000011, out var questInfo2);
-                    if (questInfo2 is not { State: QuestState.NONE })
+                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000009, out var questInfo2);
+                    if (questInfo2 is not { State: QuestState.END })
                     {
                         return false;
                     }
@@ -193,8 +193,8 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
                 break;
             
             case MapId.TutorialAdminoffice:
-                playerInfo.QuestDiary.QuestDict.TryGetValue(100000011, out var questInfo5);
-                if (questInfo5 is not { State: QuestState.NONE })
+                playerInfo.QuestDiary.QuestDict.TryGetValue(100000009, out var questInfo5);
+                if (questInfo5 is not { State: QuestState.END })
                 {
                     return false;
                 }
