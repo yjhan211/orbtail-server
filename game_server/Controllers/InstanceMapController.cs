@@ -250,8 +250,9 @@ public class InstanceMapController : BaseMapController
 
    private async Task DestroyManageObjectAsync(byte[] message)
    {
-       var (instanceKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
-
+       var (instanceKey, objectType, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
+       var objectKey = MessagePackSerializer.Deserialize<string>(serializedInfo);
+       
        await MapLock.WaitAsync();
        try
        {

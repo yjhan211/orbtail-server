@@ -61,7 +61,6 @@ public class PlayerExplore(
                     _sendToClient(errorPacket);
                     return;
                 }
-
                 if (exploreTargetInfo.PlayerId != 0)
                 {
                     using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.ALREADY_ANOTHER_USE_SKILL);
