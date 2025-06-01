@@ -32,6 +32,7 @@ public class PlayerController
     private readonly BroadcastDelegate<PlayerInfo> _broadcastPlayerInfo;
     private readonly BroadcastSocialActionDelegate _broadcastSocialAction;
     private readonly BroadcastTakeDamageDelegate _broadcastTakeDamage;
+    private readonly BroadcastDestroyDelegate _broadcastDestroy;
     
     private readonly PlayerQuest _playerQuest;
     private readonly PlayerInventory _playerInventory;
@@ -53,6 +54,7 @@ public class PlayerController
         _broadcastPlayerInfo = user.BroadcastUpdateInfo;
         _broadcastSocialAction = user.BroadcastSocialAction;
         _broadcastTakeDamage = user.BroadcastTakeDamage;
+        _broadcastDestroy = user.BroadcastObjectDestroy;
         
         _playerInfo = playerInfo;
         _playerInfo.ObjectInfo.CurrentCell = _playerInfo.ObjectInfo.TargetCell;
@@ -175,8 +177,8 @@ public class PlayerController
 
     public async Task Dispose()
     {
+        _broadcastDestroy(_playerInfo.ObjectInfo);
         await _playerInfo.Save(_cacheHelper);
-        await _playerMap.PublishDestroy();
         await _playerCamp.Decamp();
         _playerMovement.Dispose();
         _playerProgress.Dispose();

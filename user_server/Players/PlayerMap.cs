@@ -49,7 +49,7 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
             playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
             playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
             
-            await PublishDestroy();
+            user.BroadcastObjectDestroy(playerInfo.ObjectInfo);
             await EnterMap(playerInfo.CampInfo.ObjectInfo.MapId, playerInfo.CampInfo.ObjectInfo.CurrentCell, false, false);
             await playerInfo.Save(_cacheHelper);
             
@@ -90,7 +90,8 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         _sendToClient(packet2);
         
         // 기존 맵에 삭제 요청
-        await PublishDestroy();
+        user.BroadcastObjectDestroy(playerInfo.ObjectInfo);
+        // await PublishDestroy();
         await EnterMap(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition, changeMapInfo.Value.isFlip, false);
         await playerInfo.Save(_cacheHelper);
     }
@@ -132,20 +133,6 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         playerInfo.ObjectInfo.IsFlip = isFlip;
 
         await playerInfo.Save(_cacheHelper);
-    }
-
-    // 접속 종료 시 자신의 object_info 삭제 요청 (PublishLeave랑 다른 점 - 후에 Broadcast 처리가 됨)
-    public async Task PublishDestroy()
-    {
-        await playerInfo.ObjectInfo.Save(_cacheHelper);
-
-        var isCommonMap = GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId);
-        var key = isCommonMap ? MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell) : MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
-        var manageServer = isCommonMap ? MapHelper.GetManageServerId(key) : MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
-        var subject = SubjectHelper.GetDestroyObjectSubject(playerInfo.ObjectInfo, manageServer);
-        var message = MessagePackSerializer.Serialize((key, playerInfo.ObjectInfo.GetGameObjectKey()));
-
-        _natsClient.Publish(subject, message);
     }
     
     private bool IsAbleChangeMap(MapId currentMapId, MapId changeMapId)

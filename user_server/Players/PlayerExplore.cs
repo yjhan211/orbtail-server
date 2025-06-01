@@ -164,6 +164,10 @@ public class PlayerExplore(
                     { 4, (100000008, [])},
                     { 5, (100000008, [])},
                     { 6, (100000008, [])},
+                    { 8, (100000011, [])},
+                    { 9, (100000011, [])},
+                    { 10, (100000011, [])},
+                    { 11, (100000011, [])},
                 };
 
                 if (questMap.TryGetValue(exploreTargetInfo.ExploreTargetId, out var questInfo))
