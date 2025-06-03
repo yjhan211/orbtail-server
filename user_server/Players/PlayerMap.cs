@@ -7,6 +7,7 @@ using network.common.data.models;
 using network.helpers;
 using network.interfaces;
 using network.packets;
+using user_server.controllers;
 
 namespace user_server.players;
 
@@ -48,7 +49,7 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
             playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
             playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
             
-            await PublishDestroy();
+            user.BroadcastObjectDestroy(playerInfo.ObjectInfo);
             await EnterMap(playerInfo.CampInfo.ObjectInfo.MapId, playerInfo.CampInfo.ObjectInfo.CurrentCell, false, false);
             await playerInfo.Save(_cacheHelper);
             
@@ -56,20 +57,29 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
             _sendToClient(packet);
             return;
         }
-        
+
         var changeMapInfo = GameMapData.GetPortalOrNull(playerInfo.ObjectInfo, playerInfo.IsTutorial);
-        if (changeMapInfo == null)
+        if (playerInfo.State != PlayerState.SLEEP)
         {
-            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
-            _sendToClient(packet);
-            return;
-        }
+            if (changeMapInfo == null)
+            {
+                using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
+                _sendToClient(packet);
+                return;
+            }
         
-        if (playerInfo.IsTutorial && !IsAbleChangeMap(playerInfo.ObjectInfo.MapId, changeMapInfo.Value.mapId))
+            if (playerInfo.IsTutorial && !IsAbleChangeMap(playerInfo.ObjectInfo.MapId, changeMapInfo.Value.mapId))
+            {
+                using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
+                _sendToClient(packet);
+                return;
+            }
+        }
+        else
         {
-            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
-            _sendToClient(packet);
-            return;
+            playerInfo.State = PlayerState.IDLE;
+            playerInfo.Hp = 1000;
+            changeMapInfo = (MapId.TutorialLibrary, new Cell(92, 99), false);
         }
         
         playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
@@ -80,7 +90,8 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         _sendToClient(packet2);
         
         // 기존 맵에 삭제 요청
-        await PublishDestroy();
+        user.BroadcastObjectDestroy(playerInfo.ObjectInfo);
+        // await PublishDestroy();
         await EnterMap(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition, changeMapInfo.Value.isFlip, false);
         await playerInfo.Save(_cacheHelper);
     }
@@ -109,7 +120,7 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         var publishObj = MessagePackSerializer.Serialize((playerInfo.ObjectInfo.GetGameObjectKey(), playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, isLogin));
         _natsClient.Publish(subject, publishObj);
     }
-
+    
     public async Task EnterCamp(long mapSubId)
     {
         playerInfo.ObjectInfo.MapId = MapId.Camp;
@@ -122,20 +133,6 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         playerInfo.ObjectInfo.IsFlip = isFlip;
 
         await playerInfo.Save(_cacheHelper);
-    }
-
-    // 접속 종료 시 자신의 object_info 삭제 요청 (PublishLeave랑 다른 점 - 후에 Broadcast 처리가 됨)
-    public async Task PublishDestroy()
-    {
-        await playerInfo.ObjectInfo.Save(_cacheHelper);
-
-        var isCommonMap = GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId);
-        var key = isCommonMap ? MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell) : MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
-        var manageServer = isCommonMap ? MapHelper.GetManageServerId(key) : MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
-        var subject = SubjectHelper.GetDestroyObjectSubject(playerInfo.ObjectInfo, manageServer);
-        var message = MessagePackSerializer.Serialize((key, playerInfo.ObjectInfo.GetGameObjectKey()));
-
-        _natsClient.Publish(subject, message);
     }
     
     private bool IsAbleChangeMap(MapId currentMapId, MapId changeMapId)
@@ -174,8 +171,8 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
                 
                 if (changeMapId == MapId.TutorialCity)
                 {
-                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000011, out var questInfo2);
-                    if (questInfo2 is not { State: QuestState.NONE })
+                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000009, out var questInfo2);
+                    if (questInfo2 is not { State: QuestState.END })
                     {
                         return false;
                     }
@@ -183,8 +180,8 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
                 break;
             
             case MapId.TutorialAdminoffice:
-                playerInfo.QuestDiary.QuestDict.TryGetValue(100000011, out var questInfo5);
-                if (questInfo5 is not { State: QuestState.NONE })
+                playerInfo.QuestDiary.QuestDict.TryGetValue(100000009, out var questInfo5);
+                if (questInfo5 is not { State: QuestState.END })
                 {
                     return false;
                 }
@@ -199,11 +196,11 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
                 break;
             
             case MapId.TutorialGym:
-                playerInfo.QuestDiary.QuestDict.TryGetValue(100000012, out var questInfo4);
-                if (questInfo4 is not { State: QuestState.END })
-                {
-                    return false;
-                }
+                // playerInfo.QuestDiary.QuestDict.TryGetValue(100000011, out var questInfo4);
+                // if (questInfo4 is not { State: QuestState.END })
+                // {
+                //     return false;
+                // }
                 break;
         }
         

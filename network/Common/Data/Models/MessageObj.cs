@@ -297,6 +297,7 @@ namespace network.common.data.models
     public class C_TO_U_USE_ITEM : IMessagePackObject
     {
         [Key("itemUid")] public long ItemUid { get; set; }
+        [Key("targetItemUid")] public long TargetItemUid { get; set; }
     }
 
     [MessagePackObject]
@@ -595,5 +596,27 @@ namespace network.common.data.models
     public class U_TO_C_ITEM_PUT : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+    
+    [MessagePackObject]
+    public class G_TO_U_TAKE_DAMAGE : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("damageType")] public DamageType DamageType { get; set; }
+        [Key("damage")] public int Damage { get; set; }
+    }
+    
+    [MessagePackObject]
+    public class U_TO_C_TAKE_DAMAGE : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("damageType")] public DamageType DamageType { get; set; }
+        [Key("damage")] public int Damage { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_U_ENVIRONMENT : IMessagePackObject
+    {
+        [Key("damageType")] public DamageType DamageType { get; set; }
     }
 }

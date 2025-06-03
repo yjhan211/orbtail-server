@@ -1,9 +1,13 @@
-﻿using network.common;
+﻿using MessagePack;
+using network.common;
 using network.common.data;
 using network.common.data.models;
+using Microsoft.Extensions.Logging;
 using network.helpers;
 using network.interfaces;
+using network.managers;
 using network.packets;
+using user_server.controllers;
 using user_server.progress;
 
 namespace user_server.players;
@@ -15,7 +19,9 @@ public class PlayerExplore(
     PlayerInventory playerInventory,
     PlayerProgress playerProgress)
 {
+    private readonly INatsClient _natsClient = user.NatsClient;
     private readonly ICacheHelper _cacheHelper = user.CacheHelper;
+    
     private readonly IRedLockFactory _redLock = user.RedLock;
     private readonly SendPacketDelegate _sendToClient = user.Send;
     private readonly BroadcastDelegate<PlayerInfo> _broadcastPlayerInfo = user.BroadcastUpdateInfo;
@@ -25,7 +31,10 @@ public class PlayerExplore(
     private readonly StartQuestDelegate _startQuest = playerQuest.StartQuest;
     private readonly SendUpdateItemsDelegate _sendUpdateItems = playerInventory.SendUpdateItems;
     private readonly AddProgressItemDelegate _addProgressItem = playerProgress.AddProgressItem;
+    private readonly ILogger _logger = user.Logger;
 
+    private readonly MapObjectController _mapObjectController = user.MapObjectController;
+    
     protected virtual async Task<ExploreTargetInfo?> LoadExploreTargetInfo(long exploreTargetUid)
     {
         return await ExploreTargetInfo.Load(_cacheHelper, exploreTargetUid);
@@ -52,7 +61,6 @@ public class PlayerExplore(
                     _sendToClient(errorPacket);
                     return;
                 }
-
                 if (exploreTargetInfo.PlayerId != 0)
                 {
                     using var errorPacket = PacketMaker.U_TO_C_EXPLORE(ErrorCode.ALREADY_ANOTHER_USE_SKILL);
@@ -82,11 +90,30 @@ public class PlayerExplore(
 
             playerInfo.State = PlayerState.EXPLORE_1;
             playerInfo.Stamina -= 5;
+            
+            var direction = playerInfo.ObjectInfo.TargetCell.GetDirection(exploreTargetInfo.ObjectInfo.CurrentCell);
+            playerInfo.ObjectInfo.SetFlip(direction);
             await playerInfo.Save(_cacheHelper);
         }
 
         using var packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.SUCCESS);
         _sendToClient(packet);
+        
+        var isCommonMap = GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId);
+        var currentPartKey = isCommonMap
+            ? MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell)
+            : MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
+        
+        var currentManageServer = isCommonMap
+            ? MapHelper.GetManageServerId(currentPartKey)
+            : MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
+        
+        var moveSubject = SubjectHelper.GetUpdateManageSubject(playerInfo.ObjectInfo, currentManageServer);
+        _natsClient.Publish(moveSubject,
+            MessagePackSerializer.Serialize((currentPartKey, objectInfo: playerInfo.ObjectInfo)));
+        
+        _mapObjectController.EnqueueUpdateObject(playerInfo.ObjectInfo);
+        
         _broadcastPlayerInfo(playerInfo);
         _broadcastExploreTargetInfo(exploreTargetInfo);
     }
@@ -103,21 +130,21 @@ public class PlayerExplore(
             var exploreTargetData = GameExploreTargetData.Get(exploreTargetInfo.ExploreTargetId);
 
             // TODO 재수집 가능하게 주석처리 (테스트용)
-            // if (exploreTargetData.Reusable)
-            // {
-            //     // 조사대상 수집 불가능하도록 TODO 재충전
-            //     exploreTargetInfo.PlayerId = -1;
-            //     await exploreTargetInfo.Save(_cacheHelper);
-            //     _broadcastExploreTargetInfo(exploreTargetInfo);
-            // }
-            // else
-            // {
-            //     // 조사대상 삭제
-            //     await exploreTargetInfo.Delete(_cacheHelper);
-            //     _broadcastDestroy(exploreTargetInfo.ObjectInfo);
-            // }
+            if (exploreTargetData.Reusable)
+            {
+                // 조사대상 수집 불가능하도록 TODO 재충전
+                exploreTargetInfo.PlayerId = -1;
+                await exploreTargetInfo.Save(_cacheHelper);
+                _broadcastExploreTargetInfo(exploreTargetInfo);
+            }
+            else
+            {
+                // 조사대상 삭제
+                await exploreTargetInfo.Delete(_cacheHelper);
+                _broadcastDestroy(exploreTargetInfo.ObjectInfo);
+            }
             
-            exploreTargetInfo.PlayerId = 0;
+            // exploreTargetInfo.PlayerId = 0;
             await exploreTargetInfo.Save(_cacheHelper);
             _broadcastExploreTargetInfo(exploreTargetInfo);
 
@@ -130,17 +157,18 @@ public class PlayerExplore(
             {
                 var questMap = new Dictionary<int, (int QuestId, List<int>)>
                 {
-                    { 1, (100000004, [100000005]) },
-                    { 2, (100000004, []) },
-                    { 3, (100000004, []) },
-                    { 4, (100000008, []) },
-                    { 5, (100000008, []) },
-                    { 6, (100000008, [100000009]) },
-                    { 7, (100000008, []) },
-                    { 8, (100000012, []) },
-                    { 9, (100000012, []) },
-                    { 10, (100000012, []) },
-                    { 11, (100000012, []) }
+                    { 12, (100000003, []) },
+                    { 1, (100000006, [])},
+                    { 2, (100000006, [])},
+                    { 3, (100000006, [])},
+                    { 4, (100000008, [])},
+                    { 5, (100000008, [])},
+                    { 6, (100000008, [])},
+                    { 7, (100000008, [])},
+                    { 8, (100000011, [])},
+                    { 9, (100000011, [])},
+                    { 10, (100000011, [])},
+                    { 11, (100000011, [])},
                 };
 
                 if (questMap.TryGetValue(exploreTargetInfo.ExploreTargetId, out var questInfo))
@@ -155,6 +183,12 @@ public class PlayerExplore(
             }
             
             var rewardItem = await PlayerInventory.CreateItem(_cacheHelper, rewardItemId, 1);
+            switch (rewardItem.ItemId)
+            {
+                case 107000001:
+                    rewardItem.Durability = 0;
+                    break;
+            }
             var updateItem = playerInfo.InventoryInfo.AddItem(rewardItem);
             updateItems.Add(updateItem);
 

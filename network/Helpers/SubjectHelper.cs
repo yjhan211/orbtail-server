@@ -12,6 +12,7 @@ public static class SubjectHelper
     private const string DestroyObject = "destroy_object";
     private const string UpdateInfo = "update_info";
     private const string SocialAction = "social_action";
+    private const string TakeDamage = "take_damage";
     private const string BroadcastUpdate = "broadcast_update";
     private const string BroadcastDestroy = "broadcast_destroy";
 
@@ -97,6 +98,18 @@ public static class SubjectHelper
     {
         var convertMapSubId = GameMapData.IsCommonMap(objectInfo.MapId) ? 0 : objectInfo.MapSubId;
         return BuildSubject(SocialAction, objectInfo.MapId, convertMapSubId, serverId);
+    }
+    
+    public static string GetTakeDamageSubject(MapId mapId, long mapSubId, int serverId)
+    {
+        var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
+        return BuildSubject(TakeDamage, mapId, convertMapSubId, serverId);
+    }
+
+    public static string GetTakeDamageSubject(GameObjectInfo objectInfo, int serverId)
+    {
+        var convertMapSubId = GameMapData.IsCommonMap(objectInfo.MapId) ? 0 : objectInfo.MapSubId;
+        return BuildSubject(TakeDamage, objectInfo.MapId, convertMapSubId, serverId);
     }
 
     public static string GetCreateJobResourceSubject(MapId mapId, long mapSubId, int serverId)

@@ -60,6 +60,7 @@ item_id,skin_name,max_durability,buff_list
 105000011,cloth_down/skin11_cloth_down,100,[]
 105000012,cloth_down/skin12_cloth_down,100,[]
 105000013,cloth_down/skin13_cloth_down,100,[]
+105000018,cloth_down/skin18_cloth_down,100,[]
 106000001,shoe/skin01_shoe,100,[]
 106000002,shoe/skin02_shoe,100,[]
 106000003,shoe/skin03_shoe,100,[]

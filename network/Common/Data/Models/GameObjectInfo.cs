@@ -79,13 +79,18 @@ namespace network.common.data.models
         {
             switch (direction)
             {
+                case DirectionType.NONE:
+                    break;
+                
                 case DirectionType.TOP_LEFT:
                 case DirectionType.BOTTOM_LEFT:
-                    IsFlip = true;
+                case DirectionType.LEFT: 
+                case DirectionType.TOP:
+                    IsFlip = false;
                     break;
 
                 default:
-                    IsFlip = false;
+                    IsFlip = true;
                     break;
             }
         }

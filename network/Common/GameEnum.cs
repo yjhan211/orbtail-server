@@ -49,6 +49,7 @@ namespace network.common
         NONE = 0,
         CONDITION_ADD,
         CRAFT_ADD,
+        DURABILITY_ADD,
     }
 
     public enum ItemType
@@ -60,7 +61,7 @@ namespace network.common
         INSTALLATION,
         PUTABLE,
     }
-    
+
     public enum EquipType
     {
         NONE = 0,
@@ -106,7 +107,11 @@ namespace network.common
         TOP_LEFT,
         TOP_RIGHT,
         BOTTOM_LEFT,
-        BOTTOM_RIGHT
+        BOTTOM_RIGHT,
+        TOP,
+        LEFT,
+        RIGHT,
+        BOTTOM,
     }
 
     public enum JobType : byte
@@ -189,5 +194,11 @@ namespace network.common
     {
         NONE = 0,
         REWARDED = 1,
+    }
+
+    public enum DamageType : short
+    {
+        NONE = 0,
+        DARK,
     }
 }

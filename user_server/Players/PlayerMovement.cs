@@ -39,6 +39,7 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
     {
         await ProcessAsync(new C_TO_U_MOVE { Direction = DirectionType.NONE });
         RequestSpawnInfo(playerInfo.ObjectInfo.MapId, [], true);
+        user.BroadcastUpdateInfo(playerInfo);
     }
 
     private async Task HandlePreMove()
@@ -94,10 +95,13 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
     
     private async Task ProcessMoveAsync(C_TO_U_MOVE moveRequest)
     {
-        var moveSpeed = GetMoveSpeed();
+        var moveSpeed = GetMoveSpeed(moveRequest.Direction);
         var moveElapsedTime = GameRuleData.MoveElapsedTime / moveSpeed;
-        var consumeHp = (int)(moveSpeed * 2 + moveSpeed - 2);
-        IncreaseHp(consumeHp * -1);
+        var consumeHp = (int)(moveSpeed * (moveSpeed + 1) - 2);
+        if (consumeHp > 0)
+        {
+            IncreaseHp(consumeHp * -1);
+        }
         
         var nextTargetCell = playerInfo.ObjectInfo.TargetCell.GetNextCell(moveRequest.Direction);
         if (!GameMapData.IsMoveablePosition(playerInfo.ObjectInfo.MapId, nextTargetCell))
@@ -179,19 +183,28 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
         _sendToClient(packet);
     }
 
-    private float GetMoveSpeed()
+    private float GetMoveSpeed(DirectionType direction)
     {
-        if (playerInfo.Boosts.Contains(BoostType.SPEED))
+        // if (playerInfo.Boosts.Contains(BoostType.SPEED))
+        // {
+        //     return 2;
+        // }
+
+        var speed = playerInfo.Hp <= 1000 ? 1f : 2f;
+        switch (direction)
         {
-            return 2;
+            case DirectionType.TOP:
+            case DirectionType.BOTTOM:
+                speed /= 1.3f;
+                break;
+            
+            case DirectionType.LEFT: 
+            case DirectionType.RIGHT:
+                speed /= 2;
+                break;
         }
 
-        if (playerInfo.Hp <= 0)
-        {
-            return 0.5f;
-        }
-
-        return 1;
+        return speed;
     }
 
     private void IncreaseHp(int value)

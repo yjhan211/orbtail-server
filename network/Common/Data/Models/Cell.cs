@@ -71,10 +71,21 @@ namespace network.common.data.models
 
         public int GetDistance(Cell targetCell)
         {
-            var deltaX = Math.Abs(X - targetCell.X);
-            var deltaY = Math.Abs(Y - targetCell.Y);
-
-            return deltaX + deltaY;
+            int dx = targetCell.X - X;
+            int dy = targetCell.Y - Y;
+    
+            if ((dx > 0 && dy > 0) || (dx < 0 && dy < 0))
+            {
+                return Math.Max(Math.Abs(dx), Math.Abs(dy));
+            }
+            else if ((dx > 0 && dy < 0) || (dx < 0 && dy > 0))
+            {
+                return Math.Max(Math.Abs(dx), Math.Abs(dy));
+            }
+            else
+            {
+                return Math.Abs(dx) + Math.Abs(dy);
+            }
         }
 
         public DirectionType GetDirection(Cell targetCell)
@@ -82,10 +93,14 @@ namespace network.common.data.models
             var deltaX = X - targetCell.X;
             var deltaY = Y - targetCell.Y;
 
-            if (deltaX > 0 && deltaY == 0) return DirectionType.TOP_LEFT;
-            if (deltaX < 0 && deltaY == 0) return DirectionType.TOP_RIGHT;
-            if (deltaX == 0 && deltaY < 0) return DirectionType.BOTTOM_LEFT;
-            if (deltaX == 0 && deltaY > 0) return DirectionType.BOTTOM_RIGHT;
+            if (deltaY == -1 && deltaX == 0) return DirectionType.TOP_LEFT;       // Y 증가
+            if (deltaX == -1 && deltaY == 0) return DirectionType.TOP_RIGHT;      // X 증가
+            if (deltaX == 1 && deltaY == 0) return DirectionType.BOTTOM_LEFT;     // X 감소
+            if (deltaY == 1 && deltaX == 0) return DirectionType.BOTTOM_RIGHT;    // Y 감소
+            if (deltaX == -1 && deltaY == -1) return DirectionType.TOP;           // X 증가, Y 증가
+            if (deltaX == 1 && deltaY == 1) return DirectionType.BOTTOM;          // X 감소, Y 감소
+            if (deltaX == 1 && deltaY == -1) return DirectionType.LEFT;           // X 감소, Y 증가
+            if (deltaX == -1 && deltaY == 1) return DirectionType.RIGHT;          // X 증가, Y 감소
 
             return DirectionType.NONE;
         }
@@ -96,19 +111,39 @@ namespace network.common.data.models
             switch (direction)
             {
                 case DirectionType.TOP_LEFT:
-                    clone.X += 1;
+                    clone.Y += 1;
                     break;
 
                 case DirectionType.TOP_RIGHT:
-                    clone.X -= 1;
+                    clone.X += 1;
                     break;
 
                 case DirectionType.BOTTOM_LEFT:
-                    clone.Y -= 1;
+                    clone.X -= 1;
                     break;
 
                 case DirectionType.BOTTOM_RIGHT:
+                    clone.Y -= 1;
+                    break;
+                
+                case DirectionType.TOP:
+                    clone.X += 1;
                     clone.Y += 1;
+                    break;
+                
+                case DirectionType.BOTTOM:
+                    clone.X -= 1;
+                    clone.Y -= 1;
+                    break;
+                
+                case DirectionType.LEFT:
+                    clone.X -= 1;
+                    clone.Y += 1;
+                    break;
+                
+                case DirectionType.RIGHT:
+                    clone.X += 1;
+                    clone.Y -= 1;
                     break;
             }
 
@@ -165,16 +200,20 @@ namespace network.common.data.models
         {
             var result = new List<Cell>
             {
-                new Cell(X, Y + 1),
-                new Cell(X, Y - 1),
-                new Cell(X - 1, Y),
-                new Cell(X + 1, Y)
+                new Cell(X, Y + 1),     // 상
+                new Cell(X, Y - 1),     // 하
+                new Cell(X - 1, Y),     // 좌
+                new Cell(X + 1, Y),     // 우
+                new Cell(X - 1, Y + 1), // 좌상
+                new Cell(X + 1, Y + 1), // 우상
+                new Cell(X - 1, Y - 1), // 좌하
+                new Cell(X + 1, Y - 1)  // 우하
             };
 
             return result;
         }
         
-        public Cell GetNearestCell(List<Cell> cellList)
+        public Cell GetNearestCell(List<Cell> cellList, MapId mapId)
         {
             if (cellList.Count == 0)
             {
@@ -187,7 +226,7 @@ namespace network.common.data.models
             foreach (Cell cell in cellList)
             {
                 int distance = GetDistance(cell);
-                if (distance < minDistance)
+                if (distance < minDistance && GameMapData.IsMoveablePosition(mapId, cell))
                 {
                     minDistance = distance;
                     nearestCell = cell;

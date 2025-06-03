@@ -112,7 +112,9 @@ public class GameUser : IPeer
            { Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS, bytes => HandleMessage<G_TO_U_ENTER_INSTANCE_SUCCESS>(bytes, SubscribeEnterInstanceSuccess) },
            { Protocol.G_TO_U_CAMP_INFO, bytes => HandleMessage<G_TO_U_CAMP_INFO>(bytes, SubscribeCampInfo) },
            { Protocol.G_TO_U_SOCIAL_ACTION, bytes => HandleMessage<G_TO_U_SOCIAL_ACTION>(bytes, SubscribeSocialAction) },
-           { Protocol.U_TO_U_DUPLICATE, _ => { ReceiveDuplicate(); return Task.CompletedTask; }}
+           { Protocol.U_TO_U_DUPLICATE, _ => { ReceiveDuplicate(); return Task.CompletedTask; }},
+           { Protocol.G_TO_U_ENVIRONMENT, bytes => PlayerController == null ? Task.CompletedTask : HandleMessage<G_TO_U_ENVIRONMENT>(bytes, PlayerController.SubscribeEnvironment) },
+           { Protocol.G_TO_U_TAKE_DAMAGE , bytes => HandleMessage<G_TO_U_TAKE_DAMAGE>(bytes, SubscribeTakeDamage) },
         };
     }
 
@@ -145,10 +147,10 @@ public class GameUser : IPeer
                 throw new Exception($"[{playerId}] not login");
             }
             
-            if (PlayerController.IsInvalidAction(protocolId))
-            {
-                throw new Exception($"[{playerId}] in action. protocolId: {protocolId}");
-            }
+            // if (PlayerController.IsInvalidAction(protocolId))
+            // {
+            //     throw new Exception($"[{playerId}] in action. protocolId: {protocolId}");
+            // }
 
             await handler(body);
         }
@@ -548,7 +550,15 @@ public class GameUser : IPeer
        
         return Task.CompletedTask;
     }
-
+    
+    private Task SubscribeTakeDamage(G_TO_U_TAKE_DAMAGE body)
+    {
+        using var packet = PacketMaker.U_TO_C_TAKE_DAMAGE(body.PlayerId, body.DamageType, body.Damage);;
+        Send(packet);
+       
+        return Task.CompletedTask;
+    }
+    
     private void BroadcastToMap<T>(GameObjectInfo objectInfo, T payload, Func<GameObjectInfo, int, string> getSubject)
     {
         var serializedPayload = MessagePackSerializer.Serialize(payload);
@@ -581,6 +591,12 @@ public class GameUser : IPeer
         };
 
         BroadcastToMap(objectInfo, info, SubjectHelper.GetUpdateInfoSubject);
+    }
+
+    public virtual void BroadcastTakeDamage(PlayerInfo playerInfo, DamageType damageType, int damage)
+    {
+        var sendTuple = (playerInfo.PlayerId, (damageType, damage));
+        BroadcastToMap(playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetTakeDamageSubject);
     }
 
     public virtual void BroadcastSocialAction(PlayerInfo playerInfo, SocialActionType socialActionType)

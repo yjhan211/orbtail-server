@@ -15,6 +15,7 @@ public class InstanceMapController : BaseMapController
 {
    private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
    private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
+   private readonly ConcurrentDictionary<string, Timer> _damageTimers = new();
 
    private string EnterInstanceSubject => 
        SubjectHelper.GetEnterInstanceSubject(ServerConfig.ServerId);
@@ -44,6 +45,7 @@ public class InstanceMapController : BaseMapController
        {
            { SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, ServerConfig.ServerId), HandleUpdateInfo },
            { SubjectHelper.GetSocialActionSubject(mapId, mapSubId, ServerConfig.ServerId), HandleSocialAction },
+           { SubjectHelper.GetTakeDamageSubject(mapId, mapSubId, ServerConfig.ServerId), HandleTakeDamage },
            { SubjectHelper.GetSpawnManageSubject(mapId, mapSubId, ServerConfig.ServerId), SpawnManageObject },
            { SubjectHelper.GetUpdateManageSubject(mapId, mapSubId, ServerConfig.ServerId), MoveManageObjectAsync },
            { SubjectHelper.GetLeaveManageSubject(mapId, mapSubId, ServerConfig.ServerId), LeaveManageObjectAsync },
@@ -73,6 +75,11 @@ public class InstanceMapController : BaseMapController
                switch (mapId)
                {
                    case MapId.Camp:
+                       break;
+                   
+                   case MapId.TutorialSchool1:
+                   case MapId.School1:
+                       StartEnvironmentNotificationTimer(instanceKey, mapId, mapSubId);
                        break;
                    
                    default:
@@ -125,6 +132,32 @@ public class InstanceMapController : BaseMapController
            await exploreTargetInfo.Save(CacheHelper);
            using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
            BroadcastPacket(partKey, packet);
+       }
+   }
+   
+   private void StartEnvironmentNotificationTimer(string instanceKey, MapId mapId, long mapSubId)
+   {
+       var timer = new Timer(state => SendEnvironmentNotification(instanceKey, mapId, mapSubId), null, 
+           TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+       _damageTimers[instanceKey] = timer;
+       Logger.LogInformation($"School1 맵 데미지 알림 타이머 시작: {instanceKey}");
+   }
+   
+   private void SendEnvironmentNotification(string instanceKey, MapId mapId, long mapSubId)
+   {
+       try
+       {
+           if (!_objectInstanceDict.TryGetValue(instanceKey, out var userKeys) || userKeys.Count == 0)
+           {
+               return;
+           }
+
+           using var packet = PacketMaker.G_TO_U_ENVIRONMENT(DamageType.DARK);
+           BroadcastPacket(instanceKey, packet);
+       }
+       catch (Exception ex)
+       {
+           Logger.LogError(ex, $"School1 맵 데미지 알림 전송 중 오류 발생: {instanceKey}");
        }
    }
 
@@ -217,8 +250,9 @@ public class InstanceMapController : BaseMapController
 
    private async Task DestroyManageObjectAsync(byte[] message)
    {
-       var (instanceKey, objectKey) = MessagePackSerializer.Deserialize<(string, string)>(message);
-
+       var (instanceKey, objectType, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
+       var objectKey = MessagePackSerializer.Deserialize<string>(serializedInfo);
+       
        await MapLock.WaitAsync();
        try
        {

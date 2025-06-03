@@ -31,6 +31,8 @@ public class PlayerController
     private readonly SendPacketDelegate _sendToClient;
     private readonly BroadcastDelegate<PlayerInfo> _broadcastPlayerInfo;
     private readonly BroadcastSocialActionDelegate _broadcastSocialAction;
+    private readonly BroadcastTakeDamageDelegate _broadcastTakeDamage;
+    private readonly BroadcastDestroyDelegate _broadcastDestroy;
     
     private readonly PlayerQuest _playerQuest;
     private readonly PlayerInventory _playerInventory;
@@ -51,6 +53,8 @@ public class PlayerController
         _sendToClient = user.Send;
         _broadcastPlayerInfo = user.BroadcastUpdateInfo;
         _broadcastSocialAction = user.BroadcastSocialAction;
+        _broadcastTakeDamage = user.BroadcastTakeDamage;
+        _broadcastDestroy = user.BroadcastObjectDestroy;
         
         _playerInfo = playerInfo;
         _playerInfo.ObjectInfo.CurrentCell = _playerInfo.ObjectInfo.TargetCell;
@@ -127,6 +131,39 @@ public class PlayerController
                 break;
         }
     }
+    
+    public async Task SubscribeEnvironment(G_TO_U_ENVIRONMENT body)
+    {
+        const int damage = 2000;
+        if (_playerInfo.State == PlayerState.SLEEP)
+        {
+            return;
+        }
+
+        if (_playerInfo.QuestDiary.QuestDict.TryGetValue(100000007, out var questInfo))
+        {
+            if (questInfo.State != QuestState.END)
+            {
+                return;
+            }
+        }
+
+        if (_playerInfo.WearItemIdList.Contains(107000001))
+        {
+            return;
+        }
+        
+        _playerInfo.Hp = Math.Max(0, _playerInfo.Hp - damage);
+        if (_playerInfo.Hp <= 0)
+        {
+            _playerInfo.State = PlayerState.SLEEP;
+        }
+
+        await _playerInfo.Save(_cacheHelper);
+        
+        _broadcastPlayerInfo(_playerInfo);
+        _broadcastTakeDamage(_playerInfo, DamageType.DARK, damage);
+    }
 
     public async Task SetName(C_TO_U_SET_NAME body)
     {
@@ -140,7 +177,8 @@ public class PlayerController
 
     public async Task Dispose()
     {
-        await _playerMap.PublishDestroy();
+        _broadcastDestroy(_playerInfo.ObjectInfo);
+        await _playerInfo.Save(_cacheHelper);
         await _playerCamp.Decamp();
         _playerMovement.Dispose();
         _playerProgress.Dispose();

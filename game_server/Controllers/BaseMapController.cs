@@ -78,6 +78,16 @@ public abstract class BaseMapController(
        
        return Task.CompletedTask;
    }
+   
+   protected Task HandleTakeDamage(byte[] message)
+   {
+       var (partKey, type, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
+       var (playerId, (damageType, damageAmount)) = MessagePackSerializer.Deserialize<(long, (DamageType, int))>(serializedInfo);
+       using var packet = PacketMaker.G_TO_U_TAKE_DAMAGE(playerId, damageType, damageAmount);
+       BroadcastPacket(partKey, packet);
+       
+       return Task.CompletedTask;
+   }
 
    protected abstract void BroadcastPacket(string key, IPacket packet);
 
