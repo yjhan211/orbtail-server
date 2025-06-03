@@ -55,18 +55,76 @@ namespace network.common.data
 
         public static QuestInfoData CreateFromData(CsvRow row)
         {
+            var id = int.Parse(row["id"]);
+            var nextIdListValue = row["next_id_list"];
+            var nextRequireValue = row["next_require"];
+            var rewardItemListValue = row["reward_item_list"];
+            
             return new QuestInfoData
             {
-                Id = int.Parse(row["id"]),
+                Id = id,
                 QuestType = (QuestType)(row["id"][0] - '0'),
                 Title = row["title"],
                 Detail = row["detail"],
                 Behavior = row["behavior"],
                 RequireCount = int.Parse(row["require_count"]),
-                RewardItemList = JsonConvert.DeserializeObject<List<(int, int)>>(row["reward_item_list"]) ?? new(),
-                NextIdList = JsonConvert.DeserializeObject<List<int>>(row["next_id_list"]) ?? new(),
-                NextRequire = JsonConvert.DeserializeObject<List<int>>(row["next_require"]) ?? new(),
+                RewardItemList = ParseTupleList(rewardItemListValue),
+                NextIdList = ParseIntList(nextIdListValue),
+                NextRequire = ParseIntList(nextRequireValue),
             };
+        }
+
+        private static List<int> ParseIntList(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || value == "[]" || value == "\"[]\"")
+                return new List<int>();
+            
+            try
+            {
+                // JSON 형태로 시도
+                return JsonConvert.DeserializeObject<List<int>>(value) ?? new List<int>();
+            }
+            catch
+            {
+                try
+                {
+                    // JSON 파싱 실패 시 수동 파싱
+                    // 따옴표와 대괄호 제거
+                    value = value.Trim('"').Trim('[', ']');
+                    if (string.IsNullOrWhiteSpace(value))
+                        return new List<int>();
+                    
+                    return value.Split(',')
+                               .Select(s => s.Trim().Trim('"')) // 개별 값의 따옴표도 제거
+                               .Where(s => !string.IsNullOrWhiteSpace(s))
+                               .Select(int.Parse)
+                               .ToList();
+                }
+                catch (Exception ex)
+                {
+                    // 디버깅을 위해 어떤 값이 문제인지 출력
+                    Console.WriteLine($"Failed to parse int list: '{value}' - {ex.Message}");
+                    return new List<int>();
+                }
+            }
+        }
+
+        private static List<(int, int)> ParseTupleList(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || value == "[]" || value == "\"[]\"")
+                return new List<(int, int)>();
+            
+            try
+            {
+                // 따옴표 제거 후 JSON 파싱 시도
+                var cleanValue = value.Trim('"');
+                return JsonConvert.DeserializeObject<List<(int, int)>>(cleanValue) ?? new List<(int, int)>();
+            }
+            catch
+            {
+                // 튜플 파싱이 실패하면 빈 리스트 반환
+                return new List<(int, int)>();
+            }
         }
     }
 }
