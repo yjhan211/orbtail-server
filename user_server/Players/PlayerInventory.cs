@@ -22,6 +22,7 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
     public async Task RequestWearItem(C_TO_U_WEAR_ITEM body)
     {
         var updateItems = new List<ItemInfo>();
+        var updateQuests = new List<QuestInfo>();
         await using (await PlayerInfo.Lock(user.RedLock, playerInfo.PlayerId))
         {
             if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.ItemUid, out var targetItem))
@@ -61,6 +62,20 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
 
             updateItems.Add(targetItem);
             await playerInfo.Save(_cacheHelper);
+            
+            
+            foreach (var itemInfo in updateItems)
+            {
+                switch (itemInfo.ItemId)
+                {
+                    case 107000001:
+                        await playerQuest.IncreaseQuestCount(100000009, 1, updateQuests);
+                        break;
+            
+                    default: 
+                        break;
+                }
+            }
         }
 
         using var packet = PacketMaker.U_TO_C_WEAR_ITEM(playerInfo);
@@ -68,6 +83,11 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
 
         SendUpdateItems(updateItems);
         user.BroadcastUpdateInfo(playerInfo);
+        foreach (var updateQuest in updateQuests)
+        {
+            using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(updateQuest);
+            user.Send(questPacket);
+        }
     }
 
     public async Task RequestUseItem(C_TO_U_USE_ITEM body)
@@ -141,8 +161,12 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
                         await playerQuest.IncreaseQuestCount(100000004, 1, updateQuests);
                         break;
                     
-                    case 201000004:
-                        await playerQuest.IncreaseQuestCount(100000009, 1, updateQuests);
+                    // case 201000004:
+                    //     await playerQuest.IncreaseQuestCount(100000009, 1, updateQuests);
+                    //     break;
+                    
+                    case 202000001:
+                        await playerQuest.IncreaseQuestCount(200000001, 1, updateQuests);
                         break;
             
                     default: 
