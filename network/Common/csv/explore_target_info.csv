@@ -10,4 +10,4 @@ id,map_id,name,reward_item_pool,reusable,position,sprite_path
 9,7,소형 택배 상자,[301000006],0,"(96, 97)",Sprites/Map/Gym/P_Box_009
 10,7,체육 바구니 1,[301000007],1,"(101, 100)",Sprites/Map/Gym/P_Props_004
 11,7,체육 바구니 2,[301000005],1,"(92, 102)",Sprites/Map/Gym/P_Props_006
-12,1,중형 휴지통,[201000002],1,"(102, 96)",Sprites/Map/Library/P_Trash_002
+12,1,중형 휴지통,[601000002],1,"(102, 96)",Sprites/Map/Library/P_Trash_002
