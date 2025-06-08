@@ -60,7 +60,6 @@ namespace network.common
         MATERIAL,
         INSTALLATION,
         PUTABLE,
-        CRAFTGEN,
     }
 
     public enum EquipType
