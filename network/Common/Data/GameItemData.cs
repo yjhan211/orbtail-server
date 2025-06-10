@@ -71,7 +71,10 @@ namespace network.common.data
 
         public static ItemInfoData Get(int id)
         {
-            if (!Items.TryGetValue(id, out var item)) throw new KeyNotFoundException($"Item {id} not found");
+            if (!Items.TryGetValue(id, out var item))
+            {
+                return null; // throw new KeyNotFoundException($"Item {id} not found");
+            }
 
             return item;
         }

@@ -70,9 +70,7 @@ namespace network.common.data
         public int Id { get; private set; }
         public int ManualId { get; private set; }
         public int TargetItem { get; private set; }
-        public List<(int id, int count)> RequireItems { get; private set; }
-        public int Stamina { get; private set; }
-        public int Seconds { get; private set; }
+        public List<int> RequireMaterial { get; private set; }
 
         public static CraftInfoData CreateFromData(CsvRow row)
         {
@@ -81,9 +79,7 @@ namespace network.common.data
                 Id = int.Parse(row["id"]),
                 ManualId = int.Parse(row["manual_id"]),
                 TargetItem = int.Parse(row["target_item"]),
-                RequireItems = ItemInfoData.ParseIntTupleArray(row["require_items"]),
-                Stamina = int.Parse(row["stamina"]),
-                Seconds = int.Parse(row["seconds"]),
+                RequireMaterial = QuestInfoData.ParseIntList(row["require_material"])
             };
         }
     }

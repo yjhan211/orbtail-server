@@ -74,7 +74,7 @@ namespace network.common.data
             };
         }
 
-        private static List<int> ParseIntList(string value)
+        public static List<int> ParseIntList(string value)
         {
             if (string.IsNullOrWhiteSpace(value) || value == "[]" || value == "\"[]\"")
                 return new List<int>();
