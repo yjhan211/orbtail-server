@@ -290,6 +290,7 @@ public class GameUser : IPeer
         if (questInfo.QuestDict.Count <= 0)
         {
             await PlayerController.StartQuest(100000001);
+            await PlayerController.StartQuest(200000001);
         }
 
         PlayerController.SendCurrentItems();

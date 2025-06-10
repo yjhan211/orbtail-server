@@ -19,15 +19,18 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
 
     public async Task Craft(C_TO_U_CRAFT body)
     {
+        var craftId = body.CraftId;
+        var updateItems = new List<ItemInfo>();
+        // var updateQuests = new List<QuestInfo>();
+        var craftData = GameCraftData.Get(body.CraftId);
         await using (await PlayerInfo.Lock(_redLock, playerInfo.PlayerId))
         {
-            var craftData = GameCraftData.Get(body.CraftId);
-            if (playerInfo.Stamina < craftData.Stamina)
-            {
-                using var errorPacket = PacketMaker.U_TO_C_CRAFT(ErrorCode.FATAL);
-                _sendToClient(errorPacket);
-                return;
-            }
+            // if (playerInfo.Stamina < craftData.Stamina)
+            // {
+            //     using var errorPacket = PacketMaker.U_TO_C_CRAFT(ErrorCode.FATAL);
+            //     _sendToClient(errorPacket);
+            //     return;
+            // }
 
             if (!playerInfo.CraftInfo.Manuals.Contains(craftData.ManualId))
             {
@@ -36,21 +39,63 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                 return;
             }
             
-            var craftProgressInfo = new CraftProgressInfo(body.CraftId, DateTime.Now.AddSeconds(craftData.Seconds));
-            _addProgressItem(craftProgressInfo, async trackable =>
-            {
-                var progressInfo = (CraftProgressInfo)trackable;
-                await OnCraftComplete(progressInfo);
-            });
+            // var craftProgressInfo = new CraftProgressInfo(body.CraftId, DateTime.Now.AddSeconds(craftData.Seconds));
+            // _addProgressItem(craftProgressInfo, async trackable =>
+            // {
+            //     var progressInfo = (CraftProgressInfo)trackable;
+            //     await OnCraftComplete(progressInfo);
+            // });
+            //
+            // playerInfo.State = PlayerState.CRAFT_1;
+            // playerInfo.Stamina = Math.Clamp(playerInfo.Stamina - craftData.Stamina, 0, 100);
+            // await playerInfo.Save(_cacheHelper);
             
-            playerInfo.State = PlayerState.CRAFT_1;
-            playerInfo.Stamina = Math.Clamp(playerInfo.Stamina - craftData.Stamina, 0, 100);
+            var craftTargetItem = await PlayerInventory.CreateItem(_cacheHelper, craftData.TargetItem, 1);
+            var addItem = playerInfo.InventoryInfo.AddItem(craftTargetItem);
+            updateItems.Add(addItem);
+            
+            // foreach (var (itemId, count) in craftData.RequireItems)
+            // {
+            //     var deleteItem = playerInfo.InventoryInfo.DeleteItemById(itemId, count);
+            //     if (deleteItem == null)
+            //     {
+            //         throw new Exception("cannot find delete item");
+            //     }
+            //     updateItems.Add(deleteItem);
+            // }
+            playerInfo.State = PlayerState.IDLE;
             await playerInfo.Save(_cacheHelper);
+            
+            // 퀘스트 갱신
+            switch (craftId)
+            {
+                case 1:
+                    // await _increaseQuestCount(100000010, 1, updateQuests);
+                    break;
+                case 3:
+                    // await _increaseQuestCount(100000013, 1, updateQuests);
+                    break;
+            }
         }
         
-        using var packet = PacketMaker.U_TO_C_CRAFT(ErrorCode.SUCCESS);
+        using var packet = PacketMaker.U_TO_C_CRAFT_COMPLETE(true);
         _sendToClient(packet);
         _broadcastPlayerInfo(playerInfo);
+        _sendUpdateItems(updateItems);
+
+        // foreach (var quest in updateQuests)
+        // {
+        //     using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(quest);
+        //     _sendToClient(questPacket);
+        // }
+        
+        var rewardItemInfo = GameItemData.Get(craftData.TargetItem);
+        await user.ChatController.SendChat(playerInfo.PlayerId, playerInfo.Name, ChatType.ALL, $"아싸! {rewardItemInfo.Name} 만들었다!", user.NatsClient);
+        user.BroadcastSocialAction(playerInfo, SocialActionType.LAUGH);
+        
+        // using var packet = PacketMaker.U_TO_C_CRAFT(ErrorCode.SUCCESS);
+        // _sendToClient(packet);
+        // _broadcastPlayerInfo(playerInfo);
     }
     
     private async Task OnCraftComplete(IProgressTrackable trackable)
@@ -72,15 +117,15 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
             var addItem = playerInfo.InventoryInfo.AddItem(craftTargetItem);
             updateItems.Add(addItem);
             
-            foreach (var (itemId, count) in craftData.RequireItems)
-            {
-                var deleteItem = playerInfo.InventoryInfo.DeleteItemById(itemId, count);
-                if (deleteItem == null)
-                {
-                    throw new Exception("cannot find delete item");
-                }
-                updateItems.Add(deleteItem);
-            }
+            // foreach (var (itemId, count) in craftData.RequireItems)
+            // {
+            //     var deleteItem = playerInfo.InventoryInfo.DeleteItemById(itemId, count);
+            //     if (deleteItem == null)
+            //     {
+            //         throw new Exception("cannot find delete item");
+            //     }
+            //     updateItems.Add(deleteItem);
+            // }
             playerInfo.State = PlayerState.IDLE;
             await playerInfo.Save(_cacheHelper);
             
