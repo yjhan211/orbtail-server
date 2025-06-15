@@ -623,15 +623,14 @@ namespace network.common.data.models
     [MessagePackObject]
     public class C_TO_U_PUT_MATERIAL : IMessagePackObject
     {
-        [Key("itemUid")] public long itemUid { get; set; }
-        [Key("slotNum")] public int slotNum { get; set; }
+        [Key("itemUid")] public long ItemUid { get; set; }
+        [Key("slotNum")] public int SlotNum { get; set; }
     }
     
     [MessagePackObject]
     public class U_TO_C_PUT_MATERIAL : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("slots")] public List<int> itemId { get; set; }
-        // [Key("slotNum")] public int slotNum { get; set; }
+        [Key("slots")] public List<int> Slots { get; set; }
     }
 }

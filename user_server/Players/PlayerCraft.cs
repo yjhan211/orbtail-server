@@ -16,7 +16,7 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
     private readonly IncreaseQuestCountDelegate _increaseQuestCount = playerQuest.IncreaseQuestCount;
     private readonly SendUpdateItemsDelegate _sendUpdateItems = playerInventory.SendUpdateItems;
     private readonly AddProgressItemDelegate _addProgressItem = playerProgress.AddProgressItem;
-
+    
     public async Task Craft(C_TO_U_CRAFT body)
     {
         var craftId = body.CraftId;
@@ -96,6 +96,49 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
         // using var packet = PacketMaker.U_TO_C_CRAFT(ErrorCode.SUCCESS);
         // _sendToClient(packet);
         // _broadcastPlayerInfo(playerInfo);
+    }
+    
+    public async Task PutMaterial(C_TO_U_PUT_MATERIAL body)
+    {
+        try
+        {
+            var updateItems = new List<ItemInfo>();
+            await using (await PlayerInfo.Lock(_redLock, playerInfo.PlayerId))
+            {
+                if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.ItemUid, out var useItem))
+                {
+                    throw new Exception($"Item with uid {body.ItemUid} not found");
+                }
+            
+                var itemDetail = GameItemData.Get(useItem.ItemId);
+                if (!itemDetail.IsMaterial)
+                {
+                    throw new Exception($"not material item {useItem.ItemId}");
+                }
+            
+                var deleteItem = playerInfo.InventoryInfo.DeleteItem(body.ItemUid, 1);
+                if (deleteItem == null)
+                {
+                    throw new Exception($"delete item {body.ItemUid} failed.");
+                }
+                updateItems.Add(deleteItem);
+
+                if (playerInfo.CraftInfo.Slots[body.SlotNum] != 0)
+                {
+                    throw new Exception($"already in slot");
+                }
+
+                playerInfo.CraftInfo.Slots[body.SlotNum] = itemDetail.Id;
+                await playerInfo.Save(_cacheHelper);
+                
+                _sendUpdateItems(updateItems);
+            }
+        }
+        catch (Exception ex)
+        {
+            using var packet = PacketMaker.U_TO_C_PUT_MATERIAL(ErrorCode.FATAL, playerInfo.CraftInfo.Slots);
+            user.Send(packet);
+        }
     }
     
     private async Task OnCraftComplete(IProgressTrackable trackable)

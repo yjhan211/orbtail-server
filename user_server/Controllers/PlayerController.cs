@@ -97,6 +97,7 @@ public class PlayerController
     public async Task EnterMap(MapId mapId, Cell spawnPosition, bool isFlip, bool isLogin) => await _playerMap.EnterMap(mapId, spawnPosition, isFlip, isLogin);
     public async Task EnterCamp(long mapSubId) => await _playerMap.EnterCamp(mapSubId);
     public async Task Craft(C_TO_U_CRAFT body) => await _playerCraft.Craft(body);
+    public async Task PutMaterial(C_TO_U_PUT_MATERIAL body) => await _playerCraft.PutMaterial(body);
     public async Task Explore(C_TO_U_EXPLORE body) => await _playerExplore.Explore(body);
     public async Task Spawn() => await _playerMovement.Spawn();
     

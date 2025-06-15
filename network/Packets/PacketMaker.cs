@@ -466,4 +466,13 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+
+    public static Packet U_TO_C_PUT_MATERIAL(ErrorCode errorCode, List<int> slots)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_PUT_MATERIAL);
+        U_TO_C_PUT_MATERIAL body = new() { ErrorCode = errorCode, Slots = slots }; 
+        
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
 }

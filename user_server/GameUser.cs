@@ -85,6 +85,7 @@ public class GameUser : IPeer
            { Protocol.C_TO_U_EXPLORE, async (bytes) => await HandleMessage<C_TO_U_EXPLORE>(bytes, msg => HandlePlayerAction(pc => pc.Explore(msg))) },
            { Protocol.C_TO_U_CHAT_MSG, async (bytes) => await HandleMessage<C_TO_U_CHAT_MSG>(bytes, AppendChat) },
            { Protocol.C_TO_U_CRAFT, async (bytes) => await HandleMessage<C_TO_U_CRAFT>(bytes, msg => HandlePlayerAction(pc => pc.Craft(msg))) },
+           { Protocol.C_TO_U_PUT_MATERIAL, async (bytes) => await HandleMessage<C_TO_U_PUT_MATERIAL>(bytes, msg => HandlePlayerAction(pc => pc.PutMaterial(msg)))},
            { Protocol.C_TO_U_ENCAMP, async (bytes) => await HandleMessage<C_TO_U_ENCAMP>(bytes, msg => HandlePlayerAction(pc => pc.Encamp(msg))) },
            { Protocol.C_TO_U_DECAMP, async (_) => await HandlePlayerAction(pc => pc.Decamp()) }, { Protocol.C_TO_U_CAMP_INFO, async (bytes) => await HandleMessage<C_TO_U_CAMP_INFO>(bytes, GetCampInfo) },
            { Protocol.C_TO_U_SET_NAME, async (bytes) => await HandleMessage<C_TO_U_SET_NAME>(bytes, msg => HandlePlayerAction(pc => pc.SetName(msg))) },
