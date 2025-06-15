@@ -95,6 +95,8 @@ namespace network.common
         G_TO_U_TAKE_DAMAGE,
         U_TO_C_TAKE_DAMAGE,
         G_TO_U_ENVIRONMENT,
+        C_TO_U_PUT_MATERIAL,
+        U_TO_C_PUT_MATERIAL,
         END
     }
 

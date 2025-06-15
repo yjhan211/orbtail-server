@@ -619,4 +619,19 @@ namespace network.common.data.models
     {
         [Key("damageType")] public DamageType DamageType { get; set; }
     }
+
+    [MessagePackObject]
+    public class C_TO_U_PUT_MATERIAL : IMessagePackObject
+    {
+        [Key("itemUid")] public long itemUid { get; set; }
+        [Key("slotNum")] public int slotNum { get; set; }
+    }
+    
+    [MessagePackObject]
+    public class U_TO_C_PUT_MATERIAL : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("slots")] public List<int> itemId { get; set; }
+        // [Key("slotNum")] public int slotNum { get; set; }
+    }
 }
