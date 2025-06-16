@@ -633,4 +633,18 @@ namespace network.common.data.models
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
         [Key("slots")] public List<int> Slots { get; set; }
     }
+    
+    [MessagePackObject]
+    public class C_TO_U_HANDLE_CRAFT : IMessagePackObject
+    {
+        [Key("sourceSlotNum")] public int sourceSlotNum { get; set; }
+        [Key("targetSlotNum")] public int targetSlotNum { get; set; }
+    }
+    
+    [MessagePackObject]
+    public class U_TO_C_HANDLE_CRAFT : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("slots")] public List<int> Slots { get; set; }
+    }
 }

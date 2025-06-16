@@ -97,6 +97,8 @@ namespace network.common
         G_TO_U_ENVIRONMENT,
         C_TO_U_PUT_MATERIAL,
         U_TO_C_PUT_MATERIAL,
+        C_TO_U_HANDLE_CRAFT,
+        U_TO_C_HANDLE_CRAFT,
         END
     }
 
