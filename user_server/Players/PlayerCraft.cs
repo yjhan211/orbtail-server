@@ -156,8 +156,16 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
             {
                 var sourceSlotId = playerInfo.CraftInfo.Slots[body.sourceSlotNum];
                 var targetSlotId = playerInfo.CraftInfo.Slots[body.targetSlotNum];
-
-                if (sourceSlotId == targetSlotId && sourceSlotId < 10000)
+                
+                if (sourceSlotId == 0)
+                {
+                    return;
+                }
+                else if (body.sourceSlotNum == body.targetSlotNum)
+                {
+                    // TODO 제너레이터
+                }
+                else if (sourceSlotId == targetSlotId && sourceSlotId < 10000)
                 {
                     if (sourceSlotId % 10 >= 4)
                     {
