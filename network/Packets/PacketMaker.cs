@@ -475,4 +475,13 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+    
+    public static Packet U_TO_C_HANDLE_CRAFT(ErrorCode errorCode, List<int> slots)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_HANDLE_CRAFT);
+        U_TO_C_HANDLE_CRAFT body = new() { ErrorCode = errorCode, Slots = slots }; 
+        
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
 }
