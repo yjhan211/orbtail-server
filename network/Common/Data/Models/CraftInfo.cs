@@ -17,6 +17,7 @@ namespace network.common.data.models
             PlayerId = 0;
             Manuals = new List<int>();
             Slots = new List<int>();
+            Materials = new Dictionary<int, int>();
         }
         
         public CraftInfo(long playerId)
@@ -28,10 +29,12 @@ namespace network.common.data.models
             {
                 Slots.Add(0);
             }
+            Materials = new Dictionary<int, int>();
         }
         
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("manuals")] public List<int> Manuals { get; set; }
         [Key("slots")] public List<int> Slots { get; set; }
+        [Key("materials")] public Dictionary<int, int> Materials { get; set; }
     }
 }

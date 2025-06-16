@@ -163,7 +163,9 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                 }
                 else if (body.sourceSlotNum == body.targetSlotNum)
                 {
-                    // TODO 제너레이터
+                    // TODO 제너레이터 개발
+                    var randSlotNum = new Random().Next(0, 42);
+                    
                 }
                 else if (sourceSlotId == targetSlotId && sourceSlotId < 10000)
                 {
