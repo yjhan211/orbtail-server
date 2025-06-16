@@ -157,7 +157,7 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                 var sourceSlotId = playerInfo.CraftInfo.Slots[body.sourceSlotNum];
                 var targetSlotId = playerInfo.CraftInfo.Slots[body.targetSlotNum];
 
-                if (sourceSlotId == targetSlotId)
+                if (sourceSlotId == targetSlotId && sourceSlotId < 10000)
                 {
                     if (sourceSlotId % 10 >= 4)
                     {
