@@ -467,7 +467,7 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_PUT_MATERIAL(ErrorCode errorCode, List<int> slots)
+    public static Packet U_TO_C_PUT_MATERIAL(ErrorCode errorCode, List<SlotItem> slots)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_PUT_MATERIAL);
         U_TO_C_PUT_MATERIAL body = new() { ErrorCode = errorCode, Slots = slots }; 
@@ -476,7 +476,7 @@ public static class PacketMaker
         return packet;
     }
     
-    public static Packet U_TO_C_HANDLE_CRAFT(ErrorCode errorCode, List<int> slots)
+    public static Packet U_TO_C_HANDLE_CRAFT(ErrorCode errorCode, List<SlotItem> slots)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_HANDLE_CRAFT);
         U_TO_C_HANDLE_CRAFT body = new() { ErrorCode = errorCode, Slots = slots }; 

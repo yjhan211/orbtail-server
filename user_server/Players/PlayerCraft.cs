@@ -118,7 +118,7 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                     throw new Exception($"not material item {useItem.ItemId}");
                 }
                 
-                if (playerInfo.CraftInfo.Slots[body.SlotNum] != 0)
+                if (!playerInfo.CraftInfo.Slots[body.SlotNum].IsEmpty())
                 {
                     throw new Exception($"already in slot");
                 }
@@ -130,7 +130,31 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                 }
 
                 updateItems.Add(deleteItem);
-                playerInfo.CraftInfo.Slots[body.SlotNum] = itemDetail.Id;
+
+                var generationQueue = new List<int>();
+                switch (itemDetail.Id)
+                {
+                    case 301000012:
+                        generationQueue = [11, 11, 21, 21];
+                        break;
+
+                    case 301000013:
+                        generationQueue = [11, 21, 21];
+                        break;
+
+                    case 301000014:
+                        generationQueue = [31, 31, 31, 31, 21, 21, 21, 21, 51, 51, 51, 51];
+                        break;
+                    
+                    case 301000015:
+                        generationQueue = [21, 21, 21, 21, 41];
+                        break;
+                    
+                    case 301000016:
+                        generationQueue = [21, 21, 21, 21, 21, 21, 21, 21, 41, 41, 61, 61, 61, 61];
+                        break;
+                }
+                playerInfo.CraftInfo.Slots[body.SlotNum] = new SlotItem(itemDetail.Id, generationQueue);
                 await playerInfo.Save(_cacheHelper);
             }
         }
@@ -154,37 +178,40 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
         {
             await using (await PlayerInfo.Lock(_redLock, playerInfo.PlayerId))
             {
-                var sourceSlotId = playerInfo.CraftInfo.Slots[body.sourceSlotNum];
-                var targetSlotId = playerInfo.CraftInfo.Slots[body.targetSlotNum];
+                var sourceSlotItem = playerInfo.CraftInfo.Slots[body.sourceSlotNum];
+                var targetSlotItem = playerInfo.CraftInfo.Slots[body.targetSlotNum];
                 
-                if (sourceSlotId == 0)
+                if (sourceSlotItem.IsEmpty())
                 {
-                    return;
+                    throw new Exception("source item empty");
                 }
                 else if (body.sourceSlotNum == body.targetSlotNum)
                 {
-                    // TODO 제너레이터 개발
-                    var randSlotNum = new Random().Next(0, 42);
-                    
+                    var emptySlotIndex = playerInfo.CraftInfo.GetRandomEmptySlotIndex();
+                    if (emptySlotIndex < 0)
+                    {
+                        throw new Exception("cannot found empty slot index");
+                    }
+                    playerInfo.CraftInfo.GenerateItemFromQueue(body.sourceSlotNum, emptySlotIndex);
                 }
-                else if (sourceSlotId == targetSlotId && sourceSlotId < 10000)
+                else if (sourceSlotItem.ItemId == targetSlotItem.ItemId && !sourceSlotItem.IsGenerator())
                 {
-                    if (sourceSlotId % 10 >= 4)
+                    if (sourceSlotItem.ItemId % 10 >= 4)
                     {
                         throw new Exception("already max craft slot");
                     }
-                    playerInfo.CraftInfo.Slots[body.sourceSlotNum] = sourceSlotId + 1;
-                    playerInfo.CraftInfo.Slots[body.targetSlotNum] = 0;
+                    playerInfo.CraftInfo.Slots[body.sourceSlotNum].ItemId = sourceSlotItem.ItemId + 1;
+                    playerInfo.CraftInfo.Slots[body.targetSlotNum].ItemId = 0;
                 }
-                else if (targetSlotId > 0)
+                else if (!targetSlotItem.IsEmpty())
                 {
-                    playerInfo.CraftInfo.Slots[body.targetSlotNum] = sourceSlotId;
-                    playerInfo.CraftInfo.Slots[body.sourceSlotNum] = targetSlotId;
+                    playerInfo.CraftInfo.Slots[body.targetSlotNum] = sourceSlotItem;
+                    playerInfo.CraftInfo.Slots[body.sourceSlotNum] = targetSlotItem;
                 }
                 else
                 {
-                    playerInfo.CraftInfo.Slots[body.targetSlotNum] = sourceSlotId;
-                    playerInfo.CraftInfo.Slots[body.sourceSlotNum] = 0;
+                    playerInfo.CraftInfo.Slots[body.targetSlotNum] = sourceSlotItem;
+                    playerInfo.CraftInfo.Slots[body.sourceSlotNum].ItemId = 0;
                 }
 
                 await playerInfo.Save(_cacheHelper);

@@ -631,7 +631,7 @@ namespace network.common.data.models
     public class U_TO_C_PUT_MATERIAL : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("slots")] public List<int> Slots { get; set; }
+        [Key("slots")] public List<SlotItem> Slots { get; set; }
     }
     
     [MessagePackObject]
@@ -645,6 +645,6 @@ namespace network.common.data.models
     public class U_TO_C_HANDLE_CRAFT : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("slots")] public List<int> Slots { get; set; }
+        [Key("slots")] public List<SlotItem> Slots { get; set; }
     }
 }
