@@ -169,7 +169,6 @@ public class PlayerExplore(
                     { 9, (100000011, [])},
                     { 10, (100000011, [])},
                     { 11, (100000011, [])},
-                    { 13, (200000001, [])},
                 };
 
                 if (questMap.TryGetValue(exploreTargetInfo.ExploreTargetId, out var questInfo))
@@ -179,6 +178,11 @@ public class PlayerExplore(
                     {
                         await _startQuest(followQuest, updateQuests);
                     }
+                }
+
+                if (exploreTargetInfo.ExploreTargetId == 13)
+                {
+                    await _startQuest(200000001, updateQuests);
                 }
             }
             
