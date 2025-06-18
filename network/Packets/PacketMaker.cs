@@ -314,10 +314,10 @@ public static class PacketMaker
         return packet;
     }
     
-    public static Packet U_TO_C_CRAFT_COMPLETE(bool isSuccess)
+    public static Packet U_TO_C_CRAFT_COMPLETE(bool isSuccess, List<SlotItem> slots)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CRAFT_COMPLETE);
-        U_TO_C_CRAFT_COMPLETE body = new() { IsSuccess = isSuccess };
+        U_TO_C_CRAFT_COMPLETE body = new() { IsSuccess = isSuccess, Slots = slots };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

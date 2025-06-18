@@ -40,6 +40,31 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                 return;
             }
             
+            // 슬롯에 있는 재료들과 일치하는 아이템들을 제거
+            foreach (var requiredMaterialId in craftData.RequireMaterial)
+            {
+                // 슬롯에서 해당 재료가 있는지 확인하고 제거
+                var materialFound = false;
+                for (int i = 0; i < playerInfo.CraftInfo.Slots.Count; i++)
+                {
+                    var slot = playerInfo.CraftInfo.Slots[i];
+                    if (!slot.IsEmpty() && slot.ItemId == requiredMaterialId)
+                    {
+                        // 슬롯에서 재료 제거
+                        playerInfo.CraftInfo.Slots[i] = new SlotItem();
+                        materialFound = true;
+                        break;
+                    }
+                }
+                
+                if (!materialFound)
+                {
+                    using var errorPacket = PacketMaker.U_TO_C_CRAFT(ErrorCode.FATAL);
+                    _sendToClient(errorPacket);
+                    return;
+                }
+            }
+            
             // var craftProgressInfo = new CraftProgressInfo(body.CraftId, DateTime.Now.AddSeconds(craftData.Seconds));
             // _addProgressItem(craftProgressInfo, async trackable =>
             // {
@@ -55,15 +80,6 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
             var addItem = playerInfo.InventoryInfo.AddItem(craftTargetItem);
             updateItems.Add(addItem);
             
-            // foreach (var (itemId, count) in craftData.RequireItems)
-            // {
-            //     var deleteItem = playerInfo.InventoryInfo.DeleteItemById(itemId, count);
-            //     if (deleteItem == null)
-            //     {
-            //         throw new Exception("cannot find delete item");
-            //     }
-            //     updateItems.Add(deleteItem);
-            // }
             playerInfo.State = PlayerState.IDLE;
             await playerInfo.Save(_cacheHelper);
             
@@ -79,7 +95,7 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
             }
         }
         
-        using var packet = PacketMaker.U_TO_C_CRAFT_COMPLETE(true);
+        using var packet = PacketMaker.U_TO_C_CRAFT_COMPLETE(true, playerInfo.CraftInfo.Slots);
         _sendToClient(packet);
         _broadcastPlayerInfo(playerInfo);
         _sendUpdateItems(updateItems);
@@ -154,6 +170,8 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                         generationQueue = [21, 21, 21, 21, 21, 21, 21, 21, 41, 41, 61, 61, 61, 61];
                         break;
                 }
+
+                generationQueue.Sort((a, b) => Random.Shared.Next(0, 2) == 0 ? a - b : b - a);;
                 playerInfo.CraftInfo.Slots[body.SlotNum] = new SlotItem(itemDetail.Id, generationQueue);
                 await playerInfo.Save(_cacheHelper);
             }
@@ -193,6 +211,7 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                         throw new Exception("cannot found empty slot index");
                     }
                     playerInfo.CraftInfo.GenerateItemFromQueue(body.sourceSlotNum, emptySlotIndex);
+                    user.Logger.LogWarning("2222");
                 }
                 else if (sourceSlotItem.ItemId == targetSlotItem.ItemId && !sourceSlotItem.IsGenerator())
                 {
@@ -200,18 +219,22 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                     {
                         throw new Exception("already max craft slot");
                     }
-                    playerInfo.CraftInfo.Slots[body.sourceSlotNum].ItemId = sourceSlotItem.ItemId + 1;
-                    playerInfo.CraftInfo.Slots[body.targetSlotNum].ItemId = 0;
+
+                    playerInfo.CraftInfo.Slots[body.sourceSlotNum] = new SlotItem();
+                    playerInfo.CraftInfo.Slots[body.targetSlotNum].ItemId = targetSlotItem.ItemId + 1;
+                    user.Logger.LogWarning("3333");
                 }
                 else if (!targetSlotItem.IsEmpty())
                 {
                     playerInfo.CraftInfo.Slots[body.targetSlotNum] = sourceSlotItem;
                     playerInfo.CraftInfo.Slots[body.sourceSlotNum] = targetSlotItem;
+                    user.Logger.LogWarning("4444");
                 }
                 else
                 {
                     playerInfo.CraftInfo.Slots[body.targetSlotNum] = sourceSlotItem;
-                    playerInfo.CraftInfo.Slots[body.sourceSlotNum].ItemId = 0;
+                    playerInfo.CraftInfo.Slots[body.sourceSlotNum] = new SlotItem();
+                    user.Logger.LogWarning("5555");
                 }
 
                 await playerInfo.Save(_cacheHelper);
@@ -231,56 +254,56 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
     
     private async Task OnCraftComplete(IProgressTrackable trackable)
     {
-        if (trackable is not CraftProgressInfo craftProgress)
-        {
-            return;
-        }
-
-        var craftId = craftProgress.CraftId;
-        
-        var updateItems = new List<ItemInfo>();
-        var updateQuests = new List<QuestInfo>();
-        await using (await PlayerInfo.Lock(_redLock, playerInfo.PlayerId))
-        {
-            var craftData = GameCraftData.Get(craftId);
-            var craftTargetItem = await PlayerInventory.CreateItem(_cacheHelper, craftData.TargetItem, 1);
-
-            var addItem = playerInfo.InventoryInfo.AddItem(craftTargetItem);
-            updateItems.Add(addItem);
-            
-            // foreach (var (itemId, count) in craftData.RequireItems)
-            // {
-            //     var deleteItem = playerInfo.InventoryInfo.DeleteItemById(itemId, count);
-            //     if (deleteItem == null)
-            //     {
-            //         throw new Exception("cannot find delete item");
-            //     }
-            //     updateItems.Add(deleteItem);
-            // }
-            playerInfo.State = PlayerState.IDLE;
-            await playerInfo.Save(_cacheHelper);
-            
-            // 퀘스트 갱신
-            switch (craftId)
-            {
-                case 1:
-                    // await _increaseQuestCount(100000010, 1, updateQuests);
-                    break;
-                case 3:
-                    await _increaseQuestCount(100000013, 1, updateQuests);
-                    break;
-            }
-        }
-        
-        using var packet = PacketMaker.U_TO_C_CRAFT_COMPLETE(true);
-        _sendToClient(packet);
-        _broadcastPlayerInfo(playerInfo);
-        _sendUpdateItems(updateItems);
-
-        foreach (var quest in updateQuests)
-        {
-            using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(quest);
-            _sendToClient(questPacket);
-        }
+        // if (trackable is not CraftProgressInfo craftProgress)
+        // {
+        //     return;
+        // }
+        //
+        // var craftId = craftProgress.CraftId;
+        //
+        // var updateItems = new List<ItemInfo>();
+        // var updateQuests = new List<QuestInfo>();
+        // await using (await PlayerInfo.Lock(_redLock, playerInfo.PlayerId))
+        // {
+        //     var craftData = GameCraftData.Get(craftId);
+        //     var craftTargetItem = await PlayerInventory.CreateItem(_cacheHelper, craftData.TargetItem, 1);
+        //
+        //     var addItem = playerInfo.InventoryInfo.AddItem(craftTargetItem);
+        //     updateItems.Add(addItem);
+        //     
+        //     // foreach (var (itemId, count) in craftData.RequireItems)
+        //     // {
+        //     //     var deleteItem = playerInfo.InventoryInfo.DeleteItemById(itemId, count);
+        //     //     if (deleteItem == null)
+        //     //     {
+        //     //         throw new Exception("cannot find delete item");
+        //     //     }
+        //     //     updateItems.Add(deleteItem);
+        //     // }
+        //     playerInfo.State = PlayerState.IDLE;
+        //     await playerInfo.Save(_cacheHelper);
+        //     
+        //     // 퀘스트 갱신
+        //     switch (craftId)
+        //     {
+        //         case 1:
+        //             // await _increaseQuestCount(100000010, 1, updateQuests);
+        //             break;
+        //         case 3:
+        //             await _increaseQuestCount(100000013, 1, updateQuests);
+        //             break;
+        //     }
+        // }
+        //
+        // using var packet = PacketMaker.U_TO_C_CRAFT_COMPLETE(true);
+        // _sendToClient(packet);
+        // _broadcastPlayerInfo(playerInfo);
+        // _sendUpdateItems(updateItems);
+        //
+        // foreach (var quest in updateQuests)
+        // {
+        //     using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(quest);
+        //     _sendToClient(questPacket);
+        // }
     }
 }

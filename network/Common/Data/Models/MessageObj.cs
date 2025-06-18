@@ -378,6 +378,7 @@ namespace network.common.data.models
     public class U_TO_C_CRAFT_COMPLETE : IMessagePackObject
     {
         [Key("isSuccess")] public bool IsSuccess { get; set; }
+        [Key("slots")] public List<SlotItem> Slots { get; set; }
     }
 
     [MessagePackObject]
