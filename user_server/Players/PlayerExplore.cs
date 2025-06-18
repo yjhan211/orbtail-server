@@ -169,12 +169,12 @@ public class PlayerExplore(
                     { 9, (100000011, [])},
                     { 10, (100000011, [])},
                     { 11, (100000011, [])},
+                    { 13, (200000001, [])},
                 };
 
                 if (questMap.TryGetValue(exploreTargetInfo.ExploreTargetId, out var questInfo))
                 {
                     await _increaseQuestCount(questInfo.QuestId, 1, updateQuests);
-
                     foreach (var followQuest in questInfo.Item2)
                     {
                         await _startQuest(followQuest, updateQuests);

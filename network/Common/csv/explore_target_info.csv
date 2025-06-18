@@ -11,4 +11,4 @@ id,map_id,name,reward_item_pool,reusable,position,sprite_path
 10,7,체육 바구니 1,[301000007],1,"(101, 100)",Sprites/Map/Gym/P_Props_004
 11,7,체육 바구니 2,[301000005],1,"(92, 102)",Sprites/Map/Gym/P_Props_006
 12,1,중형 휴지통,[301000013],1,"(102, 96)",Sprites/Map/Library/P_Trash_002
-12,1,400번대 책장,[202000001],1,"(98, 101)",Sprites/Map/Library/P_Bookcase_001
+13,1,400번대 책장,[202000001],1,"(98, 101)",Sprites/Map/Library/P_Bookcase_001
