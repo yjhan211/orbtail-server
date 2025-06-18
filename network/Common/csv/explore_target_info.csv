@@ -5,9 +5,10 @@ id,map_id,name,reward_item_pool,reusable,position,sprite_path
 4,5,사무용 서랍,[201000004],1,"(88, 98)",Sprites/Map/AdminOffice/P_Shelf_004
 5,5,중형 택배 상자,[109000001],0,"(94, 106)",Sprites/Map/Gym/P_Box_004
 6,5,실과 선생님의 책더미,[107000001],0,"(94, 100)",Sprites/Map/Library/P_Props_005
-7,5,신발 상자,[202000001],0,"(96, 90)",Sprites/Map/Gym/P_Box_006
+7,5,신발 상자,[202000002],0,"(96, 90)",Sprites/Map/Gym/P_Box_006
 8,7,체육 매트,[501000001],0,"(96, 107)",Sprites/Map/Gym/P_Props_002
 9,7,소형 택배 상자,[301000006],0,"(96, 97)",Sprites/Map/Gym/P_Box_009
 10,7,체육 바구니 1,[301000007],1,"(101, 100)",Sprites/Map/Gym/P_Props_004
 11,7,체육 바구니 2,[301000005],1,"(92, 102)",Sprites/Map/Gym/P_Props_006
 12,1,중형 휴지통,[301000013],1,"(102, 96)",Sprites/Map/Library/P_Trash_002
+12,1,400번대 책장,[202000001],1,"(98, 101)",Sprites/Map/Library/P_Bookcase_001
