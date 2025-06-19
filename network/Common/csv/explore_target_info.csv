@@ -14,7 +14,6 @@ id,map_id,name,reward_item_pool,reusable,position,sprite_path
 13,1,실과 선생님의 책더미,[202000001],0,"(92, 99)",Sprites/Map/Library/P_Props_005
 14,3,소형 택배 상자,[301000015],0,"(127, 101)",Sprites/Map/Gym/P_Box_009
 15,4,소형 휴지통,[301000017],1,"(101, 94)",Sprites/Map/ClassRoom/P_Trash_001
-16,2,소형 택배 상자,[301000016],0,"(96, 97)",Sprites/Map/Gym/P_Box_009
-17,2,소형 택배 상자,[301000016],0,"(76, 101)",Sprites/Map/Gym/P_Box_009
-18,1,소형 택배 상자,[301000013],0,"(89, 98)",Sprites/Map/Gym/P_Box_009
-19,1,중형 휴지통,[301000017],0,"(143, 101)",Sprites/Map/Library/P_Trash_002
+16,2,소형 택배 상자,[301000016],0,"(76, 101)",Sprites/Map/Gym/P_Box_009
+17,1,소형 택배 상자,[301000013],0,"(89, 98)",Sprites/Map/Gym/P_Box_009
+18,2,중형 휴지통,[301000017],0,"(143, 101)",Sprites/Map/Library/P_Trash_002
