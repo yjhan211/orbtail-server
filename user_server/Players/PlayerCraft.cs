@@ -150,29 +150,41 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                 var generationQueue = new List<int>();
                 switch (itemDetail.Id)
                 {
-                    case 301000013: // 소형 택배 상자 - 감자 한 박스
+                    case 301000012: // 책가방
+                        generationQueue = [51, 51, 51, 51];
+                        break;
+                 
+                    case 301000013: // 감자 한 박스
                         generationQueue = [11, 11, 11, 11, 11];
                         break;
                     
-                    case 301000012: // 의자 - 첵가방
-                        generationQueue = [51, 51, 51, 51];
-                        break;
-                    
-                    case 301000014: // 책상 - 필통
+                    case 301000014: // 필통
                         generationQueue = [71, 71, 71, 71, 71, 71];
                         // generationQueue = [41, 61, 61, 61, 61];
                         break;
 
-                    case 301000015: // 2층 교실 옆 상자 - 밤양갱
+                    case 301000015: // 밤 한 박스
                         generationQueue = [31, 31, 31, 31];
                         break;
                     
-                    case 301000016: 
-                        generationQueue = [41, 41];
+                    case 301000016: // 소형 종이 상자
+                        generationQueue = [41, 51, 61, 41, 51, 61];
                         break;
                     
                     case 301000017: // 휴지통 - 검정 비닐 봉지
                         generationQueue = [21, 21, 21, 21];
+                        break;
+                    
+                    case 301000018: // 포대 자루
+                        generationQueue = [61, 62, 61, 62, 61, 62];
+                        break;
+                    
+                    case 301000019: // 고장난 알람 시계
+                        generationQueue = [101, 101, 101, 101, 81];
+                        break;
+                    
+                    case 301000020: // 포장지
+                        generationQueue = [91, 91, 91, 92];
                         break;
                 }
 

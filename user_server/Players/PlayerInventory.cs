@@ -153,25 +153,27 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
             }
             await playerInfo.Save(_cacheHelper);
             
-            foreach (var itemInfo in updateItems)
+            switch (deleteItem.ItemId)
             {
-                switch (itemInfo.ItemId)
-                {
-                    case 201000005:
-                        await playerQuest.IncreaseQuestCount(100000004, 1, updateQuests);
-                        break;
+                case 201000001:
+                case 201000002:
+                case 201000003:
+                    var rewardItem = await PlayerInventory.CreateItem(_cacheHelper, 301000020, 1); // 빈 포장지
+                    var addItem = playerInfo.InventoryInfo.AddItem(rewardItem);
+                    updateItems.Add(addItem);
+                    break;
+                
+                case 201000005:
+                    await playerQuest.IncreaseQuestCount(100000004, 1, updateQuests);
+                    break;
                     
-                    // case 201000004:
-                    //     await playerQuest.IncreaseQuestCount(100000009, 1, updateQuests);
-                    //     break;
+                // case 201000004:
+                //     await playerQuest.IncreaseQuestCount(100000009, 1, updateQuests);
+                //     break;
                     
-                    case 202000001:
-                        await playerQuest.IncreaseQuestCount(200000001, 1, updateQuests);
-                        break;
-            
-                    default: 
-                        break;
-                }
+                case 202000001:
+                    await playerQuest.IncreaseQuestCount(200000001, 1, updateQuests);
+                    break;
             }
         }
 
