@@ -159,7 +159,8 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                         break;
                     
                     case 301000014: // 책상 - 필통
-                        generationQueue = [41, 61, 61, 61, 61];
+                        generationQueue = [71, 71, 71, 71, 71, 71];
+                        // generationQueue = [41, 61, 61, 61, 61];
                         break;
 
                     case 301000015: // 2층 교실 옆 상자 - 밤양갱
