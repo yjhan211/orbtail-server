@@ -158,7 +158,8 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
                 case 201000001:
                 case 201000002:
                 case 201000003:
-                    var rewardItem = await PlayerInventory.CreateItem(_cacheHelper, 301000020, 1); // 빈 포장지
+                case 201000006:    
+                    var rewardItem = await CreateItem(_cacheHelper, 301000020, 1); // 빈 포장지
                     var addItem = playerInfo.InventoryInfo.AddItem(rewardItem);
                     updateItems.Add(addItem);
                     break;

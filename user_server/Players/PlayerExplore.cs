@@ -158,7 +158,7 @@ public class PlayerExplore(
                 var questMap = new Dictionary<int, (int QuestId, List<int>)>
                 {
                     { 12, (100000003, []) },
-                    { 18, (100000003, [])},
+                    { 17, (100000003, [])},
                     { 1, (100000006, [])},
                     { 2, (100000006, [])},
                     { 3, (100000006, [])},
