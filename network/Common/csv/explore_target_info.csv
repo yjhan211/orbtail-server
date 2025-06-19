@@ -17,3 +17,4 @@ id,map_id,name,reward_item_pool,reusable,position,sprite_path
 16,2,소형 택배 상자,[301000016],0,"(76, 101)",Sprites/Map/Gym/P_Box_009
 17,1,소형 택배 상자,[301000013],0,"(89, 98)",Sprites/Map/Gym/P_Box_009
 18,2,중형 휴지통,[301000017],0,"(143, 101)",Sprites/Map/Library/P_Trash_002
+19,3,소형 택배 상자,[301000016],0,"(76, 101)",Sprites/Map/Gym/P_Box_009
