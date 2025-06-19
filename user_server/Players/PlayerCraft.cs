@@ -150,24 +150,28 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                 var generationQueue = new List<int>();
                 switch (itemDetail.Id)
                 {
-                    case 301000012:
-                        generationQueue = [11, 11, 21, 21];
+                    case 301000013: // 소형 택배 상자 - 소형 택배 상자
+                        generationQueue = [11, 11, 11];
+                        break;
+                    
+                    case 301000012: // 의자 - 첵가방
+                        generationQueue = [11, 11];
+                        break;
+                    
+                    case 301000014: // 책상 - 필통
+                        generationQueue = [41];
                         break;
 
-                    case 301000013:
-                        generationQueue = [11, 21, 21];
-                        break;
-
-                    case 301000014:
+                    case 301000015: // 2층 교실 옆 상자 - 밤양갱
                         generationQueue = [31, 31, 31, 31, 21, 21, 21, 21, 51, 51, 51, 51];
                         break;
                     
-                    case 301000015:
-                        generationQueue = [21, 21, 21, 21, 41];
+                    case 301000016: 
+                        generationQueue = [21, 21, 21, 21, 21, 21, 21, 21, 41, 41, 61, 61, 61, 61];
                         break;
                     
-                    case 301000016:
-                        generationQueue = [21, 21, 21, 21, 21, 21, 21, 21, 41, 41, 61, 61, 61, 61];
+                    case 301000017: // 휴지통 - 검정 비닐 봉지
+                        generationQueue = [21, 21, 21, 21];
                         break;
                 }
 
