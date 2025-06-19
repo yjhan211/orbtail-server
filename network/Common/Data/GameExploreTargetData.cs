@@ -90,7 +90,7 @@ namespace network.common.data
                 Id = int.Parse(row["id"]),
                 MapId = (MapId)Convert.ToInt32(row["map_id"]),
                 Name = row["name"],
-                RewardItemPool = JsonConvert.DeserializeObject<List<int>>(row["reward_item_pool"]) ?? new(),
+                RewardItemPool = QuestInfoData.ParseIntList(row["reward_item_pool"]),
                 Reusable = int.Parse(row["reusable"]) == 1,
                 Position = new Cell(int.Parse(posStr[0].Trim()), int.Parse(posStr[1].Trim())),
                 SpritePath = row["sprite_path"],
