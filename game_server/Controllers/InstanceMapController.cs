@@ -83,9 +83,9 @@ public class InstanceMapController : BaseMapController
                        break;
                    
                    default:
-                       await InitializeExploreTargets(mapId, mapSubId);
                        break;
                }
+               await InitializeExploreTargets(mapId, mapSubId);
            }
        }
        catch (Exception ex)

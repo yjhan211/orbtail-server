@@ -155,11 +155,11 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                         break;
                  
                     case 301000013: // 감자 한 박스
-                        generationQueue = [11, 11, 11, 11, 11];
+                        generationQueue = [11, 11, 11];
                         break;
                     
                     case 301000014: // 필통
-                        generationQueue = [71, 71, 71, 71, 71, 71];
+                        generationQueue = [71, 71, 72, 72, 73];
                         // generationQueue = [41, 61, 61, 61, 61];
                         break;
 
@@ -172,7 +172,7 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                         break;
                     
                     case 301000017: // 휴지통 - 검정 비닐 봉지
-                        generationQueue = [21, 21, 21, 21];
+                        generationQueue = [21, 21, 21, 21, 21, 21];
                         break;
                     
                     case 301000018: // 포대 자루
