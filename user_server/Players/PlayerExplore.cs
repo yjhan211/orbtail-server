@@ -182,9 +182,15 @@ public class PlayerExplore(
                     }
                 }
 
-                if (exploreTargetInfo.ExploreTargetId == 13)
+                switch (exploreTargetInfo.ExploreTargetId)
                 {
-                    await _startQuest(200000001, updateQuests);
+                    case 13:
+                        await _startQuest(200000001, updateQuests);
+                        break;
+                    
+                    case 6:
+                        await _startQuest(200000002, updateQuests);
+                        break;
                 }
             }
             

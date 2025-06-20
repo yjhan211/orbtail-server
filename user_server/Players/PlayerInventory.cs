@@ -225,6 +225,10 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
                 case 202000001:
                     await playerQuest.IncreaseQuestCount(200000001, 1, updateQuests);
                     break;
+                
+                case 202000002:
+                    await playerQuest.IncreaseQuestCount(200000002, 1, updateQuests);
+                    break;
             }
         }
 
