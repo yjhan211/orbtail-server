@@ -22,7 +22,7 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
     {
         var craftId = body.CraftId;
         var updateItems = new List<ItemInfo>();
-        // var updateQuests = new List<QuestInfo>();
+        var updateQuests = new List<QuestInfo>();
         var craftData = GameCraftData.Get(body.CraftId);
         await using (await PlayerInfo.Lock(_redLock, playerInfo.PlayerId))
         {
@@ -86,8 +86,8 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
             // 퀘스트 갱신
             switch (craftId)
             {
-                case 1:
-                    // await _increaseQuestCount(100000010, 1, updateQuests);
+                case 9:
+                    await _increaseQuestCount(100000012, 1, updateQuests);
                     break;
                 case 3:
                     // await _increaseQuestCount(100000013, 1, updateQuests);
@@ -100,11 +100,11 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
         _broadcastPlayerInfo(playerInfo);
         _sendUpdateItems(updateItems);
 
-        // foreach (var quest in updateQuests)
-        // {
-        //     using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(quest);
-        //     _sendToClient(questPacket);
-        // }
+        foreach (var quest in updateQuests)
+        {
+            using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(quest);
+            _sendToClient(questPacket);
+        }
         
         var rewardItemInfo = GameItemData.Get(craftData.TargetItem);
         await user.ChatController.SendChat(playerInfo.PlayerId, playerInfo.Name, ChatType.ALL, $"아싸! {rewardItemInfo.Name} 만들었다!", user.NatsClient);
