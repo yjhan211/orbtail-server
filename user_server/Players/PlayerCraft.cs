@@ -159,7 +159,7 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                         break;
                     
                     case 301000014: // 필통
-                        generationQueue = [71, 71, 72, 72, 73];
+                        generationQueue = [71, 71, 72, 72, 73, 144];
                         // generationQueue = [41, 61, 61, 61, 61];
                         break;
 
@@ -176,15 +176,31 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                         break;
                     
                     case 301000018: // 포대 자루
-                        generationQueue = [61, 62, 61, 62, 61, 62];
+                        generationQueue = [111, 111, 111, 111, 111, 111, 111, 111];
                         break;
                     
                     case 301000019: // 고장난 알람 시계
-                        generationQueue = [101, 101, 101, 101, 81];
+                        generationQueue = [101, 101, 101, 101, 84];
                         break;
                     
                     case 301000020: // 포장지
                         generationQueue = [91, 91, 91, 92];
+                        break;
+                    
+                    case 301000021: // 공구함
+                        generationQueue = [121, 121, 144, 121, 121, 121, 121, 121, 121];
+                        break;
+                    
+                    case 301000022: // 노란 꽃
+                        generationQueue = [161, 131, 131, 131, 131];
+                        break;
+                    
+                    case 301000023: // 파란 꽃
+                        generationQueue = [151, 131, 131, 131, 131];
+                        break;
+                    
+                    case 301000024: // 하얀 비닐 봉투
+                        generationQueue = [171, 171, 171, 171, 171, 171, 171, 171];
                         break;
                 }
 

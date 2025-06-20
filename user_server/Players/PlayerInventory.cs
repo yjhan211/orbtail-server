@@ -149,6 +149,56 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
                         targetItem.Durability = Math.Clamp(targetItem.Durability + value, 0, 100);
                         updateItems.Add(targetItem);
                         break;
+                    
+                    case BuffSubType.COLOR_CHANGE:
+                        if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.TargetItemUid, out var targetItem2))
+                        {
+                            throw new Exception($"targetItem {body.TargetItemUid} not found");
+                        }
+
+                        switch (targetItem2.ItemId)
+                        {
+                            case 104000002:
+                            case 104000003:
+                            case 104000004:
+                                switch (deleteItem.ItemId)
+                                {
+                                    case 201000007:
+                                        targetItem2.ItemId = 104000002;
+                                        break;
+                                    
+                                    case 201000008:
+                                        targetItem2.ItemId = 104000003;
+                                        break;
+                                    
+                                    default:
+                                        break;
+                                }
+                                break;
+                            
+                            case 105000002:
+                            case 105000003:
+                            case 105000004:
+                                switch (deleteItem.ItemId)
+                                {
+                                    case 201000007:
+                                        targetItem2.ItemId = 105000002;
+                                        break;
+                                    
+                                    case 201000008:
+                                        targetItem2.ItemId = 105000003;
+                                        break;
+                                    
+                                    default:
+                                        break;
+                                }
+                                break;
+                            
+                            default:
+                                break;
+                        }
+                        updateItems.Add(targetItem2);
+                        break;
                 }
             }
             await playerInfo.Save(_cacheHelper);

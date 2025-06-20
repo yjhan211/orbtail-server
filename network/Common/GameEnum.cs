@@ -50,6 +50,7 @@ namespace network.common
         CONDITION_ADD,
         CRAFT_ADD,
         DURABILITY_ADD,
+        COLOR_CHANGE,
     }
 
     public enum ItemType
