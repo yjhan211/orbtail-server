@@ -171,6 +171,7 @@ public class PlayerExplore(
                     { 9, (100000011, [])},
                     { 10, (100000011, [])},
                     { 11, (100000011, [])},
+                    { 23, (100000011, [])},
                 };
 
                 if (questMap.TryGetValue(exploreTargetInfo.ExploreTargetId, out var questInfo))

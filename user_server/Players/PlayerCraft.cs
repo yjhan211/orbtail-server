@@ -180,7 +180,7 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                         break;
                     
                     case 301000019: // 고장난 알람 시계
-                        generationQueue = [101, 101, 101, 101, 84];
+                        generationQueue = [101, 101, 101, 84];
                         break;
                     
                     case 301000020: // 포장지
@@ -244,7 +244,6 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
                         throw new Exception("cannot found empty slot index");
                     }
                     playerInfo.CraftInfo.GenerateItemFromQueue(body.sourceSlotNum, emptySlotIndex);
-                    user.Logger.LogWarning("2222");
                 }
                 else if (sourceSlotItem.ItemId == targetSlotItem.ItemId && !sourceSlotItem.IsGenerator())
                 {
@@ -255,19 +254,16 @@ public class PlayerCraft(GameUser user, PlayerInfo playerInfo, PlayerQuest playe
 
                     playerInfo.CraftInfo.Slots[body.sourceSlotNum] = new SlotItem();
                     playerInfo.CraftInfo.Slots[body.targetSlotNum].ItemId = targetSlotItem.ItemId + 1;
-                    user.Logger.LogWarning("3333");
                 }
                 else if (!targetSlotItem.IsEmpty())
                 {
                     playerInfo.CraftInfo.Slots[body.targetSlotNum] = sourceSlotItem;
                     playerInfo.CraftInfo.Slots[body.sourceSlotNum] = targetSlotItem;
-                    user.Logger.LogWarning("4444");
                 }
                 else
                 {
                     playerInfo.CraftInfo.Slots[body.targetSlotNum] = sourceSlotItem;
                     playerInfo.CraftInfo.Slots[body.sourceSlotNum] = new SlotItem();
-                    user.Logger.LogWarning("5555");
                 }
 
                 await playerInfo.Save(_cacheHelper);
