@@ -1,5 +1,8 @@
+using MessagePack;
 using network.common;
+using network.common.data;
 using network.common.data.models;
+using network.helpers;
 using network.interfaces;
 
 namespace user_server.players;
@@ -22,19 +25,36 @@ public class PlayerCamp(GameUser user, PlayerInfo playerInfo)
             {
                 throw new Exception("already encamp");
             }
-           
-            UpdateCampInfo();
-            await playerInfo.CampInfo.Save(user.CacheHelper);
+
+            if (playerInfo.InventoryInfo.ItemDict.TryGetValue(request.ItemUid, out var itemInfo))
+            {
+                UpdateCampInfo(itemInfo);
+                await playerInfo.CampInfo.Save(user.CacheHelper);
+            }
         }
 
         var campInfo = playerInfo.CampInfo;
+        
+        var isCommonMap = GameMapData.IsCommonMap(campInfo.ObjectInfo.MapId);
+        var currentPartKey = isCommonMap
+            ? MapHelper.CreatePartKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.CurrentCell)
+            : MapHelper.CreatePartKey(campInfo.ObjectInfo.MapId, campInfo.ObjectInfo.MapSubId);
+        
+        var currentManageServer = isCommonMap
+            ? MapHelper.GetManageServerId(currentPartKey)
+            : MapHelper.GetManageServerId(campInfo.ObjectInfo.MapSubId);
+        
+        var moveSubject = SubjectHelper.GetUpdateManageSubject(campInfo.ObjectInfo, currentManageServer);
+        user.NatsClient.Publish(moveSubject, MessagePackSerializer.Serialize((currentPartKey, objectInfo: campInfo.ObjectInfo)));
+        
         _broadcastCampInfo(campInfo);
     }
     
-    private void UpdateCampInfo()
+    private void UpdateCampInfo(ItemInfo itemInfo)
     {
         playerInfo.CampInfo.IsIntall = true;
         playerInfo.CampInfo.PlayerName = playerInfo.Name;
+        playerInfo.CampInfo.ItemInfo = itemInfo;
         playerInfo.CampInfo.ObjectInfo.MapId = playerInfo.ObjectInfo.MapId;
         playerInfo.CampInfo.ObjectInfo.MapSubId = playerInfo.PlayerId;
         playerInfo.CampInfo.ObjectInfo.CurrentCell = playerInfo.ObjectInfo.CurrentCell.Clone();
