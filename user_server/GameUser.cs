@@ -413,6 +413,31 @@ public class GameUser : IPeer
         {
             return;
         }
+        
+        if (body.ChatMessage.StartsWith("/ㅎㅎ"))
+        {
+            var sendTuple = (PlayerController.PlayerId, SocialActionType.LAUGH);
+            BroadcastToMap(PlayerController._playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
+            // BroadcastSocialAction();
+            // PlayerController.SocialAction(SocialActionType.LAUGH);
+            return;
+        }
+        
+        if (body.ChatMessage.StartsWith("/ㄱㄱ"))
+        {
+            var sendTuple = (PlayerController.PlayerId, SocialActionType.THUMBSUP);
+            BroadcastToMap(PlayerController._playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
+            // PlayerController.SocialAction(SocialActionType.LAUGH);
+            return;
+        }
+        
+        if (body.ChatMessage.StartsWith("/ㅇㅇ"))
+        {
+            var sendTuple = (PlayerController.PlayerId, SocialActionType.THUMBSUP);
+            BroadcastToMap(PlayerController._playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
+            // PlayerController.SocialAction(SocialActionType.LAUGH);
+            return;
+        }
 
         await ChatController.SendChat(PlayerController.PlayerId, PlayerController.PlayerName, body.ChatType, body.ChatMessage, NatsClient);
     }

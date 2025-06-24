@@ -43,7 +43,7 @@ public class PlayerController
     private readonly PlayerMap _playerMap;
     private readonly PlayerCraft _playerCraft;
     private readonly PlayerExplore _playerExplore;
-    private readonly PlayerInfo _playerInfo;
+    public readonly PlayerInfo _playerInfo;
 
     public PlayerController(GameUser user, PlayerInfo playerInfo)
     {
