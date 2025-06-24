@@ -137,6 +137,11 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
     
     private bool IsAbleChangeMap(MapId currentMapId, MapId changeMapId)
     {
+        if (playerInfo.PlayerId > 1000)
+        {
+            return true;
+        }
+        
         _logger.LogDebug("currentMapId: {currentMapId} changeMapId: {changeMapId}", currentMapId, changeMapId);
         switch (currentMapId)
         {
@@ -209,6 +214,11 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
     
     private long GetInstanceMapSubId()
     {
+        if (playerInfo.PlayerId > 1000)
+        {
+            return playerInfo.PlayerId - 1000;
+        }
+        
         // TODO 동아리
         return playerInfo.ObjectInfo.ObjectId;
     }

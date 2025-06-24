@@ -309,6 +309,15 @@ public class GameUser : IPeer
             var item = await PlayerInventory.CreateItem(CacheHelper, itemId, count);
             playerInfo.InventoryInfo.ItemDict.Add(item.ItemUid, item);
         }
+
+        if (playerInfo.PlayerId > 1000)
+        {
+            foreach (var itemInfo in GameItemData.GetAllList())
+            {
+                var item = await PlayerInventory.CreateItem(CacheHelper, itemInfo.Id, 1);
+                playerInfo.InventoryInfo.ItemDict.Add(item.ItemUid, item);
+            }
+        }
         
         return playerInfo;
     }
