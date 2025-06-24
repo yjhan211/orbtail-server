@@ -289,7 +289,7 @@ public class GameUser : IPeer
         }
 
         var questInfo = await QuestDiary.Load(CacheHelper, tempPlayerId);
-        if (questInfo.QuestDict.Count <= 0 && tempPlayerId < 1000)
+        if (questInfo.QuestDict.Count <= 0)
         {
             await PlayerController.StartQuest(100000001);
             // await PlayerController.StartQuest(200000001);
