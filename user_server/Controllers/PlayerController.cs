@@ -137,6 +137,11 @@ public class PlayerController
     public async Task SubscribeEnvironment(G_TO_U_ENVIRONMENT body)
     {
         const int damage = 2000;
+        if (_playerInfo.PlayerId > 1000)
+        {
+            return;
+        }
+        
         if (_playerInfo.State == PlayerState.SLEEP)
         {
             return;

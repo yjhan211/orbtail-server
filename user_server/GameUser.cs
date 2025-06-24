@@ -230,8 +230,8 @@ public class GameUser : IPeer
 
     private Task HandleHeartBeat(byte[] _)
     {
-        using var packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
-        Send(packet);
+        // using var packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
+        // Send(packet);
         return Task.CompletedTask;
     }
     
@@ -289,7 +289,7 @@ public class GameUser : IPeer
         }
 
         var questInfo = await QuestDiary.Load(CacheHelper, tempPlayerId);
-        if (questInfo.QuestDict.Count <= 0)
+        if (questInfo.QuestDict.Count <= 0 && tempPlayerId < 1000)
         {
             await PlayerController.StartQuest(100000001);
             // await PlayerController.StartQuest(200000001);
