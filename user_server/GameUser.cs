@@ -418,8 +418,6 @@ public class GameUser : IPeer
         {
             var sendTuple = (PlayerController.PlayerId, SocialActionType.LAUGH);
             BroadcastToMap(PlayerController._playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
-            // BroadcastSocialAction();
-            // PlayerController.SocialAction(SocialActionType.LAUGH);
             return;
         }
         
@@ -427,15 +425,14 @@ public class GameUser : IPeer
         {
             var sendTuple = (PlayerController.PlayerId, SocialActionType.THUMBSUP);
             BroadcastToMap(PlayerController._playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
-            // PlayerController.SocialAction(SocialActionType.LAUGH);
             return;
         }
         
         if (body.ChatMessage.StartsWith("/ㅇㅇ"))
         {
-            var sendTuple = (PlayerController.PlayerId, SocialActionType.THUMBSUP);
-            BroadcastToMap(PlayerController._playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
-            // PlayerController.SocialAction(SocialActionType.LAUGH);
+            PlayerController._playerInfo.State = PlayerState.SITGROUND;
+            await PlayerController._playerInfo.Save(CacheHelper);
+            BroadcastUpdateInfo(PlayerController._playerInfo);
             return;
         }
 
