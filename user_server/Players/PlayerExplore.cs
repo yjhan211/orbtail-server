@@ -158,9 +158,11 @@ public class PlayerExplore(
                 var questMap = new Dictionary<int, (int QuestId, List<int>)>
                 {
                     { 12, (100000003, []) },
+                    { 17, (100000003, [])},
                     { 1, (100000006, [])},
                     { 2, (100000006, [])},
                     { 3, (100000006, [])},
+                    { 15, (100000006, [])},
                     { 4, (100000008, [])},
                     { 5, (100000008, [])},
                     { 6, (100000008, [])},
@@ -169,16 +171,27 @@ public class PlayerExplore(
                     { 9, (100000011, [])},
                     { 10, (100000011, [])},
                     { 11, (100000011, [])},
+                    { 23, (100000011, [])},
                 };
 
                 if (questMap.TryGetValue(exploreTargetInfo.ExploreTargetId, out var questInfo))
                 {
                     await _increaseQuestCount(questInfo.QuestId, 1, updateQuests);
-
                     foreach (var followQuest in questInfo.Item2)
                     {
                         await _startQuest(followQuest, updateQuests);
                     }
+                }
+
+                switch (exploreTargetInfo.ExploreTargetId)
+                {
+                    case 13:
+                        await _startQuest(200000001, updateQuests);
+                        break;
+                    
+                    case 6:
+                        await _startQuest(200000002, updateQuests);
+                        break;
                 }
             }
             

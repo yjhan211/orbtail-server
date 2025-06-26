@@ -85,6 +85,8 @@ public class GameUser : IPeer
            { Protocol.C_TO_U_EXPLORE, async (bytes) => await HandleMessage<C_TO_U_EXPLORE>(bytes, msg => HandlePlayerAction(pc => pc.Explore(msg))) },
            { Protocol.C_TO_U_CHAT_MSG, async (bytes) => await HandleMessage<C_TO_U_CHAT_MSG>(bytes, AppendChat) },
            { Protocol.C_TO_U_CRAFT, async (bytes) => await HandleMessage<C_TO_U_CRAFT>(bytes, msg => HandlePlayerAction(pc => pc.Craft(msg))) },
+           { Protocol.C_TO_U_HANDLE_CRAFT, async (bytes) => await HandleMessage<C_TO_U_HANDLE_CRAFT>(bytes, msg => HandlePlayerAction(pc => pc.HandleCraft(msg))) },
+           { Protocol.C_TO_U_PUT_MATERIAL, async (bytes) => await HandleMessage<C_TO_U_PUT_MATERIAL>(bytes, msg => HandlePlayerAction(pc => pc.PutMaterial(msg)))},
            { Protocol.C_TO_U_ENCAMP, async (bytes) => await HandleMessage<C_TO_U_ENCAMP>(bytes, msg => HandlePlayerAction(pc => pc.Encamp(msg))) },
            { Protocol.C_TO_U_DECAMP, async (_) => await HandlePlayerAction(pc => pc.Decamp()) }, { Protocol.C_TO_U_CAMP_INFO, async (bytes) => await HandleMessage<C_TO_U_CAMP_INFO>(bytes, GetCampInfo) },
            { Protocol.C_TO_U_SET_NAME, async (bytes) => await HandleMessage<C_TO_U_SET_NAME>(bytes, msg => HandlePlayerAction(pc => pc.SetName(msg))) },
@@ -228,8 +230,8 @@ public class GameUser : IPeer
 
     private Task HandleHeartBeat(byte[] _)
     {
-        using var packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
-        Send(packet);
+        // using var packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
+        // Send(packet);
         return Task.CompletedTask;
     }
     
@@ -290,6 +292,7 @@ public class GameUser : IPeer
         if (questInfo.QuestDict.Count <= 0)
         {
             await PlayerController.StartQuest(100000001);
+            // await PlayerController.StartQuest(200000001);
         }
 
         PlayerController.SendCurrentItems();
@@ -305,6 +308,15 @@ public class GameUser : IPeer
         {
             var item = await PlayerInventory.CreateItem(CacheHelper, itemId, count);
             playerInfo.InventoryInfo.ItemDict.Add(item.ItemUid, item);
+        }
+
+        if (playerInfo.PlayerId > 1000)
+        {
+            foreach (var itemInfo in GameItemData.GetAllList())
+            {
+                var item = await PlayerInventory.CreateItem(CacheHelper, itemInfo.Id, 1);
+                playerInfo.InventoryInfo.ItemDict.Add(item.ItemUid, item);
+            }
         }
         
         return playerInfo;
@@ -399,6 +411,28 @@ public class GameUser : IPeer
 
         if (PlayerController == null)
         {
+            return;
+        }
+        
+        if (body.ChatMessage.StartsWith("/ㅎㅎ"))
+        {
+            var sendTuple = (PlayerController.PlayerId, SocialActionType.LAUGH);
+            BroadcastToMap(PlayerController._playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
+            return;
+        }
+        
+        if (body.ChatMessage.StartsWith("/ㄱㄱ"))
+        {
+            var sendTuple = (PlayerController.PlayerId, SocialActionType.THUMBSUP);
+            BroadcastToMap(PlayerController._playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
+            return;
+        }
+        
+        if (body.ChatMessage.StartsWith("/ㅇㅇ"))
+        {
+            PlayerController._playerInfo.State = PlayerState.SITGROUND;
+            await PlayerController._playerInfo.Save(CacheHelper);
+            BroadcastUpdateInfo(PlayerController._playerInfo);
             return;
         }
 

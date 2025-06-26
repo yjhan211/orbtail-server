@@ -314,10 +314,10 @@ public static class PacketMaker
         return packet;
     }
     
-    public static Packet U_TO_C_CRAFT_COMPLETE(bool isSuccess)
+    public static Packet U_TO_C_CRAFT_COMPLETE(bool isSuccess, List<SlotItem> slots)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CRAFT_COMPLETE);
-        U_TO_C_CRAFT_COMPLETE body = new() { IsSuccess = isSuccess };
+        U_TO_C_CRAFT_COMPLETE body = new() { IsSuccess = isSuccess, Slots = slots };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -463,6 +463,24 @@ public static class PacketMaker
         var packet = Packet.Create((int)Protocol.G_TO_U_ENVIRONMENT);
         G_TO_U_ENVIRONMENT body = new() { DamageType = damageType };
 
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet U_TO_C_PUT_MATERIAL(ErrorCode errorCode, List<SlotItem> slots)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_PUT_MATERIAL);
+        U_TO_C_PUT_MATERIAL body = new() { ErrorCode = errorCode, Slots = slots }; 
+        
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+    
+    public static Packet U_TO_C_HANDLE_CRAFT(ErrorCode errorCode, List<SlotItem> slots)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_HANDLE_CRAFT);
+        U_TO_C_HANDLE_CRAFT body = new() { ErrorCode = errorCode, Slots = slots }; 
+        
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }

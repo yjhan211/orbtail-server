@@ -378,6 +378,7 @@ namespace network.common.data.models
     public class U_TO_C_CRAFT_COMPLETE : IMessagePackObject
     {
         [Key("isSuccess")] public bool IsSuccess { get; set; }
+        [Key("slots")] public List<SlotItem> Slots { get; set; }
     }
 
     [MessagePackObject]
@@ -618,5 +619,33 @@ namespace network.common.data.models
     public class G_TO_U_ENVIRONMENT : IMessagePackObject
     {
         [Key("damageType")] public DamageType DamageType { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_PUT_MATERIAL : IMessagePackObject
+    {
+        [Key("itemUid")] public long ItemUid { get; set; }
+        [Key("slotNum")] public int SlotNum { get; set; }
+    }
+    
+    [MessagePackObject]
+    public class U_TO_C_PUT_MATERIAL : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("slots")] public List<SlotItem> Slots { get; set; }
+    }
+    
+    [MessagePackObject]
+    public class C_TO_U_HANDLE_CRAFT : IMessagePackObject
+    {
+        [Key("sourceSlotNum")] public int sourceSlotNum { get; set; }
+        [Key("targetSlotNum")] public int targetSlotNum { get; set; }
+    }
+    
+    [MessagePackObject]
+    public class U_TO_C_HANDLE_CRAFT : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("slots")] public List<SlotItem> Slots { get; set; }
     }
 }

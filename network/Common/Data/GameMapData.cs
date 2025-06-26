@@ -254,6 +254,84 @@ namespace network.common.data
             return null;
         }
         
+        /// <summary>
+        /// 주어진 셀이 특정 포탈 영역에 포함되는지 확인하고, 포함되지 않으면 포탈의 중심 좌표를 반환합니다.
+        /// </summary>
+        /// <param name="currentMapId">현재 맵 ID</param>
+        /// <param name="targetMapId">목표 맵 ID</param>
+        /// <param name="cellToCheck">확인할 셀 좌표</param>
+        /// <returns>셀이 포탈 영역에 포함되면 null, 포함되지 않으면 포탈의 중심 좌표</returns>
+        public static Cell? GetPortalCenterIfNotInPortal(MapId currentMapId, MapId targetMapId, Cell cellToCheck)
+        {
+            var portalCoords = GetPortalCoordinates(currentMapId, targetMapId);
+            if (!portalCoords.HasValue)
+            {
+                return null; // 포탈이 존재하지 않음
+            }
+
+            var (start, end) = portalCoords.Value;
+            
+            // 셀이 포탈 영역에 포함되는지 확인
+            bool isInPortal = cellToCheck.X >= start.X && cellToCheck.X <= end.X &&
+                              cellToCheck.Y >= start.Y && cellToCheck.Y <= end.Y;
+
+            if (isInPortal)
+            {
+                return null; // 이미 포탈 영역에 있음
+            }
+
+            // 포탈 중심 좌표 계산 및 반환
+            var centerX = (start.X + end.X) / 2;
+            var centerY = (start.Y + end.Y) / 2;
+            return new Cell(centerX, centerY);
+        }
+
+        /// <summary>
+        /// 주어진 셀이 포탈 영역에 포함되는지 확인합니다.
+        /// </summary>
+        /// <param name="currentMapId">현재 맵 ID</param>
+        /// <param name="targetMapId">목표 맵 ID</param>
+        /// <param name="cellToCheck">확인할 셀 좌표</param>
+        /// <returns>셀이 포탈 영역에 포함되면 true, 그렇지 않으면 false</returns>
+        public static bool IsInPortalArea(MapId currentMapId, MapId targetMapId, Cell cellToCheck)
+        {
+            var portalCoords = GetPortalCoordinates(currentMapId, targetMapId);
+            if (!portalCoords.HasValue)
+            {
+                return false; // 포탈이 존재하지 않음
+            }
+
+            var (start, end) = portalCoords.Value;
+            
+            return cellToCheck.X >= start.X && cellToCheck.X <= end.X &&
+                   cellToCheck.Y >= start.Y && cellToCheck.Y <= end.Y;
+        }
+
+        /// <summary>
+        /// 주어진 셀이 현재 맵의 어떤 포탈 영역에 포함되는지 확인하고, 해당 포탈 정보를 반환합니다.
+        /// </summary>
+        /// <param name="currentMapId">현재 맵 ID</param>
+        /// <param name="cellToCheck">확인할 셀 좌표</param>
+        /// <returns>포탈 정보 (목표 맵, 시작점, 끝점). 포탈 영역에 없으면 null</returns>
+        public static (MapId targetMap, Cell start, Cell end)? GetPortalInfoAtCell(MapId currentMapId, Cell cellToCheck)
+        {
+            var convertedCurrentMap = ConvertMap(currentMapId);
+            var regions = GetMapRegions(convertedCurrentMap);
+            var portalRegions = regions.Where(r => r.IsPortal);
+
+            foreach (var portal in portalRegions)
+            {
+                if (cellToCheck.X >= portal.Start.X && cellToCheck.X <= portal.End.X &&
+                    cellToCheck.Y >= portal.Start.Y && cellToCheck.Y <= portal.End.Y)
+                {
+                    return (portal.WarpTo, portal.Start, portal.End);
+                }
+            }
+
+            return null;
+        }
+
+        
         public static ChairDirection GetChairDirection(MapId mapId, Cell position)
         {
             mapId = ConvertMap(mapId);
@@ -343,7 +421,38 @@ namespace network.common.data
                 }
             }
         }
+        
+        public static (Cell start, Cell end)? GetPortalCoordinates(MapId currentMapId, MapId targetMapId)
+        {
+            var convertedCurrentMap = ConvertMap(currentMapId);
+            var regions = GetMapRegions(convertedCurrentMap);
+            var portalRegions = regions.Where(r => r.IsPortal);
 
+            foreach (var portal in portalRegions)
+            {
+                if (portal.WarpTo == targetMapId)
+                {
+                    return (portal.Start, portal.End);
+                }
+            }
+
+            return null;
+        }
+        
+        public static Cell? GetPortalCenterCoordinates(MapId currentMapId, MapId targetMapId)
+        {
+            var portalCoords = GetPortalCoordinates(currentMapId, targetMapId);
+            if (portalCoords.HasValue)
+            {
+                var (start, end) = portalCoords.Value;
+                var centerX = (start.X + end.X) / 2;
+                var centerY = (start.Y + end.Y) / 2;
+                return new Cell(centerX, centerY);
+            }
+
+            return null;
+        }
+        
         public class MapInfo
         {
             public int Id { get; set; }

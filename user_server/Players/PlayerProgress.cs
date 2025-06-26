@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using network.interfaces;
+using user_server.progress;
 
 namespace user_server.players;
 
@@ -57,12 +58,46 @@ public class PlayerProgress : IDisposable
             _logger.LogError(ex, "Error processing expired item");
         }
     }
+    
+    private int CancelExploreProgress()
+    {
+        var canceledCount = 0;
+        var itemsToCancel = new List<KeyValuePair<Guid, ProgressItem>>();
+
+        try
+        {
+            // 해당 플레이어의 탐험 진행 항목들을 찾습니다
+            foreach (var kvp in _activeProgressItems)
+            {
+                itemsToCancel.Add(kvp);
+            }
+
+            // 찾은 항목들을 제거하고 정리합니다
+            foreach (var kvp in itemsToCancel)
+            {
+                if (_activeProgressItems.TryRemove(kvp.Key, out var item))
+                {
+                    canceledCount++;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            throw;
+        }
+
+        return canceledCount;
+    }
+
 
     public void Dispose()
     {
         if (_disposed)
             return;
-            
+
+        var cancelNum = CancelExploreProgress();
+        _logger.LogInformation("PlayerProgress: {CancelNum} items canceled", cancelNum);
+        
         _cleanupTimer.Dispose();
         _activeProgressItems.Clear();
         _disposed = true;
