@@ -30,61 +30,86 @@ internal static class Program
     
     private static void ConfigureLogging(HostBuilderContext hostingContext, ILoggingBuilder logging)
     {
-        // 서버 구성 가져오기
-        var serverType = hostingContext.Configuration["serverType"] ?? "UserServer";
-        var serverId = 0;
-    
-        // Serilog 구성
+        var serverConfig = CreateServerConfig(hostingContext.Configuration);
+        
         var serilogLogger = new LoggerConfiguration()
             .MinimumLevel.Debug()
-            .Enrich.WithProperty("serverType", serverType)
-            .Enrich.WithProperty("serverId", serverId)
+            .Enrich.WithProperty("serverType", serverConfig.ServerType)
+            .Enrich.WithProperty("serverId", serverConfig.ServerId)
             .WriteTo.Console(outputTemplate: 
-                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}")
+                "[{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
     
-        // 기본 공급자 지우기
         logging.ClearProviders();
-    
-        // 로깅 파이프라인에 Serilog 추가
         logging.AddSerilog(serilogLogger);
     }
 
-    
     private static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
-        var serverConfig = new ServerConfig
-        {
-            ServerType = hostContext.Configuration["serverType"] ?? "UserServer",
-            GameServerNum = hostContext.Configuration.GetValue<int>("gameServerNum"),
-            ServerId = 0
-        };
+        RegisterConfigurationServices(services, hostContext);
+        RegisterCoreServices(services);
+        RegisterInfrastructureServices(services, hostContext);
+        RegisterHelperServices(services);
+        services.AddHostedService<UserServer>();
+    }
     
+    private static void RegisterConfigurationServices(IServiceCollection services, HostBuilderContext hostContext)
+    {
+        var serverConfig = CreateServerConfig(hostContext.Configuration);
         services.AddSingleton<IServerConfig>(serverConfig);
         services.AddSingleton(serverConfig);
-        services.AddSingleton<NetworkService>();
-        services.AddSingleton<INetworkService, NetworkService>();
-        services.AddSingleton<NatsClientFactory>();
-        services.AddSingleton<INatsClientFactory, NatsClientFactory>();
+    }
     
-        // LogManager 등록 방법 변경
-        services.AddSingleton<LogManager>(sp => 
-            new LogManager(
-                serverConfig.ServerType, 
-                serverConfig.ServerId, 
-                sp.GetRequiredService<ILogger<LogManager>>()
-            )
-        );
-
-        services.AddSingleton<RedisConnectionPool>(sp => {
-            var redisPool = new RedisConnectionPool();
-            var redisEndpoints = hostContext.Configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
-            redisPool.Initialize(redisEndpoints);
-            return redisPool;
-        });
-        services.AddSingleton<IRedisConnectionPool>(sp => sp.GetRequiredService<RedisConnectionPool>());
+    private static void RegisterCoreServices(IServiceCollection services)
+    {
+        services.AddSingleton<NetworkService>();
+        services.AddSingleton<INetworkService>(provider => provider.GetRequiredService<NetworkService>());
+        services.AddSingleton<NatsClientFactory>();
+        services.AddSingleton<INatsClientFactory>(provider => provider.GetRequiredService<NatsClientFactory>());
+        services.AddSingleton<LogManager>(CreateLogManager);
+    }
+    
+    private static void RegisterInfrastructureServices(IServiceCollection services, HostBuilderContext hostContext)
+    {
+        services.AddSingleton<RedisConnectionPool>(provider => CreateRedisConnectionPool(provider, hostContext));
+        services.AddSingleton<IRedisConnectionPool>(provider => provider.GetRequiredService<RedisConnectionPool>());
+    }
+    
+    private static void RegisterHelperServices(IServiceCollection services)
+    {
         services.AddSingleton<CacheHelper>();
-        services.AddSingleton<ICacheHelper, CacheHelper>();
-        services.AddHostedService<UserServer>();
+        services.AddSingleton<ICacheHelper>(provider => provider.GetRequiredService<CacheHelper>());
+    }
+    
+    private static ServerConfig CreateServerConfig(IConfiguration configuration)
+    {
+        return new ServerConfig
+        {
+            ServerType = configuration["serverType"] ?? "UserServer",
+            GameServerNum = configuration.GetValue<int>("gameServerNum"),
+            ServerId = 0
+        };
+    }
+    
+    private static LogManager CreateLogManager(IServiceProvider serviceProvider)
+    {
+        var serverConfig = serviceProvider.GetRequiredService<ServerConfig>();
+        var logger = serviceProvider.GetRequiredService<ILogger<LogManager>>();
+        
+        return new LogManager(
+            serverConfig.ServerType,
+            serverConfig.ServerId,
+            logger
+        );
+    }
+    
+    private static RedisConnectionPool CreateRedisConnectionPool(IServiceProvider serviceProvider, HostBuilderContext hostContext)
+    {
+        var redisPool = new RedisConnectionPool();
+        var redisEndpoints = hostContext.Configuration["redisEndpoints"] 
+            ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
+        
+        redisPool.Initialize(redisEndpoints);
+        return redisPool;
     }
 }
