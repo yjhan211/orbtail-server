@@ -40,7 +40,7 @@ namespace network.common.data.models
 
         public PlayerInfo(long playerId, bool isDummy)
         {
-            var name = isDummy ? $"더미{playerId}" : string.Empty;
+            var name = isDummy ? $"더미{playerId}" : $"Player{playerId}";
             
             // TODO 공통맵 추가 이후 활성화
             // var initCell = isDummy ? CommonMapData.GetRandomCell() : GameRuleData.StartPosition;

@@ -131,7 +131,10 @@ public class GameUser : IPeer
             var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
 
-            Logger.LogInformation("[{PlayerId}] {ProtocolId}", playerId, protocolId);
+            if (protocolId != Protocol.C_TO_U_HEART_BEAT)
+            {
+                Logger.LogInformation("[{PlayerId}] {ProtocolId}", playerId, protocolId);
+            }
 
             if (!_protocolHandlers.TryGetValue(protocolId, out var handler))
             {
@@ -245,8 +248,8 @@ public class GameUser : IPeer
         var isDummy = false;
         if (!long.TryParse(request.AccountToken, out var tempPlayerId))
         {
-            tempPlayerId = await CacheHelper.StringIncrementAsync(TempPlayerIdKey) + 1000;
-            isDummy = true;
+            tempPlayerId = await CacheHelper.StringIncrementAsync(TempPlayerIdKey);
+            // isDummy = true;
         }
 
         PlayerInfo playerInfo;
