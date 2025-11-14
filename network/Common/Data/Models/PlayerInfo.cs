@@ -50,7 +50,7 @@ namespace network.common.data.models
             Grade = PlayerGrade.COMMONER;
             WearItemIdList = new();
             State = PlayerState.NONE;
-            ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.TutorialLibrary, 0, initCell);
+            ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.Camp, 0, initCell);
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
             CraftInfo = new CraftInfo(PlayerId);
             CampInfo = new CampInfo(PlayerId, Name, new(), new());

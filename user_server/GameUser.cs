@@ -284,23 +284,23 @@ public class GameUser : IPeer
         using var loginPacket = PacketMaker.U_TO_C_LOGIN(playerInfo, labInfo ?? new LabInfo());
         Send(loginPacket);
 
-        var mailInfo = await MailBox.Load(CacheHelper, tempPlayerId);
-        if (mailInfo.MailDict.Count <= 0)
-        {
-            var firstMail = await PlayerMailBox.CreateMail(CacheHelper, 1);
-            await PlayerController.SendMail(firstMail);
-        }
+        // var mailInfo = await MailBox.Load(CacheHelper, tempPlayerId);
+        // if (mailInfo.MailDict.Count <= 0)
+        // {
+        //     var firstMail = await PlayerMailBox.CreateMail(CacheHelper, 1);
+        //     await PlayerController.SendMail(firstMail);
+        // }
 
-        var questInfo = await QuestDiary.Load(CacheHelper, tempPlayerId);
-        if (questInfo.QuestDict.Count <= 0)
-        {
-            await PlayerController.StartQuest(100000001);
-            // await PlayerController.StartQuest(200000001);
-        }
+        // var questInfo = await QuestDiary.Load(CacheHelper, tempPlayerId);
+        // if (questInfo.QuestDict.Count <= 0)
+        // {
+        //     await PlayerController.StartQuest(100000001);
+        //     // await PlayerController.StartQuest(200000001);
+        // }
 
-        PlayerController.SendCurrentItems();
-        PlayerController.SendCurrentQuests();
-        await PlayerController.SendCurrentMails();
+        // PlayerController.SendCurrentItems();
+        // PlayerController.SendCurrentQuests();
+        // await PlayerController.SendCurrentMails();
         await PlayerController.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
     }
 
