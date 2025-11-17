@@ -267,6 +267,32 @@ public class GameUser : IPeer
                 await PlayerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultTop.Value.ItemUid });
                 await PlayerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultBottom.Value.ItemUid });
                 await PlayerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultShoes.Value.ItemUid });
+                
+                // 테스트로 코스튬 아이템 전부 지급
+                var allItems = GameItemData.GetAllList();
+                foreach (var itemInfo in allItems.Where(itemInfo => itemInfo.IsEquipment))
+                {
+                    var equipType = GameItemData.GetEquipType(itemInfo.Id);
+                    switch (equipType)
+                    {
+                        case EquipType.HEAD:
+                        case EquipType.FACE: 
+                        case EquipType.HAT:
+                        case EquipType.TOP:
+                        case EquipType.BOTTOM:
+                        case EquipType.SHOES:
+                            var item = await PlayerInventory.CreateItem(CacheHelper, itemInfo.Id, 1);
+                            playerInfo.InventoryInfo.ItemDict.Add(item.ItemUid, item);
+                            break;
+
+                        case EquipType.NONE:
+                        case EquipType.TOOL:
+                        case EquipType.PILLOW:
+                        case EquipType.BEDDING:
+                        default:
+                            break;
+                    }
+                }
             }
             
             using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
@@ -298,7 +324,7 @@ public class GameUser : IPeer
         //     // await PlayerController.StartQuest(200000001);
         // }
 
-        // PlayerController.SendCurrentItems();
+        PlayerController.SendCurrentItems();
         // PlayerController.SendCurrentQuests();
         // await PlayerController.SendCurrentMails();
         await PlayerController.EnterMap(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip, true);
