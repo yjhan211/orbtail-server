@@ -23,56 +23,63 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
     {
         var updateItems = new List<ItemInfo>();
         var updateQuests = new List<QuestInfo>();
+
         await using (await PlayerInfo.Lock(user.RedLock, playerInfo.PlayerId))
         {
-            if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.ItemUid, out var targetItem))
+            // 1. 모든 기존 착용 아이템 해제
+            foreach (var item in playerInfo.InventoryInfo.ItemDict.Values.ToList())
             {
-                throw new Exception($"Item with uid {body.ItemUid} not found");
-            }
-
-            var itemDetail = GameItemData.Get(targetItem.ItemId);
-            if (!itemDetail.IsEquipment)
-                throw new Exception($"not wearable item {targetItem.ItemId}");
-            
-            if (targetItem.IsWear)
-            {
-                // 착용 해제
-                playerInfo.WearItemIdList.Remove(targetItem.ItemId);
-                targetItem.IsWear = false;
-            }
-            else
-            {
-                // 같은 종류의 아이템 인덱스 찾기
-                var lastWearItem = playerInfo.InventoryInfo.ItemDict.Values.FirstOrDefault(
-                    item => GameItemData.GetEquipType(targetItem.ItemId) == GameItemData.GetEquipType(item.ItemId) && item.IsWear
-                );
-        
-                if (lastWearItem != null)
+                if (item.IsWear)
                 {
-                    // 같은 종류 아이템 착용 해제
-                    lastWearItem.IsWear = false;
-                    playerInfo.WearItemIdList.Remove(lastWearItem.ItemId);
-                    updateItems.Add(lastWearItem);
+                    item.IsWear = false;
+                    updateItems.Add(item);
                 }
-        
-                // 새로운 아이템 착용
+            }
+            playerInfo.WearItemIdList.Clear();
+
+            // 2. 새로운 아이템들 착용 (null이나 빈 리스트면 모두 해제)
+            if (body.ItemUidList != null && body.ItemUidList.Count > 0)
+            {
+                var equipTypeSet = new HashSet<EquipType>();
+                foreach (var itemUid in body.ItemUidList)
+            {
+                if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
+                {
+                    throw new Exception($"Item with uid {itemUid} not found");
+                }
+
+                var itemDetail = GameItemData.Get(targetItem.ItemId);
+                if (!itemDetail.IsEquipment)
+                    throw new Exception($"not wearable item {targetItem.ItemId}");
+
+                var equipType = GameItemData.GetEquipType(targetItem.ItemId);
+
+                // 같은 EquipType 중복 체크
+                if (equipTypeSet.Contains(equipType))
+                {
+                    throw new Exception($"Duplicate equip type {equipType} for item {targetItem.ItemId}");
+                }
+                equipTypeSet.Add(equipType);
+
                 targetItem.IsWear = true;
                 playerInfo.WearItemIdList.Add(targetItem.ItemId);
+
+                if (!updateItems.Contains(targetItem))
+                {
+                    updateItems.Add(targetItem);
+                }
+            }
             }
 
-            updateItems.Add(targetItem);
             await playerInfo.Save(_cacheHelper);
-            
-            
-            foreach (var itemInfo in updateItems)
+
+            // 퀘스트 처리 (착용한 아이템만)
+            foreach (var itemInfo in updateItems.Where(x => x.IsWear))
             {
                 switch (itemInfo.ItemId)
                 {
                     case 107000001:
                         await playerQuest.IncreaseQuestCount(100000009, 1, updateQuests);
-                        break;
-            
-                    default: 
                         break;
                 }
             }
@@ -83,6 +90,7 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
 
         SendUpdateItems(updateItems);
         user.BroadcastUpdateInfo(playerInfo);
+
         foreach (var updateQuest in updateQuests)
         {
             using var questPacket = PacketMaker.U_TO_C_QUEST_UPDATE(updateQuest);

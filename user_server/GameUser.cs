@@ -263,10 +263,15 @@ public class GameUser : IPeer
                 var defaultTop = playerInfo.InventoryInfo.ItemDict.First(x => x.Value.ItemId == 104000001);
                 var defaultBottom = playerInfo.InventoryInfo.ItemDict.First(x => x.Value.ItemId == 105000001);
                 var defaultShoes = playerInfo.InventoryInfo.ItemDict.First(x => x.Value.ItemId == 106000001);
-                
-                await PlayerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultTop.Value.ItemUid });
-                await PlayerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultBottom.Value.ItemUid });
-                await PlayerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUid = defaultShoes.Value.ItemUid });
+
+                var defaultItemUids = new List<long>
+                {
+                    defaultTop.Value.ItemUid,
+                    defaultBottom.Value.ItemUid,
+                    defaultShoes.Value.ItemUid
+                };
+
+                await PlayerController.Wear(new C_TO_U_WEAR_ITEM(){ ItemUidList = defaultItemUids });
                 
                 // 테스트로 코스튬 아이템 전부 지급
                 var allItems = GameItemData.GetAllList();
