@@ -30,7 +30,6 @@ namespace network.common.data.models
 
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
         
-        [Key("labInfo")] public LabInfo LabInfo { get; set; }
         [Key("campInfo")] public CampInfo CampInfo { get; set; }
         [Key("craftInfo")] public CraftInfo CraftInfo { get; set; }
     }
@@ -336,8 +335,6 @@ namespace network.common.data.models
     public class U_TO_C_CREATE_LAB : IMessagePackObject
     {
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
-
-        [Key("labInfo")] public LabInfo LabInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -354,12 +351,6 @@ namespace network.common.data.models
         [Key("jobType")] public JobType JobType { get; set; }
 
         [Key("researchId")] public int ResearchId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_UPGRADE_RESEARCH : IMessagePackObject
-    {
-        [Key("researchInfoDict")] public Dictionary<int, ResearchInfo> ResearchInfoDict { get; set; }
     }
 
     [MessagePackObject]
@@ -409,8 +400,6 @@ namespace network.common.data.models
     public class U_TO_C_LAB_INFO : IMessagePackObject
     {
         [Key("joinPlayerInfo")] public PlayerInfo JoinPlayerInfo { get; set; }
-
-        [Key("labInfo")] public LabInfo LabInfo { get; set; }
     }
 
     [MessagePackObject]
