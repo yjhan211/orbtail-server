@@ -4,23 +4,7 @@ namespace network.common
     public enum MapId
     {
         None = 0,
-        TutorialLibrary,
-        TutorialSchool1,
-        TutorialSchool2,
-        TutorialClassroom,
-        TutorialAdminoffice,
-        TutorialGym,
-        TutorialGymstorage,
-        TutorialCity,
-        Library,
         School,
-        School1,
-        School2,
-        Classroom,
-        Adminoffice,
-        Gym,
-        Gymstorage,
-        City,
         Camp,
     }
 

@@ -27,7 +27,10 @@ namespace network.common.data.models
     public class U_TO_C_LOGIN : IMessagePackObject
     {
         [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
+
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
+        
+        [Key("labInfo")] public LabInfo LabInfo { get; set; }
         [Key("campInfo")] public CampInfo CampInfo { get; set; }
         [Key("craftInfo")] public CraftInfo CraftInfo { get; set; }
     }
@@ -255,9 +258,21 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class C_TO_U_GET_JOB : IMessagePackObject
+    {
+        [Key("jobType")] public JobType JobType { get; set; }
+    }
+
+    [MessagePackObject]
     public class U_TO_C_GET_JOB : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_UPGRADE_JOB : IMessagePackObject
+    {
+        [Key("jobType")] public JobType JobType { get; set; }
     }
 
     [MessagePackObject]
@@ -316,13 +331,35 @@ namespace network.common.data.models
     {
         [Key("labName")] public string LabName { get; set; }
     }
-    
+
+    [MessagePackObject]
+    public class U_TO_C_CREATE_LAB : IMessagePackObject
+    {
+        [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
+
+        [Key("labInfo")] public LabInfo LabInfo { get; set; }
+    }
+
     [MessagePackObject]
     public class G_TO_U_ENTER_INSTANCE_SUCCESS : IMessagePackObject
     {
         [Key("mapId")] public MapId MapId { get; set; }
 
         [Key("mapSubId")] public long MapSubId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_UPGRADE_RESEARCH : IMessagePackObject
+    {
+        [Key("jobType")] public JobType JobType { get; set; }
+
+        [Key("researchId")] public int ResearchId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_UPGRADE_RESEARCH : IMessagePackObject
+    {
+        [Key("researchInfoDict")] public Dictionary<int, ResearchInfo> ResearchInfoDict { get; set; }
     }
 
     [MessagePackObject]
@@ -366,6 +403,14 @@ namespace network.common.data.models
     public class C_TO_U_JOIN_LAB : IMessagePackObject
     {
         [Key("labId")] public long LabId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class U_TO_C_LAB_INFO : IMessagePackObject
+    {
+        [Key("joinPlayerInfo")] public PlayerInfo JoinPlayerInfo { get; set; }
+
+        [Key("labInfo")] public LabInfo LabInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -452,6 +497,13 @@ namespace network.common.data.models
     public class U_TO_U_PLAYER_INFO : IMessagePackObject
     {
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_U_BOOST : IMessagePackObject
+    {
+        [Key("boostType")] public BoostType BoostType { get; set; }
+        [Key("isActive")] public bool IsActive { get; set; }
     }
 
     [MessagePackObject]
