@@ -50,18 +50,6 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
             await playerInfo.Save(_cacheHelper);
             _broadcastUpdateInfo(playerInfo);
         }
-
-        await HandleBoostSpeed();
-    }
-
-    private async Task HandleBoostSpeed()
-    {
-        if (playerInfo.Boosts.Contains(BoostType.SPEED) && playerInfo.Hp < 5)
-        {
-            playerInfo.Boosts.Remove(BoostType.SPEED);
-            await playerInfo.Save(_cacheHelper);
-            _broadcastUpdateInfo(playerInfo);
-        }
     }
     
     private async Task ProcessAsync(C_TO_U_MOVE request)

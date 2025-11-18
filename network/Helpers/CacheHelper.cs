@@ -178,4 +178,23 @@ public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
     {
         return ExecuteRedisCommandAsync(database => database.KeyDeleteAsync(key), db);
     }
+
+    public Task<bool> SortedSetAddAsync(string key, byte[] value, double score, int db = -1)
+    {
+        return ExecuteRedisCommandAsync(database => database.SortedSetAddAsync(key, value, score), db);
+    }
+
+    public async Task<byte[][]> SortedSetRangeByScoreAsync(string key, double start = double.NegativeInfinity, double stop = double.PositiveInfinity, int db = -1)
+    {
+        var result = await ExecuteRedisCommandAsync(
+            database => database.SortedSetRangeByScoreAsync(key, start, stop, order: Order.Ascending, flags: CommandFlags.PreferReplica),
+            db
+        );
+        return result.Select(rv => (byte[])rv!).ToArray();
+    }
+
+    public Task<bool> SortedSetRemoveAsync(string key, byte[] value, int db = -1)
+    {
+        return ExecuteRedisCommandAsync(database => database.SortedSetRemoveAsync(key, value), db);
+    }
 }

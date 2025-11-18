@@ -38,18 +38,6 @@ namespace network.common.data
         private static readonly Dictionary<MapId, MapInfo> _mapInfos = new();
         private static readonly Dictionary<MapId, List<MapRegion>> _mapRegions = new();
         private static readonly Dictionary<MapId, List<ChairInfo>> _chairInfos = new();
-        
-        private static readonly Dictionary<MapId, MapId> MapConversions = new()
-        {
-            { MapId.TutorialLibrary, MapId.Library },
-            { MapId.TutorialSchool1, MapId.School1 },
-            { MapId.TutorialSchool2, MapId.School2 },
-            { MapId.TutorialClassroom, MapId.Classroom },
-            { MapId.TutorialAdminoffice, MapId.Adminoffice },
-            { MapId.TutorialGym, MapId.Gym },
-            { MapId.TutorialGymstorage, MapId.Gymstorage },
-            { MapId.TutorialCity, MapId.City }
-        };
 
         public static void Initialize(List<CsvRow> mapInfo, List<CsvRow> mapRegion)
         {
@@ -176,7 +164,6 @@ namespace network.common.data
 
         public static bool IsMoveablePosition(MapId mapId, Cell position)
         {
-            mapId = ConvertMap(mapId);
             var regions = GetMapRegions(mapId);
             var groundRegions = regions.Where(r => r.RegionType.Equals("ground", StringComparison.OrdinalIgnoreCase));
             var isInGround = false;
@@ -209,30 +196,10 @@ namespace network.common.data
             return true;
         }
         
-        public static MapId ConvertMap(MapId mapId, bool toTutorial = false)
-        {
-            if (toTutorial)
-            {
-                if (mapId.ToString().StartsWith("Tutorial"))
-                {
-                    return mapId;
-                }
-           
-                return MapConversions.FirstOrDefault(x => x.Value == mapId).Key;
-            }
-
-            if (!mapId.ToString().StartsWith("Tutorial"))
-            {
-                return mapId; 
-            }
-       
-            return MapConversions.TryGetValue(mapId, out var convertedMap) ? convertedMap : mapId;
-        }
-
         public static (MapId mapId, Cell spawnPosition, bool isFlip)? GetPortalOrNull(GameObjectInfo objectInfo, bool isTutorial)
         {
             var currentCell = objectInfo.TargetCell;
-            var currentMap = ConvertMap(objectInfo.MapId);
+            var currentMap = objectInfo.MapId;
             var regions = GetMapRegions(currentMap);
             var portalRegions = regions.Where(r => r.IsPortal);
 
@@ -245,9 +212,8 @@ namespace network.common.data
 
                     var convertCurrentMap = (portal.WarpTo == MapId.Camp) ? MapId.None : currentMap;
                     var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(convertCurrentMap);
-                    var warpMap = ConvertMap(portal.WarpTo, isTutorial);
                     
-                    return (warpMap, spawnPosition, isFlip);
+                    return (portal.WarpTo, spawnPosition, isFlip);
                 }
             }
 
@@ -315,8 +281,7 @@ namespace network.common.data
         /// <returns>포탈 정보 (목표 맵, 시작점, 끝점). 포탈 영역에 없으면 null</returns>
         public static (MapId targetMap, Cell start, Cell end)? GetPortalInfoAtCell(MapId currentMapId, Cell cellToCheck)
         {
-            var convertedCurrentMap = ConvertMap(currentMapId);
-            var regions = GetMapRegions(convertedCurrentMap);
+            var regions = GetMapRegions(currentMapId);
             var portalRegions = regions.Where(r => r.IsPortal);
 
             foreach (var portal in portalRegions)
@@ -334,7 +299,6 @@ namespace network.common.data
         
         public static ChairDirection GetChairDirection(MapId mapId, Cell position)
         {
-            mapId = ConvertMap(mapId);
             if (!_chairInfos.ContainsKey(mapId))
                 return ChairDirection.NONE;
 
@@ -349,83 +313,82 @@ namespace network.common.data
 
         public static void Validate()
         {
-            if (_mapInfos.Count == 0)
-            {
-                throw new Exception("No map information loaded");
-            }
-
-            foreach (var mapInfo in _mapInfos.Values)
-            {
-                if (string.IsNullOrEmpty(mapInfo.SceneName))
-                {
-                    throw new Exception($"Map ID {mapInfo.Id} has no scene name");
-                }
-
-                foreach (var (fromMap, initCell) in mapInfo.InitCells)
-                {
-                    var position = new Cell(initCell.position.x, initCell.position.y);
-                    if (!IsMoveablePosition((MapId)mapInfo.Id, position))
-                    {
-                        throw new Exception(
-                            $"Map ID {mapInfo.Id} has invalid initial position from {fromMap}: {position}");
-                    }
-                }
-            }
-
-            foreach (var (mapId, regions) in _mapRegions)
-            {
-                if (!_mapInfos.ContainsKey(mapId))
-                {
-                    throw new Exception($"Map region references non-existent map ID: {mapId}");
-                }
-
-                if (!regions.Any(r => r.RegionType.Equals("ground", StringComparison.OrdinalIgnoreCase)))
-                {
-                    throw new Exception($"Map ID {mapId} has no ground regions");
-                }
-
-                foreach (var region in regions)
-                {
-                    if (region.Start.X > region.End.X || region.Start.Y > region.End.Y)
-                    {
-                        throw new Exception(
-                            $"Invalid region coordinates in map {mapId}: Start({region.Start}) -> End({region.End})");
-                    }
-
-                    if (mapId == MapId.Camp)
-                    {
-                        continue;
-                    }
-
-                    if (region.IsPortal)
-                    {
-                        if (!_mapInfos.ContainsKey(region.WarpTo))
-                        {
-                            throw new Exception($"Portal in map {mapId} warps to non-existent map {region.WarpTo}");
-                        }
-
-                        var targetMapInfo = GetMapInfo(region.WarpTo);
-                        if (!targetMapInfo.InitCells.TryGetValue(mapId, out var initData))
-                        {
-                            throw new Exception(
-                                $"Portal in map {mapId} has no spawn position in target map {region.WarpTo}");
-                        }
-
-                        var spawnPosition = new Cell(initData.position.x, initData.position.y);
-                        if (!IsMoveablePosition(region.WarpTo, spawnPosition))
-                        {
-                            throw new Exception(
-                                $"Portal in map {mapId} has invalid spawn position in target map {region.WarpTo}: {spawnPosition}");
-                        }
-                    }
-                }
-            }
+            // if (_mapInfos.Count == 0)
+            // {
+            //     throw new Exception("No map information loaded");
+            // }
+            //
+            // foreach (var mapInfo in _mapInfos.Values)
+            // {
+            //     if (string.IsNullOrEmpty(mapInfo.SceneName))
+            //     {
+            //         throw new Exception($"Map ID {mapInfo.Id} has no scene name");
+            //     }
+            //
+            //     foreach (var (fromMap, initCell) in mapInfo.InitCells)
+            //     {
+            //         var position = new Cell(initCell.position.x, initCell.position.y);
+            //         if (!IsMoveablePosition((MapId)mapInfo.Id, position))
+            //         {
+            //             throw new Exception(
+            //                 $"Map ID {mapInfo.Id} has invalid initial position from {fromMap}: {position}");
+            //         }
+            //     }
+            // }
+            //
+            // foreach (var (mapId, regions) in _mapRegions)
+            // {
+            //     if (!_mapInfos.ContainsKey(mapId))
+            //     {
+            //         throw new Exception($"Map region references non-existent map ID: {mapId}");
+            //     }
+            //
+            //     if (!regions.Any(r => r.RegionType.Equals("ground", StringComparison.OrdinalIgnoreCase)))
+            //     {
+            //         throw new Exception($"Map ID {mapId} has no ground regions");
+            //     }
+            //
+            //     foreach (var region in regions)
+            //     {
+            //         if (region.Start.X > region.End.X || region.Start.Y > region.End.Y)
+            //         {
+            //             throw new Exception(
+            //                 $"Invalid region coordinates in map {mapId}: Start({region.Start}) -> End({region.End})");
+            //         }
+            //
+            //         if (mapId == MapId.Camp)
+            //         {
+            //             continue;
+            //         }
+            //
+            //         if (region.IsPortal)
+            //         {
+            //             if (!_mapInfos.ContainsKey(region.WarpTo))
+            //             {
+            //                 throw new Exception($"Portal in map {mapId} warps to non-existent map {region.WarpTo}");
+            //             }
+            //
+            //             var targetMapInfo = GetMapInfo(region.WarpTo);
+            //             if (!targetMapInfo.InitCells.TryGetValue(mapId, out var initData))
+            //             {
+            //                 throw new Exception(
+            //                     $"Portal in map {mapId} has no spawn position in target map {region.WarpTo}");
+            //             }
+            //
+            //             var spawnPosition = new Cell(initData.position.x, initData.position.y);
+            //             if (!IsMoveablePosition(region.WarpTo, spawnPosition))
+            //             {
+            //                 throw new Exception(
+            //                     $"Portal in map {mapId} has invalid spawn position in target map {region.WarpTo}: {spawnPosition}");
+            //             }
+            //         }
+            //     }
+            // }
         }
         
         public static (Cell start, Cell end)? GetPortalCoordinates(MapId currentMapId, MapId targetMapId)
         {
-            var convertedCurrentMap = ConvertMap(currentMapId);
-            var regions = GetMapRegions(convertedCurrentMap);
+            var regions = GetMapRegions(currentMapId);
             var portalRegions = regions.Where(r => r.IsPortal);
 
             foreach (var portal in portalRegions)

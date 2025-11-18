@@ -77,11 +77,6 @@ public class InstanceMapController : BaseMapController
                    case MapId.Camp:
                        break;
                    
-                   case MapId.TutorialSchool1:
-                   case MapId.School1:
-                       StartEnvironmentNotificationTimer(instanceKey, mapId, mapSubId);
-                       break;
-                   
                    default:
                        break;
                }

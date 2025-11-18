@@ -99,6 +99,12 @@ namespace network.common
         U_TO_C_PUT_MATERIAL,
         C_TO_U_HANDLE_CRAFT,
         U_TO_C_HANDLE_CRAFT,
+        C_TO_U_MATCHING,
+        U_TO_C_MATCHING,
+        C_TO_U_MATCHING_CANCEL,
+        U_TO_C_MATCHING_CANCEL,
+        U_TO_C_MATCHING_SUCCESS,
+        U_TO_C_MATCHING_FAILED,
         END
     }
 

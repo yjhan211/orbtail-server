@@ -17,7 +17,6 @@ namespace network.common.data.models
         {
             PlayerId = 0;
             Name = "";
-            Grade = PlayerGrade.NONE;
             WearItemIdList = new();
             State = PlayerState.NONE;
             ObjectInfo = new GameObjectInfo();
@@ -31,7 +30,6 @@ namespace network.common.data.models
             Gold = 0;
             Hp = 0;
             Stamina = 0;
-            Boosts = new();
             IsTutorial = true;
             LastMapId = MapId.None;
             LastMapSubId = 0;
@@ -47,7 +45,6 @@ namespace network.common.data.models
             var initCell = GameRuleData.StartPosition;
             PlayerId = playerId;
             Name = name;
-            Grade = PlayerGrade.COMMONER;
             WearItemIdList = new();
             State = PlayerState.NONE;
             ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.Camp, 0, initCell);
@@ -61,7 +58,6 @@ namespace network.common.data.models
             Gold = 1000;
             Hp = 5000;
             Stamina = 100;
-            Boosts = new();
             IsTutorial = true;
             LastMapId = MapId.None;
             LastMapSubId = 0;
@@ -80,7 +76,6 @@ namespace network.common.data.models
 
         [Key("name")] public string Name { get; set; }
 
-        [Key("grade")] public PlayerGrade Grade { get; set; }
 
         [Key("wearItemIdList")] public List<int> WearItemIdList { get; set; }
 
@@ -96,7 +91,6 @@ namespace network.common.data.models
         
         [Key("stamina")] public int Stamina { get; set; }
 
-        [Key("boostList")] public HashSet<BoostType> Boosts { get; set; }
         [Key("isTutorial")] public bool IsTutorial { get; set; }
         
         [Key("mapId")] public MapId LastMapId { get; set; }

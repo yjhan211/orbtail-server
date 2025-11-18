@@ -29,7 +29,7 @@ public class GameUser : IPeer
     
     public readonly ChatController ChatController;
     public PlayerController? PlayerController;
-    
+
     public readonly CancellationTokenSource Cts;
 
     public readonly ICacheHelper CacheHelper;
@@ -37,6 +37,7 @@ public class GameUser : IPeer
     public readonly IRedLockFactory RedLock;
     public readonly ILogger Logger;
     public MapObjectController MapObjectController;
+    private readonly MatchingManager? _matchingManager;
 
     private static readonly IReadOnlyList<Protocol> NonAuthProtocol = new List<Protocol>
     {
@@ -45,22 +46,23 @@ public class GameUser : IPeer
     };
 
 
-    public GameUser(UserToken token, IRedLockFactory redLock, INatsClient natsClient, ILogger logger, ICacheHelper cacheHelper, Action<GameUser> onLeaveCallback, ChatController chatController)
+    public GameUser(UserToken token, IRedLockFactory redLock, INatsClient natsClient, ILogger logger, ICacheHelper cacheHelper, Action<GameUser> onLeaveCallback, ChatController chatController, MatchingManager? matchingManager)
     {
         _token = token;
         _token.SetPeer(this);
         _userLock = new SemaphoreSlim(1);
         Cts = new CancellationTokenSource();
-        
+
         CacheHelper = cacheHelper;
         RedLock = redLock;
         NatsClient = natsClient;
         Logger = logger;
-        
+
         _onLeaveCallback = onLeaveCallback;
         ChatController = chatController;
         MapObjectController = new MapObjectController(this);
-        
+        _matchingManager = matchingManager;
+
         InitializeProtocolHandlers();
         InitializeSubscribeHandlers();
 
@@ -90,13 +92,14 @@ public class GameUser : IPeer
            { Protocol.C_TO_U_ENCAMP, async (bytes) => await HandleMessage<C_TO_U_ENCAMP>(bytes, msg => HandlePlayerAction(pc => pc.Encamp(msg))) },
            { Protocol.C_TO_U_DECAMP, async (_) => await HandlePlayerAction(pc => pc.Decamp()) }, { Protocol.C_TO_U_CAMP_INFO, async (bytes) => await HandleMessage<C_TO_U_CAMP_INFO>(bytes, GetCampInfo) },
            { Protocol.C_TO_U_SET_NAME, async (bytes) => await HandleMessage<C_TO_U_SET_NAME>(bytes, msg => HandlePlayerAction(pc => pc.SetName(msg))) },
-           { Protocol.C_TO_U_BOOST, async (bytes) => await HandleMessage<C_TO_U_BOOST>(bytes, msg => HandlePlayerAction(pc => pc.UpdateBoost(msg))) },
            { Protocol.C_TO_U_SOCIAL_ACTION, async (bytes) => await HandleMessage<C_TO_U_SOCIAL_ACTION>(bytes, msg => HandlePlayerAction(pc => pc.SocialAction(msg))) },
            { Protocol.C_TO_U_QUEST_INCREASE, async (bytes) => await HandleMessage<C_TO_U_QUEST_INCREASE>(bytes, msg => HandlePlayerAction(pc => pc.IncreaseQuestCount(msg))) },
            { Protocol.C_TO_U_QUEST_SUCCESS, async (bytes) => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, msg => HandlePlayerAction(pc => pc.CompleteQuest(msg))) },
            { Protocol.C_TO_U_MAIL_LIST, async (_) => await HandlePlayerAction(pc => pc.SendCurrentMails()) }, { Protocol.C_TO_U_MAIL_RECEIVE, async (bytes) => await HandleMessage<C_TO_U_MAIL_RECEIVE>(bytes, msg => HandlePlayerAction(pc => pc.ReceiveMail(msg))) },
            { Protocol.C_TO_U_ITEM_PUT, async (bytes) => await HandleMessage<C_TO_U_ITEM_PUT>(bytes, msg => HandlePlayerAction(pc => pc.PutItem(msg))) },
            { Protocol.C_TO_U_OBJECT_INFO, async (bytes) => await HandleMessage<C_TO_U_OBJECT_INFO>(bytes, MapObjectController.GetObjectInfo) },
+           { Protocol.C_TO_U_MATCHING, async (bytes) => await HandleMessage<C_TO_U_MATCHING>(bytes, HandleMatching) },
+           { Protocol.C_TO_U_MATCHING_CANCEL, async (_) => await HandleMatchingCancel() },
         };
     }
 
@@ -117,6 +120,7 @@ public class GameUser : IPeer
            { Protocol.U_TO_U_DUPLICATE, _ => { ReceiveDuplicate(); return Task.CompletedTask; }},
            { Protocol.G_TO_U_ENVIRONMENT, bytes => PlayerController == null ? Task.CompletedTask : HandleMessage<G_TO_U_ENVIRONMENT>(bytes, PlayerController.SubscribeEnvironment) },
            { Protocol.G_TO_U_TAKE_DAMAGE , bytes => HandleMessage<G_TO_U_TAKE_DAMAGE>(bytes, SubscribeTakeDamage) },
+           { Protocol.U_TO_C_MATCHING_SUCCESS, bytes => HandleMessage<U_TO_C_MATCHING_SUCCESS>(bytes, SubscribeMatchingSuccess) },
         };
     }
 
@@ -309,10 +313,8 @@ public class GameUser : IPeer
         
         SubscribeHandler(playerInfo.ObjectInfo.GetGameObjectKey(), OnMessageFromSubscribe);
         SubscribeHandler(GlobalSubscribeChannel, OnMessageFromSubscribe);
-
-        var labInfo = await LabInfo.Load(CacheHelper, playerInfo.LabId);
-
-        using var loginPacket = PacketMaker.U_TO_C_LOGIN(playerInfo, labInfo ?? new LabInfo());
+        
+        using var loginPacket = PacketMaker.U_TO_C_LOGIN(playerInfo);
         Send(loginPacket);
 
         // var mailInfo = await MailBox.Load(CacheHelper, tempPlayerId);
@@ -473,6 +475,52 @@ public class GameUser : IPeer
         await ChatController.SendChat(PlayerController.PlayerId, PlayerController.PlayerName, body.ChatType, body.ChatMessage, NatsClient);
     }
 
+    private async Task HandleMatching(C_TO_U_MATCHING body)
+    {
+        if (_matchingManager == null)
+        {
+            Logger.LogError("MatchingManager가 초기화되지 않았습니다");
+            using var errorPacket = PacketMaker.U_TO_C_MATCHING(ErrorCode.FATAL);
+            Send(errorPacket);
+            return;
+        }
+
+        if (PlayerController == null)
+        {
+            Logger.LogError("PlayerController가 초기화되지 않았습니다");
+            using var errorPacket = PacketMaker.U_TO_C_MATCHING(ErrorCode.FATAL);
+            Send(errorPacket);
+            return;
+        }
+
+        var result = await _matchingManager.AddToQueue(PlayerController.PlayerId, this);
+        using var packet = PacketMaker.U_TO_C_MATCHING(result);
+        Send(packet);
+    }
+
+    private async Task HandleMatchingCancel()
+    {
+        if (_matchingManager == null)
+        {
+            Logger.LogError("MatchingManager가 초기화되지 않았습니다");
+            using var errorPacket = PacketMaker.U_TO_C_MATCHING_CANCEL(ErrorCode.FATAL);
+            Send(errorPacket);
+            return;
+        }
+
+        if (PlayerController == null)
+        {
+            Logger.LogError("PlayerController가 초기화되지 않았습니다");
+            using var errorPacket = PacketMaker.U_TO_C_MATCHING_CANCEL(ErrorCode.FATAL);
+            Send(errorPacket);
+            return;
+        }
+
+        var result = await _matchingManager.CancelMatching(PlayerController.PlayerId);
+        using var packet = PacketMaker.U_TO_C_MATCHING_CANCEL(result);
+        Send(packet);
+    }
+
     private void ReceiveDuplicate()
     {
         using var packet = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
@@ -623,10 +671,18 @@ public class GameUser : IPeer
     {
         using var packet = PacketMaker.U_TO_C_TAKE_DAMAGE(body.PlayerId, body.DamageType, body.Damage);;
         Send(packet);
-       
+
         return Task.CompletedTask;
     }
-    
+
+    private Task SubscribeMatchingSuccess(U_TO_C_MATCHING_SUCCESS body)
+    {
+        using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(body.MatchingId, body.MapId, body.MapSubId, body.SpawnPosition);
+        Send(packet);
+
+        return Task.CompletedTask;
+    }
+
     private void BroadcastToMap<T>(GameObjectInfo objectInfo, T payload, Func<GameObjectInfo, int, string> getSubject)
     {
         var serializedPayload = MessagePackSerializer.Serialize(payload);
@@ -677,6 +733,16 @@ public class GameUser : IPeer
     {
         var payload = objectInfo.GetGameObjectKey();
         BroadcastToMap(objectInfo, payload, SubjectHelper.GetDestroyObjectSubject);
+    }
+
+    public string GetChannelName()
+    {
+        if (PlayerController == null)
+        {
+            throw new InvalidOperationException("PlayerController is not initialized");
+        }
+
+        return PlayerController.ObjectKey;
     }
 
     public void Send(IPacket msg)

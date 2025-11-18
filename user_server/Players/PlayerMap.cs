@@ -79,7 +79,7 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
         {
             playerInfo.State = PlayerState.IDLE;
             playerInfo.Hp = 1000;
-            changeMapInfo = (MapId.TutorialLibrary, new Cell(92, 99), false);
+            // changeMapInfo = (MapId.TutorialLibrary, new Cell(92, 99), false);
         }
         
         playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
@@ -137,78 +137,6 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
     
     private bool IsAbleChangeMap(MapId currentMapId, MapId changeMapId)
     {
-        if (playerInfo.PlayerId > 1000)
-        {
-            return true;
-        }
-        
-        _logger.LogDebug("currentMapId: {currentMapId} changeMapId: {changeMapId}", currentMapId, changeMapId);
-        switch (currentMapId)
-        {
-            case MapId.TutorialLibrary:
-                playerInfo.QuestDiary.QuestDict.TryGetValue(100000001, out var questInfo);
-                if (questInfo is not { State: QuestState.END })
-                {
-                    return false;
-                }
-                break;
-            
-            case MapId.TutorialSchool2:
-                if (changeMapId == MapId.TutorialClassroom)
-                {
-                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000002, out var questInfo2);
-                    if (questInfo2 is not { State: QuestState.END })
-                    {
-                        return false;
-                    }
-                }
-                break;
-            
-            case MapId.TutorialSchool1:
-                if (changeMapId == MapId.TutorialAdminoffice)
-                {
-                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000006, out var questInfo2);
-                    if (questInfo2 is not { State: QuestState.END })
-                    {
-                        return false;
-                    }
-                }
-                
-                if (changeMapId == MapId.TutorialCity)
-                {
-                    playerInfo.QuestDiary.QuestDict.TryGetValue(100000009, out var questInfo2);
-                    if (questInfo2 is not { State: QuestState.END })
-                    {
-                        return false;
-                    }
-                }
-                break;
-            
-            case MapId.TutorialAdminoffice:
-                playerInfo.QuestDiary.QuestDict.TryGetValue(100000009, out var questInfo5);
-                if (questInfo5 is not { State: QuestState.END })
-                {
-                    return false;
-                }
-                break;
-            
-            case MapId.TutorialClassroom:
-                playerInfo.QuestDiary.QuestDict.TryGetValue(100000006, out var questInfo3);
-                if (questInfo3 is not { State: QuestState.END })
-                {
-                    return false;
-                }
-                break;
-            
-            case MapId.TutorialGym:
-                // playerInfo.QuestDiary.QuestDict.TryGetValue(100000011, out var questInfo4);
-                // if (questInfo4 is not { State: QuestState.END })
-                // {
-                //     return false;
-                // }
-                break;
-        }
-        
         return true;
     }
     

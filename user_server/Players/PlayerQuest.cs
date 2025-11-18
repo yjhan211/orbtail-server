@@ -123,16 +123,6 @@ public class PlayerQuest(GameUser user, PlayerInfo playerInfo)
             using var updateQuestPacket = PacketMaker.U_TO_C_QUEST_UPDATE(updateQuestInfo);
             _sendToClient(updateQuestPacket);
         }
-
-        switch (body.QuestId)
-        {
-            case 100000015:
-                playerInfo.IsTutorial = false;
-                playerInfo.LastMapId = MapId.Gym;
-                playerInfo.LastMapSubId = 0;
-                await playerInfo.Save(_cacheHelper);
-                break;
-        }
     }
     
     public void SendCurrentQuests()

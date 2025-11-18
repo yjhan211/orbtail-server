@@ -101,22 +101,6 @@ public class PlayerController
     public async Task HandleCraft(C_TO_U_HANDLE_CRAFT body) =>  await _playerCraft.HandleCraft(body);
     public async Task Explore(C_TO_U_EXPLORE body) => await _playerExplore.Explore(body);
     public async Task Spawn() => await _playerMovement.Spawn();
-    
-    public async Task UpdateBoost(C_TO_U_BOOST body)
-    {
-        _logger.LogWarning("boostType: {body.boostType}, active: {body.active}", body.BoostType, body.IsActive);
-        if (!body.IsActive)
-        {
-            _playerInfo.Boosts.Remove(body.BoostType);
-        }
-        else
-        {
-            _playerInfo.Boosts.Add(body.BoostType);
-        }
-
-        await _playerInfo.Save(_cacheHelper);
-        _broadcastPlayerInfo(_playerInfo);
-    }
 
     public async Task SocialAction(C_TO_U_SOCIAL_ACTION body)
     {

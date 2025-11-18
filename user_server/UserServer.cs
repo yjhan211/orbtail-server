@@ -25,6 +25,7 @@ public class UserServer(
     private Task? _leaveUserTask;
     private readonly ChatController _chatController = new(cacheHelper);
     private readonly ConcurrentQueue<GameUser> _leaveUserQueue = new();
+    private MatchingManager? _matchingManager;
 
     public Task StartAsync(CancellationToken ct)
     {
@@ -51,6 +52,7 @@ public class UserServer(
         logger.LogInformation("User server stopping...");
         await _cts?.CancelAsync()!;
         if (_leaveUserTask != null) await _leaveUserTask;
+        _matchingManager?.Dispose();
         _cts?.Dispose();
     }
 
@@ -69,9 +71,14 @@ public class UserServer(
         {
             logger.LogInformation("Initializing natsClientFactory");
             natsClientFactory.Initialize(natsEndpoint);
-            logger.LogInformation("natsClientFactory initialized successfully");            
+            logger.LogInformation("natsClientFactory initialized successfully");
             GameDataHelper.Initialize();
             MapHelper.Initialize(serverConfig.GameServerNum);
+
+            // Initialize MatchingManager
+            var matchingNatsClient = natsClientFactory.Create();
+            _matchingManager = new MatchingManager(logger, cacheHelper, matchingNatsClient);
+            logger.LogInformation("MatchingManager initialized successfully");
         }
         catch (Exception ex)
         {
@@ -92,7 +99,7 @@ public class UserServer(
         {
             var redLockFactory = redisPool.GetRedLockFactory();
             var natsClient = natsClientFactory.Create();
-            _ = new GameUser(token, redLockFactory, natsClient, logger, cacheHelper, EnqueueUserLeave, _chatController);
+            _ = new GameUser(token, redLockFactory, natsClient, logger, cacheHelper, EnqueueUserLeave, _chatController, _matchingManager);
         }
         catch (Exception ex)
         {
