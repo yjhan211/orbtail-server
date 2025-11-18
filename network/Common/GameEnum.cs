@@ -4,7 +4,23 @@ namespace network.common
     public enum MapId
     {
         None = 0,
+        TutorialLibrary,
+        TutorialSchool1,
+        TutorialSchool2,
+        TutorialClassroom,
+        TutorialAdminoffice,
+        TutorialGym,
+        TutorialGymstorage,
+        TutorialCity,
+        Library,
         School,
+        School1,
+        School2,
+        Classroom,
+        Adminoffice,
+        Gym,
+        Gymstorage,
+        City,
         Camp,
     }
 
@@ -14,6 +30,12 @@ namespace network.common
         SITGROUND,
         LAUGH,
         THUMBSUP,
+    }
+
+    public enum BoostType
+    {
+        NONE = 0,
+        SPEED = 1
     }
 
     public enum BuffType
@@ -55,7 +77,14 @@ namespace network.common
         PILLOW = 108,
         BEDDING = 109,
     }
-    
+
+    public enum InstallationType
+    {
+        NONE = 0,
+        TENT,
+        SHOP
+    }
+
 // 주의사항: _ 붙이지 말 것
     public enum ObjectType
     {
@@ -86,7 +115,45 @@ namespace network.common
         RIGHT,
         BOTTOM,
     }
-    
+
+    public enum JobType : byte
+    {
+        NONE,
+        ENGINEER, // 공학자
+        CHEMIST // 화학자
+    }
+
+    public enum JobGrade : byte
+    {
+        NONE,
+        TRAINEE, // 수습 연구원
+        RESEARCHER, // 연구원
+        ASSOCIATE, // 주임 연구원
+        SENIOR_ASSOCIATE, // 선임 연구원
+        PRINCIPAL, // 책임 연구원
+        LEAD, // 수석 연구원
+        CHIEF // 대가
+    }
+
+    public enum LabGrade : byte
+    {
+        NONE,
+        ALONE, // 개인 동아리
+        CLUB // 동아리
+    }
+
+    public enum PlayerGrade : byte
+    {
+        NONE,
+        RUFFIAN, // 불량배
+        LAW_BREAKER, // 위법시민
+        COMMONER, // 시민
+        LAW_ABIDING, // 준법시민
+        RIGHTEOUS_PERSON, // 의인
+        HERO, // 영웅
+        SAINT // 성자
+    }
+
     public enum ChatType : byte
     {
         ALL, // 전체

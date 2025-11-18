@@ -15,7 +15,7 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_LOGIN(PlayerInfo playerInfo)
+    public static Packet U_TO_C_LOGIN(PlayerInfo playerInfo, LabInfo labInfo)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_LOGIN);
         U_TO_C_LOGIN body =
@@ -25,6 +25,7 @@ public static class PacketMaker
                 PlayerInfo = playerInfo,
                 CraftInfo = playerInfo.CraftInfo,
                 CampInfo = playerInfo.CampInfo,
+                LabInfo = labInfo,
             };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -57,7 +58,25 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
+    public static Packet U_TO_U_LAB_INVENTORY(Dictionary<long, ItemInfo> itemDict)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_U_LAB_INVENTORY);
+        U_TO_U_LAB_INVENTORY body = new() { ItemDict = itemDict };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet U_TO_C_LAB_INVENTORY(Dictionary<long, ItemInfo> itemDict, bool isEnd)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_LAB_INVENTORY);
+        U_TO_C_LAB_INVENTORY body = new() { ItemDict = itemDict, IsEnd = isEnd };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     public static Packet U_TO_C_WEAR_ITEM(PlayerInfo playerInfo)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_WEAR_ITEM);
@@ -258,11 +277,29 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+    
+    public static Packet U_TO_C_CREATE_LAB(long playerId, PlayerInfo playerInfo, LabInfo labInfo)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_CREATE_LAB, playerId);
+        U_TO_C_CREATE_LAB body = new() { PlayerInfo = playerInfo, LabInfo = labInfo };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
 
     public static Packet G_TO_U_ENTER_INSTANCE_SUCCESS(MapId mapId, long mapSubId)
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS);
         G_TO_U_ENTER_INSTANCE_SUCCESS body = new() { MapId = mapId, MapSubId = mapSubId };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet U_TO_C_UPGRADE_RESEARCH(Dictionary<int, ResearchInfo> researchInfoDict)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_UPGRADE_RESEARCH);
+        U_TO_C_UPGRADE_RESEARCH body = new() { ResearchInfoDict = researchInfoDict };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -299,6 +336,15 @@ public static class PacketMaker
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_LAB_HIRE_LIST);
         U_TO_C_LAB_HIRE_LIST body = new() { HireList = hireList };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet U_TO_C_LAB_INFO(PlayerInfo joinPlayerInfo, LabInfo labInfo)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_LAB_INFO);
+        U_TO_C_LAB_INFO body = new() { JoinPlayerInfo = joinPlayerInfo, LabInfo = labInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
