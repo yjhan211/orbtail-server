@@ -63,8 +63,18 @@ namespace network.common.data.helpers
             return System.IO.Path.Combine(Application.streamingAssetsPath, "Common", "csv", fileName);
 #else
             // 윈도우/기타 플랫폼: StreamingAssets 경로 사용
-            return System.IO.Path.Combine(Application.streamingAssetsPath, "Common", "csv", fileName);
+            return System.IO.Path.Combine(GetStreamingAssetsPath(), "Common", "csv", fileName);
 #endif
+        }
+        
+        private static string GetStreamingAssetsPath()
+        {
+            // ASP.NET Core 환경에서는 wwwroot 또는 Content 폴더를 사용
+            var contentRoot = Directory.GetCurrentDirectory();
+            return Path.Combine(contentRoot, "wwwroot", "StreamingAssets");
+            
+            // 또는 애플리케이션 실행 경로 기준으로 설정
+            // return Path.Combine(AppContext.BaseDirectory, "StreamingAssets");
         }
 
         public static void Initialize()
