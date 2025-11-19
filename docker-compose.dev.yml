@@ -1,0 +1,90 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: scholarcamp-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data-dev:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  nats:
+    image: nats:latest
+    container_name: scholarcamp-nats-dev
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: "-m 8222"
+
+  game_server:
+    build:
+      context: .
+      dockerfile: Dockerfile.game_server.dev
+    container_name: scholarcamp-game-server-dev
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      # Mount source code for hot reload
+      - ./game_server:/App/game_server:rw
+      - ./network:/App/network:rw
+      # Exclude bin and obj directories to avoid conflicts
+      - /App/game_server/bin
+      - /App/game_server/obj
+      - /App/network/bin
+      - /App/network/obj
+    environment:
+      - serverType=GameServer
+      - gameServerNum=2
+      - gameServerId=game-server-0
+      - redisEndPoints=redis:6379
+      - natsEndPoint=nats://nats:4222
+      - ASPNETCORE_ENVIRONMENT=Development
+      - DOTNET_USE_POLLING_FILE_WATCHER=true
+    depends_on:
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    restart: unless-stopped
+
+  user_server:
+    build:
+      context: .
+      dockerfile: Dockerfile.user_server.dev
+    container_name: scholarcamp-user-server-dev
+    ports:
+      - "7000:7000"
+      - "8081:8080"
+      - "9091:9090"
+    volumes:
+      # Mount source code for hot reload
+      - ./user_server:/App/user_server:rw
+      - ./network:/App/network:rw
+      # Exclude bin and obj directories to avoid conflicts
+      - /App/user_server/bin
+      - /App/user_server/obj
+      - /App/network/bin
+      - /App/network/obj
+    environment:
+      - serverType=UserServer
+      - gameServerNum=2
+      - servicePort=7000
+      - redisEndPoints=redis:6379
+      - natsEndPoint=nats://nats:4222
+      - ASPNETCORE_ENVIRONMENT=Development
+      - DOTNET_USE_POLLING_FILE_WATCHER=true
+    depends_on:
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  redis-data-dev:

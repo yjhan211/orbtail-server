@@ -5,6 +5,20 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Docker Compose command (supports both v1 and v2)
+if command -v docker compose &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+else
+    echo "Error: Docker Compose not found. Please install Docker Compose."
+    exit 1
+fi
+
+# Use development compose file by default for hot reload
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.dev.yml}"
+DOCKER_COMPOSE="$DOCKER_COMPOSE -f $COMPOSE_FILE"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -35,9 +49,10 @@ function show_help() {
 ScholarCamp Development Helper
 
 Usage: ./dev.sh [command]
+       COMPOSE_FILE=docker-compose.yml ./dev.sh [command]  (for production mode)
 
 Commands:
-    start           Start all services with docker-compose
+    start           Start all services (uses dev mode with hot reload by default)
     stop            Stop all services
     restart         Restart all services
     logs [service]  Show logs (optionally for specific service)
@@ -49,16 +64,36 @@ Commands:
     k-logs          Show Kubernetes pod logs (interactive)
     help            Show this help message
 
+Development Mode (default):
+    - Uses docker-compose.dev.yml
+    - Hot reload enabled with dotnet watch
+    - Code changes are automatically detected and server restarts
+    - Just edit your code and save!
+
+Production Mode:
+    COMPOSE_FILE=docker-compose.yml ./dev.sh start
+    - Uses optimized production images
+    - Requires rebuild after code changes
+
 Examples:
-    ./dev.sh start
-    ./dev.sh logs game_server
-    ./dev.sh k-logs
+    ./dev.sh start                    # Start with hot reload (dev mode)
+    ./dev.sh logs game_server         # View game server logs
+    ./dev.sh k-logs                   # Interactive K8s log viewer
+    COMPOSE_FILE=docker-compose.yml ./dev.sh start  # Production mode
 EOF
 }
 
 function start_services() {
     print_header "Starting Services"
-    docker-compose up -d
+
+    if [[ "$COMPOSE_FILE" == *"dev.yml"* ]]; then
+        print_warning "Starting in DEVELOPMENT mode with hot reload..."
+        echo "Code changes will be automatically detected!"
+    else
+        print_warning "Starting in PRODUCTION mode..."
+    fi
+
+    $DOCKER_COMPOSE up -d --build
     print_success "Services started"
     echo ""
     print_warning "Waiting for services to be ready..."
@@ -68,40 +103,40 @@ function start_services() {
 
 function stop_services() {
     print_header "Stopping Services"
-    docker-compose down
+    $DOCKER_COMPOSE down
     print_success "Services stopped"
 }
 
 function restart_services() {
     print_header "Restarting Services"
-    docker-compose restart
+    $DOCKER_COMPOSE restart
     print_success "Services restarted"
 }
 
 function show_logs() {
     local service=$1
     if [ -z "$service" ]; then
-        docker-compose logs -f --tail=100
+        $DOCKER_COMPOSE logs -f --tail=100
     else
-        docker-compose logs -f --tail=100 "$service"
+        $DOCKER_COMPOSE logs -f --tail=100 "$service"
     fi
 }
 
 function build_images() {
     print_header "Building Docker Images"
-    docker-compose build --no-cache
+    $DOCKER_COMPOSE build --no-cache
     print_success "Images built"
 }
 
 function clean_all() {
     print_header "Cleaning Up"
-    docker-compose down -v
+    $DOCKER_COMPOSE down -v
     print_success "Cleanup complete"
 }
 
 function show_status() {
     print_header "Service Status"
-    docker-compose ps
+    $DOCKER_COMPOSE ps
     echo ""
 
     # Check health endpoints
@@ -116,11 +151,13 @@ function show_status() {
 
     echo -n "User Server: "
     if curl -s http://localhost:8081/health/ready > /dev/null 2>&1; then
+        print_success "Healthy"
+    else
         print_error "Unhealthy or not ready"
     fi
 
     echo -n "Redis: "
-    if docker-compose exec -T redis redis-cli ping > /dev/null 2>&1; then
+    if $DOCKER_COMPOSE exec -T redis redis-cli ping > /dev/null 2>&1; then
         print_success "Healthy"
     else
         print_error "Unhealthy"
@@ -142,7 +179,7 @@ function open_shell() {
         exit 1
     fi
 
-    docker-compose exec "$service" /bin/sh
+    $DOCKER_COMPOSE exec "$service" /bin/sh
 }
 
 function deploy_k8s() {

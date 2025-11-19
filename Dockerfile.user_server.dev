@@ -1,0 +1,20 @@
+# Development Dockerfile with hot reload support
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+
+WORKDIR /App
+
+# Copy project files
+COPY user_server/user_server.csproj user_server/
+COPY network/network.csproj network/
+
+# Restore dependencies
+RUN dotnet restore user_server/user_server.csproj
+
+# Copy source code (will be overridden by volume mount)
+COPY user_server/ user_server/
+COPY network/ network/
+
+WORKDIR /App/user_server
+
+# Use dotnet watch for hot reload
+ENTRYPOINT ["dotnet", "watch", "run", "--no-restore", "--project", "user_server.csproj"]
