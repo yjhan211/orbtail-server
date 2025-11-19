@@ -9,6 +9,8 @@ using network.infrastructure;
 using network.interfaces;
 using network.managers;
 using Serilog;
+using user_server.core.dependencyinjection;
+using user_server.infrastructure.network;
 
 namespace user_server;
 
@@ -50,6 +52,10 @@ internal static class Program
         RegisterCoreServices(services);
         RegisterInfrastructureServices(services, hostContext);
         RegisterHelperServices(services);
+
+        // Register user server domain services
+        RegisterUserServerServices(services);
+
         services.AddHostedService<HealthCheckService>();
         services.AddHostedService<UserServer>();
     }
@@ -80,6 +86,20 @@ internal static class Program
     {
         services.AddSingleton<CacheHelper>();
         services.AddSingleton<ICacheHelper>(provider => provider.GetRequiredService<CacheHelper>());
+    }
+
+    private static void RegisterUserServerServices(IServiceCollection services)
+    {
+        // Get required dependencies for user server services
+        var serviceProvider = services.BuildServiceProvider();
+        var cacheHelper = serviceProvider.GetRequiredService<ICacheHelper>();
+
+        // Create a placeholder function for getting game sessions
+        // This will be properly implemented when GameSession is managed by DI
+        Func<long, GameSession?> getSessionFunc = (playerId) => null;
+
+        // Register all user server services (Commands, Queries, Repositories, Events, etc.)
+        services.AddUserServerServices(cacheHelper, getSessionFunc);
     }
     
     private static ServerConfig CreateServerConfig(IConfiguration configuration)
