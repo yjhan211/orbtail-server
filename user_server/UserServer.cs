@@ -100,7 +100,8 @@ public class UserServer(
         {
             var redLockFactory = redisPool.GetRedLockFactory();
             var natsClient = natsClientFactory.Create();
-            _ = new GameSession(token, redLockFactory, natsClient, logger, cacheHelper, EnqueueUserLeave, _chatController, _matchingManager, serverConfig);
+            _ = new GameSession(token, redLockFactory, natsClient, logger, cacheHelper, EnqueueUserLeave,
+                _chatController, _matchingManager, serverConfig);
         }
         catch (Exception ex)
         {
