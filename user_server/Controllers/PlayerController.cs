@@ -37,7 +37,6 @@ public class PlayerController
     private readonly PlayerMailBox _playerMailBox;
     private readonly PlayerMovement _playerMovement;
     private readonly PlayerProgress _playerProgress;
-    private readonly PlayerCamp _playerCamp;
     private readonly PlayerMap _playerMap;
     private readonly PlayerExplore _playerExplore;
     public readonly PlayerInfo PlayerInfo;
@@ -62,7 +61,6 @@ public class PlayerController
         _playerInventory = new PlayerInventory(user, PlayerInfo, _playerQuest);
         _playerMailBox = new PlayerMailBox(user, PlayerInfo);
         _playerMovement = new PlayerMovement(user, PlayerInfo);
-        _playerCamp = new PlayerCamp(user, PlayerInfo);
         _playerMap = new PlayerMap(user, PlayerInfo);
         _playerExplore = new PlayerExplore(user, playerInfo, _playerQuest, _playerInventory, _playerProgress);
     }
@@ -83,7 +81,6 @@ public class PlayerController
     public void SendCurrentItems() => _playerInventory.SendCurrentItems();
     public async Task SendCurrentMails() => await _playerMailBox.SendCurrentMails();
     public void SendCurrentQuests() => _playerQuest.SendCurrentQuests();
-    public async Task PutItem(C_TO_U_ITEM_PUT body) => await _playerCamp.PutItem(body);
     public async Task IncreaseQuestCount(C_TO_U_QUEST_INCREASE body) => await _playerQuest.IncreaseQuestCount(body);
     public async Task CompleteQuest(C_TO_U_QUEST_SUCCESS body) => await _playerQuest.CompleteQuest(body);
     public async Task ReceiveMail(C_TO_U_MAIL_RECEIVE body) => await _playerMailBox.ReceiveMail(body);

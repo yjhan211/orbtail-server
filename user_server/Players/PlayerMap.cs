@@ -43,20 +43,21 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
             return;
         }
         
-        if (playerInfo.ObjectInfo.MapId == MapId.Camp)
-        {
-            playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
-            playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
-            playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
-            
-            user.BroadcastObjectDestroy(playerInfo.ObjectInfo);
-            await EnterMap(playerInfo.CampInfo.ObjectInfo.MapId, playerInfo.CampInfo.ObjectInfo.CurrentCell, false, false);
-            await playerInfo.Save(_cacheHelper);
-            
-            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
-            _sendToClient(packet);
-            return;
-        }
+        // TODO 매칭
+        // if (playerInfo.ObjectInfo.MapId == MapId.Camp)
+        // {
+        //     playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
+        //     playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
+        //     playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
+        //     
+        //     user.BroadcastObjectDestroy(playerInfo.ObjectInfo);
+        //     await EnterMap(playerInfo.CampInfo.ObjectInfo.MapId, playerInfo.CampInfo.ObjectInfo.CurrentCell, false, false);
+        //     await playerInfo.Save(_cacheHelper);
+        //     
+        //     using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
+        //     _sendToClient(packet);
+        //     return;
+        // }
 
         var changeMapInfo = GameMapData.GetPortalOrNull(playerInfo.ObjectInfo, playerInfo.IsTutorial);
         if (playerInfo.State != PlayerState.SLEEP)

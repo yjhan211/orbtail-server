@@ -91,7 +91,6 @@ public class GameUser : IPeer
            { Protocol.C_TO_U_QUEST_INCREASE, async (bytes) => await HandleMessage<C_TO_U_QUEST_INCREASE>(bytes, msg => HandlePlayerAction(pc => pc.IncreaseQuestCount(msg))) },
            { Protocol.C_TO_U_QUEST_SUCCESS, async (bytes) => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, msg => HandlePlayerAction(pc => pc.CompleteQuest(msg))) },
            { Protocol.C_TO_U_MAIL_LIST, async (_) => await HandlePlayerAction(pc => pc.SendCurrentMails()) }, { Protocol.C_TO_U_MAIL_RECEIVE, async (bytes) => await HandleMessage<C_TO_U_MAIL_RECEIVE>(bytes, msg => HandlePlayerAction(pc => pc.ReceiveMail(msg))) },
-           { Protocol.C_TO_U_ITEM_PUT, async (bytes) => await HandleMessage<C_TO_U_ITEM_PUT>(bytes, msg => HandlePlayerAction(pc => pc.PutItem(msg))) },
            { Protocol.C_TO_U_OBJECT_INFO, async (bytes) => await HandleMessage<C_TO_U_OBJECT_INFO>(bytes, MapObjectController.GetObjectInfo) },
            { Protocol.C_TO_U_MATCHING, async (bytes) => await HandleMessage<C_TO_U_MATCHING>(bytes, HandleMatching) },
            { Protocol.C_TO_U_MATCHING_CANCEL, async (_) => await HandleMatchingCancel() },
@@ -110,7 +109,6 @@ public class GameUser : IPeer
            { Protocol.G_TO_U_PLAYER_INFO, bytes => HandleMessage<G_TO_U_PLAYER_INFO>(bytes, SubscribePlayerInfo) },
            { Protocol.G_TO_U_EXPLORE_TARGET_INFO, bytes => HandleMessage<G_TO_U_EXPLORE_TARGET_INFO>(bytes, SubscribeExploreTargetInfo) },
            { Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS, bytes => HandleMessage<G_TO_U_ENTER_INSTANCE_SUCCESS>(bytes, SubscribeEnterInstanceSuccess) },
-           { Protocol.G_TO_U_CAMP_INFO, bytes => HandleMessage<G_TO_U_CAMP_INFO>(bytes, SubscribeCampInfo) },
            { Protocol.G_TO_U_SOCIAL_ACTION, bytes => HandleMessage<G_TO_U_SOCIAL_ACTION>(bytes, SubscribeSocialAction) },
            { Protocol.U_TO_U_DUPLICATE, _ => { ReceiveDuplicate(); return Task.CompletedTask; }},
            { Protocol.G_TO_U_ENVIRONMENT, bytes => PlayerController == null ? Task.CompletedTask : HandleMessage<G_TO_U_ENVIRONMENT>(bytes, PlayerController.SubscribeEnvironment) },
@@ -395,33 +393,6 @@ public class GameUser : IPeer
             targetInfoList.Clear();
         }
     }
-    
-    private async Task GetCampInfo(C_TO_U_CAMP_INFO body)
-    {
-        var campIdList = body.CampInfoList;
-        var campInfoList = new List<CampInfo>();
-
-        for (var i = 0; i < campIdList.Count; i++)
-        {
-            var targetCampInfo = await CampInfo.Load(CacheHelper, campIdList[i]);
-            if (targetCampInfo == null)
-            {
-                continue;
-            }
-
-            campInfoList.Add(targetCampInfo);
-
-            var isMax = campInfoList.Count >= Config.BROADCAST_UNIT;
-            var isEnded = i == campInfoList.Count - 1;
-            if (!isMax && !isEnded)
-            {
-                continue;
-            }
-
-            using var packet = PacketMaker.U_TO_C_CAMP_INFO(campInfoList);
-            Send(packet);
-        }
-    }
 
     private async Task SendChatHistory(ChatType chatType)
     {
@@ -645,14 +616,6 @@ public class GameUser : IPeer
         using var packet = PacketMaker.U_TO_C_CHANGE_MAP_SUCCESS(lastMapInfo.Item1, mapInfo.Item1, mapInfo.Item2, mapInfo.Item3, mapInfo.Item4);
         Send(packet);
     }
-   
-    private Task SubscribeCampInfo(G_TO_U_CAMP_INFO body)
-    {
-        using var packet = PacketMaker.U_TO_C_CAMP_INFO([body.CampInfo]);
-        Send(packet);
-       
-        return Task.CompletedTask;
-    }
 
     private Task SubscribeSocialAction(G_TO_U_SOCIAL_ACTION body)
     {
@@ -693,7 +656,6 @@ public class GameUser : IPeer
         {
             PlayerInfo p => p.ObjectInfo,
             ExploreTargetInfo e => e.ObjectInfo,
-            CampInfo c => c.ObjectInfo,
             _ => throw new ArgumentException($"Unsupported type: {typeof(T)}")
         };
 

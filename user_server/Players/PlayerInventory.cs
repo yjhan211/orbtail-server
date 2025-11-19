@@ -140,10 +140,6 @@ public class PlayerInventory(GameUser user, PlayerInfo playerInfo, PlayerQuest p
                     case BuffSubType.CONDITION_ADD:
                         playerInfo.Hp = Math.Clamp(playerInfo.Hp + (value * 100), 0, 10000);
                         break;
-                
-                    case BuffSubType.CRAFT_ADD:
-                        playerInfo.CraftInfo.Manuals.Add(value);
-                        break;
                     
                     case BuffSubType.DURABILITY_ADD:
                         if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.TargetItemUid, out var targetItem))

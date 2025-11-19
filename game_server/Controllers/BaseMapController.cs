@@ -58,13 +58,6 @@ public abstract class BaseMapController(
                BroadcastPacket(key, packet);
                break;
            }
-           case ObjectType.CAMP:
-           {
-               var campInfo = MessagePackSerializer.Deserialize<CampInfo>(serializedInfo);
-               using var packet = PacketMaker.G_TO_U_CAMP_INFO(campInfo);
-               BroadcastPacket(key, packet);
-               break;
-           }
        }
        return Task.CompletedTask;
    }
