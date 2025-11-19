@@ -50,6 +50,7 @@ internal static class Program
         RegisterCoreServices(services);
         RegisterInfrastructureServices(services, hostContext);
         RegisterHelperServices(services);
+        services.AddHostedService<HealthCheckService>();
         services.AddHostedService<UserServer>();
     }
     

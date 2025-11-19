@@ -94,6 +94,7 @@ internal static partial class Program
         services.AddSingleton<IRedisConnectionPool>(sp => sp.GetRequiredService<RedisConnectionPool>());
         services.AddSingleton<CacheHelper>();
         services.AddSingleton<ICacheHelper, CacheHelper>();
+        services.AddHostedService<HealthCheckService>();
         services.AddHostedService<GameServer>();
     }
 
