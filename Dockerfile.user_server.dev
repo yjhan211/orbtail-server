@@ -17,4 +17,5 @@ COPY network/ network/
 WORKDIR /App/user_server
 
 # Use dotnet watch for hot reload
-ENTRYPOINT ["dotnet", "watch", "run", "--no-restore", "--project", "user_server.csproj"]
+# --non-interactive: rude edit 시 자동으로 재시작
+ENTRYPOINT ["dotnet", "watch", "run", "--non-interactive", "--no-restore", "--project", "user_server.csproj"]
