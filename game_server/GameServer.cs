@@ -1,5 +1,4 @@
 using game_server.controllers;
-using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -21,11 +20,11 @@ public class GameServer : IHostedService
     private readonly INatsClientFactory _natsClientFactory;
     private readonly ICacheHelper _cacheHelper;
     private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
-    
+
     private readonly List<InstanceMapController> _instanceControllerList = [];
     private CancellationTokenSource _cts = new();
-    private IAsyncDisposable? _messageProcessor;
-    
+    private INatsClient? _logoutNatsClient;
+
     private readonly ServerConfig _serverConfig;
 
     public GameServer(
@@ -57,7 +56,7 @@ public class GameServer : IHostedService
             InitializeControllers();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            StartMessageProcessing();
+            SubscribeToLogoutEvents();
 
             _logger.LogInformation("Game server started successfully.");
             return Task.CompletedTask;
@@ -74,7 +73,7 @@ public class GameServer : IHostedService
         _logger.LogInformation("Game server stopping...");
 
         await _cts.CancelAsync();
-        if (_messageProcessor != null) await _messageProcessor.DisposeAsync();
+        _logoutNatsClient?.Close();
 
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
@@ -106,11 +105,27 @@ public class GameServer : IHostedService
         _instanceControllerList.Add(instanceController);
     }
 
-    private void StartMessageProcessing()
+    /// <summary>
+    /// NATS를 통한 로그아웃 이벤트 구독 (Redis Queue 대체)
+    /// </summary>
+    private void SubscribeToLogoutEvents()
     {
-        var messageProcessor = new PacketQueueService(_cacheHelper, ProcessMessage, _logger);
-        messageProcessor.StartAsync(_cts.Token);
-        _messageProcessor = messageProcessor;
+        _logoutNatsClient = _natsClientFactory.Create();
+        var logoutSubject = SubjectHelper.GetLogoutSubject(_serverConfig.ServerId);
+
+        _logoutNatsClient.Subscribe(logoutSubject, async (_, message) =>
+        {
+            try
+            {
+                await ProcessMessage(message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing logout message");
+            }
+        });
+
+        _logger.LogInformation("Subscribed to logout events: {Subject}", logoutSubject);
     }
 
     private async Task ProcessMessage(byte[] message)

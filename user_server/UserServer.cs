@@ -7,7 +7,8 @@ using network.common.data.helpers;
 using network.core;
 using network.helpers;
 using network.interfaces;
-using user_server.controllers;
+using user_server.application.services;
+using user_server.infrastructure.network;
 
 namespace user_server;
 
@@ -24,7 +25,7 @@ public class UserServer(
     private CancellationTokenSource? _cts;
     private Task? _leaveUserTask;
     private readonly ChatController _chatController = new(cacheHelper);
-    private readonly ConcurrentQueue<GameUser> _leaveUserQueue = new();
+    private readonly ConcurrentQueue<GameSession> _leaveUserQueue = new();
     private MatchingManager? _matchingManager;
 
     public Task StartAsync(CancellationToken ct)
@@ -56,7 +57,7 @@ public class UserServer(
         _cts?.Dispose();
     }
 
-    private void EnqueueUserLeave(GameUser user)
+    private void EnqueueUserLeave(GameSession user)
     {
         _leaveUserQueue.Enqueue(user);
     }
@@ -99,7 +100,7 @@ public class UserServer(
         {
             var redLockFactory = redisPool.GetRedLockFactory();
             var natsClient = natsClientFactory.Create();
-            _ = new GameUser(token, redLockFactory, natsClient, logger, cacheHelper, EnqueueUserLeave, _chatController, _matchingManager);
+            _ = new GameSession(token, redLockFactory, natsClient, logger, cacheHelper, EnqueueUserLeave, _chatController, _matchingManager, serverConfig);
         }
         catch (Exception ex)
         {

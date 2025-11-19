@@ -15,6 +15,7 @@ public static class SubjectHelper
     private const string TakeDamage = "take_damage";
     private const string BroadcastUpdate = "broadcast_update";
     private const string BroadcastDestroy = "broadcast_destroy";
+    private const string Logout = "logout";
 
     private const string CreateJobResource = "create_job_resource"; // TODO
 
@@ -40,76 +41,84 @@ public static class SubjectHelper
 
     public static string GetLeaveManageSubject(GameObjectInfo objectInfo, int serverId)
     {
-        return GetUpdateManageSubject(objectInfo, serverId);
+        return BuildSubject(LeaveObject, objectInfo.MapId, objectInfo.MapSubId, serverId);
     }
 
     public static string GetLeaveManageSubject(MapId mapId, long mapSubId, int serverId)
     {
-        return GetUpdateManageSubject(mapId, mapSubId, serverId);
+        return BuildSubject(LeaveObject, mapId, mapSubId, serverId);
     }
 
     public static string GetSpawnManageSubject(GameObjectInfo objectInfo, int serverId)
     {
-        return GetUpdateManageSubject(objectInfo, serverId);
+        return BuildSubject(SpawnObject, objectInfo.MapId, objectInfo.MapSubId, serverId);
     }
 
     public static string GetSpawnManageSubject(MapId mapId, long mapSubId, int serverId)
     {
-        return GetUpdateManageSubject(mapId, mapSubId, serverId);
+        return BuildSubject(SpawnObject, mapId, mapSubId, serverId);
     }
 
     public static string GetDestroyObjectSubject(GameObjectInfo objectInfo, int serverId)
     {
-        return GetUpdateManageSubject(objectInfo, serverId);
+        return BuildSubject(DestroyObject, objectInfo.MapId, objectInfo.MapSubId, serverId);
     }
 
     public static string GetDestroyObjectSubject(MapId mapId, long mapSubId, int serverId)
     {
-        return GetUpdateManageSubject(mapId, mapSubId, serverId);
+        return BuildSubject(DestroyObject, mapId, mapSubId, serverId);
     }
 
     public static string GetUpdateInfoSubject(MapId mapId, long mapSubId, int serverId)
     {
-        return GetUpdateManageSubject(mapId, mapSubId, serverId);
+        return BuildSubject(UpdateInfo, mapId, mapSubId, serverId);
     }
 
     public static string GetUpdateInfoSubject(GameObjectInfo objectInfo, int serverId)
     {
-        return GetUpdateManageSubject(objectInfo, serverId);
+        return BuildSubject(UpdateInfo, objectInfo.MapId, objectInfo.MapSubId, serverId);
     }
-    
+
     public static string GetSocialActionSubject(MapId mapId, long mapSubId, int serverId)
     {
-        return GetUpdateManageSubject(mapId, mapSubId, serverId);
+        return BuildSubject(SocialAction, mapId, mapSubId, serverId);
     }
-    
+
     public static string GetSocialActionSubject(GameObjectInfo objectInfo, int serverId)
     {
-        return GetUpdateManageSubject(objectInfo, serverId);
+        return BuildSubject(SocialAction, objectInfo.MapId, objectInfo.MapSubId, serverId);
     }
-    
+
     public static string GetTakeDamageSubject(MapId mapId, long mapSubId, int serverId)
     {
-        return GetUpdateManageSubject(mapId, mapSubId, serverId);
+        return BuildSubject(TakeDamage, mapId, mapSubId, serverId);
     }
 
     public static string GetTakeDamageSubject(GameObjectInfo objectInfo, int serverId)
     {
-        return GetUpdateManageSubject(objectInfo, serverId);
+        return BuildSubject(TakeDamage, objectInfo.MapId, objectInfo.MapSubId, serverId);
     }
 
     public static string GetCreateJobResourceSubject(MapId mapId, long mapSubId, int serverId)
     {
-        return GetUpdateManageSubject(mapId, mapSubId, serverId);
+        return BuildSubject(CreateJobResource, mapId, mapSubId, serverId);
     }
 
     public static string GetBroadcastUpdateSubject(MapId mapId, long mapSubId, int serverId)
     {
-        return GetUpdateManageSubject(mapId, mapSubId, serverId);
+        return BuildSubject(BroadcastUpdate, mapId, mapSubId, serverId);
     }
 
     public static string GetBroadcastDestroySubject(MapId mapId, long mapSubId, int serverId)
     {
-        return GetUpdateManageSubject(mapId, mapSubId, serverId);
+        return BuildSubject(BroadcastDestroy, mapId, mapSubId, serverId);
+    }
+
+    /// <summary>
+    /// 로그아웃 이벤트 Subject (서버 ID만 사용)
+    /// </summary>
+    public static string GetLogoutSubject(int serverId)
+    {
+        return $"{Logout}_{serverId}";
     }
 }

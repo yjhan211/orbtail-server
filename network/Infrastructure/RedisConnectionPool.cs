@@ -75,30 +75,40 @@ public class RedisConnectionPool : IRedisConnectionPool
 
     public async Task<T> ExecuteWithRetryAsync<T>(Func<IDatabase, Task<T>> action, int db = -1, int retryCount = 3)
     {
-        var delay = 100; // 시작 딜레이
+        var delay = 100; // 시작 딜레이 (ms)
 
         for (var i = 0; i < retryCount; i++)
+        {
             try
             {
                 var database = await GetDatabaseAsync(db);
                 return await action(database);
             }
-            catch (RedisTimeoutException)
+            catch (RedisTimeoutException ex)
             {
                 if (i == retryCount - 1)
+                {
+                    Console.WriteLine($"Redis timeout after {retryCount} retries: {ex.Message}");
                     throw;
+                }
 
+                Console.WriteLine($"Redis timeout (attempt {i + 1}/{retryCount}), retrying in {delay}ms...");
                 await Task.Delay(delay);
                 delay *= 2; // 지수 백오프
             }
-            catch (RedisConnectionException)
+            catch (RedisConnectionException ex)
             {
                 if (i == retryCount - 1)
+                {
+                    Console.WriteLine($"Redis connection error after {retryCount} retries: {ex.Message}");
                     throw;
+                }
 
+                Console.WriteLine($"Redis connection error (attempt {i + 1}/{retryCount}), retrying in {delay}ms...");
                 await Task.Delay(delay);
                 delay *= 2; // 지수 백오프
             }
+        }
 
         throw new Exception($"Redis operation failed after {retryCount} retries");
     }
