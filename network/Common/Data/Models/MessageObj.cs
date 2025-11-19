@@ -27,11 +27,7 @@ namespace network.common.data.models
     public class U_TO_C_LOGIN : IMessagePackObject
     {
         [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
-
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
-        
-        [Key("campInfo")] public CampInfo CampInfo { get; set; }
-        [Key("craftInfo")] public CraftInfo CraftInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -162,12 +158,6 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_U_CAMP_INFO : IMessagePackObject
-    {
-        [Key("campInfo")] public CampInfo CampInfo { get; set; }
-    }
-
-    [MessagePackObject]
     public class C_TO_U_OBJECT_INFO : IMessagePackObject
     {
         [Key("objectKeyList")] public List<string> ObjectKeyList { get; set; }
@@ -196,12 +186,6 @@ namespace network.common.data.models
     {
         [Key("exploreTargetInfo")] public ExploreTargetInfo ExploreTargetInfo { get; set; }
     }
-
-    [MessagePackObject]
-    public class C_TO_U_JOB_RESOURCE_INFO : IMessagePackObject
-    {
-        [Key("jobResourceIdList")] public List<long> JobResourceIdList { get; set; }
-    }
     
     [MessagePackObject]
     public class C_TO_U_EXPLORE : IMessagePackObject
@@ -221,65 +205,13 @@ namespace network.common.data.models
         [Key("isSuccess")] public bool IsSuccess { get; set; }
         [Key("itemId")] public int ItemId { get; set; }
     }
-    
-    [MessagePackObject]
-    public class C_TO_U_USE_SKILL : IMessagePackObject
-    {
-        [Key("resourceUid")] public long ResourceUid { get; set; }
-
-        [Key("skillId")] public int SkillId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_USE_SKILL : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_G_USE_SKILL : IMessagePackObject
-    {
-        [Key("resourceUid")] public long ResourceUid { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_USE_SKILL_COMPLETE : IMessagePackObject
-    {
-        [Key("isSuccess")] public bool IsSuccess { get; set; }
-
-        [Key("itemInfo")] public ItemInfo ItemInfo { get; set; }
-    }
 
     [MessagePackObject]
     public class U_TO_G_LOGOUT : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
     }
-
-    [MessagePackObject]
-    public class C_TO_U_GET_JOB : IMessagePackObject
-    {
-        [Key("jobType")] public JobType JobType { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_GET_JOB : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_U_UPGRADE_JOB : IMessagePackObject
-    {
-        [Key("jobType")] public JobType JobType { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_UPGRADE_JOB : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-    }
-
+    
     [MessagePackObject]
     public class C_TO_U_WEAR_ITEM : IMessagePackObject
     {
@@ -303,7 +235,6 @@ namespace network.common.data.models
     public class U_TO_C_USE_ITEM : IMessagePackObject
     {
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
-        [Key("craftInfo")] public CraftInfo CraftInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -326,18 +257,6 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class C_TO_U_CREATE_LAB : IMessagePackObject
-    {
-        [Key("labName")] public string LabName { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_CREATE_LAB : IMessagePackObject
-    {
-        [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
-    }
-
-    [MessagePackObject]
     public class G_TO_U_ENTER_INSTANCE_SUCCESS : IMessagePackObject
     {
         [Key("mapId")] public MapId MapId { get; set; }
@@ -346,120 +265,11 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class C_TO_U_UPGRADE_RESEARCH : IMessagePackObject
-    {
-        [Key("jobType")] public JobType JobType { get; set; }
-
-        [Key("researchId")] public int ResearchId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_U_CRAFT : IMessagePackObject
-    {
-        [Key("craftId")] public int CraftId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_CRAFT : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-    }
-    
-    [MessagePackObject]
-    public class U_TO_C_CRAFT_COMPLETE : IMessagePackObject
-    {
-        [Key("isSuccess")] public bool IsSuccess { get; set; }
-        [Key("slots")] public List<SlotItem> Slots { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_U_WRITE_LAB_HIRE : IMessagePackObject
-    {
-        [Key("comment")] public string Comment { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_WRITE_LAB_HIRE : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_LAB_HIRE_LIST : IMessagePackObject
-    {
-        [Key("hireList")] public List<(long, string, string)> HireList { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_U_JOIN_LAB : IMessagePackObject
-    {
-        [Key("labId")] public long LabId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_LAB_INFO : IMessagePackObject
-    {
-        [Key("joinPlayerInfo")] public PlayerInfo JoinPlayerInfo { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_U_LAB_INVENTORY_ADD_ITEM : IMessagePackObject
-    {
-        [Key("itemUid")] public long ItemUid { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_U_LAB_INVENTORY_TAKE_ITEM : IMessagePackObject
-    {
-        [Key("itemUid")] public long ItemUid { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_U_LAB_INVENTORY : IMessagePackObject
-    {
-        [Key("itemDict")] public Dictionary<long, ItemInfo> ItemDict { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_LAB_INVENTORY : IMessagePackObject
-    {
-        [Key("itemDict")] public Dictionary<long, ItemInfo> ItemDict { get; set; }
-
-        [Key("isEnd")] public bool IsEnd { get; set; }
-    }
-
-    [MessagePackObject]
     public class C_TO_U_ENCAMP : IMessagePackObject
     {
         [Key("itemUid")] public long ItemUid { get; set; }
     }
-
-    [MessagePackObject]
-    public class U_TO_C_CAMP_INFO : IMessagePackObject
-    {
-        [Key("campInfoList")] public List<CampInfo> CampInfoList { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_U_CAMP_INFO : IMessagePackObject
-    {
-        [Key("campInfoList")] public List<long> CampInfoList { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_U_ADD_SELL_ITEM : IMessagePackObject
-    {
-        [Key("itemUid")] public long ItemUid { get; set; }
-
-        [Key("price")] public int Price { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_U_DELETE_SELL_ITEM : IMessagePackObject
-    {
-        [Key("itemUid")] public long ItemUid { get; set; }
-    }
-
+    
     [MessagePackObject]
     public class C_TO_U_BUY_ITEM : IMessagePackObject
     {
@@ -486,13 +296,6 @@ namespace network.common.data.models
     public class U_TO_U_PLAYER_INFO : IMessagePackObject
     {
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_U_BOOST : IMessagePackObject
-    {
-        [Key("boostType")] public BoostType BoostType { get; set; }
-        [Key("isActive")] public bool IsActive { get; set; }
     }
 
     [MessagePackObject]
@@ -608,34 +411,6 @@ namespace network.common.data.models
     public class G_TO_U_ENVIRONMENT : IMessagePackObject
     {
         [Key("damageType")] public DamageType DamageType { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_U_PUT_MATERIAL : IMessagePackObject
-    {
-        [Key("itemUid")] public long ItemUid { get; set; }
-        [Key("slotNum")] public int SlotNum { get; set; }
-    }
-    
-    [MessagePackObject]
-    public class U_TO_C_PUT_MATERIAL : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("slots")] public List<SlotItem> Slots { get; set; }
-    }
-    
-    [MessagePackObject]
-    public class C_TO_U_HANDLE_CRAFT : IMessagePackObject
-    {
-        [Key("sourceSlotNum")] public int sourceSlotNum { get; set; }
-        [Key("targetSlotNum")] public int targetSlotNum { get; set; }
-    }
-    
-    [MessagePackObject]
-    public class U_TO_C_HANDLE_CRAFT : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("slots")] public List<SlotItem> Slots { get; set; }
     }
 
     [MessagePackObject]

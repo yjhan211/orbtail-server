@@ -17,13 +17,10 @@ namespace network.common.data.models
         {
             PlayerId = 0;
             Name = "";
-            Grade = PlayerGrade.NONE;
             WearItemIdList = new();
             State = PlayerState.NONE;
             ObjectInfo = new GameObjectInfo();
             InventoryInfo = new InventoryInfo();
-            CraftInfo = new CraftInfo();
-            CampInfo = new CampInfo();
             QuestDiary = new QuestDiary();
             MailBox = new MailBox();
             LabId = 0;
@@ -47,13 +44,10 @@ namespace network.common.data.models
             var initCell = GameRuleData.StartPosition;
             PlayerId = playerId;
             Name = name;
-            Grade = PlayerGrade.COMMONER;
             WearItemIdList = new();
             State = PlayerState.NONE;
             ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.Camp, 0, initCell);
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
-            CraftInfo = new CraftInfo(PlayerId);
-            CampInfo = new CampInfo(PlayerId, Name, new(), new());
             QuestDiary = new QuestDiary(PlayerId);
             MailBox = new MailBox(PlayerId);
             LabId = 0;
@@ -71,16 +65,12 @@ namespace network.common.data.models
 
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
         [IgnoreMember] public InventoryInfo InventoryInfo { get; set; }
-        [IgnoreMember] public CraftInfo CraftInfo { get; set; }
-        [IgnoreMember] public CampInfo CampInfo { get; set; }
         [IgnoreMember] public QuestDiary QuestDiary { get; set; }
         [IgnoreMember] public MailBox MailBox { get; set; }
         
         [Key("playerId")] public long PlayerId { get; set; }
 
         [Key("name")] public string Name { get; set; }
-
-        [Key("grade")] public PlayerGrade Grade { get; set; }
 
         [Key("wearItemIdList")] public List<int> WearItemIdList { get; set; }
 

@@ -76,7 +76,6 @@ namespace network.common
         PLAYER,
         ITEM,
         EXPLORETARGET,
-        CAMP,
         INTERACTPROP,
     }
 
@@ -99,45 +98,14 @@ namespace network.common
         RIGHT,
         BOTTOM,
     }
-
-    public enum JobType : byte
-    {
-        NONE,
-        ENGINEER, // 공학자
-        CHEMIST // 화학자
-    }
-
-    public enum JobGrade : byte
-    {
-        NONE,
-        TRAINEE, // 수습 연구원
-        RESEARCHER, // 연구원
-        ASSOCIATE, // 주임 연구원
-        SENIOR_ASSOCIATE, // 선임 연구원
-        PRINCIPAL, // 책임 연구원
-        LEAD, // 수석 연구원
-        CHIEF // 대가
-    }
-
+    
     public enum LabGrade : byte
     {
         NONE,
         ALONE, // 개인 동아리
         CLUB // 동아리
     }
-
-    public enum PlayerGrade : byte
-    {
-        NONE,
-        RUFFIAN, // 불량배
-        LAW_BREAKER, // 위법시민
-        COMMONER, // 시민
-        LAW_ABIDING, // 준법시민
-        RIGHTEOUS_PERSON, // 의인
-        HERO, // 영웅
-        SAINT // 성자
-    }
-
+    
     public enum ChatType : byte
     {
         ALL, // 전체
@@ -158,7 +126,6 @@ namespace network.common
         SITCHAIR,
         EXPLORE_1,
         CRAFT_1,
-        CAMPING_1,
         SLEEP,
     }
 
