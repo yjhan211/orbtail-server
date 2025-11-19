@@ -5,7 +5,6 @@ using network.common.data.models;
 using Microsoft.Extensions.Logging;
 using network.helpers;
 using network.interfaces;
-using network.managers;
 using network.packets;
 using user_server.controllers;
 using user_server.progress;
@@ -99,15 +98,8 @@ public class PlayerExplore(
         using var packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.SUCCESS);
         _sendToClient(packet);
         
-        var isCommonMap = GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId);
-        var currentPartKey = isCommonMap
-            ? MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell)
-            : MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
-        
-        var currentManageServer = isCommonMap
-            ? MapHelper.GetManageServerId(currentPartKey)
-            : MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
-        
+        var currentPartKey = MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
+        var currentManageServer = MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
         var moveSubject = SubjectHelper.GetUpdateManageSubject(playerInfo.ObjectInfo, currentManageServer);
         _natsClient.Publish(moveSubject,
             MessagePackSerializer.Serialize((currentPartKey, objectInfo: playerInfo.ObjectInfo)));

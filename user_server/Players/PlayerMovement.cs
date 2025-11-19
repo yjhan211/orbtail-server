@@ -109,23 +109,10 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
         playerInfo.ObjectInfo.MoveTimestamp = moveRequest.Direction == DirectionType.NONE ? default : DateTime.UtcNow;
         await playerInfo.ObjectInfo.Save(_cacheHelper);
 
-        var isCommonMap = GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId);
-        var currentPartKey = isCommonMap
-            ? MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.CurrentCell)
-            : MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
-        
-        var nextPartKey = isCommonMap
-            ? MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.TargetCell)
-            : MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
-        
-        var currentManageServer = isCommonMap
-            ? MapHelper.GetManageServerId(currentPartKey)
-            : MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
-        
-        var nextManageServer = isCommonMap
-            ? MapHelper.GetManageServerId(nextPartKey)
-            : MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
-        
+        var currentPartKey = MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
+        var currentManageServer = MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
+        var nextManageServer =  MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
+
         if (currentManageServer != nextManageServer)
         {
             var leaveSubject = SubjectHelper.GetLeaveManageSubject(playerInfo.ObjectInfo, currentManageServer);
@@ -134,11 +121,6 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
 
         var moveSubject = SubjectHelper.GetUpdateManageSubject(playerInfo.ObjectInfo, nextManageServer);
         _natsClient.Publish(moveSubject, MessagePackSerializer.Serialize((currentPartKey, objectInfo: playerInfo.ObjectInfo)));
-        if (GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId))
-        {
-            RequestSpawnInfo(playerInfo.ObjectInfo.MapId, cellsToRemove);
-        }
-
         if (moveRequest.Direction != DirectionType.NONE)
         {
             _mapObjectController.EnqueueUpdateObject(playerInfo.ObjectInfo);
@@ -205,55 +187,9 @@ public sealed class PlayerMovement(GameUser user, PlayerInfo playerInfo)
     
     private void RequestSpawnInfo(MapId targetMapId, List<Cell> cellsToRemove, bool isAll = false)
     {
-        if (!GameMapData.IsCommonMap(targetMapId))
-        {
-            var serverId = MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
-            var instanceKey = MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
-            RequestSpawnObjectList(serverId, [instanceKey], []);
-            return;
-        }
-
-        RequestCommonMapSpawnList(cellsToRemove, isAll);
-    }
-    
-    private void RequestCommonMapSpawnList(List<Cell> cellsToRemove, bool isAll)
-    {
-        var currentBoundCellList = isAll ? [] : playerInfo.ObjectInfo.CurrentCell.GetBoundCellList();
-        var targetBoundCellList = playerInfo.ObjectInfo.TargetCell.GetBoundCellList();
-
-        var objectSpawnList = targetBoundCellList
-            .Except(currentBoundCellList)
-            .Select(cell => MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, cell))
-            .GroupBy(
-                MapHelper.GetManageServerId,
-                (serverId, positionKeys) => new { serverId, positionKeyList = positionKeys.ToList() }
-            )
-            .Where(group => group.serverId > 0)
-            .ToList();
-
-        var removeCellsByServer = cellsToRemove
-            .GroupBy(
-                cell => MapHelper.GetManageServerId(MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, cell)),
-                (serverId, cells) => new { serverId, cells = cells.ToList() }
-            )
-            .Where(group => group.serverId > 0)
-            .ToList();
-
-        var allServers = objectSpawnList
-            .Select(x => x.serverId)
-            .Union(removeCellsByServer.Select(x => x.serverId))
-            .Distinct()
-            .ToList();
-
-        foreach (var serverId in allServers)
-        {
-            var spawnPositions = objectSpawnList
-                .FirstOrDefault(x => x.serverId == serverId)?.positionKeyList ?? [];
-            var removeCells = removeCellsByServer
-                .FirstOrDefault(x => x.serverId == serverId)?.cells ?? [];
-       
-            RequestSpawnObjectList(serverId, spawnPositions, removeCells);
-        }
+        var serverId = MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
+        var instanceKey = MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
+        RequestSpawnObjectList(serverId, [instanceKey], []);
     }
     
     // 최초 맵 입장 or 이동 시 새로운 영역에 대한 오브젝트 정보 요청
