@@ -10,7 +10,9 @@ using user_server.application.queries;
 using user_server.application.queries.handlers;
 using user_server.application.queries.player;
 using user_server.domain.repositories;
+using user_server.domain.factories;
 using user_server.infrastructure.events;
+using user_server.infrastructure.factories;
 using user_server.infrastructure.network;
 using user_server.infrastructure.repositories;
 using user_server.presentation.handlers;
@@ -34,6 +36,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(cacheHelper);
         services.AddSingleton(getSessionFunc);
 
+        // Register factories
+        services.AddFactories();
+
         // Register repositories
         services.AddRepositories();
 
@@ -49,6 +54,12 @@ public static class ServiceCollectionExtensions
         // Register presentation handlers
         services.AddPresentationHandlers();
 
+        return services;
+    }
+
+    private static IServiceCollection AddFactories(this IServiceCollection services)
+    {
+        services.AddSingleton<IPlayerFactory, PlayerFactory>();
         return services;
     }
 
