@@ -3,9 +3,7 @@
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
-using network.helpers;
 using network.interfaces;
-using network.managers;
 using network.packets;
 using user_server.players;
 
@@ -41,9 +39,8 @@ public class PlayerController
     private readonly PlayerProgress _playerProgress;
     private readonly PlayerCamp _playerCamp;
     private readonly PlayerMap _playerMap;
-    private readonly PlayerCraft _playerCraft;
     private readonly PlayerExplore _playerExplore;
-    public readonly PlayerInfo _playerInfo;
+    public readonly PlayerInfo PlayerInfo;
 
     public PlayerController(GameUser user, PlayerInfo playerInfo)
     {
@@ -56,29 +53,28 @@ public class PlayerController
         _broadcastTakeDamage = user.BroadcastTakeDamage;
         _broadcastDestroy = user.BroadcastObjectDestroy;
         
-        _playerInfo = playerInfo;
-        _playerInfo.ObjectInfo.CurrentCell = _playerInfo.ObjectInfo.TargetCell;
-        _playerInfo.State = PlayerState.IDLE;
+        PlayerInfo = playerInfo;
+        PlayerInfo.ObjectInfo.CurrentCell = PlayerInfo.ObjectInfo.TargetCell;
+        PlayerInfo.State = PlayerState.IDLE;
         
         _playerProgress = new PlayerProgress(user);
-        _playerQuest = new PlayerQuest(user, _playerInfo);
-        _playerInventory = new PlayerInventory(user, _playerInfo, _playerQuest);
-        _playerMailBox = new PlayerMailBox(user, _playerInfo);
-        _playerMovement = new PlayerMovement(user, _playerInfo);
-        _playerCamp = new PlayerCamp(user, _playerInfo);
-        _playerMap = new PlayerMap(user, _playerInfo);
-        _playerCraft = new PlayerCraft(user, playerInfo, _playerQuest, _playerInventory, _playerProgress);
+        _playerQuest = new PlayerQuest(user, PlayerInfo);
+        _playerInventory = new PlayerInventory(user, PlayerInfo, _playerQuest);
+        _playerMailBox = new PlayerMailBox(user, PlayerInfo);
+        _playerMovement = new PlayerMovement(user, PlayerInfo);
+        _playerCamp = new PlayerCamp(user, PlayerInfo);
+        _playerMap = new PlayerMap(user, PlayerInfo);
         _playerExplore = new PlayerExplore(user, playerInfo, _playerQuest, _playerInventory, _playerProgress);
     }
     
-    public long PlayerId => _playerInfo.PlayerId;
-    public string PlayerName => _playerInfo.Name;
-    public string ObjectKey => _playerInfo.ObjectInfo.GetGameObjectKey();
+    public long PlayerId => PlayerInfo.PlayerId;
+    public string PlayerName => PlayerInfo.Name;
+    public string ObjectKey => PlayerInfo.ObjectInfo.GetGameObjectKey();
     
     public (MapId, long, Cell, bool) CurrentMapInfo => _playerMap.CurrentMapInfo;
     public (MapId, Cell) LastMapInfo => _playerMap.LastMapInfo;
     
-    public bool IsInvalidAction(Protocol protocolId) => ActionProtocol.Contains(protocolId) && ActionState.Contains(_playerInfo.State);
+    public bool IsInvalidAction(Protocol protocolId) => ActionProtocol.Contains(protocolId) && ActionState.Contains(PlayerInfo.State);
     public async Task RequestMove(C_TO_U_MOVE body) => await _playerMovement.HandleMove(body);
     public async Task Wear(C_TO_U_WEAR_ITEM body) => await _playerInventory.RequestWearItem(body);
     public async Task Use(C_TO_U_USE_ITEM body) => await _playerInventory.RequestUseItem(body);
@@ -87,8 +83,6 @@ public class PlayerController
     public void SendCurrentItems() => _playerInventory.SendCurrentItems();
     public async Task SendCurrentMails() => await _playerMailBox.SendCurrentMails();
     public void SendCurrentQuests() => _playerQuest.SendCurrentQuests();
-    public async Task Encamp(C_TO_U_ENCAMP body) => await _playerCamp.Encamp(body);
-    public async Task Decamp() => await _playerCamp.Decamp();
     public async Task PutItem(C_TO_U_ITEM_PUT body) => await _playerCamp.PutItem(body);
     public async Task IncreaseQuestCount(C_TO_U_QUEST_INCREASE body) => await _playerQuest.IncreaseQuestCount(body);
     public async Task CompleteQuest(C_TO_U_QUEST_SUCCESS body) => await _playerQuest.CompleteQuest(body);
@@ -96,9 +90,6 @@ public class PlayerController
     public async Task ChangeMap(C_TO_U_CHANGE_MAP body) => await _playerMap.ChangeMap(body);
     public async Task EnterMap(MapId mapId, Cell spawnPosition, bool isFlip, bool isLogin) => await _playerMap.EnterMap(mapId, spawnPosition, isFlip, isLogin);
     public async Task EnterCamp(long mapSubId) => await _playerMap.EnterCamp(mapSubId);
-    public async Task Craft(C_TO_U_CRAFT body) => await _playerCraft.Craft(body);
-    public async Task PutMaterial(C_TO_U_PUT_MATERIAL body) => await _playerCraft.PutMaterial(body);
-    public async Task HandleCraft(C_TO_U_HANDLE_CRAFT body) =>  await _playerCraft.HandleCraft(body);
     public async Task Explore(C_TO_U_EXPLORE body) => await _playerExplore.Explore(body);
     public async Task Spawn() => await _playerMovement.Spawn();
 
@@ -107,13 +98,13 @@ public class PlayerController
         switch (body.SocialActionType)
         {
             case SocialActionType.SITGROUND:
-                _playerInfo.State = _playerInfo.State == PlayerState.IDLE ? PlayerState.SITGROUND : PlayerState.IDLE;
-                await _playerInfo.Save(_cacheHelper);
-                _broadcastPlayerInfo(_playerInfo);
+                PlayerInfo.State = PlayerInfo.State == PlayerState.IDLE ? PlayerState.SITGROUND : PlayerState.IDLE;
+                await PlayerInfo.Save(_cacheHelper);
+                _broadcastPlayerInfo(PlayerInfo);
                 break;
 
             default:
-                _broadcastSocialAction(_playerInfo, body.SocialActionType);
+                _broadcastSocialAction(PlayerInfo, body.SocialActionType);
                 break;
         }
     }
@@ -121,17 +112,17 @@ public class PlayerController
     public async Task SubscribeEnvironment(G_TO_U_ENVIRONMENT body)
     {
         const int damage = 2000;
-        if (_playerInfo.PlayerId > 1000)
+        if (PlayerInfo.PlayerId > 1000)
         {
             return;
         }
         
-        if (_playerInfo.State == PlayerState.SLEEP)
+        if (PlayerInfo.State == PlayerState.SLEEP)
         {
             return;
         }
 
-        if (_playerInfo.QuestDiary.QuestDict.TryGetValue(100000007, out var questInfo))
+        if (PlayerInfo.QuestDiary.QuestDict.TryGetValue(100000007, out var questInfo))
         {
             if (questInfo.State != QuestState.END)
             {
@@ -139,38 +130,37 @@ public class PlayerController
             }
         }
 
-        if (_playerInfo.WearItemIdList.Contains(107000001))
+        if (PlayerInfo.WearItemIdList.Contains(107000001))
         {
             return;
         }
         
-        _playerInfo.Hp = Math.Max(0, _playerInfo.Hp - damage);
-        if (_playerInfo.Hp <= 0)
+        PlayerInfo.Hp = Math.Max(0, PlayerInfo.Hp - damage);
+        if (PlayerInfo.Hp <= 0)
         {
-            _playerInfo.State = PlayerState.SLEEP;
+            PlayerInfo.State = PlayerState.SLEEP;
         }
 
-        await _playerInfo.Save(_cacheHelper);
+        await PlayerInfo.Save(_cacheHelper);
         
-        _broadcastPlayerInfo(_playerInfo);
-        _broadcastTakeDamage(_playerInfo, DamageType.DARK, damage);
+        _broadcastPlayerInfo(PlayerInfo);
+        _broadcastTakeDamage(PlayerInfo, DamageType.DARK, damage);
     }
 
     public async Task SetName(C_TO_U_SET_NAME body)
     {
-        _playerInfo.Name = body.Name;
-        await _playerInfo.Save(_cacheHelper);
+        PlayerInfo.Name = body.Name;
+        await PlayerInfo.Save(_cacheHelper);
         
-        using var packet = PacketMaker.U_TO_C_SET_NAME(ErrorCode.SUCCESS, _playerInfo);
+        using var packet = PacketMaker.U_TO_C_SET_NAME(ErrorCode.SUCCESS, PlayerInfo);
         _sendToClient(packet);
-        _broadcastPlayerInfo(_playerInfo);
+        _broadcastPlayerInfo(PlayerInfo);
     }
 
     public async Task Dispose()
     {
-        _broadcastDestroy(_playerInfo.ObjectInfo);
-        await _playerInfo.Save(_cacheHelper);
-        await _playerCamp.Decamp();
+        _broadcastDestroy(PlayerInfo.ObjectInfo);
+        await PlayerInfo.Save(_cacheHelper);
         _playerMovement.Dispose();
         _playerProgress.Dispose();
     }

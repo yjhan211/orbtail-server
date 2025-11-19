@@ -30,103 +30,86 @@ public static class SubjectHelper
 
     public static string GetUpdateManageSubject(GameObjectInfo objectInfo, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(objectInfo.MapId) ? 0 : objectInfo.MapSubId;
-        return BuildSubject(UpdateObject, objectInfo.MapId, convertMapSubId, serverId);
+        return BuildSubject(UpdateObject, objectInfo.MapId, objectInfo.MapSubId, serverId);
     }
 
     public static string GetUpdateManageSubject(MapId mapId, long mapSubId, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
-        return BuildSubject(UpdateObject, mapId, convertMapSubId, serverId);
+        return BuildSubject(UpdateObject, mapId, mapSubId, serverId);
     }
 
     public static string GetLeaveManageSubject(GameObjectInfo objectInfo, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(objectInfo.MapId) ? 0 : objectInfo.MapSubId;
-        return BuildSubject(LeaveObject, objectInfo.MapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(objectInfo, serverId);
     }
 
     public static string GetLeaveManageSubject(MapId mapId, long mapSubId, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
-        return BuildSubject(LeaveObject, mapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(mapId, mapSubId, serverId);
     }
 
     public static string GetSpawnManageSubject(GameObjectInfo objectInfo, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(objectInfo.MapId) ? 0 : objectInfo.MapSubId;
-        return BuildSubject(SpawnObject, objectInfo.MapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(objectInfo, serverId);
     }
 
     public static string GetSpawnManageSubject(MapId mapId, long mapSubId, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
-        return BuildSubject(SpawnObject, mapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(mapId, mapSubId, serverId);
     }
 
     public static string GetDestroyObjectSubject(GameObjectInfo objectInfo, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(objectInfo.MapId) ? 0 : objectInfo.MapSubId;
-        return BuildSubject(DestroyObject, objectInfo.MapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(objectInfo, serverId);
     }
 
     public static string GetDestroyObjectSubject(MapId mapId, long mapSubId, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
-        return BuildSubject(DestroyObject, mapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(mapId, mapSubId, serverId);
     }
 
     public static string GetUpdateInfoSubject(MapId mapId, long mapSubId, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
-        return BuildSubject(UpdateInfo, mapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(mapId, mapSubId, serverId);
     }
 
     public static string GetUpdateInfoSubject(GameObjectInfo objectInfo, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(objectInfo.MapId) ? 0 : objectInfo.MapSubId;
-        return BuildSubject(UpdateInfo, objectInfo.MapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(objectInfo, serverId);
     }
     
     public static string GetSocialActionSubject(MapId mapId, long mapSubId, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
-        return BuildSubject(SocialAction, mapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(mapId, mapSubId, serverId);
     }
     
     public static string GetSocialActionSubject(GameObjectInfo objectInfo, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(objectInfo.MapId) ? 0 : objectInfo.MapSubId;
-        return BuildSubject(SocialAction, objectInfo.MapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(objectInfo, serverId);
     }
     
     public static string GetTakeDamageSubject(MapId mapId, long mapSubId, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
-        return BuildSubject(TakeDamage, mapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(mapId, mapSubId, serverId);
     }
 
     public static string GetTakeDamageSubject(GameObjectInfo objectInfo, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(objectInfo.MapId) ? 0 : objectInfo.MapSubId;
-        return BuildSubject(TakeDamage, objectInfo.MapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(objectInfo, serverId);
     }
 
     public static string GetCreateJobResourceSubject(MapId mapId, long mapSubId, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
-        return BuildSubject(CreateJobResource, mapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(mapId, mapSubId, serverId);
     }
 
     public static string GetBroadcastUpdateSubject(MapId mapId, long mapSubId, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
-        return BuildSubject(BroadcastUpdate, mapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(mapId, mapSubId, serverId);
     }
 
     public static string GetBroadcastDestroySubject(MapId mapId, long mapSubId, int serverId)
     {
-        var convertMapSubId = GameMapData.IsCommonMap(mapId) ? 0 : mapSubId;
-        return BuildSubject(BroadcastDestroy, mapId, convertMapSubId, serverId);
+        return GetUpdateManageSubject(mapId, mapSubId, serverId);
     }
 }

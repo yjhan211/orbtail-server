@@ -22,7 +22,6 @@ public class GameServer : IHostedService
     private readonly ICacheHelper _cacheHelper;
     private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
     
-    private readonly List<CommonMapController> _commonMapControllerList = [];
     private readonly List<InstanceMapController> _instanceControllerList = [];
     private CancellationTokenSource _cts = new();
     private IAsyncDisposable? _messageProcessor;
@@ -77,7 +76,6 @@ public class GameServer : IHostedService
         await _cts.CancelAsync();
         if (_messageProcessor != null) await _messageProcessor.DisposeAsync();
 
-        await Task.WhenAll(_commonMapControllerList.Select(c => c.ShutdownAsync()));
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
         _cts.Dispose();
@@ -103,13 +101,6 @@ public class GameServer : IHostedService
 
     private void InitializeControllers()
     {
-        foreach (var mapId in GameMapData.GetCommonMapList())
-        {
-            var controller = new CommonMapController(_logger, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig, mapId);
-            controller.Initialize();
-            _commonMapControllerList.Add(controller);
-        }
-
         var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);

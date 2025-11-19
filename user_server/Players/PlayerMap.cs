@@ -99,21 +99,11 @@ public class PlayerMap(GameUser user, PlayerInfo playerInfo)
     public async Task EnterMap(MapId mapId, Cell spawnPosition, bool isFlip, bool isLogin)
     {
         playerInfo.ObjectInfo.MapId = mapId;
-        playerInfo.ObjectInfo.MapSubId = GameMapData.IsCommonMap(mapId) ? 0 : GetInstanceMapSubId();
+        playerInfo.ObjectInfo.MapSubId =  GetInstanceMapSubId();
         playerInfo.ObjectInfo.CurrentCell = spawnPosition;
         playerInfo.ObjectInfo.TargetCell = spawnPosition;
         playerInfo.ObjectInfo.IsFlip = isFlip;
         await playerInfo.ObjectInfo.Save(_cacheHelper);
-
-        if (GameMapData.IsCommonMap(playerInfo.ObjectInfo.MapId))
-        {
-            if (!isLogin)
-            {
-                using var packet = PacketMaker.U_TO_C_CHANGE_MAP_SUCCESS(playerInfo.LastMapId, playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip);
-                _sendToClient(packet);
-            }
-            return;
-        }
 
         var serverId = MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
         var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
