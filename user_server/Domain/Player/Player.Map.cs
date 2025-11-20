@@ -9,9 +9,9 @@ namespace user_server.domain.player;
 /// </summary>
 public partial class Player
 {
-    public async Task ChangeMap(C_TO_U_CHANGE_MAP body)
+    public async Task ChangeMap(MapId mapId)
     {
-        await _mapManager.ChangeMap(body);
+        await _mapManager.ChangeMap(mapId);
     }
 
     public async Task EnterMap(MapId mapId, Cell spawnPosition, bool isFlip, bool isLogin)

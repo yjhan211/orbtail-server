@@ -124,7 +124,7 @@ public class PlayerCommandHandler :
         var session = _getSession(command.PlayerId);
         if (session?.Player == null) return;
 
-        await session.Player.ChangeMap(command.MapData);
+        await session.Player.ChangeMap(command.MapData.MapId);
     }
 
     public async Task HandleAsync(EnterMapCommand command)

@@ -203,10 +203,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_CHANGE_MAP(ErrorCode errorCode)
+    public static Packet U_TO_C_CHANGE_MAP(ErrorCode errorCode, MapId mapId)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CHANGE_MAP);
-        U_TO_C_CHANGE_MAP body = new() { ErrorCode = errorCode };
+        U_TO_C_CHANGE_MAP body = new() { ErrorCode = errorCode, MapId = mapId};
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

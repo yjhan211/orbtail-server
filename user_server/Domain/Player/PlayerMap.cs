@@ -25,76 +25,21 @@ public class PlayerMap(GameSession user, PlayerInfo playerInfo)
     public (MapId, Cell) LastMapInfo => 
         (playerInfo.LastMapId, playerInfo.LastCell);
 
-    public async Task ChangeMap(C_TO_U_CHANGE_MAP body)
+    public async Task ChangeMap(MapId mapId)
     {
-        if (body.MapId == MapId.Camp)
-        {
-            playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
-            playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
-            playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
-            await playerInfo.Save(_cacheHelper);
-            
-            var serverId = MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
-            var subject = SubjectHelper.GetEnterInstanceSubject(serverId);
-            var publishObj = MessagePackSerializer.Serialize((playerInfo.ObjectInfo.GetGameObjectKey(), body.MapId, body.MapSubId, false));
-            _natsClient.Publish(subject, publishObj);
-            
-            using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
-            _sendToClient(packet);
-            return;
-        }
-        
-        // TODO 매칭
-        // if (playerInfo.ObjectInfo.MapId == MapId.Camp)
-        // {
-        //     playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
-        //     playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
-        //     playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
-        //     
-        //     user.BroadcastObjectDestroy(playerInfo.ObjectInfo);
-        //     await EnterMap(playerInfo.CampInfo.ObjectInfo.MapId, playerInfo.CampInfo.ObjectInfo.CurrentCell, false, false);
-        //     await playerInfo.Save(_cacheHelper);
-        //     
-        //     using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
-        //     _sendToClient(packet);
-        //     return;
-        // }
-
-        var changeMapInfo = GameMapData.GetPortalOrNull(playerInfo.ObjectInfo, playerInfo.IsTutorial);
-        if (playerInfo.State != PlayerState.SLEEP)
-        {
-            if (changeMapInfo == null)
-            {
-                using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
-                _sendToClient(packet);
-                return;
-            }
-        
-            if (playerInfo.IsTutorial && !IsAbleChangeMap(playerInfo.ObjectInfo.MapId, changeMapInfo.Value.mapId))
-            {
-                using var packet = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.FATAL);
-                _sendToClient(packet);
-                return;
-            }
-        }
-        else
-        {
-            playerInfo.State = PlayerState.IDLE;
-            playerInfo.Hp = 1000;
-            // changeMapInfo = (MapId.TutorialLibrary, new Cell(92, 99), false);
-        }
-        
         playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
         playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
         playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
-        
-        using var packet2 = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS);
+
+        using var packet2 = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS, mapId);
         _sendToClient(packet2);
-        
+
         // 기존 맵에 삭제 요청
         user.BroadcastObjectDestroy(playerInfo.ObjectInfo);
-        // await PublishDestroy();
-        await EnterMap(changeMapInfo.Value.mapId, changeMapInfo.Value.spawnPosition, changeMapInfo.Value.isFlip, false);
+
+        var changeMapInfo = GameMapData.GetMapInfo(mapId);
+        var (spawnPosition, isFlip) = changeMapInfo.GetInitialPosition(playerInfo.ObjectInfo.MapId);
+        await EnterMap(mapId, spawnPosition, isFlip, false);
         await playerInfo.Save(_cacheHelper);
     }
     
