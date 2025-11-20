@@ -3,17 +3,18 @@
 #pragma warning disable CS8625 // Null 리터럴을 null을 허용하지 않는 참조 형식으로 변환할 수 없습니다.
 #pragma warning disable CS8603 // 가능한 null 참조 반환입니다.
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using network.common.data.helpers;
 using network.managers;
-using UnityEngine;
 
 namespace network.common.data
 {
     public static class GameLoadingTextData
     {
         private static List<string> _loadingTexts;
+        private static readonly Random _random = new Random();
 
         public static void Initialize(List<CsvRow> csvData)
         {
@@ -35,18 +36,15 @@ namespace network.common.data
         {
             if (_loadingTexts == null)
             {
-                Debug.LogError("[GameLoadingTextData] _loadingTexts is null! Data not initialized.");
-                return "로딩 중...";
+                return "당신의 눈이 당신을 속이기 시작했다면,\n그것은 시스템 오류가 아닙니다.";
             }
 
             if (_loadingTexts.Count == 0)
             {
-                Debug.LogError("[GameLoadingTextData] _loadingTexts is empty!");
-                return "로딩 중...";
+                return "당신의 눈이 당신을 속이기 시작했다면,\n그것은 시스템 오류가 아닙니다.";
             }
 
-            var randomIndex = Random.Range(0, _loadingTexts.Count);
-            Debug.Log($"[GameLoadingTextData] Total texts: {_loadingTexts.Count}, Selected index: {randomIndex}");
+            var randomIndex = _random.Next(0, _loadingTexts.Count);
             return _loadingTexts[randomIndex];
         }
 
