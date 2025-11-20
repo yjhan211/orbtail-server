@@ -19,6 +19,7 @@ namespace network.common.data.helpers
             public const string MailInfo = "mail_info.csv";
             public const string ExploreTargetInfo = "explore_target_info.csv";
             public const string CraftInfo = "craft_info.csv";
+            public const string LoadingText = "loading_text.csv";
 
             public static class Item
             {
@@ -43,7 +44,7 @@ namespace network.common.data.helpers
         
         private static readonly string NetworkPath = Path.GetDirectoryName(typeof(GameDataHelper).Assembly.Location)!;
         private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
-            StandardDataDefinitions = 
+            StandardDataDefinitions =
             {
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
                 (fileName: DataFiles.BuffInfo, init: GameBuffData.Initialize, validate: GameBuffData.Validate),
@@ -51,6 +52,7 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.MailInfo, init: GameMailData.Initialize, validate: GameMailData.Validate),
                 (fileName: DataFiles.ExploreTargetInfo, init: GameExploreTargetData.Initialize, GameExploreTargetData.Validate),
                 (fileName: DataFiles.CraftInfo, init: GameCraftData.Initialize, GameCraftData.Validate),
+                (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize, validate: GameLoadingTextData.Validate),
             };
 
         private static string GetCsvFilePath(string fileName)
