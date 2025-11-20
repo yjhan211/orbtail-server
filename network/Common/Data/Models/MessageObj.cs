@@ -240,6 +240,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class U_TO_C_CHANGE_MAP : IMessagePackObject
     {
+        // TODO 맵이름
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
     }
 
