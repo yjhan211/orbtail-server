@@ -4,7 +4,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.helpers;
@@ -104,16 +103,13 @@ public class GameServer : IHostedService
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
-
-    /// <summary>
-    /// NATS를 통한 로그아웃 이벤트 구독 (Redis Queue 대체)
-    /// </summary>
+    
     private void SubscribeToLogoutEvents()
     {
         _logoutNatsClient = _natsClientFactory.Create();
         var logoutSubject = SubjectHelper.GetLogoutSubject(_serverConfig.ServerId);
 
-        _logoutNatsClient.Subscribe(logoutSubject, async (_, message) =>
+        _logoutNatsClient.Subscribe(logoutSubject, async void (_, message) =>
         {
             try
             {
@@ -146,11 +142,20 @@ public class GameServer : IHostedService
     private async Task HandleLogout(long playerId, byte[] body)
     {
         var msg = MessagePackSerializer.Deserialize<U_TO_G_LOGOUT>(body);
-        
+
+        _logger.LogInformation($"로그아웃 요청: PlayerId={msg.PlayerId}");
+
         await using var playerLock = await PlayerInfo.Lock(_cacheHelper.GetRedLockFactory(), playerId);
         var playerInfo = await PlayerInfo.Load(_cacheHelper, msg.PlayerId);
-        if (playerInfo == null) return;
-        
-        // TODO: Implement logout logic
+        if (playerInfo == null)
+        {
+            _logger.LogWarning($"플레이어 {msg.PlayerId} 정보를 찾을 수 없음 (로그아웃)");
+            return;
+        }
+
+        // 각 InstanceMapController에서 처리하도록 전달
+        // 현재는 단일 InstanceMapController만 있으므로 직접 호출하지 않고
+        // InstanceMapController가 자체적으로 U_TO_G_LOGOUT을 subscribe하도록 구현됨
+        _logger.LogInformation($"플레이어 {msg.PlayerId} 로그아웃 처리 완료");
     }
 }

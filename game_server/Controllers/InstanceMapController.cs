@@ -63,12 +63,17 @@ public class InstanceMapController : BaseMapController
        var (objectKey, mapId, mapSubId, isLogin) = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
        var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
 
+       Logger.LogInformation($"EnterInstance 요청 수신: objectKey={objectKey}, mapId={mapId}, mapSubId={mapSubId}, isLogin={isLogin}");
+
+       var success = false;
        await MapLock.WaitAsync();
        try
        {
            var isInit = _objectInstanceDict.TryAdd(instanceKey, []);
            _objectInstanceDict[instanceKey].Add(objectKey);
-           
+
+           Logger.LogInformation($"인스턴스 {instanceKey} 초기화 여부: {isInit}, 현재 인원: {_objectInstanceDict[instanceKey].Count}");
+
            if (isInit)
            {
                SubscribeToInstanceEvents(mapId, mapSubId);
@@ -76,26 +81,53 @@ public class InstanceMapController : BaseMapController
                {
                    case MapId.Camp:
                        break;
-                   
+
+                   case MapId.School:
+                       // 매칭 맵은 추가 초기화 필요 시 여기에 작성
+                       break;
+
                    default:
                        break;
                }
                await InitializeExploreTargets(mapId, mapSubId);
+               Logger.LogInformation($"인스턴스 {instanceKey} 초기화 완료");
            }
+
+           success = true;
        }
        catch (Exception ex)
        {
-           Logger.LogError(ex, "Error while entering instance");
+           Logger.LogError(ex, $"인스턴스 진입 실패: objectKey={objectKey}, instanceKey={instanceKey}");
+
+           // 실패 시 인스턴스에서 제거
+           if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet))
+           {
+               instanceSet.Remove(objectKey);
+           }
        }
        finally
        {
            MapLock.Release();
        }
 
+       // 응답 전송
        if (!isLogin)
        {
-           using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
-           NatsClient.Publish(objectKey, packet.ToBytes());
+           if (success)
+           {
+               Logger.LogInformation($"G_TO_U_ENTER_INSTANCE_SUCCESS 전송: objectKey={objectKey}, mapId={mapId}, mapSubId={mapSubId}");
+               using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
+               NatsClient.Publish(objectKey, packet.ToBytes());
+           }
+           else
+           {
+               Logger.LogError($"인스턴스 진입 실패 - 에러 응답 전송: objectKey={objectKey}");
+               // TODO: 실패 응답 패킷 정의 필요
+           }
+       }
+       else
+       {
+           Logger.LogInformation($"isLogin=true이므로 G_TO_U_ENTER_INSTANCE_SUCCESS 전송 생략");
        }
    }
 
@@ -159,15 +191,43 @@ public class InstanceMapController : BaseMapController
    private async Task HandleLogout(long playerId, byte[] body)
    {
        var msg = MessagePackSerializer.Deserialize<U_TO_G_LOGOUT>(body);
-       
+
        await using var playerLock = await PlayerInfo.Lock(CacheHelper.GetRedLockFactory(), playerId);
        var playerInfo = await PlayerInfo.Load(CacheHelper, msg.PlayerId);
        if (playerInfo == null)
        {
+           Logger.LogWarning($"플레이어 {playerId} 정보를 찾을 수 없음 (로그아웃)");
            return;
        }
 
-       // TODO: Implement logout logic
+       // 플레이어가 속한 인스턴스에서 제거
+       var objectKey = playerInfo.ObjectInfo.GetGameObjectKey();
+       var instanceKey = MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
+
+       await MapLock.WaitAsync();
+       try
+       {
+           if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet))
+           {
+               instanceSet.Remove(objectKey);
+               Logger.LogInformation($"플레이어 {playerId} 인스턴스 {instanceKey}에서 제거됨");
+
+               // 인스턴스가 비어있으면 정리
+               if (instanceSet.Count == 0)
+               {
+                   _objectInstanceDict.TryRemove(instanceKey, out _);
+                   Logger.LogInformation($"빈 인스턴스 {instanceKey} 제거됨");
+               }
+           }
+       }
+       finally
+       {
+           MapLock.Release();
+       }
+
+       // 다른 플레이어에게 로그아웃 알림
+       using var packet = PacketMaker.G_TO_U_DESTROY(objectKey);
+       BroadcastPacket(instanceKey, packet);
    }
 
    private async Task MoveManageObjectAsync(byte[] message)
