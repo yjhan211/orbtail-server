@@ -76,7 +76,6 @@ internal static partial class Program
         services.AddSingleton<NatsClientFactory>();
         services.AddSingleton<INatsClientFactory, NatsClientFactory>();
     
-        // LogManager 등록 방법 변경
         services.AddSingleton<LogManager>(sp => 
             new LogManager(
                 serverConfig.ServerType, 
