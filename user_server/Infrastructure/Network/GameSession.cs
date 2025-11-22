@@ -24,6 +24,7 @@ public class GameSession : IPeer
     private readonly UserToken _token;
     private readonly SemaphoreSlim _userLock;
     private readonly Action<GameSession> _onLeaveCallback;
+    private readonly Action<long, GameSession>? _onRegisterCallback;
     private readonly IProtocolRouter _protocolRouter;
     private readonly IProtocolRouter _subscribeRouter;
 
@@ -41,7 +42,7 @@ public class GameSession : IPeer
     private readonly IServerConfig _serverConfig;
 
 
-    public GameSession(UserToken token, IRedLockFactory redLock, INatsClient natsClient, ILogger logger, ICacheHelper cacheHelper, Action<GameSession> onLeaveCallback, ChatController chatController, MatchingManager? matchingManager, IServerConfig serverConfig)
+    public GameSession(UserToken token, IRedLockFactory redLock, INatsClient natsClient, ILogger logger, ICacheHelper cacheHelper, Action<GameSession> onLeaveCallback, ChatController chatController, MatchingManager? matchingManager, IServerConfig serverConfig, Action<long, GameSession>? onRegisterCallback = null)
     {
         _token = token;
         _token.SetPeer(this);
@@ -54,6 +55,7 @@ public class GameSession : IPeer
         Logger = logger;
 
         _onLeaveCallback = onLeaveCallback;
+        _onRegisterCallback = onRegisterCallback;
         ChatController = chatController;
         MapObjectController = new MapObjectController(this);
         _matchingManager = matchingManager;
@@ -107,7 +109,6 @@ public class GameSession : IPeer
         _subscribeRouter.RegisterHandler(Protocol.U_TO_U_DUPLICATE, _ => { ReceiveDuplicate(); return Task.CompletedTask; });
         _subscribeRouter.RegisterHandler(Protocol.G_TO_U_ENVIRONMENT, bytes => Player == null ? Task.CompletedTask : HandleMessage<G_TO_U_ENVIRONMENT>(bytes, Player.SubscribeEnvironment));
         _subscribeRouter.RegisterHandler(Protocol.G_TO_U_TAKE_DAMAGE, bytes => HandleMessage<G_TO_U_TAKE_DAMAGE>(bytes, SubscribeTakeDamage));
-        _subscribeRouter.RegisterHandler(Protocol.U_TO_C_MATCHING_SUCCESS, bytes => HandleMessage<U_TO_C_MATCHING_SUCCESS>(bytes, SubscribeMatchingSuccess));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -291,7 +292,10 @@ public class GameSession : IPeer
         
         SubscribeHandler(playerInfo.ObjectInfo.GetGameObjectKey(), OnMessageFromSubscribe);
         SubscribeHandler(GlobalSubscribeChannel, OnMessageFromSubscribe);
-        
+
+        // UserServer에 세션 등록
+        _onRegisterCallback?.Invoke(playerInfo.PlayerId, this);
+
         using var loginPacket = PacketMaker.U_TO_C_LOGIN(playerInfo);
         Send(loginPacket);
 
@@ -618,13 +622,6 @@ public class GameSession : IPeer
         return Task.CompletedTask;
     }
 
-    private Task SubscribeMatchingSuccess(U_TO_C_MATCHING_SUCCESS body)
-    {
-        using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(body.MatchingId, body.MapId, body.MapSubId, body.SpawnPosition);
-        Send(packet);
-
-        return Task.CompletedTask;
-    }
 
     private void BroadcastToMap<T>(GameObjectInfo objectInfo, T payload, Func<GameObjectInfo, int, string> getSubject)
     {

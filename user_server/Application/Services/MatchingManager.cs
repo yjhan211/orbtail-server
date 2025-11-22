@@ -16,16 +16,18 @@ public class MatchingManager
     private readonly ILogger _logger;
     private readonly ICacheHelper _cacheHelper;
     private readonly INatsClient _natsClient;
+    private readonly Func<long, GameSession?> _getSession;
     private readonly Timer _matchingTimer;
     private const string MatchingQueueKey = "matching_queue";
     private const string MatchingIdKey = "matching_id";
     private const int MatchingTimeoutSeconds = 5;
 
-    public MatchingManager(ILogger logger, ICacheHelper cacheHelper, INatsClient natsClient)
+    public MatchingManager(ILogger logger, ICacheHelper cacheHelper, INatsClient natsClient, Func<long, GameSession?> getSession)
     {
         _logger = logger;
         _cacheHelper = cacheHelper;
         _natsClient = natsClient;
+        _getSession = getSession;
 
         // 매칭 타이머: 1초마다 큐 체크
         _matchingTimer = new Timer(ProcessMatchingQueue, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
@@ -119,17 +121,28 @@ public class MatchingManager
 
             _logger.LogInformation($"매칭 성공! matching_id: {matchingId}, 참가자: {entries.Length}명");
 
-            // 각 플레이어에게 매칭 성공 알림
-            var mapSubId = matchingId;
-            var spawnPosition = new Cell(50, 50); // TODO: 적절한 스폰 위치로 변경
-
+            // 각 플레이어에게 맵 변경 처리
             foreach (var entry in entries)
             {
                 var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
+                _logger.LogInformation($"플레이어 {data.PlayerId} 처리 중...");
 
-                // 매칭 성공 패킷 전송
-                using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(matchingId, MapId.School, mapSubId, spawnPosition);
-                _natsClient.Publish(data.UserChannel, packet.ToBytes());
+                var session = _getSession(data.PlayerId);
+                _logger.LogInformation($"세션 조회 결과: {(session != null ? "있음" : "없음")}");
+
+                if (session?.Player != null)
+                {
+                    _logger.LogInformation($"플레이어 {data.PlayerId} 매칭 성공 - 맵 변경 시작");
+
+                    // 맵 변경 (U_TO_C_CHANGE_MAP 자동 전송)
+                    await session.Player.ChangeMap(MapId.School);
+
+                    _logger.LogInformation($"플레이어 {data.PlayerId} ChangeMap 호출 완료");
+                }
+                else
+                {
+                    _logger.LogWarning($"플레이어 {data.PlayerId} 세션 또는 Player가 null (session: {session != null}, Player: {session?.Player != null})");
+                }
 
                 // 큐에서 제거
                 await _cacheHelper.SortedSetRemoveAsync(MatchingQueueKey, entry);

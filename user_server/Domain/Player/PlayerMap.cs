@@ -27,18 +27,35 @@ public class PlayerMap(GameSession user, PlayerInfo playerInfo)
 
     public async Task ChangeMap(MapId mapId)
     {
+        _logger.LogInformation($"ChangeMap 시작: PlayerId={playerInfo.PlayerId}, CurrentMap={playerInfo.ObjectInfo.MapId}, TargetMap={mapId}");
+
         playerInfo.LastMapId = playerInfo.ObjectInfo.MapId;
         playerInfo.LastMapSubId = playerInfo.ObjectInfo.MapSubId;
         playerInfo.LastCell = playerInfo.ObjectInfo.CurrentCell.Clone();
 
         using var packet2 = PacketMaker.U_TO_C_CHANGE_MAP(ErrorCode.SUCCESS, mapId);
         _sendToClient(packet2);
+        _logger.LogInformation($"U_TO_C_CHANGE_MAP 전송 완료: PlayerId={playerInfo.PlayerId}, MapId={mapId}");
 
         // 기존 맵에 삭제 요청
         user.BroadcastObjectDestroy(playerInfo.ObjectInfo);
 
         var changeMapInfo = GameMapData.GetMapInfo(mapId);
-        var (spawnPosition, isFlip) = changeMapInfo.GetInitialPosition(playerInfo.ObjectInfo.MapId);
+        Cell spawnPosition;
+        bool isFlip;
+
+        try
+        {
+            (spawnPosition, isFlip) = changeMapInfo.GetInitialPosition(playerInfo.ObjectInfo.MapId);
+        }
+        catch (InvalidOperationException)
+        {
+            // InitCells가 비어있는 경우 기본값 사용
+            _logger.LogWarning($"맵 {mapId}의 InitCells가 비어있음. 기본 위치 사용");
+            spawnPosition = new Cell(50, 50);
+            isFlip = false;
+        }
+
         await EnterMap(mapId, spawnPosition, isFlip, false);
         await playerInfo.Save(_cacheHelper);
     }

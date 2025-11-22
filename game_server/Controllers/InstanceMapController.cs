@@ -89,7 +89,7 @@ public class InstanceMapController : BaseMapController
                    default:
                        break;
                }
-               await InitializeExploreTargets(mapId, mapSubId);
+               // await InitializeExploreTargets(mapId, mapSubId);
                Logger.LogInformation($"인스턴스 {instanceKey} 초기화 완료");
            }
 

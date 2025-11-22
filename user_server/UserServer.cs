@@ -26,6 +26,7 @@ public class UserServer(
     private Task? _leaveUserTask;
     private readonly ChatController _chatController = new(cacheHelper);
     private readonly ConcurrentQueue<GameSession> _leaveUserQueue = new();
+    private readonly ConcurrentDictionary<long, GameSession> _sessions = new();
     private MatchingManager? _matchingManager;
 
     public Task StartAsync(CancellationToken ct)
@@ -78,7 +79,7 @@ public class UserServer(
 
             // Initialize MatchingManager
             var matchingNatsClient = natsClientFactory.Create();
-            _matchingManager = new MatchingManager(logger, cacheHelper, matchingNatsClient);
+            _matchingManager = new MatchingManager(logger, cacheHelper, matchingNatsClient, GetSession);
             logger.LogInformation("MatchingManager initialized successfully");
         }
         catch (Exception ex)
@@ -100,13 +101,34 @@ public class UserServer(
         {
             var redLockFactory = redisPool.GetRedLockFactory();
             var natsClient = natsClientFactory.Create();
-            _ = new GameSession(token, redLockFactory, natsClient, logger, cacheHelper, EnqueueUserLeave,
-                _chatController, _matchingManager, serverConfig);
+            var session = new GameSession(token, redLockFactory, natsClient, logger, cacheHelper, OnSessionLeave,
+                _chatController, _matchingManager, serverConfig, RegisterSession);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to create nats client");
         }
+    }
+
+    private void OnSessionLeave(GameSession session)
+    {
+        if (session.Player != null)
+        {
+            _sessions.TryRemove(session.Player.PlayerId, out _);
+        }
+        EnqueueUserLeave(session);
+    }
+
+    private GameSession? GetSession(long playerId)
+    {
+        _sessions.TryGetValue(playerId, out var session);
+        return session;
+    }
+
+    public void RegisterSession(long playerId, GameSession session)
+    {
+        var added = _sessions.TryAdd(playerId, session);
+        logger.LogInformation($"세션 등록: PlayerId={playerId}, 성공={added}, 총 세션 수={_sessions.Count}");
     }
 
     private async Task LeaveUser(CancellationToken ct)

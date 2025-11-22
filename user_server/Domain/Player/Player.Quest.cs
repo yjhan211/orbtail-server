@@ -29,3 +29,4 @@ public partial class Player
         _questManager.SendCurrentQuests();
     }
 }
+
