@@ -383,7 +383,7 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId, MapId mapId, long mapSubId, Cell spawnPosition)
+    public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId, MapId mapId, long mapSubId, Cell spawnPosition, string gameServerIp, int gameServerPort)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING_SUCCESS);
         U_TO_C_MATCHING_SUCCESS body = new()
@@ -391,7 +391,9 @@ public static class PacketMaker
             MatchingId = matchingId,
             MapId = mapId,
             MapSubId = mapSubId,
-            SpawnPosition = spawnPosition
+            SpawnPosition = spawnPosition,
+            GameServerIp = gameServerIp,
+            GameServerPort = gameServerPort
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

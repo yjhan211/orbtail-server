@@ -443,6 +443,8 @@ namespace network.common.data.models
         [Key("mapId")] public MapId MapId { get; set; }
         [Key("mapSubId")] public long MapSubId { get; set; }
         [Key("spawnPosition")] public Cell SpawnPosition { get; set; }
+        [Key("gameServerIp")] public string GameServerIp { get; set; }
+        [Key("gameServerPort")] public int GameServerPort { get; set; }
     }
 
     [MessagePackObject]

@@ -111,7 +111,7 @@ public class GameServer : IHostedService
 
     private void InitializeControllers()
     {
-        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig);
+        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig, _clientSessions);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }

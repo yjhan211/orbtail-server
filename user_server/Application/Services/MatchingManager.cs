@@ -121,7 +121,7 @@ public class MatchingManager
 
             _logger.LogInformation($"매칭 성공! matching_id: {matchingId}, 참가자: {entries.Length}명");
 
-            // 각 플레이어에게 맵 변경 처리
+            // 각 플레이어에게 매칭 성공 알림
             foreach (var entry in entries)
             {
                 var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
@@ -132,12 +132,30 @@ public class MatchingManager
 
                 if (session?.Player != null)
                 {
-                    _logger.LogInformation($"플레이어 {data.PlayerId} 매칭 성공 - 맵 변경 시작");
+                    _logger.LogInformation($"플레이어 {data.PlayerId} 매칭 성공 알림 전송");
 
-                    // 맵 변경 (U_TO_C_CHANGE_MAP 자동 전송)
-                    await session.Player.ChangeMap(MapId.School);
+                    // 매칭 맵 정보
+                    var mapId = MapId.School;
+                    var mapSubId = matchingId; // 매칭 ID를 인스턴스 ID로 사용
+                    var mapInfo = GameMapData.GetMapInfo(mapId);
+                    var (spawnPosition, _) = mapInfo.GetInitialPosition();
 
-                    _logger.LogInformation($"플레이어 {data.PlayerId} ChangeMap 호출 완료");
+                    // 게임서버 정보 (TODO: 추후 동적 할당)
+                    var gameServerIp = "127.0.0.1";
+                    var gameServerPort = 9001;
+
+                    // 매칭 성공 패킷 전송
+                    using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
+                        matchingId,
+                        mapId,
+                        mapSubId,
+                        spawnPosition,
+                        gameServerIp,
+                        gameServerPort
+                    );
+                    session.Send(packet);
+
+                    _logger.LogInformation($"플레이어 {data.PlayerId} 매칭 성공 패킷 전송 완료");
                 }
                 else
                 {

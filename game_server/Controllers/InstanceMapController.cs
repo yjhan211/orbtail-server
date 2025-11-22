@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using game_server.network;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -16,8 +17,9 @@ public class InstanceMapController : BaseMapController
    private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
    private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
    private readonly ConcurrentDictionary<string, Timer> _damageTimers = new();
+   private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions;
 
-   private string EnterInstanceSubject => 
+   private string EnterInstanceSubject =>
        SubjectHelper.GetEnterInstanceSubject(ServerConfig.ServerId);
 
    public InstanceMapController(
@@ -25,9 +27,11 @@ public class InstanceMapController : BaseMapController
        INatsClient natsClient,
        CancellationTokenSource cts,
        ICacheHelper cacheHelper,
-       ServerConfig serverConfig) 
+       ServerConfig serverConfig,
+       ConcurrentDictionary<long, GameClientSession> clientSessions)
        : base(logger, natsClient, cts, cacheHelper, serverConfig)
    {
+       _clientSessions = clientSessions;
        _protocolHandlers = new Dictionary<Protocol, Func<long, byte[], Task>>
        {
            { Protocol.U_TO_G_LOGOUT, HandleLogout }
@@ -117,7 +121,20 @@ public class InstanceMapController : BaseMapController
            {
                Logger.LogInformation($"G_TO_U_ENTER_INSTANCE_SUCCESS 전송: objectKey={objectKey}, mapId={mapId}, mapSubId={mapSubId}");
                using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
-               NatsClient.Publish(objectKey, packet.ToBytes());
+
+               // TCP로 직접 전송
+               if (TryExtractPlayerId(objectKey, out var playerId))
+               {
+                   if (_clientSessions.TryGetValue(playerId, out var session))
+                   {
+                       session.Send(packet);
+                   }
+                   else
+                   {
+                       // 폴백: NATS
+                       NatsClient.Publish(objectKey, packet.ToBytes());
+                   }
+               }
            }
            else
            {
@@ -296,9 +313,22 @@ public class InstanceMapController : BaseMapController
        {
            return Task.CompletedTask;
        }
-       
+
        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);
-       NatsClient.Publish(objectKey, packet.ToBytes());
+
+       // TCP로 직접 전송
+       if (TryExtractPlayerId(objectKey, out var playerId))
+       {
+           if (_clientSessions.TryGetValue(playerId, out var session))
+           {
+               session.Send(packet);
+           }
+           else
+           {
+               // 폴백: NATS
+               NatsClient.Publish(objectKey, packet.ToBytes());
+           }
+       }
 
        return Task.CompletedTask;
    }
@@ -327,16 +357,45 @@ public class InstanceMapController : BaseMapController
 
    protected override void BroadcastPacket(string instanceKey, IPacket packet)
    {
-       if (!_objectInstanceDict.TryGetValue(instanceKey, out var channels))
+       if (!_objectInstanceDict.TryGetValue(instanceKey, out var objectKeys))
        {
            return;
        }
 
-       var channelsCopy = channels.ToList();
-       foreach (var channel in channelsCopy)
+       var objectKeysCopy = objectKeys.ToList();
+       foreach (var objectKey in objectKeysCopy)
        {
-           NatsClient.Publish(channel, packet.ToBytes());
+           // objectKey 형식: "ObjectType_ObjectId" (예: "PLAYER_123")
+           if (TryExtractPlayerId(objectKey, out var playerId))
+           {
+               if (_clientSessions.TryGetValue(playerId, out var session))
+               {
+                   session.Send(packet);
+               }
+               else
+               {
+                   // 클라이언트가 아직 연결되지 않았으면 NATS로 폴백 (임시)
+                   NatsClient.Publish(objectKey, packet.ToBytes());
+               }
+           }
        }
+   }
+
+   private bool TryExtractPlayerId(string objectKey, out long playerId)
+   {
+       playerId = 0;
+       var parts = objectKey.Split('_');
+       if (parts.Length != 2)
+       {
+           return false;
+       }
+
+       if (parts[0] == "PLAYER" && long.TryParse(parts[1], out playerId))
+       {
+           return true;
+       }
+
+       return false;
    }
 
    public override async Task ShutdownAsync()
