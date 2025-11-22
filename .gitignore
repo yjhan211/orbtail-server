@@ -50,5 +50,69 @@ Thumbs.db
 Desktop.ini
 *.lnk
 
+# .NET Specific
+project.lock.json
+project.fragment.lock.json
+artifacts/
+**/Properties/launchSettings.json
+*.csproj.user
+*.dbmdl
+*.jfm
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Test Results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# Environment Files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Redis
+dump.rdb
+
+# Docker
+docker-compose.override.yml
+
+# Security
+*.pem
+*.key
+*.cert
+*.pfx
+secrets/
+credentials/
+
 # Project Specific
 client_clone_*/
+trivy-results.sarif
+*.sarif
+
+# Unity (Client)
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+sysinfo.txt
+*.apk
+*.aab
+*.unitypackage
+*.app
