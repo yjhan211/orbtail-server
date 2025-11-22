@@ -1,4 +1,7 @@
+using System.Collections.Concurrent;
+using System.Net;
 using game_server.controllers;
+using game_server.network;
 using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -6,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.helpers;
 using network.common.data.models;
+using network.core;
 using network.helpers;
 using network.packets;
 using network.config;
@@ -18,9 +22,12 @@ public class GameServer : IHostedService
     private readonly ILogger<GameServer> _logger;
     private readonly INatsClientFactory _natsClientFactory;
     private readonly ICacheHelper _cacheHelper;
+    private readonly INetworkService _networkService;
+    private readonly IRedisConnectionPool _redisPool;
     private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
 
     private readonly List<InstanceMapController> _instanceControllerList = [];
+    private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
     private CancellationTokenSource _cts = new();
     private INatsClient? _logoutNatsClient;
 
@@ -31,14 +38,18 @@ public class GameServer : IHostedService
         ILogger<GameServer> logger,
         INatsClientFactory natsClientFactory,
         ICacheHelper cacheHelper,
+        INetworkService networkService,
+        IRedisConnectionPool redisPool,
         ServerConfig serverConfig)
     {
         _configuration = configuration;
         _logger = logger;
         _natsClientFactory = natsClientFactory;
         _cacheHelper = cacheHelper;
+        _networkService = networkService;
+        _redisPool = redisPool;
         _serverConfig = serverConfig;
-        
+
         _protocolHandlers = new Dictionary<Protocol, Func<long, byte[], Task>>
         {
             { Protocol.U_TO_G_LOGOUT, HandleLogout }
@@ -53,6 +64,7 @@ public class GameServer : IHostedService
 
             InitializeServices();
             InitializeControllers();
+            StartTcpServer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             SubscribeToLogoutEvents();
@@ -102,6 +114,52 @@ public class GameServer : IHostedService
         var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
+    }
+
+    private void StartTcpServer()
+    {
+        var port = _configuration.GetValue<short>("clientPort", 9001);
+        _networkService.SessionCreatedCallback += OnClientSessionCreated;
+        _networkService.Listen(IPAddress.Any, port);
+        _logger.LogInformation($"TCP server listening on port {port}");
+    }
+
+    private void OnClientSessionCreated(UserToken token)
+    {
+        try
+        {
+            var redLockFactory = _redisPool.GetRedLockFactory();
+            var natsClient = _natsClientFactory.Create();
+            var session = new GameClientSession(
+                token,
+                redLockFactory,
+                natsClient,
+                _logger,
+                _cacheHelper,
+                OnClientSessionLeave,
+                _serverConfig);
+
+            _logger.LogInformation("Game client session created");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create game client session");
+        }
+    }
+
+    private void OnClientSessionLeave(GameClientSession session)
+    {
+        if (session.PlayerId.HasValue)
+        {
+            _clientSessions.TryRemove(session.PlayerId.Value, out _);
+            _logger.LogInformation($"Game client session removed: PlayerId={session.PlayerId.Value}");
+        }
+    }
+
+    public void RegisterClientSession(long playerId, GameClientSession session)
+    {
+        _clientSessions.TryAdd(playerId, session);
+        _logger.LogInformation($"Game client session registered: PlayerId={playerId}");
     }
     
     private void SubscribeToLogoutEvents()
