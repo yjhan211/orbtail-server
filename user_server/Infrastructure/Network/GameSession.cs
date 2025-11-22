@@ -98,17 +98,21 @@ public class GameSession : IPeer
     private void InitializeSubscribeHandlers()
     {
         // Subscribe Protocol Handlers (NATS)
-        _subscribeRouter.RegisterHandler(Protocol.G_TO_U_UPDATE_OBJECT, bytes => HandleMessage<G_TO_U_UPDATE_OBJECT>(bytes, SubscribeUpdateObject));
-        _subscribeRouter.RegisterHandler(Protocol.G_TO_U_SPAWN, bytes => HandleMessage<G_TO_U_SPAWN>(bytes, SubscribeSpawn));
-        _subscribeRouter.RegisterHandler(Protocol.G_TO_U_DESTROY, bytes => HandleMessage<G_TO_U_DESTROY>(bytes, SubscribeDestroy));
+        // NOTE: GameServer 패킷 중계 제거 - 클라이언트가 GameServer에 직접 연결
+        // 아래 핸들러들은 더 이상 필요하지 않음 (클라이언트가 GameServer로부터 직접 수신)
+        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_UPDATE_OBJECT, bytes => HandleMessage<G_TO_U_UPDATE_OBJECT>(bytes, SubscribeUpdateObject));
+        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_SPAWN, bytes => HandleMessage<G_TO_U_SPAWN>(bytes, SubscribeSpawn));
+        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_DESTROY, bytes => HandleMessage<G_TO_U_DESTROY>(bytes, SubscribeDestroy));
+        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_PLAYER_INFO, bytes => HandleMessage<G_TO_U_PLAYER_INFO>(bytes, SubscribePlayerInfo));
+        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_EXPLORE_TARGET_INFO, bytes => HandleMessage<G_TO_U_EXPLORE_TARGET_INFO>(bytes, SubscribeExploreTargetInfo));
+        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS, bytes => HandleMessage<G_TO_U_ENTER_INSTANCE_SUCCESS>(bytes, SubscribeEnterInstanceSuccess));
+        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_SOCIAL_ACTION, bytes => HandleMessage<G_TO_U_SOCIAL_ACTION>(bytes, SubscribeSocialAction));
+        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_ENVIRONMENT, bytes => Player == null ? Task.CompletedTask : HandleMessage<G_TO_U_ENVIRONMENT>(bytes, Player.SubscribeEnvironment));
+        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_TAKE_DAMAGE, bytes => HandleMessage<G_TO_U_TAKE_DAMAGE>(bytes, SubscribeTakeDamage));
+
+        // 서버간 통신 유지
         _subscribeRouter.RegisterHandler(Protocol.U_TO_C_CHAT_MSG, bytes => HandleMessage<U_TO_C_CHAT_MSG>(bytes, SubscribeChatMsg));
-        _subscribeRouter.RegisterHandler(Protocol.G_TO_U_PLAYER_INFO, bytes => HandleMessage<G_TO_U_PLAYER_INFO>(bytes, SubscribePlayerInfo));
-        _subscribeRouter.RegisterHandler(Protocol.G_TO_U_EXPLORE_TARGET_INFO, bytes => HandleMessage<G_TO_U_EXPLORE_TARGET_INFO>(bytes, SubscribeExploreTargetInfo));
-        _subscribeRouter.RegisterHandler(Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS, bytes => HandleMessage<G_TO_U_ENTER_INSTANCE_SUCCESS>(bytes, SubscribeEnterInstanceSuccess));
-        _subscribeRouter.RegisterHandler(Protocol.G_TO_U_SOCIAL_ACTION, bytes => HandleMessage<G_TO_U_SOCIAL_ACTION>(bytes, SubscribeSocialAction));
         _subscribeRouter.RegisterHandler(Protocol.U_TO_U_DUPLICATE, _ => { ReceiveDuplicate(); return Task.CompletedTask; });
-        _subscribeRouter.RegisterHandler(Protocol.G_TO_U_ENVIRONMENT, bytes => Player == null ? Task.CompletedTask : HandleMessage<G_TO_U_ENVIRONMENT>(bytes, Player.SubscribeEnvironment));
-        _subscribeRouter.RegisterHandler(Protocol.G_TO_U_TAKE_DAMAGE, bytes => HandleMessage<G_TO_U_TAKE_DAMAGE>(bytes, SubscribeTakeDamage));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)

@@ -8,6 +8,7 @@ using network.helpers;
 using network.interfaces;
 using network.packets;
 using network.routing;
+using network.utils;
 
 namespace game_server.network;
 
@@ -122,7 +123,7 @@ public class GameClientSession : IPeer
     {
         if (packet is Packet p)
         {
-            _token.Send(p.ToBytes());
+            _token.Send(p);
         }
     }
 
@@ -148,17 +149,17 @@ public class GameClientSession : IPeer
 [MessagePackObject]
 public class C_TO_G_MOVE : IMessagePackObject
 {
-    [Key(0)] public Cell TargetPosition { get; set; }
+    [Key(0)] public Cell? TargetPosition { get; set; }
 }
 
 [MessagePackObject]
 public class C_TO_G_ATTACK : IMessagePackObject
 {
-    [Key(0)] public string TargetId { get; set; }
+    [Key(0)] public string TargetId { get; set; } = string.Empty;
 }
 
 [MessagePackObject]
 public class C_TO_G_INTERACT : IMessagePackObject
 {
-    [Key(0)] public string TargetId { get; set; }
+    [Key(0)] public string TargetId { get; set; } = string.Empty;
 }
