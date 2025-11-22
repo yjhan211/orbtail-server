@@ -1,6 +1,6 @@
 using network.common;
 
-namespace network.helpers;
+namespace network.common;
 
 /// <summary>
 /// 프로토콜 분류 및 라우팅 헬퍼

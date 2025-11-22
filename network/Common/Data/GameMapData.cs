@@ -224,8 +224,6 @@ namespace network.common.data
             {
                 _runtimeObstacles[mapId].Add(new Cell(pos.x, pos.y));
             }
-
-            Debug.Log($"[GameMapData] Set {_runtimeObstacles[mapId].Count} runtime obstacles for map: {mapId}");
         }
 
         public static void ClearRuntimeObstacles(MapId mapId)

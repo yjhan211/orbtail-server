@@ -46,7 +46,7 @@ public class PlayerMap(GameSession user, PlayerInfo playerInfo)
 
         try
         {
-            (spawnPosition, isFlip) = changeMapInfo.GetInitialPosition(playerInfo.ObjectInfo.MapId);
+            (spawnPosition, isFlip) = changeMapInfo.GetInitialPosition();
         }
         catch (InvalidOperationException)
         {
@@ -81,7 +81,7 @@ public class PlayerMap(GameSession user, PlayerInfo playerInfo)
         playerInfo.ObjectInfo.MapSubId = mapSubId;
 
         var campMapInfo = GameMapData.GetMapInfo(playerInfo.ObjectInfo.MapId);
-        var (spawnPosition, isFlip) = campMapInfo.GetInitialPosition(MapId.None);
+        var (spawnPosition, isFlip) = campMapInfo.GetInitialPosition();
         playerInfo.ObjectInfo.CurrentCell = spawnPosition;
         playerInfo.ObjectInfo.TargetCell = spawnPosition;
         playerInfo.ObjectInfo.IsFlip = isFlip;
