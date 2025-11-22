@@ -16,14 +16,14 @@ namespace network.common.data.models
             InteractPropId = 0;
             InteractPlayers = new List<long>();
         }
-        
+
         public InteractPropInfo(GameObjectInfo objectInfo, long itemUid)
         {
             ObjectInfo = objectInfo;
             InteractPropUid = itemUid;
             InteractPlayers = new List<long>();
         }
-        
+
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
         [Key("interactPropUid")] public long InteractPropUid { get; set; }
         [Key("interactPropId")] public int InteractPropId { get; set; }

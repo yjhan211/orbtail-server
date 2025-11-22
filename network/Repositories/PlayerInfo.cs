@@ -45,7 +45,7 @@ public partial class PlayerInfo
         playerInfo.QuestDiary = await QuestDiary.Load(cacheHelper, playerId);
         playerInfo.MailBox = await MailBox.Load(cacheHelper, playerId);
         playerInfo.IsNew = false;
-        
+
         return playerInfo;
     }
 

@@ -38,7 +38,7 @@ namespace network.common.data.models
         public PlayerInfo(long playerId, bool isDummy)
         {
             var name = $"Player{playerId}";
-            
+
             // TODO 공통맵 추가 이후 활성화
             // var initCell = isDummy ? CommonMapData.GetRandomCell() : GameRuleData.StartPosition;
             var initCell = GameRuleData.StartPosition;
@@ -67,7 +67,7 @@ namespace network.common.data.models
         [IgnoreMember] public InventoryInfo InventoryInfo { get; set; }
         [IgnoreMember] public QuestDiary QuestDiary { get; set; }
         [IgnoreMember] public MailBox MailBox { get; set; }
-        
+
         [Key("playerId")] public long PlayerId { get; set; }
 
         [Key("name")] public string Name { get; set; }
@@ -81,18 +81,18 @@ namespace network.common.data.models
         [Key("labName")] public string LabName { get; set; }
 
         [Key("gold")] public long Gold { get; set; }
-        
+
         [Key("hp")] public int Hp { get; set; }
-        
+
         [Key("stamina")] public int Stamina { get; set; }
 
         [Key("boostList")] public HashSet<BoostType> Boosts { get; set; }
         [Key("isTutorial")] public bool IsTutorial { get; set; }
-        
+
         [Key("mapId")] public MapId LastMapId { get; set; }
-        
+
         [Key("mapSubId")] public long LastMapSubId { get; set; }
-        
+
         [Key("lastCell")] public Cell LastCell { get; set; }
         [IgnoreMember] public bool IsNew { get; set; }
 

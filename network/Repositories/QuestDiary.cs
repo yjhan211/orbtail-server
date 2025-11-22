@@ -29,7 +29,7 @@ public partial class QuestDiary
     {
         var serializedData = await cacheHelper.HashGetAsync(HashKey, playerId);
         if (serializedData.IsNull) return new QuestDiary(playerId);
-        
+
         var quests = MessagePackSerializer.Deserialize<QuestDiary>(serializedData);
         return quests;
     }

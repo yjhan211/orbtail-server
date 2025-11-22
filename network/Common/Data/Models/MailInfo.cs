@@ -9,7 +9,7 @@ namespace network.common.data.models
     public partial class MailBox : IMessagePackObject
     {
         [IgnoreMember] public const string HashKey = "MailBox";
-        
+
         public MailBox()
         {
             PlayerId = 0;
@@ -21,11 +21,11 @@ namespace network.common.data.models
             PlayerId = playerId;
             MailDict = new();
         }
-        
+
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("mailDict")] public Dictionary<long, MailInfo> MailDict { get; set; }
     }
-    
+
     [MessagePackObject]
     public class MailInfo : IMessagePackObject
     {
@@ -36,7 +36,7 @@ namespace network.common.data.models
             State = MailState.NONE;
             Items = new();
         }
-        
+
         public MailInfo(long mailUid, int mailId, List<(int, int)> items)
         {
             MailUid = mailUid;
@@ -44,7 +44,7 @@ namespace network.common.data.models
             State = MailState.NONE;
             Items = items;
         }
-        
+
         [Key("uid")] public long MailUid { get; set; }
         [Key("id")] public int MailId { get; set; }
         [Key("state")] public MailState State { get; set; }

@@ -41,7 +41,7 @@ namespace network.common.data.models
             Count = 0;
             State = QuestState.NONE;
         }
-        
+
         [Key("questId")] public int QuestId { get; set; }
         [Key("count")] public int Count { get; set; }
         [Key("state")] public QuestState State { get; set; }

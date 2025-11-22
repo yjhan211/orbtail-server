@@ -8,7 +8,7 @@ namespace network.helpers;
 public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
 {
     public IRedLockFactory GetRedLockFactory() => redisPool.GetRedLockFactory();
-    
+
     private async Task<T> ExecuteRedisCommandAsync<T>(Func<IDatabase, Task<T>> action, int db = -1)
     {
         return await redisPool.ExecuteWithRetryAsync(action, db);

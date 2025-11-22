@@ -43,7 +43,7 @@ namespace network.common.data.models
         {
             return HashCode.Combine(X, Y);
         }
-        
+
         public override string ToString()
         {
             return $"Cell({X},{Y})";
@@ -73,7 +73,7 @@ namespace network.common.data.models
         {
             int dx = targetCell.X - X;
             int dy = targetCell.Y - Y;
-    
+
             if ((dx > 0 && dy > 0) || (dx < 0 && dy < 0))
             {
                 return Math.Max(Math.Abs(dx), Math.Abs(dy));
@@ -125,22 +125,22 @@ namespace network.common.data.models
                 case DirectionType.BOTTOM_RIGHT:
                     clone.Y -= 1;
                     break;
-                
+
                 case DirectionType.TOP:
                     clone.X += 1;
                     clone.Y += 1;
                     break;
-                
+
                 case DirectionType.BOTTOM:
                     clone.X -= 1;
                     clone.Y -= 1;
                     break;
-                
+
                 case DirectionType.LEFT:
                     clone.X -= 1;
                     clone.Y += 1;
                     break;
-                
+
                 case DirectionType.RIGHT:
                     clone.X += 1;
                     clone.Y -= 1;
@@ -195,7 +195,7 @@ namespace network.common.data.models
 
             return result;
         }
-        
+
         public List<Cell> GetAdjacentCells()
         {
             var result = new List<Cell>
@@ -212,7 +212,7 @@ namespace network.common.data.models
 
             return result;
         }
-        
+
         public Cell GetNearestCell(List<Cell> cellList, MapId mapId)
         {
             if (cellList.Count == 0)

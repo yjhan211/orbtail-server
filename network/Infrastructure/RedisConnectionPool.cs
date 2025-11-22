@@ -55,7 +55,7 @@ public class RedisConnectionPool : IRedisConnectionPool
     {
         lock (_lock)
         {
-            if (_lazyConnection != null && _lazyConnection.IsValueCreated) 
+            if (_lazyConnection != null && _lazyConnection.IsValueCreated)
                 _lazyConnection.Value.Dispose();
         }
     }
@@ -122,6 +122,6 @@ public class RedLockFactoryAdapter(RedLockFactory redLockFactory) : IRedLockFact
     {
         return redLockFactory.CreateLockAsync(resource, expiryTime);
     }
-        
+
     // 필요한 경우 다른 메서드들도 구현
 }

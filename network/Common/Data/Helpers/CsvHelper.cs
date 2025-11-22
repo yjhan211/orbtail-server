@@ -12,7 +12,7 @@ namespace network.common.data.helpers
         public static List<CsvRow> LoadCsv(string filePath)
         {
             string[] lines;
-            
+
 #if UNITY_ANDROID && !UNITY_EDITOR
             // 안드로이드 환경: Resources 폴더에서 직접 읽기
             // 이제 filePath는 "Common/csv/game_rule" 같은 올바른 리소스 경로입니다.
@@ -28,12 +28,12 @@ namespace network.common.data.helpers
             // 에디터 및 기타 PC 환경: 파일 시스템에서 직접 읽기
             if (!File.Exists(filePath))
                 throw new FileNotFoundException($"CSV file not found: {filePath}");
-    
+
             lines = File.ReadAllLines(filePath, Encoding.UTF8);
 #endif
 
             var result = new List<CsvRow>();
-            
+
             // 빈 줄 필터링
             var validLines = new List<string>();
             foreach (var line in lines)
@@ -41,7 +41,7 @@ namespace network.common.data.helpers
                 if (!string.IsNullOrWhiteSpace(line))
                     validLines.Add(line.Trim());
             }
-            
+
             if (validLines.Count == 0)
                 throw new InvalidDataException("CSV file is empty or contains no valid data");
 

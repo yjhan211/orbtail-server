@@ -11,7 +11,7 @@ public interface IRedisConnectionPool
     Task<T> ExecuteWithRetryAsync<T>(Func<IDatabase, Task<T>> action, int db = -1, int retryCount = 3);
     void Dispose();
 }
-    
+
 public interface IRedLockFactory
 {
     Task<IRedLock> CreateLockAsync(string resource, TimeSpan expiryTime);

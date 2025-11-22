@@ -23,7 +23,7 @@ namespace network.common.data
             var mailInfos = csvData.Select(MailInfoData.CreateFromData);
             foreach (var mailInfo in mailInfos) Mails[mailInfo.Id] = mailInfo;
         }
-        
+
         public static MailInfoData Get(int id)
         {
             if (!Mails.TryGetValue(id, out var mail)) throw new KeyNotFoundException($"Quest {id} not found");
@@ -40,13 +40,13 @@ namespace network.common.data
             logManager.WriteDebugLog("All validations passed successfully!");
         }
     }
-    
+
     public class MailInfoData
     {
         public int Id { get; private set; }
         public string From { get; private set; }
         public string Comment { get; private set; }
-        
+
         public static MailInfoData CreateFromData(CsvRow row)
         {
             return new MailInfoData

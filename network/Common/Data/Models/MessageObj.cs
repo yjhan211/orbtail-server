@@ -51,7 +51,7 @@ namespace network.common.data.models
 
         [Key("isEnd")] public bool IsEnd { get; set; }
     }
-    
+
     [MessagePackObject]
     public class U_TO_C_INVENTORY_UPDATE : IMessagePackObject
     {
@@ -186,7 +186,7 @@ namespace network.common.data.models
     {
         [Key("exploreTargetInfo")] public ExploreTargetInfo ExploreTargetInfo { get; set; }
     }
-    
+
     [MessagePackObject]
     public class C_TO_U_EXPLORE : IMessagePackObject
     {
@@ -211,7 +211,7 @@ namespace network.common.data.models
     {
         [Key("playerId")] public long PlayerId { get; set; }
     }
-    
+
     [MessagePackObject]
     public class C_TO_U_WEAR_ITEM : IMessagePackObject
     {
@@ -270,7 +270,7 @@ namespace network.common.data.models
     {
         [Key("itemUid")] public long ItemUid { get; set; }
     }
-    
+
     [MessagePackObject]
     public class C_TO_U_BUY_ITEM : IMessagePackObject
     {
@@ -304,7 +304,7 @@ namespace network.common.data.models
     {
         [Key("socialType")] public SocialActionType SocialActionType { get; set; }
     }
-    
+
     [MessagePackObject]
     public class G_TO_U_SOCIAL_ACTION : IMessagePackObject
     {
@@ -325,26 +325,26 @@ namespace network.common.data.models
         [Key("questDict")] public Dictionary<int, QuestInfo> QuestDict { get; set; }
         [Key("isEnd")] public bool IsEnd { get; set; }
     }
-    
+
     [MessagePackObject]
     public class C_TO_U_QUEST_INCREASE : IMessagePackObject
     {
         [Key("questId")] public int QuestId { get; set; }
         [Key("count")] public int Count { get; set; }
     }
-    
+
     [MessagePackObject]
     public class U_TO_C_QUEST_UPDATE : IMessagePackObject
     {
         [Key("quest")] public QuestInfo QuestInfo { get; set; }
     }
-    
+
     [MessagePackObject]
     public class C_TO_U_QUEST_SUCCESS : IMessagePackObject
     {
         [Key("questId")] public int QuestId { get; set; }
     }
-    
+
     [MessagePackObject]
     public class U_TO_C_QUEST_SUCCESS : IMessagePackObject
     {
@@ -385,13 +385,13 @@ namespace network.common.data.models
         [Key("itemUid")] public long ItemUid { get; set; }
         [Key("cell")] public Cell Cell { get; set; }
     }
-    
+
     [MessagePackObject]
     public class U_TO_C_ITEM_PUT : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
     }
-    
+
     [MessagePackObject]
     public class G_TO_U_TAKE_DAMAGE : IMessagePackObject
     {
@@ -399,7 +399,7 @@ namespace network.common.data.models
         [Key("damageType")] public DamageType DamageType { get; set; }
         [Key("damage")] public int Damage { get; set; }
     }
-    
+
     [MessagePackObject]
     public class U_TO_C_TAKE_DAMAGE : IMessagePackObject
     {

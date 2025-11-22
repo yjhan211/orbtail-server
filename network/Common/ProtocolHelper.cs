@@ -4,14 +4,14 @@ using System.Collections.Generic;
 namespace network.common
 {
     /// <summary>
-/// 프로토콜 분류 및 라우팅 헬퍼
-/// </summary>
-public static class ProtocolHelper
-{
-    /// <summary>
-    /// GameServer가 처리해야 하는 실시간 프로토콜
+    /// 프로토콜 분류 및 라우팅 헬퍼
     /// </summary>
-    private static readonly HashSet<Protocol> GameServerProtocols = new()
+    public static class ProtocolHelper
+    {
+        /// <summary>
+        /// GameServer가 처리해야 하는 실시간 프로토콜
+        /// </summary>
+        private static readonly HashSet<Protocol> GameServerProtocols = new()
     {
         // 실시간 이동 및 동기화
         Protocol.C_TO_U_MOVE,
@@ -48,10 +48,10 @@ public static class ProtocolHelper
         Protocol.G_TO_C_INTERACT,
     };
 
-    /// <summary>
-    /// UserServer가 처리해야 하는 상태 관리 프로토콜
-    /// </summary>
-    private static readonly HashSet<Protocol> UserServerProtocols = new()
+        /// <summary>
+        /// UserServer가 처리해야 하는 상태 관리 프로토콜
+        /// </summary>
+        private static readonly HashSet<Protocol> UserServerProtocols = new()
     {
         // 인증 및 세션
         Protocol.C_TO_U_HEART_BEAT,
@@ -113,60 +113,60 @@ public static class ProtocolHelper
         Protocol.U_TO_C_MAP_UPDATE,
     };
 
-    /// <summary>
-    /// 프로토콜이 GameServer로 가야 하는지 확인
-    /// </summary>
-    public static bool IsGameServerProtocol(Protocol protocol)
-    {
-        return GameServerProtocols.Contains(protocol);
-    }
-
-    /// <summary>
-    /// 프로토콜이 UserServer로 가야 하는지 확인
-    /// </summary>
-    public static bool IsUserServerProtocol(Protocol protocol)
-    {
-        return UserServerProtocols.Contains(protocol);
-    }
-
-    /// <summary>
-    /// 프로토콜이 실시간 처리가 필요한지 확인
-    /// </summary>
-    public static bool IsRealtimeProtocol(Protocol protocol)
-    {
-        return protocol switch
+        /// <summary>
+        /// 프로토콜이 GameServer로 가야 하는지 확인
+        /// </summary>
+        public static bool IsGameServerProtocol(Protocol protocol)
         {
-            Protocol.C_TO_U_MOVE => true,
-            Protocol.U_TO_C_MOVE => true,
-            Protocol.U_TO_C_SPAWN => true,
-            Protocol.U_TO_C_DESTROY => true,
-            Protocol.C_TO_G_MOVE => true,
-            Protocol.G_TO_C_MOVE => true,
-            Protocol.C_TO_G_ATTACK => true,
-            Protocol.G_TO_C_ATTACK => true,
-            Protocol.C_TO_G_INTERACT => true,
-            Protocol.G_TO_C_INTERACT => true,
-            Protocol.U_TO_C_TAKE_DAMAGE => true,
-            _ => false
-        };
-    }
+            return GameServerProtocols.Contains(protocol);
+        }
 
-    /// <summary>
-    /// 클라이언트가 보내는 프로토콜인지 확인
-    /// </summary>
-    public static bool IsClientToServerProtocol(Protocol protocol)
-    {
-        var protocolName = protocol.ToString();
-        return protocolName.StartsWith("C_TO_U_") || protocolName.StartsWith("C_TO_G_");
-    }
+        /// <summary>
+        /// 프로토콜이 UserServer로 가야 하는지 확인
+        /// </summary>
+        public static bool IsUserServerProtocol(Protocol protocol)
+        {
+            return UserServerProtocols.Contains(protocol);
+        }
 
-    /// <summary>
-    /// 서버가 보내는 프로토콜인지 확인
-    /// </summary>
-    public static bool IsServerToClientProtocol(Protocol protocol)
-    {
-        var protocolName = protocol.ToString();
-        return protocolName.StartsWith("U_TO_C_") || protocolName.StartsWith("G_TO_C_");
+        /// <summary>
+        /// 프로토콜이 실시간 처리가 필요한지 확인
+        /// </summary>
+        public static bool IsRealtimeProtocol(Protocol protocol)
+        {
+            return protocol switch
+            {
+                Protocol.C_TO_U_MOVE => true,
+                Protocol.U_TO_C_MOVE => true,
+                Protocol.U_TO_C_SPAWN => true,
+                Protocol.U_TO_C_DESTROY => true,
+                Protocol.C_TO_G_MOVE => true,
+                Protocol.G_TO_C_MOVE => true,
+                Protocol.C_TO_G_ATTACK => true,
+                Protocol.G_TO_C_ATTACK => true,
+                Protocol.C_TO_G_INTERACT => true,
+                Protocol.G_TO_C_INTERACT => true,
+                Protocol.U_TO_C_TAKE_DAMAGE => true,
+                _ => false
+            };
+        }
+
+        /// <summary>
+        /// 클라이언트가 보내는 프로토콜인지 확인
+        /// </summary>
+        public static bool IsClientToServerProtocol(Protocol protocol)
+        {
+            var protocolName = protocol.ToString();
+            return protocolName.StartsWith("C_TO_U_") || protocolName.StartsWith("C_TO_G_");
+        }
+
+        /// <summary>
+        /// 서버가 보내는 프로토콜인지 확인
+        /// </summary>
+        public static bool IsServerToClientProtocol(Protocol protocol)
+        {
+            var protocolName = protocol.ToString();
+            return protocolName.StartsWith("U_TO_C_") || protocolName.StartsWith("G_TO_C_");
+        }
     }
-}
 }

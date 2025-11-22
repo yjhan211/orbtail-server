@@ -72,7 +72,7 @@ namespace network.common
     {
         NONE = 0,
         HEAD = 101,
-        FACE = 102, 
+        FACE = 102,
         HAT = 103,
         TOP = 104,
         BOTTOM = 105,
@@ -89,7 +89,7 @@ namespace network.common
         SHOP
     }
 
-// 주의사항: _ 붙이지 말 것
+    // 주의사항: _ 붙이지 말 것
     public enum ObjectType
     {
         NONE,
@@ -118,14 +118,14 @@ namespace network.common
         RIGHT,
         BOTTOM,
     }
-    
+
     public enum LabGrade : byte
     {
         NONE,
         ALONE, // 개인 동아리
         CLUB // 동아리
     }
-    
+
     public enum ChatType : byte
     {
         ALL, // 전체

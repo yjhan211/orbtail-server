@@ -25,7 +25,7 @@ namespace network.common.data
             this.isFlip = isFlip;
         }
     }
-    
+
     public enum ChairDirection
     {
         NONE,
@@ -280,7 +280,7 @@ namespace network.common.data
 
             return null;
         }
-        
+
         /// <summary>
         /// 주어진 셀이 특정 포탈 영역에 포함되는지 확인하고, 포함되지 않으면 포탈의 중심 좌표를 반환합니다.
         /// </summary>
@@ -297,7 +297,7 @@ namespace network.common.data
             }
 
             var (start, end) = portalCoords.Value;
-            
+
             // 셀이 포탈 영역에 포함되는지 확인
             bool isInPortal = cellToCheck.X >= start.X && cellToCheck.X <= end.X &&
                               cellToCheck.Y >= start.Y && cellToCheck.Y <= end.Y;
@@ -329,7 +329,7 @@ namespace network.common.data
             }
 
             var (start, end) = portalCoords.Value;
-            
+
             return cellToCheck.X >= start.X && cellToCheck.X <= end.X &&
                    cellToCheck.Y >= start.Y && cellToCheck.Y <= end.Y;
         }
@@ -357,13 +357,13 @@ namespace network.common.data
             return null;
         }
 
-        
+
         public static ChairDirection GetChairDirection(MapId mapId, Cell position)
         {
             if (!_chairInfos.ContainsKey(mapId))
                 return ChairDirection.NONE;
 
-            var chairInfo = _chairInfos[mapId].FirstOrDefault(c => 
+            var chairInfo = _chairInfos[mapId].FirstOrDefault(c =>
                 c.Position.X == position.X && c.Position.Y == position.Y);
 
             if (chairInfo == null)
@@ -446,7 +446,7 @@ namespace network.common.data
             //     }
             // }
         }
-        
+
         public static (Cell start, Cell end)? GetPortalCoordinates(MapId currentMapId, MapId targetMapId)
         {
             var regions = GetMapRegions(currentMapId);
@@ -462,7 +462,7 @@ namespace network.common.data
 
             return null;
         }
-        
+
         public static Cell? GetPortalCenterCoordinates(MapId currentMapId, MapId targetMapId)
         {
             var portalCoords = GetPortalCoordinates(currentMapId, targetMapId);
@@ -476,7 +476,7 @@ namespace network.common.data
 
             return null;
         }
-        
+
         public class MapInfo
         {
             public int Id { get; set; }
@@ -499,7 +499,7 @@ namespace network.common.data
 
             public bool IsPortal => RegionType.Equals("portal", StringComparison.OrdinalIgnoreCase);
         }
-        
+
         public class ChairInfo
         {
             public Cell Position { get; set; }

@@ -4,9 +4,9 @@ namespace network.interfaces;
 
 public interface ICacheHelper
 {
-    
+
     IRedLockFactory GetRedLockFactory();
-    
+
     Task<bool> HashSetAsync(string key, long field, byte[] value, int db = -1);
     Task<bool> HashSetAsync(string key, string field, byte[] value, int db = -1);
     Task<RedisValue> HashGetAsync(string key, string field, int db = -1);

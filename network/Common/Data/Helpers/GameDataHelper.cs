@@ -41,7 +41,7 @@ namespace network.common.data.helpers
                 public static readonly string[] ALL = new[] { MapInfo, MapRegion };
             }
         }
-        
+
         private static readonly string NetworkPath = Path.GetDirectoryName(typeof(GameDataHelper).Assembly.Location)!;
         private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
             StandardDataDefinitions =
@@ -87,7 +87,7 @@ namespace network.common.data.helpers
                 var filePath = GetCsvFilePath(fileName);
                 loadedData[fileName] = CsvHelper.LoadCsv(filePath);
             }
-            
+
             // 맵 관련 파일 로드
             foreach (var fileName in DataFiles.Map.ALL)
             {
@@ -115,7 +115,7 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Item.Shop],
                 loadedData[DataFiles.Item.Put]
             );
-            
+
             // 맵 데이터 초기화
             GameMapData.Initialize(
                 loadedData[DataFiles.Map.MapInfo],

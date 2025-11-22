@@ -9,7 +9,7 @@ public static class MapHelper
     private static int _totalServerNum;
     private static readonly Dictionary<string, int> PartByKey = new();
     private static readonly Dictionary<MapId, Dictionary<int, List<string>>> PositionListByMapPart = new();
-    
+
     public static void Initialize(int totalServerNum)
     {
         _totalServerNum = totalServerNum;
@@ -17,7 +17,7 @@ public static class MapHelper
 
     private static bool IsInGroundRegions(Cell cell, List<GameMapData.MapRegion> groundRegions)
     {
-        return groundRegions.Any(region => 
+        return groundRegions.Any(region =>
             cell.X >= region.Start.X && cell.X <= region.End.X &&
             cell.Y >= region.Start.Y && cell.Y <= region.End.Y);
     }
@@ -49,7 +49,7 @@ public static class MapHelper
     public static Dictionary<MapId, List<string>> GetManagePartList(int serverId)
     {
         var result = new Dictionary<MapId, List<string>>();
-    
+
         foreach (var mapEntry in PositionListByMapPart)
         {
             var mapId = mapEntry.Key;

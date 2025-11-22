@@ -18,8 +18,8 @@ namespace network.common.data
     public static class GameCraftData
     {
         private static readonly Dictionary<int, CraftInfoData> Infos = new();
-        private static readonly Dictionary<int, List<CraftInfoData>> InfosByManual= new();
-        
+        private static readonly Dictionary<int, List<CraftInfoData>> InfosByManual = new();
+
         public static void Initialize(List<CsvRow> csvData)
         {
             var infos = csvData.Select(CraftInfoData.CreateFromData);
@@ -53,7 +53,7 @@ namespace network.common.data
 
             return list;
         }
-        
+
         public static void Validate(LogManager logManager)
         {
             logManager.WriteDebugLog("=== GameCraftData Validation ===");

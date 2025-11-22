@@ -52,12 +52,12 @@ namespace network.common.data
                         var installInfo = installationData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
                         if (installInfo != null)
                             additionalData["item_info_installation"] = installInfo;
-                
+
                         var shopInfo = shopData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
                         if (shopInfo != null)
                             additionalData["installation_shop_info"] = shopInfo;
                         break;
-                    
+
                     case ItemType.PUTABLE:
                         var putInfo = putData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
                         if (putInfo != null)
@@ -83,13 +83,13 @@ namespace network.common.data
         {
             return Items.Values.ToList();
         }
-        
+
         public static ItemType GetItemType(int itemId)
         {
             return (ItemType)(itemId / 100000000);
         }
-        
-        public static EquipType GetEquipType(int itemId) 
+
+        public static EquipType GetEquipType(int itemId)
         {
             return (EquipType)(itemId / 1000000);
         }
@@ -123,7 +123,7 @@ namespace network.common.data
         public bool IsInstallation => Type == ItemType.INSTALLATION;
         public bool IsMaterial => Type == ItemType.MATERIAL;
         public bool IsPutable => Type == ItemType.PUTABLE;
-        
+
         // 하우징 아이템 관련
         public string PutSpritePath { get; private set; }
         public List<(float, float)> Slots { get; private set; }
@@ -143,7 +143,7 @@ namespace network.common.data
                 Requirements = JsonConvert.DeserializeObject<List<int>>(baseInfo["requirements"]) ?? new(),
                 Reusable = int.Parse(baseInfo["reusable"]) == 1,
                 BuffList = new(),
-                ConsumableBuffList = new ()
+                ConsumableBuffList = new()
             };
 
             if (additionalData != null)
@@ -155,19 +155,19 @@ namespace network.common.data
                         item.SkinName = equipInfo["skin_name"];
                         break;
 
-                    case ItemType.CONSUMABLE 
+                    case ItemType.CONSUMABLE
                         when additionalData.TryGetValue("item_info_consumable", out var consumableInfo):
                         item.ConsumableBuffList = ParseIntTupleArray(consumableInfo["buff_list"]);
                         break;
 
-                    case ItemType.INSTALLATION 
+                    case ItemType.INSTALLATION
                         when additionalData.TryGetValue("item_info_installation", out var installInfo):
                         item.MaxDurability = int.Parse(installInfo["max_durability"]);
                         item.BuffList = ParseBuffList(installInfo["buff_list"]) ?? throw new ArgumentException();
                         if (additionalData.TryGetValue("installation_shop_info", out var shopInfo))
                             item.MaxSellItems = int.Parse(shopInfo["max_items"]);
                         break;
-                    
+
                     case ItemType.PUTABLE
                         when additionalData.TryGetValue("item_info_put", out var putInfo):
                         item.PutSpritePath = putInfo["sprite_path"];
@@ -178,7 +178,7 @@ namespace network.common.data
 
             return item;
         }
-        
+
         private static List<(int id, int coolTime, int value)> ParseBuffList(string jsonString)
         {
             if (string.IsNullOrEmpty(jsonString) || jsonString == "[]") return new();
@@ -197,7 +197,7 @@ namespace network.common.data
 
             return arrays?.Select(arr => (id: arr[0], value: arr[1])).ToList();
         }
-        
+
         public static List<(float id, float value)> ParseFloatTupleArray(string jsonString)
         {
             if (string.IsNullOrEmpty(jsonString) || jsonString == "[]") return new();
@@ -207,7 +207,7 @@ namespace network.common.data
 
             return arrays?.Select(arr => (id: arr[0], value: arr[1])).ToList();
         }
-        
+
         public string GetBuffComment()
         {
             if (BuffList.Count <= 0 && ConsumableBuffList.Count <= 0)
@@ -232,7 +232,7 @@ namespace network.common.data
                     result += buff.Comment.Replace("{value1}", $"{buffInfo.value1}").Replace("{value2}", $"{buffInfo.value2}");
                 }
             }
-            
+
             return result;
         }
     }

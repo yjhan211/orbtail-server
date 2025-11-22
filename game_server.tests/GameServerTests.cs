@@ -15,6 +15,8 @@ public class GameServerTests
     private readonly Mock<ILogger<GameServer>> _mockLogger;
     private readonly Mock<INatsClientFactory> _mockNatsFactory;
     private readonly Mock<ICacheHelper> _mockCacheHelper;
+    private readonly Mock<INetworkService> _mockNetworkService;
+    private readonly Mock<IRedisConnectionPool> _mockRedisPool;
     private readonly ServerConfig _serverConfig;
 
     public GameServerTests()
@@ -23,6 +25,8 @@ public class GameServerTests
         _mockLogger = new Mock<ILogger<GameServer>>();
         _mockNatsFactory = new Mock<INatsClientFactory>();
         _mockCacheHelper = new Mock<ICacheHelper>();
+        _mockNetworkService = new Mock<INetworkService>();
+        _mockRedisPool = new Mock<IRedisConnectionPool>();
 
         _serverConfig = new ServerConfig
         {
@@ -74,6 +78,8 @@ public class GameServerTests
             _mockLogger.Object,
             _mockNatsFactory.Object,
             _mockCacheHelper.Object,
+            _mockNetworkService.Object,
+            _mockRedisPool.Object,
             _serverConfig
         );
 

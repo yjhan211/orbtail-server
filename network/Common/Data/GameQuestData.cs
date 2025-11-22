@@ -59,7 +59,7 @@ namespace network.common.data
             var nextIdListValue = row["next_id_list"];
             var nextRequireValue = row["next_require"];
             var rewardItemListValue = row["reward_item_list"];
-            
+
             return new QuestInfoData
             {
                 Id = id,
@@ -78,7 +78,7 @@ namespace network.common.data
         {
             if (string.IsNullOrWhiteSpace(value) || value == "[]" || value == "\"[]\"")
                 return new List<int>();
-            
+
             try
             {
                 // JSON 형태로 시도
@@ -93,7 +93,7 @@ namespace network.common.data
                     value = value.Trim('"').Trim('[', ']');
                     if (string.IsNullOrWhiteSpace(value))
                         return new List<int>();
-                    
+
                     return value.Split(',')
                                .Select(s => s.Trim().Trim('"')) // 개별 값의 따옴표도 제거
                                .Where(s => !string.IsNullOrWhiteSpace(s))
@@ -113,7 +113,7 @@ namespace network.common.data
         {
             if (string.IsNullOrWhiteSpace(value) || value == "[]" || value == "\"[]\"")
                 return new List<(int, int)>();
-            
+
             try
             {
                 // 따옴표 제거 후 JSON 파싱 시도

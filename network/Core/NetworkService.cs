@@ -131,7 +131,7 @@ public class NetworkService : INetworkService
                 userToken.OnRemoved();
                 return;
             }
-            
+
             var (errorCode, errorLog) = userToken.OnReceived(recvArgs.Buffer, recvArgs.Offset, recvArgs.BytesTransferred);
             if (errorCode != ErrorCode.SUCCESS)
             {

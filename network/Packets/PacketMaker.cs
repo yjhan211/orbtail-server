@@ -46,7 +46,7 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet U_TO_C_INVENTORY_UPDATE(List<ItemInfo> updateItems, bool isEnd)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_INVENTORY_UPDATE);
@@ -91,7 +91,7 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet U_TO_C_CHAT_MSG(ChatType chatType, long playerId, string name, string chatMessage)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CHAT_MSG);
@@ -206,12 +206,12 @@ public static class PacketMaker
     public static Packet U_TO_C_CHANGE_MAP(ErrorCode errorCode, MapId mapId)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CHANGE_MAP);
-        U_TO_C_CHANGE_MAP body = new() { ErrorCode = errorCode, MapId = mapId};
+        U_TO_C_CHANGE_MAP body = new() { ErrorCode = errorCode, MapId = mapId };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet U_TO_C_CHANGE_MAP_SUCCESS(MapId lastMapId, MapId mapId, long mapSubId, Cell spawnCell, bool isFlip)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CHANGE_MAP_SUCCESS);
@@ -247,7 +247,7 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet U_TO_C_UPDATE_HP(int addHp, int currentHp)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_UPDATE_HP);
@@ -270,16 +270,16 @@ public static class PacketMaker
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_SOCIAL_ACTION);
         G_TO_U_SOCIAL_ACTION body = new() { PlayerId = playerId, SocialActionType = actionType };
-        
+
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet U_TO_C_SOCIAL_ACTION(long playerId, SocialActionType actionType)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_SOCIAL_ACTION);
         U_TO_C_SOCIAL_ACTION body = new() { PlayerId = playerId, SocialActionType = actionType };
-        
+
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
@@ -310,7 +310,7 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet U_TO_C_MAIL_LIST(Dictionary<long, MailInfo> mailDict, bool isEnd)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_MAIL_LIST);
@@ -337,7 +337,7 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet G_TO_U_TAKE_DAMAGE(long playerId, DamageType damageType, int damage)
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_TAKE_DAMAGE);
