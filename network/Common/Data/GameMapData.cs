@@ -38,11 +38,14 @@ namespace network.common.data
         private static readonly Dictionary<MapId, MapInfo> _mapInfos = new();
         private static readonly Dictionary<MapId, List<MapRegion>> _mapRegions = new();
         private static readonly Dictionary<MapId, List<ChairInfo>> _chairInfos = new();
+        private static readonly Dictionary<MapId, List<AreaRegion>> _areaRegions = new();
+
+        // 런타임 오버라이드: 에디터에서 추가한 장애물 위치
+        private static readonly Dictionary<MapId, HashSet<Cell>> _runtimeObstacles = new();
 
         public static void Initialize(List<CsvRow> mapInfo, List<CsvRow> mapRegion)
         {
             InitializeMapInfo(mapInfo);
-            InitializeInitCellFromMapRegion(mapRegion);
             InitializeMapRegions(mapRegion);
         }
 
@@ -50,42 +53,23 @@ namespace network.common.data
         {
             foreach (var row in data)
             {
+                var initCellX = int.Parse(row["init_cell_x"]);
+                var initCellY = int.Parse(row["init_cell_y"]);
+                var isFlip = int.Parse(row["is_flip"]) == 1;
+
                 var mapInfo = new MapInfo
                 {
                     Id = int.Parse(row["id"]),
                     SceneName = row["scene_name"],
                     IsCommon = int.Parse(row["is_common"]) == 1,
-                    InitCells = new Dictionary<MapId, InitCellData>()
+                    InitCell = new InitCellData(
+                        new Vector3Int(initCellX, initCellY, 0),
+                        MapId.None,
+                        isFlip
+                    )
                 };
 
                 _mapInfos[MapId.Parse<MapId>(mapInfo.Id.ToString())] = mapInfo;
-            }
-        }
-
-        private static void InitializeInitCellFromMapRegion(List<CsvRow> data)
-        {
-            var groundRegions =
-                data.Where(row => row["region_type"].Equals("ground", StringComparison.OrdinalIgnoreCase));
-
-            foreach (var row in groundRegions)
-            {
-                var mapId = MapId.Parse<MapId>(int.Parse(row["map_id"]).ToString());
-                var initCellX = int.Parse(row["init_cell_x"]);
-                var initCellY = int.Parse(row["init_cell_y"]);
-                var fromMap = MapId.Parse<MapId>(int.Parse(row["from_map"]).ToString());
-                var isFlip = int.Parse(row["is_flip"]) == 1;
-
-                if (initCellX != 0 || initCellY != 0 || fromMap != MapId.None)
-                {
-                    if (_mapInfos.TryGetValue(mapId, out var mapInfo))
-                    {
-                        mapInfo.InitCells[fromMap] = new InitCellData(
-                            new Vector3Int(initCellX, initCellY, 0),
-                            fromMap,
-                            isFlip
-                        );
-                    }
-                }
             }
         }
 
@@ -112,6 +96,27 @@ namespace network.common.data
                         _chairInfos[mapId] = new List<ChairInfo>();
                     }
                     _chairInfos[mapId].Add(chairInfo);
+                    continue;
+                }
+
+                if (row["region_type"].Equals("area", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Area 정보 처리
+                    var areaTypeId = int.Parse(row["warp_to"]);
+                    var areaType = AreaType.Parse<AreaType>(areaTypeId.ToString());
+
+                    var areaRegion = new AreaRegion
+                    {
+                        AreaType = areaType,
+                        Start = new Cell(int.Parse(row["start_x"]), int.Parse(row["start_y"])),
+                        End = new Cell(int.Parse(row["end_x"]), int.Parse(row["end_y"]))
+                    };
+
+                    if (!_areaRegions.ContainsKey(mapId))
+                    {
+                        _areaRegions[mapId] = new List<AreaRegion>();
+                    }
+                    _areaRegions[mapId].Add(areaRegion);
                     continue;
                 }
 
@@ -164,6 +169,15 @@ namespace network.common.data
 
         public static bool IsMoveablePosition(MapId mapId, Cell position)
         {
+            // 런타임 오버라이드 체크 (Inspector에서 추가한 장애물)
+            if (_runtimeObstacles.TryGetValue(mapId, out var obstacles))
+            {
+                if (obstacles.Contains(position))
+                {
+                    return false;
+                }
+            }
+
             var regions = GetMapRegions(mapId);
             var groundRegions = regions.Where(r => r.RegionType.Equals("ground", StringComparison.OrdinalIgnoreCase));
             var isInGround = false;
@@ -195,7 +209,58 @@ namespace network.common.data
 
             return true;
         }
-        
+
+        // 런타임 장애물 추가/제거 (에디터 전용)
+        public static void SetRuntimeObstacles(MapId mapId, IEnumerable<Vector3Int> obstaclePositions)
+        {
+            if (!_runtimeObstacles.ContainsKey(mapId))
+            {
+                _runtimeObstacles[mapId] = new HashSet<Cell>();
+            }
+
+            _runtimeObstacles[mapId].Clear();
+
+            foreach (var pos in obstaclePositions)
+            {
+                _runtimeObstacles[mapId].Add(new Cell(pos.x, pos.y));
+            }
+
+            Debug.Log($"[GameMapData] Set {_runtimeObstacles[mapId].Count} runtime obstacles for map: {mapId}");
+        }
+
+        public static void ClearRuntimeObstacles(MapId mapId)
+        {
+            if (_runtimeObstacles.ContainsKey(mapId))
+            {
+                _runtimeObstacles[mapId].Clear();
+            }
+        }
+
+        // 현재 위치의 Area 가져오기
+        public static AreaType GetCurrentArea(MapId mapId, Cell position)
+        {
+            if (!_areaRegions.TryGetValue(mapId, out var areas))
+            {
+                return AreaType.None;
+            }
+
+            foreach (var area in areas)
+            {
+                if (area.Contains(position))
+                {
+                    return area.AreaType;
+                }
+            }
+
+            return AreaType.None;
+        }
+
+        // 특정 맵의 모든 Area 가져오기
+        public static List<AreaRegion> GetAreas(MapId mapId)
+        {
+            return _areaRegions.TryGetValue(mapId, out var areas) ? areas : new List<AreaRegion>();
+        }
+
         public static (MapId mapId, Cell spawnPosition, bool isFlip)? GetPortalOrNull(GameObjectInfo objectInfo, bool isTutorial)
         {
             var currentCell = objectInfo.TargetCell;
@@ -209,10 +274,8 @@ namespace network.common.data
                     currentCell.Y >= portal.Start.Y && currentCell.Y <= portal.End.Y)
                 {
                     var targetMapInfo = GetMapInfo(portal.WarpTo);
+                    var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition();
 
-                    var convertCurrentMap = (portal.WarpTo == MapId.Camp) ? MapId.None : currentMap;
-                    var (spawnPosition, isFlip) = targetMapInfo.GetInitialPosition(convertCurrentMap);
-                    
                     return (portal.WarpTo, spawnPosition, isFlip);
                 }
             }
@@ -421,17 +484,11 @@ namespace network.common.data
             public int Id { get; set; }
             public string SceneName { get; set; }
             public bool IsCommon { get; set; }
-            public Dictionary<MapId, InitCellData> InitCells { get; set; }
+            public InitCellData InitCell { get; set; }
 
-            public (Cell position, bool isFlip) GetInitialPosition(MapId fromMap)
+            public (Cell position, bool isFlip) GetInitialPosition()
             {
-                if (InitCells.TryGetValue(fromMap, out var initCell))
-                {
-                    return (new Cell(initCell.position.x, initCell.position.y), initCell.isFlip);
-                }
-
-                var defaultCell = InitCells.First().Value;
-                return (new Cell(defaultCell.position.x, defaultCell.position.y), defaultCell.isFlip);
+                return (new Cell(InitCell.position.x, InitCell.position.y), InitCell.isFlip);
             }
         }
 
@@ -454,6 +511,19 @@ namespace network.common.data
             {
                 Position = position;
                 IsFlip = isFlip;
+            }
+        }
+
+        public class AreaRegion
+        {
+            public AreaType AreaType { get; set; }
+            public Cell Start { get; set; }
+            public Cell End { get; set; }
+
+            public bool Contains(Cell position)
+            {
+                return position.X >= Start.X && position.X <= End.X &&
+                       position.Y >= Start.Y && position.Y <= End.Y;
             }
         }
     }

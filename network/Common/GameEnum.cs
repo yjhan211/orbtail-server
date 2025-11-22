@@ -8,6 +8,26 @@ namespace network.common
         Camp,
     }
 
+    public enum AreaType
+    {
+        None = 0,
+        Library,
+        Classroom1,
+        Classroom2,
+        Classroom3,
+        Classroom4,
+        Classroom5,
+        Corridor,
+        Storage1,
+        Storage2,
+        AdminOffice1,
+        AdminOffice2,
+        Gym,
+        Ground,
+        Terrace1,
+        Terrace2,
+    }
+
     public enum SocialActionType
     {
         NONE = 0,

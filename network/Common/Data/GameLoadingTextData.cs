@@ -36,16 +36,20 @@ namespace network.common.data
         {
             if (_loadingTexts == null)
             {
+                UnityEngine.Debug.LogWarning("[GameLoadingTextData] _loadingTexts is null! Using fallback text.");
                 return "당신의 눈이 당신을 속이기 시작했다면,\n그것은 시스템 오류가 아닙니다.";
             }
 
             if (_loadingTexts.Count == 0)
             {
+                UnityEngine.Debug.LogWarning("[GameLoadingTextData] _loadingTexts is empty! Using fallback text.");
                 return "당신의 눈이 당신을 속이기 시작했다면,\n그것은 시스템 오류가 아닙니다.";
             }
 
             var randomIndex = _random.Next(0, _loadingTexts.Count);
-            return _loadingTexts[randomIndex];
+            var selectedText = _loadingTexts[randomIndex];
+            UnityEngine.Debug.Log($"[GameLoadingTextData] Selected text #{randomIndex}/{_loadingTexts.Count}: '{selectedText.Substring(0, Math.Min(30, selectedText.Length))}...'");
+            return selectedText;
         }
 
         public static void Validate(LogManager logManager)
