@@ -214,7 +214,7 @@ public class GameSession : IPeer
         {
             throw new InvalidOperationException("Player controller is not initialized");
         }
-            
+
         await action(Player);
     }
 
@@ -224,7 +224,7 @@ public class GameSession : IPeer
         // Send(packet);
         return Task.CompletedTask;
     }
-    
+
     private async Task Login(C_TO_U_LOGIN request)
     {
         if (Player != null)
@@ -258,8 +258,8 @@ public class GameSession : IPeer
                     defaultShoes.Value.ItemUid
                 };
 
-                await Player.WearItem(new C_TO_U_WEAR_ITEM(){ ItemUidList = defaultItemUids });
-                
+                await Player.WearItem(new C_TO_U_WEAR_ITEM() { ItemUidList = defaultItemUids });
+
                 // 테스트로 코스튬 아이템 전부 지급
                 var allItems = GameItemData.GetAllList();
                 foreach (var itemInfo in allItems.Where(itemInfo => itemInfo.IsEquipment))
@@ -268,7 +268,7 @@ public class GameSession : IPeer
                     switch (equipType)
                     {
                         case EquipType.HEAD:
-                        case EquipType.FACE: 
+                        case EquipType.FACE:
                         case EquipType.HAT:
                         case EquipType.TOP:
                         case EquipType.BOTTOM:
@@ -286,14 +286,14 @@ public class GameSession : IPeer
                     }
                 }
             }
-            
+
             using var duplicatePacket = Packet.Create((int)Protocol.U_TO_U_DUPLICATE);
             NatsClient.Publish(playerInfo.ObjectInfo.GetGameObjectKey(), duplicatePacket.ToBytes());
-            
+
             await playerInfo.Save(CacheHelper);
             await playerInfo.ObjectInfo.Save(CacheHelper);
         }
-        
+
         SubscribeHandler(playerInfo.ObjectInfo.GetGameObjectKey(), OnMessageFromSubscribe);
         SubscribeHandler(GlobalSubscribeChannel, OnMessageFromSubscribe);
 
@@ -340,7 +340,7 @@ public class GameSession : IPeer
                 playerInfo.InventoryInfo.ItemDict.Add(item.ItemUid, item);
             }
         }
-        
+
         return playerInfo;
     }
 
@@ -352,7 +352,7 @@ public class GameSession : IPeer
         using var packet = PacketMaker.U_TO_C_PLAYER_INFO(playerInfoList);
         Send(packet);
     }
-    
+
     private async Task GetExploreTargetInfo(C_TO_U_EXPLORE_TARGET_INFO body)
     {
         var targetInfoList = new List<ExploreTargetInfo>();
@@ -408,21 +408,21 @@ public class GameSession : IPeer
         {
             return;
         }
-        
+
         if (body.ChatMessage.StartsWith("/ㅎㅎ"))
         {
             var sendTuple = (Player.PlayerId, SocialActionType.LAUGH);
             BroadcastToMap(Player.PlayerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
             return;
         }
-        
+
         if (body.ChatMessage.StartsWith("/ㄱㄱ"))
         {
             var sendTuple = (Player.PlayerId, SocialActionType.THUMBSUP);
             BroadcastToMap(Player.PlayerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
             return;
         }
-        
+
         if (body.ChatMessage.StartsWith("/ㅇㅇ"))
         {
             Player.PlayerInfo.State = PlayerState.SITGROUND;
@@ -509,20 +509,20 @@ public class GameSession : IPeer
             .Where(key => key != Player.ObjectKey)
             .ToList();
         var cellsToRemove = body.CellsToRemove.ToList();
-    
+
         if (objectKeys.Count == 0 && cellsToRemove.Count == 0)
         {
             return Task.CompletedTask;
         }
-    
+
         var batchCount = (int)Math.Ceiling((double)Math.Max(objectKeys.Count, cellsToRemove.Count) / Config.BROADCAST_UNIT);
         batchCount = Math.Max(1, batchCount);
-    
+
         for (var i = 0; i < batchCount; i++)
         {
             SendSpawnBatch(objectKeys, cellsToRemove, Config.BROADCAST_UNIT, i, batchCount);
         }
-       
+
         return Task.CompletedTask;
     }
 
@@ -538,7 +538,7 @@ public class GameSession : IPeer
                 .Take(Math.Min(batchSize, objects.Count - startIndex))
                 .ToList();
         }
-    
+
         // cells 리스트 처리 - null 체크 및 범위 검증
         var cellBatch = new List<Cell>();
         if (startIndex < cells.Count)
@@ -548,9 +548,9 @@ public class GameSession : IPeer
                 .Take(Math.Min(batchSize, cells.Count - startIndex))
                 .ToList();
         }
-    
+
         var isEnded = batchIndex >= totalBatches - 1;
-    
+
         using var packet = PacketMaker.U_TO_C_SPAWN(objectBatch, isEnded, cellBatch);
         Send(packet);
     }
@@ -559,7 +559,7 @@ public class GameSession : IPeer
     {
         using var packet = PacketMaker.U_TO_C_DESTROY(body.ObjectKey);
         Send(packet);
-       
+
         return Task.CompletedTask;
     }
 
@@ -567,7 +567,7 @@ public class GameSession : IPeer
     {
         using var packet = PacketMaker.U_TO_C_CHAT_MSG(body.ChatType, body.PlayerId, body.Name, body.ChatMessage);
         Send(packet);
-       
+
         return Task.CompletedTask;
     }
 
@@ -575,7 +575,7 @@ public class GameSession : IPeer
     {
         using var packet = PacketMaker.U_TO_C_PLAYER_INFO([body.PlayerInfo]);
         Send(packet);
-       
+
         return Task.CompletedTask;
     }
 
@@ -583,7 +583,7 @@ public class GameSession : IPeer
     {
         using var packet = PacketMaker.U_TO_C_EXPLORE_TARGET_INFO([body.ExploreTargetInfo]);
         Send(packet);
-       
+
         return Task.CompletedTask;
     }
 
@@ -593,7 +593,7 @@ public class GameSession : IPeer
         {
             return;
         }
-       
+
         if (body.MapId == MapId.Camp)
         {
             await Player.EnterCamp(body.MapSubId);
@@ -614,13 +614,13 @@ public class GameSession : IPeer
     {
         using var packet = PacketMaker.U_TO_C_SOCIAL_ACTION(body.PlayerId, body.SocialActionType);
         Send(packet);
-       
+
         return Task.CompletedTask;
     }
-    
+
     private Task SubscribeTakeDamage(G_TO_U_TAKE_DAMAGE body)
     {
-        using var packet = PacketMaker.U_TO_C_TAKE_DAMAGE(body.PlayerId, body.DamageType, body.Damage);;
+        using var packet = PacketMaker.U_TO_C_TAKE_DAMAGE(body.PlayerId, body.DamageType, body.Damage); ;
         Send(packet);
 
         return Task.CompletedTask;
@@ -635,7 +635,7 @@ public class GameSession : IPeer
         var instanceSubject = getSubject(objectInfo, manageServer);
         NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, objectInfo.ObjectType, serializedPayload)));
     }
-    
+
     public virtual void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject?
     {
         var objectInfo = info switch
@@ -659,7 +659,7 @@ public class GameSession : IPeer
         var sendTuple = (playerInfo.PlayerId, socialActionType);
         BroadcastToMap(playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
     }
-    
+
     public virtual void BroadcastObjectDestroy(GameObjectInfo objectInfo)
     {
         var payload = objectInfo.GetGameObjectKey();
@@ -716,7 +716,7 @@ public class GameSession : IPeer
                 using var packet = PacketMaker.U_TO_G_LOGOUT(Player.PlayerId);
                 SendToGameServer(packet);
             }
-            
+
             MapObjectController.Dispose();
             await Cts.CancelAsync();
             NatsClient.Close();

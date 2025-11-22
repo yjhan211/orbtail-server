@@ -161,7 +161,7 @@ public class GameServer : IHostedService
         _clientSessions.TryAdd(playerId, session);
         _logger.LogInformation($"Game client session registered: PlayerId={playerId}");
     }
-    
+
     private void SubscribeToLogoutEvents()
     {
         _logoutNatsClient = _natsClientFactory.Create();

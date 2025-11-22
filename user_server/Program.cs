@@ -24,24 +24,24 @@ internal static class Program
             .ConfigureServices(ConfigureServices)
             .RunConsoleAsync();
     }
-    
+
     private static void ConfigureApp(HostBuilderContext _, IConfigurationBuilder config)
     {
         config.AddEnvironmentVariables();
     }
-    
+
     private static void ConfigureLogging(HostBuilderContext hostingContext, ILoggingBuilder logging)
     {
         var serverConfig = CreateServerConfig(hostingContext.Configuration);
-        
+
         var serilogLogger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .Enrich.WithProperty("serverType", serverConfig.ServerType)
             .Enrich.WithProperty("serverId", serverConfig.ServerId)
-            .WriteTo.Console(outputTemplate: 
+            .WriteTo.Console(outputTemplate:
                 "[{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
-    
+
         logging.ClearProviders();
         logging.AddSerilog(serilogLogger);
     }
@@ -59,14 +59,14 @@ internal static class Program
         services.AddHostedService<HealthCheckService>();
         services.AddHostedService<UserServer>();
     }
-    
+
     private static void RegisterConfigurationServices(IServiceCollection services, HostBuilderContext hostContext)
     {
         var serverConfig = CreateServerConfig(hostContext.Configuration);
         services.AddSingleton<IServerConfig>(serverConfig);
         services.AddSingleton(serverConfig);
     }
-    
+
     private static void RegisterCoreServices(IServiceCollection services)
     {
         services.AddSingleton<NetworkService>();
@@ -75,13 +75,13 @@ internal static class Program
         services.AddSingleton<INatsClientFactory>(provider => provider.GetRequiredService<NatsClientFactory>());
         services.AddSingleton<LogManager>(CreateLogManager);
     }
-    
+
     private static void RegisterInfrastructureServices(IServiceCollection services, HostBuilderContext hostContext)
     {
         services.AddSingleton<RedisConnectionPool>(provider => CreateRedisConnectionPool(provider, hostContext));
         services.AddSingleton<IRedisConnectionPool>(provider => provider.GetRequiredService<RedisConnectionPool>());
     }
-    
+
     private static void RegisterHelperServices(IServiceCollection services)
     {
         services.AddSingleton<CacheHelper>();
@@ -101,7 +101,7 @@ internal static class Program
         // Register all user server services (Commands, Queries, Repositories, Events, etc.)
         services.AddUserServerServices(cacheHelper, getSessionFunc);
     }
-    
+
     private static ServerConfig CreateServerConfig(IConfiguration configuration)
     {
         return new ServerConfig
@@ -111,25 +111,25 @@ internal static class Program
             ServerId = 0
         };
     }
-    
+
     private static LogManager CreateLogManager(IServiceProvider serviceProvider)
     {
         var serverConfig = serviceProvider.GetRequiredService<ServerConfig>();
         var logger = serviceProvider.GetRequiredService<ILogger<LogManager>>();
-        
+
         return new LogManager(
             serverConfig.ServerType,
             serverConfig.ServerId,
             logger
         );
     }
-    
+
     private static RedisConnectionPool CreateRedisConnectionPool(IServiceProvider serviceProvider, HostBuilderContext hostContext)
     {
         var redisPool = new RedisConnectionPool();
-        var redisEndpoints = hostContext.Configuration["redisEndpoints"] 
+        var redisEndpoints = hostContext.Configuration["redisEndpoints"]
             ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
-        
+
         redisPool.Initialize(redisEndpoints);
         return redisPool;
     }

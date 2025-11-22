@@ -1,5 +1,5 @@
 using user_server.infrastructure.network;
-﻿using log4net.Repository.Hierarchy;
+using log4net.Repository.Hierarchy;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -19,10 +19,10 @@ public class PlayerMap(GameSession user, PlayerInfo playerInfo)
     private readonly SendPacketDelegate _sendToClient = user.Send;
     private readonly ILogger _logger = user.Logger;
 
-    public (MapId, long, Cell, bool) CurrentMapInfo => 
+    public (MapId, long, Cell, bool) CurrentMapInfo =>
         (playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, playerInfo.ObjectInfo.CurrentCell, playerInfo.ObjectInfo.IsFlip);
 
-    public (MapId, Cell) LastMapInfo => 
+    public (MapId, Cell) LastMapInfo =>
         (playerInfo.LastMapId, playerInfo.LastCell);
 
     public async Task ChangeMap(MapId mapId)
@@ -59,11 +59,11 @@ public class PlayerMap(GameSession user, PlayerInfo playerInfo)
         await EnterMap(mapId, spawnPosition, isFlip, false);
         await playerInfo.Save(_cacheHelper);
     }
-    
+
     public async Task EnterMap(MapId mapId, Cell spawnPosition, bool isFlip, bool isLogin)
     {
         playerInfo.ObjectInfo.MapId = mapId;
-        playerInfo.ObjectInfo.MapSubId =  GetInstanceMapSubId();
+        playerInfo.ObjectInfo.MapSubId = GetInstanceMapSubId();
         playerInfo.ObjectInfo.CurrentCell = spawnPosition;
         playerInfo.ObjectInfo.TargetCell = spawnPosition;
         playerInfo.ObjectInfo.IsFlip = isFlip;
@@ -74,7 +74,7 @@ public class PlayerMap(GameSession user, PlayerInfo playerInfo)
         var publishObj = MessagePackSerializer.Serialize((playerInfo.ObjectInfo.GetGameObjectKey(), playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId, isLogin));
         _natsClient.Publish(subject, publishObj);
     }
-    
+
     public async Task EnterCamp(long mapSubId)
     {
         playerInfo.ObjectInfo.MapId = MapId.Camp;
@@ -88,12 +88,12 @@ public class PlayerMap(GameSession user, PlayerInfo playerInfo)
 
         await playerInfo.Save(_cacheHelper);
     }
-    
+
     private bool IsAbleChangeMap(MapId currentMapId, MapId changeMapId)
     {
         return true;
     }
-    
+
     private long GetInstanceMapSubId()
     {
         if (playerInfo.PlayerId > PlayerConstants.DUMMY_PLAYER_ID_THRESHOLD)

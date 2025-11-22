@@ -37,16 +37,16 @@ public class MapObjectController : IDisposable
         }
         _updateObjectChannel.Writer.TryWrite(objectInfo);
     }
-    
+
     /// 이 함수가 호출되는 경우: G_TO_U_SPAWN_LIST의 objectKeyList에는 있으나 클라에는 GameObjectInfo가 없을 때
     /// 어떤 경우에 생기는가: 이미 스폰되어 있는 오브젝트를 만났을 때
     public async Task GetObjectInfo(C_TO_U_OBJECT_INFO body)
     {
         if (_disposed) return;
-        
+
         var keys = body.ObjectKeyList.ConvertAll(x => (RedisValue)x).ToArray();
         var objectInfoList = await GameObjectInfo.LoadAll(_cacheHelper, keys);
-        
+
         foreach (var objectInfo in objectInfoList)
         {
             EnqueueUpdateObject(objectInfo);
@@ -71,13 +71,13 @@ public class MapObjectController : IDisposable
             }
         }, _cts.Token);
     }
-    
+
     private async Task ProcessObjectUpdatesAsync()
     {
         while (await _updateObjectChannel.Reader.WaitToReadAsync(_cts.Token))
         {
             var updateObjectList = new List<GameObjectInfo>();
-            
+
             while (updateObjectList.Count < Config.BROADCAST_UNIT &&
                   _updateObjectChannel.Reader.TryRead(out var updateObjectInfo))
             {
@@ -88,12 +88,12 @@ public class MapObjectController : IDisposable
             {
                 continue;
             }
-            
+
             using var packet = PacketMaker.U_TO_C_MAP_UPDATE(updateObjectList, DateTime.UtcNow);
             _sendToClient(packet);
         }
     }
-    
+
     private async Task StopProcessingTaskAsync()
     {
         if (!_processingTask.IsCompleted)
@@ -106,7 +106,7 @@ public class MapObjectController : IDisposable
     {
         Dispose(true);
     }
-    
+
     private void Dispose(bool disposing)
     {
         if (_disposed) return;
@@ -118,7 +118,7 @@ public class MapObjectController : IDisposable
 
             // 채널 종료
             _updateObjectChannel.Writer.Complete();
-            
+
             // 처리 태스크 종료 대기
             StopProcessingTaskAsync().GetAwaiter().GetResult();
         }

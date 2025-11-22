@@ -20,7 +20,7 @@ public class PlayerQuest(GameSession user, PlayerInfo playerInfo)
             // throw new Exception($"Already Started Quest. QuestId: {questId}");
             return;
         }
-        
+
         var quest = new QuestInfo(playerInfo.PlayerId, questId);
         playerInfo.QuestDiary.AddQuest(quest);
         await playerInfo.QuestDiary.Save(_cacheHelper);
@@ -43,11 +43,11 @@ public class PlayerQuest(GameSession user, PlayerInfo playerInfo)
 
         quest.Count += body.Count;
         await playerInfo.QuestDiary.Save(_cacheHelper);
-        
+
         using var packet = PacketMaker.U_TO_C_QUEST_UPDATE(quest);
         _sendToClient(packet);
     }
-    
+
     public async Task IncreaseQuestCount(int questId, int count, List<QuestInfo> updateQuests)
     {
         if (!playerInfo.QuestDiary.QuestDict.TryGetValue(questId, out var quest))
@@ -55,7 +55,7 @@ public class PlayerQuest(GameSession user, PlayerInfo playerInfo)
             quest = new QuestInfo(playerInfo.PlayerId, questId);
             playerInfo.QuestDiary.AddQuest(quest);
         }
-        
+
         quest.Count += count;
         await playerInfo.QuestDiary.Save(_cacheHelper);
         updateQuests.Add(quest);
@@ -68,7 +68,7 @@ public class PlayerQuest(GameSession user, PlayerInfo playerInfo)
         {
             throw new Exception($"Not Started Quest. QuestId: {body.QuestId}");
         }
-            
+
         var questDesignData = GameQuestData.Get(body.QuestId);
         if (questInfo.Count < questDesignData.RequireCount)
         {
@@ -88,7 +88,7 @@ public class PlayerQuest(GameSession user, PlayerInfo playerInfo)
                 await mailBox.Save(_cacheHelper);
             }
         }
-        
+
         var isAddNextQuest = true;
         foreach (var requireQuestId in questDesignData.NextRequire)
         {
@@ -113,9 +113,9 @@ public class PlayerQuest(GameSession user, PlayerInfo playerInfo)
                 updateQuestList.Add(nextQuestInfo);
             }
         }
-        
+
         await playerInfo.QuestDiary.Save(_cacheHelper);
-        
+
         using var packet = PacketMaker.U_TO_C_QUEST_SUCCESS(body.QuestId, ErrorCode.SUCCESS);
         _sendToClient(packet);
 
@@ -125,7 +125,7 @@ public class PlayerQuest(GameSession user, PlayerInfo playerInfo)
             _sendToClient(updateQuestPacket);
         }
     }
-    
+
     public void SendCurrentQuests()
     {
         if (playerInfo.QuestDiary.QuestDict.Count == 0)

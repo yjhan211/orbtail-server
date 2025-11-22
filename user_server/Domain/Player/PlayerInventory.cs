@@ -10,7 +10,7 @@ namespace user_server.domain.player;
 public class PlayerInventory(GameSession user, PlayerInfo playerInfo, PlayerQuest playerQuest)
 {
     private const string ItemUidKey = "item_uid_key";
-    
+
     private readonly ICacheHelper _cacheHelper = user.CacheHelper;
 
     public static async Task<ItemInfo> CreateItem(ICacheHelper cacheHelper, int itemId, int count)
@@ -43,33 +43,33 @@ public class PlayerInventory(GameSession user, PlayerInfo playerInfo, PlayerQues
             {
                 var equipTypeSet = new HashSet<EquipType>();
                 foreach (var itemUid in body.ItemUidList)
-            {
-                if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
                 {
-                    throw new Exception($"Item with uid {itemUid} not found");
+                    if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(itemUid, out var targetItem))
+                    {
+                        throw new Exception($"Item with uid {itemUid} not found");
+                    }
+
+                    var itemDetail = GameItemData.Get(targetItem.ItemId);
+                    if (!itemDetail.IsEquipment)
+                        throw new Exception($"not wearable item {targetItem.ItemId}");
+
+                    var equipType = GameItemData.GetEquipType(targetItem.ItemId);
+
+                    // 같은 EquipType 중복 체크
+                    if (equipTypeSet.Contains(equipType))
+                    {
+                        throw new Exception($"Duplicate equip type {equipType} for item {targetItem.ItemId}");
+                    }
+                    equipTypeSet.Add(equipType);
+
+                    targetItem.IsWear = true;
+                    playerInfo.WearItemIdList.Add(targetItem.ItemId);
+
+                    if (!updateItems.Contains(targetItem))
+                    {
+                        updateItems.Add(targetItem);
+                    }
                 }
-
-                var itemDetail = GameItemData.Get(targetItem.ItemId);
-                if (!itemDetail.IsEquipment)
-                    throw new Exception($"not wearable item {targetItem.ItemId}");
-
-                var equipType = GameItemData.GetEquipType(targetItem.ItemId);
-
-                // 같은 EquipType 중복 체크
-                if (equipTypeSet.Contains(equipType))
-                {
-                    throw new Exception($"Duplicate equip type {equipType} for item {targetItem.ItemId}");
-                }
-                equipTypeSet.Add(equipType);
-
-                targetItem.IsWear = true;
-                playerInfo.WearItemIdList.Add(targetItem.ItemId);
-
-                if (!updateItems.Contains(targetItem))
-                {
-                    updateItems.Add(targetItem);
-                }
-            }
             }
 
             await playerInfo.Save(_cacheHelper);
@@ -128,7 +128,7 @@ public class PlayerInventory(GameSession user, PlayerInfo playerInfo, PlayerQues
                 throw new Exception($"delete item {body.ItemUid} failed.");
             }
             updateItems.Add(deleteItem);
-        
+
             foreach (var (buffId, value) in itemDetail.ConsumableBuffList)
             {
                 var buffDetail = GameBuffData.Get(buffId);
@@ -141,7 +141,7 @@ public class PlayerInventory(GameSession user, PlayerInfo playerInfo, PlayerQues
                     case BuffSubType.CONDITION_ADD:
                         playerInfo.Hp = Math.Clamp(playerInfo.Hp + (value * 100), 0, 10000);
                         break;
-                    
+
                     case BuffSubType.DURABILITY_ADD:
                         if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.TargetItemUid, out var targetItem))
                         {
@@ -154,7 +154,7 @@ public class PlayerInventory(GameSession user, PlayerInfo playerInfo, PlayerQues
                         targetItem.Durability = Math.Clamp(targetItem.Durability + value, 0, 100);
                         updateItems.Add(targetItem);
                         break;
-                    
+
                     case BuffSubType.COLOR_CHANGE:
                         if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(body.TargetItemUid, out var targetItem2))
                         {
@@ -171,16 +171,16 @@ public class PlayerInventory(GameSession user, PlayerInfo playerInfo, PlayerQues
                                     case 201000007:
                                         targetItem2.ItemId = 104000002;
                                         break;
-                                    
+
                                     case 201000008:
                                         targetItem2.ItemId = 104000003;
                                         break;
-                                    
+
                                     default:
                                         break;
                                 }
                                 break;
-                            
+
                             case 105000002:
                             case 105000003:
                             case 105000004:
@@ -189,16 +189,16 @@ public class PlayerInventory(GameSession user, PlayerInfo playerInfo, PlayerQues
                                     case 201000007:
                                         targetItem2.ItemId = 105000002;
                                         break;
-                                    
+
                                     case 201000008:
                                         targetItem2.ItemId = 105000003;
                                         break;
-                                    
+
                                     default:
                                         break;
                                 }
                                 break;
-                            
+
                             default:
                                 break;
                         }
@@ -207,30 +207,30 @@ public class PlayerInventory(GameSession user, PlayerInfo playerInfo, PlayerQues
                 }
             }
             await playerInfo.Save(_cacheHelper);
-            
+
             switch (deleteItem.ItemId)
             {
                 case 201000001:
                 case 201000002:
                 case 201000003:
-                case 201000006:    
+                case 201000006:
                     var rewardItem = await CreateItem(_cacheHelper, 301000020, 1); // 빈 포장지
                     var addItem = playerInfo.InventoryInfo.AddItem(rewardItem);
                     updateItems.Add(addItem);
                     break;
-                
+
                 case 201000005:
                     await playerQuest.IncreaseQuestCount(100000004, 1, updateQuests);
                     break;
-                    
+
                 // case 201000004:
                 //     await playerQuest.IncreaseQuestCount(100000009, 1, updateQuests);
                 //     break;
-                    
+
                 case 202000001:
                     await playerQuest.IncreaseQuestCount(200000001, 1, updateQuests);
                     break;
-                
+
                 case 202000002:
                     await playerQuest.IncreaseQuestCount(200000002, 1, updateQuests);
                     break;
@@ -246,7 +246,7 @@ public class PlayerInventory(GameSession user, PlayerInfo playerInfo, PlayerQues
             user.Send(questPacket);
         }
     }
-    
+
     public void SendCurrentItems()
     {
         var inventoryInfo = playerInfo.InventoryInfo;
@@ -268,7 +268,7 @@ public class PlayerInventory(GameSession user, PlayerInfo playerInfo, PlayerQues
             user.Send(packet);
         }
     }
-    
+
     public virtual void SendUpdateItems(List<ItemInfo> updateItems)
     {
         if (updateItems.Count == 0)

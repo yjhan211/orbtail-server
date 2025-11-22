@@ -16,17 +16,17 @@ public sealed class PlayerMovement(GameSession user, PlayerInfo playerInfo)
 {
     private readonly ICacheHelper _cacheHelper = user.CacheHelper;
     private readonly INatsClient _natsClient = user.NatsClient;
-    
+
     private readonly MapObjectController _mapObjectController = user.MapObjectController;
-    
+
     private readonly BroadcastDelegate<PlayerInfo> _broadcastUpdateInfo = user.BroadcastUpdateInfo;
     private readonly SendPacketDelegate _sendToClient = user.Send;
-    
+
     private readonly SemaphoreSlim _moveLock = new(1, 1);
     private readonly ConcurrentQueue<C_TO_U_MOVE> _moveQueue = new();
 
     private readonly ILogger _logger = user.Logger;
-    
+
     private bool _disposed;
     private Cell? _lastCell;
 
@@ -52,7 +52,7 @@ public sealed class PlayerMovement(GameSession user, PlayerInfo playerInfo)
             _broadcastUpdateInfo(playerInfo);
         }
     }
-    
+
     private async Task ProcessAsync(C_TO_U_MOVE request)
     {
         await Move(request);
@@ -72,7 +72,7 @@ public sealed class PlayerMovement(GameSession user, PlayerInfo playerInfo)
             if (_moveQueue.Count >= Config.MAX_MOVE_QUEUE_SIZE)
             {
                 // TODO 싱크 완전히 깨진 상태이므로 위치 강제보정
-                throw new Exception("[RequestMove] moveQueue is Full.");   
+                throw new Exception("[RequestMove] moveQueue is Full.");
             }
             _moveQueue.Enqueue(body);
         }
@@ -81,7 +81,7 @@ public sealed class PlayerMovement(GameSession user, PlayerInfo playerInfo)
             _moveLock.Release();
         }
     }
-    
+
     private async Task ProcessMoveAsync(C_TO_U_MOVE moveRequest)
     {
         var moveSpeed = GetMoveSpeed(moveRequest.Direction);
@@ -91,7 +91,7 @@ public sealed class PlayerMovement(GameSession user, PlayerInfo playerInfo)
         {
             IncreaseHp(consumeHp * -1);
         }
-        
+
         var nextTargetCell = playerInfo.ObjectInfo.TargetCell.GetNextCell(moveRequest.Direction);
         if (!GameMapData.IsMoveablePosition(playerInfo.ObjectInfo.MapId, nextTargetCell))
         {
@@ -112,7 +112,7 @@ public sealed class PlayerMovement(GameSession user, PlayerInfo playerInfo)
 
         var currentPartKey = MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
         var currentManageServer = MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
-        var nextManageServer =  MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
+        var nextManageServer = MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
 
         if (currentManageServer != nextManageServer)
         {
@@ -168,8 +168,8 @@ public sealed class PlayerMovement(GameSession user, PlayerInfo playerInfo)
             case DirectionType.BOTTOM:
                 speed /= 1.3f;
                 break;
-            
-            case DirectionType.LEFT: 
+
+            case DirectionType.LEFT:
             case DirectionType.RIGHT:
                 speed /= 2;
                 break;
@@ -181,25 +181,25 @@ public sealed class PlayerMovement(GameSession user, PlayerInfo playerInfo)
     private void IncreaseHp(int value)
     {
         playerInfo.Hp = Math.Clamp(playerInfo.Hp + value, 0, 10000);
-        
+
         using var packet = PacketMaker.U_TO_C_PLAYER_INFO([playerInfo]);
         _sendToClient(packet);
     }
-    
+
     private void RequestSpawnInfo(MapId targetMapId, List<Cell> cellsToRemove, bool isAll = false)
     {
         var serverId = MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
         var instanceKey = MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
         RequestSpawnObjectList(serverId, [instanceKey], []);
     }
-    
+
     // 최초 맵 입장 or 이동 시 새로운 영역에 대한 오브젝트 정보 요청
     private void RequestSpawnObjectList(int serverId, List<string>? positionKeyList, List<Cell>? cellsToRemove)
     {
         var subject = SubjectHelper.GetSpawnManageSubject(playerInfo.ObjectInfo, serverId);
         var message = MessagePackSerializer.Serialize((
-            playerInfo.ObjectInfo.GetGameObjectKey(), 
-            positionKeyList ?? [], 
+            playerInfo.ObjectInfo.GetGameObjectKey(),
+            positionKeyList ?? [],
             cellsToRemove ?? []
         ));
         _natsClient.Publish(subject, message);
@@ -212,7 +212,7 @@ public sealed class PlayerMovement(GameSession user, PlayerInfo playerInfo)
 
         _moveLock.Dispose();
         _moveQueue.Clear();
-        
+
         _disposed = true;
     }
 }

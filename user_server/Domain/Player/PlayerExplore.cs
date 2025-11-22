@@ -1,5 +1,5 @@
 using user_server.infrastructure.network;
-﻿using MessagePack;
+using MessagePack;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -21,7 +21,7 @@ public class PlayerExplore(
 {
     private readonly INatsClient _natsClient = user.NatsClient;
     private readonly ICacheHelper _cacheHelper = user.CacheHelper;
-    
+
     private readonly IRedLockFactory _redLock = user.RedLock;
     private readonly SendPacketDelegate _sendToClient = user.Send;
     private readonly BroadcastDelegate<PlayerInfo> _broadcastPlayerInfo = user.BroadcastUpdateInfo;
@@ -34,12 +34,12 @@ public class PlayerExplore(
     private readonly ILogger _logger = user.Logger;
 
     private readonly MapObjectController _mapObjectController = user.MapObjectController;
-    
+
     protected virtual async Task<ExploreTargetInfo?> LoadExploreTargetInfo(long exploreTargetUid)
     {
         return await ExploreTargetInfo.Load(_cacheHelper, exploreTargetUid);
     }
-    
+
     public async Task Explore(C_TO_U_EXPLORE body)
     {
         ExploreTargetInfo? exploreTargetInfo;
@@ -67,7 +67,7 @@ public class PlayerExplore(
                     _sendToClient(errorPacket);
                     return;
                 }
-                
+
                 // 거리 체크 로직 (주석 처리됨)
                 // if (2 < _playerInfo.ObjectInfo.CurrentCell.GetDistance(exploreTargetInfo.ObjectInfo.CurrentCell))
                 // {
@@ -78,7 +78,7 @@ public class PlayerExplore(
 
                 exploreTargetInfo.PlayerId = playerInfo.PlayerId;
                 exploreTargetInfo.EndTimestamp = DateTime.UtcNow.AddSeconds(GameRuleData.SkillCompleteTime);
-                
+
                 var exploreProgressInfo = new ExploreProgressInfo(exploreTargetInfo);
                 _addProgressItem(exploreProgressInfo, async trackable =>
                 {
@@ -90,7 +90,7 @@ public class PlayerExplore(
 
             playerInfo.State = PlayerState.EXPLORE_1;
             playerInfo.Stamina -= 5;
-            
+
             var direction = playerInfo.ObjectInfo.TargetCell.GetDirection(exploreTargetInfo.ObjectInfo.CurrentCell);
             playerInfo.ObjectInfo.SetFlip(direction);
             await playerInfo.Save(_cacheHelper);
@@ -98,15 +98,15 @@ public class PlayerExplore(
 
         using var packet = PacketMaker.U_TO_C_EXPLORE(ErrorCode.SUCCESS);
         _sendToClient(packet);
-        
+
         var currentPartKey = MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
         var currentManageServer = MapHelper.GetManageServerId(playerInfo.ObjectInfo.MapSubId);
         var moveSubject = SubjectHelper.GetUpdateManageSubject(playerInfo.ObjectInfo, currentManageServer);
         _natsClient.Publish(moveSubject,
             MessagePackSerializer.Serialize((currentPartKey, objectInfo: playerInfo.ObjectInfo)));
-        
+
         _mapObjectController.EnqueueUpdateObject(playerInfo.ObjectInfo);
-        
+
         _broadcastPlayerInfo(playerInfo);
         _broadcastExploreTargetInfo(exploreTargetInfo);
     }
@@ -136,7 +136,7 @@ public class PlayerExplore(
                 await exploreTargetInfo.Delete(_cacheHelper);
                 _broadcastDestroy(exploreTargetInfo.ObjectInfo);
             }
-            
+
             // exploreTargetInfo.PlayerId = 0;
             await exploreTargetInfo.Save(_cacheHelper);
             _broadcastExploreTargetInfo(exploreTargetInfo);
@@ -181,13 +181,13 @@ public class PlayerExplore(
                     case 13:
                         await _startQuest(200000001, updateQuests);
                         break;
-                    
+
                     case 6:
                         await _startQuest(200000002, updateQuests);
                         break;
                 }
             }
-            
+
             var rewardItem = await PlayerInventory.CreateItem(_cacheHelper, rewardItemId, 1);
             switch (rewardItem.ItemId)
             {

@@ -9,7 +9,7 @@ namespace user_server.domain.player;
 public class PlayerMailBox(GameSession user, PlayerInfo playerInfo)
 {
     private const string MailUidKey = "mail_uid_key";
-    
+
     private readonly ICacheHelper _cacheHelper = user.CacheHelper;
     private readonly SendPacketDelegate _sendToClient = user.Send;
 
@@ -40,13 +40,13 @@ public class PlayerMailBox(GameSession user, PlayerInfo playerInfo)
             {
                 throw new Exception($"Already Rewarded. mailUid: {body.MailUid}");
             }
-            
+
             foreach (var (itemId, count) in mailInfo.Items)
             {
                 var rewardItem = await PlayerInventory.CreateItem(_cacheHelper, itemId, count);
                 playerInfo.InventoryInfo.AddItem(rewardItem);
             }
-            
+
             await mailBox.Save(_cacheHelper);
         }
 
@@ -55,7 +55,7 @@ public class PlayerMailBox(GameSession user, PlayerInfo playerInfo)
 
         await SendCurrentMails();
     }
-    
+
     public Task SendCurrentMails()
     {
         var mailBox = playerInfo.MailBox;
@@ -75,7 +75,7 @@ public class PlayerMailBox(GameSession user, PlayerInfo playerInfo)
             using var packet = PacketMaker.U_TO_C_MAIL_LIST(batchDict, isEnded);
             _sendToClient(packet);
         }
-        
+
         return Task.CompletedTask;
     }
 }

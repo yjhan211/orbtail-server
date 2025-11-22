@@ -33,7 +33,7 @@ public class PlayerProgress : IDisposable
             var expiredItems = _activeProgressItems
                 .Where(kvp => kvp.Value.Trackable.GetEndTime() <= now)
                 .ToList();
-        
+
             foreach (var kvp in expiredItems)
             {
                 if (_activeProgressItems.TryRemove(kvp.Key, out var item))
@@ -59,7 +59,7 @@ public class PlayerProgress : IDisposable
             _logger.LogError(ex, "Error processing expired item");
         }
     }
-    
+
     private int CancelExploreProgress()
     {
         var canceledCount = 0;
@@ -98,7 +98,7 @@ public class PlayerProgress : IDisposable
 
         var cancelNum = CancelExploreProgress();
         _logger.LogInformation("PlayerProgress: {CancelNum} items canceled", cancelNum);
-        
+
         _cleanupTimer.Dispose();
         _activeProgressItems.Clear();
         _disposed = true;

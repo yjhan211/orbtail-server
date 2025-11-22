@@ -31,7 +31,7 @@ public class ChatController(ICacheHelper cacheHelper)
 
         await cacheHelper.EnqueueAsync(key, MessagePackSerializer.Serialize((chatType, playerId, senderName, message)));
     }
-    
+
     public async Task<List<(ChatType, long, string, string)>> GetChatHistory(ChatType chatType)
     {
         var key = GetChatHistoryKey(chatType);
@@ -61,14 +61,14 @@ public class ChatController(ICacheHelper cacheHelper)
 
         return chatHistory;
     }
-    
+
     public async Task SendChat(long playerId, string name, ChatType chatType, string message, INatsClient natsClient)
     {
         if (!_userNameMap.TryGet(playerId, out var _))
         {
             _userNameMap.Add(playerId, name);
         }
-        
+
         using var packet = PacketMaker.U_TO_C_CHAT_MSG(chatType, playerId, name, message);
         switch (chatType)
         {
