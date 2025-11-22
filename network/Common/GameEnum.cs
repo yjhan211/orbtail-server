@@ -4,23 +4,28 @@ namespace network.common
     public enum MapId
     {
         None = 0,
-        TutorialLibrary,
-        TutorialSchool1,
-        TutorialSchool2,
-        TutorialClassroom,
-        TutorialAdminoffice,
-        TutorialGym,
-        TutorialGymstorage,
-        TutorialCity,
-        Library,
-        School1,
-        School2,
-        Classroom,
-        Adminoffice,
-        Gym,
-        Gymstorage,
-        City,
+        School,
         Camp,
+    }
+
+    public enum AreaType
+    {
+        None = 0,
+        Library,
+        Classroom1,
+        Classroom2,
+        Classroom3,
+        Classroom4,
+        Classroom5,
+        Corridor,
+        Storage1,
+        Storage2,
+        AdminOffice1,
+        AdminOffice2,
+        Gym,
+        Ground,
+        Terrace1,
+        Terrace2,
     }
 
     public enum SocialActionType
@@ -67,7 +72,7 @@ namespace network.common
     {
         NONE = 0,
         HEAD = 101,
-        FACE = 102, 
+        FACE = 102,
         HAT = 103,
         TOP = 104,
         BOTTOM = 105,
@@ -84,14 +89,13 @@ namespace network.common
         SHOP
     }
 
-// 주의사항: _ 붙이지 말 것
+    // 주의사항: _ 붙이지 말 것
     public enum ObjectType
     {
         NONE,
         PLAYER,
         ITEM,
         EXPLORETARGET,
-        CAMP,
         INTERACTPROP,
     }
 
@@ -115,42 +119,11 @@ namespace network.common
         BOTTOM,
     }
 
-    public enum JobType : byte
-    {
-        NONE,
-        ENGINEER, // 공학자
-        CHEMIST // 화학자
-    }
-
-    public enum JobGrade : byte
-    {
-        NONE,
-        TRAINEE, // 수습 연구원
-        RESEARCHER, // 연구원
-        ASSOCIATE, // 주임 연구원
-        SENIOR_ASSOCIATE, // 선임 연구원
-        PRINCIPAL, // 책임 연구원
-        LEAD, // 수석 연구원
-        CHIEF // 대가
-    }
-
     public enum LabGrade : byte
     {
         NONE,
         ALONE, // 개인 동아리
         CLUB // 동아리
-    }
-
-    public enum PlayerGrade : byte
-    {
-        NONE,
-        RUFFIAN, // 불량배
-        LAW_BREAKER, // 위법시민
-        COMMONER, // 시민
-        LAW_ABIDING, // 준법시민
-        RIGHTEOUS_PERSON, // 의인
-        HERO, // 영웅
-        SAINT // 성자
     }
 
     public enum ChatType : byte
@@ -173,7 +146,6 @@ namespace network.common
         SITCHAIR,
         EXPLORE_1,
         CRAFT_1,
-        CAMPING_1,
         SLEEP,
     }
 

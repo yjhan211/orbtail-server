@@ -51,7 +51,7 @@ public partial class InventoryInfo
         {
             return null;
         }
-        
+
         if (item.Count < count)
         {
             return null;
@@ -62,10 +62,10 @@ public partial class InventoryInfo
         {
             ItemDict.Remove(itemUid);
         }
-        
+
         return item;
     }
-    
+
     public ItemInfo? DeleteItemById(int itemId, int count)
     {
         var item = ItemDict.Values.FirstOrDefault(x => x.ItemId == itemId);
@@ -73,7 +73,7 @@ public partial class InventoryInfo
         {
             return null;
         }
-    
+
         if (item.Count < count)
         {
             return null;
@@ -84,7 +84,7 @@ public partial class InventoryInfo
         {
             ItemDict.Remove(item.ItemUid);
         }
-    
+
         return item;
     }
 

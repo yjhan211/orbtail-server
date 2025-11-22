@@ -23,14 +23,14 @@ internal static partial class Program
             .ConfigureServices(ConfigureServices)
             .RunConsoleAsync();
     }
-    
+
     private static int ExtractGameServerId(string podName)
     {
         var match = MyRegex().Match(podName);
         if (match.Success && int.TryParse(match.Groups[1].Value, out var id)) return id + 1;
         return 0;
     }
-    
+
     private static void ConfigureApp(HostBuilderContext _, IConfigurationBuilder config)
     {
         config.AddEnvironmentVariables();
@@ -41,19 +41,19 @@ internal static partial class Program
         // 서버 구성 가져오기
         var serverType = hostingContext.Configuration["serverType"] ?? "GameServer";
         var serverId = ExtractGameServerId(hostingContext.Configuration["gameServerId"] ?? "");
-    
+
         // Serilog 구성
         var serilogLogger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .Enrich.WithProperty("serverType", serverType)
             .Enrich.WithProperty("serverId", serverId)
-            .WriteTo.Console(outputTemplate: 
+            .WriteTo.Console(outputTemplate:
                 "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
-    
+
         // 기본 공급자 지우기
         logging.ClearProviders();
-    
+
         // 로깅 파이프라인에 Serilog 추가
         logging.AddSerilog(serilogLogger);
     }
@@ -67,7 +67,7 @@ internal static partial class Program
             GameServerNum = hostContext.Configuration.GetValue<int>("gameServerNum"),
             ServerId = ExtractGameServerId(hostContext.Configuration["gameServerId"] ?? "")
         };
-    
+
         serverConfig.Validate();
         services.AddSingleton<IServerConfig>(serverConfig);
         services.AddSingleton(serverConfig);
@@ -75,17 +75,17 @@ internal static partial class Program
         services.AddSingleton<INetworkService, NetworkService>();
         services.AddSingleton<NatsClientFactory>();
         services.AddSingleton<INatsClientFactory, NatsClientFactory>();
-    
-        // LogManager 등록 방법 변경
-        services.AddSingleton<LogManager>(sp => 
+
+        services.AddSingleton<LogManager>(sp =>
             new LogManager(
-                serverConfig.ServerType, 
-                serverConfig.ServerId, 
+                serverConfig.ServerType,
+                serverConfig.ServerId,
                 sp.GetRequiredService<ILogger<LogManager>>()
             )
         );
-        
-        services.AddSingleton<RedisConnectionPool>(sp => {
+
+        services.AddSingleton<RedisConnectionPool>(sp =>
+        {
             var redisPool = new RedisConnectionPool();
             var redisEndpoints = hostContext.Configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
             redisPool.Initialize(redisEndpoints);
@@ -94,6 +94,7 @@ internal static partial class Program
         services.AddSingleton<IRedisConnectionPool>(sp => sp.GetRequiredService<RedisConnectionPool>());
         services.AddSingleton<CacheHelper>();
         services.AddSingleton<ICacheHelper, CacheHelper>();
+        services.AddHostedService<HealthCheckService>();
         services.AddHostedService<GameServer>();
     }
 

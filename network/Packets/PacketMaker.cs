@@ -15,7 +15,7 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_LOGIN(PlayerInfo playerInfo, LabInfo labInfo)
+    public static Packet U_TO_C_LOGIN(PlayerInfo playerInfo)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_LOGIN);
         U_TO_C_LOGIN body =
@@ -23,9 +23,6 @@ public static class PacketMaker
             {
                 ObjectInfo = playerInfo.ObjectInfo,
                 PlayerInfo = playerInfo,
-                CraftInfo = playerInfo.CraftInfo,
-                CampInfo = playerInfo.CampInfo,
-                LabInfo = labInfo,
             };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -49,29 +46,11 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet U_TO_C_INVENTORY_UPDATE(List<ItemInfo> updateItems, bool isEnd)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_INVENTORY_UPDATE);
         U_TO_C_INVENTORY_UPDATE body = new() { UpdateItems = updateItems, IsEnd = isEnd };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_U_LAB_INVENTORY(Dictionary<long, ItemInfo> itemDict)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_U_LAB_INVENTORY);
-        U_TO_U_LAB_INVENTORY body = new() { ItemDict = itemDict };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_LAB_INVENTORY(Dictionary<long, ItemInfo> itemDict, bool isEnd)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_LAB_INVENTORY);
-        U_TO_C_LAB_INVENTORY body = new() { ItemDict = itemDict, IsEnd = isEnd };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -89,7 +68,7 @@ public static class PacketMaker
     public static Packet U_TO_C_USE_ITEM(PlayerInfo playerInfo)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_USE_ITEM);
-        U_TO_C_USE_ITEM body = new() { PlayerInfo = playerInfo, CraftInfo = playerInfo.CraftInfo };
+        U_TO_C_USE_ITEM body = new() { PlayerInfo = playerInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -112,7 +91,7 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet U_TO_C_CHAT_MSG(ChatType chatType, long playerId, string name, string chatMessage)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CHAT_MSG);
@@ -188,24 +167,6 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_U_CAMP_INFO(CampInfo campInfo)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_U_CAMP_INFO);
-        G_TO_U_CAMP_INFO body = new() { CampInfo = campInfo };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_CAMP_INFO(List<CampInfo> campInfoList)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_CAMP_INFO);
-        U_TO_C_CAMP_INFO body = new() { CampInfoList = campInfoList };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
     public static Packet G_TO_U_SPAWN(List<string> objectKeyList, List<Cell> cellsToRemove)
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_SPAWN);
@@ -242,15 +203,15 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_CHANGE_MAP(ErrorCode errorCode)
+    public static Packet U_TO_C_CHANGE_MAP(ErrorCode errorCode, MapId mapId)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CHANGE_MAP);
-        U_TO_C_CHANGE_MAP body = new() { ErrorCode = errorCode };
+        U_TO_C_CHANGE_MAP body = new() { ErrorCode = errorCode, MapId = mapId };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet U_TO_C_CHANGE_MAP_SUCCESS(MapId lastMapId, MapId mapId, long mapSubId, Cell spawnCell, bool isFlip)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_CHANGE_MAP_SUCCESS);
@@ -277,74 +238,11 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
-    public static Packet U_TO_C_CREATE_LAB(long playerId, PlayerInfo playerInfo, LabInfo labInfo)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_CREATE_LAB, playerId);
-        U_TO_C_CREATE_LAB body = new() { PlayerInfo = playerInfo, LabInfo = labInfo };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
 
     public static Packet G_TO_U_ENTER_INSTANCE_SUCCESS(MapId mapId, long mapSubId)
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS);
         G_TO_U_ENTER_INSTANCE_SUCCESS body = new() { MapId = mapId, MapSubId = mapSubId };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_UPGRADE_RESEARCH(Dictionary<int, ResearchInfo> researchInfoDict)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_UPGRADE_RESEARCH);
-        U_TO_C_UPGRADE_RESEARCH body = new() { ResearchInfoDict = researchInfoDict };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_CRAFT(ErrorCode errorCode)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_CRAFT);
-        U_TO_C_CRAFT body = new() { ErrorCode = errorCode };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-    
-    public static Packet U_TO_C_CRAFT_COMPLETE(bool isSuccess, List<SlotItem> slots)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_CRAFT_COMPLETE);
-        U_TO_C_CRAFT_COMPLETE body = new() { IsSuccess = isSuccess, Slots = slots };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_WRITE_LAB_HIRE(ErrorCode errorCode)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_WRITE_LAB_HIRE);
-        U_TO_C_WRITE_LAB_HIRE body = new() { ErrorCode = errorCode };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_LAB_HIRE_LIST(List<(long, string, string)> hireList)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_LAB_HIRE_LIST);
-        U_TO_C_LAB_HIRE_LIST body = new() { HireList = hireList };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_LAB_INFO(PlayerInfo joinPlayerInfo, LabInfo labInfo)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_LAB_INFO);
-        U_TO_C_LAB_INFO body = new() { JoinPlayerInfo = joinPlayerInfo, LabInfo = labInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -372,16 +270,16 @@ public static class PacketMaker
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_SOCIAL_ACTION);
         G_TO_U_SOCIAL_ACTION body = new() { PlayerId = playerId, SocialActionType = actionType };
-        
+
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet U_TO_C_SOCIAL_ACTION(long playerId, SocialActionType actionType)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_SOCIAL_ACTION);
         U_TO_C_SOCIAL_ACTION body = new() { PlayerId = playerId, SocialActionType = actionType };
-        
+
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
@@ -412,7 +310,7 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet U_TO_C_MAIL_LIST(Dictionary<long, MailInfo> mailDict, bool isEnd)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_MAIL_LIST);
@@ -439,7 +337,7 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
+
     public static Packet G_TO_U_TAKE_DAMAGE(long playerId, DamageType damageType, int damage)
     {
         var packet = Packet.Create((int)Protocol.G_TO_U_TAKE_DAMAGE);
@@ -467,20 +365,46 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_PUT_MATERIAL(ErrorCode errorCode, List<SlotItem> slots)
+    public static Packet U_TO_C_MATCHING(ErrorCode errorCode)
     {
-        var packet = Packet.Create((int)Protocol.U_TO_C_PUT_MATERIAL);
-        U_TO_C_PUT_MATERIAL body = new() { ErrorCode = errorCode, Slots = slots }; 
-        
+        var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING);
+        U_TO_C_MATCHING body = new() { ErrorCode = errorCode };
+
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-    
-    public static Packet U_TO_C_HANDLE_CRAFT(ErrorCode errorCode, List<SlotItem> slots)
+
+    public static Packet U_TO_C_MATCHING_CANCEL(ErrorCode errorCode)
     {
-        var packet = Packet.Create((int)Protocol.U_TO_C_HANDLE_CRAFT);
-        U_TO_C_HANDLE_CRAFT body = new() { ErrorCode = errorCode, Slots = slots }; 
-        
+        var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING_CANCEL);
+        U_TO_C_MATCHING_CANCEL body = new() { ErrorCode = errorCode };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId, MapId mapId, long mapSubId, Cell spawnPosition, string gameServerIp, int gameServerPort)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING_SUCCESS);
+        U_TO_C_MATCHING_SUCCESS body = new()
+        {
+            MatchingId = matchingId,
+            MapId = mapId,
+            MapSubId = mapSubId,
+            SpawnPosition = spawnPosition,
+            GameServerIp = gameServerIp,
+            GameServerPort = gameServerPort
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet U_TO_C_MATCHING_FAILED(ErrorCode errorCode)
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING_FAILED);
+        U_TO_C_MATCHING_FAILED body = new() { ErrorCode = errorCode };
+
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }

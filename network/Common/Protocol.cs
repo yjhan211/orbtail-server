@@ -99,6 +99,21 @@ namespace network.common
         U_TO_C_PUT_MATERIAL,
         C_TO_U_HANDLE_CRAFT,
         U_TO_C_HANDLE_CRAFT,
+        C_TO_U_MATCHING,
+        U_TO_C_MATCHING,
+        C_TO_U_MATCHING_CANCEL,
+        U_TO_C_MATCHING_CANCEL,
+        U_TO_C_MATCHING_SUCCESS,
+        U_TO_C_MATCHING_FAILED,
+
+        // GameServer 전용 프로토콜 (클라이언트 직접 연결)
+        C_TO_G_MOVE,
+        G_TO_C_MOVE,
+        C_TO_G_ATTACK,
+        G_TO_C_ATTACK,
+        C_TO_G_INTERACT,
+        G_TO_C_INTERACT,
+
         END
     }
 

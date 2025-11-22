@@ -1,0 +1,21 @@
+# Development Dockerfile with hot reload support
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+
+WORKDIR /App
+
+# Copy project files
+COPY game_server/game_server.csproj game_server/
+COPY network/network.csproj network/
+
+# Restore dependencies
+RUN dotnet restore game_server/game_server.csproj
+
+# Copy source code (will be overridden by volume mount)
+COPY game_server/ game_server/
+COPY network/ network/
+
+WORKDIR /App/game_server
+
+# Use dotnet watch for hot reload
+# --non-interactive: rude edit 시 자동으로 재시작
+ENTRYPOINT ["dotnet", "watch", "run", "--non-interactive", "--no-restore", "--project", "game_server.csproj"]

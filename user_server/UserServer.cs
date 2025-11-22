@@ -7,7 +7,8 @@ using network.common.data.helpers;
 using network.core;
 using network.helpers;
 using network.interfaces;
-using user_server.controllers;
+using user_server.application.services;
+using user_server.infrastructure.network;
 
 namespace user_server;
 
@@ -24,7 +25,9 @@ public class UserServer(
     private CancellationTokenSource? _cts;
     private Task? _leaveUserTask;
     private readonly ChatController _chatController = new(cacheHelper);
-    private readonly ConcurrentQueue<GameUser> _leaveUserQueue = new();
+    private readonly ConcurrentQueue<GameSession> _leaveUserQueue = new();
+    private readonly ConcurrentDictionary<long, GameSession> _sessions = new();
+    private MatchingManager? _matchingManager;
 
     public Task StartAsync(CancellationToken ct)
     {
@@ -51,10 +54,11 @@ public class UserServer(
         logger.LogInformation("User server stopping...");
         await _cts?.CancelAsync()!;
         if (_leaveUserTask != null) await _leaveUserTask;
+        _matchingManager?.Dispose();
         _cts?.Dispose();
     }
 
-    private void EnqueueUserLeave(GameUser user)
+    private void EnqueueUserLeave(GameSession user)
     {
         _leaveUserQueue.Enqueue(user);
     }
@@ -69,9 +73,14 @@ public class UserServer(
         {
             logger.LogInformation("Initializing natsClientFactory");
             natsClientFactory.Initialize(natsEndpoint);
-            logger.LogInformation("natsClientFactory initialized successfully");            
+            logger.LogInformation("natsClientFactory initialized successfully");
             GameDataHelper.Initialize();
             MapHelper.Initialize(serverConfig.GameServerNum);
+
+            // Initialize MatchingManager
+            var matchingNatsClient = natsClientFactory.Create();
+            _matchingManager = new MatchingManager(logger, cacheHelper, matchingNatsClient, GetSession);
+            logger.LogInformation("MatchingManager initialized successfully");
         }
         catch (Exception ex)
         {
@@ -92,12 +101,34 @@ public class UserServer(
         {
             var redLockFactory = redisPool.GetRedLockFactory();
             var natsClient = natsClientFactory.Create();
-            _ = new GameUser(token, redLockFactory, natsClient, logger, cacheHelper, EnqueueUserLeave, _chatController);
+            var session = new GameSession(token, redLockFactory, natsClient, logger, cacheHelper, OnSessionLeave,
+                _chatController, _matchingManager, serverConfig, RegisterSession);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to create nats client");
         }
+    }
+
+    private void OnSessionLeave(GameSession session)
+    {
+        if (session.Player != null)
+        {
+            _sessions.TryRemove(session.Player.PlayerId, out _);
+        }
+        EnqueueUserLeave(session);
+    }
+
+    private GameSession? GetSession(long playerId)
+    {
+        _sessions.TryGetValue(playerId, out var session);
+        return session;
+    }
+
+    public void RegisterSession(long playerId, GameSession session)
+    {
+        var added = _sessions.TryAdd(playerId, session);
+        logger.LogInformation($"세션 등록: PlayerId={playerId}, 성공={added}, 총 세션 수={_sessions.Count}");
     }
 
     private async Task LeaveUser(CancellationToken ct)

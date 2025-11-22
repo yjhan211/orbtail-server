@@ -38,11 +38,11 @@ public partial class MailBox
     {
         var serializedData = await cacheHelper.HashGetAsync(HashKey, playerId);
         if (serializedData.IsNull) return new MailBox(playerId);
-        
+
         var mails = MessagePackSerializer.Deserialize<MailBox>(serializedData);
         return mails;
     }
-    
+
     public static async Task Delete(ICacheHelper cacheHelper, long playerId)
     {
         await cacheHelper.HashDeleteAsync(HashKey, playerId);

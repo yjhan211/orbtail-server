@@ -57,7 +57,7 @@ public class UserToken
         {
             throw new Exception("[UserToken/OnMessage] peer is null");
         }
-        
+
         _peer.OnMessageFromClient(buffer);
     }
 
@@ -95,7 +95,7 @@ public class UserToken
     {
         if (sendArgs.SocketError != SocketError.Success || sendArgs.BytesTransferred <= 0)
         {
-            throw new Exception($"[ProcessSend] SocketError:{sendArgs.SocketError}, bytesTransferred:{sendArgs.BytesTransferred}");   
+            throw new Exception($"[ProcessSend] SocketError:{sendArgs.SocketError}, bytesTransferred:{sendArgs.BytesTransferred}");
         }
 
         lock (_lockSendingQueue)
@@ -136,7 +136,7 @@ public class UserToken
             Socket.Shutdown(SocketShutdown.Both);
             Socket.Close();
         }
-        
+
         OnRemoved();
         Disconnected?.Invoke(this);
     }

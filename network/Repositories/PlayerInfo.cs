@@ -25,8 +25,6 @@ public partial class PlayerInfo
         // 조회가 빈번해서 메모리에 올려뒀음. 따로 Save함
         // await GameObjectInfoController.Save(cache_helper, player_info.object_info);
         await InventoryInfo.Save(cacheHelper);
-        await CraftInfo.Save(cacheHelper);
-        await CampInfo.Save(cacheHelper);
         await QuestDiary.Save(cacheHelper);
         await MailBox.Save(cacheHelper);
         await cacheHelper.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
@@ -43,14 +41,11 @@ public partial class PlayerInfo
         var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
 
         playerInfo.ObjectInfo = await GameObjectInfo.Load(cacheHelper, ObjectType.PLAYER, playerId) ?? new GameObjectInfo(playerId);
-        playerInfo.InventoryInfo = await InventoryInfo.Load(cacheHelper, InventoryOwnerType.PLAYER, playerId) ??
-                                   new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
-        playerInfo.CraftInfo = await CraftInfo.Load(cacheHelper, playerId) ?? new CraftInfo(playerId);
-        playerInfo.CampInfo = await CampInfo.Load(cacheHelper, playerId) ?? new CampInfo(playerId, playerInfo.Name, new GameObjectInfo(), new ItemInfo());
+        playerInfo.InventoryInfo = await InventoryInfo.Load(cacheHelper, InventoryOwnerType.PLAYER, playerId) ?? new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
         playerInfo.QuestDiary = await QuestDiary.Load(cacheHelper, playerId);
         playerInfo.MailBox = await MailBox.Load(cacheHelper, playerId);
         playerInfo.IsNew = false;
-        
+
         return playerInfo;
     }
 
@@ -77,8 +72,6 @@ public partial class PlayerInfo
 
         await GameObjectInfo.Delete(cacheHelper, objectField);
         await InventoryInfo.Delete(cacheHelper, InventoryOwnerType.PLAYER, playerId);
-        await CraftInfo.Delete(cacheHelper, playerId);
-        await CampInfo.Delete(cacheHelper, playerId);
         await QuestDiary.Delete(cacheHelper, playerId);
         await MailBox.Delete(cacheHelper, playerId);
         await cacheHelper.HashDeleteAsync(HashKey, playerId);

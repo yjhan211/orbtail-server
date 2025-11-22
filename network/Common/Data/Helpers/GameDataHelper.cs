@@ -19,6 +19,7 @@ namespace network.common.data.helpers
             public const string MailInfo = "mail_info.csv";
             public const string ExploreTargetInfo = "explore_target_info.csv";
             public const string CraftInfo = "craft_info.csv";
+            public const string LoadingText = "loading_text.csv";
 
             public static class Item
             {
@@ -40,10 +41,10 @@ namespace network.common.data.helpers
                 public static readonly string[] ALL = new[] { MapInfo, MapRegion };
             }
         }
-        
+
         private static readonly string NetworkPath = Path.GetDirectoryName(typeof(GameDataHelper).Assembly.Location)!;
         private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
-            StandardDataDefinitions = 
+            StandardDataDefinitions =
             {
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
                 (fileName: DataFiles.BuffInfo, init: GameBuffData.Initialize, validate: GameBuffData.Validate),
@@ -51,38 +52,46 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.MailInfo, init: GameMailData.Initialize, validate: GameMailData.Validate),
                 (fileName: DataFiles.ExploreTargetInfo, init: GameExploreTargetData.Initialize, GameExploreTargetData.Validate),
                 (fileName: DataFiles.CraftInfo, init: GameCraftData.Initialize, GameCraftData.Validate),
+                (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize, validate: GameLoadingTextData.Validate),
             };
+
+        private static string GetCsvFilePath(string fileName)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // 안드로이드: Resources 폴더 사용 (확장자 제거)
+            return $"Common/csv/{System.IO.Path.GetFileNameWithoutExtension(fileName)}";
+#elif UNITY_EDITOR
+            // 에디터: StreamingAssets 경로 사용
+            return System.IO.Path.Combine(Application.streamingAssetsPath, "Common", "csv", fileName);
+#else
+            // 윈도우/기타 플랫폼: StreamingAssets 경로 사용
+            return Path.Combine(NetworkPath, "Common", "csv", fileName);
+#endif
+        }
 
         public static void Initialize()
         {
             // 모든 CSV 데이터 로드
             var loadedData = new Dictionary<string, List<CsvRow>>();
-            
-#if UNITY_EDITOR
-            var commonPath = Path.Combine(Application.dataPath, "Scripts/Common/csv");
-#elif UNITY_STANDALONE
-   var commonPath = Path.Combine(Application.streamingAssetsPath, "Common/csv");
-#else
-    var commonPath = Path.Combine(NetworkPath, "Common/csv"); 
-#endif
 
-            foreach (var (fileName, _, _) in StandardDataDefinitions)
+            // StandardDataDefinitions 파일 로드
+            foreach (var (fileName, init, _) in StandardDataDefinitions)
             {
-                var filePath = Path.Combine(commonPath, fileName);
+                var filePath = GetCsvFilePath(fileName);
                 loadedData[fileName] = CsvHelper.LoadCsv(filePath);
             }
 
             // 아이템 관련 파일 로드
             foreach (var fileName in DataFiles.Item.ALL)
             {
-                var filePath = Path.Combine(commonPath, fileName);
+                var filePath = GetCsvFilePath(fileName);
                 loadedData[fileName] = CsvHelper.LoadCsv(filePath);
             }
-            
+
             // 맵 관련 파일 로드
             foreach (var fileName in DataFiles.Map.ALL)
             {
-                var filePath = Path.Combine(commonPath, fileName);
+                var filePath = GetCsvFilePath(fileName);
                 loadedData[fileName] = CsvHelper.LoadCsv(filePath);
             }
 
@@ -106,7 +115,7 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Item.Shop],
                 loadedData[DataFiles.Item.Put]
             );
-            
+
             // 맵 데이터 초기화
             GameMapData.Initialize(
                 loadedData[DataFiles.Map.MapInfo],

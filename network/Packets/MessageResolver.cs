@@ -52,7 +52,7 @@ internal class MessageResolver
                     // 메세지가 덜 왔음. 다음 수신 기다림
                     return (ErrorCode.SUCCESS, null);
                 }
-                
+
                 // 메시지 처리 전에 버퍼 복사
                 var messageBufferCopy = new byte[_targetPosition];
                 Array.Copy(_messageBuffer, 0, messageBufferCopy, 0, _targetPosition);

@@ -81,10 +81,10 @@ namespace network.common.data.models
             {
                 case DirectionType.NONE:
                     break;
-                
+
                 case DirectionType.TOP_LEFT:
                 case DirectionType.BOTTOM_LEFT:
-                case DirectionType.LEFT: 
+                case DirectionType.LEFT:
                 case DirectionType.TOP:
                     IsFlip = false;
                     break;

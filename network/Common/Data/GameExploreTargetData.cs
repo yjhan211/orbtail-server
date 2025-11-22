@@ -77,14 +77,14 @@ namespace network.common.data
         public bool Reusable { get; private set; }
         public Cell Position { get; private set; }
         public string SpritePath { get; private set; }
-        
+
         public static ExploreTargetInfoData CreateFromData(CsvRow row)
         {
             var posStr = row["position"]
                 .Trim('"')
                 .Trim('(', ')')
                 .Split(',');
-            
+
             return new ExploreTargetInfoData
             {
                 Id = int.Parse(row["id"]),

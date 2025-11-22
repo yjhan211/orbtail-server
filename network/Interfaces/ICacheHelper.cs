@@ -4,9 +4,9 @@ namespace network.interfaces;
 
 public interface ICacheHelper
 {
-    
+
     IRedLockFactory GetRedLockFactory();
-    
+
     Task<bool> HashSetAsync(string key, long field, byte[] value, int db = -1);
     Task<bool> HashSetAsync(string key, string field, byte[] value, int db = -1);
     Task<RedisValue> HashGetAsync(string key, string field, int db = -1);
@@ -26,4 +26,7 @@ public interface ICacheHelper
     Task<long> ListLengthAsync(string key, int db = -1);
     Task<long> StringIncrementAsync(string key, int db = -1);
     Task<bool> KeyDeleteAsync(string key, int db = -1);
+    Task<bool> SortedSetAddAsync(string key, byte[] value, double score, int db = -1);
+    Task<byte[][]> SortedSetRangeByScoreAsync(string key, double start = double.NegativeInfinity, double stop = double.PositiveInfinity, int db = -1);
+    Task<bool> SortedSetRemoveAsync(string key, byte[] value, int db = -1);
 }
