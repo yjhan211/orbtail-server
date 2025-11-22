@@ -1,8 +1,9 @@
-using network.common;
+// ReSharper disable All
+using System.Collections.Generic;
 
-namespace network.common;
-
-/// <summary>
+namespace network.common
+{
+    /// <summary>
 /// 프로토콜 분류 및 라우팅 헬퍼
 /// </summary>
 public static class ProtocolHelper
@@ -167,4 +168,5 @@ public static class ProtocolHelper
         var protocolName = protocol.ToString();
         return protocolName.StartsWith("U_TO_C_") || protocolName.StartsWith("G_TO_C_");
     }
+}
 }
