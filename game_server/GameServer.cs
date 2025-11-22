@@ -16,6 +16,7 @@ using network.config;
 using network.interfaces;
 
 namespace game_server;
+
 public class GameServer : IHostedService
 {
     private readonly IConfiguration _configuration;
