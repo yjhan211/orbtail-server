@@ -36,6 +36,9 @@ publish/
 *.publishproj
 *.publishsettings
 
+# Claude Code
+.claude/
+
 # Temporary and Cache Files
 [Tt]emp/
 .sass-cache/
