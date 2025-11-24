@@ -77,7 +77,7 @@ public class GameSession : IPeer
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_LOGIN, async (bytes) => await HandleMessage<C_TO_U_LOGIN>(bytes, Login));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHANGE_MAP_SUCCESS, async (_) => await HandlePlayerAction(pc => pc.Spawn()));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_LOG, async (_) => await SendChatHistory(ChatType.ALL));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MOVE, async (bytes) => await HandleMessage<C_TO_U_MOVE>(bytes, msg => HandlePlayerAction(pc => pc.RequestMove(msg))));
+        // 이동은 GameServer에서 처리 (C_TO_G_MOVE)
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_PLAYER_INFO, async (bytes) => await HandleMessage<C_TO_U_PLAYER_INFO>(bytes, GetPlayerInfo));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_EXPLORE_TARGET_INFO, async (bytes) => await HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(bytes, GetExploreTargetInfo));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_WEAR_ITEM, async (bytes) => await HandleMessage<C_TO_U_WEAR_ITEM>(bytes, msg => HandlePlayerAction(pc => pc.WearItem(msg))));
@@ -85,7 +85,7 @@ public class GameSession : IPeer
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_EXPLORE, async (bytes) => await HandleMessage<C_TO_U_EXPLORE>(bytes, msg => HandlePlayerAction(pc => pc.Explore(msg))));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_MSG, async (bytes) => await HandleMessage<C_TO_U_CHAT_MSG>(bytes, AppendChat));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_SET_NAME, async (bytes) => await HandleMessage<C_TO_U_SET_NAME>(bytes, msg => HandlePlayerAction(pc => pc.SetName(msg))));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_SOCIAL_ACTION, async (bytes) => await HandleMessage<C_TO_U_SOCIAL_ACTION>(bytes, msg => HandlePlayerAction(pc => pc.PerformSocialAction(msg))));
+        // 소셜 액션은 GameServer에서 처리 (C_TO_G_SOCIAL_ACTION)
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_INCREASE, async (bytes) => await HandleMessage<C_TO_U_QUEST_INCREASE>(bytes, msg => HandlePlayerAction(pc => pc.IncreaseQuestCount(msg))));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_SUCCESS, async (bytes) => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, msg => HandlePlayerAction(pc => pc.CompleteQuest(msg))));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_LIST, async (_) => await HandlePlayerAction(pc => pc.SendCurrentMails()));
@@ -551,16 +551,8 @@ public class GameSession : IPeer
 
         var isEnded = batchIndex >= totalBatches - 1;
 
-        using var packet = PacketMaker.U_TO_C_SPAWN(objectBatch, isEnded, cellBatch);
-        Send(packet);
-    }
-
-    private Task SubscribeDestroy(G_TO_U_DESTROY body)
-    {
-        using var packet = PacketMaker.U_TO_C_DESTROY(body.ObjectKey);
-        Send(packet);
-
-        return Task.CompletedTask;
+        // using var packet = PacketMaker.U_TO_C_SPAWN(objectBatch, isEnded, cellBatch);
+        // Send(packet);
     }
 
     private Task SubscribeChatMsg(U_TO_C_CHAT_MSG body)
@@ -609,23 +601,6 @@ public class GameSession : IPeer
         using var packet = PacketMaker.U_TO_C_CHANGE_MAP_SUCCESS(lastMapInfo.Item1, mapInfo.Item1, mapInfo.Item2, mapInfo.Item3, mapInfo.Item4);
         Send(packet);
     }
-
-    private Task SubscribeSocialAction(G_TO_U_SOCIAL_ACTION body)
-    {
-        using var packet = PacketMaker.U_TO_C_SOCIAL_ACTION(body.PlayerId, body.SocialActionType);
-        Send(packet);
-
-        return Task.CompletedTask;
-    }
-
-    private Task SubscribeTakeDamage(G_TO_U_TAKE_DAMAGE body)
-    {
-        using var packet = PacketMaker.U_TO_C_TAKE_DAMAGE(body.PlayerId, body.DamageType, body.Damage); ;
-        Send(packet);
-
-        return Task.CompletedTask;
-    }
-
 
     private void BroadcastToMap<T>(GameObjectInfo objectInfo, T payload, Func<GameObjectInfo, int, string> getSubject)
     {

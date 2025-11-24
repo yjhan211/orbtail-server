@@ -13,12 +13,6 @@ namespace network.common
         /// </summary>
         private static readonly HashSet<Protocol> GameServerProtocols = new()
         {
-            // 실시간 이동 및 동기화
-            Protocol.C_TO_U_MOVE,
-            Protocol.U_TO_C_MOVE,
-            Protocol.U_TO_C_SPAWN,
-            Protocol.U_TO_C_DESTROY,
-
             // 오브젝트 정보
             Protocol.C_TO_U_OBJECT_INFO,
             Protocol.C_TO_U_PLAYER_INFO,
@@ -31,21 +25,24 @@ namespace network.common
             Protocol.C_TO_U_EXPLORE_TARGET_INFO,
             Protocol.U_TO_C_EXPLORE_TARGET_INFO,
 
-            // 소셜 액션 (실시간)
-            Protocol.C_TO_U_SOCIAL_ACTION,
-            Protocol.U_TO_C_SOCIAL_ACTION,
-
             // 전투 관련
-            Protocol.U_TO_C_TAKE_DAMAGE,
             Protocol.U_TO_C_UPDATE_HP,
 
-            // GameServer 전용 프로토콜
+            // GameServer 전용 프로토콜 (클라이언트 직접 연결)
             Protocol.C_TO_G_MOVE,
             Protocol.G_TO_C_MOVE,
+            Protocol.G_TO_C_SPAWN,
+            Protocol.G_TO_C_DESTROY,
             Protocol.C_TO_G_ATTACK,
             Protocol.G_TO_C_ATTACK,
             Protocol.C_TO_G_INTERACT,
             Protocol.G_TO_C_INTERACT,
+            Protocol.C_TO_G_SOCIAL_ACTION,
+            Protocol.G_TO_C_SOCIAL_ACTION,
+            Protocol.G_TO_C_TAKE_DAMAGE,
+            Protocol.G_TO_C_ENVIRONMENT,
+            Protocol.G_TO_C_GAME_TIME_WARNING,
+            Protocol.G_TO_C_GAME_END,
         };
 
             /// <summary>
@@ -136,17 +133,18 @@ namespace network.common
             {
                 return protocol switch
                 {
-                    Protocol.C_TO_U_MOVE => true,
-                    Protocol.U_TO_C_MOVE => true,
-                    Protocol.U_TO_C_SPAWN => true,
-                    Protocol.U_TO_C_DESTROY => true,
                     Protocol.C_TO_G_MOVE => true,
                     Protocol.G_TO_C_MOVE => true,
+                    Protocol.G_TO_C_SPAWN => true,
+                    Protocol.G_TO_C_DESTROY => true,
                     Protocol.C_TO_G_ATTACK => true,
                     Protocol.G_TO_C_ATTACK => true,
                     Protocol.C_TO_G_INTERACT => true,
                     Protocol.G_TO_C_INTERACT => true,
-                    Protocol.U_TO_C_TAKE_DAMAGE => true,
+                    Protocol.C_TO_G_SOCIAL_ACTION => true,
+                    Protocol.G_TO_C_SOCIAL_ACTION => true,
+                    Protocol.G_TO_C_TAKE_DAMAGE => true,
+                    Protocol.G_TO_C_ENVIRONMENT => true,
                     _ => false
                 };
             }

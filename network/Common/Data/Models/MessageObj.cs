@@ -97,7 +97,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class U_TO_C_MOVE : IMessagePackObject
+    public class G_TO_C_MOVE : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
 
@@ -118,15 +118,14 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class U_TO_C_SPAWN : IMessagePackObject
+    public class G_TO_C_SPAWN : IMessagePackObject
     {
         [Key("objectKeyList")] public List<string> ObjectKeyList { get; set; }
-        [Key("isEnd")] public bool IsEnd { get; set; }
         [Key("cellsToRemove")] public List<Cell> CellsToRemove { get; set; }
     }
 
     [MessagePackObject]
-    public class U_TO_C_DESTROY : IMessagePackObject
+    public class G_TO_C_DESTROY : IMessagePackObject
     {
         [Key("objectKey")] public string ObjectKey { get; set; }
     }
@@ -313,7 +312,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class U_TO_C_SOCIAL_ACTION : IMessagePackObject
+    public class G_TO_C_SOCIAL_ACTION : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("socialType")] public SocialActionType SocialActionType { get; set; }
@@ -401,7 +400,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class U_TO_C_TAKE_DAMAGE : IMessagePackObject
+    public class G_TO_C_TAKE_DAMAGE : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("damageType")] public DamageType DamageType { get; set; }
@@ -409,7 +408,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_U_ENVIRONMENT : IMessagePackObject
+    public class G_TO_C_ENVIRONMENT : IMessagePackObject
     {
         [Key("damageType")] public DamageType DamageType { get; set; }
     }

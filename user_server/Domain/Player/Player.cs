@@ -47,7 +47,7 @@ public partial class Player
     // Action validation
     private static readonly IReadOnlyList<Protocol> ActionProtocol = new List<Protocol>
     {
-        Protocol.C_TO_U_MOVE,
+        // 이동은 GameServer에서 처리 (C_TO_G_MOVE)
         Protocol.C_TO_U_WEAR_ITEM,
     };
 

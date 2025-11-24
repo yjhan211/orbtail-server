@@ -131,10 +131,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_MOVE(long playerId, ErrorCode errorCode, GameObjectInfo objectInfo)
+    public static Packet G_TO_C_MOVE(long playerId, ErrorCode errorCode, GameObjectInfo objectInfo)
     {
-        var packet = Packet.Create((int)Protocol.U_TO_C_MOVE, playerId);
-        U_TO_C_MOVE body = new() { ErrorCode = errorCode, ObjectInfo = objectInfo };
+        var packet = Packet.Create((int)Protocol.G_TO_C_MOVE, playerId);
+        G_TO_C_MOVE body = new() { ErrorCode = errorCode, ObjectInfo = objectInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -176,10 +176,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_SPAWN(List<string> objectKeyList, bool isEnd, List<Cell> cellsToRemove)
+    public static Packet G_TO_C_SPAWN(List<string> objectKeyList, List<Cell> cellsToRemove)
     {
-        var packet = Packet.Create((int)Protocol.U_TO_C_SPAWN);
-        U_TO_C_SPAWN body = new() { ObjectKeyList = objectKeyList, IsEnd = isEnd, CellsToRemove = cellsToRemove };
+        var packet = Packet.Create((int)Protocol.G_TO_C_SPAWN);
+        G_TO_C_SPAWN body = new() { ObjectKeyList = objectKeyList, CellsToRemove = cellsToRemove };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -194,10 +194,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_DESTROY(string objectKey)
+    public static Packet G_TO_C_DESTROY(string objectKey)
     {
-        var packet = Packet.Create((int)Protocol.U_TO_C_DESTROY);
-        U_TO_C_DESTROY body = new() { ObjectKey = objectKey };
+        var packet = Packet.Create((int)Protocol.G_TO_C_DESTROY);
+        G_TO_C_DESTROY body = new() { ObjectKey = objectKey };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -275,10 +275,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_SOCIAL_ACTION(long playerId, SocialActionType actionType)
+    public static Packet G_TO_C_SOCIAL_ACTION(long playerId, SocialActionType actionType)
     {
-        var packet = Packet.Create((int)Protocol.U_TO_C_SOCIAL_ACTION);
-        U_TO_C_SOCIAL_ACTION body = new() { PlayerId = playerId, SocialActionType = actionType };
+        var packet = Packet.Create((int)Protocol.G_TO_C_SOCIAL_ACTION);
+        G_TO_C_SOCIAL_ACTION body = new() { PlayerId = playerId, SocialActionType = actionType };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -347,19 +347,19 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_TAKE_DAMAGE(long playerId, DamageType damageType, int damage)
+    public static Packet G_TO_C_TAKE_DAMAGE(long playerId, DamageType damageType, int damage)
     {
-        var packet = Packet.Create((int)Protocol.U_TO_C_TAKE_DAMAGE);
-        U_TO_C_TAKE_DAMAGE body = new() { PlayerId = playerId, DamageType = damageType, Damage = damage };
+        var packet = Packet.Create((int)Protocol.G_TO_C_TAKE_DAMAGE);
+        G_TO_C_TAKE_DAMAGE body = new() { PlayerId = playerId, DamageType = damageType, Damage = damage };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
 
-    public static Packet G_TO_U_ENVIRONMENT(DamageType damageType)
+    public static Packet G_TO_C_ENVIRONMENT(DamageType damageType)
     {
-        var packet = Packet.Create((int)Protocol.G_TO_U_ENVIRONMENT);
-        G_TO_U_ENVIRONMENT body = new() { DamageType = damageType };
+        var packet = Packet.Create((int)Protocol.G_TO_C_ENVIRONMENT);
+        G_TO_C_ENVIRONMENT body = new() { DamageType = damageType };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

@@ -202,7 +202,7 @@ public class InstanceMapController : BaseMapController
                 return;
             }
 
-            using var packet = PacketMaker.G_TO_U_ENVIRONMENT(DamageType.DARK);
+            using var packet = PacketMaker.G_TO_C_ENVIRONMENT(DamageType.DARK);
             BroadcastPacket(instanceKey, packet);
         }
         catch (Exception ex)
