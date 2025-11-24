@@ -445,11 +445,24 @@ namespace network.common.data.models
         [Key("spawnPosition")] public Cell SpawnPosition { get; set; }
         [Key("gameServerIp")] public string GameServerIp { get; set; }
         [Key("gameServerPort")] public int GameServerPort { get; set; }
+        [Key("gameEndTimestamp")] public long GameEndTimestamp { get; set; }
     }
 
     [MessagePackObject]
     public class U_TO_C_MATCHING_FAILED : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_GAME_TIME_WARNING : IMessagePackObject
+    {
+        [Key("remainingSeconds")] public int RemainingSeconds { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_GAME_END : IMessagePackObject
+    {
+        [Key("matchingId")] public long MatchingId { get; set; }
     }
 }

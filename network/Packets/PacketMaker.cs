@@ -383,7 +383,7 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId, MapId mapId, long mapSubId, Cell spawnPosition, string gameServerIp, int gameServerPort)
+    public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId, MapId mapId, long mapSubId, Cell spawnPosition, string gameServerIp, int gameServerPort, long gameEndTimestamp)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING_SUCCESS);
         U_TO_C_MATCHING_SUCCESS body = new()
@@ -393,7 +393,8 @@ public static class PacketMaker
             MapSubId = mapSubId,
             SpawnPosition = spawnPosition,
             GameServerIp = gameServerIp,
-            GameServerPort = gameServerPort
+            GameServerPort = gameServerPort,
+            GameEndTimestamp = gameEndTimestamp
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -404,6 +405,24 @@ public static class PacketMaker
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING_FAILED);
         U_TO_C_MATCHING_FAILED body = new() { ErrorCode = errorCode };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_GAME_TIME_WARNING(int remainingSeconds)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_GAME_TIME_WARNING);
+        G_TO_C_GAME_TIME_WARNING body = new() { RemainingSeconds = remainingSeconds };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_GAME_END(long matchingId)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_GAME_END);
+        G_TO_C_GAME_END body = new() { MatchingId = matchingId };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
