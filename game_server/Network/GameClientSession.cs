@@ -98,11 +98,111 @@ public class GameClientSession : IPeer
         await handler(message);
     }
 
-    private Task HandleMove(C_TO_G_MOVE msg)
+    private async Task HandleMove(C_TO_G_MOVE msg)
     {
-        Logger.LogInformation($"Player {PlayerId} move: {msg.TargetPosition}");
-        // TODO: 이동 처리 및 브로드캐스트
-        return Task.CompletedTask;
+        if (PlayerId == null) return;
+
+        try
+        {
+            // 1. 위치 검증
+            var validatedPosition = ValidatePosition(msg.Position, msg.Velocity);
+
+            // 2. 현재 타일 계산 (자동!)
+            var currentCell = network.common.data.helpers.CoordinateConverter.WorldToCell(validatedPosition);
+
+            // 3. PlayerInfo 로드 및 업데이트
+            await using var playerLock = await network.common.data.models.PlayerInfo.Lock(RedLock, PlayerId.Value);
+            var playerInfo = await network.common.data.models.PlayerInfo.Load(CacheHelper, PlayerId.Value);
+
+            if (playerInfo != null)
+            {
+                var oldCell = playerInfo.ObjectInfo.CurrentCell;
+
+                // 위치 업데이트
+                playerInfo.ObjectInfo.Position = validatedPosition;
+                playerInfo.ObjectInfo.Velocity = msg.Velocity;
+                playerInfo.ObjectInfo.Rotation = msg.Rotation;
+                playerInfo.ObjectInfo.CurrentCell = currentCell;
+                playerInfo.ObjectInfo.MoveTimestamp = DateTime.UtcNow;
+
+                // 타일 변경 감지
+                bool cellChanged = !oldCell.Equals(currentCell);
+
+                if (cellChanged)
+                {
+                    Logger.LogInformation($"Player {PlayerId} 타일 이동: {oldCell} → {currentCell}");
+                    await OnCellChanged(playerInfo, oldCell, currentCell);
+                }
+
+                await playerInfo.Save(CacheHelper);
+            }
+
+            // 4. 브로드캐스트 (같은 맵의 다른 플레이어들에게)
+            var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            using var packet = network.packets.PacketMaker.G_TO_C_MOVE(
+                PlayerId.Value,
+                validatedPosition,
+                msg.Velocity,
+                msg.Rotation,
+                currentCell,
+                msg.InputSequence,
+                serverTimestamp
+            );
+
+            // NATS로 같은 맵의 플레이어들에게 전송
+            var subject = network.helpers.SubjectHelper.GetUpdateInfoSubject(
+                CurrentMapId,
+                CurrentMapSubId,
+                ServerConfig.ServerId
+            );
+            NatsClient.Publish(subject, packet.ToBytes());
+
+            Logger.LogDebug($"Player {PlayerId} move broadcasted: {validatedPosition}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"HandleMove error for player {PlayerId}");
+        }
+    }
+
+    private network.common.data.models.Vector3f ValidatePosition(
+        network.common.data.models.Vector3f clientPos,
+        network.common.data.models.Vector3f velocity)
+    {
+        // 속도 제한 체크 (치트 방지)
+        const float MAX_SPEED = 20f; // 최대 속도 (조정 필요)
+        float speed = velocity.Magnitude();
+
+        if (speed > MAX_SPEED)
+        {
+            Logger.LogWarning($"Player {PlayerId} 속도 초과: {speed:F2} > {MAX_SPEED}");
+            // 속도 클램핑
+            velocity = velocity.Normalized() * MAX_SPEED;
+        }
+
+        // TODO: 맵 경계 체크
+        // TODO: 장애물 충돌 체크
+
+        return clientPos;
+    }
+
+    private async Task OnCellChanged(
+        network.common.data.models.PlayerInfo playerInfo,
+        network.common.data.models.Cell oldCell,
+        network.common.data.models.Cell newCell)
+    {
+        // 타일 기반 로직들
+
+        // TODO: 1. 트리거 체크 (특정 타일 진입 시)
+        // await CheckTileTriggers(newCell);
+
+        // TODO: 2. AOI (Area of Interest) 업데이트
+        // await UpdateAreaOfInterest(playerInfo, oldCell, newCell);
+
+        // TODO: 3. 타일별 이벤트 (함정, 버프 존 등)
+        // await ProcessTileEvents(newCell);
+
+        Logger.LogInformation($"OnCellChanged: {oldCell} → {newCell} (플레이어: {playerInfo.PlayerId})");
     }
 
     private Task HandleAttack(C_TO_G_ATTACK msg)
@@ -143,23 +243,4 @@ public class GameClientSession : IPeer
     {
         return Task.FromResult<UserToken?>(_token);
     }
-}
-
-// 임시 프로토콜 메시지 정의 (나중에 network/Common에 추가)
-[MessagePackObject]
-public class C_TO_G_MOVE : IMessagePackObject
-{
-    [Key(0)] public Cell? TargetPosition { get; set; }
-}
-
-[MessagePackObject]
-public class C_TO_G_ATTACK : IMessagePackObject
-{
-    [Key(0)] public string TargetId { get; set; } = string.Empty;
-}
-
-[MessagePackObject]
-public class C_TO_G_INTERACT : IMessagePackObject
-{
-    [Key(0)] public string TargetId { get; set; } = string.Empty;
 }

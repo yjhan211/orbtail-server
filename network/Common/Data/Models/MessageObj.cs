@@ -97,11 +97,25 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class C_TO_G_MOVE : IMessagePackObject
+    {
+        [Key("position")] public Vector3f Position { get; set; }
+        [Key("velocity")] public Vector3f Velocity { get; set; }
+        [Key("rotation")] public float Rotation { get; set; }
+        [Key("inputSeq")] public uint InputSequence { get; set; }
+        [Key("clientTime")] public long ClientTimestamp { get; set; }
+    }
+
+    [MessagePackObject]
     public class G_TO_C_MOVE : IMessagePackObject
     {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-
-        [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("position")] public Vector3f Position { get; set; }
+        [Key("velocity")] public Vector3f Velocity { get; set; }
+        [Key("rotation")] public float Rotation { get; set; }
+        [Key("currentCell")] public Cell CurrentCell { get; set; }
+        [Key("lastProcessedInput")] public uint LastProcessedInput { get; set; }
+        [Key("serverTime")] public long ServerTimestamp { get; set; }
     }
 
     [MessagePackObject]
@@ -463,5 +477,17 @@ namespace network.common.data.models
     public class G_TO_C_GAME_END : IMessagePackObject
     {
         [Key("matchingId")] public long MatchingId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_G_ATTACK : IMessagePackObject
+    {
+        [Key("targetId")] public string TargetId { get; set; } = string.Empty;
+    }
+
+    [MessagePackObject]
+    public class C_TO_G_INTERACT : IMessagePackObject
+    {
+        [Key("targetId")] public string TargetId { get; set; } = string.Empty;
     }
 }
