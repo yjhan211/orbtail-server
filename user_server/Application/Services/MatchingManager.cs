@@ -145,7 +145,7 @@ public class MatchingManager
                     var gameServerPort = 9001;
 
                     // 게임 종료 시간 계산 (15분 후)
-                    var gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(15).ToUnixTimeSeconds();
+                    var gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(15).ToUnixTimeMilliseconds();
 
                     // 매칭 성공 패킷 전송
                     using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
