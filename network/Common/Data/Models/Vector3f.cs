@@ -94,4 +94,26 @@ namespace network.common.data.models
 
         public static Vector3f Zero => new Vector3f(0, 0, 0);
     }
+
+    /// <summary>
+    /// Vector3f 확장 메소드
+    /// </summary>
+    public static class Vector3fExtensions
+    {
+        /// <summary>
+        /// Unity Vector3를 Vector3f로 변환
+        /// </summary>
+        public static Vector3f ToVector3f(this UnityEngine.Vector3 v)
+        {
+            return new Vector3f(v.x, v.y, v.z);
+        }
+
+        /// <summary>
+        /// Vector3f를 Unity Vector3로 변환
+        /// </summary>
+        public static UnityEngine.Vector3 ToUnityVector3(this Vector3f v)
+        {
+            return new UnityEngine.Vector3(v.X, v.Y, v.Z);
+        }
+    }
 }
