@@ -1,6 +1,7 @@
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data.helpers;
 using network.common.data.models;
 using network.config;
 using network.core;
@@ -108,11 +109,11 @@ public class GameClientSession : IPeer
             var validatedPosition = ValidatePosition(msg.Position, msg.Velocity);
 
             // 2. 현재 타일 계산 (자동!)
-            var currentCell = network.common.data.helpers.CoordinateConverter.WorldToCell(validatedPosition);
+            var currentCell = CoordinateConverter.WorldToCell(validatedPosition);
 
             // 3. PlayerInfo 로드 및 업데이트
-            await using var playerLock = await network.common.data.models.PlayerInfo.Lock(RedLock, PlayerId.Value);
-            var playerInfo = await network.common.data.models.PlayerInfo.Load(CacheHelper, PlayerId.Value);
+            await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+            var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
             if (playerInfo != null)
             {
@@ -139,7 +140,7 @@ public class GameClientSession : IPeer
 
             // 4. 브로드캐스트 (같은 맵의 다른 플레이어들에게)
             var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            using var packet = network.packets.PacketMaker.G_TO_C_MOVE(
+            using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
                 validatedPosition,
                 msg.Velocity,
@@ -150,7 +151,7 @@ public class GameClientSession : IPeer
             );
 
             // NATS로 같은 맵의 플레이어들에게 전송
-            var subject = network.helpers.SubjectHelper.GetUpdateInfoSubject(
+            var subject = SubjectHelper.GetUpdateInfoSubject(
                 CurrentMapId,
                 CurrentMapSubId,
                 ServerConfig.ServerId
@@ -165,9 +166,9 @@ public class GameClientSession : IPeer
         }
     }
 
-    private network.common.data.models.Vector3f ValidatePosition(
-        network.common.data.models.Vector3f clientPos,
-        network.common.data.models.Vector3f velocity)
+    private Vector3f ValidatePosition(
+        Vector3f clientPos,
+        Vector3f velocity)
     {
         // 속도 제한 체크 (치트 방지)
         const float MAX_SPEED = 20f; // 최대 속도 (조정 필요)
@@ -187,9 +188,9 @@ public class GameClientSession : IPeer
     }
 
     private async Task OnCellChanged(
-        network.common.data.models.PlayerInfo playerInfo,
-        network.common.data.models.Cell oldCell,
-        network.common.data.models.Cell newCell)
+        PlayerInfo playerInfo,
+        Cell oldCell,
+        Cell newCell)
     {
         // 타일 기반 로직들
 
