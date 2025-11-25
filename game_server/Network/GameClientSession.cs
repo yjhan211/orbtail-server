@@ -71,6 +71,7 @@ public class GameClientSession : IPeer
     private void InitializeProtocolHandlers()
     {
         // 클라이언트로부터 받는 실시간 패킷들
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT, async (bytes) => await HandleMessage<C_TO_G_CONNECT>(bytes, HandleConnect));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_MOVE, async (bytes) => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_ATTACK, async (bytes) => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT, async (bytes) => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
@@ -105,6 +106,58 @@ public class GameClientSession : IPeer
     {
         var message = MessagePackSerializer.Deserialize<T>(body);
         await handler(message);
+    }
+
+    private async Task HandleConnect(C_TO_G_CONNECT msg)
+    {
+        try
+        {
+            Logger.LogInformation($"Client connection request: PlayerId={msg.PlayerId}, MatchingId={msg.MatchingId}");
+
+            // TODO: MatchingId 검증 (Redis에서 매칭 정보 확인)
+            // 지금은 간단하게 PlayerId만 설정
+
+            PlayerId = msg.PlayerId;
+            CurrentMapId = MapId.School; // TODO: 매칭 정보에서 가져오기
+            CurrentMapSubId = msg.MatchingId;
+
+            // 초기 위치 로드
+            await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+            var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+
+            if (playerInfo != null)
+            {
+                _lastValidatedPosition = playerInfo.ObjectInfo.Position;
+            }
+
+            // 연결 성공 응답
+            using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId.Value);
+            var response = new G_TO_C_CONNECT_RESULT
+            {
+                Success = true,
+                ErrorCode = ErrorCode.SUCCESS,
+                Message = "Connected to GameServer"
+            };
+            packet.SetBody(MessagePackSerializer.Serialize(response));
+            Send(packet);
+
+            Logger.LogInformation($"Client connected successfully: PlayerId={PlayerId}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to handle connect");
+
+            // 연결 실패 응답
+            using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, 0);
+            var response = new G_TO_C_CONNECT_RESULT
+            {
+                Success = false,
+                ErrorCode = ErrorCode.FATAL,
+                Message = ex.Message
+            };
+            packet.SetBody(MessagePackSerializer.Serialize(response));
+            Send(packet);
+        }
     }
 
     private async Task HandleMove(C_TO_G_MOVE msg)

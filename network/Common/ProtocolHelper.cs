@@ -29,6 +29,8 @@ namespace network.common
             Protocol.U_TO_C_UPDATE_HP,
 
             // GameServer 전용 프로토콜 (클라이언트 직접 연결)
+            Protocol.C_TO_G_CONNECT,
+            Protocol.G_TO_C_CONNECT_RESULT,
             Protocol.C_TO_G_MOVE,
             Protocol.G_TO_C_MOVE,
             Protocol.G_TO_C_SPAWN,

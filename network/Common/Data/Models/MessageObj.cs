@@ -97,6 +97,21 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class C_TO_G_CONNECT : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("matchingId")] public long MatchingId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_CONNECT_RESULT : IMessagePackObject
+    {
+        [Key("success")] public bool Success { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("message")] public string? Message { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_G_MOVE : IMessagePackObject
     {
         [Key("position")] public Vector3f Position { get; set; }

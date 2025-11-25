@@ -70,6 +70,8 @@ namespace network.common
         U_TO_C_MATCHING_FAILED,
 
         // GameServer 전용 프로토콜 (클라이언트 직접 연결)
+        C_TO_G_CONNECT,          // 클라이언트 → GameServer 연결 인증
+        G_TO_C_CONNECT_RESULT,   // GameServer → 클라이언트 연결 결과
         C_TO_G_MOVE,
         G_TO_C_MOVE,
         G_TO_C_SPAWN,
