@@ -126,7 +126,7 @@ public class GameClientSession : IPeer
             // 3. 타일 변경 여부 확인 (Redis 로드 최소화)
             bool needsDbUpdate = false;
             bool cellChanged = false;
-            Cell oldCell = new Cell();
+            Cell oldCell = new Cell(0, 0);
 
             // 주기적 저장 (1초마다) 또는 타일 변경 시에만 DB 접근
             if (now - _lastSaveTime > TimeSpan.FromSeconds(1) ||
@@ -228,7 +228,7 @@ public class GameClientSession : IPeer
         // 2. 이동 거리 검증 (텔레포트 방지)
         if (_lastValidatedPosition != null)
         {
-            var lastPos = _lastValidatedPosition.Value;
+            var lastPos = _lastValidatedPosition;
             var delta = clientPos - lastPos;
             var distance = delta.Magnitude();
             var maxDistance = MAX_SPEED * deltaTime * POSITION_TOLERANCE;
