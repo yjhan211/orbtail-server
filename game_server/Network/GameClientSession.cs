@@ -190,6 +190,9 @@ public class GameClientSession : IPeer
 
             PlayerInfo? playerInfo = null;
 
+            // 정지 중인지 확인 (velocity 크기가 거의 0)
+            bool isIdle = msg.Velocity.Magnitude() < 0.01f;
+
             if (needsDbUpdate)
             {
                 // Redis Lock + Load + Save
@@ -208,8 +211,11 @@ public class GameClientSession : IPeer
                     playerInfo.ObjectInfo.CurrentCell = currentCell;
                     playerInfo.ObjectInfo.MoveTimestamp = now;
 
-                    // 타일 변경 또는 1초 경과 시 저장
-                    if (cellChanged || now - _lastSaveTime >= TimeSpan.FromSeconds(1))
+                    // 저장 조건: (타일 변경) 또는 (1초 경과 && 움직이는 중)
+                    // 정지 중에는 DB 저장 스킵 (불필요한 Redis 쓰기 방지)
+                    bool shouldSave = cellChanged || (!isIdle && now - _lastSaveTime >= TimeSpan.FromSeconds(1));
+
+                    if (shouldSave)
                     {
                         await playerInfo.Save(CacheHelper);
                         _lastSaveTime = now;
