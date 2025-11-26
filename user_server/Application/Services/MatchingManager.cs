@@ -144,6 +144,9 @@ public class MatchingManager
                     var gameServerIp = "127.0.0.1";
                     var gameServerPort = 9001;
 
+                    // 게임 종료 시간 계산 (15분 후)
+                    var gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(15).ToUnixTimeMilliseconds();
+
                     // 매칭 성공 패킷 전송
                     using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
                         matchingId,
@@ -151,7 +154,8 @@ public class MatchingManager
                         mapSubId,
                         spawnPosition,
                         gameServerIp,
-                        gameServerPort
+                        gameServerPort,
+                        gameEndTimestamp
                     );
                     session.Send(packet);
 

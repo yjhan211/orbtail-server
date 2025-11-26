@@ -97,11 +97,40 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class U_TO_C_MOVE : IMessagePackObject
+    public class C_TO_G_CONNECT : IMessagePackObject
     {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("matchingId")] public long MatchingId { get; set; }
+    }
 
-        [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
+    [MessagePackObject]
+    public class G_TO_C_CONNECT_RESULT : IMessagePackObject
+    {
+        [Key("success")] public bool Success { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("message")] public string? Message { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_G_MOVE : IMessagePackObject
+    {
+        [Key("position")] public Vector3f Position { get; set; }
+        [Key("velocity")] public Vector3f Velocity { get; set; }
+        [Key("rotation")] public float Rotation { get; set; }
+        [Key("inputSeq")] public uint InputSequence { get; set; }
+        [Key("clientTime")] public long ClientTimestamp { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_MOVE : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("position")] public Vector3f Position { get; set; }
+        [Key("velocity")] public Vector3f Velocity { get; set; }
+        [Key("rotation")] public float Rotation { get; set; }
+        [Key("currentCell")] public Cell CurrentCell { get; set; }
+        [Key("lastProcessedInput")] public uint LastProcessedInput { get; set; }
+        [Key("serverTime")] public long ServerTimestamp { get; set; }
     }
 
     [MessagePackObject]
@@ -118,15 +147,14 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class U_TO_C_SPAWN : IMessagePackObject
+    public class G_TO_C_SPAWN : IMessagePackObject
     {
         [Key("objectKeyList")] public List<string> ObjectKeyList { get; set; }
-        [Key("isEnd")] public bool IsEnd { get; set; }
         [Key("cellsToRemove")] public List<Cell> CellsToRemove { get; set; }
     }
 
     [MessagePackObject]
-    public class U_TO_C_DESTROY : IMessagePackObject
+    public class G_TO_C_DESTROY : IMessagePackObject
     {
         [Key("objectKey")] public string ObjectKey { get; set; }
     }
@@ -313,7 +341,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class U_TO_C_SOCIAL_ACTION : IMessagePackObject
+    public class G_TO_C_SOCIAL_ACTION : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("socialType")] public SocialActionType SocialActionType { get; set; }
@@ -401,7 +429,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class U_TO_C_TAKE_DAMAGE : IMessagePackObject
+    public class G_TO_C_TAKE_DAMAGE : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("damageType")] public DamageType DamageType { get; set; }
@@ -409,7 +437,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_U_ENVIRONMENT : IMessagePackObject
+    public class G_TO_C_ENVIRONMENT : IMessagePackObject
     {
         [Key("damageType")] public DamageType DamageType { get; set; }
     }
@@ -445,11 +473,36 @@ namespace network.common.data.models
         [Key("spawnPosition")] public Cell SpawnPosition { get; set; }
         [Key("gameServerIp")] public string GameServerIp { get; set; }
         [Key("gameServerPort")] public int GameServerPort { get; set; }
+        [Key("gameEndTimestamp")] public long GameEndTimestamp { get; set; }
     }
 
     [MessagePackObject]
     public class U_TO_C_MATCHING_FAILED : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_GAME_TIME_WARNING : IMessagePackObject
+    {
+        [Key("remainingSeconds")] public int RemainingSeconds { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_GAME_END : IMessagePackObject
+    {
+        [Key("matchingId")] public long MatchingId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_G_ATTACK : IMessagePackObject
+    {
+        [Key("targetId")] public string TargetId { get; set; } = string.Empty;
+    }
+
+    [MessagePackObject]
+    public class C_TO_G_INTERACT : IMessagePackObject
+    {
+        [Key("targetId")] public string TargetId { get; set; } = string.Empty;
     }
 }

@@ -17,6 +17,9 @@ namespace network.common.data.models
             ObjectId = 0;
             CurrentCell = new Cell(0, 0);
             TargetCell = new Cell(0, 0);
+            Position = new Vector3f(0, 0, 0);
+            Velocity = new Vector3f(0, 0, 0);
+            Rotation = 0f;
             MoveTimestamp = default;
             DebuffTimestamp = default;
             IsFlip = false;
@@ -28,6 +31,9 @@ namespace network.common.data.models
             ObjectId = objectId;
             CurrentCell = new Cell(0, 0);
             TargetCell = new Cell(0, 0);
+            Position = new Vector3f(0, 0, 0);
+            Velocity = new Vector3f(0, 0, 0);
+            Rotation = 0f;
             MoveTimestamp = default;
             DebuffTimestamp = default;
             IsFlip = false;
@@ -40,6 +46,9 @@ namespace network.common.data.models
             ObjectId = objectId;
             CurrentCell = Cell.Clone(cell);
             TargetCell = Cell.Clone(cell);
+            Position = new Vector3f(cell.X, 0, cell.Y); // 타일 중심으로 초기화
+            Velocity = new Vector3f(0, 0, 0);
+            Rotation = 0f;
             MapId = mapId;
             MapSubId = mapSubId;
             MoveTimestamp = DateTime.MinValue;
@@ -58,6 +67,13 @@ namespace network.common.data.models
         [Key("currentCell")] public Cell CurrentCell { get; set; }
 
         [Key("targetCell")] public Cell TargetCell { get; set; }
+
+        // 자유 이동 필드
+        [Key("position")] public Vector3f Position { get; set; }
+
+        [Key("velocity")] public Vector3f Velocity { get; set; }
+
+        [Key("rotation")] public float Rotation { get; set; }
 
         [Key("moveTimestamp")] public DateTime MoveTimestamp { get; set; }
 

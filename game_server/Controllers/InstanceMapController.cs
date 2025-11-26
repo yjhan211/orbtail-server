@@ -17,7 +17,12 @@ public class InstanceMapController : BaseMapController
     private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
     private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
     private readonly ConcurrentDictionary<string, Timer> _damageTimers = new();
+    private readonly ConcurrentDictionary<string, Timer> _gameTimers = new();
+    private readonly ConcurrentDictionary<string, (Timer OneMinuteTimer, Timer ThirtySecondsTimer)> _warningTimers = new();
     private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions;
+
+    private const int GameDurationMinutes = 15;
+    private const int GameDurationSeconds = GameDurationMinutes * 60;
 
     private string EnterInstanceSubject =>
         SubjectHelper.GetEnterInstanceSubject(ServerConfig.ServerId);
@@ -87,7 +92,8 @@ public class InstanceMapController : BaseMapController
                         break;
 
                     case MapId.School:
-                        // 매칭 맵은 추가 초기화 필요 시 여기에 작성
+                        // 매칭 맵: 15분 게임 타이머 시작
+                        StartGameTimer(instanceKey, mapId, mapSubId);
                         break;
 
                     default:
@@ -196,12 +202,150 @@ public class InstanceMapController : BaseMapController
                 return;
             }
 
-            using var packet = PacketMaker.G_TO_U_ENVIRONMENT(DamageType.DARK);
+            using var packet = PacketMaker.G_TO_C_ENVIRONMENT(DamageType.DARK);
             BroadcastPacket(instanceKey, packet);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, $"School1 맵 데미지 알림 전송 중 오류 발생: {instanceKey}");
+        }
+    }
+
+    private void StartGameTimer(string instanceKey, MapId mapId, long mapSubId)
+    {
+        Logger.LogInformation($"게임 타이머 시작: {instanceKey} (15분)");
+
+        // 15분 후 게임 종료 타이머
+        var gameTimer = new Timer(state =>
+        {
+            EndGame(instanceKey, mapId, mapSubId);
+
+            // 타이머 정리
+            if (_gameTimers.TryRemove(instanceKey, out var t))
+            {
+                t.Dispose();
+            }
+
+            if (_warningTimers.TryRemove(instanceKey, out var warningTimers))
+            {
+                warningTimers.OneMinuteTimer?.Dispose();
+                warningTimers.ThirtySecondsTimer?.Dispose();
+            }
+        }, null, TimeSpan.FromSeconds(GameDurationSeconds), Timeout.InfiniteTimeSpan);
+
+        _gameTimers[instanceKey] = gameTimer;
+
+        // 1분 남았을 때 알림 (14분 후)
+        var oneMinuteWarningTimer = new Timer(state =>
+        {
+            SendGameTimeWarning(instanceKey, 60);
+        }, null, TimeSpan.FromSeconds(GameDurationSeconds - 60), Timeout.InfiniteTimeSpan);
+
+        // 30초 남았을 때 알림 (14분 30초 후)
+        var thirtySecondsWarningTimer = new Timer(state =>
+        {
+            SendGameTimeWarning(instanceKey, 30);
+        }, null, TimeSpan.FromSeconds(GameDurationSeconds - 30), Timeout.InfiniteTimeSpan);
+
+        _warningTimers[instanceKey] = (oneMinuteWarningTimer, thirtySecondsWarningTimer);
+
+        Logger.LogInformation($"게임 타이머 및 알림 타이머 설정 완료: {instanceKey}");
+    }
+
+    private void SendGameTimeWarning(string instanceKey, int remainingSeconds)
+    {
+        try
+        {
+            if (!_objectInstanceDict.TryGetValue(instanceKey, out var userKeys) || userKeys.Count == 0)
+            {
+                return;
+            }
+
+            Logger.LogInformation($"게임 시간 알림 전송: {instanceKey}, 남은 시간: {remainingSeconds}초");
+
+            using var packet = PacketMaker.G_TO_C_GAME_TIME_WARNING(remainingSeconds);
+            BroadcastPacketDirect(instanceKey, packet);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"게임 시간 알림 전송 중 오류 발생: {instanceKey}");
+        }
+    }
+
+    private async void EndGame(string instanceKey, MapId mapId, long mapSubId)
+    {
+        try
+        {
+            Logger.LogInformation($"게임 종료 처리 시작: {instanceKey}");
+
+            await MapLock.WaitAsync();
+            try
+            {
+                if (!_objectInstanceDict.TryGetValue(instanceKey, out var userKeys))
+                {
+                    Logger.LogWarning($"게임 종료 시 인스턴스를 찾을 수 없음: {instanceKey}");
+                    return;
+                }
+
+                var userKeysCopy = userKeys.ToList();
+
+                Logger.LogInformation($"게임 종료 알림 전송: {instanceKey}, 플레이어 수: {userKeysCopy.Count}");
+
+                // 게임 종료 패킷 전송
+                using var packet = PacketMaker.G_TO_C_GAME_END(mapSubId);
+                foreach (var objectKey in userKeysCopy)
+                {
+                    if (TryExtractPlayerId(objectKey, out var playerId))
+                    {
+                        if (_clientSessions.TryGetValue(playerId, out var session))
+                        {
+                            session.Send(packet);
+                        }
+                        else
+                        {
+                            NatsClient.Publish(objectKey, packet.ToBytes());
+                        }
+                    }
+                }
+
+                // 인스턴스 정리
+                _objectInstanceDict.TryRemove(instanceKey, out _);
+                Logger.LogInformation($"게임 종료 완료 및 인스턴스 제거: {instanceKey}");
+            }
+            finally
+            {
+                MapLock.Release();
+            }
+
+            // 데미지 타이머도 정리
+            if (_damageTimers.TryRemove(instanceKey, out var damageTimer))
+            {
+                damageTimer.Dispose();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"게임 종료 처리 중 오류 발생: {instanceKey}");
+        }
+    }
+
+    private void BroadcastPacketDirect(string instanceKey, IPacket packet)
+    {
+        if (!_objectInstanceDict.TryGetValue(instanceKey, out var objectKeys))
+        {
+            return;
+        }
+
+        var objectKeysCopy = objectKeys.ToList();
+        foreach (var objectKey in objectKeysCopy)
+        {
+            if (TryExtractPlayerId(objectKey, out var playerId))
+            {
+                if (_clientSessions.TryGetValue(playerId, out var session))
+                {
+                    session.Send(packet);
+                }
+            }
         }
     }
 
@@ -401,6 +545,35 @@ public class InstanceMapController : BaseMapController
     public override async Task ShutdownAsync()
     {
         await MapLock.WaitAsync();
-        MapLock.Release();
+        try
+        {
+            // 모든 게임 타이머 정리
+            foreach (var timer in _gameTimers.Values)
+            {
+                timer?.Dispose();
+            }
+            _gameTimers.Clear();
+
+            // 모든 경고 타이머 정리
+            foreach (var (oneMinuteTimer, thirtySecondsTimer) in _warningTimers.Values)
+            {
+                oneMinuteTimer?.Dispose();
+                thirtySecondsTimer?.Dispose();
+            }
+            _warningTimers.Clear();
+
+            // 모든 데미지 타이머 정리
+            foreach (var timer in _damageTimers.Values)
+            {
+                timer?.Dispose();
+            }
+            _damageTimers.Clear();
+
+            Logger.LogInformation("InstanceMapController 종료: 모든 타이머 정리 완료");
+        }
+        finally
+        {
+            MapLock.Release();
+        }
     }
 }

@@ -150,8 +150,8 @@ public sealed class PlayerMovement(GameSession user, PlayerInfo playerInfo)
         playerInfo.ObjectInfo.CurrentCell = Cell.Clone(playerInfo.ObjectInfo.TargetCell);
         await playerInfo.ObjectInfo.Save(_cacheHelper);
 
-        using var packet = PacketMaker.U_TO_C_MOVE(playerInfo.ObjectInfo.ObjectId, ErrorCode.SUCCESS, playerInfo.ObjectInfo);
-        _sendToClient(packet);
+        // using var packet = PacketMaker.U_TO_C_MOVE(playerInfo.ObjectInfo.ObjectId, ErrorCode.SUCCESS, playerInfo.ObjectInfo);
+        // _sendToClient(packet);
     }
 
     private float GetMoveSpeed(DirectionType direction)

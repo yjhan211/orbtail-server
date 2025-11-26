@@ -28,6 +28,7 @@ services:
     container_name: scholarcamp-game-server-dev
     ports:
       - "8080:8080"
+      - "9001:9001"
       - "9090:9090"
     volumes:
       # Mount source code for hot reload

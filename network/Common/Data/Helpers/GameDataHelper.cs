@@ -20,6 +20,7 @@ namespace network.common.data.helpers
             public const string ExploreTargetInfo = "explore_target_info.csv";
             public const string CraftInfo = "craft_info.csv";
             public const string LoadingText = "loading_text.csv";
+            public const string AreaName = "area_name.csv";
 
             public static class Item
             {
@@ -53,6 +54,7 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.ExploreTargetInfo, init: GameExploreTargetData.Initialize, GameExploreTargetData.Validate),
                 (fileName: DataFiles.CraftInfo, init: GameCraftData.Initialize, GameCraftData.Validate),
                 (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize, validate: GameLoadingTextData.Validate),
+                (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize, validate: GameAreaNameData.Validate),
             };
 
         private static string GetCsvFilePath(string fileName)
