@@ -180,6 +180,12 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class G_TO_C_PLAYER_INFO : IMessagePackObject
+    {
+        [Key("playerInfoList")] public List<PlayerInfo> PlayerInfoList { get; set; }
+    }
+
+    [MessagePackObject]
     public class G_TO_U_PLAYER_INFO : IMessagePackObject
     {
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }

@@ -89,8 +89,10 @@ public class MapObjectController : IDisposable
                 continue;
             }
 
-            using var packet = PacketMaker.U_TO_C_MAP_UPDATE(updateObjectList, DateTime.UtcNow);
-            _sendToClient(packet);
+            // 세션형 구조: ObjectInfo 업데이트는 더 이상 사용하지 않음
+            // 위치 동기화는 실시간 패킷으로 처리
+            // TODO: 이 로직 전체를 제거하거나 필요한 경우만 사용
+            _logger.LogWarning("MAP_UPDATE deprecated - use real-time packets instead");
         }
     }
 

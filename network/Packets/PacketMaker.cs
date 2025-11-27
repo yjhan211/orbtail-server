@@ -83,6 +83,15 @@ public static class PacketMaker
         return packet;
     }
 
+    public static Packet G_TO_C_PLAYER_INFO(List<PlayerInfo> playerInfoList)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_INFO);
+        G_TO_C_PLAYER_INFO body = new() { PlayerInfoList = playerInfoList };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     public static Packet U_TO_C_EXPLORE_TARGET_INFO(List<ExploreTargetInfo> exploreTargetList)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_EXPLORE_TARGET_INFO);

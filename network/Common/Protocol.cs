@@ -72,6 +72,7 @@ namespace network.common
         // GameServer 전용 프로토콜 (클라이언트 직접 연결)
         C_TO_G_CONNECT,          // 클라이언트 → GameServer 연결 인증
         G_TO_C_CONNECT_RESULT,   // GameServer → 클라이언트 연결 결과
+        G_TO_C_PLAYER_INFO,      // GameServer → 클라이언트 플레이어 정보
         C_TO_G_MOVE,
         G_TO_C_MOVE,
         G_TO_C_SPAWN,

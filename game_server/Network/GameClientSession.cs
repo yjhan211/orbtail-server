@@ -78,7 +78,6 @@ public class GameClientSession : IPeer
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_MOVE, async (bytes) => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_ATTACK, async (bytes) => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT, async (bytes) => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_PLAYER_INFO, async (bytes) => await HandleMessage<C_TO_U_PLAYER_INFO>(bytes, HandlePlayerInfoRequest));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -112,45 +111,61 @@ public class GameClientSession : IPeer
         await handler(message);
     }
 
-    private async Task HandleSpawnOnConnect()
+    private async Task BroadcastPlayerJoin()
     {
         if (!PlayerId.HasValue) return;
 
         try
         {
-            // 1. 같은 인스턴스의 다른 플레이어들 정보 가져오기
             var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
             var otherPlayerIds = otherSessions
                 .Where(s => s.PlayerId != PlayerId && s.PlayerId.HasValue)
                 .Select(s => s.PlayerId.Value)
                 .ToList();
 
-            // 2. 나에게 다른 플레이어들 SPAWN 알림
+            // 1. 나에게 다른 플레이어들의 전체 정보 전송
             if (otherPlayerIds.Count > 0)
             {
-                var otherPlayerKeys = otherPlayerIds.Select(id => $"PLAYER_{id}").ToList();
-                using var spawnPacket = PacketMaker.G_TO_C_SPAWN(otherPlayerKeys, new List<Cell>());
-                Send(spawnPacket);
-                Logger.LogInformation($"Sent SPAWN to PlayerId={PlayerId} for {otherPlayerIds.Count} other players");
-                // 클라이언트가 C_TO_U_PLAYER_INFO를 요청하면 HandlePlayerInfoRequest에서 응답
-            }
-
-            // 3. 다른 플레이어들에게 내 SPAWN 브로드캐스트
-            var myPlayerKey = $"PLAYER_{PlayerId}";
-            using var mySpawnPacket = PacketMaker.G_TO_C_SPAWN(new List<string> { myPlayerKey }, new List<Cell>());
-
-            foreach (var session in otherSessions)
-            {
-                if (session.PlayerId != PlayerId)
+                var playerInfoList = new List<PlayerInfo>();
+                foreach (var otherId in otherPlayerIds)
                 {
-                    session.Send(mySpawnPacket);
+                    await using var playerLock = await PlayerInfo.Lock(RedLock, otherId);
+                    var playerInfo = await PlayerInfo.Load(CacheHelper, otherId);
+                    if (playerInfo != null)
+                    {
+                        playerInfoList.Add(playerInfo);
+                    }
+                }
+
+                if (playerInfoList.Count > 0)
+                {
+                    using var packet = PacketMaker.G_TO_C_PLAYER_INFO(playerInfoList);
+                    Send(packet);
+                    Logger.LogInformation($"Sent {playerInfoList.Count} PlayerInfo to PlayerId={PlayerId}");
                 }
             }
-            Logger.LogInformation($"Broadcasted my SPAWN (PlayerId={PlayerId}) to {otherSessions.Count - 1} other players");
+
+            // 2. 내 정보 로드
+            await using var myPlayerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+            var myPlayerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+
+            if (myPlayerInfo != null)
+            {
+                // 3. 다른 플레이어들에게 내 정보 브로드캐스트
+                using var myPacket = PacketMaker.G_TO_C_PLAYER_INFO(new List<PlayerInfo> { myPlayerInfo });
+                foreach (var session in otherSessions)
+                {
+                    if (session.PlayerId != PlayerId)
+                    {
+                        session.Send(myPacket);
+                    }
+                }
+                Logger.LogInformation($"Broadcasted my PlayerInfo (PlayerId={PlayerId}) to {otherSessions.Count - 1} other players");
+            }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, $"Failed to handle spawn for PlayerId={PlayerId}");
+            Logger.LogError(ex, $"Failed to broadcast player join for PlayerId={PlayerId}");
         }
     }
 
@@ -192,8 +207,8 @@ public class GameClientSession : IPeer
 
             Logger.LogInformation($"Client connected successfully: PlayerId={PlayerId}");
 
-            // SPAWN 처리: 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
-            await HandleSpawnOnConnect();
+            // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
+            await BroadcastPlayerJoin();
         }
         catch (Exception ex)
         {
@@ -222,93 +237,54 @@ public class GameClientSession : IPeer
             var deltaTime = (float)(now - _lastMoveTime).TotalSeconds;
             _lastMoveTime = now;
 
-            // 1. 위치 검증 (치트 방지 강화)
+            // 1. 위치 검증 (간단한 치트 방지)
             var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
 
-            // 2. 현재 타일 계산
-            var currentCell = CoordinateConverter.WorldToCell(validatedPosition);
-
-            // 3. 타일 변경 여부 확인 (Redis 로드 최소화)
-            bool needsDbUpdate = false;
-            bool cellChanged = false;
-            Cell oldCell = new Cell(0, 0);
-
-            // 주기적 저장 (1초마다) 또는 타일 변경 시에만 DB 접근
-            if (now - _lastSaveTime > TimeSpan.FromSeconds(1) ||
-                _lastValidatedPosition == null)
-            {
-                needsDbUpdate = true;
-            }
-
-            PlayerInfo? playerInfo = null;
-
-            // 정지 중인지 확인 (velocity 크기가 거의 0)
+            // 2. 주기적 저장 (1초마다)
+            bool needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
             bool isIdle = msg.Velocity.Magnitude() < 0.01f;
 
-            if (needsDbUpdate)
+            if (needsDbUpdate && !isIdle)
             {
-                // Redis Lock + Load + Save
                 await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-                playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+                var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
                 if (playerInfo != null)
                 {
-                    oldCell = playerInfo.ObjectInfo.CurrentCell;
-                    cellChanged = !oldCell.Equals(currentCell);
-
-                    // 위치 업데이트
                     playerInfo.ObjectInfo.Position = validatedPosition;
                     playerInfo.ObjectInfo.Velocity = msg.Velocity;
                     playerInfo.ObjectInfo.Rotation = msg.Rotation;
-                    playerInfo.ObjectInfo.CurrentCell = currentCell;
                     playerInfo.ObjectInfo.MoveTimestamp = now;
 
-                    // 저장 조건: (타일 변경) 또는 (1초 경과 && 움직이는 중)
-                    // 정지 중에는 DB 저장 스킵 (불필요한 Redis 쓰기 방지)
-                    bool shouldSave = cellChanged || (!isIdle && now - _lastSaveTime >= TimeSpan.FromSeconds(1));
-
-                    if (shouldSave)
-                    {
-                        await playerInfo.Save(CacheHelper);
-                        _lastSaveTime = now;
-                    }
-
-                    // 타일 변경 이벤트
-                    if (cellChanged)
-                    {
-                        Logger.LogInformation($"Player {PlayerId} 타일 이동: {oldCell} → {currentCell}");
-                        await OnCellChanged(playerInfo, oldCell, currentCell);
-                    }
+                    await playerInfo.Save(CacheHelper);
+                    _lastSaveTime = now;
                 }
             }
 
-            // 검증된 위치 저장
             _lastValidatedPosition = validatedPosition;
 
-            // 4. 브로드캐스트 (같은 맵의 다른 플레이어들에게)
+            // 3. 브로드캐스트 (세션형: 모든 플레이어에게 전송)
             var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
                 validatedPosition,
                 msg.Velocity,
                 msg.Rotation,
-                currentCell,
+                new Cell(0, 0), // Cell 불필요하지만 프로토콜 호환성 유지
                 msg.InputSequence,
                 serverTimestamp
             );
 
-            // 같은 인스턴스의 다른 클라이언트들에게 직접 전송
             var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
             foreach (var session in otherSessions)
             {
-                // 자기 자신에게는 보내지 않음
                 if (session.PlayerId != PlayerId)
                 {
                     session.Send(packet);
                 }
             }
 
-            Logger.LogDebug($"Player {PlayerId} move broadcasted to {otherSessions.Count - 1} clients: {validatedPosition}");
+            Logger.LogDebug($"Player {PlayerId} move broadcasted to {otherSessions.Count - 1} clients");
         }
         catch (Exception ex)
         {
@@ -372,24 +348,6 @@ public class GameClientSession : IPeer
         return clientPos;
     }
 
-    private async Task OnCellChanged(
-        PlayerInfo playerInfo,
-        Cell oldCell,
-        Cell newCell)
-    {
-        // 타일 기반 로직들
-
-        // TODO: 1. 트리거 체크 (특정 타일 진입 시)
-        // await CheckTileTriggers(newCell);
-
-        // TODO: 2. AOI (Area of Interest) 업데이트
-        // await UpdateAreaOfInterest(playerInfo, oldCell, newCell);
-
-        // TODO: 3. 타일별 이벤트 (함정, 버프 존 등)
-        // await ProcessTileEvents(newCell);
-
-        Logger.LogInformation($"OnCellChanged: {oldCell} → {newCell} (플레이어: {playerInfo.PlayerId})");
-    }
 
     private Task HandleAttack(C_TO_G_ATTACK msg)
     {
@@ -403,43 +361,6 @@ public class GameClientSession : IPeer
         Logger.LogInformation($"Player {PlayerId} interact: {msg.TargetId}");
         // TODO: 상호작용 처리
         return Task.CompletedTask;
-    }
-
-    private async Task HandlePlayerInfoRequest(C_TO_U_PLAYER_INFO msg)
-    {
-        try
-        {
-            Logger.LogInformation($"Player {PlayerId} requested info for {msg.PlayerIdList.Count} players");
-
-            var playerInfoList = new List<PlayerInfo>();
-
-            foreach (var requestedPlayerId in msg.PlayerIdList)
-            {
-                await using var playerLock = await PlayerInfo.Lock(RedLock, requestedPlayerId);
-                var playerInfo = await PlayerInfo.Load(CacheHelper, requestedPlayerId);
-
-                if (playerInfo != null)
-                {
-                    playerInfoList.Add(playerInfo);
-                    Logger.LogInformation($"Loaded PlayerInfo for {requestedPlayerId}");
-                }
-                else
-                {
-                    Logger.LogWarning($"PlayerInfo not found for {requestedPlayerId}");
-                }
-            }
-
-            if (playerInfoList.Count > 0)
-            {
-                using var packet = PacketMaker.U_TO_C_PLAYER_INFO(playerInfoList);
-                Send(packet);
-                Logger.LogInformation($"Sent {playerInfoList.Count} PlayerInfo to PlayerId={PlayerId}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, $"Failed to handle player info request for PlayerId={PlayerId}");
-        }
     }
 
     public void Send(IPacket packet)
