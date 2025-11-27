@@ -140,7 +140,7 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_MOVE(long playerId, Vector3f position, Vector3f velocity, float rotation, Cell currentCell, uint lastProcessedInput, long serverTimestamp)
+    public static Packet G_TO_C_MOVE(long playerId, Vector3f position, Vector3f velocity, float rotation, Cell cell, uint lastProcessedInput, long serverTimestamp)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_MOVE, playerId);
         G_TO_C_MOVE body = new()
@@ -149,7 +149,7 @@ public static class PacketMaker
             Position = position,
             Velocity = velocity,
             Rotation = rotation,
-            CurrentCell = currentCell,
+            Cell = cell,
             LastProcessedInput = lastProcessedInput,
             ServerTimestamp = serverTimestamp
         };

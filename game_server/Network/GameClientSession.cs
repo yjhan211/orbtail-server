@@ -255,6 +255,7 @@ public class GameClientSession : IPeer
                     playerInfo.ObjectInfo.Velocity = msg.Velocity;
                     playerInfo.ObjectInfo.Rotation = msg.Rotation;
                     playerInfo.ObjectInfo.MoveTimestamp = now;
+                    playerInfo.ObjectInfo.UpdateCellFromPosition(); // Position에서 Cell 자동 계산
 
                     await playerInfo.Save(CacheHelper);
                     _lastSaveTime = now;
@@ -265,12 +266,16 @@ public class GameClientSession : IPeer
 
             // 3. 브로드캐스트 (세션형: 모든 플레이어에게 전송)
             var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var currentCell = new Cell(
+                (int)Math.Round(validatedPosition.X),
+                (int)Math.Round(validatedPosition.Z)
+            );
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
                 validatedPosition,
                 msg.Velocity,
                 msg.Rotation,
-                new Cell(0, 0), // Cell 불필요하지만 프로토콜 호환성 유지
+                currentCell,
                 msg.InputSequence,
                 serverTimestamp
             );

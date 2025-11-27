@@ -128,7 +128,7 @@ namespace network.common.data.models
         [Key("position")] public Vector3f Position { get; set; }
         [Key("velocity")] public Vector3f Velocity { get; set; }
         [Key("rotation")] public float Rotation { get; set; }
-        [Key("currentCell")] public Cell CurrentCell { get; set; }
+        [Key("cell")] public Cell Cell { get; set; }
         [Key("lastProcessedInput")] public uint LastProcessedInput { get; set; }
         [Key("serverTime")] public long ServerTimestamp { get; set; }
     }
