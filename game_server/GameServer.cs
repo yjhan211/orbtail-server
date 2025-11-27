@@ -138,7 +138,9 @@ public class GameServer : IHostedService
                 _logger,
                 _cacheHelper,
                 OnClientSessionLeave,
-                _serverConfig);
+                _serverConfig,
+                RegisterClientSession,
+                GetSessionsByInstance);
 
             _logger.LogInformation("Game client session created");
         }
@@ -157,10 +159,17 @@ public class GameServer : IHostedService
         }
     }
 
-    public void RegisterClientSession(long playerId, GameClientSession session)
+    private void RegisterClientSession(long playerId, GameClientSession session)
     {
         _clientSessions.TryAdd(playerId, session);
         _logger.LogInformation($"Game client session registered: PlayerId={playerId}");
+    }
+
+    private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
+    {
+        return _clientSessions.Values
+            .Where(s => s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId)
+            .ToList();
     }
 
     private void SubscribeToLogoutEvents()

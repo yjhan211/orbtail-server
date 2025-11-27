@@ -23,6 +23,8 @@ public class GameClientSession : IPeer
     private readonly SemaphoreSlim _sessionLock;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly IProtocolRouter _protocolRouter;
+    private readonly Action<long, GameClientSession> _registerSessionCallback;
+    private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
 
     public readonly ILogger Logger;
     public readonly ICacheHelper CacheHelper;
@@ -39,9 +41,6 @@ public class GameClientSession : IPeer
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
 
-    // NATS subject 캐싱 (문자열 생성 비용 절감)
-    private string? _cachedMoveSubject;
-
     public GameClientSession(
         UserToken token,
         IRedLockFactory redLock,
@@ -49,7 +48,9 @@ public class GameClientSession : IPeer
         ILogger logger,
         ICacheHelper cacheHelper,
         Action<GameClientSession> onLeaveCallback,
-        IServerConfig serverConfig)
+        IServerConfig serverConfig,
+        Action<long, GameClientSession> registerSessionCallback,
+        Func<MapId, long, List<GameClientSession>> getSessionsByInstance)
     {
         _token = token;
         _token.SetPeer(this);
@@ -61,6 +62,8 @@ public class GameClientSession : IPeer
         CacheHelper = cacheHelper;
         ServerConfig = serverConfig;
         _onLeaveCallback = onLeaveCallback;
+        _registerSessionCallback = registerSessionCallback;
+        _getSessionsByInstance = getSessionsByInstance;
 
         _protocolRouter = new ProtocolRouter(logger);
         InitializeProtocolHandlers();
@@ -108,6 +111,76 @@ public class GameClientSession : IPeer
         await handler(message);
     }
 
+    private async Task HandleSpawnOnConnect()
+    {
+        if (!PlayerId.HasValue) return;
+
+        try
+        {
+            // 1. 같은 인스턴스의 다른 플레이어들 정보 가져오기
+            var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            var otherPlayerIds = otherSessions
+                .Where(s => s.PlayerId != PlayerId && s.PlayerId.HasValue)
+                .Select(s => s.PlayerId.Value)
+                .ToList();
+
+            // 2. 나에게 다른 플레이어들 정보 전송 (G_TO_C_SPAWN + MAP_UPDATE)
+            if (otherPlayerIds.Count > 0)
+            {
+                // SPAWN 패킷 전송
+                var otherPlayerKeys = otherPlayerIds.Select(id => $"PLAYER_{id}").ToList();
+                using var spawnPacket = PacketMaker.G_TO_C_SPAWN(otherPlayerKeys, new List<Cell>());
+                Send(spawnPacket);
+
+                // 각 플레이어의 ObjectInfo를 MAP_UPDATE로 전송
+                var objectInfoList = new List<GameObjectInfo>();
+                foreach (var otherId in otherPlayerIds)
+                {
+                    await using var playerLock = await PlayerInfo.Lock(RedLock, otherId);
+                    var playerInfo = await PlayerInfo.Load(CacheHelper, otherId);
+                    if (playerInfo != null)
+                    {
+                        objectInfoList.Add(playerInfo.ObjectInfo);
+                    }
+                }
+
+                if (objectInfoList.Count > 0)
+                {
+                    using var mapUpdatePacket = PacketMaker.U_TO_C_MAP_UPDATE(objectInfoList, DateTime.UtcNow);
+                    Send(mapUpdatePacket);
+                }
+
+                Logger.LogInformation($"Sent SPAWN + MAP_UPDATE to PlayerId={PlayerId} for {otherPlayerIds.Count} other players");
+            }
+
+            // 3. 내 ObjectInfo 로드
+            await using var myPlayerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+            var myPlayerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+
+            if (myPlayerInfo != null)
+            {
+                // 4. 다른 플레이어들에게 내 정보 브로드캐스트 (G_TO_C_SPAWN + MAP_UPDATE)
+                var myPlayerKey = $"PLAYER_{PlayerId}";
+                using var mySpawnPacket = PacketMaker.G_TO_C_SPAWN(new List<string> { myPlayerKey }, new List<Cell>());
+                using var myMapUpdatePacket = PacketMaker.U_TO_C_MAP_UPDATE(new List<GameObjectInfo> { myPlayerInfo.ObjectInfo }, DateTime.UtcNow);
+
+                foreach (var session in otherSessions)
+                {
+                    if (session.PlayerId != PlayerId)
+                    {
+                        session.Send(mySpawnPacket);
+                        session.Send(myMapUpdatePacket);
+                    }
+                }
+                Logger.LogInformation($"Broadcasted my SPAWN + MAP_UPDATE (PlayerId={PlayerId}) to {otherSessions.Count - 1} other players");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Failed to handle spawn for PlayerId={PlayerId}");
+        }
+    }
+
     private async Task HandleConnect(C_TO_G_CONNECT msg)
     {
         try
@@ -121,6 +194,9 @@ public class GameClientSession : IPeer
             CurrentMapId = MapId.School; // TODO: 매칭 정보에서 가져오기
             CurrentMapSubId = msg.MatchingId;
 
+            // 세션 등록
+            _registerSessionCallback(PlayerId.Value, this);
+
             // 초기 위치 로드
             await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
             var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
@@ -131,17 +207,20 @@ public class GameClientSession : IPeer
             }
 
             // 연결 성공 응답
-            using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId.Value);
+            using var connectResultPacket = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId.Value);
             var response = new G_TO_C_CONNECT_RESULT
             {
                 Success = true,
                 ErrorCode = ErrorCode.SUCCESS,
                 Message = "Connected to GameServer"
             };
-            packet.SetBody(MessagePackSerializer.Serialize(response));
-            Send(packet);
+            connectResultPacket.SetBody(MessagePackSerializer.Serialize(response));
+            Send(connectResultPacket);
 
             Logger.LogInformation($"Client connected successfully: PlayerId={PlayerId}");
+
+            // SPAWN 처리: 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
+            await HandleSpawnOnConnect();
         }
         catch (Exception ex)
         {
@@ -245,18 +324,18 @@ public class GameClientSession : IPeer
                 serverTimestamp
             );
 
-            // NATS로 브로드캐스트 (subject 캐싱)
-            if (_cachedMoveSubject == null)
+            // 같은 인스턴스의 다른 클라이언트들에게 직접 전송
+            var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            foreach (var session in otherSessions)
             {
-                _cachedMoveSubject = SubjectHelper.GetUpdateInfoSubject(
-                    CurrentMapId,
-                    CurrentMapSubId,
-                    ServerConfig.ServerId
-                );
+                // 자기 자신에게는 보내지 않음
+                if (session.PlayerId != PlayerId)
+                {
+                    session.Send(packet);
+                }
             }
-            NatsClient.Publish(_cachedMoveSubject, packet.ToBytes());
 
-            Logger.LogDebug($"Player {PlayerId} move broadcasted: {validatedPosition}");
+            Logger.LogDebug($"Player {PlayerId} move broadcasted to {otherSessions.Count - 1} clients: {validatedPosition}");
         }
         catch (Exception ex)
         {
