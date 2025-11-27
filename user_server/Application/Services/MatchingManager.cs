@@ -156,6 +156,17 @@ public class MatchingManager
                         var mapInfo = GameMapData.GetMapInfo(mapId);
                         var (spawnPosition, _) = mapInfo.GetInitialPosition();
 
+                        // PlayerInfo LastCell 업데이트
+                        var playerInfo = await PlayerInfo.Load(_cacheHelper, data.PlayerId);
+                        if (playerInfo != null)
+                        {
+                            playerInfo.LastMapId = mapId;
+                            playerInfo.LastMapSubId = mapSubId;
+                            playerInfo.LastCell = spawnPosition;
+                            await playerInfo.Save(_cacheHelper);
+                            _logger.LogInformation($"플레이어 {data.PlayerId} LastCell 업데이트: {spawnPosition}");
+                        }
+
                         // 게임서버 정보 (TODO: 추후 동적 할당)
                         var gameServerIp = "127.0.0.1";
                         var gameServerPort = 9001;

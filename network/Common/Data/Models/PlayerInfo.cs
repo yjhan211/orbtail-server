@@ -57,9 +57,9 @@ namespace network.common.data.models
             Stamina = 100;
             Boosts = new();
             IsTutorial = true;
-            LastMapId = MapId.None;
+            LastMapId = MapId.Camp;
             LastMapSubId = 0;
-            LastCell = new(0, 0);
+            LastCell = initCell;
             IsNew = true;
         }
 
