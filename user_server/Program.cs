@@ -70,7 +70,7 @@ internal static class Program
         services.AddSingleton<INetworkService>(provider => provider.GetRequiredService<NetworkService>());
         services.AddSingleton<NatsClientFactory>();
         services.AddSingleton<INatsClientFactory>(provider => provider.GetRequiredService<NatsClientFactory>());
-        services.AddSingleton<LogManager>(CreateLogManager);
+        services.AddSingleton(CreateLogManager);
     }
 
     private static void RegisterInfrastructureServices(IServiceCollection services, HostBuilderContext hostContext)
@@ -123,7 +123,7 @@ internal static class Program
         );
     }
 
-    private static RedisConnectionPool CreateRedisConnectionPool(IServiceProvider serviceProvider, HostBuilderContext hostContext)
+    private static RedisConnectionPool CreateRedisConnectionPool(IServiceProvider _, HostBuilderContext hostContext)
     {
         var redisPool = new RedisConnectionPool();
         var redisEndpoints = hostContext.Configuration["redisEndpoints"]

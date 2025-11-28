@@ -4,7 +4,6 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.core;
-using network.helpers;
 using network.interfaces;
 using network.packets;
 using network.routing;
@@ -20,7 +19,6 @@ public class GameSession : IPeer
     private readonly ILogger _logger;
     private readonly ICacheHelper _cacheHelper;
     private readonly IRedLockFactory _redLock;
-    private readonly INatsClient _natsClient;
     private readonly IProtocolRouter _protocolRouter;
     private readonly IProtocolRouter _subscribeRouter;
     private readonly PlayerService _playerService;
@@ -35,7 +33,6 @@ public class GameSession : IPeer
         ILogger logger,
         ICacheHelper cacheHelper,
         IRedLockFactory redLock,
-        INatsClient natsClient,
         PlayerService playerService,
         MatchingManager matchingManager,
         Action<long, GameSession> onSessionRegistered)
@@ -46,7 +43,6 @@ public class GameSession : IPeer
         _logger = logger;
         _cacheHelper = cacheHelper;
         _redLock = redLock;
-        _natsClient = natsClient;
         _playerService = playerService;
         _matchingManager = matchingManager;
         _onSessionRegistered = onSessionRegistered;
@@ -112,30 +108,6 @@ public class GameSession : IPeer
         }
     }
 
-    private async Task OnMessageFromNatsWrapper(byte[] message)
-    {
-        try
-        {
-            using var packet = new Packet(message);
-            var protocolId = (Protocol)packet.PopProtocolId();
-            var body = packet.PopBody();
-
-            await _sessionLock.WaitAsync();
-            try
-            {
-                await _subscribeRouter.RouteAsync(protocolId, body);
-            }
-            finally
-            {
-                _sessionLock.Release();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error processing NATS message");
-        }
-    }
-
     private async Task HandleMessage<T>(byte[] body, Func<T, Task> handler) where T : IMessagePackObject
     {
         var message = MessagePackSerializer.Deserialize<T>(body);
@@ -156,8 +128,7 @@ public class GameSession : IPeer
             _logger.LogInformation("Login request received: AccountToken={AccountToken}", msg.AccountToken);
 
             // AccountToken이 없거나 파싱 실패시 Redis INCR로 새 PlayerId 생성
-            long playerId;
-            if (string.IsNullOrEmpty(msg.AccountToken) || !long.TryParse(msg.AccountToken, out playerId))
+            if (string.IsNullOrEmpty(msg.AccountToken) || !long.TryParse(msg.AccountToken, out var playerId))
             {
                 // Redis INCR을 사용해 1부터 순차 증가하는 PlayerId 생성
                 playerId = await _cacheHelper.StringIncrementAsync("player_id_counter");
@@ -384,8 +355,7 @@ public class GameSession : IPeer
     {
         if (PlayerId == null) return;
 
-        var errorCode = await _playerService.IncreaseQuestCount(PlayerId.Value, msg);
-
+        _ = await _playerService.IncreaseQuestCount(PlayerId.Value, msg);
         // TODO: Send quest update packet
     }
 
@@ -450,7 +420,7 @@ public class GameSession : IPeer
         return Task.CompletedTask;
     }
 
-    private async Task SendChatHistory(ChatType chatType)
+    private async Task SendChatHistory(ChatType _)
     {
         // TODO: Implement chat history
         await Task.CompletedTask;

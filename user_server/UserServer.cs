@@ -68,8 +68,8 @@ public class UserServer(
         MapHelper.Initialize(serverConfig.GameServerNum);
 
         // MatchingManager 초기화
-        var matchingNatsClient = natsClientFactory.Create();
-        _matchingManager = new MatchingManager(logger, cacheHelper, matchingNatsClient, GetSession);
+        natsClientFactory.Create();
+        _matchingManager = new MatchingManager(logger, cacheHelper, GetSession);
 
         logger.LogInformation("Services initialized successfully");
     }
@@ -86,15 +86,14 @@ public class UserServer(
     {
         try
         {
-            var natsClient = natsClientFactory.Create();
+            natsClientFactory.Create();
             var sessionLogger = logger; // Or create a scoped logger
 
-            var session = new GameSession(
+            _ = new GameSession(
                 token,
                 sessionLogger,
                 cacheHelper,
                 redLock,
-                natsClient,
                 playerService,
                 _matchingManager!,
                 RegisterSession);
@@ -124,7 +123,9 @@ public class UserServer(
         _sessions.TryGetValue(playerId, out var session);
         return session;
     }
-
+    
+    // TODO 로그아웃
+    // ReSharper disable once UnusedMember.Local
     private void EnqueueUserLeave(GameSession user)
     {
         _leaveUserQueue.Enqueue(user);

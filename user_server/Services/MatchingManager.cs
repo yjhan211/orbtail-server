@@ -20,7 +20,7 @@ public class MatchingManager
     private const int MatchingTimeoutSeconds = 5;
     private const int PlayersPerMatch = 2; // 매칭 인원수
 
-    public MatchingManager(ILogger logger, ICacheHelper cacheHelper, INatsClient natsClient, Func<long, GameSession?> getSession)
+    public MatchingManager(ILogger logger, ICacheHelper cacheHelper, Func<long, GameSession?> getSession)
     {
         _logger = logger;
         _cacheHelper = cacheHelper;
@@ -182,7 +182,7 @@ public class MatchingManager
 
     public void Dispose()
     {
-        _matchingTimer?.Dispose();
+        _matchingTimer.Dispose();
         _logger.LogInformation("MatchingManager 종료");
     }
 }
