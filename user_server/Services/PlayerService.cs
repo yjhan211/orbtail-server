@@ -38,7 +38,27 @@ public class PlayerService
             return (ErrorCode.FATAL, null);
         }
 
-        // TODO: 착용 로직 구현
+        // 기존 착용 아이템 해제
+        foreach (var item in playerInfo.InventoryInfo.ItemDict.Values)
+        {
+            item.IsWear = false;
+        }
+        playerInfo.WearItemIdList.Clear();
+
+        // 새 아이템 착용
+        foreach (var itemUid in msg.ItemUidList)
+        {
+            if (playerInfo.InventoryInfo.ItemDict.TryGetValue(itemUid, out var item))
+            {
+                item.IsWear = true;
+                playerInfo.WearItemIdList.Add(item.ItemId); // ItemUid가 아니라 ItemId 저장
+            }
+            else
+            {
+                _logger.LogWarning($"Player {playerId} tried to wear non-existent item UID: {itemUid}");
+            }
+        }
+
         _logger.LogInformation($"Player {playerId} wearing items: {string.Join(", ", msg.ItemUidList)}");
 
         await playerInfo.Save(_cacheHelper);

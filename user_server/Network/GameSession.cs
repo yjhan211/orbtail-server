@@ -1,6 +1,7 @@
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 using network.core;
 using network.helpers;
@@ -96,7 +97,10 @@ public class GameSession : IPeer
 
             await _protocolRouter.RouteAsync(protocolId, body);
 
-            _logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
+            if (protocolId != Protocol.C_TO_U_HEART_BEAT)
+            {
+                _logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
+            }
         }
         catch (Exception ex)
         {
@@ -181,6 +185,12 @@ public class GameSession : IPeer
                 _logger.LogInformation("Existing player loaded: PlayerId={PlayerId}, Name={Name}", PlayerId, PlayerInfo.Name);
             }
 
+            // 신규 플레이어 초기 아이템 지급
+            if (PlayerInfo.IsNew)
+            {
+                await SetupNewPlayer(PlayerInfo);
+            }
+
             // 세션 등록
             _onSessionRegistered(PlayerId.Value, this);
             _logger.LogInformation("Session registered for PlayerId={PlayerId}", PlayerId);
@@ -200,11 +210,110 @@ public class GameSession : IPeer
             _logger.LogInformation("Sending U_TO_C_LOGIN packet for PlayerId={PlayerId}, Packet size={Size}", PlayerId, loginPacket.ToBytes().Length);
             Send(loginPacket);
 
+            // 인벤토리 아이템 리스트 전송 (청크 단위로 분할)
+            if (PlayerInfo.InventoryInfo.ItemDict.Count > 0)
+            {
+                const int chunkSize = 20; // 한 번에 20개씩 전송
+                var itemList = PlayerInfo.InventoryInfo.ItemDict.ToList();
+                var totalChunks = (itemList.Count + chunkSize - 1) / chunkSize;
+
+                for (int i = 0; i < totalChunks; i++)
+                {
+                    var chunk = itemList.Skip(i * chunkSize).Take(chunkSize).ToDictionary(x => x.Key, x => x.Value);
+                    var isEnd = (i == totalChunks - 1);
+
+                    using var itemListPacket = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(chunk, isEnd);
+                    Send(itemListPacket);
+                }
+
+                _logger.LogInformation("Sent inventory item list in {ChunkCount} packets: PlayerId={PlayerId}, ItemCount={Count}",
+                    totalChunks, PlayerId, PlayerInfo.InventoryInfo.ItemDict.Count);
+            }
+
             _logger.LogInformation("Player {PlayerId} logged in successfully", PlayerId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Login failed for player {AccountToken}", msg.AccountToken);
+        }
+    }
+
+    private async Task SetupNewPlayer(PlayerInfo playerInfo)
+    {
+        try
+        {
+            _logger.LogInformation("Setting up new player: PlayerId={PlayerId}", playerInfo.PlayerId);
+
+            // 아이템 UID 카운터 가져오기
+            var itemUidCounter = await _cacheHelper.StringIncrementAsync("item_uid_counter");
+
+            // 기본 아이템 3종 먼저 추가 (Top, Bottom, Shoes)
+            var defaultTop = new ItemInfo(itemUidCounter++, 104000001, 1);
+            var defaultBottom = new ItemInfo(itemUidCounter++, 105000001, 1);
+            var defaultShoes = new ItemInfo(itemUidCounter++, 106000001, 1);
+
+            playerInfo.InventoryInfo.ItemDict.Add(defaultTop.ItemUid, defaultTop);
+            playerInfo.InventoryInfo.ItemDict.Add(defaultBottom.ItemUid, defaultBottom);
+            playerInfo.InventoryInfo.ItemDict.Add(defaultShoes.ItemUid, defaultShoes);
+
+            _logger.LogInformation("Added default items: Top={TopUid}, Bottom={BottomUid}, Shoes={ShoesUid}",
+                defaultTop.ItemUid, defaultBottom.ItemUid, defaultShoes.ItemUid);
+
+            // 기본 아이템 착용 (직접 처리)
+            defaultTop.IsWear = true;
+            defaultBottom.IsWear = true;
+            defaultShoes.IsWear = true;
+
+            playerInfo.WearItemIdList.Add(defaultTop.ItemId);
+            playerInfo.WearItemIdList.Add(defaultBottom.ItemId);
+            playerInfo.WearItemIdList.Add(defaultShoes.ItemId);
+
+            _logger.LogInformation("Default items equipped for PlayerId={PlayerId}, WearItemCount={Count}",
+                playerInfo.PlayerId, playerInfo.WearItemIdList.Count);
+
+            // 테스트용 코스튬 아이템 전부 지급
+            var allItems = GameItemData.GetAllList();
+
+            foreach (var itemInfoData in allItems.Where(x => x.IsEquipment))
+            {
+                var equipType = GameItemData.GetEquipType(itemInfoData.Id);
+                switch (equipType)
+                {
+                    case EquipType.HEAD:
+                    case EquipType.FACE:
+                    case EquipType.HAT:
+                    case EquipType.TOP:
+                    case EquipType.BOTTOM:
+                    case EquipType.SHOES:
+                        // 기본 아이템 3종은 이미 추가했으므로 스킵
+                        if (itemInfoData.Id == 104000001 || itemInfoData.Id == 105000001 || itemInfoData.Id == 106000001)
+                        {
+                            continue;
+                        }
+
+                        var item = new ItemInfo(itemUidCounter++, itemInfoData.Id, 1);
+                        playerInfo.InventoryInfo.ItemDict.Add(item.ItemUid, item);
+                        break;
+
+                    case EquipType.NONE:
+                    case EquipType.TOOL:
+                    case EquipType.PILLOW:
+                    case EquipType.BEDDING:
+                    default:
+                        break;
+                }
+            }
+
+            // 저장
+            playerInfo.IsNew = false;
+            await playerInfo.Save(_cacheHelper);
+
+            _logger.LogInformation("New player setup complete: PlayerId={PlayerId}, Total items={Count}",
+                playerInfo.PlayerId, playerInfo.InventoryInfo.ItemDict.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to setup new player: PlayerId={PlayerId}", playerInfo.PlayerId);
         }
     }
 
