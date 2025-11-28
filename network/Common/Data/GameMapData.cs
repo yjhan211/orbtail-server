@@ -53,19 +53,16 @@ namespace network.common.data
         {
             foreach (var row in data)
             {
-                var initCellX = int.Parse(row["init_cell_x"]);
-                var initCellY = int.Parse(row["init_cell_y"]);
-                var isFlip = int.Parse(row["is_flip"]) == 1;
-
+                // 세션 기반 게임에서는 init_cell 정보 불필요 (CSV에 컬럼 없음)
                 var mapInfo = new MapInfo
                 {
                     Id = int.Parse(row["id"]),
                     SceneName = row["scene_name"],
                     IsCommon = int.Parse(row["is_common"]) == 1,
                     InitCell = new InitCellData(
-                        new Vector3Int(initCellX, initCellY, 0),
+                        new Vector3Int(0, 0, 0), // 기본값
                         MapId.None,
-                        isFlip
+                        false
                     )
                 };
 
@@ -79,16 +76,17 @@ namespace network.common.data
             {
                 var rawMapId = int.Parse(row["map_id"]);
                 var mapId = MapId.Parse<MapId>(rawMapId.ToString());
+                var regionType = row["region_type"];
 
-                if (row["region_type"].Equals("chair", StringComparison.OrdinalIgnoreCase))
+                // Chair 정보 처리 (세션 기반 게임에서는 is_flip 컬럼 없음, 기본값 사용)
+                if (regionType.Equals("chair", StringComparison.OrdinalIgnoreCase))
                 {
-                    // 의자 정보 처리
                     var chairInfo = new ChairInfo(
                         new Cell(
                             int.Parse(row["start_x"]),
                             int.Parse(row["start_y"])
                         ),
-                        int.Parse(row["is_flip"]) == 1
+                        false // 세션 기반 게임에서는 기본값 false
                     );
 
                     if (!_chairInfos.ContainsKey(mapId))
@@ -99,10 +97,10 @@ namespace network.common.data
                     continue;
                 }
 
-                if (row["region_type"].Equals("area", StringComparison.OrdinalIgnoreCase))
+                // Area 정보 처리
+                if (regionType.Equals("area", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Area 정보 처리
-                    var areaTypeId = int.Parse(row["warp_to"]);
+                    var areaTypeId = int.Parse(row["area"]);
                     var areaType = AreaType.Parse<AreaType>(areaTypeId.ToString());
 
                     var areaRegion = new AreaRegion
@@ -120,10 +118,10 @@ namespace network.common.data
                     continue;
                 }
 
-                // 기존 region 처리
+                // 기본 region 처리 (ground, obstacle 등)
                 var region = new MapRegion
                 {
-                    RegionType = row["region_type"],
+                    RegionType = regionType,
                     Start = new Cell(
                         int.Parse(row["start_x"]),
                         int.Parse(row["start_y"])
@@ -132,7 +130,7 @@ namespace network.common.data
                         int.Parse(row["end_x"]),
                         int.Parse(row["end_y"])
                     ),
-                    WarpTo = MapId.Parse<MapId>(int.Parse(row["warp_to"]).ToString())
+                    WarpTo = MapId.None // 세션 기반 게임에서는 포탈 불필요
                 };
 
                 if (!_mapRegions.ContainsKey(mapId))
@@ -261,7 +259,7 @@ namespace network.common.data
 
         public static (MapId mapId, Cell spawnPosition, bool isFlip)? GetPortalOrNull(GameObjectInfo objectInfo, bool isTutorial)
         {
-            var currentCell = objectInfo.TargetCell;
+            var currentCell = objectInfo.Cell;
             var currentMap = objectInfo.MapId;
             var regions = GetMapRegions(currentMap);
             var portalRegions = regions.Where(r => r.IsPortal);
@@ -288,7 +286,7 @@ namespace network.common.data
         /// <param name="targetMapId">목표 맵 ID</param>
         /// <param name="cellToCheck">확인할 셀 좌표</param>
         /// <returns>셀이 포탈 영역에 포함되면 null, 포함되지 않으면 포탈의 중심 좌표</returns>
-        public static Cell? GetPortalCenterIfNotInPortal(MapId currentMapId, MapId targetMapId, Cell cellToCheck)
+        public static Cell GetPortalCenterIfNotInPortal(MapId currentMapId, MapId targetMapId, Cell cellToCheck)
         {
             var portalCoords = GetPortalCoordinates(currentMapId, targetMapId);
             if (!portalCoords.HasValue)
@@ -463,7 +461,7 @@ namespace network.common.data
             return null;
         }
 
-        public static Cell? GetPortalCenterCoordinates(MapId currentMapId, MapId targetMapId)
+        public static Cell GetPortalCenterCoordinates(MapId currentMapId, MapId targetMapId)
         {
             var portalCoords = GetPortalCoordinates(currentMapId, targetMapId);
             if (portalCoords.HasValue)

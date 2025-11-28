@@ -9,8 +9,7 @@ using network.infrastructure;
 using network.interfaces;
 using network.managers;
 using Serilog;
-using user_server.core.dependencyinjection;
-using user_server.infrastructure.network;
+using user_server.services;
 
 namespace user_server;
 
@@ -78,6 +77,7 @@ internal static class Program
     {
         services.AddSingleton<RedisConnectionPool>(provider => CreateRedisConnectionPool(provider, hostContext));
         services.AddSingleton<IRedisConnectionPool>(provider => provider.GetRequiredService<RedisConnectionPool>());
+        services.AddSingleton<IRedLockFactory>(provider => provider.GetRequiredService<RedisConnectionPool>().GetRedLockFactory());
     }
 
     private static void RegisterHelperServices(IServiceCollection services)
@@ -88,16 +88,17 @@ internal static class Program
 
     private static void RegisterUserServerServices(IServiceCollection services)
     {
-        // Get required dependencies for user server services
-        var serviceProvider = services.BuildServiceProvider();
-        var cacheHelper = serviceProvider.GetRequiredService<ICacheHelper>();
+        // PlayerService: 플레이어 관련 로직 (인벤토리, 퀘스트, 메일)
+        services.AddSingleton<PlayerService>(provider =>
+        {
+            var logger = provider.GetRequiredService<ILogger<PlayerService>>();
+            var cacheHelper = provider.GetRequiredService<ICacheHelper>();
+            var redLock = provider.GetRequiredService<IRedLockFactory>();
+            return new PlayerService(logger, cacheHelper, redLock);
+        });
 
-        // Create a placeholder function for getting game sessions
-        // This will be properly implemented when GameSession is managed by DI
-        Func<long, GameSession?> getSessionFunc = (playerId) => null;
-
-        // Register all user server services (Commands, Queries, Repositories, Events, etc.)
-        services.AddUserServerServices(cacheHelper, getSessionFunc);
+        // MatchingManager: 매칭 큐 관리
+        // Note: Will be registered by UserServer with getSession callback
     }
 
     private static ServerConfig CreateServerConfig(IConfiguration configuration)

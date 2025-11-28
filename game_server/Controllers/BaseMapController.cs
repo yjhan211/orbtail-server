@@ -37,48 +37,5 @@ public abstract class BaseMapController(
         });
     }
 
-    protected Task HandleUpdateInfo(byte[] message)
-    {
-        var (key, type, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
-        switch (type)
-        {
-            case ObjectType.PLAYER:
-                {
-                    var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serializedInfo);
-                    using var packet = PacketMaker.G_TO_U_PLAYER_INFO(playerInfo);
-                    BroadcastPacket(key, packet);
-                    break;
-                }
-            case ObjectType.EXPLORETARGET:
-                {
-                    var exploreTargetInfo = MessagePackSerializer.Deserialize<ExploreTargetInfo>(serializedInfo);
-                    using var packet = PacketMaker.G_TO_U_EXPLORE_TARGET_INFO(exploreTargetInfo);
-                    BroadcastPacket(key, packet);
-                    break;
-                }
-        }
-        return Task.CompletedTask;
-    }
-
-    protected Task HandleSocialAction(byte[] message)
-    {
-        var (partKey, _, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
-        var (playerId, socialActionType) = MessagePackSerializer.Deserialize<(long, SocialActionType)>(serializedInfo);
-        using var packet = PacketMaker.G_TO_U_SOCIAL_ACTION(playerId, socialActionType);
-        BroadcastPacket(partKey, packet);
-
-        return Task.CompletedTask;
-    }
-
-    protected Task HandleTakeDamage(byte[] message)
-    {
-        var (partKey, _, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
-        var (playerId, (damageType, damageAmount)) = MessagePackSerializer.Deserialize<(long, (DamageType, int))>(serializedInfo);
-        using var packet = PacketMaker.G_TO_U_TAKE_DAMAGE(playerId, damageType, damageAmount);
-        BroadcastPacket(partKey, packet);
-
-        return Task.CompletedTask;
-    }
-
     protected abstract void BroadcastPacket(string key, IPacket packet);
 }

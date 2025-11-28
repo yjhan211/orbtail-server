@@ -37,13 +37,7 @@ public sealed class InstanceMapController(
     {
         var subjects = new Dictionary<string, Func<byte[], Task>>
        {
-           { SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, ServerConfig.ServerId), HandleUpdateInfo },
-           { SubjectHelper.GetSocialActionSubject(mapId, mapSubId, ServerConfig.ServerId), HandleSocialAction },
-           { SubjectHelper.GetTakeDamageSubject(mapId, mapSubId, ServerConfig.ServerId), HandleTakeDamage },
-           { SubjectHelper.GetSpawnManageSubject(mapId, mapSubId, ServerConfig.ServerId), SpawnManageObject },
-           { SubjectHelper.GetUpdateManageSubject(mapId, mapSubId, ServerConfig.ServerId), MoveManageObjectAsync },
            { SubjectHelper.GetLeaveManageSubject(mapId, mapSubId, ServerConfig.ServerId), LeaveManageObjectAsync },
-           { SubjectHelper.GetDestroyObjectSubject(mapId, mapSubId, ServerConfig.ServerId), DestroyManageObjectAsync }
        };
 
         foreach (var (subject, handler) in subjects)
@@ -59,14 +53,13 @@ public sealed class InstanceMapController(
         var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
         
         Logger.LogInformation("EnterInstance 요청 수신: objectKey={ObjectKey}, mapId={MapId}, mapSubId={MapSubId}, isLogin={IsLogin}", objectKey, mapId, mapSubId, isLogin);
-        
-        var success = false;
+
         await MapLock.WaitAsync();
         try
         {
             var isInit = _objectInstanceDict.TryAdd(instanceKey, []);
             _objectInstanceDict[instanceKey].Add(objectKey);
-            
+
             Logger.LogInformation("인스턴스 {InstanceKey} 초기화 여부: {IsInit}, 현재 인원: {Count}", instanceKey, isInit, _objectInstanceDict[instanceKey].Count);
 
             if (isInit)
@@ -84,8 +77,6 @@ public sealed class InstanceMapController(
 
                 Logger.LogInformation("인스턴스 {InstanceKey} 초기화 완료", instanceKey);
             }
-
-            success = true;
         }
         catch (Exception ex)
         {
@@ -105,27 +96,13 @@ public sealed class InstanceMapController(
             return;
         }
 
-        if (success)
-        {
-            Logger.LogInformation("G_TO_U_ENTER_INSTANCE_SUCCESS 전송: objectKey={ObjectKey}, mapId={MapId}, mapSubId={MapSubId}", objectKey, mapId, mapSubId);
-            
-            using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
-            if (TryExtractPlayerId(objectKey, out var playerId))
-            {
-                if (clientSessions.TryGetValue(playerId, out var session))
-                {
-                    session.Send(packet);
-                }
-                else
-                {
-                    NatsClient.Publish(objectKey, packet.ToBytes());
-                }
-            }
-        }
-        else
-        {
-            Logger.LogError("인스턴스 진입 실패 - 에러 응답 전송: objectKey={ObjectKey}", objectKey);
-        }
+        // MMO 인스턴스 진입 프로토콜 제거됨 - 세션 기반 게임에서는 불필요
+        // if (success)
+        // {
+        //     Logger.LogInformation("G_TO_U_ENTER_INSTANCE_SUCCESS 전송: objectKey={ObjectKey}, mapId={MapId}, mapSubId={MapSubId}", objectKey, mapId, mapSubId);
+        //     using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
+        //     ...
+        // }
     }
 
     private void StartGameTimer(string instanceKey, long mapSubId)
@@ -253,17 +230,8 @@ public sealed class InstanceMapController(
         }
     }
 
-    private async Task MoveManageObjectAsync(byte[] message)
-    {
-        var (_, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
-        var objectKey = GameObjectInfo.MakeObjectKey(objectInfo.ObjectType, objectInfo.ObjectId);
-        var currentInstanceKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
-
-        await UpdateObjectPositionAsync(currentInstanceKey, objectKey);
-
-        using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
-        BroadcastPacket(currentInstanceKey, packet);
-    }
+    // MMO 오브젝트 업데이트 프로토콜 제거됨
+    // private async Task MoveManageObjectAsync(byte[] message) { ... }
 
     private async Task UpdateObjectPositionAsync(string currentInstanceKey, string objectKey)
     {
@@ -301,65 +269,11 @@ public sealed class InstanceMapController(
         }
     }
 
-    private Task SpawnManageObject(byte[] message)
-    {
-        var (objectKey, instanceKeyList, _) =
-            MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
+    // MMO 오브젝트 스폰 프로토콜 제거됨
+    // private Task SpawnManageObject(byte[] message) { ... }
 
-        var spawnList = new List<string>();
-        foreach (var instancePartKey in instanceKeyList)
-        {
-            if (_objectInstanceDict.TryGetValue(instancePartKey, out var objectKeys))
-            {
-                spawnList.AddRange(objectKeys);
-            }
-        }
-
-        if (spawnList.Count <= 0)
-        {
-            return Task.CompletedTask;
-        }
-
-        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);
-
-        // TCP로 직접 전송
-        if (TryExtractPlayerId(objectKey, out var playerId))
-        {
-            if (clientSessions.TryGetValue(playerId, out var session))
-            {
-                session.Send(packet);
-            }
-            else
-            {
-                // 폴백: NATS
-                NatsClient.Publish(objectKey, packet.ToBytes());
-            }
-        }
-
-        return Task.CompletedTask;
-    }
-
-    private async Task DestroyManageObjectAsync(byte[] message)
-    {
-        var (instanceKey, _, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
-        var objectKey = MessagePackSerializer.Deserialize<string>(serializedInfo);
-
-        await MapLock.WaitAsync();
-        try
-        {
-            if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet))
-            {
-                instanceSet.Remove(objectKey);
-            }
-        }
-        finally
-        {
-            MapLock.Release();
-        }
-
-        using var packet = PacketMaker.G_TO_U_DESTROY(objectKey);
-        BroadcastPacket(instanceKey, packet);
-    }
+    // MMO 오브젝트 파괴 프로토콜 제거됨
+    // private async Task DestroyManageObjectAsync(byte[] message) { ... }
 
     protected override void BroadcastPacket(string instanceKey, IPacket packet)
     {

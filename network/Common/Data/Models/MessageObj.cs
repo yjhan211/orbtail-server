@@ -108,7 +108,7 @@ namespace network.common.data.models
     {
         [Key("success")] public bool Success { get; set; }
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("message")] public string? Message { get; set; }
+        [Key("message")] public string Message { get; set; }
     }
 
     [MessagePackObject]

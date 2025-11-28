@@ -5,9 +5,9 @@ using network.common.data;
 using network.common.data.models;
 using network.interfaces;
 using network.packets;
-using user_server.infrastructure.network;
+using user_server.network;
 
-namespace user_server.application.services;
+namespace user_server.services;
 
 public class MatchingManager
 {
@@ -123,7 +123,7 @@ public class MatchingManager
                     var session = _getSession(data.PlayerId);
                     _logger.LogInformation("세션 조회 결과: {있음}", session != null ? "있음" : "없음");
 
-                    if (session?.Player != null)
+                    if (session?.PlayerInfo != null)
                     {
                         _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 알림 전송", data.PlayerId);
 
@@ -166,7 +166,7 @@ public class MatchingManager
                     }
                     else
                     {
-                        _logger.LogWarning("플레이어 {DataPlayerId} 세션 또는 Player가 null (session: {B}, Player: {B1})", data.PlayerId, session != null, session?.Player != null);
+                        _logger.LogWarning("플레이어 {DataPlayerId} 세션 또는 PlayerInfo가 null (session: {B}, PlayerInfo: {B1})", data.PlayerId, session != null, session?.PlayerInfo != null);
                     }
 
                     // 큐에서 제거

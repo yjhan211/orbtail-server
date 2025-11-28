@@ -91,6 +91,7 @@ internal static partial class Program
             return redisPool;
         });
         services.AddSingleton<IRedisConnectionPool>(sp => sp.GetRequiredService<RedisConnectionPool>());
+        services.AddSingleton<IRedLockFactory>(sp => sp.GetRequiredService<RedisConnectionPool>().GetRedLockFactory());
         services.AddSingleton<CacheHelper>();
         services.AddSingleton<ICacheHelper, CacheHelper>();
         services.AddHostedService<HealthCheckService>();

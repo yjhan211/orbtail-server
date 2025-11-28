@@ -59,12 +59,12 @@ namespace network.common.data.models
             return new Cell(X, Y);
         }
 
-        public static bool operator ==(Cell? left, Cell? right)
+        public static bool operator ==(Cell left, Cell right)
         {
             return EqualityComparer<Cell>.Default.Equals(left, right);
         }
 
-        public static bool operator !=(Cell? left, Cell? right)
+        public static bool operator !=(Cell left, Cell right)
         {
             return !(left == right);
         }

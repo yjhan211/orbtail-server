@@ -1,4 +1,4 @@
-map_id,region_type,start_x,start_y,end_x,end_y,warp_to
+map_id,region_type,start_x,start_y,end_x,end_y,area
 2,ground,92,91,99,91,0
 2,ground,92,92,99,92,0
 2,ground,92,93,99,93,0
