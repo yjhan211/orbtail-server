@@ -89,9 +89,14 @@ public class GameSession : IPeer
             var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
 
-            _logger.LogDebug($"[Receive] Protocol: {protocolId}, PlayerId: {playerId}");
+            if (protocolId != Protocol.C_TO_U_HEART_BEAT)
+            {
+                _logger.LogInformation("[Receive] Protocol: {Protocol}, PlayerId: {PlayerId}, BodyLength: {BodyLength}", protocolId, playerId, body.Length);
+            }
 
             await _protocolRouter.RouteAsync(protocolId, body);
+
+            _logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
         }
         catch (Exception ex)
         {
@@ -144,29 +149,41 @@ public class GameSession : IPeer
     {
         try
         {
-            // TODO: AccountToken을 파싱하여 PlayerId를 추출
-            // 임시로 AccountToken을 long으로 파싱
-            if (!long.TryParse(msg.AccountToken, out var playerId))
+            _logger.LogInformation("Login request received: AccountToken={AccountToken}", msg.AccountToken);
+
+            // AccountToken이 없거나 파싱 실패시 Redis INCR로 새 PlayerId 생성
+            long playerId;
+            if (string.IsNullOrEmpty(msg.AccountToken) || !long.TryParse(msg.AccountToken, out playerId))
             {
-                _logger.LogError("Invalid account token: {AccountToken}", msg.AccountToken);
-                return;
+                // Redis INCR을 사용해 1부터 순차 증가하는 PlayerId 생성
+                playerId = await _cacheHelper.StringIncrementAsync("player_id_counter");
+                _logger.LogInformation("Generated new PlayerId from Redis: {PlayerId}", playerId);
             }
 
             PlayerId = playerId;
+            _logger.LogInformation("PlayerId set to {PlayerId}", PlayerId);
 
             await using var playerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
+            _logger.LogInformation("Player lock acquired for PlayerId={PlayerId}", PlayerId);
+
             PlayerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
 
             if (PlayerInfo == null)
             {
                 // 신규 플레이어 생성
+                _logger.LogInformation("Creating new player: PlayerId={PlayerId}", PlayerId);
                 PlayerInfo = new PlayerInfo(PlayerId.Value, isDummy: false);
                 await PlayerInfo.Save(_cacheHelper);
-                _logger.LogInformation($"New player created: {PlayerId}");
+                _logger.LogInformation("New player created and saved: PlayerId={PlayerId}", PlayerId);
+            }
+            else
+            {
+                _logger.LogInformation("Existing player loaded: PlayerId={PlayerId}, Name={Name}", PlayerId, PlayerInfo.Name);
             }
 
             // 세션 등록
             _onSessionRegistered(PlayerId.Value, this);
+            _logger.LogInformation("Session registered for PlayerId={PlayerId}", PlayerId);
 
             // TODO: SubjectHelper에 GetDuplicateLoginSubject, GetPlayerSubject 추가 필요
             // 중복 로그인 체크 (다른 세션에 중복 알림 전송)
@@ -178,14 +195,16 @@ public class GameSession : IPeer
             // _natsClient.Subscribe(playerSubject, (subject, body) => _ = OnMessageFromNatsWrapper(body));
 
             // 로그인 응답 전송
+            _logger.LogInformation("Creating login packet for PlayerId={PlayerId}", PlayerId);
             using var loginPacket = PacketMaker.U_TO_C_LOGIN(PlayerInfo);
+            _logger.LogInformation("Sending U_TO_C_LOGIN packet for PlayerId={PlayerId}, Packet size={Size}", PlayerId, loginPacket.ToBytes().Length);
             Send(loginPacket);
 
-            _logger.LogInformation($"Player {PlayerId} logged in successfully");
+            _logger.LogInformation("Player {PlayerId} logged in successfully", PlayerId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"Login failed for player {msg.AccountToken}");
+            _logger.LogError(ex, "Login failed for player {AccountToken}", msg.AccountToken);
         }
     }
 

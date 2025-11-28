@@ -42,8 +42,8 @@ namespace network.common.data.models
         {
             ObjectType = objectType;
             ObjectId = objectId;
-            Cell = Cell.Clone(cell);
-            Position = new Vector3f(cell.X, 0, cell.Y); // 타일 중심으로 초기화
+            Cell = Cell.Clone(cell); // null 체크는 Cell.Clone 내부에서 처리
+            Position = cell != null ? new Vector3f(cell.X, 0, cell.Y) : new Vector3f(0, 0, 0);
             Velocity = new Vector3f(0, 0, 0);
             Rotation = 0f;
             MapId = mapId;
