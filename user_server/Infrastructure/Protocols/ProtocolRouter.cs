@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using network.common;
 
 namespace user_server.infrastructure.protocols;
@@ -10,7 +9,6 @@ namespace user_server.infrastructure.protocols;
 public class ProtocolRouter : IProtocolRouter
 {
     private readonly Dictionary<Protocol, Func<byte[], Task>> _handlers;
-    private readonly ILogger _logger;
 
     private static readonly IReadOnlyList<Protocol> NonAuthProtocols = new List<Protocol>
     {
@@ -18,10 +16,9 @@ public class ProtocolRouter : IProtocolRouter
         Protocol.C_TO_U_LOGIN
     };
 
-    public ProtocolRouter(ILogger logger)
+    public ProtocolRouter()
     {
         _handlers = new Dictionary<Protocol, Func<byte[], Task>>();
-        _logger = logger;
     }
 
     public void RegisterHandler(Protocol protocol, Func<byte[], Task> handler)

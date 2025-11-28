@@ -31,10 +31,7 @@ public partial class Player
     private readonly PlayerQuest _questManager;
     private readonly PlayerInventory _inventoryManager;
     private readonly PlayerMailBox _mailBoxManager;
-    private readonly PlayerMovement _movementManager;
-    private readonly PlayerProgress _progressManager;
     private readonly PlayerMap _mapManager;
-    private readonly PlayerExplore _exploreManager;
 
     // Properties
     public long PlayerId => PlayerInfo.PlayerId;
@@ -74,13 +71,11 @@ public partial class Player
         PlayerInfo.State = PlayerState.IDLE;
 
         // Initialize sub-components
-        _progressManager = new PlayerProgress(session);
+        var progressManager = new PlayerProgress(session);
         _questManager = new PlayerQuest(session, PlayerInfo);
         _inventoryManager = new PlayerInventory(session, PlayerInfo, _questManager);
         _mailBoxManager = new PlayerMailBox(session, PlayerInfo);
-        _movementManager = new PlayerMovement(session, PlayerInfo);
         _mapManager = new PlayerMap(session, PlayerInfo);
-        _exploreManager = new PlayerExplore(session, playerInfo, _questManager, _inventoryManager, _progressManager);
     }
 
     public bool IsInvalidAction(Protocol protocolId)

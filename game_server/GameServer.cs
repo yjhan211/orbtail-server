@@ -112,7 +112,7 @@ public class GameServer : IHostedService
 
     private void InitializeControllers()
     {
-        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig, _clientSessions);
+        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cacheHelper, _serverConfig, _clientSessions);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
@@ -130,15 +130,13 @@ public class GameServer : IHostedService
         try
         {
             var redLockFactory = _redisPool.GetRedLockFactory();
-            var natsClient = _natsClientFactory.Create();
-            var session = new GameClientSession(
+            _natsClientFactory.Create();
+            _ = new GameClientSession(
                 token,
                 redLockFactory,
-                natsClient,
                 _logger,
                 _cacheHelper,
                 OnClientSessionLeave,
-                _serverConfig,
                 RegisterClientSession,
                 GetSessionsByInstance);
 
@@ -155,14 +153,14 @@ public class GameServer : IHostedService
         if (session.PlayerId.HasValue)
         {
             _clientSessions.TryRemove(session.PlayerId.Value, out _);
-            _logger.LogInformation($"Game client session removed: PlayerId={session.PlayerId.Value}");
+            _logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", session.PlayerId.Value);
         }
     }
 
     private void RegisterClientSession(long playerId, GameClientSession session)
     {
         _clientSessions.TryAdd(playerId, session);
-        _logger.LogInformation($"Game client session registered: PlayerId={playerId}");
+        _logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
     }
 
     private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
@@ -211,19 +209,19 @@ public class GameServer : IHostedService
     {
         var msg = MessagePackSerializer.Deserialize<U_TO_G_LOGOUT>(body);
 
-        _logger.LogInformation($"로그아웃 요청: PlayerId={msg.PlayerId}");
+        _logger.LogInformation("로그아웃 요청: PlayerId={MsgPlayerId}", msg.PlayerId);
 
         await using var playerLock = await PlayerInfo.Lock(_cacheHelper.GetRedLockFactory(), playerId);
         var playerInfo = await PlayerInfo.Load(_cacheHelper, msg.PlayerId);
         if (playerInfo == null)
         {
-            _logger.LogWarning($"플레이어 {msg.PlayerId} 정보를 찾을 수 없음 (로그아웃)");
+            _logger.LogWarning("플레이어 {MsgPlayerId} 정보를 찾을 수 없음 (로그아웃)", msg.PlayerId);
             return;
         }
 
         // 각 InstanceMapController에서 처리하도록 전달
         // 현재는 단일 InstanceMapController만 있으므로 직접 호출하지 않고
         // InstanceMapController가 자체적으로 U_TO_G_LOGOUT을 subscribe하도록 구현됨
-        _logger.LogInformation($"플레이어 {msg.PlayerId} 로그아웃 처리 완료");
+        _logger.LogInformation("플레이어 {MsgPlayerId} 로그아웃 처리 완료", msg.PlayerId);
     }
 }

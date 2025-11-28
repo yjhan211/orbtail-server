@@ -52,8 +52,6 @@ internal static class Program
         RegisterCoreServices(services);
         RegisterInfrastructureServices(services, hostContext);
         RegisterHelperServices(services);
-
-        // Register user server domain services
         RegisterUserServerServices(services);
 
         services.AddHostedService<HealthCheckService>();

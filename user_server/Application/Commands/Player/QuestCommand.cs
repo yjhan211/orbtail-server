@@ -1,4 +1,3 @@
-using network.common.data;
 using network.common.data.models;
 
 namespace user_server.application.commands.player;
@@ -22,7 +21,7 @@ public record CompleteQuestCommand(
 /// <summary>
 /// Command to start a new quest
 /// </summary>
-public record StartQuestCommand(
+public abstract record StartQuestCommand(
     long PlayerId,
     int QuestId
 );

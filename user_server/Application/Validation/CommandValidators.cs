@@ -3,26 +3,6 @@ using user_server.application.commands.player;
 
 namespace user_server.application.validation;
 
-/// <summary>
-/// Validator for MoveCommand
-/// </summary>
-public class MoveCommandValidator : AbstractValidator<MoveCommand>
-{
-    public MoveCommandValidator()
-    {
-        RuleFor(x => x.PlayerId)
-            .GreaterThan(0)
-            .WithMessage("Player ID must be greater than 0");
-
-        RuleFor(x => x.MoveData)
-            .NotNull()
-            .WithMessage("Move data cannot be null");
-    }
-}
-
-/// <summary>
-/// Validator for WearItemCommand
-/// </summary>
 public class WearItemCommandValidator : AbstractValidator<WearItemCommand>
 {
     public WearItemCommandValidator()
@@ -37,14 +17,11 @@ public class WearItemCommandValidator : AbstractValidator<WearItemCommand>
 
         RuleFor(x => x.WearData.ItemUidList)
             .NotEmpty()
-            .When(x => x.WearData != null)
+            .When(x => true)
             .WithMessage("Item UID list cannot be empty");
     }
 }
 
-/// <summary>
-/// Validator for UseItemCommand
-/// </summary>
 public class UseItemCommandValidator : AbstractValidator<UseItemCommand>
 {
     public UseItemCommandValidator()
@@ -59,14 +36,11 @@ public class UseItemCommandValidator : AbstractValidator<UseItemCommand>
 
         RuleFor(x => x.UseData.ItemUid)
             .GreaterThan(0)
-            .When(x => x.UseData != null)
+            .When(x => true)
             .WithMessage("Item UID must be greater than 0");
     }
 }
 
-/// <summary>
-/// Validator for CompleteQuestCommand
-/// </summary>
 public class CompleteQuestCommandValidator : AbstractValidator<CompleteQuestCommand>
 {
     public CompleteQuestCommandValidator()
@@ -81,14 +55,11 @@ public class CompleteQuestCommandValidator : AbstractValidator<CompleteQuestComm
 
         RuleFor(x => x.QuestData.QuestId)
             .GreaterThan(0)
-            .When(x => x.QuestData != null)
+            .When(x => true)
             .WithMessage("Quest ID must be greater than 0");
     }
 }
 
-/// <summary>
-/// Validator for StartQuestCommand
-/// </summary>
 public class StartQuestCommandValidator : AbstractValidator<StartQuestCommand>
 {
     public StartQuestCommandValidator()
@@ -103,9 +74,6 @@ public class StartQuestCommandValidator : AbstractValidator<StartQuestCommand>
     }
 }
 
-/// <summary>
-/// Validator for SetPlayerNameCommand
-/// </summary>
 public class SetPlayerNameCommandValidator : AbstractValidator<SetPlayerNameCommand>
 {
     public SetPlayerNameCommandValidator()

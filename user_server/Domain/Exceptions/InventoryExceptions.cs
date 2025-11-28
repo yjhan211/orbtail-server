@@ -3,45 +3,28 @@ namespace user_server.domain.exceptions;
 /// <summary>
 /// Exception thrown when inventory is full
 /// </summary>
-public class InventoryFullException : DomainException
+public class InventoryFullException(int capacity, int currentCount)
+    : DomainException("INVENTORY_FULL", $"Inventory is full: {currentCount}/{capacity}")
 {
-    public int Capacity { get; }
-    public int CurrentCount { get; }
-
-    public InventoryFullException(int capacity, int currentCount)
-        : base("INVENTORY_FULL", $"Inventory is full: {currentCount}/{capacity}")
-    {
-        Capacity = capacity;
-        CurrentCount = currentCount;
-    }
+    public int Capacity { get; } = capacity;
+    public int CurrentCount { get; } = currentCount;
 }
 
 /// <summary>
 /// Exception thrown when item is not found in inventory
 /// </summary>
-public class ItemNotFoundException : DomainException
+public class ItemNotFoundException(long itemUid)
+    : DomainException("ITEM_NOT_FOUND", $"Item with UID {itemUid} not found in inventory")
 {
-    public long ItemUid { get; }
-
-    public ItemNotFoundException(long itemUid)
-        : base("ITEM_NOT_FOUND", $"Item with UID {itemUid} not found in inventory")
-    {
-        ItemUid = itemUid;
-    }
+    public long ItemUid { get; } = itemUid;
 }
 
 /// <summary>
 /// Exception thrown when item cannot be equipped
 /// </summary>
-public class CannotEquipItemException : DomainException
+public class CannotEquipItemException(int itemId, string reason)
+    : DomainException("CANNOT_EQUIP_ITEM", $"Cannot equip item {itemId}: {reason}")
 {
-    public int ItemId { get; }
-    public string Reason { get; }
-
-    public CannotEquipItemException(int itemId, string reason)
-        : base("CANNOT_EQUIP_ITEM", $"Cannot equip item {itemId}: {reason}")
-    {
-        ItemId = itemId;
-        Reason = reason;
-    }
+    public int ItemId { get; } = itemId;
+    public string Reason { get; } = reason;
 }

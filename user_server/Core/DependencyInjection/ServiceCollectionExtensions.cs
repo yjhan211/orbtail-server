@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using network.interfaces;
 using user_server.application.commands;
 using user_server.application.commands.handlers;
@@ -19,16 +18,9 @@ using user_server.presentation.handlers;
 
 namespace user_server.core.dependencyinjection;
 
-/// <summary>
-/// Extension methods for setting up services in an IServiceCollection
-/// </summary>
 public static class ServiceCollectionExtensions
 {
-    /// <summary>
-    /// Registers all user server services
-    /// </summary>
-    public static IServiceCollection AddUserServerServices(
-        this IServiceCollection services,
+    public static void AddUserServerServices(this IServiceCollection services,
         ICacheHelper cacheHelper,
         Func<long, GameSession?> getSessionFunc)
     {
@@ -53,42 +45,32 @@ public static class ServiceCollectionExtensions
 
         // Register presentation handlers
         services.AddPresentationHandlers();
-
-        return services;
     }
 
-    private static IServiceCollection AddFactories(this IServiceCollection services)
+    private static void AddFactories(this IServiceCollection services)
     {
         services.AddSingleton<IPlayerFactory, PlayerFactory>();
-        return services;
     }
 
-    private static IServiceCollection AddRepositories(this IServiceCollection services)
+    private static void AddRepositories(this IServiceCollection services)
     {
         services.AddScoped<IPlayerRepository, PlayerRepository>();
         services.AddScoped<IQuestRepository, QuestRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
         services.AddScoped<IMailRepository, MailRepository>();
-
-        return services;
     }
 
-    private static IServiceCollection AddCommandHandlers(
-        this IServiceCollection services,
+    private static void AddCommandHandlers(this IServiceCollection services,
         Func<long, GameSession?> getSessionFunc)
     {
         // Register PlayerCommandHandler for all command types
-        services.AddSingleton<PlayerCommandHandler>(sp =>
+        services.AddSingleton<PlayerCommandHandler>(_ =>
             new PlayerCommandHandler(getSessionFunc));
 
         // Register as specific command handler interfaces
-        services.AddSingleton<ICommandHandler<MoveCommand>>(sp =>
-            sp.GetRequiredService<PlayerCommandHandler>());
         services.AddSingleton<ICommandHandler<WearItemCommand>>(sp =>
             sp.GetRequiredService<PlayerCommandHandler>());
         services.AddSingleton<ICommandHandler<UseItemCommand>>(sp =>
-            sp.GetRequiredService<PlayerCommandHandler>());
-        services.AddSingleton<ICommandHandler<ExploreCommand>>(sp =>
             sp.GetRequiredService<PlayerCommandHandler>());
         services.AddSingleton<ICommandHandler<IncreaseQuestCountCommand>>(sp =>
             sp.GetRequiredService<PlayerCommandHandler>());
@@ -110,16 +92,13 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<PlayerCommandHandler>());
         services.AddSingleton<ICommandHandler<EnterCampCommand>>(sp =>
             sp.GetRequiredService<PlayerCommandHandler>());
-
-        return services;
     }
 
-    private static IServiceCollection AddQueryHandlers(
-        this IServiceCollection services,
+    private static void AddQueryHandlers(this IServiceCollection services,
         Func<long, GameSession?> getSessionFunc)
     {
         // Register PlayerQueryHandler
-        services.AddSingleton<PlayerQueryHandler>(sp =>
+        services.AddSingleton<PlayerQueryHandler>(_ =>
             new PlayerQueryHandler(getSessionFunc));
 
         // Register as specific query handler interfaces
@@ -131,11 +110,9 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<PlayerQueryHandler>());
         services.AddSingleton<IQueryHandler<GetPlayerMailsQuery, PlayerMailsResult>>(sp =>
             sp.GetRequiredService<PlayerQueryHandler>());
-
-        return services;
     }
 
-    private static IServiceCollection AddEventInfrastructure(this IServiceCollection services)
+    private static void AddEventInfrastructure(this IServiceCollection services)
     {
         // Register event dispatcher as singleton
         services.AddSingleton<IEventDispatcher, EventDispatcher>();
@@ -144,39 +121,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<QuestCompletedEventHandler>();
         services.AddSingleton<QuestStartedEventHandler>();
         services.AddSingleton<PlayerInfoChangedEventHandler>();
-        services.AddSingleton<PlayerDamagedEventHandler>();
-
-        return services;
     }
 
-    private static IServiceCollection AddPresentationHandlers(this IServiceCollection services)
+    private static void AddPresentationHandlers(this IServiceCollection services)
     {
         services.AddSingleton<PlayerProtocolHandler>();
-
-        return services;
-    }
-
-    /// <summary>
-    /// Configures event handlers by registering them with the event dispatcher
-    /// </summary>
-    public static IServiceProvider ConfigureEventHandlers(this IServiceProvider serviceProvider)
-    {
-        var dispatcher = serviceProvider.GetRequiredService<IEventDispatcher>();
-
-        // Register quest event handlers
-        var questCompletedHandler = serviceProvider.GetRequiredService<QuestCompletedEventHandler>();
-        var questStartedHandler = serviceProvider.GetRequiredService<QuestStartedEventHandler>();
-
-        dispatcher.RegisterHandler(questCompletedHandler);
-        dispatcher.RegisterHandler(questStartedHandler);
-
-        // Register player event handlers
-        var playerInfoChangedHandler = serviceProvider.GetRequiredService<PlayerInfoChangedEventHandler>();
-        var playerDamagedHandler = serviceProvider.GetRequiredService<PlayerDamagedEventHandler>();
-
-        dispatcher.RegisterHandler(playerInfoChangedHandler);
-        dispatcher.RegisterHandler(playerDamagedHandler);
-
-        return serviceProvider;
     }
 }

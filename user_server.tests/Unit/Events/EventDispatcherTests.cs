@@ -2,18 +2,12 @@ using Moq;
 using user_server.application.events;
 using user_server.domain.events;
 using user_server.infrastructure.events;
-using Xunit;
 
 namespace user_server.tests.unit.events;
 
 public class EventDispatcherTests
 {
-    private readonly EventDispatcher _dispatcher;
-
-    public EventDispatcherTests()
-    {
-        _dispatcher = new EventDispatcher();
-    }
+    private readonly EventDispatcher _dispatcher = new();
 
     [Fact]
     public async Task DispatchAsync_CallsRegisteredHandler()

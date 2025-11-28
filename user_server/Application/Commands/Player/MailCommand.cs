@@ -1,10 +1,9 @@
-using network.common.data;
 using network.common.data.models;
 
 namespace user_server.application.commands.player;
 
 /// <summary>
-/// Command to send a mail to player
+/// Command to send to mail player
 /// </summary>
 public record SendMailCommand(
     long PlayerId,

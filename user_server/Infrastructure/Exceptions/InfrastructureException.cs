@@ -38,31 +38,20 @@ public class CacheOperationException : InfrastructureException
 /// <summary>
 /// Exception thrown when NATS operation fails
 /// </summary>
-public class MessagingException : InfrastructureException
+public class MessagingException(string subject, Exception innerException) : InfrastructureException("MESSAGING_FAILED",
+    $"Messaging operation on subject '{subject}' failed: {innerException.Message}",
+    innerException)
 {
-    public string Subject { get; }
-
-    public MessagingException(string subject, Exception innerException)
-        : base("MESSAGING_FAILED",
-            $"Messaging operation on subject '{subject}' failed: {innerException.Message}",
-            innerException)
-    {
-        Subject = subject;
-    }
+    public string Subject { get; } = subject;
 }
 
 /// <summary>
 /// Exception thrown when network connection fails
 /// </summary>
-public class NetworkConnectionException : InfrastructureException
+public class NetworkConnectionException(string remoteEndpoint, Exception innerException) : InfrastructureException(
+    "NETWORK_CONNECTION_FAILED",
+    $"Network connection to '{remoteEndpoint}' failed: {innerException.Message}",
+    innerException)
 {
-    public string RemoteEndpoint { get; }
-
-    public NetworkConnectionException(string remoteEndpoint, Exception innerException)
-        : base("NETWORK_CONNECTION_FAILED",
-            $"Network connection to '{remoteEndpoint}' failed: {innerException.Message}",
-            innerException)
-    {
-        RemoteEndpoint = remoteEndpoint;
-    }
+    public string RemoteEndpoint { get; } = remoteEndpoint;
 }

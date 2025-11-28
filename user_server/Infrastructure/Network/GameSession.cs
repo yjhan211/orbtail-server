@@ -1,5 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using MessagePack;
+﻿using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -16,7 +15,7 @@ using user_server.infrastructure.protocols;
 
 namespace user_server.infrastructure.network;
 
-public class GameSession : IPeer
+public sealed class GameSession : IPeer
 {
     private const string GlobalSubscribeChannel = "all";
     private const string TempPlayerIdKey = "temp_player_id";
@@ -28,7 +27,7 @@ public class GameSession : IPeer
     private readonly IProtocolRouter _protocolRouter;
     private readonly IProtocolRouter _subscribeRouter;
 
-    public readonly ChatController ChatController;
+    private readonly ChatController ChatController;
     public Player? Player;
 
     public readonly CancellationTokenSource Cts;
@@ -37,7 +36,7 @@ public class GameSession : IPeer
     public readonly INatsClient NatsClient;
     public readonly IRedLockFactory RedLock;
     public readonly ILogger Logger;
-    public MapObjectController MapObjectController;
+    public readonly MapObjectController MapObjectController;
     private readonly MatchingManager? _matchingManager;
     private readonly IServerConfig _serverConfig;
 
@@ -61,8 +60,8 @@ public class GameSession : IPeer
         _matchingManager = matchingManager;
         _serverConfig = serverConfig;
 
-        _protocolRouter = new ProtocolRouter(logger);
-        _subscribeRouter = new ProtocolRouter(logger);
+        _protocolRouter = new ProtocolRouter();
+        _subscribeRouter = new ProtocolRouter();
 
         InitializeProtocolHandlers();
         InitializeSubscribeHandlers();
@@ -72,20 +71,15 @@ public class GameSession : IPeer
 
     private void InitializeProtocolHandlers()
     {
-        // Client Protocol Handlers
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_HEART_BEAT, HandleHeartBeat);
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_LOGIN, async (bytes) => await HandleMessage<C_TO_U_LOGIN>(bytes, Login));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHANGE_MAP_SUCCESS, async (_) => await HandlePlayerAction(pc => pc.Spawn()));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_LOG, async (_) => await SendChatHistory(ChatType.ALL));
-        // 이동은 GameServer에서 처리 (C_TO_G_MOVE)
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_PLAYER_INFO, async (bytes) => await HandleMessage<C_TO_U_PLAYER_INFO>(bytes, GetPlayerInfo));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_EXPLORE_TARGET_INFO, async (bytes) => await HandleMessage<C_TO_U_EXPLORE_TARGET_INFO>(bytes, GetExploreTargetInfo));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_WEAR_ITEM, async (bytes) => await HandleMessage<C_TO_U_WEAR_ITEM>(bytes, msg => HandlePlayerAction(pc => pc.WearItem(msg))));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_USE_ITEM, async (bytes) => await HandleMessage<C_TO_U_USE_ITEM>(bytes, msg => HandlePlayerAction(pc => pc.UseItem(msg))));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_EXPLORE, async (bytes) => await HandleMessage<C_TO_U_EXPLORE>(bytes, msg => HandlePlayerAction(pc => pc.Explore(msg))));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_MSG, async (bytes) => await HandleMessage<C_TO_U_CHAT_MSG>(bytes, AppendChat));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_SET_NAME, async (bytes) => await HandleMessage<C_TO_U_SET_NAME>(bytes, msg => HandlePlayerAction(pc => pc.SetName(msg))));
-        // 소셜 액션은 GameServer에서 처리 (C_TO_G_SOCIAL_ACTION)
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_INCREASE, async (bytes) => await HandleMessage<C_TO_U_QUEST_INCREASE>(bytes, msg => HandlePlayerAction(pc => pc.IncreaseQuestCount(msg))));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_SUCCESS, async (bytes) => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, msg => HandlePlayerAction(pc => pc.CompleteQuest(msg))));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_LIST, async (_) => await HandlePlayerAction(pc => pc.SendCurrentMails()));
@@ -97,19 +91,6 @@ public class GameSession : IPeer
 
     private void InitializeSubscribeHandlers()
     {
-        // Subscribe Protocol Handlers (NATS)
-        // NOTE: GameServer 패킷 중계 제거 - 클라이언트가 GameServer에 직접 연결
-        // 아래 핸들러들은 더 이상 필요하지 않음 (클라이언트가 GameServer로부터 직접 수신)
-        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_UPDATE_OBJECT, bytes => HandleMessage<G_TO_U_UPDATE_OBJECT>(bytes, SubscribeUpdateObject));
-        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_SPAWN, bytes => HandleMessage<G_TO_U_SPAWN>(bytes, SubscribeSpawn));
-        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_DESTROY, bytes => HandleMessage<G_TO_U_DESTROY>(bytes, SubscribeDestroy));
-        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_PLAYER_INFO, bytes => HandleMessage<G_TO_U_PLAYER_INFO>(bytes, SubscribePlayerInfo));
-        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_EXPLORE_TARGET_INFO, bytes => HandleMessage<G_TO_U_EXPLORE_TARGET_INFO>(bytes, SubscribeExploreTargetInfo));
-        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_ENTER_INSTANCE_SUCCESS, bytes => HandleMessage<G_TO_U_ENTER_INSTANCE_SUCCESS>(bytes, SubscribeEnterInstanceSuccess));
-        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_SOCIAL_ACTION, bytes => HandleMessage<G_TO_U_SOCIAL_ACTION>(bytes, SubscribeSocialAction));
-        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_ENVIRONMENT, bytes => Player == null ? Task.CompletedTask : HandleMessage<G_TO_U_ENVIRONMENT>(bytes, Player.SubscribeEnvironment));
-        // _subscribeRouter.RegisterHandler(Protocol.G_TO_U_TAKE_DAMAGE, bytes => HandleMessage<G_TO_U_TAKE_DAMAGE>(bytes, SubscribeTakeDamage));
-
         // 서버간 통신 유지
         _subscribeRouter.RegisterHandler(Protocol.U_TO_C_CHAT_MSG, bytes => HandleMessage<U_TO_C_CHAT_MSG>(bytes, SubscribeChatMsg));
         _subscribeRouter.RegisterHandler(Protocol.U_TO_U_DUPLICATE, _ => { ReceiveDuplicate(); return Task.CompletedTask; });
@@ -550,9 +531,6 @@ public class GameSession : IPeer
         }
 
         var isEnded = batchIndex >= totalBatches - 1;
-
-        // using var packet = PacketMaker.U_TO_C_SPAWN(objectBatch, isEnded, cellBatch);
-        // Send(packet);
     }
 
     private Task SubscribeChatMsg(U_TO_C_CHAT_MSG body)
@@ -561,45 +539,6 @@ public class GameSession : IPeer
         Send(packet);
 
         return Task.CompletedTask;
-    }
-
-    private Task SubscribePlayerInfo(G_TO_U_PLAYER_INFO body)
-    {
-        using var packet = PacketMaker.U_TO_C_PLAYER_INFO([body.PlayerInfo]);
-        Send(packet);
-
-        return Task.CompletedTask;
-    }
-
-    private Task SubscribeExploreTargetInfo(G_TO_U_EXPLORE_TARGET_INFO body)
-    {
-        using var packet = PacketMaker.U_TO_C_EXPLORE_TARGET_INFO([body.ExploreTargetInfo]);
-        Send(packet);
-
-        return Task.CompletedTask;
-    }
-
-    private async Task SubscribeEnterInstanceSuccess(G_TO_U_ENTER_INSTANCE_SUCCESS body)
-    {
-        if (Player == null)
-        {
-            return;
-        }
-
-        if (body.MapId == MapId.Camp)
-        {
-            await Player.EnterCamp(body.MapSubId);
-        }
-
-        var mapInfo = Player.CurrentMapInfo;
-        if (body.MapId != mapInfo.Item1 || body.MapSubId != mapInfo.Item2)
-        {
-            return;
-        }
-
-        var lastMapInfo = Player.LastMapInfo;
-        using var packet = PacketMaker.U_TO_C_CHANGE_MAP_SUCCESS(lastMapInfo.Item1, mapInfo.Item1, mapInfo.Item2, mapInfo.Item3, mapInfo.Item4);
-        Send(packet);
     }
 
     private void BroadcastToMap<T>(GameObjectInfo objectInfo, T payload, Func<GameObjectInfo, int, string> getSubject)
@@ -611,7 +550,7 @@ public class GameSession : IPeer
         NatsClient.Publish(instanceSubject, MessagePackSerializer.Serialize((instancePartKey, objectInfo.ObjectType, serializedPayload)));
     }
 
-    public virtual void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject?
+    public void BroadcastUpdateInfo<T>(T info) where T : IMessagePackObject?
     {
         var objectInfo = info switch
         {
@@ -623,19 +562,19 @@ public class GameSession : IPeer
         BroadcastToMap(objectInfo, info, SubjectHelper.GetUpdateInfoSubject);
     }
 
-    public virtual void BroadcastTakeDamage(PlayerInfo playerInfo, DamageType damageType, int damage)
+    public void BroadcastTakeDamage(PlayerInfo playerInfo, DamageType damageType, int damage)
     {
         var sendTuple = (playerInfo.PlayerId, (damageType, damage));
         BroadcastToMap(playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetTakeDamageSubject);
     }
 
-    public virtual void BroadcastSocialAction(PlayerInfo playerInfo, SocialActionType socialActionType)
+    public void BroadcastSocialAction(PlayerInfo playerInfo, SocialActionType socialActionType)
     {
         var sendTuple = (playerInfo.PlayerId, socialActionType);
         BroadcastToMap(playerInfo.ObjectInfo, sendTuple, SubjectHelper.GetSocialActionSubject);
     }
 
-    public virtual void BroadcastObjectDestroy(GameObjectInfo objectInfo)
+    public void BroadcastObjectDestroy(GameObjectInfo objectInfo)
     {
         var payload = objectInfo.GetGameObjectKey();
         BroadcastToMap(objectInfo, payload, SubjectHelper.GetDestroyObjectSubject);

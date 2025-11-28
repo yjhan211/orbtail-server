@@ -1,5 +1,4 @@
 using network.common;
-using network.common.data;
 using network.common.data.models;
 
 namespace user_server.domain.player;
@@ -21,6 +20,9 @@ public partial class Player
                 _broadcastPlayerInfo(PlayerInfo);
                 break;
 
+            case SocialActionType.NONE:
+            case SocialActionType.LAUGH:
+            case SocialActionType.THUMBSUP:
             default:
                 _broadcastSocialAction(PlayerInfo, body.SocialActionType);
                 break;

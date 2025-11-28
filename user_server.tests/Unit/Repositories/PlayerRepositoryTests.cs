@@ -2,27 +2,25 @@ using Moq;
 using network.common.data.models;
 using network.interfaces;
 using user_server.infrastructure.repositories;
-using Xunit;
 
 namespace user_server.tests.unit.repositories;
 
 public class PlayerRepositoryTests
 {
-    private readonly Mock<ICacheHelper> _mockCache;
     private readonly PlayerRepository _repository;
     private const long TestPlayerId = 12345L;
 
     public PlayerRepositoryTests()
     {
-        _mockCache = new Mock<ICacheHelper>();
-        _repository = new PlayerRepository(_mockCache.Object);
+        var mockCache = new Mock<ICacheHelper>();
+        _repository = new PlayerRepository(mockCache.Object);
     }
 
     [Fact]
     public async Task LoadAsync_ReturnsPlayerInfo_WhenExists()
     {
         // Arrange
-        var expectedPlayerInfo = new PlayerInfo
+        _ = new PlayerInfo
         {
             PlayerId = TestPlayerId,
             Name = "TestPlayer",
@@ -31,10 +29,8 @@ public class PlayerRepositoryTests
 
         // Mock PlayerInfo.Load static method behavior
         // Note: This requires the actual implementation, so this test demonstrates the pattern
-        // In real scenario, you'd use a wrapper or dependency injection for static methods
-
         // Act
-        var result = await _repository.LoadAsync(TestPlayerId);
+        _ = await _repository.LoadAsync(TestPlayerId);
 
         // Assert - This will call the actual PlayerInfo.Load
         // For now, we're testing that it doesn't throw

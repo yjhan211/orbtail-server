@@ -2,29 +2,16 @@ using FluentValidation;
 
 namespace user_server.application.validation;
 
-/// <summary>
-/// Generic validation behavior that can be used with command handlers
-/// </summary>
-public class ValidationBehavior<TCommand>
+public class ValidationBehavior<TCommand>(IValidator<TCommand>? validator = null)
 {
-    private readonly IValidator<TCommand>? _validator;
-
-    public ValidationBehavior(IValidator<TCommand>? validator = null)
-    {
-        _validator = validator;
-    }
-
-    /// <summary>
-    /// Validates a command and throws ValidationException if invalid
-    /// </summary>
     public async Task ValidateAsync(TCommand command)
     {
-        if (_validator == null)
+        if (validator == null)
         {
-            return; // No validator registered, skip validation
+            return;
         }
 
-        var validationResult = await _validator.ValidateAsync(command);
+        var validationResult = await validator.ValidateAsync(command);
 
         if (!validationResult.IsValid)
         {
@@ -32,16 +19,13 @@ public class ValidationBehavior<TCommand>
         }
     }
 
-    /// <summary>
-    /// Validates a command and returns validation result
-    /// </summary>
     public async Task<FluentValidation.Results.ValidationResult> ValidateAndReturnResultAsync(TCommand command)
     {
-        if (_validator == null)
+        if (validator == null)
         {
-            return new FluentValidation.Results.ValidationResult(); // Empty (valid) result
+            return new FluentValidation.Results.ValidationResult();
         }
 
-        return await _validator.ValidateAsync(command);
+        return await validator.ValidateAsync(command);
     }
 }

@@ -1,5 +1,4 @@
 using network.common;
-using network.common.data;
 using network.common.data.models;
 
 namespace user_server.application.commands.player;
@@ -15,7 +14,7 @@ public record ChangeMapCommand(
 /// <summary>
 /// Command to enter a map with specific position
 /// </summary>
-public record EnterMapCommand(
+public abstract record EnterMapCommand(
     long PlayerId,
     MapId MapId,
     Cell SpawnPosition,
@@ -26,7 +25,7 @@ public record EnterMapCommand(
 /// <summary>
 /// Command to enter a camp (player's base)
 /// </summary>
-public record EnterCampCommand(
+public abstract record EnterCampCommand(
     long PlayerId,
     long MapSubId
 );

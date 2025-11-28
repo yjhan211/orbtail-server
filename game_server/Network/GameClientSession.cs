@@ -1,11 +1,8 @@
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data.helpers;
 using network.common.data.models;
-using network.config;
 using network.core;
-using network.helpers;
 using network.interfaces;
 using network.packets;
 using network.routing;
@@ -13,10 +10,6 @@ using network.utils;
 
 namespace game_server.network;
 
-/// <summary>
-/// GameServer에 직접 연결된 클라이언트 세션
-/// 실시간 게임 패킷 처리 (위치 동기화, 전투, 오브젝트 생성/파괴)
-/// </summary>
 public class GameClientSession : IPeer
 {
     private readonly UserToken _token;
@@ -26,17 +19,14 @@ public class GameClientSession : IPeer
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
 
-    public readonly ILogger Logger;
-    public readonly ICacheHelper CacheHelper;
-    public readonly IRedLockFactory RedLock;
-    public readonly INatsClient NatsClient;
-    public readonly IServerConfig ServerConfig;
+    private readonly ILogger _logger;
+    private readonly ICacheHelper _cacheHelper;
+    private readonly IRedLockFactory _redLock;
 
     public long? PlayerId { get; private set; }
     public MapId CurrentMapId { get; private set; }
     public long CurrentMapSubId { get; private set; }
 
-    // 이동 검증용 상태
     private Vector3f? _lastValidatedPosition;
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
@@ -44,11 +34,9 @@ public class GameClientSession : IPeer
     public GameClientSession(
         UserToken token,
         IRedLockFactory redLock,
-        INatsClient natsClient,
         ILogger logger,
         ICacheHelper cacheHelper,
         Action<GameClientSession> onLeaveCallback,
-        IServerConfig serverConfig,
         Action<long, GameClientSession> registerSessionCallback,
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance)
     {
@@ -56,11 +44,9 @@ public class GameClientSession : IPeer
         _token.SetPeer(this);
         _sessionLock = new SemaphoreSlim(1);
 
-        RedLock = redLock;
-        NatsClient = natsClient;
-        Logger = logger;
-        CacheHelper = cacheHelper;
-        ServerConfig = serverConfig;
+        _redLock = redLock;
+        _logger = logger;
+        _cacheHelper = cacheHelper;
         _onLeaveCallback = onLeaveCallback;
         _registerSessionCallback = registerSessionCallback;
         _getSessionsByInstance = getSessionsByInstance;
@@ -68,12 +54,11 @@ public class GameClientSession : IPeer
         _protocolRouter = new ProtocolRouter(logger);
         InitializeProtocolHandlers();
 
-        Logger.LogInformation("GameClientSession created");
+        _logger.LogInformation("GameClientSession created");
     }
 
     private void InitializeProtocolHandlers()
     {
-        // 클라이언트로부터 받는 실시간 패킷들
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT, async (bytes) => await HandleMessage<C_TO_G_CONNECT>(bytes, HandleConnect));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_MOVE, async (bytes) => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_ATTACK, async (bytes) => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
@@ -91,13 +76,13 @@ public class GameClientSession : IPeer
             var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
 
-            Logger.LogInformation($"[GameClient] Protocol: {protocolId}, PlayerId: {playerId}");
+            _logger.LogInformation("[GameClient] Protocol: {ProtocolId}, PlayerId: {L}", protocolId, playerId);
 
             await _protocolRouter.RouteAsync(protocolId, body);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error processing client message");
+            _logger.LogError(ex, "Error processing client message");
         }
         finally
         {
@@ -105,7 +90,7 @@ public class GameClientSession : IPeer
         }
     }
 
-    private async Task HandleMessage<T>(byte[] body, Func<T, Task> handler) where T : IMessagePackObject
+    private static async Task HandleMessage<T>(byte[] body, Func<T, Task> handler) where T : IMessagePackObject
     {
         var message = MessagePackSerializer.Deserialize<T>(body);
         await handler(message);
@@ -113,14 +98,17 @@ public class GameClientSession : IPeer
 
     private async Task BroadcastPlayerJoin()
     {
-        if (!PlayerId.HasValue) return;
+        if (!PlayerId.HasValue)
+        {
+            return;
+        }
 
         try
         {
             var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
             var otherPlayerIds = otherSessions
                 .Where(s => s.PlayerId != PlayerId && s.PlayerId.HasValue)
-                .Select(s => s.PlayerId.Value)
+                .Select(s => s.PlayerId!.Value)
                 .ToList();
 
             // 1. 나에게 다른 플레이어들의 전체 정보 전송
@@ -129,8 +117,8 @@ public class GameClientSession : IPeer
                 var playerInfoList = new List<PlayerInfo>();
                 foreach (var otherId in otherPlayerIds)
                 {
-                    await using var playerLock = await PlayerInfo.Lock(RedLock, otherId);
-                    var playerInfo = await PlayerInfo.Load(CacheHelper, otherId);
+                    await using var playerLock = await PlayerInfo.Lock(_redLock, otherId);
+                    var playerInfo = await PlayerInfo.Load(_cacheHelper, otherId);
                     if (playerInfo != null)
                     {
                         playerInfoList.Add(playerInfo);
@@ -141,31 +129,28 @@ public class GameClientSession : IPeer
                 {
                     using var packet = PacketMaker.G_TO_C_PLAYER_INFO(playerInfoList);
                     Send(packet);
-                    Logger.LogInformation($"Sent {playerInfoList.Count} PlayerInfo to PlayerId={PlayerId}");
+                    _logger.LogInformation("Sent {Count} PlayerInfo to PlayerId={L}", playerInfoList.Count, PlayerId);
                 }
             }
 
             // 2. 내 정보 로드
-            await using var myPlayerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-            var myPlayerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+            await using var myPlayerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
+            var myPlayerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
 
             if (myPlayerInfo != null)
             {
                 // 3. 다른 플레이어들에게 내 정보 브로드캐스트
-                using var myPacket = PacketMaker.G_TO_C_PLAYER_INFO(new List<PlayerInfo> { myPlayerInfo });
-                foreach (var session in otherSessions)
+                using var myPacket = PacketMaker.G_TO_C_PLAYER_INFO([myPlayerInfo]);
+                foreach (var session in otherSessions.Where(session => session.PlayerId != PlayerId))
                 {
-                    if (session.PlayerId != PlayerId)
-                    {
-                        session.Send(myPacket);
-                    }
+                    session.Send(myPacket);
                 }
-                Logger.LogInformation($"Broadcasted my PlayerInfo (PlayerId={PlayerId}) to {otherSessions.Count - 1} other players");
+                _logger.LogInformation("Broadcasted my PlayerInfo (PlayerId={L}) to {OtherSessionsCount} other players", PlayerId, otherSessions.Count - 1);
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, $"Failed to broadcast player join for PlayerId={PlayerId}");
+            _logger.LogError(ex, "Failed to broadcast player join for PlayerId={L}", PlayerId);
         }
     }
 
@@ -173,7 +158,7 @@ public class GameClientSession : IPeer
     {
         try
         {
-            Logger.LogInformation($"Client connection request: PlayerId={msg.PlayerId}, MatchingId={msg.MatchingId}");
+            _logger.LogInformation("Client connection request: PlayerId={MsgPlayerId}, MatchingId={MsgMatchingId}", msg.PlayerId, msg.MatchingId);
 
             // TODO: MatchingId 검증 (Redis에서 매칭 정보 확인)
             // 지금은 간단하게 PlayerId만 설정
@@ -186,8 +171,8 @@ public class GameClientSession : IPeer
             _registerSessionCallback(PlayerId.Value, this);
 
             // 초기 위치 로드
-            await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-            var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+            await using var playerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
+            var playerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
 
             if (playerInfo != null)
             {
@@ -205,17 +190,17 @@ public class GameClientSession : IPeer
             connectResultPacket.SetBody(MessagePackSerializer.Serialize(response));
             Send(connectResultPacket);
 
-            Logger.LogInformation($"Client connected successfully: PlayerId={PlayerId}");
+            _logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
 
             // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
             await BroadcastPlayerJoin();
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to handle connect");
+            _logger.LogError(ex, "Failed to handle connect");
 
             // 연결 실패 응답
-            using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, 0);
+            using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT);
             var response = new G_TO_C_CONNECT_RESULT
             {
                 Success = false,
@@ -241,13 +226,13 @@ public class GameClientSession : IPeer
             var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
 
             // 2. 주기적 저장 (1초마다)
-            bool needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
-            bool isIdle = msg.Velocity.Magnitude() < 0.01f;
+            var needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
+            var isIdle = msg.Velocity.Magnitude() < 0.01f;
 
             if (needsDbUpdate && !isIdle)
             {
-                await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-                var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+                await using var playerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
+                var playerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
 
                 if (playerInfo != null)
                 {
@@ -257,7 +242,7 @@ public class GameClientSession : IPeer
                     playerInfo.ObjectInfo.MoveTimestamp = now;
                     playerInfo.ObjectInfo.UpdateCellFromPosition(); // Position에서 Cell 자동 계산
 
-                    await playerInfo.Save(CacheHelper);
+                    await playerInfo.Save(_cacheHelper);
                     _lastSaveTime = now;
                 }
             }
@@ -281,40 +266,34 @@ public class GameClientSession : IPeer
             );
 
             var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-            foreach (var session in otherSessions)
+            foreach (var session in otherSessions.Where(session => session.PlayerId != PlayerId))
             {
-                if (session.PlayerId != PlayerId)
-                {
-                    session.Send(packet);
-                }
+                session.Send(packet);
             }
 
-            Logger.LogDebug($"Player {PlayerId} move broadcasted to {otherSessions.Count - 1} clients");
+            _logger.LogDebug("Player {L} move broadcasted to {OtherSessionsCount} clients", PlayerId, otherSessions.Count - 1);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, $"HandleMove error for player {PlayerId}");
+            _logger.LogError(ex, $"HandleMove error for player {PlayerId}");
         }
     }
 
-    private Vector3f ValidatePosition(
-        Vector3f clientPos,
-        Vector3f velocity,
-        float deltaTime)
+    private Vector3f ValidatePosition(Vector3f clientPos, Vector3f velocity, float deltaTime)
     {
-        const float MAX_SPEED = 20f; // 최대 속도 (m/s)
-        const float POSITION_TOLERANCE = 1.2f; // 위치 검증 여유 (20%)
-        const float MAP_MIN_X = -1000f;
-        const float MAP_MAX_X = 1000f;
-        const float MAP_MIN_Z = -1000f;
-        const float MAP_MAX_Z = 1000f;
+        const float maxSpeed = 20f; // 최대 속도 (m/s)
+        const float positionTolerance = 1.2f; // 위치 검증 여유 (20%)
+        const float mapMinX = -1000f;
+        const float mapMaxX = 1000f;
+        const float mapMinZ = -1000f;
+        const float mapMaxZ = 1000f;
 
         // 1. 속도 제한 체크
-        float speed = velocity.Magnitude();
-        if (speed > MAX_SPEED)
+        var speed = velocity.Magnitude();
+        if (speed > maxSpeed)
         {
-            Logger.LogWarning($"Player {PlayerId} 속도 초과: {speed:F2} > {MAX_SPEED}");
-            velocity = velocity.Normalized() * MAX_SPEED;
+            _logger.LogWarning($"Player {PlayerId} 속도 초과: {speed:F2} > {maxSpeed}");
+            velocity = velocity.Normalized() * maxSpeed;
         }
 
         // 2. 이동 거리 검증 (텔레포트 방지)
@@ -323,15 +302,13 @@ public class GameClientSession : IPeer
             var lastPos = _lastValidatedPosition;
             var delta = clientPos - lastPos;
             var distance = delta.Magnitude();
-            var maxDistance = MAX_SPEED * deltaTime * POSITION_TOLERANCE;
+            var maxDistance = maxSpeed * deltaTime * positionTolerance;
 
             // 클라이언트가 물리적으로 불가능한 거리를 이동했다면
             if (distance > maxDistance && deltaTime > 0)
             {
-                Logger.LogWarning(
-                    $"Player {PlayerId} 텔레포트 감지: " +
-                    $"distance={distance:F2}m, maxAllowed={maxDistance:F2}m, deltaTime={deltaTime:F3}s");
-
+                _logger.LogWarning($"Player {PlayerId} 텔레포트 감지: " + $"distance={distance:F2}m, maxAllowed={maxDistance:F2}m, deltaTime={deltaTime:F3}s");
+                
                 // 서버 계산 위치로 보정
                 var correctedPos = lastPos + velocity * deltaTime;
                 clientPos = correctedPos;
@@ -339,10 +316,10 @@ public class GameClientSession : IPeer
         }
 
         // 3. 맵 경계 체크
-        if (clientPos.X < MAP_MIN_X) clientPos.X = MAP_MIN_X;
-        if (clientPos.X > MAP_MAX_X) clientPos.X = MAP_MAX_X;
-        if (clientPos.Z < MAP_MIN_Z) clientPos.Z = MAP_MIN_Z;
-        if (clientPos.Z > MAP_MAX_Z) clientPos.Z = MAP_MAX_Z;
+        if (clientPos.X < mapMinX) clientPos.X = mapMinX;
+        if (clientPos.X > mapMaxX) clientPos.X = mapMaxX;
+        if (clientPos.Z < mapMinZ) clientPos.Z = mapMinZ;
+        if (clientPos.Z > mapMaxZ) clientPos.Z = mapMaxZ;
 
         // TODO: 4. 장애물 충돌 체크
         // if (IsCollidingWithObstacle(clientPos))
@@ -356,14 +333,14 @@ public class GameClientSession : IPeer
 
     private Task HandleAttack(C_TO_G_ATTACK msg)
     {
-        Logger.LogInformation($"Player {PlayerId} attack: {msg.TargetId}");
+        _logger.LogInformation($"Player {PlayerId} attack: {msg.TargetId}");
         // TODO: 공격 처리
         return Task.CompletedTask;
     }
 
     private Task HandleInteract(C_TO_G_INTERACT msg)
     {
-        Logger.LogInformation($"Player {PlayerId} interact: {msg.TargetId}");
+        _logger.LogInformation($"Player {PlayerId} interact: {msg.TargetId}");
         // TODO: 상호작용 처리
         return Task.CompletedTask;
     }
@@ -378,13 +355,13 @@ public class GameClientSession : IPeer
 
     public void OnRemoved()
     {
-        Logger.LogInformation($"GameClient removed: PlayerId={PlayerId}");
+        _logger.LogInformation($"GameClient removed: PlayerId={PlayerId}");
         _onLeaveCallback(this);
     }
 
     public void OnDisconnect()
     {
-        Logger.LogInformation($"GameClient disconnected: PlayerId={PlayerId}");
+        _logger.LogInformation($"GameClient disconnected: PlayerId={PlayerId}");
         _onLeaveCallback(this);
     }
 

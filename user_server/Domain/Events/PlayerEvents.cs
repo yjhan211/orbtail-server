@@ -18,15 +18,6 @@ public record PlayerInfoChangedEvent(
 ) : PlayerEvent(PlayerId, OccurredAt);
 
 /// <summary>
-/// Event raised when player moves
-/// </summary>
-public record PlayerMovedEvent(
-    long PlayerId,
-    Cell Position,
-    DateTime OccurredAt
-) : PlayerEvent(PlayerId, OccurredAt);
-
-/// <summary>
 /// Event raised when player changes map
 /// </summary>
 public record PlayerMapChangedEvent(
@@ -81,16 +72,5 @@ public record ItemUsedEvent(
 public record MailReceivedEvent(
     long PlayerId,
     long MailUid,
-    DateTime OccurredAt
-) : PlayerEvent(PlayerId, OccurredAt);
-
-/// <summary>
-/// Event raised when player takes damage
-/// </summary>
-public record PlayerDamagedEvent(
-    long PlayerId,
-    DamageType DamageType,
-    int DamageAmount,
-    int RemainingHp,
     DateTime OccurredAt
 ) : PlayerEvent(PlayerId, OccurredAt);

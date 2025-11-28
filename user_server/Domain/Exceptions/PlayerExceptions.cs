@@ -3,63 +3,40 @@ namespace user_server.domain.exceptions;
 /// <summary>
 /// Exception thrown when a player is not found
 /// </summary>
-public class PlayerNotFoundException : DomainException
+public class PlayerNotFoundException(long playerId)
+    : DomainException("PLAYER_NOT_FOUND", $"Player with ID {playerId} not found")
 {
-    public long PlayerId { get; }
-
-    public PlayerNotFoundException(long playerId)
-        : base("PLAYER_NOT_FOUND", $"Player with ID {playerId} not found")
-    {
-        PlayerId = playerId;
-    }
+    public long PlayerId { get; } = playerId;
 }
 
 /// <summary>
 /// Exception thrown when player has insufficient resources
 /// </summary>
-public class InsufficientResourceException : DomainException
+public class InsufficientResourceException(string resourceType, int required, int available) : DomainException(
+    "INSUFFICIENT_RESOURCE",
+    $"Insufficient {resourceType}: required {required}, available {available}")
 {
-    public string ResourceType { get; }
-    public int Required { get; }
-    public int Available { get; }
-
-    public InsufficientResourceException(string resourceType, int required, int available)
-        : base("INSUFFICIENT_RESOURCE",
-            $"Insufficient {resourceType}: required {required}, available {available}")
-    {
-        ResourceType = resourceType;
-        Required = required;
-        Available = available;
-    }
+    public string ResourceType { get; } = resourceType;
+    public int Required { get; } = required;
+    public int Available { get; } = available;
 }
 
 /// <summary>
 /// Exception thrown when player is in invalid state for operation
 /// </summary>
-public class InvalidPlayerStateException : DomainException
+public class InvalidPlayerStateException(string currentState, string requiredState) : DomainException(
+    "INVALID_PLAYER_STATE",
+    $"Invalid player state: current={currentState}, required={requiredState}")
 {
-    public string CurrentState { get; }
-    public string RequiredState { get; }
-
-    public InvalidPlayerStateException(string currentState, string requiredState)
-        : base("INVALID_PLAYER_STATE",
-            $"Invalid player state: current={currentState}, required={requiredState}")
-    {
-        CurrentState = currentState;
-        RequiredState = requiredState;
-    }
+    public string CurrentState { get; } = currentState;
+    public string RequiredState { get; } = requiredState;
 }
 
 /// <summary>
 /// Exception thrown when player is dead
 /// </summary>
-public class PlayerDeadException : DomainException
+public class PlayerDeadException(long playerId)
+    : DomainException("PLAYER_DEAD", $"Player {playerId} is dead and cannot perform this action")
 {
-    public long PlayerId { get; }
-
-    public PlayerDeadException(long playerId)
-        : base("PLAYER_DEAD", $"Player {playerId} is dead and cannot perform this action")
-    {
-        PlayerId = playerId;
-    }
+    public long PlayerId { get; } = playerId;
 }

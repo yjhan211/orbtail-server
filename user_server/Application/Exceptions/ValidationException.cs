@@ -1,9 +1,5 @@
 namespace user_server.application.exceptions;
 
-/// <summary>
-/// Exception thrown when command or query validation fails
-/// Note: FluentValidation also has ValidationException, so we namespace this carefully
-/// </summary>
 public class CommandValidationException : Exception
 {
     public Dictionary<string, string[]> Errors { get; }
@@ -19,7 +15,7 @@ public class CommandValidationException : Exception
     {
         Errors = new Dictionary<string, string[]>
         {
-            { propertyName, new[] { errorMessage } }
+            { propertyName, [errorMessage] }
         };
     }
 }

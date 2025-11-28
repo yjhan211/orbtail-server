@@ -1,4 +1,3 @@
-using network.common.data;
 using network.common.data.models;
 
 namespace user_server.application.commands.player;
