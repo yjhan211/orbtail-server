@@ -445,12 +445,14 @@ public class GameClientSession : IPeer
                     oldAreaSessions.Count, oldArea);
             }
 
-            // 2. 새 Area의 플레이어들에게 진입 알림 (내 최신 위치 포함)
+            // 2. 새 Area의 플레이어들에게 진입 알림 (내 최신 Cell 포함)
             if (newArea != AreaType.None)
             {
                 var newAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == newArea).ToList();
-                var myPosition = _lastValidatedPosition ?? playerInfo.ObjectInfo.Position;
-                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(playerInfo, myPosition);
+                var myCell = _lastValidatedPosition != null
+                    ? WorldPositionToCell(_lastValidatedPosition)
+                    : playerInfo.ObjectInfo.Cell;
+                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(playerInfo, myCell);
 
                 foreach (var session in newAreaSessions)
                 {
@@ -459,7 +461,7 @@ public class GameClientSession : IPeer
 
                 _logger.LogDebug("Sent ENTER to {Count} players in new Area {NewArea}", newAreaSessions.Count, newArea);
 
-                // 3. 나에게 새 Area의 다른 플레이어 정보 전송 (세션의 최신 위치 사용)
+                // 3. 나에게 새 Area의 다른 플레이어 정보 전송 (세션의 최신 Cell 사용)
                 foreach (var session in newAreaSessions)
                 {
                     if (!session.PlayerId.HasValue) continue;
@@ -467,16 +469,15 @@ public class GameClientSession : IPeer
                     var otherPlayerInfo = await PlayerInfo.Load(_cacheHelper, session.PlayerId.Value);
                     if (otherPlayerInfo != null)
                     {
-                        // 세션의 최신 위치 사용 (없으면 캐시된 ObjectInfo.Position 사용)
-                        var otherPosition = session._lastValidatedPosition ?? otherPlayerInfo.ObjectInfo.Position;
+                        // 세션의 최신 위치에서 Cell 계산 (없으면 캐시된 Cell 사용)
+                        var otherCell = session._lastValidatedPosition != null
+                            ? WorldPositionToCell(session._lastValidatedPosition)
+                            : otherPlayerInfo.ObjectInfo.Cell;
 
-                        _logger.LogInformation("Sending Player {OtherId} to Player {MyId}: SessionPos={SessionPos}, CachedPos={CachedPos}, FinalPos={FinalPos}",
-                            session.PlayerId, PlayerId,
-                            session._lastValidatedPosition != null ? $"({session._lastValidatedPosition.X},{session._lastValidatedPosition.Y})" : "null",
-                            $"({otherPlayerInfo.ObjectInfo.Position?.X},{otherPlayerInfo.ObjectInfo.Position?.Y})",
-                            $"({otherPosition?.X},{otherPosition?.Y})");
+                        _logger.LogInformation("Sending Player {OtherId} to Player {MyId}: Cell=({CellX},{CellY})",
+                            session.PlayerId, PlayerId, otherCell.X, otherCell.Y);
 
-                        using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(otherPlayerInfo, otherPosition);
+                        using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(otherPlayerInfo, otherCell);
                         Send(otherEnterPacket);
                     }
                 }

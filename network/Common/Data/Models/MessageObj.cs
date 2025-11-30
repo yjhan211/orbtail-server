@@ -137,7 +137,7 @@ namespace network.common.data.models
     public class G_TO_C_AREA_PLAYER_ENTER : IMessagePackObject
     {
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
-        [Key("position")] public Vector3f Position { get; set; } // 최신 World Position
+        [Key("cell")] public Cell Cell { get; set; } // 최신 Cell 위치
     }
 
     [MessagePackObject]
