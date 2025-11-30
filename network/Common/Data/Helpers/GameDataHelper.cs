@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using network.common.data.helpers;
 using network.managers;
 using UnityEngine;
 
@@ -103,7 +104,7 @@ namespace network.common.data.helpers
                 {
                     init(loadedData[fileName]);
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     throw;
                 }
@@ -133,7 +134,7 @@ namespace network.common.data.helpers
             {
                 GameMapData.Validate();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 throw;
             }

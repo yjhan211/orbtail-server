@@ -12,5 +12,4 @@ namespace network.common
         /// </summary>
         public const long DUMMY_PLAYER_ID_THRESHOLD = 1000;
     }
-
 }

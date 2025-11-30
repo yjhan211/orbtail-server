@@ -1,11 +1,9 @@
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data.helpers;
+using network.common.data;
 using network.common.data.models;
-using network.config;
 using network.core;
-using network.helpers;
 using network.interfaces;
 using network.packets;
 using network.routing;
@@ -13,64 +11,56 @@ using network.utils;
 
 namespace game_server.network;
 
-/// <summary>
-/// GameServer에 직접 연결된 클라이언트 세션
-/// 실시간 게임 패킷 처리 (위치 동기화, 전투, 오브젝트 생성/파괴)
-/// </summary>
 public class GameClientSession : IPeer
 {
     private readonly UserToken _token;
     private readonly SemaphoreSlim _sessionLock;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly IProtocolRouter _protocolRouter;
+    private readonly Action<long, GameClientSession> _registerSessionCallback;
+    private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
 
-    public readonly ILogger Logger;
-    public readonly ICacheHelper CacheHelper;
-    public readonly IRedLockFactory RedLock;
-    public readonly INatsClient NatsClient;
-    public readonly IServerConfig ServerConfig;
+    private readonly ILogger _logger;
+    private readonly ICacheHelper _cacheHelper;
+    private readonly IRedLockFactory _redLock;
 
     public long? PlayerId { get; private set; }
     public MapId CurrentMapId { get; private set; }
     public long CurrentMapSubId { get; private set; }
+    public AreaType CurrentArea { get; private set; } = AreaType.None;
 
-    // 이동 검증용 상태
     private Vector3f? _lastValidatedPosition;
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
 
-    // NATS subject 캐싱 (문자열 생성 비용 절감)
-    private string? _cachedMoveSubject;
-
     public GameClientSession(
         UserToken token,
         IRedLockFactory redLock,
-        INatsClient natsClient,
         ILogger logger,
         ICacheHelper cacheHelper,
         Action<GameClientSession> onLeaveCallback,
-        IServerConfig serverConfig)
+        Action<long, GameClientSession> registerSessionCallback,
+        Func<MapId, long, List<GameClientSession>> getSessionsByInstance)
     {
         _token = token;
         _token.SetPeer(this);
         _sessionLock = new SemaphoreSlim(1);
 
-        RedLock = redLock;
-        NatsClient = natsClient;
-        Logger = logger;
-        CacheHelper = cacheHelper;
-        ServerConfig = serverConfig;
+        _redLock = redLock;
+        _logger = logger;
+        _cacheHelper = cacheHelper;
         _onLeaveCallback = onLeaveCallback;
+        _registerSessionCallback = registerSessionCallback;
+        _getSessionsByInstance = getSessionsByInstance;
 
         _protocolRouter = new ProtocolRouter(logger);
         InitializeProtocolHandlers();
 
-        Logger.LogInformation("GameClientSession created");
+        _logger.LogInformation("GameClientSession created");
     }
 
     private void InitializeProtocolHandlers()
     {
-        // 클라이언트로부터 받는 실시간 패킷들
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT, async (bytes) => await HandleMessage<C_TO_G_CONNECT>(bytes, HandleConnect));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_MOVE, async (bytes) => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_ATTACK, async (bytes) => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
@@ -88,13 +78,13 @@ public class GameClientSession : IPeer
             var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
 
-            Logger.LogInformation($"[GameClient] Protocol: {protocolId}, PlayerId: {playerId}");
+            _logger.LogInformation("[GameClient] Protocol: {ProtocolId}, PlayerId: {L}", protocolId, playerId);
 
             await _protocolRouter.RouteAsync(protocolId, body);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error processing client message");
+            _logger.LogError(ex, "Error processing client message");
         }
         finally
         {
@@ -102,17 +92,73 @@ public class GameClientSession : IPeer
         }
     }
 
-    private async Task HandleMessage<T>(byte[] body, Func<T, Task> handler) where T : IMessagePackObject
+    private static async Task HandleMessage<T>(byte[] body, Func<T, Task> handler) where T : IMessagePackObject
     {
         var message = MessagePackSerializer.Deserialize<T>(body);
         await handler(message);
+    }
+
+    private async Task BroadcastPlayerJoin()
+    {
+        if (!PlayerId.HasValue)
+        {
+            return;
+        }
+
+        try
+        {
+            var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            // 같은 Area의 플레이어만 필터링
+            var sameAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea && s.PlayerId.HasValue).ToList();
+
+            // 1. 나에게 같은 Area의 다른 플레이어들 정보 전송
+            if (sameAreaSessions.Count > 0)
+            {
+                var playerInfoList = new List<PlayerInfo>();
+                foreach (var session in sameAreaSessions)
+                {
+                    await using var playerLock = await PlayerInfo.Lock(_redLock, session.PlayerId!.Value);
+                    var playerInfo = await PlayerInfo.Load(_cacheHelper, session.PlayerId!.Value);
+                    if (playerInfo != null)
+                    {
+                        playerInfoList.Add(playerInfo);
+                    }
+                }
+
+                if (playerInfoList.Count > 0)
+                {
+                    using var packet = PacketMaker.G_TO_C_PLAYER_INFO(playerInfoList);
+                    Send(packet);
+                    _logger.LogInformation("Sent {Count} PlayerInfo in Area {Area} to PlayerId={L}", playerInfoList.Count, CurrentArea, PlayerId);
+                }
+            }
+
+            // 2. 내 정보 로드
+            await using var myPlayerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
+            var myPlayerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
+
+            if (myPlayerInfo != null)
+            {
+                // 3. 같은 Area의 다른 플레이어들에게 내 정보 브로드캐스트
+                using var myPacket = PacketMaker.G_TO_C_PLAYER_INFO([myPlayerInfo]);
+                foreach (var session in sameAreaSessions)
+                {
+                    session.Send(myPacket);
+                }
+                _logger.LogInformation("Broadcasted my PlayerInfo (PlayerId={L}) to {Count} players in Area {Area}", PlayerId, sameAreaSessions.Count, CurrentArea);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to broadcast player join for PlayerId={L}", PlayerId);
+        }
     }
 
     private async Task HandleConnect(C_TO_G_CONNECT msg)
     {
         try
         {
-            Logger.LogInformation($"Client connection request: PlayerId={msg.PlayerId}, MatchingId={msg.MatchingId}");
+            _logger.LogInformation("Client connection request: PlayerId={MsgPlayerId}, MatchingId={MsgMatchingId}", msg.PlayerId, msg.MatchingId);
 
             // TODO: MatchingId 검증 (Redis에서 매칭 정보 확인)
             // 지금은 간단하게 PlayerId만 설정
@@ -121,34 +167,43 @@ public class GameClientSession : IPeer
             CurrentMapId = MapId.School; // TODO: 매칭 정보에서 가져오기
             CurrentMapSubId = msg.MatchingId;
 
+            // 세션 등록
+            _registerSessionCallback(PlayerId.Value, this);
+
             // 초기 위치 로드
-            await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-            var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+            await using var playerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
+            var playerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
 
             if (playerInfo != null)
             {
                 _lastValidatedPosition = playerInfo.ObjectInfo.Position;
+                // 초기 Area 설정
+                CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
+                _logger.LogInformation("Player {PlayerId} initial Area: {Area}", PlayerId, CurrentArea);
             }
 
             // 연결 성공 응답
-            using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId.Value);
+            using var connectResultPacket = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId.Value);
             var response = new G_TO_C_CONNECT_RESULT
             {
                 Success = true,
                 ErrorCode = ErrorCode.SUCCESS,
                 Message = "Connected to GameServer"
             };
-            packet.SetBody(MessagePackSerializer.Serialize(response));
-            Send(packet);
+            connectResultPacket.SetBody(MessagePackSerializer.Serialize(response));
+            Send(connectResultPacket);
 
-            Logger.LogInformation($"Client connected successfully: PlayerId={PlayerId}");
+            _logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
+
+            // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
+            await BroadcastPlayerJoin();
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to handle connect");
+            _logger.LogError(ex, "Failed to handle connect");
 
             // 연결 실패 응답
-            using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, 0);
+            using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT);
             var response = new G_TO_C_CONNECT_RESULT
             {
                 Success = false,
@@ -170,71 +225,56 @@ public class GameClientSession : IPeer
             var deltaTime = (float)(now - _lastMoveTime).TotalSeconds;
             _lastMoveTime = now;
 
-            // 1. 위치 검증 (치트 방지 강화)
+            // 1. 클라이언트 Position 검증
             var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
 
-            // 2. 현재 타일 계산
-            var currentCell = CoordinateConverter.WorldToCell(validatedPosition);
+            _logger.LogDebug("Player {PlayerId} C_TO_G_MOVE: ClientPos=({CX},{CY}), Velocity=({VX},{VY}), ValidatedPos=({X},{Y})",
+                PlayerId, msg.Position.X, msg.Position.Y, msg.Velocity.X, msg.Velocity.Y,
+                validatedPosition.X, validatedPosition.Y);
 
-            // 3. 타일 변경 여부 확인 (Redis 로드 최소화)
-            bool needsDbUpdate = false;
-            bool cellChanged = false;
-            Cell oldCell = new Cell(0, 0);
+            // 2. 주기적 저장 (1초마다)
+            var needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
+            var isIdle = msg.Velocity.Magnitude() < 0.01f;
 
-            // 주기적 저장 (1초마다) 또는 타일 변경 시에만 DB 접근
-            if (now - _lastSaveTime > TimeSpan.FromSeconds(1) ||
-                _lastValidatedPosition == null)
+            if (needsDbUpdate && !isIdle)
             {
-                needsDbUpdate = true;
-            }
-
-            PlayerInfo? playerInfo = null;
-
-            // 정지 중인지 확인 (velocity 크기가 거의 0)
-            bool isIdle = msg.Velocity.Magnitude() < 0.01f;
-
-            if (needsDbUpdate)
-            {
-                // Redis Lock + Load + Save
-                await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-                playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+                await using var playerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
+                var playerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
 
                 if (playerInfo != null)
                 {
-                    oldCell = playerInfo.ObjectInfo.CurrentCell;
-                    cellChanged = !oldCell.Equals(currentCell);
-
-                    // 위치 업데이트
                     playerInfo.ObjectInfo.Position = validatedPosition;
                     playerInfo.ObjectInfo.Velocity = msg.Velocity;
                     playerInfo.ObjectInfo.Rotation = msg.Rotation;
-                    playerInfo.ObjectInfo.CurrentCell = currentCell;
                     playerInfo.ObjectInfo.MoveTimestamp = now;
+                    playerInfo.ObjectInfo.UpdateCellFromPosition(); // Position에서 Cell 자동 계산
 
-                    // 저장 조건: (타일 변경) 또는 (1초 경과 && 움직이는 중)
-                    // 정지 중에는 DB 저장 스킵 (불필요한 Redis 쓰기 방지)
-                    bool shouldSave = cellChanged || (!isIdle && now - _lastSaveTime >= TimeSpan.FromSeconds(1));
-
-                    if (shouldSave)
-                    {
-                        await playerInfo.Save(CacheHelper);
-                        _lastSaveTime = now;
-                    }
-
-                    // 타일 변경 이벤트
-                    if (cellChanged)
-                    {
-                        Logger.LogInformation($"Player {PlayerId} 타일 이동: {oldCell} → {currentCell}");
-                        await OnCellChanged(playerInfo, oldCell, currentCell);
-                    }
+                    await playerInfo.Save(_cacheHelper);
+                    _lastSaveTime = now;
                 }
             }
 
-            // 검증된 위치 저장
             _lastValidatedPosition = validatedPosition;
 
-            // 4. 브로드캐스트 (같은 맵의 다른 플레이어들에게)
+            // 3. Area 체크 및 변경 감지
             var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var currentCell = WorldPositionToCell(validatedPosition);
+            var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
+
+            _logger.LogDebug("Player {PlayerId} WorldToCell: Pos=({PX},{PY}) → Cell=({CX},{CY}) → Area={Area}",
+                PlayerId, validatedPosition.X, validatedPosition.Y, currentCell.X, currentCell.Y, newArea);
+
+            // Area 변경 시 진입/퇴장 이벤트 전송
+            if (newArea != CurrentArea)
+            {
+                _logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
+                    PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
+                var oldArea = CurrentArea;
+                CurrentArea = newArea; // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
+                await HandleAreaChange(oldArea, newArea);
+            }
+
+            // 4. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
                 validatedPosition,
@@ -245,110 +285,223 @@ public class GameClientSession : IPeer
                 serverTimestamp
             );
 
-            // NATS로 브로드캐스트 (subject 캐싱)
-            if (_cachedMoveSubject == null)
-            {
-                _cachedMoveSubject = SubjectHelper.GetUpdateInfoSubject(
-                    CurrentMapId,
-                    CurrentMapSubId,
-                    ServerConfig.ServerId
-                );
-            }
-            NatsClient.Publish(_cachedMoveSubject, packet.ToBytes());
+            var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            var sameAreaSessions = otherSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea).ToList();
 
-            Logger.LogDebug($"Player {PlayerId} move broadcasted: {validatedPosition}");
+            foreach (var session in sameAreaSessions)
+            {
+                session.Send(packet);
+            }
+
+            _logger.LogDebug("Player {L} move broadcasted to {Count} clients in Area {Area}", PlayerId, sameAreaSessions.Count, CurrentArea);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, $"HandleMove error for player {PlayerId}");
+            _logger.LogError(ex, $"HandleMove error for player {PlayerId}");
         }
     }
 
-    private Vector3f ValidatePosition(
-        Vector3f clientPos,
-        Vector3f velocity,
-        float deltaTime)
+    /// <summary>
+    /// 클라이언트 Position 검증 (치트 방지)
+    /// 정상이면 클라이언트 Position 사용, 비정상이면 서버 계산 Position 사용
+    /// </summary>
+    private Vector3f ValidatePosition(Vector3f clientPos, Vector3f velocity, float deltaTime)
     {
-        const float MAX_SPEED = 20f; // 최대 속도 (m/s)
-        const float POSITION_TOLERANCE = 1.2f; // 위치 검증 여유 (20%)
-        const float MAP_MIN_X = -1000f;
-        const float MAP_MAX_X = 1000f;
-        const float MAP_MIN_Z = -1000f;
-        const float MAP_MAX_Z = 1000f;
+        const float maxSpeed = 10f; // 최대 속도 (units/s)
+        const float tolerance = 1.5f; // 허용 오차 (50%)
+        const float mapMinX = -1000f;
+        const float mapMaxX = 1000f;
+        const float mapMinY = -1000f;
+        const float mapMaxY = 1000f;
+
+        // null 체크: 클라이언트 데이터가 null이면 마지막 유효 위치 또는 기본값 반환
+        if (clientPos == null || velocity == null)
+        {
+            _logger.LogWarning("Player {PlayerId} ValidatePosition: null data received (clientPos={ClientPos}, velocity={Velocity})",
+                PlayerId, clientPos == null ? "null" : "ok", velocity == null ? "null" : "ok");
+            return _lastValidatedPosition ?? new Vector3f(0, 0, 0);
+        }
+
+        // Z값은 항상 0으로 고정
+        clientPos.Z = 0;
 
         // 1. 속도 제한 체크
-        float speed = velocity.Magnitude();
-        if (speed > MAX_SPEED)
+        var speed = velocity.Magnitude();
+        if (speed > maxSpeed)
         {
-            Logger.LogWarning($"Player {PlayerId} 속도 초과: {speed:F2} > {MAX_SPEED}");
-            velocity = velocity.Normalized() * MAX_SPEED;
+            _logger.LogWarning("Player {PlayerId} 속도 초과: {Speed:F2} > {MaxSpeed}", PlayerId, speed, maxSpeed);
+            // 클라이언트 위치를 신뢰하지 않고 서버 계산 위치 사용
+            if (_lastValidatedPosition != null)
+            {
+                var correctedVelocity = velocity.Normalized() * maxSpeed;
+                return new Vector3f(
+                    _lastValidatedPosition.X + correctedVelocity.X * deltaTime,
+                    _lastValidatedPosition.Y + correctedVelocity.Y * deltaTime,
+                    0
+                );
+            }
         }
 
         // 2. 이동 거리 검증 (텔레포트 방지)
-        if (_lastValidatedPosition != null)
+        if (_lastValidatedPosition != null && deltaTime > 0)
         {
-            var lastPos = _lastValidatedPosition;
-            var delta = clientPos - lastPos;
+            var delta = clientPos - _lastValidatedPosition;
             var distance = delta.Magnitude();
-            var maxDistance = MAX_SPEED * deltaTime * POSITION_TOLERANCE;
+            var maxDistance = maxSpeed * deltaTime * tolerance;
 
-            // 클라이언트가 물리적으로 불가능한 거리를 이동했다면
-            if (distance > maxDistance && deltaTime > 0)
+            if (distance > maxDistance)
             {
-                Logger.LogWarning(
-                    $"Player {PlayerId} 텔레포트 감지: " +
-                    $"distance={distance:F2}m, maxAllowed={maxDistance:F2}m, deltaTime={deltaTime:F3}s");
-
+                _logger.LogWarning("Player {PlayerId} 텔레포트 감지: distance={Distance:F2}, maxAllowed={MaxDistance:F2}",
+                    PlayerId, distance, maxDistance);
                 // 서버 계산 위치로 보정
-                var correctedPos = lastPos + velocity * deltaTime;
-                clientPos = correctedPos;
+                return new Vector3f(
+                    _lastValidatedPosition.X + velocity.X * deltaTime,
+                    _lastValidatedPosition.Y + velocity.Y * deltaTime,
+                    0
+                );
             }
         }
 
         // 3. 맵 경계 체크
-        if (clientPos.X < MAP_MIN_X) clientPos.X = MAP_MIN_X;
-        if (clientPos.X > MAP_MAX_X) clientPos.X = MAP_MAX_X;
-        if (clientPos.Z < MAP_MIN_Z) clientPos.Z = MAP_MIN_Z;
-        if (clientPos.Z > MAP_MAX_Z) clientPos.Z = MAP_MAX_Z;
+        if (clientPos.X < mapMinX) clientPos.X = mapMinX;
+        if (clientPos.X > mapMaxX) clientPos.X = mapMaxX;
+        if (clientPos.Y < mapMinY) clientPos.Y = mapMinY;
+        if (clientPos.Y > mapMaxY) clientPos.Y = mapMaxY;
 
-        // TODO: 4. 장애물 충돌 체크
-        // if (IsCollidingWithObstacle(clientPos))
-        // {
-        //     clientPos = _lastValidatedPosition ?? clientPos;
-        // }
-
+        // 검증 통과: 클라이언트 Position 사용
         return clientPos;
     }
 
-    private async Task OnCellChanged(
-        PlayerInfo playerInfo,
-        Cell oldCell,
-        Cell newCell)
+    #region Isometric 좌표 변환 (Unity Isometric Z as Y 타일맵)
+
+    /// <summary>
+    /// World Position을 Cell 좌표로 변환
+    /// Unity Isometric Z as Y 타일맵의 WorldToCell과 동일한 로직
+    ///
+    /// 클라이언트 MapController.WorldToCell:
+    ///   var unityCell = tileMap.WorldToCell(position);
+    ///   return new Vector3Int(unityCell.x + CellOffsetX, unityCell.y + CellOffsetY + 1, 0);
+    ///
+    /// Unity Isometric Z as Y 역변환:
+    ///   unityCellX = floor(WorldX + 2 * WorldY)
+    ///   unityCellY = floor(2 * WorldY - WorldX)
+    ///
+    /// 최종 Cell = unityCell + CellOffset (Y는 +1 추가)
+    /// </summary>
+    private static Cell WorldPositionToCell(Vector3f worldPos)
     {
-        // 타일 기반 로직들
+        // Unity Isometric Z as Y 역변환 공식
+        // Unity WorldToCell 결과를 그대로 반환 (CellOffset은 map_region.csv에 이미 반영됨)
+        int cellX = (int)Math.Floor(worldPos.X + 2f * worldPos.Y);
+        int cellY = (int)Math.Floor(2f * worldPos.Y - worldPos.X);
 
-        // TODO: 1. 트리거 체크 (특정 타일 진입 시)
-        // await CheckTileTriggers(newCell);
-
-        // TODO: 2. AOI (Area of Interest) 업데이트
-        // await UpdateAreaOfInterest(playerInfo, oldCell, newCell);
-
-        // TODO: 3. 타일별 이벤트 (함정, 버프 존 등)
-        // await ProcessTileEvents(newCell);
-
-        Logger.LogInformation($"OnCellChanged: {oldCell} → {newCell} (플레이어: {playerInfo.PlayerId})");
+        return new Cell(cellX, cellY);
     }
+
+    #endregion
+
+    private async Task HandleAreaChange(AreaType oldArea, AreaType newArea)
+    {
+        try
+        {
+            if (!PlayerId.HasValue) return;
+
+            _logger.LogInformation("Player {PlayerId} moved from Area {OldArea} to {NewArea}", PlayerId, oldArea, newArea);
+
+            var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            var playerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
+
+            if (playerInfo == null) return;
+
+            // 내 최신 위치로 playerInfo 업데이트
+            if (_lastValidatedPosition != null)
+            {
+                var latestCell = WorldPositionToCell(_lastValidatedPosition);
+                playerInfo.ObjectInfo.Position = _lastValidatedPosition;
+                playerInfo.ObjectInfo.Cell = latestCell;
+                playerInfo.LastCell = latestCell;
+            }
+
+            // 1. 이전 Area의 플레이어들에게 퇴장 알림 + 나에게 기존 플레이어 삭제 알림
+            if (oldArea != AreaType.None)
+            {
+                var oldAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == oldArea).ToList();
+                using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
+
+                foreach (var session in oldAreaSessions)
+                {
+                    // 이전 Area 플레이어들에게 내 퇴장 알림
+                    session.Send(leavePacket);
+
+                    // 나에게 이전 Area 플레이어들 삭제 알림
+                    if (session.PlayerId.HasValue)
+                    {
+                        using var removePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(session.PlayerId.Value);
+                        Send(removePacket);
+                    }
+                }
+
+                _logger.LogDebug("Sent LEAVE to {Count} players in old Area {OldArea}, removed them from my view",
+                    oldAreaSessions.Count, oldArea);
+            }
+
+            // 2. 새 Area의 플레이어들에게 진입 알림 (내 최신 Cell 포함)
+            if (newArea != AreaType.None)
+            {
+                var newAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == newArea).ToList();
+                var myCell = _lastValidatedPosition != null
+                    ? WorldPositionToCell(_lastValidatedPosition)
+                    : playerInfo.ObjectInfo.Cell;
+                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(playerInfo, myCell);
+
+                foreach (var session in newAreaSessions)
+                {
+                    session.Send(enterPacket);
+                }
+
+                _logger.LogDebug("Sent ENTER to {Count} players in new Area {NewArea}", newAreaSessions.Count, newArea);
+
+                // 3. 나에게 새 Area의 다른 플레이어 정보 전송 (세션의 최신 Cell 사용)
+                foreach (var session in newAreaSessions)
+                {
+                    if (!session.PlayerId.HasValue) continue;
+
+                    var otherPlayerInfo = await PlayerInfo.Load(_cacheHelper, session.PlayerId.Value);
+                    if (otherPlayerInfo != null)
+                    {
+                        // 세션의 최신 위치에서 Cell 계산 (없으면 캐시된 Cell 사용)
+                        var otherCell = session._lastValidatedPosition != null
+                            ? WorldPositionToCell(session._lastValidatedPosition)
+                            : otherPlayerInfo.ObjectInfo.Cell;
+
+                        _logger.LogInformation("Sending Player {OtherId} to Player {MyId}: Cell=({CellX},{CellY})",
+                            session.PlayerId, PlayerId, otherCell.X, otherCell.Y);
+
+                        using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(otherPlayerInfo, otherCell);
+                        Send(otherEnterPacket);
+                    }
+                }
+
+                _logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "HandleAreaChange error for player {PlayerId}", PlayerId);
+        }
+    }
+
 
     private Task HandleAttack(C_TO_G_ATTACK msg)
     {
-        Logger.LogInformation($"Player {PlayerId} attack: {msg.TargetId}");
+        _logger.LogInformation($"Player {PlayerId} attack: {msg.TargetId}");
         // TODO: 공격 처리
         return Task.CompletedTask;
     }
 
     private Task HandleInteract(C_TO_G_INTERACT msg)
     {
-        Logger.LogInformation($"Player {PlayerId} interact: {msg.TargetId}");
+        _logger.LogInformation($"Player {PlayerId} interact: {msg.TargetId}");
         // TODO: 상호작용 처리
         return Task.CompletedTask;
     }
@@ -363,13 +516,13 @@ public class GameClientSession : IPeer
 
     public void OnRemoved()
     {
-        Logger.LogInformation($"GameClient removed: PlayerId={PlayerId}");
+        _logger.LogInformation($"GameClient removed: PlayerId={PlayerId}");
         _onLeaveCallback(this);
     }
 
     public void OnDisconnect()
     {
-        Logger.LogInformation($"GameClient disconnected: PlayerId={PlayerId}");
+        _logger.LogInformation($"GameClient disconnected: PlayerId={PlayerId}");
         _onLeaveCallback(this);
     }
 

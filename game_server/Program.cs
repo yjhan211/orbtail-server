@@ -47,8 +47,7 @@ internal static partial class Program
             .MinimumLevel.Debug()
             .Enrich.WithProperty("serverType", serverType)
             .Enrich.WithProperty("serverId", serverId)
-            .WriteTo.Console(outputTemplate:
-                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}")
+            .WriteTo.Console(outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 
         // 기본 공급자 지우기
@@ -84,7 +83,7 @@ internal static partial class Program
             )
         );
 
-        services.AddSingleton<RedisConnectionPool>(sp =>
+        services.AddSingleton<RedisConnectionPool>(_ =>
         {
             var redisPool = new RedisConnectionPool();
             var redisEndpoints = hostContext.Configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
@@ -92,6 +91,7 @@ internal static partial class Program
             return redisPool;
         });
         services.AddSingleton<IRedisConnectionPool>(sp => sp.GetRequiredService<RedisConnectionPool>());
+        services.AddSingleton<IRedLockFactory>(sp => sp.GetRequiredService<RedisConnectionPool>().GetRedLockFactory());
         services.AddSingleton<CacheHelper>();
         services.AddSingleton<ICacheHelper, CacheHelper>();
         services.AddHostedService<HealthCheckService>();

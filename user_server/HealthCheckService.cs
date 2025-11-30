@@ -2,31 +2,24 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Prometheus;
 
 namespace user_server;
 
-public class HealthCheckService : IHostedService
+public class HealthCheckService(ILogger<HealthCheckService> logger, IConfiguration configuration)
+    : IHostedService
 {
-    private readonly ILogger<HealthCheckService> _logger;
-    private readonly string _redisEndpoints;
+    private readonly string _redisEndpoints = configuration["redisEndPoints"] ?? "localhost:6379";
     private WebApplication? _app;
-
-    public HealthCheckService(ILogger<HealthCheckService> logger, IConfiguration configuration)
-    {
-        _logger = logger;
-        _redisEndpoints = configuration["redisEndPoints"] ?? "localhost:6379";
-    }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         var builder = WebApplication.CreateBuilder();
 
         builder.Services.AddHealthChecks()
-            .AddRedis(_redisEndpoints, name: "redis", tags: new[] { "ready" });
+            .AddRedis(_redisEndpoints, name: "redis", tags: ["ready"]);
 
         builder.WebHost.UseUrls("http://*:8080");
 
@@ -44,7 +37,7 @@ public class HealthCheckService : IHostedService
 
         _app.MapMetrics();
 
-        _logger.LogInformation("Health check service starting on port 8080");
+        logger.LogInformation("Health check service starting on port 8080");
 
         _ = _app.RunAsync(cancellationToken);
 

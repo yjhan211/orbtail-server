@@ -32,15 +32,15 @@ namespace network.common.data
 
         public static void Validate(LogManager logManager)
         {
-            logManager.WriteDebugLog("=== GameBuffData Validation ===");
+            LogManager.WriteDebugLog("=== GameBuffData Validation ===");
             foreach (var (id, buff) in Buffs)
             {
-                logManager.WriteDebugLog($"Buff {id}:");
-                logManager.WriteDebugLog($"  Type: {buff.Type}");
-                logManager.WriteDebugLog($"  SubType: {buff.SubType}");
+                LogManager.WriteDebugLog($"Buff {id}:");
+                LogManager.WriteDebugLog($"  Type: {buff.Type}");
+                LogManager.WriteDebugLog($"  SubType: {buff.SubType}");
             }
 
-            logManager.WriteDebugLog($"Total {Buffs.Count} buffs validated successfully!");
+            LogManager.WriteDebugLog($"Total {Buffs.Count} buffs validated successfully!");
         }
 
         // 유틸리티 메서드

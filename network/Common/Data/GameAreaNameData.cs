@@ -5,6 +5,8 @@
 
 using System.Collections.Generic;
 using System.IO;
+using network.common;
+using network.common.data;
 using network.common.data.helpers;
 using network.managers;
 
@@ -28,8 +30,8 @@ namespace network.common.data
 
         public static void Validate(LogManager logManager)
         {
-            logManager.WriteInfoLog("=== GameAreaNameData Validation ===");
-            logManager.WriteInfoLog($"Total area names loaded: {_areaNames.Count}");
+            LogManager.WriteInfoLog("=== GameAreaNameData Validation ===");
+            LogManager.WriteInfoLog($"Total area names loaded: {_areaNames.Count}");
 
             var errors = new List<string>();
 
@@ -42,23 +44,23 @@ namespace network.common.data
                 }
                 else
                 {
-                    logManager.WriteInfoLog($"{areaType}: {_areaNames[areaType].Kr}");
+                    LogManager.WriteInfoLog($"{areaType}: {_areaNames[areaType].Kr}");
                 }
             }
 
-            logManager.WriteInfoLog("");
+            LogManager.WriteInfoLog("");
 
             if (errors.Count != 0)
             {
-                logManager.WriteInfoLog("Validation Errors:");
+                LogManager.WriteInfoLog("Validation Errors:");
                 foreach (var error in errors)
                 {
-                    logManager.WriteInfoLog($"- {error}");
+                    LogManager.WriteInfoLog($"- {error}");
                 }
                 throw new InvalidDataException(string.Join("\n", errors));
             }
 
-            logManager.WriteInfoLog("All validations passed successfully!");
+            LogManager.WriteInfoLog("All validations passed successfully!");
         }
 
         /// <summary>

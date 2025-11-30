@@ -7,24 +7,24 @@ using network.common.data.helpers;
 using network.core;
 using network.helpers;
 using network.interfaces;
-using user_server.application.services;
-using user_server.infrastructure.network;
+using user_server.network;
+using user_server.services;
 
 namespace user_server;
 
 public class UserServer(
     INetworkService networkService,
-    IRedisConnectionPool redisPool,
     INatsClientFactory natsClientFactory,
     ILogger<UserServer> logger,
     IConfiguration configuration,
     ICacheHelper cacheHelper,
-    IServerConfig serverConfig)
+    IRedLockFactory redLock,
+    IServerConfig serverConfig,
+    PlayerService playerService)
     : IHostedService
 {
     private CancellationTokenSource? _cts;
     private Task? _leaveUserTask;
-    private readonly ChatController _chatController = new(cacheHelper);
     private readonly ConcurrentQueue<GameSession> _leaveUserQueue = new();
     private readonly ConcurrentDictionary<long, GameSession> _sessions = new();
     private MatchingManager? _matchingManager;
@@ -33,59 +33,45 @@ public class UserServer(
     {
         try
         {
-            logger.LogInformation("User Server starting...");
-            logger.LogInformation("About to initialize services...");
+            logger.LogInformation("UserServer starting...");
             InitializeServices();
-            logger.LogInformation("Services initialized successfully");
             StartNetworkService();
             _cts = new CancellationTokenSource();
             _leaveUserTask = LeaveUser(_cts.Token);
+            logger.LogInformation("UserServer started successfully");
             return Task.CompletedTask;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "User Server starting failed");
+            logger.LogError(ex, "UserServer start failed");
             return Task.FromException(ex);
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("User server stopping...");
-        await _cts?.CancelAsync()!;
+        logger.LogInformation("UserServer stopping...");
+        await (_cts?.CancelAsync() ?? Task.CompletedTask);
         if (_leaveUserTask != null) await _leaveUserTask;
         _matchingManager?.Dispose();
         _cts?.Dispose();
-    }
-
-    private void EnqueueUserLeave(GameSession user)
-    {
-        _leaveUserQueue.Enqueue(user);
+        logger.LogInformation("UserServer stopped");
     }
 
     private void InitializeServices()
     {
-        logger.LogInformation("Getting natsEndpoint from configuration");
-        var natsEndpoint = configuration["natsEndPoint"] ??
-                           throw new InvalidOperationException("NatsEndpoint is not configured or is invalid.");
-        logger.LogInformation($"natsEndpoint: {natsEndpoint}");
-        try
-        {
-            logger.LogInformation("Initializing natsClientFactory");
-            natsClientFactory.Initialize(natsEndpoint);
-            logger.LogInformation("natsClientFactory initialized successfully");
-            GameDataHelper.Initialize();
-            MapHelper.Initialize(serverConfig.GameServerNum);
+        var natsEndpoint = configuration["natsEndPoint"]
+            ?? throw new InvalidOperationException("NatsEndpoint is not configured");
 
-            // Initialize MatchingManager
-            var matchingNatsClient = natsClientFactory.Create();
-            _matchingManager = new MatchingManager(logger, cacheHelper, matchingNatsClient, GetSession);
-            logger.LogInformation("MatchingManager initialized successfully");
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException("Failed to initialize services.", ex);
-        }
+        natsClientFactory.Initialize(natsEndpoint);
+        GameDataHelper.Initialize();
+        MapHelper.Initialize(serverConfig.GameServerNum);
+
+        // MatchingManager 초기화
+        natsClientFactory.Create();
+        _matchingManager = new MatchingManager(logger, cacheHelper, GetSession);
+
+        logger.LogInformation("Services initialized successfully");
     }
 
     private void StartNetworkService()
@@ -93,30 +79,43 @@ public class UserServer(
         var port = configuration.GetValue<short>("servicePort");
         networkService.SessionCreatedCallback += OnSessionCreated;
         networkService.Listen(IPAddress.Any, port);
+        logger.LogInformation($"Listening on port {port}");
     }
 
     private void OnSessionCreated(UserToken token)
     {
         try
         {
-            var redLockFactory = redisPool.GetRedLockFactory();
-            var natsClient = natsClientFactory.Create();
-            var session = new GameSession(token, redLockFactory, natsClient, logger, cacheHelper, OnSessionLeave,
-                _chatController, _matchingManager, serverConfig, RegisterSession);
+            natsClientFactory.Create();
+            var sessionLogger = logger; // Or create a scoped logger
+
+            _ = new GameSession(
+                token,
+                sessionLogger,
+                cacheHelper,
+                redLock,
+                playerService,
+                _matchingManager!,
+                RegisterSession);
+
+            logger.LogInformation("New session created");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to create nats client");
+            logger.LogError(ex, "Failed to create GameSession");
         }
     }
 
-    private void OnSessionLeave(GameSession session)
+    private void RegisterSession(long playerId, GameSession session)
     {
-        if (session.Player != null)
+        if (_sessions.TryAdd(playerId, session))
         {
-            _sessions.TryRemove(session.Player.PlayerId, out _);
+            logger.LogInformation("Session registered: PlayerId={PlayerId}", playerId);
         }
-        EnqueueUserLeave(session);
+        else
+        {
+            logger.LogWarning("Session already exists: PlayerId={PlayerId}", playerId);
+        }
     }
 
     private GameSession? GetSession(long playerId)
@@ -124,20 +123,30 @@ public class UserServer(
         _sessions.TryGetValue(playerId, out var session);
         return session;
     }
-
-    public void RegisterSession(long playerId, GameSession session)
+    
+    // TODO 로그아웃
+    // ReSharper disable once UnusedMember.Local
+    private void EnqueueUserLeave(GameSession user)
     {
-        var added = _sessions.TryAdd(playerId, session);
-        logger.LogInformation($"세션 등록: PlayerId={playerId}, 성공={added}, 총 세션 수={_sessions.Count}");
+        _leaveUserQueue.Enqueue(user);
     }
 
     private async Task LeaveUser(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
+        {
             try
             {
-                await ProcessLeaveUser();
-                await Task.Delay(10, ct);
+                if (_leaveUserQueue.TryDequeue(out var session))
+                {
+                    if (session.PlayerId.HasValue)
+                    {
+                        _sessions.TryRemove(session.PlayerId.Value, out _);
+                        logger.LogInformation($"Session removed: PlayerId={session.PlayerId}");
+                    }
+                }
+
+                await Task.Delay(100, ct);
             }
             catch (OperationCanceledException)
             {
@@ -145,23 +154,8 @@ public class UserServer(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "User Server leave failed");
+                logger.LogError(ex, "Error in LeaveUser task");
             }
-    }
-
-    private async Task ProcessLeaveUser()
-    {
-        try
-        {
-            if (_leaveUserQueue.TryDequeue(out var user))
-            {
-                var token = await user.Release();
-                if (token != null) networkService.CloseClientSocket(token);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "User Server leave failed");
         }
     }
 }

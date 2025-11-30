@@ -15,8 +15,7 @@ namespace network.common.data.models
         {
             ObjectType = ObjectType.NONE;
             ObjectId = 0;
-            CurrentCell = new Cell(0, 0);
-            TargetCell = new Cell(0, 0);
+            Cell = new Cell(0, 0);
             Position = new Vector3f(0, 0, 0);
             Velocity = new Vector3f(0, 0, 0);
             Rotation = 0f;
@@ -29,8 +28,7 @@ namespace network.common.data.models
         {
             ObjectType = ObjectType.NONE;
             ObjectId = objectId;
-            CurrentCell = new Cell(0, 0);
-            TargetCell = new Cell(0, 0);
+            Cell = new Cell(0, 0);
             Position = new Vector3f(0, 0, 0);
             Velocity = new Vector3f(0, 0, 0);
             Rotation = 0f;
@@ -44,9 +42,8 @@ namespace network.common.data.models
         {
             ObjectType = objectType;
             ObjectId = objectId;
-            CurrentCell = Cell.Clone(cell);
-            TargetCell = Cell.Clone(cell);
-            Position = new Vector3f(cell.X, 0, cell.Y); // 타일 중심으로 초기화
+            Cell = Cell.Clone(cell); // null 체크는 Cell.Clone 내부에서 처리
+            Position = cell != null ? new Vector3f(cell.X, cell.Y, 0) : new Vector3f(0, 0, 0);
             Velocity = new Vector3f(0, 0, 0);
             Rotation = 0f;
             MapId = mapId;
@@ -64,9 +61,8 @@ namespace network.common.data.models
 
         [Key("mapSubId")] public long MapSubId { get; set; }
 
-        [Key("currentCell")] public Cell CurrentCell { get; set; }
-
-        [Key("targetCell")] public Cell TargetCell { get; set; }
+        // 현재 위치한 셀 (Position에서 자동 계산)
+        [Key("cell")] public Cell Cell { get; set; }
 
         // 자유 이동 필드
         [Key("position")] public Vector3f Position { get; set; }
@@ -80,6 +76,28 @@ namespace network.common.data.models
         [Key("debuffTimestamp")] public DateTime DebuffTimestamp { get; set; }
 
         [Key("isFlip")] public bool IsFlip { get; set; }
+
+        // Position이 업데이트될 때 Cell도 자동으로 업데이트
+        public void UpdateCellFromPosition()
+        {
+            // 2D 게임: X축=가로, Y축=세로, Z축=0
+            Cell = new Cell((int)Math.Round(Position.X), (int)Math.Round(Position.Y));
+        }
+
+        // 하위 호환성을 위한 속성 (Deprecated)
+        [IgnoreMember]
+        public Cell CurrentCell
+        {
+            get => Cell;
+            set => Cell = value;
+        }
+
+        [IgnoreMember]
+        public Cell TargetCell
+        {
+            get => Cell;
+            set => Cell = value;
+        }
 
         public string GetGameObjectKey()
         {

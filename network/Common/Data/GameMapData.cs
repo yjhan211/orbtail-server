@@ -102,7 +102,7 @@ namespace network.common.data
                 if (row["region_type"].Equals("area", StringComparison.OrdinalIgnoreCase))
                 {
                     // Area 정보 처리
-                    var areaTypeId = int.Parse(row["warp_to"]);
+                    var areaTypeId = int.Parse(row["area"]);
                     var areaType = AreaType.Parse<AreaType>(areaTypeId.ToString());
 
                     var areaRegion = new AreaRegion
@@ -132,7 +132,7 @@ namespace network.common.data
                         int.Parse(row["end_x"]),
                         int.Parse(row["end_y"])
                     ),
-                    WarpTo = MapId.Parse<MapId>(int.Parse(row["warp_to"]).ToString())
+                    WarpTo = MapId.Parse<MapId>(int.Parse(row["area"]).ToString())
                 };
 
                 if (!_mapRegions.ContainsKey(mapId))
@@ -261,7 +261,7 @@ namespace network.common.data
 
         public static (MapId mapId, Cell spawnPosition, bool isFlip)? GetPortalOrNull(GameObjectInfo objectInfo, bool isTutorial)
         {
-            var currentCell = objectInfo.TargetCell;
+            var currentCell = objectInfo.Cell;
             var currentMap = objectInfo.MapId;
             var regions = GetMapRegions(currentMap);
             var portalRegions = regions.Where(r => r.IsPortal);
@@ -288,7 +288,7 @@ namespace network.common.data
         /// <param name="targetMapId">목표 맵 ID</param>
         /// <param name="cellToCheck">확인할 셀 좌표</param>
         /// <returns>셀이 포탈 영역에 포함되면 null, 포함되지 않으면 포탈의 중심 좌표</returns>
-        public static Cell? GetPortalCenterIfNotInPortal(MapId currentMapId, MapId targetMapId, Cell cellToCheck)
+        public static Cell GetPortalCenterIfNotInPortal(MapId currentMapId, MapId targetMapId, Cell cellToCheck)
         {
             var portalCoords = GetPortalCoordinates(currentMapId, targetMapId);
             if (!portalCoords.HasValue)
@@ -463,7 +463,7 @@ namespace network.common.data
             return null;
         }
 
-        public static Cell? GetPortalCenterCoordinates(MapId currentMapId, MapId targetMapId)
+        public static Cell GetPortalCenterCoordinates(MapId currentMapId, MapId targetMapId)
         {
             var portalCoords = GetPortalCoordinates(currentMapId, targetMapId);
             if (portalCoords.HasValue)

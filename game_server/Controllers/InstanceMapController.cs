@@ -3,7 +3,6 @@ using game_server.network;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.config;
 using network.helpers;
@@ -12,36 +11,22 @@ using network.packets;
 
 namespace game_server.controllers;
 
-public class InstanceMapController : BaseMapController
+public sealed class InstanceMapController(
+    ILogger logger,
+    INatsClient natsClient,
+    ICacheHelper cacheHelper,
+    ServerConfig serverConfig,
+    ConcurrentDictionary<long, GameClientSession> clientSessions)
+    : BaseMapController(logger, natsClient, cacheHelper, serverConfig)
 {
-    private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
     private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
-    private readonly ConcurrentDictionary<string, Timer> _damageTimers = new();
     private readonly ConcurrentDictionary<string, Timer> _gameTimers = new();
     private readonly ConcurrentDictionary<string, (Timer OneMinuteTimer, Timer ThirtySecondsTimer)> _warningTimers = new();
-    private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions;
 
     private const int GameDurationMinutes = 15;
     private const int GameDurationSeconds = GameDurationMinutes * 60;
 
-    private string EnterInstanceSubject =>
-        SubjectHelper.GetEnterInstanceSubject(ServerConfig.ServerId);
-
-    public InstanceMapController(
-        ILogger logger,
-        INatsClient natsClient,
-        CancellationTokenSource cts,
-        ICacheHelper cacheHelper,
-        ServerConfig serverConfig,
-        ConcurrentDictionary<long, GameClientSession> clientSessions)
-        : base(logger, natsClient, cts, cacheHelper, serverConfig)
-    {
-        _clientSessions = clientSessions;
-        _protocolHandlers = new Dictionary<Protocol, Func<long, byte[], Task>>
-       {
-           { Protocol.U_TO_G_LOGOUT, HandleLogout }
-       };
-    }
+    private string EnterInstanceSubject => SubjectHelper.GetEnterInstanceSubject(ServerConfig.ServerId);
 
     public void Initialize()
     {
@@ -52,13 +37,7 @@ public class InstanceMapController : BaseMapController
     {
         var subjects = new Dictionary<string, Func<byte[], Task>>
        {
-           { SubjectHelper.GetUpdateInfoSubject(mapId, mapSubId, ServerConfig.ServerId), HandleUpdateInfo },
-           { SubjectHelper.GetSocialActionSubject(mapId, mapSubId, ServerConfig.ServerId), HandleSocialAction },
-           { SubjectHelper.GetTakeDamageSubject(mapId, mapSubId, ServerConfig.ServerId), HandleTakeDamage },
-           { SubjectHelper.GetSpawnManageSubject(mapId, mapSubId, ServerConfig.ServerId), SpawnManageObject },
-           { SubjectHelper.GetUpdateManageSubject(mapId, mapSubId, ServerConfig.ServerId), MoveManageObjectAsync },
            { SubjectHelper.GetLeaveManageSubject(mapId, mapSubId, ServerConfig.ServerId), LeaveManageObjectAsync },
-           { SubjectHelper.GetDestroyObjectSubject(mapId, mapSubId, ServerConfig.ServerId), DestroyManageObjectAsync }
        };
 
         foreach (var (subject, handler) in subjects)
@@ -69,19 +48,19 @@ public class InstanceMapController : BaseMapController
 
     private async Task EnterInstance(byte[] message)
     {
-        var (objectKey, mapId, mapSubId, isLogin) = MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
+        var (objectKey, mapId, mapSubId, isLogin) =
+            MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
         var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
 
-        Logger.LogInformation($"EnterInstance 요청 수신: objectKey={objectKey}, mapId={mapId}, mapSubId={mapSubId}, isLogin={isLogin}");
+        Logger.LogInformation("EnterInstance 요청 수신: objectKey={ObjectKey}, mapId={MapId}, mapSubId={MapSubId}, isLogin={IsLogin}", objectKey, mapId, mapSubId, isLogin);
 
-        var success = false;
         await MapLock.WaitAsync();
         try
         {
             var isInit = _objectInstanceDict.TryAdd(instanceKey, []);
             _objectInstanceDict[instanceKey].Add(objectKey);
 
-            Logger.LogInformation($"인스턴스 {instanceKey} 초기화 여부: {isInit}, 현재 인원: {_objectInstanceDict[instanceKey].Count}");
+            Logger.LogInformation("인스턴스 {InstanceKey} 초기화 여부: {IsInit}, 현재 인원: {Count}", instanceKey, isInit, _objectInstanceDict[instanceKey].Count);
 
             if (isInit)
             {
@@ -92,24 +71,16 @@ public class InstanceMapController : BaseMapController
                         break;
 
                     case MapId.School:
-                        // 매칭 맵: 15분 게임 타이머 시작
-                        StartGameTimer(instanceKey, mapId, mapSubId);
-                        break;
-
-                    default:
+                        StartGameTimer(instanceKey, mapSubId);
                         break;
                 }
-                // await InitializeExploreTargets(mapId, mapSubId);
-                Logger.LogInformation($"인스턴스 {instanceKey} 초기화 완료");
-            }
 
-            success = true;
+                Logger.LogInformation("인스턴스 {InstanceKey} 초기화 완료", instanceKey);
+            }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, $"인스턴스 진입 실패: objectKey={objectKey}, instanceKey={instanceKey}");
-
-            // 실패 시 인스턴스에서 제거
+            Logger.LogError(ex, "인스턴스 진입 실패: objectKey={ObjectKey}, instanceKey={InstanceKey}", objectKey, instanceKey);
             if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet))
             {
                 instanceSet.Remove(objectKey);
@@ -120,136 +91,53 @@ public class InstanceMapController : BaseMapController
             MapLock.Release();
         }
 
-        // 응답 전송
-        if (!isLogin)
+        if (isLogin)
         {
-            if (success)
-            {
-                Logger.LogInformation($"G_TO_U_ENTER_INSTANCE_SUCCESS 전송: objectKey={objectKey}, mapId={mapId}, mapSubId={mapSubId}");
-                using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
+            return;
+        }
 
-                // TCP로 직접 전송
-                if (TryExtractPlayerId(objectKey, out var playerId))
-                {
-                    if (_clientSessions.TryGetValue(playerId, out var session))
-                    {
-                        session.Send(packet);
-                    }
-                    else
-                    {
-                        // 폴백: NATS
-                        NatsClient.Publish(objectKey, packet.ToBytes());
-                    }
-                }
-            }
-            else
-            {
-                Logger.LogError($"인스턴스 진입 실패 - 에러 응답 전송: objectKey={objectKey}");
-                // TODO: 실패 응답 패킷 정의 필요
-            }
-        }
-        else
-        {
-            Logger.LogInformation($"isLogin=true이므로 G_TO_U_ENTER_INSTANCE_SUCCESS 전송 생략");
-        }
+        // MMO 인스턴스 진입 프로토콜 제거됨 - 세션 기반 게임에서는 불필요
+        // if (success)
+        // {
+        //     Logger.LogInformation("G_TO_U_ENTER_INSTANCE_SUCCESS 전송: objectKey={ObjectKey}, mapId={MapId}, mapSubId={MapSubId}", objectKey, mapId, mapSubId);
+        //     using var packet = PacketMaker.G_TO_U_ENTER_INSTANCE_SUCCESS(mapId, mapSubId);
+        //     ...
+        // }
     }
 
-    private async Task InitializeExploreTargets(MapId mapId, long mapSubId)
+    private void StartGameTimer(string instanceKey, long mapSubId)
     {
-        var exploreTargetList = GameExploreTargetData.GetListByMap(mapId);
-        foreach (var exploreTarget in exploreTargetList)
+        Logger.LogInformation("게임 타이머 시작: {InstanceKey} (15분)", instanceKey);
+        var gameTimer = new Timer(_ =>
         {
-            var exploreTargetUid = await CacheHelper.StringIncrementAsync("temp_explore_target_uid");
-            var objectInfo = new GameObjectInfo
-            {
-                ObjectType = ObjectType.EXPLORETARGET,
-                ObjectId = exploreTargetUid,
-                CurrentCell = exploreTarget.Position,
-                TargetCell = exploreTarget.Position,
-                MapId = mapId,
-                MapSubId = mapSubId,
-            };
-
-            var exploreTargetInfo = new ExploreTargetInfo(exploreTargetUid, exploreTarget.Id, objectInfo);
-            var partKey = MapHelper.CreatePartKey(mapId, mapSubId);
-            _objectInstanceDict.AddOrUpdate(partKey, [objectInfo.GetGameObjectKey()],
-                (_, set) =>
-                {
-                    set.Add(objectInfo.GetGameObjectKey());
-                    return set;
-                });
-
-            await exploreTargetInfo.Save(CacheHelper);
-            using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
-            BroadcastPacket(partKey, packet);
-        }
-    }
-
-    private void StartEnvironmentNotificationTimer(string instanceKey, MapId mapId, long mapSubId)
-    {
-        var timer = new Timer(state => SendEnvironmentNotification(instanceKey, mapId, mapSubId), null,
-            TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
-        _damageTimers[instanceKey] = timer;
-        Logger.LogInformation($"School1 맵 데미지 알림 타이머 시작: {instanceKey}");
-    }
-
-    private void SendEnvironmentNotification(string instanceKey, MapId mapId, long mapSubId)
-    {
-        try
-        {
-            if (!_objectInstanceDict.TryGetValue(instanceKey, out var userKeys) || userKeys.Count == 0)
-            {
-                return;
-            }
-
-            using var packet = PacketMaker.G_TO_C_ENVIRONMENT(DamageType.DARK);
-            BroadcastPacket(instanceKey, packet);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, $"School1 맵 데미지 알림 전송 중 오류 발생: {instanceKey}");
-        }
-    }
-
-    private void StartGameTimer(string instanceKey, MapId mapId, long mapSubId)
-    {
-        Logger.LogInformation($"게임 타이머 시작: {instanceKey} (15분)");
-
-        // 15분 후 게임 종료 타이머
-        var gameTimer = new Timer(state =>
-        {
-            EndGame(instanceKey, mapId, mapSubId);
-
-            // 타이머 정리
+            EndGame(instanceKey, mapSubId);
             if (_gameTimers.TryRemove(instanceKey, out var t))
             {
                 t.Dispose();
             }
-
-            if (_warningTimers.TryRemove(instanceKey, out var warningTimers))
+            if (!_warningTimers.TryRemove(instanceKey, out var warningTimers))
             {
-                warningTimers.OneMinuteTimer?.Dispose();
-                warningTimers.ThirtySecondsTimer?.Dispose();
+                return;
             }
+            warningTimers.OneMinuteTimer.Dispose();
+            warningTimers.ThirtySecondsTimer.Dispose();
         }, null, TimeSpan.FromSeconds(GameDurationSeconds), Timeout.InfiniteTimeSpan);
 
         _gameTimers[instanceKey] = gameTimer;
 
-        // 1분 남았을 때 알림 (14분 후)
-        var oneMinuteWarningTimer = new Timer(state =>
+        var oneMinuteWarningTimer = new Timer(_ =>
         {
             SendGameTimeWarning(instanceKey, 60);
         }, null, TimeSpan.FromSeconds(GameDurationSeconds - 60), Timeout.InfiniteTimeSpan);
 
-        // 30초 남았을 때 알림 (14분 30초 후)
-        var thirtySecondsWarningTimer = new Timer(state =>
+        var thirtySecondsWarningTimer = new Timer(_ =>
         {
             SendGameTimeWarning(instanceKey, 30);
         }, null, TimeSpan.FromSeconds(GameDurationSeconds - 30), Timeout.InfiniteTimeSpan);
 
         _warningTimers[instanceKey] = (oneMinuteWarningTimer, thirtySecondsWarningTimer);
 
-        Logger.LogInformation($"게임 타이머 및 알림 타이머 설정 완료: {instanceKey}");
+        Logger.LogInformation("게임 타이머 및 알림 타이머 설정 완료: {InstanceKey}", instanceKey);
     }
 
     private void SendGameTimeWarning(string instanceKey, int remainingSeconds)
@@ -272,12 +160,11 @@ public class InstanceMapController : BaseMapController
         }
     }
 
-    private async void EndGame(string instanceKey, MapId mapId, long mapSubId)
+    private async void EndGame(string instanceKey, long mapSubId)
     {
         try
         {
-            Logger.LogInformation($"게임 종료 처리 시작: {instanceKey}");
-
+            Logger.LogInformation("게임 종료 처리 시작: {InstanceKey}", instanceKey);
             await MapLock.WaitAsync();
             try
             {
@@ -297,7 +184,7 @@ public class InstanceMapController : BaseMapController
                 {
                     if (TryExtractPlayerId(objectKey, out var playerId))
                     {
-                        if (_clientSessions.TryGetValue(playerId, out var session))
+                        if (clientSessions.TryGetValue(playerId, out var session))
                         {
                             session.Send(packet);
                         }
@@ -315,12 +202,6 @@ public class InstanceMapController : BaseMapController
             finally
             {
                 MapLock.Release();
-            }
-
-            // 데미지 타이머도 정리
-            if (_damageTimers.TryRemove(instanceKey, out var damageTimer))
-            {
-                damageTimer.Dispose();
             }
         }
         catch (Exception ex)
@@ -341,7 +222,7 @@ public class InstanceMapController : BaseMapController
         {
             if (TryExtractPlayerId(objectKey, out var playerId))
             {
-                if (_clientSessions.TryGetValue(playerId, out var session))
+                if (clientSessions.TryGetValue(playerId, out var session))
                 {
                     session.Send(packet);
                 }
@@ -349,59 +230,8 @@ public class InstanceMapController : BaseMapController
         }
     }
 
-    private async Task HandleLogout(long playerId, byte[] body)
-    {
-        var msg = MessagePackSerializer.Deserialize<U_TO_G_LOGOUT>(body);
-
-        await using var playerLock = await PlayerInfo.Lock(CacheHelper.GetRedLockFactory(), playerId);
-        var playerInfo = await PlayerInfo.Load(CacheHelper, msg.PlayerId);
-        if (playerInfo == null)
-        {
-            Logger.LogWarning($"플레이어 {playerId} 정보를 찾을 수 없음 (로그아웃)");
-            return;
-        }
-
-        // 플레이어가 속한 인스턴스에서 제거
-        var objectKey = playerInfo.ObjectInfo.GetGameObjectKey();
-        var instanceKey = MapHelper.CreatePartKey(playerInfo.ObjectInfo.MapId, playerInfo.ObjectInfo.MapSubId);
-
-        await MapLock.WaitAsync();
-        try
-        {
-            if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet))
-            {
-                instanceSet.Remove(objectKey);
-                Logger.LogInformation($"플레이어 {playerId} 인스턴스 {instanceKey}에서 제거됨");
-
-                // 인스턴스가 비어있으면 정리
-                if (instanceSet.Count == 0)
-                {
-                    _objectInstanceDict.TryRemove(instanceKey, out _);
-                    Logger.LogInformation($"빈 인스턴스 {instanceKey} 제거됨");
-                }
-            }
-        }
-        finally
-        {
-            MapLock.Release();
-        }
-
-        // 다른 플레이어에게 로그아웃 알림
-        using var packet = PacketMaker.G_TO_U_DESTROY(objectKey);
-        BroadcastPacket(instanceKey, packet);
-    }
-
-    private async Task MoveManageObjectAsync(byte[] message)
-    {
-        var (_, objectInfo) = MessagePackSerializer.Deserialize<(string, GameObjectInfo)>(message);
-        var objectKey = GameObjectInfo.MakeObjectKey(objectInfo.ObjectType, objectInfo.ObjectId);
-        var currentInstanceKey = MapHelper.CreatePartKey(objectInfo.MapId, objectInfo.MapSubId);
-
-        await UpdateObjectPositionAsync(currentInstanceKey, objectKey);
-
-        using var packet = PacketMaker.G_TO_U_UPDATE_OBJECT(objectInfo);
-        BroadcastPacket(currentInstanceKey, packet);
-    }
+    // MMO 오브젝트 업데이트 프로토콜 제거됨
+    // private async Task MoveManageObjectAsync(byte[] message) { ... }
 
     private async Task UpdateObjectPositionAsync(string currentInstanceKey, string objectKey)
     {
@@ -439,65 +269,11 @@ public class InstanceMapController : BaseMapController
         }
     }
 
-    private Task SpawnManageObject(byte[] message)
-    {
-        var (objectKey, instanceKeyList, cellsToRemove) =
-            MessagePackSerializer.Deserialize<(string, List<string>, List<Cell>)>(message);
+    // MMO 오브젝트 스폰 프로토콜 제거됨
+    // private Task SpawnManageObject(byte[] message) { ... }
 
-        var spawnList = new List<string>();
-        foreach (var instancePartKey in instanceKeyList)
-        {
-            if (_objectInstanceDict.TryGetValue(instancePartKey, out var objectKeys))
-            {
-                spawnList.AddRange(objectKeys);
-            }
-        }
-
-        if (spawnList.Count <= 0)
-        {
-            return Task.CompletedTask;
-        }
-
-        using var packet = PacketMaker.G_TO_U_SPAWN(spawnList, []);
-
-        // TCP로 직접 전송
-        if (TryExtractPlayerId(objectKey, out var playerId))
-        {
-            if (_clientSessions.TryGetValue(playerId, out var session))
-            {
-                session.Send(packet);
-            }
-            else
-            {
-                // 폴백: NATS
-                NatsClient.Publish(objectKey, packet.ToBytes());
-            }
-        }
-
-        return Task.CompletedTask;
-    }
-
-    private async Task DestroyManageObjectAsync(byte[] message)
-    {
-        var (instanceKey, objectType, serializedInfo) = MessagePackSerializer.Deserialize<(string, ObjectType, byte[])>(message);
-        var objectKey = MessagePackSerializer.Deserialize<string>(serializedInfo);
-
-        await MapLock.WaitAsync();
-        try
-        {
-            if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet))
-            {
-                instanceSet.Remove(objectKey);
-            }
-        }
-        finally
-        {
-            MapLock.Release();
-        }
-
-        using var packet = PacketMaker.G_TO_U_DESTROY(objectKey);
-        BroadcastPacket(instanceKey, packet);
-    }
+    // MMO 오브젝트 파괴 프로토콜 제거됨
+    // private async Task DestroyManageObjectAsync(byte[] message) { ... }
 
     protected override void BroadcastPacket(string instanceKey, IPacket packet)
     {
@@ -512,7 +288,7 @@ public class InstanceMapController : BaseMapController
             // objectKey 형식: "ObjectType_ObjectId" (예: "PLAYER_123")
             if (TryExtractPlayerId(objectKey, out var playerId))
             {
-                if (_clientSessions.TryGetValue(playerId, out var session))
+                if (clientSessions.TryGetValue(playerId, out var session))
                 {
                     session.Send(packet);
                 }
@@ -542,7 +318,7 @@ public class InstanceMapController : BaseMapController
         return false;
     }
 
-    public override async Task ShutdownAsync()
+    public async Task ShutdownAsync()
     {
         await MapLock.WaitAsync();
         try
@@ -550,25 +326,17 @@ public class InstanceMapController : BaseMapController
             // 모든 게임 타이머 정리
             foreach (var timer in _gameTimers.Values)
             {
-                timer?.Dispose();
+                await timer.DisposeAsync();
             }
             _gameTimers.Clear();
 
             // 모든 경고 타이머 정리
             foreach (var (oneMinuteTimer, thirtySecondsTimer) in _warningTimers.Values)
             {
-                oneMinuteTimer?.Dispose();
-                thirtySecondsTimer?.Dispose();
+                await oneMinuteTimer.DisposeAsync();
+                await thirtySecondsTimer.DisposeAsync();
             }
             _warningTimers.Clear();
-
-            // 모든 데미지 타이머 정리
-            foreach (var timer in _damageTimers.Values)
-            {
-                timer?.Dispose();
-            }
-            _damageTimers.Clear();
-
             Logger.LogInformation("InstanceMapController 종료: 모든 타이머 정리 완료");
         }
         finally

@@ -1,3 +1,4 @@
+// ReSharper disable All
 #pragma warning disable CS8618 // 생성자를 종료할 때 null을 허용하지 않는 필드에 null이 아닌 값을 포함해야 합니다. null 허용으로 선언해 보세요.
 #pragma warning disable CS8625 // Null 리터럴을 null을 허용하지 않는 참조 형식으로 변환할 수 없습니다.
 #pragma warning disable CS8603 // 가능한 null 참조 반환입니다.
@@ -32,12 +33,12 @@ namespace network.common.data
 
         public static void Validate(LogManager logManager)
         {
-            logManager.WriteDebugLog("=== GameQuestData Validation ===");
+            LogManager.WriteDebugLog("=== GameQuestData Validation ===");
             foreach (var (id, quest) in Quests)
             {
-                logManager.WriteDebugLog($"[{id}] {quest.Title}");
+                LogManager.WriteDebugLog($"[{id}] {quest.Title}");
             }
-            logManager.WriteDebugLog("All validations passed successfully!");
+            LogManager.WriteDebugLog("All validations passed successfully!");
         }
     }
 

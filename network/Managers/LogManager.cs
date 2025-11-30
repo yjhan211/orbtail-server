@@ -5,18 +5,38 @@ using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace network.managers;
 
-public class LogManager(string serverType, int serverId, ILogger<LogManager> logger)
-    : ILogger
+public class LogManager : ILogger
 {
-    private readonly string _serverType = serverType;
-    private readonly int _serverId = serverId;
+    private static ILogger? _staticLogger;
+    private readonly ILogger _logger;
 
-    public void WriteInfoLog(string message)
+    public LogManager(string serverType, int serverId, ILogger<LogManager> logger)
     {
-        logger.LogInformation(message);
+        _logger = logger;
+        _staticLogger ??= logger;
     }
 
-    public void WriteDebugLog(string message, bool includeStackTrace = false)
+    public static void WriteInfoLog(string message)
+    {
+        _staticLogger?.LogInformation(message);
+    }
+
+    public static void WriteDebugLog(string message)
+    {
+        _staticLogger?.LogDebug(message);
+    }
+
+    public static void WriteErrorLog(string message)
+    {
+        _staticLogger?.LogError(message);
+    }
+
+    public static void WriteErrorLog(Exception exception)
+    {
+        _staticLogger?.LogError(exception, exception.Message);
+    }
+
+    public void WriteDebugLogWithStackTrace(string message, bool includeStackTrace = false)
     {
         var logBuilder = new StringBuilder();
         logBuilder.Append(message);
@@ -40,33 +60,22 @@ public class LogManager(string serverType, int serverId, ILogger<LogManager> log
                     logBuilder.AppendLine($"   at {className}.{methodName}");
             }
         }
-        logger.LogDebug(logBuilder.ToString());
-    }
-
-    public void WriteErrorLog(Exception exception)
-    {
-        logger.LogError(exception, exception.Message);
-    }
-
-    public void WriteErrorLog(string message)
-    {
-        logger.LogError(message);
+        _logger.LogDebug(logBuilder.ToString());
     }
 
     // ILogger 인터페이스 구현
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull
     {
-        // 내부 로거를 통해 범위 전달
-        return logger.BeginScope(state);
+        return _logger.BeginScope(state);
     }
 
     public bool IsEnabled(LogLevel logLevel)
     {
-        return logger.IsEnabled(logLevel);
+        return _logger.IsEnabled(logLevel);
     }
 
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
     {
-        logger.Log(logLevel, eventId, state, exception, formatter);
+        _logger.Log(logLevel, eventId, state, exception, formatter);
     }
 }

@@ -108,7 +108,7 @@ namespace network.common.data.models
     {
         [Key("success")] public bool Success { get; set; }
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("message")] public string? Message { get; set; }
+        [Key("message")] public string Message { get; set; }
     }
 
     [MessagePackObject]
@@ -128,9 +128,22 @@ namespace network.common.data.models
         [Key("position")] public Vector3f Position { get; set; }
         [Key("velocity")] public Vector3f Velocity { get; set; }
         [Key("rotation")] public float Rotation { get; set; }
-        [Key("currentCell")] public Cell CurrentCell { get; set; }
+        [Key("cell")] public Cell Cell { get; set; }
         [Key("lastProcessedInput")] public uint LastProcessedInput { get; set; }
         [Key("serverTime")] public long ServerTimestamp { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_AREA_PLAYER_ENTER : IMessagePackObject
+    {
+        [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
+        [Key("cell")] public Cell Cell { get; set; } // 최신 Cell 위치
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_AREA_PLAYER_LEAVE : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
     }
 
     [MessagePackObject]
@@ -175,6 +188,12 @@ namespace network.common.data.models
 
     [MessagePackObject]
     public class U_TO_C_PLAYER_INFO : IMessagePackObject
+    {
+        [Key("playerInfoList")] public List<PlayerInfo> PlayerInfoList { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_PLAYER_INFO : IMessagePackObject
     {
         [Key("playerInfoList")] public List<PlayerInfo> PlayerInfoList { get; set; }
     }

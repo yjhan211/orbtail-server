@@ -30,7 +30,8 @@ public class GameServer : IHostedService
     private readonly List<InstanceMapController> _instanceControllerList = [];
     private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
     private CancellationTokenSource _cts = new();
-    private INatsClient? _logoutNatsClient;
+    // MMO 로그아웃 클라이언트 제거됨
+    // private INatsClient? _logoutNatsClient;
 
     private readonly ServerConfig _serverConfig;
 
@@ -53,7 +54,7 @@ public class GameServer : IHostedService
 
         _protocolHandlers = new Dictionary<Protocol, Func<long, byte[], Task>>
         {
-            { Protocol.U_TO_G_LOGOUT, HandleLogout }
+            // Session-based game - no need for logout protocol
         };
     }
 
@@ -68,7 +69,7 @@ public class GameServer : IHostedService
             StartTcpServer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            SubscribeToLogoutEvents();
+            // No logout subscription needed for session-based games
 
             _logger.LogInformation("Game server started successfully.");
             return Task.CompletedTask;
@@ -85,7 +86,8 @@ public class GameServer : IHostedService
         _logger.LogInformation("Game server stopping...");
 
         await _cts.CancelAsync();
-        _logoutNatsClient?.Close();
+        // MMO 로그아웃 클라이언트 제거됨
+        // _logoutNatsClient?.Close();
 
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
@@ -112,7 +114,7 @@ public class GameServer : IHostedService
 
     private void InitializeControllers()
     {
-        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cts, _cacheHelper, _serverConfig, _clientSessions);
+        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cacheHelper, _serverConfig, _clientSessions);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
@@ -130,15 +132,15 @@ public class GameServer : IHostedService
         try
         {
             var redLockFactory = _redisPool.GetRedLockFactory();
-            var natsClient = _natsClientFactory.Create();
-            var session = new GameClientSession(
+            _natsClientFactory.Create();
+            _ = new GameClientSession(
                 token,
                 redLockFactory,
-                natsClient,
                 _logger,
                 _cacheHelper,
                 OnClientSessionLeave,
-                _serverConfig);
+                RegisterClientSession,
+                GetSessionsByInstance);
 
             _logger.LogInformation("Game client session created");
         }
@@ -153,68 +155,25 @@ public class GameServer : IHostedService
         if (session.PlayerId.HasValue)
         {
             _clientSessions.TryRemove(session.PlayerId.Value, out _);
-            _logger.LogInformation($"Game client session removed: PlayerId={session.PlayerId.Value}");
+            _logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", session.PlayerId.Value);
         }
     }
 
-    public void RegisterClientSession(long playerId, GameClientSession session)
+    private void RegisterClientSession(long playerId, GameClientSession session)
     {
         _clientSessions.TryAdd(playerId, session);
-        _logger.LogInformation($"Game client session registered: PlayerId={playerId}");
+        _logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
     }
 
-    private void SubscribeToLogoutEvents()
+    private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
     {
-        _logoutNatsClient = _natsClientFactory.Create();
-        var logoutSubject = SubjectHelper.GetLogoutSubject(_serverConfig.ServerId);
-
-        _logoutNatsClient.Subscribe(logoutSubject, async void (_, message) =>
-        {
-            try
-            {
-                await ProcessMessage(message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing logout message");
-            }
-        });
-
-        _logger.LogInformation("Subscribed to logout events: {Subject}", logoutSubject);
+        return _clientSessions.Values
+            .Where(s => s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId)
+            .ToList();
     }
 
-    private async Task ProcessMessage(byte[] message)
-    {
-        using var packet = new Packet(message);
-        var protocolId = (Protocol)packet.PopProtocolId();
-        var playerId = packet.PopPlayerId();
-        var body = packet.PopBody();
-
-        if (!_protocolHandlers.TryGetValue(protocolId, out var handler))
-        {
-            throw new NotSupportedException($"Unsupported protocol: {protocolId}");
-        }
-
-        await handler(playerId, body);
-    }
-
-    private async Task HandleLogout(long playerId, byte[] body)
-    {
-        var msg = MessagePackSerializer.Deserialize<U_TO_G_LOGOUT>(body);
-
-        _logger.LogInformation($"로그아웃 요청: PlayerId={msg.PlayerId}");
-
-        await using var playerLock = await PlayerInfo.Lock(_cacheHelper.GetRedLockFactory(), playerId);
-        var playerInfo = await PlayerInfo.Load(_cacheHelper, msg.PlayerId);
-        if (playerInfo == null)
-        {
-            _logger.LogWarning($"플레이어 {msg.PlayerId} 정보를 찾을 수 없음 (로그아웃)");
-            return;
-        }
-
-        // 각 InstanceMapController에서 처리하도록 전달
-        // 현재는 단일 InstanceMapController만 있으므로 직접 호출하지 않고
-        // InstanceMapController가 자체적으로 U_TO_G_LOGOUT을 subscribe하도록 구현됨
-        _logger.LogInformation($"플레이어 {msg.PlayerId} 로그아웃 처리 완료");
-    }
+    // MMO 로그아웃 프로토콜 제거됨 - 세션 기반 게임에서는 불필요
+    // private void SubscribeToLogoutEvents() { ... }
+    // private async Task ProcessMessage(byte[] message) { ... }
+    // private async Task HandleLogout(long playerId, byte[] body) { ... }
 }
