@@ -89,26 +89,22 @@ public partial class PlayerInfo
 
     /// <summary>
     /// Cell 좌표를 Unity Isometric World Position으로 변환
-    /// Unity Isometric Z as Y 타일맵 기준 (cellSize: 1x0.5)
+    /// 공식: WorldX = (GridCellX - GridCellY) * 0.5
+    ///       WorldY = (GridCellX + GridCellY) * 0.25 + 0.25
     /// </summary>
     private static Vector3f CellToWorldPosition(Cell cell)
     {
-        // Unity MapController의 CellOffset과 동일하게 적용
+        // Unity MapController CellOffset
         const int cellOffsetX = -5;
         const int cellOffsetY = -5;
+        const float cellCenterOffsetY = 0.25f;
 
-        // Unity Grid Cell 좌표로 변환
+        // CellOffset 적용
         int gridCellX = cell.X + cellOffsetX;
         int gridCellY = cell.Y + cellOffsetY;
 
-        // Unity Isometric Z as Y 타일맵의 GetCellCenterWorld 공식
-        // cellSize.x = 1, cellSize.y = 0.5
-        const float cellWidth = 1f;
-        const float cellHeight = 0.5f;
-
-        // Isometric 변환: Grid Cell → World Position
-        float worldX = (gridCellX + gridCellY + 1) * cellWidth * 0.5f;
-        float worldY = (gridCellY - gridCellX) * cellHeight * 0.5f;
+        float worldX = (gridCellX - gridCellY) * 0.5f;
+        float worldY = (gridCellX + gridCellY) * 0.25f + cellCenterOffsetY;
 
         return new Vector3f(worldX, worldY, 0);
     }

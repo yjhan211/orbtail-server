@@ -114,6 +114,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class C_TO_G_MOVE : IMessagePackObject
     {
+        [Key("position")] public Vector3f Position { get; set; }
         [Key("velocity")] public Vector3f Velocity { get; set; }
         [Key("rotation")] public float Rotation { get; set; }
         [Key("inputSeq")] public uint InputSequence { get; set; }

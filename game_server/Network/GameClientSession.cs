@@ -225,12 +225,12 @@ public class GameClientSession : IPeer
             var deltaTime = (float)(now - _lastMoveTime).TotalSeconds;
             _lastMoveTime = now;
 
-            // 1. 서버에서 Position 계산 (Velocity 기반)
-            var calculatedPosition = CalculatePosition(msg.Velocity, deltaTime);
+            // 1. 클라이언트 Position 검증
+            var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
 
-            _logger.LogDebug("Player {PlayerId} C_TO_G_MOVE: Velocity=({VX},{VY},{VZ}), CalculatedPos=({X},{Y},{Z})",
-                PlayerId, msg.Velocity.X, msg.Velocity.Y, msg.Velocity.Z,
-                calculatedPosition.X, calculatedPosition.Y, calculatedPosition.Z);
+            _logger.LogDebug("Player {PlayerId} C_TO_G_MOVE: ClientPos=({CX},{CY}), Velocity=({VX},{VY}), ValidatedPos=({X},{Y})",
+                PlayerId, msg.Position.X, msg.Position.Y, msg.Velocity.X, msg.Velocity.Y,
+                validatedPosition.X, validatedPosition.Y);
 
             // 2. 주기적 저장 (1초마다)
             var needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
@@ -243,7 +243,7 @@ public class GameClientSession : IPeer
 
                 if (playerInfo != null)
                 {
-                    playerInfo.ObjectInfo.Position = calculatedPosition;
+                    playerInfo.ObjectInfo.Position = validatedPosition;
                     playerInfo.ObjectInfo.Velocity = msg.Velocity;
                     playerInfo.ObjectInfo.Rotation = msg.Rotation;
                     playerInfo.ObjectInfo.MoveTimestamp = now;
@@ -254,11 +254,11 @@ public class GameClientSession : IPeer
                 }
             }
 
-            _lastValidatedPosition = calculatedPosition;
+            _lastValidatedPosition = validatedPosition;
 
             // 3. Area 체크 및 변경 감지
             var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var currentCell = WorldPositionToCell(calculatedPosition);
+            var currentCell = WorldPositionToCell(validatedPosition);
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
             // Area 변경 시 진입/퇴장 이벤트 전송
@@ -273,7 +273,7 @@ public class GameClientSession : IPeer
             // 4. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
-                calculatedPosition,
+                validatedPosition,
                 msg.Velocity,
                 msg.Rotation,
                 currentCell,
@@ -298,75 +298,90 @@ public class GameClientSession : IPeer
     }
 
     /// <summary>
-    /// Velocity 기반으로 Position 계산 (서버 권위, Isometric World 좌표)
+    /// 클라이언트 Position 검증 (치트 방지)
+    /// 정상이면 클라이언트 Position 사용, 비정상이면 서버 계산 Position 사용
     /// </summary>
-    private Vector3f CalculatePosition(Vector3f velocity, float deltaTime)
+    private Vector3f ValidatePosition(Vector3f clientPos, Vector3f velocity, float deltaTime)
     {
-        const float maxSpeed = 20f; // 최대 속도 (m/s)
+        const float maxSpeed = 10f; // 최대 속도 (units/s)
+        const float tolerance = 1.5f; // 허용 오차 (50%)
         const float mapMinX = -1000f;
         const float mapMaxX = 1000f;
         const float mapMinY = -1000f;
         const float mapMaxY = 1000f;
 
+        // Z값은 항상 0으로 고정
+        clientPos.Z = 0;
+
         // 1. 속도 제한 체크
         var speed = velocity.Magnitude();
         if (speed > maxSpeed)
         {
-            _logger.LogWarning($"Player {PlayerId} 속도 초과: {speed:F2} > {maxSpeed}");
-            velocity = velocity.Normalized() * maxSpeed;
+            _logger.LogWarning("Player {PlayerId} 속도 초과: {Speed:F2} > {MaxSpeed}", PlayerId, speed, maxSpeed);
+            // 클라이언트 위치를 신뢰하지 않고 서버 계산 위치 사용
+            if (_lastValidatedPosition != null)
+            {
+                var correctedVelocity = velocity.Normalized() * maxSpeed;
+                return new Vector3f(
+                    _lastValidatedPosition.X + correctedVelocity.X * deltaTime,
+                    _lastValidatedPosition.Y + correctedVelocity.Y * deltaTime,
+                    0
+                );
+            }
         }
 
-        // 2. 새 위치 계산 (Isometric World 좌표, Z=0 고정)
-        Vector3f newPosition;
-        if (_lastValidatedPosition != null)
+        // 2. 이동 거리 검증 (텔레포트 방지)
+        if (_lastValidatedPosition != null && deltaTime > 0)
         {
-            var lastPos = _lastValidatedPosition;
-            newPosition = new Vector3f(
-                lastPos.X + velocity.X * deltaTime,
-                lastPos.Y + velocity.Y * deltaTime,
-                0  // Z는 항상 0
-            );
-        }
-        else
-        {
-            // 첫 이동: 초기 위치에서 시작 (HandleConnect에서 설정됨)
-            _logger.LogWarning($"Player {PlayerId} 첫 이동인데 _lastValidatedPosition이 없음");
-            return new Vector3f(0, 0, 0); // 안전한 기본값
+            var delta = clientPos - _lastValidatedPosition;
+            var distance = delta.Magnitude();
+            var maxDistance = maxSpeed * deltaTime * tolerance;
+
+            if (distance > maxDistance)
+            {
+                _logger.LogWarning("Player {PlayerId} 텔레포트 감지: distance={Distance:F2}, maxAllowed={MaxDistance:F2}",
+                    PlayerId, distance, maxDistance);
+                // 서버 계산 위치로 보정
+                return new Vector3f(
+                    _lastValidatedPosition.X + velocity.X * deltaTime,
+                    _lastValidatedPosition.Y + velocity.Y * deltaTime,
+                    0
+                );
+            }
         }
 
         // 3. 맵 경계 체크
-        if (newPosition.X < mapMinX) newPosition.X = mapMinX;
-        if (newPosition.X > mapMaxX) newPosition.X = mapMaxX;
-        if (newPosition.Y < mapMinY) newPosition.Y = mapMinY;
-        if (newPosition.Y > mapMaxY) newPosition.Y = mapMaxY;
+        if (clientPos.X < mapMinX) clientPos.X = mapMinX;
+        if (clientPos.X > mapMaxX) clientPos.X = mapMaxX;
+        if (clientPos.Y < mapMinY) clientPos.Y = mapMinY;
+        if (clientPos.Y > mapMaxY) clientPos.Y = mapMaxY;
 
-        // TODO: 4. 장애물 충돌 체크
-        // if (IsCollidingWithObstacle(newPosition))
-        // {
-        //     return _lastValidatedPosition;
-        // }
-
-        return newPosition;
+        // 검증 통과: 클라이언트 Position 사용
+        return clientPos;
     }
 
     #region Isometric 좌표 변환 (Unity Isometric Z as Y 타일맵)
 
-    // Unity MapController의 CellOffset과 동일
+    // Unity MapController CellOffset
     private const int CellOffsetX = -5;
     private const int CellOffsetY = -5;
-    private const float CellWidth = 1f;
-    private const float CellHeight = 0.5f;
+
+    // Cell 중심점 Y 오프셋 (Unity 타일맵 기준)
+    private const float CellCenterOffsetY = 0.25f;
 
     /// <summary>
     /// Cell 좌표를 Unity Isometric World Position으로 변환
+    /// 공식: WorldX = (GridCellX - GridCellY) * 0.5
+    ///       WorldY = (GridCellX + GridCellY) * 0.25 + 0.25
     /// </summary>
     private static Vector3f CellToWorldPosition(Cell cell)
     {
+        // CellOffset 적용
         int gridCellX = cell.X + CellOffsetX;
         int gridCellY = cell.Y + CellOffsetY;
 
-        float worldX = (gridCellX + gridCellY + 1) * CellWidth * 0.5f;
-        float worldY = (gridCellY - gridCellX) * CellHeight * 0.5f;
+        float worldX = (gridCellX - gridCellY) * 0.5f;
+        float worldY = (gridCellX + gridCellY) * 0.25f + CellCenterOffsetY;
 
         return new Vector3f(worldX, worldY, 0);
     }
@@ -376,25 +391,24 @@ public class GameClientSession : IPeer
     /// </summary>
     private static Cell WorldPositionToCell(Vector3f worldPos)
     {
-        // Isometric 역변환
-        // worldX = (gridCellX + gridCellY + 1) * 0.5
-        // worldY = (gridCellY - gridCellX) * 0.25
-        //
-        // 2 * worldX = gridCellX + gridCellY + 1
-        // 4 * worldY = gridCellY - gridCellX
-        //
-        // gridCellX + gridCellY = 2 * worldX - 1
-        // gridCellY - gridCellX = 4 * worldY
-        //
-        // 2 * gridCellY = 2 * worldX - 1 + 4 * worldY
-        // gridCellY = worldX - 0.5 + 2 * worldY
-        // gridCellX = 2 * worldX - 1 - gridCellY = worldX - 0.5 - 2 * worldY
+        // 오프셋 제거
+        float adjustedY = worldPos.Y - CellCenterOffsetY;
 
-        float gridCellYf = worldPos.X - 0.5f + 2f * worldPos.Y;
-        float gridCellXf = worldPos.X - 0.5f - 2f * worldPos.Y;
+        // 역변환
+        // WorldX = (GridCellX - GridCellY) * 0.5
+        // WorldY = (GridCellX + GridCellY) * 0.25
+        //
+        // 2 * WorldX = GridCellX - GridCellY
+        // 4 * WorldY = GridCellX + GridCellY
+        //
+        // GridCellX = WorldX + 2 * WorldY
+        // GridCellY = 2 * WorldY - WorldX
 
-        int gridCellX = (int)Math.Floor(gridCellXf);
-        int gridCellY = (int)Math.Floor(gridCellYf);
+        float gridCellXf = worldPos.X + 2f * adjustedY;
+        float gridCellYf = 2f * adjustedY - worldPos.X;
+
+        int gridCellX = (int)Math.Round(gridCellXf);
+        int gridCellY = (int)Math.Round(gridCellYf);
 
         // CellOffset 역적용
         int cellX = gridCellX - CellOffsetX;
