@@ -19,10 +19,10 @@ namespace network.common.data.helpers
             var textAsset = Resources.Load<TextAsset>(filePath);
             if (textAsset == null)
                 throw new FileNotFoundException($"CSV file not found in Resources: {filePath}");
-            
+
             // Windows(CRLF)와 Mac/Linux(LF)의 줄바꿈 문자를 모두 처리하도록 변경
             lines = textAsset.text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            
+
             Resources.UnloadAsset(textAsset);
 #else
             // 에디터 및 기타 PC 환경: 파일 시스템에서 직접 읽기

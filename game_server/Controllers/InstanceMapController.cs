@@ -51,7 +51,7 @@ public sealed class InstanceMapController(
         var (objectKey, mapId, mapSubId, isLogin) =
             MessagePackSerializer.Deserialize<(string, MapId, long, bool)>(message);
         var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
-        
+
         Logger.LogInformation("EnterInstance 요청 수신: objectKey={ObjectKey}, mapId={MapId}, mapSubId={MapSubId}, isLogin={IsLogin}", objectKey, mapId, mapSubId, isLogin);
 
         await MapLock.WaitAsync();
@@ -124,12 +124,12 @@ public sealed class InstanceMapController(
         }, null, TimeSpan.FromSeconds(GameDurationSeconds), Timeout.InfiniteTimeSpan);
 
         _gameTimers[instanceKey] = gameTimer;
-        
+
         var oneMinuteWarningTimer = new Timer(_ =>
         {
             SendGameTimeWarning(instanceKey, 60);
         }, null, TimeSpan.FromSeconds(GameDurationSeconds - 60), Timeout.InfiniteTimeSpan);
-        
+
         var thirtySecondsWarningTimer = new Timer(_ =>
         {
             SendGameTimeWarning(instanceKey, 30);
