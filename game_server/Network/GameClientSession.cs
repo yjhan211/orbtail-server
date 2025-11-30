@@ -30,6 +30,7 @@ public class GameClientSession : IPeer
     private Vector3f? _lastValidatedPosition;
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
+    private bool _isFirstMove = true;
 
     public GameClientSession(
         UserToken token,
@@ -296,8 +297,8 @@ public class GameClientSession : IPeer
             velocity = velocity.Normalized() * maxSpeed;
         }
 
-        // 2. 이동 거리 검증 (텔레포트 방지)
-        if (_lastValidatedPosition != null)
+        // 2. 이동 거리 검증 (텔레포트 방지) - 첫 이동은 건너뜀
+        if (_lastValidatedPosition != null && !_isFirstMove)
         {
             var lastPos = _lastValidatedPosition;
             var delta = clientPos - lastPos;
@@ -308,11 +309,17 @@ public class GameClientSession : IPeer
             if (distance > maxDistance && deltaTime > 0)
             {
                 _logger.LogWarning($"Player {PlayerId} 텔레포트 감지: " + $"distance={distance:F2}m, maxAllowed={maxDistance:F2}m, deltaTime={deltaTime:F3}s");
-                
+
                 // 서버 계산 위치로 보정
                 var correctedPos = lastPos + velocity * deltaTime;
                 clientPos = correctedPos;
             }
+        }
+
+        // 첫 이동 플래그 해제
+        if (_isFirstMove)
+        {
+            _isFirstMove = false;
         }
 
         // 3. 맵 경계 체크
