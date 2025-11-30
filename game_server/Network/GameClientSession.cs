@@ -226,8 +226,14 @@ public class GameClientSession : IPeer
             var deltaTime = (float)(now - _lastMoveTime).TotalSeconds;
             _lastMoveTime = now;
 
+            _logger.LogDebug("Player {PlayerId} C_TO_G_MOVE: Position=({X},{Y},{Z}), Velocity=({VX},{VY},{VZ})",
+                PlayerId, msg.Position.X, msg.Position.Y, msg.Position.Z, msg.Velocity.X, msg.Velocity.Y, msg.Velocity.Z);
+
             // 1. 위치 검증 (간단한 치트 방지)
             var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
+
+            _logger.LogDebug("Player {PlayerId} validatedPosition=({X},{Y},{Z})",
+                PlayerId, validatedPosition.X, validatedPosition.Y, validatedPosition.Z);
 
             // 2. 주기적 저장 (1초마다)
             var needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
@@ -257,13 +263,15 @@ public class GameClientSession : IPeer
             var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var currentCell = new Cell(
                 (int)Math.Round(validatedPosition.X),
-                (int)Math.Round(validatedPosition.Z)
+                (int)Math.Round(validatedPosition.Y)  // 2D 게임: Y축이 세로
             );
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
             // Area 변경 시 진입/퇴장 이벤트 전송
             if (newArea != CurrentArea)
             {
+                _logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
+                    PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
                 await HandleAreaChange(CurrentArea, newArea);
                 CurrentArea = newArea;
             }

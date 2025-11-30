@@ -80,7 +80,8 @@ namespace network.common.data.models
         // Position이 업데이트될 때 Cell도 자동으로 업데이트
         public void UpdateCellFromPosition()
         {
-            Cell = new Cell((int)Math.Round(Position.X), (int)Math.Round(Position.Z));
+            // 2D 게임: X축=가로, Y축=세로, Z축=0
+            Cell = new Cell((int)Math.Round(Position.X), (int)Math.Round(Position.Y));
         }
 
         // 하위 호환성을 위한 속성 (Deprecated)
