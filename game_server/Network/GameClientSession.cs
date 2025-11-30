@@ -412,7 +412,16 @@ public class GameClientSession : IPeer
 
             if (playerInfo == null) return;
 
-            // 1. 이전 Area의 플레이어들에게 퇴장 알림
+            // 내 최신 위치로 playerInfo 업데이트
+            if (_lastValidatedPosition != null)
+            {
+                var latestCell = WorldPositionToCell(_lastValidatedPosition);
+                playerInfo.ObjectInfo.Position = _lastValidatedPosition;
+                playerInfo.ObjectInfo.Cell = latestCell;
+                playerInfo.LastCell = latestCell;
+            }
+
+            // 1. 이전 Area의 플레이어들에게 퇴장 알림 + 나에게 기존 플레이어 삭제 알림
             if (oldArea != AreaType.None)
             {
                 var oldAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == oldArea).ToList();
@@ -420,17 +429,27 @@ public class GameClientSession : IPeer
 
                 foreach (var session in oldAreaSessions)
                 {
+                    // 이전 Area 플레이어들에게 내 퇴장 알림
                     session.Send(leavePacket);
+
+                    // 나에게 이전 Area 플레이어들 삭제 알림
+                    if (session.PlayerId.HasValue)
+                    {
+                        using var removePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(session.PlayerId.Value);
+                        Send(removePacket);
+                    }
                 }
 
-                _logger.LogDebug("Sent LEAVE to {Count} players in old Area {OldArea}", oldAreaSessions.Count, oldArea);
+                _logger.LogDebug("Sent LEAVE to {Count} players in old Area {OldArea}, removed them from my view",
+                    oldAreaSessions.Count, oldArea);
             }
 
-            // 2. 새 Area의 플레이어들에게 진입 알림
+            // 2. 새 Area의 플레이어들에게 진입 알림 (내 최신 위치 포함)
             if (newArea != AreaType.None)
             {
                 var newAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == newArea).ToList();
-                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(playerInfo);
+                var myPosition = _lastValidatedPosition ?? playerInfo.ObjectInfo.Position;
+                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(playerInfo, myPosition);
 
                 foreach (var session in newAreaSessions)
                 {
@@ -439,7 +458,7 @@ public class GameClientSession : IPeer
 
                 _logger.LogDebug("Sent ENTER to {Count} players in new Area {NewArea}", newAreaSessions.Count, newArea);
 
-                // 3. 나에게 새 Area의 다른 플레이어 정보 전송
+                // 3. 나에게 새 Area의 다른 플레이어 정보 전송 (세션의 최신 위치 사용)
                 foreach (var session in newAreaSessions)
                 {
                     if (!session.PlayerId.HasValue) continue;
@@ -447,7 +466,10 @@ public class GameClientSession : IPeer
                     var otherPlayerInfo = await PlayerInfo.Load(_cacheHelper, session.PlayerId.Value);
                     if (otherPlayerInfo != null)
                     {
-                        using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(otherPlayerInfo);
+                        // 세션의 최신 위치 사용 (없으면 캐시된 ObjectInfo.Position 사용)
+                        var otherPosition = session._lastValidatedPosition ?? otherPlayerInfo.ObjectInfo.Position;
+
+                        using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(otherPlayerInfo, otherPosition);
                         Send(otherEnterPacket);
                     }
                 }

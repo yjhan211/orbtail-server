@@ -213,10 +213,14 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_AREA_PLAYER_ENTER(PlayerInfo playerInfo)
+    public static Packet G_TO_C_AREA_PLAYER_ENTER(PlayerInfo playerInfo, Vector3f position)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_AREA_PLAYER_ENTER);
-        G_TO_C_AREA_PLAYER_ENTER body = new() { PlayerInfo = playerInfo };
+        G_TO_C_AREA_PLAYER_ENTER body = new()
+        {
+            PlayerInfo = playerInfo,
+            Position = position
+        };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
