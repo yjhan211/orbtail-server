@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using network.common.data.helpers;
 using network.common.data.models;
+using network.common.helpers;
 using network.managers;
 
 namespace network.common.data
@@ -61,14 +62,14 @@ namespace network.common.data
 
         public static void Validate(LogManager logManager)
         {
-            logManager.WriteInfoLog("=== GameRuleData Validation ===");
-            logManager.WriteInfoLog($"Speed: {Speed}");
-            logManager.WriteInfoLog($"StartPosition: ({StartPosition.X}, {StartPosition.Y})");
-            logManager.WriteInfoLog($"SkillCompleteTime: {SkillCompleteTime}");
-            logManager.WriteInfoLog($"HeartBeatActive: {HeartBeatActive}");
-            logManager.WriteInfoLog(
+            LogManager.WriteInfoLog("=== GameRuleData Validation ===");
+            LogManager.WriteInfoLog($"Speed: {Speed}");
+            LogManager.WriteInfoLog($"StartPosition: ({StartPosition.X}, {StartPosition.Y})");
+            LogManager.WriteInfoLog($"SkillCompleteTime: {SkillCompleteTime}");
+            LogManager.WriteInfoLog($"HeartBeatActive: {HeartBeatActive}");
+            LogManager.WriteInfoLog(
                 $"DefaultItemList: [{string.Join(", ", DefaultItemList.Select(x => $"({x.Item1}, {x.Item2})"))}]");
-            logManager.WriteInfoLog("");
+            LogManager.WriteInfoLog("");
 
             var errors = new List<string>();
 
@@ -84,12 +85,12 @@ namespace network.common.data
 
             if (errors.Count != 0)
             {
-                logManager.WriteInfoLog("Validation Errors:");
-                foreach (var error in errors) logManager.WriteInfoLog($"- {error}");
+                LogManager.WriteInfoLog("Validation Errors:");
+                foreach (var error in errors) LogManager.WriteInfoLog($"- {error}");
                 throw new InvalidDataException(string.Join("\n", errors));
             }
 
-            logManager.WriteInfoLog("All validations passed successfully!");
+            LogManager.WriteInfoLog("All validations passed successfully!");
         }
     }
 }

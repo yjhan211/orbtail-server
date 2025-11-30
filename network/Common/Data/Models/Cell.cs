@@ -51,10 +51,6 @@ namespace network.common.data.models
 
         public static Cell Clone(Cell cell)
         {
-            if (cell == null)
-            {
-                return new Cell(0, 0); // 기본값 반환
-            }
             return new Cell(cell.X, cell.Y);
         }
 

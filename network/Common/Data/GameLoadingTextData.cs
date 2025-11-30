@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using network.common.data.helpers;
+using network.common.helpers;
 using network.managers;
 
 namespace network.common.data
@@ -51,8 +52,8 @@ namespace network.common.data
 
         public static void Validate(LogManager logManager)
         {
-            logManager.WriteInfoLog("=== GameLoadingTextData Validation ===");
-            logManager.WriteInfoLog($"Total loading texts: {_loadingTexts?.Count ?? 0}");
+            LogManager.WriteInfoLog("=== GameLoadingTextData Validation ===");
+            LogManager.WriteInfoLog($"Total loading texts: {_loadingTexts?.Count ?? 0}");
 
             var errors = new List<string>();
 
@@ -63,16 +64,16 @@ namespace network.common.data
 
             if (errors.Count != 0)
             {
-                logManager.WriteInfoLog("Validation Errors:");
+                LogManager.WriteInfoLog("Validation Errors:");
                 foreach (var error in errors)
                 {
-                    logManager.WriteInfoLog($"- {error}");
+                    LogManager.WriteInfoLog($"- {error}");
                 }
                 throw new InvalidDataException(string.Join("\n", errors));
             }
 
-            logManager.WriteInfoLog("All validations passed successfully!");
-            logManager.WriteInfoLog("");
+            LogManager.WriteInfoLog("All validations passed successfully!");
+            LogManager.WriteInfoLog("");
         }
     }
 }

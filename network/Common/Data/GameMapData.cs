@@ -53,7 +53,6 @@ namespace network.common.data
         {
             foreach (var row in data)
             {
-                // CSV에서 init_cell_x, init_cell_y, is_flip 읽기
                 var initCellX = int.Parse(row["init_cell_x"]);
                 var initCellY = int.Parse(row["init_cell_y"]);
                 var isFlip = int.Parse(row["is_flip"]) == 1;
@@ -64,7 +63,7 @@ namespace network.common.data
                     SceneName = row["scene_name"],
                     IsCommon = int.Parse(row["is_common"]) == 1,
                     InitCell = new InitCellData(
-                        new Vector3Int(initCellX, 0, initCellY),
+                        new Vector3Int(initCellX, initCellY, 0),
                         MapId.None,
                         isFlip
                     )
@@ -80,17 +79,16 @@ namespace network.common.data
             {
                 var rawMapId = int.Parse(row["map_id"]);
                 var mapId = MapId.Parse<MapId>(rawMapId.ToString());
-                var regionType = row["region_type"];
 
-                // Chair 정보 처리 (세션 기반 게임에서는 is_flip 컬럼 없음, 기본값 사용)
-                if (regionType.Equals("chair", StringComparison.OrdinalIgnoreCase))
+                if (row["region_type"].Equals("chair", StringComparison.OrdinalIgnoreCase))
                 {
+                    // 의자 정보 처리
                     var chairInfo = new ChairInfo(
                         new Cell(
                             int.Parse(row["start_x"]),
                             int.Parse(row["start_y"])
                         ),
-                        false // 세션 기반 게임에서는 기본값 false
+                        int.Parse(row["is_flip"]) == 1
                     );
 
                     if (!_chairInfos.ContainsKey(mapId))
@@ -101,9 +99,9 @@ namespace network.common.data
                     continue;
                 }
 
-                // Area 정보 처리
-                if (regionType.Equals("area", StringComparison.OrdinalIgnoreCase))
+                if (row["region_type"].Equals("area", StringComparison.OrdinalIgnoreCase))
                 {
+                    // Area 정보 처리
                     var areaTypeId = int.Parse(row["area"]);
                     var areaType = AreaType.Parse<AreaType>(areaTypeId.ToString());
 
@@ -122,10 +120,10 @@ namespace network.common.data
                     continue;
                 }
 
-                // 기본 region 처리 (ground, obstacle 등)
+                // 기존 region 처리
                 var region = new MapRegion
                 {
-                    RegionType = regionType,
+                    RegionType = row["region_type"],
                     Start = new Cell(
                         int.Parse(row["start_x"]),
                         int.Parse(row["start_y"])
@@ -134,7 +132,7 @@ namespace network.common.data
                         int.Parse(row["end_x"]),
                         int.Parse(row["end_y"])
                     ),
-                    WarpTo = MapId.None // 세션 기반 게임에서는 포탈 불필요
+                    WarpTo = MapId.Parse<MapId>(int.Parse(row["area"]).ToString())
                 };
 
                 if (!_mapRegions.ContainsKey(mapId))
@@ -488,7 +486,7 @@ namespace network.common.data
 
             public (Cell position, bool isFlip) GetInitialPosition()
             {
-                return (new Cell(InitCell.position.x, InitCell.position.z), InitCell.isFlip);
+                return (new Cell(InitCell.position.x, InitCell.position.y), InitCell.isFlip);
             }
         }
 

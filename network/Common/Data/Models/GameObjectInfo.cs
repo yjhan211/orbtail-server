@@ -43,7 +43,6 @@ namespace network.common.data.models
             ObjectType = objectType;
             ObjectId = objectId;
             Cell = Cell.Clone(cell); // null 체크는 Cell.Clone 내부에서 처리
-            // 2D 게임: Cell.X → Position.X, Cell.Y → Position.Y, Position.Z = 0
             Position = cell != null ? new Vector3f(cell.X, cell.Y, 0) : new Vector3f(0, 0, 0);
             Velocity = new Vector3f(0, 0, 0);
             Rotation = 0f;
