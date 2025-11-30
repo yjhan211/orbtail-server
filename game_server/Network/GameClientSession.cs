@@ -32,7 +32,6 @@ public class GameClientSession : IPeer
     private Vector3f? _lastValidatedPosition;
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
-    private bool _isFirstMove = true;
 
     public GameClientSession(
         UserToken token,
@@ -226,14 +225,12 @@ public class GameClientSession : IPeer
             var deltaTime = (float)(now - _lastMoveTime).TotalSeconds;
             _lastMoveTime = now;
 
-            _logger.LogDebug("Player {PlayerId} C_TO_G_MOVE: Position=({X},{Y},{Z}), Velocity=({VX},{VY},{VZ})",
-                PlayerId, msg.Position.X, msg.Position.Y, msg.Position.Z, msg.Velocity.X, msg.Velocity.Y, msg.Velocity.Z);
+            // 1. 서버에서 Position 계산 (Velocity 기반)
+            var calculatedPosition = CalculatePosition(msg.Velocity, deltaTime);
 
-            // 1. 위치 검증 (간단한 치트 방지)
-            var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
-
-            _logger.LogDebug("Player {PlayerId} validatedPosition=({X},{Y},{Z})",
-                PlayerId, validatedPosition.X, validatedPosition.Y, validatedPosition.Z);
+            _logger.LogDebug("Player {PlayerId} C_TO_G_MOVE: Velocity=({VX},{VY},{VZ}), CalculatedPos=({X},{Y},{Z})",
+                PlayerId, msg.Velocity.X, msg.Velocity.Y, msg.Velocity.Z,
+                calculatedPosition.X, calculatedPosition.Y, calculatedPosition.Z);
 
             // 2. 주기적 저장 (1초마다)
             var needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
@@ -246,7 +243,7 @@ public class GameClientSession : IPeer
 
                 if (playerInfo != null)
                 {
-                    playerInfo.ObjectInfo.Position = validatedPosition;
+                    playerInfo.ObjectInfo.Position = calculatedPosition;
                     playerInfo.ObjectInfo.Velocity = msg.Velocity;
                     playerInfo.ObjectInfo.Rotation = msg.Rotation;
                     playerInfo.ObjectInfo.MoveTimestamp = now;
@@ -257,13 +254,13 @@ public class GameClientSession : IPeer
                 }
             }
 
-            _lastValidatedPosition = validatedPosition;
+            _lastValidatedPosition = calculatedPosition;
 
             // 3. Area 체크 및 변경 감지
             var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var currentCell = new Cell(
-                (int)Math.Round(validatedPosition.X),
-                (int)Math.Round(validatedPosition.Y)  // 2D 게임: Y축이 세로
+                (int)Math.Round(calculatedPosition.X),
+                (int)Math.Round(calculatedPosition.Y)  // 2D 게임: Y축이 세로
             );
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
@@ -279,7 +276,7 @@ public class GameClientSession : IPeer
             // 4. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
-                validatedPosition,
+                calculatedPosition,
                 msg.Velocity,
                 msg.Rotation,
                 currentCell,
@@ -303,14 +300,16 @@ public class GameClientSession : IPeer
         }
     }
 
-    private Vector3f ValidatePosition(Vector3f clientPos, Vector3f velocity, float deltaTime)
+    /// <summary>
+    /// Velocity 기반으로 Position 계산 (서버 권위)
+    /// </summary>
+    private Vector3f CalculatePosition(Vector3f velocity, float deltaTime)
     {
         const float maxSpeed = 20f; // 최대 속도 (m/s)
-        const float positionTolerance = 1.2f; // 위치 검증 여유 (20%)
         const float mapMinX = -1000f;
         const float mapMaxX = 1000f;
-        const float mapMinZ = -1000f;
-        const float mapMaxZ = 1000f;
+        const float mapMinY = -1000f;
+        const float mapMaxY = 1000f;
 
         // 1. 속도 제한 체크
         var speed = velocity.Magnitude();
@@ -320,44 +319,32 @@ public class GameClientSession : IPeer
             velocity = velocity.Normalized() * maxSpeed;
         }
 
-        // 2. 이동 거리 검증 (텔레포트 방지) - 첫 이동은 건너뜀
-        if (_lastValidatedPosition != null && !_isFirstMove)
+        // 2. 새 위치 계산
+        Vector3f newPosition;
+        if (_lastValidatedPosition != null)
         {
-            var lastPos = _lastValidatedPosition;
-            var delta = clientPos - lastPos;
-            var distance = delta.Magnitude();
-            var maxDistance = maxSpeed * deltaTime * positionTolerance;
-
-            // 클라이언트가 물리적으로 불가능한 거리를 이동했다면
-            if (distance > maxDistance && deltaTime > 0)
-            {
-                _logger.LogWarning($"Player {PlayerId} 텔레포트 감지: " + $"distance={distance:F2}m, maxAllowed={maxDistance:F2}m, deltaTime={deltaTime:F3}s");
-
-                // 서버 계산 위치로 보정
-                var correctedPos = lastPos + velocity * deltaTime;
-                clientPos = correctedPos;
-            }
+            newPosition = _lastValidatedPosition + velocity * deltaTime;
         }
-
-        // 첫 이동 플래그 해제
-        if (_isFirstMove)
+        else
         {
-            _isFirstMove = false;
+            // 첫 이동: 초기 위치에서 시작 (HandleConnect에서 설정됨)
+            _logger.LogWarning($"Player {PlayerId} 첫 이동인데 _lastValidatedPosition이 없음");
+            return new Vector3f(0, 0, 0); // 안전한 기본값
         }
 
         // 3. 맵 경계 체크
-        if (clientPos.X < mapMinX) clientPos.X = mapMinX;
-        if (clientPos.X > mapMaxX) clientPos.X = mapMaxX;
-        if (clientPos.Z < mapMinZ) clientPos.Z = mapMinZ;
-        if (clientPos.Z > mapMaxZ) clientPos.Z = mapMaxZ;
+        if (newPosition.X < mapMinX) newPosition.X = mapMinX;
+        if (newPosition.X > mapMaxX) newPosition.X = mapMaxX;
+        if (newPosition.Y < mapMinY) newPosition.Y = mapMinY;
+        if (newPosition.Y > mapMaxY) newPosition.Y = mapMaxY;
 
         // TODO: 4. 장애물 충돌 체크
-        // if (IsCollidingWithObstacle(clientPos))
+        // if (IsCollidingWithObstacle(newPosition))
         // {
-        //     clientPos = _lastValidatedPosition ?? clientPos;
+        //     return _lastValidatedPosition;
         // }
 
-        return clientPos;
+        return newPosition;
     }
 
     private async Task HandleAreaChange(AreaType oldArea, AreaType newArea)
