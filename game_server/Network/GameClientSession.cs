@@ -1,6 +1,7 @@
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 using network.core;
 using network.interfaces;
@@ -26,6 +27,7 @@ public class GameClientSession : IPeer
     public long? PlayerId { get; private set; }
     public MapId CurrentMapId { get; private set; }
     public long CurrentMapSubId { get; private set; }
+    public AreaType CurrentArea { get; private set; } = AreaType.None;
 
     private Vector3f? _lastValidatedPosition;
     private DateTime _lastMoveTime = DateTime.UtcNow;
@@ -106,20 +108,18 @@ public class GameClientSession : IPeer
 
         try
         {
-            var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-            var otherPlayerIds = otherSessions
-                .Where(s => s.PlayerId != PlayerId && s.PlayerId.HasValue)
-                .Select(s => s.PlayerId!.Value)
-                .ToList();
+            var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            // 같은 Area의 플레이어만 필터링
+            var sameAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea && s.PlayerId.HasValue).ToList();
 
-            // 1. 나에게 다른 플레이어들의 전체 정보 전송
-            if (otherPlayerIds.Count > 0)
+            // 1. 나에게 같은 Area의 다른 플레이어들 정보 전송
+            if (sameAreaSessions.Count > 0)
             {
                 var playerInfoList = new List<PlayerInfo>();
-                foreach (var otherId in otherPlayerIds)
+                foreach (var session in sameAreaSessions)
                 {
-                    await using var playerLock = await PlayerInfo.Lock(_redLock, otherId);
-                    var playerInfo = await PlayerInfo.Load(_cacheHelper, otherId);
+                    await using var playerLock = await PlayerInfo.Lock(_redLock, session.PlayerId!.Value);
+                    var playerInfo = await PlayerInfo.Load(_cacheHelper, session.PlayerId!.Value);
                     if (playerInfo != null)
                     {
                         playerInfoList.Add(playerInfo);
@@ -130,7 +130,7 @@ public class GameClientSession : IPeer
                 {
                     using var packet = PacketMaker.G_TO_C_PLAYER_INFO(playerInfoList);
                     Send(packet);
-                    _logger.LogInformation("Sent {Count} PlayerInfo to PlayerId={L}", playerInfoList.Count, PlayerId);
+                    _logger.LogInformation("Sent {Count} PlayerInfo in Area {Area} to PlayerId={L}", playerInfoList.Count, CurrentArea, PlayerId);
                 }
             }
 
@@ -140,13 +140,13 @@ public class GameClientSession : IPeer
 
             if (myPlayerInfo != null)
             {
-                // 3. 다른 플레이어들에게 내 정보 브로드캐스트
+                // 3. 같은 Area의 다른 플레이어들에게 내 정보 브로드캐스트
                 using var myPacket = PacketMaker.G_TO_C_PLAYER_INFO([myPlayerInfo]);
-                foreach (var session in otherSessions.Where(session => session.PlayerId != PlayerId))
+                foreach (var session in sameAreaSessions)
                 {
                     session.Send(myPacket);
                 }
-                _logger.LogInformation("Broadcasted my PlayerInfo (PlayerId={L}) to {OtherSessionsCount} other players", PlayerId, otherSessions.Count - 1);
+                _logger.LogInformation("Broadcasted my PlayerInfo (PlayerId={L}) to {Count} players in Area {Area}", PlayerId, sameAreaSessions.Count, CurrentArea);
             }
         }
         catch (Exception ex)
@@ -178,6 +178,9 @@ public class GameClientSession : IPeer
             if (playerInfo != null)
             {
                 _lastValidatedPosition = playerInfo.ObjectInfo.Position;
+                // 초기 Area 설정
+                CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
+                _logger.LogInformation("Player {PlayerId} initial Area: {Area}", PlayerId, CurrentArea);
             }
 
             // 연결 성공 응답
@@ -250,12 +253,22 @@ public class GameClientSession : IPeer
 
             _lastValidatedPosition = validatedPosition;
 
-            // 3. 브로드캐스트 (세션형: 모든 플레이어에게 전송)
+            // 3. Area 체크 및 변경 감지
             var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var currentCell = new Cell(
                 (int)Math.Round(validatedPosition.X),
                 (int)Math.Round(validatedPosition.Z)
             );
+            var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
+
+            // Area 변경 시 진입/퇴장 이벤트 전송
+            if (newArea != CurrentArea)
+            {
+                await HandleAreaChange(CurrentArea, newArea);
+                CurrentArea = newArea;
+            }
+
+            // 4. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
                 validatedPosition,
@@ -267,12 +280,14 @@ public class GameClientSession : IPeer
             );
 
             var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-            foreach (var session in otherSessions.Where(session => session.PlayerId != PlayerId))
+            var sameAreaSessions = otherSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea).ToList();
+
+            foreach (var session in sameAreaSessions)
             {
                 session.Send(packet);
             }
 
-            _logger.LogDebug("Player {L} move broadcasted to {OtherSessionsCount} clients", PlayerId, otherSessions.Count - 1);
+            _logger.LogDebug("Player {L} move broadcasted to {Count} clients in Area {Area}", PlayerId, sameAreaSessions.Count, CurrentArea);
         }
         catch (Exception ex)
         {
@@ -335,6 +350,68 @@ public class GameClientSession : IPeer
         // }
 
         return clientPos;
+    }
+
+    private async Task HandleAreaChange(AreaType oldArea, AreaType newArea)
+    {
+        try
+        {
+            if (!PlayerId.HasValue) return;
+
+            _logger.LogInformation("Player {PlayerId} moved from Area {OldArea} to {NewArea}", PlayerId, oldArea, newArea);
+
+            var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            var playerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
+
+            if (playerInfo == null) return;
+
+            // 1. 이전 Area의 플레이어들에게 퇴장 알림
+            if (oldArea != AreaType.None)
+            {
+                var oldAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == oldArea).ToList();
+                using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
+
+                foreach (var session in oldAreaSessions)
+                {
+                    session.Send(leavePacket);
+                }
+
+                _logger.LogDebug("Sent LEAVE to {Count} players in old Area {OldArea}", oldAreaSessions.Count, oldArea);
+            }
+
+            // 2. 새 Area의 플레이어들에게 진입 알림
+            if (newArea != AreaType.None)
+            {
+                var newAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == newArea).ToList();
+                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(playerInfo);
+
+                foreach (var session in newAreaSessions)
+                {
+                    session.Send(enterPacket);
+                }
+
+                _logger.LogDebug("Sent ENTER to {Count} players in new Area {NewArea}", newAreaSessions.Count, newArea);
+
+                // 3. 나에게 새 Area의 다른 플레이어 정보 전송
+                foreach (var session in newAreaSessions)
+                {
+                    if (!session.PlayerId.HasValue) continue;
+
+                    var otherPlayerInfo = await PlayerInfo.Load(_cacheHelper, session.PlayerId.Value);
+                    if (otherPlayerInfo != null)
+                    {
+                        using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(otherPlayerInfo);
+                        Send(otherEnterPacket);
+                    }
+                }
+
+                _logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "HandleAreaChange error for player {PlayerId}", PlayerId);
+        }
     }
 
 

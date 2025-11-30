@@ -213,6 +213,24 @@ public static class PacketMaker
         return packet;
     }
 
+    public static Packet G_TO_C_AREA_PLAYER_ENTER(PlayerInfo playerInfo)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_AREA_PLAYER_ENTER);
+        G_TO_C_AREA_PLAYER_ENTER body = new() { PlayerInfo = playerInfo };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_AREA_PLAYER_LEAVE(long playerId)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_AREA_PLAYER_LEAVE);
+        G_TO_C_AREA_PLAYER_LEAVE body = new() { PlayerId = playerId };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     public static Packet G_TO_C_GAME_TIME_WARNING(int remainingSeconds)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_GAME_TIME_WARNING);

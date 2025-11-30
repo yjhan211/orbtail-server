@@ -134,6 +134,18 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class G_TO_C_AREA_PLAYER_ENTER : IMessagePackObject
+    {
+        [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_AREA_PLAYER_LEAVE : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+    }
+
+    [MessagePackObject]
     public class G_TO_U_SPAWN : IMessagePackObject
     {
         [Key("objectKeyList")] public List<string> ObjectKeyList { get; set; }

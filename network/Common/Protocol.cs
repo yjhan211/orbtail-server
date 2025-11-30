@@ -47,6 +47,8 @@ namespace network.common
         C_TO_G_INTERACT,
         G_TO_C_GAME_TIME_WARNING,
         G_TO_C_GAME_END,
+        G_TO_C_AREA_PLAYER_ENTER, // 다른 플레이어가 내 Area에 진입
+        G_TO_C_AREA_PLAYER_LEAVE, // 다른 플레이어가 내 Area에서 퇴장
 
         END
     }
