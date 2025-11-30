@@ -269,8 +269,9 @@ public class GameClientSession : IPeer
             {
                 _logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
-                await HandleAreaChange(CurrentArea, newArea);
-                CurrentArea = newArea;
+                var oldArea = CurrentArea;
+                CurrentArea = newArea; // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
+                await HandleAreaChange(oldArea, newArea);
             }
 
             // 4. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
@@ -468,6 +469,12 @@ public class GameClientSession : IPeer
                     {
                         // 세션의 최신 위치 사용 (없으면 캐시된 ObjectInfo.Position 사용)
                         var otherPosition = session._lastValidatedPosition ?? otherPlayerInfo.ObjectInfo.Position;
+
+                        _logger.LogInformation("Sending Player {OtherId} to Player {MyId}: SessionPos={SessionPos}, CachedPos={CachedPos}, FinalPos={FinalPos}",
+                            session.PlayerId, PlayerId,
+                            session._lastValidatedPosition != null ? $"({session._lastValidatedPosition.X},{session._lastValidatedPosition.Y})" : "null",
+                            $"({otherPlayerInfo.ObjectInfo.Position?.X},{otherPlayerInfo.ObjectInfo.Position?.Y})",
+                            $"({otherPosition?.X},{otherPosition?.Y})");
 
                         using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(otherPlayerInfo, otherPosition);
                         Send(otherEnterPacket);
