@@ -121,16 +121,22 @@ public class MatchingManager
                     _logger.LogInformation("플레이어 {DataPlayerId} 처리 중...", data.PlayerId);
 
                     var session = _getSession(data.PlayerId);
-                    _logger.LogInformation("세션 조회 결과: {있음}", session != null ? "있음" : "없음");
+                    _logger.LogInformation("세션 조회 결과: PlayerId={PlayerId}, Session={SessionExists}, SessionPlayerId={SessionPlayerId}",
+                        data.PlayerId, session != null ? "있음" : "없음", session?.PlayerId);
 
                     if (session?.PlayerInfo != null)
                     {
-                        _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 알림 전송", data.PlayerId);
+                        _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 알림 전송 시작", data.PlayerId);
 
                         // 매칭 맵 정보
                         const MapId mapId = MapId.School;
+
+                        // 맵별 초기 스폰 위치 가져오기 (CSV의 init_cell_x, init_cell_y)
                         var mapInfo = GameMapData.GetMapInfo(mapId);
+                        _logger.LogInformation("MapInfo - InitCell.position: ({X}, {Y}, {Z})",
+                            mapInfo.InitCell.position.x, mapInfo.InitCell.position.y, mapInfo.InitCell.position.z);
                         var (spawnPosition, _) = mapInfo.GetInitialPosition();
+                        _logger.LogInformation("플레이어 {DataPlayerId} 스폰 위치: {SpawnPosition}", data.PlayerId, spawnPosition);
 
                         // PlayerInfo LastCell 업데이트
                         var playerInfo = await PlayerInfo.Load(_cacheHelper, data.PlayerId);
@@ -140,7 +146,11 @@ public class MatchingManager
                             playerInfo.LastMapSubId = matchingId;
                             playerInfo.LastCell = spawnPosition;
                             await playerInfo.Save(_cacheHelper);
-                            _logger.LogInformation("플레이어 {DataPlayerId} LastCell 업데이트: {SpawnPosition}", data.PlayerId, spawnPosition);
+                            _logger.LogInformation("플레이어 {DataPlayerId} LastCell 업데이트 완료: {SpawnPosition}", data.PlayerId, spawnPosition);
+                        }
+                        else
+                        {
+                            _logger.LogError("플레이어 {DataPlayerId} PlayerInfo 로드 실패!", data.PlayerId);
                         }
 
                         // 게임서버 정보 (TODO: 추후 동적 할당)
@@ -151,6 +161,9 @@ public class MatchingManager
                         var gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(15).ToUnixTimeMilliseconds();
 
                         // 매칭 성공 패킷 전송
+                        _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 패킷 생성 중 (MatchingId={MatchingId}, SpawnPosition={SpawnPosition})",
+                            data.PlayerId, matchingId, spawnPosition);
+
                         using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
                             matchingId,
                             mapId,
@@ -160,13 +173,15 @@ public class MatchingManager
                             gameServerPort,
                             gameEndTimestamp
                         );
-                        session.Send(packet);
 
+                        _logger.LogInformation("플레이어 {DataPlayerId} 패킷 전송 중... (Size={Size})", data.PlayerId, packet.ToBytes().Length);
+                        session.Send(packet);
                         _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 패킷 전송 완료", data.PlayerId);
                     }
                     else
                     {
-                        _logger.LogWarning("플레이어 {DataPlayerId} 세션 또는 PlayerInfo가 null (session: {B}, PlayerInfo: {B1})", data.PlayerId, session != null, session?.PlayerInfo != null);
+                        _logger.LogWarning("플레이어 {DataPlayerId} 세션 또는 PlayerInfo가 null (session: {SessionExists}, PlayerInfo: {PlayerInfoExists})",
+                            data.PlayerId, session != null, session?.PlayerInfo != null);
                     }
 
                     // 큐에서 제거

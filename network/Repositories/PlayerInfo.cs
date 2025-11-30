@@ -46,6 +46,15 @@ public partial class PlayerInfo
         playerInfo.MailBox = await MailBox.Load(cacheHelper, playerId);
         playerInfo.IsNew = false;
 
+        // ObjectInfo의 Cell, MapId, MapSubId를 LastCell, LastMapId, LastMapSubId로 동기화 (세션 기반 게임)
+        if (playerInfo.LastCell != null)
+        {
+            playerInfo.ObjectInfo.Cell = playerInfo.LastCell;
+            playerInfo.ObjectInfo.Position = new Vector3f(playerInfo.LastCell.X, 0, playerInfo.LastCell.Y);
+        }
+        playerInfo.ObjectInfo.MapId = playerInfo.LastMapId;
+        playerInfo.ObjectInfo.MapSubId = playerInfo.LastMapSubId;
+
         return playerInfo;
     }
 

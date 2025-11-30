@@ -53,16 +53,20 @@ namespace network.common.data
         {
             foreach (var row in data)
             {
-                // 세션 기반 게임에서는 init_cell 정보 불필요 (CSV에 컬럼 없음)
+                // CSV에서 init_cell_x, init_cell_y, is_flip 읽기
+                var initCellX = int.Parse(row["init_cell_x"]);
+                var initCellY = int.Parse(row["init_cell_y"]);
+                var isFlip = int.Parse(row["is_flip"]) == 1;
+
                 var mapInfo = new MapInfo
                 {
                     Id = int.Parse(row["id"]),
                     SceneName = row["scene_name"],
                     IsCommon = int.Parse(row["is_common"]) == 1,
                     InitCell = new InitCellData(
-                        new Vector3Int(0, 0, 0), // 기본값
+                        new Vector3Int(initCellX, 0, initCellY),
                         MapId.None,
-                        false
+                        isFlip
                     )
                 };
 
@@ -484,7 +488,7 @@ namespace network.common.data
 
             public (Cell position, bool isFlip) GetInitialPosition()
             {
-                return (new Cell(InitCell.position.x, InitCell.position.y), InitCell.isFlip);
+                return (new Cell(InitCell.position.x, InitCell.position.z), InitCell.isFlip);
             }
         }
 

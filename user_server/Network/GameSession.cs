@@ -57,7 +57,8 @@ public class GameSession : IPeer
         // 클라이언트 프로토콜
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_HEART_BEAT, HandleHeartBeat);
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_LOGIN, async (bytes) => await HandleMessage<C_TO_U_LOGIN>(bytes, Login));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_PLAYER_INFO, async (bytes) => await HandleMessage<C_TO_U_PLAYER_INFO>(bytes, GetPlayerInfo));
+        // C_TO_U_PLAYER_INFO는 세션 기반 게임에서는 GameServer에서 처리 (G_TO_C_PLAYER_INFO)
+        // _protocolRouter.RegisterHandler(Protocol.C_TO_U_PLAYER_INFO, async (bytes) => await HandleMessage<C_TO_U_PLAYER_INFO>(bytes, GetPlayerInfo));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_WEAR_ITEM, async (bytes) => await HandleMessage<C_TO_U_WEAR_ITEM>(bytes, WearItem));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_USE_ITEM, async (bytes) => await HandleMessage<C_TO_U_USE_ITEM>(bytes, UseItem));
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_MSG, async (bytes) => await HandleMessage<C_TO_U_CHAT_MSG>(bytes, AppendChat));
@@ -458,9 +459,26 @@ public class GameSession : IPeer
 
     public void Send(IPacket packet)
     {
-        if (packet is Packet p)
+        try
         {
-            _token.Send(p);
+            if (packet is Packet p)
+            {
+                // _logger.LogInformation("Sending packet: Protocol={Protocol}, Size={Size}, PlayerId={PlayerId}, TokenReleased={TokenReleased}, SocketNull={SocketNull}",
+                //     (Protocol)p._protocolId, p.ToBytes().Length, PlayerId, _token.IsReleased, _token.Socket == null);
+                _token.Send(p);
+                if (p._protocolId != (int)Protocol.U_TO_C_HEART_BEAT)
+                {
+                    _logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}", (Protocol)p._protocolId, PlayerId);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Invalid packet type: {Type}, PlayerId={PlayerId}", packet?.GetType().Name, PlayerId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send packet: PlayerId={PlayerId}", PlayerId);
         }
     }
 
