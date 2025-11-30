@@ -10,7 +10,6 @@ using System.Diagnostics.CodeAnalysis;
 using Newtonsoft.Json;
 using network.common.data.helpers;
 using network.common.data.models;
-using network.common.helpers;
 using network.managers;
 
 namespace network.common.data
@@ -60,12 +59,12 @@ namespace network.common.data
 
         public static void Validate(LogManager logManager)
         {
-            logManager.WriteDebugLog("=== GameExploreTargetData Validation ===");
+            LogManager.WriteDebugLog("=== GameExploreTargetData Validation ===");
             foreach (var (id, info) in Infos)
             {
-                logManager.WriteDebugLog($"[{id}] {info.Name}");
+                LogManager.WriteDebugLog($"[{id}] {info.Name}");
             }
-            logManager.WriteDebugLog("All validations passed successfully!");
+            LogManager.WriteDebugLog("All validations passed successfully!");
         }
     }
 

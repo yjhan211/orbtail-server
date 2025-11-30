@@ -11,7 +11,6 @@ using System.IO;
 using Newtonsoft.Json;
 using network.common.data.helpers;
 using network.common.data.models;
-using network.common.helpers;
 using network.managers;
 
 namespace network.common.data
@@ -34,12 +33,12 @@ namespace network.common.data
 
         public static void Validate(LogManager logManager)
         {
-            logManager.WriteDebugLog("=== GameQuestData Validation ===");
+            LogManager.WriteDebugLog("=== GameQuestData Validation ===");
             foreach (var (id, quest) in Quests)
             {
-                logManager.WriteDebugLog($"[{id}] {quest.Title}");
+                LogManager.WriteDebugLog($"[{id}] {quest.Title}");
             }
-            logManager.WriteDebugLog("All validations passed successfully!");
+            LogManager.WriteDebugLog("All validations passed successfully!");
         }
     }
 

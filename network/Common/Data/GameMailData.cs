@@ -11,7 +11,6 @@ using System.IO;
 using Newtonsoft.Json;
 using network.common.data.helpers;
 using network.common.data.models;
-using network.common.helpers;
 using network.managers;
 
 namespace network.common.data
@@ -33,12 +32,12 @@ namespace network.common.data
 
         public static void Validate(LogManager logManager)
         {
-            logManager.WriteDebugLog("=== GameMailData Validation ===");
+            LogManager.WriteDebugLog("=== GameMailData Validation ===");
             foreach (var (id, mail) in Mails)
             {
-                logManager.WriteDebugLog($"[{id}]{mail.From}: {mail.Comment}");
+                LogManager.WriteDebugLog($"[{id}]{mail.From}: {mail.Comment}");
             }
-            logManager.WriteDebugLog("All validations passed successfully!");
+            LogManager.WriteDebugLog("All validations passed successfully!");
         }
     }
 

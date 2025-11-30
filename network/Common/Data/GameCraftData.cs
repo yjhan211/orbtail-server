@@ -10,7 +10,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using Newtonsoft.Json;
 using network.common.data.helpers;
-using network.common.helpers;
 using network.managers;
 using UnityEngine;
 
@@ -57,12 +56,12 @@ namespace network.common.data
 
         public static void Validate(LogManager logManager)
         {
-            logManager.WriteDebugLog("=== GameCraftData Validation ===");
+            LogManager.WriteDebugLog("=== GameCraftData Validation ===");
             foreach (var (id, info) in Infos)
             {
-                logManager.WriteDebugLog($"[{id}] {info.ManualId} | {info.TargetItem}");
+                LogManager.WriteDebugLog($"[{id}] {info.ManualId} | {info.TargetItem}");
             }
-            logManager.WriteDebugLog("All validations passed successfully!");
+            LogManager.WriteDebugLog("All validations passed successfully!");
         }
     }
 

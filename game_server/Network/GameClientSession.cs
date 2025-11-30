@@ -310,6 +310,14 @@ public class GameClientSession : IPeer
         const float mapMinY = -1000f;
         const float mapMaxY = 1000f;
 
+        // null 체크: 클라이언트 데이터가 null이면 마지막 유효 위치 또는 기본값 반환
+        if (clientPos == null || velocity == null)
+        {
+            _logger.LogWarning("Player {PlayerId} ValidatePosition: null data received (clientPos={ClientPos}, velocity={Velocity})",
+                PlayerId, clientPos == null ? "null" : "ok", velocity == null ? "null" : "ok");
+            return _lastValidatedPosition ?? new Vector3f(0, 0, 0);
+        }
+
         // Z값은 항상 0으로 고정
         clientPos.Z = 0;
 
