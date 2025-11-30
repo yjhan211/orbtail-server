@@ -258,10 +258,7 @@ public class GameClientSession : IPeer
 
             // 3. Area 체크 및 변경 감지
             var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var currentCell = new Cell(
-                (int)Math.Round(calculatedPosition.X),
-                (int)Math.Round(calculatedPosition.Y)  // 2D 게임: Y축이 세로
-            );
+            var currentCell = WorldPositionToCell(calculatedPosition);
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
             // Area 변경 시 진입/퇴장 이벤트 전송
@@ -301,7 +298,7 @@ public class GameClientSession : IPeer
     }
 
     /// <summary>
-    /// Velocity 기반으로 Position 계산 (서버 권위)
+    /// Velocity 기반으로 Position 계산 (서버 권위, Isometric World 좌표)
     /// </summary>
     private Vector3f CalculatePosition(Vector3f velocity, float deltaTime)
     {
@@ -319,11 +316,16 @@ public class GameClientSession : IPeer
             velocity = velocity.Normalized() * maxSpeed;
         }
 
-        // 2. 새 위치 계산
+        // 2. 새 위치 계산 (Isometric World 좌표, Z=0 고정)
         Vector3f newPosition;
         if (_lastValidatedPosition != null)
         {
-            newPosition = _lastValidatedPosition + velocity * deltaTime;
+            var lastPos = _lastValidatedPosition;
+            newPosition = new Vector3f(
+                lastPos.X + velocity.X * deltaTime,
+                lastPos.Y + velocity.Y * deltaTime,
+                0  // Z는 항상 0
+            );
         }
         else
         {
@@ -346,6 +348,62 @@ public class GameClientSession : IPeer
 
         return newPosition;
     }
+
+    #region Isometric 좌표 변환 (Unity Isometric Z as Y 타일맵)
+
+    // Unity MapController의 CellOffset과 동일
+    private const int CellOffsetX = -5;
+    private const int CellOffsetY = -5;
+    private const float CellWidth = 1f;
+    private const float CellHeight = 0.5f;
+
+    /// <summary>
+    /// Cell 좌표를 Unity Isometric World Position으로 변환
+    /// </summary>
+    private static Vector3f CellToWorldPosition(Cell cell)
+    {
+        int gridCellX = cell.X + CellOffsetX;
+        int gridCellY = cell.Y + CellOffsetY;
+
+        float worldX = (gridCellX + gridCellY + 1) * CellWidth * 0.5f;
+        float worldY = (gridCellY - gridCellX) * CellHeight * 0.5f;
+
+        return new Vector3f(worldX, worldY, 0);
+    }
+
+    /// <summary>
+    /// Unity Isometric World Position을 Cell 좌표로 변환
+    /// </summary>
+    private static Cell WorldPositionToCell(Vector3f worldPos)
+    {
+        // Isometric 역변환
+        // worldX = (gridCellX + gridCellY + 1) * 0.5
+        // worldY = (gridCellY - gridCellX) * 0.25
+        //
+        // 2 * worldX = gridCellX + gridCellY + 1
+        // 4 * worldY = gridCellY - gridCellX
+        //
+        // gridCellX + gridCellY = 2 * worldX - 1
+        // gridCellY - gridCellX = 4 * worldY
+        //
+        // 2 * gridCellY = 2 * worldX - 1 + 4 * worldY
+        // gridCellY = worldX - 0.5 + 2 * worldY
+        // gridCellX = 2 * worldX - 1 - gridCellY = worldX - 0.5 - 2 * worldY
+
+        float gridCellYf = worldPos.X - 0.5f + 2f * worldPos.Y;
+        float gridCellXf = worldPos.X - 0.5f - 2f * worldPos.Y;
+
+        int gridCellX = (int)Math.Floor(gridCellXf);
+        int gridCellY = (int)Math.Floor(gridCellYf);
+
+        // CellOffset 역적용
+        int cellX = gridCellX - CellOffsetX;
+        int cellY = gridCellY - CellOffsetY;
+
+        return new Cell(cellX, cellY);
+    }
+
+    #endregion
 
     private async Task HandleAreaChange(AreaType oldArea, AreaType newArea)
     {

@@ -50,7 +50,8 @@ public partial class PlayerInfo
         if (playerInfo.LastCell != null)
         {
             playerInfo.ObjectInfo.Cell = playerInfo.LastCell;
-            playerInfo.ObjectInfo.Position = new Vector3f(playerInfo.LastCell.X, 0, playerInfo.LastCell.Y);
+            // Cell → World Position 변환 (Unity Isometric Z as Y 타일맵)
+            playerInfo.ObjectInfo.Position = CellToWorldPosition(playerInfo.LastCell);
         }
         playerInfo.ObjectInfo.MapId = playerInfo.LastMapId;
         playerInfo.ObjectInfo.MapSubId = playerInfo.LastMapSubId;
@@ -84,5 +85,31 @@ public partial class PlayerInfo
         await QuestDiary.Delete(cacheHelper, playerId);
         await MailBox.Delete(cacheHelper, playerId);
         await cacheHelper.HashDeleteAsync(HashKey, playerId);
+    }
+
+    /// <summary>
+    /// Cell 좌표를 Unity Isometric World Position으로 변환
+    /// Unity Isometric Z as Y 타일맵 기준 (cellSize: 1x0.5)
+    /// </summary>
+    private static Vector3f CellToWorldPosition(Cell cell)
+    {
+        // Unity MapController의 CellOffset과 동일하게 적용
+        const int cellOffsetX = -5;
+        const int cellOffsetY = -5;
+
+        // Unity Grid Cell 좌표로 변환
+        int gridCellX = cell.X + cellOffsetX;
+        int gridCellY = cell.Y + cellOffsetY;
+
+        // Unity Isometric Z as Y 타일맵의 GetCellCenterWorld 공식
+        // cellSize.x = 1, cellSize.y = 0.5
+        const float cellWidth = 1f;
+        const float cellHeight = 0.5f;
+
+        // Isometric 변환: Grid Cell → World Position
+        float worldX = (gridCellX + gridCellY + 1) * cellWidth * 0.5f;
+        float worldY = (gridCellY - gridCellX) * cellHeight * 0.5f;
+
+        return new Vector3f(worldX, worldY, 0);
     }
 }
