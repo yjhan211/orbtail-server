@@ -261,6 +261,9 @@ public class GameClientSession : IPeer
             var currentCell = WorldPositionToCell(validatedPosition);
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
+            _logger.LogDebug("Player {PlayerId} WorldToCell: Pos=({PX},{PY}) → Cell=({CX},{CY}) → Area={Area}",
+                PlayerId, validatedPosition.X, validatedPosition.Y, currentCell.X, currentCell.Y, newArea);
+
             // Area 변경 시 진입/퇴장 이벤트 전송
             if (newArea != CurrentArea)
             {
@@ -370,57 +373,26 @@ public class GameClientSession : IPeer
 
     #region Isometric 좌표 변환 (Unity Isometric Z as Y 타일맵)
 
-    // Unity MapController CellOffset
-    private const int CellOffsetX = -5;
-    private const int CellOffsetY = -5;
-
-    // Cell 중심점 Y 오프셋 (Unity 타일맵 기준)
-    private const float CellCenterOffsetY = 0.25f;
-
     /// <summary>
-    /// Cell 좌표를 Unity Isometric World Position으로 변환
-    /// 공식: WorldX = (GridCellX - GridCellY) * 0.5
-    ///       WorldY = (GridCellX + GridCellY) * 0.25 + 0.25
-    /// </summary>
-    private static Vector3f CellToWorldPosition(Cell cell)
-    {
-        // CellOffset 적용
-        int gridCellX = cell.X + CellOffsetX;
-        int gridCellY = cell.Y + CellOffsetY;
-
-        float worldX = (gridCellX - gridCellY) * 0.5f;
-        float worldY = (gridCellX + gridCellY) * 0.25f + CellCenterOffsetY;
-
-        return new Vector3f(worldX, worldY, 0);
-    }
-
-    /// <summary>
-    /// Unity Isometric World Position을 Cell 좌표로 변환
+    /// World Position을 Cell 좌표로 변환
+    /// Unity Isometric Z as Y 타일맵의 WorldToCell과 동일한 로직
+    ///
+    /// 클라이언트 MapController.WorldToCell:
+    ///   var unityCell = tileMap.WorldToCell(position);
+    ///   return new Vector3Int(unityCell.x + CellOffsetX, unityCell.y + CellOffsetY + 1, 0);
+    ///
+    /// Unity Isometric Z as Y 역변환:
+    ///   unityCellX = floor(WorldX + 2 * WorldY)
+    ///   unityCellY = floor(2 * WorldY - WorldX)
+    ///
+    /// 최종 Cell = unityCell + CellOffset (Y는 +1 추가)
     /// </summary>
     private static Cell WorldPositionToCell(Vector3f worldPos)
     {
-        // 오프셋 제거
-        float adjustedY = worldPos.Y - CellCenterOffsetY;
-
-        // 역변환
-        // WorldX = (GridCellX - GridCellY) * 0.5
-        // WorldY = (GridCellX + GridCellY) * 0.25
-        //
-        // 2 * WorldX = GridCellX - GridCellY
-        // 4 * WorldY = GridCellX + GridCellY
-        //
-        // GridCellX = WorldX + 2 * WorldY
-        // GridCellY = 2 * WorldY - WorldX
-
-        float gridCellXf = worldPos.X + 2f * adjustedY;
-        float gridCellYf = 2f * adjustedY - worldPos.X;
-
-        int gridCellX = (int)Math.Round(gridCellXf);
-        int gridCellY = (int)Math.Round(gridCellYf);
-
-        // CellOffset 역적용
-        int cellX = gridCellX - CellOffsetX;
-        int cellY = gridCellY - CellOffsetY;
+        // Unity Isometric Z as Y 역변환 공식
+        // Unity WorldToCell 결과를 그대로 반환 (CellOffset은 map_region.csv에 이미 반영됨)
+        int cellX = (int)Math.Floor(worldPos.X + 2f * worldPos.Y);
+        int cellY = (int)Math.Floor(2f * worldPos.Y - worldPos.X);
 
         return new Cell(cellX, cellY);
     }
