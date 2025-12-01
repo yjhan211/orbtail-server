@@ -100,7 +100,7 @@ namespace network.common.data
             return new InteractableInfoData
             {
                 Id = id,
-                ZoneId = int.Parse(row["zone_id"]),
+                ZoneId = int.Parse(row["area_type"]),
                 Name = row["name"],
                 Description = row["description"].Replace("\\n", "\n"),
                 SpritePath = row["sprite_path"],
