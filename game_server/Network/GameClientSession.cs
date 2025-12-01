@@ -19,6 +19,7 @@ public class GameClientSession : IPeer
     private readonly IProtocolRouter _protocolRouter;
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
+    private readonly InteractableStateManager _interactableStateManager;
 
     private readonly ILogger _logger;
     private readonly ICacheHelper _cacheHelper;
@@ -40,7 +41,8 @@ public class GameClientSession : IPeer
         ICacheHelper cacheHelper,
         Action<GameClientSession> onLeaveCallback,
         Action<long, GameClientSession> registerSessionCallback,
-        Func<MapId, long, List<GameClientSession>> getSessionsByInstance)
+        Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
+        InteractableStateManager interactableStateManager)
     {
         _token = token;
         _token.SetPeer(this);
@@ -52,6 +54,7 @@ public class GameClientSession : IPeer
         _onLeaveCallback = onLeaveCallback;
         _registerSessionCallback = registerSessionCallback;
         _getSessionsByInstance = getSessionsByInstance;
+        _interactableStateManager = interactableStateManager;
 
         _protocolRouter = new ProtocolRouter(logger);
         InitializeProtocolHandlers();
@@ -483,12 +486,30 @@ public class GameClientSession : IPeer
                 }
 
                 _logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
+
+                // 4. 나에게 새 Area의 Interactable 목록 전송
+                SendInteractableList((int)newArea);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "HandleAreaChange error for player {PlayerId}", PlayerId);
         }
+    }
+
+    private void SendInteractableList(int zoneId)
+    {
+        var interactables = _interactableStateManager.GetZoneStates(zoneId);
+        if (interactables.Count == 0)
+        {
+            _logger.LogDebug("No interactables in zone {ZoneId}", zoneId);
+            return;
+        }
+
+        using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(zoneId, interactables);
+        Send(packet);
+        _logger.LogDebug("Sent {Count} interactables for zone {ZoneId} to Player {PlayerId}",
+            interactables.Count, zoneId, PlayerId);
     }
 
 

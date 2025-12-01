@@ -23,6 +23,14 @@ namespace network.common.data.helpers
             public const string LoadingText = "loading_text.csv";
             public const string AreaName = "area_name.csv";
 
+            public static class Interactable
+            {
+                public const string Info = "interactable_info.csv";
+                public const string Action = "interactable_action.csv";
+
+                public static readonly string[] ALL = new[] { Info, Action };
+            }
+
             public static class Item
             {
                 public const string Base = "item_info.csv";
@@ -98,6 +106,13 @@ namespace network.common.data.helpers
                 loadedData[fileName] = CsvHelper.LoadCsv(filePath);
             }
 
+            // 상호작용 오브젝트 관련 파일 로드
+            foreach (var fileName in DataFiles.Interactable.ALL)
+            {
+                var filePath = GetCsvFilePath(fileName);
+                loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+            }
+
             // 일반 데이터 초기화
             foreach (var (fileName, init, _) in StandardDataDefinitions)
                 try
@@ -123,6 +138,12 @@ namespace network.common.data.helpers
             GameMapData.Initialize(
                 loadedData[DataFiles.Map.MapInfo],
                 loadedData[DataFiles.Map.MapRegion]
+            );
+
+            // 상호작용 오브젝트 데이터 초기화
+            GameInteractableData.Initialize(
+                loadedData[DataFiles.Interactable.Info],
+                loadedData[DataFiles.Interactable.Action]
             );
 
             ValidateAllData();

@@ -29,6 +29,7 @@ public class GameServer : IHostedService
 
     private readonly List<InstanceMapController> _instanceControllerList = [];
     private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
+    private readonly InteractableStateManager _interactableStateManager = new();
     private CancellationTokenSource _cts = new();
     // MMO 로그아웃 클라이언트 제거됨
     // private INatsClient? _logoutNatsClient;
@@ -105,6 +106,7 @@ public class GameServer : IHostedService
             _natsClientFactory.Initialize(natsEndpoint);
             GameDataHelper.Initialize();
             MapHelper.Initialize(_serverConfig.GameServerNum);
+            _interactableStateManager.Initialize();
         }
         catch (Exception ex)
         {
@@ -140,7 +142,8 @@ public class GameServer : IHostedService
                 _cacheHelper,
                 OnClientSessionLeave,
                 RegisterClientSession,
-                GetSessionsByInstance);
+                GetSessionsByInstance,
+                _interactableStateManager);
 
             _logger.LogInformation("Game client session created");
         }
