@@ -18,7 +18,7 @@ public class MatchingManager
     private const string MatchingQueueKey = "matching_queue";
     private const string MatchingIdKey = "matching_id";
     private const int MatchingTimeoutSeconds = 5;
-    private const int PlayersPerMatch = 2; // 매칭 인원수
+    private const int PlayersPerMatch = 1; // 매칭 인원수
 
     public MatchingManager(ILogger logger, ICacheHelper cacheHelper, Func<long, GameSession?> getSession)
     {
