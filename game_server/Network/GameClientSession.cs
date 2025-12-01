@@ -1,3 +1,4 @@
+using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -488,7 +489,7 @@ public class GameClientSession : IPeer
                 _logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
 
                 // 4. 나에게 새 Area의 Interactable 목록 전송
-                SendInteractableList((int)newArea);
+                SendInteractableList(newArea);
             }
         }
         catch (Exception ex)
@@ -497,19 +498,19 @@ public class GameClientSession : IPeer
         }
     }
 
-    private void SendInteractableList(int zoneId)
+    private void SendInteractableList(AreaType areaType)
     {
-        var interactables = _interactableStateManager.GetZoneStates(zoneId);
-        if (interactables.Count == 0)
+        var objects = _interactableStateManager.GetAreaObjectStates(areaType);
+        if (objects.Count == 0)
         {
-            _logger.LogDebug("No interactables in zone {ZoneId}", zoneId);
+            _logger.LogDebug("No interactable objects in area {AreaType}", areaType);
             return;
         }
 
-        using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(zoneId, interactables);
+        using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
         Send(packet);
-        _logger.LogDebug("Sent {Count} interactables for zone {ZoneId} to Player {PlayerId}",
-            interactables.Count, zoneId, PlayerId);
+        _logger.LogDebug("Sent {Count} interactable objects for area {AreaType} to Player {PlayerId}",
+            objects.Count, areaType, PlayerId);
     }
 
 

@@ -147,24 +147,17 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class InteractableState : IMessagePackObject
-    {
-        [Key("id")] public int Id { get; set; } // interactable_info의 id
-        [Key("isExplored")] public bool IsExplored { get; set; } // 누군가 탐색했는지
-        [Key("exploredBy")] public long ExploredBy { get; set; } // 탐색한 플레이어 ID (0이면 미탐색)
-    }
-
-    [MessagePackObject]
     public class G_TO_C_INTERACTABLE_LIST : IMessagePackObject
     {
-        [Key("zoneId")] public int ZoneId { get; set; }
-        [Key("interactables")] public List<InteractableState> Interactables { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("objects")] public List<InteractableObjectState> Objects { get; set; }
     }
 
     [MessagePackObject]
     public class G_TO_C_INTERACTABLE_UPDATE : IMessagePackObject
     {
-        [Key("id")] public int Id { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("order")] public int Order { get; set; }
         [Key("isExplored")] public bool IsExplored { get; set; }
         [Key("exploredBy")] public long ExploredBy { get; set; }
     }

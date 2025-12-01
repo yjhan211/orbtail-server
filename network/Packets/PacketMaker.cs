@@ -235,25 +235,26 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_INTERACTABLE_LIST(int zoneId, List<InteractableState> interactables)
+    public static Packet G_TO_C_INTERACTABLE_LIST(AreaType areaType, List<InteractableObjectState> objects)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_LIST);
         G_TO_C_INTERACTABLE_LIST body = new()
         {
-            ZoneId = zoneId,
-            Interactables = interactables
+            AreaType = areaType,
+            Objects = objects
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
 
-    public static Packet G_TO_C_INTERACTABLE_UPDATE(int id, bool isExplored, long exploredBy)
+    public static Packet G_TO_C_INTERACTABLE_UPDATE(int interactId, int order, bool isExplored, long exploredBy)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_UPDATE);
         G_TO_C_INTERACTABLE_UPDATE body = new()
         {
-            Id = id,
+            InteractId = interactId,
+            Order = order,
             IsExplored = isExplored,
             ExploredBy = exploredBy
         };
