@@ -400,6 +400,7 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,obstacle,122,69,122,72,0
 1,obstacle,122,75,122,76,0
 1,obstacle,122,83,122,84,0
+1,obstacle,122,92,122,93,0
 1,obstacle,122,99,122,100,0
 1,obstacle,122,102,122,103,0
 1,obstacle,122,114,122,114,0
@@ -410,7 +411,6 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,obstacle,123,69,123,72,0
 1,obstacle,123,75,123,76,0
 1,obstacle,123,83,123,84,0
-1,obstacle,123,94,123,95,0
 1,obstacle,123,99,123,100,0
 1,obstacle,123,102,123,103,0
 1,obstacle,124,18,124,19,0
@@ -419,7 +419,6 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,obstacle,124,69,124,72,0
 1,obstacle,124,75,124,76,0
 1,obstacle,124,83,124,84,0
-1,obstacle,124,94,124,95,0
 1,obstacle,124,99,124,100,0
 1,obstacle,124,102,124,103,0
 1,obstacle,125,18,125,19,0
@@ -428,6 +427,7 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,obstacle,125,69,125,72,0
 1,obstacle,125,75,125,76,0
 1,obstacle,125,83,125,84,0
+1,obstacle,125,95,125,96,0
 1,obstacle,125,102,125,103,0
 1,obstacle,126,18,126,19,0
 1,obstacle,126,53,126,56,0
@@ -515,7 +515,6 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,obstacle,148,127,148,131,0
 1,obstacle,149,75,149,76,0
 1,obstacle,149,84,149,85,0
-1,obstacle,149,90,149,91,0
 1,obstacle,149,103,149,104,0
 1,obstacle,149,127,149,131,0
 1,obstacle,150,63,150,65,0
@@ -545,7 +544,6 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,obstacle,154,63,154,67,0
 1,obstacle,154,74,154,76,0
 1,obstacle,154,84,154,85,0
-1,obstacle,154,95,154,96,0
 1,obstacle,154,103,154,104,0
 1,obstacle,154,113,154,114,0
 1,obstacle,154,120,154,131,0
@@ -648,10 +646,9 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,obstacle,186,114,186,114,0
 1,obstacle,186,128,186,131,0
 1,obstacle,187,77,187,79,0
-1,obstacle,187,86,187,87,0
 1,obstacle,187,102,187,104,0
 1,obstacle,188,77,188,79,0
-1,obstacle,188,86,188,87,0
+1,obstacle,188,87,188,87,0
 1,obstacle,188,102,188,104,0
 1,obstacle,189,77,189,79,0
 1,obstacle,189,102,189,104,0
