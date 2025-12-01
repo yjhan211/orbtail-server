@@ -10,6 +10,7 @@ namespace game_server.services
     /// </summary>
     public class InteractableStateManager
     {
+        private Action<string>? _logAction;
         // Key: (InteractId, Order), Value: InteractableActionState
         private readonly ConcurrentDictionary<(int, int), InteractableActionState> _actionStates = new();
 
@@ -19,15 +20,19 @@ namespace game_server.services
         /// <summary>
         /// 게임 시작 시 모든 Interactable 선택지 상태 초기화
         /// </summary>
-        public void Initialize()
+        public void Initialize(Action<string>? logAction = null)
         {
+            _logAction = logAction;
             _actionStates.Clear();
             _areaObjects.Clear();
 
             var allInteractables = GameInteractableData.GetAll();
+            _logAction?.Invoke($"InteractableStateManager: Loading {allInteractables.Count} interactables from GameInteractableData");
+
             foreach (var interactable in allInteractables)
             {
                 var areaType = (AreaType)interactable.ZoneId;
+                _logAction?.Invoke($"InteractableStateManager: Interactable {interactable.Id} ({interactable.Name}) -> ZoneId={interactable.ZoneId}, AreaType={areaType}");
 
                 if (!_areaObjects.TryGetValue(areaType, out var objectIds))
                 {
@@ -50,6 +55,12 @@ namespace game_server.services
                         ExploredBy = 0
                     };
                 }
+            }
+
+            // 최종 Area별 오브젝트 수 로그
+            foreach (var (area, ids) in _areaObjects)
+            {
+                _logAction?.Invoke($"InteractableStateManager: Area {area} has {ids.Count} objects");
             }
         }
 

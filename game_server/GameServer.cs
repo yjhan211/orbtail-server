@@ -107,7 +107,7 @@ public class GameServer : IHostedService
             _natsClientFactory.Initialize(natsEndpoint);
             GameDataHelper.Initialize();
             MapHelper.Initialize(_serverConfig.GameServerNum);
-            _interactableStateManager.Initialize();
+            _interactableStateManager.Initialize(msg => _logger.LogInformation(msg));
         }
         catch (Exception ex)
         {

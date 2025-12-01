@@ -184,6 +184,12 @@ public class GameClientSession : IPeer
                 // 초기 Area 설정
                 CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
                 _logger.LogInformation("Player {PlayerId} initial Area: {Area}", PlayerId, CurrentArea);
+
+                // 초기 Area의 Interactable 목록 전송
+                if (CurrentArea != AreaType.None)
+                {
+                    SendInteractableList(CurrentArea);
+                }
             }
 
             // 연결 성공 응답
