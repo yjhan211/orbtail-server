@@ -85,16 +85,10 @@ namespace network.common.data
         public string Name { get; private set; }
         public string Description { get; private set; }
         public string SpritePath { get; private set; }
-        public Cell Position { get; private set; }
         public List<InteractableActionData> Actions { get; private set; }
 
         public static InteractableInfoData CreateFromData(CsvRow row, Dictionary<int, List<InteractableActionData>> actionsByInteractId)
         {
-            var posStr = row["position"]
-                .Trim('"')
-                .Trim('(', ')')
-                .Split(',');
-
             var id = int.Parse(row["id"]);
 
             return new InteractableInfoData
@@ -104,7 +98,6 @@ namespace network.common.data
                 Name = row["name"],
                 Description = row["description"].Replace("\\n", "\n"),
                 SpritePath = row["sprite_path"],
-                Position = new Cell(int.Parse(posStr[0].Trim()), int.Parse(posStr[1].Trim())),
                 Actions = actionsByInteractId.TryGetValue(id, out var actions) ? actions : new List<InteractableActionData>()
             };
         }
