@@ -38,6 +38,8 @@ namespace network.common
         U_TO_C_MATCHING_FAILED,
 
         // GameServer 프로토콜 (세션 기반 실시간 게임)
+        C_TO_G_HEARTBEAT,
+        G_TO_C_HEARTBEAT,
         C_TO_G_CONNECT,
         G_TO_C_CONNECT_RESULT,
         G_TO_C_PLAYER_INFO,

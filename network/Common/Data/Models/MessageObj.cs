@@ -97,6 +97,18 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class C_TO_G_HEARTBEAT : IMessagePackObject
+    {
+        [Key("clientTime")] public long ClientTimestamp { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_HEARTBEAT : IMessagePackObject
+    {
+        [Key("serverTime")] public long ServerTimestamp { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_G_CONNECT : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }

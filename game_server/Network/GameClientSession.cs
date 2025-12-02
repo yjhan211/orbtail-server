@@ -42,6 +42,10 @@ public class GameClientSession : IPeer
     private Vector3f? _lastValidatedPosition;
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
+    private DateTime _lastHeartbeatTime = DateTime.UtcNow;
+
+    // 하트비트 타임아웃 (초)
+    private const int HeartbeatTimeoutSeconds = 30;
 
     public GameClientSession(
         UserToken token,
@@ -73,6 +77,7 @@ public class GameClientSession : IPeer
 
     private void InitializeProtocolHandlers()
     {
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_HEARTBEAT, async (bytes) => await HandleMessage<C_TO_G_HEARTBEAT>(bytes, HandleHeartbeat));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT, async (bytes) => await HandleMessage<C_TO_G_CONNECT>(bytes, HandleConnect));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_MOVE, async (bytes) => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_ATTACK, async (bytes) => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
@@ -166,6 +171,36 @@ public class GameClientSession : IPeer
         {
             _logger.LogError(ex, "Failed to broadcast player join for PlayerId={L}", PlayerId);
         }
+    }
+
+    private Task HandleHeartbeat(C_TO_G_HEARTBEAT msg)
+    {
+        _lastHeartbeatTime = DateTime.UtcNow;
+
+        // 하트비트 응답 전송
+        var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        using var packet = PacketMaker.G_TO_C_HEARTBEAT(serverTimestamp);
+        Send(packet);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 하트비트 타임아웃 체크. 타임아웃되면 true 반환
+    /// </summary>
+    public bool IsHeartbeatTimedOut()
+    {
+        var elapsed = (DateTime.UtcNow - _lastHeartbeatTime).TotalSeconds;
+        return elapsed > HeartbeatTimeoutSeconds;
+    }
+
+    /// <summary>
+    /// 강제 연결 해제
+    /// </summary>
+    public void ForceDisconnect()
+    {
+        _logger.LogWarning("Force disconnecting PlayerId={PlayerId} due to heartbeat timeout", PlayerId);
+        _token.Disconnect();
     }
 
     private async Task HandleConnect(C_TO_G_CONNECT msg)
@@ -523,7 +558,7 @@ public class GameClientSession : IPeer
 
     private void SendInteractableList(AreaType areaType)
     {
-        var objects = _interactableStateManager.GetAreaObjectStates(areaType);
+        var objects = _interactableStateManager.GetAreaObjectStates(CurrentMapSubId, areaType);
         if (objects.Count == 0)
         {
             _logger.LogDebug("No interactable objects in area {AreaType}", areaType);
@@ -532,8 +567,8 @@ public class GameClientSession : IPeer
 
         using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
         Send(packet);
-        _logger.LogDebug("Sent {Count} interactable objects for area {AreaType} to Player {PlayerId}",
-            objects.Count, areaType, PlayerId);
+        _logger.LogDebug("Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
+            objects.Count, areaType, PlayerId, CurrentMapSubId);
     }
 
 
@@ -601,8 +636,8 @@ public class GameClientSession : IPeer
         _logger.LogInformation("Player {PlayerId} selected action: InteractId={InteractId}, ActionId={ActionId}",
             PlayerId, msg.InteractId, msg.ActionId);
 
-        // 탐색 처리 (InteractableStateManager에서 상태 업데이트)
-        var success = _interactableStateManager.TryExplore(msg.InteractId, msg.ActionId, PlayerId.Value, out var state);
+        // 탐색 처리 (InteractableStateManager에서 상태 업데이트 - MatchingId별 독립 관리)
+        var success = _interactableStateManager.TryExplore(CurrentMapSubId, msg.InteractId, msg.ActionId, PlayerId.Value, out var state);
 
         // CSV에서 보상 정보 가져오기
         var interactable = GameInteractableData.Get(msg.InteractId);

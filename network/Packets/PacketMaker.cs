@@ -177,6 +177,15 @@ public static class PacketMaker
 
     // ========== GameServer 프로토콜 ==========
 
+    public static Packet G_TO_C_HEARTBEAT(long serverTimestamp)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_HEARTBEAT);
+        G_TO_C_HEARTBEAT body = new() { ServerTimestamp = serverTimestamp };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     public static Packet G_TO_C_CONNECT_RESULT(bool success, ErrorCode errorCode, string? message = null)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT);
