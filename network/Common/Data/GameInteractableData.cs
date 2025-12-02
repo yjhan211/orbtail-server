@@ -19,12 +19,12 @@ namespace network.common.data
 
         public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData)
         {
-            // 액션 데이터를 interact_id별로 그룹화
+            // 액션 데이터를 id별로 그룹화
             var actionsByInteractId = actionData
-                .GroupBy(row => int.Parse(row["interact_id"]))
+                .GroupBy(row => int.Parse(row["id"]))
                 .ToDictionary(
                     g => g.Key,
-                    g => g.OrderBy(row => int.Parse(row["order"]))
+                    g => g.OrderBy(row => int.Parse(row["action_id"]))
                           .Select(InteractableActionData.CreateFromData)
                           .ToList()
                 );
@@ -95,8 +95,8 @@ namespace network.common.data
             {
                 Id = id,
                 ZoneId = int.Parse(row["area_type"]),
-                Name = row["name"],
-                Description = row["description"].Replace("\\n", "\n"),
+                Name = row["name"].Trim('"'),
+                Description = row["description"].Trim('"').Replace("\\n", "\n"),
                 SpritePath = row["sprite_path"],
                 Actions = actionsByInteractId.TryGetValue(id, out var actions) ? actions : new List<InteractableActionData>()
             };
@@ -106,18 +106,22 @@ namespace network.common.data
     public class InteractableActionData
     {
         public int InteractId { get; private set; }
-        public int Order { get; private set; }
+        public int ActionId { get; private set; }
         public string ActionText { get; private set; }
         public string ResultText { get; private set; }
+        public string RewardType { get; private set; }
+        public string RewardId { get; private set; }
 
         public static InteractableActionData CreateFromData(CsvRow row)
         {
             return new InteractableActionData
             {
-                InteractId = int.Parse(row["interact_id"]),
-                Order = int.Parse(row["order"]),
+                InteractId = int.Parse(row["id"]),
+                ActionId = int.Parse(row["action_id"]),
                 ActionText = row["action_text"],
-                ResultText = row["result_text"]
+                ResultText = row["result_text"].Trim('"').Replace("\\n", "\n"),
+                RewardType = row["reward_type"],
+                RewardId = row["reward_id"]
             };
         }
     }

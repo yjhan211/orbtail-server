@@ -52,6 +52,13 @@ namespace network.common
         G_TO_C_INTERACTABLE_LIST, // Area 진입 시 탐색 가능한 오브젝트 목록
         G_TO_C_INTERACTABLE_UPDATE, // 오브젝트 탐색 상태 변경 (누군가 탐색함)
 
+        // 탐색 프로토콜
+        C_TO_G_EXPLORE_START, // 탐색 시작 요청
+        G_TO_C_EXPLORE_START, // 탐색 시작 브로드캐스트 (애니메이션 동기화)
+        C_TO_G_EXPLORE_SELECT, // 선택지 선택
+        G_TO_C_EXPLORE_RESULT, // 탐색 결과 (보상 등)
+        G_TO_C_EXPLORE_END, // 탐색 종료 브로드캐스트
+
         END
     }
 

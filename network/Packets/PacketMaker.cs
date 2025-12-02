@@ -280,4 +280,48 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+
+    // ========== 탐색 프로토콜 ==========
+
+    public static Packet G_TO_C_EXPLORE_START(long playerId, int interactId)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_START);
+        G_TO_C_EXPLORE_START body = new()
+        {
+            PlayerId = playerId,
+            InteractId = interactId
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_EXPLORE_RESULT(bool success, int interactId, int actionId, string rewardType, string rewardId, ErrorCode errorCode)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_RESULT);
+        G_TO_C_EXPLORE_RESULT body = new()
+        {
+            Success = success,
+            InteractId = interactId,
+            ActionId = actionId,
+            RewardType = rewardType,
+            RewardId = rewardId,
+            ErrorCode = errorCode
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_EXPLORE_END(long playerId)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_END);
+        G_TO_C_EXPLORE_END body = new()
+        {
+            PlayerId = playerId
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
 }

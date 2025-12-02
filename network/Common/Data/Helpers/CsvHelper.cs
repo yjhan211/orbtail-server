@@ -117,5 +117,10 @@ namespace network.common.data.helpers
                 return value.Trim(); // 일반 값은 공백 제거
             }
         }
+
+        public bool ContainsKey(string columnName)
+        {
+            return Array.IndexOf(_headers, columnName) != -1;
+        }
     }
 }

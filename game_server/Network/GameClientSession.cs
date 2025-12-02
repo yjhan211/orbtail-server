@@ -12,6 +12,12 @@ using network.utils;
 
 namespace game_server.network;
 
+public enum PlayerState
+{
+    Idle,       // 일반 상태 (이동 가능)
+    Exploring   // 탐색 중 (이동 불가)
+}
+
 public class GameClientSession : IPeer
 {
     private readonly UserToken _token;
@@ -30,6 +36,8 @@ public class GameClientSession : IPeer
     public MapId CurrentMapId { get; private set; }
     public long CurrentMapSubId { get; private set; }
     public AreaType CurrentArea { get; private set; } = AreaType.None;
+    public PlayerState CurrentState { get; private set; } = PlayerState.Idle;
+    public int? CurrentExploringInteractId { get; private set; }
 
     private Vector3f? _lastValidatedPosition;
     private DateTime _lastMoveTime = DateTime.UtcNow;
@@ -69,6 +77,8 @@ public class GameClientSession : IPeer
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_MOVE, async (bytes) => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_ATTACK, async (bytes) => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT, async (bytes) => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_START, async (bytes) => await HandleMessage<C_TO_G_EXPLORE_START>(bytes, HandleExploreStart));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_SELECT, async (bytes) => await HandleMessage<C_TO_G_EXPLORE_SELECT>(bytes, HandleExploreSelect));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -228,6 +238,13 @@ public class GameClientSession : IPeer
     private async Task HandleMove(C_TO_G_MOVE msg)
     {
         if (PlayerId == null) return;
+
+        // 탐색 중에는 이동 불가
+        if (CurrentState == PlayerState.Exploring)
+        {
+            _logger.LogDebug("Player {PlayerId} tried to move while exploring, ignoring", PlayerId);
+            return;
+        }
 
         try
         {
@@ -532,6 +549,134 @@ public class GameClientSession : IPeer
         _logger.LogInformation($"Player {PlayerId} interact: {msg.TargetId}");
         // TODO: 상호작용 처리
         return Task.CompletedTask;
+    }
+
+    private Task HandleExploreStart(C_TO_G_EXPLORE_START msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        // 이미 탐색 중이면 무시
+        if (CurrentState == PlayerState.Exploring)
+        {
+            _logger.LogWarning("Player {PlayerId} already exploring, ignoring explore start", PlayerId);
+            return Task.CompletedTask;
+        }
+
+        _logger.LogInformation("Player {PlayerId} started exploring InteractId={InteractId}", PlayerId, msg.InteractId);
+
+        // 상태 변경
+        CurrentState = PlayerState.Exploring;
+        CurrentExploringInteractId = msg.InteractId;
+
+        // 같은 Area의 다른 플레이어들에게 탐색 시작 브로드캐스트
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var sameAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea).ToList();
+
+        using var packet = PacketMaker.G_TO_C_EXPLORE_START(PlayerId.Value, msg.InteractId);
+        foreach (var session in sameAreaSessions)
+        {
+            session.Send(packet);
+        }
+
+        _logger.LogDebug("Broadcasted EXPLORE_START to {Count} players in Area {Area}", sameAreaSessions.Count, CurrentArea);
+
+        return Task.CompletedTask;
+    }
+
+    private Task HandleExploreSelect(C_TO_G_EXPLORE_SELECT msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        // 탐색 중이 아니거나 다른 오브젝트를 탐색 중이면 무시
+        if (CurrentState != PlayerState.Exploring || CurrentExploringInteractId != msg.InteractId)
+        {
+            _logger.LogWarning("Player {PlayerId} invalid explore select: State={State}, ExploringId={ExploringId}, RequestedId={RequestedId}",
+                PlayerId, CurrentState, CurrentExploringInteractId, msg.InteractId);
+
+            // 에러 응답
+            SendExploreResult(false, msg.InteractId, msg.ActionId, "", "", ErrorCode.FATAL);
+            return Task.CompletedTask;
+        }
+
+        _logger.LogInformation("Player {PlayerId} selected action: InteractId={InteractId}, ActionId={ActionId}",
+            PlayerId, msg.InteractId, msg.ActionId);
+
+        // 탐색 처리 (InteractableStateManager에서 상태 업데이트)
+        var success = _interactableStateManager.TryExplore(msg.InteractId, msg.ActionId, PlayerId.Value, out var state);
+
+        // CSV에서 보상 정보 가져오기
+        var interactable = GameInteractableData.Get(msg.InteractId);
+        var action = interactable?.Actions.FirstOrDefault(a => a.ActionId == msg.ActionId);
+        var rewardType = action?.RewardType ?? "";
+        var rewardId = action?.RewardId ?? "";
+
+        if (success)
+        {
+            _logger.LogInformation("Player {PlayerId} explored InteractId={InteractId}, ActionId={ActionId} successfully",
+                PlayerId, msg.InteractId, msg.ActionId);
+
+            // 성공 응답
+            SendExploreResult(true, msg.InteractId, msg.ActionId, rewardType, rewardId, ErrorCode.SUCCESS);
+
+            // 같은 Area의 모든 플레이어에게 상태 업데이트 브로드캐스트
+            BroadcastInteractableUpdate(msg.InteractId, msg.ActionId, true, PlayerId.Value);
+        }
+        else
+        {
+            _logger.LogInformation("Player {PlayerId} tried to explore already explored action: InteractId={InteractId}, ActionId={ActionId}",
+                PlayerId, msg.InteractId, msg.ActionId);
+
+            // 이미 탐색됨 - 성공 응답 (결과 표시만)
+            SendExploreResult(true, msg.InteractId, msg.ActionId, rewardType, rewardId, ErrorCode.SUCCESS);
+        }
+
+        // 탐색 종료 처리
+        EndExplore();
+
+        return Task.CompletedTask;
+    }
+
+    private void SendExploreResult(bool success, int interactId, int actionId, string rewardType, string rewardId, ErrorCode errorCode)
+    {
+        if (!PlayerId.HasValue) return;
+
+        using var packet = PacketMaker.G_TO_C_EXPLORE_RESULT(success, interactId, actionId, rewardType, rewardId, errorCode);
+        Send(packet);
+    }
+
+    private void BroadcastInteractableUpdate(int interactId, int actionId, bool isExplored, long exploredBy)
+    {
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var sameAreaSessions = allSessions.Where(s => s.CurrentArea == CurrentArea).ToList();
+
+        using var packet = PacketMaker.G_TO_C_INTERACTABLE_UPDATE(interactId, actionId, isExplored, exploredBy);
+        foreach (var session in sameAreaSessions)
+        {
+            session.Send(packet);
+        }
+
+        _logger.LogDebug("Broadcasted INTERACTABLE_UPDATE to {Count} players in Area {Area}", sameAreaSessions.Count, CurrentArea);
+    }
+
+    private void EndExplore()
+    {
+        if (!PlayerId.HasValue) return;
+
+        // 상태 복원
+        CurrentState = PlayerState.Idle;
+        CurrentExploringInteractId = null;
+
+        // 같은 Area의 다른 플레이어들에게 탐색 종료 브로드캐스트
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var sameAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea).ToList();
+
+        using var packet = PacketMaker.G_TO_C_EXPLORE_END(PlayerId.Value);
+        foreach (var session in sameAreaSessions)
+        {
+            session.Send(packet);
+        }
+
+        _logger.LogDebug("Broadcasted EXPLORE_END to {Count} players in Area {Area}", sameAreaSessions.Count, CurrentArea);
     }
 
     public void Send(IPacket packet)
