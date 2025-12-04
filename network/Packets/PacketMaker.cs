@@ -305,7 +305,7 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_EXPLORE_RESULT(bool success, int interactId, int actionId, string rewardType, string rewardId, ErrorCode errorCode)
+    public static Packet G_TO_C_EXPLORE_RESULT(bool success, int interactId, int actionId, RewardType rewardType, int rewardId, ErrorCode errorCode)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_RESULT);
         G_TO_C_EXPLORE_RESULT body = new()

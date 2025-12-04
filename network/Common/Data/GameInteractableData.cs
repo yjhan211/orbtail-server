@@ -109,8 +109,8 @@ namespace network.common.data
         public int ActionId { get; private set; }
         public string ActionText { get; private set; }
         public string ResultText { get; private set; }
-        public string RewardType { get; private set; }
-        public string RewardId { get; private set; }
+        public RewardType RewardType { get; private set; }
+        public int RewardId { get; private set; }
 
         public static InteractableActionData CreateFromData(CsvRow row)
         {
@@ -120,8 +120,8 @@ namespace network.common.data
                 ActionId = int.Parse(row["action_id"]),
                 ActionText = row["action_text"],
                 ResultText = row["result_text"].Trim('"').Replace("\\n", "\n"),
-                RewardType = row["reward_type"],
-                RewardId = row["reward_id"]
+                RewardType = (RewardType)int.Parse(row["reward_type"]),
+                RewardId = int.Parse(row["reward_id"])
             };
         }
     }

@@ -53,7 +53,7 @@ namespace network.common
     {
         NONE = 0,
         CONDITION_ADD,
-        POLLUTION_DOWN,
+        CORRUPTION_DOWN,
     }
 
     public enum ItemType
@@ -171,5 +171,15 @@ namespace network.common
     {
         NONE = 0,
         DARK,
+    }
+
+    public enum RewardType : short
+    {
+        NONE = 0,
+        ITEM,
+        CONDITION_RANDOM,
+        CORRUPTION_RANDOM,
+        RULE,
+        RULE_RANDOM,
     }
 }

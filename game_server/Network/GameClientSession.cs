@@ -636,7 +636,7 @@ public class GameClientSession : IPeer
                 PlayerId, CurrentState, CurrentExploringInteractId, msg.InteractId);
 
             // 에러 응답
-            SendExploreResult(false, msg.InteractId, msg.ActionId, "", "", ErrorCode.FATAL);
+            SendExploreResult(false, msg.InteractId, msg.ActionId, RewardType.NONE, 0, ErrorCode.FATAL);
             return Task.CompletedTask;
         }
 
@@ -649,19 +649,16 @@ public class GameClientSession : IPeer
         // CSV에서 보상 정보 가져오기
         var interactable = GameInteractableData.Get(msg.InteractId);
         var action = interactable?.Actions.FirstOrDefault(a => a.ActionId == msg.ActionId);
-        var rewardType = action?.RewardType ?? "";
-        var rewardId = action?.RewardId ?? "";
+        var rewardType = action?.RewardType ?? RewardType.NONE;
+        var rewardId = action?.RewardId ?? 0;
 
         if (success)
         {
             _logger.LogInformation("Player {PlayerId} explored InteractId={InteractId}, ActionId={ActionId} successfully",
                 PlayerId, msg.InteractId, msg.ActionId);
 
-            // 보상이 아이템인 경우 인게임 인벤토리에 추가
-            if (rewardType == "item" && int.TryParse(rewardId, out var itemId))
-            {
-                AddInGameItem(itemId);
-            }
+            // 보상 처리
+            ProcessExploreReward(rewardType, rewardId);
 
             // 성공 응답
             SendExploreResult(true, msg.InteractId, msg.ActionId, rewardType, rewardId, ErrorCode.SUCCESS);
@@ -684,12 +681,53 @@ public class GameClientSession : IPeer
         return Task.CompletedTask;
     }
 
-    private void SendExploreResult(bool success, int interactId, int actionId, string rewardType, string rewardId, ErrorCode errorCode)
+    private void SendExploreResult(bool success, int interactId, int actionId, RewardType rewardType, int rewardId, ErrorCode errorCode)
     {
         if (!PlayerId.HasValue) return;
 
         using var packet = PacketMaker.G_TO_C_EXPLORE_RESULT(success, interactId, actionId, rewardType, rewardId, errorCode);
         Send(packet);
+    }
+
+    /// <summary>
+    /// 탐색 보상 처리
+    /// </summary>
+    private void ProcessExploreReward(RewardType rewardType, int rewardId)
+    {
+        switch (rewardType)
+        {
+            case RewardType.ITEM:
+                // 고정 아이템 지급
+                if (rewardId > 0)
+                {
+                    AddInGameItem(rewardId);
+                }
+                break;
+
+            case RewardType.CONDITION_RANDOM:
+                // TODO: 컨디션 버프를 가진 아이템 풀에서 랜덤 지급
+                _logger.LogDebug("Player {PlayerId} received CONDITION_RANDOM reward", PlayerId);
+                break;
+
+            case RewardType.CORRUPTION_RANDOM:
+                // TODO: 오염도 버프를 가진 아이템 풀에서 랜덤 지급
+                _logger.LogDebug("Player {PlayerId} received CORRUPTION_RANDOM reward", PlayerId);
+                break;
+
+            case RewardType.RULE:
+                // TODO: 규칙 지급
+                _logger.LogDebug("Player {PlayerId} received RULE reward: {RewardId}", PlayerId, rewardId);
+                break;
+
+            case RewardType.RULE_RANDOM:
+                // TODO: 랜덤 규칙 지급
+                _logger.LogDebug("Player {PlayerId} received RULE_RANDOM reward", PlayerId);
+                break;
+
+            case RewardType.NONE:
+            default:
+                break;
+        }
     }
 
     private void BroadcastInteractableUpdate(int interactId, int actionId, bool isExplored, long exploredBy)
