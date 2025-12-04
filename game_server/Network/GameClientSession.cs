@@ -709,17 +709,33 @@ public class GameClientSession : IPeer
                 break;
 
             case RewardType.CONDITION_RANDOM:
-                // TODO: 컨디션 버프를 가진 아이템 풀에서 랜덤 선택
-                // resultItemId = GetRandomItemByBuff(BuffSubType.CONDITION_ADD);
-                // AddInGameItem(resultItemId);
-                _logger.LogDebug("Player {PlayerId} received CONDITION_RANDOM reward", PlayerId);
+                // 컨디션 버프를 가진 아이템 풀에서 랜덤 선택
+                var conditionItem = GameItemData.GetRandomConsumableByBuffSubType(BuffSubType.CONDITION_ADD);
+                if (conditionItem != null)
+                {
+                    AddInGameItem(conditionItem.Id);
+                    resultItemId = conditionItem.Id;
+                    _logger.LogInformation("Player {PlayerId} received CONDITION_RANDOM reward: ItemId={ItemId}", PlayerId, conditionItem.Id);
+                }
+                else
+                {
+                    _logger.LogWarning("Player {PlayerId} CONDITION_RANDOM reward failed: no items available", PlayerId);
+                }
                 break;
 
             case RewardType.CORRUPTION_RANDOM:
-                // TODO: 오염도 버프를 가진 아이템 풀에서 랜덤 선택
-                // resultItemId = GetRandomItemByBuff(BuffSubType.CORRUPTION_DOWN);
-                // AddInGameItem(resultItemId);
-                _logger.LogDebug("Player {PlayerId} received CORRUPTION_RANDOM reward", PlayerId);
+                // 오염도 버프를 가진 아이템 풀에서 랜덤 선택
+                var corruptionItem = GameItemData.GetRandomConsumableByBuffSubType(BuffSubType.CORRUPTION_DOWN);
+                if (corruptionItem != null)
+                {
+                    AddInGameItem(corruptionItem.Id);
+                    resultItemId = corruptionItem.Id;
+                    _logger.LogInformation("Player {PlayerId} received CORRUPTION_RANDOM reward: ItemId={ItemId}", PlayerId, corruptionItem.Id);
+                }
+                else
+                {
+                    _logger.LogWarning("Player {PlayerId} CORRUPTION_RANDOM reward failed: no items available", PlayerId);
+                }
                 break;
 
             case RewardType.RULE:

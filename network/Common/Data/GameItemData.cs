@@ -84,6 +84,33 @@ namespace network.common.data
             return Items.Values.ToList();
         }
 
+        /// <summary>
+        /// 특정 버프 서브타입을 가진 소비 아이템 목록 반환
+        /// </summary>
+        public static List<ItemInfoData> GetConsumablesByBuffSubType(BuffSubType buffSubType)
+        {
+            return Items.Values
+                .Where(item => item.Type == ItemType.CONSUMABLE &&
+                               item.ConsumableBuffList.Any(buff =>
+                               {
+                                   var buffData = GameBuffData.Get(buff.id);
+                                   return buffData.SubType == buffSubType;
+                               }))
+                .ToList();
+        }
+
+        /// <summary>
+        /// 특정 버프 서브타입을 가진 소비 아이템 중 랜덤 선택
+        /// </summary>
+        public static ItemInfoData GetRandomConsumableByBuffSubType(BuffSubType buffSubType, Random random = null)
+        {
+            var items = GetConsumablesByBuffSubType(buffSubType);
+            if (items.Count == 0) return null;
+
+            random ??= new Random();
+            return items[random.Next(items.Count)];
+        }
+
         public static ItemType GetItemType(int itemId)
         {
             return (ItemType)(itemId / 100000000);
