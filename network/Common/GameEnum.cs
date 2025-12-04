@@ -53,9 +53,7 @@ namespace network.common
     {
         NONE = 0,
         CONDITION_ADD,
-        CRAFT_ADD,
-        DURABILITY_ADD,
-        COLOR_CHANGE,
+        POLLUTION_DOWN,
     }
 
     public enum ItemType

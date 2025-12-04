@@ -18,6 +18,12 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class G_TO_C_HEART_BEAT : IMessagePackObject
+    {
+        [Key("utcNow")] public DateTime UtcNow { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_U_LOGIN : IMessagePackObject
     {
         [Key("accountToken")] public string AccountToken { get; set; } // TODO 계정키로 변경
@@ -94,18 +100,6 @@ namespace network.common.data.models
     public class G_TO_U_UPDATE_OBJECT : IMessagePackObject
     {
         [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_G_HEARTBEAT : IMessagePackObject
-    {
-        [Key("clientTime")] public long ClientTimestamp { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_HEARTBEAT : IMessagePackObject
-    {
-        [Key("serverTime")] public long ServerTimestamp { get; set; }
     }
 
     [MessagePackObject]

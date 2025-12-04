@@ -19,7 +19,7 @@ namespace network.common.data
 
         public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData)
         {
-            // 액션 데이터를 interact_id별로 그룹화
+            // 액션 데이터를 id별로 그룹화
             var actionsByInteractId = actionData
                 .GroupBy(row => int.Parse(row["id"]))
                 .ToDictionary(
