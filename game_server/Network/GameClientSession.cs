@@ -87,6 +87,7 @@ public class GameClientSession : IPeer
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT, async (bytes) => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_START, async (bytes) => await HandleMessage<C_TO_G_EXPLORE_START>(bytes, HandleExploreStart));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_SELECT, async (bytes) => await HandleMessage<C_TO_G_EXPLORE_SELECT>(bytes, HandleExploreSelect));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_END, async (bytes) => await HandleMessage<C_TO_G_EXPLORE_END>(bytes, HandleExploreEnd));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM, async (bytes) => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
     }
 
@@ -674,6 +675,23 @@ public class GameClientSession : IPeer
             // 이미 탐색됨 - 아이템 없이 성공 응답 (결과 표시만)
             SendExploreResult(true, msg.InteractId, msg.ActionId, 0, ErrorCode.SUCCESS);
         }
+
+        // SELECT 후에도 Exploring 상태 유지 (END 패킷으로 종료)
+        return Task.CompletedTask;
+    }
+
+    private Task HandleExploreEnd(C_TO_G_EXPLORE_END msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        // 탐색 중이 아니면 무시
+        if (CurrentState != PlayerState.Exploring)
+        {
+            _logger.LogWarning("Player {PlayerId} not exploring, ignoring explore end", PlayerId);
+            return Task.CompletedTask;
+        }
+
+        _logger.LogInformation("Player {PlayerId} ended exploring InteractId={InteractId}", PlayerId, msg.InteractId);
 
         // 탐색 종료 처리
         EndExplore();
