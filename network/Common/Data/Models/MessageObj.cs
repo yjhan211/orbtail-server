@@ -577,8 +577,7 @@ namespace network.common.data.models
         [Key("success")] public bool Success { get; set; }
         [Key("interactId")] public int InteractId { get; set; }
         [Key("actionId")] public int ActionId { get; set; }
-        [Key("rewardType")] public RewardType RewardType { get; set; }
-        [Key("rewardId")] public int RewardId { get; set; }
+        [Key("itemId")] public int ItemId { get; set; }  // 획득한 아이템 ID (0이면 없음)
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
     }
 

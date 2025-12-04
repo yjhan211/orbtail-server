@@ -636,7 +636,7 @@ public class GameClientSession : IPeer
                 PlayerId, CurrentState, CurrentExploringInteractId, msg.InteractId);
 
             // 에러 응답
-            SendExploreResult(false, msg.InteractId, msg.ActionId, RewardType.NONE, 0, ErrorCode.FATAL);
+            SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.FATAL);
             return Task.CompletedTask;
         }
 
@@ -657,11 +657,11 @@ public class GameClientSession : IPeer
             _logger.LogInformation("Player {PlayerId} explored InteractId={InteractId}, ActionId={ActionId} successfully",
                 PlayerId, msg.InteractId, msg.ActionId);
 
-            // 보상 처리
-            ProcessExploreReward(rewardType, rewardId);
+            // 보상 처리 및 최종 아이템 ID 결정
+            var rewardItemId = ProcessExploreReward(rewardType, rewardId);
 
-            // 성공 응답
-            SendExploreResult(true, msg.InteractId, msg.ActionId, rewardType, rewardId, ErrorCode.SUCCESS);
+            // 성공 응답 (최종 결정된 아이템 ID 전송)
+            SendExploreResult(true, msg.InteractId, msg.ActionId, rewardItemId, ErrorCode.SUCCESS);
 
             // 같은 Area의 모든 플레이어에게 상태 업데이트 브로드캐스트
             BroadcastInteractableUpdate(msg.InteractId, msg.ActionId, true, PlayerId.Value);
@@ -671,8 +671,8 @@ public class GameClientSession : IPeer
             _logger.LogInformation("Player {PlayerId} tried to explore already explored action: InteractId={InteractId}, ActionId={ActionId}",
                 PlayerId, msg.InteractId, msg.ActionId);
 
-            // 이미 탐색됨 - 성공 응답 (결과 표시만)
-            SendExploreResult(true, msg.InteractId, msg.ActionId, rewardType, rewardId, ErrorCode.SUCCESS);
+            // 이미 탐색됨 - 아이템 없이 성공 응답 (결과 표시만)
+            SendExploreResult(true, msg.InteractId, msg.ActionId, 0, ErrorCode.SUCCESS);
         }
 
         // 탐색 종료 처리
@@ -681,19 +681,22 @@ public class GameClientSession : IPeer
         return Task.CompletedTask;
     }
 
-    private void SendExploreResult(bool success, int interactId, int actionId, RewardType rewardType, int rewardId, ErrorCode errorCode)
+    private void SendExploreResult(bool success, int interactId, int actionId, int itemId, ErrorCode errorCode)
     {
         if (!PlayerId.HasValue) return;
 
-        using var packet = PacketMaker.G_TO_C_EXPLORE_RESULT(success, interactId, actionId, rewardType, rewardId, errorCode);
+        using var packet = PacketMaker.G_TO_C_EXPLORE_RESULT(success, interactId, actionId, itemId, errorCode);
         Send(packet);
     }
 
     /// <summary>
-    /// 탐색 보상 처리
+    /// 탐색 보상 처리 - 최종 결정된 아이템 ID 반환
     /// </summary>
-    private void ProcessExploreReward(RewardType rewardType, int rewardId)
+    /// <returns>획득한 아이템 ID (0이면 아이템 없음)</returns>
+    private int ProcessExploreReward(RewardType rewardType, int rewardId)
     {
+        int resultItemId = 0;
+
         switch (rewardType)
         {
             case RewardType.ITEM:
@@ -701,26 +704,31 @@ public class GameClientSession : IPeer
                 if (rewardId > 0)
                 {
                     AddInGameItem(rewardId);
+                    resultItemId = rewardId;
                 }
                 break;
 
             case RewardType.CONDITION_RANDOM:
-                // TODO: 컨디션 버프를 가진 아이템 풀에서 랜덤 지급
+                // TODO: 컨디션 버프를 가진 아이템 풀에서 랜덤 선택
+                // resultItemId = GetRandomItemByBuff(BuffSubType.CONDITION_ADD);
+                // AddInGameItem(resultItemId);
                 _logger.LogDebug("Player {PlayerId} received CONDITION_RANDOM reward", PlayerId);
                 break;
 
             case RewardType.CORRUPTION_RANDOM:
-                // TODO: 오염도 버프를 가진 아이템 풀에서 랜덤 지급
+                // TODO: 오염도 버프를 가진 아이템 풀에서 랜덤 선택
+                // resultItemId = GetRandomItemByBuff(BuffSubType.CORRUPTION_DOWN);
+                // AddInGameItem(resultItemId);
                 _logger.LogDebug("Player {PlayerId} received CORRUPTION_RANDOM reward", PlayerId);
                 break;
 
             case RewardType.RULE:
-                // TODO: 규칙 지급
+                // 규칙은 아이템이 아님
                 _logger.LogDebug("Player {PlayerId} received RULE reward: {RewardId}", PlayerId, rewardId);
                 break;
 
             case RewardType.RULE_RANDOM:
-                // TODO: 랜덤 규칙 지급
+                // 규칙은 아이템이 아님
                 _logger.LogDebug("Player {PlayerId} received RULE_RANDOM reward", PlayerId);
                 break;
 
@@ -728,6 +736,8 @@ public class GameClientSession : IPeer
             default:
                 break;
         }
+
+        return resultItemId;
     }
 
     private void BroadcastInteractableUpdate(int interactId, int actionId, bool isExplored, long exploredBy)
