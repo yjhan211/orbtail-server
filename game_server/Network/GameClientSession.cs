@@ -77,7 +77,7 @@ public class GameClientSession : IPeer
 
     private void InitializeProtocolHandlers()
     {
-        _protocolRouter.RegisterHandler(Protocol.C_TO_G_HEARTBEAT, async (bytes) => await HandleMessage<C_TO_G_HEARTBEAT>(bytes, HandleHeartbeat));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_HEART_BEAT, async (_) => await HandleHeartbeat());
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT, async (bytes) => await HandleMessage<C_TO_G_CONNECT>(bytes, HandleConnect));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_MOVE, async (bytes) => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_ATTACK, async (bytes) => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
@@ -173,13 +173,13 @@ public class GameClientSession : IPeer
         }
     }
 
-    private Task HandleHeartbeat(C_TO_G_HEARTBEAT msg)
+    private Task HandleHeartbeat()
     {
         _lastHeartbeatTime = DateTime.UtcNow;
 
         // 하트비트 응답 전송
         var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        using var packet = PacketMaker.G_TO_C_HEARTBEAT(serverTimestamp);
+        using var packet = PacketMaker.G_TO_C_HEART_BEAT(DateTime.UtcNow);
         Send(packet);
 
         return Task.CompletedTask;

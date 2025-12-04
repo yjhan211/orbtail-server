@@ -177,7 +177,7 @@ public static class PacketMaker
 
     // ========== GameServer 프로토콜 ==========
 
-    public static Packet G_TO_C_HEARTBEAT(DateTime utcNow)
+    public static Packet G_TO_C_HEART_BEAT(DateTime utcNow)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_HEART_BEAT);
         G_TO_C_HEART_BEAT body = new() { UtcNow = utcNow };
