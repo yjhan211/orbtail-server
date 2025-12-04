@@ -31,6 +31,7 @@ public class GameServer : IHostedService
     private readonly List<InstanceMapController> _instanceControllerList = [];
     private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
     private readonly InteractableStateManager _interactableStateManager = new();
+    private readonly InGameInventoryManager _inGameInventoryManager = new();
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
 
@@ -115,6 +116,7 @@ public class GameServer : IHostedService
             GameDataHelper.Initialize();
             MapHelper.Initialize(_serverConfig.GameServerNum);
             _interactableStateManager.Initialize(msg => _logger.LogInformation(msg));
+            _inGameInventoryManager.Initialize(msg => _logger.LogInformation(msg));
         }
         catch (Exception ex)
         {
@@ -124,7 +126,7 @@ public class GameServer : IHostedService
 
     private void InitializeControllers()
     {
-        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cacheHelper, _serverConfig, _clientSessions, _interactableStateManager);
+        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cacheHelper, _serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
@@ -186,7 +188,8 @@ public class GameServer : IHostedService
                 OnClientSessionLeave,
                 RegisterClientSession,
                 GetSessionsByInstance,
-                _interactableStateManager);
+                _interactableStateManager,
+                _inGameInventoryManager);
 
             _logger.LogInformation("Game client session created");
         }

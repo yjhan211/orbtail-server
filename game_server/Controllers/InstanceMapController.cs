@@ -18,7 +18,8 @@ public sealed class InstanceMapController(
     ICacheHelper cacheHelper,
     ServerConfig serverConfig,
     ConcurrentDictionary<long, GameClientSession> clientSessions,
-    InteractableStateManager interactableStateManager)
+    InteractableStateManager interactableStateManager,
+    InGameInventoryManager inGameInventoryManager)
     : BaseMapController(logger, natsClient, cacheHelper, serverConfig)
 {
     private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
@@ -203,6 +204,9 @@ public sealed class InstanceMapController(
                 // Interactable 상태 정리 (MatchingId = mapSubId)
                 interactableStateManager.RemoveMatchingState(mapSubId);
 
+                // InGameInventory 상태 정리
+                inGameInventoryManager.RemoveMatchingState(mapSubId);
+
                 Logger.LogInformation($"게임 종료 완료 및 인스턴스 제거: {instanceKey}");
             }
             finally
@@ -325,6 +329,9 @@ public sealed class InstanceMapController(
 
         // Interactable 상태 정리
         interactableStateManager.RemoveMatchingState(mapSubId);
+
+        // InGameInventory 상태 정리
+        inGameInventoryManager.RemoveMatchingState(mapSubId);
 
         Logger.LogInformation("인스턴스 정리 완료: {InstanceKey}", instanceKey);
     }

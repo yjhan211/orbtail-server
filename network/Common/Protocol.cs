@@ -61,6 +61,12 @@ namespace network.common
         G_TO_C_EXPLORE_RESULT, // 탐색 결과 (보상 등)
         G_TO_C_EXPLORE_END, // 탐색 종료 브로드캐스트
 
+        // 인게임 인벤토리 프로토콜 (게임 내 배낭 - 게임 종료 시 초기화)
+        G_TO_C_INGAME_INVENTORY_LIST, // 게임 시작 시 배낭 전체 목록
+        G_TO_C_INGAME_INVENTORY_UPDATE, // 아이템 추가/제거 시 업데이트
+        C_TO_G_USE_INGAME_ITEM, // 게임 아이템 사용 요청
+        G_TO_C_USE_INGAME_ITEM_RESULT, // 아이템 사용 결과
+
         END
     }
 

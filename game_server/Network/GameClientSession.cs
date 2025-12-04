@@ -27,6 +27,7 @@ public class GameClientSession : IPeer
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
     private readonly InteractableStateManager _interactableStateManager;
+    private readonly InGameInventoryManager _inGameInventoryManager;
 
     private readonly ILogger _logger;
     private readonly ICacheHelper _cacheHelper;
@@ -55,7 +56,8 @@ public class GameClientSession : IPeer
         Action<GameClientSession> onLeaveCallback,
         Action<long, GameClientSession> registerSessionCallback,
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
-        InteractableStateManager interactableStateManager)
+        InteractableStateManager interactableStateManager,
+        InGameInventoryManager inGameInventoryManager)
     {
         _token = token;
         _token.SetPeer(this);
@@ -68,6 +70,7 @@ public class GameClientSession : IPeer
         _registerSessionCallback = registerSessionCallback;
         _getSessionsByInstance = getSessionsByInstance;
         _interactableStateManager = interactableStateManager;
+        _inGameInventoryManager = inGameInventoryManager;
 
         _protocolRouter = new ProtocolRouter(logger);
         InitializeProtocolHandlers();
@@ -84,6 +87,7 @@ public class GameClientSession : IPeer
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT, async (bytes) => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_START, async (bytes) => await HandleMessage<C_TO_G_EXPLORE_START>(bytes, HandleExploreStart));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_SELECT, async (bytes) => await HandleMessage<C_TO_G_EXPLORE_SELECT>(bytes, HandleExploreSelect));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM, async (bytes) => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -249,6 +253,9 @@ public class GameClientSession : IPeer
             Send(connectResultPacket);
 
             _logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
+
+            // 인게임 인벤토리 목록 전송
+            SendInGameInventoryList();
 
             // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
             await BroadcastPlayerJoin();
@@ -650,6 +657,12 @@ public class GameClientSession : IPeer
             _logger.LogInformation("Player {PlayerId} explored InteractId={InteractId}, ActionId={ActionId} successfully",
                 PlayerId, msg.InteractId, msg.ActionId);
 
+            // 보상이 아이템인 경우 인게임 인벤토리에 추가
+            if (rewardType == "item" && int.TryParse(rewardId, out var itemId))
+            {
+                AddInGameItem(itemId);
+            }
+
             // 성공 응답
             SendExploreResult(true, msg.InteractId, msg.ActionId, rewardType, rewardId, ErrorCode.SUCCESS);
 
@@ -713,6 +726,81 @@ public class GameClientSession : IPeer
 
         _logger.LogDebug("Broadcasted EXPLORE_END to {Count} players in Area {Area}", sameAreaSessions.Count, CurrentArea);
     }
+
+    #region 인게임 인벤토리
+
+    /// <summary>
+    /// 인게임 인벤토리 전체 목록 전송
+    /// </summary>
+    private void SendInGameInventoryList()
+    {
+        if (!PlayerId.HasValue) return;
+
+        var items = _inGameInventoryManager.GetAllItems(CurrentMapSubId, PlayerId.Value);
+        using var packet = PacketMaker.G_TO_C_INGAME_INVENTORY_LIST(items);
+        Send(packet);
+
+        _logger.LogDebug("Sent InGameInventory list to PlayerId={PlayerId}, ItemCount={Count}", PlayerId, items.Count);
+    }
+
+    /// <summary>
+    /// 인게임 인벤토리 업데이트 전송 (아이템 추가/제거 시)
+    /// </summary>
+    private void SendInGameInventoryUpdate(InGameItemInfo item)
+    {
+        if (!PlayerId.HasValue) return;
+
+        using var packet = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE([item]);
+        Send(packet);
+
+        _logger.LogDebug("Sent InGameInventory update to PlayerId={PlayerId}, ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}",
+            PlayerId, item.ItemUid, item.ItemId, item.Count);
+    }
+
+    /// <summary>
+    /// 인게임 아이템 추가 (탐색 보상 등)
+    /// </summary>
+    private void AddInGameItem(int itemId, int count = 1)
+    {
+        if (!PlayerId.HasValue) return;
+
+        var item = _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, count);
+        SendInGameInventoryUpdate(item);
+    }
+
+    /// <summary>
+    /// 인게임 아이템 사용 요청 처리
+    /// </summary>
+    private Task HandleUseInGameItem(C_TO_G_USE_INGAME_ITEM msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        var success = _inGameInventoryManager.TryRemoveItem(CurrentMapSubId, PlayerId.Value, msg.ItemUid, msg.Count, out var updatedItem);
+
+        if (success && updatedItem != null)
+        {
+            // 아이템 사용 성공 - 인벤토리 업데이트 전송
+            SendInGameInventoryUpdate(updatedItem);
+
+            // 사용 결과 전송
+            using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
+            Send(resultPacket);
+
+            _logger.LogInformation("Player {PlayerId} used InGameItem: ItemUid={ItemUid}, Count={Count}", PlayerId, msg.ItemUid, msg.Count);
+        }
+        else
+        {
+            // 아이템 사용 실패
+            using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.FATAL);
+            Send(resultPacket);
+
+            _logger.LogWarning("Player {PlayerId} failed to use InGameItem: ItemUid={ItemUid}, Count={Count}", PlayerId, msg.ItemUid, msg.Count);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    #endregion
 
     public void Send(IPacket packet)
     {
