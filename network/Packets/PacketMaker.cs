@@ -353,14 +353,15 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_USE_INGAME_ITEM_RESULT(bool success, long itemUid, ErrorCode errorCode)
+    public static Packet G_TO_C_USE_INGAME_ITEM_RESULT(bool success, long itemUid, ErrorCode errorCode, int ruleId = 0)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_USE_INGAME_ITEM_RESULT);
         G_TO_C_USE_INGAME_ITEM_RESULT body = new()
         {
             Success = success,
             ItemUid = itemUid,
-            ErrorCode = errorCode
+            ErrorCode = errorCode,
+            RuleId = ruleId
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

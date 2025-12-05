@@ -28,6 +28,7 @@ public class GameClientSession : IPeer
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
     private readonly InteractableStateManager _interactableStateManager;
     private readonly InGameInventoryManager _inGameInventoryManager;
+    private readonly AreaRuleManager _areaRuleManager;
 
     private readonly ILogger _logger;
     private readonly ICacheHelper _cacheHelper;
@@ -63,7 +64,8 @@ public class GameClientSession : IPeer
         Action<long, GameClientSession> registerSessionCallback,
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
         InteractableStateManager interactableStateManager,
-        InGameInventoryManager inGameInventoryManager)
+        InGameInventoryManager inGameInventoryManager,
+        AreaRuleManager areaRuleManager)
     {
         _token = token;
         _token.SetPeer(this);
@@ -77,6 +79,7 @@ public class GameClientSession : IPeer
         _getSessionsByInstance = getSessionsByInstance;
         _interactableStateManager = interactableStateManager;
         _inGameInventoryManager = inGameInventoryManager;
+        _areaRuleManager = areaRuleManager;
 
         _protocolRouter = new ProtocolRouter(logger);
         InitializeProtocolHandlers();
@@ -911,8 +914,16 @@ public class GameClientSession : IPeer
             // 버프 효과 적용
             ApplyItemBuffs(itemId);
 
+            // 행동 수칙 쪽지 아이템 처리 (202000003)
+            var ruleId = 0;
+            if (itemId == 202000003)
+            {
+                ruleId = _areaRuleManager.DequeueNextRule(CurrentMapSubId);
+                _logger.LogInformation("Player {PlayerId} used manual item, got RuleId={RuleId}", PlayerId, ruleId);
+            }
+
             // 사용 결과 전송
-            using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
+            using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS, ruleId);
             Send(resultPacket);
 
             _logger.LogInformation("Player {PlayerId} used InGameItem: ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}",
