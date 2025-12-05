@@ -143,7 +143,7 @@ namespace network.common
         SITGROUND,
         SITCHAIR,
         EXPLORE_1,
-        CRAFT_1,
+        MAKE,
         SLEEP,
     }
 

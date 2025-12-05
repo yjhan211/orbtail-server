@@ -634,4 +634,19 @@ namespace network.common.data.models
         [Key("itemUid")] public long ItemUid { get; set; }
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
     }
+
+    // 플레이어 상태 변경 요청
+    [MessagePackObject]
+    public class C_TO_G_PLAYER_STATE : IMessagePackObject
+    {
+        [Key("state")] public PlayerState State { get; set; }
+    }
+
+    // 플레이어 상태 브로드캐스트
+    [MessagePackObject]
+    public class G_TO_C_PLAYER_STATE : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("state")] public PlayerState State { get; set; }
+    }
 }

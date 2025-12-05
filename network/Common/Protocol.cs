@@ -68,6 +68,10 @@ namespace network.common
         C_TO_G_USE_INGAME_ITEM, // 게임 아이템 사용 요청
         G_TO_C_USE_INGAME_ITEM_RESULT, // 아이템 사용 결과
 
+        // 플레이어 상태 프로토콜
+        C_TO_G_PLAYER_STATE, // 플레이어 상태 변경 요청 (MAKE 등)
+        G_TO_C_PLAYER_STATE, // 플레이어 상태 브로드캐스트 (애니메이션 동기화)
+
         END
     }
 
