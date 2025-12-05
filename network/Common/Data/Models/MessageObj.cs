@@ -655,6 +655,8 @@ namespace network.common.data.models
     public class G_TO_C_PLAYER_STATS_UPDATE : IMessagePackObject
     {
         [Key("stamina")] public int Stamina { get; set; }
+        [Key("staminaDelta")] public int StaminaDelta { get; set; }
         [Key("corruption")] public int Corruption { get; set; }
+        [Key("corruptionDelta")] public int CorruptionDelta { get; set; }
     }
 }

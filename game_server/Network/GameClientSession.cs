@@ -942,7 +942,8 @@ public class GameClientSession : IPeer
         var itemData = GameItemData.Get(itemId);
         if (itemData == null || !itemData.IsConsumable) return;
 
-        var statsChanged = false;
+        var staminaDelta = 0;
+        var corruptionDelta = 0;
 
         foreach (var (buffId, value) in itemData.ConsumableBuffList)
         {
@@ -951,28 +952,18 @@ public class GameClientSession : IPeer
             switch (buffData.SubType)
             {
                 case BuffSubType.CONDITION_ADD:
-                    // 스태미나 증가
-                    var oldStamina = Stamina;
-                    Stamina = Math.Min(MaxStamina, Stamina + value);
-                    statsChanged = true;
-                    _logger.LogInformation("Player {PlayerId} Stamina: {Old} → {New} (+{Value})",
-                        PlayerId, oldStamina, Stamina, value);
+                    staminaDelta += value;
                     break;
 
                 case BuffSubType.CORRUPTION_DOWN:
-                    // 정신 오염도 감소
-                    var oldCorruption = Corruption;
-                    Corruption = Math.Max(0, Corruption - value);
-                    statsChanged = true;
-                    _logger.LogInformation("Player {PlayerId} Corruption: {Old} → {New} (-{Value})",
-                        PlayerId, oldCorruption, Corruption, value);
+                    corruptionDelta -= value;
                     break;
             }
         }
 
-        if (statsChanged)
+        if (staminaDelta != 0 || corruptionDelta != 0)
         {
-            SendPlayerStatsUpdate();
+            ModifyStats(staminaDelta, corruptionDelta);
         }
     }
 
@@ -981,6 +972,9 @@ public class GameClientSession : IPeer
     /// </summary>
     public void ModifyStats(int staminaDelta = 0, int corruptionDelta = 0)
     {
+        var oldStamina = Stamina;
+        var oldCorruption = Corruption;
+
         if (staminaDelta != 0)
         {
             Stamina = Math.Clamp(Stamina + staminaDelta, 0, MaxStamina);
@@ -991,18 +985,25 @@ public class GameClientSession : IPeer
             Corruption = Math.Clamp(Corruption + corruptionDelta, 0, MaxCorruption);
         }
 
-        SendPlayerStatsUpdate();
+        // 실제 변화량 계산 (Clamp로 인해 요청값과 다를 수 있음)
+        var actualStaminaDelta = Stamina - oldStamina;
+        var actualCorruptionDelta = Corruption - oldCorruption;
+
+        _logger.LogInformation("Player {PlayerId} Stats: Stamina {OldS}→{NewS} ({DeltaS:+#;-#;0}), Corruption {OldC}→{NewC} ({DeltaC:+#;-#;0})",
+            PlayerId, oldStamina, Stamina, actualStaminaDelta, oldCorruption, Corruption, actualCorruptionDelta);
+
+        SendPlayerStatsUpdate(actualStaminaDelta, actualCorruptionDelta);
     }
 
     /// <summary>
     /// 스탯 업데이트 패킷 전송
     /// </summary>
-    private void SendPlayerStatsUpdate()
+    private void SendPlayerStatsUpdate(int staminaDelta, int corruptionDelta)
     {
-        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Stamina, Corruption);
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Stamina, staminaDelta, Corruption, corruptionDelta);
         Send(packet);
-        _logger.LogDebug("Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina}, Corruption={Corruption}",
-            PlayerId, Stamina, Corruption);
+        _logger.LogDebug("Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina} ({StaminaDelta:+#;-#;0}), Corruption={Corruption} ({CorruptionDelta:+#;-#;0})",
+            PlayerId, Stamina, staminaDelta, Corruption, corruptionDelta);
     }
 
     #endregion

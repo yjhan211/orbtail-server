@@ -384,13 +384,15 @@ public static class PacketMaker
 
     // ========== 플레이어 스탯 프로토콜 ==========
 
-    public static Packet G_TO_C_PLAYER_STATS_UPDATE(int stamina, int corruption)
+    public static Packet G_TO_C_PLAYER_STATS_UPDATE(int stamina, int staminaDelta, int corruption, int corruptionDelta)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_STATS_UPDATE);
         G_TO_C_PLAYER_STATS_UPDATE body = new()
         {
             Stamina = stamina,
-            Corruption = corruption
+            StaminaDelta = staminaDelta,
+            Corruption = corruption,
+            CorruptionDelta = corruptionDelta
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
