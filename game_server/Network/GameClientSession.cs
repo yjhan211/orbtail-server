@@ -985,14 +985,11 @@ public class GameClientSession : IPeer
             Corruption = Math.Clamp(Corruption + corruptionDelta, 0, MaxCorruption);
         }
 
-        // 실제 변화량 계산 (Clamp로 인해 요청값과 다를 수 있음)
-        var actualStaminaDelta = Stamina - oldStamina;
-        var actualCorruptionDelta = Corruption - oldCorruption;
-
         _logger.LogInformation("Player {PlayerId} Stats: Stamina {OldS}→{NewS} ({DeltaS:+#;-#;0}), Corruption {OldC}→{NewC} ({DeltaC:+#;-#;0})",
-            PlayerId, oldStamina, Stamina, actualStaminaDelta, oldCorruption, Corruption, actualCorruptionDelta);
+            PlayerId, oldStamina, Stamina, staminaDelta, oldCorruption, Corruption, corruptionDelta);
 
-        SendPlayerStatsUpdate(actualStaminaDelta, actualCorruptionDelta);
+        // 아이템 스펙 그대로 델타값 전송 (이펙트 표시용)
+        SendPlayerStatsUpdate(staminaDelta, corruptionDelta);
     }
 
     /// <summary>
