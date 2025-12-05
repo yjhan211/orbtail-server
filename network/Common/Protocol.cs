@@ -72,6 +72,9 @@ namespace network.common
         C_TO_G_PLAYER_STATE, // 플레이어 상태 변경 요청 (MAKE 등)
         G_TO_C_PLAYER_STATE, // 플레이어 상태 브로드캐스트 (애니메이션 동기화)
 
+        // 플레이어 스탯 프로토콜
+        G_TO_C_PLAYER_STATS_UPDATE, // 스태미나/정신력 등 스탯 변경 알림
+
         END
     }
 

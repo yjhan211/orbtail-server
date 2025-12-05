@@ -649,4 +649,12 @@ namespace network.common.data.models
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("state")] public PlayerState State { get; set; }
     }
+
+    // 플레이어 스탯 업데이트 (스태미나/정신력 등)
+    [MessagePackObject]
+    public class G_TO_C_PLAYER_STATS_UPDATE : IMessagePackObject
+    {
+        [Key("stamina")] public int Stamina { get; set; }
+        [Key("corruption")] public int Corruption { get; set; }
+    }
 }

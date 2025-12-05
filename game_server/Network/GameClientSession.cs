@@ -40,6 +40,12 @@ public class GameClientSession : IPeer
     public PlayerState CurrentState { get; private set; } = PlayerState.Idle;
     public int? CurrentExploringInteractId { get; private set; }
 
+    // 인게임 스탯 (게임 종료 시 초기화)
+    public int Stamina { get; private set; } = 100;
+    public int Corruption { get; private set; } = 0;
+    private const int MaxStamina = 100;
+    private const int MaxCorruption = 100;
+
     private Vector3f? _lastValidatedPosition;
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
@@ -89,6 +95,7 @@ public class GameClientSession : IPeer
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_SELECT, async (bytes) => await HandleMessage<C_TO_G_EXPLORE_SELECT>(bytes, HandleExploreSelect));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_END, async (bytes) => await HandleMessage<C_TO_G_EXPLORE_END>(bytes, HandleExploreEnd));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM, async (bytes) => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE, async (bytes) => await HandleMessage<C_TO_G_PLAYER_STATE>(bytes, HandlePlayerState));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -809,6 +816,31 @@ public class GameClientSession : IPeer
         _logger.LogDebug("Broadcasted EXPLORE_END to {Count} players in Area {Area}", sameAreaSessions.Count, CurrentArea);
     }
 
+    #region 플레이어 상태
+
+    private Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        _logger.LogInformation("Player {PlayerId} state change request: {State}", PlayerId, msg.State);
+
+        // 같은 Area의 다른 플레이어들에게 상태 브로드캐스트
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var sameAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea).ToList();
+
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, msg.State);
+        foreach (var session in sameAreaSessions)
+        {
+            session.Send(packet);
+        }
+
+        _logger.LogDebug("Broadcasted PLAYER_STATE to {Count} players in Area {Area}", sameAreaSessions.Count, CurrentArea);
+
+        return Task.CompletedTask;
+    }
+
+    #endregion
+
     #region 인게임 인벤토리
 
     /// <summary>
@@ -857,6 +889,18 @@ public class GameClientSession : IPeer
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
 
+        // 아이템 정보 먼저 조회 (제거 전에 ItemId 확인 필요)
+        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+        var itemInfo = inventory.GetItem(msg.ItemUid);
+        if (itemInfo == null)
+        {
+            using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.FATAL);
+            Send(failPacket);
+            _logger.LogWarning("Player {PlayerId} item not found: ItemUid={ItemUid}", PlayerId, msg.ItemUid);
+            return Task.CompletedTask;
+        }
+
+        var itemId = itemInfo.ItemId;
         var success = _inGameInventoryManager.TryRemoveItem(CurrentMapSubId, PlayerId.Value, msg.ItemUid, msg.Count, out var updatedItem);
 
         if (success && updatedItem != null)
@@ -864,11 +908,15 @@ public class GameClientSession : IPeer
             // 아이템 사용 성공 - 인벤토리 업데이트 전송
             SendInGameInventoryUpdate(updatedItem);
 
+            // 버프 효과 적용
+            ApplyItemBuffs(itemId);
+
             // 사용 결과 전송
             using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
             Send(resultPacket);
 
-            _logger.LogInformation("Player {PlayerId} used InGameItem: ItemUid={ItemUid}, Count={Count}", PlayerId, msg.ItemUid, msg.Count);
+            _logger.LogInformation("Player {PlayerId} used InGameItem: ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}",
+                PlayerId, msg.ItemUid, itemId, msg.Count);
         }
         else
         {
@@ -880,6 +928,81 @@ public class GameClientSession : IPeer
         }
 
         return Task.CompletedTask;
+    }
+
+    #endregion
+
+    #region 플레이어 스탯
+
+    /// <summary>
+    /// 아이템 버프 효과 적용
+    /// </summary>
+    private void ApplyItemBuffs(int itemId)
+    {
+        var itemData = GameItemData.Get(itemId);
+        if (itemData == null || !itemData.IsConsumable) return;
+
+        var statsChanged = false;
+
+        foreach (var (buffId, value) in itemData.ConsumableBuffList)
+        {
+            var buffData = GameBuffData.Get(buffId);
+
+            switch (buffData.SubType)
+            {
+                case BuffSubType.CONDITION_ADD:
+                    // 스태미나 증가
+                    var oldStamina = Stamina;
+                    Stamina = Math.Min(MaxStamina, Stamina + value);
+                    statsChanged = true;
+                    _logger.LogInformation("Player {PlayerId} Stamina: {Old} → {New} (+{Value})",
+                        PlayerId, oldStamina, Stamina, value);
+                    break;
+
+                case BuffSubType.CORRUPTION_DOWN:
+                    // 정신 오염도 감소
+                    var oldCorruption = Corruption;
+                    Corruption = Math.Max(0, Corruption - value);
+                    statsChanged = true;
+                    _logger.LogInformation("Player {PlayerId} Corruption: {Old} → {New} (-{Value})",
+                        PlayerId, oldCorruption, Corruption, value);
+                    break;
+            }
+        }
+
+        if (statsChanged)
+        {
+            SendPlayerStatsUpdate();
+        }
+    }
+
+    /// <summary>
+    /// 스탯 변경 (외부에서 호출 가능 - 환경 효과 등)
+    /// </summary>
+    public void ModifyStats(int staminaDelta = 0, int corruptionDelta = 0)
+    {
+        if (staminaDelta != 0)
+        {
+            Stamina = Math.Clamp(Stamina + staminaDelta, 0, MaxStamina);
+        }
+
+        if (corruptionDelta != 0)
+        {
+            Corruption = Math.Clamp(Corruption + corruptionDelta, 0, MaxCorruption);
+        }
+
+        SendPlayerStatsUpdate();
+    }
+
+    /// <summary>
+    /// 스탯 업데이트 패킷 전송
+    /// </summary>
+    private void SendPlayerStatsUpdate()
+    {
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Stamina, Corruption);
+        Send(packet);
+        _logger.LogDebug("Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina}, Corruption={Corruption}",
+            PlayerId, Stamina, Corruption);
     }
 
     #endregion
