@@ -685,6 +685,7 @@ namespace network.common.data.models
     {
         [Key("templateId")] public int TemplateId { get; set; }
         [Key("currentStepOrder")] public int CurrentStepOrder { get; set; } // 현재 단계 (이보다 작은 order는 완료)
+        [Key("totalStepCount")] public int TotalStepCount { get; set; } // 총 단계 수
         [Key("slotBinding")] public ExitSlotBindingInfo SlotBinding { get; set; } // 슬롯 바인딩 (클라에서 텍스트 조합)
         [Key("isCompleted")] public bool IsCompleted { get; set; } // 탈출 완료 여부
     }

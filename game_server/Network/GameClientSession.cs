@@ -1072,13 +1072,14 @@ public class GameClientSession : IPeer
             using var packet = PacketMaker.G_TO_C_EXIT_STEP_INFO(
                 templateId: state.TemplateId,
                 currentStepOrder: state.CurrentStepOrder,
+                totalStepCount: state.Steps.Count,
                 slotBinding: slotBinding,
                 isCompleted: state.IsCompleted
             );
             Send(packet);
 
-            _logger.LogInformation("Player {PlayerId} requested exit step: Template={TemplateId}, CurrentStep={StepOrder}, Binding=(Item={ItemId}, Spot={SpotId}, Debuff={DebuffId}, Condition={ConditionId}), Completed={IsCompleted}",
-                PlayerId, state.TemplateId, state.CurrentStepOrder, slotBinding.ItemId, slotBinding.SpotId, slotBinding.DebuffId, slotBinding.ConditionId, state.IsCompleted);
+            _logger.LogInformation("Player {PlayerId} requested exit step: Template={TemplateId}, CurrentStep={StepOrder}/{TotalSteps}, Binding=(Item={ItemId}, Spot={SpotId}, Debuff={DebuffId}, Condition={ConditionId}), Completed={IsCompleted}",
+                PlayerId, state.TemplateId, state.CurrentStepOrder, state.Steps.Count, slotBinding.ItemId, slotBinding.SpotId, slotBinding.DebuffId, slotBinding.ConditionId, state.IsCompleted);
         }
         catch (Exception ex)
         {
