@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.managers;
@@ -68,7 +69,7 @@ namespace network.common.data
         }
 
         /// <summary>
-        /// 아이템 ID로 해당 아이템을 보상으로 주는 Interactable ID 찾기
+        /// 아이템 ID로 해당 아이템을 보상 풀에 포함하는 Interactable ID 찾기
         /// </summary>
         public static int? GetInteractableIdByRewardItemId(int itemId)
         {
@@ -76,7 +77,7 @@ namespace network.common.data
             {
                 foreach (var action in info.Actions)
                 {
-                    if (action.RewardType == RewardType.ITEM && action.RewardId == itemId)
+                    if (action.RewardType == RewardType.ITEM && action.RewardPool.Contains(itemId))
                     {
                         return info.Id;
                     }
@@ -126,7 +127,7 @@ namespace network.common.data
         public string ActionText { get; private set; }
         public string ResultText { get; private set; }
         public RewardType RewardType { get; private set; }
-        public int RewardId { get; private set; }
+        public List<int> RewardPool { get; private set; }
 
         public static InteractableActionData CreateFromData(CsvRow row)
         {
@@ -137,8 +138,17 @@ namespace network.common.data
                 ActionText = row["action_text"],
                 ResultText = row["result_text"].Trim('"').Replace("\\n", "\n"),
                 RewardType = (RewardType)int.Parse(row["reward_type"]),
-                RewardId = int.Parse(row["reward_id"])
+                RewardPool = ParseIntArray(row["reward_pool"])
             };
+        }
+
+        private static List<int> ParseIntArray(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value == "[]")
+                return new List<int>();
+
+            value = value.Trim('"');
+            return JsonConvert.DeserializeObject<List<int>>(value) ?? new List<int>();
         }
     }
 }

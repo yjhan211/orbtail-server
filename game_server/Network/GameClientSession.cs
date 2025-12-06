@@ -670,7 +670,7 @@ public class GameClientSession : IPeer
         var interactable = GameInteractableData.Get(msg.InteractId);
         var action = interactable?.Actions.FirstOrDefault(a => a.ActionId == msg.ActionId);
         var rewardType = action?.RewardType ?? RewardType.NONE;
-        var rewardId = action?.RewardId ?? 0;
+        var rewardPool = action?.RewardPool ?? new List<int>();
 
         if (success)
         {
@@ -678,7 +678,7 @@ public class GameClientSession : IPeer
                 PlayerId, msg.InteractId, msg.ActionId);
 
             // 보상 처리 및 최종 아이템 ID 결정
-            var rewardItemId = ProcessExploreReward(rewardType, rewardId);
+            var rewardItemId = ProcessExploreReward(rewardType, rewardPool);
 
             // 성공 응답 (최종 결정된 아이템 ID 전송)
             SendExploreResult(true, msg.InteractId, msg.ActionId, rewardItemId, ErrorCode.SUCCESS);
@@ -730,18 +730,21 @@ public class GameClientSession : IPeer
     /// 탐색 보상 처리 - 최종 결정된 아이템 ID 반환
     /// </summary>
     /// <returns>획득한 아이템 ID (0이면 아이템 없음)</returns>
-    private int ProcessExploreReward(RewardType rewardType, int rewardId)
+    private int ProcessExploreReward(RewardType rewardType, List<int> rewardPool)
     {
         int resultItemId = 0;
 
         switch (rewardType)
         {
             case RewardType.ITEM:
-                // 고정 아이템 지급
-                if (rewardId > 0)
+                // 풀에서 랜덤 선택
+                if (rewardPool.Count > 0)
                 {
-                    AddInGameItem(rewardId);
-                    resultItemId = rewardId;
+                    var selectedId = rewardPool[Random.Shared.Next(rewardPool.Count)];
+                    AddInGameItem(selectedId);
+                    resultItemId = selectedId;
+                    _logger.LogInformation("Player {PlayerId} received ITEM reward: ItemId={ItemId} (from pool of {PoolSize})",
+                        PlayerId, selectedId, rewardPool.Count);
                 }
                 break;
 
@@ -776,8 +779,12 @@ public class GameClientSession : IPeer
                 break;
 
             case RewardType.RULE:
-                // 규칙은 아이템이 아님
-                _logger.LogDebug("Player {PlayerId} received RULE reward: {RewardId}", PlayerId, rewardId);
+                // 규칙 - 풀에서 랜덤 선택
+                if (rewardPool.Count > 0)
+                {
+                    var selectedRuleId = rewardPool[Random.Shared.Next(rewardPool.Count)];
+                    _logger.LogDebug("Player {PlayerId} received RULE reward: RuleId={RuleId}", PlayerId, selectedRuleId);
+                }
                 break;
 
             case RewardType.RULE_RANDOM:
