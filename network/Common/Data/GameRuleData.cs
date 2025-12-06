@@ -14,22 +14,12 @@ namespace network.common.data
 {
     public static class GameRuleData
     {
-        private static float Speed { get; set; }
-        public static float MoveElapsedTime { get; private set; }
         public static Cell StartPosition { get; private set; } = new(-1, -1);
         public static List<(int, int)> DefaultItemList { get; private set; } = null!;
-        public static float SkillCompleteTime { get; private set; }
-        public static bool HeartBeatActive { get; private set; } // TODO
+        public static bool HeartBeatActive { get; private set; }
 
         public static void Initialize(List<CsvRow> csvData)
         {
-            var speedRow = csvData.First(row => row["id"] == "Speed");
-            Speed = float.Parse(speedRow["value"]);
-            MoveElapsedTime = 0.5f / Speed;
-
-            var skillCompleteRow = csvData.First(row => row["id"] == "SkillCompleteTime");
-            SkillCompleteTime = float.Parse(skillCompleteRow["value"]);
-
             var heartBeatRow = csvData.First(row => row["id"] == "HeartBeatActive");
             HeartBeatActive = int.Parse(heartBeatRow["value"]) == 1;
 
@@ -62,9 +52,7 @@ namespace network.common.data
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteInfoLog("=== GameRuleData Validation ===");
-            LogManager.WriteInfoLog($"Speed: {Speed}");
             LogManager.WriteInfoLog($"StartPosition: ({StartPosition.X}, {StartPosition.Y})");
-            LogManager.WriteInfoLog($"SkillCompleteTime: {SkillCompleteTime}");
             LogManager.WriteInfoLog($"HeartBeatActive: {HeartBeatActive}");
             LogManager.WriteInfoLog(
                 $"DefaultItemList: [{string.Join(", ", DefaultItemList.Select(x => $"({x.Item1}, {x.Item2})"))}]");
@@ -72,10 +60,6 @@ namespace network.common.data
 
             var errors = new List<string>();
 
-            if (Speed <= 0)
-                errors.Add($"Speed must be greater than 0 (current: {Speed})");
-            if (SkillCompleteTime < 0)
-                errors.Add($"SkillCompleteTime cannot be negative (current: {SkillCompleteTime})");
             if (StartPosition.X < 0 || StartPosition.Y < 0)
                 errors.Add(
                     $"StartPosition coordinates cannot be negative (current: ({StartPosition.X}, {StartPosition.Y}))");

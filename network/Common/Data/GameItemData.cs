@@ -18,15 +18,13 @@ namespace network.common.data
         private static readonly Dictionary<int, ItemInfoData> Items = new();
 
         public static void Initialize(List<CsvRow> baseItemData, List<CsvRow> equipmentData,
-            List<CsvRow> consumableData, List<CsvRow> installationData,
-            List<CsvRow> shopData, List<CsvRow> putData)
+            List<CsvRow> consumableData, List<CsvRow> putData)
         {
             foreach (var baseInfo in baseItemData)
             {
                 var itemId = int.Parse(baseInfo["id"]);
                 var itemType = GetItemType(itemId);
                 var additionalData = new Dictionary<string, CsvRow>();
-                var equipType = GetEquipType(itemId);
 
                 switch (itemType)
                 {
@@ -46,16 +44,6 @@ namespace network.common.data
                         var consumableInfo = consumableData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
                         if (consumableInfo != null)
                             additionalData["item_info_consumable"] = consumableInfo;
-                        break;
-
-                    case ItemType.INSTALLATION:
-                        var installInfo = installationData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
-                        if (installInfo != null)
-                            additionalData["item_info_installation"] = installInfo;
-
-                        var shopInfo = shopData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
-                        if (shopInfo != null)
-                            additionalData["installation_shop_info"] = shopInfo;
                         break;
 
                     case ItemType.PUTABLE:
@@ -185,14 +173,6 @@ namespace network.common.data
                     case ItemType.CONSUMABLE
                         when additionalData.TryGetValue("item_info_consumable", out var consumableInfo):
                         item.ConsumableBuffList = ParseIntTupleArray(consumableInfo["buff_list"]);
-                        break;
-
-                    case ItemType.INSTALLATION
-                        when additionalData.TryGetValue("item_info_installation", out var installInfo):
-                        item.MaxDurability = int.Parse(installInfo["max_durability"]);
-                        item.BuffList = ParseBuffList(installInfo["buff_list"]) ?? throw new ArgumentException();
-                        if (additionalData.TryGetValue("installation_shop_info", out var shopInfo))
-                            item.MaxSellItems = int.Parse(shopInfo["max_items"]);
                         break;
 
                     case ItemType.PUTABLE
