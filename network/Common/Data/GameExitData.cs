@@ -68,8 +68,7 @@ namespace network.common.data
                 {
                     Id = id,
                     ItemId = int.Parse(row["item_id"]),
-                    Warning = row["warning"].Trim('"'),
-                    SpawnInteractableId = int.Parse(row["spawn_interactable_id"])
+                    Warning = row["warning"].Trim('"')
                 };
             }
 
@@ -191,7 +190,6 @@ namespace network.common.data
         public int Id { get; set; }
         public int ItemId { get; set; }
         public string Warning { get; set; }
-        public int SpawnInteractableId { get; set; }
     }
 
     public class ExitSpotData

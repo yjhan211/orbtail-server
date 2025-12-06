@@ -67,6 +67,24 @@ namespace network.common.data
             return list;
         }
 
+        /// <summary>
+        /// 아이템 ID로 해당 아이템을 보상으로 주는 Interactable ID 찾기
+        /// </summary>
+        public static int? GetInteractableIdByRewardItemId(int itemId)
+        {
+            foreach (var info in Infos.Values)
+            {
+                foreach (var action in info.Actions)
+                {
+                    if (action.RewardType == RewardType.ITEM && action.RewardId == itemId)
+                    {
+                        return info.Id;
+                    }
+                }
+            }
+            return null;
+        }
+
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameInteractableData Validation ===");

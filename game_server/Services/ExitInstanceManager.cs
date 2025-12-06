@@ -233,7 +233,10 @@ namespace game_server.services
             if (result.Contains("{Item.SpawnObj}"))
             {
                 var item = GameExitData.GetItem(SlotBinding.ItemId);
-                result = result.Replace("{Item.SpawnObj}", item?.SpawnInteractableId.ToString() ?? "0");
+                var spawnInteractableId = item != null
+                    ? GameInteractableData.GetInteractableIdByRewardItemId(item.ItemId)
+                    : null;
+                result = result.Replace("{Item.SpawnObj}", spawnInteractableId?.ToString() ?? "0");
             }
 
             if (result.Contains("{Spot.InteractObj}"))
