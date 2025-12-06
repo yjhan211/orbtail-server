@@ -104,7 +104,6 @@ public class GameClientSession : IPeer
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE, async (bytes) => await HandleMessage<C_TO_G_PLAYER_STATE>(bytes, HandlePlayerState));
 
         // 탈출 절차 프로토콜
-        _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXIT_GET_STEP, async (_) => await HandleExitGetStep());
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXIT_ADVANCE, async (bytes) => await HandleMessage<C_TO_G_EXIT_ADVANCE>(bytes, HandleExitAdvance));
     }
 
@@ -274,6 +273,9 @@ public class GameClientSession : IPeer
 
             // 인게임 인벤토리 목록 전송
             SendInGameInventoryList();
+
+            // 탈출 절차 정보 전송
+            SendExitStepInfo();
 
             // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
             await BroadcastPlayerJoin();
@@ -1051,11 +1053,11 @@ public class GameClientSession : IPeer
     #region 탈출 절차
 
     /// <summary>
-    /// 현재 탈출 절차 단계 정보 요청 처리
+    /// 탈출 절차 정보 전송 (게임 접속 시 자동 전송)
     /// </summary>
-    private Task HandleExitGetStep()
+    private void SendExitStepInfo()
     {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (!PlayerId.HasValue) return;
 
         try
         {
@@ -1078,15 +1080,13 @@ public class GameClientSession : IPeer
             );
             Send(packet);
 
-            _logger.LogInformation("Player {PlayerId} requested exit step: Template={TemplateId}, CurrentStep={StepOrder}/{TotalSteps}, Binding=(Item={ItemId}, Spot={SpotId}, Debuff={DebuffId}, Condition={ConditionId}), Completed={IsCompleted}",
+            _logger.LogInformation("Sent exit step info to Player {PlayerId}: Template={TemplateId}, CurrentStep={StepOrder}/{TotalSteps}, Binding=(Item={ItemId}, Spot={SpotId}, Debuff={DebuffId}, Condition={ConditionId}), Completed={IsCompleted}",
                 PlayerId, state.TemplateId, state.CurrentStepOrder, state.Steps.Count, slotBinding.ItemId, slotBinding.SpotId, slotBinding.DebuffId, slotBinding.ConditionId, state.IsCompleted);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "HandleExitGetStep error for player {PlayerId}", PlayerId);
+            _logger.LogError(ex, "SendExitStepInfo error for player {PlayerId}", PlayerId);
         }
-
-        return Task.CompletedTask;
     }
 
     /// <summary>

@@ -663,12 +663,6 @@ namespace network.common.data.models
 
     #region 탈출 절차 프로토콜
 
-    // 현재 탈출 절차 단계 요청
-    [MessagePackObject]
-    public class C_TO_G_EXIT_GET_STEP : IMessagePackObject
-    {
-    }
-
     // 탈출 절차 슬롯 바인딩 정보 (클라이언트에서 텍스트 조합에 사용)
     [MessagePackObject]
     public class ExitSlotBindingInfo

@@ -76,8 +76,7 @@ namespace network.common
         G_TO_C_PLAYER_STATS_UPDATE, // 스태미나/정신력 등 스탯 변경 알림
 
         // 탈출 절차 프로토콜
-        C_TO_G_EXIT_GET_STEP, // 현재 탈출 절차 단계 요청
-        G_TO_C_EXIT_STEP_INFO, // 탈출 절차 단계 정보 응답
+        G_TO_C_EXIT_STEP_INFO, // 탈출 절차 정보 (게임 접속 시 자동 전송)
         C_TO_G_EXIT_ADVANCE, // 탈출 절차 다음 단계 진행 요청
         G_TO_C_EXIT_ADVANCE_RESULT, // 탈출 절차 진행 결과 (성공/실패/탈출완료)
         G_TO_C_EXIT_STEP_UPDATE, // 탈출 절차 단계 변경 브로드캐스트 (다른 플레이어가 진행시켜도 모두에게 알림)
