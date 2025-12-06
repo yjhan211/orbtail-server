@@ -32,6 +32,19 @@ namespace network.common.data.helpers
                 public static readonly string[] ALL = new[] { Info, Action };
             }
 
+            public static class Exit
+            {
+                public const string Template = "exit_template.csv";
+                public const string Step = "exit_step.csv";
+                public const string Item = "exit_item.csv";
+                public const string Spot = "exit_spot.csv";
+                public const string Debuff = "exit_debuff.csv";
+                public const string Condition = "exit_condition.csv";
+                public const string Constraint = "exit_constraint.csv";
+
+                public static readonly string[] ALL = new[] { Template, Step, Item, Spot, Debuff, Condition, Constraint };
+            }
+
             public static class Item
             {
                 public const string Base = "item_info.csv";
@@ -115,6 +128,13 @@ namespace network.common.data.helpers
                 loadedData[fileName] = CsvHelper.LoadCsv(filePath);
             }
 
+            // 탈출 의식 관련 파일 로드
+            foreach (var fileName in DataFiles.Exit.ALL)
+            {
+                var filePath = GetCsvFilePath(fileName);
+                loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+            }
+
             // 일반 데이터 초기화
             foreach (var (fileName, init, _) in StandardDataDefinitions)
                 try
@@ -146,6 +166,17 @@ namespace network.common.data.helpers
             GameInteractableData.Initialize(
                 loadedData[DataFiles.Interactable.Info],
                 loadedData[DataFiles.Interactable.Action]
+            );
+
+            // 탈출 의식 데이터 초기화
+            GameExitData.Initialize(
+                loadedData[DataFiles.Exit.Template],
+                loadedData[DataFiles.Exit.Step],
+                loadedData[DataFiles.Exit.Item],
+                loadedData[DataFiles.Exit.Spot],
+                loadedData[DataFiles.Exit.Debuff],
+                loadedData[DataFiles.Exit.Condition],
+                loadedData[DataFiles.Exit.Constraint]
             );
 
             ValidateAllData();

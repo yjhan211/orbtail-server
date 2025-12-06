@@ -399,4 +399,55 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+
+    // ========== 탈출 절차 프로토콜 ==========
+
+    public static Packet G_TO_C_EXIT_STEP_INFO(int templateId, int currentStepOrder, int totalSteps, string stepText, int actionType, string targetInteractableId, bool isCompleted)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXIT_STEP_INFO);
+        G_TO_C_EXIT_STEP_INFO body = new()
+        {
+            TemplateId = templateId,
+            CurrentStepOrder = currentStepOrder,
+            TotalSteps = totalSteps,
+            StepText = stepText,
+            ActionType = actionType,
+            TargetInteractableId = targetInteractableId,
+            IsCompleted = isCompleted
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_EXIT_ADVANCE_RESULT(bool success, ErrorCode errorCode, bool escaped, int newStepOrder, string? newStepText)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXIT_ADVANCE_RESULT);
+        G_TO_C_EXIT_ADVANCE_RESULT body = new()
+        {
+            Success = success,
+            ErrorCode = errorCode,
+            Escaped = escaped,
+            NewStepOrder = newStepOrder,
+            NewStepText = newStepText ?? string.Empty
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_EXIT_STEP_UPDATE(long advancedByPlayerId, int newStepOrder, string newStepText, bool escaped)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXIT_STEP_UPDATE);
+        G_TO_C_EXIT_STEP_UPDATE body = new()
+        {
+            AdvancedByPlayerId = advancedByPlayerId,
+            NewStepOrder = newStepOrder,
+            NewStepText = newStepText,
+            Escaped = escaped
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
 }

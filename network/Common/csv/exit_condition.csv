@@ -1,0 +1,4 @@
+id,text,check_type,check_value,finale_type
+1,"정신이 가장 온전한 인원이",1,50,1
+2,"반드시 혼자",2,0,2
+3,"두 명이 동시에",2,1,3

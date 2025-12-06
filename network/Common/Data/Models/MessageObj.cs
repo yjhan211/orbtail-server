@@ -660,4 +660,55 @@ namespace network.common.data.models
         [Key("corruption")] public int Corruption { get; set; }
         [Key("corruptionDelta")] public int CorruptionDelta { get; set; }
     }
+
+    #region 탈출 절차 프로토콜
+
+    // 현재 탈출 절차 단계 요청
+    [MessagePackObject]
+    public class C_TO_G_EXIT_GET_STEP : IMessagePackObject
+    {
+    }
+
+    // 탈출 절차 단계 정보 응답
+    [MessagePackObject]
+    public class G_TO_C_EXIT_STEP_INFO : IMessagePackObject
+    {
+        [Key("templateId")] public int TemplateId { get; set; }
+        [Key("currentStepOrder")] public int CurrentStepOrder { get; set; }
+        [Key("totalSteps")] public int TotalSteps { get; set; }
+        [Key("stepText")] public string StepText { get; set; }
+        [Key("actionType")] public int ActionType { get; set; }
+        [Key("targetInteractableId")] public string TargetInteractableId { get; set; }
+        [Key("isCompleted")] public bool IsCompleted { get; set; }
+    }
+
+    // 탈출 절차 다음 단계 진행 요청
+    [MessagePackObject]
+    public class C_TO_G_EXIT_ADVANCE : IMessagePackObject
+    {
+        [Key("currentStepOrder")] public int CurrentStepOrder { get; set; } // 검증용 (클라이언트가 생각하는 현재 단계)
+    }
+
+    // 탈출 절차 진행 결과
+    [MessagePackObject]
+    public class G_TO_C_EXIT_ADVANCE_RESULT : IMessagePackObject
+    {
+        [Key("success")] public bool Success { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("escaped")] public bool Escaped { get; set; } // 탈출 완료 여부
+        [Key("newStepOrder")] public int NewStepOrder { get; set; }
+        [Key("newStepText")] public string NewStepText { get; set; }
+    }
+
+    // 탈출 절차 단계 변경 브로드캐스트 (다른 플레이어가 진행시켜도 모두에게 알림)
+    [MessagePackObject]
+    public class G_TO_C_EXIT_STEP_UPDATE : IMessagePackObject
+    {
+        [Key("advancedByPlayerId")] public long AdvancedByPlayerId { get; set; }
+        [Key("newStepOrder")] public int NewStepOrder { get; set; }
+        [Key("newStepText")] public string NewStepText { get; set; }
+        [Key("escaped")] public bool Escaped { get; set; }
+    }
+
+    #endregion
 }
