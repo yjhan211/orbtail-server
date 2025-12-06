@@ -669,17 +669,24 @@ namespace network.common.data.models
     {
     }
 
+    // 탈출 절차 슬롯 바인딩 정보 (클라이언트에서 텍스트 조합에 사용)
+    [MessagePackObject]
+    public class ExitSlotBindingInfo
+    {
+        [Key("itemId")] public int ItemId { get; set; }       // exit_item.id
+        [Key("spotId")] public int SpotId { get; set; }       // exit_spot.id
+        [Key("debuffId")] public int DebuffId { get; set; }   // exit_debuff.id
+        [Key("conditionId")] public int ConditionId { get; set; } // exit_condition.id
+    }
+
     // 탈출 절차 단계 정보 응답
     [MessagePackObject]
     public class G_TO_C_EXIT_STEP_INFO : IMessagePackObject
     {
         [Key("templateId")] public int TemplateId { get; set; }
-        [Key("currentStepOrder")] public int CurrentStepOrder { get; set; }
-        [Key("totalSteps")] public int TotalSteps { get; set; }
-        [Key("stepText")] public string StepText { get; set; }
-        [Key("actionType")] public int ActionType { get; set; }
-        [Key("targetInteractableId")] public string TargetInteractableId { get; set; }
-        [Key("isCompleted")] public bool IsCompleted { get; set; }
+        [Key("currentStepOrder")] public int CurrentStepOrder { get; set; } // 현재 단계 (이보다 작은 order는 완료)
+        [Key("slotBinding")] public ExitSlotBindingInfo SlotBinding { get; set; } // 슬롯 바인딩 (클라에서 텍스트 조합)
+        [Key("isCompleted")] public bool IsCompleted { get; set; } // 탈출 완료 여부
     }
 
     // 탈출 절차 다음 단계 진행 요청
@@ -697,7 +704,6 @@ namespace network.common.data.models
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
         [Key("escaped")] public bool Escaped { get; set; } // 탈출 완료 여부
         [Key("newStepOrder")] public int NewStepOrder { get; set; }
-        [Key("newStepText")] public string NewStepText { get; set; }
     }
 
     // 탈출 절차 단계 변경 브로드캐스트 (다른 플레이어가 진행시켜도 모두에게 알림)
@@ -706,7 +712,6 @@ namespace network.common.data.models
     {
         [Key("advancedByPlayerId")] public long AdvancedByPlayerId { get; set; }
         [Key("newStepOrder")] public int NewStepOrder { get; set; }
-        [Key("newStepText")] public string NewStepText { get; set; }
         [Key("escaped")] public bool Escaped { get; set; }
     }
 

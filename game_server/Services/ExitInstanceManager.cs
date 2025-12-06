@@ -167,10 +167,29 @@ namespace game_server.services
         {
             var step = GetCurrentStep();
             if (step == null) return string.Empty;
+            return ApplySlotSubstitution(step.TextTemplate);
+        }
 
-            var text = step.TextTemplate;
+        /// <summary>
+        /// 전체 단계 목록 반환 (텍스트 치환 완료)
+        /// </summary>
+        public List<(int stepOrder, string text, int actionType, string targetInteractableId)> GetAllStepsWithText()
+        {
+            var result = new List<(int, string, int, string)>();
+            foreach (var step in Steps.OrderBy(s => s.StepOrder))
+            {
+                var text = ApplySlotSubstitution(step.TextTemplate);
+                var targetId = ResolveTargetInteractableId(step.TargetInteractableId);
+                result.Add((step.StepOrder, text, step.ActionType, targetId));
+            }
+            return result;
+        }
 
-            // 슬롯 치환
+        /// <summary>
+        /// 슬롯 치환 적용
+        /// </summary>
+        private string ApplySlotSubstitution(string text)
+        {
             var item = GameExitData.GetItem(SlotBinding.ItemId);
             var spot = GameExitData.GetSpot(SlotBinding.SpotId);
             var debuff = GameExitData.GetDebuff(SlotBinding.DebuffId);
@@ -200,6 +219,30 @@ namespace game_server.services
             }
 
             return text;
+        }
+
+        /// <summary>
+        /// TargetInteractableId 슬롯 치환
+        /// </summary>
+        private string ResolveTargetInteractableId(string? template)
+        {
+            if (string.IsNullOrEmpty(template)) return string.Empty;
+
+            var result = template;
+
+            if (result.Contains("{Item.SpawnObj}"))
+            {
+                var item = GameExitData.GetItem(SlotBinding.ItemId);
+                result = result.Replace("{Item.SpawnObj}", item?.SpawnInteractableId.ToString() ?? "0");
+            }
+
+            if (result.Contains("{Spot.InteractObj}"))
+            {
+                var spot = GameExitData.GetSpot(SlotBinding.SpotId);
+                result = result.Replace("{Spot.InteractObj}", spot?.InteractableId.ToString() ?? "0");
+            }
+
+            return result;
         }
 
         /// <summary>

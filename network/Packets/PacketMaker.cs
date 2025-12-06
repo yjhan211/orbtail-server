@@ -402,17 +402,14 @@ public static class PacketMaker
 
     // ========== 탈출 절차 프로토콜 ==========
 
-    public static Packet G_TO_C_EXIT_STEP_INFO(int templateId, int currentStepOrder, int totalSteps, string stepText, int actionType, string targetInteractableId, bool isCompleted)
+    public static Packet G_TO_C_EXIT_STEP_INFO(int templateId, int currentStepOrder, ExitSlotBindingInfo slotBinding, bool isCompleted)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_EXIT_STEP_INFO);
         G_TO_C_EXIT_STEP_INFO body = new()
         {
             TemplateId = templateId,
             CurrentStepOrder = currentStepOrder,
-            TotalSteps = totalSteps,
-            StepText = stepText,
-            ActionType = actionType,
-            TargetInteractableId = targetInteractableId,
+            SlotBinding = slotBinding,
             IsCompleted = isCompleted
         };
 
@@ -420,7 +417,7 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_EXIT_ADVANCE_RESULT(bool success, ErrorCode errorCode, bool escaped, int newStepOrder, string? newStepText)
+    public static Packet G_TO_C_EXIT_ADVANCE_RESULT(bool success, ErrorCode errorCode, bool escaped, int newStepOrder)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_EXIT_ADVANCE_RESULT);
         G_TO_C_EXIT_ADVANCE_RESULT body = new()
@@ -428,22 +425,20 @@ public static class PacketMaker
             Success = success,
             ErrorCode = errorCode,
             Escaped = escaped,
-            NewStepOrder = newStepOrder,
-            NewStepText = newStepText ?? string.Empty
+            NewStepOrder = newStepOrder
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
 
-    public static Packet G_TO_C_EXIT_STEP_UPDATE(long advancedByPlayerId, int newStepOrder, string newStepText, bool escaped)
+    public static Packet G_TO_C_EXIT_STEP_UPDATE(long advancedByPlayerId, int newStepOrder, bool escaped)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_EXIT_STEP_UPDATE);
         G_TO_C_EXIT_STEP_UPDATE body = new()
         {
             AdvancedByPlayerId = advancedByPlayerId,
             NewStepOrder = newStepOrder,
-            NewStepText = newStepText,
             Escaped = escaped
         };
 

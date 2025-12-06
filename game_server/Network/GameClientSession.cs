@@ -1060,22 +1060,25 @@ public class GameClientSession : IPeer
         try
         {
             var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-            var currentStep = state.GetCurrentStep();
-            var stepText = state.GetCurrentStepText();
+
+            var slotBinding = new ExitSlotBindingInfo
+            {
+                ItemId = state.SlotBinding.ItemId,
+                SpotId = state.SlotBinding.SpotId,
+                DebuffId = state.SlotBinding.DebuffId,
+                ConditionId = state.SlotBinding.ConditionId
+            };
 
             using var packet = PacketMaker.G_TO_C_EXIT_STEP_INFO(
                 templateId: state.TemplateId,
                 currentStepOrder: state.CurrentStepOrder,
-                totalSteps: state.Steps.Count,
-                stepText: stepText,
-                actionType: currentStep?.ActionType ?? 0,
-                targetInteractableId: ResolveTargetInteractableId(currentStep?.TargetInteractableId, state),
+                slotBinding: slotBinding,
                 isCompleted: state.IsCompleted
             );
             Send(packet);
 
-            _logger.LogInformation("Player {PlayerId} requested exit step: Template={TemplateId}, Step={StepOrder}/{TotalSteps}, Completed={IsCompleted}",
-                PlayerId, state.TemplateId, state.CurrentStepOrder, state.Steps.Count, state.IsCompleted);
+            _logger.LogInformation("Player {PlayerId} requested exit step: Template={TemplateId}, CurrentStep={StepOrder}, Binding=(Item={ItemId}, Spot={SpotId}, Debuff={DebuffId}, Condition={ConditionId}), Completed={IsCompleted}",
+                PlayerId, state.TemplateId, state.CurrentStepOrder, slotBinding.ItemId, slotBinding.SpotId, slotBinding.DebuffId, slotBinding.ConditionId, state.IsCompleted);
         }
         catch (Exception ex)
         {
@@ -1106,8 +1109,7 @@ public class GameClientSession : IPeer
                     success: false,
                     errorCode: ErrorCode.FATAL,
                     escaped: false,
-                    newStepOrder: state.CurrentStepOrder,
-                    newStepText: state.GetCurrentStepText()
+                    newStepOrder: state.CurrentStepOrder
                 );
                 Send(errorPacket);
                 return Task.CompletedTask;
@@ -1122,33 +1124,30 @@ public class GameClientSession : IPeer
                     success: false,
                     errorCode: ErrorCode.FATAL,
                     escaped: true,
-                    newStepOrder: state.CurrentStepOrder,
-                    newStepText: string.Empty
+                    newStepOrder: state.CurrentStepOrder
                 );
                 Send(errorPacket);
                 return Task.CompletedTask;
             }
 
             // 다음 단계로 진행
-            var (success, escaped, nextStepText) = _exitInstanceManager.AdvanceStep(CurrentMapSubId);
+            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId);
 
             if (success)
             {
                 var newStepOrder = state.CurrentStepOrder;
-                var resolvedStepText = escaped ? string.Empty : nextStepText ?? string.Empty;
 
                 // 요청자에게 결과 응답
                 using var resultPacket = PacketMaker.G_TO_C_EXIT_ADVANCE_RESULT(
                     success: true,
                     errorCode: ErrorCode.SUCCESS,
                     escaped: escaped,
-                    newStepOrder: newStepOrder,
-                    newStepText: resolvedStepText
+                    newStepOrder: newStepOrder
                 );
                 Send(resultPacket);
 
                 // 같은 인스턴스의 다른 플레이어들에게 브로드캐스트
-                BroadcastExitStepUpdate(PlayerId.Value, newStepOrder, resolvedStepText, escaped);
+                BroadcastExitStepUpdate(PlayerId.Value, newStepOrder, escaped);
 
                 _logger.LogInformation("Player {PlayerId} advanced exit step: NewStep={NewStep}, Escaped={Escaped}",
                     PlayerId, newStepOrder, escaped);
@@ -1161,8 +1160,7 @@ public class GameClientSession : IPeer
                     success: false,
                     errorCode: ErrorCode.FATAL,
                     escaped: false,
-                    newStepOrder: state.CurrentStepOrder,
-                    newStepText: state.GetCurrentStepText()
+                    newStepOrder: state.CurrentStepOrder
                 );
                 Send(errorPacket);
             }
@@ -1176,40 +1174,14 @@ public class GameClientSession : IPeer
     }
 
     /// <summary>
-    /// TargetInteractableId 문자열에서 슬롯 치환 ({Item.SpawnObj}, {Spot.Interactable})
-    /// </summary>
-    private string ResolveTargetInteractableId(string? template, MatchingExitState state)
-    {
-        if (string.IsNullOrEmpty(template)) return string.Empty;
-
-        var result = template;
-
-        // {Item.SpawnObj} → exit_item.spawn_interactable_id
-        if (result.Contains("{Item.SpawnObj}"))
-        {
-            var item = GameExitData.GetItem(state.SlotBinding.ItemId);
-            result = result.Replace("{Item.SpawnObj}", item?.SpawnInteractableId.ToString() ?? "0");
-        }
-
-        // {Spot.Interactable} → exit_spot.interactable_id
-        if (result.Contains("{Spot.Interactable}"))
-        {
-            var spot = GameExitData.GetSpot(state.SlotBinding.SpotId);
-            result = result.Replace("{Spot.Interactable}", spot?.InteractableId.ToString() ?? "0");
-        }
-
-        return result;
-    }
-
-    /// <summary>
     /// 탈출 절차 단계 변경을 같은 인스턴스의 다른 플레이어들에게 브로드캐스트
     /// </summary>
-    private void BroadcastExitStepUpdate(long advancedByPlayerId, int newStepOrder, string newStepText, bool escaped)
+    private void BroadcastExitStepUpdate(long advancedByPlayerId, int newStepOrder, bool escaped)
     {
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var otherSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.PlayerId.HasValue).ToList();
 
-        using var packet = PacketMaker.G_TO_C_EXIT_STEP_UPDATE(advancedByPlayerId, newStepOrder, newStepText, escaped);
+        using var packet = PacketMaker.G_TO_C_EXIT_STEP_UPDATE(advancedByPlayerId, newStepOrder, escaped);
         foreach (var session in otherSessions)
         {
             session.Send(packet);
