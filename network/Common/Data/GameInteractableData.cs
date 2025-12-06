@@ -84,7 +84,6 @@ namespace network.common.data
         public int ZoneId { get; private set; }
         public string Name { get; private set; }
         public string Description { get; private set; }
-        public string SpritePath { get; private set; }
         public List<InteractableActionData> Actions { get; private set; }
 
         public static InteractableInfoData CreateFromData(CsvRow row, Dictionary<int, List<InteractableActionData>> actionsByInteractId)
@@ -97,7 +96,6 @@ namespace network.common.data
                 ZoneId = int.Parse(row["area_type"]),
                 Name = row["name"].Trim('"'),
                 Description = row["description"].Trim('"').Replace("\\n", "\n"),
-                SpritePath = row["sprite_path"],
                 Actions = actionsByInteractId.TryGetValue(id, out var actions) ? actions : new List<InteractableActionData>()
             };
         }
