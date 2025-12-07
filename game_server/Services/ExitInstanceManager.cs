@@ -36,8 +36,10 @@ namespace game_server.services
 
         private void GenerateExitProcedure()
         {
-            // 1. 템플릿 랜덤 선택
-            var templates = GameExitData.GetAllTemplates();
+            // 1. 템플릿 랜덤 선택 (싱글 매칭이므로 템플릿 2 제외)
+            var templates = GameExitData.GetAllTemplates()
+                .Where(t => t.Id != 2)  // TODO: 멀티 매칭 구현 시 제거
+                .ToList();
             TemplateId = templates[_random.Next(templates.Count)].Id;
 
             // 2. 제약 조건 가져오기
