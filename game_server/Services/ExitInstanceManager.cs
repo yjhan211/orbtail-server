@@ -205,7 +205,7 @@ namespace game_server.services
             if (spot != null)
             {
                 var interactable = GameInteractableData.Get(spot.InteractableId);
-                text = text.Replace("{Spot.Name}", interactable?.Name ?? "???");
+                text = text.Replace("{Spot.Name}", interactable?.ShortName ?? "???");
             }
 
             if (debuff != null)

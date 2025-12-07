@@ -121,6 +121,7 @@ namespace network.common.data
         public int Id { get; private set; }
         public int ZoneId { get; private set; }
         public string Name { get; private set; }
+        public string ShortName { get; private set; }
         public string Description { get; private set; }
         public int RewardPoolId { get; private set; }
         public List<InteractableActionData> Actions { get; private set; }
@@ -134,6 +135,7 @@ namespace network.common.data
                 Id = id,
                 ZoneId = int.Parse(row["area_type"]),
                 Name = row["name"].Trim('"'),
+                ShortName = row["short_name"].Trim('"'),
                 Description = row["description"].Trim('"').Replace("\\n", "\n"),
                 RewardPoolId = int.Parse(row["reward_pool_id"]),
                 Actions = actionsByInteractId.TryGetValue(id, out var actions) ? actions : new List<InteractableActionData>()
