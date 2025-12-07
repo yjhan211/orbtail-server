@@ -595,10 +595,69 @@ public class GameClientSession : IPeer
             return;
         }
 
+        // 미션 액션 텍스트 추가
+        AddMissionActionTexts(objects);
+
         using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
         Send(packet);
         _logger.LogDebug("Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
             objects.Count, areaType, PlayerId, CurrentMapSubId);
+    }
+
+    /// <summary>
+    /// 현재 탈출 절차에서 spot_action_text가 필요한 오브젝트에 미션 액션 텍스트 추가
+    /// </summary>
+    private void AddMissionActionTexts(List<InteractableObjectState> objects)
+    {
+        try
+        {
+            var exitState = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
+            var currentStep = exitState.GetCurrentStep();
+
+            // 현재 단계가 없거나 완료됨
+            if (currentStep == null || exitState.IsCompleted)
+                return;
+
+            // SpotActionText가 정의되어 있지 않으면 스킵
+            if (string.IsNullOrEmpty(currentStep.SpotActionText))
+                return;
+
+            // 현재 단계가 spot을 사용하는지 확인
+            if (!currentStep.SpotSlot || exitState.SlotBinding.SpotId <= 0)
+                return;
+
+            // spot의 interactable_id 가져오기
+            var exitSpot = GameExitData.GetSpot(exitState.SlotBinding.SpotId);
+            if (exitSpot == null)
+                return;
+
+            var targetInteractableId = exitSpot.InteractableId;
+
+            // 해당 오브젝트 찾기
+            var targetObject = objects.FirstOrDefault(o => o.InteractId == targetInteractableId);
+            if (targetObject == null)
+                return;
+
+            // SpotActionText에서 {Item.Name} 치환
+            var actionText = currentStep.SpotActionText;
+            if (exitState.SlotBinding.ItemId > 0)
+            {
+                var exitItem = GameExitData.GetItem(exitState.SlotBinding.ItemId);
+                if (exitItem != null)
+                {
+                    var itemData = GameItemData.Get(exitItem.ItemId);
+                    actionText = actionText.Replace("{Item.Name}", itemData?.Name?.Kr ?? "???");
+                }
+            }
+
+            targetObject.MissionActionText = actionText;
+            _logger.LogDebug("Added mission action text to InteractId={InteractId}: {ActionText}",
+                targetInteractableId, actionText);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AddMissionActionTexts error");
+        }
     }
 
 

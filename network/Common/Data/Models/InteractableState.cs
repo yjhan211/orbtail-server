@@ -18,5 +18,6 @@ namespace network.common.data.models
     {
         [Key("interactId")] public int InteractId { get; set; }
         [Key("actions")] public List<InteractableActionState> Actions { get; set; }
+        [Key("missionActionText")] public string MissionActionText { get; set; }
     }
 }

@@ -56,7 +56,8 @@ namespace network.common.data
                     DebuffSlot = row["debuff_slot"].ToLower() == "true",
                     ConditionSlot = row["condition_slot"].ToLower() == "true",
                     ActionType = int.Parse(row["action_type"]),
-                    TargetInteractableId = row["target_interactable_id"]
+                    TargetInteractableId = row["target_interactable_id"],
+                    SpotActionText = row.ContainsKey("spot_action_text") ? row["spot_action_text"].Trim('"') : ""
                 };
             }
 
@@ -183,6 +184,7 @@ namespace network.common.data
         public bool ConditionSlot { get; set; }
         public int ActionType { get; set; }
         public string TargetInteractableId { get; set; }
+        public string SpotActionText { get; set; }
     }
 
     public class ExitItemData
