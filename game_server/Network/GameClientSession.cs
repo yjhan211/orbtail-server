@@ -1094,12 +1094,13 @@ public class GameClientSession : IPeer
                 currentStepOrder: state.CurrentStepOrder,
                 totalStepCount: state.Steps.Count,
                 slotBinding: slotBinding,
-                isCompleted: state.IsCompleted
+                isCompleted: state.IsCompleted,
+                lastAdvancedBy: state.LastAdvancedBy
             );
             Send(packet);
 
-            _logger.LogInformation("Sent exit step info to Player {PlayerId}: Template={TemplateId}, CurrentStep={StepOrder}/{TotalSteps}, Binding=(Item={ItemId}, Spot={SpotId}, Debuff={DebuffId}, Condition={ConditionId}), Completed={IsCompleted}",
-                PlayerId, state.TemplateId, state.CurrentStepOrder, state.Steps.Count, slotBinding.ItemId, slotBinding.SpotId, slotBinding.DebuffId, slotBinding.ConditionId, state.IsCompleted);
+            _logger.LogInformation("Sent exit step info to Player {PlayerId}: Template={TemplateId}, CurrentStep={StepOrder}/{TotalSteps}, Binding=(Item={ItemId}, Spot={SpotId}, Debuff={DebuffId}, Condition={ConditionId}), Completed={IsCompleted}, LastAdvancedBy={LastAdvancedBy}",
+                PlayerId, state.TemplateId, state.CurrentStepOrder, state.Steps.Count, slotBinding.ItemId, slotBinding.SpotId, slotBinding.DebuffId, slotBinding.ConditionId, state.IsCompleted, state.LastAdvancedBy);
         }
         catch (Exception ex)
         {
@@ -1154,7 +1155,7 @@ public class GameClientSession : IPeer
             var currentBinding = state.SlotBinding;
 
             // 다음 단계로 진행
-            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId);
+            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId, PlayerId.Value);
 
             if (success)
             {
@@ -1273,7 +1274,7 @@ public class GameClientSession : IPeer
                 PlayerId, acquiredItemId, state.SlotBinding.ItemId);
 
             // 다음 단계로 진행
-            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId);
+            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId, PlayerId.Value);
 
             if (success)
             {

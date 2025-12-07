@@ -25,6 +25,7 @@ namespace game_server.services
         public int CurrentStepOrder { get; private set; }
         public List<ExitStepData> Steps { get; private set; }
         public bool IsCompleted { get; private set; }
+        public long LastAdvancedBy { get; private set; } // 마지막으로 진행한 플레이어 UID
 
         private readonly Random _random;
 
@@ -253,12 +254,14 @@ namespace game_server.services
         /// <summary>
         /// 다음 단계로 진행
         /// </summary>
-        public bool AdvanceStep()
+        public bool AdvanceStep(long playerId)
         {
             if (IsCompleted) return false;
 
             var nextOrder = CurrentStepOrder + 1;
             var nextStep = Steps.FirstOrDefault(s => s.StepOrder == nextOrder);
+
+            LastAdvancedBy = playerId;
 
             if (nextStep == null)
             {
@@ -329,23 +332,23 @@ namespace game_server.services
         /// <summary>
         /// 다음 단계로 진행
         /// </summary>
-        public (bool success, bool escaped, string? nextStepText) AdvanceStep(long matchingId)
+        public (bool success, bool escaped, string? nextStepText) AdvanceStep(long matchingId, long playerId)
         {
             var state = GetOrCreateMatchingState(matchingId);
 
-            if (!state.AdvanceStep())
+            if (!state.AdvanceStep(playerId))
             {
                 return (false, false, null);
             }
 
             if (state.IsCompleted)
             {
-                _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} ESCAPED!");
+                _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} ESCAPED by Player {playerId}!");
                 return (true, true, null);
             }
 
             var nextText = state.GetCurrentStepText();
-            _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} advanced to step {state.CurrentStepOrder}");
+            _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} advanced to step {state.CurrentStepOrder} by Player {playerId}");
             return (true, false, nextText);
         }
 

@@ -682,6 +682,7 @@ namespace network.common.data.models
         [Key("totalStepCount")] public int TotalStepCount { get; set; } // 총 단계 수
         [Key("slotBinding")] public ExitSlotBindingInfo SlotBinding { get; set; } // 슬롯 바인딩 (클라에서 텍스트 조합)
         [Key("isCompleted")] public bool IsCompleted { get; set; } // 탈출 완료 여부
+        [Key("lastAdvancedBy")] public long LastAdvancedBy { get; set; } // 마지막으로 진행한 플레이어 UID (0이면 아직 진행 안함)
     }
 
     // 탈출 절차 다음 단계 진행 요청
