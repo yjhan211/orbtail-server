@@ -447,4 +447,17 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+
+    public static Packet G_TO_C_RETURN_TO_LOBBY_RESULT(bool success, ErrorCode errorCode)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_RETURN_TO_LOBBY_RESULT);
+        G_TO_C_RETURN_TO_LOBBY_RESULT body = new()
+        {
+            Success = success,
+            ErrorCode = errorCode
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
 }

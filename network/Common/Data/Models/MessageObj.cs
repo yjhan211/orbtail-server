@@ -711,5 +711,19 @@ namespace network.common.data.models
         [Key("escaped")] public bool Escaped { get; set; }
     }
 
+    // 로비 복귀 요청
+    [MessagePackObject]
+    public class C_TO_G_RETURN_TO_LOBBY : IMessagePackObject
+    {
+    }
+
+    // 로비 복귀 결과
+    [MessagePackObject]
+    public class G_TO_C_RETURN_TO_LOBBY_RESULT : IMessagePackObject
+    {
+        [Key("success")] public bool Success { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+
     #endregion
 }

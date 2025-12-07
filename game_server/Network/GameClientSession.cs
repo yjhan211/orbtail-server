@@ -105,6 +105,9 @@ public class GameClientSession : IPeer
 
         // 탈출 절차 프로토콜
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_EXIT_ADVANCE, async (bytes) => await HandleMessage<C_TO_G_EXIT_ADVANCE>(bytes, HandleExitAdvance));
+
+        // 로비 복귀 프로토콜
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_RETURN_TO_LOBBY, async (bytes) => await HandleMessage<C_TO_G_RETURN_TO_LOBBY>(bytes, HandleReturnToLobby));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -1393,6 +1396,54 @@ public class GameClientSession : IPeer
         }
 
         _logger.LogDebug("Broadcasted EXIT_STEP_UPDATE to ALL {Count} players in instance {InstanceId}", allSessions.Count, CurrentMapSubId);
+    }
+
+    #endregion
+
+    #region 로비 복귀
+
+    /// <summary>
+    /// 로비 복귀 요청 처리 (게임 완료 후)
+    /// </summary>
+    private Task HandleReturnToLobby(C_TO_G_RETURN_TO_LOBBY msg)
+    {
+        if (!PlayerId.HasValue)
+        {
+            _logger.LogWarning("HandleReturnToLobby: PlayerId not set");
+            using var errorPacket = PacketMaker.G_TO_C_RETURN_TO_LOBBY_RESULT(false, ErrorCode.FATAL);
+            Send(errorPacket);
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            // 탈출 완료 상태 확인
+            var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
+            if (!state.IsCompleted)
+            {
+                _logger.LogWarning("HandleReturnToLobby: Exit not completed for player {PlayerId}", PlayerId);
+                using var errorPacket = PacketMaker.G_TO_C_RETURN_TO_LOBBY_RESULT(false, ErrorCode.FATAL);
+                Send(errorPacket);
+                return Task.CompletedTask;
+            }
+
+            _logger.LogInformation("Player {PlayerId} returning to lobby from completed game", PlayerId);
+
+            // 성공 응답 전송
+            using var resultPacket = PacketMaker.G_TO_C_RETURN_TO_LOBBY_RESULT(true, ErrorCode.SUCCESS);
+            Send(resultPacket);
+
+            // 세션 정리 (Leave 콜백 호출)
+            _onLeaveCallback?.Invoke(this);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "HandleReturnToLobby error for player {PlayerId}", PlayerId);
+            using var errorPacket = PacketMaker.G_TO_C_RETURN_TO_LOBBY_RESULT(false, ErrorCode.FATAL);
+            Send(errorPacket);
+        }
+
+        return Task.CompletedTask;
     }
 
     #endregion

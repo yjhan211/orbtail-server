@@ -81,6 +81,10 @@ namespace network.common
         G_TO_C_EXIT_ADVANCE_RESULT, // 탈출 절차 진행 결과 (성공/실패/탈출완료)
         G_TO_C_EXIT_STEP_UPDATE, // 탈출 절차 단계 변경 브로드캐스트 (다른 플레이어가 진행시켜도 모두에게 알림)
 
+        // 로비 복귀 프로토콜
+        C_TO_G_RETURN_TO_LOBBY, // 로비 복귀 요청 (게임 완료 후)
+        G_TO_C_RETURN_TO_LOBBY_RESULT, // 로비 복귀 결과
+
         END
     }
 
