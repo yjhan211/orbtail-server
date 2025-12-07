@@ -578,11 +578,103 @@ public class GameClientSession : IPeer
 
                 // 4. 나에게 새 Area의 Interactable 목록 전송
                 SendInteractableList(newArea);
+
+                // 5. 운반 미션 자동 완료 체크
+                CheckDeliveryMissionComplete(newArea);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "HandleAreaChange error for player {PlayerId}", PlayerId);
+        }
+    }
+
+    /// <summary>
+    /// 운반 미션(action_type=2) 목적지 Area 도착 시 자동 완료 처리
+    /// </summary>
+    private void CheckDeliveryMissionComplete(AreaType arrivedArea)
+    {
+        if (!PlayerId.HasValue) return;
+
+        try
+        {
+            var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
+            if (state.IsCompleted) return;
+
+            var currentStep = state.GetCurrentStep();
+            if (currentStep == null) return;
+
+            // action_type=2 (운반/호위)가 아니면 스킵
+            if (currentStep.ActionType != 2) return;
+
+            // 목적지 Spot의 Area 확인
+            if (!currentStep.SpotSlot || state.SlotBinding.SpotId <= 0) return;
+
+            var exitSpot = GameExitData.GetSpot(state.SlotBinding.SpotId);
+            if (exitSpot == null) return;
+
+            var spotInteractable = GameInteractableData.Get(exitSpot.InteractableId);
+            if (spotInteractable == null) return;
+
+            var targetArea = (AreaType)spotInteractable.ZoneId;
+
+            // 도착한 Area가 목적지와 일치하면 자동 완료
+            if (arrivedArea != targetArea) return;
+
+            _logger.LogInformation("Player {PlayerId} arrived at delivery destination Area {Area}, auto-completing step",
+                PlayerId, arrivedArea);
+
+            // 아이템 삭제
+            if (state.SlotBinding.ItemId > 0)
+            {
+                var exitItem = GameExitData.GetItem(state.SlotBinding.ItemId);
+                if (exitItem != null)
+                {
+                    var removedItem = _inGameInventoryManager.RemoveItemByItemId(
+                        CurrentMapSubId, PlayerId.Value, exitItem.ItemId);
+
+                    if (removedItem != null)
+                    {
+                        _logger.LogInformation("Player {PlayerId} delivered exit item: ItemId={ItemId}",
+                            PlayerId, exitItem.ItemId);
+
+                        var deletedItem = new InGameItemInfo
+                        {
+                            ItemUid = removedItem.ItemUid,
+                            ItemId = removedItem.ItemId,
+                            Count = 0
+                        };
+                        SendInGameInventoryUpdate(deletedItem);
+                    }
+                }
+            }
+
+            // 다음 단계로 진행
+            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId, PlayerId.Value);
+
+            if (success)
+            {
+                var newStepOrder = state.CurrentStepOrder;
+
+                // 진행 결과 응답
+                using var resultPacket = PacketMaker.G_TO_C_EXIT_ADVANCE_RESULT(
+                    success: true,
+                    errorCode: ErrorCode.SUCCESS,
+                    escaped: escaped,
+                    newStepOrder: newStepOrder
+                );
+                Send(resultPacket);
+
+                // 같은 인스턴스의 다른 플레이어들에게 브로드캐스트
+                BroadcastExitStepUpdate(PlayerId.Value, newStepOrder, escaped);
+
+                _logger.LogInformation("Player {PlayerId} auto-completed delivery step: NewStep={NewStep}, Escaped={Escaped}",
+                    PlayerId, newStepOrder, escaped);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CheckDeliveryMissionComplete error for player {PlayerId}", PlayerId);
         }
     }
 
@@ -1150,42 +1242,13 @@ public class GameClientSession : IPeer
                 return Task.CompletedTask;
             }
 
-            // 현재 단계 정보 저장 (아이템 삭제용)
-            var currentStep = state.GetCurrentStep();
-            var currentBinding = state.SlotBinding;
-
-            // 다음 단계로 진행
+            // 다음 단계로 진행 (선택지 기반 미션: 삽입, 미니게임 등)
+            // 운반 미션(action_type=2)은 Area 도착 시 자동 완료됨 (CheckDeliveryMissionComplete)
             var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId, PlayerId.Value);
 
             if (success)
             {
                 var newStepOrder = state.CurrentStepOrder;
-
-                // 운반하기(action_type=2) 완료 시 인게임 인벤토리에서 아이템 삭제
-                if (currentStep?.ActionType == 2 && currentBinding.ItemId > 0)
-                {
-                    var exitItem = GameExitData.GetItem(currentBinding.ItemId);
-                    if (exitItem != null)
-                    {
-                        var removedItem = _inGameInventoryManager.RemoveItemByItemId(
-                            CurrentMapSubId, PlayerId.Value, exitItem.ItemId);
-
-                        if (removedItem != null)
-                        {
-                            _logger.LogInformation("Player {PlayerId} delivered exit item: ItemId={ItemId}",
-                                PlayerId, exitItem.ItemId);
-
-                            // 인벤토리 업데이트 전송 (Count=0으로 삭제 알림)
-                            var deletedItem = new InGameItemInfo
-                            {
-                                ItemUid = removedItem.ItemUid,
-                                ItemId = removedItem.ItemId,
-                                Count = 0
-                            };
-                            SendInGameInventoryUpdate(deletedItem);
-                        }
-                    }
-                }
 
                 // 요청자에게 결과 응답
                 using var resultPacket = PacketMaker.G_TO_C_EXIT_ADVANCE_RESULT(
