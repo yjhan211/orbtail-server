@@ -28,6 +28,7 @@ namespace game_server.services
         public long LastAdvancedBy { get; private set; } // 마지막으로 진행한 플레이어 UID
 
         private readonly Random _random;
+        private readonly object _stepLock = new(); // 동시 진행 방지 락
 
         public MatchingExitState(long matchingId)
         {
@@ -252,25 +253,28 @@ namespace game_server.services
         }
 
         /// <summary>
-        /// 다음 단계로 진행
+        /// 다음 단계로 진행 (동시 진행 방지)
         /// </summary>
         public bool AdvanceStep(long playerId)
         {
-            if (IsCompleted) return false;
-
-            var nextOrder = CurrentStepOrder + 1;
-            var nextStep = Steps.FirstOrDefault(s => s.StepOrder == nextOrder);
-
-            LastAdvancedBy = playerId;
-
-            if (nextStep == null)
+            lock (_stepLock)
             {
-                IsCompleted = true;
-                return true; // 탈출 완료
-            }
+                if (IsCompleted) return false;
 
-            CurrentStepOrder = nextOrder;
-            return true;
+                var nextOrder = CurrentStepOrder + 1;
+                var nextStep = Steps.FirstOrDefault(s => s.StepOrder == nextOrder);
+
+                LastAdvancedBy = playerId;
+
+                if (nextStep == null)
+                {
+                    IsCompleted = true;
+                    return true; // 탈출 완료
+                }
+
+                CurrentStepOrder = nextOrder;
+                return true;
+            }
         }
 
         /// <summary>
