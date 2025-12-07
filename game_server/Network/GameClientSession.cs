@@ -668,6 +668,12 @@ public class GameClientSession : IPeer
                 // 같은 인스턴스의 다른 플레이어들에게 브로드캐스트
                 BroadcastExitStepUpdate(PlayerId.Value, newStepOrder, escaped);
 
+                // 현재 Area의 Interactable 목록 다시 전송 (MissionActionText 갱신)
+                if (CurrentArea != AreaType.None)
+                {
+                    SendInteractableList(CurrentArea);
+                }
+
                 _logger.LogInformation("Player {PlayerId} auto-completed delivery step: NewStep={NewStep}, Escaped={Escaped}",
                     PlayerId, newStepOrder, escaped);
             }
@@ -1261,6 +1267,12 @@ public class GameClientSession : IPeer
 
                 // 같은 인스턴스의 다른 플레이어들에게 브로드캐스트
                 BroadcastExitStepUpdate(PlayerId.Value, newStepOrder, escaped);
+
+                // 현재 Area의 Interactable 목록 다시 전송 (MissionActionText 갱신)
+                if (CurrentArea != AreaType.None)
+                {
+                    SendInteractableList(CurrentArea);
+                }
 
                 _logger.LogInformation("Player {PlayerId} advanced exit step: NewStep={NewStep}, Escaped={Escaped}",
                     PlayerId, newStepOrder, escaped);
