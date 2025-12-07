@@ -26,8 +26,9 @@ namespace network.common.data.helpers
             {
                 public const string Info = "interactable_info.csv";
                 public const string Action = "interactable_action.csv";
+                public const string Reward = "interactable_reward.csv";
 
-                public static readonly string[] ALL = new[] { Info, Action };
+                public static readonly string[] ALL = new[] { Info, Action, Reward };
             }
 
             public static class Exit
@@ -157,7 +158,8 @@ namespace network.common.data.helpers
             // 상호작용 오브젝트 데이터 초기화
             GameInteractableData.Initialize(
                 loadedData[DataFiles.Interactable.Info],
-                loadedData[DataFiles.Interactable.Action]
+                loadedData[DataFiles.Interactable.Action],
+                loadedData[DataFiles.Interactable.Reward]
             );
 
             // 탈출 의식 데이터 초기화

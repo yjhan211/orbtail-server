@@ -666,19 +666,21 @@ public class GameClientSession : IPeer
         // 탐색 처리 (InteractableStateManager에서 상태 업데이트 - MatchingId별 독립 관리)
         var success = _interactableStateManager.TryExplore(CurrentMapSubId, msg.InteractId, msg.ActionId, PlayerId.Value, out var state);
 
-        // CSV에서 보상 정보 가져오기
-        var interactable = GameInteractableData.Get(msg.InteractId);
-        var action = interactable?.Actions.FirstOrDefault(a => a.ActionId == msg.ActionId);
-        var rewardType = action?.RewardType ?? RewardType.NONE;
-        var rewardPool = action?.RewardPool ?? new List<int>();
-
         if (success)
         {
             _logger.LogInformation("Player {PlayerId} explored InteractId={InteractId}, ActionId={ActionId} successfully",
                 PlayerId, msg.InteractId, msg.ActionId);
 
-            // 보상 처리 및 최종 아이템 ID 결정
-            var rewardItemId = ProcessExploreReward(rewardType, rewardPool);
+            // 셔플된 보상 풀에서 해당 액션의 보상 가져오기
+            var rewardItemId = _interactableStateManager.GetRewardForAction(CurrentMapSubId, msg.InteractId, msg.ActionId);
+
+            // 보상이 있으면 인벤토리에 추가
+            if (rewardItemId > 0)
+            {
+                AddInGameItem(rewardItemId);
+                _logger.LogInformation("Player {PlayerId} received reward: ItemId={ItemId} from InteractId={InteractId}, ActionId={ActionId}",
+                    PlayerId, rewardItemId, msg.InteractId, msg.ActionId);
+            }
 
             // 성공 응답 (최종 결정된 아이템 ID 전송)
             SendExploreResult(true, msg.InteractId, msg.ActionId, rewardItemId, ErrorCode.SUCCESS);
@@ -724,80 +726,6 @@ public class GameClientSession : IPeer
 
         using var packet = PacketMaker.G_TO_C_EXPLORE_RESULT(success, interactId, actionId, itemId, errorCode);
         Send(packet);
-    }
-
-    /// <summary>
-    /// 탐색 보상 처리 - 최종 결정된 아이템 ID 반환
-    /// </summary>
-    /// <returns>획득한 아이템 ID (0이면 아이템 없음)</returns>
-    private int ProcessExploreReward(RewardType rewardType, List<int> rewardPool)
-    {
-        int resultItemId = 0;
-
-        switch (rewardType)
-        {
-            case RewardType.ITEM:
-                // 풀에서 랜덤 선택
-                if (rewardPool.Count > 0)
-                {
-                    var selectedId = rewardPool[Random.Shared.Next(rewardPool.Count)];
-                    AddInGameItem(selectedId);
-                    resultItemId = selectedId;
-                    _logger.LogInformation("Player {PlayerId} received ITEM reward: ItemId={ItemId} (from pool of {PoolSize})",
-                        PlayerId, selectedId, rewardPool.Count);
-                }
-                break;
-
-            case RewardType.CONDITION_RANDOM:
-                // 컨디션 버프를 가진 아이템 풀에서 랜덤 선택
-                var conditionItem = GameItemData.GetRandomConsumableByBuffSubType(BuffSubType.CONDITION_ADD);
-                if (conditionItem != null)
-                {
-                    AddInGameItem(conditionItem.Id);
-                    resultItemId = conditionItem.Id;
-                    _logger.LogInformation("Player {PlayerId} received CONDITION_RANDOM reward: ItemId={ItemId}", PlayerId, conditionItem.Id);
-                }
-                else
-                {
-                    _logger.LogWarning("Player {PlayerId} CONDITION_RANDOM reward failed: no items available", PlayerId);
-                }
-                break;
-
-            case RewardType.CORRUPTION_RANDOM:
-                // 오염도 버프를 가진 아이템 풀에서 랜덤 선택
-                var corruptionItem = GameItemData.GetRandomConsumableByBuffSubType(BuffSubType.CORRUPTION_DOWN);
-                if (corruptionItem != null)
-                {
-                    AddInGameItem(corruptionItem.Id);
-                    resultItemId = corruptionItem.Id;
-                    _logger.LogInformation("Player {PlayerId} received CORRUPTION_RANDOM reward: ItemId={ItemId}", PlayerId, corruptionItem.Id);
-                }
-                else
-                {
-                    _logger.LogWarning("Player {PlayerId} CORRUPTION_RANDOM reward failed: no items available", PlayerId);
-                }
-                break;
-
-            case RewardType.RULE:
-                // 규칙 - 풀에서 랜덤 선택
-                if (rewardPool.Count > 0)
-                {
-                    var selectedRuleId = rewardPool[Random.Shared.Next(rewardPool.Count)];
-                    _logger.LogDebug("Player {PlayerId} received RULE reward: RuleId={RuleId}", PlayerId, selectedRuleId);
-                }
-                break;
-
-            case RewardType.RULE_RANDOM:
-                // 규칙은 아이템이 아님
-                _logger.LogDebug("Player {PlayerId} received RULE_RANDOM reward", PlayerId);
-                break;
-
-            case RewardType.NONE:
-            default:
-                break;
-        }
-
-        return resultItemId;
     }
 
     private void BroadcastInteractableUpdate(int interactId, int actionId, bool isExplored, long exploredBy)

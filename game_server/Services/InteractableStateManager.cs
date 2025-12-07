@@ -16,8 +16,14 @@ namespace game_server.services
         // Area별 오브젝트 ID 목록 (정적 데이터 캐시)
         private readonly ConcurrentDictionary<AreaType, List<int>> _areaObjects = new();
 
-        public MatchingInteractableState()
+        // Key: InteractId, Value: 셔플된 보상 배열 (액션 순서대로 매핑, 실제 아이템 ID로 변환됨)
+        private readonly ConcurrentDictionary<int, List<int>> _shuffledRewards = new();
+
+        private readonly Random _random;
+
+        public MatchingInteractableState(long matchingId)
         {
+            _random = new Random((int)(matchingId % int.MaxValue));
             InitializeFromData();
         }
 
@@ -40,6 +46,7 @@ namespace game_server.services
                     objectIds.Add(interactable.Id);
                 }
 
+                // 액션별 상태 초기화
                 foreach (var action in interactable.Actions)
                 {
                     var key = (interactable.Id, action.ActionId);
@@ -50,7 +57,76 @@ namespace game_server.services
                         ExploredBy = 0
                     };
                 }
+
+                // Reward Pool 가져와서 셔플 후 실제 아이템 ID로 변환
+                var rewardPool = GameInteractableData.GetRewardPool(interactable.RewardPoolId);
+                if (rewardPool.Count > 0)
+                {
+                    // (RewardType, RewardId) 튜플 리스트로 복사
+                    var rewardInfos = rewardPool
+                        .Select(r => (r.RewardType, r.RewardId))
+                        .ToList();
+
+                    // 셔플
+                    Shuffle(rewardInfos);
+
+                    // 랜덤 타입을 실제 아이템 ID로 변환
+                    var resolvedRewards = rewardInfos
+                        .Select(info => ResolveRewardId(info.RewardType, info.RewardId))
+                        .ToList();
+
+                    _shuffledRewards[interactable.Id] = resolvedRewards;
+                }
             }
+        }
+
+        /// <summary>
+        /// RewardType에 따라 실제 아이템 ID 결정
+        /// </summary>
+        private int ResolveRewardId(RewardType rewardType, int rewardId)
+        {
+            switch (rewardType)
+            {
+                case RewardType.ITEM:
+                    return rewardId;
+
+                case RewardType.CONDITION_RANDOM:
+                    var conditionItem = GameItemData.GetRandomConsumableByBuffSubType(BuffSubType.CONDITION_ADD, _random);
+                    return conditionItem?.Id ?? 0;
+
+                case RewardType.CORRUPTION_RANDOM:
+                    var corruptionItem = GameItemData.GetRandomConsumableByBuffSubType(BuffSubType.CORRUPTION_DOWN, _random);
+                    return corruptionItem?.Id ?? 0;
+
+                case RewardType.NONE:
+                default:
+                    return 0;
+            }
+        }
+
+        private void Shuffle<T>(List<T> list)
+        {
+            for (int i = list.Count - 1; i > 0; i--)
+            {
+                int j = _random.Next(i + 1);
+                (list[i], list[j]) = (list[j], list[i]);
+            }
+        }
+
+        /// <summary>
+        /// 특정 오브젝트의 액션 인덱스에 해당하는 보상 ID 반환 (0이면 보상 없음)
+        /// </summary>
+        public int GetRewardForAction(int interactId, int actionIndex)
+        {
+            if (!_shuffledRewards.TryGetValue(interactId, out var rewards))
+                return 0;
+
+            // actionIndex는 1-based (ActionId), 배열은 0-based
+            var index = actionIndex - 1;
+            if (index < 0 || index >= rewards.Count)
+                return 0;
+
+            return rewards[index];
         }
 
         public List<InteractableObjectState> GetAreaObjectStates(AreaType areaType)
@@ -150,7 +226,7 @@ namespace game_server.services
             return _matchingStates.GetOrAdd(matchingId, id =>
             {
                 _logAction?.Invoke($"InteractableStateManager: Creating new state for MatchingId={id}");
-                return new MatchingInteractableState();
+                return new MatchingInteractableState(id);
             });
         }
 
@@ -179,6 +255,15 @@ namespace game_server.services
         {
             var matchingState = GetOrCreateMatchingState(matchingId);
             return matchingState.GetState(interactId, order);
+        }
+
+        /// <summary>
+        /// 특정 오브젝트의 액션에 해당하는 셔플된 보상 ID 반환
+        /// </summary>
+        public int GetRewardForAction(long matchingId, int interactId, int actionId)
+        {
+            var matchingState = GetOrCreateMatchingState(matchingId);
+            return matchingState.GetRewardForAction(interactId, actionId);
         }
 
         /// <summary>
