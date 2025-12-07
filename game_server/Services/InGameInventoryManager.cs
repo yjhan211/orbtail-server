@@ -212,6 +212,23 @@ namespace game_server.services
         }
 
         /// <summary>
+        /// ItemId로 아이템 제거 (탈출 아이템 전달용)
+        /// </summary>
+        public InGameItemInfo? RemoveItemByItemId(long matchingId, long playerId, int itemId)
+        {
+            var inventory = GetPlayerInventory(matchingId, playerId);
+            var item = inventory.GetAllItems().FirstOrDefault(i => i.ItemId == itemId);
+            if (item == null) return null;
+
+            if (inventory.TryRemoveItem(item.ItemUid, item.Count, out _))
+            {
+                _logAction?.Invoke($"InGameInventoryManager: Removed item by ItemId (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={item.ItemUid})");
+                return item;
+            }
+            return null;
+        }
+
+        /// <summary>
         /// 플레이어의 전체 아이템 목록
         /// </summary>
         public List<InGameItemInfo> GetAllItems(long matchingId, long playerId)

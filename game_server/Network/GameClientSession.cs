@@ -598,6 +598,13 @@ public class GameClientSession : IPeer
         // 미션 액션 텍스트 추가
         AddMissionActionTexts(objects);
 
+        // 각 오브젝트의 액션 개수 로그
+        foreach (var obj in objects)
+        {
+            _logger.LogDebug("InteractableObject Id={InteractId}: {ActionCount} actions, MissionActionText={MissionText}",
+                obj.InteractId, obj.Actions?.Count ?? 0, obj.MissionActionText ?? "null");
+        }
+
         using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
         Send(packet);
         _logger.LogDebug("Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
@@ -622,16 +629,27 @@ public class GameClientSession : IPeer
             if (string.IsNullOrEmpty(currentStep.SpotActionText))
                 return;
 
-            // 현재 단계가 spot을 사용하는지 확인
-            if (!currentStep.SpotSlot || exitState.SlotBinding.SpotId <= 0)
-                return;
+            // 타겟 interactable_id 결정
+            int targetInteractableId = 0;
 
-            // spot의 interactable_id 가져오기
-            var exitSpot = GameExitData.GetSpot(exitState.SlotBinding.SpotId);
-            if (exitSpot == null)
-                return;
+            // 1. target_interactable_id가 직접 지정된 경우 (예: 701000007)
+            if (!string.IsNullOrEmpty(currentStep.TargetInteractableId) &&
+                int.TryParse(currentStep.TargetInteractableId, out var directId))
+            {
+                targetInteractableId = directId;
+            }
+            // 2. SpotSlot을 사용하는 경우
+            else if (currentStep.SpotSlot && exitState.SlotBinding.SpotId > 0)
+            {
+                var exitSpot = GameExitData.GetSpot(exitState.SlotBinding.SpotId);
+                if (exitSpot != null)
+                {
+                    targetInteractableId = exitSpot.InteractableId;
+                }
+            }
 
-            var targetInteractableId = exitSpot.InteractableId;
+            if (targetInteractableId == 0)
+                return;
 
             // 해당 오브젝트 찾기
             var targetObject = objects.FirstOrDefault(o => o.InteractId == targetInteractableId);
@@ -1131,12 +1149,42 @@ public class GameClientSession : IPeer
                 return Task.CompletedTask;
             }
 
+            // 현재 단계 정보 저장 (아이템 삭제용)
+            var currentStep = state.GetCurrentStep();
+            var currentBinding = state.SlotBinding;
+
             // 다음 단계로 진행
             var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId);
 
             if (success)
             {
                 var newStepOrder = state.CurrentStepOrder;
+
+                // 운반하기(action_type=2) 완료 시 인게임 인벤토리에서 아이템 삭제
+                if (currentStep?.ActionType == 2 && currentBinding.ItemId > 0)
+                {
+                    var exitItem = GameExitData.GetItem(currentBinding.ItemId);
+                    if (exitItem != null)
+                    {
+                        var removedItem = _inGameInventoryManager.RemoveItemByItemId(
+                            CurrentMapSubId, PlayerId.Value, exitItem.ItemId);
+
+                        if (removedItem != null)
+                        {
+                            _logger.LogInformation("Player {PlayerId} delivered exit item: ItemId={ItemId}",
+                                PlayerId, exitItem.ItemId);
+
+                            // 인벤토리 업데이트 전송 (Count=0으로 삭제 알림)
+                            var deletedItem = new InGameItemInfo
+                            {
+                                ItemUid = removedItem.ItemUid,
+                                ItemId = removedItem.ItemId,
+                                Count = 0
+                            };
+                            SendInGameInventoryUpdate(deletedItem);
+                        }
+                    }
+                }
 
                 // 요청자에게 결과 응답
                 using var resultPacket = PacketMaker.G_TO_C_EXIT_ADVANCE_RESULT(
