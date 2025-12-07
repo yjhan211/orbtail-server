@@ -683,6 +683,9 @@ public class GameClientSession : IPeer
                 AddInGameItem(rewardItemId);
                 _logger.LogInformation("Player {PlayerId} received reward: ItemId={ItemId} from InteractId={InteractId}, ActionId={ActionId}",
                     PlayerId, rewardItemId, msg.InteractId, msg.ActionId);
+
+                // 탈출 절차 목표 아이템인지 확인하고 진척도 갱신
+                CheckAndAdvanceExitStep(rewardItemId);
             }
 
             // 성공 응답 (최종 결정된 아이템 ID 전송)
@@ -1127,6 +1130,75 @@ public class GameClientSession : IPeer
         }
 
         _logger.LogDebug("Broadcasted EXIT_STEP_UPDATE to {Count} players in instance {InstanceId}", otherSessions.Count, CurrentMapSubId);
+    }
+
+    /// <summary>
+    /// 아이템 습득 시 탈출 절차 목표 아이템인지 확인하고 진척도 갱신
+    /// </summary>
+    private void CheckAndAdvanceExitStep(int acquiredItemId)
+    {
+        if (!PlayerId.HasValue) return;
+
+        try
+        {
+            var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
+            var currentStep = state.GetCurrentStep();
+
+            if (currentStep == null || state.IsCompleted)
+            {
+                return;
+            }
+
+            // 현재 단계가 아이템 회수 (action_type = 1)인지 확인
+            if (currentStep.ActionType != 1)
+            {
+                return;
+            }
+
+            // 목표 아이템인지 확인 (exit_item.item_id와 비교)
+            var exitItem = GameExitData.GetItem(state.SlotBinding.ItemId);
+            if (exitItem == null || exitItem.ItemId != acquiredItemId)
+            {
+                return;
+            }
+
+            _logger.LogInformation("Player {PlayerId} acquired exit target item: ItemId={ItemId}, ExitItemId={ExitItemId}",
+                PlayerId, acquiredItemId, state.SlotBinding.ItemId);
+
+            // 다음 단계로 진행
+            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId);
+
+            if (success)
+            {
+                var newStepOrder = state.CurrentStepOrder;
+
+                _logger.LogInformation("Exit step auto-advanced: Player={PlayerId}, NewStep={NewStep}, Escaped={Escaped}",
+                    PlayerId, newStepOrder, escaped);
+
+                // 본인 포함 모든 플레이어에게 브로드캐스트
+                BroadcastExitStepUpdateToAll(PlayerId.Value, newStepOrder, escaped);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CheckAndAdvanceExitStep error for player {PlayerId}", PlayerId);
+        }
+    }
+
+    /// <summary>
+    /// 탈출 절차 단계 변경을 본인 포함 모든 플레이어에게 브로드캐스트
+    /// </summary>
+    private void BroadcastExitStepUpdateToAll(long advancedByPlayerId, int newStepOrder, bool escaped)
+    {
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+
+        using var packet = PacketMaker.G_TO_C_EXIT_STEP_UPDATE(advancedByPlayerId, newStepOrder, escaped);
+        foreach (var session in allSessions.Where(s => s.PlayerId.HasValue))
+        {
+            session.Send(packet);
+        }
+
+        _logger.LogDebug("Broadcasted EXIT_STEP_UPDATE to ALL {Count} players in instance {InstanceId}", allSessions.Count, CurrentMapSubId);
     }
 
     #endregion

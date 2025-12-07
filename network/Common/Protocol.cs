@@ -90,6 +90,8 @@ namespace network.common
         ALREADY_HAS_JOB,
         ALREADY_ANOTHER_USE_SKILL,
         INVALID_POSITION,
+        INVALID_ITEM,
+        INVALID_ITEM_TYPE,
         FATAL
     }
 }

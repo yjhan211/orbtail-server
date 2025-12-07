@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 using network.interfaces;
 
@@ -63,8 +64,23 @@ public class PlayerService(ILogger logger, ICacheHelper cacheHelper, IRedLockFac
             return (ErrorCode.FATAL, null);
         }
 
-        // TODO: 사용 로직 구현
-        logger.LogInformation($"Player {playerId} using item {msg.ItemUid} on target {msg.TargetItemUid}");
+        // 아이템 존재 확인
+        if (!playerInfo.InventoryInfo.ItemDict.TryGetValue(msg.ItemUid, out var itemInfo))
+        {
+            logger.LogWarning($"Player {playerId} tried to use non-existent item UID: {msg.ItemUid}");
+            return (ErrorCode.INVALID_ITEM, playerInfo);
+        }
+
+        // CONSUMABLE 타입만 사용 가능
+        var itemType = GameItemData.GetItemType(itemInfo.ItemId);
+        if (itemType != ItemType.CONSUMABLE)
+        {
+            logger.LogWarning($"Player {playerId} tried to use non-consumable item: ItemId={itemInfo.ItemId}, Type={itemType}");
+            return (ErrorCode.INVALID_ITEM_TYPE, playerInfo);
+        }
+
+        // TODO: 소비 아이템 효과 적용 로직 구현
+        logger.LogInformation($"Player {playerId} using consumable item {msg.ItemUid} (ItemId={itemInfo.ItemId}) on target {msg.TargetItemUid}");
 
         await playerInfo.Save(cacheHelper);
         return (ErrorCode.SUCCESS, playerInfo);

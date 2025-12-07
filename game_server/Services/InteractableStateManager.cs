@@ -92,10 +92,18 @@ namespace game_server.services
 
                 case RewardType.CONDITION_RANDOM:
                     var conditionItem = GameItemData.GetRandomConsumableByBuffSubType(BuffSubType.CONDITION_ADD, _random);
+                    if (conditionItem == null)
+                    {
+                        Console.WriteLine($"[WARN] CONDITION_ADD 아이템을 찾을 수 없음");
+                    }
                     return conditionItem?.Id ?? 0;
 
                 case RewardType.CORRUPTION_RANDOM:
                     var corruptionItem = GameItemData.GetRandomConsumableByBuffSubType(BuffSubType.CORRUPTION_DOWN, _random);
+                    if (corruptionItem == null)
+                    {
+                        Console.WriteLine($"[WARN] CORRUPTION_DOWN 아이템을 찾을 수 없음");
+                    }
                     return corruptionItem?.Id ?? 0;
 
                 case RewardType.NONE:
