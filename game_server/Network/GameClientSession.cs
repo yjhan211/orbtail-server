@@ -118,7 +118,10 @@ public class GameClientSession : IPeer
             var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
 
-            _logger.LogInformation("[GameClient] Protocol: {ProtocolId}, PlayerId: {L}", protocolId, playerId);
+            if (protocolId != Protocol.C_TO_G_HEART_BEAT)
+            {
+                _logger.LogInformation("[GameClient] Protocol: {ProtocolId}, PlayerId: {L}", protocolId, playerId);
+            }
 
             await _protocolRouter.RouteAsync(protocolId, body);
         }
