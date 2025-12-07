@@ -18,21 +18,40 @@ namespace network.common.data.helpers
             public const string BuffInfo = "buff_info.csv";
             public const string QuestInfo = "quest_info.csv";
             public const string MailInfo = "mail_info.csv";
-            public const string ExploreTargetInfo = "explore_target_info.csv";
-            public const string CraftInfo = "craft_info.csv";
             public const string LoadingText = "loading_text.csv";
             public const string AreaName = "area_name.csv";
+            public const string AreaRule = "area_rule.csv";
+
+            public static class Interactable
+            {
+                public const string Info = "interactable_info.csv";
+                public const string Action = "interactable_action.csv";
+                public const string Reward = "interactable_reward.csv";
+
+                public static readonly string[] ALL = new[] { Info, Action, Reward };
+            }
+
+            public static class Exit
+            {
+                public const string Template = "exit_template.csv";
+                public const string Step = "exit_step.csv";
+                public const string Item = "exit_item.csv";
+                public const string Spot = "exit_spot.csv";
+                public const string Debuff = "exit_debuff.csv";
+                public const string Condition = "exit_condition.csv";
+                public const string Constraint = "exit_constraint.csv";
+
+                public static readonly string[] ALL = new[] { Template, Step, Item, Spot, Debuff, Condition, Constraint };
+            }
 
             public static class Item
             {
                 public const string Base = "item_info.csv";
                 public const string Equipment = "item_info_equipment.csv";
                 public const string Consumable = "item_info_consumable.csv";
-                public const string Installation = "item_info_installation.csv";
-                public const string Shop = "shop_info_installation.csv";
                 public const string Put = "item_info_put.csv";
 
-                public static readonly string[] ALL = new[] { Base, Equipment, Consumable, Installation, Shop, Put };
+                public static readonly string[] ALL = new[] { Base, Equipment, Consumable, Put };
             }
 
             public static class Map
@@ -52,10 +71,9 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.BuffInfo, init: GameBuffData.Initialize, validate: GameBuffData.Validate),
                 (fileName: DataFiles.QuestInfo, init: GameQuestData.Initialize, validate: GameQuestData.Validate),
                 (fileName: DataFiles.MailInfo, init: GameMailData.Initialize, validate: GameMailData.Validate),
-                (fileName: DataFiles.ExploreTargetInfo, init: GameExploreTargetData.Initialize, GameExploreTargetData.Validate),
-                (fileName: DataFiles.CraftInfo, init: GameCraftData.Initialize, GameCraftData.Validate),
                 (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize, validate: GameLoadingTextData.Validate),
                 (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize, validate: GameAreaNameData.Validate),
+                (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize, validate: GameAreaRuleData.Validate),
             };
 
         private static string GetCsvFilePath(string fileName)
@@ -98,6 +116,20 @@ namespace network.common.data.helpers
                 loadedData[fileName] = CsvHelper.LoadCsv(filePath);
             }
 
+            // 상호작용 오브젝트 관련 파일 로드
+            foreach (var fileName in DataFiles.Interactable.ALL)
+            {
+                var filePath = GetCsvFilePath(fileName);
+                loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+            }
+
+            // 탈출 의식 관련 파일 로드
+            foreach (var fileName in DataFiles.Exit.ALL)
+            {
+                var filePath = GetCsvFilePath(fileName);
+                loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+            }
+
             // 일반 데이터 초기화
             foreach (var (fileName, init, _) in StandardDataDefinitions)
                 try
@@ -114,8 +146,6 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Item.Base],
                 loadedData[DataFiles.Item.Equipment],
                 loadedData[DataFiles.Item.Consumable],
-                loadedData[DataFiles.Item.Installation],
-                loadedData[DataFiles.Item.Shop],
                 loadedData[DataFiles.Item.Put]
             );
 
@@ -123,6 +153,24 @@ namespace network.common.data.helpers
             GameMapData.Initialize(
                 loadedData[DataFiles.Map.MapInfo],
                 loadedData[DataFiles.Map.MapRegion]
+            );
+
+            // 상호작용 오브젝트 데이터 초기화
+            GameInteractableData.Initialize(
+                loadedData[DataFiles.Interactable.Info],
+                loadedData[DataFiles.Interactable.Action],
+                loadedData[DataFiles.Interactable.Reward]
+            );
+
+            // 탈출 의식 데이터 초기화
+            GameExitData.Initialize(
+                loadedData[DataFiles.Exit.Template],
+                loadedData[DataFiles.Exit.Step],
+                loadedData[DataFiles.Exit.Item],
+                loadedData[DataFiles.Exit.Spot],
+                loadedData[DataFiles.Exit.Debuff],
+                loadedData[DataFiles.Exit.Condition],
+                loadedData[DataFiles.Exit.Constraint]
             );
 
             ValidateAllData();

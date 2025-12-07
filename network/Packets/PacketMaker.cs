@@ -177,6 +177,15 @@ public static class PacketMaker
 
     // ========== GameServer 프로토콜 ==========
 
+    public static Packet G_TO_C_HEART_BEAT(DateTime utcNow)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_HEART_BEAT);
+        G_TO_C_HEART_BEAT body = new() { UtcNow = utcNow };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     public static Packet G_TO_C_CONNECT_RESULT(bool success, ErrorCode errorCode, string? message = null)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT);
@@ -235,6 +244,34 @@ public static class PacketMaker
         return packet;
     }
 
+    public static Packet G_TO_C_INTERACTABLE_LIST(AreaType areaType, List<InteractableObjectState> objects)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_LIST);
+        G_TO_C_INTERACTABLE_LIST body = new()
+        {
+            AreaType = areaType,
+            Objects = objects
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_INTERACTABLE_UPDATE(int interactId, int order, bool isExplored, long exploredBy)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_UPDATE);
+        G_TO_C_INTERACTABLE_UPDATE body = new()
+        {
+            InteractId = interactId,
+            Order = order,
+            IsExplored = isExplored,
+            ExploredBy = exploredBy
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     public static Packet G_TO_C_GAME_TIME_WARNING(int remainingSeconds)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_GAME_TIME_WARNING);
@@ -248,6 +285,177 @@ public static class PacketMaker
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_GAME_END);
         G_TO_C_GAME_END body = new() { MatchingId = matchingId };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    // ========== 탐색 프로토콜 ==========
+
+    public static Packet G_TO_C_EXPLORE_START(long playerId, int interactId)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_START);
+        G_TO_C_EXPLORE_START body = new()
+        {
+            PlayerId = playerId,
+            InteractId = interactId
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_EXPLORE_RESULT(bool success, int interactId, int actionId, int itemId, ErrorCode errorCode)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_RESULT);
+        G_TO_C_EXPLORE_RESULT body = new()
+        {
+            Success = success,
+            InteractId = interactId,
+            ActionId = actionId,
+            ItemId = itemId,
+            ErrorCode = errorCode
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_EXPLORE_END(long playerId)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_END);
+        G_TO_C_EXPLORE_END body = new()
+        {
+            PlayerId = playerId
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    // ========== 인게임 인벤토리 프로토콜 ==========
+
+    public static Packet G_TO_C_INGAME_INVENTORY_LIST(List<InGameItemInfo> items)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_INGAME_INVENTORY_LIST);
+        G_TO_C_INGAME_INVENTORY_LIST body = new() { Items = items };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_INGAME_INVENTORY_UPDATE(List<InGameItemInfo> items)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_INGAME_INVENTORY_UPDATE);
+        G_TO_C_INGAME_INVENTORY_UPDATE body = new() { Items = items };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_USE_INGAME_ITEM_RESULT(bool success, long itemUid, ErrorCode errorCode, int ruleId = 0)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_USE_INGAME_ITEM_RESULT);
+        G_TO_C_USE_INGAME_ITEM_RESULT body = new()
+        {
+            Success = success,
+            ItemUid = itemUid,
+            ErrorCode = errorCode,
+            RuleId = ruleId
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    // ========== 플레이어 상태 프로토콜 ==========
+
+    public static Packet G_TO_C_PLAYER_STATE(long playerId, PlayerState state)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_STATE);
+        G_TO_C_PLAYER_STATE body = new()
+        {
+            PlayerId = playerId,
+            State = state
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    // ========== 플레이어 스탯 프로토콜 ==========
+
+    public static Packet G_TO_C_PLAYER_STATS_UPDATE(int stamina, int staminaDelta, int corruption, int corruptionDelta)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_STATS_UPDATE);
+        G_TO_C_PLAYER_STATS_UPDATE body = new()
+        {
+            Stamina = stamina,
+            StaminaDelta = staminaDelta,
+            Corruption = corruption,
+            CorruptionDelta = corruptionDelta
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    // ========== 탈출 절차 프로토콜 ==========
+
+    public static Packet G_TO_C_EXIT_STEP_INFO(int templateId, int currentStepOrder, int totalStepCount, ExitSlotBindingInfo slotBinding, bool isCompleted, long lastAdvancedBy = 0)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXIT_STEP_INFO);
+        G_TO_C_EXIT_STEP_INFO body = new()
+        {
+            TemplateId = templateId,
+            CurrentStepOrder = currentStepOrder,
+            TotalStepCount = totalStepCount,
+            SlotBinding = slotBinding,
+            IsCompleted = isCompleted,
+            LastAdvancedBy = lastAdvancedBy
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_EXIT_ADVANCE_RESULT(bool success, ErrorCode errorCode, bool escaped, int newStepOrder)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXIT_ADVANCE_RESULT);
+        G_TO_C_EXIT_ADVANCE_RESULT body = new()
+        {
+            Success = success,
+            ErrorCode = errorCode,
+            Escaped = escaped,
+            NewStepOrder = newStepOrder
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_EXIT_STEP_UPDATE(long advancedByPlayerId, int newStepOrder, bool escaped)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_EXIT_STEP_UPDATE);
+        G_TO_C_EXIT_STEP_UPDATE body = new()
+        {
+            AdvancedByPlayerId = advancedByPlayerId,
+            NewStepOrder = newStepOrder,
+            Escaped = escaped
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_RETURN_TO_LOBBY_RESULT(bool success, ErrorCode errorCode)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_RETURN_TO_LOBBY_RESULT);
+        G_TO_C_RETURN_TO_LOBBY_RESULT body = new()
+        {
+            Success = success,
+            ErrorCode = errorCode
+        };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

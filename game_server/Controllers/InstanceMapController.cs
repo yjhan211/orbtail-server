@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using game_server.network;
+using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -16,7 +17,11 @@ public sealed class InstanceMapController(
     INatsClient natsClient,
     ICacheHelper cacheHelper,
     ServerConfig serverConfig,
-    ConcurrentDictionary<long, GameClientSession> clientSessions)
+    ConcurrentDictionary<long, GameClientSession> clientSessions,
+    InteractableStateManager interactableStateManager,
+    InGameInventoryManager inGameInventoryManager,
+    AreaRuleManager areaRuleManager,
+    ExitInstanceManager exitInstanceManager)
     : BaseMapController(logger, natsClient, cacheHelper, serverConfig)
 {
     private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
@@ -197,6 +202,19 @@ public sealed class InstanceMapController(
 
                 // 인스턴스 정리
                 _objectInstanceDict.TryRemove(instanceKey, out _);
+
+                // Interactable 상태 정리 (MatchingId = mapSubId)
+                interactableStateManager.RemoveMatchingState(mapSubId);
+
+                // InGameInventory 상태 정리
+                inGameInventoryManager.RemoveMatchingState(mapSubId);
+
+                // AreaRule 상태 정리
+                areaRuleManager.RemoveMatchingState(mapSubId);
+
+                // Exit 상태 정리
+                exitInstanceManager.RemoveMatchingState(mapSubId);
+
                 Logger.LogInformation($"게임 종료 완료 및 인스턴스 제거: {instanceKey}");
             }
             finally
@@ -267,6 +285,69 @@ public sealed class InstanceMapController(
         {
             MapLock.Release();
         }
+    }
+
+    /// <summary>
+    /// 유저 연결 해제 시 호출. 해당 인스턴스에 연결된 유저가 없으면 게임 종료 처리
+    /// </summary>
+    public void OnPlayerDisconnected(MapId mapId, long mapSubId, long playerId)
+    {
+        var instanceKey = MapHelper.CreatePartKey(mapId, mapSubId);
+        var objectKey = $"PLAYER_{playerId}";
+
+        Logger.LogInformation("플레이어 연결 해제: PlayerId={PlayerId}, InstanceKey={InstanceKey}", playerId, instanceKey);
+
+        // 인스턴스에서 플레이어 제거
+        if (_objectInstanceDict.TryGetValue(instanceKey, out var instanceSet))
+        {
+            instanceSet.Remove(objectKey);
+            Logger.LogInformation("인스턴스 {InstanceKey}에서 플레이어 제거, 남은 인원: {Count}", instanceKey, instanceSet.Count);
+
+            // 모든 유저가 연결 해제되면 게임 종료
+            if (instanceSet.Count == 0)
+            {
+                Logger.LogInformation("인스턴스 {InstanceKey}의 모든 유저가 연결 해제됨. 게임 종료 처리", instanceKey);
+                CleanupInstance(instanceKey, mapSubId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 인스턴스 정리 (타이머 제거, 상태 정리)
+    /// </summary>
+    private void CleanupInstance(string instanceKey, long mapSubId)
+    {
+        // 게임 타이머 정리
+        if (_gameTimers.TryRemove(instanceKey, out var gameTimer))
+        {
+            gameTimer.Dispose();
+            Logger.LogInformation("게임 타이머 정리: {InstanceKey}", instanceKey);
+        }
+
+        // 경고 타이머 정리
+        if (_warningTimers.TryRemove(instanceKey, out var warningTimers))
+        {
+            warningTimers.OneMinuteTimer.Dispose();
+            warningTimers.ThirtySecondsTimer.Dispose();
+            Logger.LogInformation("경고 타이머 정리: {InstanceKey}", instanceKey);
+        }
+
+        // 인스턴스 딕셔너리에서 제거
+        _objectInstanceDict.TryRemove(instanceKey, out _);
+
+        // Interactable 상태 정리
+        interactableStateManager.RemoveMatchingState(mapSubId);
+
+        // InGameInventory 상태 정리
+        inGameInventoryManager.RemoveMatchingState(mapSubId);
+
+        // AreaRule 상태 정리
+        areaRuleManager.RemoveMatchingState(mapSubId);
+
+        // Exit 상태 정리
+        exitInstanceManager.RemoveMatchingState(mapSubId);
+
+        Logger.LogInformation("인스턴스 정리 완료: {InstanceKey}", instanceKey);
     }
 
     // MMO 오브젝트 스폰 프로토콜 제거됨

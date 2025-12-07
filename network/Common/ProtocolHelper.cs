@@ -13,6 +13,8 @@ namespace network.common
         /// </summary>
         private static readonly HashSet<Protocol> GameServerProtocols = new()
         {
+            Protocol.C_TO_G_HEART_BEAT,
+            Protocol.G_TO_C_HEART_BEAT,
             Protocol.C_TO_G_CONNECT,
             Protocol.G_TO_C_CONNECT_RESULT,
             Protocol.G_TO_C_PLAYER_INFO,

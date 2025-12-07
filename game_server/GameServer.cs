@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using game_server.controllers;
 using game_server.network;
+using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -29,9 +30,15 @@ public class GameServer : IHostedService
 
     private readonly List<InstanceMapController> _instanceControllerList = [];
     private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
+    private readonly InteractableStateManager _interactableStateManager = new();
+    private readonly InGameInventoryManager _inGameInventoryManager = new();
+    private readonly AreaRuleManager _areaRuleManager = new();
+    private readonly ExitInstanceManager _exitInstanceManager = new();
     private CancellationTokenSource _cts = new();
-    // MMO 로그아웃 클라이언트 제거됨
-    // private INatsClient? _logoutNatsClient;
+    private Timer? _heartbeatCheckTimer;
+
+    // 하트비트 체크 간격 (10초마다 체크)
+    private const int HeartbeatCheckIntervalSeconds = 10;
 
     private readonly ServerConfig _serverConfig;
 
@@ -67,9 +74,9 @@ public class GameServer : IHostedService
             InitializeServices();
             InitializeControllers();
             StartTcpServer();
+            StartHeartbeatChecker();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            // No logout subscription needed for session-based games
 
             _logger.LogInformation("Game server started successfully.");
             return Task.CompletedTask;
@@ -86,8 +93,13 @@ public class GameServer : IHostedService
         _logger.LogInformation("Game server stopping...");
 
         await _cts.CancelAsync();
-        // MMO 로그아웃 클라이언트 제거됨
-        // _logoutNatsClient?.Close();
+
+        // 하트비트 체크 타이머 정리
+        if (_heartbeatCheckTimer != null)
+        {
+            await _heartbeatCheckTimer.DisposeAsync();
+            _heartbeatCheckTimer = null;
+        }
 
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
@@ -105,6 +117,10 @@ public class GameServer : IHostedService
             _natsClientFactory.Initialize(natsEndpoint);
             GameDataHelper.Initialize();
             MapHelper.Initialize(_serverConfig.GameServerNum);
+            _interactableStateManager.Initialize(msg => _logger.LogInformation(msg));
+            _inGameInventoryManager.Initialize(msg => _logger.LogInformation(msg));
+            _areaRuleManager.Initialize(msg => _logger.LogInformation(msg));
+            _exitInstanceManager.Initialize(msg => _logger.LogInformation(msg));
         }
         catch (Exception ex)
         {
@@ -114,7 +130,7 @@ public class GameServer : IHostedService
 
     private void InitializeControllers()
     {
-        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cacheHelper, _serverConfig, _clientSessions);
+        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cacheHelper, _serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager, _exitInstanceManager);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
@@ -125,6 +141,41 @@ public class GameServer : IHostedService
         _networkService.SessionCreatedCallback += OnClientSessionCreated;
         _networkService.Listen(IPAddress.Any, port);
         _logger.LogInformation($"TCP server listening on port {port}");
+    }
+
+    private void StartHeartbeatChecker()
+    {
+        _heartbeatCheckTimer = new Timer(
+            CheckHeartbeatTimeouts,
+            null,
+            TimeSpan.FromSeconds(HeartbeatCheckIntervalSeconds),
+            TimeSpan.FromSeconds(HeartbeatCheckIntervalSeconds));
+        _logger.LogInformation("Heartbeat checker started (interval: {Interval}s)", HeartbeatCheckIntervalSeconds);
+    }
+
+    private void CheckHeartbeatTimeouts(object? state)
+    {
+        try
+        {
+            var timedOutSessions = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue && s.IsHeartbeatTimedOut())
+                .ToList();
+
+            foreach (var session in timedOutSessions)
+            {
+                _logger.LogWarning("Heartbeat timeout for PlayerId={PlayerId}, forcing disconnect", session.PlayerId);
+                session.ForceDisconnect();
+            }
+
+            if (timedOutSessions.Count > 0)
+            {
+                _logger.LogInformation("Disconnected {Count} sessions due to heartbeat timeout", timedOutSessions.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking heartbeat timeouts");
+        }
     }
 
     private void OnClientSessionCreated(UserToken token)
@@ -140,7 +191,11 @@ public class GameServer : IHostedService
                 _cacheHelper,
                 OnClientSessionLeave,
                 RegisterClientSession,
-                GetSessionsByInstance);
+                GetSessionsByInstance,
+                _interactableStateManager,
+                _inGameInventoryManager,
+                _areaRuleManager,
+                _exitInstanceManager);
 
             _logger.LogInformation("Game client session created");
         }
@@ -156,6 +211,15 @@ public class GameServer : IHostedService
         {
             _clientSessions.TryRemove(session.PlayerId.Value, out _);
             _logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", session.PlayerId.Value);
+
+            // 인스턴스 컨트롤러에 연결 해제 알림 (모든 유저 연결 해제 시 게임 종료 처리)
+            if (session.CurrentMapSubId > 0)
+            {
+                foreach (var controller in _instanceControllerList)
+                {
+                    controller.OnPlayerDisconnected(session.CurrentMapId, session.CurrentMapSubId, session.PlayerId.Value);
+                }
+            }
         }
     }
 

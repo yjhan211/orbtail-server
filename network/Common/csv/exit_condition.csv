@@ -1,0 +1,4 @@
+id,text,check_type,check_value,finale_type
+1,"<color=#22D3EE>정신이 가장 온전한</color> 인원이",1,50,1
+2,"반드시 <color=#22D3EE>혼자</color>",2,0,2
+3,"<color=#22D3EE>두 명</color>이 <color=#22D3EE>동시에</color>",2,1,3

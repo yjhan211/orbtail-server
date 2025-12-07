@@ -18,15 +18,13 @@ namespace network.common.data
         private static readonly Dictionary<int, ItemInfoData> Items = new();
 
         public static void Initialize(List<CsvRow> baseItemData, List<CsvRow> equipmentData,
-            List<CsvRow> consumableData, List<CsvRow> installationData,
-            List<CsvRow> shopData, List<CsvRow> putData)
+            List<CsvRow> consumableData, List<CsvRow> putData)
         {
             foreach (var baseInfo in baseItemData)
             {
                 var itemId = int.Parse(baseInfo["id"]);
                 var itemType = GetItemType(itemId);
                 var additionalData = new Dictionary<string, CsvRow>();
-                var equipType = GetEquipType(itemId);
 
                 switch (itemType)
                 {
@@ -46,16 +44,6 @@ namespace network.common.data
                         var consumableInfo = consumableData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
                         if (consumableInfo != null)
                             additionalData["item_info_consumable"] = consumableInfo;
-                        break;
-
-                    case ItemType.INSTALLATION:
-                        var installInfo = installationData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
-                        if (installInfo != null)
-                            additionalData["item_info_installation"] = installInfo;
-
-                        var shopInfo = shopData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
-                        if (shopInfo != null)
-                            additionalData["installation_shop_info"] = shopInfo;
                         break;
 
                     case ItemType.PUTABLE:
@@ -82,6 +70,33 @@ namespace network.common.data
         public static List<ItemInfoData> GetAllList()
         {
             return Items.Values.ToList();
+        }
+
+        /// <summary>
+        /// 특정 버프 서브타입을 가진 소비 아이템 목록 반환
+        /// </summary>
+        public static List<ItemInfoData> GetConsumablesByBuffSubType(BuffSubType buffSubType)
+        {
+            return Items.Values
+                .Where(item => item.Type == ItemType.CONSUMABLE &&
+                               item.ConsumableBuffList.Any(buff =>
+                               {
+                                   var buffData = GameBuffData.Get(buff.id);
+                                   return buffData.SubType == buffSubType;
+                               }))
+                .ToList();
+        }
+
+        /// <summary>
+        /// 특정 버프 서브타입을 가진 소비 아이템 중 랜덤 선택
+        /// </summary>
+        public static ItemInfoData GetRandomConsumableByBuffSubType(BuffSubType buffSubType, Random random = null)
+        {
+            var items = GetConsumablesByBuffSubType(buffSubType);
+            if (items.Count == 0) return null;
+
+            random ??= new Random();
+            return items[random.Next(items.Count)];
         }
 
         public static ItemType GetItemType(int itemId)
@@ -158,14 +173,6 @@ namespace network.common.data
                     case ItemType.CONSUMABLE
                         when additionalData.TryGetValue("item_info_consumable", out var consumableInfo):
                         item.ConsumableBuffList = ParseIntTupleArray(consumableInfo["buff_list"]);
-                        break;
-
-                    case ItemType.INSTALLATION
-                        when additionalData.TryGetValue("item_info_installation", out var installInfo):
-                        item.MaxDurability = int.Parse(installInfo["max_durability"]);
-                        item.BuffList = ParseBuffList(installInfo["buff_list"]) ?? throw new ArgumentException();
-                        if (additionalData.TryGetValue("installation_shop_info", out var shopInfo))
-                            item.MaxSellItems = int.Parse(shopInfo["max_items"]);
                         break;
 
                     case ItemType.PUTABLE

@@ -18,6 +18,12 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class G_TO_C_HEART_BEAT : IMessagePackObject
+    {
+        [Key("utcNow")] public DateTime UtcNow { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_U_LOGIN : IMessagePackObject
     {
         [Key("accountToken")] public string AccountToken { get; set; } // TODO 계정키로 변경
@@ -144,6 +150,22 @@ namespace network.common.data.models
     public class G_TO_C_AREA_PLAYER_LEAVE : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_INTERACTABLE_LIST : IMessagePackObject
+    {
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("objects")] public List<InteractableObjectState> Objects { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_INTERACTABLE_UPDATE : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("order")] public int Order { get; set; }
+        [Key("isExplored")] public bool IsExplored { get; set; }
+        [Key("exploredBy")] public long ExploredBy { get; set; }
     }
 
     [MessagePackObject]
@@ -524,4 +546,184 @@ namespace network.common.data.models
     {
         [Key("targetId")] public string TargetId { get; set; } = string.Empty;
     }
+
+    // 탐색 시작 요청
+    [MessagePackObject]
+    public class C_TO_G_EXPLORE_START : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+    }
+
+    // 탐색 시작 브로드캐스트 (다른 플레이어에게 애니메이션 동기화)
+    [MessagePackObject]
+    public class G_TO_C_EXPLORE_START : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+    }
+
+    // 선택지 선택
+    [MessagePackObject]
+    public class C_TO_G_EXPLORE_SELECT : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("actionId")] public int ActionId { get; set; }
+    }
+
+    // 탐색 결과 (요청한 클라이언트에게만)
+    [MessagePackObject]
+    public class G_TO_C_EXPLORE_RESULT : IMessagePackObject
+    {
+        [Key("success")] public bool Success { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("actionId")] public int ActionId { get; set; }
+        [Key("itemId")] public int ItemId { get; set; }  // 획득한 아이템 ID (0이면 없음)
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+
+    // 탐색 종료 요청 (클라이언트 → 서버)
+    [MessagePackObject]
+    public class C_TO_G_EXPLORE_END : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+    }
+
+    // 탐색 종료 브로드캐스트 (다른 플레이어에게 애니메이션 종료 동기화)
+    [MessagePackObject]
+    public class G_TO_C_EXPLORE_END : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+    }
+
+    // 인게임 아이템 정보 (게임 내 배낭용 - 게임 종료 시 초기화)
+    [MessagePackObject]
+    public class InGameItemInfo
+    {
+        [Key("itemUid")] public long ItemUid { get; set; }   // MatchingId + Sequence 조합
+        [Key("itemId")] public int ItemId { get; set; }     // 아이템 종류
+        [Key("count")] public int Count { get; set; }       // 수량
+    }
+
+    // 인게임 배낭 전체 목록 (게임 시작 시)
+    [MessagePackObject]
+    public class G_TO_C_INGAME_INVENTORY_LIST : IMessagePackObject
+    {
+        [Key("items")] public List<InGameItemInfo> Items { get; set; }
+    }
+
+    // 인게임 배낭 업데이트 (아이템 획득/사용 시)
+    [MessagePackObject]
+    public class G_TO_C_INGAME_INVENTORY_UPDATE : IMessagePackObject
+    {
+        [Key("items")] public List<InGameItemInfo> Items { get; set; }
+    }
+
+    // 인게임 아이템 사용 요청
+    [MessagePackObject]
+    public class C_TO_G_USE_INGAME_ITEM : IMessagePackObject
+    {
+        [Key("itemUid")] public long ItemUid { get; set; }
+        [Key("count")] public int Count { get; set; }
+    }
+
+    // 인게임 아이템 사용 결과
+    [MessagePackObject]
+    public class G_TO_C_USE_INGAME_ITEM_RESULT : IMessagePackObject
+    {
+        [Key("success")] public bool Success { get; set; }
+        [Key("itemUid")] public long ItemUid { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("ruleId")] public int RuleId { get; set; } // 행동 수칙 쪽지 아이템(202000003) 사용 시 규칙 ID
+    }
+
+    // 플레이어 상태 변경 요청
+    [MessagePackObject]
+    public class C_TO_G_PLAYER_STATE : IMessagePackObject
+    {
+        [Key("state")] public PlayerState State { get; set; }
+    }
+
+    // 플레이어 상태 브로드캐스트
+    [MessagePackObject]
+    public class G_TO_C_PLAYER_STATE : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("state")] public PlayerState State { get; set; }
+    }
+
+    // 플레이어 스탯 업데이트 (스태미나/정신력 등)
+    [MessagePackObject]
+    public class G_TO_C_PLAYER_STATS_UPDATE : IMessagePackObject
+    {
+        [Key("stamina")] public int Stamina { get; set; }
+        [Key("staminaDelta")] public int StaminaDelta { get; set; }
+        [Key("corruption")] public int Corruption { get; set; }
+        [Key("corruptionDelta")] public int CorruptionDelta { get; set; }
+    }
+
+    #region 탈출 절차 프로토콜
+
+    // 탈출 절차 슬롯 바인딩 정보 (클라이언트에서 텍스트 조합에 사용)
+    [MessagePackObject]
+    public class ExitSlotBindingInfo
+    {
+        [Key("itemId")] public int ItemId { get; set; }       // exit_item.id
+        [Key("spotId")] public int SpotId { get; set; }       // exit_spot.id
+        [Key("debuffId")] public int DebuffId { get; set; }   // exit_debuff.id
+        [Key("conditionId")] public int ConditionId { get; set; } // exit_condition.id
+    }
+
+    // 탈출 절차 단계 정보 응답
+    [MessagePackObject]
+    public class G_TO_C_EXIT_STEP_INFO : IMessagePackObject
+    {
+        [Key("templateId")] public int TemplateId { get; set; }
+        [Key("currentStepOrder")] public int CurrentStepOrder { get; set; } // 현재 단계 (이보다 작은 order는 완료)
+        [Key("totalStepCount")] public int TotalStepCount { get; set; } // 총 단계 수
+        [Key("slotBinding")] public ExitSlotBindingInfo SlotBinding { get; set; } // 슬롯 바인딩 (클라에서 텍스트 조합)
+        [Key("isCompleted")] public bool IsCompleted { get; set; } // 탈출 완료 여부
+        [Key("lastAdvancedBy")] public long LastAdvancedBy { get; set; } // 마지막으로 진행한 플레이어 UID (0이면 아직 진행 안함)
+    }
+
+    // 탈출 절차 다음 단계 진행 요청
+    [MessagePackObject]
+    public class C_TO_G_EXIT_ADVANCE : IMessagePackObject
+    {
+        [Key("currentStepOrder")] public int CurrentStepOrder { get; set; } // 검증용 (클라이언트가 생각하는 현재 단계)
+    }
+
+    // 탈출 절차 진행 결과
+    [MessagePackObject]
+    public class G_TO_C_EXIT_ADVANCE_RESULT : IMessagePackObject
+    {
+        [Key("success")] public bool Success { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("escaped")] public bool Escaped { get; set; } // 탈출 완료 여부
+        [Key("newStepOrder")] public int NewStepOrder { get; set; }
+    }
+
+    // 탈출 절차 단계 변경 브로드캐스트 (다른 플레이어가 진행시켜도 모두에게 알림)
+    [MessagePackObject]
+    public class G_TO_C_EXIT_STEP_UPDATE : IMessagePackObject
+    {
+        [Key("advancedByPlayerId")] public long AdvancedByPlayerId { get; set; }
+        [Key("newStepOrder")] public int NewStepOrder { get; set; }
+        [Key("escaped")] public bool Escaped { get; set; }
+    }
+
+    // 로비 복귀 요청
+    [MessagePackObject]
+    public class C_TO_G_RETURN_TO_LOBBY : IMessagePackObject
+    {
+    }
+
+    // 로비 복귀 결과
+    [MessagePackObject]
+    public class G_TO_C_RETURN_TO_LOBBY_RESULT : IMessagePackObject
+    {
+        [Key("success")] public bool Success { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+
+    #endregion
 }

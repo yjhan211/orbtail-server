@@ -38,6 +38,8 @@ namespace network.common
         U_TO_C_MATCHING_FAILED,
 
         // GameServer 프로토콜 (세션 기반 실시간 게임)
+        C_TO_G_HEART_BEAT,
+        G_TO_C_HEART_BEAT,
         C_TO_G_CONNECT,
         G_TO_C_CONNECT_RESULT,
         G_TO_C_PLAYER_INFO,
@@ -49,6 +51,39 @@ namespace network.common
         G_TO_C_GAME_END,
         G_TO_C_AREA_PLAYER_ENTER, // 다른 플레이어가 내 Area에 진입
         G_TO_C_AREA_PLAYER_LEAVE, // 다른 플레이어가 내 Area에서 퇴장
+        G_TO_C_INTERACTABLE_LIST, // Area 진입 시 탐색 가능한 오브젝트 목록
+        G_TO_C_INTERACTABLE_UPDATE, // 오브젝트 탐색 상태 변경 (누군가 탐색함)
+
+        // 탐색 프로토콜
+        C_TO_G_EXPLORE_START, // 탐색 시작 요청
+        G_TO_C_EXPLORE_START, // 탐색 시작 브로드캐스트 (애니메이션 동기화)
+        C_TO_G_EXPLORE_SELECT, // 선택지 선택
+        G_TO_C_EXPLORE_RESULT, // 탐색 결과 (보상 등)
+        C_TO_G_EXPLORE_END, // 탐색 종료 요청 (UI 닫기)
+        G_TO_C_EXPLORE_END, // 탐색 종료 브로드캐스트
+
+        // 인게임 인벤토리 프로토콜 (게임 내 배낭 - 게임 종료 시 초기화)
+        G_TO_C_INGAME_INVENTORY_LIST, // 게임 시작 시 배낭 전체 목록
+        G_TO_C_INGAME_INVENTORY_UPDATE, // 아이템 추가/제거 시 업데이트
+        C_TO_G_USE_INGAME_ITEM, // 게임 아이템 사용 요청
+        G_TO_C_USE_INGAME_ITEM_RESULT, // 아이템 사용 결과
+
+        // 플레이어 상태 프로토콜
+        C_TO_G_PLAYER_STATE, // 플레이어 상태 변경 요청 (MAKE 등)
+        G_TO_C_PLAYER_STATE, // 플레이어 상태 브로드캐스트 (애니메이션 동기화)
+
+        // 플레이어 스탯 프로토콜
+        G_TO_C_PLAYER_STATS_UPDATE, // 스태미나/정신력 등 스탯 변경 알림
+
+        // 탈출 절차 프로토콜
+        G_TO_C_EXIT_STEP_INFO, // 탈출 절차 정보 (게임 접속 시 자동 전송)
+        C_TO_G_EXIT_ADVANCE, // 탈출 절차 다음 단계 진행 요청
+        G_TO_C_EXIT_ADVANCE_RESULT, // 탈출 절차 진행 결과 (성공/실패/탈출완료)
+        G_TO_C_EXIT_STEP_UPDATE, // 탈출 절차 단계 변경 브로드캐스트 (다른 플레이어가 진행시켜도 모두에게 알림)
+
+        // 로비 복귀 프로토콜
+        C_TO_G_RETURN_TO_LOBBY, // 로비 복귀 요청 (게임 완료 후)
+        G_TO_C_RETURN_TO_LOBBY_RESULT, // 로비 복귀 결과
 
         END
     }
@@ -59,6 +94,8 @@ namespace network.common
         ALREADY_HAS_JOB,
         ALREADY_ANOTHER_USE_SKILL,
         INVALID_POSITION,
+        INVALID_ITEM,
+        INVALID_ITEM_TYPE,
         FATAL
     }
 }
