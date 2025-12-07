@@ -730,13 +730,24 @@ public class GameClientSession : IPeer
             // 타겟 interactable_id 결정
             int targetInteractableId = 0;
 
-            // 1. target_interactable_id가 직접 지정된 경우 (예: 701000007)
-            if (!string.IsNullOrEmpty(currentStep.TargetInteractableId) &&
-                int.TryParse(currentStep.TargetInteractableId, out var directId))
+            if (!string.IsNullOrEmpty(currentStep.TargetInteractableId))
             {
-                targetInteractableId = directId;
+                // 1. 직접 숫자 ID인 경우 (예: 701000007)
+                if (int.TryParse(currentStep.TargetInteractableId, out var directId))
+                {
+                    targetInteractableId = directId;
+                }
+                // 2. {Spot.InteractObj} 플레이스홀더인 경우
+                else if (currentStep.TargetInteractableId == "{Spot.InteractObj}" && exitState.SlotBinding.SpotId > 0)
+                {
+                    var exitSpot = GameExitData.GetSpot(exitState.SlotBinding.SpotId);
+                    if (exitSpot != null)
+                    {
+                        targetInteractableId = exitSpot.InteractableId;
+                    }
+                }
             }
-            // 2. SpotSlot을 사용하는 경우
+            // 3. SpotSlot을 사용하는 경우 (fallback)
             else if (currentStep.SpotSlot && exitState.SlotBinding.SpotId > 0)
             {
                 var exitSpot = GameExitData.GetSpot(exitState.SlotBinding.SpotId);
