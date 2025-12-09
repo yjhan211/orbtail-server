@@ -587,11 +587,11 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,obstacle,171,76,171,78,0
 1,obstacle,171,113,171,114,0
 1,obstacle,171,129,171,131,0
-1,obstacle,172,76,172,84,0
+1,obstacle,172,76,172,83,0
 1,obstacle,172,90,172,103,0
 1,obstacle,172,113,172,114,0
 1,obstacle,172,129,172,131,0
-1,obstacle,173,78,173,85,0
+1,obstacle,173,78,173,84,0
 1,obstacle,173,91,173,104,0
 1,obstacle,173,113,173,114,0
 1,obstacle,173,127,173,131,0
