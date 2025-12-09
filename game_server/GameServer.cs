@@ -38,9 +38,14 @@ public class GameServer : IHostedService
     private readonly InteractRuleManager _interactRuleManager = new();
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
+    private Timer? _infirmaryHealingTimer;
 
     // 하트비트 체크 간격 (10초마다 체크)
     private const int HeartbeatCheckIntervalSeconds = 10;
+
+    // 보건실 힐링 설정
+    private const int InfirmaryHealingIntervalSeconds = 1;
+    private const int InfirmaryHealingAmount = 5;
 
     private readonly ServerConfig _serverConfig;
 
@@ -77,6 +82,7 @@ public class GameServer : IHostedService
             InitializeControllers();
             StartTcpServer();
             StartHeartbeatChecker();
+            StartInfirmaryHealingTimer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -96,11 +102,17 @@ public class GameServer : IHostedService
 
         await _cts.CancelAsync();
 
-        // 하트비트 체크 타이머 정리
+        // 타이머 정리
         if (_heartbeatCheckTimer != null)
         {
             await _heartbeatCheckTimer.DisposeAsync();
             _heartbeatCheckTimer = null;
+        }
+
+        if (_infirmaryHealingTimer != null)
+        {
+            await _infirmaryHealingTimer.DisposeAsync();
+            _infirmaryHealingTimer = null;
         }
 
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
@@ -157,6 +169,42 @@ public class GameServer : IHostedService
             TimeSpan.FromSeconds(HeartbeatCheckIntervalSeconds),
             TimeSpan.FromSeconds(HeartbeatCheckIntervalSeconds));
         _logger.LogInformation("Heartbeat checker started (interval: {Interval}s)", HeartbeatCheckIntervalSeconds);
+    }
+
+    private void StartInfirmaryHealingTimer()
+    {
+        _infirmaryHealingTimer = new Timer(
+            ProcessInfirmaryHealing,
+            null,
+            TimeSpan.FromSeconds(InfirmaryHealingIntervalSeconds),
+            TimeSpan.FromSeconds(InfirmaryHealingIntervalSeconds));
+        _logger.LogInformation("Infirmary healing timer started (interval: {Interval}s, amount: {Amount})",
+            InfirmaryHealingIntervalSeconds, InfirmaryHealingAmount);
+    }
+
+    /// <summary>
+    /// 보건실에 있는 플레이어들의 정신오염도 감소 처리
+    /// </summary>
+    private void ProcessInfirmaryHealing(object? state)
+    {
+        try
+        {
+            // 보건실(Classroom3)에 있고 Corruption > 0인 플레이어 찾기
+            var playersInInfirmary = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue &&
+                           s.CurrentArea == AreaType.Classroom3 &&
+                           s.Corruption > 0)
+                .ToList();
+
+            foreach (var session in playersInInfirmary)
+            {
+                session.ModifyStats(corruptionDelta: -InfirmaryHealingAmount);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing infirmary healing");
+        }
     }
 
     private void CheckHeartbeatTimeouts(object? state)
