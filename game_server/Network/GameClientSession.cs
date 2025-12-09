@@ -31,6 +31,7 @@ public class GameClientSession : IPeer
     private readonly AreaRuleManager _areaRuleManager;
     private readonly ExitInstanceManager _exitInstanceManager;
     private readonly CorridorRuleManager _corridorRuleManager;
+    private readonly InteractRuleManager _interactRuleManager;
 
     private readonly ILogger _logger;
     private readonly ICacheHelper _cacheHelper;
@@ -69,7 +70,8 @@ public class GameClientSession : IPeer
         InGameInventoryManager inGameInventoryManager,
         AreaRuleManager areaRuleManager,
         ExitInstanceManager exitInstanceManager,
-        CorridorRuleManager corridorRuleManager)
+        CorridorRuleManager corridorRuleManager,
+        InteractRuleManager interactRuleManager)
     {
         _token = token;
         _token.SetPeer(this);
@@ -86,6 +88,7 @@ public class GameClientSession : IPeer
         _areaRuleManager = areaRuleManager;
         _exitInstanceManager = exitInstanceManager;
         _corridorRuleManager = corridorRuleManager;
+        _interactRuleManager = interactRuleManager;
 
         _protocolRouter = new ProtocolRouter(logger);
         InitializeProtocolHandlers();
@@ -869,6 +872,15 @@ public class GameClientSession : IPeer
             _logger.LogInformation("Player {PlayerId} explored InteractId={InteractId}, ActionId={ActionId} successfully",
                 PlayerId, msg.InteractId, msg.ActionId);
 
+            // 상호작용 규칙 위반 체크 (금지된 오브젝트 탐색)
+            var violationResult = _interactRuleManager.CheckExplore(CurrentMapSubId, msg.InteractId);
+            if (violationResult.IsViolation)
+            {
+                _logger.LogInformation("Player {PlayerId} violated interact rule {RuleId}: {Message}",
+                    PlayerId, violationResult.ViolatedRuleId, violationResult.Message);
+                ModifyStats(corruptionDelta: violationResult.CorruptionDelta);
+            }
+
             // 셔플된 보상 풀에서 해당 액션의 보상 가져오기
             var rewardItemId = _interactableStateManager.GetRewardForAction(CurrentMapSubId, msg.InteractId, msg.ActionId);
 
@@ -1139,6 +1151,12 @@ public class GameClientSession : IPeer
         if (corruptionDelta != 0)
         {
             Corruption = Math.Clamp(Corruption + corruptionDelta, 0, MaxCorruption);
+        }
+
+        // 값이 변경되지 않았으면 패킷 전송 안함
+        if (Stamina == oldStamina && Corruption == oldCorruption)
+        {
+            return;
         }
 
         _logger.LogInformation("Player {PlayerId} Stats: Stamina {OldS}→{NewS} ({DeltaS:+#;-#;0}), Corruption {OldC}→{NewC} ({DeltaC:+#;-#;0})",

@@ -62,7 +62,7 @@ namespace game_server.services
         // 규칙별 설정값
         private const float WalkSpeedThreshold = 3.5f;  // 걷기 속도 임계값 (이 이상이면 뛰기)
         private const float StopDurationSeconds = 2.0f; // 정지 판정 시간 (초)
-        private const float StepDistance = 0.5f;        // 한 걸음 거리 (units)
+        private const float StepDistance = 0.3f;        // 한 걸음 거리 (units) - 3 units 이동 시 위반
         private const int MaxSteps = 10;                // 최대 걸음 수
         private const float ViolationCooldownSeconds = 3.0f; // 위반 쿨다운 (초)
         private const int CorruptionPerViolation = 5;   // 위반당 정신오염도 증가량
@@ -70,6 +70,46 @@ namespace game_server.services
         public MatchingCorridorRuleState(CorridorRuleType rule)
         {
             ActiveRule = rule;
+        }
+
+        /// <summary>
+        /// 복도에 있는 모든 플레이어의 정지 상태를 체크 (타이머에서 호출)
+        /// </summary>
+        public List<(long PlayerId, CorridorViolationResult Result)> CheckAllPlayersForStopping()
+        {
+            var violations = new List<(long, CorridorViolationResult)>();
+
+            if (ActiveRule != CorridorRuleType.NoStopping)
+                return violations;
+
+            var now = DateTime.UtcNow;
+
+            foreach (var (playerId, state) in _playerStates)
+            {
+                if (!state.IsInCorridor) continue;
+
+                // 쿨다운 체크
+                if ((now - state.LastViolationTime).TotalSeconds < ViolationCooldownSeconds)
+                    continue;
+
+                // 마지막 이동 이후 정지 시간 체크
+                var stopDuration = (now - state.LastMoveTime).TotalSeconds;
+                if (stopDuration >= StopDurationSeconds)
+                {
+                    var result = new CorridorViolationResult
+                    {
+                        IsViolation = true,
+                        ViolatedRule = CorridorRuleType.NoStopping,
+                        CorruptionDelta = CorruptionPerViolation,
+                        Message = "복도에서 멈춰 섰습니다"
+                    };
+
+                    state.LastViolationTime = now;
+                    violations.Add((playerId, result));
+                }
+            }
+
+            return violations;
         }
 
         public PlayerCorridorState GetOrCreatePlayerState(long playerId)
@@ -144,7 +184,13 @@ namespace game_server.services
 
             // 상태 업데이트
             state.LastPosition = position;
-            state.LastMoveTime = now;
+
+            // NoStopping 규칙: 움직일 때만 LastMoveTime 갱신 (정지 시간 측정을 위해)
+            var speed = velocity.Magnitude();
+            if (ActiveRule != CorridorRuleType.NoStopping || speed >= 0.1f)
+            {
+                state.LastMoveTime = now;
+            }
 
             if (result.IsViolation)
             {
@@ -237,6 +283,10 @@ namespace game_server.services
         private Action<string>? _logAction;
         private readonly ConcurrentDictionary<long, MatchingCorridorRuleState> _matchingStates = new();
         private readonly Random _random = new();
+        private Timer? _stopCheckTimer;
+
+        // 정지 체크 콜백: (matchingId, playerId, corruptionDelta) => 정신오염도 증가 처리
+        private Action<long, long, int>? _onStopViolationCallback;
 
         // 복도 규칙 ID 목록
         private static readonly CorridorRuleType[] CorridorRules =
@@ -246,11 +296,36 @@ namespace game_server.services
             CorridorRuleType.TenStepsMax,
         };
 
-        public void Initialize(Action<string>? logAction = null)
+        private const int StopCheckIntervalMs = 500; // 0.5초마다 체크
+
+        public void Initialize(Action<string>? logAction = null, Action<long, long, int>? onStopViolationCallback = null)
         {
             _logAction = logAction;
+            _onStopViolationCallback = onStopViolationCallback;
             _matchingStates.Clear();
-            _logAction?.Invoke("CorridorRuleManager: Initialized");
+
+            // 정지 체크 타이머 시작
+            _stopCheckTimer?.Dispose();
+            _stopCheckTimer = new Timer(CheckAllMatchingsForStopping, null, StopCheckIntervalMs, StopCheckIntervalMs);
+
+            _logAction?.Invoke("CorridorRuleManager: Initialized with stop check timer");
+        }
+
+        /// <summary>
+        /// 모든 매칭의 정지 위반 체크 (타이머에서 호출)
+        /// </summary>
+        private void CheckAllMatchingsForStopping(object? state)
+        {
+            foreach (var (matchingId, matchingState) in _matchingStates)
+            {
+                var violations = matchingState.CheckAllPlayersForStopping();
+
+                foreach (var (playerId, result) in violations)
+                {
+                    _logAction?.Invoke($"CorridorRuleManager: Player {playerId} violated rule {result.ViolatedRule}: {result.Message}");
+                    _onStopViolationCallback?.Invoke(matchingId, playerId, result.CorruptionDelta);
+                }
+            }
         }
 
         /// <summary>

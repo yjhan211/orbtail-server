@@ -35,6 +35,7 @@ public class GameServer : IHostedService
     private readonly AreaRuleManager _areaRuleManager = new();
     private readonly ExitInstanceManager _exitInstanceManager = new();
     private readonly CorridorRuleManager _corridorRuleManager = new();
+    private readonly InteractRuleManager _interactRuleManager = new();
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
 
@@ -120,8 +121,11 @@ public class GameServer : IHostedService
             MapHelper.Initialize(_serverConfig.GameServerNum);
             _interactableStateManager.Initialize(msg => _logger.LogInformation(msg));
             _inGameInventoryManager.Initialize(msg => _logger.LogInformation(msg));
-            _corridorRuleManager.Initialize(msg => _logger.LogInformation(msg));
+            _corridorRuleManager.Initialize(
+                msg => _logger.LogInformation(msg),
+                OnCorridorStopViolation);
             _areaRuleManager.Initialize(msg => _logger.LogInformation(msg), _corridorRuleManager);
+            _interactRuleManager.Initialize(msg => _logger.LogInformation(msg), _areaRuleManager);
             _exitInstanceManager.Initialize(msg => _logger.LogInformation(msg));
         }
         catch (Exception ex)
@@ -198,7 +202,8 @@ public class GameServer : IHostedService
                 _inGameInventoryManager,
                 _areaRuleManager,
                 _exitInstanceManager,
-                _corridorRuleManager);
+                _corridorRuleManager,
+                _interactRuleManager);
 
             _logger.LogInformation("Game client session created");
         }
@@ -237,6 +242,18 @@ public class GameServer : IHostedService
         return _clientSessions.Values
             .Where(s => s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId)
             .ToList();
+    }
+
+    /// <summary>
+    /// 복도 정지 위반 시 해당 플레이어의 정신오염도 증가
+    /// </summary>
+    private void OnCorridorStopViolation(long matchingId, long playerId, int corruptionDelta)
+    {
+        if (_clientSessions.TryGetValue(playerId, out var session))
+        {
+            session.ModifyStats(corruptionDelta: corruptionDelta);
+            _logger.LogInformation("Player {PlayerId} corridor stop violation: Corruption +{Delta}", playerId, corruptionDelta);
+        }
     }
 
     // MMO 로그아웃 프로토콜 제거됨 - 세션 기반 게임에서는 불필요

@@ -132,16 +132,24 @@ namespace network.common.data
         public int Category { get; private set; } // 1=필수, 2=일반
         public int GroupId { get; private set; } // 0=개별, 같은 값끼리 상호배타
         public string Description { get; private set; }
+        public int TargetInteractId { get; private set; } // 0=해당없음, >0=해당 오브젝트 탐색 시 위반
 
         public static AreaRuleInfoData CreateFromData(CsvRow row)
         {
+            var targetInteractId = 0;
+            if (row.ContainsKey("target_interact_id"))
+            {
+                int.TryParse(row["target_interact_id"], out targetInteractId);
+            }
+
             return new AreaRuleInfoData
             {
                 Id = int.Parse(row["id"]),
                 AreaType = (AreaType)int.Parse(row["area_type"]),
                 Category = int.Parse(row["category"]),
                 GroupId = int.Parse(row["group_id"]),
-                Description = row["description"]
+                Description = row["description"],
+                TargetInteractId = targetInteractId
             };
         }
     }
