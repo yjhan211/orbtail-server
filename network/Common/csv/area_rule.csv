@@ -1,66 +1,84 @@
-id,area_type,category,group_id,description
-1001,12,1,101,"<color=#22D3EE>강당</color>에 <color=#22D3EE>농구공</color>이 보인다면, 즉시 <color=#22D3EE>골대</color>에 넣으십시오. <color=#22D3EE>그들</color>은 <color=#22D3EE>경기</color>를 보고 싶어 합니다."
-1002,12,1,101,"<color=#22D3EE>강당</color>에 <color=#22D3EE>농구공</color>이 보인다면, 즉시 <color=#22D3EE>철제 바구니</color>에 정리하십시오. <color=#22D3EE>그들</color>은 어지럽혀진 <color=#22D3EE>것</color>을 싫어합니다."
-1003,12,2,0,<color=#22D3EE>강당</color>의 <color=#22D3EE>무대</color> 위에는 절대 혼자 올라가지 마십시오. 보이지 않는 <color=#22D3EE>관객들</color>은 <color=#22D3EE>독백</color>을 싫어합니다.
-1004,12,2,0,<color=#22D3EE>강당</color>의 <color=#22D3EE>철봉</color>은 <color=#22D3EE>그들</color>의 <color=#22D3EE>휴식처</color>입니다. <color=#22D3EE>그림자</color>조차 닿아서는 안 됩니다.
-1005,12,2,0,<color=#22D3EE>강당</color> 안에서는 절대로 <color=#22D3EE>소리</color>를 지르지 마십시오. 당신의 <color=#22D3EE>메아리</color>가 다른 <color=#22D3EE>목소리</color>로 대답할 수 있습니다.
-1006,12,2,0,<color=#22D3EE>강당</color>의 <color=#22D3EE>농구 골대</color>를 함부로 건드리지 마십시오. <color=#22D3EE>경기</color>가 시작될 수 있습니다.
-2001,5,1,201,<color=#22D3EE>칠판</color>에 <color=#22D3EE>글씨</color>가 나타난다면 <color=#22D3EE>수업</color>이 시작된 것입니다. 즉시 비어있는 <color=#22D3EE>자리</color>에 앉으십시오.
-2002,5,1,201,"<color=#22D3EE>칠판</color>에 <color=#22D3EE>글씨</color>가 나타난다면, <color=#22D3EE>당신</color>을 주목하고 있는 것입니다. 즉시 <color=#22D3EE>교실 뒤편</color>으로 이동하여 <color=#22D3EE>반성의 자세</color>를 취하십시오."
-2003,5,2,0,<color=#22D3EE>교실 의자</color>에 걸린 <color=#22D3EE>빨간 배낭</color>에는 아직 <color=#22D3EE>주인</color>이 있습니다. 그의 <color=#22D3EE>허락</color> 없이 <color=#22D3EE>물건</color>에 손대지 마십시오.
-2004,5,2,0,<color=#22D3EE>교실 휴지통</color>에 버려진 <color=#22D3EE>것들</color>은 잊혀질 <color=#22D3EE>권리</color>가 있습니다. 그들의 <color=#22D3EE>마지막 안식</color>을 방해하지 마십시오.
-2005,5,2,0,"<color=#22D3EE>교실 책상</color> 속을 확인하지 마십시오. 반드시 필요하다면, 먼저 <color=#22D3EE>의자</color>에 앉아 <color=#22D3EE>학생</color>인 척하십시오."
-2006,5,2,0,<color=#22D3EE>교실</color>의 <color=#22D3EE>의자</color>는 자신의 <color=#22D3EE>주인</color>을 기억합니다. 다른 이의 <color=#22D3EE>자리</color>에서 <color=#22D3EE>책상</color>을 확인하지 마십시오.
-2007,5,2,202,<color=#22D3EE>교실</color>에서는 언제나 <color=#22D3EE>교훈</color>을 등지고 서 있지 마십시오. <color=#22D3EE>그것</color>은 당신이 <color=#22D3EE>학생</color>이 아니라는 <color=#22D3EE>증거</color>입니다.
-2008,5,2,202,<color=#22D3EE>교실</color>에서는 언제나 <color=#22D3EE>교훈</color>을 마주보고 서 있지 마십시오. <color=#22D3EE>그것</color>은 당신이 <color=#22D3EE>외부인</color>임을 드러내는 <color=#22D3EE>행위</color>입니다.
-2101,6,1,211,<color=#22D3EE>칠판</color>에 <color=#22D3EE>글씨</color>가 나타난다면 <color=#22D3EE>수업</color>이 시작된 것입니다. 즉시 비어있는 <color=#22D3EE>자리</color>에 앉으십시오.
-2102,6,1,211,"<color=#22D3EE>칠판</color>에 <color=#22D3EE>글씨</color>가 나타난다면, <color=#22D3EE>당신</color>을 주목하고 있는 것입니다. 즉시 <color=#22D3EE>교실 뒤편</color>으로 이동하여 <color=#22D3EE>반성의 자세</color>를 취하십시오."
-2103,6,2,0,<color=#22D3EE>교실 의자</color>에 걸린 <color=#22D3EE>검은 배낭</color>에는 아직 <color=#22D3EE>주인</color>이 있습니다. 그의 <color=#22D3EE>허락</color> 없이 <color=#22D3EE>물건</color>에 손대지 마십시오.
-2104,6,2,0,<color=#22D3EE>교실 휴지통</color>에 버려진 <color=#22D3EE>것들</color>은 잊혀질 <color=#22D3EE>권리</color>가 있습니다. 그들의 <color=#22D3EE>마지막 안식</color>을 방해하지 마십시오.
-2105,6,2,0,"<color=#22D3EE>교실 책상</color> 속을 확인하지 마십시오. 반드시 필요하다면, 먼저 <color=#22D3EE>의자</color>에 앉아 <color=#22D3EE>학생</color>인 척하십시오."
-2106,6,2,0,<color=#22D3EE>교실</color>의 <color=#22D3EE>의자</color>는 자신의 <color=#22D3EE>주인</color>을 기억합니다. 다른 이의 <color=#22D3EE>자리</color>에서 <color=#22D3EE>책상</color>을 확인하지 마십시오.
-2107,6,2,212,<color=#22D3EE>교실</color>에서는 언제나 <color=#22D3EE>교훈</color>을 등지고 서 있지 마십시오. <color=#22D3EE>그것</color>은 당신이 <color=#22D3EE>학생</color>이 아니라는 <color=#22D3EE>증거</color>입니다.
-2108,6,2,212,<color=#22D3EE>교실</color>에서는 언제나 <color=#22D3EE>교훈</color>을 마주보고 서 있지 마십시오. <color=#22D3EE>그것</color>은 당신이 <color=#22D3EE>외부인</color>임을 드러내는 <color=#22D3EE>행위</color>입니다.
-3001,8,1,301,"<color=#22D3EE>철제 사물함</color> 안쪽에서 두드리는 <color=#22D3EE>소리</color>가 들린다면, 즉시 다가가 같이 두드려주십시오. <color=#22D3EE>문</color> 너머에 <color=#22D3EE>무언가</color>가 있다는 것을 알면 <color=#22D3EE>그들</color>은 <color=#22D3EE>자리</color>를 피할 것입니다."
-3002,8,1,301,"<color=#22D3EE>철제 사물함</color> 안쪽에서 두드리는 <color=#22D3EE>소리</color>가 들린다면, 그 즉시 <color=#22D3EE>자리</color>를 피하십시오. <color=#22D3EE>그들</color>은 기다리지 않습니다."
-3003,8,2,0,"<color=#22D3EE>창고</color>의 <color=#22D3EE>공 바구니</color> 안을 들여다보지 마십시오. <color=#22D3EE>공</color>처럼 보이지만, <color=#22D3EE>그것들</color>은 잠들어있는 <color=#22D3EE>눈</color>입니다."
-3004,8,2,0,<color=#22D3EE>창고</color>의 낡은 <color=#22D3EE>뜀틀</color> 위에 올라가지 마십시오. <color=#22D3EE>그것</color>은 <color=#22D3EE>그들</color>이 아래를 내려다보는 <color=#22D3EE>왕좌</color>입니다.
-3005,8,2,0,"<color=#22D3EE>창고</color>의 <color=#22D3EE>공용 보관함</color>에 <color=#22D3EE>물건</color>을 넣을 때는, 반드시 <color=#22D3EE>감사</color>의 의미를 담아 잠시 <color=#22D3EE>묵념</color>해야 합니다."
-3006,8,2,0,<color=#22D3EE>창고</color>의 <color=#22D3EE>선반</color>을 건드리지 마십시오. 과거의 <color=#22D3EE>경기</color>가 다시 시작될 수 있습니다.
-5001,3,1,501,<color=#22D3EE>교내</color>에 기괴한 <color=#22D3EE>방송</color>이 울릴 경우 즉시 <color=#22D3EE>방송용 교탁</color>의 <color=#22D3EE>마이크</color> 전원을 끄십시오. <color=#22D3EE>그들</color>의 <color=#22D3EE>목소리</color>가 <color=#22D3EE>학교</color> 전체에 울려 퍼지게 해서는 안됩니다.
-5002,3,2,0,"<color=#22D3EE>방송실</color>의 두 번째 <color=#22D3EE>책장</color>의 <color=#22D3EE>대본</color>을 읽지 마십시오. <color=#22D3EE>당신</color>의 <color=#22D3EE>이야기</color>가 아닌 것을 읽는 순간, <color=#22D3EE>당신</color>은 그 <color=#22D3EE>이야기</color>의 <color=#22D3EE>일부</color>가 될 것입니다."
-5003,3,2,502,<color=#22D3EE>방송실</color>의 <color=#22D3EE>컴퓨터</color>를 확인할 땐 반드시 <color=#22D3EE>자리</color>에 앉아야 합니다.
-5004,3,2,502,<color=#22D3EE>방송실</color>의 <color=#22D3EE>컴퓨터</color>를 확인할 때 <color=#22D3EE>자리</color>에 앉지 마십시오.
-5005,3,2,0,<color=#22D3EE>방송실</color>의 <color=#22D3EE>휴지통</color>을 확인하지 마십시오.
-6001,2,2,0,<color=#22D3EE>모의고사실</color>의 멈춘 <color=#22D3EE>시계</color>를 쳐다보지 마십시오. <color=#22D3EE>당신</color>의 <color=#22D3EE>시간</color>도 멈출 수 있습니다.
-6002,2,2,0,<color=#22D3EE>모의고사실</color>의 <color=#22D3EE>휴지통</color>을 확인하지 마십시오.
-7001,10,2,0,<color=#22D3EE>행정실</color>의 <color=#22D3EE>서류</color>들을 함부로 만지지 마십시오. 모든 <color=#22D3EE>기록</color>에는 <color=#22D3EE>주인</color>이 있습니다.
-7002,10,2,0,<color=#22D3EE>행정실</color>의 <color=#22D3EE>복합기</color>는 <color=#22D3EE>당신</color>이 요청하지 않은 <color=#22D3EE>것</color>을 인쇄할 수 있습니다. 그 <color=#22D3EE>종이</color>를 읽지 마십시오.
-7003,10,2,0,<color=#22D3EE>행정실</color>의 <color=#22D3EE>프린터기</color>를 살펴보지 마십시오. <color=#22D3EE>잉크</color>가 아닌 <color=#22D3EE>다른 것</color>이 들어있을 수 있습니다.
-7004,10,2,0,"<color=#22D3EE>행정실</color>의 <color=#22D3EE>A4 용지</color>에 <color=#22D3EE>무언가</color> 적혀있다면, 그 즉시 폐기해야 합니다."
-8001,11,1,801,"<color=#22D3EE>교무실</color>의 <color=#22D3EE>전화벨</color>이 울리면 반드시 받아야 합니다. 단, <color=#22D3EE>수화기</color>를 들고 <color=#22D3EE>학교</color>의 <color=#22D3EE>이름</color>을 정확히 밝혀야 합니다. 다른 <color=#22D3EE>말</color>을 할 경우, <color=#22D3EE>전화</color>를 건 <color=#22D3EE>상대</color>는 <color=#22D3EE>당신</color>을 <color=#22D3EE>외부인</color>으로 간주할 것입니다."
-8002,11,1,801,"<color=#22D3EE>교무실</color>의 <color=#22D3EE>전화벨</color>이 울리면 반드시 받아야 합니다. 단, <color=#22D3EE>수화기</color>를 들고 <color=#22D3EE>본인</color>의 <color=#22D3EE>이름</color>을 정확히 밝혀야 합니다. 다른 <color=#22D3EE>말</color>을 할 경우, <color=#22D3EE>전화</color>를 건 <color=#22D3EE>상대</color>는 <color=#22D3EE>당신</color>의 <color=#22D3EE>신원</color>을 확인하려 할 것입니다."
-8003,11,2,0,<color=#22D3EE>교무실</color>의 <color=#22D3EE>의자</color>가 없는 <color=#22D3EE>책상</color>을 확인하지 마십시오. <color=#22D3EE>당신</color>도 그 <color=#22D3EE>일부</color>가 될 것입니다.
-8004,11,2,0,<color=#22D3EE>교무실</color>의 <color=#22D3EE>의자</color>에는 이미 <color=#22D3EE>선생님</color>들이 앉아계십니다. <color=#22D3EE>그분들</color>의 <color=#22D3EE>휴식</color>을 방해하지 마십시오.
-8005,11,2,0,"<color=#22D3EE>교무실</color>의 <color=#22D3EE>복합기</color>는 <color=#22D3EE>당신</color>을 위해 인쇄하지 않습니다. <color=#22D3EE>그것</color>은 <color=#22D3EE>당신</color>에 대해 인쇄된 <color=#22D3EE>것</color>입니다. <color=#22D3EE>내용</color>을 확인하는 순간, <color=#22D3EE>당신</color>은 기록된 그대로의 <color=#22D3EE>존재</color>가 됩니다."
-8006,11,2,0,"<color=#22D3EE>교무실</color>의 <color=#22D3EE>캐비넷</color> 안에는 살아나오지 못한 <color=#22D3EE>자들</color>의 <color=#22D3EE>명단</color>이 있습니다. <color=#22D3EE>당신</color>의 <color=#22D3EE>이름</color>이 추가되길 원치 않는다면, <color=#22D3EE>그것</color>을 확인하지 마십시오."
-9001,1,1,901,<color=#22D3EE>도서관 책상</color>의 <color=#22D3EE>태블릿 PC</color>에 <color=#22D3EE>긴급 재난 문자</color>가 수신된다면 즉시 삭제하십시오.
-9002,1,1,901,<color=#22D3EE>도서관 책상</color>의 <color=#22D3EE>태블릿 PC</color>에 <color=#22D3EE>긴급 재난 문자</color>가 수신된다면 즉시 [<color=#22D3EE>알겠습니다</color>] 라고 답장하십시오.
-9003,1,2,0,<color=#22D3EE>도서관 카트</color>를 함부로 움직이지 마십시오. <color=#22D3EE>그 곳</color>은 온전히 <color=#22D3EE>그것들</color>의 <color=#22D3EE>자리</color>입니다.
-9004,1,2,0,도서관 {target} <color=#22D3EE>책장</color>의 <color=#22D3EE>책</color>을 꺼내서는 안 됩니다. <color=#22D3EE>그 책</color>은 <color=#22D3EE>그녀</color>의 <color=#22D3EE>것</color>입니다.
-9005,1,2,0,<color=#22D3EE>시야</color> 구석에 <color=#22D3EE>도서관 알림판</color>이 보인다면 곧장 지나가십시오.
-9006,1,2,0,<color=#22D3EE>도서관 입구</color>의 <color=#22D3EE>깔개</color>를 밟지 마십시오. <color=#22D3EE>그것</color>은 <color=#22D3EE>깔개</color>가 아닙니다.
-9007,1,2,0,<color=#22D3EE>도서관</color> <color=#22D3EE>분홍 배낭</color>의 <color=#22D3EE>주인</color>은 아직 귀가하지 않았습니다.
-10001,14,2,0,<color=#22D3EE>쓰레기장</color>에 쌓여있는 <color=#22D3EE>박스</color>들은 <color=#22D3EE>내용물</color>을 기억합니다. <color=#22D3EE>당신</color>의 <color=#22D3EE>것</color>을 추가하지 마십시오.
-10002,14,2,0,<color=#22D3EE>쓰레기장</color>의 <color=#22D3EE>철조망</color>에 너무 가까이 다가가지 마십시오. <color=#22D3EE>담장</color> 너머에서 <color=#22D3EE>누군가</color> <color=#22D3EE>당신</color>을 부를 수 있습니다.
-10003,14,2,0,<color=#22D3EE>쓰레기장</color>의 <color=#22D3EE>빗물받이</color> 안을 들여다보지 마십시오. <color=#22D3EE>당신</color>을 올려다보는 <color=#22D3EE>눈</color>과 마주칠 수 있습니다.
-10004,14,2,10001,<color=#22D3EE>쓰레기장</color>에 버려진 <color=#22D3EE>심판용 의자</color>는 비어있지 않습니다.
-10005,14,2,10001,<color=#22D3EE>쓰레기장</color>에 버려진 <color=#22D3EE>의자</color>는 비어있지 않습니다.
-10006,14,2,0,<color=#22D3EE>쓰레기장</color>에 버려진 <color=#22D3EE>시험지</color>를 읽지 마십시오. <color=#22D3EE>그들</color>은 불리는 <color=#22D3EE>것</color>을 원치 않습니다.
-10007,14,2,0,<color=#22D3EE>쓰레기장</color>에 버려진 <color=#22D3EE>공책</color>을 확인하지 마십시오. 그 <color=#22D3EE>안</color>의 <color=#22D3EE>것</color>을 대신하여 잊혀지게 될 것입니다.
-11001,13,1,1101,<color=#22D3EE>축구공</color>을 발견한다면 <color=#22D3EE>창고</color>와 가까운 <color=#22D3EE>골대</color>에 넣으십시오.
-11002,13,1,1101,<color=#22D3EE>축구공</color>을 발견한다면 <color=#22D3EE>교문</color>과 가까운 <color=#22D3EE>골대</color>에 넣으십시오.
-11003,13,2,0,<color=#22D3EE>운동장</color>의 닫힌 <color=#22D3EE>교문</color> 너머를 보지 마십시오. <color=#22D3EE>바깥</color>의 <color=#22D3EE>당신</color>과 <color=#22D3EE>눈</color>이 마주칠 수 있습니다.
-11004,13,2,0,<color=#22D3EE>운동장</color>의 <color=#22D3EE>라인 마킹기</color>는 <color=#22D3EE>경계</color>를 그리기 위한 것입니다. 새로운 <color=#22D3EE>경계</color>를 만들지 마십시오.
-11005,13,2,0,<color=#22D3EE>운동장</color>의 <color=#22D3EE>심판용 의자</color>는 비어있지 않습니다. 단지 <color=#22D3EE>경기</color>가 시작되기를 기다리고 있을 뿐입니다.
-11006,13,2,0,<color=#22D3EE>운동장</color>의 <color=#22D3EE>담장</color> 너머 <color=#22D3EE>별관 건물</color>을 올려다보지 마십시오. <color=#22D3EE>그것</color>은 당신의 <color=#22D3EE>친구</color>가 아닙니다.
+id,area_type,category,group_id,description,target_interact_id
+1001,12,1,101,"<color=#22D3EE>강당</color>에 <color=#22D3EE>농구공</color>이 보인다면, 즉시 <color=#22D3EE>골대</color>에 넣으십시오. <color=#22D3EE>그들</color>은 <color=#22D3EE>경기</color>를 보고 싶어 합니다.",0
+1002,12,1,101,"<color=#22D3EE>강당</color>에 <color=#22D3EE>농구공</color>이 보인다면, 즉시 <color=#22D3EE>철제 바구니</color>에 정리하십시오. <color=#22D3EE>그들</color>은 어지럽혀진 <color=#22D3EE>것</color>을 싫어합니다.",0
+1003,12,2,0,<color=#22D3EE>강당</color>의 <color=#22D3EE>무대</color> 위에는 절대 혼자 올라가지 마십시오. 보이지 않는 <color=#22D3EE>관객들</color>은 <color=#22D3EE>독백</color>을 싫어합니다.,701000005
+1004,12,2,0,<color=#22D3EE>강당</color>의 <color=#22D3EE>철봉</color>은 <color=#22D3EE>그들</color>의 <color=#22D3EE>휴식처</color>입니다. <color=#22D3EE>그림자</color>조차 닿아서는 안 됩니다.,701000003
+1005,12,2,0,<color=#22D3EE>강당</color> 안에서는 절대로 <color=#22D3EE>소리</color>를 지르지 마십시오. 당신의 <color=#22D3EE>메아리</color>가 다른 <color=#22D3EE>목소리</color>로 대답할 수 있습니다.,0
+1006,12,2,0,<color=#22D3EE>강당</color>의 <color=#22D3EE>농구 골대</color>를 함부로 건드리지 마십시오. <color=#22D3EE>경기</color>가 시작될 수 있습니다.,701000001
+2001,5,1,201,<color=#22D3EE>칠판</color>에 <color=#22D3EE>글씨</color>가 나타난다면 <color=#22D3EE>수업</color>이 시작된 것입니다. 즉시 비어있는 <color=#22D3EE>자리</color>에 앉으십시오.,0
+2002,5,1,201,"<color=#22D3EE>칠판</color>에 <color=#22D3EE>글씨</color>가 나타난다면, <color=#22D3EE>당신</color>을 주목하고 있는 것입니다. 즉시 <color=#22D3EE>교실 뒤편</color>으로 이동하여 <color=#22D3EE>반성의 자세</color>를 취하십시오.",0
+2003,5,2,0,<color=#22D3EE>교실 의자</color>에 걸린 <color=#22D3EE>빨간 배낭</color>에는 아직 <color=#22D3EE>주인</color>이 있습니다. 그의 <color=#22D3EE>허락</color> 없이 <color=#22D3EE>물건</color>에 손대지 마십시오.,701000046
+2004,5,2,0,<color=#22D3EE>교실 휴지통</color>에 버려진 <color=#22D3EE>것들</color>은 잊혀질 <color=#22D3EE>권리</color>가 있습니다. 그들의 <color=#22D3EE>마지막 안식</color>을 방해하지 마십시오.,0
+2005,5,2,0,"<color=#22D3EE>교실</color>의 <color=#22D3EE>첫 번째 좌석</color> 책상 속을 확인하지 마십시오. 반드시 필요하다면, 먼저 <color=#22D3EE>의자</color>에 앉아 <color=#22D3EE>학생</color>인 척하십시오.",701000048
+2006,5,2,0,<color=#22D3EE>교실</color>의 <color=#22D3EE>두 번째 좌석</color>은 자신의 <color=#22D3EE>주인</color>을 기억합니다. 다른 이의 <color=#22D3EE>자리</color>에서 <color=#22D3EE>책상</color>을 확인하지 마십시오.,701000049
+2007,5,2,202,<color=#22D3EE>교실</color>에서는 언제나 <color=#22D3EE>교훈</color>을 등지고 서 있지 마십시오. <color=#22D3EE>그것</color>은 당신이 <color=#22D3EE>학생</color>이 아니라는 <color=#22D3EE>증거</color>입니다.,0
+2008,5,2,202,<color=#22D3EE>교실</color>에서는 언제나 <color=#22D3EE>교훈</color>을 마주보고 서 있지 마십시오. <color=#22D3EE>그것</color>은 당신이 <color=#22D3EE>외부인</color>임을 드러내는 <color=#22D3EE>행위</color>입니다.,0
+2101,6,1,211,<color=#22D3EE>칠판</color>에 <color=#22D3EE>글씨</color>가 나타난다면 <color=#22D3EE>수업</color>이 시작된 것입니다. 즉시 비어있는 <color=#22D3EE>자리</color>에 앉으십시오.,0
+2102,6,1,211,"<color=#22D3EE>칠판</color>에 <color=#22D3EE>글씨</color>가 나타난다면, <color=#22D3EE>당신</color>을 주목하고 있는 것입니다. 즉시 <color=#22D3EE>교실 뒤편</color>으로 이동하여 <color=#22D3EE>반성의 자세</color>를 취하십시오.",0
+2103,6,2,0,<color=#22D3EE>교실 의자</color>에 걸린 <color=#22D3EE>검은 배낭</color>에는 아직 <color=#22D3EE>주인</color>이 있습니다. 그의 <color=#22D3EE>허락</color> 없이 <color=#22D3EE>물건</color>에 손대지 마십시오.,701000050
+2104,6,2,0,<color=#22D3EE>교실 휴지통</color>에 버려진 <color=#22D3EE>것들</color>은 잊혀질 <color=#22D3EE>권리</color>가 있습니다. 그들의 <color=#22D3EE>마지막 안식</color>을 방해하지 마십시오.,701000051
+2105,6,2,0,"<color=#22D3EE>교실</color>의 <color=#22D3EE>첫 번째 좌석</color> 책상 속을 확인하지 마십시오. 반드시 필요하다면, 먼저 <color=#22D3EE>의자</color>에 앉아 <color=#22D3EE>학생</color>인 척하십시오.",701000052
+2106,6,2,0,<color=#22D3EE>교실</color>의 <color=#22D3EE>두 번째 좌석</color>은 자신의 <color=#22D3EE>주인</color>을 기억합니다. 다른 이의 <color=#22D3EE>자리</color>에서 <color=#22D3EE>책상</color>을 확인하지 마십시오.,701000053
+2107,6,2,212,<color=#22D3EE>교실</color>에서는 언제나 <color=#22D3EE>교훈</color>을 등지고 서 있지 마십시오. <color=#22D3EE>그것</color>은 당신이 <color=#22D3EE>학생</color>이 아니라는 <color=#22D3EE>증거</color>입니다.,0
+2108,6,2,212,<color=#22D3EE>교실</color>에서는 언제나 <color=#22D3EE>교훈</color>을 마주보고 서 있지 마십시오. <color=#22D3EE>그것</color>은 당신이 <color=#22D3EE>외부인</color>임을 드러내는 <color=#22D3EE>행위</color>입니다.,0
+3001,8,1,301,"<color=#22D3EE>철제 사물함</color> 안쪽에서 두드리는 <color=#22D3EE>소리</color>가 들린다면, 즉시 다가가 같이 두드려주십시오. <color=#22D3EE>문</color> 너머에 <color=#22D3EE>무언가</color>가 있다는 것을 알면 <color=#22D3EE>그들</color>은 <color=#22D3EE>자리</color>를 피할 것입니다.",0
+3002,8,1,301,"<color=#22D3EE>철제 사물함</color> 안쪽에서 두드리는 <color=#22D3EE>소리</color>가 들린다면, 그 즉시 <color=#22D3EE>자리</color>를 피하십시오. <color=#22D3EE>그들</color>은 기다리지 않습니다.",0
+3003,8,2,0,"<color=#22D3EE>창고</color>의 <color=#22D3EE>공 바구니</color> 안을 들여다보지 마십시오. <color=#22D3EE>공</color>처럼 보이지만, <color=#22D3EE>그것들</color>은 잠들어있는 <color=#22D3EE>눈</color>입니다.",701000037
+3004,8,2,0,<color=#22D3EE>창고</color>의 낡은 <color=#22D3EE>뜀틀</color> 위에 올라가지 마십시오. <color=#22D3EE>그것</color>은 <color=#22D3EE>그들</color>이 아래를 내려다보는 <color=#22D3EE>왕좌</color>입니다.,701000036
+3005,8,2,0,"<color=#22D3EE>창고</color>의 <color=#22D3EE>공용 보관함</color>에 <color=#22D3EE>물건</color>을 넣을 때는, 반드시 <color=#22D3EE>감사</color>의 의미를 담아 잠시 <color=#22D3EE>묵념</color>해야 합니다.",0
+3006,8,2,0,<color=#22D3EE>창고</color>의 <color=#22D3EE>선반</color>을 건드리지 마십시오. 과거의 <color=#22D3EE>경기</color>가 다시 시작될 수 있습니다.,0
+3101,9,1,311,"<color=#22D3EE>철제 사물함</color> 안쪽에서 두드리는 <color=#22D3EE>소리</color>가 들린다면, 즉시 다가가 같이 두드려주십시오.",0
+3102,9,1,311,"<color=#22D3EE>철제 사물함</color> 안쪽에서 두드리는 <color=#22D3EE>소리</color>가 들린다면, 그 즉시 <color=#22D3EE>자리</color>를 피하십시오.",0
+3103,9,2,0,<color=#22D3EE>창고</color>의 <color=#22D3EE>선반</color>을 건드리지 마십시오. 물건의 위치가 바뀔 수 있습니다.,701000016
+3104,9,2,0,"<color=#22D3EE>창고</color>의 <color=#22D3EE>공 바구니</color> 안을 들여다보지 마십시오. <color=#22D3EE>그것들</color>은 잠들어있는 <color=#22D3EE>눈</color>입니다.",701000017
+5001,3,1,501,<color=#22D3EE>교내</color>에 기괴한 <color=#22D3EE>방송</color>이 울릴 경우 즉시 <color=#22D3EE>방송용 교탁</color>의 <color=#22D3EE>마이크</color> 전원을 끄십시오. <color=#22D3EE>그들</color>의 <color=#22D3EE>목소리</color>가 <color=#22D3EE>학교</color> 전체에 울려 퍼지게 해서는 안됩니다.,0
+5002,3,2,0,"<color=#22D3EE>방송실</color>의 두 번째 <color=#22D3EE>책장</color>의 <color=#22D3EE>대본</color>을 읽지 마십시오. <color=#22D3EE>당신</color>의 <color=#22D3EE>이야기</color>가 아닌 것을 읽는 순간, <color=#22D3EE>당신</color>은 그 <color=#22D3EE>이야기</color>의 <color=#22D3EE>일부</color>가 될 것입니다.",0
+5003,3,2,502,<color=#22D3EE>방송실</color>의 <color=#22D3EE>컴퓨터</color>를 확인할 땐 반드시 <color=#22D3EE>자리</color>에 앉아야 합니다.,0
+5004,3,2,502,<color=#22D3EE>방송실</color>의 <color=#22D3EE>컴퓨터</color>를 확인할 때 <color=#22D3EE>자리</color>에 앉지 마십시오.,0
+5005,3,2,0,<color=#22D3EE>방송실</color>의 <color=#22D3EE>휴지통</color>을 확인하지 마십시오.,0
+6001,2,2,0,<color=#22D3EE>모의고사실</color>의 멈춘 <color=#22D3EE>시계</color>를 쳐다보지 마십시오. <color=#22D3EE>당신</color>의 <color=#22D3EE>시간</color>도 멈출 수 있습니다.,0
+6002,2,2,0,<color=#22D3EE>모의고사실</color>의 <color=#22D3EE>휴지통</color>을 확인하지 마십시오.,701000013
+7001,10,2,0,<color=#22D3EE>행정실</color>의 <color=#22D3EE>서류</color>들을 함부로 만지지 마십시오. 모든 <color=#22D3EE>기록</color>에는 <color=#22D3EE>주인</color>이 있습니다.,701000014
+7002,10,2,0,<color=#22D3EE>행정실</color>의 <color=#22D3EE>복합기</color>는 <color=#22D3EE>당신</color>이 요청하지 않은 <color=#22D3EE>것</color>을 인쇄할 수 있습니다. 그 <color=#22D3EE>종이</color>를 읽지 마십시오.,701000029
+7003,10,2,0,<color=#22D3EE>행정실</color>의 <color=#22D3EE>프린터기</color>를 살펴보지 마십시오. <color=#22D3EE>잉크</color>가 아닌 <color=#22D3EE>다른 것</color>이 들어있을 수 있습니다.,701000029
+7004,10,2,0,"<color=#22D3EE>행정실</color>의 <color=#22D3EE>A4 용지</color>에 <color=#22D3EE>무언가</color> 적혀있다면, 그 즉시 폐기해야 합니다.",0
+7005,10,2,0,<color=#22D3EE>행정실</color>의 <color=#22D3EE>캐비넷</color>을 확인하지 마십시오. 서류들이 스스로 정리됩니다.,701000030
+7006,10,2,0,<color=#22D3EE>행정실</color>의 <color=#22D3EE>서랍장</color>을 열지 마십시오. 닫아도 다시 열립니다.,701000031
+7007,10,2,0,<color=#22D3EE>행정실</color>의 <color=#22D3EE>책상</color>을 확인하지 마십시오. 모든 기록에는 주인이 있습니다.,701000032
+8001,11,1,801,"<color=#22D3EE>교무실</color>의 <color=#22D3EE>전화벨</color>이 울리면 반드시 받아야 합니다. 단, <color=#22D3EE>수화기</color>를 들고 <color=#22D3EE>학교</color>의 <color=#22D3EE>이름</color>을 정확히 밝혀야 합니다. 다른 <color=#22D3EE>말</color>을 할 경우, <color=#22D3EE>전화</color>를 건 <color=#22D3EE>상대</color>는 <color=#22D3EE>당신</color>을 <color=#22D3EE>외부인</color>으로 간주할 것입니다.",0
+8002,11,1,801,"<color=#22D3EE>교무실</color>의 <color=#22D3EE>전화벨</color>이 울리면 반드시 받아야 합니다. 단, <color=#22D3EE>수화기</color>를 들고 <color=#22D3EE>본인</color>의 <color=#22D3EE>이름</color>을 정확히 밝혀야 합니다. 다른 <color=#22D3EE>말</color>을 할 경우, <color=#22D3EE>전화</color>를 건 <color=#22D3EE>상대</color>는 <color=#22D3EE>당신</color>의 <color=#22D3EE>신원</color>을 확인하려 할 것입니다.",0
+8003,11,2,0,<color=#22D3EE>교무실</color>의 <color=#22D3EE>세 번째 책상</color>을 확인하지 마십시오. <color=#22D3EE>의자</color>가 없는 <color=#22D3EE>자리</color>에는 <color=#22D3EE>이유</color>가 있습니다.,701000025
+8004,11,2,0,<color=#22D3EE>교무실</color>의 <color=#22D3EE>첫 번째 책상</color>에는 이미 <color=#22D3EE>선생님</color>이 앉아계십니다. <color=#22D3EE>그분</color>의 <color=#22D3EE>휴식</color>을 방해하지 마십시오.,701000023
+8005,11,2,0,"<color=#22D3EE>교무실</color>의 <color=#22D3EE>복합기</color>는 <color=#22D3EE>당신</color>을 위해 인쇄하지 않습니다. <color=#22D3EE>그것</color>은 <color=#22D3EE>당신</color>에 대해 인쇄된 <color=#22D3EE>것</color>입니다. <color=#22D3EE>내용</color>을 확인하는 순간, <color=#22D3EE>당신</color>은 기록된 그대로의 <color=#22D3EE>존재</color>가 됩니다.",701000022
+8006,11,2,0,"<color=#22D3EE>교무실</color>의 <color=#22D3EE>캐비넷</color> 안에는 살아나오지 못한 <color=#22D3EE>자들</color>의 <color=#22D3EE>명단</color>이 있습니다. <color=#22D3EE>당신</color>의 <color=#22D3EE>이름</color>이 추가되길 원치 않는다면, <color=#22D3EE>그것</color>을 확인하지 마십시오.",701000010
+9001,1,1,901,<color=#22D3EE>도서관 책상</color>의 <color=#22D3EE>태블릿 PC</color>에 <color=#22D3EE>긴급 재난 문자</color>가 수신된다면 즉시 삭제하십시오.,0
+9002,1,1,901,<color=#22D3EE>도서관 책상</color>의 <color=#22D3EE>태블릿 PC</color>에 <color=#22D3EE>긴급 재난 문자</color>가 수신된다면 즉시 [<color=#22D3EE>알겠습니다</color>] 라고 답장하십시오.,0
+9003,1,2,0,<color=#22D3EE>도서관 카트</color>를 함부로 움직이지 마십시오. <color=#22D3EE>그 곳</color>은 온전히 <color=#22D3EE>그것들</color>의 <color=#22D3EE>자리</color>입니다.,701000042
+9004,1,2,0,<color=#22D3EE>도서관</color>의 <color=#22D3EE>첫 번째 책장</color>에서 <color=#22D3EE>책</color>을 꺼내서는 안 됩니다. <color=#22D3EE>그 책</color>은 <color=#22D3EE>그녀</color>의 <color=#22D3EE>것</color>입니다.,701000012
+9005,1,2,0,<color=#22D3EE>시야</color> 구석에 <color=#22D3EE>도서관 알림판</color>이 보인다면 곧장 지나가십시오.,0
+9006,1,2,0,<color=#22D3EE>도서관 입구</color>의 <color=#22D3EE>깔개</color>를 밟지 마십시오. <color=#22D3EE>그것</color>은 <color=#22D3EE>깔개</color>가 아닙니다.,0
+9007,1,2,0,<color=#22D3EE>도서관</color> <color=#22D3EE>분홍 배낭</color>의 <color=#22D3EE>주인</color>은 아직 귀가하지 않았습니다.,701000045
+9008,1,2,0,<color=#22D3EE>도서관</color>의 <color=#22D3EE>휴지통</color>을 확인하지 마십시오.,701000043
+9009,1,2,0,<color=#22D3EE>도서관</color>의 두 번째 <color=#22D3EE>책장</color>을 확인하지 마십시오. 그녀의 책이 있습니다.,701000041
+10001,14,2,0,<color=#22D3EE>쓰레기장</color>에 쌓여있는 <color=#22D3EE>박스</color>들은 <color=#22D3EE>내용물</color>을 기억합니다. <color=#22D3EE>당신</color>의 <color=#22D3EE>것</color>을 추가하지 마십시오.,0
+10002,14,2,0,<color=#22D3EE>쓰레기장</color>의 <color=#22D3EE>철조망</color>에 너무 가까이 다가가지 마십시오. <color=#22D3EE>담장</color> 너머에서 <color=#22D3EE>누군가</color> <color=#22D3EE>당신</color>을 부를 수 있습니다.,0
+10003,14,2,0,<color=#22D3EE>쓰레기장</color>의 <color=#22D3EE>빗물받이</color> 안을 들여다보지 마십시오. <color=#22D3EE>당신</color>을 올려다보는 <color=#22D3EE>눈</color>과 마주칠 수 있습니다.,701000009
+10004,14,2,10001,<color=#22D3EE>쓰레기장</color>에 버려진 <color=#22D3EE>심판용 의자</color>는 비어있지 않습니다.,701000035
+10005,14,2,10001,<color=#22D3EE>쓰레기장</color>에 버려진 <color=#22D3EE>의자</color>는 비어있지 않습니다.,701000035
+10006,14,2,0,<color=#22D3EE>쓰레기장</color>에 버려진 <color=#22D3EE>시험지</color>를 읽지 마십시오. <color=#22D3EE>그들</color>은 불리는 <color=#22D3EE>것</color>을 원치 않습니다.,701000034
+10007,14,2,0,<color=#22D3EE>쓰레기장</color>에 버려진 <color=#22D3EE>공책</color>을 확인하지 마십시오. 그 <color=#22D3EE>안</color>의 <color=#22D3EE>것</color>을 대신하여 잊혀지게 될 것입니다.,0
+10008,14,2,0,<color=#22D3EE>쓰레기장</color>의 <color=#22D3EE>휴지통</color>을 확인하지 마십시오. 버려진 것들의 마지막 안식처입니다.,701000033
+10101,15,2,0,<color=#22D3EE>쓰레기장</color>에 버려진 <color=#22D3EE>시험지</color>를 읽지 마십시오. 읽으면 안 되는 이름들이 적혀있습니다.,701000018
+10102,15,2,0,<color=#22D3EE>쓰레기장</color>에 쌓여있는 <color=#22D3EE>종이 상자</color>들은 내용물을 기억합니다.,701000019
+10103,15,2,0,<color=#22D3EE>쓰레기장</color>의 <color=#22D3EE>휴지통</color>을 확인하지 마십시오. 버려진 것들의 안식처입니다.,701000020
+10104,15,2,10101,<color=#22D3EE>쓰레기장</color>에 버려진 <color=#22D3EE>책걸상</color>에는 아직 주인이 앉아있습니다.,701000021
+10105,15,2,10101,<color=#22D3EE>쓰레기장</color>에 버려진 <color=#22D3EE>의자</color>는 비어있지 않습니다.,701000021
+11001,13,1,1101,<color=#22D3EE>축구공</color>을 발견한다면 <color=#22D3EE>창고</color>와 가까운 <color=#22D3EE>골대</color>에 넣으십시오.,0
+11002,13,1,1101,<color=#22D3EE>축구공</color>을 발견한다면 <color=#22D3EE>교문</color>과 가까운 <color=#22D3EE>골대</color>에 넣으십시오.,0
+11003,13,2,0,<color=#22D3EE>운동장</color>의 닫힌 <color=#22D3EE>교문</color> 너머를 보지 마십시오. <color=#22D3EE>바깥</color>의 <color=#22D3EE>당신</color>과 <color=#22D3EE>눈</color>이 마주칠 수 있습니다.,0
+11004,13,2,0,<color=#22D3EE>운동장</color>의 <color=#22D3EE>라인 마킹기</color>는 <color=#22D3EE>경계</color>를 그리기 위한 것입니다. 새로운 <color=#22D3EE>경계</color>를 만들지 마십시오.,0
+11005,13,2,0,<color=#22D3EE>운동장</color>의 <color=#22D3EE>심판용 의자</color>는 비어있지 않습니다. 단지 <color=#22D3EE>경기</color>가 시작되기를 기다리고 있을 뿐입니다.,0
+11006,13,2,0,<color=#22D3EE>운동장</color>의 <color=#22D3EE>담장</color> 너머 <color=#22D3EE>별관 건물</color>을 올려다보지 마십시오. <color=#22D3EE>그것</color>은 당신의 <color=#22D3EE>친구</color>가 아닙니다.,0
+12001,7,2,0,<color=#22D3EE>복도</color>에서는 절대 <color=#22D3EE>뛰지</color> 마십시오. <color=#22D3EE>그</color>는 소란스러운 것을 싫어합니다.,0
+12002,7,2,0,<color=#22D3EE>복도</color>에서는 절대 <color=#22D3EE>멈춰 서지</color> 마십시오. <color=#22D3EE>망설이는 것</color>은 <color=#22D3EE>의심</color>과 같습니다.,0
+12003,7,2,0,<color=#22D3EE>복도</color>에서는 한 번에 <color=#22D3EE>열 걸음</color> 이상을 내딛지 마십시오. <color=#22D3EE>그</color>의 <color=#22D3EE>영역</color>을 존중해야 합니다.,0

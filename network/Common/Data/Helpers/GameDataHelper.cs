@@ -21,6 +21,7 @@ namespace network.common.data.helpers
             public const string LoadingText = "loading_text.csv";
             public const string AreaName = "area_name.csv";
             public const string AreaRule = "area_rule.csv";
+            public const string StoryArk = "story_ark.csv";
 
             public static class Interactable
             {
@@ -74,6 +75,7 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize, validate: GameLoadingTextData.Validate),
                 (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize, validate: GameAreaNameData.Validate),
                 (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize, validate: GameAreaRuleData.Validate),
+                (fileName: DataFiles.StoryArk, init: StoryArkData.Initialize, validate: StoryArkData.Validate),
             };
 
         private static string GetCsvFilePath(string fileName)

@@ -48,12 +48,14 @@ namespace network.common.data
         /// 특정 Area의 규칙들을 랜덤하게 선택
         /// - Category 1 (필수): 같은 group_id 중 하나를 무작위 선택
         /// - Category 2 (일반): group_id가 0이면 개별, 같은 group_id끼리는 하나만 선택
+        /// - target_interact_id가 있는(구현된) 규칙만 선택
         /// </summary>
         public static List<int> SelectRulesForArea(AreaType areaType, Random random = null)
         {
             random ??= new Random();
             var result = new List<int>();
-            var areaRules = GetByArea(areaType);
+            // 구현된 규칙만 필터링 (target_interact_id > 0)
+            var areaRules = GetByArea(areaType).Where(r => r.TargetInteractId > 0).ToList();
 
             if (areaRules.Count == 0) return result;
 
@@ -132,16 +134,24 @@ namespace network.common.data
         public int Category { get; private set; } // 1=필수, 2=일반
         public int GroupId { get; private set; } // 0=개별, 같은 값끼리 상호배타
         public string Description { get; private set; }
+        public int TargetInteractId { get; private set; } // 0=해당없음, >0=해당 오브젝트 탐색 시 위반
 
         public static AreaRuleInfoData CreateFromData(CsvRow row)
         {
+            var targetInteractId = 0;
+            if (row.ContainsKey("target_interact_id"))
+            {
+                int.TryParse(row["target_interact_id"], out targetInteractId);
+            }
+
             return new AreaRuleInfoData
             {
                 Id = int.Parse(row["id"]),
                 AreaType = (AreaType)int.Parse(row["area_type"]),
                 Category = int.Parse(row["category"]),
                 GroupId = int.Parse(row["group_id"]),
-                Description = row["description"]
+                Description = row["description"],
+                TargetInteractId = targetInteractId
             };
         }
     }
