@@ -50,6 +50,7 @@ namespace network.common.data
                     TemplateType = int.Parse(row["exit_template_type"]),
                     StepOrder = int.Parse(row["step_order"]),
                     TextTemplate = row["text_template"].Trim('"'),
+                    InsanityTextTemplate = row.ContainsKey("insanity_text_template") ? row["insanity_text_template"].Trim('"') : "",
                     SummaryTemplate = row["summary_template"].Trim('"'),
                     ItemSlot = row["item_slot"].ToLower() == "true",
                     SpotSlot = row["spot_slot"].ToLower() == "true",
@@ -177,6 +178,7 @@ namespace network.common.data
         public int TemplateType { get; set; }
         public int StepOrder { get; set; }
         public string TextTemplate { get; set; }
+        public string InsanityTextTemplate { get; set; }
         public string SummaryTemplate { get; set; }
         public bool ItemSlot { get; set; }
         public bool SpotSlot { get; set; }
