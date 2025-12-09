@@ -24,7 +24,7 @@ namespace game_server.services
         private readonly Dictionary<int, int> _forbiddenInteracts = new();
 
         // 위반당 정신오염도 증가량
-        private const int CorruptionPerViolation = 5;
+        private const int CorruptionPerViolation = 20;
 
         public MatchingInteractRuleState(List<int> selectedRuleIds)
         {
