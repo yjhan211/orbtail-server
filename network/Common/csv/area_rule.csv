@@ -64,3 +64,6 @@ id,area_type,category,group_id,description
 11004,13,2,0,<color=#22D3EE>운동장</color>의 <color=#22D3EE>라인 마킹기</color>는 <color=#22D3EE>경계</color>를 그리기 위한 것입니다. 새로운 <color=#22D3EE>경계</color>를 만들지 마십시오.
 11005,13,2,0,<color=#22D3EE>운동장</color>의 <color=#22D3EE>심판용 의자</color>는 비어있지 않습니다. 단지 <color=#22D3EE>경기</color>가 시작되기를 기다리고 있을 뿐입니다.
 11006,13,2,0,<color=#22D3EE>운동장</color>의 <color=#22D3EE>담장</color> 너머 <color=#22D3EE>별관 건물</color>을 올려다보지 마십시오. <color=#22D3EE>그것</color>은 당신의 <color=#22D3EE>친구</color>가 아닙니다.
+12001,7,2,0,<color=#22D3EE>복도</color>에서는 절대 <color=#22D3EE>뛰지</color> 마십시오. <color=#22D3EE>그</color>는 소란스러운 것을 싫어합니다.
+12002,7,2,0,<color=#22D3EE>복도</color>에서는 절대 <color=#22D3EE>멈춰 서지</color> 마십시오. <color=#22D3EE>망설이는 것</color>은 <color=#22D3EE>의심</color>과 같습니다.
+12003,7,2,0,<color=#22D3EE>복도</color>에서는 한 번에 <color=#22D3EE>열 걸음</color> 이상을 내딛지 마십시오. <color=#22D3EE>그</color>의 <color=#22D3EE>영역</color>을 존중해야 합니다.

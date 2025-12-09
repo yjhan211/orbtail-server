@@ -30,6 +30,7 @@ public class GameClientSession : IPeer
     private readonly InGameInventoryManager _inGameInventoryManager;
     private readonly AreaRuleManager _areaRuleManager;
     private readonly ExitInstanceManager _exitInstanceManager;
+    private readonly CorridorRuleManager _corridorRuleManager;
 
     private readonly ILogger _logger;
     private readonly ICacheHelper _cacheHelper;
@@ -67,7 +68,8 @@ public class GameClientSession : IPeer
         InteractableStateManager interactableStateManager,
         InGameInventoryManager inGameInventoryManager,
         AreaRuleManager areaRuleManager,
-        ExitInstanceManager exitInstanceManager)
+        ExitInstanceManager exitInstanceManager,
+        CorridorRuleManager corridorRuleManager)
     {
         _token = token;
         _token.SetPeer(this);
@@ -83,6 +85,7 @@ public class GameClientSession : IPeer
         _inGameInventoryManager = inGameInventoryManager;
         _areaRuleManager = areaRuleManager;
         _exitInstanceManager = exitInstanceManager;
+        _corridorRuleManager = corridorRuleManager;
 
         _protocolRouter = new ProtocolRouter(logger);
         InitializeProtocolHandlers();
@@ -369,7 +372,10 @@ public class GameClientSession : IPeer
                 await HandleAreaChange(oldArea, newArea);
             }
 
-            // 4. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
+            // 4. 복도 규칙 체크
+            CheckCorridorRuleViolation(validatedPosition, msg.Velocity, newArea);
+
+            // 5. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
                 validatedPosition,
@@ -1444,6 +1450,41 @@ public class GameClientSession : IPeer
         }
 
         return Task.CompletedTask;
+    }
+
+    #endregion
+
+    #region 복도 규칙
+
+    /// <summary>
+    /// 복도 규칙 위반 체크 및 정신오염도 증가 처리
+    /// </summary>
+    private void CheckCorridorRuleViolation(Vector3f position, Vector3f velocity, AreaType currentArea)
+    {
+        if (!PlayerId.HasValue) return;
+
+        try
+        {
+            var result = _corridorRuleManager.CheckPlayerMove(
+                CurrentMapSubId,
+                PlayerId.Value,
+                position,
+                velocity,
+                currentArea);
+
+            if (result.IsViolation)
+            {
+                _logger.LogInformation("Player {PlayerId} violated corridor rule {RuleId}: {Message}, Corruption +{Delta}",
+                    PlayerId, (int)result.ViolatedRule, result.Message, result.CorruptionDelta);
+
+                // 정신오염도 증가
+                ModifyStats(corruptionDelta: result.CorruptionDelta);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CheckCorridorRuleViolation error for player {PlayerId}", PlayerId);
+        }
     }
 
     #endregion

@@ -67,11 +67,24 @@ namespace game_server.services
                         .Select(r => (r.RewardType, r.RewardId))
                         .ToList();
 
-                    // 셔플
-                    Shuffle(rewardInfos);
+                    // 규칙 타입과 일반 아이템 분리
+                    var ruleRewards = rewardInfos
+                        .Where(r => r.RewardType == RewardType.RULE || r.RewardType == RewardType.RULE_RANDOM)
+                        .ToList();
+                    var otherRewards = rewardInfos
+                        .Where(r => r.RewardType != RewardType.RULE && r.RewardType != RewardType.RULE_RANDOM)
+                        .ToList();
+
+                    // 일반 아이템만 셔플
+                    Shuffle(otherRewards);
+
+                    // 규칙을 맨 앞에, 나머지는 뒤에 배치
+                    var orderedRewards = new List<(RewardType RewardType, int RewardId)>();
+                    orderedRewards.AddRange(ruleRewards);
+                    orderedRewards.AddRange(otherRewards);
 
                     // 랜덤 타입을 실제 아이템 ID로 변환
-                    var resolvedRewards = rewardInfos
+                    var resolvedRewards = orderedRewards
                         .Select(info => ResolveRewardId(info.RewardType, info.RewardId))
                         .ToList();
 

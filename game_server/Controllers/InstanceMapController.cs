@@ -21,7 +21,8 @@ public sealed class InstanceMapController(
     InteractableStateManager interactableStateManager,
     InGameInventoryManager inGameInventoryManager,
     AreaRuleManager areaRuleManager,
-    ExitInstanceManager exitInstanceManager)
+    ExitInstanceManager exitInstanceManager,
+    CorridorRuleManager corridorRuleManager)
     : BaseMapController(logger, natsClient, cacheHelper, serverConfig)
 {
     private readonly ConcurrentDictionary<string, HashSet<string>> _objectInstanceDict = new();
@@ -215,6 +216,9 @@ public sealed class InstanceMapController(
                 // Exit 상태 정리
                 exitInstanceManager.RemoveMatchingState(mapSubId);
 
+                // CorridorRule 상태 정리
+                corridorRuleManager.RemoveMatchingState(mapSubId);
+
                 Logger.LogInformation($"게임 종료 완료 및 인스턴스 제거: {instanceKey}");
             }
             finally
@@ -346,6 +350,9 @@ public sealed class InstanceMapController(
 
         // Exit 상태 정리
         exitInstanceManager.RemoveMatchingState(mapSubId);
+
+        // CorridorRule 상태 정리
+        corridorRuleManager.RemoveMatchingState(mapSubId);
 
         Logger.LogInformation("인스턴스 정리 완료: {InstanceKey}", instanceKey);
     }

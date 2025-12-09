@@ -34,6 +34,7 @@ public class GameServer : IHostedService
     private readonly InGameInventoryManager _inGameInventoryManager = new();
     private readonly AreaRuleManager _areaRuleManager = new();
     private readonly ExitInstanceManager _exitInstanceManager = new();
+    private readonly CorridorRuleManager _corridorRuleManager = new();
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
 
@@ -119,7 +120,8 @@ public class GameServer : IHostedService
             MapHelper.Initialize(_serverConfig.GameServerNum);
             _interactableStateManager.Initialize(msg => _logger.LogInformation(msg));
             _inGameInventoryManager.Initialize(msg => _logger.LogInformation(msg));
-            _areaRuleManager.Initialize(msg => _logger.LogInformation(msg));
+            _corridorRuleManager.Initialize(msg => _logger.LogInformation(msg));
+            _areaRuleManager.Initialize(msg => _logger.LogInformation(msg), _corridorRuleManager);
             _exitInstanceManager.Initialize(msg => _logger.LogInformation(msg));
         }
         catch (Exception ex)
@@ -130,7 +132,7 @@ public class GameServer : IHostedService
 
     private void InitializeControllers()
     {
-        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cacheHelper, _serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager, _exitInstanceManager);
+        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cacheHelper, _serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager, _exitInstanceManager, _corridorRuleManager);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
@@ -195,7 +197,8 @@ public class GameServer : IHostedService
                 _interactableStateManager,
                 _inGameInventoryManager,
                 _areaRuleManager,
-                _exitInstanceManager);
+                _exitInstanceManager,
+                _corridorRuleManager);
 
             _logger.LogInformation("Game client session created");
         }

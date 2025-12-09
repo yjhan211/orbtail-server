@@ -16,15 +16,28 @@ namespace game_server.services
         private readonly Queue<int> _shuffledRuleQueue;
         private readonly object _queueLock = new();
 
-        public MatchingAreaRuleState(Random? random = null)
+        // 이번 매칭에 적용된 복도 규칙 ID
+        public int CorridorRuleId { get; }
+
+        public MatchingAreaRuleState(int corridorRuleId, Random? random = null)
         {
             random ??= new Random();
+            CorridorRuleId = corridorRuleId;
             _selectedRules = GameAreaRuleData.SelectRulesForAllAreas(random);
 
-            // 모든 규칙을 모아서 셔플
+            // 모든 규칙을 모아서 셔플 (복도 규칙 제외)
             var allRules = _selectedRules.Values.SelectMany(r => r).ToList();
             Shuffle(allRules, random);
-            _shuffledRuleQueue = new Queue<int>(allRules);
+
+            // 복도 규칙을 맨 앞에 고정 배치
+            var orderedRules = new List<int>();
+            if (corridorRuleId > 0)
+            {
+                orderedRules.Add(corridorRuleId);
+            }
+            orderedRules.AddRange(allRules);
+
+            _shuffledRuleQueue = new Queue<int>(orderedRules);
         }
 
         private static void Shuffle<T>(IList<T> list, Random random)
@@ -96,10 +109,12 @@ namespace game_server.services
     {
         private Action<string>? _logAction;
         private readonly ConcurrentDictionary<long, MatchingAreaRuleState> _matchingStates = new();
+        private CorridorRuleManager? _corridorRuleManager;
 
-        public void Initialize(Action<string>? logAction = null)
+        public void Initialize(Action<string>? logAction = null, CorridorRuleManager? corridorRuleManager = null)
         {
             _logAction = logAction;
+            _corridorRuleManager = corridorRuleManager;
             _matchingStates.Clear();
             _logAction?.Invoke("AreaRuleManager: Initialized");
         }
@@ -111,8 +126,11 @@ namespace game_server.services
         {
             return _matchingStates.GetOrAdd(matchingId, id =>
             {
-                var state = new MatchingAreaRuleState(random);
-                _logAction?.Invoke($"AreaRuleManager: Created rule state for MatchingId={id}");
+                // CorridorRuleManager에서 이 매칭의 복도 규칙 ID 가져오기
+                var corridorRuleId = _corridorRuleManager?.GetActiveRuleId(matchingId) ?? 0;
+
+                var state = new MatchingAreaRuleState(corridorRuleId, random);
+                _logAction?.Invoke($"AreaRuleManager: Created rule state for MatchingId={id}, CorridorRuleId={corridorRuleId}");
 
                 // 선택된 규칙 로그
                 foreach (var (area, rules) in state.GetAllRules())
