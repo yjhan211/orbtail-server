@@ -249,6 +249,9 @@ public class GameClientSession : IPeer
             CurrentMapId = MapId.School; // TODO: 매칭 정보에서 가져오기
             CurrentMapSubId = msg.MatchingId;
 
+            // 인게임 스탯 초기화
+            ResetInGameStats();
+
             // 세션 등록
             _registerSessionCallback(PlayerId.Value, this);
 
@@ -1175,6 +1178,19 @@ public class GameClientSession : IPeer
         Send(packet);
         _logger.LogDebug("Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina} ({StaminaDelta:+#;-#;0}), Corruption={Corruption} ({CorruptionDelta:+#;-#;0})",
             PlayerId, Stamina, staminaDelta, Corruption, corruptionDelta);
+    }
+
+    /// <summary>
+    /// 인게임 스탯 초기화 (새 게임 시작 시)
+    /// </summary>
+    private void ResetInGameStats()
+    {
+        Stamina = MaxStamina;
+        Corruption = 0;
+        CurrentState = PlayerState.Idle;
+        CurrentExploringInteractId = null;
+        _logger.LogInformation("Player {PlayerId} in-game stats reset: Stamina={Stamina}, Corruption={Corruption}",
+            PlayerId, Stamina, Corruption);
     }
 
     #endregion
