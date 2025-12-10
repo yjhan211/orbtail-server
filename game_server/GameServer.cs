@@ -268,6 +268,12 @@ public class GameServer : IHostedService
             _clientSessions.TryRemove(session.PlayerId.Value, out _);
             _logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", session.PlayerId.Value);
 
+            // 복도 규칙 플레이어 상태 정리
+            if (session.CurrentMapSubId > 0)
+            {
+                _corridorRuleManager.RemovePlayerState(session.CurrentMapSubId, session.PlayerId.Value);
+            }
+
             // 인스턴스 컨트롤러에 연결 해제 알림 (모든 유저 연결 해제 시 게임 종료 처리)
             if (session.CurrentMapSubId > 0)
             {
