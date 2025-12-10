@@ -281,10 +281,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_GAME_END(long matchingId)
+    public static Packet G_TO_C_GAME_END(long matchingId, bool isEscaped)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_GAME_END);
-        G_TO_C_GAME_END body = new() { MatchingId = matchingId };
+        G_TO_C_GAME_END body = new() { MatchingId = matchingId, IsEscaped = isEscaped };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

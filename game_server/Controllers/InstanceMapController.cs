@@ -29,7 +29,7 @@ public sealed class InstanceMapController(
     private readonly ConcurrentDictionary<string, Timer> _gameTimers = new();
     private readonly ConcurrentDictionary<string, (Timer OneMinuteTimer, Timer ThirtySecondsTimer)> _warningTimers = new();
 
-    private const int GameDurationMinutes = 15;
+    private const int GameDurationMinutes = 5;
     private const int GameDurationSeconds = GameDurationMinutes * 60;
 
     private string EnterInstanceSubject => SubjectHelper.GetEnterInstanceSubject(ServerConfig.ServerId);
@@ -184,8 +184,8 @@ public sealed class InstanceMapController(
 
                 Logger.LogInformation($"게임 종료 알림 전송: {instanceKey}, 플레이어 수: {userKeysCopy.Count}");
 
-                // 게임 종료 패킷 전송
-                using var packet = PacketMaker.G_TO_C_GAME_END(mapSubId);
+                // 게임 종료 패킷 전송 (시간 초과로 인한 탈출 실패)
+                using var packet = PacketMaker.G_TO_C_GAME_END(mapSubId, isEscaped: false);
                 foreach (var objectKey in userKeysCopy)
                 {
                     if (TryExtractPlayerId(objectKey, out var playerId))
