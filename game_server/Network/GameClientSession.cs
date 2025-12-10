@@ -1533,17 +1533,8 @@ public class GameClientSession : IPeer
 
         try
         {
-            // 탈출 완료 상태 확인
-            var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-            if (!state.IsCompleted)
-            {
-                _logger.LogWarning("HandleReturnToLobby: Exit not completed for player {PlayerId}", PlayerId);
-                using var errorPacket = PacketMaker.G_TO_C_RETURN_TO_LOBBY_RESULT(false, ErrorCode.FATAL);
-                Send(errorPacket);
-                return Task.CompletedTask;
-            }
-
-            _logger.LogInformation("Player {PlayerId} returning to lobby from completed game", PlayerId);
+            // 게임 종료 후 로비 복귀 (탈출 성공/실패 모두 허용)
+            _logger.LogInformation("Player {PlayerId} returning to lobby", PlayerId);
 
             // 성공 응답 전송
             using var resultPacket = PacketMaker.G_TO_C_RETURN_TO_LOBBY_RESULT(true, ErrorCode.SUCCESS);

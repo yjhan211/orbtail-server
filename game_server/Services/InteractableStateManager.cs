@@ -169,16 +169,25 @@ namespace game_server.services
                     Actions = new List<InteractableActionState>()
                 };
 
+                var hasUnexploredAction = false;
                 foreach (var action in interactable.Actions)
                 {
                     var key = (interactId, action.ActionId);
                     if (_actionStates.TryGetValue(key, out var actionState))
                     {
                         objectState.Actions.Add(actionState);
+                        if (!actionState.IsExplored)
+                        {
+                            hasUnexploredAction = true;
+                        }
                     }
                 }
 
-                result.Add(objectState);
+                // 탐색되지 않은 액션이 하나라도 있는 오브젝트만 포함
+                if (hasUnexploredAction)
+                {
+                    result.Add(objectState);
+                }
             }
 
             return result;
