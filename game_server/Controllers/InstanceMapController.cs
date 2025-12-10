@@ -113,7 +113,7 @@ public sealed class InstanceMapController(
 
     private void StartGameTimer(string instanceKey, long mapSubId)
     {
-        Logger.LogInformation("게임 타이머 시작: {InstanceKey} (15분)", instanceKey);
+        Logger.LogInformation("게임 타이머 시작: {InstanceKey} ({Minutes}분)", instanceKey, GameDurationMinutes);
         var gameTimer = new Timer(_ =>
         {
             EndGame(instanceKey, mapSubId);

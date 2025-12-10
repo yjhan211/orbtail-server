@@ -157,8 +157,8 @@ public class MatchingManager
                         const string gameServerIp = "127.0.0.1";
                         const int gameServerPort = 9001;
 
-                        // 게임 종료 시간 계산 (15분 후)
-                        var gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(15).ToUnixTimeMilliseconds();
+                        // 게임 종료 시간 계산 (5분 후)
+                        var gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds();
 
                         // 매칭 성공 패킷 전송
                         _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 패킷 생성 중 (MatchingId={MatchingId}, SpawnPosition={SpawnPosition})",
