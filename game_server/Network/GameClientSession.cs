@@ -58,6 +58,12 @@ public class GameClientSession : IPeer
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
 
+    // 게임 타이머 설정
+    private const int GameDurationMinutes = 5;
+    private const int GameDurationSeconds = GameDurationMinutes * 60;
+    private static readonly Dictionary<long, Timer> _gameTimers = new();
+    private static readonly object _timerLock = new();
+
     public GameClientSession(
         UserToken token,
         IRedLockFactory redLock,
@@ -251,6 +257,9 @@ public class GameClientSession : IPeer
 
             // 인게임 스탯 초기화
             ResetInGameStats();
+
+            // 게임 타이머 시작 (해당 매칭에 대해 최초 1회만)
+            StartGameTimerIfNeeded(msg.MatchingId);
 
             // 세션 등록
             _registerSessionCallback(PlayerId.Value, this);
@@ -1191,6 +1200,73 @@ public class GameClientSession : IPeer
         CurrentExploringInteractId = null;
         _logger.LogInformation("Player {PlayerId} in-game stats reset: Stamina={Stamina}, Corruption={Corruption}",
             PlayerId, Stamina, Corruption);
+    }
+
+    /// <summary>
+    /// 게임 타이머 시작 (매칭당 최초 1회만)
+    /// </summary>
+    private void StartGameTimerIfNeeded(long matchingId)
+    {
+        lock (_timerLock)
+        {
+            if (_gameTimers.ContainsKey(matchingId))
+            {
+                _logger.LogDebug("Game timer already exists for MatchingId={MatchingId}", matchingId);
+                return;
+            }
+
+            _logger.LogInformation("게임 타이머 시작: MatchingId={MatchingId} ({Minutes}분)", matchingId, GameDurationMinutes);
+
+            var timer = new Timer(_ =>
+            {
+                EndGameByTimeout(matchingId);
+            }, null, TimeSpan.FromSeconds(GameDurationSeconds), Timeout.InfiniteTimeSpan);
+
+            _gameTimers[matchingId] = timer;
+        }
+    }
+
+    /// <summary>
+    /// 시간 초과로 게임 종료
+    /// </summary>
+    private void EndGameByTimeout(long matchingId)
+    {
+        _logger.LogInformation("게임 시간 초과: MatchingId={MatchingId}", matchingId);
+
+        // 타이머 정리
+        lock (_timerLock)
+        {
+            if (_gameTimers.TryGetValue(matchingId, out var timer))
+            {
+                timer.Dispose();
+                _gameTimers.Remove(matchingId);
+            }
+        }
+
+        // 해당 매칭의 모든 플레이어에게 게임 종료 패킷 전송
+        var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
+        using var packet = PacketMaker.G_TO_C_GAME_END(matchingId, isEscaped: false);
+
+        foreach (var session in sessions)
+        {
+            session.Send(packet);
+            _logger.LogInformation("게임 종료 패킷 전송: PlayerId={PlayerId}", session.PlayerId);
+        }
+    }
+
+    /// <summary>
+    /// 매칭 종료 시 타이머 정리
+    /// </summary>
+    public static void CleanupGameTimer(long matchingId)
+    {
+        lock (_timerLock)
+        {
+            if (_gameTimers.TryGetValue(matchingId, out var timer))
+            {
+                timer.Dispose();
+                _gameTimers.Remove(matchingId);
+            }
+        }
     }
 
     #endregion
