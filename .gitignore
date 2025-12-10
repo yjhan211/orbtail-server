@@ -119,3 +119,8 @@ sysinfo.txt
 *.aab
 *.unitypackage
 *.app
+*.zip
+
+# Build Output
+Build_*/
+.utmp/
