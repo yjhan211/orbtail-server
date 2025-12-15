@@ -883,14 +883,21 @@ public class GameClientSession : IPeer
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
 
-        // 탐색 중이 아니거나 다른 오브젝트를 탐색 중이면 무시
-        if (CurrentState != PlayerState.Exploring || CurrentExploringInteractId != msg.InteractId)
+        // 탐색 중이 아닌 상태에서 선택 요청
+        if (CurrentState != PlayerState.Exploring)
         {
-            _logger.LogWarning("Player {PlayerId} invalid explore select: State={State}, ExploringId={ExploringId}, RequestedId={RequestedId}",
-                PlayerId, CurrentState, CurrentExploringInteractId, msg.InteractId);
+            _logger.LogWarning("Player {PlayerId} not exploring, cannot select: State={State}",
+                PlayerId, CurrentState);
+            SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.EXPLORE_NOT_IN_PROGRESS);
+            return Task.CompletedTask;
+        }
 
-            // 에러 응답
-            SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.FATAL);
+        // 다른 오브젝트를 탐색 중
+        if (CurrentExploringInteractId != msg.InteractId)
+        {
+            _logger.LogWarning("Player {PlayerId} exploring different object: ExploringId={ExploringId}, RequestedId={RequestedId}",
+                PlayerId, CurrentExploringInteractId, msg.InteractId);
+            SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.INTERACTABLE_NOT_FOUND);
             return Task.CompletedTask;
         }
 
@@ -939,8 +946,8 @@ public class GameClientSession : IPeer
             _logger.LogInformation("Player {PlayerId} tried to explore already explored action: InteractId={InteractId}, ActionId={ActionId}",
                 PlayerId, msg.InteractId, msg.ActionId);
 
-            // 이미 탐색됨 - 아이템 없이 성공 응답 (결과 표시만)
-            SendExploreResult(true, msg.InteractId, msg.ActionId, 0, ErrorCode.SUCCESS);
+            // 이미 탐색됨 - 실패 응답
+            SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.ACTION_ALREADY_EXPLORED);
         }
 
         // SELECT 후에도 Exploring 상태 유지 (END 패킷으로 종료)
