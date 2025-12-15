@@ -64,7 +64,6 @@ namespace network.common.data.helpers
             }
         }
 
-        private static readonly string NetworkPath = Path.GetDirectoryName(typeof(GameDataHelper).Assembly.Location)!;
         private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
             StandardDataDefinitions =
             {
@@ -83,17 +82,16 @@ namespace network.common.data.helpers
 #if UNITY_ANDROID && !UNITY_EDITOR
             // 안드로이드: Resources 폴더 사용 (확장자 제거)
             return $"Common/csv/{System.IO.Path.GetFileNameWithoutExtension(fileName)}";
-#elif UNITY_EDITOR
-            // 에디터: StreamingAssets 경로 사용
-            return System.IO.Path.Combine(Application.streamingAssetsPath, "Common", "csv", fileName);
 #else
-            // 윈도우/기타 플랫폼: StreamingAssets 경로 사용
-            return Path.Combine(NetworkPath, "Common", "csv", fileName);
+            // iOS, 윈도우, 에디터: StreamingAssets 경로 사용
+            return Path.Combine(Application.streamingAssetsPath, "Common", "csv", fileName);
 #endif
         }
 
         public static void Initialize()
         {
+            Debug.Log("[GameDataHelper] Initialize started");
+
             // 모든 CSV 데이터 로드
             var loadedData = new Dictionary<string, List<CsvRow>>();
 
@@ -101,35 +99,81 @@ namespace network.common.data.helpers
             foreach (var (fileName, init, _) in StandardDataDefinitions)
             {
                 var filePath = GetCsvFilePath(fileName);
-                loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                Debug.Log($"[GameDataHelper] Loading: {filePath}");
+                try
+                {
+                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                    Debug.Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    throw;
+                }
             }
 
             // 아이템 관련 파일 로드
             foreach (var fileName in DataFiles.Item.ALL)
             {
                 var filePath = GetCsvFilePath(fileName);
-                loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                try
+                {
+                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                    Debug.Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    throw;
+                }
             }
 
             // 맵 관련 파일 로드
             foreach (var fileName in DataFiles.Map.ALL)
             {
                 var filePath = GetCsvFilePath(fileName);
-                loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                try
+                {
+                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                    Debug.Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    throw;
+                }
             }
 
             // 상호작용 오브젝트 관련 파일 로드
             foreach (var fileName in DataFiles.Interactable.ALL)
             {
                 var filePath = GetCsvFilePath(fileName);
-                loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                try
+                {
+                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                    Debug.Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    throw;
+                }
             }
 
             // 탈출 의식 관련 파일 로드
             foreach (var fileName in DataFiles.Exit.ALL)
             {
                 var filePath = GetCsvFilePath(fileName);
-                loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                try
+                {
+                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                    Debug.Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    throw;
+                }
             }
 
             // 일반 데이터 초기화
