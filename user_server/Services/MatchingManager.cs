@@ -84,7 +84,7 @@ public class MatchingManager
             return ErrorCode.FATAL;
         }
     }
-    
+
     private async void ProcessMatchingQueue(object? state)
     {
         try
