@@ -3,7 +3,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#endif
 
 namespace network.common.data.helpers
 {
@@ -15,17 +17,14 @@ namespace network.common.data.helpers
 
 #if UNITY_ANDROID && !UNITY_EDITOR
             // 안드로이드 환경: Resources 폴더에서 직접 읽기
-            // 이제 filePath는 "Common/csv/game_rule" 같은 올바른 리소스 경로입니다.
             var textAsset = Resources.Load<TextAsset>(filePath);
             if (textAsset == null)
                 throw new FileNotFoundException($"CSV file not found in Resources: {filePath}");
 
-            // Windows(CRLF)와 Mac/Linux(LF)의 줄바꿈 문자를 모두 처리하도록 변경
             lines = textAsset.text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
             Resources.UnloadAsset(textAsset);
 #else
-            // 에디터 및 기타 PC 환경: 파일 시스템에서 직접 읽기
+            // 서버 및 에디터 환경: 파일 시스템에서 직접 읽기
             if (!File.Exists(filePath))
                 throw new FileNotFoundException($"CSV file not found: {filePath}");
 

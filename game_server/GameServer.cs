@@ -129,6 +129,8 @@ public class GameServer : IHostedService
         try
         {
             _natsClientFactory.Initialize(natsEndpoint);
+            // 서버 환경에서 CSV 파일 경로 설정 (bin 디렉토리 기준)
+            GameDataHelper.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
             GameDataHelper.Initialize();
             MapHelper.Initialize(_serverConfig.GameServerNum);
             _interactableStateManager.Initialize(msg => _logger.LogInformation(msg));

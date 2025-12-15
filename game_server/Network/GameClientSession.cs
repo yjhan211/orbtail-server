@@ -51,6 +51,7 @@ public class GameClientSession : IPeer
     private const int MaxCorruption = 100;
 
     private Vector3f? _lastValidatedPosition;
+    private Cell? _lastValidCell;
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
@@ -271,9 +272,11 @@ public class GameClientSession : IPeer
             if (playerInfo != null)
             {
                 _lastValidatedPosition = playerInfo.ObjectInfo.Position;
+                _lastValidCell = playerInfo.ObjectInfo.Cell;
                 // 초기 Area 설정
                 CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
-                _logger.LogInformation("Player {PlayerId} initial Area: {Area}", PlayerId, CurrentArea);
+                _logger.LogInformation("Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
+                    PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X, _lastValidCell?.Y);
 
                 // 초기 Area의 Interactable 목록 전송
                 if (CurrentArea != AreaType.None)
@@ -425,10 +428,6 @@ public class GameClientSession : IPeer
     {
         const float maxSpeed = 10f; // 최대 속도 (units/s)
         const float tolerance = 1.5f; // 허용 오차 (50%)
-        const float mapMinX = -1000f;
-        const float mapMaxX = 1000f;
-        const float mapMinY = -1000f;
-        const float mapMaxY = 1000f;
 
         // null 체크: 클라이언트 데이터가 null이면 마지막 유효 위치 또는 기본값 반환
         if (clientPos == null || velocity == null)
@@ -478,11 +477,26 @@ public class GameClientSession : IPeer
             }
         }
 
-        // 3. 맵 경계 체크
-        if (clientPos.X < mapMinX) clientPos.X = mapMinX;
-        if (clientPos.X > mapMaxX) clientPos.X = mapMaxX;
-        if (clientPos.Y < mapMinY) clientPos.Y = mapMinY;
-        if (clientPos.Y > mapMaxY) clientPos.Y = mapMaxY;
+        // 3. Cell 기반 이동 가능 여부 검증 (맵 밖 이탈 방지)
+        var clientCell = WorldPositionToCell(clientPos);
+        if (!GameMapData.IsMoveablePosition(CurrentMapId, clientCell))
+        {
+            // 이동 불가능한 위치 → 마지막 유효 위치로 보정
+            if (_lastValidatedPosition != null && _lastValidCell != null)
+            {
+                _logger.LogWarning("Player {PlayerId} 이동 불가 위치 감지: ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY}), 보정 → ({VX:F2},{VY:F2})",
+                    PlayerId, clientPos.X, clientPos.Y, clientCell.X, clientCell.Y,
+                    _lastValidatedPosition.X, _lastValidatedPosition.Y);
+                return _lastValidatedPosition;
+            }
+
+            // 마지막 유효 위치가 없으면 (첫 이동) 클라이언트 위치 그대로 사용 (초기 스폰 위치 신뢰)
+            _logger.LogWarning("Player {PlayerId} 이동 불가 위치 감지 (첫 이동): ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY})",
+                PlayerId, clientPos.X, clientPos.Y, clientCell.X, clientCell.Y);
+        }
+
+        // 4. 검증 통과: 유효 위치 업데이트
+        _lastValidCell = clientCell;
 
         // 검증 통과: 클라이언트 Position 사용
         return clientPos;

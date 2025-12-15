@@ -6,12 +6,17 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using network.common.data.helpers;
 using network.managers;
+#if UNITY_5_3_OR_NEWER
 using UnityEngine;
+#endif
 
 namespace network.common.data.helpers
 {
     public static class GameDataHelper
     {
+        // 서버 환경에서 CSV 파일 기본 경로 (SetBasePath로 설정 가능)
+        private static string _basePath = "";
+
         private static class DataFiles
         {
             public const string GameRule = "game_rule.csv";
@@ -77,20 +82,50 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.StoryArk, init: StoryArkData.Initialize, validate: StoryArkData.Validate),
             };
 
+        /// <summary>
+        /// 서버 환경에서 CSV 파일 경로의 기본 디렉토리 설정
+        /// Unity 환경에서는 호출할 필요 없음
+        /// </summary>
+        public static void SetBasePath(string basePath)
+        {
+            _basePath = basePath;
+        }
+
         private static string GetCsvFilePath(string fileName)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             // 안드로이드: Resources 폴더 사용 (확장자 제거)
             return $"Common/csv/{System.IO.Path.GetFileNameWithoutExtension(fileName)}";
-#else
-            // iOS, 윈도우, 에디터: StreamingAssets 경로 사용
+#elif UNITY_5_3_OR_NEWER
+            // Unity (iOS, 윈도우, 에디터): StreamingAssets 경로 사용
             return Path.Combine(Application.streamingAssetsPath, "Common", "csv", fileName);
+#else
+            // 서버 환경: 설정된 기본 경로 사용
+            return Path.Combine(_basePath, "Common", "csv", fileName);
+#endif
+        }
+
+        private static void Log(string message)
+        {
+#if UNITY_5_3_OR_NEWER
+            Debug.Log(message);
+#else
+            Console.WriteLine(message);
+#endif
+        }
+
+        private static void LogError(string message)
+        {
+#if UNITY_5_3_OR_NEWER
+            Debug.LogError(message);
+#else
+            Console.Error.WriteLine(message);
 #endif
         }
 
         public static void Initialize()
         {
-            Debug.Log("[GameDataHelper] Initialize started");
+            Log("[GameDataHelper] Initialize started");
 
             // 모든 CSV 데이터 로드
             var loadedData = new Dictionary<string, List<CsvRow>>();
@@ -99,15 +134,15 @@ namespace network.common.data.helpers
             foreach (var (fileName, init, _) in StandardDataDefinitions)
             {
                 var filePath = GetCsvFilePath(fileName);
-                Debug.Log($"[GameDataHelper] Loading: {filePath}");
+                Log($"[GameDataHelper] Loading: {filePath}");
                 try
                 {
                     loadedData[fileName] = CsvHelper.LoadCsv(filePath);
-                    Debug.Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
                     throw;
                 }
             }
@@ -119,11 +154,11 @@ namespace network.common.data.helpers
                 try
                 {
                     loadedData[fileName] = CsvHelper.LoadCsv(filePath);
-                    Debug.Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
                     throw;
                 }
             }
@@ -135,11 +170,11 @@ namespace network.common.data.helpers
                 try
                 {
                     loadedData[fileName] = CsvHelper.LoadCsv(filePath);
-                    Debug.Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
                     throw;
                 }
             }
@@ -151,11 +186,11 @@ namespace network.common.data.helpers
                 try
                 {
                     loadedData[fileName] = CsvHelper.LoadCsv(filePath);
-                    Debug.Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
                     throw;
                 }
             }
@@ -167,11 +202,11 @@ namespace network.common.data.helpers
                 try
                 {
                     loadedData[fileName] = CsvHelper.LoadCsv(filePath);
-                    Debug.Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
                     throw;
                 }
             }
