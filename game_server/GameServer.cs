@@ -129,6 +129,8 @@ public class GameServer : IHostedService
         try
         {
             _natsClientFactory.Initialize(natsEndpoint);
+            // 서버 환경에서 CSV 파일 경로 설정 (bin 디렉토리 기준)
+            GameDataHelper.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
             GameDataHelper.Initialize();
             MapHelper.Initialize(_serverConfig.GameServerNum);
             _interactableStateManager.Initialize(msg => _logger.LogInformation(msg));
@@ -268,6 +270,12 @@ public class GameServer : IHostedService
             _clientSessions.TryRemove(session.PlayerId.Value, out _);
             _logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", session.PlayerId.Value);
 
+            // 복도 규칙 플레이어 상태 정리
+            if (session.CurrentMapSubId > 0)
+            {
+                _corridorRuleManager.RemovePlayerState(session.CurrentMapSubId, session.PlayerId.Value);
+            }
+
             // 인스턴스 컨트롤러에 연결 해제 알림 (모든 유저 연결 해제 시 게임 종료 처리)
             if (session.CurrentMapSubId > 0)
             {
@@ -287,6 +295,15 @@ public class GameServer : IHostedService
 
     private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
     {
+        _logger.LogDebug("GetSessionsByInstance 호출: 필터(MapId={MapId}, MapSubId={MapSubId}), 전체 세션 수={TotalCount}",
+            mapId, mapSubId, _clientSessions.Count);
+
+        foreach (var s in _clientSessions.Values)
+        {
+            _logger.LogDebug("  - 세션: PlayerId={PlayerId}, CurrentMapId={CurrentMapId}, CurrentMapSubId={CurrentMapSubId}, 매칭 여부={IsMatch}",
+                s.PlayerId, s.CurrentMapId, s.CurrentMapSubId, s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId);
+        }
+
         return _clientSessions.Values
             .Where(s => s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId)
             .ToList();

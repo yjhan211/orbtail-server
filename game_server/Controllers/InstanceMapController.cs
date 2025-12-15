@@ -29,7 +29,7 @@ public sealed class InstanceMapController(
     private readonly ConcurrentDictionary<string, Timer> _gameTimers = new();
     private readonly ConcurrentDictionary<string, (Timer OneMinuteTimer, Timer ThirtySecondsTimer)> _warningTimers = new();
 
-    private const int GameDurationMinutes = 15;
+    private const int GameDurationMinutes = 5;
     private const int GameDurationSeconds = GameDurationMinutes * 60;
 
     private string EnterInstanceSubject => SubjectHelper.GetEnterInstanceSubject(ServerConfig.ServerId);
@@ -113,7 +113,7 @@ public sealed class InstanceMapController(
 
     private void StartGameTimer(string instanceKey, long mapSubId)
     {
-        Logger.LogInformation("게임 타이머 시작: {InstanceKey} (15분)", instanceKey);
+        Logger.LogInformation("게임 타이머 시작: {InstanceKey} ({Minutes}분)", instanceKey, GameDurationMinutes);
         var gameTimer = new Timer(_ =>
         {
             EndGame(instanceKey, mapSubId);
@@ -133,12 +133,12 @@ public sealed class InstanceMapController(
 
         var oneMinuteWarningTimer = new Timer(_ =>
         {
-            SendGameTimeWarning(instanceKey, 60);
+            SendGameTimeWarning(instanceKey, mapSubId, 60);
         }, null, TimeSpan.FromSeconds(GameDurationSeconds - 60), Timeout.InfiniteTimeSpan);
 
         var thirtySecondsWarningTimer = new Timer(_ =>
         {
-            SendGameTimeWarning(instanceKey, 30);
+            SendGameTimeWarning(instanceKey, mapSubId, 30);
         }, null, TimeSpan.FromSeconds(GameDurationSeconds - 30), Timeout.InfiniteTimeSpan);
 
         _warningTimers[instanceKey] = (oneMinuteWarningTimer, thirtySecondsWarningTimer);
@@ -146,7 +146,7 @@ public sealed class InstanceMapController(
         Logger.LogInformation("게임 타이머 및 알림 타이머 설정 완료: {InstanceKey}", instanceKey);
     }
 
-    private void SendGameTimeWarning(string instanceKey, int remainingSeconds)
+    private void SendGameTimeWarning(string instanceKey, long mapSubId, int remainingSeconds)
     {
         try
         {
@@ -157,7 +157,7 @@ public sealed class InstanceMapController(
 
             Logger.LogInformation($"게임 시간 알림 전송: {instanceKey}, 남은 시간: {remainingSeconds}초");
 
-            using var packet = PacketMaker.G_TO_C_GAME_TIME_WARNING(remainingSeconds);
+            using var packet = PacketMaker.G_TO_C_GAME_TIME_WARNING(mapSubId, remainingSeconds);
             BroadcastPacketDirect(instanceKey, packet);
         }
         catch (Exception ex)
@@ -184,8 +184,8 @@ public sealed class InstanceMapController(
 
                 Logger.LogInformation($"게임 종료 알림 전송: {instanceKey}, 플레이어 수: {userKeysCopy.Count}");
 
-                // 게임 종료 패킷 전송
-                using var packet = PacketMaker.G_TO_C_GAME_END(mapSubId);
+                // 게임 종료 패킷 전송 (시간 초과로 인한 탈출 실패)
+                using var packet = PacketMaker.G_TO_C_GAME_END(mapSubId, isEscaped: false);
                 foreach (var objectKey in userKeysCopy)
                 {
                     if (TryExtractPlayerId(objectKey, out var playerId))

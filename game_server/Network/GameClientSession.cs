@@ -51,12 +51,19 @@ public class GameClientSession : IPeer
     private const int MaxCorruption = 100;
 
     private Vector3f? _lastValidatedPosition;
+    private Cell? _lastValidCell;
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
 
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
+
+    // 게임 타이머 설정
+    private const int GameDurationMinutes = 5;
+    private const int GameDurationSeconds = GameDurationMinutes * 60;
+    private static readonly Dictionary<long, Timer> _gameTimers = new();
+    private static readonly object _timerLock = new();
 
     public GameClientSession(
         UserToken token,
@@ -249,6 +256,12 @@ public class GameClientSession : IPeer
             CurrentMapId = MapId.School; // TODO: 매칭 정보에서 가져오기
             CurrentMapSubId = msg.MatchingId;
 
+            // 인게임 스탯 초기화
+            ResetInGameStats();
+
+            // 게임 타이머 시작 (해당 매칭에 대해 최초 1회만)
+            StartGameTimerIfNeeded(msg.MatchingId);
+
             // 세션 등록
             _registerSessionCallback(PlayerId.Value, this);
 
@@ -259,9 +272,11 @@ public class GameClientSession : IPeer
             if (playerInfo != null)
             {
                 _lastValidatedPosition = playerInfo.ObjectInfo.Position;
+                _lastValidCell = playerInfo.ObjectInfo.Cell;
                 // 초기 Area 설정
                 CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
-                _logger.LogInformation("Player {PlayerId} initial Area: {Area}", PlayerId, CurrentArea);
+                _logger.LogInformation("Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
+                    PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X, _lastValidCell?.Y);
 
                 // 초기 Area의 Interactable 목록 전송
                 if (CurrentArea != AreaType.None)
@@ -413,10 +428,6 @@ public class GameClientSession : IPeer
     {
         const float maxSpeed = 10f; // 최대 속도 (units/s)
         const float tolerance = 1.5f; // 허용 오차 (50%)
-        const float mapMinX = -1000f;
-        const float mapMaxX = 1000f;
-        const float mapMinY = -1000f;
-        const float mapMaxY = 1000f;
 
         // null 체크: 클라이언트 데이터가 null이면 마지막 유효 위치 또는 기본값 반환
         if (clientPos == null || velocity == null)
@@ -466,11 +477,26 @@ public class GameClientSession : IPeer
             }
         }
 
-        // 3. 맵 경계 체크
-        if (clientPos.X < mapMinX) clientPos.X = mapMinX;
-        if (clientPos.X > mapMaxX) clientPos.X = mapMaxX;
-        if (clientPos.Y < mapMinY) clientPos.Y = mapMinY;
-        if (clientPos.Y > mapMaxY) clientPos.Y = mapMaxY;
+        // 3. Cell 기반 이동 가능 여부 검증 (맵 밖 이탈 방지)
+        var clientCell = WorldPositionToCell(clientPos);
+        if (!GameMapData.IsMoveablePosition(CurrentMapId, clientCell))
+        {
+            // 이동 불가능한 위치 → 마지막 유효 위치로 보정
+            if (_lastValidatedPosition != null && _lastValidCell != null)
+            {
+                _logger.LogWarning("Player {PlayerId} 이동 불가 위치 감지: ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY}), 보정 → ({VX:F2},{VY:F2})",
+                    PlayerId, clientPos.X, clientPos.Y, clientCell.X, clientCell.Y,
+                    _lastValidatedPosition.X, _lastValidatedPosition.Y);
+                return _lastValidatedPosition;
+            }
+
+            // 마지막 유효 위치가 없으면 (첫 이동) 클라이언트 위치 그대로 사용 (초기 스폰 위치 신뢰)
+            _logger.LogWarning("Player {PlayerId} 이동 불가 위치 감지 (첫 이동): ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY})",
+                PlayerId, clientPos.X, clientPos.Y, clientCell.X, clientCell.Y);
+        }
+
+        // 4. 검증 통과: 유효 위치 업데이트
+        _lastValidCell = clientCell;
 
         // 검증 통과: 클라이언트 Position 사용
         return clientPos;
@@ -668,6 +694,13 @@ public class GameClientSession : IPeer
             {
                 var newStepOrder = state.CurrentStepOrder;
 
+                // 탈출 성공 시 게임 타이머 정리
+                if (escaped)
+                {
+                    CleanupGameTimer(CurrentMapSubId);
+                    _logger.LogInformation("Game timer cleaned up after escape success (delivery): MatchingId={MatchingId}", CurrentMapSubId);
+                }
+
                 // 진행 결과 응답
                 using var resultPacket = PacketMaker.G_TO_C_EXIT_ADVANCE_RESULT(
                     success: true,
@@ -696,7 +729,7 @@ public class GameClientSession : IPeer
         }
     }
 
-    private void SendInteractableList(AreaType areaType)
+    public void SendInteractableList(AreaType areaType)
     {
         var objects = _interactableStateManager.GetAreaObjectStates(CurrentMapSubId, areaType);
         if (objects.Count == 0)
@@ -850,14 +883,21 @@ public class GameClientSession : IPeer
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
 
-        // 탐색 중이 아니거나 다른 오브젝트를 탐색 중이면 무시
-        if (CurrentState != PlayerState.Exploring || CurrentExploringInteractId != msg.InteractId)
+        // 탐색 중이 아닌 상태에서 선택 요청
+        if (CurrentState != PlayerState.Exploring)
         {
-            _logger.LogWarning("Player {PlayerId} invalid explore select: State={State}, ExploringId={ExploringId}, RequestedId={RequestedId}",
-                PlayerId, CurrentState, CurrentExploringInteractId, msg.InteractId);
+            _logger.LogWarning("Player {PlayerId} not exploring, cannot select: State={State}",
+                PlayerId, CurrentState);
+            SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.EXPLORE_NOT_IN_PROGRESS);
+            return Task.CompletedTask;
+        }
 
-            // 에러 응답
-            SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.FATAL);
+        // 다른 오브젝트를 탐색 중
+        if (CurrentExploringInteractId != msg.InteractId)
+        {
+            _logger.LogWarning("Player {PlayerId} exploring different object: ExploringId={ExploringId}, RequestedId={RequestedId}",
+                PlayerId, CurrentExploringInteractId, msg.InteractId);
+            SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.INTERACTABLE_NOT_FOUND);
             return Task.CompletedTask;
         }
 
@@ -906,8 +946,8 @@ public class GameClientSession : IPeer
             _logger.LogInformation("Player {PlayerId} tried to explore already explored action: InteractId={InteractId}, ActionId={ActionId}",
                 PlayerId, msg.InteractId, msg.ActionId);
 
-            // 이미 탐색됨 - 아이템 없이 성공 응답 (결과 표시만)
-            SendExploreResult(true, msg.InteractId, msg.ActionId, 0, ErrorCode.SUCCESS);
+            // 이미 탐색됨 - 실패 응답
+            SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.ACTION_ALREADY_EXPLORED);
         }
 
         // SELECT 후에도 Exploring 상태 유지 (END 패킷으로 종료)
@@ -1177,6 +1217,91 @@ public class GameClientSession : IPeer
             PlayerId, Stamina, staminaDelta, Corruption, corruptionDelta);
     }
 
+    /// <summary>
+    /// 인게임 스탯 초기화 (새 게임 시작 시)
+    /// </summary>
+    private void ResetInGameStats()
+    {
+        Stamina = MaxStamina;
+        Corruption = 0;
+        CurrentState = PlayerState.Idle;
+        CurrentExploringInteractId = null;
+        _logger.LogInformation("Player {PlayerId} in-game stats reset: Stamina={Stamina}, Corruption={Corruption}",
+            PlayerId, Stamina, Corruption);
+    }
+
+    /// <summary>
+    /// 게임 타이머 시작 (매칭당 최초 1회만)
+    /// </summary>
+    private void StartGameTimerIfNeeded(long matchingId)
+    {
+        lock (_timerLock)
+        {
+            if (_gameTimers.ContainsKey(matchingId))
+            {
+                _logger.LogDebug("Game timer already exists for MatchingId={MatchingId}", matchingId);
+                return;
+            }
+
+            _logger.LogInformation("게임 타이머 시작: MatchingId={MatchingId} ({Minutes}분)", matchingId, GameDurationMinutes);
+
+            var timer = new Timer(_ =>
+            {
+                EndGameByTimeout(matchingId);
+            }, null, TimeSpan.FromSeconds(GameDurationSeconds), Timeout.InfiniteTimeSpan);
+
+            _gameTimers[matchingId] = timer;
+        }
+    }
+
+    /// <summary>
+    /// 시간 초과로 게임 종료
+    /// </summary>
+    private void EndGameByTimeout(long matchingId)
+    {
+        _logger.LogInformation("게임 시간 초과: MatchingId={MatchingId}, 타이머 시작 세션 PlayerId={PlayerId}, CurrentMapSubId={CurrentMapSubId}",
+            matchingId, PlayerId, CurrentMapSubId);
+
+        // 타이머 정리
+        lock (_timerLock)
+        {
+            if (_gameTimers.TryGetValue(matchingId, out var timer))
+            {
+                timer.Dispose();
+                _gameTimers.Remove(matchingId);
+            }
+        }
+
+        // 해당 매칭의 모든 플레이어에게 게임 종료 패킷 전송
+        var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
+        _logger.LogInformation("게임 종료 패킷 전송 대상: MatchingId={MatchingId}, 필터(MapId={MapId}, MapSubId={MapSubId}), 대상 세션 수={Count}",
+            matchingId, CurrentMapId, matchingId, sessions.Count);
+
+        using var packet = PacketMaker.G_TO_C_GAME_END(matchingId, isEscaped: false);
+
+        foreach (var session in sessions)
+        {
+            _logger.LogInformation("게임 종료 패킷 전송: PlayerId={PlayerId}, 세션의 CurrentMapSubId={SessionMapSubId}",
+                session.PlayerId, session.CurrentMapSubId);
+            session.Send(packet);
+        }
+    }
+
+    /// <summary>
+    /// 매칭 종료 시 타이머 정리
+    /// </summary>
+    public static void CleanupGameTimer(long matchingId)
+    {
+        lock (_timerLock)
+        {
+            if (_gameTimers.TryGetValue(matchingId, out var timer))
+            {
+                timer.Dispose();
+                _gameTimers.Remove(matchingId);
+            }
+        }
+    }
+
     #endregion
 
     public void Send(IPacket packet)
@@ -1294,6 +1419,13 @@ public class GameClientSession : IPeer
             {
                 var newStepOrder = state.CurrentStepOrder;
 
+                // 탈출 성공 시 게임 타이머 정리
+                if (escaped)
+                {
+                    CleanupGameTimer(CurrentMapSubId);
+                    _logger.LogInformation("Game timer cleaned up after escape success: MatchingId={MatchingId}", CurrentMapSubId);
+                }
+
                 // 요청자에게 결과 응답
                 using var resultPacket = PacketMaker.G_TO_C_EXIT_ADVANCE_RESULT(
                     success: true,
@@ -1348,6 +1480,12 @@ public class GameClientSession : IPeer
         foreach (var session in otherSessions)
         {
             session.Send(packet);
+
+            // 다른 플레이어에게도 현재 Area의 Interactable 목록 전송 (MissionActionText 갱신)
+            if (session.CurrentArea != AreaType.None)
+            {
+                session.SendInteractableList(session.CurrentArea);
+            }
         }
 
         _logger.LogDebug("Broadcasted EXIT_STEP_UPDATE to {Count} players in instance {InstanceId}", otherSessions.Count, CurrentMapSubId);
@@ -1441,17 +1579,8 @@ public class GameClientSession : IPeer
 
         try
         {
-            // 탈출 완료 상태 확인
-            var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-            if (!state.IsCompleted)
-            {
-                _logger.LogWarning("HandleReturnToLobby: Exit not completed for player {PlayerId}", PlayerId);
-                using var errorPacket = PacketMaker.G_TO_C_RETURN_TO_LOBBY_RESULT(false, ErrorCode.FATAL);
-                Send(errorPacket);
-                return Task.CompletedTask;
-            }
-
-            _logger.LogInformation("Player {PlayerId} returning to lobby from completed game", PlayerId);
+            // 게임 종료 후 로비 복귀 (탈출 성공/실패 모두 허용)
+            _logger.LogInformation("Player {PlayerId} returning to lobby", PlayerId);
 
             // 성공 응답 전송
             using var resultPacket = PacketMaker.G_TO_C_RETURN_TO_LOBBY_RESULT(true, ErrorCode.SUCCESS);

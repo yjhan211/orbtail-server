@@ -526,6 +526,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class G_TO_C_GAME_TIME_WARNING : IMessagePackObject
     {
+        [Key("matchingId")] public long MatchingId { get; set; }
         [Key("remainingSeconds")] public int RemainingSeconds { get; set; }
     }
 
@@ -533,6 +534,7 @@ namespace network.common.data.models
     public class G_TO_C_GAME_END : IMessagePackObject
     {
         [Key("matchingId")] public long MatchingId { get; set; }
+        [Key("isEscaped")] public bool IsEscaped { get; set; } // true: 탈출 성공, false: 탈출 실패 (시간 초과)
     }
 
     [MessagePackObject]

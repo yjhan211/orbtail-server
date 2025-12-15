@@ -90,12 +90,81 @@ namespace network.common
 
     public enum ErrorCode
     {
+        // 공통 (0~99)
         SUCCESS = 0,
-        ALREADY_HAS_JOB,
-        ALREADY_ANOTHER_USE_SKILL,
-        INVALID_POSITION,
-        INVALID_ITEM,
-        INVALID_ITEM_TYPE,
-        FATAL
+        UNKNOWN_ERROR = 1,
+        INVALID_REQUEST = 2,
+        SERVER_INTERNAL_ERROR = 3,
+        TIMEOUT = 4,
+        NOT_IMPLEMENTED = 5,
+
+        // 인증/세션 (100~199)
+        AUTH_FAILED = 100,
+        SESSION_EXPIRED = 101,
+        SESSION_NOT_FOUND = 102,
+        PLAYER_NOT_FOUND = 103,
+        ALREADY_CONNECTED = 104,
+        INVALID_PLAYER_ID = 105,
+
+        // 매칭 (200~299)
+        MATCHING_ALREADY_IN_QUEUE = 200,
+        MATCHING_NOT_IN_QUEUE = 201,
+        MATCHING_FAILED = 202,
+        MATCHING_TIMEOUT = 203,
+        MATCHING_CANCELLED = 204,
+        MATCHING_INVALID_MAP = 205,
+
+        // 게임플레이 (300~399)
+        GAME_NOT_STARTED = 300,
+        GAME_ALREADY_ENDED = 301,
+        INVALID_POSITION = 302,
+        INVALID_AREA = 303,
+        PLAYER_DEAD = 304,
+        ACTION_COOLDOWN = 305,
+        INVALID_GAME_STATE = 306,
+
+        // 상호작용/탐색 (400~499)
+        INTERACTABLE_NOT_FOUND = 400,
+        INTERACTABLE_NOT_AVAILABLE = 401,
+        INTERACTABLE_ALREADY_USED = 402,
+        EXPLORE_ALREADY_IN_PROGRESS = 403,
+        EXPLORE_NOT_IN_PROGRESS = 404,
+        INVALID_SELECTION = 405,
+        ACTION_NOT_FOUND = 406,
+        ACTION_ALREADY_EXPLORED = 407,
+        AREA_MISMATCH = 408,
+
+        // 아이템/인벤토리 (500~599)
+        ITEM_NOT_FOUND = 500,
+        ITEM_NOT_OWNED = 501,
+        ITEM_NOT_USABLE = 502,
+        ITEM_ALREADY_USED = 503,
+        INVENTORY_FULL = 504,
+        INSUFFICIENT_CURRENCY = 505,
+        INVALID_ITEM = 506,
+        INVALID_ITEM_TYPE = 507,
+
+        // 탈출 의식 (600~699)
+        EXIT_NOT_AVAILABLE = 600,
+        EXIT_CONDITION_NOT_MET = 601,
+        EXIT_STEP_INVALID = 602,
+        EXIT_ITEM_MISSING = 603,
+        EXIT_ALREADY_COMPLETED = 604,
+        EXIT_SPOT_MISMATCH = 605,
+
+        // 퀘스트 (700~799)
+        QUEST_NOT_FOUND = 700,
+        QUEST_ALREADY_COMPLETED = 701,
+        QUEST_CONDITION_NOT_MET = 702,
+
+        // 메일 (800~899)
+        MAIL_NOT_FOUND = 800,
+        MAIL_ALREADY_RECEIVED = 801,
+        MAIL_EXPIRED = 802,
+
+        // 레거시 호환 (900~)
+        ALREADY_HAS_JOB = 900,
+        ALREADY_ANOTHER_USE_SKILL = 901,
+        FATAL = 999
     }
 }
