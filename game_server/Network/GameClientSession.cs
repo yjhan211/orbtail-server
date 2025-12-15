@@ -708,7 +708,7 @@ public class GameClientSession : IPeer
         }
     }
 
-    private void SendInteractableList(AreaType areaType)
+    public void SendInteractableList(AreaType areaType)
     {
         var objects = _interactableStateManager.GetAreaObjectStates(CurrentMapSubId, areaType);
         if (objects.Count == 0)
@@ -1231,7 +1231,8 @@ public class GameClientSession : IPeer
     /// </summary>
     private void EndGameByTimeout(long matchingId)
     {
-        _logger.LogInformation("게임 시간 초과: MatchingId={MatchingId}", matchingId);
+        _logger.LogInformation("게임 시간 초과: MatchingId={MatchingId}, 타이머 시작 세션 PlayerId={PlayerId}, CurrentMapSubId={CurrentMapSubId}",
+            matchingId, PlayerId, CurrentMapSubId);
 
         // 타이머 정리
         lock (_timerLock)
@@ -1245,12 +1246,16 @@ public class GameClientSession : IPeer
 
         // 해당 매칭의 모든 플레이어에게 게임 종료 패킷 전송
         var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
+        _logger.LogInformation("게임 종료 패킷 전송 대상: MatchingId={MatchingId}, 필터(MapId={MapId}, MapSubId={MapSubId}), 대상 세션 수={Count}",
+            matchingId, CurrentMapId, matchingId, sessions.Count);
+
         using var packet = PacketMaker.G_TO_C_GAME_END(matchingId, isEscaped: false);
 
         foreach (var session in sessions)
         {
+            _logger.LogInformation("게임 종료 패킷 전송: PlayerId={PlayerId}, 세션의 CurrentMapSubId={SessionMapSubId}",
+                session.PlayerId, session.CurrentMapSubId);
             session.Send(packet);
-            _logger.LogInformation("게임 종료 패킷 전송: PlayerId={PlayerId}", session.PlayerId);
         }
     }
 
@@ -1440,6 +1445,12 @@ public class GameClientSession : IPeer
         foreach (var session in otherSessions)
         {
             session.Send(packet);
+
+            // 다른 플레이어에게도 현재 Area의 Interactable 목록 전송 (MissionActionText 갱신)
+            if (session.CurrentArea != AreaType.None)
+            {
+                session.SendInteractableList(session.CurrentArea);
+            }
         }
 
         _logger.LogDebug("Broadcasted EXIT_STEP_UPDATE to {Count} players in instance {InstanceId}", otherSessions.Count, CurrentMapSubId);

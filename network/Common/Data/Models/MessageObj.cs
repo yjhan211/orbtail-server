@@ -526,6 +526,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class G_TO_C_GAME_TIME_WARNING : IMessagePackObject
     {
+        [Key("matchingId")] public long MatchingId { get; set; }
         [Key("remainingSeconds")] public int RemainingSeconds { get; set; }
     }
 

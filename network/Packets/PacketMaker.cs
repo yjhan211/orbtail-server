@@ -272,10 +272,10 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_GAME_TIME_WARNING(int remainingSeconds)
+    public static Packet G_TO_C_GAME_TIME_WARNING(long matchingId, int remainingSeconds)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_GAME_TIME_WARNING);
-        G_TO_C_GAME_TIME_WARNING body = new() { RemainingSeconds = remainingSeconds };
+        G_TO_C_GAME_TIME_WARNING body = new() { MatchingId = matchingId, RemainingSeconds = remainingSeconds };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

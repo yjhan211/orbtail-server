@@ -78,6 +78,8 @@ services:
       - servicePort=7000
       - redisEndPoints=redis:6379
       - natsEndPoint=nats://nats:4222
+      - GAME_SERVER_IP=${GAME_SERVER_IP:-127.0.0.1}
+      - GAME_SERVER_PORT=${GAME_SERVER_PORT:-9001}
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
     depends_on:

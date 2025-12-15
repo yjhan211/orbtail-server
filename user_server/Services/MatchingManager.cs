@@ -153,9 +153,9 @@ public class MatchingManager
                             _logger.LogError("플레이어 {DataPlayerId} PlayerInfo 로드 실패!", data.PlayerId);
                         }
 
-                        // 게임서버 정보 (TODO: 추후 동적 할당)
-                        const string gameServerIp = "127.0.0.1";
-                        const int gameServerPort = 9001;
+                        // 게임서버 정보 (환경변수에서 가져오기, 없으면 기본값)
+                        var gameServerIp = Environment.GetEnvironmentVariable("GAME_SERVER_IP") ?? "127.0.0.1";
+                        var gameServerPort = int.TryParse(Environment.GetEnvironmentVariable("GAME_SERVER_PORT"), out var port) ? port : 9001;
 
                         // 게임 종료 시간 계산 (5분 후)
                         var gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds();

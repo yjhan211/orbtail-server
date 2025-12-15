@@ -133,12 +133,12 @@ public sealed class InstanceMapController(
 
         var oneMinuteWarningTimer = new Timer(_ =>
         {
-            SendGameTimeWarning(instanceKey, 60);
+            SendGameTimeWarning(instanceKey, mapSubId, 60);
         }, null, TimeSpan.FromSeconds(GameDurationSeconds - 60), Timeout.InfiniteTimeSpan);
 
         var thirtySecondsWarningTimer = new Timer(_ =>
         {
-            SendGameTimeWarning(instanceKey, 30);
+            SendGameTimeWarning(instanceKey, mapSubId, 30);
         }, null, TimeSpan.FromSeconds(GameDurationSeconds - 30), Timeout.InfiniteTimeSpan);
 
         _warningTimers[instanceKey] = (oneMinuteWarningTimer, thirtySecondsWarningTimer);
@@ -146,7 +146,7 @@ public sealed class InstanceMapController(
         Logger.LogInformation("게임 타이머 및 알림 타이머 설정 완료: {InstanceKey}", instanceKey);
     }
 
-    private void SendGameTimeWarning(string instanceKey, int remainingSeconds)
+    private void SendGameTimeWarning(string instanceKey, long mapSubId, int remainingSeconds)
     {
         try
         {
@@ -157,7 +157,7 @@ public sealed class InstanceMapController(
 
             Logger.LogInformation($"게임 시간 알림 전송: {instanceKey}, 남은 시간: {remainingSeconds}초");
 
-            using var packet = PacketMaker.G_TO_C_GAME_TIME_WARNING(remainingSeconds);
+            using var packet = PacketMaker.G_TO_C_GAME_TIME_WARNING(mapSubId, remainingSeconds);
             BroadcastPacketDirect(instanceKey, packet);
         }
         catch (Exception ex)
