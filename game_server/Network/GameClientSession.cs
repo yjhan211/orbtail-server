@@ -694,6 +694,13 @@ public class GameClientSession : IPeer
             {
                 var newStepOrder = state.CurrentStepOrder;
 
+                // 탈출 성공 시 게임 타이머 정리
+                if (escaped)
+                {
+                    CleanupGameTimer(CurrentMapSubId);
+                    _logger.LogInformation("Game timer cleaned up after escape success (delivery): MatchingId={MatchingId}", CurrentMapSubId);
+                }
+
                 // 진행 결과 응답
                 using var resultPacket = PacketMaker.G_TO_C_EXIT_ADVANCE_RESULT(
                     success: true,
@@ -1404,6 +1411,13 @@ public class GameClientSession : IPeer
             if (success)
             {
                 var newStepOrder = state.CurrentStepOrder;
+
+                // 탈출 성공 시 게임 타이머 정리
+                if (escaped)
+                {
+                    CleanupGameTimer(CurrentMapSubId);
+                    _logger.LogInformation("Game timer cleaned up after escape success: MatchingId={MatchingId}", CurrentMapSubId);
+                }
 
                 // 요청자에게 결과 응답
                 using var resultPacket = PacketMaker.G_TO_C_EXIT_ADVANCE_RESULT(
