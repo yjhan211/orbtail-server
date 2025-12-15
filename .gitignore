@@ -124,3 +124,6 @@ sysinfo.txt
 # Build Output
 Build_*/
 .utmp/
+# CSV files copied by BuildPreProcessor (원본: Scripts/Common/csv)
+client/Assets/StreamingAssets/Common/csv/
+client/Assets/Resources/Common/csv/
