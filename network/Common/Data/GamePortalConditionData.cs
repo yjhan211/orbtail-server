@@ -11,6 +11,7 @@ namespace network.common.data
     {
         private static readonly Dictionary<int, PortalConditionData> Conditions = new();
         private static readonly Dictionary<int, PortalConditionData> ConditionsByItemId = new();
+        private static readonly Dictionary<AreaType, PortalConditionData> ConditionsByAreaType = new();
 
         public static void Initialize(List<CsvRow> data)
         {
@@ -19,6 +20,7 @@ namespace network.common.data
                 var condition = PortalConditionData.CreateFromData(row);
                 Conditions[condition.Id] = condition;
                 ConditionsByItemId[condition.RequiredItemId] = condition;
+                ConditionsByAreaType[condition.TargetAreaType] = condition;
             }
         }
 
@@ -30,6 +32,19 @@ namespace network.common.data
         public static PortalConditionData GetByItemId(int itemId)
         {
             return ConditionsByItemId.GetValueOrDefault(itemId);
+        }
+
+        public static PortalConditionData GetByAreaType(AreaType areaType)
+        {
+            return ConditionsByAreaType.GetValueOrDefault(areaType);
+        }
+
+        /// <summary>
+        /// 해당 구역이 조건부 포탈인지 확인
+        /// </summary>
+        public static bool IsConditionalPortal(AreaType areaType)
+        {
+            return ConditionsByAreaType.ContainsKey(areaType);
         }
 
         public static List<PortalConditionData> GetAll()

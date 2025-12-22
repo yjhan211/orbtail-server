@@ -20,13 +20,9 @@ namespace network.common.data.helpers
         private static class DataFiles
         {
             public const string GameRule = "game_rule.csv";
-            public const string BuffInfo = "buff_info.csv";
-            public const string QuestInfo = "quest_info.csv";
-            public const string MailInfo = "mail_info.csv";
             public const string LoadingText = "loading_text.csv";
             public const string AreaName = "area_name.csv";
             public const string AreaRule = "area_rule.csv";
-            public const string StoryArk = "story_ark.csv";
             public const string SystemText = "system_text.csv";
             public const string PortalCondition = "portal_condition.csv";
 
@@ -56,11 +52,9 @@ namespace network.common.data.helpers
             public static class Item
             {
                 public const string Base = "item_info.csv";
-                public const string Equipment = "item_info_equipment.csv";
                 public const string Consumable = "item_info_consumable.csv";
-                public const string Put = "item_info_put.csv";
 
-                public static readonly string[] ALL = new[] { Base, Equipment, Consumable, Put };
+                public static readonly string[] ALL = new[] { Base, Consumable };
             }
 
             public static class Map
@@ -76,13 +70,9 @@ namespace network.common.data.helpers
             StandardDataDefinitions =
             {
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
-                (fileName: DataFiles.BuffInfo, init: GameBuffData.Initialize, validate: GameBuffData.Validate),
-                (fileName: DataFiles.QuestInfo, init: GameQuestData.Initialize, validate: GameQuestData.Validate),
-                (fileName: DataFiles.MailInfo, init: GameMailData.Initialize, validate: GameMailData.Validate),
                 (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize, validate: GameLoadingTextData.Validate),
                 (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize, validate: GameAreaNameData.Validate),
                 (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize, validate: GameAreaRuleData.Validate),
-                (fileName: DataFiles.StoryArk, init: StoryArkData.Initialize, validate: StoryArkData.Validate),
                 (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
                 (fileName: DataFiles.PortalCondition, init: GamePortalConditionData.Initialize, validate: null),
             };
@@ -230,9 +220,9 @@ namespace network.common.data.helpers
             // 아이템 데이터 초기화
             GameItemData.Initialize(
                 loadedData[DataFiles.Item.Base],
-                loadedData[DataFiles.Item.Equipment],
+                new List<CsvRow>(), // Equipment (미사용)
                 loadedData[DataFiles.Item.Consumable],
-                loadedData[DataFiles.Item.Put]
+                new List<CsvRow>()  // Put (미사용)
             );
 
             // 맵 데이터 초기화
