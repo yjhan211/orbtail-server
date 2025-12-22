@@ -1,0 +1,3 @@
+id,exit_template_type,item_type_pool,spot_type_pool,debuff_type_pool,condition_type_pool,finale_type,effect_type,step_count
+1,1,1,1,1,1,1,1,4
+2,2,2,2|3,3|4,1|3,2,3,4

@@ -44,21 +44,31 @@ namespace network.common.data
             foreach (var row in stepData)
             {
                 var id = int.Parse(row["id"]);
+
+                // 신/구 형식 호환성 처리
+                var useNewFormat = row.ContainsKey("text_id");
+
                 Steps[id] = new ExitStepData
                 {
                     Id = id,
                     TemplateType = int.Parse(row["exit_template_type"]),
                     StepOrder = int.Parse(row["step_order"]),
-                    TextTemplate = row["text_template"].Trim('"'),
-                    InsanityTextTemplate = row.ContainsKey("insanity_text_template") ? row["insanity_text_template"].Trim('"') : "",
-                    SummaryTemplate = row["summary_template"].Trim('"'),
-                    ItemSlot = row["item_slot"].ToLower() == "true",
-                    SpotSlot = row["spot_slot"].ToLower() == "true",
-                    DebuffSlot = row["debuff_slot"].ToLower() == "true",
-                    ConditionSlot = row["condition_slot"].ToLower() == "true",
+                    TextId = useNewFormat ? int.Parse(row["text_id"]) : 0,
+                    InsanityTextId = useNewFormat ? int.Parse(row["insanity_text_id"]) : 0,
+                    SummaryTextId = useNewFormat ? int.Parse(row["summary_text_id"]) : 0,
+                    // 구형식: "true"/"false", 신형식: "1"/"0"
+                    ItemSlot = row["item_slot"].ToLower() == "true" || row["item_slot"] == "1",
+                    SpotSlot = row["spot_slot"].ToLower() == "true" || row["spot_slot"] == "1",
+                    DebuffSlot = row["debuff_slot"].ToLower() == "true" || row["debuff_slot"] == "1",
+                    ConditionSlot = row["condition_slot"].ToLower() == "true" || row["condition_slot"] == "1",
                     ActionType = int.Parse(row["action_type"]),
-                    TargetInteractableId = row["target_interactable_id"],
-                    SpotActionText = row.ContainsKey("spot_action_text") ? row["spot_action_text"].Trim('"') : ""
+                    TargetInteractableId = row.ContainsKey("target_interactable_id") ? row["target_interactable_id"] : "",
+                    SpotActionTextId = useNewFormat && row.ContainsKey("spot_action_text_id") ? int.Parse(row["spot_action_text_id"]) : 0,
+                    // 구형식 텍스트 직접 저장 (호환성)
+                    _legacyTextTemplate = !useNewFormat && row.ContainsKey("text_template") ? row["text_template"].Trim('"') : null,
+                    _legacyInsanityTextTemplate = !useNewFormat && row.ContainsKey("insanity_text_template") ? row["insanity_text_template"].Trim('"') : null,
+                    _legacySummaryTemplate = !useNewFormat && row.ContainsKey("summary_template") ? row["summary_template"].Trim('"') : null,
+                    _legacySpotActionText = !useNewFormat && row.ContainsKey("spot_action_text") ? row["spot_action_text"].Trim('"') : null
                 };
             }
 
@@ -177,16 +187,28 @@ namespace network.common.data
         public int Id { get; set; }
         public int TemplateType { get; set; }
         public int StepOrder { get; set; }
-        public string TextTemplate { get; set; }
-        public string InsanityTextTemplate { get; set; }
-        public string SummaryTemplate { get; set; }
+        public int TextId { get; set; }
+        public int InsanityTextId { get; set; }
+        public int SummaryTextId { get; set; }
         public bool ItemSlot { get; set; }
         public bool SpotSlot { get; set; }
         public bool DebuffSlot { get; set; }
         public bool ConditionSlot { get; set; }
         public int ActionType { get; set; }
         public string TargetInteractableId { get; set; }
-        public string SpotActionText { get; set; }
+        public int SpotActionTextId { get; set; }
+
+        // 구형식 호환성을 위한 레거시 필드
+        internal string _legacyTextTemplate { get; set; }
+        internal string _legacyInsanityTextTemplate { get; set; }
+        internal string _legacySummaryTemplate { get; set; }
+        internal string _legacySpotActionText { get; set; }
+
+        // 호환성을 위한 텍스트 프로퍼티 (신형식: TextId에서 텍스트 가져오기, 구형식: 레거시 필드 사용)
+        public string TextTemplate => _legacyTextTemplate ?? GameSystemTextData.GetText(TextId);
+        public string InsanityTextTemplate => _legacyInsanityTextTemplate ?? GameSystemTextData.GetText(InsanityTextId);
+        public string SummaryTemplate => _legacySummaryTemplate ?? GameSystemTextData.GetText(SummaryTextId);
+        public string SpotActionText => _legacySpotActionText ?? (SpotActionTextId > 0 ? GameSystemTextData.GetText(SpotActionTextId) : "");
     }
 
     public class ExitItemData

@@ -27,6 +27,8 @@ namespace network.common.data.helpers
             public const string AreaName = "area_name.csv";
             public const string AreaRule = "area_rule.csv";
             public const string StoryArk = "story_ark.csv";
+            public const string SystemText = "system_text.csv";
+            public const string PortalCondition = "portal_condition.csv";
 
             public static class Interactable
             {
@@ -46,8 +48,9 @@ namespace network.common.data.helpers
                 public const string Debuff = "exit_debuff.csv";
                 public const string Condition = "exit_condition.csv";
                 public const string Constraint = "exit_constraint.csv";
+                public const string Scenario = "exit_scenario.csv";
 
-                public static readonly string[] ALL = new[] { Template, Step, Item, Spot, Debuff, Condition, Constraint };
+                public static readonly string[] ALL = new[] { Template, Step, Item, Spot, Debuff, Condition, Constraint, Scenario };
             }
 
             public static class Item
@@ -80,6 +83,8 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize, validate: GameAreaNameData.Validate),
                 (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize, validate: GameAreaRuleData.Validate),
                 (fileName: DataFiles.StoryArk, init: StoryArkData.Initialize, validate: StoryArkData.Validate),
+                (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
+                (fileName: DataFiles.PortalCondition, init: GamePortalConditionData.Initialize, validate: null),
             };
 
         /// <summary>
@@ -253,6 +258,9 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Exit.Condition],
                 loadedData[DataFiles.Exit.Constraint]
             );
+
+            // 탈출 시나리오 데이터 초기화
+            GameExitScenarioData.Initialize(loadedData[DataFiles.Exit.Scenario]);
 
             ValidateAllData();
         }

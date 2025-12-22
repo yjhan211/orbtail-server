@@ -276,4 +276,39 @@ namespace network.common
         MOVE_SPEED_DOWN = 3,    // 이동속도 감소
         VISUAL_DARKEN = 4,      // 시야 어두워짐
     }
+
+    /// <summary>
+    /// 상호작용 오브젝트 탐색 타입
+    /// </summary>
+    public enum InteractionType : short
+    {
+        NONE = 0,
+        EXPLORE = 1,    // 전체탐색 - 필수 아이템 획득 전까지 창 유지
+        SINGLE = 2,     // 단일선택 - 결과 출력 후 창 즉시 닫힘
+    }
+
+    /// <summary>
+    /// 상호작용 액션 결과 타입
+    /// </summary>
+    public enum ActionResultType : short
+    {
+        NONE = 0,
+        ITEM = 1,           // 아이템 획득
+        RULE = 2,           // 규칙 쪽지 획득
+        CORRUPTION = 3,     // 정신오염도 변화
+        STAMINA = 4,        // 스태미나 변화
+        PORTAL = 5,         // 포탈 활성화
+    }
+
+    /// <summary>
+    /// 시스템 텍스트 카테고리
+    /// </summary>
+    public enum SystemTextCategory : short
+    {
+        NONE = 0,
+        PORTAL = 1,         // 포탈 관련 메시지
+        ALERT = 2,          // 알럿 메시지
+        EXIT_STEP = 3,      // 탈출 절차 관련
+        INTERACTION = 4,    // 상호작용 관련
+    }
 }

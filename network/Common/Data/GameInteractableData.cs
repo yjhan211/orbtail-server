@@ -124,6 +124,9 @@ namespace network.common.data
         public string ShortName { get; private set; }
         public string Description { get; private set; }
         public int RewardPoolId { get; private set; }
+        public InteractionType InteractionType { get; private set; }
+        public bool HasRequiredItem { get; private set; }
+        public int StaminaCost { get; private set; }
         public List<InteractableActionData> Actions { get; private set; }
 
         public static InteractableInfoData CreateFromData(CsvRow row, Dictionary<int, List<InteractableActionData>> actionsByInteractId)
@@ -138,6 +141,9 @@ namespace network.common.data
                 ShortName = row["short_name"].Trim('"'),
                 Description = row["description"].Trim('"').Replace("\\n", "\n"),
                 RewardPoolId = int.Parse(row["reward_pool_id"]),
+                InteractionType = row.ContainsKey("interaction_type") ? (InteractionType)int.Parse(row["interaction_type"]) : InteractionType.EXPLORE,
+                HasRequiredItem = row.ContainsKey("has_required_item") && int.Parse(row["has_required_item"]) == 1,
+                StaminaCost = row.ContainsKey("stamina_cost") ? int.Parse(row["stamina_cost"]) : 0,
                 Actions = actionsByInteractId.TryGetValue(id, out var actions) ? actions : new List<InteractableActionData>()
             };
         }
@@ -149,6 +155,10 @@ namespace network.common.data
         public int ActionId { get; private set; }
         public string ActionText { get; private set; }
         public string ResultText { get; private set; }
+        public ActionResultType ResultType { get; private set; }
+        public int ResultId { get; private set; }
+        public int ResultAmount { get; private set; }
+        public int PortalTriggerId { get; private set; }
 
         public static InteractableActionData CreateFromData(CsvRow row)
         {
@@ -157,7 +167,11 @@ namespace network.common.data
                 InteractId = int.Parse(row["id"]),
                 ActionId = int.Parse(row["action_id"]),
                 ActionText = row["action_text"],
-                ResultText = row["result_text"].Trim('"').Replace("\\n", "\n")
+                ResultText = row["result_text"].Trim('"').Replace("\\n", "\n"),
+                ResultType = row.ContainsKey("result_type") ? (ActionResultType)int.Parse(row["result_type"]) : ActionResultType.NONE,
+                ResultId = row.ContainsKey("result_id") ? int.Parse(row["result_id"]) : 0,
+                ResultAmount = row.ContainsKey("result_amount") ? int.Parse(row["result_amount"]) : 0,
+                PortalTriggerId = row.ContainsKey("portal_trigger_id") ? int.Parse(row["portal_trigger_id"]) : 0
             };
         }
     }
