@@ -202,15 +202,6 @@ namespace network.common
         PROJECTOR = 5,      // 시청각실 영사기
     }
 
-    public enum ExitDebuffType : short
-    {
-        NONE = 0,
-        SONG = 1,       // 노랫소리
-        WHISPER = 2,    // 속삭임
-        HEAVY = 3,      // 무거움
-        SHADOW = 4,     // 그림자
-    }
-
     public enum ExitConditionType : short
     {
         NONE = 0,

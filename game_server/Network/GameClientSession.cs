@@ -1346,7 +1346,6 @@ public class GameClientSession : IPeer
             {
                 ItemId = state.SlotBinding.ItemId,
                 SpotId = state.SlotBinding.SpotId,
-                DebuffId = state.SlotBinding.DebuffId,
                 ConditionId = state.SlotBinding.ConditionId
             };
 
@@ -1360,8 +1359,8 @@ public class GameClientSession : IPeer
             );
             Send(packet);
 
-            _logger.LogInformation("Sent exit step info to Player {PlayerId}: Template={TemplateId}, CurrentStep={StepOrder}/{TotalSteps}, Binding=(Item={ItemId}, Spot={SpotId}, Debuff={DebuffId}, Condition={ConditionId}), Completed={IsCompleted}, LastAdvancedBy={LastAdvancedBy}",
-                PlayerId, state.TemplateId, state.CurrentStepOrder, state.Steps.Count, slotBinding.ItemId, slotBinding.SpotId, slotBinding.DebuffId, slotBinding.ConditionId, state.IsCompleted, state.LastAdvancedBy);
+            _logger.LogInformation("Sent exit step info to Player {PlayerId}: Template={TemplateId}, CurrentStep={StepOrder}/{TotalSteps}, Binding=(Item={ItemId}, Spot={SpotId}, Condition={ConditionId}), Completed={IsCompleted}, LastAdvancedBy={LastAdvancedBy}",
+                PlayerId, state.TemplateId, state.CurrentStepOrder, state.Steps.Count, slotBinding.ItemId, slotBinding.SpotId, slotBinding.ConditionId, state.IsCompleted, state.LastAdvancedBy);
         }
         catch (Exception ex)
         {

@@ -44,7 +44,6 @@ namespace network.common.data.models
         // 슬롯에 할당된 데이터
         public ExitItemData SelectedItem { get; set; }
         public ExitSpotData SelectedSpot { get; set; }
-        public ExitDebuffData SelectedDebuff { get; set; }
         public ExitConditionData SelectedCondition { get; set; }
 
         public bool IsCompleted { get; set; }
@@ -85,11 +84,6 @@ namespace network.common.data.models
             {
                 var interactable = GameInteractableData.Get(SelectedSpot.InteractableId);
                 context.WithSpot(interactable?.ShortName ?? "???");
-            }
-
-            if (SelectedDebuff != null)
-            {
-                context.WithDebuff(SelectedDebuff.Warning);
             }
 
             if (SelectedCondition != null)
@@ -149,10 +143,9 @@ namespace network.common.data.models
             // 풀에서 랜덤 선택
             var selectedItemIds = SelectFromIntPool(scenario.ItemIdPool, stepDefinitions.Count(s => s.ItemSlot), random);
             var selectedSpots = SelectFromPool(scenario.SpotTypePool, stepDefinitions.Count(s => s.SpotSlot), random);
-            var selectedDebuffs = SelectFromPool(scenario.DebuffTypePool, stepDefinitions.Count(s => s.DebuffSlot), random);
             var selectedConditions = SelectFromPool(scenario.ConditionTypePool, stepDefinitions.Count(s => s.ConditionSlot), random);
 
-            int itemIdx = 0, spotIdx = 0, debuffIdx = 0, conditionIdx = 0;
+            int itemIdx = 0, spotIdx = 0, conditionIdx = 0;
 
             foreach (var stepDef in stepDefinitions.Take(scenario.StepCount))
             {
@@ -170,10 +163,6 @@ namespace network.common.data.models
                 if (stepDef.SpotSlot && spotIdx < selectedSpots.Count)
                 {
                     step.SelectedSpot = GameExitData.GetSpot((int)selectedSpots[spotIdx++]);
-                }
-                if (stepDef.DebuffSlot && debuffIdx < selectedDebuffs.Count)
-                {
-                    step.SelectedDebuff = GameExitData.GetDebuff((int)selectedDebuffs[debuffIdx++]);
                 }
                 if (stepDef.ConditionSlot && conditionIdx < selectedConditions.Count)
                 {

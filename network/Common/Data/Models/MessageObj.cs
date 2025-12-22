@@ -671,7 +671,6 @@ namespace network.common.data.models
     {
         [Key("itemId")] public int ItemId { get; set; }       // exit_item.id
         [Key("spotId")] public int SpotId { get; set; }       // exit_spot.id
-        [Key("debuffId")] public int DebuffId { get; set; }   // exit_debuff.id
         [Key("conditionId")] public int ConditionId { get; set; } // exit_condition.id
     }
 

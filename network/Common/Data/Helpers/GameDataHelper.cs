@@ -41,12 +41,11 @@ namespace network.common.data.helpers
                 public const string Step = "exit_step.csv";
                 public const string Item = "exit_item.csv";
                 public const string Spot = "exit_spot.csv";
-                public const string Debuff = "exit_debuff.csv";
                 public const string Condition = "exit_condition.csv";
                 public const string Constraint = "exit_constraint.csv";
                 public const string Scenario = "exit_scenario.csv";
 
-                public static readonly string[] ALL = new[] { Template, Step, Item, Spot, Debuff, Condition, Constraint, Scenario };
+                public static readonly string[] ALL = new[] { Template, Step, Item, Spot, Condition, Constraint, Scenario };
             }
 
             public static class Item
@@ -265,7 +264,6 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Exit.Step],
                 loadedData[DataFiles.Exit.Item],
                 loadedData[DataFiles.Exit.Spot],
-                loadedData[DataFiles.Exit.Debuff],
                 loadedData[DataFiles.Exit.Condition],
                 loadedData[DataFiles.Exit.Constraint]
             );

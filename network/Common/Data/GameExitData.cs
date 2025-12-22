@@ -15,7 +15,6 @@ namespace network.common.data
         private static readonly Dictionary<int, ExitStepData> Steps = new();
         private static readonly Dictionary<int, ExitItemData> Items = new();
         private static readonly Dictionary<int, ExitSpotData> Spots = new();
-        private static readonly Dictionary<int, ExitDebuffData> Debuffs = new();
         private static readonly Dictionary<int, ExitConditionData> Conditions = new();
         private static readonly List<ExitConstraintData> Constraints = new();
 
@@ -24,7 +23,6 @@ namespace network.common.data
             List<CsvRow> stepData,
             List<CsvRow> itemData,
             List<CsvRow> spotData,
-            List<CsvRow> debuffData,
             List<CsvRow> conditionData,
             List<CsvRow> constraintData)
         {
@@ -59,7 +57,6 @@ namespace network.common.data
                     // 구형식: "true"/"false", 신형식: "1"/"0"
                     ItemSlot = row["item_slot"].ToLower() == "true" || row["item_slot"] == "1",
                     SpotSlot = row["spot_slot"].ToLower() == "true" || row["spot_slot"] == "1",
-                    DebuffSlot = row["debuff_slot"].ToLower() == "true" || row["debuff_slot"] == "1",
                     ConditionSlot = row["condition_slot"].ToLower() == "true" || row["condition_slot"] == "1",
                     ActionType = int.Parse(row["action_type"]),
                     TargetInteractableId = row.ContainsKey("target_interactable_id") ? row["target_interactable_id"] : "",
@@ -91,19 +88,6 @@ namespace network.common.data
                 {
                     Id = id,
                     InteractableId = int.Parse(row["interactable_id"])
-                };
-            }
-
-            // Debuffs
-            foreach (var row in debuffData)
-            {
-                var id = int.Parse(row["id"]);
-                Debuffs[id] = new ExitDebuffData
-                {
-                    Id = id,
-                    Warning = row["warning"].Trim('"'),
-                    EffectType = int.Parse(row["effect_type"]),
-                    EffectValue = float.Parse(row["effect_value"])
                 };
             }
 
@@ -151,7 +135,6 @@ namespace network.common.data
         public static ExitStepData GetStep(int id) => Steps.GetValueOrDefault(id);
         public static ExitItemData GetItem(int id) => Items.GetValueOrDefault(id);
         public static ExitSpotData GetSpot(int id) => Spots.GetValueOrDefault(id);
-        public static ExitDebuffData GetDebuff(int id) => Debuffs.GetValueOrDefault(id);
         public static ExitConditionData GetCondition(int id) => Conditions.GetValueOrDefault(id);
 
         public static List<ExitTemplateData> GetAllTemplates() => Templates.Values.ToList();
@@ -159,7 +142,6 @@ namespace network.common.data
             Steps.Values.Where(s => s.TemplateType == templateType).OrderBy(s => s.StepOrder).ToList();
         public static List<ExitItemData> GetAllItems() => Items.Values.ToList();
         public static List<ExitSpotData> GetAllSpots() => Spots.Values.ToList();
-        public static List<ExitDebuffData> GetAllDebuffs() => Debuffs.Values.ToList();
         public static List<ExitConditionData> GetAllConditions() => Conditions.Values.ToList();
         public static List<ExitConstraintData> GetConstraintsByTemplate(int templateType) =>
             Constraints.Where(c => c.TemplateType == 0 || c.TemplateType == templateType).ToList();
@@ -191,7 +173,6 @@ namespace network.common.data
         public int SummaryTextId { get; set; }
         public bool ItemSlot { get; set; }
         public bool SpotSlot { get; set; }
-        public bool DebuffSlot { get; set; }
         public bool ConditionSlot { get; set; }
         public int ActionType { get; set; }
         public string TargetInteractableId { get; set; }
@@ -220,14 +201,6 @@ namespace network.common.data
     {
         public int Id { get; set; }
         public int InteractableId { get; set; }
-    }
-
-    public class ExitDebuffData
-    {
-        public int Id { get; set; }
-        public string Warning { get; set; }
-        public int EffectType { get; set; }
-        public float EffectValue { get; set; }
     }
 
     public class ExitConditionData

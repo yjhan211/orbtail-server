@@ -11,7 +11,6 @@ namespace game_server.services
     {
         public int ItemId { get; set; }
         public int SpotId { get; set; }
-        public int DebuffId { get; set; }
         public int ConditionId { get; set; }
     }
 
@@ -63,7 +62,6 @@ namespace game_server.services
             // 가용 목록 초기화
             var availableItems = GameExitData.GetAllItems().Select(i => i.ItemId).ToList();
             var availableSpots = GameExitData.GetAllSpots().Select(s => s.Id).ToList();
-            var availableDebuffs = GameExitData.GetAllDebuffs().Select(d => d.Id).ToList();
             var availableConditions = GameExitData.GetAllConditions().Select(c => c.Id).ToList();
 
             // POOL 제약 적용 (허용 목록)
@@ -76,9 +74,6 @@ namespace game_server.services
                         break;
                     case ExitSlotType.SPOT:
                         availableSpots = availableSpots.Intersect(constraint.Values).ToList();
-                        break;
-                    case ExitSlotType.DEBUFF:
-                        availableDebuffs = availableDebuffs.Intersect(constraint.Values).ToList();
                         break;
                     case ExitSlotType.CONDITION:
                         availableConditions = availableConditions.Intersect(constraint.Values).ToList();
@@ -110,24 +105,6 @@ namespace game_server.services
 
             // 장소 선택
             binding.SpotId = availableSpots[_random.Next(availableSpots.Count)];
-
-            // 디버프 선택
-            binding.DebuffId = availableDebuffs[_random.Next(availableDebuffs.Count)];
-
-            // EXCLUDE 제약 적용 (디버프에 따른 조건 금지)
-            var excludeConstraints = constraints
-                .Where(c => c.ConstraintType == (int)ExitConstraintType.EXCLUDE &&
-                            c.ConditionSlotType == (int)ExitSlotType.DEBUFF &&
-                            c.ConditionValues.Contains(binding.DebuffId))
-                .ToList();
-
-            foreach (var exc in excludeConstraints)
-            {
-                if ((ExitSlotType)exc.SlotType == ExitSlotType.CONDITION)
-                {
-                    availableConditions = availableConditions.Except(exc.Values).ToList();
-                }
-            }
 
             // 전역 EXCLUDE 제약 적용 (Item + Spot 조합 금지)
             var globalExcludes = constraints
@@ -196,7 +173,6 @@ namespace game_server.services
         {
             var item = GameExitData.GetItem(SlotBinding.ItemId);
             var spot = GameExitData.GetSpot(SlotBinding.SpotId);
-            var debuff = GameExitData.GetDebuff(SlotBinding.DebuffId);
             var condition = GameExitData.GetCondition(SlotBinding.ConditionId);
 
             if (item != null)
@@ -210,11 +186,6 @@ namespace game_server.services
             {
                 var interactable = GameInteractableData.Get(spot.InteractableId);
                 text = text.Replace("{Spot.Name}", interactable?.ShortName ?? "???");
-            }
-
-            if (debuff != null)
-            {
-                text = text.Replace("{Debuff.Warning}", debuff.Warning);
             }
 
             if (condition != null)
@@ -310,7 +281,7 @@ namespace game_server.services
             {
                 _logAction?.Invoke($"ExitInstanceManager: Creating new exit state for MatchingId={id}");
                 var state = new MatchingExitState(id);
-                _logAction?.Invoke($"ExitInstanceManager: Generated - Template={state.TemplateId}, Item={state.SlotBinding.ItemId}, Spot={state.SlotBinding.SpotId}, Debuff={state.SlotBinding.DebuffId}, Condition={state.SlotBinding.ConditionId}");
+                _logAction?.Invoke($"ExitInstanceManager: Generated - Template={state.TemplateId}, Item={state.SlotBinding.ItemId}, Spot={state.SlotBinding.SpotId}, Condition={state.SlotBinding.ConditionId}");
                 return state;
             });
         }
