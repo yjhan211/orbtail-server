@@ -147,7 +147,7 @@ namespace network.common.data.models
             var stepDefinitions = GameExitData.GetStepsByTemplate((int)templateType);
 
             // 풀에서 랜덤 선택
-            var selectedItems = SelectFromPool(scenario.ItemTypePool, stepDefinitions.Count(s => s.ItemSlot), random);
+            var selectedItemIds = SelectFromIntPool(scenario.ItemIdPool, stepDefinitions.Count(s => s.ItemSlot), random);
             var selectedSpots = SelectFromPool(scenario.SpotTypePool, stepDefinitions.Count(s => s.SpotSlot), random);
             var selectedDebuffs = SelectFromPool(scenario.DebuffTypePool, stepDefinitions.Count(s => s.DebuffSlot), random);
             var selectedConditions = SelectFromPool(scenario.ConditionTypePool, stepDefinitions.Count(s => s.ConditionSlot), random);
@@ -163,9 +163,9 @@ namespace network.common.data.models
                 };
 
                 // 슬롯에 데이터 할당
-                if (stepDef.ItemSlot && itemIdx < selectedItems.Count)
+                if (stepDef.ItemSlot && itemIdx < selectedItemIds.Count)
                 {
-                    step.SelectedItem = GameExitData.GetItem((int)selectedItems[itemIdx++]);
+                    step.SelectedItem = GameExitData.GetItem(selectedItemIds[itemIdx++]);
                 }
                 if (stepDef.SpotSlot && spotIdx < selectedSpots.Count)
                 {
@@ -186,6 +186,23 @@ namespace network.common.data.models
             return instance;
         }
 
+        private static List<int> SelectFromIntPool(List<int> pool, int count, Random random)
+        {
+            if (pool == null || pool.Count == 0 || count <= 0)
+                return new List<int>();
+
+            var result = new List<int>();
+            var available = new List<int>(pool);
+
+            for (int i = 0; i < count && available.Count > 0; i++)
+            {
+                var index = random.Next(available.Count);
+                result.Add(available[index]);
+            }
+
+            return result;
+        }
+
         private static List<T> SelectFromPool<T>(List<T> pool, int count, Random random) where T : struct, Enum
         {
             if (pool == null || pool.Count == 0 || count <= 0)
@@ -198,8 +215,6 @@ namespace network.common.data.models
             {
                 var index = random.Next(available.Count);
                 result.Add(available[index]);
-                // 중복 허용하지 않으려면 아래 주석 해제
-                // available.RemoveAt(index);
             }
 
             return result;

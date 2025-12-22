@@ -190,14 +190,7 @@ namespace network.common
         DISPOSE = 2,    // 특수 개체 격리 및 처리 절차
     }
 
-    public enum ExitItemType : short
-    {
-        NONE = 0,
-        DISC = 1,   // LP판
-        DOLL = 2,   // 머리 없는 인형
-        TAPE = 3,   // 비디오 테이프
-        KEY = 4,    // 열쇠 꾸러미
-    }
+    // ExitItemType은 제거됨 - exit_scenario.csv에서 item_id를 직접 참조
 
     public enum ExitSpotType : short
     {

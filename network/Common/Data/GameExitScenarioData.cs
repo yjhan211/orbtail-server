@@ -43,7 +43,7 @@ namespace network.common.data
     {
         public int Id { get; private set; }
         public ExitTemplateType ExitTemplateType { get; private set; }
-        public List<ExitItemType> ItemTypePool { get; private set; }
+        public List<int> ItemIdPool { get; private set; }  // item_info.csv의 item_id 직접 참조
         public List<ExitSpotType> SpotTypePool { get; private set; }
         public List<ExitDebuffType> DebuffTypePool { get; private set; }
         public List<ExitConditionType> ConditionTypePool { get; private set; }
@@ -61,13 +61,23 @@ namespace network.common.data
                 .ToList();
         }
 
+        private static List<int> ParseIntPool(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value == "0")
+                return new List<int>();
+
+            return value.Split('|')
+                .Select(v => int.Parse(v.Trim()))
+                .ToList();
+        }
+
         public static ExitScenarioData CreateFromData(CsvRow row)
         {
             return new ExitScenarioData
             {
                 Id = int.Parse(row["id"]),
                 ExitTemplateType = (ExitTemplateType)int.Parse(row["exit_template_type"]),
-                ItemTypePool = ParseEnumPool<ExitItemType>(row["item_type_pool"]),
+                ItemIdPool = ParseIntPool(row["item_id_pool"]),
                 SpotTypePool = ParseEnumPool<ExitSpotType>(row["spot_type_pool"]),
                 DebuffTypePool = ParseEnumPool<ExitDebuffType>(row["debuff_type_pool"]),
                 ConditionTypePool = ParseEnumPool<ExitConditionType>(row["condition_type_pool"]),

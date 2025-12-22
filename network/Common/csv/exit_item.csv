@@ -1,6 +1,6 @@
-id,item_id,warning
-1,601000001,"희미한 <color=#22D3EE>노랫소리</color>가 들리더라도 <color=#22D3EE>따라 부르지 마</color>십시오."
-2,601000002,"그것의 <color=#22D3EE>이전 이름</color>을 <color=#22D3EE>부르지 마</color>십시오."
-3,601000003,"<color=#22D3EE>재생 버튼</color>을 <color=#22D3EE>누르지 마</color>십시오."
-4,601000004,"<color=#22D3EE>열쇠 소리</color>를 <color=#22D3EE>내지 마</color>십시오."
-5,601000005,"<color=#22D3EE>강당 문</color>을 <color=#22D3EE>열기 전</color>에 반드시 <color=#22D3EE>노크</color>하십시오."
+item_id,warning
+601000001,"희미한 <color=#22D3EE>노랫소리</color>가 들리더라도 <color=#22D3EE>따라 부르지 마</color>십시오."
+601000002,"그것의 <color=#22D3EE>이전 이름</color>을 <color=#22D3EE>부르지 마</color>십시오."
+601000003,"<color=#22D3EE>재생 버튼</color>을 <color=#22D3EE>누르지 마</color>십시오."
+601000004,"<color=#22D3EE>열쇠 소리</color>를 <color=#22D3EE>내지 마</color>십시오."
+601000005,"<color=#22D3EE>강당 문</color>을 <color=#22D3EE>열기 전</color>에 반드시 <color=#22D3EE>노크</color>하십시오."

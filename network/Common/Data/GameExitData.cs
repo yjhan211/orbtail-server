@@ -72,14 +72,13 @@ namespace network.common.data
                 };
             }
 
-            // Items
+            // Items (item_id를 키로 직접 사용)
             foreach (var row in itemData)
             {
-                var id = int.Parse(row["id"]);
-                Items[id] = new ExitItemData
+                var itemId = int.Parse(row["item_id"]);
+                Items[itemId] = new ExitItemData
                 {
-                    Id = id,
-                    ItemId = int.Parse(row["item_id"]),
+                    ItemId = itemId,
                     Warning = row["warning"].Trim('"')
                 };
             }
@@ -213,8 +212,7 @@ namespace network.common.data
 
     public class ExitItemData
     {
-        public int Id { get; set; }
-        public int ItemId { get; set; }
+        public int ItemId { get; set; }  // item_info.csv의 아이템 ID (키로 사용)
         public string Warning { get; set; }
     }
 

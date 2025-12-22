@@ -61,7 +61,7 @@ namespace game_server.services
             var binding = new ExitSlotBinding();
 
             // 가용 목록 초기화
-            var availableItems = GameExitData.GetAllItems().Select(i => i.Id).ToList();
+            var availableItems = GameExitData.GetAllItems().Select(i => i.ItemId).ToList();
             var availableSpots = GameExitData.GetAllSpots().Select(s => s.Id).ToList();
             var availableDebuffs = GameExitData.GetAllDebuffs().Select(d => d.Id).ToList();
             var availableConditions = GameExitData.GetAllConditions().Select(c => c.Id).ToList();
