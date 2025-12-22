@@ -52,10 +52,13 @@ namespace network.common.data.helpers
             public static class Item
             {
                 public const string Base = "item_info.csv";
+                public const string Equipment = "item_info_equipment.csv";
                 public const string Consumable = "item_info_consumable.csv";
 
-                public static readonly string[] ALL = new[] { Base, Consumable };
+                public static readonly string[] ALL = new[] { Base, Equipment, Consumable };
             }
+
+            public const string BuffInfo = "buff_info.csv";
 
             public static class Map
             {
@@ -142,6 +145,21 @@ namespace network.common.data.helpers
                 }
             }
 
+            // 버프 정보 로드
+            {
+                var filePath = GetCsvFilePath(DataFiles.BuffInfo);
+                try
+                {
+                    loadedData[DataFiles.BuffInfo] = CsvHelper.LoadCsv(filePath);
+                    Log($"[GameDataHelper] Loaded {DataFiles.BuffInfo}: {loadedData[DataFiles.BuffInfo].Count} rows");
+                }
+                catch (Exception ex)
+                {
+                    LogError($"[GameDataHelper] Failed to load {DataFiles.BuffInfo}: {ex.Message}");
+                    throw;
+                }
+            }
+
             // 아이템 관련 파일 로드
             foreach (var fileName in DataFiles.Item.ALL)
             {
@@ -217,10 +235,13 @@ namespace network.common.data.helpers
                     throw;
                 }
 
+            // 버프 데이터 초기화
+            GameBuffData.Initialize(loadedData[DataFiles.BuffInfo]);
+
             // 아이템 데이터 초기화
             GameItemData.Initialize(
                 loadedData[DataFiles.Item.Base],
-                new List<CsvRow>(), // Equipment (미사용)
+                loadedData[DataFiles.Item.Equipment],
                 loadedData[DataFiles.Item.Consumable],
                 new List<CsvRow>()  // Put (미사용)
             );
