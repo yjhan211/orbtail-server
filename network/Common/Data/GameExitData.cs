@@ -13,7 +13,6 @@ namespace network.common.data
     {
         private static readonly Dictionary<int, ExitTemplateData> Templates = new();
         private static readonly Dictionary<int, ExitStepData> Steps = new();
-        private static readonly Dictionary<int, ExitItemData> Items = new();
         private static readonly Dictionary<int, ExitSpotData> Spots = new();
         private static readonly Dictionary<int, ExitConditionData> Conditions = new();
         private static readonly List<ExitConstraintData> Constraints = new();
@@ -21,7 +20,6 @@ namespace network.common.data
         public static void Initialize(
             List<CsvRow> templateData,
             List<CsvRow> stepData,
-            List<CsvRow> itemData,
             List<CsvRow> spotData,
             List<CsvRow> conditionData,
             List<CsvRow> constraintData)
@@ -66,17 +64,6 @@ namespace network.common.data
                     _legacyInsanityTextTemplate = !useNewFormat && row.ContainsKey("insanity_text_template") ? row["insanity_text_template"].Trim('"') : null,
                     _legacySummaryTemplate = !useNewFormat && row.ContainsKey("summary_template") ? row["summary_template"].Trim('"') : null,
                     _legacySpotActionText = !useNewFormat && row.ContainsKey("spot_action_text") ? row["spot_action_text"].Trim('"') : null
-                };
-            }
-
-            // Items (item_id를 키로 직접 사용)
-            foreach (var row in itemData)
-            {
-                var itemId = int.Parse(row["item_id"]);
-                Items[itemId] = new ExitItemData
-                {
-                    ItemId = itemId,
-                    Warning = row["warning"].Trim('"')
                 };
             }
 
@@ -133,14 +120,12 @@ namespace network.common.data
         // Getters
         public static ExitTemplateData GetTemplate(int id) => Templates.GetValueOrDefault(id);
         public static ExitStepData GetStep(int id) => Steps.GetValueOrDefault(id);
-        public static ExitItemData GetItem(int id) => Items.GetValueOrDefault(id);
         public static ExitSpotData GetSpot(int id) => Spots.GetValueOrDefault(id);
         public static ExitConditionData GetCondition(int id) => Conditions.GetValueOrDefault(id);
 
         public static List<ExitTemplateData> GetAllTemplates() => Templates.Values.ToList();
         public static List<ExitStepData> GetStepsByTemplate(int templateType) =>
             Steps.Values.Where(s => s.TemplateType == templateType).OrderBy(s => s.StepOrder).ToList();
-        public static List<ExitItemData> GetAllItems() => Items.Values.ToList();
         public static List<ExitSpotData> GetAllSpots() => Spots.Values.ToList();
         public static List<ExitConditionData> GetAllConditions() => Conditions.Values.ToList();
         public static List<ExitConstraintData> GetConstraintsByTemplate(int templateType) =>
@@ -189,12 +174,6 @@ namespace network.common.data
         public string InsanityTextTemplate => _legacyInsanityTextTemplate ?? GameSystemTextData.GetText(InsanityTextId);
         public string SummaryTemplate => _legacySummaryTemplate ?? GameSystemTextData.GetText(SummaryTextId);
         public string SpotActionText => _legacySpotActionText ?? (SpotActionTextId > 0 ? GameSystemTextData.GetText(SpotActionTextId) : "");
-    }
-
-    public class ExitItemData
-    {
-        public int ItemId { get; set; }  // item_info.csv의 아이템 ID (키로 사용)
-        public string Warning { get; set; }
     }
 
     public class ExitSpotData

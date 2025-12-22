@@ -669,7 +669,6 @@ namespace network.common.data.models
     [MessagePackObject]
     public class ExitSlotBindingInfo
     {
-        [Key("itemId")] public int ItemId { get; set; }       // exit_item.id
         [Key("spotId")] public int SpotId { get; set; }       // exit_spot.id
         [Key("conditionId")] public int ConditionId { get; set; } // exit_condition.id
     }

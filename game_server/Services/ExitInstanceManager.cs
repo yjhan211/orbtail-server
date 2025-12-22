@@ -9,7 +9,6 @@ namespace game_server.services
     /// </summary>
     public class ExitSlotBinding
     {
-        public int ItemId { get; set; }
         public int SpotId { get; set; }
         public int ConditionId { get; set; }
     }
@@ -60,7 +59,6 @@ namespace game_server.services
             var binding = new ExitSlotBinding();
 
             // 가용 목록 초기화
-            var availableItems = GameExitData.GetAllItems().Select(i => i.ItemId).ToList();
             var availableSpots = GameExitData.GetAllSpots().Select(s => s.Id).ToList();
             var availableConditions = GameExitData.GetAllConditions().Select(c => c.Id).ToList();
 
@@ -69,9 +67,6 @@ namespace game_server.services
             {
                 switch ((ExitSlotType)constraint.SlotType)
                 {
-                    case ExitSlotType.ITEM:
-                        availableItems = availableItems.Intersect(constraint.Values).ToList();
-                        break;
                     case ExitSlotType.SPOT:
                         availableSpots = availableSpots.Intersect(constraint.Values).ToList();
                         break;
@@ -81,42 +76,8 @@ namespace game_server.services
                 }
             }
 
-            // 아이템 선택
-            binding.ItemId = availableItems[_random.Next(availableItems.Count)];
-
-            // REQUIRE 제약 적용 (아이템에 따른 필수 장소)
-            var requireConstraints = constraints
-                .Where(c => c.ConstraintType == (int)ExitConstraintType.REQUIRE &&
-                            c.ConditionSlotType == (int)ExitSlotType.ITEM &&
-                            c.ConditionValues.Contains(binding.ItemId))
-                .ToList();
-
-            if (requireConstraints.Any())
-            {
-                // 필수 조합이 있으면 해당 값만 선택 가능
-                foreach (var req in requireConstraints)
-                {
-                    if ((ExitSlotType)req.SlotType == ExitSlotType.SPOT)
-                    {
-                        availableSpots = availableSpots.Intersect(req.Values).ToList();
-                    }
-                }
-            }
-
             // 장소 선택
             binding.SpotId = availableSpots[_random.Next(availableSpots.Count)];
-
-            // 전역 EXCLUDE 제약 적용 (Item + Spot 조합 금지)
-            var globalExcludes = constraints
-                .Where(c => c.ConstraintType == (int)ExitConstraintType.EXCLUDE &&
-                            c.ConditionSlotType == (int)ExitSlotType.SPOT &&
-                            c.ConditionValues.Contains(binding.SpotId) &&
-                            (ExitSlotType)c.SlotType == ExitSlotType.ITEM &&
-                            c.Values.Contains(binding.ItemId))
-                .ToList();
-
-            // 만약 금지 조합에 걸리면 다시 생성 (재귀 방지를 위해 최대 10회)
-            // 실제로는 데이터가 잘 설계되어 있으면 걸리지 않음
 
             // 조건 선택
             if (availableConditions.Count > 0)
@@ -171,16 +132,8 @@ namespace game_server.services
         /// </summary>
         private string ApplySlotSubstitution(string text)
         {
-            var item = GameExitData.GetItem(SlotBinding.ItemId);
             var spot = GameExitData.GetSpot(SlotBinding.SpotId);
             var condition = GameExitData.GetCondition(SlotBinding.ConditionId);
-
-            if (item != null)
-            {
-                var itemData = GameItemData.Get(item.ItemId);
-                text = text.Replace("{Item.Name}", itemData?.Name?.Kr ?? "???");
-                text = text.Replace("{Item.Warning}", item.Warning);
-            }
 
             if (spot != null)
             {
@@ -204,15 +157,6 @@ namespace game_server.services
             if (string.IsNullOrEmpty(template)) return string.Empty;
 
             var result = template;
-
-            if (result.Contains("{Item.SpawnObj}"))
-            {
-                var item = GameExitData.GetItem(SlotBinding.ItemId);
-                var spawnInteractableId = item != null
-                    ? GameInteractableData.GetInteractableIdByRewardItemId(item.ItemId)
-                    : null;
-                result = result.Replace("{Item.SpawnObj}", spawnInteractableId?.ToString() ?? "0");
-            }
 
             if (result.Contains("{Spot.InteractObj}"))
             {
@@ -281,7 +225,7 @@ namespace game_server.services
             {
                 _logAction?.Invoke($"ExitInstanceManager: Creating new exit state for MatchingId={id}");
                 var state = new MatchingExitState(id);
-                _logAction?.Invoke($"ExitInstanceManager: Generated - Template={state.TemplateId}, Item={state.SlotBinding.ItemId}, Spot={state.SlotBinding.SpotId}, Condition={state.SlotBinding.ConditionId}");
+                _logAction?.Invoke($"ExitInstanceManager: Generated - Template={state.TemplateId}, Spot={state.SlotBinding.SpotId}, Condition={state.SlotBinding.ConditionId}");
                 return state;
             });
         }

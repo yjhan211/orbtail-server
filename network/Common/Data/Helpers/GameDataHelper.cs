@@ -39,13 +39,12 @@ namespace network.common.data.helpers
             {
                 public const string Template = "exit_template.csv";
                 public const string Step = "exit_step.csv";
-                public const string Item = "exit_item.csv";
                 public const string Spot = "exit_spot.csv";
                 public const string Condition = "exit_condition.csv";
                 public const string Constraint = "exit_constraint.csv";
                 public const string Scenario = "exit_scenario.csv";
 
-                public static readonly string[] ALL = new[] { Template, Step, Item, Spot, Condition, Constraint, Scenario };
+                public static readonly string[] ALL = new[] { Template, Step, Spot, Condition, Constraint, Scenario };
             }
 
             public static class Item
@@ -262,7 +261,6 @@ namespace network.common.data.helpers
             GameExitData.Initialize(
                 loadedData[DataFiles.Exit.Template],
                 loadedData[DataFiles.Exit.Step],
-                loadedData[DataFiles.Exit.Item],
                 loadedData[DataFiles.Exit.Spot],
                 loadedData[DataFiles.Exit.Condition],
                 loadedData[DataFiles.Exit.Constraint]

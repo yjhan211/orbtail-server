@@ -42,7 +42,6 @@ namespace network.common.data.models
         public ExitStepData StepData { get; set; }
 
         // 슬롯에 할당된 데이터
-        public ExitItemData SelectedItem { get; set; }
         public ExitSpotData SelectedSpot { get; set; }
         public ExitConditionData SelectedCondition { get; set; }
 
@@ -73,13 +72,6 @@ namespace network.common.data.models
         {
             var context = TextReplacementContext.Create();
 
-            if (SelectedItem != null)
-            {
-                var itemInfo = GameItemData.Get(SelectedItem.ItemId);
-                var areaName = GetItemSpawnAreaName(SelectedItem.ItemId);
-                context.WithItem(itemInfo?.Name?.Kr ?? "???", areaName, SelectedItem.Warning);
-            }
-
             if (SelectedSpot != null)
             {
                 var interactable = GameInteractableData.Get(SelectedSpot.InteractableId);
@@ -92,20 +84,6 @@ namespace network.common.data.models
             }
 
             return context;
-        }
-
-        private string GetItemSpawnAreaName(int itemId)
-        {
-            var interactableId = GameInteractableData.GetInteractableIdByRewardItemId(itemId);
-            if (interactableId.HasValue)
-            {
-                var interactable = GameInteractableData.Get(interactableId.Value);
-                if (interactable != null)
-                {
-                    return GameAreaNameData.Get((AreaType)interactable.ZoneId);
-                }
-            }
-            return "???";
         }
     }
 
@@ -141,11 +119,10 @@ namespace network.common.data.models
             var stepDefinitions = GameExitData.GetStepsByTemplate((int)templateType);
 
             // 풀에서 랜덤 선택
-            var selectedItemIds = SelectFromIntPool(scenario.ItemIdPool, stepDefinitions.Count(s => s.ItemSlot), random);
             var selectedSpots = SelectFromPool(scenario.SpotTypePool, stepDefinitions.Count(s => s.SpotSlot), random);
             var selectedConditions = SelectFromPool(scenario.ConditionTypePool, stepDefinitions.Count(s => s.ConditionSlot), random);
 
-            int itemIdx = 0, spotIdx = 0, conditionIdx = 0;
+            int spotIdx = 0, conditionIdx = 0;
 
             foreach (var stepDef in stepDefinitions.Take(scenario.StepCount))
             {
@@ -156,10 +133,6 @@ namespace network.common.data.models
                 };
 
                 // 슬롯에 데이터 할당
-                if (stepDef.ItemSlot && itemIdx < selectedItemIds.Count)
-                {
-                    step.SelectedItem = GameExitData.GetItem(selectedItemIds[itemIdx++]);
-                }
                 if (stepDef.SpotSlot && spotIdx < selectedSpots.Count)
                 {
                     step.SelectedSpot = GameExitData.GetSpot((int)selectedSpots[spotIdx++]);
@@ -173,23 +146,6 @@ namespace network.common.data.models
             }
 
             return instance;
-        }
-
-        private static List<int> SelectFromIntPool(List<int> pool, int count, Random random)
-        {
-            if (pool == null || pool.Count == 0 || count <= 0)
-                return new List<int>();
-
-            var result = new List<int>();
-            var available = new List<int>(pool);
-
-            for (int i = 0; i < count && available.Count > 0; i++)
-            {
-                var index = random.Next(available.Count);
-                result.Add(available[index]);
-            }
-
-            return result;
         }
 
         private static List<T> SelectFromPool<T>(List<T> pool, int count, Random random) where T : struct, Enum
