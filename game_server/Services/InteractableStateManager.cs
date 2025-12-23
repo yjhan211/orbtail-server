@@ -10,20 +10,14 @@ namespace game_server.services
     /// </summary>
     public class MatchingInteractableState
     {
-        // Key: (InteractId, Order), Value: InteractableActionState
+        // Key: (InteractId, ActionId), Value: InteractableActionState
         private readonly ConcurrentDictionary<(int, int), InteractableActionState> _actionStates = new();
 
         // Area별 오브젝트 ID 목록 (정적 데이터 캐시)
         private readonly ConcurrentDictionary<AreaType, List<int>> _areaObjects = new();
 
-        // Key: InteractId, Value: 셔플된 보상 배열 (액션 순서대로 매핑, 실제 아이템 ID로 변환됨)
-        private readonly ConcurrentDictionary<int, List<int>> _shuffledRewards = new();
-
-        private readonly Random _random;
-
         public MatchingInteractableState(long matchingId)
         {
-            _random = new Random((int)(matchingId % int.MaxValue));
             InitializeFromData();
         }
 
@@ -57,97 +51,7 @@ namespace game_server.services
                         ExploredBy = 0
                     };
                 }
-
-                // Reward Pool 가져와서 셔플 후 실제 아이템 ID로 변환
-                var rewardPool = GameInteractableData.GetRewardPool(interactable.RewardPoolId);
-                if (rewardPool.Count > 0)
-                {
-                    // (RewardType, RewardId) 튜플 리스트로 복사
-                    var rewardInfos = rewardPool
-                        .Select(r => (r.RewardType, r.RewardId))
-                        .ToList();
-
-                    // 규칙 타입과 일반 아이템 분리
-                    var ruleRewards = rewardInfos
-                        .Where(r => r.RewardType == RewardType.RULE || r.RewardType == RewardType.RULE_RANDOM)
-                        .ToList();
-                    var otherRewards = rewardInfos
-                        .Where(r => r.RewardType != RewardType.RULE && r.RewardType != RewardType.RULE_RANDOM)
-                        .ToList();
-
-                    // 일반 아이템만 셔플
-                    Shuffle(otherRewards);
-
-                    // 규칙을 맨 앞에, 나머지는 뒤에 배치
-                    var orderedRewards = new List<(RewardType RewardType, int RewardId)>();
-                    orderedRewards.AddRange(ruleRewards);
-                    orderedRewards.AddRange(otherRewards);
-
-                    // 랜덤 타입을 실제 아이템 ID로 변환
-                    var resolvedRewards = orderedRewards
-                        .Select(info => ResolveRewardId(info.RewardType, info.RewardId))
-                        .ToList();
-
-                    _shuffledRewards[interactable.Id] = resolvedRewards;
-                }
             }
-        }
-
-        /// <summary>
-        /// RewardType에 따라 실제 아이템 ID 결정
-        /// </summary>
-        private int ResolveRewardId(RewardType rewardType, int rewardId)
-        {
-            switch (rewardType)
-            {
-                case RewardType.ITEM:
-                    return rewardId;
-
-                case RewardType.CONDITION_RANDOM:
-                    var conditionItem = GameItemData.GetRandomConsumableByBuffSubType(BuffSubType.CONDITION_ADD, _random);
-                    if (conditionItem == null)
-                    {
-                        Console.WriteLine($"[WARN] CONDITION_ADD 아이템을 찾을 수 없음");
-                    }
-                    return conditionItem?.Id ?? 0;
-
-                case RewardType.CORRUPTION_RANDOM:
-                    var corruptionItem = GameItemData.GetRandomConsumableByBuffSubType(BuffSubType.CORRUPTION_DOWN, _random);
-                    if (corruptionItem == null)
-                    {
-                        Console.WriteLine($"[WARN] CORRUPTION_DOWN 아이템을 찾을 수 없음");
-                    }
-                    return corruptionItem?.Id ?? 0;
-
-                case RewardType.NONE:
-                default:
-                    return 0;
-            }
-        }
-
-        private void Shuffle<T>(List<T> list)
-        {
-            for (int i = list.Count - 1; i > 0; i--)
-            {
-                int j = _random.Next(i + 1);
-                (list[i], list[j]) = (list[j], list[i]);
-            }
-        }
-
-        /// <summary>
-        /// 특정 오브젝트의 액션 인덱스에 해당하는 보상 ID 반환 (0이면 보상 없음)
-        /// </summary>
-        public int GetRewardForAction(int interactId, int actionIndex)
-        {
-            if (!_shuffledRewards.TryGetValue(interactId, out var rewards))
-                return 0;
-
-            // actionIndex는 1-based (ActionId), 배열은 0-based
-            var index = actionIndex - 1;
-            if (index < 0 || index >= rewards.Count)
-                return 0;
-
-            return rewards[index];
         }
 
         public List<InteractableObjectState> GetAreaObjectStates(AreaType areaType)
@@ -193,10 +97,10 @@ namespace game_server.services
             return result;
         }
 
-        public bool TryExplore(int interactId, int order, long playerId, out InteractableActionState? state)
+        public bool TryExplore(int interactId, int actionId, long playerId, out InteractableActionState? state)
         {
             state = null;
-            var key = (interactId, order);
+            var key = (interactId, actionId);
 
             if (!_actionStates.TryGetValue(key, out var currentState))
             {
@@ -211,7 +115,7 @@ namespace game_server.services
 
             var newState = new InteractableActionState
             {
-                Order = order,
+                Order = actionId,
                 IsExplored = true,
                 ExploredBy = playerId
             };
@@ -221,9 +125,9 @@ namespace game_server.services
             return true;
         }
 
-        public InteractableActionState? GetState(int interactId, int order)
+        public InteractableActionState? GetState(int interactId, int actionId)
         {
-            var key = (interactId, order);
+            var key = (interactId, actionId);
             return _actionStates.TryGetValue(key, out var state) ? state : null;
         }
     }
@@ -272,28 +176,35 @@ namespace game_server.services
         /// <summary>
         /// 특정 선택지 탐색 처리
         /// </summary>
-        public bool TryExplore(long matchingId, int interactId, int order, long playerId, out InteractableActionState? state)
+        public bool TryExplore(long matchingId, int interactId, int actionId, long playerId, out InteractableActionState? state)
         {
             var matchingState = GetOrCreateMatchingState(matchingId);
-            return matchingState.TryExplore(interactId, order, playerId, out state);
+            return matchingState.TryExplore(interactId, actionId, playerId, out state);
         }
 
         /// <summary>
         /// 특정 선택지 상태 조회
         /// </summary>
-        public InteractableActionState? GetState(long matchingId, int interactId, int order)
+        public InteractableActionState? GetState(long matchingId, int interactId, int actionId)
         {
             var matchingState = GetOrCreateMatchingState(matchingId);
-            return matchingState.GetState(interactId, order);
+            return matchingState.GetState(interactId, actionId);
         }
 
         /// <summary>
-        /// 특정 오브젝트의 액션에 해당하는 셔플된 보상 ID 반환
+        /// 특정 액션의 결과 정보 반환 (ResultType, ResultId)
         /// </summary>
-        public int GetRewardForAction(long matchingId, int interactId, int actionId)
+        public (ActionResultType resultType, int resultId) GetActionResult(int interactId, int actionId)
         {
-            var matchingState = GetOrCreateMatchingState(matchingId);
-            return matchingState.GetRewardForAction(interactId, actionId);
+            var interactable = GameInteractableData.Get(interactId);
+            if (interactable == null)
+                return (ActionResultType.NONE, 0);
+
+            var action = interactable.Actions.FirstOrDefault(a => a.ActionId == actionId);
+            if (action == null)
+                return (ActionResultType.NONE, 0);
+
+            return (action.ResultType, action.ResultId);
         }
 
         /// <summary>

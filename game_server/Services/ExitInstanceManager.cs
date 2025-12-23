@@ -1,96 +1,61 @@
 using System.Collections.Concurrent;
-using network.common;
 using network.common.data;
 
 namespace game_server.services
 {
     /// <summary>
-    /// 탈출 절차 슬롯 바인딩 정보
-    /// </summary>
-    public class ExitSlotBinding
-    {
-        public int SpotId { get; set; }
-        public int ConditionId { get; set; }
-    }
-
-    /// <summary>
     /// 단일 매칭 인스턴스의 탈출 절차 상태
     /// </summary>
     public class MatchingExitState
     {
-        public int TemplateId { get; private set; }
-        public ExitSlotBinding SlotBinding { get; private set; }
+        public int GroupId { get; private set; }
         public int CurrentStepOrder { get; private set; }
         public List<ExitStepData> Steps { get; private set; }
         public bool IsCompleted { get; private set; }
-        public long LastAdvancedBy { get; private set; } // 마지막으로 진행한 플레이어 UID
+        public long LastAdvancedBy { get; private set; }
 
-        private readonly Random _random;
-        private readonly object _stepLock = new(); // 동시 진행 방지 락
+        // 현재 단계의 완료 조건 추적
+        private HashSet<int> _acquiredItemIds = new();
+        private HashSet<string> _completedActions = new(); // "interactableId_actionId" 형태
+        private HashSet<int> _visitedAreas = new();
+
+        private readonly object _stepLock = new();
 
         public MatchingExitState(long matchingId)
         {
-            _random = new Random((int)(matchingId % int.MaxValue));
-            GenerateExitProcedure();
+            var random = new Random((int)(matchingId % int.MaxValue));
+            GenerateExitProcedure(random);
         }
 
-        private void GenerateExitProcedure()
+        private void GenerateExitProcedure(Random random)
         {
-            // 1. 템플릿 랜덤 선택 (싱글 매칭이므로 템플릿 2 제외)
-            var templates = GameExitData.GetAllTemplates()
-                .Where(t => t.Id != 2)  // TODO: 멀티 매칭 구현 시 제거
-                .ToList();
-            TemplateId = templates[_random.Next(templates.Count)].Id;
+            // 1. 사용 가능한 group_id 목록 수집
+            var allSteps = new List<ExitStepData>();
+            var groupIds = new HashSet<int>();
 
-            // 2. 제약 조건 가져오기
-            var constraints = GameExitData.GetConstraintsByTemplate(TemplateId);
-
-            // 3. 슬롯 바인딩 생성 (제약 조건 적용)
-            SlotBinding = GenerateSlotBinding(constraints);
-
-            // 4. 단계 로드
-            Steps = GameExitData.GetStepsByTemplate(TemplateId);
-            CurrentStepOrder = 1;
-            IsCompleted = false;
-        }
-
-        private ExitSlotBinding GenerateSlotBinding(List<ExitConstraintData> constraints)
-        {
-            var binding = new ExitSlotBinding();
-
-            // 가용 목록 초기화
-            var availableSpots = GameExitData.GetAllSpots().Select(s => s.Id).ToList();
-            var availableConditions = GameExitData.GetAllConditions().Select(c => c.Id).ToList();
-
-            // POOL 제약 적용 (허용 목록)
-            foreach (var constraint in constraints.Where(c => c.ConstraintType == (int)ExitConstraintType.POOL))
+            // group_id 1부터 시작해서 존재하는 그룹 찾기
+            for (int groupId = 1; groupId <= 100; groupId++)
             {
-                switch ((ExitSlotType)constraint.SlotType)
+                var steps = GameExitData.GetStepsByGroup(groupId);
+                if (steps.Count > 0)
                 {
-                    case ExitSlotType.SPOT:
-                        availableSpots = availableSpots.Intersect(constraint.Values).ToList();
-                        break;
-                    case ExitSlotType.CONDITION:
-                        availableConditions = availableConditions.Intersect(constraint.Values).ToList();
-                        break;
+                    groupIds.Add(groupId);
                 }
             }
 
-            // 장소 선택
-            binding.SpotId = availableSpots[_random.Next(availableSpots.Count)];
-
-            // 조건 선택
-            if (availableConditions.Count > 0)
+            if (groupIds.Count == 0)
             {
-                binding.ConditionId = availableConditions[_random.Next(availableConditions.Count)];
-            }
-            else
-            {
-                // 폴백: 첫 번째 조건 사용
-                binding.ConditionId = GameExitData.GetAllConditions().First().Id;
+                throw new InvalidOperationException("No exit step groups found");
             }
 
-            return binding;
+            // 2. 랜덤하게 그룹 선택
+            var groupList = groupIds.ToList();
+            GroupId = groupList[random.Next(groupList.Count)];
+
+            // 3. 해당 그룹의 단계들 로드
+            Steps = GameExitData.GetStepsByGroup(GroupId);
+            CurrentStepOrder = 1;
+            IsCompleted = false;
         }
 
         /// <summary>
@@ -103,101 +68,151 @@ namespace game_server.services
         }
 
         /// <summary>
-        /// 현재 단계 텍스트 생성 (슬롯 치환)
+        /// 아이템 획득 시 호출
         /// </summary>
-        public string GetCurrentStepText()
+        public bool OnItemAcquired(int itemId)
         {
-            var step = GetCurrentStep();
-            if (step == null) return string.Empty;
-            return ApplySlotSubstitution(step.TextTemplate);
+            lock (_stepLock)
+            {
+                _acquiredItemIds.Add(itemId);
+                return CheckAndAdvance();
+            }
         }
 
         /// <summary>
-        /// 전체 단계 목록 반환 (텍스트 치환 완료)
+        /// 상호작용 액션 수행 시 호출
         /// </summary>
-        public List<(int stepOrder, string text, int actionType, string targetInteractableId)> GetAllStepsWithText()
+        public bool OnActionCompleted(int interactableId, int actionId)
         {
-            var result = new List<(int, string, int, string)>();
-            foreach (var step in Steps.OrderBy(s => s.StepOrder))
+            lock (_stepLock)
             {
-                var text = ApplySlotSubstitution(step.TextTemplate);
-                var targetId = ResolveTargetInteractableId(step.TargetInteractableId);
-                result.Add((step.StepOrder, text, step.ActionType, targetId));
+                var actionKey = $"{interactableId}_{actionId}";
+                _completedActions.Add(actionKey);
+                return CheckAndAdvance();
             }
-            return result;
         }
 
         /// <summary>
-        /// 슬롯 치환 적용
+        /// 구역 방문 시 호출
         /// </summary>
-        private string ApplySlotSubstitution(string text)
+        public bool OnAreaVisited(int areaType)
         {
-            var spot = GameExitData.GetSpot(SlotBinding.SpotId);
-            var condition = GameExitData.GetCondition(SlotBinding.ConditionId);
-
-            if (spot != null)
+            lock (_stepLock)
             {
-                var interactable = GameInteractableData.Get(spot.InteractableId);
-                text = text.Replace("{Spot.Name}", interactable?.ShortName ?? "???");
+                _visitedAreas.Add(areaType);
+                return CheckAndAdvance();
             }
-
-            if (condition != null)
-            {
-                text = text.Replace("{Condition.Text}", condition.Text);
-            }
-
-            return text;
         }
 
         /// <summary>
-        /// TargetInteractableId 슬롯 치환
+        /// 현재 단계 완료 조건 확인 및 진행
         /// </summary>
-        private string ResolveTargetInteractableId(string? template)
+        private bool CheckAndAdvance()
         {
-            if (string.IsNullOrEmpty(template)) return string.Empty;
+            if (IsCompleted) return false;
 
-            var result = template;
+            var currentStep = GetCurrentStep();
+            if (currentStep == null) return false;
 
-            if (result.Contains("{Spot.InteractObj}"))
+            // 모든 조건 확인
+            bool allConditionsMet = true;
+
+            // target_item_id 확인
+            if (currentStep.TargetItemIds.Count > 0)
             {
-                var spot = GameExitData.GetSpot(SlotBinding.SpotId);
-                result = result.Replace("{Spot.InteractObj}", spot?.InteractableId.ToString() ?? "0");
+                foreach (var itemId in currentStep.TargetItemIds)
+                {
+                    if (!_acquiredItemIds.Contains(itemId))
+                    {
+                        allConditionsMet = false;
+                        break;
+                    }
+                }
             }
 
-            return result;
+            // target_interactable_action 확인
+            if (allConditionsMet && currentStep.TargetInteractableActions.Count > 0)
+            {
+                foreach (var actionKey in currentStep.TargetInteractableActions)
+                {
+                    // actionKey는 interactableId_actionId 형태로 저장되어야 함
+                    // CSV에서는 단일 int로 저장되어 있으므로 변환 필요
+                    // 여기서는 "interactableId_actionId" 문자열로 비교
+                    if (!_completedActions.Contains(actionKey.ToString()))
+                    {
+                        allConditionsMet = false;
+                        break;
+                    }
+                }
+            }
+
+            // target_area 확인
+            if (allConditionsMet && currentStep.TargetAreas.Count > 0)
+            {
+                foreach (var areaType in currentStep.TargetAreas)
+                {
+                    if (!_visitedAreas.Contains(areaType))
+                    {
+                        allConditionsMet = false;
+                        break;
+                    }
+                }
+            }
+
+            if (allConditionsMet)
+            {
+                return AdvanceToNextStep();
+            }
+
+            return false;
         }
 
         /// <summary>
-        /// 다음 단계로 진행 (동시 진행 방지)
+        /// 다음 단계로 진행
+        /// </summary>
+        private bool AdvanceToNextStep()
+        {
+            var nextOrder = CurrentStepOrder + 1;
+            var nextStep = Steps.FirstOrDefault(s => s.StepOrder == nextOrder);
+
+            if (nextStep == null)
+            {
+                // 모든 단계 완료 - 탈출 성공
+                IsCompleted = true;
+                return true;
+            }
+
+            CurrentStepOrder = nextOrder;
+
+            // 다음 단계를 위해 추적 데이터 초기화하지 않음 (누적)
+            return true;
+        }
+
+        /// <summary>
+        /// 수동으로 다음 단계 진행 (플레이어에 의한 진행)
         /// </summary>
         public bool AdvanceStep(long playerId)
         {
             lock (_stepLock)
             {
-                if (IsCompleted) return false;
-
-                var nextOrder = CurrentStepOrder + 1;
-                var nextStep = Steps.FirstOrDefault(s => s.StepOrder == nextOrder);
-
                 LastAdvancedBy = playerId;
-
-                if (nextStep == null)
-                {
-                    IsCompleted = true;
-                    return true; // 탈출 완료
-                }
-
-                CurrentStepOrder = nextOrder;
-                return true;
+                return AdvanceToNextStep();
             }
         }
 
         /// <summary>
-        /// 탈출 완료 여부
+        /// 현재 진행 상황 조회
         /// </summary>
-        public bool CheckEscape()
+        public (HashSet<int> items, HashSet<string> actions, HashSet<int> areas) GetProgress()
         {
-            return IsCompleted;
+            lock (_stepLock)
+            {
+                return (
+                    new HashSet<int>(_acquiredItemIds),
+                    new HashSet<string>(_completedActions),
+                    new HashSet<int>(_visitedAreas)
+                );
+            }
         }
     }
 
@@ -225,50 +240,97 @@ namespace game_server.services
             {
                 _logAction?.Invoke($"ExitInstanceManager: Creating new exit state for MatchingId={id}");
                 var state = new MatchingExitState(id);
-                _logAction?.Invoke($"ExitInstanceManager: Generated - Template={state.TemplateId}, Spot={state.SlotBinding.SpotId}, Condition={state.SlotBinding.ConditionId}");
+                _logAction?.Invoke($"ExitInstanceManager: Generated - GroupId={state.GroupId}, TotalSteps={state.Steps.Count}");
                 return state;
             });
         }
 
         /// <summary>
-        /// 현재 단계 텍스트 가져오기
+        /// 아이템 획득 시 탈출 진행 상황 업데이트
         /// </summary>
-        public string GetCurrentStepText(long matchingId)
+        public (bool advanced, bool escaped) OnItemAcquired(long matchingId, int itemId, long playerId)
         {
             var state = GetOrCreateMatchingState(matchingId);
-            return state.GetCurrentStepText();
+            var wasStep = state.CurrentStepOrder;
+
+            if (state.OnItemAcquired(itemId))
+            {
+                _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} advanced from step {wasStep} to {state.CurrentStepOrder} by acquiring item {itemId}");
+
+                if (state.IsCompleted)
+                {
+                    _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} ESCAPED!");
+                    return (true, true);
+                }
+                return (true, false);
+            }
+            return (false, false);
         }
 
         /// <summary>
-        /// 현재 단계 정보 가져오기
+        /// 상호작용 액션 수행 시 탈출 진행 상황 업데이트
         /// </summary>
-        public ExitStepData? GetCurrentStep(long matchingId)
+        public (bool advanced, bool escaped) OnActionCompleted(long matchingId, int interactableId, int actionId, long playerId)
         {
             var state = GetOrCreateMatchingState(matchingId);
-            return state.GetCurrentStep();
+            var wasStep = state.CurrentStepOrder;
+
+            if (state.OnActionCompleted(interactableId, actionId))
+            {
+                _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} advanced from step {wasStep} to {state.CurrentStepOrder} by action {interactableId}_{actionId}");
+
+                if (state.IsCompleted)
+                {
+                    _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} ESCAPED!");
+                    return (true, true);
+                }
+                return (true, false);
+            }
+            return (false, false);
         }
 
         /// <summary>
-        /// 다음 단계로 진행
+        /// 구역 방문 시 탈출 진행 상황 업데이트
         /// </summary>
-        public (bool success, bool escaped, string? nextStepText) AdvanceStep(long matchingId, long playerId)
+        public (bool advanced, bool escaped) OnAreaVisited(long matchingId, int areaType, long playerId)
         {
             var state = GetOrCreateMatchingState(matchingId);
+            var wasStep = state.CurrentStepOrder;
 
-            if (!state.AdvanceStep(playerId))
+            if (state.OnAreaVisited(areaType))
             {
-                return (false, false, null);
-            }
+                _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} advanced from step {wasStep} to {state.CurrentStepOrder} by visiting area {areaType}");
 
-            if (state.IsCompleted)
+                if (state.IsCompleted)
+                {
+                    _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} ESCAPED!");
+                    return (true, true);
+                }
+                return (true, false);
+            }
+            return (false, false);
+        }
+
+        /// <summary>
+        /// 수동으로 다음 단계로 진행 (UI 버튼 클릭 등)
+        /// </summary>
+        public (bool success, bool escaped) AdvanceStep(long matchingId, long playerId)
+        {
+            var state = GetOrCreateMatchingState(matchingId);
+            var wasStep = state.CurrentStepOrder;
+
+            if (state.AdvanceStep(playerId))
             {
-                _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} ESCAPED by Player {playerId}!");
-                return (true, true, null);
-            }
+                _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} manually advanced from step {wasStep} to {state.CurrentStepOrder} by player {playerId}");
 
-            var nextText = state.GetCurrentStepText();
-            _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} advanced to step {state.CurrentStepOrder} by Player {playerId}");
-            return (true, false, nextText);
+                if (state.IsCompleted)
+                {
+                    _logAction?.Invoke($"ExitInstanceManager: MatchingId={matchingId} ESCAPED!");
+                    return (true, true);
+                }
+                return (true, false);
+            }
+            return (false, false);
         }
 
         /// <summary>

@@ -402,15 +402,14 @@ public static class PacketMaker
 
     // ========== 탈출 절차 프로토콜 ==========
 
-    public static Packet G_TO_C_EXIT_STEP_INFO(int templateId, int currentStepOrder, int totalStepCount, ExitSlotBindingInfo slotBinding, bool isCompleted, long lastAdvancedBy = 0)
+    public static Packet G_TO_C_EXIT_STEP_INFO(int groupId, int currentStepOrder, int totalStepCount, bool isCompleted, long lastAdvancedBy = 0)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_EXIT_STEP_INFO);
         G_TO_C_EXIT_STEP_INFO body = new()
         {
-            TemplateId = templateId,
+            GroupId = groupId,
             CurrentStepOrder = currentStepOrder,
             TotalStepCount = totalStepCount,
-            SlotBinding = slotBinding,
             IsCompleted = isCompleted,
             LastAdvancedBy = lastAdvancedBy
         };

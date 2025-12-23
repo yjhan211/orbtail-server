@@ -669,7 +669,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class G_TO_C_EXIT_STEP_INFO : IMessagePackObject
     {
-        [Key("templateId")] public int TemplateId { get; set; }
+        [Key("groupId")] public int GroupId { get; set; } // 탈출 절차 그룹 ID
         [Key("currentStepOrder")] public int CurrentStepOrder { get; set; } // 현재 단계 (이보다 작은 order는 완료)
         [Key("totalStepCount")] public int TotalStepCount { get; set; } // 총 단계 수
         [Key("isCompleted")] public bool IsCompleted { get; set; } // 탈출 완료 여부

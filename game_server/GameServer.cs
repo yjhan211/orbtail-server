@@ -34,6 +34,7 @@ public class GameServer : IHostedService
     private readonly InGameInventoryManager _inGameInventoryManager = new();
     private readonly AreaRuleManager _areaRuleManager = new();
     private readonly ExitInstanceManager _exitInstanceManager = new();
+    private readonly ItemPoolManager _itemPoolManager = new();
     private readonly CorridorRuleManager _corridorRuleManager = new();
     private readonly InteractRuleManager _interactRuleManager = new();
     private CancellationTokenSource _cts = new();
@@ -141,6 +142,7 @@ public class GameServer : IHostedService
             _areaRuleManager.Initialize(msg => _logger.LogInformation(msg), _corridorRuleManager);
             _interactRuleManager.Initialize(msg => _logger.LogInformation(msg), _areaRuleManager);
             _exitInstanceManager.Initialize(msg => _logger.LogInformation(msg));
+            _itemPoolManager.Initialize(msg => _logger.LogInformation(msg));
         }
         catch (Exception ex)
         {
@@ -252,6 +254,7 @@ public class GameServer : IHostedService
                 _inGameInventoryManager,
                 _areaRuleManager,
                 _exitInstanceManager,
+                _itemPoolManager,
                 _corridorRuleManager,
                 _interactRuleManager);
 

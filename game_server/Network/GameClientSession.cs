@@ -30,6 +30,7 @@ public class GameClientSession : IPeer
     private readonly InGameInventoryManager _inGameInventoryManager;
     private readonly AreaRuleManager _areaRuleManager;
     private readonly ExitInstanceManager _exitInstanceManager;
+    private readonly ItemPoolManager _itemPoolManager;
     private readonly CorridorRuleManager _corridorRuleManager;
     private readonly InteractRuleManager _interactRuleManager;
 
@@ -77,6 +78,7 @@ public class GameClientSession : IPeer
         InGameInventoryManager inGameInventoryManager,
         AreaRuleManager areaRuleManager,
         ExitInstanceManager exitInstanceManager,
+        ItemPoolManager itemPoolManager,
         CorridorRuleManager corridorRuleManager,
         InteractRuleManager interactRuleManager)
     {
@@ -94,6 +96,7 @@ public class GameClientSession : IPeer
         _inGameInventoryManager = inGameInventoryManager;
         _areaRuleManager = areaRuleManager;
         _exitInstanceManager = exitInstanceManager;
+        _itemPoolManager = itemPoolManager;
         _corridorRuleManager = corridorRuleManager;
         _interactRuleManager = interactRuleManager;
 
@@ -617,8 +620,8 @@ public class GameClientSession : IPeer
                 // 4. 나에게 새 Area의 Interactable 목록 전송
                 SendInteractableList(newArea);
 
-                // 5. 운반 미션 자동 완료 체크
-                CheckDeliveryMissionComplete(newArea);
+                // 5. Area 도착 시 탈출 조건 체크
+                CheckAreaArrivalForExit(newArea);
             }
         }
         catch (Exception ex)
@@ -628,52 +631,27 @@ public class GameClientSession : IPeer
     }
 
     /// <summary>
-    /// 운반 미션(action_type=2) 목적지 Area 도착 시 자동 완료 처리
+    /// Area 도착 시 탈출 조건 체크
     /// </summary>
-    private void CheckDeliveryMissionComplete(AreaType arrivedArea)
+    private void CheckAreaArrivalForExit(AreaType arrivedArea)
     {
         if (!PlayerId.HasValue) return;
 
         try
         {
-            var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-            if (state.IsCompleted) return;
+            // target_area 조건 체크
+            var (advanced, escaped) = _exitInstanceManager.OnAreaVisited(CurrentMapSubId, (int)arrivedArea, PlayerId.Value);
 
-            var currentStep = state.GetCurrentStep();
-            if (currentStep == null) return;
-
-            // action_type=2 (운반/호위)가 아니면 스킵
-            if (currentStep.ActionType != 2) return;
-
-            // 목적지 Spot의 Area 확인
-            if (!currentStep.SpotSlot || state.SlotBinding.SpotId <= 0) return;
-
-            var exitSpot = GameExitData.GetSpot(state.SlotBinding.SpotId);
-            if (exitSpot == null) return;
-
-            var spotInteractable = GameInteractableData.Get(exitSpot.InteractableId);
-            if (spotInteractable == null) return;
-
-            var targetArea = (AreaType)spotInteractable.ZoneId;
-
-            // 도착한 Area가 목적지와 일치하면 자동 완료
-            if (arrivedArea != targetArea) return;
-
-            _logger.LogInformation("Player {PlayerId} arrived at delivery destination Area {Area}, auto-completing step",
-                PlayerId, arrivedArea);
-
-            // 다음 단계로 진행
-            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId, PlayerId.Value);
-
-            if (success)
+            if (advanced)
             {
+                var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
                 var newStepOrder = state.CurrentStepOrder;
 
                 // 탈출 성공 시 게임 타이머 정리
                 if (escaped)
                 {
                     CleanupGameTimer(CurrentMapSubId);
-                    _logger.LogInformation("Game timer cleaned up after escape success (delivery): MatchingId={MatchingId}", CurrentMapSubId);
+                    _logger.LogInformation("Game timer cleaned up after escape success (area visit): MatchingId={MatchingId}", CurrentMapSubId);
                 }
 
                 // 진행 결과 응답
@@ -688,19 +666,13 @@ public class GameClientSession : IPeer
                 // 같은 인스턴스의 다른 플레이어들에게 브로드캐스트
                 BroadcastExitStepUpdate(PlayerId.Value, newStepOrder, escaped);
 
-                // 현재 Area의 Interactable 목록 다시 전송 (MissionActionText 갱신)
-                if (CurrentArea != AreaType.None)
-                {
-                    SendInteractableList(CurrentArea);
-                }
-
-                _logger.LogInformation("Player {PlayerId} auto-completed delivery step: NewStep={NewStep}, Escaped={Escaped}",
-                    PlayerId, newStepOrder, escaped);
+                _logger.LogInformation("Player {PlayerId} area visit advanced exit step: Area={Area}, NewStep={NewStep}, Escaped={Escaped}",
+                    PlayerId, arrivedArea, newStepOrder, escaped);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CheckDeliveryMissionComplete error for player {PlayerId}", PlayerId);
+            _logger.LogError(ex, "CheckAreaArrivalForExit error for player {PlayerId}", PlayerId);
         }
     }
 
@@ -713,88 +685,17 @@ public class GameClientSession : IPeer
             return;
         }
 
-        // 미션 액션 텍스트 추가
-        AddMissionActionTexts(objects);
-
         // 각 오브젝트의 액션 개수 로그
         foreach (var obj in objects)
         {
-            _logger.LogDebug("InteractableObject Id={InteractId}: {ActionCount} actions, MissionActionText={MissionText}",
-                obj.InteractId, obj.Actions?.Count ?? 0, obj.MissionActionText ?? "null");
+            _logger.LogDebug("InteractableObject Id={InteractId}: {ActionCount} actions",
+                obj.InteractId, obj.Actions?.Count ?? 0);
         }
 
         using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
         Send(packet);
         _logger.LogDebug("Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
             objects.Count, areaType, PlayerId, CurrentMapSubId);
-    }
-
-    /// <summary>
-    /// 현재 탈출 절차에서 spot_action_text가 필요한 오브젝트에 미션 액션 텍스트 추가
-    /// </summary>
-    private void AddMissionActionTexts(List<InteractableObjectState> objects)
-    {
-        try
-        {
-            var exitState = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-            var currentStep = exitState.GetCurrentStep();
-
-            // 현재 단계가 없거나 완료됨
-            if (currentStep == null || exitState.IsCompleted)
-                return;
-
-            // SpotActionText가 정의되어 있지 않으면 스킵
-            if (string.IsNullOrEmpty(currentStep.SpotActionText))
-                return;
-
-            // 타겟 interactable_id 결정
-            int targetInteractableId = 0;
-
-            if (!string.IsNullOrEmpty(currentStep.TargetInteractableId))
-            {
-                // 1. 직접 숫자 ID인 경우 (예: 701000007)
-                if (int.TryParse(currentStep.TargetInteractableId, out var directId))
-                {
-                    targetInteractableId = directId;
-                }
-                // 2. {Spot.InteractObj} 플레이스홀더인 경우
-                else if (currentStep.TargetInteractableId == "{Spot.InteractObj}" && exitState.SlotBinding.SpotId > 0)
-                {
-                    var exitSpot = GameExitData.GetSpot(exitState.SlotBinding.SpotId);
-                    if (exitSpot != null)
-                    {
-                        targetInteractableId = exitSpot.InteractableId;
-                    }
-                }
-            }
-            // 3. SpotSlot을 사용하는 경우 (fallback)
-            else if (currentStep.SpotSlot && exitState.SlotBinding.SpotId > 0)
-            {
-                var exitSpot = GameExitData.GetSpot(exitState.SlotBinding.SpotId);
-                if (exitSpot != null)
-                {
-                    targetInteractableId = exitSpot.InteractableId;
-                }
-            }
-
-            if (targetInteractableId == 0)
-                return;
-
-            // 해당 오브젝트 찾기
-            var targetObject = objects.FirstOrDefault(o => o.InteractId == targetInteractableId);
-            if (targetObject == null)
-                return;
-
-            // SpotActionText 설정
-            var actionText = currentStep.SpotActionText;
-            targetObject.MissionActionText = actionText;
-            _logger.LogDebug("Added mission action text to InteractId={InteractId}: {ActionText}",
-                targetInteractableId, actionText);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "AddMissionActionTexts error");
-        }
     }
 
 
@@ -886,19 +787,50 @@ public class GameClientSession : IPeer
                 ModifyStats(corruptionDelta: violationResult.CorruptionDelta);
             }
 
-            // 셔플된 보상 풀에서 해당 액션의 보상 가져오기
-            var rewardItemId = _interactableStateManager.GetRewardForAction(CurrentMapSubId, msg.InteractId, msg.ActionId);
+            // 액션 결과 처리 (result_type, result_id 기반)
+            var (resultType, resultId) = _interactableStateManager.GetActionResult(msg.InteractId, msg.ActionId);
+            var rewardItemId = 0;
 
-            // 보상이 있으면 인벤토리에 추가
-            if (rewardItemId > 0)
+            switch (resultType)
             {
-                AddInGameItem(rewardItemId);
-                _logger.LogInformation("Player {PlayerId} received reward: ItemId={ItemId} from InteractId={InteractId}, ActionId={ActionId}",
-                    PlayerId, rewardItemId, msg.InteractId, msg.ActionId);
+                case ActionResultType.REWARD_POOL:
+                    // 풀에서 다음 아이템 가져오기
+                    var itemFromPool = _itemPoolManager.GetNextItemFromPool(CurrentMapSubId, resultId);
+                    if (itemFromPool.HasValue)
+                    {
+                        rewardItemId = itemFromPool.Value;
+                        AddInGameItem(rewardItemId);
+                        _logger.LogInformation("Player {PlayerId} received reward from pool {PoolId}: ItemId={ItemId}",
+                            PlayerId, resultId, rewardItemId);
 
-                // 탈출 절차 목표 아이템인지 확인하고 진척도 갱신
-                CheckAndAdvanceExitStep(rewardItemId);
+                        // 탈출 절차 목표 아이템인지 확인하고 진척도 갱신
+                        CheckAndAdvanceExitStep(rewardItemId);
+                    }
+                    break;
+
+                case ActionResultType.DEBUFF_CORRUPTION:
+                    ModifyStats(corruptionDelta: resultId);
+                    _logger.LogInformation("Player {PlayerId} received corruption debuff: +{Amount}", PlayerId, resultId);
+                    break;
+
+                case ActionResultType.DEBUFF_STAMINA:
+                    ModifyStats(staminaDelta: -resultId);
+                    _logger.LogInformation("Player {PlayerId} received stamina debuff: -{Amount}", PlayerId, resultId);
+                    break;
+
+                case ActionResultType.BUFF_CORRUPTION:
+                    ModifyStats(corruptionDelta: -resultId);
+                    _logger.LogInformation("Player {PlayerId} received corruption buff: -{Amount}", PlayerId, resultId);
+                    break;
+
+                case ActionResultType.BUFF_STAMINA:
+                    ModifyStats(staminaDelta: resultId);
+                    _logger.LogInformation("Player {PlayerId} received stamina buff: +{Amount}", PlayerId, resultId);
+                    break;
             }
+
+            // target_interactable_action 조건 체크
+            CheckActionCompletedForExit(msg.InteractId, msg.ActionId);
 
             // 성공 응답 (최종 결정된 아이템 ID 전송)
             SendExploreResult(true, msg.InteractId, msg.ActionId, rewardItemId, ErrorCode.SUCCESS);
@@ -1307,24 +1239,17 @@ public class GameClientSession : IPeer
         {
             var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
 
-            var slotBinding = new ExitSlotBindingInfo
-            {
-                SpotId = state.SlotBinding.SpotId,
-                ConditionId = state.SlotBinding.ConditionId
-            };
-
             using var packet = PacketMaker.G_TO_C_EXIT_STEP_INFO(
-                templateId: state.TemplateId,
+                groupId: state.GroupId,
                 currentStepOrder: state.CurrentStepOrder,
                 totalStepCount: state.Steps.Count,
-                slotBinding: slotBinding,
                 isCompleted: state.IsCompleted,
                 lastAdvancedBy: state.LastAdvancedBy
             );
             Send(packet);
 
-            _logger.LogInformation("Sent exit step info to Player {PlayerId}: Template={TemplateId}, CurrentStep={StepOrder}/{TotalSteps}, Binding=(Spot={SpotId}, Condition={ConditionId}), Completed={IsCompleted}, LastAdvancedBy={LastAdvancedBy}",
-                PlayerId, state.TemplateId, state.CurrentStepOrder, state.Steps.Count, slotBinding.SpotId, slotBinding.ConditionId, state.IsCompleted, state.LastAdvancedBy);
+            _logger.LogInformation("Sent exit step info to Player {PlayerId}: GroupId={GroupId}, CurrentStep={StepOrder}/{TotalSteps}, Completed={IsCompleted}, LastAdvancedBy={LastAdvancedBy}",
+                PlayerId, state.GroupId, state.CurrentStepOrder, state.Steps.Count, state.IsCompleted, state.LastAdvancedBy);
         }
         catch (Exception ex)
         {
@@ -1374,9 +1299,8 @@ public class GameClientSession : IPeer
                 return Task.CompletedTask;
             }
 
-            // 다음 단계로 진행 (선택지 기반 미션: 삽입, 미니게임 등)
-            // 운반 미션(action_type=2)은 Area 도착 시 자동 완료됨 (CheckDeliveryMissionComplete)
-            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId, PlayerId.Value);
+            // 다음 단계로 진행 (수동 진행)
+            var (success, escaped) = _exitInstanceManager.AdvanceStep(CurrentMapSubId, PlayerId.Value);
 
             if (success)
             {
@@ -1455,11 +1379,75 @@ public class GameClientSession : IPeer
     }
 
     /// <summary>
-    /// 아이템 습득 시 탈출 절차 확인 (exit_item 제거로 비활성화)
+    /// 액션 완료 시 탈출 절차 확인 (target_interactable_action 조건 체크)
+    /// </summary>
+    private void CheckActionCompletedForExit(int interactId, int actionId)
+    {
+        if (!PlayerId.HasValue) return;
+
+        try
+        {
+            var (advanced, escaped) = _exitInstanceManager.OnActionCompleted(CurrentMapSubId, interactId, actionId, PlayerId.Value);
+
+            if (advanced)
+            {
+                var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
+                var newStepOrder = state.CurrentStepOrder;
+
+                // 탈출 성공 시 게임 타이머 정리
+                if (escaped)
+                {
+                    CleanupGameTimer(CurrentMapSubId);
+                    _logger.LogInformation("Game timer cleaned up after escape success (action completed): MatchingId={MatchingId}", CurrentMapSubId);
+                }
+
+                // 진행 결과 브로드캐스트
+                BroadcastExitStepUpdateToAll(PlayerId.Value, newStepOrder, escaped);
+
+                _logger.LogInformation("Player {PlayerId} action completion advanced exit step: InteractId={InteractId}, ActionId={ActionId}, NewStep={NewStep}, Escaped={Escaped}",
+                    PlayerId, interactId, actionId, newStepOrder, escaped);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CheckActionCompletedForExit error for player {PlayerId}", PlayerId);
+        }
+    }
+
+    /// <summary>
+    /// 아이템 습득 시 탈출 절차 확인 (target_item_id 조건 체크)
     /// </summary>
     private void CheckAndAdvanceExitStep(int acquiredItemId)
     {
-        // exit_item.csv 제거로 아이템 기반 탈출 절차 진행 비활성화
+        if (!PlayerId.HasValue) return;
+
+        try
+        {
+            var (advanced, escaped) = _exitInstanceManager.OnItemAcquired(CurrentMapSubId, acquiredItemId, PlayerId.Value);
+
+            if (advanced)
+            {
+                var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
+                var newStepOrder = state.CurrentStepOrder;
+
+                // 탈출 성공 시 게임 타이머 정리
+                if (escaped)
+                {
+                    CleanupGameTimer(CurrentMapSubId);
+                    _logger.LogInformation("Game timer cleaned up after escape success (item acquired): MatchingId={MatchingId}", CurrentMapSubId);
+                }
+
+                // 진행 결과 브로드캐스트
+                BroadcastExitStepUpdateToAll(PlayerId.Value, newStepOrder, escaped);
+
+                _logger.LogInformation("Player {PlayerId} item acquisition advanced exit step: ItemId={ItemId}, NewStep={NewStep}, Escaped={Escaped}",
+                    PlayerId, acquiredItemId, newStepOrder, escaped);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CheckAndAdvanceExitStep error for player {PlayerId}", PlayerId);
+        }
     }
 
     /// <summary>
