@@ -665,14 +665,6 @@ namespace network.common.data.models
 
     #region 탈출 절차 프로토콜
 
-    // 탈출 절차 슬롯 바인딩 정보 (클라이언트에서 텍스트 조합에 사용)
-    [MessagePackObject]
-    public class ExitSlotBindingInfo
-    {
-        [Key("spotId")] public int SpotId { get; set; }       // exit_spot.id
-        [Key("conditionId")] public int ConditionId { get; set; } // exit_condition.id
-    }
-
     // 탈출 절차 단계 정보 응답
     [MessagePackObject]
     public class G_TO_C_EXIT_STEP_INFO : IMessagePackObject
@@ -680,7 +672,6 @@ namespace network.common.data.models
         [Key("templateId")] public int TemplateId { get; set; }
         [Key("currentStepOrder")] public int CurrentStepOrder { get; set; } // 현재 단계 (이보다 작은 order는 완료)
         [Key("totalStepCount")] public int TotalStepCount { get; set; } // 총 단계 수
-        [Key("slotBinding")] public ExitSlotBindingInfo SlotBinding { get; set; } // 슬롯 바인딩 (클라에서 텍스트 조합)
         [Key("isCompleted")] public bool IsCompleted { get; set; } // 탈출 완료 여부
         [Key("lastAdvancedBy")] public long LastAdvancedBy { get; set; } // 마지막으로 진행한 플레이어 UID (0이면 아직 진행 안함)
     }

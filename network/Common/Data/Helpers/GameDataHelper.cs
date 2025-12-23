@@ -30,21 +30,16 @@ namespace network.common.data.helpers
             {
                 public const string Info = "interactable_info.csv";
                 public const string Action = "interactable_action.csv";
-                public const string Reward = "interactable_reward.csv";
+                public const string ItemPool = "interactable_item_pool.csv";
 
-                public static readonly string[] ALL = new[] { Info, Action, Reward };
+                public static readonly string[] ALL = new[] { Info, Action, ItemPool };
             }
 
             public static class Exit
             {
-                public const string Template = "exit_template.csv";
                 public const string Step = "exit_step.csv";
-                public const string Spot = "exit_spot.csv";
-                public const string Condition = "exit_condition.csv";
-                public const string Constraint = "exit_constraint.csv";
-                public const string Scenario = "exit_scenario.csv";
 
-                public static readonly string[] ALL = new[] { Template, Step, Spot, Condition, Constraint, Scenario };
+                public static readonly string[] ALL = new[] { Step };
             }
 
             public static class Item
@@ -254,20 +249,11 @@ namespace network.common.data.helpers
             GameInteractableData.Initialize(
                 loadedData[DataFiles.Interactable.Info],
                 loadedData[DataFiles.Interactable.Action],
-                loadedData[DataFiles.Interactable.Reward]
+                loadedData[DataFiles.Interactable.ItemPool]
             );
 
             // 탈출 의식 데이터 초기화
-            GameExitData.Initialize(
-                loadedData[DataFiles.Exit.Template],
-                loadedData[DataFiles.Exit.Step],
-                loadedData[DataFiles.Exit.Spot],
-                loadedData[DataFiles.Exit.Condition],
-                loadedData[DataFiles.Exit.Constraint]
-            );
-
-            // 탈출 시나리오 데이터 초기화
-            GameExitScenarioData.Initialize(loadedData[DataFiles.Exit.Scenario]);
+            GameExitData.Initialize(loadedData[DataFiles.Exit.Step]);
 
             ValidateAllData();
         }

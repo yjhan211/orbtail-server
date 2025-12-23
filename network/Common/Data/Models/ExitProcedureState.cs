@@ -12,12 +12,9 @@ namespace network.common.data.models
     /// </summary>
     public class ExitProcedureInstance
     {
-        public int ScenarioId { get; set; }
-        public ExitTemplateType TemplateType { get; set; }
+        public int GroupId { get; set; }
         public List<ExitProcedureStep> Steps { get; set; } = new();
         public int CurrentStepIndex { get; set; }
-        public ExitFinaleType FinaleType { get; set; }
-        public ExitEffectType EffectType { get; set; }
         public DateTime CreatedAt { get; set; }
 
         public ExitProcedureStep CurrentStep =>
@@ -40,51 +37,16 @@ namespace network.common.data.models
     {
         public int StepOrder { get; set; }
         public ExitStepData StepData { get; set; }
-
-        // 슬롯에 할당된 데이터
-        public ExitSpotData SelectedSpot { get; set; }
-        public ExitConditionData SelectedCondition { get; set; }
-
         public bool IsCompleted { get; set; }
 
         /// <summary>
-        /// 플레이스홀더가 치환된 텍스트 반환
+        /// 텍스트 반환
         /// </summary>
-        public string GetFormattedText()
-        {
-            var context = BuildReplacementContext();
-            return GameSystemTextData.FormatTemplate(StepData.TextTemplate, context);
-        }
+        public string GetFormattedText() => StepData.TextTemplate;
 
-        public string GetFormattedInsanityText()
-        {
-            var context = BuildReplacementContext();
-            return GameSystemTextData.FormatTemplate(StepData.InsanityTextTemplate, context);
-        }
+        public string GetFormattedInsanityText() => StepData.InsanityTextTemplate;
 
-        public string GetFormattedSummary()
-        {
-            var context = BuildReplacementContext();
-            return GameSystemTextData.FormatTemplate(StepData.SummaryTemplate, context);
-        }
-
-        private TextReplacementContext BuildReplacementContext()
-        {
-            var context = TextReplacementContext.Create();
-
-            if (SelectedSpot != null)
-            {
-                var interactable = GameInteractableData.Get(SelectedSpot.InteractableId);
-                context.WithSpot(interactable?.ShortName ?? "???");
-            }
-
-            if (SelectedCondition != null)
-            {
-                context.WithCondition(SelectedCondition.Text);
-            }
-
-            return context;
-        }
+        public string GetFormattedSummary() => StepData.SummaryTemplate;
     }
 
     /// <summary>
@@ -92,39 +54,22 @@ namespace network.common.data.models
     /// </summary>
     public static class ExitProcedureGenerator
     {
-        private static readonly Random _random = new();
-
         /// <summary>
-        /// 시나리오 데이터를 기반으로 탈출 절차 인스턴스 생성
+        /// 그룹 ID를 기반으로 탈출 절차 인스턴스 생성
         /// </summary>
-        public static ExitProcedureInstance Generate(ExitTemplateType templateType, int? seed = null)
+        public static ExitProcedureInstance Generate(int groupId)
         {
-            var scenario = GameExitScenarioData.GetByTemplateType(templateType);
-            if (scenario == null)
-                throw new InvalidOperationException($"Scenario not found for template type: {templateType}");
-
-            var random = seed.HasValue ? new Random(seed.Value) : _random;
-
             var instance = new ExitProcedureInstance
             {
-                ScenarioId = scenario.Id,
-                TemplateType = templateType,
-                FinaleType = scenario.FinaleType,
-                EffectType = scenario.EffectType,
+                GroupId = groupId,
                 CurrentStepIndex = 0,
                 CreatedAt = DateTime.UtcNow
             };
 
-            // 템플릿의 스텝 정의 가져오기
-            var stepDefinitions = GameExitData.GetStepsByTemplate((int)templateType);
+            // 그룹에서 스텝 정의 가져오기
+            var stepDefinitions = GameExitData.GetStepsByGroup(groupId);
 
-            // 풀에서 랜덤 선택
-            var selectedSpots = SelectFromPool(scenario.SpotTypePool, stepDefinitions.Count(s => s.SpotSlot), random);
-            var selectedConditions = SelectFromPool(scenario.ConditionTypePool, stepDefinitions.Count(s => s.ConditionSlot), random);
-
-            int spotIdx = 0, conditionIdx = 0;
-
-            foreach (var stepDef in stepDefinitions.Take(scenario.StepCount))
+            foreach (var stepDef in stepDefinitions)
             {
                 var step = new ExitProcedureStep
                 {
@@ -132,45 +77,10 @@ namespace network.common.data.models
                     StepData = stepDef
                 };
 
-                // 슬롯에 데이터 할당
-                if (stepDef.SpotSlot && spotIdx < selectedSpots.Count)
-                {
-                    step.SelectedSpot = GameExitData.GetSpot((int)selectedSpots[spotIdx++]);
-                }
-                if (stepDef.ConditionSlot && conditionIdx < selectedConditions.Count)
-                {
-                    step.SelectedCondition = GameExitData.GetCondition((int)selectedConditions[conditionIdx++]);
-                }
-
                 instance.Steps.Add(step);
             }
 
             return instance;
-        }
-
-        private static List<T> SelectFromPool<T>(List<T> pool, int count, Random random) where T : struct, Enum
-        {
-            if (pool == null || pool.Count == 0 || count <= 0)
-                return new List<T>();
-
-            var result = new List<T>();
-            var available = new List<T>(pool);
-
-            for (int i = 0; i < count && available.Count > 0; i++)
-            {
-                var index = random.Next(available.Count);
-                result.Add(available[index]);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// 특정 시드로 동일한 절차 재생성 (테스트/디버그용)
-        /// </summary>
-        public static ExitProcedureInstance GenerateWithSeed(ExitTemplateType templateType, int seed)
-        {
-            return Generate(templateType, seed);
         }
     }
 }

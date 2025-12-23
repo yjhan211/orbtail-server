@@ -173,94 +173,6 @@ namespace network.common
         DARK,
     }
 
-    public enum RewardType : short
-    {
-        NONE = 0,
-        ITEM,
-        CONDITION_RANDOM,
-        CORRUPTION_RANDOM,
-        RULE,
-        RULE_RANDOM,
-    }
-
-    public enum ExitTemplateType : short
-    {
-        NONE = 0,
-        BROADCAST = 1,  // 비상 방송 프로토콜
-        DISPOSE = 2,    // 특수 개체 격리 및 처리 절차
-    }
-
-    // ExitItemType은 제거됨 - exit_scenario.csv에서 item_id를 직접 참조
-
-    public enum ExitSpotType : short
-    {
-        NONE = 0,
-        BROADCAST = 1,      // 방송실 송출 장비
-        INCINERATOR = 2,    // 쓰레기장 소각로
-        GUTTER = 3,         // 쓰레기장 빗물받이
-        SAFE = 4,           // 교무실 금고
-        PROJECTOR = 5,      // 시청각실 영사기
-    }
-
-    public enum ExitConditionType : short
-    {
-        NONE = 0,
-        SANITY = 1,     // 정신이 온전한 인원
-        SOLO = 2,       // 혼자
-        TOGETHER = 3,   // 두 명이 동시에
-    }
-
-    public enum ExitActionType : short
-    {
-        NONE = 0,
-        GET = 1,        // 아이템 획득
-        CARRY = 2,      // 운반
-        USE = 3,        // 사용
-        ASSIGN = 4,     // 운반자 지정
-        FINALE = 5,     // 최종 행동
-    }
-
-    public enum ExitConstraintType : short
-    {
-        NONE = 0,
-        POOL = 1,       // 허용 목록
-        REQUIRE = 2,    // 필수 조합
-        EXCLUDE = 3,    // 금지 조합
-    }
-
-    public enum ExitSlotType : short
-    {
-        NONE = 0,
-        ITEM = 1,
-        SPOT = 2,
-        DEBUFF = 3,
-        CONDITION = 4,
-    }
-
-    public enum ExitCheckType : short
-    {
-        NONE = 0,
-        SANITY_HIGH = 1,        // 정신력 확인
-        NEARBY_PLAYERS = 2,     // 근처 플레이어 수 확인
-    }
-
-    public enum ExitFinaleType : short
-    {
-        NONE = 0,
-        TYPING = 1,         // 타이핑 미니게임
-        BUTTON_MASH = 2,    // 버튼 연타
-        SYNC_TOUCH = 3,     // 동시 터치
-    }
-
-    public enum ExitEffectType : short
-    {
-        NONE = 0,
-        AUDIO_HUMMING = 1,      // 흥얼거림 오디오
-        AUDIO_WHISPER = 2,      // 속삭임 오디오
-        MOVE_SPEED_DOWN = 3,    // 이동속도 감소
-        VISUAL_DARKEN = 4,      // 시야 어두워짐
-    }
-
     /// <summary>
     /// 상호작용 오브젝트 탐색 타입
     /// </summary>
@@ -277,11 +189,11 @@ namespace network.common
     public enum ActionResultType : short
     {
         NONE = 0,
-        ITEM = 1,           // 아이템 획득
-        RULE = 2,           // 규칙 쪽지 획득
-        CORRUPTION = 3,     // 정신오염도 변화
-        STAMINA = 4,        // 스태미나 변화
-        PORTAL = 5,         // 포탈 활성화
+        REWARD_POOL = 1,           // 아이템 획득
+        DEBUFF_CORRUPTION = 2,     // 정신오염도 증가
+        DEBUFF_STAMINA = 3,        // 스태미나 감소
+        BUFF_CORRUPTION = 4,       // 정신오염도 감소
+        BUFF_STAMINA = 5,          // 스태미나 증가
     }
 
     /// <summary>
