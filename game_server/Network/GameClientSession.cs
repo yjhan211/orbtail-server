@@ -778,6 +778,15 @@ public class GameClientSession : IPeer
             _logger.LogInformation("Player {PlayerId} explored InteractId={InteractId}, ActionId={ActionId} successfully",
                 PlayerId, msg.InteractId, msg.ActionId);
 
+            // 스태미나 차감 (액션 1회당 stamina_cost 만큼)
+            var interactable = GameInteractableData.Get(msg.InteractId);
+            if (interactable != null && interactable.StaminaCost > 0)
+            {
+                ModifyStats(staminaDelta: -interactable.StaminaCost);
+                _logger.LogInformation("Player {PlayerId} stamina reduced by {Cost} for action on InteractId={InteractId}",
+                    PlayerId, interactable.StaminaCost, msg.InteractId);
+            }
+
             // 상호작용 규칙 위반 체크 (금지된 오브젝트 탐색)
             var violationResult = _interactRuleManager.CheckExplore(CurrentMapSubId, msg.InteractId);
             if (violationResult.IsViolation)
