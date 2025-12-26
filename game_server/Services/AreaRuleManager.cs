@@ -25,19 +25,11 @@ namespace game_server.services
             CorridorRuleId = corridorRuleId;
             _selectedRules = GameAreaRuleData.SelectRulesForAllAreas(random);
 
-            // 모든 규칙을 모아서 셔플 (복도 규칙 제외)
+            // 모든 규칙을 모아서 셔플 (복도 규칙은 CorridorAlertUI에서 별도 표시)
             var allRules = _selectedRules.Values.SelectMany(r => r).ToList();
             Shuffle(allRules, random);
 
-            // 복도 규칙을 맨 앞에 고정 배치
-            var orderedRules = new List<int>();
-            if (corridorRuleId > 0)
-            {
-                orderedRules.Add(corridorRuleId);
-            }
-            orderedRules.AddRange(allRules);
-
-            _shuffledRuleQueue = new Queue<int>(orderedRules);
+            _shuffledRuleQueue = new Queue<int>(allRules);
         }
 
         private static void Shuffle<T>(IList<T> list, Random random)

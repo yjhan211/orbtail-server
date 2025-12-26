@@ -10,9 +10,9 @@ namespace game_server.services
     public enum CorridorRuleType
     {
         None = 0,
-        NoRunning = 12001,      // 복도에서는 절대 뛰지 마십시오
-        NoStopping = 12002,     // 복도에서는 절대 멈춰 서지 마십시오
-        TenStepsMax = 12003,    // 복도에서는 한 번에 열 걸음 이상을 내딛지 마십시오
+        NoRunning = 7,      // 복도에서는 절대 뛰지 마십시오
+        NoStopping = 8,     // 복도에서는 절대 멈춰 서지 마십시오
+        TenStepsMax = 9,    // 복도에서는 한 번에 열 걸음 이상을 내딛지 마십시오
     }
 
     /// <summary>
