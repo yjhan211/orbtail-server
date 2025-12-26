@@ -347,10 +347,6 @@ public class GameClientSession : IPeer
             // 1. 클라이언트 Position 검증
             var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
 
-            _logger.LogDebug("Player {PlayerId} C_TO_G_MOVE: ClientPos=({CX},{CY}), Velocity=({VX},{VY}), ValidatedPos=({X},{Y})",
-                PlayerId, msg.Position.X, msg.Position.Y, msg.Velocity.X, msg.Velocity.Y,
-                validatedPosition.X, validatedPosition.Y);
-
             // 2. 주기적 저장 (1초마다)
             var needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
             var isIdle = msg.Velocity.Magnitude() < 0.01f;
@@ -1022,7 +1018,7 @@ public class GameClientSession : IPeer
             var ruleId = 0;
             if (itemId == 202000003)
             {
-                ruleId = _areaRuleManager.DequeueNextRule(CurrentMapSubId);
+                ruleId = _areaRuleManager.GetRuleForNote(CurrentMapSubId);
                 _logger.LogInformation("Player {PlayerId} used manual item, got RuleId={RuleId}", PlayerId, ruleId);
             }
 

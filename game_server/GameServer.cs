@@ -139,7 +139,7 @@ public class GameServer : IHostedService
             _corridorRuleManager.Initialize(
                 msg => _logger.LogInformation(msg),
                 OnCorridorStopViolation);
-            _areaRuleManager.Initialize(msg => _logger.LogInformation(msg), _corridorRuleManager);
+            _areaRuleManager.Initialize(msg => _logger.LogInformation(msg));
             _interactRuleManager.Initialize(msg => _logger.LogInformation(msg), _areaRuleManager);
             _exitInstanceManager.Initialize(msg => _logger.LogInformation(msg));
             _itemPoolManager.Initialize(msg => _logger.LogInformation(msg));
