@@ -376,8 +376,6 @@ public class GameClientSession : IPeer
             var currentCell = WorldPositionToCell(validatedPosition);
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
-            _logger.LogDebug("Player {PlayerId} WorldToCell: Pos=({PX},{PY}) → Cell=({CX},{CY}) → Area={Area}",
-                PlayerId, validatedPosition.X, validatedPosition.Y, currentCell.X, currentCell.Y, newArea);
 
             // Area 변경 시 진입/퇴장 이벤트 전송
             if (newArea != CurrentArea)
@@ -411,7 +409,6 @@ public class GameClientSession : IPeer
                 session.Send(packet);
             }
 
-            _logger.LogDebug("Player {L} move broadcasted to {Count} clients in Area {Area}", PlayerId, sameAreaSessions.Count, CurrentArea);
         }
         catch (Exception ex)
         {
@@ -800,8 +797,8 @@ public class GameClientSession : IPeer
             switch (resultType)
             {
                 case ActionResultType.REWARD_POOL:
-                    // 풀에서 다음 아이템 가져오기 (resultId = pool_id)
-                    var itemFromPool = _itemPoolManager.GetNextItemFromPool(CurrentMapSubId, resultId);
+                    // 풀에서 다음 아이템 가져오기 (resultId = pool_id, 상호작용 대상별 독립 풀)
+                    var itemFromPool = _itemPoolManager.GetNextItemFromPool(CurrentMapSubId, msg.InteractId, resultId);
                     if (itemFromPool.HasValue)
                     {
                         rewardItemId = itemFromPool.Value;

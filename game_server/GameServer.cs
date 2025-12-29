@@ -298,15 +298,6 @@ public class GameServer : IHostedService
 
     private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
     {
-        _logger.LogDebug("GetSessionsByInstance 호출: 필터(MapId={MapId}, MapSubId={MapSubId}), 전체 세션 수={TotalCount}",
-            mapId, mapSubId, _clientSessions.Count);
-
-        foreach (var s in _clientSessions.Values)
-        {
-            _logger.LogDebug("  - 세션: PlayerId={PlayerId}, CurrentMapId={CurrentMapId}, CurrentMapSubId={CurrentMapSubId}, 매칭 여부={IsMatch}",
-                s.PlayerId, s.CurrentMapId, s.CurrentMapSubId, s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId);
-        }
-
         return _clientSessions.Values
             .Where(s => s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId)
             .ToList();

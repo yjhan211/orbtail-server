@@ -24,10 +24,40 @@ namespace game_server.services
 
             // 모든 규칙 가져오기
             var allRules = GameAreaRuleData.SelectRulesForAllAreas(random);
-            _allRuleIds = allRules.Values.SelectMany(r => r).ToList();
 
-            // 셔플
-            Shuffle(_allRuleIds, random);
+            // 복도 규칙과 나머지 규칙 분리
+            var corridorRules = new List<int>();
+            var otherRules = new List<int>();
+
+            foreach (var kvp in allRules)
+            {
+                foreach (var ruleId in kvp.Value)
+                {
+                    if (kvp.Key == AreaType.Corridor)
+                        corridorRules.Add(ruleId);
+                    else
+                        otherRules.Add(ruleId);
+                }
+            }
+
+            // 첫 번째 복도 규칙 선택 (랜덤)
+            int? firstCorridorRule = null;
+            if (corridorRules.Count > 0)
+            {
+                var idx = random.Next(corridorRules.Count);
+                firstCorridorRule = corridorRules[idx];
+                corridorRules.RemoveAt(idx);
+            }
+
+            // 나머지 규칙들 합치고 셔플
+            var remainingRules = corridorRules.Concat(otherRules).ToList();
+            Shuffle(remainingRules, random);
+
+            // 복도 규칙을 첫 번째로, 나머지는 셔플된 순서로
+            _allRuleIds = new List<int>();
+            if (firstCorridorRule.HasValue)
+                _allRuleIds.Add(firstCorridorRule.Value);
+            _allRuleIds.AddRange(remainingRules);
 
             // 큐에 넣기
             _shuffledRuleQueue = new Queue<int>(_allRuleIds);
