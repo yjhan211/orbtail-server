@@ -781,8 +781,8 @@ public class GameClientSession : IPeer
                     PlayerId, actionData.StaminaCost, msg.InteractId, msg.ActionId);
             }
 
-            // 상호작용 규칙 위반 체크 (금지된 오브젝트 탐색)
-            var violationResult = _interactRuleManager.CheckExplore(CurrentMapSubId, msg.InteractId);
+            // 상호작용 규칙 위반 체크 (금지된 액션 수행)
+            var violationResult = _interactRuleManager.CheckExplore(CurrentMapSubId, msg.InteractId, msg.ActionId);
             if (violationResult.IsViolation)
             {
                 _logger.LogInformation("Player {PlayerId} violated interact rule {RuleId}: {Message}",
@@ -792,6 +792,8 @@ public class GameClientSession : IPeer
 
             // 액션 결과 처리 (result_type, result_id, result_amount 기반)
             var (resultType, resultId, resultAmount) = _interactableStateManager.GetActionResult(msg.InteractId, msg.ActionId);
+            _logger.LogInformation("Player {PlayerId} action result: InteractId={InteractId}, ActionId={ActionId}, ResultType={ResultType}, ResultId={ResultId}, ResultAmount={ResultAmount}",
+                PlayerId, msg.InteractId, msg.ActionId, resultType, resultId, resultAmount);
             var rewardItemId = 0;
 
             switch (resultType)

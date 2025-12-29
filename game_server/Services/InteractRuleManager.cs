@@ -20,8 +20,9 @@ namespace game_server.services
     /// </summary>
     public class MatchingInteractRuleState
     {
-        // 이 매칭에 선택된 규칙들의 TargetInteractId -> RuleId 매핑
-        private readonly Dictionary<int, int> _forbiddenInteracts = new();
+        // 이 매칭에 선택된 규칙들의 (TargetInteractId, TargetActionId) -> RuleId 매핑
+        // TargetActionId가 0이면 해당 interactable의 모든 액션이 위반
+        private readonly Dictionary<(int interactId, int actionId), int> _forbiddenActions = new();
 
         // 위반당 정신오염도 증가량
         private const int CorruptionPerViolation = 20;
@@ -33,48 +34,66 @@ namespace game_server.services
                 var rule = GameAreaRuleData.Get(ruleId);
                 if (rule != null && rule.TargetInteractId > 0)
                 {
-                    // 같은 interactId에 여러 규칙이 있을 수 있으므로 첫 번째만 저장
-                    if (!_forbiddenInteracts.ContainsKey(rule.TargetInteractId))
+                    var key = (rule.TargetInteractId, rule.TargetActionId);
+                    if (!_forbiddenActions.ContainsKey(key))
                     {
-                        _forbiddenInteracts[rule.TargetInteractId] = ruleId;
+                        _forbiddenActions[key] = ruleId;
                     }
                 }
             }
         }
 
         /// <summary>
-        /// 오브젝트 탐색 시 규칙 위반 체크
+        /// 오브젝트 액션 시 규칙 위반 체크
         /// </summary>
-        public InteractViolationResult CheckExplore(int interactId)
+        public InteractViolationResult CheckExplore(int interactId, int actionId)
         {
             var result = new InteractViolationResult();
 
-            if (_forbiddenInteracts.TryGetValue(interactId, out var ruleId))
+            // 1. 특정 액션에 대한 규칙 체크
+            if (_forbiddenActions.TryGetValue((interactId, actionId), out var ruleId))
             {
                 var rule = GameAreaRuleData.Get(ruleId);
                 result.IsViolation = true;
                 result.ViolatedRuleId = ruleId;
                 result.CorruptionDelta = CorruptionPerViolation;
-                result.Message = $"금지된 오브젝트를 탐색했습니다: {rule?.Description ?? "알 수 없는 규칙"}";
+                result.Message = $"금지된 행동을 수행했습니다: \"{rule?.Description ?? "알 수 없는 규칙"}\"";
+                return result;
+            }
+
+            // 2. 해당 interactable의 모든 액션을 금지하는 규칙 체크 (actionId=0)
+            if (_forbiddenActions.TryGetValue((interactId, 0), out ruleId))
+            {
+                var rule = GameAreaRuleData.Get(ruleId);
+                result.IsViolation = true;
+                result.ViolatedRuleId = ruleId;
+                result.CorruptionDelta = CorruptionPerViolation;
+                result.Message = $"금지된 오브젝트를 탐색했습니다: \"{rule?.Description ?? "알 수 없는 규칙"}\"";
+                return result;
             }
 
             return result;
         }
 
         /// <summary>
-        /// 금지된 오브젝트인지 확인만 (위반 처리 없이)
+        /// 금지된 액션인지 확인만 (위반 처리 없이)
         /// </summary>
-        public bool IsForbiddenInteract(int interactId)
+        public bool IsForbiddenAction(int interactId, int actionId)
         {
-            return _forbiddenInteracts.ContainsKey(interactId);
+            return _forbiddenActions.ContainsKey((interactId, actionId)) ||
+                   _forbiddenActions.ContainsKey((interactId, 0));
         }
 
         /// <summary>
-        /// 특정 interactId에 해당하는 규칙 ID 반환 (없으면 0)
+        /// 특정 (interactId, actionId)에 해당하는 규칙 ID 반환 (없으면 0)
         /// </summary>
-        public int GetRuleIdForInteract(int interactId)
+        public int GetRuleIdForAction(int interactId, int actionId)
         {
-            return _forbiddenInteracts.TryGetValue(interactId, out var ruleId) ? ruleId : 0;
+            if (_forbiddenActions.TryGetValue((interactId, actionId), out var ruleId))
+                return ruleId;
+            if (_forbiddenActions.TryGetValue((interactId, 0), out ruleId))
+                return ruleId;
+            return 0;
         }
     }
 
@@ -114,28 +133,28 @@ namespace game_server.services
         }
 
         /// <summary>
-        /// 오브젝트 탐색 시 규칙 위반 체크
+        /// 오브젝트 액션 시 규칙 위반 체크
         /// </summary>
-        public InteractViolationResult CheckExplore(long matchingId, int interactId)
+        public InteractViolationResult CheckExplore(long matchingId, int interactId, int actionId)
         {
             var state = GetOrCreateMatchingState(matchingId);
-            var result = state.CheckExplore(interactId);
+            var result = state.CheckExplore(interactId, actionId);
 
             if (result.IsViolation)
             {
-                _logAction?.Invoke($"InteractRuleManager: MatchingId={matchingId} violated rule {result.ViolatedRuleId} by exploring InteractId={interactId}");
+                _logAction?.Invoke($"InteractRuleManager: MatchingId={matchingId} violated rule {result.ViolatedRuleId} by InteractId={interactId}, ActionId={actionId}");
             }
 
             return result;
         }
 
         /// <summary>
-        /// 금지된 오브젝트인지 확인
+        /// 금지된 액션인지 확인
         /// </summary>
-        public bool IsForbiddenInteract(long matchingId, int interactId)
+        public bool IsForbiddenAction(long matchingId, int interactId, int actionId)
         {
             var state = GetOrCreateMatchingState(matchingId);
-            return state.IsForbiddenInteract(interactId);
+            return state.IsForbiddenAction(interactId, actionId);
         }
 
         /// <summary>
