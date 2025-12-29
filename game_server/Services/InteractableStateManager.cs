@@ -192,19 +192,19 @@ namespace game_server.services
         }
 
         /// <summary>
-        /// 특정 액션의 결과 정보 반환 (ResultType, ResultId)
+        /// 특정 액션의 결과 정보 반환 (ResultType, ResultId, ResultAmount)
         /// </summary>
-        public (ActionResultType resultType, int resultId) GetActionResult(int interactId, int actionId)
+        public (ActionResultType resultType, int resultId, int resultAmount) GetActionResult(int interactId, int actionId)
         {
             var interactable = GameInteractableData.Get(interactId);
             if (interactable == null)
-                return (ActionResultType.NONE, 0);
+                return (ActionResultType.NONE, 0, 0);
 
             var action = interactable.Actions.FirstOrDefault(a => a.ActionId == actionId);
             if (action == null)
-                return (ActionResultType.NONE, 0);
+                return (ActionResultType.NONE, 0, 0);
 
-            return (action.ResultType, action.ResultId);
+            return (action.ResultType, action.ResultId, action.ResultAmount);
         }
 
         /// <summary>

@@ -793,14 +793,14 @@ public class GameClientSession : IPeer
                 ModifyStats(corruptionDelta: violationResult.CorruptionDelta);
             }
 
-            // 액션 결과 처리 (result_type, result_id 기반)
-            var (resultType, resultId) = _interactableStateManager.GetActionResult(msg.InteractId, msg.ActionId);
+            // 액션 결과 처리 (result_type, result_id, result_amount 기반)
+            var (resultType, resultId, resultAmount) = _interactableStateManager.GetActionResult(msg.InteractId, msg.ActionId);
             var rewardItemId = 0;
 
             switch (resultType)
             {
                 case ActionResultType.REWARD_POOL:
-                    // 풀에서 다음 아이템 가져오기
+                    // 풀에서 다음 아이템 가져오기 (resultId = pool_id)
                     var itemFromPool = _itemPoolManager.GetNextItemFromPool(CurrentMapSubId, resultId);
                     if (itemFromPool.HasValue)
                     {
@@ -815,23 +815,23 @@ public class GameClientSession : IPeer
                     break;
 
                 case ActionResultType.DEBUFF_CORRUPTION:
-                    ModifyStats(corruptionDelta: resultId);
-                    _logger.LogInformation("Player {PlayerId} received corruption debuff: +{Amount}", PlayerId, resultId);
+                    ModifyStats(corruptionDelta: resultAmount);
+                    _logger.LogInformation("Player {PlayerId} received corruption debuff: +{Amount}", PlayerId, resultAmount);
                     break;
 
                 case ActionResultType.DEBUFF_STAMINA:
-                    ModifyStats(staminaDelta: -resultId);
-                    _logger.LogInformation("Player {PlayerId} received stamina debuff: -{Amount}", PlayerId, resultId);
+                    ModifyStats(staminaDelta: -resultAmount);
+                    _logger.LogInformation("Player {PlayerId} received stamina debuff: -{Amount}", PlayerId, resultAmount);
                     break;
 
                 case ActionResultType.BUFF_CORRUPTION:
-                    ModifyStats(corruptionDelta: -resultId);
-                    _logger.LogInformation("Player {PlayerId} received corruption buff: -{Amount}", PlayerId, resultId);
+                    ModifyStats(corruptionDelta: -resultAmount);
+                    _logger.LogInformation("Player {PlayerId} received corruption buff: -{Amount}", PlayerId, resultAmount);
                     break;
 
                 case ActionResultType.BUFF_STAMINA:
-                    ModifyStats(staminaDelta: resultId);
-                    _logger.LogInformation("Player {PlayerId} received stamina buff: +{Amount}", PlayerId, resultId);
+                    ModifyStats(staminaDelta: resultAmount);
+                    _logger.LogInformation("Player {PlayerId} received stamina buff: +{Amount}", PlayerId, resultAmount);
                     break;
             }
 
