@@ -347,7 +347,28 @@ public class GameClientSession : IPeer
             // 1. 클라이언트 Position 검증
             var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
 
-            // 2. 주기적 저장 (1초마다)
+            // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
+            var currentCell = WorldPositionToCell(validatedPosition);
+            var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
+
+            if (newArea != CurrentArea)
+            {
+                // 현재 Area에서 나갈 수 있는지 체크
+                var exitState = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
+                var currentStep = exitState.CurrentStepOrder;
+
+                if (!GameAreaExitConditionData.CanExitArea(CurrentArea, currentStep))
+                {
+                    // 퇴장 불가 - 치팅 시도로 간주, 이전 위치로 보정
+                    validatedPosition = _lastValidatedPosition ?? validatedPosition;
+                    currentCell = WorldPositionToCell(validatedPosition);
+                    newArea = CurrentArea; // Area 변경 취소
+                    _logger.LogWarning("Player {PlayerId} attempted to leave {Area} without completing step {Required} (cheat prevention)",
+                        PlayerId, CurrentArea, currentStep);
+                }
+            }
+
+            // 3. 주기적 저장 (1초마다)
             var needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
             var isIdle = msg.Velocity.Magnitude() < 0.01f;
 
@@ -371,31 +392,11 @@ public class GameClientSession : IPeer
 
             _lastValidatedPosition = validatedPosition;
 
-            // 3. Area 체크 및 변경 감지
+            // 4. Area 변경 처리 (퇴장 조건 통과한 경우만)
             var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var currentCell = WorldPositionToCell(validatedPosition);
-            var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
-
-            // Area 변경 시 퇴장 조건 체크 및 진입/퇴장 이벤트 전송
             if (newArea != CurrentArea)
             {
-                // 현재 Area에서 나갈 수 있는지 체크
-                var exitState = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-                var currentStep = exitState.CurrentStepOrder;
-
-                if (!GameAreaExitConditionData.CanExitArea(CurrentArea, currentStep))
-                {
-                    // 퇴장 불가 - 이동 차단
-                    var condition = GameAreaExitConditionData.Get(CurrentArea);
-                    _logger.LogInformation("Player {PlayerId} blocked from leaving {Area}: required step {Required}, current step {Current}",
-                        PlayerId, CurrentArea, condition?.RequiredStep ?? 0, currentStep);
-
-                    // 클라이언트에 퇴장 불가 알림 전송 (마지막 유효 위치로 되돌림)
-                    var correctedPos = _lastValidatedPosition ?? validatedPosition;
-                    SendAreaExitBlocked(CurrentArea, condition?.MessageTextId ?? 0, correctedPos);
-                    return; // 이동 처리 중단
-                }
 
                 _logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
@@ -404,10 +405,10 @@ public class GameClientSession : IPeer
                 await HandleAreaChange(oldArea, newArea);
             }
 
-            // 4. 복도 규칙 체크
+            // 5. 복도 규칙 체크
             CheckCorridorRuleViolation(validatedPosition, msg.Velocity, newArea);
 
-            // 5. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
+            // 6. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
                 validatedPosition,
