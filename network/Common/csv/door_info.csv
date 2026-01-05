@@ -1,2 +1,2 @@
-door_id,required_item_id,position_x,position_y,interact_distance
-101,601000004,174,88,3
+door_id,required_item_id,position_x,position_y,interact_distance,location_name
+101,601000004,174,88,3,강당
