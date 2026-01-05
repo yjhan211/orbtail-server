@@ -42,21 +42,12 @@ namespace network.common.data
         }
 
         /// <summary>
-        /// 특정 Area에서 나갈 수 있는지 확인
-        /// required_door_id가 설정된 경우 해당 문이 열려야 퇴장 가능
+        /// 특정 Area의 퇴장 필수 문 ID 가져오기 (0이면 제한 없음)
         /// </summary>
-        public static bool CanExitArea(AreaType areaType)
+        public static int GetRequiredDoorId(AreaType areaType)
         {
             var condition = Get(areaType);
-            if (condition == null) return true;
-
-            // 문 열림 조건 체크
-            if (condition.RequiredDoorId > 0)
-            {
-                return GameUser.Instance?.IsDoorOpen(condition.RequiredDoorId) ?? false;
-            }
-
-            return true;
+            return condition?.RequiredDoorId ?? 0;
         }
 
         /// <summary>
