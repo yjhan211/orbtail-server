@@ -244,13 +244,14 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_AREA_EXIT_BLOCKED(AreaType areaType, int messageTextId)
+    public static Packet G_TO_C_AREA_EXIT_BLOCKED(AreaType areaType, int messageTextId, Vector3f correctedPosition)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_AREA_EXIT_BLOCKED);
         G_TO_C_AREA_EXIT_BLOCKED body = new()
         {
             AreaType = areaType,
-            MessageTextId = messageTextId
+            MessageTextId = messageTextId,
+            CorrectedPosition = correctedPosition
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

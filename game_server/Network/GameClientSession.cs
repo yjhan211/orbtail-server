@@ -391,8 +391,9 @@ public class GameClientSession : IPeer
                     _logger.LogInformation("Player {PlayerId} blocked from leaving {Area}: required step {Required}, current step {Current}",
                         PlayerId, CurrentArea, condition?.RequiredStep ?? 0, currentStep);
 
-                    // 클라이언트에 퇴장 불가 알림 전송
-                    SendAreaExitBlocked(CurrentArea, condition?.MessageTextId ?? 0);
+                    // 클라이언트에 퇴장 불가 알림 전송 (마지막 유효 위치로 되돌림)
+                    var correctedPos = _lastValidatedPosition ?? validatedPosition;
+                    SendAreaExitBlocked(CurrentArea, condition?.MessageTextId ?? 0, correctedPos);
                     return; // 이동 처리 중단
                 }
 
@@ -1134,14 +1135,14 @@ public class GameClientSession : IPeer
     }
 
     /// <summary>
-    /// Area 퇴장 불가 알림 전송
+    /// Area 퇴장 불가 알림 전송 (위치 보정 포함)
     /// </summary>
-    private void SendAreaExitBlocked(AreaType areaType, int messageTextId)
+    private void SendAreaExitBlocked(AreaType areaType, int messageTextId, Vector3f correctedPosition)
     {
-        using var packet = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(areaType, messageTextId);
+        using var packet = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(areaType, messageTextId, correctedPosition);
         Send(packet);
-        _logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, MessageId={MessageId}",
-            PlayerId, areaType, messageTextId);
+        _logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, MessageId={MessageId}, CorrectedPos=({X},{Y})",
+            PlayerId, areaType, messageTextId, correctedPosition.X, correctedPosition.Y);
     }
 
     /// <summary>

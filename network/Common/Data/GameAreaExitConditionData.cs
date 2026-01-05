@@ -43,11 +43,12 @@ namespace network.common.data
 
         /// <summary>
         /// 특정 Area에서 나갈 수 있는지 확인
+        /// required_step이 완료되어야 퇴장 가능 (currentStep > requiredStep)
         /// </summary>
         public static bool CanExitArea(AreaType areaType, int currentStep)
         {
             var requiredStep = GetRequiredStep(areaType);
-            return requiredStep == 0 || currentStep >= requiredStep;
+            return requiredStep == 0 || currentStep > requiredStep;
         }
     }
 
