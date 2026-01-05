@@ -146,16 +146,21 @@ namespace game_server.services
                 }
             }
 
-            // target_area 확인
+            // target_area 확인 (OR 조건: 하나라도 방문하면 충족)
             if (allConditionsMet && currentStep.TargetAreas.Count > 0)
             {
+                bool anyAreaVisited = false;
                 foreach (var areaType in currentStep.TargetAreas)
                 {
-                    if (!_visitedAreas.Contains(areaType))
+                    if (_visitedAreas.Contains(areaType))
                     {
-                        allConditionsMet = false;
+                        anyAreaVisited = true;
                         break;
                     }
+                }
+                if (!anyAreaVisited)
+                {
+                    allConditionsMet = false;
                 }
             }
 
