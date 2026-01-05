@@ -23,8 +23,8 @@ namespace network.common.data.helpers
             public const string LoadingText = "loading_text.csv";
             public const string AreaName = "area_name.csv";
             public const string AreaRule = "area_rule.csv";
+            public const string AreaExitCondition = "area_exit_condition.csv";
             public const string SystemText = "system_text.csv";
-            public const string PortalCondition = "portal_condition.csv";
 
             public static class Interactable
             {
@@ -69,8 +69,8 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize, validate: GameLoadingTextData.Validate),
                 (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize, validate: GameAreaNameData.Validate),
                 (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize, validate: GameAreaRuleData.Validate),
+                (fileName: DataFiles.AreaExitCondition, init: GameAreaExitConditionData.Initialize, validate: null),
                 (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
-                (fileName: DataFiles.PortalCondition, init: GamePortalConditionData.Initialize, validate: null),
             };
 
         /// <summary>

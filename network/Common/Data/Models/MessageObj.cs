@@ -153,6 +153,13 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class G_TO_C_AREA_EXIT_BLOCKED : IMessagePackObject
+    {
+        [Key("areaType")] public AreaType AreaType { get; set; } // 나가려던 Area
+        [Key("messageTextId")] public int MessageTextId { get; set; } // 표시할 메시지 ID
+    }
+
+    [MessagePackObject]
     public class G_TO_C_INTERACTABLE_LIST : IMessagePackObject
     {
         [Key("areaType")] public AreaType AreaType { get; set; }

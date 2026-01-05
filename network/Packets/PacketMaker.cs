@@ -244,6 +244,19 @@ public static class PacketMaker
         return packet;
     }
 
+    public static Packet G_TO_C_AREA_EXIT_BLOCKED(AreaType areaType, int messageTextId)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_AREA_EXIT_BLOCKED);
+        G_TO_C_AREA_EXIT_BLOCKED body = new()
+        {
+            AreaType = areaType,
+            MessageTextId = messageTextId
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     public static Packet G_TO_C_INTERACTABLE_LIST(AreaType areaType, List<InteractableObjectState> objects)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_LIST);

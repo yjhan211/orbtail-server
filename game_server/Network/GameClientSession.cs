@@ -377,9 +377,25 @@ public class GameClientSession : IPeer
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
 
-            // Area 변경 시 진입/퇴장 이벤트 전송
+            // Area 변경 시 퇴장 조건 체크 및 진입/퇴장 이벤트 전송
             if (newArea != CurrentArea)
             {
+                // 현재 Area에서 나갈 수 있는지 체크
+                var exitState = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
+                var currentStep = exitState.CurrentStepOrder;
+
+                if (!GameAreaExitConditionData.CanExitArea(CurrentArea, currentStep))
+                {
+                    // 퇴장 불가 - 이동 차단
+                    var condition = GameAreaExitConditionData.Get(CurrentArea);
+                    _logger.LogInformation("Player {PlayerId} blocked from leaving {Area}: required step {Required}, current step {Current}",
+                        PlayerId, CurrentArea, condition?.RequiredStep ?? 0, currentStep);
+
+                    // 클라이언트에 퇴장 불가 알림 전송
+                    SendAreaExitBlocked(CurrentArea, condition?.MessageTextId ?? 0);
+                    return; // 이동 처리 중단
+                }
+
                 _logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
                 var oldArea = CurrentArea;
@@ -792,8 +808,6 @@ public class GameClientSession : IPeer
 
             // 액션 결과 처리 (result_type, result_id, result_amount 기반)
             var (resultType, resultId, resultAmount) = _interactableStateManager.GetActionResult(msg.InteractId, msg.ActionId);
-            _logger.LogInformation("Player {PlayerId} action result: InteractId={InteractId}, ActionId={ActionId}, ResultType={ResultType}, ResultId={ResultId}, ResultAmount={ResultAmount}",
-                PlayerId, msg.InteractId, msg.ActionId, resultType, resultId, resultAmount);
             var rewardItemId = 0;
 
             switch (resultType)
@@ -1117,6 +1131,17 @@ public class GameClientSession : IPeer
         Send(packet);
         _logger.LogDebug("Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina} ({StaminaDelta:+#;-#;0}), Corruption={Corruption} ({CorruptionDelta:+#;-#;0})",
             PlayerId, Stamina, staminaDelta, Corruption, corruptionDelta);
+    }
+
+    /// <summary>
+    /// Area 퇴장 불가 알림 전송
+    /// </summary>
+    private void SendAreaExitBlocked(AreaType areaType, int messageTextId)
+    {
+        using var packet = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(areaType, messageTextId);
+        Send(packet);
+        _logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, MessageId={MessageId}",
+            PlayerId, areaType, messageTextId);
     }
 
     /// <summary>
