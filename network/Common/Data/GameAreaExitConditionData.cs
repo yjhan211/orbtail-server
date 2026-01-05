@@ -43,12 +43,20 @@ namespace network.common.data
 
         /// <summary>
         /// 특정 Area에서 나갈 수 있는지 확인
-        /// required_step이 완료되어야 퇴장 가능 (currentStep > requiredStep)
+        /// required_door_id가 설정된 경우 해당 문이 열려야 퇴장 가능
         /// </summary>
-        public static bool CanExitArea(AreaType areaType, int currentStep)
+        public static bool CanExitArea(AreaType areaType)
         {
-            var requiredStep = GetRequiredStep(areaType);
-            return requiredStep == 0 || currentStep > requiredStep;
+            var condition = Get(areaType);
+            if (condition == null) return true;
+
+            // 문 열림 조건 체크
+            if (condition.RequiredDoorId > 0)
+            {
+                return GameUser.Instance?.IsDoorOpen(condition.RequiredDoorId) ?? false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -71,6 +79,7 @@ namespace network.common.data
         public float FallbackX { get; private set; } // 조건 불충족 시 텔레포트할 X 좌표
         public float FallbackY { get; private set; } // 조건 불충족 시 텔레포트할 Y 좌표
         public int RequiredItemId { get; private set; } // 퇴장에 필요한 아이템 ID (0이면 체크 안 함)
+        public int RequiredDoorId { get; private set; } // 퇴장에 필요한 문 ID (0이면 체크 안 함, 열려야 퇴장 가능)
 
         public static AreaExitConditionInfoData CreateFromData(CsvRow row)
         {
@@ -81,7 +90,8 @@ namespace network.common.data
                 MessageTextId = row.ContainsKey("message_text_id") ? int.Parse(row["message_text_id"]) : 0,
                 FallbackX = row.ContainsKey("fallback_x") ? float.Parse(row["fallback_x"]) : 0,
                 FallbackY = row.ContainsKey("fallback_y") ? float.Parse(row["fallback_y"]) : 0,
-                RequiredItemId = row.ContainsKey("required_item_id") ? int.Parse(row["required_item_id"]) : 0
+                RequiredItemId = row.ContainsKey("required_item_id") ? int.Parse(row["required_item_id"]) : 0,
+                RequiredDoorId = row.ContainsKey("required_door_id") ? int.Parse(row["required_door_id"]) : 0
             };
         }
     }
