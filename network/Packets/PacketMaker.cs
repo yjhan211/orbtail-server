@@ -476,14 +476,15 @@ public static class PacketMaker
 
     #region Door 패킷
 
-    public static Packet G_TO_C_DOOR_STATE_UPDATE(int doorId, bool isOpen, ErrorCode errorCode = ErrorCode.SUCCESS)
+    public static Packet G_TO_C_DOOR_STATE_UPDATE(int doorId, bool isOpen, ErrorCode errorCode = ErrorCode.SUCCESS, long openerPlayerId = 0)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_STATE_UPDATE);
         G_TO_C_DOOR_STATE_UPDATE body = new()
         {
             DoorId = doorId,
             IsOpen = isOpen,
-            ErrorCode = errorCode
+            ErrorCode = errorCode,
+            OpenerPlayerId = openerPlayerId
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

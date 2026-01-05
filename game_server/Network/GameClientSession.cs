@@ -1681,7 +1681,7 @@ public class GameClientSession : IPeer
             _logger.LogInformation("Player {PlayerId} opened door: DoorId={DoorId}", PlayerId, doorId);
 
             // 같은 매칭의 모든 플레이어에게 브로드캐스트
-            using var updatePacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS);
+            using var updatePacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId.Value);
             var matchingSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
             foreach (var session in matchingSessions)
             {
