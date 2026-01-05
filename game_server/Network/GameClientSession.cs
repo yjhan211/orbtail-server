@@ -359,12 +359,26 @@ public class GameClientSession : IPeer
 
                 if (!GameAreaExitConditionData.CanExitArea(CurrentArea, currentStep))
                 {
-                    // 퇴장 불가 - 치팅 시도로 간주, 이전 위치로 보정
-                    validatedPosition = _lastValidatedPosition ?? validatedPosition;
-                    currentCell = WorldPositionToCell(validatedPosition);
-                    newArea = CurrentArea; // Area 변경 취소
-                    _logger.LogWarning("Player {PlayerId} attempted to leave {Area} without completing step {Required} (cheat prevention)",
-                        PlayerId, CurrentArea, currentStep);
+                    // 퇴장 불가 - 치팅 시도로 간주, fallback 위치로 텔레포트
+                    var condition = GameAreaExitConditionData.Get(CurrentArea);
+                    var fallback = GameAreaExitConditionData.GetFallbackPosition(CurrentArea);
+                    if (fallback.HasValue)
+                    {
+                        validatedPosition = new Vector3f(fallback.Value.x, fallback.Value.y, 0);
+                    }
+                    else
+                    {
+                        validatedPosition = _lastValidatedPosition ?? validatedPosition;
+                    }
+
+                    // G_TO_C_AREA_EXIT_BLOCKED 패킷 전송
+                    var messageTextId = condition?.MessageTextId ?? 0;
+                    using var blockedPacket = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(CurrentArea, messageTextId, validatedPosition);
+                    Send(blockedPacket);
+
+                    _logger.LogWarning("Player {PlayerId} attempted to leave {Area} without completing step {Required} - teleported to ({X},{Y})",
+                        PlayerId, CurrentArea, currentStep, validatedPosition.X, validatedPosition.Y);
+                    return; // 이번 프레임 처리 종료
                 }
             }
 

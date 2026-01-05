@@ -50,6 +50,17 @@ namespace network.common.data
             var requiredStep = GetRequiredStep(areaType);
             return requiredStep == 0 || currentStep > requiredStep;
         }
+
+        /// <summary>
+        /// 특정 Area의 Fallback 위치 가져오기 (퇴장 불가 시 텔레포트할 위치)
+        /// </summary>
+        public static (float x, float y)? GetFallbackPosition(AreaType areaType)
+        {
+            var condition = Get(areaType);
+            if (condition == null || (condition.FallbackX == 0 && condition.FallbackY == 0))
+                return null;
+            return (condition.FallbackX, condition.FallbackY);
+        }
     }
 
     public class AreaExitConditionInfoData
@@ -57,6 +68,8 @@ namespace network.common.data
         public AreaType AreaType { get; private set; }
         public int RequiredStep { get; private set; } // 이 Area에서 나가려면 필요한 최소 Exit Step
         public int MessageTextId { get; private set; } // 조건 불충족 시 표시할 메시지 ID
+        public float FallbackX { get; private set; } // 조건 불충족 시 텔레포트할 X 좌표
+        public float FallbackY { get; private set; } // 조건 불충족 시 텔레포트할 Y 좌표
 
         public static AreaExitConditionInfoData CreateFromData(CsvRow row)
         {
@@ -64,7 +77,9 @@ namespace network.common.data
             {
                 AreaType = (AreaType)int.Parse(row["area_type"]),
                 RequiredStep = int.Parse(row["required_step"]),
-                MessageTextId = row.ContainsKey("message_text_id") ? int.Parse(row["message_text_id"]) : 0
+                MessageTextId = row.ContainsKey("message_text_id") ? int.Parse(row["message_text_id"]) : 0,
+                FallbackX = row.ContainsKey("fallback_x") ? float.Parse(row["fallback_x"]) : 0,
+                FallbackY = row.ContainsKey("fallback_y") ? float.Parse(row["fallback_y"]) : 0
             };
         }
     }
