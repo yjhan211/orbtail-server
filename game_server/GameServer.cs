@@ -37,6 +37,7 @@ public class GameServer : IHostedService
     private readonly ItemPoolManager _itemPoolManager = new();
     private readonly CorridorRuleManager _corridorRuleManager = new();
     private readonly InteractRuleManager _interactRuleManager = new();
+    private readonly DoorStateManager _doorStateManager = new();
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
     private Timer? _infirmaryHealingTimer;
@@ -256,7 +257,8 @@ public class GameServer : IHostedService
                 _exitInstanceManager,
                 _itemPoolManager,
                 _corridorRuleManager,
-                _interactRuleManager);
+                _interactRuleManager,
+                _doorStateManager);
 
             _logger.LogInformation("Game client session created");
         }

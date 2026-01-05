@@ -473,4 +473,34 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+
+    #region Door 패킷
+
+    public static Packet G_TO_C_DOOR_STATE_UPDATE(int doorId, bool isOpen, ErrorCode errorCode = ErrorCode.SUCCESS)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_STATE_UPDATE);
+        G_TO_C_DOOR_STATE_UPDATE body = new()
+        {
+            DoorId = doorId,
+            IsOpen = isOpen,
+            ErrorCode = errorCode
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_DOOR_STATE_LIST(List<int> openDoorIds)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_STATE_LIST);
+        G_TO_C_DOOR_STATE_LIST body = new()
+        {
+            OpenDoorIds = openDoorIds
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    #endregion
 }

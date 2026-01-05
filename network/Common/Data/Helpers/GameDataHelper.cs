@@ -25,6 +25,7 @@ namespace network.common.data.helpers
             public const string AreaRule = "area_rule.csv";
             public const string AreaExitCondition = "area_exit_condition.csv";
             public const string SystemText = "system_text.csv";
+            public const string DoorInfo = "door_info.csv";
 
             public static class Interactable
             {
@@ -71,6 +72,7 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize, validate: GameAreaRuleData.Validate),
                 (fileName: DataFiles.AreaExitCondition, init: GameAreaExitConditionData.Initialize, validate: null),
                 (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
+                (fileName: DataFiles.DoorInfo, init: GameDoorData.Initialize, validate: null),
             };
 
         /// <summary>

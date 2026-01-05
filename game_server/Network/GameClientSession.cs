@@ -33,6 +33,7 @@ public class GameClientSession : IPeer
     private readonly ItemPoolManager _itemPoolManager;
     private readonly CorridorRuleManager _corridorRuleManager;
     private readonly InteractRuleManager _interactRuleManager;
+    private readonly DoorStateManager _doorStateManager;
 
     private readonly ILogger _logger;
     private readonly ICacheHelper _cacheHelper;
@@ -80,7 +81,8 @@ public class GameClientSession : IPeer
         ExitInstanceManager exitInstanceManager,
         ItemPoolManager itemPoolManager,
         CorridorRuleManager corridorRuleManager,
-        InteractRuleManager interactRuleManager)
+        InteractRuleManager interactRuleManager,
+        DoorStateManager doorStateManager)
     {
         _token = token;
         _token.SetPeer(this);
@@ -99,6 +101,7 @@ public class GameClientSession : IPeer
         _itemPoolManager = itemPoolManager;
         _corridorRuleManager = corridorRuleManager;
         _interactRuleManager = interactRuleManager;
+        _doorStateManager = doorStateManager;
 
         _protocolRouter = new ProtocolRouter(logger);
         InitializeProtocolHandlers();
@@ -124,6 +127,9 @@ public class GameClientSession : IPeer
 
         // 로비 복귀 프로토콜
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_RETURN_TO_LOBBY, async (bytes) => await HandleMessage<C_TO_G_RETURN_TO_LOBBY>(bytes, HandleReturnToLobby));
+
+        // 문 프로토콜
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_REQUEST, async (bytes) => await HandleMessage<C_TO_G_DOOR_OPEN_REQUEST>(bytes, HandleDoorOpenRequest));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -306,6 +312,9 @@ public class GameClientSession : IPeer
 
             // 탈출 절차 정보 전송
             SendExitStepInfo();
+
+            // 열린 문 목록 전송
+            SendDoorStateList();
 
             // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
             await BroadcastPlayerJoin();
@@ -1611,6 +1620,110 @@ public class GameClientSession : IPeer
         {
             _logger.LogError(ex, "CheckCorridorRuleViolation error for player {PlayerId}", PlayerId);
         }
+    }
+
+    #endregion
+
+    #region 문
+
+    /// <summary>
+    /// 문 열기 요청 처리
+    /// </summary>
+    private Task HandleDoorOpenRequest(C_TO_G_DOOR_OPEN_REQUEST msg)
+    {
+        if (!PlayerId.HasValue)
+        {
+            _logger.LogWarning("HandleDoorOpenRequest: PlayerId not set");
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            var doorId = msg.DoorId;
+            var doorInfo = GameDoorData.Get(doorId);
+
+            // 문 정보 확인
+            if (doorInfo == null)
+            {
+                _logger.LogWarning("Player {PlayerId} tried to open unknown door: DoorId={DoorId}", PlayerId, doorId);
+                using var errorPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_NOT_FOUND);
+                Send(errorPacket);
+                return Task.CompletedTask;
+            }
+
+            // 이미 열려있는지 확인
+            if (_doorStateManager.IsDoorOpen(CurrentMapSubId, doorId))
+            {
+                _logger.LogDebug("Player {PlayerId} tried to open already open door: DoorId={DoorId}", PlayerId, doorId);
+                using var alreadyOpenPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.DOOR_ALREADY_OPEN);
+                Send(alreadyOpenPacket);
+                return Task.CompletedTask;
+            }
+
+            // 거리 검증
+            if (_lastValidatedPosition != null)
+            {
+                var dx = _lastValidatedPosition.X - doorInfo.PositionX;
+                var dy = _lastValidatedPosition.Y - doorInfo.PositionY;
+                var distance = Math.Sqrt(dx * dx + dy * dy);
+
+                if (distance > doorInfo.InteractDistance)
+                {
+                    _logger.LogWarning("Player {PlayerId} too far from door: DoorId={DoorId}, Distance={Distance}",
+                        PlayerId, doorId, distance);
+                    using var tooFarPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_TOO_FAR);
+                    Send(tooFarPacket);
+                    return Task.CompletedTask;
+                }
+            }
+
+            // 열쇠 보유 확인 (required_item_id가 0이면 열쇠 불필요)
+            if (doorInfo.RequiredItemId > 0)
+            {
+                var playerInventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+                var hasKey = (playerInventory?.GetItemCount(doorInfo.RequiredItemId) ?? 0) > 0;
+
+                if (!hasKey)
+                {
+                    _logger.LogWarning("Player {PlayerId} missing key for door: DoorId={DoorId}, RequiredItemId={ItemId}",
+                        PlayerId, doorId, doorInfo.RequiredItemId);
+                    using var noKeyPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_KEY_MISSING);
+                    Send(noKeyPacket);
+                    return Task.CompletedTask;
+                }
+            }
+
+            // 문 열기
+            _doorStateManager.OpenDoor(CurrentMapSubId, doorId);
+            _logger.LogInformation("Player {PlayerId} opened door: DoorId={DoorId}", PlayerId, doorId);
+
+            // 같은 매칭의 모든 플레이어에게 브로드캐스트
+            using var updatePacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS);
+            var matchingSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            foreach (var session in matchingSessions)
+            {
+                session.Send(updatePacket);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "HandleDoorOpenRequest error for player {PlayerId}", PlayerId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 열린 문 목록 전송 (입장 시)
+    /// </summary>
+    private void SendDoorStateList()
+    {
+        if (!PlayerId.HasValue) return;
+
+        var openDoors = _doorStateManager.GetOpenDoors(CurrentMapSubId);
+        using var packet = PacketMaker.G_TO_C_DOOR_STATE_LIST(openDoors);
+        Send(packet);
+        _logger.LogDebug("Sent DOOR_STATE_LIST to Player {PlayerId}: {Count} open doors", PlayerId, openDoors.Count);
     }
 
     #endregion

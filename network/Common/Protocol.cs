@@ -86,6 +86,11 @@ namespace network.common
         C_TO_G_RETURN_TO_LOBBY, // 로비 복귀 요청 (게임 완료 후)
         G_TO_C_RETURN_TO_LOBBY_RESULT, // 로비 복귀 결과
 
+        // 문 프로토콜
+        C_TO_G_DOOR_OPEN_REQUEST, // 문 열기 요청
+        G_TO_C_DOOR_STATE_UPDATE, // 문 상태 변경 브로드캐스트
+        G_TO_C_DOOR_STATE_LIST, // 입장 시 열린 문 목록
+
         END
     }
 
@@ -152,6 +157,12 @@ namespace network.common
         EXIT_ITEM_MISSING = 603,
         EXIT_ALREADY_COMPLETED = 604,
         EXIT_SPOT_MISMATCH = 605,
+
+        // 문 (650~659)
+        DOOR_NOT_FOUND = 650,
+        DOOR_ALREADY_OPEN = 651,
+        DOOR_KEY_MISSING = 652,
+        DOOR_TOO_FAR = 653,
 
         // 퀘스트 (700~799)
         QUEST_NOT_FOUND = 700,
