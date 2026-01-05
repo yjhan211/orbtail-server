@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using network.common.data;
 
 namespace game_server.services
 {
@@ -12,6 +13,32 @@ namespace game_server.services
         // matchingId -> 열린 문 ID 목록
         private readonly Dictionary<long, HashSet<int>> _openDoors = new();
         private readonly object _lock = new();
+
+        /// <summary>
+        /// 매칭 시작 시 초기 열린 문 등록
+        /// </summary>
+        public void InitializeMatching(long matchingId)
+        {
+            lock (_lock)
+            {
+                // 이미 초기화되어 있으면 스킵
+                if (_openDoors.ContainsKey(matchingId))
+                {
+                    return;
+                }
+
+                _openDoors[matchingId] = new HashSet<int>();
+
+                // 초기 열림 상태인 문 등록
+                foreach (var door in GameDoorData.GetAll())
+                {
+                    if (door.IsInitiallyOpen)
+                    {
+                        _openDoors[matchingId].Add(door.DoorId);
+                    }
+                }
+            }
+        }
 
         /// <summary>
         /// 문 열기

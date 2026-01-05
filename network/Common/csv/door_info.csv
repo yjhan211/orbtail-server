@@ -1,6 +1,6 @@
-door_id,required_item_id,position_x,position_y,interact_distance,location_name
-101,601000004,174,88,3,강당
-102,601000005,113,91,3,교실1
-103,601000005,130,101,3,교실1
-104,601000006,143,91,3,교실2
-105,601000006,160,102,3,교실2
+door_id,required_item_id,position_x,position_y,interact_distance,location_name,is_initially_open
+101,601000004,174,88,3,강당,0
+102,601000007,113,91,3,교실1,1
+103,601000007,130,101,3,교실1,0
+104,601000008,143,91,3,교실2,1
+105,601000008,160,102,3,교실2,0

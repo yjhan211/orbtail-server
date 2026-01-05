@@ -49,6 +49,7 @@ namespace network.common.data
         public float PositionY { get; private set; }
         public float InteractDistance { get; private set; } // 상호작용 가능 거리
         public string LocationName { get; private set; } // 문이 위치한 장소 이름 (알럿 표시용)
+        public bool IsInitiallyOpen { get; private set; } // 초기 열림 상태
 
         public static DoorInfoData CreateFromData(CsvRow row)
         {
@@ -59,7 +60,8 @@ namespace network.common.data
                 PositionX = row.ContainsKey("position_x") ? float.Parse(row["position_x"]) : 0,
                 PositionY = row.ContainsKey("position_y") ? float.Parse(row["position_y"]) : 0,
                 InteractDistance = row.ContainsKey("interact_distance") ? float.Parse(row["interact_distance"]) : 3f,
-                LocationName = row.ContainsKey("location_name") ? row["location_name"] : "알 수 없는 장소"
+                LocationName = row.ContainsKey("location_name") ? row["location_name"] : "알 수 없는 장소",
+                IsInitiallyOpen = row.ContainsKey("is_initially_open") && row["is_initially_open"] == "1"
             };
         }
     }

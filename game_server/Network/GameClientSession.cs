@@ -313,7 +313,8 @@ public class GameClientSession : IPeer
             // 탈출 절차 정보 전송
             SendExitStepInfo();
 
-            // 열린 문 목록 전송
+            // 문 초기 상태 설정 및 열린 문 목록 전송
+            _doorStateManager.InitializeMatching(CurrentMapSubId);
             SendDoorStateList();
 
             // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
