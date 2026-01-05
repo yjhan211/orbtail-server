@@ -15,6 +15,7 @@ id,category,text_ko
 23,3,방송실로 이동하십시오
 30,4,손톱으로 긁어야 합니다. 괜찮으시겠습니까?
 31,4,무시한다
+40,5,강당 열쇠를 획득해야 합니다.
 100,3,"<color=#22D3EE>{Item.SpawnArea}</color>에서 <color=#22D3EE>{Item.Name}</color>을 <color=#22D3EE>회수</color>하십시오. <color=#22D3EE>{Debuff.Warning}</color>"
 101,3,"저들이 <color=#F1325A>{Item.Name}</color>을 절대로 찾게 해서는 안 돼. <color=#F1325A>{Item.SpawnArea}</color>에 숨겨둔 건 나만 알아야 해."
 102,3,"<color=#22D3EE>{Item.Name}</color> <color=#22D3EE>회수</color>하기"
