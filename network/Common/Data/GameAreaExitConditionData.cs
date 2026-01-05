@@ -66,10 +66,11 @@ namespace network.common.data
     public class AreaExitConditionInfoData
     {
         public AreaType AreaType { get; private set; }
-        public int RequiredStep { get; private set; } // 이 Area에서 나가려면 필요한 최소 Exit Step
+        public int RequiredStep { get; private set; } // 이 Area에서 나가려면 완료해야 할 Exit Step
         public int MessageTextId { get; private set; } // 조건 불충족 시 표시할 메시지 ID
         public float FallbackX { get; private set; } // 조건 불충족 시 텔레포트할 X 좌표
         public float FallbackY { get; private set; } // 조건 불충족 시 텔레포트할 Y 좌표
+        public int RequiredItemId { get; private set; } // 퇴장에 필요한 아이템 ID (0이면 체크 안 함)
 
         public static AreaExitConditionInfoData CreateFromData(CsvRow row)
         {
@@ -79,7 +80,8 @@ namespace network.common.data
                 RequiredStep = int.Parse(row["required_step"]),
                 MessageTextId = row.ContainsKey("message_text_id") ? int.Parse(row["message_text_id"]) : 0,
                 FallbackX = row.ContainsKey("fallback_x") ? float.Parse(row["fallback_x"]) : 0,
-                FallbackY = row.ContainsKey("fallback_y") ? float.Parse(row["fallback_y"]) : 0
+                FallbackY = row.ContainsKey("fallback_y") ? float.Parse(row["fallback_y"]) : 0,
+                RequiredItemId = row.ContainsKey("required_item_id") ? int.Parse(row["required_item_id"]) : 0
             };
         }
     }

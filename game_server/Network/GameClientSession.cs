@@ -354,31 +354,58 @@ public class GameClientSession : IPeer
             if (newArea != CurrentArea)
             {
                 // 현재 Area에서 나갈 수 있는지 체크
-                var exitState = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-                var currentStep = exitState.CurrentStepOrder;
+                var exitCondition = GameAreaExitConditionData.Get(CurrentArea);
 
-                if (!GameAreaExitConditionData.CanExitArea(CurrentArea, currentStep))
+                if (exitCondition != null)
                 {
-                    // 퇴장 불가 - 치팅 시도로 간주, fallback 위치로 텔레포트
-                    var condition = GameAreaExitConditionData.Get(CurrentArea);
-                    var fallback = GameAreaExitConditionData.GetFallbackPosition(CurrentArea);
-                    if (fallback.HasValue)
-                    {
-                        validatedPosition = new Vector3f(fallback.Value.x, fallback.Value.y, 0);
-                    }
-                    else
-                    {
-                        validatedPosition = _lastValidatedPosition ?? validatedPosition;
-                    }
+                    var exitState = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
+                    var currentStep = exitState.CurrentStepOrder;
 
-                    // G_TO_C_AREA_EXIT_BLOCKED 패킷 전송
-                    var messageTextId = condition?.MessageTextId ?? 0;
-                    using var blockedPacket = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(CurrentArea, messageTextId, validatedPosition);
-                    Send(blockedPacket);
+                    // 이미 해당 step을 완료했으면 통과
+                    if (currentStep <= exitCondition.RequiredStep)
+                    {
+                        // 아직 step 미완료 - 아이템 보유 여부 체크
+                        var playerInventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+                        var hasRequiredItem = exitCondition.RequiredItemId == 0 ||
+                            (playerInventory?.GetItemCount(exitCondition.RequiredItemId) ?? 0) > 0;
 
-                    _logger.LogWarning("Player {PlayerId} attempted to leave {Area} without completing step {Required} - teleported to ({X},{Y})",
-                        PlayerId, CurrentArea, currentStep, validatedPosition.X, validatedPosition.Y);
-                    return; // 이번 프레임 처리 종료
+                        if (hasRequiredItem && exitCondition.RequiredItemId > 0)
+                        {
+                            // 아이템 보유 + Area 퇴장 시 step 완료 처리
+                            exitState.AdvanceStep(PlayerId.Value);
+                            _logger.LogInformation("Player {PlayerId} completed exit step {Step} by leaving {Area} with item {ItemId}",
+                                PlayerId, exitCondition.RequiredStep, CurrentArea, exitCondition.RequiredItemId);
+
+                            // 같은 매칭의 모든 플레이어에게 step 완료 알림
+                            using var stepPacket = PacketMaker.G_TO_C_EXIT_STEP_UPDATE(PlayerId.Value, exitState.CurrentStepOrder, exitState.IsCompleted);
+                            var matchingSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+                            foreach (var session in matchingSessions)
+                            {
+                                session.Send(stepPacket);
+                            }
+                        }
+                        else if (!hasRequiredItem)
+                        {
+                            // 아이템 미보유 - 퇴장 불가
+                            var fallback = GameAreaExitConditionData.GetFallbackPosition(CurrentArea);
+                            if (fallback.HasValue)
+                            {
+                                validatedPosition = new Vector3f(fallback.Value.x, fallback.Value.y, 0);
+                            }
+                            else
+                            {
+                                validatedPosition = _lastValidatedPosition ?? validatedPosition;
+                            }
+
+                            // G_TO_C_AREA_EXIT_BLOCKED 패킷 전송
+                            using var blockedPacket = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(CurrentArea, exitCondition.MessageTextId, validatedPosition);
+                            Send(blockedPacket);
+
+                            _logger.LogWarning("Player {PlayerId} attempted to leave {Area} without item {ItemId} - teleported to ({X},{Y})",
+                                PlayerId, CurrentArea, exitCondition.RequiredItemId, validatedPosition.X, validatedPosition.Y);
+                            return; // 이번 프레임 처리 종료
+                        }
+                    }
                 }
             }
 

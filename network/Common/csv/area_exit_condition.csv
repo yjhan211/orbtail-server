@@ -1,2 +1,2 @@
-area_type,required_step,message_text_id,fallback_x,fallback_y
-12,1,40,174,88
+area_type,required_step,message_text_id,fallback_x,fallback_y,required_item_id
+12,1,40,174,88,601000004
