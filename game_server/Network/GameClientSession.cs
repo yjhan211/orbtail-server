@@ -1660,23 +1660,6 @@ public class GameClientSession : IPeer
                 return Task.CompletedTask;
             }
 
-            // 거리 검증
-            if (_lastValidatedPosition != null)
-            {
-                var dx = _lastValidatedPosition.X - doorInfo.PositionX;
-                var dy = _lastValidatedPosition.Y - doorInfo.PositionY;
-                var distance = Math.Sqrt(dx * dx + dy * dy);
-
-                if (distance > doorInfo.InteractDistance)
-                {
-                    _logger.LogWarning("Player {PlayerId} too far from door: DoorId={DoorId}, Distance={Distance}",
-                        PlayerId, doorId, distance);
-                    using var tooFarPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_TOO_FAR);
-                    Send(tooFarPacket);
-                    return Task.CompletedTask;
-                }
-            }
-
             // 열쇠 보유 확인 (required_item_id가 0이면 열쇠 불필요)
             if (doorInfo.RequiredItemId > 0)
             {
