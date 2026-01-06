@@ -41,6 +41,7 @@ public class GameServer : IHostedService
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
     private Timer? _infirmaryHealingTimer;
+    private Timer? _corridorStopCheckTimer;
 
     // 하트비트 체크 간격 (10초마다 체크)
     private const int HeartbeatCheckIntervalSeconds = 10;
@@ -48,6 +49,9 @@ public class GameServer : IHostedService
     // 보건실 힐링 설정
     private const int InfirmaryHealingIntervalSeconds = 1;
     private const int InfirmaryHealingAmount = 5;
+
+    // 복도 정지 체크 간격
+    private const int CorridorStopCheckIntervalMs = 500;
 
     private readonly ServerConfig _serverConfig;
 
@@ -85,6 +89,7 @@ public class GameServer : IHostedService
             StartTcpServer();
             StartHeartbeatChecker();
             StartInfirmaryHealingTimer();
+            StartCorridorStopCheckTimer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -115,6 +120,12 @@ public class GameServer : IHostedService
         {
             await _infirmaryHealingTimer.DisposeAsync();
             _infirmaryHealingTimer = null;
+        }
+
+        if (_corridorStopCheckTimer != null)
+        {
+            await _corridorStopCheckTimer.DisposeAsync();
+            _corridorStopCheckTimer = null;
         }
 
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
@@ -209,6 +220,45 @@ public class GameServer : IHostedService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing infirmary healing");
+        }
+    }
+
+    private void StartCorridorStopCheckTimer()
+    {
+        _corridorStopCheckTimer = new Timer(
+            ProcessCorridorStopCheck,
+            null,
+            TimeSpan.FromMilliseconds(CorridorStopCheckIntervalMs),
+            TimeSpan.FromMilliseconds(CorridorStopCheckIntervalMs));
+        _logger.LogInformation("Corridor stop check timer started (interval: {Interval}ms)", CorridorStopCheckIntervalMs);
+    }
+
+    /// <summary>
+    /// 복도에서 정지한 플레이어들의 정신오염도 증가 처리 (규칙 6)
+    /// </summary>
+    private void ProcessCorridorStopCheck(object? state)
+    {
+        try
+        {
+            var violations = _corridorRuleManager.CheckAllStoppedPlayersForRule6();
+
+            foreach (var (matchingId, playerId, result) in violations)
+            {
+                // 규칙 6번이 적용된 매칭인지 확인
+                var corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(matchingId);
+                if (corridorRuleId != 6) continue;
+
+                if (_clientSessions.TryGetValue(playerId, out var session))
+                {
+                    session.ModifyStats(corruptionDelta: result.CorruptionDelta);
+                    _logger.LogInformation("Player {PlayerId} corridor stop violation (timer): {Message}, Corruption +{Delta}",
+                        playerId, result.Message, result.CorruptionDelta);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing corridor stop check");
         }
     }
 
