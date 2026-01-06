@@ -11,7 +11,7 @@ namespace game_server.services
         public const int MaxIntervalSeconds = 20; // 최대 간격
         public const int MinDurationSeconds = 3; // 최소 지속 시간
         public const int MaxDurationSeconds = 6; // 최대 지속 시간
-        public const int GameDurationMinutes = 15; // 게임 시간
+        public static int GameDurationMinutes => Config.GAME_DURATION_MINUTES; // 게임 시간 (Config에서 참조)
         public const int MovementPenaltyCorruption = 5; // 종소리 중 이동 시 정신오염 페널티 (규칙 1)
         public const int StopPenaltyCorruption = 5; // 정지 시 정신오염 페널티 (규칙 6)
         public const double StopThresholdSeconds = 1.0; // 정지 판정 시간 (초)

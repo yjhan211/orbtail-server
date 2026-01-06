@@ -29,8 +29,9 @@ public sealed class InstanceMapController(
     private readonly ConcurrentDictionary<string, Timer> _gameTimers = new();
     private readonly ConcurrentDictionary<string, (Timer OneMinuteTimer, Timer ThirtySecondsTimer)> _warningTimers = new();
 
-    private const int GameDurationMinutes = 15;
-    private const int GameDurationSeconds = GameDurationMinutes * 60;
+    // 게임 타이머 설정 (Config에서 참조)
+    private static int GameDurationMinutes => Config.GAME_DURATION_MINUTES;
+    private static int GameDurationSeconds => Config.GAME_DURATION_SECONDS;
 
     private string EnterInstanceSubject => SubjectHelper.GetEnterInstanceSubject(ServerConfig.ServerId);
 

@@ -61,9 +61,9 @@ public class GameClientSession : IPeer
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
 
-    // 게임 타이머 설정
-    private const int GameDurationMinutes = 15;
-    private const int GameDurationSeconds = GameDurationMinutes * 60;
+    // 게임 타이머 설정 (Config에서 참조)
+    private static int GameDurationMinutes => Config.GAME_DURATION_MINUTES;
+    private static int GameDurationSeconds => Config.GAME_DURATION_SECONDS;
     private static readonly Dictionary<long, Timer> _gameTimers = new();
     private static readonly object _timerLock = new();
 
