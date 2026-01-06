@@ -91,6 +91,9 @@ namespace network.common
         G_TO_C_DOOR_STATE_UPDATE, // 문 상태 변경 브로드캐스트
         G_TO_C_DOOR_STATE_LIST, // 입장 시 열린 문 목록
 
+        // 복도 규칙 프로토콜
+        G_TO_C_CORRIDOR_BELL, // 복도 종소리 이벤트
+
         END
     }
 

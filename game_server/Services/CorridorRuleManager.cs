@@ -4,6 +4,14 @@ using network.common.data.models;
 
 namespace game_server.services
 {
+    // 복도 종소리 설정
+    public static class CorridorBellConfig
+    {
+        public const int MinIntervalSeconds = 10; // 최소 간격
+        public const int MaxIntervalSeconds = 15; // 최대 간격
+        public const int DurationSeconds = 6; // 종소리 지속 시간
+        public const int GameDurationMinutes = 5; // 게임 시간
+    }
     /// <summary>
     /// 복도 규칙 타입 (현재 미사용 - CSV 기반으로 전환됨)
     /// </summary>
@@ -47,6 +55,53 @@ namespace game_server.services
     {
         public CorridorRuleType ActiveRule => CorridorRuleType.None;
         private readonly ConcurrentDictionary<long, PlayerCorridorState> _playerStates = new();
+        private readonly List<BellEvent> _bellSchedule = new();
+        private static readonly Random _random = new();
+
+        public MatchingCorridorRuleState()
+        {
+            GenerateBellSchedule();
+        }
+
+        /// <summary>
+        /// 게임 시작 시 종소리 스케줄 생성
+        /// </summary>
+        private void GenerateBellSchedule()
+        {
+            _bellSchedule.Clear();
+
+            var gameStartTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var gameEndTime = gameStartTime + (CorridorBellConfig.GameDurationMinutes * 60 * 1000);
+            var currentTime = gameStartTime;
+
+            while (currentTime < gameEndTime)
+            {
+                // 랜덤 간격 후 다음 종소리
+                var intervalSeconds = _random.Next(
+                    CorridorBellConfig.MinIntervalSeconds,
+                    CorridorBellConfig.MaxIntervalSeconds + 1);
+                currentTime += intervalSeconds * 1000;
+
+                if (currentTime >= gameEndTime) break;
+
+                var bellStart = currentTime;
+                var bellEnd = bellStart + (CorridorBellConfig.DurationSeconds * 1000);
+
+                _bellSchedule.Add(new BellEvent
+                {
+                    StartTimestamp = bellStart,
+                    EndTimestamp = bellEnd
+                });
+            }
+        }
+
+        /// <summary>
+        /// 종소리 스케줄 가져오기
+        /// </summary>
+        public List<BellEvent> GetBellSchedule()
+        {
+            return _bellSchedule.ToList();
+        }
 
         public List<(long PlayerId, CorridorViolationResult Result)> CheckAllPlayersForStopping()
         {
@@ -144,6 +199,15 @@ namespace game_server.services
         public int GetActiveRuleId(long matchingId)
         {
             return 0;
+        }
+
+        /// <summary>
+        /// 종소리 스케줄 가져오기
+        /// </summary>
+        public List<BellEvent> GetBellSchedule(long matchingId)
+        {
+            var state = GetOrCreateMatchingState(matchingId);
+            return state.GetBellSchedule();
         }
 
         /// <summary>

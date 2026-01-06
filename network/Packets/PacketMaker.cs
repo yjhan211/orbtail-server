@@ -504,4 +504,20 @@ public static class PacketMaker
     }
 
     #endregion
+
+    #region 복도 규칙 프로토콜
+
+    public static Packet G_TO_C_CORRIDOR_BELL(List<BellEvent> bells)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_CORRIDOR_BELL);
+        G_TO_C_CORRIDOR_BELL body = new()
+        {
+            Bells = bells
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    #endregion
 }

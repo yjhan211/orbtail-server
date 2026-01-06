@@ -753,4 +753,27 @@ namespace network.common.data.models
     }
 
     #endregion
+
+    #region 복도 규칙 프로토콜
+
+    /// <summary>
+    /// 종소리 이벤트 정보
+    /// </summary>
+    [MessagePackObject]
+    public class BellEvent
+    {
+        [Key("startTimestamp")] public long StartTimestamp { get; set; } // 시작 시간 (Unix ms)
+        [Key("endTimestamp")] public long EndTimestamp { get; set; } // 끝나는 시간 (Unix ms)
+    }
+
+    /// <summary>
+    /// 복도 종소리 스케줄 (게임 시작 시 전송)
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_CORRIDOR_BELL : IMessagePackObject
+    {
+        [Key("bells")] public List<BellEvent> Bells { get; set; } = new();
+    }
+
+    #endregion
 }

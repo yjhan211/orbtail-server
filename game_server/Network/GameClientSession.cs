@@ -317,6 +317,9 @@ public class GameClientSession : IPeer
             _doorStateManager.InitializeMatching(CurrentMapSubId);
             SendDoorStateList();
 
+            // 복도 종소리 스케줄 전송
+            SendCorridorBellSchedule();
+
             // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
             await BroadcastPlayerJoin();
         }
@@ -1726,6 +1729,23 @@ public class GameClientSession : IPeer
         using var packet = PacketMaker.G_TO_C_DOOR_STATE_LIST(openDoors);
         Send(packet);
         _logger.LogDebug("Sent DOOR_STATE_LIST to Player {PlayerId}: {Count} open doors", PlayerId, openDoors.Count);
+    }
+
+    #endregion
+
+    #region 복도 규칙
+
+    /// <summary>
+    /// 복도 종소리 스케줄 전송 (입장 시)
+    /// </summary>
+    private void SendCorridorBellSchedule()
+    {
+        if (!PlayerId.HasValue) return;
+
+        var bells = _corridorRuleManager.GetBellSchedule(CurrentMapSubId);
+        using var packet = PacketMaker.G_TO_C_CORRIDOR_BELL(bells);
+        Send(packet);
+        _logger.LogDebug("Sent CORRIDOR_BELL schedule to Player {PlayerId}: {Count} bells", PlayerId, bells.Count);
     }
 
     #endregion
