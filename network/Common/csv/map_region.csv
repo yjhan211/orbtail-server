@@ -632,3 +632,5 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,area,173,68,195,78,15
 1,area,168,68,172,75,15
 1,area,82,57,98,71,8
+1,obstacle,159,86,159,98,0
+1,obstacle,129,85,129,97,0
