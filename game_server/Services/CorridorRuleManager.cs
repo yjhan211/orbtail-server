@@ -32,6 +32,7 @@ namespace game_server.services
     {
         public bool IsInCorridor { get; set; }
         public DateTime LastMoveTime { get; set; } = DateTime.UtcNow;
+        public DateTime LastPacketTime { get; set; } = DateTime.UtcNow; // 마지막 패킷 수신 시간
         public Vector3f? LastPosition { get; set; }
         public DateTime LastPenaltyTime { get; set; } = DateTime.MinValue; // 마지막 페널티 적용 시간
         public DateTime? StopStartTime { get; set; } // 정지 시작 시간 (규칙 6용)
@@ -179,6 +180,7 @@ namespace game_server.services
 
             var isMoving = velocity != null && velocity.Magnitude() > 0.1f;
             var now = DateTime.UtcNow;
+            state.LastPacketTime = now; // 패킷 수신 시간 업데이트
 
             // 복도 규칙 1: 종소리 울릴 때 복도에서 움직이면 정신오염 페널티
             if (corridorRuleId == 1 && IsBellRinging(out var currentBell))
@@ -221,9 +223,10 @@ namespace game_server.services
                             if (timeSinceLastPenalty >= CorridorBellConfig.PenaltyCooldownSeconds)
                             {
                                 state.LastPenaltyTime = now;
+                                state.StopStartTime = now; // 페널티 적용 후 리셋
                                 result.IsViolation = true;
                                 result.CorruptionDelta = CorridorBellConfig.StopPenaltyCorruption;
-                                result.Message = $"복도에서 {stopDuration:F1}초 동안 정지";
+                                result.Message = "복도에서 정지";
                             }
                         }
                     }
@@ -231,6 +234,53 @@ namespace game_server.services
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// 타이머 기반 정지 체크 (패킷이 오지 않는 플레이어들 대상)
+        /// </summary>
+        public List<(long PlayerId, CorridorViolationResult Result)> CheckStoppedPlayersForRule6()
+        {
+            var results = new List<(long, CorridorViolationResult)>();
+            var now = DateTime.UtcNow;
+
+            foreach (var kvp in _playerStates)
+            {
+                var playerId = kvp.Key;
+                var state = kvp.Value;
+
+                if (!state.IsInCorridor) continue;
+
+                // 패킷이 일정 시간 이상 안 왔으면 정지로 판정
+                var timeSinceLastPacket = (now - state.LastPacketTime).TotalSeconds;
+                if (timeSinceLastPacket < 0.5) continue; // 최근 패킷이 있으면 스킵
+
+                // 정지 시작 시간 설정
+                if (!state.StopStartTime.HasValue)
+                {
+                    state.StopStartTime = state.LastPacketTime;
+                }
+
+                var stopDuration = (now - state.StopStartTime.Value).TotalSeconds;
+                if (stopDuration >= CorridorBellConfig.StopThresholdSeconds)
+                {
+                    var timeSinceLastPenalty = (now - state.LastPenaltyTime).TotalSeconds;
+                    if (timeSinceLastPenalty >= CorridorBellConfig.PenaltyCooldownSeconds)
+                    {
+                        state.LastPenaltyTime = now;
+                        state.StopStartTime = now;
+
+                        results.Add((playerId, new CorridorViolationResult
+                        {
+                            IsViolation = true,
+                            CorruptionDelta = CorridorBellConfig.StopPenaltyCorruption,
+                            Message = "복도에서 정지"
+                        }));
+                    }
+                }
+            }
+
+            return results;
         }
     }
 
@@ -295,6 +345,28 @@ namespace game_server.services
         {
             var state = GetOrCreateMatchingState(matchingId);
             return state.GetBellSchedule();
+        }
+
+        /// <summary>
+        /// 타이머 기반 정지 체크 (모든 매칭의 규칙 6 적용 플레이어)
+        /// </summary>
+        public List<(long MatchingId, long PlayerId, CorridorViolationResult Result)> CheckAllStoppedPlayersForRule6()
+        {
+            var results = new List<(long, long, CorridorViolationResult)>();
+
+            foreach (var kvp in _matchingStates)
+            {
+                var matchingId = kvp.Key;
+                var matchingState = kvp.Value;
+                var violations = matchingState.CheckStoppedPlayersForRule6();
+
+                foreach (var (playerId, result) in violations)
+                {
+                    results.Add((matchingId, playerId, result));
+                }
+            }
+
+            return results;
         }
 
         /// <summary>
