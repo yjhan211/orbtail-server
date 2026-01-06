@@ -96,10 +96,9 @@ namespace game_server.services
         }
 
         /// <summary>
-        /// 특정 영역으로 진입 가능한지 확인
-        /// 해당 영역에 문이 없거나, 문이 있고 하나라도 열려있으면 진입 가능
+        /// 특정 영역으로 진입 가능한지 확인 (가장 가까운 문 기준)
         /// </summary>
-        public bool CanEnterArea(long matchingId, AreaType areaType)
+        public bool CanEnterArea(long matchingId, AreaType areaType, float playerX, float playerY)
         {
             // 해당 영역에 문이 없으면 진입 가능
             if (!GameDoorData.HasDoorsForArea(areaType))
@@ -107,24 +106,30 @@ namespace game_server.services
                 return true;
             }
 
-            // 해당 영역의 문들 중 하나라도 열려있는지 확인
-            lock (_lock)
-            {
-                if (!_openDoors.TryGetValue(matchingId, out var openDoors))
-                {
-                    return false;
-                }
+            // 가장 가까운 문 찾기
+            DoorInfoData nearestDoor = null;
+            float nearestDistance = float.MaxValue;
 
-                foreach (var door in GameDoorData.GetByAreaType(areaType))
+            foreach (var door in GameDoorData.GetByAreaType(areaType))
+            {
+                var dx = playerX - door.PositionX;
+                var dy = playerY - door.PositionY;
+                var distance = dx * dx + dy * dy; // 제곱 거리 비교
+
+                if (distance < nearestDistance)
                 {
-                    if (openDoors.Contains(door.DoorId))
-                    {
-                        return true;
-                    }
+                    nearestDistance = distance;
+                    nearestDoor = door;
                 }
             }
 
-            return false;
+            if (nearestDoor == null)
+            {
+                return true;
+            }
+
+            // 가장 가까운 문이 열려있는지 확인
+            return IsDoorOpen(matchingId, nearestDoor.DoorId);
         }
     }
 }

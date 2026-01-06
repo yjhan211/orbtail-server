@@ -157,7 +157,7 @@ namespace network.common.data.models
     {
         [Key("areaType")] public AreaType AreaType { get; set; } // 나가려던 Area
         [Key("messageTextId")] public int MessageTextId { get; set; } // 표시할 메시지 ID
-        [Key("correctedPosition")] public Vector3f CorrectedPosition { get; set; } // 되돌아갈 위치
+        [Key("correctedCell")] public Cell CorrectedCell { get; set; } // 되돌아갈 셀 위치
     }
 
     [MessagePackObject]

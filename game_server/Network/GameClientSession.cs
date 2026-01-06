@@ -397,22 +397,14 @@ public class GameClientSession : IPeer
                         else if (!hasRequiredItem)
                         {
                             // 아이템 미보유 - 퇴장 불가
-                            var fallback = GameAreaExitConditionData.GetFallbackPosition(CurrentArea);
-                            if (fallback.HasValue)
-                            {
-                                validatedPosition = new Vector3f(fallback.Value.x, fallback.Value.y, 0);
-                            }
-                            else
-                            {
-                                validatedPosition = _lastValidatedPosition ?? validatedPosition;
-                            }
+                            var fallbackCell = _lastValidCell ?? currentCell;
 
                             // G_TO_C_AREA_EXIT_BLOCKED 패킷 전송
-                            using var blockedPacket = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(CurrentArea, exitCondition.MessageTextId, validatedPosition);
+                            using var blockedPacket = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(CurrentArea, exitCondition.MessageTextId, fallbackCell);
                             Send(blockedPacket);
 
-                            _logger.LogWarning("Player {PlayerId} attempted to leave {Area} without item {ItemId} - teleported to ({X},{Y})",
-                                PlayerId, CurrentArea, exitCondition.RequiredItemId, validatedPosition.X, validatedPosition.Y);
+                            _logger.LogWarning("Player {PlayerId} attempted to leave {Area} without item {ItemId} - teleported to Cell({X},{Y})",
+                                PlayerId, CurrentArea, exitCondition.RequiredItemId, fallbackCell.X, fallbackCell.Y);
                             return; // 이번 프레임 처리 종료
                         }
                     }
@@ -448,16 +440,16 @@ public class GameClientSession : IPeer
 
             if (newArea != CurrentArea)
             {
-                // 문이 잠겨있는 영역으로는 진입 불가
-                if (!_doorStateManager.CanEnterArea(CurrentMapSubId, newArea))
+                // 문이 잠겨있는 영역으로는 진입 불가 (가장 가까운 문 기준, cell 단위)
+                if (!_doorStateManager.CanEnterArea(CurrentMapSubId, newArea, currentCell.X, currentCell.Y))
                 {
                     _logger.LogWarning("Player {PlayerId} blocked from entering locked area: {NewArea}",
                         PlayerId, newArea);
 
-                    // 이전 위치로 보정
-                    if (_lastValidatedPosition != null)
+                    // 이전 셀로 보정
+                    if (_lastValidCell != null)
                     {
-                        SendAreaExitBlocked(newArea, 0, _lastValidatedPosition);
+                        SendAreaExitBlocked(newArea, 0, _lastValidCell);
                     }
                     return;
                 }
@@ -1202,12 +1194,12 @@ public class GameClientSession : IPeer
     /// <summary>
     /// Area 퇴장 불가 알림 전송 (위치 보정 포함)
     /// </summary>
-    private void SendAreaExitBlocked(AreaType areaType, int messageTextId, Vector3f correctedPosition)
+    private void SendAreaExitBlocked(AreaType areaType, int messageTextId, Cell correctedCell)
     {
-        using var packet = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(areaType, messageTextId, correctedPosition);
+        using var packet = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(areaType, messageTextId, correctedCell);
         Send(packet);
-        _logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, MessageId={MessageId}, CorrectedPos=({X},{Y})",
-            PlayerId, areaType, messageTextId, correctedPosition.X, correctedPosition.Y);
+        _logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, MessageId={MessageId}, CorrectedCell=({X},{Y})",
+            PlayerId, areaType, messageTextId, correctedCell.X, correctedCell.Y);
     }
 
     /// <summary>
