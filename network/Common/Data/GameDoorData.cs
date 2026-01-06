@@ -79,21 +79,28 @@ namespace network.common.data
         public float InteractDistance { get; private set; } // 상호작용 가능 거리
         public AreaType AreaType { get; private set; } // 문이 위치한 영역 타입
         public bool IsInitiallyOpen { get; private set; } // 초기 열림 상태
+        public int FallbackCellX { get; private set; } // 차단 시 텔레포트할 셀 X
+        public int FallbackCellY { get; private set; } // 차단 시 텔레포트할 셀 Y
 
         // area_name.csv에서 이름 가져오기
         public string LocationName => GameAreaNameData.Get(AreaType);
 
         public static DoorInfoData CreateFromData(CsvRow row)
         {
+            var posX = row.ContainsKey("position_x") ? float.Parse(row["position_x"]) : 0;
+            var posY = row.ContainsKey("position_y") ? float.Parse(row["position_y"]) : 0;
+
             return new DoorInfoData
             {
                 DoorId = int.Parse(row["door_id"]),
                 RequiredItemId = row.ContainsKey("required_item_id") ? int.Parse(row["required_item_id"]) : 0,
-                PositionX = row.ContainsKey("position_x") ? float.Parse(row["position_x"]) : 0,
-                PositionY = row.ContainsKey("position_y") ? float.Parse(row["position_y"]) : 0,
+                PositionX = posX,
+                PositionY = posY,
                 InteractDistance = row.ContainsKey("interact_distance") ? float.Parse(row["interact_distance"]) : 3f,
                 AreaType = row.ContainsKey("area_type") ? (AreaType)int.Parse(row["area_type"]) : AreaType.None,
-                IsInitiallyOpen = row.ContainsKey("is_initially_open") && row["is_initially_open"] == "1"
+                IsInitiallyOpen = row.ContainsKey("is_initially_open") && row["is_initially_open"] == "1",
+                FallbackCellX = row.ContainsKey("fallback_cell_x") ? int.Parse(row["fallback_cell_x"]) : (int)posX,
+                FallbackCellY = row.ContainsKey("fallback_cell_y") ? int.Parse(row["fallback_cell_y"]) : (int)posY
             };
         }
     }

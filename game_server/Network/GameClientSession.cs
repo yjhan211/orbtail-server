@@ -440,17 +440,23 @@ public class GameClientSession : IPeer
 
             if (newArea != CurrentArea)
             {
-                // 문이 잠겨있는 영역으로는 진입 불가 (가장 가까운 문 기준, cell 단위)
-                if (!_doorStateManager.CanEnterArea(CurrentMapSubId, newArea, currentCell.X, currentCell.Y))
+                // 문이 잠겨있으면 양방향 모두 차단 (진입/퇴장 모두)
+                // 1. 진입하려는 영역의 문 체크
+                var blockedDoor = _doorStateManager.GetBlockingDoor(CurrentMapSubId, newArea, currentCell.X, currentCell.Y);
+                // 2. 현재 영역의 문 체크 (역방향)
+                if (blockedDoor == null)
                 {
-                    _logger.LogWarning("Player {PlayerId} blocked from entering locked area: {NewArea}",
-                        PlayerId, newArea);
+                    blockedDoor = _doorStateManager.GetBlockingDoor(CurrentMapSubId, CurrentArea, currentCell.X, currentCell.Y);
+                }
 
-                    // 이전 셀로 보정
-                    if (_lastValidCell != null)
-                    {
-                        SendAreaExitBlocked(newArea, 0, _lastValidCell);
-                    }
+                if (blockedDoor != null)
+                {
+                    _logger.LogWarning("Player {PlayerId} blocked by locked door: {OldArea} → {NewArea}, Door={DoorId}",
+                        PlayerId, CurrentArea, newArea, blockedDoor.DoorId);
+
+                    // fallback 셀로 보정
+                    var fallbackCell = new Cell(blockedDoor.FallbackCellX, blockedDoor.FallbackCellY);
+                    SendAreaExitBlocked(newArea, 0, fallbackCell);
                     return;
                 }
 
