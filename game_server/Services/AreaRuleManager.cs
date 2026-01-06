@@ -159,6 +159,25 @@ namespace game_server.services
         }
 
         /// <summary>
+        /// 첫 번째 복도 규칙 ID 가져오기 (복도 규칙 체크용)
+        /// </summary>
+        public int GetFirstCorridorRuleId(long matchingId)
+        {
+            var state = GetOrCreateMatchingState(matchingId);
+            // 첫 번째 규칙이 복도 규칙
+            if (state.AllRuleIds.Count > 0)
+            {
+                var firstRuleId = state.AllRuleIds[0];
+                var ruleData = GameAreaRuleData.Get(firstRuleId);
+                if (ruleData?.AreaType == AreaType.Corridor)
+                {
+                    return firstRuleId;
+                }
+            }
+            return 0;
+        }
+
+        /// <summary>
         /// 쪽지 아이템 사용 시 다음 규칙 ID 반환
         /// 모든 플레이어가 같은 순서로 규칙을 발견
         /// </summary>

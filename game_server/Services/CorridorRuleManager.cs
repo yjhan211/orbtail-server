@@ -12,7 +12,9 @@ namespace game_server.services
         public const int MinDurationSeconds = 3; // 최소 지속 시간
         public const int MaxDurationSeconds = 6; // 최대 지속 시간
         public const int GameDurationMinutes = 15; // 게임 시간
-        public const int MovementPenaltyCorruption = 5; // 종소리 중 이동 시 정신오염 페널티
+        public const int MovementPenaltyCorruption = 5; // 종소리 중 이동 시 정신오염 페널티 (규칙 1)
+        public const int StopPenaltyCorruption = 5; // 정지 시 정신오염 페널티 (규칙 6)
+        public const double StopThresholdSeconds = 1.0; // 정지 판정 시간 (초)
         public const double PenaltyCooldownSeconds = 1.0; // 페널티 쿨다운 (초)
     }
     /// <summary>
@@ -32,11 +34,13 @@ namespace game_server.services
         public DateTime LastMoveTime { get; set; } = DateTime.UtcNow;
         public Vector3f? LastPosition { get; set; }
         public DateTime LastPenaltyTime { get; set; } = DateTime.MinValue; // 마지막 페널티 적용 시간
+        public DateTime? StopStartTime { get; set; } // 정지 시작 시간 (규칙 6용)
 
         public void Reset()
         {
             IsInCorridor = false;
             LastPosition = null;
+            StopStartTime = null;
         }
     }
 
@@ -150,7 +154,7 @@ namespace game_server.services
         /// <summary>
         /// 플레이어 이동 시 복도 상태 업데이트 및 위반 체크
         /// </summary>
-        public CorridorViolationResult CheckMove(long playerId, Vector3f position, Vector3f velocity, AreaType currentArea)
+        public CorridorViolationResult CheckMove(long playerId, Vector3f position, Vector3f velocity, AreaType currentArea, int corridorRuleId)
         {
             var result = new CorridorViolationResult();
             var state = GetOrCreatePlayerState(playerId);
@@ -164,21 +168,23 @@ namespace game_server.services
                 state.IsInCorridor = true;
                 state.LastPosition = position;
                 state.LastMoveTime = DateTime.UtcNow;
+                state.StopStartTime = null;
             }
             else if (wasInCorridor && !isNowInCorridor)
             {
                 state.Reset();
             }
 
+            if (!isNowInCorridor) return result;
+
+            var isMoving = velocity != null && velocity.Magnitude() > 0.1f;
+            var now = DateTime.UtcNow;
+
             // 복도 규칙 1: 종소리 울릴 때 복도에서 움직이면 정신오염 페널티
-            if (isNowInCorridor && IsBellRinging(out var currentBell))
+            if (corridorRuleId == 1 && IsBellRinging(out var currentBell))
             {
-                // 움직이고 있는지 확인 (velocity magnitude > 0)
-                var isMoving = velocity != null && velocity.Magnitude() > 0.1f;
                 if (isMoving)
                 {
-                    // 쿨다운 체크
-                    var now = DateTime.UtcNow;
                     var timeSinceLastPenalty = (now - state.LastPenaltyTime).TotalSeconds;
                     if (timeSinceLastPenalty >= CorridorBellConfig.PenaltyCooldownSeconds)
                     {
@@ -186,6 +192,40 @@ namespace game_server.services
                         result.IsViolation = true;
                         result.CorruptionDelta = CorridorBellConfig.MovementPenaltyCorruption;
                         result.Message = $"종소리가 울리는 동안 복도에서 움직임 (Bell: {currentBell?.StartOffsetSec}s +{currentBell?.DurationSec}s)";
+                    }
+                }
+            }
+            // 복도 규칙 6: 복도에서 정지하면 정신오염 페널티
+            else if (corridorRuleId == 6)
+            {
+                if (isMoving)
+                {
+                    // 움직이면 정지 타이머 리셋
+                    state.StopStartTime = null;
+                }
+                else
+                {
+                    // 정지 상태
+                    if (!state.StopStartTime.HasValue)
+                    {
+                        // 정지 시작
+                        state.StopStartTime = now;
+                    }
+                    else
+                    {
+                        // 정지 지속 시간 체크
+                        var stopDuration = (now - state.StopStartTime.Value).TotalSeconds;
+                        if (stopDuration >= CorridorBellConfig.StopThresholdSeconds)
+                        {
+                            var timeSinceLastPenalty = (now - state.LastPenaltyTime).TotalSeconds;
+                            if (timeSinceLastPenalty >= CorridorBellConfig.PenaltyCooldownSeconds)
+                            {
+                                state.LastPenaltyTime = now;
+                                result.IsViolation = true;
+                                result.CorruptionDelta = CorridorBellConfig.StopPenaltyCorruption;
+                                result.Message = $"복도에서 {stopDuration:F1}초 동안 정지";
+                            }
+                        }
                     }
                 }
             }
@@ -226,10 +266,10 @@ namespace game_server.services
         /// <summary>
         /// 플레이어 이동 시 복도 상태 업데이트
         /// </summary>
-        public CorridorViolationResult CheckPlayerMove(long matchingId, long playerId, Vector3f position, Vector3f velocity, AreaType currentArea)
+        public CorridorViolationResult CheckPlayerMove(long matchingId, long playerId, Vector3f position, Vector3f velocity, AreaType currentArea, int corridorRuleId)
         {
             var state = GetOrCreateMatchingState(matchingId);
-            return state.CheckMove(playerId, position, velocity, currentArea);
+            return state.CheckMove(playerId, position, velocity, currentArea, corridorRuleId);
         }
 
         /// <summary>

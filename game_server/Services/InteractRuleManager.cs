@@ -45,34 +45,12 @@ namespace game_server.services
 
         /// <summary>
         /// 오브젝트 액션 시 규칙 위반 체크
+        /// 페널티는 interactable_action.csv에서만 적용됨 (area_rule.csv 기반 추가 페널티 없음)
         /// </summary>
         public InteractViolationResult CheckExplore(int interactId, int actionId)
         {
-            var result = new InteractViolationResult();
-
-            // 1. 특정 액션에 대한 규칙 체크
-            if (_forbiddenActions.TryGetValue((interactId, actionId), out var ruleId))
-            {
-                var rule = GameAreaRuleData.Get(ruleId);
-                result.IsViolation = true;
-                result.ViolatedRuleId = ruleId;
-                result.CorruptionDelta = CorruptionPerViolation;
-                result.Message = $"금지된 행동을 수행했습니다: \"{rule?.Description ?? "알 수 없는 규칙"}\"";
-                return result;
-            }
-
-            // 2. 해당 interactable의 모든 액션을 금지하는 규칙 체크 (actionId=0)
-            if (_forbiddenActions.TryGetValue((interactId, 0), out ruleId))
-            {
-                var rule = GameAreaRuleData.Get(ruleId);
-                result.IsViolation = true;
-                result.ViolatedRuleId = ruleId;
-                result.CorruptionDelta = CorruptionPerViolation;
-                result.Message = $"금지된 오브젝트를 탐색했습니다: \"{rule?.Description ?? "알 수 없는 규칙"}\"";
-                return result;
-            }
-
-            return result;
+            // area_rule.csv 기반 페널티 비활성화 - interactable_action.csv에서만 페널티 적용
+            return new InteractViolationResult();
         }
 
         /// <summary>

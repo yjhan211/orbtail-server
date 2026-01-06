@@ -1622,17 +1622,22 @@ public class GameClientSession : IPeer
 
         try
         {
+            var corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(CurrentMapSubId);
+            // 복도 규칙 1번(종소리 중 이동 금지) 또는 6번(정지 금지)일 때만 체크
+            if (corridorRuleId != 1 && corridorRuleId != 6) return;
+
             var result = _corridorRuleManager.CheckPlayerMove(
                 CurrentMapSubId,
                 PlayerId.Value,
                 position,
                 velocity,
-                currentArea);
+                currentArea,
+                corridorRuleId);
 
             if (result.IsViolation)
             {
                 _logger.LogInformation("Player {PlayerId} violated corridor rule {RuleId}: {Message}, Corruption +{Delta}",
-                    PlayerId, (int)result.ViolatedRule, result.Message, result.CorruptionDelta);
+                    PlayerId, corridorRuleId, result.Message, result.CorruptionDelta);
 
                 // 정신오염도 증가
                 ModifyStats(corruptionDelta: result.CorruptionDelta);
