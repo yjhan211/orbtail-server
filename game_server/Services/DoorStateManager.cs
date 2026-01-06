@@ -96,10 +96,10 @@ namespace game_server.services
         }
 
         /// <summary>
-        /// 특정 영역으로 진입을 막는 문 반환 (가장 가까운 잠긴 문)
-        /// 진입 가능하면 null 반환
+        /// 특정 영역의 가장 가까운 문이 잠겨있으면 반환
+        /// 가장 가까운 문이 열려있거나 문이 없으면 null 반환
         /// </summary>
-        public DoorInfoData GetBlockingDoor(long matchingId, AreaType areaType, float playerX, float playerY)
+        public DoorInfoData GetBlockingDoorForArea(long matchingId, AreaType areaType, float playerX, float playerY)
         {
             // 해당 영역에 문이 없으면 진입 가능
             if (!GameDoorData.HasDoorsForArea(areaType))
@@ -115,7 +115,7 @@ namespace game_server.services
             {
                 var dx = playerX - door.PositionX;
                 var dy = playerY - door.PositionY;
-                var distance = dx * dx + dy * dy; // 제곱 거리 비교
+                var distance = dx * dx + dy * dy;
 
                 if (distance < nearestDistance)
                 {
@@ -129,7 +129,7 @@ namespace game_server.services
                 return null;
             }
 
-            // 가장 가까운 문이 잠겨있으면 반환
+            // 가장 가까운 문이 잠겨있으면 반환, 열려있으면 통과
             if (!IsDoorOpen(matchingId, nearestDoor.DoorId))
             {
                 return nearestDoor;

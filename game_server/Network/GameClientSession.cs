@@ -440,23 +440,30 @@ public class GameClientSession : IPeer
 
             if (newArea != CurrentArea)
             {
-                // 문이 잠겨있으면 양방향 모두 차단 (진입/퇴장 모두)
-                // 1. 진입하려는 영역의 문 체크
-                var blockedDoor = _doorStateManager.GetBlockingDoor(CurrentMapSubId, newArea, currentCell.X, currentCell.Y);
-                // 2. 현재 영역의 문 체크 (역방향)
-                if (blockedDoor == null)
+                // 가장 가까운 문 기준으로 잠김 체크 (클라이언트는 이미 막고 있음, 서버는 보정 역할)
+                // 1. 진입하려는 영역의 가장 가까운 문이 잠겨있으면 차단
+                var entryBlockedDoor = _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, newArea, currentCell.X, currentCell.Y);
+                if (entryBlockedDoor != null)
                 {
-                    blockedDoor = _doorStateManager.GetBlockingDoor(CurrentMapSubId, CurrentArea, currentCell.X, currentCell.Y);
+                    _logger.LogWarning("Player {PlayerId} blocked entering area {NewArea} (locked door: {DoorId})",
+                        PlayerId, newArea, entryBlockedDoor.DoorId);
+
+                    // 진입 차단: fallback (밖쪽)으로 보정
+                    var fallbackCell = new Cell(entryBlockedDoor.FallbackCellX, entryBlockedDoor.FallbackCellY);
+                    SendAreaExitBlocked(newArea, 0, fallbackCell);
+                    return;
                 }
 
-                if (blockedDoor != null)
+                // 2. 현재 영역의 가장 가까운 문이 잠겨있으면 퇴장 차단
+                var exitBlockedDoor = _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, CurrentArea, currentCell.X, currentCell.Y);
+                if (exitBlockedDoor != null)
                 {
-                    _logger.LogWarning("Player {PlayerId} blocked by locked door: {OldArea} → {NewArea}, Door={DoorId}",
-                        PlayerId, CurrentArea, newArea, blockedDoor.DoorId);
+                    _logger.LogWarning("Player {PlayerId} blocked exiting area {CurrentArea} (locked door: {DoorId})",
+                        PlayerId, CurrentArea, exitBlockedDoor.DoorId);
 
-                    // fallback 셀로 보정
-                    var fallbackCell = new Cell(blockedDoor.FallbackCellX, blockedDoor.FallbackCellY);
-                    SendAreaExitBlocked(newArea, 0, fallbackCell);
+                    // 퇴장 차단: position (안쪽)으로 보정
+                    var positionCell = new Cell((int)exitBlockedDoor.PositionX, (int)exitBlockedDoor.PositionY);
+                    SendAreaExitBlocked(newArea, 0, positionCell);
                     return;
                 }
 
