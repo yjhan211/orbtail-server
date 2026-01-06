@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using network.common;
 using network.common.data;
 
 namespace game_server.services
@@ -92,6 +93,38 @@ namespace game_server.services
             {
                 _openDoors.Remove(matchingId);
             }
+        }
+
+        /// <summary>
+        /// 특정 영역으로 진입 가능한지 확인
+        /// 해당 영역에 문이 없거나, 문이 있고 하나라도 열려있으면 진입 가능
+        /// </summary>
+        public bool CanEnterArea(long matchingId, AreaType areaType)
+        {
+            // 해당 영역에 문이 없으면 진입 가능
+            if (!GameDoorData.HasDoorsForArea(areaType))
+            {
+                return true;
+            }
+
+            // 해당 영역의 문들 중 하나라도 열려있는지 확인
+            lock (_lock)
+            {
+                if (!_openDoors.TryGetValue(matchingId, out var openDoors))
+                {
+                    return false;
+                }
+
+                foreach (var door in GameDoorData.GetByAreaType(areaType))
+                {
+                    if (openDoors.Contains(door.DoorId))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
     }
 }

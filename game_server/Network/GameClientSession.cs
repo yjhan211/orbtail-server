@@ -448,6 +448,19 @@ public class GameClientSession : IPeer
 
             if (newArea != CurrentArea)
             {
+                // 문이 잠겨있는 영역으로는 진입 불가
+                if (!_doorStateManager.CanEnterArea(CurrentMapSubId, newArea))
+                {
+                    _logger.LogWarning("Player {PlayerId} blocked from entering locked area: {NewArea}",
+                        PlayerId, newArea);
+
+                    // 이전 위치로 보정
+                    if (_lastValidatedPosition != null)
+                    {
+                        SendAreaExitBlocked(newArea, 0, _lastValidatedPosition);
+                    }
+                    return;
+                }
 
                 _logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);

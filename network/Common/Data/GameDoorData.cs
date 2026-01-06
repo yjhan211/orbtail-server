@@ -39,6 +39,35 @@ namespace network.common.data
         {
             return Doors.Values;
         }
+
+        /// <summary>
+        /// 특정 영역으로 연결된 문들 가져오기
+        /// </summary>
+        public static IEnumerable<DoorInfoData> GetByAreaType(AreaType areaType)
+        {
+            foreach (var door in Doors.Values)
+            {
+                if (door.AreaType == areaType)
+                {
+                    yield return door;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 특정 영역에 문이 있는지 확인
+        /// </summary>
+        public static bool HasDoorsForArea(AreaType areaType)
+        {
+            foreach (var door in Doors.Values)
+            {
+                if (door.AreaType == areaType)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     public class DoorInfoData
