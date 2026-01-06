@@ -68,6 +68,37 @@ namespace network.common.data
             }
             return false;
         }
+
+        /// <summary>
+        /// 특정 셀 위치에 있는 문 가져오기
+        /// </summary>
+        public static DoorInfoData GetAtCell(int cellX, int cellY)
+        {
+            foreach (var door in Doors.Values)
+            {
+                if ((int)door.PositionX == cellX && (int)door.PositionY == cellY)
+                {
+                    return door;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 특정 영역의 문 가져오기 (area_type = 해당 문이 속한 "안쪽" 영역)
+        /// is_initially_open=0인 잠금 가능한 문만 반환
+        /// </summary>
+        public static DoorInfoData GetBlockingDoor(AreaType areaType)
+        {
+            foreach (var door in Doors.Values)
+            {
+                if (door.AreaType == areaType && !door.IsInitiallyOpen)
+                {
+                    return door;
+                }
+            }
+            return null;
+        }
     }
 
     public class DoorInfoData
