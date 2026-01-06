@@ -757,13 +757,13 @@ namespace network.common.data.models
     #region 복도 규칙 프로토콜
 
     /// <summary>
-    /// 종소리 이벤트 정보
+    /// 종소리 이벤트 정보 (게임 시작 기준 상대 시간)
     /// </summary>
     [MessagePackObject]
     public class BellEvent
     {
-        [Key("startTimestamp")] public long StartTimestamp { get; set; } // 시작 시간 (Unix ms)
-        [Key("endTimestamp")] public long EndTimestamp { get; set; } // 끝나는 시간 (Unix ms)
+        [Key("s")] public int StartOffsetSec { get; set; } // 게임 시작 후 시작 시간 (초)
+        [Key("d")] public int DurationSec { get; set; } // 지속 시간 (초)
     }
 
     /// <summary>

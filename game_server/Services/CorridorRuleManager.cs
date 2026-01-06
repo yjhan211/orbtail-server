@@ -8,9 +8,12 @@ namespace game_server.services
     public static class CorridorBellConfig
     {
         public const int MinIntervalSeconds = 10; // 최소 간격
-        public const int MaxIntervalSeconds = 15; // 최대 간격
-        public const int DurationSeconds = 6; // 종소리 지속 시간
-        public const int GameDurationMinutes = 5; // 게임 시간
+        public const int MaxIntervalSeconds = 20; // 최대 간격
+        public const int MinDurationSeconds = 3; // 최소 지속 시간
+        public const int MaxDurationSeconds = 6; // 최대 지속 시간
+        public const int GameDurationMinutes = 15; // 게임 시간
+        public const int MovementPenaltyCorruption = 5; // 종소리 중 이동 시 정신오염 페널티
+        public const double PenaltyCooldownSeconds = 1.0; // 페널티 쿨다운 (초)
     }
     /// <summary>
     /// 복도 규칙 타입 (현재 미사용 - CSV 기반으로 전환됨)
@@ -28,6 +31,7 @@ namespace game_server.services
         public bool IsInCorridor { get; set; }
         public DateTime LastMoveTime { get; set; } = DateTime.UtcNow;
         public Vector3f? LastPosition { get; set; }
+        public DateTime LastPenaltyTime { get; set; } = DateTime.MinValue; // 마지막 페널티 적용 시간
 
         public void Reset()
         {
@@ -56,41 +60,43 @@ namespace game_server.services
         public CorridorRuleType ActiveRule => CorridorRuleType.None;
         private readonly ConcurrentDictionary<long, PlayerCorridorState> _playerStates = new();
         private readonly List<BellEvent> _bellSchedule = new();
+        private readonly long _gameStartTimeMs; // 게임 시작 시간 (Unix ms)
         private static readonly Random _random = new();
 
         public MatchingCorridorRuleState()
         {
+            _gameStartTimeMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             GenerateBellSchedule();
         }
 
         /// <summary>
-        /// 게임 시작 시 종소리 스케줄 생성
+        /// 게임 시작 시 종소리 스케줄 생성 (상대 시간 기반)
         /// </summary>
         private void GenerateBellSchedule()
         {
             _bellSchedule.Clear();
 
-            var gameStartTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var gameEndTime = gameStartTime + (CorridorBellConfig.GameDurationMinutes * 60 * 1000);
-            var currentTime = gameStartTime;
+            var gameDurationSec = CorridorBellConfig.GameDurationMinutes * 60;
+            var currentOffsetSec = 0;
 
-            while (currentTime < gameEndTime)
+            while (currentOffsetSec < gameDurationSec)
             {
                 // 랜덤 간격 후 다음 종소리
                 var intervalSeconds = _random.Next(
                     CorridorBellConfig.MinIntervalSeconds,
                     CorridorBellConfig.MaxIntervalSeconds + 1);
-                currentTime += intervalSeconds * 1000;
+                currentOffsetSec += intervalSeconds;
 
-                if (currentTime >= gameEndTime) break;
+                if (currentOffsetSec >= gameDurationSec) break;
 
-                var bellStart = currentTime;
-                var bellEnd = bellStart + (CorridorBellConfig.DurationSeconds * 1000);
+                var durationSeconds = _random.Next(
+                    CorridorBellConfig.MinDurationSeconds,
+                    CorridorBellConfig.MaxDurationSeconds + 1);
 
                 _bellSchedule.Add(new BellEvent
                 {
-                    StartTimestamp = bellStart,
-                    EndTimestamp = bellEnd
+                    StartOffsetSec = currentOffsetSec,
+                    DurationSec = durationSeconds
                 });
             }
         }
@@ -101,6 +107,28 @@ namespace game_server.services
         public List<BellEvent> GetBellSchedule()
         {
             return _bellSchedule.ToList();
+        }
+
+        /// <summary>
+        /// 현재 종소리가 울리고 있는지 확인
+        /// </summary>
+        public bool IsBellRinging(out BellEvent? currentBell)
+        {
+            currentBell = null;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var elapsedSec = (int)((now - _gameStartTimeMs) / 1000);
+
+            foreach (var bell in _bellSchedule)
+            {
+                var bellStartSec = bell.StartOffsetSec;
+                var bellEndSec = bell.StartOffsetSec + bell.DurationSec;
+                if (elapsedSec >= bellStartSec && elapsedSec <= bellEndSec)
+                {
+                    currentBell = bell;
+                    return true;
+                }
+            }
+            return false;
         }
 
         public List<(long PlayerId, CorridorViolationResult Result)> CheckAllPlayersForStopping()
@@ -120,7 +148,7 @@ namespace game_server.services
         }
 
         /// <summary>
-        /// 플레이어 이동 시 복도 상태 업데이트 (위반 체크 비활성화됨)
+        /// 플레이어 이동 시 복도 상태 업데이트 및 위반 체크
         /// </summary>
         public CorridorViolationResult CheckMove(long playerId, Vector3f position, Vector3f velocity, AreaType currentArea)
         {
@@ -142,7 +170,26 @@ namespace game_server.services
                 state.Reset();
             }
 
-            // CSV 기반 규칙으로 전환됨 - 위반 체크 비활성화
+            // 복도 규칙 1: 종소리 울릴 때 복도에서 움직이면 정신오염 페널티
+            if (isNowInCorridor && IsBellRinging(out var currentBell))
+            {
+                // 움직이고 있는지 확인 (velocity magnitude > 0)
+                var isMoving = velocity != null && velocity.Magnitude() > 0.1f;
+                if (isMoving)
+                {
+                    // 쿨다운 체크
+                    var now = DateTime.UtcNow;
+                    var timeSinceLastPenalty = (now - state.LastPenaltyTime).TotalSeconds;
+                    if (timeSinceLastPenalty >= CorridorBellConfig.PenaltyCooldownSeconds)
+                    {
+                        state.LastPenaltyTime = now;
+                        result.IsViolation = true;
+                        result.CorruptionDelta = CorridorBellConfig.MovementPenaltyCorruption;
+                        result.Message = $"종소리가 울리는 동안 복도에서 움직임 (Bell: {currentBell?.StartOffsetSec}s +{currentBell?.DurationSec}s)";
+                    }
+                }
+            }
+
             return result;
         }
     }

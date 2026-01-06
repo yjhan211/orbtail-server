@@ -62,7 +62,7 @@ public class GameClientSession : IPeer
     private const int HeartbeatTimeoutSeconds = 30;
 
     // 게임 타이머 설정
-    private const int GameDurationMinutes = 5;
+    private const int GameDurationMinutes = 15;
     private const int GameDurationSeconds = GameDurationMinutes * 60;
     private static readonly Dictionary<long, Timer> _gameTimers = new();
     private static readonly object _timerLock = new();

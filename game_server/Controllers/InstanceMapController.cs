@@ -29,7 +29,7 @@ public sealed class InstanceMapController(
     private readonly ConcurrentDictionary<string, Timer> _gameTimers = new();
     private readonly ConcurrentDictionary<string, (Timer OneMinuteTimer, Timer ThirtySecondsTimer)> _warningTimers = new();
 
-    private const int GameDurationMinutes = 5;
+    private const int GameDurationMinutes = 15;
     private const int GameDurationSeconds = GameDurationMinutes * 60;
 
     private string EnterInstanceSubject => SubjectHelper.GetEnterInstanceSubject(ServerConfig.ServerId);
