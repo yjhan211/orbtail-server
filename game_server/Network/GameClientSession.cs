@@ -929,7 +929,18 @@ public class GameClientSession : IPeer
             SendExploreResult(true, msg.InteractId, msg.ActionId, rewardItemId, ErrorCode.SUCCESS);
 
             // 같은 Area의 모든 플레이어에게 상태 업데이트 브로드캐스트
-            BroadcastInteractableUpdate(msg.InteractId, msg.ActionId, true, PlayerId.Value);
+            // SINGLE 타입이면 모든 액션을 탐색 완료로 브로드캐스트 (마커 제거용)
+            if (interactable?.InteractionType == InteractionType.SINGLE)
+            {
+                foreach (var action in interactable.Actions)
+                {
+                    BroadcastInteractableUpdate(msg.InteractId, action.ActionId, true, PlayerId.Value);
+                }
+            }
+            else
+            {
+                BroadcastInteractableUpdate(msg.InteractId, msg.ActionId, true, PlayerId.Value);
+            }
         }
         else
         {
