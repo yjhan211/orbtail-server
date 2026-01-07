@@ -244,13 +244,12 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_AREA_EXIT_BLOCKED(AreaType areaType, int messageTextId, Cell correctedCell)
+    public static Packet G_TO_C_AREA_EXIT_BLOCKED(AreaType areaType, Cell correctedCell)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_AREA_EXIT_BLOCKED);
         G_TO_C_AREA_EXIT_BLOCKED body = new()
         {
             AreaType = areaType,
-            MessageTextId = messageTextId,
             CorrectedCell = correctedCell
         };
 

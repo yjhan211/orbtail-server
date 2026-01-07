@@ -401,7 +401,7 @@ public class GameClientSession : IPeer
                             var fallbackCell = _lastValidCell ?? currentCell;
 
                             // G_TO_C_AREA_EXIT_BLOCKED 패킷 전송
-                            using var blockedPacket = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(CurrentArea, blockingDoor.MessageTextId, fallbackCell);
+                            using var blockedPacket = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(CurrentArea, fallbackCell);
                             Send(blockedPacket);
 
                             _logger.LogWarning("Player {PlayerId} attempted to leave {Area} without item {ItemId} - teleported to Cell({X},{Y})",
@@ -451,7 +451,7 @@ public class GameClientSession : IPeer
 
                     // 진입 차단: fallback (밖쪽)으로 보정
                     var fallbackCell = new Cell(entryBlockedDoor.FallbackCellX, entryBlockedDoor.FallbackCellY);
-                    SendAreaExitBlocked(newArea, 0, fallbackCell);
+                    SendAreaExitBlocked(newArea, fallbackCell);
                     return;
                 }
 
@@ -464,7 +464,7 @@ public class GameClientSession : IPeer
 
                     // 퇴장 차단: position (안쪽)으로 보정
                     var positionCell = new Cell((int)exitBlockedDoor.PositionX, (int)exitBlockedDoor.PositionY);
-                    SendAreaExitBlocked(newArea, 0, positionCell);
+                    SendAreaExitBlocked(newArea, positionCell);
                     return;
                 }
 
@@ -1219,12 +1219,12 @@ public class GameClientSession : IPeer
     /// <summary>
     /// Area 퇴장 불가 알림 전송 (위치 보정 포함)
     /// </summary>
-    private void SendAreaExitBlocked(AreaType areaType, int messageTextId, Cell correctedCell)
+    private void SendAreaExitBlocked(AreaType areaType, Cell correctedCell)
     {
-        using var packet = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(areaType, messageTextId, correctedCell);
+        using var packet = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(areaType, correctedCell);
         Send(packet);
-        _logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, MessageId={MessageId}, CorrectedCell=({X},{Y})",
-            PlayerId, areaType, messageTextId, correctedCell.X, correctedCell.Y);
+        _logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, CorrectedCell=({X},{Y})",
+            PlayerId, areaType, correctedCell.X, correctedCell.Y);
     }
 
     /// <summary>

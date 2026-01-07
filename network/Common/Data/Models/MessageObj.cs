@@ -156,7 +156,6 @@ namespace network.common.data.models
     public class G_TO_C_AREA_EXIT_BLOCKED : IMessagePackObject
     {
         [Key("areaType")] public AreaType AreaType { get; set; } // 나가려던 Area
-        [Key("messageTextId")] public int MessageTextId { get; set; } // 표시할 메시지 ID
         [Key("correctedCell")] public Cell CorrectedCell { get; set; } // 되돌아갈 셀 위치
     }
 
