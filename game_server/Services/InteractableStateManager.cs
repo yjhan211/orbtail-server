@@ -122,6 +122,26 @@ namespace game_server.services
 
             _actionStates[key] = newState;
             state = newState;
+
+            // SINGLE 타입이면 해당 오브젝트의 모든 액션을 탐색 완료 처리
+            var interactable = GameInteractableData.Get(interactId);
+            if (interactable?.InteractionType == InteractionType.SINGLE)
+            {
+                foreach (var action in interactable.Actions)
+                {
+                    var otherKey = (interactId, action.ActionId);
+                    if (otherKey != key && _actionStates.TryGetValue(otherKey, out var otherState) && !otherState.IsExplored)
+                    {
+                        _actionStates[otherKey] = new InteractableActionState
+                        {
+                            Order = action.ActionId,
+                            IsExplored = true,
+                            ExploredBy = playerId // 선택한 플레이어가 잠금
+                        };
+                    }
+                }
+            }
+
             return true;
         }
 
