@@ -181,6 +181,7 @@ namespace network.common
         NONE = 0,
         EXPLORE = 1,    // 전체탐색 - 필수 아이템 획득 전까지 창 유지
         SINGLE = 2,     // 단일선택 - 결과 출력 후 창 즉시 닫힘
+        WRITING = 3,    // 과거와의 필담
     }
 
     /// <summary>
