@@ -366,48 +366,46 @@ public class GameClientSession : IPeer
 
             if (newArea != CurrentArea)
             {
-                // 현재 Area에서 나갈 수 있는지 체크
-                var exitCondition = GameAreaExitConditionData.Get(CurrentArea);
+                // 현재 Area에서 나갈 수 있는지 체크 (잠긴 문이 있는 경우)
+                var blockingDoor = GameDoorData.GetBlockingDoor(CurrentArea);
 
-                if (exitCondition != null)
+                if (blockingDoor != null && blockingDoor.RequiredItemId > 0)
                 {
-                    var exitState = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-                    var currentStep = exitState.CurrentStepOrder;
+                    // 문이 열렸는지 체크
+                    var isDoorOpen = _doorStateManager.IsDoorOpen(CurrentMapSubId, blockingDoor.DoorId);
 
-                    // 이미 해당 step을 완료했으면 통과
-                    if (currentStep <= exitCondition.RequiredStep)
+                    if (!isDoorOpen)
                     {
-                        // 아직 step 미완료 - 아이템 보유 여부 체크
+                        // 아이템 보유 여부 체크
                         var playerInventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-                        var hasRequiredItem = exitCondition.RequiredItemId == 0 ||
-                            (playerInventory?.GetItemCount(exitCondition.RequiredItemId) ?? 0) > 0;
+                        var hasRequiredItem = (playerInventory?.GetItemCount(blockingDoor.RequiredItemId) ?? 0) > 0;
 
-                        if (hasRequiredItem && exitCondition.RequiredItemId > 0)
+                        if (hasRequiredItem)
                         {
-                            // 아이템 보유 + Area 퇴장 시 step 완료 처리
-                            exitState.AdvanceStep(PlayerId.Value);
-                            _logger.LogInformation("Player {PlayerId} completed exit step {Step} by leaving {Area} with item {ItemId}",
-                                PlayerId, exitCondition.RequiredStep, CurrentArea, exitCondition.RequiredItemId);
+                            // 아이템 보유 시 문 열기 처리
+                            _doorStateManager.OpenDoor(CurrentMapSubId, blockingDoor.DoorId);
+                            _logger.LogInformation("Player {PlayerId} opened door {DoorId} in {Area} with item {ItemId}",
+                                PlayerId, blockingDoor.DoorId, CurrentArea, blockingDoor.RequiredItemId);
 
-                            // 같은 매칭의 모든 플레이어에게 step 완료 알림
-                            using var stepPacket = PacketMaker.G_TO_C_EXIT_STEP_UPDATE(PlayerId.Value, exitState.CurrentStepOrder, exitState.IsCompleted);
+                            // 같은 매칭의 모든 플레이어에게 문 열림 알림
+                            using var doorPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(blockingDoor.DoorId, true, ErrorCode.SUCCESS, PlayerId.Value);
                             var matchingSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
                             foreach (var session in matchingSessions)
                             {
-                                session.Send(stepPacket);
+                                session.Send(doorPacket);
                             }
                         }
-                        else if (!hasRequiredItem)
+                        else
                         {
                             // 아이템 미보유 - 퇴장 불가
                             var fallbackCell = _lastValidCell ?? currentCell;
 
                             // G_TO_C_AREA_EXIT_BLOCKED 패킷 전송
-                            using var blockedPacket = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(CurrentArea, exitCondition.MessageTextId, fallbackCell);
+                            using var blockedPacket = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(CurrentArea, blockingDoor.MessageTextId, fallbackCell);
                             Send(blockedPacket);
 
                             _logger.LogWarning("Player {PlayerId} attempted to leave {Area} without item {ItemId} - teleported to Cell({X},{Y})",
-                                PlayerId, CurrentArea, exitCondition.RequiredItemId, fallbackCell.X, fallbackCell.Y);
+                                PlayerId, CurrentArea, blockingDoor.RequiredItemId, fallbackCell.X, fallbackCell.Y);
                             return; // 이번 프레임 처리 종료
                         }
                     }
