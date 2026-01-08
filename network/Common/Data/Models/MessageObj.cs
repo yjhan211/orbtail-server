@@ -588,6 +588,7 @@ namespace network.common.data.models
         [Key("actionId")] public int ActionId { get; set; }
         [Key("itemId")] public int ItemId { get; set; }  // 획득한 아이템 ID (0이면 없음)
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("isViolation")] public bool IsViolation { get; set; }  // 규칙 위반 여부
     }
 
     // 탐색 종료 요청 (클라이언트 → 서버)
