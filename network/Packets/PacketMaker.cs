@@ -318,7 +318,7 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_EXPLORE_RESULT(bool success, int interactId, int actionId, int itemId, ErrorCode errorCode)
+    public static Packet G_TO_C_EXPLORE_RESULT(bool success, int interactId, int actionId, int itemId, ErrorCode errorCode, bool isViolation = false)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_RESULT);
         G_TO_C_EXPLORE_RESULT body = new()
@@ -327,7 +327,8 @@ public static class PacketMaker
             InteractId = interactId,
             ActionId = actionId,
             ItemId = itemId,
-            ErrorCode = errorCode
+            ErrorCode = errorCode,
+            IsViolation = isViolation
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

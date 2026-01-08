@@ -874,8 +874,8 @@ public class GameClientSession : IPeer
             // target_interactable_action 조건 체크
             CheckActionCompletedForExit(msg.InteractId, msg.ActionId);
 
-            // 성공 응답 (최종 결정된 아이템 ID 전송)
-            SendExploreResult(true, msg.InteractId, msg.ActionId, rewardItemId, ErrorCode.SUCCESS);
+            // 성공 응답 (최종 결정된 아이템 ID 전송, 규칙 위반 여부 포함)
+            SendExploreResult(true, msg.InteractId, msg.ActionId, rewardItemId, ErrorCode.SUCCESS, isViolation);
 
             // 같은 Area의 모든 플레이어에게 상태 업데이트 브로드캐스트
             // SINGLE 타입이면 모든 액션을 탐색 완료로 브로드캐스트 (마커 제거용)
@@ -923,11 +923,11 @@ public class GameClientSession : IPeer
         return Task.CompletedTask;
     }
 
-    private void SendExploreResult(bool success, int interactId, int actionId, int itemId, ErrorCode errorCode)
+    private void SendExploreResult(bool success, int interactId, int actionId, int itemId, ErrorCode errorCode, bool isViolation = false)
     {
         if (!PlayerId.HasValue) return;
 
-        using var packet = PacketMaker.G_TO_C_EXPLORE_RESULT(success, interactId, actionId, itemId, errorCode);
+        using var packet = PacketMaker.G_TO_C_EXPLORE_RESULT(success, interactId, actionId, itemId, errorCode, isViolation);
         Send(packet);
     }
 
