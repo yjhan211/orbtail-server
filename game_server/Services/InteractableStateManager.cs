@@ -73,6 +73,9 @@ namespace game_server.services
                     Actions = new List<InteractableActionState>()
                 };
 
+                // InteractionType >= 3 (WRITING, RECEIVE_CALL, VENT 등)은 항상 선택 가능
+                bool isRepeatable = (int)interactable.InteractionType >= 3;
+
                 var hasUnexploredAction = false;
                 foreach (var action in interactable.Actions)
                 {
@@ -80,14 +83,14 @@ namespace game_server.services
                     if (_actionStates.TryGetValue(key, out var actionState))
                     {
                         objectState.Actions.Add(actionState);
-                        if (!actionState.IsExplored)
+                        if (!actionState.IsExplored || isRepeatable)
                         {
                             hasUnexploredAction = true;
                         }
                     }
                 }
 
-                // 탐색되지 않은 액션이 하나라도 있는 오브젝트만 포함
+                // 탐색되지 않은 액션이 하나라도 있거나 repeatable 타입인 오브젝트만 포함
                 if (hasUnexploredAction)
                 {
                     result.Add(objectState);
