@@ -364,54 +364,6 @@ public class GameClientSession : IPeer
             var currentCell = WorldPositionToCell(validatedPosition);
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
-            if (newArea != CurrentArea)
-            {
-                // 현재 Area에서 나갈 수 있는지 체크 (잠긴 문이 있는 경우)
-                var blockingDoor = GameDoorData.GetBlockingDoor(CurrentArea);
-
-                if (blockingDoor != null && blockingDoor.RequiredItemId > 0)
-                {
-                    // 문이 열렸는지 체크
-                    var isDoorOpen = _doorStateManager.IsDoorOpen(CurrentMapSubId, blockingDoor.DoorId);
-
-                    if (!isDoorOpen)
-                    {
-                        // 아이템 보유 여부 체크
-                        var playerInventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-                        var hasRequiredItem = (playerInventory?.GetItemCount(blockingDoor.RequiredItemId) ?? 0) > 0;
-
-                        if (hasRequiredItem)
-                        {
-                            // 아이템 보유 시 문 열기 처리
-                            _doorStateManager.OpenDoor(CurrentMapSubId, blockingDoor.DoorId);
-                            _logger.LogInformation("Player {PlayerId} opened door {DoorId} in {Area} with item {ItemId}",
-                                PlayerId, blockingDoor.DoorId, CurrentArea, blockingDoor.RequiredItemId);
-
-                            // 같은 매칭의 모든 플레이어에게 문 열림 알림
-                            using var doorPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(blockingDoor.DoorId, true, ErrorCode.SUCCESS, PlayerId.Value);
-                            var matchingSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-                            foreach (var session in matchingSessions)
-                            {
-                                session.Send(doorPacket);
-                            }
-                        }
-                        else
-                        {
-                            // 아이템 미보유 - 퇴장 불가
-                            var fallbackCell = _lastValidCell ?? currentCell;
-
-                            // G_TO_C_AREA_EXIT_BLOCKED 패킷 전송
-                            using var blockedPacket = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(CurrentArea, fallbackCell);
-                            Send(blockedPacket);
-
-                            _logger.LogWarning("Player {PlayerId} attempted to leave {Area} without item {ItemId} - teleported to Cell({X},{Y})",
-                                PlayerId, CurrentArea, blockingDoor.RequiredItemId, fallbackCell.X, fallbackCell.Y);
-                            return; // 이번 프레임 처리 종료
-                        }
-                    }
-                }
-            }
-
             // 3. 주기적 저장 (1초마다)
             var needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
             var isIdle = msg.Velocity.Magnitude() < 0.01f;
