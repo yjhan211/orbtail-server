@@ -183,6 +183,7 @@ namespace network.common
         SINGLE = 2,     // 단일선택 - 결과 출력 후 창 즉시 닫힘
         WRITING = 3,    // 과거와의 필담
         RECEIVE_CALL = 4,      // 교무실 통화 수신
+        VENT = 5,       // 벤트
     }
 
     /// <summary>

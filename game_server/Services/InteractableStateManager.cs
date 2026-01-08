@@ -107,7 +107,11 @@ namespace game_server.services
                 return false;
             }
 
-            if (currentState.IsExplored)
+            // InteractionType >= 3 (WRITING, RECEIVE_CALL, VENT 등)은 재선택 가능
+            var interactable = GameInteractableData.Get(interactId);
+            bool isRepeatable = interactable != null && (int)interactable.InteractionType >= 3;
+
+            if (currentState.IsExplored && !isRepeatable)
             {
                 state = currentState;
                 return false;
@@ -124,7 +128,6 @@ namespace game_server.services
             state = newState;
 
             // SINGLE 타입이면 해당 오브젝트의 모든 액션을 탐색 완료 처리
-            var interactable = GameInteractableData.Get(interactId);
             if (interactable?.InteractionType == InteractionType.SINGLE)
             {
                 foreach (var action in interactable.Actions)
