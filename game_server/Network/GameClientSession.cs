@@ -822,16 +822,15 @@ public class GameClientSession : IPeer
             }
 
             // 상호작용 규칙 위반 체크 (금지된 액션 수행)
-            var violationResult = _interactRuleManager.CheckExplore(CurrentMapSubId, msg.InteractId, msg.ActionId);
-            if (violationResult.IsViolation)
+            var isViolation = _interactRuleManager.IsForbiddenAction(CurrentMapSubId, msg.InteractId, msg.ActionId);
+            if (isViolation)
             {
-                _logger.LogInformation("Player {PlayerId} violated interact rule {RuleId}: {Message}",
-                    PlayerId, violationResult.ViolatedRuleId, violationResult.Message);
-                ModifyStats(corruptionDelta: violationResult.CorruptionDelta);
+                _logger.LogInformation("Player {PlayerId} violated interact rule by InteractId={InteractId}, ActionId={ActionId}",
+                    PlayerId, msg.InteractId, msg.ActionId);
             }
 
-            // 액션 결과 처리 (result_type, result_id, result_amount 기반)
-            var (resultType, resultId, resultAmount) = _interactableStateManager.GetActionResult(msg.InteractId, msg.ActionId);
+            // 액션 결과 처리 (규칙 위반 시 result_* 값, 안전한 선택 시 safe_result_* 값)
+            var (resultType, resultId, resultAmount) = _interactableStateManager.GetActionResult(msg.InteractId, msg.ActionId, isViolation);
             var rewardItemId = 0;
 
             switch (resultType)

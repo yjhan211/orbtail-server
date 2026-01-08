@@ -132,24 +132,60 @@ namespace network.common.data
         public int InteractId { get; private set; }
         public int ActionId { get; private set; }
         public string ActionText { get; private set; }
+
+        // 기본 결과 (규칙 무관 또는 미채택 시)
         public string ResultText { get; private set; }
         public ActionResultType ResultType { get; private set; }
         public int ResultId { get; private set; }
         public int ResultAmount { get; private set; }
+
+        // 규칙 위반 시 결과 (비어있으면 기본 결과 사용)
+        public string ViolationResultText { get; private set; }
+        public ActionResultType ViolationResultType { get; private set; }
+        public int ViolationResultId { get; private set; }
+        public int ViolationResultAmount { get; private set; }
+
+        // 위반 결과가 정의되어 있는지 여부
+        public bool HasViolationResult => !string.IsNullOrEmpty(ViolationResultText);
+
         public int PortalTriggerId { get; private set; }
         public int StaminaCost { get; private set; }
 
         public static InteractableActionData CreateFromData(CsvRow row)
         {
+            // 기본 결과
+            var resultText = row["result_text"].Trim('"').Replace("\\n", "\n");
+            var resultType = row.ContainsKey("result_type") ? (ActionResultType)int.Parse(row["result_type"]) : ActionResultType.NONE;
+            var resultId = row.ContainsKey("result_id") ? int.Parse(row["result_id"]) : 0;
+            var resultAmount = row.ContainsKey("result_amount") ? int.Parse(row["result_amount"]) : 0;
+
+            // 위반 결과 (비어있으면 기본 결과 사용)
+            var violationResultText = row.ContainsKey("violation_result_text") && !string.IsNullOrEmpty(row["violation_result_text"])
+                ? row["violation_result_text"].Trim('"').Replace("\\n", "\n")
+                : "";
+            var violationResultType = row.ContainsKey("violation_result_type") && !string.IsNullOrEmpty(row["violation_result_type"])
+                ? (ActionResultType)int.Parse(row["violation_result_type"])
+                : ActionResultType.NONE;
+            var violationResultId = row.ContainsKey("violation_result_id") && !string.IsNullOrEmpty(row["violation_result_id"])
+                ? int.Parse(row["violation_result_id"])
+                : 0;
+            var violationResultAmount = row.ContainsKey("violation_result_amount") && !string.IsNullOrEmpty(row["violation_result_amount"])
+                ? int.Parse(row["violation_result_amount"])
+                : 0;
+
             return new InteractableActionData
             {
                 InteractId = int.Parse(row["id"]),
                 ActionId = int.Parse(row["action_id"]),
                 ActionText = row["action_text"],
-                ResultText = row["result_text"].Trim('"').Replace("\\n", "\n"),
-                ResultType = row.ContainsKey("result_type") ? (ActionResultType)int.Parse(row["result_type"]) : ActionResultType.NONE,
-                ResultId = row.ContainsKey("result_id") ? int.Parse(row["result_id"]) : 0,
-                ResultAmount = row.ContainsKey("result_amount") ? int.Parse(row["result_amount"]) : 0,
+                ResultText = resultText,
+                ResultType = resultType,
+                ResultId = resultId,
+                ResultAmount = resultAmount,
+                ViolationResultText = violationResultText,
+                ViolationResultType = violationResultType,
+                ViolationResultId = violationResultId,
+                ViolationResultAmount = violationResultAmount,
                 PortalTriggerId = row.ContainsKey("portal_trigger_id") ? int.Parse(row["portal_trigger_id"]) : 0,
                 StaminaCost = row.ContainsKey("stamina_cost") ? int.Parse(row["stamina_cost"]) : 0
             };
