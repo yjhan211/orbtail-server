@@ -25,7 +25,7 @@ namespace network.common.data
                     GroupId = groupId,
                     StepOrder = stepOrder,
                     TargetItemIds = ParseIntArray(row["target_item_id"]),
-                    TargetInteractableActions = ParseIntArray(row["target_interactable_action"]),
+                    TargetInteractableActions = ParseStringArray(row["target_interactable_action"]),
                     TargetAreas = ParseIntArray(row["target_area"]),
                     TextTemplate = row["text_template"].Trim('"'),
                     InsanityTextTemplate = row["insanity_text_template"].Trim('"'),
@@ -54,6 +54,15 @@ namespace network.common.data
             return JsonConvert.DeserializeObject<List<int>>(trimmed) ?? new List<int>();
         }
 
+        private static List<string> ParseStringArray(string json)
+        {
+            var trimmed = json?.Trim('"') ?? "";
+            if (string.IsNullOrEmpty(trimmed) || trimmed == "[]")
+                return new List<string>();
+
+            return JsonConvert.DeserializeObject<List<string>>(trimmed) ?? new List<string>();
+        }
+
         // Getters
         public static List<ExitStepData> GetStepsByGroup(int groupId) =>
             StepsByGroup.GetValueOrDefault(groupId) ?? new List<ExitStepData>();
@@ -71,7 +80,7 @@ namespace network.common.data
         public int GroupId { get; set; }
         public int StepOrder { get; set; }
         public List<int> TargetItemIds { get; set; }
-        public List<int> TargetInteractableActions { get; set; }
+        public List<string> TargetInteractableActions { get; set; }  // "interactableId_actionId" 형태
         public List<int> TargetAreas { get; set; }
         public string TextTemplate { get; set; }
         public string InsanityTextTemplate { get; set; }

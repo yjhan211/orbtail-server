@@ -803,6 +803,22 @@ public class GameClientSession : IPeer
         _logger.LogInformation("Player {PlayerId} selected action: InteractId={InteractId}, ActionId={ActionId}",
             PlayerId, msg.InteractId, msg.ActionId);
 
+        // RequireItemId 체크 - 필요한 아이템이 있는지 확인
+        var interactableForCheck = GameInteractableData.Get(msg.InteractId);
+        var actionDataForCheck = interactableForCheck?.Actions.FirstOrDefault(a => a.ActionId == msg.ActionId);
+        if (actionDataForCheck != null && actionDataForCheck.RequireItemId > 0)
+        {
+            var playerInventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+            var hasRequiredItem = (playerInventory?.GetItemCount(actionDataForCheck.RequireItemId) ?? 0) > 0;
+            if (!hasRequiredItem)
+            {
+                _logger.LogWarning("Player {PlayerId} missing required item {ItemId} for InteractId={InteractId}, ActionId={ActionId}",
+                    PlayerId, actionDataForCheck.RequireItemId, msg.InteractId, msg.ActionId);
+                SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.REQUIRED_ITEM_MISSING);
+                return Task.CompletedTask;
+            }
+        }
+
         // 탐색 처리 (InteractableStateManager에서 상태 업데이트 - MatchingId별 독립 관리)
         var success = _interactableStateManager.TryExplore(CurrentMapSubId, msg.InteractId, msg.ActionId, PlayerId.Value, out var state);
 
@@ -819,6 +835,20 @@ public class GameClientSession : IPeer
                 ModifyStats(staminaDelta: -actionData.StaminaCost);
                 _logger.LogInformation("Player {PlayerId} stamina reduced by {Cost} for InteractId={InteractId}, ActionId={ActionId}",
                     PlayerId, actionData.StaminaCost, msg.InteractId, msg.ActionId);
+            }
+
+            // RequireItemId 아이템 소모
+            if (actionData != null && actionData.RequireItemId > 0)
+            {
+                var removedItem = _inGameInventoryManager.RemoveItemByItemId(CurrentMapSubId, PlayerId.Value, actionData.RequireItemId);
+                if (removedItem != null)
+                {
+                    // Count=0으로 설정해서 클라이언트에 삭제 알림
+                    removedItem.Count = 0;
+                    SendInGameInventoryUpdate(removedItem);
+                    _logger.LogInformation("Player {PlayerId} consumed required item {ItemId} for InteractId={InteractId}, ActionId={ActionId}",
+                        PlayerId, actionData.RequireItemId, msg.InteractId, msg.ActionId);
+                }
             }
 
             // 상호작용 규칙 위반 체크 (금지된 액션 수행)

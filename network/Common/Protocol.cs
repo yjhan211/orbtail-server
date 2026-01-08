@@ -152,6 +152,7 @@ namespace network.common
         INSUFFICIENT_CURRENCY = 505,
         INVALID_ITEM = 506,
         INVALID_ITEM_TYPE = 507,
+        REQUIRED_ITEM_MISSING = 508,  // 액션 수행에 필요한 아이템 미보유
 
         // 탈출 의식 (600~699)
         EXIT_NOT_AVAILABLE = 600,

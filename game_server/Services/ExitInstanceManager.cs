@@ -130,15 +130,12 @@ namespace game_server.services
                 }
             }
 
-            // target_interactable_action 확인
+            // target_interactable_action 확인 (CSV에서 "interactableId_actionId" 형태로 저장)
             if (allConditionsMet && currentStep.TargetInteractableActions.Count > 0)
             {
                 foreach (var actionKey in currentStep.TargetInteractableActions)
                 {
-                    // actionKey는 interactableId_actionId 형태로 저장되어야 함
-                    // CSV에서는 단일 int로 저장되어 있으므로 변환 필요
-                    // 여기서는 "interactableId_actionId" 문자열로 비교
-                    if (!_completedActions.Contains(actionKey.ToString()))
+                    if (!_completedActions.Contains(actionKey))
                     {
                         allConditionsMet = false;
                         break;
