@@ -153,6 +153,7 @@ namespace network.common
         INVALID_ITEM = 506,
         INVALID_ITEM_TYPE = 507,
         REQUIRED_ITEM_MISSING = 508,  // 액션 수행에 필요한 아이템 미보유
+        REQUIRED_ACTION_NOT_COMPLETED = 509,  // 선행 액션 미완료
 
         // 탈출 의식 (600~699)
         EXIT_NOT_AVAILABLE = 600,

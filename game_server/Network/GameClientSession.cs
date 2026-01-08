@@ -819,6 +819,23 @@ public class GameClientSession : IPeer
             }
         }
 
+        // RequireAction 체크 - 선행 액션이 완료되었는지 확인 (형식: "interactableId_actionId")
+        if (actionDataForCheck != null && !string.IsNullOrEmpty(actionDataForCheck.RequireAction))
+        {
+            var parts = actionDataForCheck.RequireAction.Split('_');
+            if (parts.Length == 2 && int.TryParse(parts[0], out var reqInteractId) && int.TryParse(parts[1], out var reqActionId))
+            {
+                var reqActionState = _interactableStateManager.GetState(CurrentMapSubId, reqInteractId, reqActionId);
+                if (reqActionState == null || !reqActionState.IsExplored)
+                {
+                    _logger.LogWarning("Player {PlayerId} required action not completed: {RequireAction} for InteractId={InteractId}, ActionId={ActionId}",
+                        PlayerId, actionDataForCheck.RequireAction, msg.InteractId, msg.ActionId);
+                    SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.REQUIRED_ACTION_NOT_COMPLETED);
+                    return Task.CompletedTask;
+                }
+            }
+        }
+
         // 탐색 처리 (InteractableStateManager에서 상태 업데이트 - MatchingId별 독립 관리)
         var success = _interactableStateManager.TryExplore(CurrentMapSubId, msg.InteractId, msg.ActionId, PlayerId.Value, out var state);
 
