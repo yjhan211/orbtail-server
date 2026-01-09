@@ -47,7 +47,7 @@ namespace network.common
 
         // Game Session Settings
         /// <summary>게임 세션 지속 시간 (분)</summary>
-        public static readonly int GAME_DURATION_MINUTES = 15;
+        public static readonly int GAME_DURATION_MINUTES = 20;
 
         /// <summary>게임 세션 지속 시간 (초)</summary>
         public static readonly int GAME_DURATION_SECONDS = GAME_DURATION_MINUTES * 60;
