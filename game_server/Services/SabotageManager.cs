@@ -151,7 +151,7 @@ namespace game_server.services
             // 사보타주 이벤트 정의 (하드코딩 - 추후 CSV로 이동 가능)
             _sabotageEvents.Clear();
 
-            // 교무실(Area 11) 전화기 사보타주: 5초 후 전화벨이 울림, 15초 내에 받지 않으면 타임아웃
+            // 교무실(Area 11) 전화기 사보타주: 5초 후 전화벨이 울림, 30초 내에 받지 않으면 타임아웃
             RegisterSabotageEvent(new SabotageEvent
             {
                 TriggerArea = AreaType.AdminOffice2,  // 교무실
@@ -166,6 +166,22 @@ namespace game_server.services
 
                 // 해결 조건: state=SABOTAGE인 액션 중 하나를 완료하면 타임아웃 취소
                 ResolveActionId = 0              // 0 = InteractId의 아무 액션이나 완료하면 해결
+            });
+
+            // 강당(Area 12) 농구공 사보타주: 20초 후 농구공 활성화, 30초 내에 처리 안하면 타임아웃
+            RegisterSabotageEvent(new SabotageEvent
+            {
+                TriggerArea = AreaType.Gym,      // 강당
+                InteractId = 701000056,          // 농구공
+                DelaySeconds = 20,
+                NewState = (int)InteractableStateType.SABOTAGE,
+
+                // 타임아웃 설정
+                TimeoutSeconds = 30,             // 30초 후 타임아웃
+                TimeoutState = (int)InteractableStateType.DEFAULT,
+                TimeoutCorruption = 20,          // 모든 플레이어 정신오염도 +20
+
+                ResolveActionId = 0
             });
 
             _logAction?.Invoke($"SabotageManager: Initialized with {_sabotageEvents.Count} trigger areas");

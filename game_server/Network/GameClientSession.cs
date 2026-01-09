@@ -294,6 +294,9 @@ public class GameClientSession : IPeer
                 if (CurrentArea != AreaType.None)
                 {
                     SendInteractableList(CurrentArea);
+
+                    // 초기 Area에서도 사보타주 이벤트 트리거
+                    _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, CurrentArea);
                 }
             }
 
