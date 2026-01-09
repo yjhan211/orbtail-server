@@ -85,17 +85,23 @@ namespace game_server.services
                 var hasUnexploredAction = false;
                 foreach (var action in interactable.Actions)
                 {
-                    // State 필터링: state=0은 항상 표시, state>0은 현재 state와 일치할 때만 표시
-                    if (action.State > 0 && action.State != currentInteractableState)
-                    {
-                        continue;
-                    }
-
+                    // 모든 액션을 전송 (클라이언트에서 현재 state에 맞게 필터링)
                     var key = (interactId, action.ActionId);
                     if (_actionStates.TryGetValue(key, out var actionState))
                     {
-                        objectState.Actions.Add(actionState);
-                        if (!actionState.IsExplored || isRepeatable)
+                        // 액션의 state 정보를 포함하여 전송
+                        var actionWithState = new InteractableActionState
+                        {
+                            Order = actionState.Order,
+                            IsExplored = actionState.IsExplored,
+                            ExploredBy = actionState.ExploredBy,
+                            State = action.State  // CSV에서 정의된 state 값
+                        };
+                        objectState.Actions.Add(actionWithState);
+
+                        // 현재 state와 일치하는 액션 중 탐색되지 않은 것이 있으면 표시
+                        bool isActiveAction = action.State == 0 || action.State == currentInteractableState;
+                        if (isActiveAction && (!actionState.IsExplored || isRepeatable))
                         {
                             hasUnexploredAction = true;
                         }
