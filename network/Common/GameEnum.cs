@@ -184,6 +184,7 @@ namespace network.common
         WRITING = 3,    // 과거와의 필담
         RECEIVE_CALL = 4,      // 교무실 통화 수신
         VENT = 5,       // 벤트
+        MEETING = 6,    // 회의 소집
     }
 
     /// <summary>
