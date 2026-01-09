@@ -131,6 +131,7 @@ namespace network.common.data
     {
         public int InteractId { get; private set; }
         public int ActionId { get; private set; }
+        public int State { get; private set; }  // 0=기본, 1+=특수 상태
         public string ActionText { get; private set; }
 
         // 기본 결과 (규칙 무관 또는 미채택 시)
@@ -179,6 +180,7 @@ namespace network.common.data
             {
                 InteractId = int.Parse(row["id"]),
                 ActionId = int.Parse(row["action_id"]),
+                State = row.ContainsKey("state") && !string.IsNullOrEmpty(row["state"]) ? int.Parse(row["state"]) : 0,
                 ActionText = row["action_text"],
                 ResultText = resultText,
                 ResultType = resultType,

@@ -34,6 +34,7 @@ public class GameClientSession : IPeer
     private readonly CorridorRuleManager _corridorRuleManager;
     private readonly InteractRuleManager _interactRuleManager;
     private readonly DoorStateManager _doorStateManager;
+    private readonly SabotageManager _sabotageManager;
 
     private readonly ILogger _logger;
     private readonly ICacheHelper _cacheHelper;
@@ -82,7 +83,8 @@ public class GameClientSession : IPeer
         ItemPoolManager itemPoolManager,
         CorridorRuleManager corridorRuleManager,
         InteractRuleManager interactRuleManager,
-        DoorStateManager doorStateManager)
+        DoorStateManager doorStateManager,
+        SabotageManager sabotageManager)
     {
         _token = token;
         _token.SetPeer(this);
@@ -102,6 +104,7 @@ public class GameClientSession : IPeer
         _corridorRuleManager = corridorRuleManager;
         _interactRuleManager = interactRuleManager;
         _doorStateManager = doorStateManager;
+        _sabotageManager = sabotageManager;
 
         _protocolRouter = new ProtocolRouter(logger);
         InitializeProtocolHandlers();
@@ -655,6 +658,9 @@ public class GameClientSession : IPeer
 
                 // 5. Area 도착 시 탈출 조건 체크
                 CheckAreaArrivalForExit(newArea);
+
+                // 6. 사보타주 이벤트 트리거 (해당 Area 최초 진입 시)
+                _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, newArea);
             }
         }
         catch (Exception ex)
@@ -836,6 +842,20 @@ public class GameClientSession : IPeer
             }
         }
 
+        // State 체크 - 액션의 state가 현재 Interactable state와 일치하는지 확인
+        // state=0은 기본 상태(항상 가능), state>0은 해당 상태일 때만 가능
+        if (actionDataForCheck != null && actionDataForCheck.State > 0)
+        {
+            var currentInteractableState = _interactableStateManager.GetInteractableState(CurrentMapSubId, msg.InteractId);
+            if (currentInteractableState != actionDataForCheck.State)
+            {
+                _logger.LogWarning("Player {PlayerId} action state mismatch: ActionState={ActionState}, CurrentState={CurrentState} for InteractId={InteractId}, ActionId={ActionId}",
+                    PlayerId, actionDataForCheck.State, currentInteractableState, msg.InteractId, msg.ActionId);
+                SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.ACTION_NOT_FOUND);
+                return Task.CompletedTask;
+            }
+        }
+
         // 탐색 처리 (InteractableStateManager에서 상태 업데이트 - MatchingId별 독립 관리)
         var success = _interactableStateManager.TryExplore(CurrentMapSubId, msg.InteractId, msg.ActionId, PlayerId.Value, out var state);
 
@@ -846,7 +866,10 @@ public class GameClientSession : IPeer
 
             // 스태미나 차감 (액션별 stamina_cost)
             var interactable = GameInteractableData.Get(msg.InteractId);
-            var actionData = interactable?.Actions.FirstOrDefault(a => a.ActionId == msg.ActionId);
+            var currentInteractableState = _interactableStateManager.GetInteractableState(CurrentMapSubId, msg.InteractId);
+            // 현재 state에 맞는 액션 데이터 가져오기 (state=0은 기본, state>0은 특수 상태)
+            var actionData = interactable?.Actions.FirstOrDefault(a => a.ActionId == msg.ActionId && a.State == currentInteractableState)
+                          ?? interactable?.Actions.FirstOrDefault(a => a.ActionId == msg.ActionId && a.State == 0);
             if (actionData != null && actionData.StaminaCost > 0)
             {
                 ModifyStats(staminaDelta: -actionData.StaminaCost);
@@ -870,9 +893,23 @@ public class GameClientSession : IPeer
 
             // 상호작용 규칙 위반 체크 (금지된 액션 수행)
             var isViolation = _interactRuleManager.IsForbiddenAction(CurrentMapSubId, msg.InteractId, msg.ActionId);
+
+            // 사보타주 규칙 체크 (state > 0인 액션의 경우, 위반 액션과 비교)
+            if (actionData != null && actionData.State > 0)
+            {
+                var sabotageRule = _areaRuleManager.GetRuleForInteract(CurrentMapSubId, msg.InteractId);
+                if (sabotageRule != null && sabotageRule.TargetActionId > 0)
+                {
+                    // 규칙의 target_action_id와 같은 액션을 선택하면 위반
+                    isViolation = msg.ActionId == sabotageRule.TargetActionId;
+                    _logger.LogInformation("Player {PlayerId} sabotage action: InteractId={InteractId}, ActionId={ActionId}, ForbiddenActionId={ForbiddenActionId}, IsViolation={IsViolation}",
+                        PlayerId, msg.InteractId, msg.ActionId, sabotageRule.TargetActionId, isViolation);
+                }
+            }
+
             if (isViolation)
             {
-                _logger.LogInformation("Player {PlayerId} violated interact rule by InteractId={InteractId}, ActionId={ActionId}",
+                _logger.LogInformation("Player {PlayerId} violated rule by InteractId={InteractId}, ActionId={ActionId}",
                     PlayerId, msg.InteractId, msg.ActionId);
             }
 
@@ -920,6 +957,9 @@ public class GameClientSession : IPeer
 
             // target_interactable_action 조건 체크
             CheckActionCompletedForExit(msg.InteractId, msg.ActionId);
+
+            // 사보타주 해결 체크 (전화 받기 등)
+            _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, msg.ActionId);
 
             // 성공 응답 (최종 결정된 아이템 ID 전송, 규칙 위반 여부 포함)
             SendExploreResult(true, msg.InteractId, msg.ActionId, rewardItemId, ErrorCode.SUCCESS, isViolation);

@@ -16,6 +16,9 @@ namespace game_server.services
         // Area별 오브젝트 ID 목록 (정적 데이터 캐시)
         private readonly ConcurrentDictionary<AreaType, List<int>> _areaObjects = new();
 
+        // Interactable별 현재 state (사보타주 등 동적 상태 변경용)
+        private readonly ConcurrentDictionary<int, int> _interactableStates = new();
+
         public MatchingInteractableState(long matchingId)
         {
             InitializeFromData();
@@ -67,6 +70,9 @@ namespace game_server.services
                 var interactable = GameInteractableData.Get(interactId);
                 if (interactable == null) continue;
 
+                // 현재 Interactable의 state 가져오기
+                var currentInteractableState = GetInteractableState(interactId);
+
                 var objectState = new InteractableObjectState
                 {
                     InteractId = interactId,
@@ -79,6 +85,12 @@ namespace game_server.services
                 var hasUnexploredAction = false;
                 foreach (var action in interactable.Actions)
                 {
+                    // State 필터링: state=0은 항상 표시, state>0은 현재 state와 일치할 때만 표시
+                    if (action.State > 0 && action.State != currentInteractableState)
+                    {
+                        continue;
+                    }
+
                     var key = (interactId, action.ActionId);
                     if (_actionStates.TryGetValue(key, out var actionState))
                     {
@@ -155,6 +167,22 @@ namespace game_server.services
         {
             var key = (interactId, actionId);
             return _actionStates.TryGetValue(key, out var state) ? state : null;
+        }
+
+        /// <summary>
+        /// Interactable의 현재 state 가져오기 (기본값 0)
+        /// </summary>
+        public int GetInteractableState(int interactId)
+        {
+            return _interactableStates.TryGetValue(interactId, out var state) ? state : 0;
+        }
+
+        /// <summary>
+        /// Interactable의 state 설정
+        /// </summary>
+        public void SetInteractableState(int interactId, int state)
+        {
+            _interactableStates[interactId] = state;
         }
     }
 
@@ -251,6 +279,25 @@ namespace game_server.services
             {
                 _logAction?.Invoke($"InteractableStateManager: Removed state for MatchingId={matchingId}");
             }
+        }
+
+        /// <summary>
+        /// Interactable의 현재 state 가져오기
+        /// </summary>
+        public int GetInteractableState(long matchingId, int interactId)
+        {
+            var matchingState = GetOrCreateMatchingState(matchingId);
+            return matchingState.GetInteractableState(interactId);
+        }
+
+        /// <summary>
+        /// Interactable의 state 설정
+        /// </summary>
+        public void SetInteractableState(long matchingId, int interactId, int state)
+        {
+            var matchingState = GetOrCreateMatchingState(matchingId);
+            matchingState.SetInteractableState(interactId, state);
+            _logAction?.Invoke($"InteractableStateManager: SetInteractableState MatchingId={matchingId}, InteractId={interactId}, State={state}");
         }
 
         /// <summary>

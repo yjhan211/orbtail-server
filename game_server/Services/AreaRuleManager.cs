@@ -191,6 +191,26 @@ namespace game_server.services
         }
 
         /// <summary>
+        /// 특정 InteractId에 대한 규칙 가져오기 (사보타주 연계용)
+        /// </summary>
+        /// <returns>해당 InteractId에 적용된 규칙, 없으면 null</returns>
+        public AreaRuleInfoData? GetRuleForInteract(long matchingId, int interactId)
+        {
+            var state = GetOrCreateMatchingState(matchingId);
+
+            foreach (var ruleId in state.AllRuleIds)
+            {
+                var ruleData = GameAreaRuleData.Get(ruleId);
+                if (ruleData != null && ruleData.TargetInteractId == interactId)
+                {
+                    return ruleData;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// 매칭 종료 시 해당 매칭의 상태 정리
         /// </summary>
         public void RemoveMatchingState(long matchingId)

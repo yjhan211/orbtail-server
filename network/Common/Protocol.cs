@@ -62,6 +62,7 @@ namespace network.common
         G_TO_C_EXPLORE_RESULT, // 탐색 결과 (보상 등)
         C_TO_G_EXPLORE_END, // 탐색 종료 요청 (UI 닫기)
         G_TO_C_EXPLORE_END, // 탐색 종료 브로드캐스트
+        G_TO_C_INTERACTABLE_STATE_CHANGE, // Interactable state 변경 알림 (사보타주 등)
 
         // 인게임 인벤토리 프로토콜 (게임 내 배낭 - 게임 종료 시 초기화)
         G_TO_C_INGAME_INVENTORY_LIST, // 게임 시작 시 배낭 전체 목록

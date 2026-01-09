@@ -200,6 +200,15 @@ namespace network.common
     }
 
     /// <summary>
+    /// 상호작용 액션 상태 타입 (사보타주 등 동적 상태 변경)
+    /// </summary>
+    public enum InteractableStateType : short
+    {
+        DEFAULT = 0,        // 기본 상태
+        SABOTAGE = 1,       // 사보타주 상태 (전화벨 울림 등)
+    }
+
+    /// <summary>
     /// 시스템 텍스트 카테고리
     /// </summary>
     public enum SystemTextCategory : short

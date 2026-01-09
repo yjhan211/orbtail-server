@@ -605,6 +605,14 @@ namespace network.common.data.models
         [Key("playerId")] public long PlayerId { get; set; }
     }
 
+    // Interactable state 변경 알림 (사보타주 등)
+    [MessagePackObject]
+    public class G_TO_C_INTERACTABLE_STATE_CHANGE : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("newState")] public int NewState { get; set; }
+    }
+
     // 인게임 아이템 정보 (게임 내 배낭용 - 게임 종료 시 초기화)
     [MessagePackObject]
     public class InGameItemInfo

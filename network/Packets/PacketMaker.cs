@@ -347,6 +347,19 @@ public static class PacketMaker
         return packet;
     }
 
+    public static Packet G_TO_C_INTERACTABLE_STATE_CHANGE(int interactId, int newState)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_STATE_CHANGE);
+        G_TO_C_INTERACTABLE_STATE_CHANGE body = new()
+        {
+            InteractId = interactId,
+            NewState = newState
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     // ========== 인게임 인벤토리 프로토콜 ==========
 
     public static Packet G_TO_C_INGAME_INVENTORY_LIST(List<InGameItemInfo> items)

@@ -38,6 +38,7 @@ public class GameServer : IHostedService
     private readonly CorridorRuleManager _corridorRuleManager = new();
     private readonly InteractRuleManager _interactRuleManager = new();
     private readonly DoorStateManager _doorStateManager = new();
+    private readonly SabotageManager _sabotageManager = new();
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
     private Timer? _infirmaryHealingTimer;
@@ -155,6 +156,9 @@ public class GameServer : IHostedService
             _interactRuleManager.Initialize(msg => _logger.LogInformation(msg), _areaRuleManager);
             _exitInstanceManager.Initialize(msg => _logger.LogInformation(msg));
             _itemPoolManager.Initialize(msg => _logger.LogInformation(msg));
+            _sabotageManager.Initialize(msg => _logger.LogInformation(msg));
+            _sabotageManager.SetStateChangeCallback(OnSabotageStateChange);
+            _sabotageManager.SetTimeoutCallback(OnSabotageTimeout);
         }
         catch (Exception ex)
         {
@@ -308,7 +312,8 @@ public class GameServer : IHostedService
                 _itemPoolManager,
                 _corridorRuleManager,
                 _interactRuleManager,
-                _doorStateManager);
+                _doorStateManager,
+                _sabotageManager);
 
             _logger.LogInformation("Game client session created");
         }
@@ -365,6 +370,53 @@ public class GameServer : IHostedService
             session.ModifyStats(corruptionDelta: corruptionDelta);
             _logger.LogInformation("Player {PlayerId} corridor stop violation: Corruption +{Delta}", playerId, corruptionDelta);
         }
+    }
+
+    /// <summary>
+    /// 사보타주 상태 변경 콜백 - InteractableState 업데이트 및 브로드캐스트
+    /// </summary>
+    private void OnSabotageStateChange(long matchingId, int interactId, int newState, AreaType triggerArea)
+    {
+        _logger.LogInformation("Sabotage state change: MatchingId={MatchingId}, InteractId={InteractId}, NewState={NewState}, TriggerArea={TriggerArea}",
+            matchingId, interactId, newState, triggerArea);
+
+        // InteractableStateManager 상태 업데이트
+        _interactableStateManager.SetInteractableState(matchingId, interactId, newState);
+
+        // 해당 매칭의 해당 Area에 있는 모든 플레이어에게 브로드캐스트
+        var sessionsInArea = _clientSessions.Values
+            .Where(s => s.CurrentMapSubId == matchingId && s.CurrentArea == triggerArea && s.PlayerId.HasValue)
+            .ToList();
+
+        using var packet = PacketMaker.G_TO_C_INTERACTABLE_STATE_CHANGE(interactId, newState);
+        foreach (var session in sessionsInArea)
+        {
+            session.Send(packet);
+        }
+
+        _logger.LogInformation("Broadcasted INTERACTABLE_STATE_CHANGE to {Count} players in Area {Area}", sessionsInArea.Count, triggerArea);
+    }
+
+    /// <summary>
+    /// 사보타주 타임아웃 콜백 - 해당 매칭의 모든 플레이어에게 정신오염도 증가
+    /// </summary>
+    private void OnSabotageTimeout(long matchingId, AreaType triggerArea, int corruptionDelta)
+    {
+        _logger.LogInformation("Sabotage timeout: MatchingId={MatchingId}, Area={Area}, Corruption +{Delta}",
+            matchingId, triggerArea, corruptionDelta);
+
+        // 해당 매칭의 모든 플레이어에게 정신오염도 증가
+        var matchingSessions = _clientSessions.Values
+            .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
+            .ToList();
+
+        foreach (var session in matchingSessions)
+        {
+            session.ModifyStats(corruptionDelta: corruptionDelta);
+        }
+
+        _logger.LogInformation("Applied corruption +{Delta} to {Count} players in MatchingId={MatchingId}",
+            corruptionDelta, matchingSessions.Count, matchingId);
     }
 
     // MMO 로그아웃 프로토콜 제거됨 - 세션 기반 게임에서는 불필요
