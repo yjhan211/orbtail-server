@@ -146,7 +146,7 @@ public class GameClientSession : IPeer
             var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
 
-            if (protocolId != Protocol.C_TO_G_HEART_BEAT)
+            if (protocolId != Protocol.C_TO_G_HEART_BEAT && protocolId != Protocol.C_TO_G_MOVE)
             {
                 _logger.LogInformation("[GameClient] Protocol: {ProtocolId}, PlayerId: {L}", protocolId, playerId);
             }
