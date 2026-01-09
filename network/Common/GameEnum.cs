@@ -182,7 +182,7 @@ namespace network.common
         EXPLORE = 1,    // 전체탐색 - 필수 아이템 획득 전까지 창 유지
         SINGLE = 2,     // 단일선택 - 결과 출력 후 창 즉시 닫힘
         WRITING = 3,    // 과거와의 필담
-        RECEIVE_CALL = 4,      // 교무실 통화 수신
+        SABOTAGE = 4,      // 사보타주
         VENT = 5,       // 벤트
         MEETING = 6,    // 회의 소집
     }
