@@ -160,7 +160,7 @@ namespace game_server.services
                 NewState = (int)InteractableStateType.SABOTAGE,  // 전화벨 울림 상태
 
                 // 타임아웃 설정
-                TimeoutSeconds = 15,             // 15초 후 타임아웃
+                TimeoutSeconds = 30,             // 30초 후 타임아웃
                 TimeoutState = (int)InteractableStateType.DEFAULT,  // 타임아웃 시 기본 상태로 복귀
                 TimeoutCorruption = 20,          // 모든 플레이어 정신오염도 +20
 

@@ -164,6 +164,7 @@ namespace network.common.data.models
     {
         [Key("areaType")] public AreaType AreaType { get; set; }
         [Key("objects")] public List<InteractableObjectState> Objects { get; set; }
+        [Key("isEnd")] public bool IsEnd { get; set; }
     }
 
     [MessagePackObject]

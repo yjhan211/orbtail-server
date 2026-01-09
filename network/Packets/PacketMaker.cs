@@ -257,13 +257,14 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_INTERACTABLE_LIST(AreaType areaType, List<InteractableObjectState> objects)
+    public static Packet G_TO_C_INTERACTABLE_LIST(AreaType areaType, List<InteractableObjectState> objects, bool isEnd)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_LIST);
         G_TO_C_INTERACTABLE_LIST body = new()
         {
             AreaType = areaType,
-            Objects = objects
+            Objects = objects,
+            IsEnd = isEnd
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

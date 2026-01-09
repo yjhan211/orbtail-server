@@ -731,8 +731,16 @@ public class GameClientSession : IPeer
                 obj.InteractId, obj.Actions?.Count ?? 0);
         }
 
-        using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
-        Send(packet);
+        // 청크로 분할하여 전송 (패킷 크기 제한)
+        const int chunkSize = 3;
+        for (int i = 0; i < objects.Count; i += chunkSize)
+        {
+            var chunk = objects.Skip(i).Take(chunkSize).ToList();
+            bool isEnd = (i + chunkSize >= objects.Count);
+            using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, chunk, isEnd);
+            Send(packet);
+        }
+
         _logger.LogDebug("Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
             objects.Count, areaType, PlayerId, CurrentMapSubId);
     }
