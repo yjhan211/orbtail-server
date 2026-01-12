@@ -43,5 +43,5 @@ id,category,text_ko
 223,3,"<color=#22D3EE>{Item.Name}</color>을 <color=#22D3EE>투입한다</color>."
 230,3,"<color=#22D3EE>{Condition.Text}</color> <color=#22D3EE>개체</color>를 <color=#22D3EE>투입</color>하십시오."
 231,3,"<color=#F1325A>투입하지 마</color>. 다시는 만날 수 없어."
-232,3,"<color=#22D3EE>개체</color> <color=#22D3EE>투입</color>하기"
+232,3,<color=#22D3EE>개체</color> <color=#22D3EE>투입</color>하기
 233,3,"<color=#22D3EE>개체</color>를 <color=#22D3EE>투입한다</color>."
