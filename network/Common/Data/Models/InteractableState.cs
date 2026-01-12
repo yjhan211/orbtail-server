@@ -11,6 +11,7 @@ namespace network.common.data.models
         [Key("order")] public int Order { get; set; }
         [Key("isExplored")] public bool IsExplored { get; set; }
         [Key("exploredBy")] public long ExploredBy { get; set; }
+        [Key("state")] public int State { get; set; }  // 액션이 활성화되는 Interactable state (0=기본, 1=사보타주 등)
     }
 
     [MessagePackObject]

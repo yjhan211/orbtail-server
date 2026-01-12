@@ -46,44 +46,28 @@ namespace network.common.data
 
         /// <summary>
         /// 특정 Area의 규칙들을 랜덤하게 선택
-        /// - Category 1 (필수): 같은 group_id 중 하나를 무작위 선택
-        /// - Category 2 (일반): group_id가 0이면 개별, 같은 group_id끼리는 하나만 선택
-        /// - target_interact_id가 있는(구현된) 규칙만 선택
+        /// - group_id=0: 전체에서 하나만 선택
+        /// - group_id!=0: 같은 group_id끼리 하나만 선택
         /// </summary>
         public static List<int> SelectRulesForArea(AreaType areaType, Random random = null)
         {
             random ??= new Random();
             var result = new List<int>();
-            // 구현된 규칙만 필터링 (target_interact_id > 0)
-            var areaRules = GetByArea(areaType).Where(r => r.TargetInteractId > 0).ToList();
+            var areaRules = GetByArea(areaType);
 
             if (areaRules.Count == 0) return result;
 
-            // Category 1 (필수) 처리 - 각 group_id 당 하나 선택
-            var category1Rules = areaRules.Where(r => r.Category == 1).ToList();
-            var category1Groups = category1Rules.GroupBy(r => r.GroupId).ToList();
-
-            foreach (var group in category1Groups)
-            {
-                var groupList = group.ToList();
-                var selected = groupList[random.Next(groupList.Count)];
-                result.Add(selected.Id);
-            }
-
-            // Category 2 (일반) 처리
-            var category2Rules = areaRules.Where(r => r.Category == 2).ToList();
-
-            // group_id가 0인 것들 중에서 하나 랜덤 선택
-            var individualRules = category2Rules.Where(r => r.GroupId == 0).ToList();
+            // group_id=0인 규칙들 중 하나 랜덤 선택
+            var individualRules = areaRules.Where(r => r.GroupId == 0).ToList();
             if (individualRules.Count > 0)
             {
                 var selected = individualRules[random.Next(individualRules.Count)];
                 result.Add(selected.Id);
             }
 
-            // group_id가 0이 아닌 것들 - 각 group당 하나 선택
-            var category2Groups = category2Rules.Where(r => r.GroupId != 0).GroupBy(r => r.GroupId).ToList();
-            foreach (var group in category2Groups)
+            // group_id!=0인 규칙들 - 각 group당 하나 선택
+            var groupedRules = areaRules.Where(r => r.GroupId != 0).GroupBy(r => r.GroupId).ToList();
+            foreach (var group in groupedRules)
             {
                 var groupList = group.ToList();
                 var selected = groupList[random.Next(groupList.Count)];
@@ -116,11 +100,9 @@ namespace network.common.data
 
             foreach (var (areaType, rules) in RulesByArea)
             {
-                LogManager.WriteDebugLog($"Area {areaType}: {rules.Count} rules");
-                var cat1Count = rules.Count(r => r.Category == 1);
-                var cat2Count = rules.Count(r => r.Category == 2);
-                LogManager.WriteDebugLog($"  Category 1 (필수): {cat1Count}");
-                LogManager.WriteDebugLog($"  Category 2 (일반): {cat2Count}");
+                var group0Count = rules.Count(r => r.GroupId == 0);
+                var groupedCount = rules.Count(r => r.GroupId != 0);
+                LogManager.WriteDebugLog($"Area {areaType}: {rules.Count} rules (group0: {group0Count}, grouped: {groupedCount})");
             }
 
             LogManager.WriteDebugLog("GameAreaRuleData validation completed!");
@@ -131,10 +113,10 @@ namespace network.common.data
     {
         public int Id { get; private set; }
         public AreaType AreaType { get; private set; }
-        public int Category { get; private set; } // 1=필수, 2=일반
-        public int GroupId { get; private set; } // 0=개별, 같은 값끼리 상호배타
+        public int GroupId { get; private set; } // 0=개별(하나만 선택), !=0=같은 값끼리 하나만 선택
         public string Description { get; private set; }
         public int TargetInteractId { get; private set; } // 0=해당없음, >0=해당 오브젝트 탐색 시 위반
+        public int TargetActionId { get; private set; } // 0=모든 액션, >0=특정 액션만 위반
 
         public static AreaRuleInfoData CreateFromData(CsvRow row)
         {
@@ -144,14 +126,20 @@ namespace network.common.data
                 int.TryParse(row["target_interact_id"], out targetInteractId);
             }
 
+            var targetActionId = 0;
+            if (row.ContainsKey("target_action_id"))
+            {
+                int.TryParse(row["target_action_id"], out targetActionId);
+            }
+
             return new AreaRuleInfoData
             {
                 Id = int.Parse(row["id"]),
                 AreaType = (AreaType)int.Parse(row["area_type"]),
-                Category = int.Parse(row["category"]),
                 GroupId = int.Parse(row["group_id"]),
                 Description = row["description"],
-                TargetInteractId = targetInteractId
+                TargetInteractId = targetInteractId,
+                TargetActionId = targetActionId
             };
         }
     }

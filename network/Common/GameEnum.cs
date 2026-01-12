@@ -173,107 +173,51 @@ namespace network.common
         DARK,
     }
 
-    public enum RewardType : short
+    /// <summary>
+    /// 상호작용 오브젝트 탐색 타입
+    /// </summary>
+    public enum InteractionType : short
     {
         NONE = 0,
-        ITEM,
-        CONDITION_RANDOM,
-        CORRUPTION_RANDOM,
-        RULE,
-        RULE_RANDOM,
+        EXPLORE = 1,    // 전체탐색 - 필수 아이템 획득 전까지 창 유지
+        SINGLE = 2,     // 단일선택 - 결과 출력 후 창 즉시 닫힘
+        WRITING = 3,    // 과거와의 필담
+        SABOTAGE = 4,      // 사보타주
+        VENT = 5,       // 벤트
+        MEETING = 6,    // 회의 소집
     }
 
-    public enum ExitTemplateType : short
+    /// <summary>
+    /// 상호작용 액션 결과 타입
+    /// </summary>
+    public enum ActionResultType : short
     {
         NONE = 0,
-        BROADCAST = 1,  // 비상 방송 프로토콜
-        DISPOSE = 2,    // 특수 개체 격리 및 처리 절차
+        REWARD_POOL = 1,           // 아이템 획득
+        DEBUFF_CORRUPTION = 2,     // 정신오염도 증가
+        DEBUFF_STAMINA = 3,        // 스태미나 감소
+        BUFF_CORRUPTION = 4,       // 정신오염도 감소
+        BUFF_STAMINA = 5,          // 스태미나 증가
     }
 
-    public enum ExitItemType : short
+    /// <summary>
+    /// 상호작용 액션 상태 타입 (사보타주 등 동적 상태 변경)
+    /// </summary>
+    public enum InteractableStateType : short
     {
-        NONE = 0,
-        DISC = 1,   // LP판
-        DOLL = 2,   // 머리 없는 인형
-        TAPE = 3,   // 비디오 테이프
-        KEY = 4,    // 열쇠 꾸러미
+        DEFAULT = 0,        // 기본 상태
+        SABOTAGE = 1,       // 사보타주 상태 (전화벨 울림 등)
     }
 
-    public enum ExitSpotType : short
+    /// <summary>
+    /// 시스템 텍스트 카테고리
+    /// </summary>
+    public enum SystemTextCategory : short
     {
         NONE = 0,
-        BROADCAST = 1,      // 방송실 송출 장비
-        INCINERATOR = 2,    // 쓰레기장 소각로
-        GUTTER = 3,         // 쓰레기장 빗물받이
-        SAFE = 4,           // 교무실 금고
-        PROJECTOR = 5,      // 시청각실 영사기
-    }
-
-    public enum ExitDebuffType : short
-    {
-        NONE = 0,
-        SONG = 1,       // 노랫소리
-        WHISPER = 2,    // 속삭임
-        HEAVY = 3,      // 무거움
-        SHADOW = 4,     // 그림자
-    }
-
-    public enum ExitConditionType : short
-    {
-        NONE = 0,
-        SANITY = 1,     // 정신이 온전한 인원
-        SOLO = 2,       // 혼자
-        TOGETHER = 3,   // 두 명이 동시에
-    }
-
-    public enum ExitActionType : short
-    {
-        NONE = 0,
-        GET = 1,        // 아이템 획득
-        CARRY = 2,      // 운반
-        USE = 3,        // 사용
-        ASSIGN = 4,     // 운반자 지정
-        FINALE = 5,     // 최종 행동
-    }
-
-    public enum ExitConstraintType : short
-    {
-        NONE = 0,
-        POOL = 1,       // 허용 목록
-        REQUIRE = 2,    // 필수 조합
-        EXCLUDE = 3,    // 금지 조합
-    }
-
-    public enum ExitSlotType : short
-    {
-        NONE = 0,
-        ITEM = 1,
-        SPOT = 2,
-        DEBUFF = 3,
-        CONDITION = 4,
-    }
-
-    public enum ExitCheckType : short
-    {
-        NONE = 0,
-        SANITY_HIGH = 1,        // 정신력 확인
-        NEARBY_PLAYERS = 2,     // 근처 플레이어 수 확인
-    }
-
-    public enum ExitFinaleType : short
-    {
-        NONE = 0,
-        TYPING = 1,         // 타이핑 미니게임
-        BUTTON_MASH = 2,    // 버튼 연타
-        SYNC_TOUCH = 3,     // 동시 터치
-    }
-
-    public enum ExitEffectType : short
-    {
-        NONE = 0,
-        AUDIO_HUMMING = 1,      // 흥얼거림 오디오
-        AUDIO_WHISPER = 2,      // 속삭임 오디오
-        MOVE_SPEED_DOWN = 3,    // 이동속도 감소
-        VISUAL_DARKEN = 4,      // 시야 어두워짐
+        PORTAL = 1,         // 포탈 관련 메시지
+        ALERT = 2,          // 알럿 메시지
+        EXIT_STEP = 3,      // 탈출 절차 관련
+        INTERACTION = 4,    // 상호작용 관련
     }
 }

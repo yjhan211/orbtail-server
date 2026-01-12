@@ -53,6 +53,7 @@ namespace network.common
         G_TO_C_AREA_PLAYER_LEAVE, // 다른 플레이어가 내 Area에서 퇴장
         G_TO_C_INTERACTABLE_LIST, // Area 진입 시 탐색 가능한 오브젝트 목록
         G_TO_C_INTERACTABLE_UPDATE, // 오브젝트 탐색 상태 변경 (누군가 탐색함)
+        G_TO_C_AREA_EXIT_BLOCKED, // Area 퇴장 조건 미충족 시 이동 차단 알림
 
         // 탐색 프로토콜
         C_TO_G_EXPLORE_START, // 탐색 시작 요청
@@ -61,6 +62,7 @@ namespace network.common
         G_TO_C_EXPLORE_RESULT, // 탐색 결과 (보상 등)
         C_TO_G_EXPLORE_END, // 탐색 종료 요청 (UI 닫기)
         G_TO_C_EXPLORE_END, // 탐색 종료 브로드캐스트
+        G_TO_C_INTERACTABLE_STATE_CHANGE, // Interactable state 변경 알림 (사보타주 등)
 
         // 인게임 인벤토리 프로토콜 (게임 내 배낭 - 게임 종료 시 초기화)
         G_TO_C_INGAME_INVENTORY_LIST, // 게임 시작 시 배낭 전체 목록
@@ -84,6 +86,14 @@ namespace network.common
         // 로비 복귀 프로토콜
         C_TO_G_RETURN_TO_LOBBY, // 로비 복귀 요청 (게임 완료 후)
         G_TO_C_RETURN_TO_LOBBY_RESULT, // 로비 복귀 결과
+
+        // 문 프로토콜
+        C_TO_G_DOOR_OPEN_REQUEST, // 문 열기 요청
+        G_TO_C_DOOR_STATE_UPDATE, // 문 상태 변경 브로드캐스트
+        G_TO_C_DOOR_STATE_LIST, // 입장 시 열린 문 목록
+
+        // 복도 규칙 프로토콜
+        G_TO_C_CORRIDOR_BELL, // 복도 종소리 이벤트
 
         END
     }
@@ -143,6 +153,8 @@ namespace network.common
         INSUFFICIENT_CURRENCY = 505,
         INVALID_ITEM = 506,
         INVALID_ITEM_TYPE = 507,
+        REQUIRED_ITEM_MISSING = 508,  // 액션 수행에 필요한 아이템 미보유
+        REQUIRED_ACTION_NOT_COMPLETED = 509,  // 선행 액션 미완료
 
         // 탈출 의식 (600~699)
         EXIT_NOT_AVAILABLE = 600,
@@ -151,6 +163,12 @@ namespace network.common
         EXIT_ITEM_MISSING = 603,
         EXIT_ALREADY_COMPLETED = 604,
         EXIT_SPOT_MISMATCH = 605,
+
+        // 문 (650~659)
+        DOOR_NOT_FOUND = 650,
+        DOOR_ALREADY_OPEN = 651,
+        DOOR_KEY_MISSING = 652,
+        DOOR_TOO_FAR = 653,
 
         // 퀘스트 (700~799)
         QUEST_NOT_FOUND = 700,

@@ -153,10 +153,18 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class G_TO_C_AREA_EXIT_BLOCKED : IMessagePackObject
+    {
+        [Key("areaType")] public AreaType AreaType { get; set; } // 나가려던 Area
+        [Key("correctedCell")] public Cell CorrectedCell { get; set; } // 되돌아갈 셀 위치
+    }
+
+    [MessagePackObject]
     public class G_TO_C_INTERACTABLE_LIST : IMessagePackObject
     {
         [Key("areaType")] public AreaType AreaType { get; set; }
         [Key("objects")] public List<InteractableObjectState> Objects { get; set; }
+        [Key("isEnd")] public bool IsEnd { get; set; }
     }
 
     [MessagePackObject]
@@ -581,6 +589,7 @@ namespace network.common.data.models
         [Key("actionId")] public int ActionId { get; set; }
         [Key("itemId")] public int ItemId { get; set; }  // 획득한 아이템 ID (0이면 없음)
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("isViolation")] public bool IsViolation { get; set; }  // 규칙 위반 여부
     }
 
     // 탐색 종료 요청 (클라이언트 → 서버)
@@ -595,6 +604,14 @@ namespace network.common.data.models
     public class G_TO_C_EXPLORE_END : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
+    }
+
+    // Interactable state 변경 알림 (사보타주 등)
+    [MessagePackObject]
+    public class G_TO_C_INTERACTABLE_STATE_CHANGE : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("newState")] public int NewState { get; set; }
     }
 
     // 인게임 아이템 정보 (게임 내 배낭용 - 게임 종료 시 초기화)
@@ -665,24 +682,13 @@ namespace network.common.data.models
 
     #region 탈출 절차 프로토콜
 
-    // 탈출 절차 슬롯 바인딩 정보 (클라이언트에서 텍스트 조합에 사용)
-    [MessagePackObject]
-    public class ExitSlotBindingInfo
-    {
-        [Key("itemId")] public int ItemId { get; set; }       // exit_item.id
-        [Key("spotId")] public int SpotId { get; set; }       // exit_spot.id
-        [Key("debuffId")] public int DebuffId { get; set; }   // exit_debuff.id
-        [Key("conditionId")] public int ConditionId { get; set; } // exit_condition.id
-    }
-
     // 탈출 절차 단계 정보 응답
     [MessagePackObject]
     public class G_TO_C_EXIT_STEP_INFO : IMessagePackObject
     {
-        [Key("templateId")] public int TemplateId { get; set; }
+        [Key("groupId")] public int GroupId { get; set; } // 탈출 절차 그룹 ID
         [Key("currentStepOrder")] public int CurrentStepOrder { get; set; } // 현재 단계 (이보다 작은 order는 완료)
         [Key("totalStepCount")] public int TotalStepCount { get; set; } // 총 단계 수
-        [Key("slotBinding")] public ExitSlotBindingInfo SlotBinding { get; set; } // 슬롯 바인딩 (클라에서 텍스트 조합)
         [Key("isCompleted")] public bool IsCompleted { get; set; } // 탈출 완료 여부
         [Key("lastAdvancedBy")] public long LastAdvancedBy { get; set; } // 마지막으로 진행한 플레이어 UID (0이면 아직 진행 안함)
     }
@@ -725,6 +731,57 @@ namespace network.common.data.models
     {
         [Key("success")] public bool Success { get; set; }
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+
+    #endregion
+
+    #region Door 프로토콜
+
+    // 문 열기 요청
+    [MessagePackObject]
+    public class C_TO_G_DOOR_OPEN_REQUEST : IMessagePackObject
+    {
+        [Key("doorId")] public int DoorId { get; set; }
+    }
+
+    // 문 상태 변경 브로드캐스트
+    [MessagePackObject]
+    public class G_TO_C_DOOR_STATE_UPDATE : IMessagePackObject
+    {
+        [Key("doorId")] public int DoorId { get; set; }
+        [Key("isOpen")] public bool IsOpen { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; } // 실패 시 에러코드
+        [Key("openerPlayerId")] public long OpenerPlayerId { get; set; } // 문을 연 플레이어 ID (0이면 없음)
+    }
+
+    // 입장 시 열린 문 목록
+    [MessagePackObject]
+    public class G_TO_C_DOOR_STATE_LIST : IMessagePackObject
+    {
+        [Key("openDoorIds")] public List<int> OpenDoorIds { get; set; } = new();
+    }
+
+    #endregion
+
+    #region 복도 규칙 프로토콜
+
+    /// <summary>
+    /// 종소리 이벤트 정보 (게임 시작 기준 상대 시간)
+    /// </summary>
+    [MessagePackObject]
+    public class BellEvent
+    {
+        [Key("s")] public int StartOffsetSec { get; set; } // 게임 시작 후 시작 시간 (초)
+        [Key("d")] public int DurationSec { get; set; } // 지속 시간 (초)
+    }
+
+    /// <summary>
+    /// 복도 종소리 스케줄 (게임 시작 시 전송)
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_CORRIDOR_BELL : IMessagePackObject
+    {
+        [Key("bells")] public List<BellEvent> Bells { get; set; } = new();
     }
 
     #endregion

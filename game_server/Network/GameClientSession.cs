@@ -30,8 +30,11 @@ public class GameClientSession : IPeer
     private readonly InGameInventoryManager _inGameInventoryManager;
     private readonly AreaRuleManager _areaRuleManager;
     private readonly ExitInstanceManager _exitInstanceManager;
+    private readonly ItemPoolManager _itemPoolManager;
     private readonly CorridorRuleManager _corridorRuleManager;
     private readonly InteractRuleManager _interactRuleManager;
+    private readonly DoorStateManager _doorStateManager;
+    private readonly SabotageManager _sabotageManager;
 
     private readonly ILogger _logger;
     private readonly ICacheHelper _cacheHelper;
@@ -59,9 +62,9 @@ public class GameClientSession : IPeer
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
 
-    // 게임 타이머 설정
-    private const int GameDurationMinutes = 5;
-    private const int GameDurationSeconds = GameDurationMinutes * 60;
+    // 게임 타이머 설정 (Config에서 참조)
+    private static int GameDurationMinutes => Config.GAME_DURATION_MINUTES;
+    private static int GameDurationSeconds => Config.GAME_DURATION_SECONDS;
     private static readonly Dictionary<long, Timer> _gameTimers = new();
     private static readonly object _timerLock = new();
 
@@ -77,8 +80,11 @@ public class GameClientSession : IPeer
         InGameInventoryManager inGameInventoryManager,
         AreaRuleManager areaRuleManager,
         ExitInstanceManager exitInstanceManager,
+        ItemPoolManager itemPoolManager,
         CorridorRuleManager corridorRuleManager,
-        InteractRuleManager interactRuleManager)
+        InteractRuleManager interactRuleManager,
+        DoorStateManager doorStateManager,
+        SabotageManager sabotageManager)
     {
         _token = token;
         _token.SetPeer(this);
@@ -94,8 +100,11 @@ public class GameClientSession : IPeer
         _inGameInventoryManager = inGameInventoryManager;
         _areaRuleManager = areaRuleManager;
         _exitInstanceManager = exitInstanceManager;
+        _itemPoolManager = itemPoolManager;
         _corridorRuleManager = corridorRuleManager;
         _interactRuleManager = interactRuleManager;
+        _doorStateManager = doorStateManager;
+        _sabotageManager = sabotageManager;
 
         _protocolRouter = new ProtocolRouter(logger);
         InitializeProtocolHandlers();
@@ -121,6 +130,9 @@ public class GameClientSession : IPeer
 
         // 로비 복귀 프로토콜
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_RETURN_TO_LOBBY, async (bytes) => await HandleMessage<C_TO_G_RETURN_TO_LOBBY>(bytes, HandleReturnToLobby));
+
+        // 문 프로토콜
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_REQUEST, async (bytes) => await HandleMessage<C_TO_G_DOOR_OPEN_REQUEST>(bytes, HandleDoorOpenRequest));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -134,7 +146,7 @@ public class GameClientSession : IPeer
             var playerId = packet.PopPlayerId();
             var body = packet.PopBody();
 
-            if (protocolId != Protocol.C_TO_G_HEART_BEAT)
+            if (protocolId != Protocol.C_TO_G_HEART_BEAT && protocolId != Protocol.C_TO_G_MOVE)
             {
                 _logger.LogInformation("[GameClient] Protocol: {ProtocolId}, PlayerId: {L}", protocolId, playerId);
             }
@@ -282,6 +294,9 @@ public class GameClientSession : IPeer
                 if (CurrentArea != AreaType.None)
                 {
                     SendInteractableList(CurrentArea);
+
+                    // 초기 Area에서도 사보타주 이벤트 트리거
+                    _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, CurrentArea);
                 }
             }
 
@@ -303,6 +318,13 @@ public class GameClientSession : IPeer
 
             // 탈출 절차 정보 전송
             SendExitStepInfo();
+
+            // 문 초기 상태 설정 및 열린 문 목록 전송
+            _doorStateManager.InitializeMatching(CurrentMapSubId);
+            SendDoorStateList();
+
+            // 복도 종소리 스케줄 전송
+            SendCorridorBellSchedule();
 
             // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
             await BroadcastPlayerJoin();
@@ -344,11 +366,11 @@ public class GameClientSession : IPeer
             // 1. 클라이언트 Position 검증
             var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
 
-            _logger.LogDebug("Player {PlayerId} C_TO_G_MOVE: ClientPos=({CX},{CY}), Velocity=({VX},{VY}), ValidatedPos=({X},{Y})",
-                PlayerId, msg.Position.X, msg.Position.Y, msg.Velocity.X, msg.Velocity.Y,
-                validatedPosition.X, validatedPosition.Y);
+            // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
+            var currentCell = WorldPositionToCell(validatedPosition);
+            var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
-            // 2. 주기적 저장 (1초마다)
+            // 3. 주기적 저장 (1초마다)
             var needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
             var isIdle = msg.Velocity.Magnitude() < 0.01f;
 
@@ -372,17 +394,38 @@ public class GameClientSession : IPeer
 
             _lastValidatedPosition = validatedPosition;
 
-            // 3. Area 체크 및 변경 감지
+            // 4. Area 변경 처리 (퇴장 조건 통과한 경우만)
             var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var currentCell = WorldPositionToCell(validatedPosition);
-            var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
-            _logger.LogDebug("Player {PlayerId} WorldToCell: Pos=({PX},{PY}) → Cell=({CX},{CY}) → Area={Area}",
-                PlayerId, validatedPosition.X, validatedPosition.Y, currentCell.X, currentCell.Y, newArea);
-
-            // Area 변경 시 진입/퇴장 이벤트 전송
             if (newArea != CurrentArea)
             {
+                // 가장 가까운 문 기준으로 잠김 체크 (클라이언트는 이미 막고 있음, 서버는 보정 역할)
+                // 1. 진입하려는 영역의 가장 가까운 문이 잠겨있으면 차단
+                var entryBlockedDoor = _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, newArea, currentCell.X, currentCell.Y);
+                if (entryBlockedDoor != null)
+                {
+                    _logger.LogWarning("Player {PlayerId} blocked entering area {NewArea} (locked door: {DoorId})",
+                        PlayerId, newArea, entryBlockedDoor.DoorId);
+
+                    // 진입 차단: fallback (밖쪽)으로 보정
+                    var fallbackCell = new Cell(entryBlockedDoor.FallbackCellX, entryBlockedDoor.FallbackCellY);
+                    SendAreaExitBlocked(newArea, fallbackCell);
+                    return;
+                }
+
+                // 2. 현재 영역의 가장 가까운 문이 잠겨있으면 퇴장 차단
+                var exitBlockedDoor = _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, CurrentArea, currentCell.X, currentCell.Y);
+                if (exitBlockedDoor != null)
+                {
+                    _logger.LogWarning("Player {PlayerId} blocked exiting area {CurrentArea} (locked door: {DoorId})",
+                        PlayerId, CurrentArea, exitBlockedDoor.DoorId);
+
+                    // 퇴장 차단: position (안쪽)으로 보정
+                    var positionCell = new Cell((int)exitBlockedDoor.PositionX, (int)exitBlockedDoor.PositionY);
+                    SendAreaExitBlocked(newArea, positionCell);
+                    return;
+                }
+
                 _logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
                 var oldArea = CurrentArea;
@@ -390,10 +433,10 @@ public class GameClientSession : IPeer
                 await HandleAreaChange(oldArea, newArea);
             }
 
-            // 4. 복도 규칙 체크
+            // 5. 복도 규칙 체크
             CheckCorridorRuleViolation(validatedPosition, msg.Velocity, newArea);
 
-            // 5. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
+            // 6. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
                 validatedPosition,
@@ -412,7 +455,6 @@ public class GameClientSession : IPeer
                 session.Send(packet);
             }
 
-            _logger.LogDebug("Player {L} move broadcasted to {Count} clients in Area {Area}", PlayerId, sameAreaSessions.Count, CurrentArea);
         }
         catch (Exception ex)
         {
@@ -617,8 +659,11 @@ public class GameClientSession : IPeer
                 // 4. 나에게 새 Area의 Interactable 목록 전송
                 SendInteractableList(newArea);
 
-                // 5. 운반 미션 자동 완료 체크
-                CheckDeliveryMissionComplete(newArea);
+                // 5. Area 도착 시 탈출 조건 체크
+                CheckAreaArrivalForExit(newArea);
+
+                // 6. 사보타주 이벤트 트리거 (해당 Area 최초 진입 시)
+                _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, newArea);
             }
         }
         catch (Exception ex)
@@ -628,77 +673,27 @@ public class GameClientSession : IPeer
     }
 
     /// <summary>
-    /// 운반 미션(action_type=2) 목적지 Area 도착 시 자동 완료 처리
+    /// Area 도착 시 탈출 조건 체크
     /// </summary>
-    private void CheckDeliveryMissionComplete(AreaType arrivedArea)
+    private void CheckAreaArrivalForExit(AreaType arrivedArea)
     {
         if (!PlayerId.HasValue) return;
 
         try
         {
-            var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-            if (state.IsCompleted) return;
+            // target_area 조건 체크
+            var (advanced, escaped) = _exitInstanceManager.OnAreaVisited(CurrentMapSubId, (int)arrivedArea, PlayerId.Value);
 
-            var currentStep = state.GetCurrentStep();
-            if (currentStep == null) return;
-
-            // action_type=2 (운반/호위)가 아니면 스킵
-            if (currentStep.ActionType != 2) return;
-
-            // 목적지 Spot의 Area 확인
-            if (!currentStep.SpotSlot || state.SlotBinding.SpotId <= 0) return;
-
-            var exitSpot = GameExitData.GetSpot(state.SlotBinding.SpotId);
-            if (exitSpot == null) return;
-
-            var spotInteractable = GameInteractableData.Get(exitSpot.InteractableId);
-            if (spotInteractable == null) return;
-
-            var targetArea = (AreaType)spotInteractable.ZoneId;
-
-            // 도착한 Area가 목적지와 일치하면 자동 완료
-            if (arrivedArea != targetArea) return;
-
-            _logger.LogInformation("Player {PlayerId} arrived at delivery destination Area {Area}, auto-completing step",
-                PlayerId, arrivedArea);
-
-            // 아이템 삭제
-            if (state.SlotBinding.ItemId > 0)
+            if (advanced)
             {
-                var exitItem = GameExitData.GetItem(state.SlotBinding.ItemId);
-                if (exitItem != null)
-                {
-                    var removedItem = _inGameInventoryManager.RemoveItemByItemId(
-                        CurrentMapSubId, PlayerId.Value, exitItem.ItemId);
-
-                    if (removedItem != null)
-                    {
-                        _logger.LogInformation("Player {PlayerId} delivered exit item: ItemId={ItemId}",
-                            PlayerId, exitItem.ItemId);
-
-                        var deletedItem = new InGameItemInfo
-                        {
-                            ItemUid = removedItem.ItemUid,
-                            ItemId = removedItem.ItemId,
-                            Count = 0
-                        };
-                        SendInGameInventoryUpdate(deletedItem);
-                    }
-                }
-            }
-
-            // 다음 단계로 진행
-            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId, PlayerId.Value);
-
-            if (success)
-            {
+                var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
                 var newStepOrder = state.CurrentStepOrder;
 
                 // 탈출 성공 시 게임 타이머 정리
                 if (escaped)
                 {
                     CleanupGameTimer(CurrentMapSubId);
-                    _logger.LogInformation("Game timer cleaned up after escape success (delivery): MatchingId={MatchingId}", CurrentMapSubId);
+                    _logger.LogInformation("Game timer cleaned up after escape success (area visit): MatchingId={MatchingId}", CurrentMapSubId);
                 }
 
                 // 진행 결과 응답
@@ -713,19 +708,13 @@ public class GameClientSession : IPeer
                 // 같은 인스턴스의 다른 플레이어들에게 브로드캐스트
                 BroadcastExitStepUpdate(PlayerId.Value, newStepOrder, escaped);
 
-                // 현재 Area의 Interactable 목록 다시 전송 (MissionActionText 갱신)
-                if (CurrentArea != AreaType.None)
-                {
-                    SendInteractableList(CurrentArea);
-                }
-
-                _logger.LogInformation("Player {PlayerId} auto-completed delivery step: NewStep={NewStep}, Escaped={Escaped}",
-                    PlayerId, newStepOrder, escaped);
+                _logger.LogInformation("Player {PlayerId} area visit advanced exit step: Area={Area}, NewStep={NewStep}, Escaped={Escaped}",
+                    PlayerId, arrivedArea, newStepOrder, escaped);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CheckDeliveryMissionComplete error for player {PlayerId}", PlayerId);
+            _logger.LogError(ex, "CheckAreaArrivalForExit error for player {PlayerId}", PlayerId);
         }
     }
 
@@ -738,98 +727,25 @@ public class GameClientSession : IPeer
             return;
         }
 
-        // 미션 액션 텍스트 추가
-        AddMissionActionTexts(objects);
-
         // 각 오브젝트의 액션 개수 로그
         foreach (var obj in objects)
         {
-            _logger.LogDebug("InteractableObject Id={InteractId}: {ActionCount} actions, MissionActionText={MissionText}",
-                obj.InteractId, obj.Actions?.Count ?? 0, obj.MissionActionText ?? "null");
+            _logger.LogDebug("InteractableObject Id={InteractId}: {ActionCount} actions",
+                obj.InteractId, obj.Actions?.Count ?? 0);
         }
 
-        using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
-        Send(packet);
+        // 청크로 분할하여 전송 (패킷 크기 제한)
+        const int chunkSize = 3;
+        for (int i = 0; i < objects.Count; i += chunkSize)
+        {
+            var chunk = objects.Skip(i).Take(chunkSize).ToList();
+            bool isEnd = (i + chunkSize >= objects.Count);
+            using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, chunk, isEnd);
+            Send(packet);
+        }
+
         _logger.LogDebug("Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
             objects.Count, areaType, PlayerId, CurrentMapSubId);
-    }
-
-    /// <summary>
-    /// 현재 탈출 절차에서 spot_action_text가 필요한 오브젝트에 미션 액션 텍스트 추가
-    /// </summary>
-    private void AddMissionActionTexts(List<InteractableObjectState> objects)
-    {
-        try
-        {
-            var exitState = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-            var currentStep = exitState.GetCurrentStep();
-
-            // 현재 단계가 없거나 완료됨
-            if (currentStep == null || exitState.IsCompleted)
-                return;
-
-            // SpotActionText가 정의되어 있지 않으면 스킵
-            if (string.IsNullOrEmpty(currentStep.SpotActionText))
-                return;
-
-            // 타겟 interactable_id 결정
-            int targetInteractableId = 0;
-
-            if (!string.IsNullOrEmpty(currentStep.TargetInteractableId))
-            {
-                // 1. 직접 숫자 ID인 경우 (예: 701000007)
-                if (int.TryParse(currentStep.TargetInteractableId, out var directId))
-                {
-                    targetInteractableId = directId;
-                }
-                // 2. {Spot.InteractObj} 플레이스홀더인 경우
-                else if (currentStep.TargetInteractableId == "{Spot.InteractObj}" && exitState.SlotBinding.SpotId > 0)
-                {
-                    var exitSpot = GameExitData.GetSpot(exitState.SlotBinding.SpotId);
-                    if (exitSpot != null)
-                    {
-                        targetInteractableId = exitSpot.InteractableId;
-                    }
-                }
-            }
-            // 3. SpotSlot을 사용하는 경우 (fallback)
-            else if (currentStep.SpotSlot && exitState.SlotBinding.SpotId > 0)
-            {
-                var exitSpot = GameExitData.GetSpot(exitState.SlotBinding.SpotId);
-                if (exitSpot != null)
-                {
-                    targetInteractableId = exitSpot.InteractableId;
-                }
-            }
-
-            if (targetInteractableId == 0)
-                return;
-
-            // 해당 오브젝트 찾기
-            var targetObject = objects.FirstOrDefault(o => o.InteractId == targetInteractableId);
-            if (targetObject == null)
-                return;
-
-            // SpotActionText에서 {Item.Name} 치환
-            var actionText = currentStep.SpotActionText;
-            if (exitState.SlotBinding.ItemId > 0)
-            {
-                var exitItem = GameExitData.GetItem(exitState.SlotBinding.ItemId);
-                if (exitItem != null)
-                {
-                    var itemData = GameItemData.Get(exitItem.ItemId);
-                    actionText = actionText.Replace("{Item.Name}", itemData?.Name?.Kr ?? "???");
-                }
-            }
-
-            targetObject.MissionActionText = actionText;
-            _logger.LogDebug("Added mission action text to InteractId={InteractId}: {ActionText}",
-                targetInteractableId, actionText);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "AddMissionActionTexts error");
-        }
     }
 
 
@@ -904,6 +820,53 @@ public class GameClientSession : IPeer
         _logger.LogInformation("Player {PlayerId} selected action: InteractId={InteractId}, ActionId={ActionId}",
             PlayerId, msg.InteractId, msg.ActionId);
 
+        // RequireItemId 체크 - 필요한 아이템이 있는지 확인
+        var interactableForCheck = GameInteractableData.Get(msg.InteractId);
+        var actionDataForCheck = interactableForCheck?.Actions.FirstOrDefault(a => a.ActionId == msg.ActionId);
+        if (actionDataForCheck != null && actionDataForCheck.RequireItemId > 0)
+        {
+            var playerInventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+            var hasRequiredItem = (playerInventory?.GetItemCount(actionDataForCheck.RequireItemId) ?? 0) > 0;
+            if (!hasRequiredItem)
+            {
+                _logger.LogWarning("Player {PlayerId} missing required item {ItemId} for InteractId={InteractId}, ActionId={ActionId}",
+                    PlayerId, actionDataForCheck.RequireItemId, msg.InteractId, msg.ActionId);
+                SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.REQUIRED_ITEM_MISSING);
+                return Task.CompletedTask;
+            }
+        }
+
+        // RequireAction 체크 - 선행 액션이 완료되었는지 확인 (형식: "interactableId_actionId")
+        if (actionDataForCheck != null && !string.IsNullOrEmpty(actionDataForCheck.RequireAction))
+        {
+            var parts = actionDataForCheck.RequireAction.Split('_');
+            if (parts.Length == 2 && int.TryParse(parts[0], out var reqInteractId) && int.TryParse(parts[1], out var reqActionId))
+            {
+                var reqActionState = _interactableStateManager.GetState(CurrentMapSubId, reqInteractId, reqActionId);
+                if (reqActionState == null || !reqActionState.IsExplored)
+                {
+                    _logger.LogWarning("Player {PlayerId} required action not completed: {RequireAction} for InteractId={InteractId}, ActionId={ActionId}",
+                        PlayerId, actionDataForCheck.RequireAction, msg.InteractId, msg.ActionId);
+                    SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.REQUIRED_ACTION_NOT_COMPLETED);
+                    return Task.CompletedTask;
+                }
+            }
+        }
+
+        // State 체크 - 액션의 state가 현재 Interactable state와 일치하는지 확인
+        // state=0은 기본 상태(항상 가능), state>0은 해당 상태일 때만 가능
+        if (actionDataForCheck != null && actionDataForCheck.State > 0)
+        {
+            var currentInteractableState = _interactableStateManager.GetInteractableState(CurrentMapSubId, msg.InteractId);
+            if (currentInteractableState != actionDataForCheck.State)
+            {
+                _logger.LogWarning("Player {PlayerId} action state mismatch: ActionState={ActionState}, CurrentState={CurrentState} for InteractId={InteractId}, ActionId={ActionId}",
+                    PlayerId, actionDataForCheck.State, currentInteractableState, msg.InteractId, msg.ActionId);
+                SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.ACTION_NOT_FOUND);
+                return Task.CompletedTask;
+            }
+        }
+
         // 탐색 처리 (InteractableStateManager에서 상태 업데이트 - MatchingId별 독립 관리)
         var success = _interactableStateManager.TryExplore(CurrentMapSubId, msg.InteractId, msg.ActionId, PlayerId.Value, out var state);
 
@@ -912,34 +875,119 @@ public class GameClientSession : IPeer
             _logger.LogInformation("Player {PlayerId} explored InteractId={InteractId}, ActionId={ActionId} successfully",
                 PlayerId, msg.InteractId, msg.ActionId);
 
-            // 상호작용 규칙 위반 체크 (금지된 오브젝트 탐색)
-            var violationResult = _interactRuleManager.CheckExplore(CurrentMapSubId, msg.InteractId);
-            if (violationResult.IsViolation)
+            // 스태미나 차감 (액션별 stamina_cost)
+            var interactable = GameInteractableData.Get(msg.InteractId);
+            var currentInteractableState = _interactableStateManager.GetInteractableState(CurrentMapSubId, msg.InteractId);
+            // 현재 state에 맞는 액션 데이터 가져오기 (state=0은 기본, state>0은 특수 상태)
+            var actionData = interactable?.Actions.FirstOrDefault(a => a.ActionId == msg.ActionId && a.State == currentInteractableState)
+                          ?? interactable?.Actions.FirstOrDefault(a => a.ActionId == msg.ActionId && a.State == 0);
+            if (actionData != null && actionData.StaminaCost > 0)
             {
-                _logger.LogInformation("Player {PlayerId} violated interact rule {RuleId}: {Message}",
-                    PlayerId, violationResult.ViolatedRuleId, violationResult.Message);
-                ModifyStats(corruptionDelta: violationResult.CorruptionDelta);
+                ModifyStats(staminaDelta: -actionData.StaminaCost);
+                _logger.LogInformation("Player {PlayerId} stamina reduced by {Cost} for InteractId={InteractId}, ActionId={ActionId}",
+                    PlayerId, actionData.StaminaCost, msg.InteractId, msg.ActionId);
             }
 
-            // 셔플된 보상 풀에서 해당 액션의 보상 가져오기
-            var rewardItemId = _interactableStateManager.GetRewardForAction(CurrentMapSubId, msg.InteractId, msg.ActionId);
-
-            // 보상이 있으면 인벤토리에 추가
-            if (rewardItemId > 0)
+            // RequireItemId 아이템 소모
+            if (actionData != null && actionData.RequireItemId > 0)
             {
-                AddInGameItem(rewardItemId);
-                _logger.LogInformation("Player {PlayerId} received reward: ItemId={ItemId} from InteractId={InteractId}, ActionId={ActionId}",
-                    PlayerId, rewardItemId, msg.InteractId, msg.ActionId);
-
-                // 탈출 절차 목표 아이템인지 확인하고 진척도 갱신
-                CheckAndAdvanceExitStep(rewardItemId);
+                var removedItem = _inGameInventoryManager.RemoveItemByItemId(CurrentMapSubId, PlayerId.Value, actionData.RequireItemId);
+                if (removedItem != null)
+                {
+                    // Count=0으로 설정해서 클라이언트에 삭제 알림
+                    removedItem.Count = 0;
+                    SendInGameInventoryUpdate(removedItem);
+                    _logger.LogInformation("Player {PlayerId} consumed required item {ItemId} for InteractId={InteractId}, ActionId={ActionId}",
+                        PlayerId, actionData.RequireItemId, msg.InteractId, msg.ActionId);
+                }
             }
 
-            // 성공 응답 (최종 결정된 아이템 ID 전송)
-            SendExploreResult(true, msg.InteractId, msg.ActionId, rewardItemId, ErrorCode.SUCCESS);
+            // 상호작용 규칙 위반 체크 (금지된 액션 수행)
+            var isViolation = _interactRuleManager.IsForbiddenAction(CurrentMapSubId, msg.InteractId, msg.ActionId);
+
+            // 사보타주 규칙 체크 (state > 0인 액션의 경우, 위반 액션과 비교)
+            if (actionData != null && actionData.State > 0)
+            {
+                var sabotageRule = _areaRuleManager.GetRuleForInteract(CurrentMapSubId, msg.InteractId);
+                if (sabotageRule != null && sabotageRule.TargetActionId > 0)
+                {
+                    // 규칙의 target_action_id와 같은 액션을 선택하면 위반
+                    isViolation = msg.ActionId == sabotageRule.TargetActionId;
+                    _logger.LogInformation("Player {PlayerId} sabotage action: InteractId={InteractId}, ActionId={ActionId}, ForbiddenActionId={ForbiddenActionId}, IsViolation={IsViolation}",
+                        PlayerId, msg.InteractId, msg.ActionId, sabotageRule.TargetActionId, isViolation);
+                }
+            }
+
+            if (isViolation)
+            {
+                _logger.LogInformation("Player {PlayerId} violated rule by InteractId={InteractId}, ActionId={ActionId}",
+                    PlayerId, msg.InteractId, msg.ActionId);
+            }
+
+            // 액션 결과 처리 (규칙 위반 시 result_* 값, 안전한 선택 시 safe_result_* 값)
+            var (resultType, resultId, resultAmount) = _interactableStateManager.GetActionResult(msg.InteractId, msg.ActionId, isViolation);
+            var rewardItemId = 0;
+
+            switch (resultType)
+            {
+                case ActionResultType.REWARD_POOL:
+                    // 풀에서 다음 아이템 가져오기 (resultId = pool_id, 상호작용 대상별 독립 풀)
+                    var itemFromPool = _itemPoolManager.GetNextItemFromPool(CurrentMapSubId, msg.InteractId, resultId);
+                    if (itemFromPool.HasValue)
+                    {
+                        rewardItemId = itemFromPool.Value;
+                        AddInGameItem(rewardItemId);
+                        _logger.LogInformation("Player {PlayerId} received reward from pool {PoolId}: ItemId={ItemId}",
+                            PlayerId, resultId, rewardItemId);
+
+                        // 탈출 절차 목표 아이템인지 확인하고 진척도 갱신
+                        CheckAndAdvanceExitStep(rewardItemId);
+                    }
+                    break;
+
+                case ActionResultType.DEBUFF_CORRUPTION:
+                    ModifyStats(corruptionDelta: resultAmount);
+                    _logger.LogInformation("Player {PlayerId} received corruption debuff: +{Amount}", PlayerId, resultAmount);
+                    break;
+
+                case ActionResultType.DEBUFF_STAMINA:
+                    ModifyStats(staminaDelta: -resultAmount);
+                    _logger.LogInformation("Player {PlayerId} received stamina debuff: -{Amount}", PlayerId, resultAmount);
+                    break;
+
+                case ActionResultType.BUFF_CORRUPTION:
+                    ModifyStats(corruptionDelta: -resultAmount);
+                    _logger.LogInformation("Player {PlayerId} received corruption buff: -{Amount}", PlayerId, resultAmount);
+                    break;
+
+                case ActionResultType.BUFF_STAMINA:
+                    ModifyStats(staminaDelta: resultAmount);
+                    _logger.LogInformation("Player {PlayerId} received stamina buff: +{Amount}", PlayerId, resultAmount);
+                    break;
+            }
+
+            // target_interactable_action 조건 체크
+            CheckActionCompletedForExit(msg.InteractId, msg.ActionId);
+
+            // 사보타주 해결 체크 (전화 받기 등)
+            _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, msg.ActionId);
+
+            // 성공 응답 (최종 결정된 아이템 ID 전송, 규칙 위반 여부 포함)
+            SendExploreResult(true, msg.InteractId, msg.ActionId, rewardItemId, ErrorCode.SUCCESS, isViolation);
 
             // 같은 Area의 모든 플레이어에게 상태 업데이트 브로드캐스트
-            BroadcastInteractableUpdate(msg.InteractId, msg.ActionId, true, PlayerId.Value);
+            // SINGLE 타입이면 모든 액션을 탐색 완료로 브로드캐스트 (마커 제거용)
+            if (interactable?.InteractionType == InteractionType.SINGLE)
+            {
+                foreach (var action in interactable.Actions)
+                {
+                    BroadcastInteractableUpdate(msg.InteractId, action.ActionId, true, PlayerId.Value);
+                }
+            }
+            else
+            {
+                BroadcastInteractableUpdate(msg.InteractId, msg.ActionId, true, PlayerId.Value);
+            }
         }
         else
         {
@@ -973,11 +1021,11 @@ public class GameClientSession : IPeer
         return Task.CompletedTask;
     }
 
-    private void SendExploreResult(bool success, int interactId, int actionId, int itemId, ErrorCode errorCode)
+    private void SendExploreResult(bool success, int interactId, int actionId, int itemId, ErrorCode errorCode, bool isViolation = false)
     {
         if (!PlayerId.HasValue) return;
 
-        using var packet = PacketMaker.G_TO_C_EXPLORE_RESULT(success, interactId, actionId, itemId, errorCode);
+        using var packet = PacketMaker.G_TO_C_EXPLORE_RESULT(success, interactId, actionId, itemId, errorCode, isViolation);
         Send(packet);
     }
 
@@ -1115,7 +1163,7 @@ public class GameClientSession : IPeer
             var ruleId = 0;
             if (itemId == 202000003)
             {
-                ruleId = _areaRuleManager.DequeueNextRule(CurrentMapSubId);
+                ruleId = _areaRuleManager.GetRuleForNote(CurrentMapSubId);
                 _logger.LogInformation("Player {PlayerId} used manual item, got RuleId={RuleId}", PlayerId, ruleId);
             }
 
@@ -1215,6 +1263,17 @@ public class GameClientSession : IPeer
         Send(packet);
         _logger.LogDebug("Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina} ({StaminaDelta:+#;-#;0}), Corruption={Corruption} ({CorruptionDelta:+#;-#;0})",
             PlayerId, Stamina, staminaDelta, Corruption, corruptionDelta);
+    }
+
+    /// <summary>
+    /// Area 퇴장 불가 알림 전송 (위치 보정 포함)
+    /// </summary>
+    private void SendAreaExitBlocked(AreaType areaType, Cell correctedCell)
+    {
+        using var packet = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(areaType, correctedCell);
+        Send(packet);
+        _logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, CorrectedCell=({X},{Y})",
+            PlayerId, areaType, correctedCell.X, correctedCell.Y);
     }
 
     /// <summary>
@@ -1342,26 +1401,17 @@ public class GameClientSession : IPeer
         {
             var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
 
-            var slotBinding = new ExitSlotBindingInfo
-            {
-                ItemId = state.SlotBinding.ItemId,
-                SpotId = state.SlotBinding.SpotId,
-                DebuffId = state.SlotBinding.DebuffId,
-                ConditionId = state.SlotBinding.ConditionId
-            };
-
             using var packet = PacketMaker.G_TO_C_EXIT_STEP_INFO(
-                templateId: state.TemplateId,
+                groupId: state.GroupId,
                 currentStepOrder: state.CurrentStepOrder,
                 totalStepCount: state.Steps.Count,
-                slotBinding: slotBinding,
                 isCompleted: state.IsCompleted,
                 lastAdvancedBy: state.LastAdvancedBy
             );
             Send(packet);
 
-            _logger.LogInformation("Sent exit step info to Player {PlayerId}: Template={TemplateId}, CurrentStep={StepOrder}/{TotalSteps}, Binding=(Item={ItemId}, Spot={SpotId}, Debuff={DebuffId}, Condition={ConditionId}), Completed={IsCompleted}, LastAdvancedBy={LastAdvancedBy}",
-                PlayerId, state.TemplateId, state.CurrentStepOrder, state.Steps.Count, slotBinding.ItemId, slotBinding.SpotId, slotBinding.DebuffId, slotBinding.ConditionId, state.IsCompleted, state.LastAdvancedBy);
+            _logger.LogInformation("Sent exit step info to Player {PlayerId}: GroupId={GroupId}, CurrentStep={StepOrder}/{TotalSteps}, Completed={IsCompleted}, LastAdvancedBy={LastAdvancedBy}",
+                PlayerId, state.GroupId, state.CurrentStepOrder, state.Steps.Count, state.IsCompleted, state.LastAdvancedBy);
         }
         catch (Exception ex)
         {
@@ -1411,9 +1461,8 @@ public class GameClientSession : IPeer
                 return Task.CompletedTask;
             }
 
-            // 다음 단계로 진행 (선택지 기반 미션: 삽입, 미니게임 등)
-            // 운반 미션(action_type=2)은 Area 도착 시 자동 완료됨 (CheckDeliveryMissionComplete)
-            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId, PlayerId.Value);
+            // 다음 단계로 진행 (수동 진행)
+            var (success, escaped) = _exitInstanceManager.AdvanceStep(CurrentMapSubId, PlayerId.Value);
 
             if (success)
             {
@@ -1492,7 +1541,43 @@ public class GameClientSession : IPeer
     }
 
     /// <summary>
-    /// 아이템 습득 시 탈출 절차 목표 아이템인지 확인하고 진척도 갱신
+    /// 액션 완료 시 탈출 절차 확인 (target_interactable_action 조건 체크)
+    /// </summary>
+    private void CheckActionCompletedForExit(int interactId, int actionId)
+    {
+        if (!PlayerId.HasValue) return;
+
+        try
+        {
+            var (advanced, escaped) = _exitInstanceManager.OnActionCompleted(CurrentMapSubId, interactId, actionId, PlayerId.Value);
+
+            if (advanced)
+            {
+                var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
+                var newStepOrder = state.CurrentStepOrder;
+
+                // 탈출 성공 시 게임 타이머 정리
+                if (escaped)
+                {
+                    CleanupGameTimer(CurrentMapSubId);
+                    _logger.LogInformation("Game timer cleaned up after escape success (action completed): MatchingId={MatchingId}", CurrentMapSubId);
+                }
+
+                // 진행 결과 브로드캐스트
+                BroadcastExitStepUpdateToAll(PlayerId.Value, newStepOrder, escaped);
+
+                _logger.LogInformation("Player {PlayerId} action completion advanced exit step: InteractId={InteractId}, ActionId={ActionId}, NewStep={NewStep}, Escaped={Escaped}",
+                    PlayerId, interactId, actionId, newStepOrder, escaped);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CheckActionCompletedForExit error for player {PlayerId}", PlayerId);
+        }
+    }
+
+    /// <summary>
+    /// 아이템 습득 시 탈출 절차 확인 (target_item_id 조건 체크)
     /// </summary>
     private void CheckAndAdvanceExitStep(int acquiredItemId)
     {
@@ -1500,42 +1585,25 @@ public class GameClientSession : IPeer
 
         try
         {
-            var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-            var currentStep = state.GetCurrentStep();
+            var (advanced, escaped) = _exitInstanceManager.OnItemAcquired(CurrentMapSubId, acquiredItemId, PlayerId.Value);
 
-            if (currentStep == null || state.IsCompleted)
+            if (advanced)
             {
-                return;
-            }
-
-            // 현재 단계가 아이템 회수 (action_type = 1)인지 확인
-            if (currentStep.ActionType != 1)
-            {
-                return;
-            }
-
-            // 목표 아이템인지 확인 (exit_item.item_id와 비교)
-            var exitItem = GameExitData.GetItem(state.SlotBinding.ItemId);
-            if (exitItem == null || exitItem.ItemId != acquiredItemId)
-            {
-                return;
-            }
-
-            _logger.LogInformation("Player {PlayerId} acquired exit target item: ItemId={ItemId}, ExitItemId={ExitItemId}",
-                PlayerId, acquiredItemId, state.SlotBinding.ItemId);
-
-            // 다음 단계로 진행
-            var (success, escaped, _) = _exitInstanceManager.AdvanceStep(CurrentMapSubId, PlayerId.Value);
-
-            if (success)
-            {
+                var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
                 var newStepOrder = state.CurrentStepOrder;
 
-                _logger.LogInformation("Exit step auto-advanced: Player={PlayerId}, NewStep={NewStep}, Escaped={Escaped}",
-                    PlayerId, newStepOrder, escaped);
+                // 탈출 성공 시 게임 타이머 정리
+                if (escaped)
+                {
+                    CleanupGameTimer(CurrentMapSubId);
+                    _logger.LogInformation("Game timer cleaned up after escape success (item acquired): MatchingId={MatchingId}", CurrentMapSubId);
+                }
 
-                // 본인 포함 모든 플레이어에게 브로드캐스트
+                // 진행 결과 브로드캐스트
                 BroadcastExitStepUpdateToAll(PlayerId.Value, newStepOrder, escaped);
+
+                _logger.LogInformation("Player {PlayerId} item acquisition advanced exit step: ItemId={ItemId}, NewStep={NewStep}, Escaped={Escaped}",
+                    PlayerId, acquiredItemId, newStepOrder, escaped);
             }
         }
         catch (Exception ex)
@@ -1612,17 +1680,22 @@ public class GameClientSession : IPeer
 
         try
         {
+            var corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(CurrentMapSubId);
+            // 복도 규칙 1번(종소리 중 이동 금지) 또는 6번(정지 금지)일 때만 체크
+            if (corridorRuleId != 1 && corridorRuleId != 6) return;
+
             var result = _corridorRuleManager.CheckPlayerMove(
                 CurrentMapSubId,
                 PlayerId.Value,
                 position,
                 velocity,
-                currentArea);
+                currentArea,
+                corridorRuleId);
 
             if (result.IsViolation)
             {
                 _logger.LogInformation("Player {PlayerId} violated corridor rule {RuleId}: {Message}, Corruption +{Delta}",
-                    PlayerId, (int)result.ViolatedRule, result.Message, result.CorruptionDelta);
+                    PlayerId, corridorRuleId, result.Message, result.CorruptionDelta);
 
                 // 정신오염도 증가
                 ModifyStats(corruptionDelta: result.CorruptionDelta);
@@ -1632,6 +1705,110 @@ public class GameClientSession : IPeer
         {
             _logger.LogError(ex, "CheckCorridorRuleViolation error for player {PlayerId}", PlayerId);
         }
+    }
+
+    #endregion
+
+    #region 문
+
+    /// <summary>
+    /// 문 열기 요청 처리
+    /// </summary>
+    private Task HandleDoorOpenRequest(C_TO_G_DOOR_OPEN_REQUEST msg)
+    {
+        if (!PlayerId.HasValue)
+        {
+            _logger.LogWarning("HandleDoorOpenRequest: PlayerId not set");
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            var doorId = msg.DoorId;
+            var doorInfo = GameDoorData.Get(doorId);
+
+            // 문 정보 확인
+            if (doorInfo == null)
+            {
+                _logger.LogWarning("Player {PlayerId} tried to open unknown door: DoorId={DoorId}", PlayerId, doorId);
+                using var errorPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_NOT_FOUND);
+                Send(errorPacket);
+                return Task.CompletedTask;
+            }
+
+            // 이미 열려있는지 확인
+            if (_doorStateManager.IsDoorOpen(CurrentMapSubId, doorId))
+            {
+                _logger.LogDebug("Player {PlayerId} tried to open already open door: DoorId={DoorId}", PlayerId, doorId);
+                using var alreadyOpenPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.DOOR_ALREADY_OPEN);
+                Send(alreadyOpenPacket);
+                return Task.CompletedTask;
+            }
+
+            // 열쇠 보유 확인 (required_item_id가 0이면 열쇠 불필요)
+            if (doorInfo.RequiredItemId > 0)
+            {
+                var playerInventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+                var hasKey = (playerInventory?.GetItemCount(doorInfo.RequiredItemId) ?? 0) > 0;
+
+                if (!hasKey)
+                {
+                    _logger.LogWarning("Player {PlayerId} missing key for door: DoorId={DoorId}, RequiredItemId={ItemId}",
+                        PlayerId, doorId, doorInfo.RequiredItemId);
+                    using var noKeyPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_KEY_MISSING);
+                    Send(noKeyPacket);
+                    return Task.CompletedTask;
+                }
+            }
+
+            // 문 열기
+            _doorStateManager.OpenDoor(CurrentMapSubId, doorId);
+            _logger.LogInformation("Player {PlayerId} opened door: DoorId={DoorId}", PlayerId, doorId);
+
+            // 같은 매칭의 모든 플레이어에게 브로드캐스트
+            using var updatePacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId.Value);
+            var matchingSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            foreach (var session in matchingSessions)
+            {
+                session.Send(updatePacket);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "HandleDoorOpenRequest error for player {PlayerId}", PlayerId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 열린 문 목록 전송 (입장 시)
+    /// </summary>
+    private void SendDoorStateList()
+    {
+        if (!PlayerId.HasValue) return;
+
+        var openDoors = _doorStateManager.GetOpenDoors(CurrentMapSubId);
+        using var packet = PacketMaker.G_TO_C_DOOR_STATE_LIST(openDoors);
+        Send(packet);
+        _logger.LogDebug("Sent DOOR_STATE_LIST to Player {PlayerId}: {Count} open doors", PlayerId, openDoors.Count);
+    }
+
+    #endregion
+
+    #region 복도 규칙
+
+    /// <summary>
+    /// 복도 종소리 스케줄 전송 (입장 시)
+    /// </summary>
+    private void SendCorridorBellSchedule()
+    {
+        if (!PlayerId.HasValue) return;
+
+        var bells = _corridorRuleManager.GetBellSchedule(CurrentMapSubId);
+        using var packet = PacketMaker.G_TO_C_CORRIDOR_BELL(bells);
+        Send(packet);
+        _logger.LogDebug("Sent CORRIDOR_BELL schedule to Player {PlayerId}: {Count} bells", PlayerId, bells.Count);
     }
 
     #endregion

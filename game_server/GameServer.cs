@@ -34,11 +34,15 @@ public class GameServer : IHostedService
     private readonly InGameInventoryManager _inGameInventoryManager = new();
     private readonly AreaRuleManager _areaRuleManager = new();
     private readonly ExitInstanceManager _exitInstanceManager = new();
+    private readonly ItemPoolManager _itemPoolManager = new();
     private readonly CorridorRuleManager _corridorRuleManager = new();
     private readonly InteractRuleManager _interactRuleManager = new();
+    private readonly DoorStateManager _doorStateManager = new();
+    private readonly SabotageManager _sabotageManager = new();
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
     private Timer? _infirmaryHealingTimer;
+    private Timer? _corridorStopCheckTimer;
 
     // 하트비트 체크 간격 (10초마다 체크)
     private const int HeartbeatCheckIntervalSeconds = 10;
@@ -46,6 +50,9 @@ public class GameServer : IHostedService
     // 보건실 힐링 설정
     private const int InfirmaryHealingIntervalSeconds = 1;
     private const int InfirmaryHealingAmount = 5;
+
+    // 복도 정지 체크 간격
+    private const int CorridorStopCheckIntervalMs = 500;
 
     private readonly ServerConfig _serverConfig;
 
@@ -83,6 +90,7 @@ public class GameServer : IHostedService
             StartTcpServer();
             StartHeartbeatChecker();
             StartInfirmaryHealingTimer();
+            StartCorridorStopCheckTimer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -115,6 +123,12 @@ public class GameServer : IHostedService
             _infirmaryHealingTimer = null;
         }
 
+        if (_corridorStopCheckTimer != null)
+        {
+            await _corridorStopCheckTimer.DisposeAsync();
+            _corridorStopCheckTimer = null;
+        }
+
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
         _cts.Dispose();
@@ -138,9 +152,13 @@ public class GameServer : IHostedService
             _corridorRuleManager.Initialize(
                 msg => _logger.LogInformation(msg),
                 OnCorridorStopViolation);
-            _areaRuleManager.Initialize(msg => _logger.LogInformation(msg), _corridorRuleManager);
+            _areaRuleManager.Initialize(msg => _logger.LogInformation(msg));
             _interactRuleManager.Initialize(msg => _logger.LogInformation(msg), _areaRuleManager);
             _exitInstanceManager.Initialize(msg => _logger.LogInformation(msg));
+            _itemPoolManager.Initialize(msg => _logger.LogInformation(msg));
+            _sabotageManager.Initialize(msg => _logger.LogInformation(msg));
+            _sabotageManager.SetStateChangeCallback(OnSabotageStateChange);
+            _sabotageManager.SetTimeoutCallback(OnSabotageTimeout);
         }
         catch (Exception ex)
         {
@@ -209,6 +227,45 @@ public class GameServer : IHostedService
         }
     }
 
+    private void StartCorridorStopCheckTimer()
+    {
+        _corridorStopCheckTimer = new Timer(
+            ProcessCorridorStopCheck,
+            null,
+            TimeSpan.FromMilliseconds(CorridorStopCheckIntervalMs),
+            TimeSpan.FromMilliseconds(CorridorStopCheckIntervalMs));
+        _logger.LogInformation("Corridor stop check timer started (interval: {Interval}ms)", CorridorStopCheckIntervalMs);
+    }
+
+    /// <summary>
+    /// 복도에서 정지한 플레이어들의 정신오염도 증가 처리 (규칙 6)
+    /// </summary>
+    private void ProcessCorridorStopCheck(object? state)
+    {
+        try
+        {
+            var violations = _corridorRuleManager.CheckAllStoppedPlayersForRule6();
+
+            foreach (var (matchingId, playerId, result) in violations)
+            {
+                // 규칙 6번이 적용된 매칭인지 확인
+                var corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(matchingId);
+                if (corridorRuleId != 6) continue;
+
+                if (_clientSessions.TryGetValue(playerId, out var session))
+                {
+                    session.ModifyStats(corruptionDelta: result.CorruptionDelta);
+                    _logger.LogInformation("Player {PlayerId} corridor stop violation (timer): {Message}, Corruption +{Delta}",
+                        playerId, result.Message, result.CorruptionDelta);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing corridor stop check");
+        }
+    }
+
     private void CheckHeartbeatTimeouts(object? state)
     {
         try
@@ -252,8 +309,11 @@ public class GameServer : IHostedService
                 _inGameInventoryManager,
                 _areaRuleManager,
                 _exitInstanceManager,
+                _itemPoolManager,
                 _corridorRuleManager,
-                _interactRuleManager);
+                _interactRuleManager,
+                _doorStateManager,
+                _sabotageManager);
 
             _logger.LogInformation("Game client session created");
         }
@@ -295,15 +355,6 @@ public class GameServer : IHostedService
 
     private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
     {
-        _logger.LogDebug("GetSessionsByInstance 호출: 필터(MapId={MapId}, MapSubId={MapSubId}), 전체 세션 수={TotalCount}",
-            mapId, mapSubId, _clientSessions.Count);
-
-        foreach (var s in _clientSessions.Values)
-        {
-            _logger.LogDebug("  - 세션: PlayerId={PlayerId}, CurrentMapId={CurrentMapId}, CurrentMapSubId={CurrentMapSubId}, 매칭 여부={IsMatch}",
-                s.PlayerId, s.CurrentMapId, s.CurrentMapSubId, s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId);
-        }
-
         return _clientSessions.Values
             .Where(s => s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId)
             .ToList();
@@ -319,6 +370,53 @@ public class GameServer : IHostedService
             session.ModifyStats(corruptionDelta: corruptionDelta);
             _logger.LogInformation("Player {PlayerId} corridor stop violation: Corruption +{Delta}", playerId, corruptionDelta);
         }
+    }
+
+    /// <summary>
+    /// 사보타주 상태 변경 콜백 - InteractableState 업데이트 및 브로드캐스트
+    /// </summary>
+    private void OnSabotageStateChange(long matchingId, int interactId, int newState, AreaType triggerArea)
+    {
+        _logger.LogInformation("Sabotage state change: MatchingId={MatchingId}, InteractId={InteractId}, NewState={NewState}, TriggerArea={TriggerArea}",
+            matchingId, interactId, newState, triggerArea);
+
+        // InteractableStateManager 상태 업데이트
+        _interactableStateManager.SetInteractableState(matchingId, interactId, newState);
+
+        // 해당 매칭의 해당 Area에 있는 모든 플레이어에게 브로드캐스트
+        var sessionsInArea = _clientSessions.Values
+            .Where(s => s.CurrentMapSubId == matchingId && s.CurrentArea == triggerArea && s.PlayerId.HasValue)
+            .ToList();
+
+        using var packet = PacketMaker.G_TO_C_INTERACTABLE_STATE_CHANGE(interactId, newState);
+        foreach (var session in sessionsInArea)
+        {
+            session.Send(packet);
+        }
+
+        _logger.LogInformation("Broadcasted INTERACTABLE_STATE_CHANGE to {Count} players in Area {Area}", sessionsInArea.Count, triggerArea);
+    }
+
+    /// <summary>
+    /// 사보타주 타임아웃 콜백 - 해당 매칭의 모든 플레이어에게 정신오염도 증가
+    /// </summary>
+    private void OnSabotageTimeout(long matchingId, AreaType triggerArea, int corruptionDelta)
+    {
+        _logger.LogInformation("Sabotage timeout: MatchingId={MatchingId}, Area={Area}, Corruption +{Delta}",
+            matchingId, triggerArea, corruptionDelta);
+
+        // 해당 매칭의 모든 플레이어에게 정신오염도 증가
+        var matchingSessions = _clientSessions.Values
+            .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
+            .ToList();
+
+        foreach (var session in matchingSessions)
+        {
+            session.ModifyStats(corruptionDelta: corruptionDelta);
+        }
+
+        _logger.LogInformation("Applied corruption +{Delta} to {Count} players in MatchingId={MatchingId}",
+            corruptionDelta, matchingSessions.Count, matchingId);
     }
 
     // MMO 로그아웃 프로토콜 제거됨 - 세션 기반 게임에서는 불필요

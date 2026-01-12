@@ -4,15 +4,25 @@ using network.common.data.models;
 
 namespace game_server.services
 {
+    // 복도 종소리 설정
+    public static class CorridorBellConfig
+    {
+        public const int MinIntervalSeconds = 10; // 최소 간격
+        public const int MaxIntervalSeconds = 20; // 최대 간격
+        public const int MinDurationSeconds = 3; // 최소 지속 시간
+        public const int MaxDurationSeconds = 6; // 최대 지속 시간
+        public static int GameDurationMinutes => Config.GAME_DURATION_MINUTES; // 게임 시간 (Config에서 참조)
+        public const int MovementPenaltyCorruption = 5; // 종소리 중 이동 시 정신오염 페널티 (규칙 1)
+        public const int StopPenaltyCorruption = 5; // 정지 시 정신오염 페널티 (규칙 6)
+        public const double StopThresholdSeconds = 1.0; // 정지 판정 시간 (초)
+        public const double PenaltyCooldownSeconds = 1.0; // 페널티 쿨다운 (초)
+    }
     /// <summary>
-    /// 복도 규칙 타입 (area_rule.csv의 ID와 매핑)
+    /// 복도 규칙 타입 (현재 미사용 - CSV 기반으로 전환됨)
     /// </summary>
     public enum CorridorRuleType
     {
-        None = 0,
-        NoRunning = 12001,      // 복도에서는 절대 뛰지 마십시오
-        NoStopping = 12002,     // 복도에서는 절대 멈춰 서지 마십시오
-        TenStepsMax = 12003,    // 복도에서는 한 번에 열 걸음 이상을 내딛지 마십시오
+        None = 0
     }
 
     /// <summary>
@@ -21,22 +31,17 @@ namespace game_server.services
     public class PlayerCorridorState
     {
         public bool IsInCorridor { get; set; }
-        public DateTime? CorridorEntryTime { get; set; }
-        public Vector3f? CorridorEntryPosition { get; set; }
-        public float AccumulatedDistance { get; set; }
         public DateTime LastMoveTime { get; set; } = DateTime.UtcNow;
+        public DateTime LastPacketTime { get; set; } = DateTime.UtcNow; // 마지막 패킷 수신 시간
         public Vector3f? LastPosition { get; set; }
-
-        // 위반 쿨다운 (너무 자주 위반 판정 방지)
-        public DateTime LastViolationTime { get; set; } = DateTime.MinValue;
+        public DateTime LastPenaltyTime { get; set; } = DateTime.MinValue; // 마지막 페널티 적용 시간
+        public DateTime? StopStartTime { get; set; } // 정지 시작 시간 (규칙 6용)
 
         public void Reset()
         {
             IsInCorridor = false;
-            CorridorEntryTime = null;
-            CorridorEntryPosition = null;
-            AccumulatedDistance = 0;
             LastPosition = null;
+            StopStartTime = null;
         }
     }
 
@@ -53,63 +58,88 @@ namespace game_server.services
 
     /// <summary>
     /// 매칭 인스턴스별 복도 규칙 상태 관리
+    /// 현재는 CSV 기반 규칙으로 전환되어 위반 체크 비활성화됨
     /// </summary>
     public class MatchingCorridorRuleState
     {
-        public CorridorRuleType ActiveRule { get; }
+        public CorridorRuleType ActiveRule => CorridorRuleType.None;
         private readonly ConcurrentDictionary<long, PlayerCorridorState> _playerStates = new();
+        private readonly List<BellEvent> _bellSchedule = new();
+        private readonly long _gameStartTimeMs; // 게임 시작 시간 (Unix ms)
+        private static readonly Random _random = new();
 
-        // 규칙별 설정값
-        private const float WalkSpeedThreshold = 3.5f;  // 걷기 속도 임계값 (이 이상이면 뛰기)
-        private const float StopDurationSeconds = 2.0f; // 정지 판정 시간 (초)
-        private const float StepDistance = 0.3f;        // 한 걸음 거리 (units) - 3 units 이동 시 위반
-        private const int MaxSteps = 10;                // 최대 걸음 수
-        private const float ViolationCooldownSeconds = 3.0f; // 위반 쿨다운 (초)
-        private const int CorruptionPerViolation = 5;   // 위반당 정신오염도 증가량
-
-        public MatchingCorridorRuleState(CorridorRuleType rule)
+        public MatchingCorridorRuleState()
         {
-            ActiveRule = rule;
+            _gameStartTimeMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            GenerateBellSchedule();
         }
 
         /// <summary>
-        /// 복도에 있는 모든 플레이어의 정지 상태를 체크 (타이머에서 호출)
+        /// 게임 시작 시 종소리 스케줄 생성 (상대 시간 기반)
         /// </summary>
-        public List<(long PlayerId, CorridorViolationResult Result)> CheckAllPlayersForStopping()
+        private void GenerateBellSchedule()
         {
-            var violations = new List<(long, CorridorViolationResult)>();
+            _bellSchedule.Clear();
 
-            if (ActiveRule != CorridorRuleType.NoStopping)
-                return violations;
+            var gameDurationSec = CorridorBellConfig.GameDurationMinutes * 60;
+            var currentOffsetSec = 0;
 
-            var now = DateTime.UtcNow;
-
-            foreach (var (playerId, state) in _playerStates)
+            while (currentOffsetSec < gameDurationSec)
             {
-                if (!state.IsInCorridor) continue;
+                // 랜덤 간격 후 다음 종소리
+                var intervalSeconds = _random.Next(
+                    CorridorBellConfig.MinIntervalSeconds,
+                    CorridorBellConfig.MaxIntervalSeconds + 1);
+                currentOffsetSec += intervalSeconds;
 
-                // 쿨다운 체크
-                if ((now - state.LastViolationTime).TotalSeconds < ViolationCooldownSeconds)
-                    continue;
+                if (currentOffsetSec >= gameDurationSec) break;
 
-                // 마지막 이동 이후 정지 시간 체크
-                var stopDuration = (now - state.LastMoveTime).TotalSeconds;
-                if (stopDuration >= StopDurationSeconds)
+                var durationSeconds = _random.Next(
+                    CorridorBellConfig.MinDurationSeconds,
+                    CorridorBellConfig.MaxDurationSeconds + 1);
+
+                _bellSchedule.Add(new BellEvent
                 {
-                    var result = new CorridorViolationResult
-                    {
-                        IsViolation = true,
-                        ViolatedRule = CorridorRuleType.NoStopping,
-                        CorruptionDelta = CorruptionPerViolation,
-                        Message = "복도에서 멈춰 섰습니다"
-                    };
+                    StartOffsetSec = currentOffsetSec,
+                    DurationSec = durationSeconds
+                });
+            }
+        }
 
-                    state.LastViolationTime = now;
-                    violations.Add((playerId, result));
+        /// <summary>
+        /// 종소리 스케줄 가져오기
+        /// </summary>
+        public List<BellEvent> GetBellSchedule()
+        {
+            return _bellSchedule.ToList();
+        }
+
+        /// <summary>
+        /// 현재 종소리가 울리고 있는지 확인
+        /// </summary>
+        public bool IsBellRinging(out BellEvent? currentBell)
+        {
+            currentBell = null;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var elapsedSec = (int)((now - _gameStartTimeMs) / 1000);
+
+            foreach (var bell in _bellSchedule)
+            {
+                var bellStartSec = bell.StartOffsetSec;
+                var bellEndSec = bell.StartOffsetSec + bell.DurationSec;
+                if (elapsedSec >= bellStartSec && elapsedSec <= bellEndSec)
+                {
+                    currentBell = bell;
+                    return true;
                 }
             }
+            return false;
+        }
 
-            return violations;
+        public List<(long PlayerId, CorridorViolationResult Result)> CheckAllPlayersForStopping()
+        {
+            // CSV 기반 규칙으로 전환됨 - 위반 체크 비활성화
+            return new List<(long, CorridorViolationResult)>();
         }
 
         public PlayerCorridorState GetOrCreatePlayerState(long playerId)
@@ -123,13 +153,12 @@ namespace game_server.services
         }
 
         /// <summary>
-        /// 플레이어 이동 시 복도 규칙 체크
+        /// 플레이어 이동 시 복도 상태 업데이트 및 위반 체크
         /// </summary>
-        public CorridorViolationResult CheckMove(long playerId, Vector3f position, Vector3f velocity, AreaType currentArea)
+        public CorridorViolationResult CheckMove(long playerId, Vector3f position, Vector3f velocity, AreaType currentArea, int corridorRuleId)
         {
             var result = new CorridorViolationResult();
             var state = GetOrCreatePlayerState(playerId);
-            var now = DateTime.UtcNow;
 
             // 복도 진입/퇴장 처리
             var wasInCorridor = state.IsInCorridor;
@@ -137,245 +166,207 @@ namespace game_server.services
 
             if (!wasInCorridor && isNowInCorridor)
             {
-                // 복도 진입
                 state.IsInCorridor = true;
-                state.CorridorEntryTime = now;
-                state.CorridorEntryPosition = position;
-                state.AccumulatedDistance = 0;
                 state.LastPosition = position;
-                state.LastMoveTime = now;
+                state.LastMoveTime = DateTime.UtcNow;
+                state.StopStartTime = null;
             }
             else if (wasInCorridor && !isNowInCorridor)
             {
-                // 복도 퇴장
                 state.Reset();
-                return result; // 복도 밖이면 체크 안함
             }
 
-            // 복도 안이 아니면 체크 안함
-            if (!isNowInCorridor)
+            if (!isNowInCorridor) return result;
+
+            var isMoving = velocity != null && velocity.Magnitude() > 0.1f;
+            var now = DateTime.UtcNow;
+            state.LastPacketTime = now; // 패킷 수신 시간 업데이트
+
+            // 복도 규칙 1: 종소리 울릴 때 복도에서 움직이면 정신오염 페널티
+            if (corridorRuleId == 1 && IsBellRinging(out var currentBell))
             {
-                return result;
-            }
-
-            // 쿨다운 체크
-            if ((now - state.LastViolationTime).TotalSeconds < ViolationCooldownSeconds)
-            {
-                state.LastPosition = position;
-                state.LastMoveTime = now;
-                return result;
-            }
-
-            // 규칙별 체크
-            switch (ActiveRule)
-            {
-                case CorridorRuleType.NoRunning:
-                    result = CheckNoRunning(state, velocity, now);
-                    break;
-
-                case CorridorRuleType.NoStopping:
-                    result = CheckNoStopping(state, velocity, now);
-                    break;
-
-                case CorridorRuleType.TenStepsMax:
-                    result = CheckTenStepsMax(state, position, now);
-                    break;
-            }
-
-            // 상태 업데이트
-            state.LastPosition = position;
-
-            // NoStopping 규칙: 움직일 때만 LastMoveTime 갱신 (정지 시간 측정을 위해)
-            var speed = velocity.Magnitude();
-            if (ActiveRule != CorridorRuleType.NoStopping || speed >= 0.1f)
-            {
-                state.LastMoveTime = now;
-            }
-
-            if (result.IsViolation)
-            {
-                state.LastViolationTime = now;
-
-                // 10걸음 규칙은 위반 후 거리 리셋
-                if (ActiveRule == CorridorRuleType.TenStepsMax)
+                if (isMoving)
                 {
-                    state.AccumulatedDistance = 0;
-                    state.CorridorEntryPosition = position;
+                    var timeSinceLastPenalty = (now - state.LastPenaltyTime).TotalSeconds;
+                    if (timeSinceLastPenalty >= CorridorBellConfig.PenaltyCooldownSeconds)
+                    {
+                        state.LastPenaltyTime = now;
+                        result.IsViolation = true;
+                        result.CorruptionDelta = CorridorBellConfig.MovementPenaltyCorruption;
+                        result.Message = $"종소리가 울리는 동안 복도에서 움직임 (Bell: {currentBell?.StartOffsetSec}s +{currentBell?.DurationSec}s)";
+                    }
+                }
+            }
+            // 복도 규칙 6: 복도에서 정지하면 정신오염 페널티
+            else if (corridorRuleId == 6)
+            {
+                if (isMoving)
+                {
+                    // 움직이면 정지 타이머 리셋
+                    state.StopStartTime = null;
+                }
+                else
+                {
+                    // 정지 상태
+                    if (!state.StopStartTime.HasValue)
+                    {
+                        // 정지 시작
+                        state.StopStartTime = now;
+                    }
+                    else
+                    {
+                        // 정지 지속 시간 체크
+                        var stopDuration = (now - state.StopStartTime.Value).TotalSeconds;
+                        if (stopDuration >= CorridorBellConfig.StopThresholdSeconds)
+                        {
+                            var timeSinceLastPenalty = (now - state.LastPenaltyTime).TotalSeconds;
+                            if (timeSinceLastPenalty >= CorridorBellConfig.PenaltyCooldownSeconds)
+                            {
+                                state.LastPenaltyTime = now;
+                                state.StopStartTime = now; // 페널티 적용 후 리셋
+                                result.IsViolation = true;
+                                result.CorruptionDelta = CorridorBellConfig.StopPenaltyCorruption;
+                                result.Message = "복도에서 정지";
+                            }
+                        }
+                    }
                 }
             }
 
             return result;
         }
 
-        private CorridorViolationResult CheckNoRunning(PlayerCorridorState state, Vector3f velocity, DateTime now)
+        /// <summary>
+        /// 타이머 기반 정지 체크 (패킷이 오지 않는 플레이어들 대상)
+        /// </summary>
+        public List<(long PlayerId, CorridorViolationResult Result)> CheckStoppedPlayersForRule6()
         {
-            var result = new CorridorViolationResult();
-            var speed = velocity.Magnitude();
+            var results = new List<(long, CorridorViolationResult)>();
+            var now = DateTime.UtcNow;
 
-            if (speed > WalkSpeedThreshold)
+            foreach (var kvp in _playerStates)
             {
-                result.IsViolation = true;
-                result.ViolatedRule = CorridorRuleType.NoRunning;
-                result.CorruptionDelta = CorruptionPerViolation;
-                result.Message = "복도에서 뛰었습니다";
-            }
+                var playerId = kvp.Key;
+                var state = kvp.Value;
 
-            return result;
-        }
+                if (!state.IsInCorridor) continue;
 
-        private CorridorViolationResult CheckNoStopping(PlayerCorridorState state, Vector3f velocity, DateTime now)
-        {
-            var result = new CorridorViolationResult();
-            var speed = velocity.Magnitude();
+                // 패킷이 일정 시간 이상 안 왔으면 정지로 판정
+                var timeSinceLastPacket = (now - state.LastPacketTime).TotalSeconds;
+                if (timeSinceLastPacket < 0.5) continue; // 최근 패킷이 있으면 스킵
 
-            // 정지 상태 (속도가 매우 낮음)
-            if (speed < 0.1f)
-            {
-                var stopDuration = (now - state.LastMoveTime).TotalSeconds;
-
-                // 일정 시간 이상 정지하면 위반
-                if (stopDuration >= StopDurationSeconds)
+                // 정지 시작 시간 설정
+                if (!state.StopStartTime.HasValue)
                 {
-                    result.IsViolation = true;
-                    result.ViolatedRule = CorridorRuleType.NoStopping;
-                    result.CorruptionDelta = CorruptionPerViolation;
-                    result.Message = "복도에서 멈춰 섰습니다";
+                    state.StopStartTime = state.LastPacketTime;
                 }
-            }
-            else
-            {
-                // 움직이면 타이머 리셋 (LastMoveTime은 외부에서 업데이트)
-            }
 
-            return result;
-        }
-
-        private CorridorViolationResult CheckTenStepsMax(PlayerCorridorState state, Vector3f position, DateTime now)
-        {
-            var result = new CorridorViolationResult();
-
-            if (state.LastPosition != null)
-            {
-                var delta = position - state.LastPosition;
-                var distance = delta.Magnitude();
-                state.AccumulatedDistance += distance;
-
-                var steps = state.AccumulatedDistance / StepDistance;
-
-                if (steps > MaxSteps)
+                var stopDuration = (now - state.StopStartTime.Value).TotalSeconds;
+                if (stopDuration >= CorridorBellConfig.StopThresholdSeconds)
                 {
-                    result.IsViolation = true;
-                    result.ViolatedRule = CorridorRuleType.TenStepsMax;
-                    result.CorruptionDelta = CorruptionPerViolation;
-                    result.Message = "복도에서 열 걸음 이상 걸었습니다";
+                    var timeSinceLastPenalty = (now - state.LastPenaltyTime).TotalSeconds;
+                    if (timeSinceLastPenalty >= CorridorBellConfig.PenaltyCooldownSeconds)
+                    {
+                        state.LastPenaltyTime = now;
+                        state.StopStartTime = now;
+
+                        results.Add((playerId, new CorridorViolationResult
+                        {
+                            IsViolation = true,
+                            CorruptionDelta = CorridorBellConfig.StopPenaltyCorruption,
+                            Message = "복도에서 정지"
+                        }));
+                    }
                 }
             }
 
-            return result;
+            return results;
         }
     }
 
     /// <summary>
-    /// 복도 규칙 매니저 - MatchingId별로 복도 규칙 상태 관리
+    /// 복도 규칙 매니저 - MatchingId별로 복도 상태 관리
+    /// 현재는 CSV 기반 규칙으로 전환되어 위반 체크 비활성화됨
     /// </summary>
     public class CorridorRuleManager
     {
         private Action<string>? _logAction;
         private readonly ConcurrentDictionary<long, MatchingCorridorRuleState> _matchingStates = new();
-        private readonly Random _random = new();
-        private Timer? _stopCheckTimer;
-
-        // 정지 체크 콜백: (matchingId, playerId, corruptionDelta) => 정신오염도 증가 처리
-        private Action<long, long, int>? _onStopViolationCallback;
-
-        // 복도 규칙 ID 목록
-        private static readonly CorridorRuleType[] CorridorRules =
-        {
-            CorridorRuleType.NoRunning,
-            CorridorRuleType.NoStopping,
-            CorridorRuleType.TenStepsMax,
-        };
-
-        private const int StopCheckIntervalMs = 500; // 0.5초마다 체크
 
         public void Initialize(Action<string>? logAction = null, Action<long, long, int>? onStopViolationCallback = null)
         {
             _logAction = logAction;
-            _onStopViolationCallback = onStopViolationCallback;
             _matchingStates.Clear();
-
-            // 정지 체크 타이머 시작
-            _stopCheckTimer?.Dispose();
-            _stopCheckTimer = new Timer(CheckAllMatchingsForStopping, null, StopCheckIntervalMs, StopCheckIntervalMs);
-
-            _logAction?.Invoke("CorridorRuleManager: Initialized with stop check timer");
+            _logAction?.Invoke("CorridorRuleManager: Initialized (CSV-based rules - violation check disabled)");
         }
 
         /// <summary>
-        /// 모든 매칭의 정지 위반 체크 (타이머에서 호출)
-        /// </summary>
-        private void CheckAllMatchingsForStopping(object? state)
-        {
-            foreach (var (matchingId, matchingState) in _matchingStates)
-            {
-                var violations = matchingState.CheckAllPlayersForStopping();
-
-                foreach (var (playerId, result) in violations)
-                {
-                    _logAction?.Invoke($"CorridorRuleManager: Player {playerId} violated rule {result.ViolatedRule}: {result.Message}");
-                    _onStopViolationCallback?.Invoke(matchingId, playerId, result.CorruptionDelta);
-                }
-            }
-        }
-
-        /// <summary>
-        /// 매칭 인스턴스의 복도 규칙 상태를 가져오거나 새로 생성
+        /// 매칭 인스턴스의 복도 상태를 가져오거나 새로 생성
         /// </summary>
         public MatchingCorridorRuleState GetOrCreateMatchingState(long matchingId)
         {
             return _matchingStates.GetOrAdd(matchingId, id =>
             {
-                // 랜덤하게 복도 규칙 선택
-                var selectedRule = CorridorRules[_random.Next(CorridorRules.Length)];
-                var state = new MatchingCorridorRuleState(selectedRule);
-
-                _logAction?.Invoke($"CorridorRuleManager: Created state for MatchingId={id}, ActiveRule={selectedRule} ({(int)selectedRule})");
-
+                var state = new MatchingCorridorRuleState();
+                _logAction?.Invoke($"CorridorRuleManager: Created state for MatchingId={id}");
                 return state;
             });
         }
 
         /// <summary>
-        /// 플레이어 이동 시 복도 규칙 체크
+        /// 플레이어 이동 시 복도 상태 업데이트
         /// </summary>
-        public CorridorViolationResult CheckPlayerMove(long matchingId, long playerId, Vector3f position, Vector3f velocity, AreaType currentArea)
+        public CorridorViolationResult CheckPlayerMove(long matchingId, long playerId, Vector3f position, Vector3f velocity, AreaType currentArea, int corridorRuleId)
         {
             var state = GetOrCreateMatchingState(matchingId);
-            var result = state.CheckMove(playerId, position, velocity, currentArea);
-
-            if (result.IsViolation)
-            {
-                _logAction?.Invoke($"CorridorRuleManager: Player {playerId} violated rule {result.ViolatedRule}: {result.Message}");
-            }
-
-            return result;
+            return state.CheckMove(playerId, position, velocity, currentArea, corridorRuleId);
         }
 
         /// <summary>
-        /// 현재 매칭의 활성 복도 규칙 가져오기
+        /// 현재 매칭의 활성 복도 규칙 가져오기 (항상 None 반환)
         /// </summary>
         public CorridorRuleType GetActiveRule(long matchingId)
         {
-            var state = GetOrCreateMatchingState(matchingId);
-            return state.ActiveRule;
+            return CorridorRuleType.None;
         }
 
         /// <summary>
-        /// 현재 매칭의 활성 복도 규칙 ID 가져오기
+        /// 현재 매칭의 활성 복도 규칙 ID 가져오기 (항상 0 반환)
         /// </summary>
         public int GetActiveRuleId(long matchingId)
         {
-            return (int)GetActiveRule(matchingId);
+            return 0;
+        }
+
+        /// <summary>
+        /// 종소리 스케줄 가져오기
+        /// </summary>
+        public List<BellEvent> GetBellSchedule(long matchingId)
+        {
+            var state = GetOrCreateMatchingState(matchingId);
+            return state.GetBellSchedule();
+        }
+
+        /// <summary>
+        /// 타이머 기반 정지 체크 (모든 매칭의 규칙 6 적용 플레이어)
+        /// </summary>
+        public List<(long MatchingId, long PlayerId, CorridorViolationResult Result)> CheckAllStoppedPlayersForRule6()
+        {
+            var results = new List<(long, long, CorridorViolationResult)>();
+
+            foreach (var kvp in _matchingStates)
+            {
+                var matchingId = kvp.Key;
+                var matchingState = kvp.Value;
+                var violations = matchingState.CheckStoppedPlayersForRule6();
+
+                foreach (var (playerId, result) in violations)
+                {
+                    results.Add((matchingId, playerId, result));
+                }
+            }
+
+            return results;
         }
 
         /// <summary>

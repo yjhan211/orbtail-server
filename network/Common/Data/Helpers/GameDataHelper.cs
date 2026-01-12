@@ -20,34 +20,26 @@ namespace network.common.data.helpers
         private static class DataFiles
         {
             public const string GameRule = "game_rule.csv";
-            public const string BuffInfo = "buff_info.csv";
-            public const string QuestInfo = "quest_info.csv";
-            public const string MailInfo = "mail_info.csv";
             public const string LoadingText = "loading_text.csv";
             public const string AreaName = "area_name.csv";
             public const string AreaRule = "area_rule.csv";
-            public const string StoryArk = "story_ark.csv";
+            public const string SystemText = "system_text.csv";
+            public const string DoorInfo = "door_info.csv";
 
             public static class Interactable
             {
                 public const string Info = "interactable_info.csv";
                 public const string Action = "interactable_action.csv";
-                public const string Reward = "interactable_reward.csv";
+                public const string ItemPool = "interactable_item_pool.csv";
 
-                public static readonly string[] ALL = new[] { Info, Action, Reward };
+                public static readonly string[] ALL = new[] { Info, Action, ItemPool };
             }
 
             public static class Exit
             {
-                public const string Template = "exit_template.csv";
                 public const string Step = "exit_step.csv";
-                public const string Item = "exit_item.csv";
-                public const string Spot = "exit_spot.csv";
-                public const string Debuff = "exit_debuff.csv";
-                public const string Condition = "exit_condition.csv";
-                public const string Constraint = "exit_constraint.csv";
 
-                public static readonly string[] ALL = new[] { Template, Step, Item, Spot, Debuff, Condition, Constraint };
+                public static readonly string[] ALL = new[] { Step };
             }
 
             public static class Item
@@ -55,10 +47,11 @@ namespace network.common.data.helpers
                 public const string Base = "item_info.csv";
                 public const string Equipment = "item_info_equipment.csv";
                 public const string Consumable = "item_info_consumable.csv";
-                public const string Put = "item_info_put.csv";
 
-                public static readonly string[] ALL = new[] { Base, Equipment, Consumable, Put };
+                public static readonly string[] ALL = new[] { Base, Equipment, Consumable };
             }
+
+            public const string BuffInfo = "buff_info.csv";
 
             public static class Map
             {
@@ -73,13 +66,11 @@ namespace network.common.data.helpers
             StandardDataDefinitions =
             {
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
-                (fileName: DataFiles.BuffInfo, init: GameBuffData.Initialize, validate: GameBuffData.Validate),
-                (fileName: DataFiles.QuestInfo, init: GameQuestData.Initialize, validate: GameQuestData.Validate),
-                (fileName: DataFiles.MailInfo, init: GameMailData.Initialize, validate: GameMailData.Validate),
                 (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize, validate: GameLoadingTextData.Validate),
                 (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize, validate: GameAreaNameData.Validate),
                 (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize, validate: GameAreaRuleData.Validate),
-                (fileName: DataFiles.StoryArk, init: StoryArkData.Initialize, validate: StoryArkData.Validate),
+                (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
+                (fileName: DataFiles.DoorInfo, init: GameDoorData.Initialize, validate: null),
             };
 
         /// <summary>
@@ -143,6 +134,21 @@ namespace network.common.data.helpers
                 catch (Exception ex)
                 {
                     LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    throw;
+                }
+            }
+
+            // 버프 정보 로드
+            {
+                var filePath = GetCsvFilePath(DataFiles.BuffInfo);
+                try
+                {
+                    loadedData[DataFiles.BuffInfo] = CsvHelper.LoadCsv(filePath);
+                    Log($"[GameDataHelper] Loaded {DataFiles.BuffInfo}: {loadedData[DataFiles.BuffInfo].Count} rows");
+                }
+                catch (Exception ex)
+                {
+                    LogError($"[GameDataHelper] Failed to load {DataFiles.BuffInfo}: {ex.Message}");
                     throw;
                 }
             }
@@ -222,12 +228,15 @@ namespace network.common.data.helpers
                     throw;
                 }
 
+            // 버프 데이터 초기화
+            GameBuffData.Initialize(loadedData[DataFiles.BuffInfo]);
+
             // 아이템 데이터 초기화
             GameItemData.Initialize(
                 loadedData[DataFiles.Item.Base],
                 loadedData[DataFiles.Item.Equipment],
                 loadedData[DataFiles.Item.Consumable],
-                loadedData[DataFiles.Item.Put]
+                new List<CsvRow>()  // Put (미사용)
             );
 
             // 맵 데이터 초기화
@@ -240,19 +249,11 @@ namespace network.common.data.helpers
             GameInteractableData.Initialize(
                 loadedData[DataFiles.Interactable.Info],
                 loadedData[DataFiles.Interactable.Action],
-                loadedData[DataFiles.Interactable.Reward]
+                loadedData[DataFiles.Interactable.ItemPool]
             );
 
             // 탈출 의식 데이터 초기화
-            GameExitData.Initialize(
-                loadedData[DataFiles.Exit.Template],
-                loadedData[DataFiles.Exit.Step],
-                loadedData[DataFiles.Exit.Item],
-                loadedData[DataFiles.Exit.Spot],
-                loadedData[DataFiles.Exit.Debuff],
-                loadedData[DataFiles.Exit.Condition],
-                loadedData[DataFiles.Exit.Constraint]
-            );
+            GameExitData.Initialize(loadedData[DataFiles.Exit.Step]);
 
             ValidateAllData();
         }

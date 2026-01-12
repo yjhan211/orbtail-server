@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
 using network.common.data.helpers;
-using network.common.data.models;
 using network.managers;
 
 namespace network.common.data
@@ -17,21 +16,25 @@ namespace network.common.data
     {
         private static readonly Dictionary<int, InteractableInfoData> Infos = new();
         private static readonly Dictionary<int, List<InteractableInfoData>> InfosByZone = new();
-        private static readonly Dictionary<int, List<InteractableRewardData>> RewardPools = new();
+        private static readonly Dictionary<int, List<int>> ItemPools = new();
 
-        public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData, List<CsvRow> rewardData)
+        public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData, List<CsvRow> itemPoolData)
         {
-            // 보상 풀 데이터 로드 (pool_id별로 그룹화)
-            foreach (var row in rewardData)
+            // 아이템 풀 데이터 로드
+            ItemPools.Clear();
+            foreach (var row in itemPoolData)
             {
-                var reward = InteractableRewardData.CreateFromData(row);
-                if (!RewardPools.TryGetValue(reward.PoolId, out var pool))
-                {
-                    pool = new List<InteractableRewardData>();
-                    RewardPools[reward.PoolId] = pool;
-                }
-                pool.Add(reward);
+                var poolId = int.Parse(row["pool_id"]);
+                var itemIdListJson = row["item_id_list"].Trim('"');
+                var itemIds = string.IsNullOrEmpty(itemIdListJson) || itemIdListJson == "[]"
+                    ? new List<int>()
+                    : JsonConvert.DeserializeObject<List<int>>(itemIdListJson) ?? new List<int>();
+                ItemPools[poolId] = itemIds;
             }
+
+            // 기존 데이터 클리어
+            Infos.Clear();
+            InfosByZone.Clear();
 
             // 액션 데이터를 id별로 그룹화
             var actionsByInteractId = actionData
@@ -58,9 +61,9 @@ namespace network.common.data
             }
         }
 
-        public static List<InteractableRewardData> GetRewardPool(int poolId)
+        public static List<int> GetItemPool(int poolId)
         {
-            return RewardPools.TryGetValue(poolId, out var pool) ? pool : new List<InteractableRewardData>();
+            return ItemPools.TryGetValue(poolId, out var pool) ? pool : new List<int>();
         }
 
         public static InteractableInfoData Get(int id)
@@ -86,31 +89,12 @@ namespace network.common.data
             return list;
         }
 
-        /// <summary>
-        /// 아이템 ID로 해당 아이템을 보상 풀에 포함하는 Interactable ID 찾기
-        /// </summary>
-        public static int? GetInteractableIdByRewardItemId(int itemId)
-        {
-            foreach (var info in Infos.Values)
-            {
-                var pool = GetRewardPool(info.RewardPoolId);
-                foreach (var reward in pool)
-                {
-                    if (reward.RewardType == RewardType.ITEM && reward.RewardId == itemId)
-                    {
-                        return info.Id;
-                    }
-                }
-            }
-            return null;
-        }
-
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameInteractableData Validation ===");
             foreach (var (id, info) in Infos)
             {
-                LogManager.WriteDebugLog($"[{id}] {info.Name} - Actions: {info.Actions.Count}, RewardPoolId: {info.RewardPoolId}");
+                LogManager.WriteDebugLog($"[{id}] {info.Name} - Actions: {info.Actions.Count}");
             }
             LogManager.WriteDebugLog("All validations passed successfully!");
         }
@@ -123,7 +107,7 @@ namespace network.common.data
         public string Name { get; private set; }
         public string ShortName { get; private set; }
         public string Description { get; private set; }
-        public int RewardPoolId { get; private set; }
+        public InteractionType InteractionType { get; private set; }
         public List<InteractableActionData> Actions { get; private set; }
 
         public static InteractableInfoData CreateFromData(CsvRow row, Dictionary<int, List<InteractableActionData>> actionsByInteractId)
@@ -137,7 +121,7 @@ namespace network.common.data
                 Name = row["name"].Trim('"'),
                 ShortName = row["short_name"].Trim('"'),
                 Description = row["description"].Trim('"').Replace("\\n", "\n"),
-                RewardPoolId = int.Parse(row["reward_pool_id"]),
+                InteractionType = row.ContainsKey("interaction_type") ? (InteractionType)int.Parse(row["interaction_type"]) : InteractionType.EXPLORE,
                 Actions = actionsByInteractId.TryGetValue(id, out var actions) ? actions : new List<InteractableActionData>()
             };
         }
@@ -147,35 +131,71 @@ namespace network.common.data
     {
         public int InteractId { get; private set; }
         public int ActionId { get; private set; }
+        public int State { get; private set; }  // 0=기본, 1+=특수 상태
         public string ActionText { get; private set; }
+
+        // 기본 결과 (규칙 무관 또는 미채택 시)
         public string ResultText { get; private set; }
+        public ActionResultType ResultType { get; private set; }
+        public int ResultId { get; private set; }
+        public int ResultAmount { get; private set; }
+
+        // 규칙 위반 시 결과 (비어있으면 기본 결과 사용)
+        public string ViolationResultText { get; private set; }
+        public ActionResultType ViolationResultType { get; private set; }
+        public int ViolationResultId { get; private set; }
+        public int ViolationResultAmount { get; private set; }
+
+        // 위반 결과가 정의되어 있는지 여부
+        public bool HasViolationResult => !string.IsNullOrEmpty(ViolationResultText);
+
+        public int PortalTriggerId { get; private set; }
+        public int StaminaCost { get; private set; }
+        public int RequireItemId { get; private set; }  // 0이면 조건 없음, 0보다 크면 해당 아이템 필요
+        public string RequireAction { get; private set; }  // 빈 문자열이면 조건 없음, "interactableId_actionId" 형식
 
         public static InteractableActionData CreateFromData(CsvRow row)
         {
+            // 기본 결과
+            var resultText = row["result_text"].Trim('"').Replace("\\n", "\n");
+            var resultType = row.ContainsKey("result_type") ? (ActionResultType)int.Parse(row["result_type"]) : ActionResultType.NONE;
+            var resultId = row.ContainsKey("result_id") ? int.Parse(row["result_id"]) : 0;
+            var resultAmount = row.ContainsKey("result_amount") ? int.Parse(row["result_amount"]) : 0;
+
+            // 위반 결과 (비어있으면 기본 결과 사용)
+            var violationResultText = row.ContainsKey("violation_result_text") && !string.IsNullOrEmpty(row["violation_result_text"])
+                ? row["violation_result_text"].Trim('"').Replace("\\n", "\n")
+                : "";
+            var violationResultType = row.ContainsKey("violation_result_type") && !string.IsNullOrEmpty(row["violation_result_type"])
+                ? (ActionResultType)int.Parse(row["violation_result_type"])
+                : ActionResultType.NONE;
+            var violationResultId = row.ContainsKey("violation_result_id") && !string.IsNullOrEmpty(row["violation_result_id"])
+                ? int.Parse(row["violation_result_id"])
+                : 0;
+            var violationResultAmount = row.ContainsKey("violation_result_amount") && !string.IsNullOrEmpty(row["violation_result_amount"])
+                ? int.Parse(row["violation_result_amount"])
+                : 0;
+
             return new InteractableActionData
             {
                 InteractId = int.Parse(row["id"]),
                 ActionId = int.Parse(row["action_id"]),
+                State = row.ContainsKey("state") && !string.IsNullOrEmpty(row["state"]) ? int.Parse(row["state"]) : 0,
                 ActionText = row["action_text"],
-                ResultText = row["result_text"].Trim('"').Replace("\\n", "\n")
+                ResultText = resultText,
+                ResultType = resultType,
+                ResultId = resultId,
+                ResultAmount = resultAmount,
+                ViolationResultText = violationResultText,
+                ViolationResultType = violationResultType,
+                ViolationResultId = violationResultId,
+                ViolationResultAmount = violationResultAmount,
+                PortalTriggerId = row.ContainsKey("portal_trigger_id") ? int.Parse(row["portal_trigger_id"]) : 0,
+                StaminaCost = row.ContainsKey("stamina_cost") ? int.Parse(row["stamina_cost"]) : 0,
+                RequireItemId = row.ContainsKey("require_item_id") && !string.IsNullOrEmpty(row["require_item_id"]) ? int.Parse(row["require_item_id"]) : 0,
+                RequireAction = row.ContainsKey("require_action") ? row["require_action"]?.Trim() ?? "" : ""
             };
         }
     }
 
-    public class InteractableRewardData
-    {
-        public int PoolId { get; private set; }
-        public RewardType RewardType { get; private set; }
-        public int RewardId { get; private set; }
-
-        public static InteractableRewardData CreateFromData(CsvRow row)
-        {
-            return new InteractableRewardData
-            {
-                PoolId = int.Parse(row["pool_id"]),
-                RewardType = (RewardType)int.Parse(row["reward_type"]),
-                RewardId = int.Parse(row["reward_id"])
-            };
-        }
-    }
 }

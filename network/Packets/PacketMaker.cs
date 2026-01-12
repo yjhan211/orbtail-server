@@ -244,13 +244,27 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_INTERACTABLE_LIST(AreaType areaType, List<InteractableObjectState> objects)
+    public static Packet G_TO_C_AREA_EXIT_BLOCKED(AreaType areaType, Cell correctedCell)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_AREA_EXIT_BLOCKED);
+        G_TO_C_AREA_EXIT_BLOCKED body = new()
+        {
+            AreaType = areaType,
+            CorrectedCell = correctedCell
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_INTERACTABLE_LIST(AreaType areaType, List<InteractableObjectState> objects, bool isEnd)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_LIST);
         G_TO_C_INTERACTABLE_LIST body = new()
         {
             AreaType = areaType,
-            Objects = objects
+            Objects = objects,
+            IsEnd = isEnd
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -305,7 +319,7 @@ public static class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_EXPLORE_RESULT(bool success, int interactId, int actionId, int itemId, ErrorCode errorCode)
+    public static Packet G_TO_C_EXPLORE_RESULT(bool success, int interactId, int actionId, int itemId, ErrorCode errorCode, bool isViolation = false)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_RESULT);
         G_TO_C_EXPLORE_RESULT body = new()
@@ -314,7 +328,8 @@ public static class PacketMaker
             InteractId = interactId,
             ActionId = actionId,
             ItemId = itemId,
-            ErrorCode = errorCode
+            ErrorCode = errorCode,
+            IsViolation = isViolation
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -327,6 +342,19 @@ public static class PacketMaker
         G_TO_C_EXPLORE_END body = new()
         {
             PlayerId = playerId
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_INTERACTABLE_STATE_CHANGE(int interactId, int newState)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_STATE_CHANGE);
+        G_TO_C_INTERACTABLE_STATE_CHANGE body = new()
+        {
+            InteractId = interactId,
+            NewState = newState
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -402,15 +430,14 @@ public static class PacketMaker
 
     // ========== 탈출 절차 프로토콜 ==========
 
-    public static Packet G_TO_C_EXIT_STEP_INFO(int templateId, int currentStepOrder, int totalStepCount, ExitSlotBindingInfo slotBinding, bool isCompleted, long lastAdvancedBy = 0)
+    public static Packet G_TO_C_EXIT_STEP_INFO(int groupId, int currentStepOrder, int totalStepCount, bool isCompleted, long lastAdvancedBy = 0)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_EXIT_STEP_INFO);
         G_TO_C_EXIT_STEP_INFO body = new()
         {
-            TemplateId = templateId,
+            GroupId = groupId,
             CurrentStepOrder = currentStepOrder,
             TotalStepCount = totalStepCount,
-            SlotBinding = slotBinding,
             IsCompleted = isCompleted,
             LastAdvancedBy = lastAdvancedBy
         };
@@ -460,4 +487,51 @@ public static class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+
+    #region Door 패킷
+
+    public static Packet G_TO_C_DOOR_STATE_UPDATE(int doorId, bool isOpen, ErrorCode errorCode = ErrorCode.SUCCESS, long openerPlayerId = 0)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_STATE_UPDATE);
+        G_TO_C_DOOR_STATE_UPDATE body = new()
+        {
+            DoorId = doorId,
+            IsOpen = isOpen,
+            ErrorCode = errorCode,
+            OpenerPlayerId = openerPlayerId
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_DOOR_STATE_LIST(List<int> openDoorIds)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_STATE_LIST);
+        G_TO_C_DOOR_STATE_LIST body = new()
+        {
+            OpenDoorIds = openDoorIds
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    #endregion
+
+    #region 복도 규칙 프로토콜
+
+    public static Packet G_TO_C_CORRIDOR_BELL(List<BellEvent> bells)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_CORRIDOR_BELL);
+        G_TO_C_CORRIDOR_BELL body = new()
+        {
+            Bells = bells
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    #endregion
 }

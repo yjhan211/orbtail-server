@@ -1,4 +1,4 @@
 id,value,comment
 HeartBeatActive,0,하트비트 활성 여부
-StartPosition,"(98, 95)",최초 스폰 지점
+StartPosition,"(96, 96)",최초 스폰 지점
 DefaultItemList,"[(104000001, 1),(105000001, 1),(106000001, 1)]",최초 지급 아이템
