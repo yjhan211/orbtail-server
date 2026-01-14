@@ -220,4 +220,17 @@ namespace network.common
         EXIT_STEP = 3,      // 탈출 절차 관련
         INTERACTION = 4,    // 상호작용 관련
     }
+
+    /// <summary>
+    /// 정신오염 크리피 텍스트 타입
+    /// </summary>
+    public enum CreepyType : short
+    {
+        NONE = 0,
+        DEFAULT = 1,        // 기본 크리피 텍스트
+        MAP = 2,            // 장소 크리피 텍스트
+        PLAYER_TITLE = 3,   // 플레이어 칭호 크리피 텍스트
+        TIMER = 4,          // 타이머 크리피 텍스트
+        PROGRESS = 5,       // 진행 상태 크리피 텍스트
+    }
 }
