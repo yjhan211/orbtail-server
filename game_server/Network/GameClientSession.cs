@@ -758,6 +758,13 @@ public class GameClientSession : IPeer
 
     private Task HandleInteract(C_TO_G_INTERACT msg)
     {
+        // 스태미나 0 이하이면 상호작용 차단
+        if (Stamina <= 0)
+        {
+            _logger.LogWarning("Player {PlayerId} cannot interact: Stamina={Stamina}", PlayerId, Stamina);
+            return Task.CompletedTask;
+        }
+
         _logger.LogInformation($"Player {PlayerId} interact: {msg.TargetId}");
         // TODO: 상호작용 처리
         return Task.CompletedTask;
@@ -766,6 +773,13 @@ public class GameClientSession : IPeer
     private Task HandleExploreStart(C_TO_G_EXPLORE_START msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        // 스태미나 0 이하이면 탐색 시작 차단
+        if (Stamina <= 0)
+        {
+            _logger.LogWarning("Player {PlayerId} cannot start explore: Stamina={Stamina}", PlayerId, Stamina);
+            return Task.CompletedTask;
+        }
 
         // 이미 탐색 중이면 무시
         if (CurrentState == PlayerState.Exploring)
@@ -851,6 +865,15 @@ public class GameClientSession : IPeer
                     return Task.CompletedTask;
                 }
             }
+        }
+
+        // 스태미나 체크 - 액션의 StaminaCost 이상 스태미나가 있는지 확인
+        if (actionDataForCheck != null && actionDataForCheck.StaminaCost > 0 && Stamina < actionDataForCheck.StaminaCost)
+        {
+            _logger.LogWarning("Player {PlayerId} insufficient stamina: Current={Stamina}, Required={Cost} for InteractId={InteractId}, ActionId={ActionId}",
+                PlayerId, Stamina, actionDataForCheck.StaminaCost, msg.InteractId, msg.ActionId);
+            SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.INSUFFICIENT_STAMINA);
+            return Task.CompletedTask;
         }
 
         // State 체크 - 액션의 state가 현재 Interactable state와 일치하는지 확인

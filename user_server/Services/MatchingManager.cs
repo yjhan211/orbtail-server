@@ -47,7 +47,7 @@ public class MatchingManager
 
             await _cacheHelper.SortedSetAddAsync(MatchingQueueKey, serialized, score);
 
-            _logger.LogInformation($"플레이어 {playerId} 매칭 큐 추가");
+            _logger.LogInformation("플레이어 {PlayerId} 매칭 큐 추가", playerId);
             return ErrorCode.SUCCESS;
         }
         catch (Exception ex)
@@ -91,6 +91,7 @@ public class MatchingManager
         {
             var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var cutoffTime = now - MatchingTimeoutSeconds;
+
             var allEntries = await _cacheHelper.SortedSetRangeByScoreAsync(
                 MatchingQueueKey,
                 double.NegativeInfinity,
