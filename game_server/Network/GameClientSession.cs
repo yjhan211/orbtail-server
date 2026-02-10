@@ -48,10 +48,12 @@ public class GameClientSession : IPeer
     public int? CurrentExploringInteractId { get; private set; }
 
     // 인게임 스탯 (게임 종료 시 초기화)
-    public int Stamina { get; private set; } = 100;
+    public int Stamina { get; private set; } = 20;
     public int Corruption { get; private set; } = 0;
-    private const int MaxStamina = 100;
+    private const int MaxStamina = 20;
     private const int MaxCorruption = 100;
+
+    private Timer? _sleepRecoveryTimer;
 
     private Vector3f? _lastValidatedPosition;
     private Cell? _lastValidCell;
@@ -1089,11 +1091,20 @@ public class GameClientSession : IPeer
 
     #region 플레이어 상태
 
-    private Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
+    private async Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
     {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (!PlayerId.HasValue) return;
 
         _logger.LogInformation("Player {PlayerId} state change request: {State}", PlayerId, msg.State);
+
+        // 서버 측 상태 저장
+        await using var playerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
+        var playerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
+        if (playerInfo != null)
+        {
+            playerInfo.State = msg.State;
+            await playerInfo.Save(_cacheHelper);
+        }
 
         // 같은 Area의 다른 플레이어들에게 상태 브로드캐스트
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
@@ -1107,7 +1118,35 @@ public class GameClientSession : IPeer
 
         _logger.LogDebug("Broadcasted PLAYER_STATE to {Count} players in Area {Area}", sameAreaSessions.Count, CurrentArea);
 
-        return Task.CompletedTask;
+        // SLEEP 상태 체력 회복 타이머 관리
+        if (msg.State == global::network.common.PlayerState.SLEEP)
+        {
+            StartSleepRecovery();
+        }
+        else
+        {
+            StopSleepRecovery();
+        }
+    }
+
+    private void StartSleepRecovery()
+    {
+        StopSleepRecovery();
+        _sleepRecoveryTimer = new Timer(_ =>
+        {
+            if (Stamina >= MaxStamina)
+            {
+                StopSleepRecovery();
+                return;
+            }
+            ModifyStats(staminaDelta: 1);
+        }, null, 1000, 1000);
+    }
+
+    private void StopSleepRecovery()
+    {
+        _sleepRecoveryTimer?.Dispose();
+        _sleepRecoveryTimer = null;
     }
 
     #endregion
@@ -1304,6 +1343,7 @@ public class GameClientSession : IPeer
     /// </summary>
     private void ResetInGameStats()
     {
+        StopSleepRecovery();
         Stamina = MaxStamina;
         Corruption = 0;
         CurrentState = PlayerState.Idle;
