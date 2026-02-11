@@ -1,3 +1,6 @@
+# Windows NUL redirect artifact
+nul
+
 # IDE and Editor Files
 .vscode/
 .vs/

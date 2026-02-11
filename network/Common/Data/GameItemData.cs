@@ -46,6 +46,12 @@ namespace network.common.data
                             additionalData["item_info_consumable"] = consumableInfo;
                         break;
 
+                    case ItemType.INSTALLATION:
+                        var installConsumableInfo = consumableData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
+                        if (installConsumableInfo != null)
+                            additionalData["item_info_consumable"] = installConsumableInfo;
+                        break;
+
                     case ItemType.PUTABLE:
                         var putInfo = putData.FirstOrDefault(x => x["item_id"] == itemId.ToString());
                         if (putInfo != null)
@@ -126,8 +132,8 @@ namespace network.common.data
         public int? MaxDurability { get; private set; }
         public List<(int id, int value1, int value2)> BuffList { get; private set; }
 
-        // 소비 아이템 관련
-        public List<(int id, int value)> ConsumableBuffList { get; private set; }
+        // 소비/설치 아이템 버프 관련
+        public List<(int id, int value, int interval)> ConsumableBuffList { get; private set; }
 
         // 설치 아이템 관련
         public int? MaxSellItems { get; private set; }
@@ -175,6 +181,11 @@ namespace network.common.data
                         item.ConsumableBuffList = ParseIntTupleArray(consumableInfo["buff_list"]);
                         break;
 
+                    case ItemType.INSTALLATION
+                        when additionalData.TryGetValue("item_info_consumable", out var installConsumableInfo):
+                        item.ConsumableBuffList = ParseIntTupleArray(installConsumableInfo["buff_list"]);
+                        break;
+
                     case ItemType.PUTABLE
                         when additionalData.TryGetValue("item_info_put", out var putInfo):
                         item.PutSpritePath = putInfo["sprite_path"];
@@ -195,14 +206,14 @@ namespace network.common.data
             return arrays?.Select(arr => (id: arr[0], coolTime: arr[1], value: arr[2])).ToList();
         }
 
-        public static List<(int id, int value)> ParseIntTupleArray(string jsonString)
+        public static List<(int id, int value, int interval)> ParseIntTupleArray(string jsonString)
         {
             if (string.IsNullOrEmpty(jsonString) || jsonString == "[]") return new();
 
             jsonString = jsonString.Trim('"');
             var arrays = JsonConvert.DeserializeObject<List<int[]>>(jsonString);
 
-            return arrays?.Select(arr => (id: arr[0], value: arr[1])).ToList();
+            return arrays?.Select(arr => (id: arr[0], value: arr[1], interval: arr.Length > 2 ? arr[2] : 0)).ToList();
         }
 
         public static List<(float id, float value)> ParseFloatTupleArray(string jsonString)
@@ -223,12 +234,14 @@ namespace network.common.data
             }
 
             var result = "";
-            if (IsConsumable)
+            if (ConsumableBuffList.Count > 0)
             {
                 foreach (var buffInfo in ConsumableBuffList)
                 {
                     var buff = GameBuffData.Get(buffInfo.id);
-                    result += buff.Comment.Replace("{value1}", $"{buffInfo.value}");
+                    result += buff.Comment
+                        .Replace("{value1}", $"{buffInfo.value}")
+                        .Replace("{value2}", $"{buffInfo.interval}");
                 }
             }
             else

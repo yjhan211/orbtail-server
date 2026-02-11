@@ -16,6 +16,7 @@ namespace network.common.data
     {
         public static Cell StartPosition { get; private set; } = new(-1, -1);
         public static List<(int, int)> DefaultItemList { get; private set; } = null!;
+        public static List<(int, int)> InGameItemList { get; private set; } = null!;
         public static bool HeartBeatActive { get; private set; }
 
         public static void Initialize(List<CsvRow> csvData)
@@ -47,6 +48,28 @@ namespace network.common.data
                         return (int.Parse(parts[0].Trim()), int.Parse(parts[1].Trim()));
                     })
                     .ToList();
+
+            var inGameItemListRow = csvData.FirstOrDefault(row => row["id"] == "InGameItemList");
+            if (inGameItemListRow == null)
+            {
+                InGameItemList = new();
+            }
+            else
+            {
+                var inGameItemListStr = inGameItemListRow["value"]
+                    .Trim('"')
+                    .Trim('[', ']');
+                if (string.IsNullOrEmpty(inGameItemListStr))
+                    InGameItemList = new();
+                else
+                    InGameItemList = inGameItemListStr.Split("),")
+                        .Select(item =>
+                        {
+                            var parts = item.Trim('(', ')').Split(',');
+                            return (int.Parse(parts[0].Trim()), int.Parse(parts[1].Trim()));
+                        })
+                        .ToList();
+            }
         }
 
         public static void Validate(LogManager logManager)
@@ -56,6 +79,8 @@ namespace network.common.data
             LogManager.WriteInfoLog($"HeartBeatActive: {HeartBeatActive}");
             LogManager.WriteInfoLog(
                 $"DefaultItemList: [{string.Join(", ", DefaultItemList.Select(x => $"({x.Item1}, {x.Item2})"))}]");
+            LogManager.WriteInfoLog(
+                $"InGameItemList: [{string.Join(", ", InGameItemList.Select(x => $"({x.Item1}, {x.Item2})"))}]");
             LogManager.WriteInfoLog("");
 
             var errors = new List<string>();

@@ -46,14 +46,24 @@ public class GameClientSession : IPeer
     public AreaType CurrentArea { get; private set; } = AreaType.None;
     public PlayerState CurrentState { get; private set; } = PlayerState.Idle;
     public int? CurrentExploringInteractId { get; private set; }
+    private bool _isSleeping;
 
     // 인게임 스탯 (게임 종료 시 초기화)
     public int Stamina { get; private set; } = 20;
     public int Corruption { get; private set; } = 0;
-    private const int MaxStamina = 20;
+    private const int MaxStamina = 100;
     private const int MaxCorruption = 100;
 
-    private Timer? _sleepRecoveryTimer;
+    private Timer? _periodicBuffTimer;
+    private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
+
+    private class PeriodicBuffEntry
+    {
+        public BuffSubType SubType;
+        public int Value;
+        public int IntervalSeconds;
+        public float ElapsedSeconds;
+    }
 
     private Vector3f? _lastValidatedPosition;
     private Cell? _lastValidCell;
@@ -315,6 +325,16 @@ public class GameClientSession : IPeer
 
             _logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
 
+            // 인게임 기본 아이템 지급
+            if (GameRuleData.InGameItemList != null)
+            {
+                foreach (var (itemId, count) in GameRuleData.InGameItemList)
+                {
+                    _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, count);
+                    _logger.LogInformation("InGame default item added: PlayerId={PlayerId}, ItemId={ItemId}, Count={Count}", PlayerId, itemId, count);
+                }
+            }
+
             // 인게임 인벤토리 목록 전송
             SendInGameInventoryList();
 
@@ -356,6 +376,13 @@ public class GameClientSession : IPeer
         if (CurrentState == PlayerState.Exploring)
         {
             _logger.LogDebug("Player {PlayerId} tried to move while exploring, ignoring", PlayerId);
+            return;
+        }
+
+        // SLEEP 중에는 이동 불가
+        if (_isSleeping)
+        {
+            _logger.LogDebug("Player {PlayerId} tried to move while sleeping, ignoring", PlayerId);
             return;
         }
 
@@ -1118,35 +1145,97 @@ public class GameClientSession : IPeer
 
         _logger.LogDebug("Broadcasted PLAYER_STATE to {Count} players in Area {Area}", sameAreaSessions.Count, CurrentArea);
 
-        // SLEEP 상태 체력 회복 타이머 관리
-        if (msg.State == global::network.common.PlayerState.SLEEP)
+        // SLEEP 상태 추적
+        _isSleeping = msg.State == global::network.common.PlayerState.SLEEP;
+
+        // SLEEP 해제 시 주기적 버프 타이머 정리
+        if (!_isSleeping)
         {
-            StartSleepRecovery();
-        }
-        else
-        {
-            StopSleepRecovery();
+            StopAllPeriodicBuffs();
         }
     }
 
-    private void StartSleepRecovery()
+    private void AddPeriodicBuff(BuffSubType subType, int value, int intervalSeconds)
     {
-        StopSleepRecovery();
-        _sleepRecoveryTimer = new Timer(_ =>
+        _activePeriodicBuffs.Add(new PeriodicBuffEntry
         {
-            if (Stamina >= MaxStamina)
+            SubType = subType, Value = value, IntervalSeconds = intervalSeconds
+        });
+
+        // 마스터 타이머가 없으면 시작 (1초 틱)
+        _periodicBuffTimer ??= new Timer(_ => OnPeriodicBuffTick(), null, 1000, 1000);
+    }
+
+    private void OnPeriodicBuffTick()
+    {
+        try
+        {
+            foreach (var buff in _activePeriodicBuffs.ToList())
             {
-                StopSleepRecovery();
-                return;
+                buff.ElapsedSeconds += 1;
+                if (buff.ElapsedSeconds < buff.IntervalSeconds) continue;
+
+                buff.ElapsedSeconds = 0;
+                switch (buff.SubType)
+                {
+                    case BuffSubType.CONDITION_ADD:
+                        if (Stamina >= MaxStamina) { _activePeriodicBuffs.Remove(buff); continue; }
+                        ModifyStats(staminaDelta: buff.Value);
+                        break;
+                    case BuffSubType.CORRUPTION_DOWN:
+                        if (Corruption <= 0) { _activePeriodicBuffs.Remove(buff); continue; }
+                        ModifyStats(corruptionDelta: -buff.Value);
+                        break;
+                }
             }
-            ModifyStats(staminaDelta: 1);
-        }, null, 1000, 1000);
+
+            if (_activePeriodicBuffs.Count == 0) StopAllPeriodicBuffs();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Periodic buff timer error, stopping all");
+            StopAllPeriodicBuffs();
+        }
     }
 
-    private void StopSleepRecovery()
+    private void StopAllPeriodicBuffs()
     {
-        _sleepRecoveryTimer?.Dispose();
-        _sleepRecoveryTimer = null;
+        _activePeriodicBuffs.Clear();
+        _periodicBuffTimer?.Dispose();
+        _periodicBuffTimer = null;
+    }
+
+    /// <summary>
+    /// SLEEP 상태 변경을 서버에서 감지하여 브로드캐스트 (본인 포함)
+    /// </summary>
+    private async Task BroadcastSleepState(bool sleep)
+    {
+        if (!PlayerId.HasValue) return;
+
+        _isSleeping = sleep;
+        var state = sleep ? global::network.common.PlayerState.SLEEP : global::network.common.PlayerState.IDLE;
+
+        // 서버 측 상태 저장
+        await using var playerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
+        var playerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
+        if (playerInfo != null)
+        {
+            playerInfo.State = state;
+            await playerInfo.Save(_cacheHelper);
+        }
+
+        // 같은 Area의 모든 플레이어에게 상태 브로드캐스트 (본인 포함)
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var sameAreaSessions = allSessions.Where(s => s.CurrentArea == CurrentArea).ToList();
+
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
+        foreach (var session in sameAreaSessions)
+        {
+            session.Send(packet);
+        }
+
+        _logger.LogInformation("Server-driven SLEEP state={Sleep} for Player {PlayerId}, broadcasted to {Count} players in Area {Area}",
+            sleep, PlayerId, sameAreaSessions.Count, CurrentArea);
     }
 
     #endregion
@@ -1195,9 +1284,9 @@ public class GameClientSession : IPeer
     /// <summary>
     /// 인게임 아이템 사용 요청 처리
     /// </summary>
-    private Task HandleUseInGameItem(C_TO_G_USE_INGAME_ITEM msg)
+    private async Task HandleUseInGameItem(C_TO_G_USE_INGAME_ITEM msg)
     {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (!PlayerId.HasValue) return;
 
         // 아이템 정보 먼저 조회 (제거 전에 ItemId 확인 필요)
         var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
@@ -1207,45 +1296,73 @@ public class GameClientSession : IPeer
             using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.FATAL);
             Send(failPacket);
             _logger.LogWarning("Player {PlayerId} item not found: ItemUid={ItemUid}", PlayerId, msg.ItemUid);
-            return Task.CompletedTask;
+            return;
         }
 
         var itemId = itemInfo.ItemId;
-        var success = _inGameInventoryManager.TryRemoveItem(CurrentMapSubId, PlayerId.Value, msg.ItemUid, msg.Count, out var updatedItem);
+        var itemData = GameItemData.Get(itemId);
 
-        if (success && updatedItem != null)
+        // Reusable 아이템은 소모하지 않음
+        if (itemData != null && itemData.Reusable)
         {
-            // 아이템 사용 성공 - 인벤토리 업데이트 전송
-            SendInGameInventoryUpdate(updatedItem);
-
             // 버프 효과 적용
-            ApplyItemBuffs(itemId);
+            var hasPeriodicBuff = ApplyItemBuffs(itemId);
 
-            // 행동 수칙 쪽지 아이템 처리 (202000003)
-            var ruleId = 0;
-            if (itemId == 202000003)
+            // 주기적 버프 등록 시 SLEEP 상태로 전환 + 브로드캐스트
+            if (hasPeriodicBuff)
             {
-                ruleId = _areaRuleManager.GetRuleForNote(CurrentMapSubId);
-                _logger.LogInformation("Player {PlayerId} used manual item, got RuleId={RuleId}", PlayerId, ruleId);
+                await BroadcastSleepState(true);
             }
 
             // 사용 결과 전송
-            using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS, ruleId);
+            using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
             Send(resultPacket);
 
-            _logger.LogInformation("Player {PlayerId} used InGameItem: ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}",
-                PlayerId, msg.ItemUid, itemId, msg.Count);
+            _logger.LogInformation("Player {PlayerId} used reusable InGameItem: ItemUid={ItemUid}, ItemId={ItemId}",
+                PlayerId, msg.ItemUid, itemId);
         }
         else
         {
-            // 아이템 사용 실패
-            using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.FATAL);
-            Send(resultPacket);
+            var success = _inGameInventoryManager.TryRemoveItem(CurrentMapSubId, PlayerId.Value, msg.ItemUid, msg.Count, out var updatedItem);
 
-            _logger.LogWarning("Player {PlayerId} failed to use InGameItem: ItemUid={ItemUid}, Count={Count}", PlayerId, msg.ItemUid, msg.Count);
+            if (success && updatedItem != null)
+            {
+                // 아이템 사용 성공 - 인벤토리 업데이트 전송
+                SendInGameInventoryUpdate(updatedItem);
+
+                // 버프 효과 적용
+                var hasPeriodicBuff = ApplyItemBuffs(itemId);
+
+                // 주기적 버프 등록 시 SLEEP 상태로 전환 + 브로드캐스트
+                if (hasPeriodicBuff)
+                {
+                    await BroadcastSleepState(true);
+                }
+
+                // 행동 수칙 쪽지 아이템 처리 (202000003)
+                var ruleId = 0;
+                if (itemId == 202000003)
+                {
+                    ruleId = _areaRuleManager.GetRuleForNote(CurrentMapSubId);
+                    _logger.LogInformation("Player {PlayerId} used manual item, got RuleId={RuleId}", PlayerId, ruleId);
+                }
+
+                // 사용 결과 전송
+                using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS, ruleId);
+                Send(resultPacket);
+
+                _logger.LogInformation("Player {PlayerId} used InGameItem: ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}",
+                    PlayerId, msg.ItemUid, itemId, msg.Count);
+            }
+            else
+            {
+                // 아이템 사용 실패
+                using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.FATAL);
+                Send(resultPacket);
+
+                _logger.LogWarning("Player {PlayerId} failed to use InGameItem: ItemUid={ItemUid}, Count={Count}", PlayerId, msg.ItemUid, msg.Count);
+            }
         }
-
-        return Task.CompletedTask;
     }
 
     #endregion
@@ -1253,20 +1370,30 @@ public class GameClientSession : IPeer
     #region 플레이어 스탯
 
     /// <summary>
-    /// 아이템 버프 효과 적용
+    /// 아이템 버프 효과 적용. 주기적 버프가 등록되면 true 반환
     /// </summary>
-    private void ApplyItemBuffs(int itemId)
+    private bool ApplyItemBuffs(int itemId)
     {
         var itemData = GameItemData.Get(itemId);
-        if (itemData == null || !itemData.IsConsumable) return;
+        if (itemData?.ConsumableBuffList == null || itemData.ConsumableBuffList.Count == 0) return false;
 
         var staminaDelta = 0;
         var corruptionDelta = 0;
+        var hasPeriodicBuff = false;
 
-        foreach (var (buffId, value) in itemData.ConsumableBuffList)
+        foreach (var (buffId, value, interval) in itemData.ConsumableBuffList)
         {
             var buffData = GameBuffData.Get(buffId);
 
+            // 주기적 버프 → 마스터 타이머에 등록
+            if (buffData.Type == BuffType.PERIODIC && interval > 0)
+            {
+                AddPeriodicBuff(buffData.SubType, value, interval);
+                hasPeriodicBuff = true;
+                continue;
+            }
+
+            // 즉시 버프
             switch (buffData.SubType)
             {
                 case BuffSubType.CONDITION_ADD:
@@ -1283,6 +1410,8 @@ public class GameClientSession : IPeer
         {
             ModifyStats(staminaDelta, corruptionDelta);
         }
+
+        return hasPeriodicBuff;
     }
 
     /// <summary>
@@ -1343,8 +1472,9 @@ public class GameClientSession : IPeer
     /// </summary>
     private void ResetInGameStats()
     {
-        StopSleepRecovery();
-        Stamina = MaxStamina;
+        StopAllPeriodicBuffs();
+        _isSleeping = false;
+        Stamina = 20;
         Corruption = 0;
         CurrentState = PlayerState.Idle;
         CurrentExploringInteractId = null;
@@ -1436,12 +1566,14 @@ public class GameClientSession : IPeer
 
     public void OnRemoved()
     {
+        StopAllPeriodicBuffs();
         _logger.LogInformation($"GameClient removed: PlayerId={PlayerId}");
         _onLeaveCallback(this);
     }
 
     public void OnDisconnect()
     {
+        StopAllPeriodicBuffs();
         _logger.LogInformation($"GameClient disconnected: PlayerId={PlayerId}");
         _onLeaveCallback(this);
     }
