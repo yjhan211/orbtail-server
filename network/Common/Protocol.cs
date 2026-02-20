@@ -95,6 +95,14 @@ namespace network.common
         // 복도 규칙 프로토콜
         G_TO_C_CORRIDOR_BELL, // 복도 종소리 이벤트
 
+        // 플레이어 상호작용 프로토콜
+        C_TO_G_PLAYER_INTERACT_REQUEST,   // A→서버: 상호작용 요청
+        G_TO_C_PLAYER_INTERACT_REQUEST,   // 서버→A,B: 요청 결과/알림
+        C_TO_G_PLAYER_INTERACT_RESPONSE,  // B→서버: 수락/거절
+        G_TO_C_PLAYER_INTERACT_RESULT,    // 서버→A,B: 최종 결과
+        C_TO_G_PLAYER_INTERACT_END,       // 대화 종료 요청
+        G_TO_C_PLAYER_INTERACT_END,       // 대화 종료 알림
+
         END
     }
 

@@ -48,6 +48,15 @@ public class GameClientSession : IPeer
     public int? CurrentExploringInteractId { get; private set; }
     private bool _isSleeping;
 
+    // 플레이어 상호작용 요청 상태
+    private long? _pendingInteractPlayerId;
+    private CancellationTokenSource? _interactTimeoutCts;
+    private DateTime _lastInteractRejectTime = DateTime.MinValue;
+    private static readonly TimeSpan InteractCooldown = TimeSpan.FromSeconds(5);
+
+    // 활성 대화 상대 PlayerId (수락 후 대화 중)
+    private long? _activeConversationPlayerId;
+
     // 인게임 스탯 (게임 종료 시 초기화)
     public int Stamina { get; private set; } = 20;
     public int Corruption { get; private set; } = 0;
@@ -145,6 +154,11 @@ public class GameClientSession : IPeer
 
         // 문 프로토콜
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_REQUEST, async (bytes) => await HandleMessage<C_TO_G_DOOR_OPEN_REQUEST>(bytes, HandleDoorOpenRequest));
+
+        // 플레이어 상호작용 프로토콜
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_REQUEST, async (bytes) => await HandleMessage<C_TO_G_PLAYER_INTERACT_REQUEST>(bytes, HandlePlayerInteractRequest));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_RESPONSE, async (bytes) => await HandleMessage<C_TO_G_PLAYER_INTERACT_RESPONSE>(bytes, HandlePlayerInteractResponse));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_END, async (bytes) => await HandleMessage<C_TO_G_PLAYER_INTERACT_END>(bytes, HandlePlayerInteractEnd));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -1552,6 +1566,183 @@ public class GameClientSession : IPeer
                 _gameTimers.Remove(matchingId);
             }
         }
+    }
+
+    #endregion
+
+    #region 플레이어 상호작용
+
+    private Task HandlePlayerInteractRequest(C_TO_G_PLAYER_INTERACT_REQUEST msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        // 쿨다운 체크 (거절/타임아웃 후 5초)
+        if (DateTime.UtcNow - _lastInteractRejectTime < InteractCooldown)
+        {
+            using var cooldownPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(msg.PlayerId, ErrorCode.ACTION_COOLDOWN);
+            Send(cooldownPacket);
+            _logger.LogInformation("PlayerInteractRequest blocked by cooldown: requester={RequesterId}", PlayerId);
+            return Task.CompletedTask;
+        }
+
+        var targetPlayerId = msg.PlayerId;
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == targetPlayerId);
+
+        // 대상 없으면 에러
+        if (targetSession == null)
+        {
+            using var errorPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(targetPlayerId, ErrorCode.PLAYER_NOT_FOUND);
+            Send(errorPacket);
+            _logger.LogWarning("PlayerInteractRequest failed: target PlayerId={TargetId} not found (requester={RequesterId})", targetPlayerId, PlayerId);
+            return Task.CompletedTask;
+        }
+
+        // pending 저장 (요청자 세션에)
+        _pendingInteractPlayerId = targetPlayerId;
+
+        // 양쪽에 전송
+        using (var requesterPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(targetPlayerId, ErrorCode.SUCCESS))
+        {
+            Send(requesterPacket); // 요청자(A)에게: 대기 시작
+        }
+
+        using (var targetPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(PlayerId.Value, ErrorCode.SUCCESS))
+        {
+            targetSession.Send(targetPacket); // 대상(B)에게: 수락 UI 표시
+        }
+
+        _logger.LogInformation("PlayerInteractRequest: requester={RequesterId} → target={TargetId}", PlayerId, targetPlayerId);
+
+        // 10초 타이머 시작
+        _interactTimeoutCts?.Cancel();
+        _interactTimeoutCts = new CancellationTokenSource();
+        var cts = _interactTimeoutCts;
+        var requesterPlayerId = PlayerId.Value;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(10000, cts.Token);
+
+                // 타임아웃: 양쪽에 RESULT(accepted=false) 전송
+                _logger.LogInformation("PlayerInteract timeout: requester={RequesterId}, target={TargetId}", requesterPlayerId, targetPlayerId);
+
+                using var requesterResult = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(false, targetPlayerId, ErrorCode.TIMEOUT);
+                Send(requesterResult);
+
+                using var targetResult = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(false, requesterPlayerId, ErrorCode.TIMEOUT);
+                targetSession.Send(targetResult);
+
+                _pendingInteractPlayerId = null;
+                _interactTimeoutCts = null;
+                _lastInteractRejectTime = DateTime.UtcNow;
+            }
+            catch (TaskCanceledException)
+            {
+                // 타이머 취소됨 (수락/거절로 인해)
+            }
+        });
+
+        return Task.CompletedTask;
+    }
+
+    private Task HandlePlayerInteractResponse(C_TO_G_PLAYER_INTERACT_RESPONSE msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        var requesterPlayerId = msg.PlayerId;
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var requesterSession = allSessions.FirstOrDefault(s => s.PlayerId == requesterPlayerId);
+
+        if (requesterSession == null)
+        {
+            _logger.LogWarning("PlayerInteractResponse failed: requester PlayerId={RequesterId} not found", requesterPlayerId);
+            return Task.CompletedTask;
+        }
+
+        // 요청자의 pending이 본인(응답자)인지 검증
+        if (requesterSession._pendingInteractPlayerId != PlayerId.Value)
+        {
+            _logger.LogWarning("PlayerInteractResponse failed: pending mismatch (expected={Expected}, actual={Actual})",
+                PlayerId.Value, requesterSession._pendingInteractPlayerId);
+            return Task.CompletedTask;
+        }
+
+        // 타이머 취소
+        requesterSession._interactTimeoutCts?.Cancel();
+        requesterSession._interactTimeoutCts = null;
+
+        // 양쪽에 RESULT 전송
+        using (var requesterResult = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(msg.Accepted, PlayerId.Value, ErrorCode.SUCCESS))
+        {
+            requesterSession.Send(requesterResult); // 요청자에게
+        }
+
+        using (var responderResult = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(msg.Accepted, requesterPlayerId, ErrorCode.SUCCESS))
+        {
+            Send(responderResult); // 응답자에게
+        }
+
+        _logger.LogInformation("PlayerInteractResponse: responder={ResponderId}, requester={RequesterId}, accepted={Accepted}",
+            PlayerId, requesterPlayerId, msg.Accepted);
+
+        // pending 클리어
+        requesterSession._pendingInteractPlayerId = null;
+
+        if (msg.Accepted)
+        {
+            // 수락 시 양쪽 세션에 활성 대화 상대 설정
+            requesterSession._activeConversationPlayerId = PlayerId.Value;
+            _activeConversationPlayerId = requesterPlayerId;
+        }
+        else
+        {
+            // 거절 시 쿨다운 시작
+            requesterSession._lastInteractRejectTime = DateTime.UtcNow;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task HandlePlayerInteractEnd(C_TO_G_PLAYER_INTERACT_END msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        // _activeConversationPlayerId로 상대 세션 찾기
+        if (!_activeConversationPlayerId.HasValue)
+        {
+            _logger.LogWarning("PlayerInteractEnd failed: no active conversation for PlayerId={PlayerId}", PlayerId);
+            return Task.CompletedTask;
+        }
+
+        var partnerPlayerId = _activeConversationPlayerId.Value;
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var partnerSession = allSessions.FirstOrDefault(s => s.PlayerId == partnerPlayerId);
+
+        // 양쪽에 END 전송 (각각 상대의 PlayerId 포함)
+        using (var myPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_END(partnerPlayerId))
+        {
+            Send(myPacket); // 본인에게
+        }
+
+        if (partnerSession != null)
+        {
+            using var partnerPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_END(PlayerId.Value);
+            partnerSession.Send(partnerPacket); // 상대에게
+
+            // 상대 세션 클리어
+            partnerSession._activeConversationPlayerId = null;
+        }
+
+        // 본인 클리어
+        _activeConversationPlayerId = null;
+
+        _logger.LogInformation("PlayerInteractEnd: PlayerId={PlayerId} ended conversation with PlayerId={PartnerId}",
+            PlayerId, partnerPlayerId);
+
+        return Task.CompletedTask;
     }
 
     #endregion

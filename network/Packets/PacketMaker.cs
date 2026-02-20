@@ -534,4 +534,47 @@ public static class PacketMaker
     }
 
     #endregion
+
+    #region 플레이어 상호작용 프로토콜
+
+    public static Packet G_TO_C_PLAYER_INTERACT_REQUEST(long playerId, ErrorCode errorCode)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_INTERACT_REQUEST);
+        G_TO_C_PLAYER_INTERACT_REQUEST body = new()
+        {
+            PlayerId = playerId,
+            ErrorCode = errorCode
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_PLAYER_INTERACT_RESULT(bool accepted, long playerId, ErrorCode errorCode)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_INTERACT_RESULT);
+        G_TO_C_PLAYER_INTERACT_RESULT body = new()
+        {
+            Accepted = accepted,
+            PlayerId = playerId,
+            ErrorCode = errorCode
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_PLAYER_INTERACT_END(long playerId)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_INTERACT_END);
+        G_TO_C_PLAYER_INTERACT_END body = new()
+        {
+            PlayerId = playerId
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    #endregion
 }
