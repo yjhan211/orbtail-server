@@ -58,7 +58,7 @@ public class GameClientSession : IPeer
     private long? _activeConversationPlayerId;
 
     // 인게임 스탯 (게임 종료 시 초기화)
-    public int Stamina { get; private set; } = 20;
+    public int Stamina { get; private set; } = 100;
     public int Corruption { get; private set; } = 0;
     private const int MaxStamina = 100;
     private const int MaxCorruption = 100;
@@ -159,6 +159,7 @@ public class GameClientSession : IPeer
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_REQUEST, async (bytes) => await HandleMessage<C_TO_G_PLAYER_INTERACT_REQUEST>(bytes, HandlePlayerInteractRequest));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_RESPONSE, async (bytes) => await HandleMessage<C_TO_G_PLAYER_INTERACT_RESPONSE>(bytes, HandlePlayerInteractResponse));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_END, async (bytes) => await HandleMessage<C_TO_G_PLAYER_INTERACT_END>(bytes, HandlePlayerInteractEnd));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_USE_ITEM, async (bytes) => await HandleMessage<C_TO_G_PLAYER_INTERACT_USE_ITEM>(bytes, HandlePlayerInteractUseItem));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -1386,7 +1387,7 @@ public class GameClientSession : IPeer
     /// <summary>
     /// 아이템 버프 효과 적용. 주기적 버프가 등록되면 true 반환
     /// </summary>
-    private bool ApplyItemBuffs(int itemId)
+    public bool ApplyItemBuffs(int itemId)
     {
         var itemData = GameItemData.Get(itemId);
         if (itemData?.ConsumableBuffList == null || itemData.ConsumableBuffList.Count == 0) return false;
@@ -1488,7 +1489,7 @@ public class GameClientSession : IPeer
     {
         StopAllPeriodicBuffs();
         _isSleeping = false;
-        Stamina = 20;
+        Stamina = 100;
         Corruption = 0;
         CurrentState = PlayerState.Idle;
         CurrentExploringInteractId = null;
@@ -1575,6 +1576,14 @@ public class GameClientSession : IPeer
     private Task HandlePlayerInteractRequest(C_TO_G_PLAYER_INTERACT_REQUEST msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        // 스태미나 체크
+        if (Stamina < InteractStaminaCost)
+        {
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(msg.PlayerId, ErrorCode.INSUFFICIENT_STAMINA);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
 
         // 쿨다운 체크 (거절/타임아웃 후 5초)
         if (DateTime.UtcNow - _lastInteractRejectTime < InteractCooldown)
@@ -1710,7 +1719,6 @@ public class GameClientSession : IPeer
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
 
-        // _activeConversationPlayerId로 상대 세션 찾기
         if (!_activeConversationPlayerId.HasValue)
         {
             _logger.LogWarning("PlayerInteractEnd failed: no active conversation for PlayerId={PlayerId}", PlayerId);
@@ -1721,28 +1729,113 @@ public class GameClientSession : IPeer
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var partnerSession = allSessions.FirstOrDefault(s => s.PlayerId == partnerPlayerId);
 
-        // 양쪽에 END 전송 (각각 상대의 PlayerId 포함)
-        using (var myPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_END(partnerPlayerId))
-        {
-            Send(myPacket); // 본인에게
-        }
-
-        if (partnerSession != null)
-        {
-            using var partnerPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_END(PlayerId.Value);
-            partnerSession.Send(partnerPacket); // 상대에게
-
-            // 상대 세션 클리어
-            partnerSession._activeConversationPlayerId = null;
-        }
-
-        // 본인 클리어
-        _activeConversationPlayerId = null;
+        EndConversation(partnerPlayerId, partnerSession);
 
         _logger.LogInformation("PlayerInteractEnd: PlayerId={PlayerId} ended conversation with PlayerId={PartnerId}",
             PlayerId, partnerPlayerId);
 
         return Task.CompletedTask;
+    }
+
+    private const int InteractStaminaCost = 5;
+
+    private Task HandlePlayerInteractUseItem(C_TO_G_PLAYER_INTERACT_USE_ITEM msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        // 활성 대화 검증
+        if (!_activeConversationPlayerId.HasValue || _activeConversationPlayerId.Value != msg.PlayerId)
+        {
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(false, ErrorCode.INVALID_REQUEST, 0);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
+
+        // 스태미나 체크
+        if (Stamina < InteractStaminaCost)
+        {
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(false, ErrorCode.INSUFFICIENT_STAMINA, 0);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
+
+        // 아이템 검증
+        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+        var itemInfo = inventory.GetItem(msg.ItemUid);
+        if (itemInfo == null)
+        {
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(false, ErrorCode.ITEM_NOT_FOUND, 0);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
+
+        var itemId = itemInfo.ItemId;
+        var itemData = GameItemData.Get(itemId);
+        if (itemData == null || !itemData.IsConsumable)
+        {
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(false, ErrorCode.ITEM_NOT_USABLE, 0);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
+
+        // 아이템 소모
+        var success = _inGameInventoryManager.TryRemoveItem(CurrentMapSubId, PlayerId.Value, msg.ItemUid, 1, out var updatedItem);
+        if (!success || updatedItem == null)
+        {
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(false, ErrorCode.FATAL, 0);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
+
+        // A: 인벤토리 업데이트 + 스태미나 차감
+        SendInGameInventoryUpdate(updatedItem);
+        ModifyStats(staminaDelta: -InteractStaminaCost);
+
+        // B: 아이템 버프 적용
+        var targetPlayerId = msg.PlayerId;
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == targetPlayerId);
+        targetSession?.ApplyItemBuffs(itemId);
+
+        // 양쪽에 사용 결과 전송 (targetPlayerId로 이펙트 대상 지정)
+        using (var resultPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(true, ErrorCode.SUCCESS, itemId, targetPlayerId))
+        {
+            Send(resultPacket);
+        }
+
+        if (targetSession != null)
+        {
+            using var targetResultPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(true, ErrorCode.SUCCESS, itemId, targetPlayerId);
+            targetSession.Send(targetResultPacket);
+        }
+
+        _logger.LogInformation("PlayerInteractUseItem: PlayerId={PlayerId} used item {ItemId} on PlayerId={TargetId}",
+            PlayerId, itemId, targetPlayerId);
+
+        // 대화 종료
+        EndConversation(targetPlayerId, targetSession);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 양쪽에 대화 종료 패킷 전송 + 상태 클리어
+    /// </summary>
+    private void EndConversation(long partnerPlayerId, GameClientSession? partnerSession)
+    {
+        using (var myPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_END(partnerPlayerId))
+        {
+            Send(myPacket);
+        }
+
+        if (partnerSession != null)
+        {
+            using var partnerPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_END(PlayerId!.Value);
+            partnerSession.Send(partnerPacket);
+            partnerSession._activeConversationPlayerId = null;
+        }
+
+        _activeConversationPlayerId = null;
     }
 
     #endregion
