@@ -13,40 +13,28 @@ namespace network.common.data
 {
     public static class GameLoadingTextData
     {
-        private static List<string> _loadingTexts;
+        private static List<LocalizedText> _loadingTexts;
         private static readonly Random _random = new Random();
 
         public static void Initialize(List<CsvRow> csvData)
         {
-            _loadingTexts = new List<string>();
+            _loadingTexts = new List<LocalizedText>();
 
             foreach (var row in csvData)
             {
-                var text = row["kr"];
-                // 따옴표 제거
-                if (text.StartsWith("\"") && text.EndsWith("\""))
-                {
-                    text = text.Substring(1, text.Length - 2);
-                }
-                _loadingTexts.Add(text);
+                _loadingTexts.Add(LocalizedText.FromCsv(row, "text"));
             }
         }
 
         public static string GetRandomText()
         {
-            if (_loadingTexts == null)
-            {
-                return "당신의 눈이 당신을 속이기 시작했다면,\n그것은 시스템 오류가 아닙니다.";
-            }
-
-            if (_loadingTexts.Count == 0)
+            if (_loadingTexts == null || _loadingTexts.Count == 0)
             {
                 return "당신의 눈이 당신을 속이기 시작했다면,\n그것은 시스템 오류가 아닙니다.";
             }
 
             var randomIndex = _random.Next(0, _loadingTexts.Count);
-            var selectedText = _loadingTexts[randomIndex];
-            return selectedText;
+            return _loadingTexts[randomIndex].Kr;
         }
 
         public static void Validate(LogManager logManager)

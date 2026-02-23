@@ -141,7 +141,12 @@ namespace network.common.data
     {
         public int Id { get; private set; }
         public SystemTextCategory Category { get; private set; }
-        public string TextKo { get; private set; }
+        public LocalizedText Text { get; private set; }
+
+        /// <summary>
+        /// 하위 호환: Text.Kr 반환
+        /// </summary>
+        public string TextKo => Text?.Kr ?? "";
 
         public static SystemTextData CreateFromData(CsvRow row)
         {
@@ -149,7 +154,7 @@ namespace network.common.data
             {
                 Id = int.Parse(row["id"]),
                 Category = (SystemTextCategory)int.Parse(row["category"]),
-                TextKo = row["text_ko"].Trim('"').Replace("\\n", "\n")
+                Text = LocalizedText.FromCsv(row, "text")
             };
         }
     }

@@ -26,7 +26,6 @@ namespace network.common.data
 
             var startPosRow = csvData.First(row => row["id"] == "StartPosition");
             var posStr = startPosRow["value"]
-                .Trim('"')
                 .Trim('(', ')')
                 .Split(',');
             StartPosition = new Cell(
@@ -36,7 +35,6 @@ namespace network.common.data
 
             var itemListRow = csvData.First(row => row["id"] == "DefaultItemList");
             var itemListStr = itemListRow["value"]
-                .Trim('"')
                 .Trim('[', ']');
             if (string.IsNullOrEmpty(itemListStr))
                 DefaultItemList = new();
@@ -57,7 +55,6 @@ namespace network.common.data
             else
             {
                 var inGameItemListStr = inGameItemListRow["value"]
-                    .Trim('"')
                     .Trim('[', ']');
                 if (string.IsNullOrEmpty(inGameItemListStr))
                     InGameItemList = new();

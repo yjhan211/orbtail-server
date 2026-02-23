@@ -159,8 +159,8 @@ namespace network.common.data
             {
                 Id = id,
                 Type = itemType,
-                Name = new LocalizedText(baseInfo["name"]),
-                Comment = new LocalizedText(baseInfo["comment"]),
+                Name = LocalizedText.FromCsv(baseInfo, "name"),
+                Comment = LocalizedText.FromCsv(baseInfo, "comment"),
                 Requirements = JsonConvert.DeserializeObject<List<int>>(baseInfo["requirements"]) ?? new(),
                 Reusable = int.Parse(baseInfo["reusable"]) == 1,
                 BuffList = new(),
@@ -201,7 +201,6 @@ namespace network.common.data
         {
             if (string.IsNullOrEmpty(jsonString) || jsonString == "[]") return new();
 
-            jsonString = jsonString.Trim('"');
             var arrays = JsonConvert.DeserializeObject<List<int[]>>(jsonString);
             return arrays?.Select(arr => (id: arr[0], coolTime: arr[1], value: arr[2])).ToList();
         }
@@ -210,7 +209,6 @@ namespace network.common.data
         {
             if (string.IsNullOrEmpty(jsonString) || jsonString == "[]") return new();
 
-            jsonString = jsonString.Trim('"');
             var arrays = JsonConvert.DeserializeObject<List<int[]>>(jsonString);
 
             return arrays?.Select(arr => (id: arr[0], value: arr[1], interval: arr.Length > 2 ? arr[2] : 0)).ToList();
@@ -220,7 +218,6 @@ namespace network.common.data
         {
             if (string.IsNullOrEmpty(jsonString) || jsonString == "[]") return new();
 
-            jsonString = jsonString.Trim('"');
             var arrays = JsonConvert.DeserializeObject<List<float[]>>(jsonString);
 
             return arrays?.Select(arr => (id: arr[0], value: arr[1])).ToList();

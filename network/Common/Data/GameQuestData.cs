@@ -91,12 +91,12 @@ namespace network.common.data
                 {
                     // JSON 파싱 실패 시 수동 파싱
                     // 따옴표와 대괄호 제거
-                    value = value.Trim('"').Trim('[', ']');
+                    value = value.Trim('[', ']');
                     if (string.IsNullOrWhiteSpace(value))
                         return new List<int>();
 
                     return value.Split(',')
-                               .Select(s => s.Trim().Trim('"')) // 개별 값의 따옴표도 제거
+                               .Select(s => s.Trim())
                                .Where(s => !string.IsNullOrWhiteSpace(s))
                                .Select(int.Parse)
                                .ToList();
@@ -118,7 +118,7 @@ namespace network.common.data
             try
             {
                 // 따옴표 제거 후 JSON 파싱 시도
-                var cleanValue = value.Trim('"');
+                var cleanValue = value;
                 return JsonConvert.DeserializeObject<List<(int, int)>>(cleanValue) ?? new List<(int, int)>();
             }
             catch

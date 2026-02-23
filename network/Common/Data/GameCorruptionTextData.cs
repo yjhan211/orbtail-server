@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using network.common.data.helpers;
 using network.managers;
 
@@ -11,7 +12,7 @@ namespace network.common.data
 {
     public static class GameCorruptionTextData
     {
-        private static Dictionary<CreepyType, List<string>> _textsByType = new();
+        private static Dictionary<CreepyType, List<LocalizedText>> _textsByType = new();
 
         public static void Initialize(List<CsvRow> csvData)
         {
@@ -19,7 +20,7 @@ namespace network.common.data
 
             foreach (CreepyType type in Enum.GetValues(typeof(CreepyType)))
             {
-                _textsByType[type] = new List<string>();
+                _textsByType[type] = new List<LocalizedText>();
             }
 
             foreach (var row in csvData)
@@ -31,7 +32,7 @@ namespace network.common.data
                     var creepyType = (CreepyType)typeValue;
                     if (_textsByType.ContainsKey(creepyType))
                     {
-                        _textsByType[creepyType].Add(row["text"]);
+                        _textsByType[creepyType].Add(LocalizedText.FromCsv(row, "text"));
                     }
                 }
             }
@@ -40,7 +41,7 @@ namespace network.common.data
         public static List<string> GetTexts(CreepyType type)
         {
             return _textsByType.TryGetValue(type, out var texts)
-                ? new List<string>(texts)
+                ? texts.Select(t => t.Kr).ToList()
                 : new List<string>();
         }
 

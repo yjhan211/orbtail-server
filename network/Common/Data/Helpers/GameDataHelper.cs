@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using network.common.data.helpers;
 using network.managers;
 #if UNITY_5_3_OR_NEWER
@@ -31,9 +32,10 @@ namespace network.common.data.helpers
             {
                 public const string Info = "interactable_info.csv";
                 public const string Action = "interactable_action.csv";
+                public const string Violation = "interactable_action_violation.csv";
                 public const string ItemPool = "interactable_item_pool.csv";
 
-                public static readonly string[] ALL = new[] { Info, Action, ItemPool };
+                public static readonly string[] ALL = new[] { Info, Action, Violation, ItemPool };
             }
 
             public static class Exit
@@ -251,6 +253,7 @@ namespace network.common.data.helpers
             GameInteractableData.Initialize(
                 loadedData[DataFiles.Interactable.Info],
                 loadedData[DataFiles.Interactable.Action],
+                loadedData[DataFiles.Interactable.Violation],
                 loadedData[DataFiles.Interactable.ItemPool]
             );
 
@@ -262,14 +265,94 @@ namespace network.common.data.helpers
 
         private static void ValidateAllData()
         {
-            try
+            GameMapData.Validate();
+            ValidateReferentialIntegrity();
+        }
+
+        /// <summary>
+        /// CSV 간 참조 무결성 검증
+        /// </summary>
+        private static void ValidateReferentialIntegrity()
+        {
+            Log("[GameDataHelper] Validating referential integrity...");
+
+            var errors = new List<string>();
+            var itemIds = new HashSet<int>(GameItemData.GetAllList().Select(i => i.Id));
+            var poolIds = GameInteractableData.GetAllItemPoolIds();
+
+            // 1. interactable_action result_type=1(REWARD_POOL) → interactable_item_pool id 존재
+            foreach (var info in GameInteractableData.GetAll())
             {
-                GameMapData.Validate();
+                foreach (var action in info.Actions)
+                {
+                    if (action.ResultType == ActionResultType.REWARD_POOL && !poolIds.Contains(action.ResultId))
+                    {
+                        errors.Add($"interactable_action [{info.Id}_{action.ActionId}]: result_id={action.ResultId}이 item_pool에 없음");
+                    }
+
+                    // 5. interactable_action require_item_id (≠0) → item_info id 존재
+                    if (action.RequireItemId != 0 && !itemIds.Contains(action.RequireItemId))
+                    {
+                        errors.Add($"interactable_action [{info.Id}_{action.ActionId}]: require_item_id={action.RequireItemId}이 item_info에 없음");
+                    }
+                }
             }
-            catch (Exception)
+
+            // 2. door_info required_item_id → item_info id 존재
+            foreach (var door in GameDoorData.GetAll())
             {
-                throw;
+                if (door.RequiredItemId != 0 && !itemIds.Contains(door.RequiredItemId))
+                {
+                    errors.Add($"door_info [{door.DoorId}]: required_item_id={door.RequiredItemId}이 item_info에 없음");
+                }
             }
+
+            // 3, 4. exit_step 검증
+            foreach (var (groupId, steps) in GameExitData.GetAllStepGroups())
+            {
+                foreach (var step in steps)
+                {
+                    // 3. target_item_id → item_info id 존재
+                    foreach (var targetItemId in step.TargetItemIds)
+                    {
+                        if (!itemIds.Contains(targetItemId))
+                        {
+                            errors.Add($"exit_step [group={groupId}, order={step.StepOrder}]: target_item_id={targetItemId}이 item_info에 없음");
+                        }
+                    }
+
+                    // 4. target_interactable_action → interactable_info + interactable_action 유효 조합
+                    foreach (var actionKey in step.TargetInteractableActions)
+                    {
+                        var parts = actionKey.Split('_');
+                        if (parts.Length != 2) continue;
+
+                        if (int.TryParse(parts[0], out var interactId) && int.TryParse(parts[1], out var actionId))
+                        {
+                            var interactable = GameInteractableData.Get(interactId);
+                            if (interactable == null)
+                            {
+                                errors.Add($"exit_step [group={groupId}, order={step.StepOrder}]: interactable {interactId}이 interactable_info에 없음");
+                            }
+                            else if (!interactable.Actions.Any(a => a.ActionId == actionId))
+                            {
+                                errors.Add($"exit_step [group={groupId}, order={step.StepOrder}]: action {interactId}_{actionId}이 interactable_action에 없음");
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (errors.Count > 0)
+            {
+                foreach (var error in errors)
+                {
+                    LogError($"[Integrity] {error}");
+                }
+                throw new InvalidDataException($"참조 무결성 검증 실패: {errors.Count}건\n{string.Join("\n", errors)}");
+            }
+
+            Log($"[GameDataHelper] Referential integrity validation passed!");
         }
     }
 }

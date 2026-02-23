@@ -27,9 +27,9 @@ namespace network.common.data
                     TargetItemIds = ParseIntArray(row["target_item_id"]),
                     TargetInteractableActions = ParseStringArray(row["target_interactable_action"]),
                     TargetAreas = ParseIntArray(row["target_area"]),
-                    TextTemplate = row["text_template"].Trim('"'),
-                    InsanityTextTemplate = row["insanity_text_template"].Trim('"'),
-                    SummaryTemplate = row["summary_template"].Trim('"')
+                    TextTemplate = row["text_template"],
+                    InsanityTextTemplate = row["insanity_text_template"],
+                    SummaryTemplate = row["summary_template"]
                 };
 
                 if (!StepsByGroup.ContainsKey(groupId))
@@ -47,31 +47,31 @@ namespace network.common.data
 
         private static List<int> ParseIntArray(string json)
         {
-            var trimmed = json?.Trim('"') ?? "";
-            if (string.IsNullOrEmpty(trimmed) || trimmed == "[]")
+            if (string.IsNullOrEmpty(json) || json == "[]")
                 return new List<int>();
 
-            return JsonConvert.DeserializeObject<List<int>>(trimmed) ?? new List<int>();
+            return JsonConvert.DeserializeObject<List<int>>(json) ?? new List<int>();
         }
 
         private static List<string> ParseStringArray(string value)
         {
-            var trimmed = value?.Trim('"').Replace("\"\"", "\"") ?? "";
-            if (string.IsNullOrEmpty(trimmed) || trimmed == "[]")
+            if (string.IsNullOrEmpty(value) || value == "[]")
                 return new List<string>();
 
-            if (trimmed.StartsWith("["))
+            if (value.StartsWith("["))
             {
-                return JsonConvert.DeserializeObject<List<string>>(trimmed) ?? new List<string>();
+                return JsonConvert.DeserializeObject<List<string>>(value) ?? new List<string>();
             }
 
             // 단일 값인 경우
-            return new List<string> { trimmed };
+            return new List<string> { value };
         }
 
         // Getters
         public static List<ExitStepData> GetStepsByGroup(int groupId) =>
             StepsByGroup.GetValueOrDefault(groupId) ?? new List<ExitStepData>();
+
+        public static Dictionary<int, List<ExitStepData>> GetAllStepGroups() => StepsByGroup;
 
         public static void Validate(managers.LogManager logger)
         {

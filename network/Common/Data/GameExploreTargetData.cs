@@ -81,7 +81,6 @@ namespace network.common.data
         public static ExploreTargetInfoData CreateFromData(CsvRow row)
         {
             var posStr = row["position"]
-                .Trim('"')
                 .Trim('(', ')')
                 .Split(',');
 
