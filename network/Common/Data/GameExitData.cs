@@ -56,17 +56,10 @@ namespace network.common.data
 
         private static List<string> ParseStringArray(string value)
         {
-            var trimmed = value?.Trim('"') ?? "";
+            var trimmed = value?.Trim('"').Replace("\"\"", "\"") ?? "";
             if (string.IsNullOrEmpty(trimmed) || trimmed == "[]")
                 return new List<string>();
 
-            // 파이프(|)로 구분된 형식 지원: "701000006_1|701000007_1"
-            if (trimmed.Contains('|'))
-            {
-                return new List<string>(trimmed.Split('|'));
-            }
-
-            // 기존 JSON 배열 형식도 지원 (빈 배열이 아닌 경우)
             if (trimmed.StartsWith("["))
             {
                 return JsonConvert.DeserializeObject<List<string>>(trimmed) ?? new List<string>();
