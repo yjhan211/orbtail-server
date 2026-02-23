@@ -57,6 +57,12 @@ public class GameClientSession : IPeer
     // 활성 대화 상대 PlayerId (수락 후 대화 중)
     private long? _activeConversationPlayerId;
 
+    // 플레이어가 발견한 행동 수칙 (ruleId → 최초 발견자 PlayerId)
+    private readonly Dictionary<int, long> _discoveredRules = new();
+
+    // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
+    private readonly HashSet<(int RuleId, long TargetPlayerId)> _sharedRules = new();
+
     // 인게임 스탯 (게임 종료 시 초기화)
     public int Stamina { get; private set; } = 100;
     public int Corruption { get; private set; } = 0;
@@ -160,6 +166,7 @@ public class GameClientSession : IPeer
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_RESPONSE, async (bytes) => await HandleMessage<C_TO_G_PLAYER_INTERACT_RESPONSE>(bytes, HandlePlayerInteractResponse));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_END, async (bytes) => await HandleMessage<C_TO_G_PLAYER_INTERACT_END>(bytes, HandlePlayerInteractEnd));
         _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_USE_ITEM, async (bytes) => await HandleMessage<C_TO_G_PLAYER_INTERACT_USE_ITEM>(bytes, HandlePlayerInteractUseItem));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_SHARE_RULE, async (bytes) => await HandleMessage<C_TO_G_PLAYER_INTERACT_SHARE_RULE>(bytes, HandlePlayerInteractShareRule));
     }
 
     public async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -1359,6 +1366,8 @@ public class GameClientSession : IPeer
                 if (itemId == 202000003)
                 {
                     ruleId = _areaRuleManager.GetRuleForNote(CurrentMapSubId);
+                    if (ruleId != 0)
+                        _discoveredRules[ruleId] = PlayerId!.Value;
                     _logger.LogInformation("Player {PlayerId} used manual item, got RuleId={RuleId}", PlayerId, ruleId);
                 }
 
@@ -1811,6 +1820,77 @@ public class GameClientSession : IPeer
 
         _logger.LogInformation("PlayerInteractUseItem: PlayerId={PlayerId} used item {ItemId} on PlayerId={TargetId}",
             PlayerId, itemId, targetPlayerId);
+
+        // 대화 종료
+        EndConversation(targetPlayerId, targetSession);
+
+        return Task.CompletedTask;
+    }
+
+    private Task HandlePlayerInteractShareRule(C_TO_G_PLAYER_INTERACT_SHARE_RULE msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        // 활성 대화 검증
+        if (!_activeConversationPlayerId.HasValue || _activeConversationPlayerId.Value != msg.PlayerId)
+        {
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT(false, ErrorCode.INVALID_REQUEST, 0);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
+
+        // 스태미나 체크
+        if (Stamina < InteractStaminaCost)
+        {
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT(false, ErrorCode.INSUFFICIENT_STAMINA, 0);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
+
+        // 수칙 소유 검증
+        if (!_discoveredRules.ContainsKey(msg.RuleId))
+        {
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT(false, ErrorCode.INVALID_REQUEST, 0);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
+
+        // 동일 대상에게 동일 수칙 중복 공유 방지
+        if (!_sharedRules.Add((msg.RuleId, msg.PlayerId)))
+        {
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT(false, ErrorCode.INVALID_REQUEST, 0);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
+
+        // A: 스태미나 차감
+        ModifyStats(staminaDelta: -InteractStaminaCost);
+
+        // 최초 발견자 PlayerId 조회
+        var originalDiscovererId = _discoveredRules[msg.RuleId];
+
+        // B: 대상 플레이어에 수칙 추가 (최초 발견자 전파)
+        var targetPlayerId = msg.PlayerId;
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == targetPlayerId);
+        targetSession?._discoveredRules.TryAdd(msg.RuleId, originalDiscovererId);
+        // B가 A에게 같은 수칙을 되돌려 공유하지 않도록 기록
+        targetSession?._sharedRules.Add((msg.RuleId, PlayerId!.Value));
+
+        // 양쪽에 결과 전송
+        using (var resultPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT(true, ErrorCode.SUCCESS, msg.RuleId, targetPlayerId, originalDiscovererId))
+        {
+            Send(resultPacket);
+        }
+
+        if (targetSession != null)
+        {
+            using var targetResultPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT(true, ErrorCode.SUCCESS, msg.RuleId, targetPlayerId, originalDiscovererId);
+            targetSession.Send(targetResultPacket);
+        }
+
+        _logger.LogInformation("PlayerInteractShareRule: PlayerId={PlayerId} shared rule {RuleId} to PlayerId={TargetId}",
+            PlayerId, msg.RuleId, targetPlayerId);
 
         // 대화 종료
         EndConversation(targetPlayerId, targetSession);

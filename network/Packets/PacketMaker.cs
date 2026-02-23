@@ -579,6 +579,22 @@ public static class PacketMaker
         return packet;
     }
 
+    public static Packet G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT(bool success, ErrorCode errorCode, int ruleId, long targetPlayerId = 0, long originalDiscovererPlayerId = 0)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT);
+        G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT body = new()
+        {
+            Success = success,
+            ErrorCode = errorCode,
+            RuleId = ruleId,
+            TargetPlayerId = targetPlayerId,
+            OriginalDiscovererPlayerId = originalDiscovererPlayerId
+        };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
     public static Packet G_TO_C_PLAYER_INTERACT_END(long playerId)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_INTERACT_END);
