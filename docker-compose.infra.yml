@@ -1,0 +1,27 @@
+# 로컬 디버깅용 인프라 (Redis + NATS만 실행)
+# 사용법: docker compose -f docker-compose.infra.yml up -d
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: scholarcamp-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data-dev:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  nats:
+    image: nats:latest
+    container_name: scholarcamp-nats-dev
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: "-m 8222"
+
+volumes:
+  redis-data-dev:

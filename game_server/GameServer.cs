@@ -143,8 +143,13 @@ public class GameServer : IHostedService
         try
         {
             _natsClientFactory.Initialize(natsEndpoint);
-            // 서버 환경에서 CSV 파일 경로 설정 (bin 디렉토리 기준)
-            GameDataHelper.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
+            // 서버 환경에서 CSV 파일 경로 설정
+            // Dev: 소스 디렉토리에서 직접 읽기 (Docker 볼륨 마운트 대응)
+            var networkSourcePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "network"));
+            if (Directory.Exists(Path.Combine(networkSourcePath, "Common", "csv")))
+                GameDataHelper.SetBasePath(networkSourcePath);
+            else
+                GameDataHelper.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
             GameDataHelper.Initialize();
             MapHelper.Initialize(_serverConfig.GameServerNum);
             _interactableStateManager.Initialize(msg => _logger.LogInformation(msg));

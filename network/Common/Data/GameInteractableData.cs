@@ -18,14 +18,14 @@ namespace network.common.data
         private static readonly Dictionary<int, List<InteractableInfoData>> InfosByZone = new();
         private static readonly Dictionary<int, List<int>> ItemPools = new();
 
-        public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData, List<CsvRow> itemPoolData)
+        public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData, List<CsvRow> violationData, List<CsvRow> itemPoolData)
         {
             // 아이템 풀 데이터 로드
             ItemPools.Clear();
             foreach (var row in itemPoolData)
             {
-                var poolId = int.Parse(row["pool_id"]);
-                var itemIdListJson = row["item_id_list"].Trim('"');
+                var poolId = int.Parse(row["id"]);
+                var itemIdListJson = row["item_id_list"];
                 var itemIds = string.IsNullOrEmpty(itemIdListJson) || itemIdListJson == "[]"
                     ? new List<int>()
                     : JsonConvert.DeserializeObject<List<int>>(itemIdListJson) ?? new List<int>();
@@ -36,13 +36,22 @@ namespace network.common.data
             Infos.Clear();
             InfosByZone.Clear();
 
+            // violation 데이터를 (id, action_id) 키로 매핑
+            var violationsByKey = new Dictionary<(int, int), CsvRow>();
+            foreach (var row in violationData)
+            {
+                var id = int.Parse(row["id"]);
+                var actionId = int.Parse(row["action_id"]);
+                violationsByKey[(id, actionId)] = row;
+            }
+
             // 액션 데이터를 id별로 그룹화
             var actionsByInteractId = actionData
                 .GroupBy(row => int.Parse(row["id"]))
                 .ToDictionary(
                     g => g.Key,
                     g => g.OrderBy(row => int.Parse(row["action_id"]))
-                          .Select(InteractableActionData.CreateFromData)
+                          .Select(row => InteractableActionData.CreateFromData(row, violationsByKey))
                           .ToList()
                 );
 
@@ -64,6 +73,11 @@ namespace network.common.data
         public static List<int> GetItemPool(int poolId)
         {
             return ItemPools.TryGetValue(poolId, out var pool) ? pool : new List<int>();
+        }
+
+        public static HashSet<int> GetAllItemPoolIds()
+        {
+            return new HashSet<int>(ItemPools.Keys);
         }
 
         public static InteractableInfoData Get(int id)
@@ -118,9 +132,9 @@ namespace network.common.data
             {
                 Id = id,
                 ZoneId = int.Parse(row["area_type"]),
-                Name = row["name"].Trim('"'),
-                ShortName = row["short_name"].Trim('"'),
-                Description = row["description"].Trim('"').Replace("\\n", "\n"),
+                Name = row["name"],
+                ShortName = row["short_name"],
+                Description = row["description"].Replace("\\n", "\n"),
                 InteractionType = row.ContainsKey("interaction_type") ? (InteractionType)int.Parse(row["interaction_type"]) : InteractionType.EXPLORE,
                 Actions = actionsByInteractId.TryGetValue(id, out var actions) ? actions : new List<InteractableActionData>()
             };
@@ -154,32 +168,35 @@ namespace network.common.data
         public int RequireItemId { get; private set; }  // 0이면 조건 없음, 0보다 크면 해당 아이템 필요
         public string RequireAction { get; private set; }  // 빈 문자열이면 조건 없음, "interactableId_actionId" 형식
 
-        public static InteractableActionData CreateFromData(CsvRow row)
+        public static InteractableActionData CreateFromData(CsvRow row, Dictionary<(int, int), CsvRow> violationsByKey)
         {
+            var interactId = int.Parse(row["id"]);
+            var actionId = int.Parse(row["action_id"]);
+
             // 기본 결과
-            var resultText = row["result_text"].Trim('"').Replace("\\n", "\n");
+            var resultText = row["result_text"].Replace("\\n", "\n");
             var resultType = row.ContainsKey("result_type") ? (ActionResultType)int.Parse(row["result_type"]) : ActionResultType.NONE;
             var resultId = row.ContainsKey("result_id") ? int.Parse(row["result_id"]) : 0;
             var resultAmount = row.ContainsKey("result_amount") ? int.Parse(row["result_amount"]) : 0;
 
-            // 위반 결과 (비어있으면 기본 결과 사용)
-            var violationResultText = row.ContainsKey("violation_result_text") && !string.IsNullOrEmpty(row["violation_result_text"])
-                ? row["violation_result_text"].Trim('"').Replace("\\n", "\n")
-                : "";
-            var violationResultType = row.ContainsKey("violation_result_type") && !string.IsNullOrEmpty(row["violation_result_type"])
-                ? (ActionResultType)int.Parse(row["violation_result_type"])
-                : ActionResultType.NONE;
-            var violationResultId = row.ContainsKey("violation_result_id") && !string.IsNullOrEmpty(row["violation_result_id"])
-                ? int.Parse(row["violation_result_id"])
-                : 0;
-            var violationResultAmount = row.ContainsKey("violation_result_amount") && !string.IsNullOrEmpty(row["violation_result_amount"])
-                ? int.Parse(row["violation_result_amount"])
-                : 0;
+            // 위반 결과 (별도 CSV에서 조회)
+            var violationResultText = "";
+            var violationResultType = ActionResultType.NONE;
+            var violationResultId = 0;
+            var violationResultAmount = 0;
+
+            if (violationsByKey.TryGetValue((interactId, actionId), out var violationRow))
+            {
+                violationResultText = violationRow["result_text"].Replace("\\n", "\n");
+                violationResultType = (ActionResultType)int.Parse(violationRow["result_type"]);
+                violationResultId = int.Parse(violationRow["result_id"]);
+                violationResultAmount = int.Parse(violationRow["result_amount"]);
+            }
 
             return new InteractableActionData
             {
-                InteractId = int.Parse(row["id"]),
-                ActionId = int.Parse(row["action_id"]),
+                InteractId = interactId,
+                ActionId = actionId,
                 State = row.ContainsKey("state") && !string.IsNullOrEmpty(row["state"]) ? int.Parse(row["state"]) : 0,
                 ActionText = row["action_text"],
                 ResultText = resultText,

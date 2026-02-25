@@ -29,7 +29,7 @@
         <PackageReference Include="StackExchange.Redis.MultiplexerPool" Version="2.2.0" />
     </ItemGroup>
     <ItemGroup>
-        <None Include="Common\csv\**">
+        <None Include="Common\csv\**\*.csv">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
     </ItemGroup>

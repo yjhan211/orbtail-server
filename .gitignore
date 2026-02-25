@@ -1,3 +1,6 @@
+# Windows NUL redirect artifact
+nul
+
 # IDE and Editor Files
 .vscode/
 .vs/
@@ -102,6 +105,9 @@ credentials/
 client_clone_*/
 trivy-results.sarif
 *.sarif
+
+# Common 코드 Junction (원본: network/Common → client/Assets/Scripts/Common)
+client/Assets/Scripts/Common/
 
 # Unity (Client)
 [Ll]ibrary/

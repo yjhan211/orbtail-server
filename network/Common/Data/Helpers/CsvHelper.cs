@@ -68,23 +68,49 @@ namespace network.common.data.helpers
             var currentField = new StringBuilder();
             var inQuotes = false;
 
-            foreach (var currentChar in line)
-                switch (currentChar)
+            for (var i = 0; i < line.Length; i++)
+            {
+                var c = line[i];
+
+                if (inQuotes)
                 {
-                    case '"':
-                        inQuotes = !inQuotes;
-                        currentField.Append(currentChar); // 따옴표 보존
-                        break;
-                    case ',' when !inQuotes:
+                    if (c == '"')
+                    {
+                        // "" 이스케이프 처리: 인용 내부의 연속 따옴표는 리터럴 " 하나로 변환
+                        if (i + 1 < line.Length && line[i + 1] == '"')
+                        {
+                            currentField.Append('"');
+                            i++; // 다음 따옴표 건너뜀
+                        }
+                        else
+                        {
+                            inQuotes = false; // 닫는 따옴표
+                        }
+                    }
+                    else
+                    {
+                        currentField.Append(c);
+                    }
+                }
+                else
+                {
+                    if (c == '"')
+                    {
+                        inQuotes = true; // 여는 따옴표
+                    }
+                    else if (c == ',')
+                    {
                         fields.Add(currentField.ToString());
                         currentField.Clear();
-                        break;
-                    default:
-                        currentField.Append(currentChar);
-                        break;
+                    }
+                    else
+                    {
+                        currentField.Append(c);
+                    }
                 }
+            }
 
-            // Add the last field
+            // 마지막 필드 추가
             fields.Add(currentField.ToString());
 
             return fields.ToArray();
@@ -109,11 +135,7 @@ namespace network.common.data.helpers
                 var index = Array.IndexOf(_headers, columnName);
                 if (index == -1)
                     throw new KeyNotFoundException($"Column '{columnName}' not found");
-                var value = _values[index];
-
-                // 따옴표로 시작하는 값은 그대로 반환
-                if (value.StartsWith("\"") && value.EndsWith("\"")) return value; // 따옴표 보존
-                return value.Trim(); // 일반 값은 공백 제거
+                return _values[index].Trim();
             }
         }
 

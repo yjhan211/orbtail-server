@@ -90,22 +90,10 @@ namespace network.common.data
 
         public static StoryArkEntry CreateFromData(CsvRow row)
         {
-            var content = row["content"];
-
-            // CSV에서 따옴표가 포함된 경우 제거
-            if (!string.IsNullOrEmpty(content))
-            {
-                content = content.Trim();
-                if (content.StartsWith("\"") && content.EndsWith("\"") && content.Length >= 2)
-                {
-                    content = content.Substring(1, content.Length - 2);
-                }
-            }
-
             return new StoryArkEntry
             {
                 Id = int.Parse(row["id"]),
-                Content = content
+                Content = row["content"]
             };
         }
     }

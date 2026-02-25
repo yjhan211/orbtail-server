@@ -95,6 +95,18 @@ namespace network.common
         // 복도 규칙 프로토콜
         G_TO_C_CORRIDOR_BELL, // 복도 종소리 이벤트
 
+        // 플레이어 상호작용 프로토콜
+        C_TO_G_PLAYER_INTERACT_REQUEST,   // A→서버: 상호작용 요청
+        G_TO_C_PLAYER_INTERACT_REQUEST,   // 서버→A,B: 요청 결과/알림
+        C_TO_G_PLAYER_INTERACT_RESPONSE,  // B→서버: 수락/거절
+        G_TO_C_PLAYER_INTERACT_RESULT,    // 서버→A,B: 최종 결과
+        C_TO_G_PLAYER_INTERACT_END,       // 대화 종료 요청
+        G_TO_C_PLAYER_INTERACT_END,       // 대화 종료 알림
+        C_TO_G_PLAYER_INTERACT_USE_ITEM,      // 상호작용 중 아이템 사용 요청
+        G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT, // 상호작용 중 아이템 사용 결과
+        C_TO_G_PLAYER_INTERACT_SHARE_RULE,        // 상호작용 중 수칙 공유 요청
+        G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT,  // 상호작용 중 수칙 공유 결과
+
         END
     }
 
@@ -155,6 +167,7 @@ namespace network.common
         INVALID_ITEM_TYPE = 507,
         REQUIRED_ITEM_MISSING = 508,  // 액션 수행에 필요한 아이템 미보유
         REQUIRED_ACTION_NOT_COMPLETED = 509,  // 선행 액션 미완료
+        INSUFFICIENT_STAMINA = 510,  // 스태미나 부족
 
         // 탈출 의식 (600~699)
         EXIT_NOT_AVAILABLE = 600,
