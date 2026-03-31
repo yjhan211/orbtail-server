@@ -109,6 +109,8 @@ trivy-results.sarif
 # Unity 외부 플러그인 (에셋스토어에서 각자 임포트)
 client/Assets/Plugins/AllIn1SpriteShader/
 client/Assets/Spine/
+client/Assets/Sprite Shaders Ultimate/
+client/Assets/TextMesh Pro/
 
 # Common 코드 Junction (원본: network/Common → client/Assets/Scripts/Common)
 client/Assets/Scripts/Common/
