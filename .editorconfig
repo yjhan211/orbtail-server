@@ -14,9 +14,6 @@ insert_final_newline = true
 # ========== C# ==========
 [*.cs]
 
-# --- 네임스페이스 ---
-csharp_style_namespace_declarations = file_scoped:suggestion
-
 # --- 괄호 (Allman 스타일: 다음 줄) ---
 csharp_new_line_before_open_brace = all
 csharp_new_line_before_else = true
@@ -64,19 +61,7 @@ dotnet_style_qualification_for_event = false:suggestion
 dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
 
-# --- 네이밍: private 필드 _camelCase ---
-dotnet_naming_rule.private_fields_should_be_underscore_camel.severity = warning
-dotnet_naming_rule.private_fields_should_be_underscore_camel.symbols = private_fields
-dotnet_naming_rule.private_fields_should_be_underscore_camel.style = underscore_camel_case
-
-dotnet_naming_symbols.private_fields.applicable_kinds = field
-dotnet_naming_symbols.private_fields.applicable_accessibilities = private, protected, private_protected
-dotnet_naming_symbols.private_fields.required_modifiers =
-
-dotnet_naming_style.underscore_camel_case.required_prefix = _
-dotnet_naming_style.underscore_camel_case.capitalization = camel_case
-
-# --- 네이밍: const는 PascalCase ---
+# --- 네이밍: const/static readonly → PascalCase (우선순위 높음) ---
 dotnet_naming_rule.constants_should_be_pascal.severity = suggestion
 dotnet_naming_rule.constants_should_be_pascal.symbols = constants
 dotnet_naming_rule.constants_should_be_pascal.style = pascal_case
@@ -84,7 +69,34 @@ dotnet_naming_rule.constants_should_be_pascal.style = pascal_case
 dotnet_naming_symbols.constants.applicable_kinds = field
 dotnet_naming_symbols.constants.required_modifiers = const
 
+dotnet_naming_rule.static_readonly_should_be_pascal.severity = suggestion
+dotnet_naming_rule.static_readonly_should_be_pascal.symbols = static_readonly_fields
+dotnet_naming_rule.static_readonly_should_be_pascal.style = pascal_case
+
+dotnet_naming_symbols.static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.static_readonly_fields.applicable_accessibilities = *
+dotnet_naming_symbols.static_readonly_fields.required_modifiers = static, readonly
+
 dotnet_naming_style.pascal_case.capitalization = pascal_case
+
+# --- 네이밍: protected 필드 → PascalCase ---
+dotnet_naming_rule.protected_fields_should_be_pascal.severity = suggestion
+dotnet_naming_rule.protected_fields_should_be_pascal.symbols = protected_fields
+dotnet_naming_rule.protected_fields_should_be_pascal.style = pascal_case
+
+dotnet_naming_symbols.protected_fields.applicable_kinds = field
+dotnet_naming_symbols.protected_fields.applicable_accessibilities = protected, protected_internal, private_protected
+
+# --- 네이밍: private 필드 → _camelCase ---
+dotnet_naming_rule.private_fields_should_be_underscore_camel.severity = warning
+dotnet_naming_rule.private_fields_should_be_underscore_camel.symbols = private_fields
+dotnet_naming_rule.private_fields_should_be_underscore_camel.style = underscore_camel_case
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+dotnet_naming_style.underscore_camel_case.required_prefix = _
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case
 
 # --- 네이밍: public 프로퍼티/메서드 PascalCase ---
 dotnet_naming_rule.public_members_should_be_pascal.severity = suggestion
