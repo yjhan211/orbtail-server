@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,28 +20,22 @@ public class HealthCheckService(ILogger<HealthCheckService> logger, IConfigurati
         var builder = WebApplication.CreateBuilder();
 
         builder.Services.AddHealthChecks()
-            .AddRedis(_redisEndpoints, name: "redis", tags: ["ready"]);
+            .AddRedis(_redisEndpoints, "redis", tags: ["ready"]);
 
         builder.WebHost.UseUrls("http://*:8080");
 
         _app = builder.Build();
 
-        _app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
-        {
-            Predicate = _ => false
-        });
+        _app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 
-        _app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
-        {
-            Predicate = check => check.Tags.Contains("ready")
-        });
+        _app.MapHealthChecks("/health/ready",
+            new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 
         _app.MapMetrics();
 
-        logger.LogInformation("Health check service starting on port 8080");
-
+        logger.LogInformation("Health check service starting on port 8080")
+            ;
         _ = _app.RunAsync(cancellationToken);
-
         return Task.CompletedTask;
     }
 

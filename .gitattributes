@@ -1,0 +1,15 @@
+# 줄바꿈 자동 정규화
+* text=auto eol=lf
+
+# Windows 배치 파일은 CRLF 유지
+*.bat text eol=crlf
+
+# 바이너리
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.asset binary
+*.prefab binary
+*.unity binary
+*.meta text eol=lf

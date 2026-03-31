@@ -20,14 +20,14 @@ public class UserServer(
     ICacheHelper cacheHelper,
     IRedLockFactory redLock,
     IServerConfig serverConfig,
-    PlayerService playerService)
+    IPlayerService playerService)
     : IHostedService
 {
-    private CancellationTokenSource? _cts;
-    private Task? _leaveUserTask;
     private readonly ConcurrentQueue<GameSession> _leaveUserQueue = new();
     private readonly ConcurrentDictionary<long, GameSession> _sessions = new();
-    private MatchingManager? _matchingManager;
+    private CancellationTokenSource? _cts;
+    private Task? _leaveUserTask;
+    private IMatchingManager? _matchingManager;
 
     public Task StartAsync(CancellationToken ct)
     {
@@ -60,8 +60,8 @@ public class UserServer(
 
     private void InitializeServices()
     {
-        var natsEndpoint = configuration["natsEndPoint"]
-            ?? throw new InvalidOperationException("NatsEndpoint is not configured");
+        string natsEndpoint = configuration["natsEndPoint"]
+                              ?? throw new InvalidOperationException("NatsEndpoint is not configured");
 
         natsClientFactory.Initialize(natsEndpoint);
         // 서버 환경에서 CSV 파일 경로 설정 (bin 디렉토리 기준)
@@ -78,7 +78,7 @@ public class UserServer(
 
     private void StartNetworkService()
     {
-        var port = configuration.GetValue<short>("servicePort");
+        short port = configuration.GetValue<short>("servicePort");
         networkService.SessionCreatedCallback += OnSessionCreated;
         networkService.Listen(IPAddress.Any, port);
         logger.LogInformation($"Listening on port {port}");
@@ -89,11 +89,10 @@ public class UserServer(
         try
         {
             natsClientFactory.Create();
-            var sessionLogger = logger; // Or create a scoped logger
 
             _ = new GameSession(
                 token,
-                sessionLogger,
+                logger,
                 cacheHelper,
                 redLock,
                 playerService,
@@ -111,13 +110,9 @@ public class UserServer(
     private void RegisterSession(long playerId, GameSession session)
     {
         if (_sessions.TryAdd(playerId, session))
-        {
             logger.LogInformation("Session registered: PlayerId={PlayerId}", playerId);
-        }
         else
-        {
             logger.LogWarning("Session already exists: PlayerId={PlayerId}", playerId);
-        }
     }
 
     private GameSession? GetSession(long playerId)
@@ -136,17 +131,14 @@ public class UserServer(
     private async Task LeaveUser(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
-        {
             try
             {
                 if (_leaveUserQueue.TryDequeue(out var session))
-                {
                     if (session.PlayerId.HasValue)
                     {
                         _sessions.TryRemove(session.PlayerId.Value, out _);
                         logger.LogInformation($"Session removed: PlayerId={session.PlayerId}");
                     }
-                }
 
                 await Task.Delay(100, ct);
             }
@@ -158,6 +150,5 @@ public class UserServer(
             {
                 logger.LogError(ex, "Error in LeaveUser task");
             }
-        }
     }
 }

@@ -1,4 +1,3 @@
-using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -7,28 +6,24 @@ using network.core;
 using network.interfaces;
 using network.packets;
 using network.routing;
-using network.utils;
 using user_server.services;
 
 namespace user_server.network;
 
-public class GameSession : SessionBase
+public sealed class GameSession : SessionBase
 {
-    private readonly IProtocolRouter _subscribeRouter;
-    private readonly PlayerService _playerService;
-    private readonly MatchingManager _matchingManager;
+    private readonly IMatchingManager _matchingManager;
     private readonly Action<long, GameSession> _onSessionRegistered;
-
-    public new long? PlayerId { get; private set; }
-    public PlayerInfo? PlayerInfo { get; private set; }
+    private readonly IPlayerService _playerService;
+    private readonly IProtocolRouter _subscribeRouter;
 
     public GameSession(
         UserToken token,
         ILogger logger,
         ICacheHelper cacheHelper,
         IRedLockFactory redLock,
-        PlayerService playerService,
-        MatchingManager matchingManager,
+        IPlayerService playerService,
+        IMatchingManager matchingManager,
         Action<long, GameSession> onSessionRegistered)
         : base(token, logger, cacheHelper, redLock)
     {
@@ -40,28 +35,45 @@ public class GameSession : SessionBase
         InitializeProtocolHandlers();
     }
 
+    public new long? PlayerId { get; private set; }
+    public PlayerInfo? PlayerInfo { get; private set; }
+
     protected override void InitializeProtocolHandlers()
     {
         // 클라이언트 프로토콜
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_HEART_BEAT, HandleHeartBeat);
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_LOGIN, async (bytes) => await HandleMessage<C_TO_U_LOGIN>(bytes, Login));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_LOGIN,
+            async bytes => await HandleMessage<C_TO_U_LOGIN>(bytes, Login));
         // C_TO_U_PLAYER_INFO는 세션 기반 게임에서는 GameServer에서 처리 (G_TO_C_PLAYER_INFO)
         // _protocolRouter.RegisterHandler(Protocol.C_TO_U_PLAYER_INFO, async (bytes) => await HandleMessage<C_TO_U_PLAYER_INFO>(bytes, GetPlayerInfo));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_WEAR_ITEM, async (bytes) => await HandleMessage<C_TO_U_WEAR_ITEM>(bytes, WearItem));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_USE_ITEM, async (bytes) => await HandleMessage<C_TO_U_USE_ITEM>(bytes, UseItem));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_MSG, async (bytes) => await HandleMessage<C_TO_U_CHAT_MSG>(bytes, AppendChat));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_LOG, async (_) => await SendChatHistory(ChatType.ALL));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_SET_NAME, async (bytes) => await HandleMessage<C_TO_U_SET_NAME>(bytes, SetName));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_INCREASE, async (bytes) => await HandleMessage<C_TO_U_QUEST_INCREASE>(bytes, IncreaseQuestCount));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_SUCCESS, async (bytes) => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, CompleteQuest));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_LIST, async (_) => await SendMailList());
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_RECEIVE, async (bytes) => await HandleMessage<C_TO_U_MAIL_RECEIVE>(bytes, ReceiveMail));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING, async (bytes) => await HandleMessage<C_TO_U_MATCHING>(bytes, HandleMatching));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING_CANCEL, async (_) => await HandleMatchingCancel());
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_WEAR_ITEM,
+            async bytes => await HandleMessage<C_TO_U_WEAR_ITEM>(bytes, WearItem));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_USE_ITEM,
+            async bytes => await HandleMessage<C_TO_U_USE_ITEM>(bytes, UseItem));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_MSG,
+            async bytes => await HandleMessage<C_TO_U_CHAT_MSG>(bytes, AppendChat));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_LOG, async _ => await SendChatHistory(ChatType.ALL));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_SET_NAME,
+            async bytes => await HandleMessage<C_TO_U_SET_NAME>(bytes, SetName));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_INCREASE,
+            async bytes => await HandleMessage<C_TO_U_QUEST_INCREASE>(bytes, IncreaseQuestCount));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_SUCCESS,
+            async bytes => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, CompleteQuest));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_LIST, async _ => await SendMailList());
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_RECEIVE,
+            async bytes => await HandleMessage<C_TO_U_MAIL_RECEIVE>(bytes, ReceiveMail));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING,
+            async bytes => await HandleMessage<C_TO_U_MATCHING>(bytes, HandleMatching));
+        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING_CANCEL, async _ => await HandleMatchingCancel());
 
         // 구독 프로토콜
-        _subscribeRouter.RegisterHandler(Protocol.U_TO_C_CHAT_MSG, bytes => HandleMessage<U_TO_C_CHAT_MSG>(bytes, SubscribeChatMsg));
-        _subscribeRouter.RegisterHandler(Protocol.U_TO_U_DUPLICATE, _ => { ReceiveDuplicate(); return Task.CompletedTask; });
+        _subscribeRouter.RegisterHandler(Protocol.U_TO_C_CHAT_MSG,
+            bytes => HandleMessage<U_TO_C_CHAT_MSG>(bytes, SubscribeChatMsg));
+        _subscribeRouter.RegisterHandler(Protocol.U_TO_U_DUPLICATE, _ =>
+        {
+            ReceiveDuplicate();
+            return Task.CompletedTask;
+        });
     }
 
     protected override bool ShouldSkipLogging(Protocol protocolId)
@@ -83,7 +95,7 @@ public class GameSession : SessionBase
             _logger.LogInformation("Login request received: AccountToken={AccountToken}", msg.AccountToken);
 
             // AccountToken이 없거나 파싱 실패시 Redis INCR로 새 PlayerId 생성
-            if (string.IsNullOrEmpty(msg.AccountToken) || !long.TryParse(msg.AccountToken, out var playerId))
+            if (string.IsNullOrEmpty(msg.AccountToken) || !long.TryParse(msg.AccountToken, out long playerId))
             {
                 // Redis INCR을 사용해 1부터 순차 증가하는 PlayerId 생성
                 playerId = await _cacheHelper.StringIncrementAsync("player_id_counter");
@@ -102,20 +114,18 @@ public class GameSession : SessionBase
             {
                 // 신규 플레이어 생성
                 _logger.LogInformation("Creating new player: PlayerId={PlayerId}", PlayerId);
-                PlayerInfo = new PlayerInfo(PlayerId.Value, isDummy: false);
+                PlayerInfo = new PlayerInfo(PlayerId.Value, false);
                 await PlayerInfo.Save(_cacheHelper);
                 _logger.LogInformation("New player created and saved: PlayerId={PlayerId}", PlayerId);
             }
             else
             {
-                _logger.LogInformation("Existing player loaded: PlayerId={PlayerId}, Name={Name}", PlayerId, PlayerInfo.Name);
+                _logger.LogInformation("Existing player loaded: PlayerId={PlayerId}, Name={Name}", PlayerId,
+                    PlayerInfo.Name);
             }
 
             // 신규 플레이어 초기 아이템 지급
-            if (PlayerInfo.IsNew)
-            {
-                await SetupNewPlayer(PlayerInfo);
-            }
+            if (PlayerInfo.IsNew) await SetupNewPlayer(PlayerInfo);
 
             // 세션 등록
             _onSessionRegistered(PlayerId.Value, this);
@@ -133,7 +143,8 @@ public class GameSession : SessionBase
             // 로그인 응답 전송
             _logger.LogInformation("Creating login packet for PlayerId={PlayerId}", PlayerId);
             using var loginPacket = PacketMaker.U_TO_C_LOGIN(PlayerInfo);
-            _logger.LogInformation("Sending U_TO_C_LOGIN packet for PlayerId={PlayerId}, Packet size={Size}", PlayerId, loginPacket.ToBytes().Length);
+            _logger.LogInformation("Sending U_TO_C_LOGIN packet for PlayerId={PlayerId}, Packet size={Size}", PlayerId,
+                loginPacket.ToBytes().Length);
             Send(loginPacket);
 
             // 인벤토리 아이템 리스트 전송 (청크 단위로 분할)
@@ -141,18 +152,19 @@ public class GameSession : SessionBase
             {
                 const int chunkSize = 20; // 한 번에 20개씩 전송
                 var itemList = PlayerInfo.InventoryInfo.ItemDict.ToList();
-                var totalChunks = (itemList.Count + chunkSize - 1) / chunkSize;
+                int totalChunks = (itemList.Count + chunkSize - 1) / chunkSize;
 
                 for (int i = 0; i < totalChunks; i++)
                 {
                     var chunk = itemList.Skip(i * chunkSize).Take(chunkSize).ToDictionary(x => x.Key, x => x.Value);
-                    var isEnd = (i == totalChunks - 1);
+                    bool isEnd = i == totalChunks - 1;
 
                     using var itemListPacket = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(chunk, isEnd);
                     Send(itemListPacket);
                 }
 
-                _logger.LogInformation("Sent inventory item list in {ChunkCount} packets: PlayerId={PlayerId}, ItemCount={Count}",
+                _logger.LogInformation(
+                    "Sent inventory item list in {ChunkCount} packets: PlayerId={PlayerId}, ItemCount={Count}",
                     totalChunks, PlayerId, PlayerInfo.InventoryInfo.ItemDict.Count);
             }
 
@@ -171,7 +183,7 @@ public class GameSession : SessionBase
             _logger.LogInformation("Setting up new player: PlayerId={PlayerId}", playerInfo.PlayerId);
 
             // 아이템 UID 카운터 가져오기
-            var itemUidCounter = await _cacheHelper.StringIncrementAsync("item_uid_counter");
+            long itemUidCounter = await _cacheHelper.StringIncrementAsync("item_uid_counter");
 
             // 기본 아이템 3종 먼저 추가 (Top, Bottom, Shoes)
             var defaultTop = new ItemInfo(itemUidCounter++, 104000001, 1);
@@ -212,10 +224,8 @@ public class GameSession : SessionBase
                     case EquipType.BOTTOM:
                     case EquipType.SHOES:
                         // 기본 아이템 3종은 이미 추가했으므로 스킵
-                        if (itemInfoData.Id == 104000001 || itemInfoData.Id == 105000001 || itemInfoData.Id == 106000001)
-                        {
-                            continue;
-                        }
+                        if (itemInfoData.Id == 104000001 || itemInfoData.Id == 105000001 ||
+                            itemInfoData.Id == 106000001) continue;
 
                         var item = new ItemInfo(itemUidCounter++, itemInfoData.Id, 1);
                         playerInfo.InventoryInfo.ItemDict.Add(item.ItemUid, item);
@@ -240,28 +250,6 @@ public class GameSession : SessionBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to setup new player: PlayerId={PlayerId}", playerInfo.PlayerId);
-        }
-    }
-
-    private async Task GetPlayerInfo(C_TO_U_PLAYER_INFO msg)
-    {
-        var playerInfoList = new List<PlayerInfo>();
-
-        foreach (var playerId in msg.PlayerIdList)
-        {
-            await using var playerLock = await PlayerInfo.Lock(_redLock, playerId);
-            var playerInfo = await PlayerInfo.Load(_cacheHelper, playerId);
-
-            if (playerInfo != null)
-            {
-                playerInfoList.Add(playerInfo);
-            }
-        }
-
-        if (playerInfoList.Count > 0)
-        {
-            using var packet = PacketMaker.U_TO_C_PLAYER_INFO(playerInfoList);
-            Send(packet);
         }
     }
 
@@ -419,13 +407,12 @@ public class GameSession : SessionBase
             {
                 _token.Send(p);
                 if (p._protocolId != (int)Protocol.U_TO_C_HEART_BEAT)
-                {
-                    _logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}", (Protocol)p._protocolId, PlayerId);
-                }
+                    _logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}",
+                        (Protocol)p._protocolId, PlayerId);
             }
             else
             {
-                _logger.LogWarning("Invalid packet type: {Type}, PlayerId={PlayerId}", packet?.GetType().Name, PlayerId);
+                _logger.LogWarning("Invalid packet type: {Type}, PlayerId={PlayerId}", packet.GetType().Name, PlayerId);
             }
         }
         catch (Exception ex)

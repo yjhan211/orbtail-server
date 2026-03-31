@@ -9,16 +9,16 @@ using user_server.network;
 
 namespace user_server.services;
 
-public class MatchingManager
+public class MatchingManager : IMatchingManager
 {
-    private readonly ILogger _logger;
-    private readonly ICacheHelper _cacheHelper;
-    private readonly Func<long, GameSession?> _getSession;
-    private readonly Timer _matchingTimer;
     private const string MatchingQueueKey = "matching_queue";
     private const string MatchingIdKey = "matching_id";
     private const int MatchingTimeoutSeconds = 5;
     private const int PlayersPerMatch = 2; // 매칭 인원수
+    private readonly ICacheHelper _cacheHelper;
+    private readonly Func<long, GameSession?> _getSession;
+    private readonly ILogger _logger;
+    private readonly Timer _matchingTimer;
 
     public MatchingManager(ILogger logger, ICacheHelper cacheHelper, Func<long, GameSession?> getSession)
     {
@@ -42,8 +42,8 @@ public class MatchingManager
                 UserChannel = user.GetChannelName()
             };
 
-            var serialized = MessagePackSerializer.Serialize(queueData);
-            var score = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            byte[] serialized = MessagePackSerializer.Serialize(queueData);
+            long score = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
             await _cacheHelper.SortedSetAddAsync(MatchingQueueKey, serialized, score);
 
@@ -62,15 +62,12 @@ public class MatchingManager
         try
         {
             // Sorted Set에서 해당 플레이어 제거
-            var allEntries = await _cacheHelper.SortedSetRangeByScoreAsync(MatchingQueueKey);
+            byte[][] allEntries = await _cacheHelper.SortedSetRangeByScoreAsync(MatchingQueueKey);
 
-            foreach (var entry in allEntries)
+            foreach (byte[] entry in allEntries)
             {
                 var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
-                if (data.PlayerId != playerId)
-                {
-                    continue;
-                }
+                if (data.PlayerId != playerId) continue;
                 await _cacheHelper.SortedSetRemoveAsync(MatchingQueueKey, entry);
                 _logger.LogInformation("플레이어 {PlayerId} 매칭 취소", playerId);
                 return ErrorCode.SUCCESS;
@@ -89,40 +86,36 @@ public class MatchingManager
     {
         try
         {
-            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var cutoffTime = now - MatchingTimeoutSeconds;
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long cutoffTime = now - MatchingTimeoutSeconds;
 
-            var allEntries = await _cacheHelper.SortedSetRangeByScoreAsync(
+            byte[][] allEntries = await _cacheHelper.SortedSetRangeByScoreAsync(
                 MatchingQueueKey,
                 double.NegativeInfinity,
                 cutoffTime
             );
 
-            if (allEntries.Length == 0)
-            {
-                return;
-            }
+            if (allEntries.Length == 0) return;
 
-            var matchableCount = (allEntries.Length / PlayersPerMatch) * PlayersPerMatch;
-            if (matchableCount < PlayersPerMatch)
-            {
-                return;
-            }
+            int matchableCount = allEntries.Length / PlayersPerMatch * PlayersPerMatch;
+            if (matchableCount < PlayersPerMatch) return;
 
-            var entriesToMatch = allEntries.Take(matchableCount).ToArray();
-            for (var i = 0; i < entriesToMatch.Length; i += PlayersPerMatch)
+            byte[][] entriesToMatch = allEntries.Take(matchableCount).ToArray();
+            for (int i = 0; i < entriesToMatch.Length; i += PlayersPerMatch)
             {
-                var groupEntries = entriesToMatch.Skip(i).Take(PlayersPerMatch).ToArray();
-                var matchingId = await _cacheHelper.StringIncrementAsync(MatchingIdKey);
+                byte[][] groupEntries = entriesToMatch.Skip(i).Take(PlayersPerMatch).ToArray();
+                long matchingId = await _cacheHelper.StringIncrementAsync(MatchingIdKey);
 
-                _logger.LogInformation("매칭 성공! matching_id: {MatchingId}, 참가자: {GroupEntriesLength}명", matchingId, groupEntries.Length);
-                foreach (var entry in groupEntries)
+                _logger.LogInformation("매칭 성공! matching_id: {MatchingId}, 참가자: {GroupEntriesLength}명", matchingId,
+                    groupEntries.Length);
+                foreach (byte[] entry in groupEntries)
                 {
                     var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
                     _logger.LogInformation("플레이어 {DataPlayerId} 처리 중...", data.PlayerId);
 
                     var session = _getSession(data.PlayerId);
-                    _logger.LogInformation("세션 조회 결과: PlayerId={PlayerId}, Session={SessionExists}, SessionPlayerId={SessionPlayerId}",
+                    _logger.LogInformation(
+                        "세션 조회 결과: PlayerId={PlayerId}, Session={SessionExists}, SessionPlayerId={SessionPlayerId}",
                         data.PlayerId, session != null ? "있음" : "없음", session?.PlayerId);
 
                     if (session?.PlayerInfo != null)
@@ -137,7 +130,8 @@ public class MatchingManager
                         _logger.LogInformation("MapInfo - InitCell.position: ({X}, {Y}, {Z})",
                             mapInfo.InitCell.position.x, mapInfo.InitCell.position.y, mapInfo.InitCell.position.z);
                         var (spawnPosition, _) = mapInfo.GetInitialPosition();
-                        _logger.LogInformation("플레이어 {DataPlayerId} 스폰 위치: {SpawnPosition}", data.PlayerId, spawnPosition);
+                        _logger.LogInformation("플레이어 {DataPlayerId} 스폰 위치: {SpawnPosition}", data.PlayerId,
+                            spawnPosition);
 
                         // PlayerInfo LastCell 업데이트
                         var playerInfo = await PlayerInfo.Load(_cacheHelper, data.PlayerId);
@@ -147,7 +141,8 @@ public class MatchingManager
                             playerInfo.LastMapSubId = matchingId;
                             playerInfo.LastCell = spawnPosition;
                             await playerInfo.Save(_cacheHelper);
-                            _logger.LogInformation("플레이어 {DataPlayerId} LastCell 업데이트 완료: {SpawnPosition}", data.PlayerId, spawnPosition);
+                            _logger.LogInformation("플레이어 {DataPlayerId} LastCell 업데이트 완료: {SpawnPosition}",
+                                data.PlayerId, spawnPosition);
                         }
                         else
                         {
@@ -155,14 +150,19 @@ public class MatchingManager
                         }
 
                         // 게임서버 정보 (환경변수에서 가져오기, 없으면 기본값)
-                        var gameServerIp = Environment.GetEnvironmentVariable("GAME_SERVER_IP") ?? "127.0.0.1";
-                        var gameServerPort = int.TryParse(Environment.GetEnvironmentVariable("GAME_SERVER_PORT"), out var port) ? port : 9001;
+                        string gameServerIp = Environment.GetEnvironmentVariable("GAME_SERVER_IP") ?? "127.0.0.1";
+                        int gameServerPort =
+                            int.TryParse(Environment.GetEnvironmentVariable("GAME_SERVER_PORT"), out int port)
+                                ? port
+                                : 9001;
 
                         // 게임 종료 시간 계산
-                        var gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(Config.GAME_DURATION_MINUTES).ToUnixTimeMilliseconds();
+                        long gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(Config.GAME_DURATION_MINUTES)
+                            .ToUnixTimeMilliseconds();
 
                         // 매칭 성공 패킷 전송
-                        _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 패킷 생성 중 (MatchingId={MatchingId}, SpawnPosition={SpawnPosition})",
+                        _logger.LogInformation(
+                            "플레이어 {DataPlayerId} 매칭 성공 패킷 생성 중 (MatchingId={MatchingId}, SpawnPosition={SpawnPosition})",
                             data.PlayerId, matchingId, spawnPosition);
 
                         using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
@@ -175,13 +175,15 @@ public class MatchingManager
                             gameEndTimestamp
                         );
 
-                        _logger.LogInformation("플레이어 {DataPlayerId} 패킷 전송 중... (Size={Size})", data.PlayerId, packet.ToBytes().Length);
+                        _logger.LogInformation("플레이어 {DataPlayerId} 패킷 전송 중... (Size={Size})", data.PlayerId,
+                            packet.ToBytes().Length);
                         session.Send(packet);
                         _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 패킷 전송 완료", data.PlayerId);
                     }
                     else
                     {
-                        _logger.LogWarning("플레이어 {DataPlayerId} 세션 또는 PlayerInfo가 null (session: {SessionExists}, PlayerInfo: {PlayerInfoExists})",
+                        _logger.LogWarning(
+                            "플레이어 {DataPlayerId} 세션 또는 PlayerInfo가 null (session: {SessionExists}, PlayerInfo: {PlayerInfoExists})",
                             data.PlayerId, session != null, session?.PlayerInfo != null);
                     }
 
@@ -206,7 +208,12 @@ public class MatchingManager
 [MessagePackObject]
 public class MatchingQueueData
 {
-    [Key(0)] public long PlayerId { get; set; }
-    [Key(1)] public DateTime RequestTime { get; set; }
-    [Key(2)] public string UserChannel { get; set; } = string.Empty;
+    [Key(0)]
+    public long PlayerId { get; set; }
+
+    [Key(1)]
+    public DateTime RequestTime { get; set; }
+
+    [Key(2)]
+    public string UserChannel { get; set; } = string.Empty;
 }

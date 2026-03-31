@@ -47,58 +47,30 @@ internal static class Program
 
     private static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
-        RegisterConfigurationServices(services, hostContext);
-        RegisterCoreServices(services);
-        RegisterInfrastructureServices(services, hostContext);
-        RegisterHelperServices(services);
-        RegisterUserServerServices(services);
-
-        services.AddHostedService<HealthCheckService>();
-        services.AddHostedService<UserServer>();
-    }
-
-    private static void RegisterConfigurationServices(IServiceCollection services, HostBuilderContext hostContext)
-    {
+        // 설정
         var serverConfig = CreateServerConfig(hostContext.Configuration);
         services.AddSingleton<IServerConfig>(serverConfig);
         services.AddSingleton(serverConfig);
-    }
 
-    private static void RegisterCoreServices(IServiceCollection services)
-    {
-        services.AddSingleton<NetworkService>();
-        services.AddSingleton<INetworkService>(provider => provider.GetRequiredService<NetworkService>());
-        services.AddSingleton<NatsClientFactory>();
-        services.AddSingleton<INatsClientFactory>(provider => provider.GetRequiredService<NatsClientFactory>());
+        // 네트워크/NATS
+        services.AddSingleton<INetworkService, NetworkService>();
+        services.AddSingleton<INatsClientFactory, NatsClientFactory>();
+
+        // Redis
+        services.AddSingleton<RedisConnectionPool>(sp => CreateRedisConnectionPool(sp, hostContext));
+        services.AddSingleton<IRedisConnectionPool>(sp => sp.GetRequiredService<RedisConnectionPool>());
+        services.AddSingleton<IRedLockFactory>(sp => sp.GetRequiredService<RedisConnectionPool>().GetRedLockFactory());
+
+        // 헬퍼
+        services.AddSingleton<ICacheHelper, CacheHelper>();
         services.AddSingleton(CreateLogManager);
-    }
 
-    private static void RegisterInfrastructureServices(IServiceCollection services, HostBuilderContext hostContext)
-    {
-        services.AddSingleton<RedisConnectionPool>(provider => CreateRedisConnectionPool(provider, hostContext));
-        services.AddSingleton<IRedisConnectionPool>(provider => provider.GetRequiredService<RedisConnectionPool>());
-        services.AddSingleton<IRedLockFactory>(provider => provider.GetRequiredService<RedisConnectionPool>().GetRedLockFactory());
-    }
+        // 비즈니스 서비스
+        services.AddSingleton<IPlayerService, PlayerService>();
 
-    private static void RegisterHelperServices(IServiceCollection services)
-    {
-        services.AddSingleton<CacheHelper>();
-        services.AddSingleton<ICacheHelper>(provider => provider.GetRequiredService<CacheHelper>());
-    }
-
-    private static void RegisterUserServerServices(IServiceCollection services)
-    {
-        // PlayerService: 플레이어 관련 로직 (인벤토리, 퀘스트, 메일)
-        services.AddSingleton<PlayerService>(provider =>
-        {
-            var logger = provider.GetRequiredService<ILogger<PlayerService>>();
-            var cacheHelper = provider.GetRequiredService<ICacheHelper>();
-            var redLock = provider.GetRequiredService<IRedLockFactory>();
-            return new PlayerService(logger, cacheHelper, redLock);
-        });
-
-        // MatchingManager: 매칭 큐 관리
-        // Note: Will be registered by UserServer with getSession callback
+        // 호스트 서비스
+        services.AddHostedService<HealthCheckService>();
+        services.AddHostedService<UserServer>();
     }
 
     private static ServerConfig CreateServerConfig(IConfiguration configuration)
@@ -111,24 +83,19 @@ internal static class Program
         };
     }
 
-    private static LogManager CreateLogManager(IServiceProvider serviceProvider)
+    private static LogManager CreateLogManager(IServiceProvider sp)
     {
-        var serverConfig = serviceProvider.GetRequiredService<ServerConfig>();
-        var logger = serviceProvider.GetRequiredService<ILogger<LogManager>>();
-
-        return new LogManager(
-            serverConfig.ServerType,
-            serverConfig.ServerId,
-            logger
-        );
+        var serverConfig = sp.GetRequiredService<ServerConfig>();
+        var logger = sp.GetRequiredService<ILogger<LogManager>>();
+        return new LogManager(serverConfig.ServerType, serverConfig.ServerId, logger);
     }
 
-    private static RedisConnectionPool CreateRedisConnectionPool(IServiceProvider provider, HostBuilderContext hostContext)
+    private static RedisConnectionPool CreateRedisConnectionPool(IServiceProvider sp, HostBuilderContext hostContext)
     {
-        var logger = provider.GetRequiredService<ILogger<RedisConnectionPool>>();
+        var logger = sp.GetRequiredService<ILogger<RedisConnectionPool>>();
         var redisPool = new RedisConnectionPool(logger);
         var redisEndpoints = hostContext.Configuration["redisEndpoints"]
-            ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
+                             ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
 
         redisPool.Initialize(redisEndpoints);
         return redisPool;

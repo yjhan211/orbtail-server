@@ -1,0 +1,31 @@
+name: Code Style Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.cs'
+      - '.editorconfig'
+  push:
+    branches: [main]
+    paths:
+      - '**.cs'
+      - '.editorconfig'
+
+jobs:
+  format-check:
+    name: dotnet format
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore server.sln
+
+      - name: Check formatting
+        run: dotnet format server.sln --verify-no-changes --verbosity diagnostic
