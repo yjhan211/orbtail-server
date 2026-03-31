@@ -37,6 +37,7 @@ public class GameSession : SessionBase
         _onSessionRegistered = onSessionRegistered;
 
         _subscribeRouter = new ProtocolRouter(logger);
+        InitializeProtocolHandlers();
     }
 
     protected override void InitializeProtocolHandlers()

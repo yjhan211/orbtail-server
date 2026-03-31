@@ -120,6 +120,7 @@ public partial class GameClientSession : SessionBase
         _doorStateManager = doorStateManager;
         _sabotageManager = sabotageManager;
 
+        InitializeProtocolHandlers();
         _logger.LogInformation("GameClientSession created");
     }
 

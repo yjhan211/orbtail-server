@@ -38,7 +38,8 @@ public abstract class SessionBase : IPeer
         _redLock = redLock;
 
         _protocolRouter = new ProtocolRouter(logger);
-        InitializeProtocolHandlers();
+        // InitializeProtocolHandlers()는 서브클래스 생성자에서 호출
+        // (base 생성자 시점에는 서브클래스 필드가 아직 초기화되지 않음)
     }
 
     /// <summary>
