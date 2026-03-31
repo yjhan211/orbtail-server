@@ -105,7 +105,7 @@ namespace network.common.data.helpers
 #if UNITY_5_3_OR_NEWER
             Debug.Log(message);
 #else
-            Console.WriteLine(message);
+            LogManager.WriteDebugLog(message);
 #endif
         }
 
@@ -114,7 +114,7 @@ namespace network.common.data.helpers
 #if UNITY_5_3_OR_NEWER
             Debug.LogError(message);
 #else
-            Console.Error.WriteLine(message);
+            LogManager.WriteErrorLog(message);
 #endif
         }
 

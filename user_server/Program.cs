@@ -123,9 +123,10 @@ internal static class Program
         );
     }
 
-    private static RedisConnectionPool CreateRedisConnectionPool(IServiceProvider _, HostBuilderContext hostContext)
+    private static RedisConnectionPool CreateRedisConnectionPool(IServiceProvider provider, HostBuilderContext hostContext)
     {
-        var redisPool = new RedisConnectionPool();
+        var logger = provider.GetRequiredService<ILogger<RedisConnectionPool>>();
+        var redisPool = new RedisConnectionPool(logger);
         var redisEndpoints = hostContext.Configuration["redisEndpoints"]
             ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
 

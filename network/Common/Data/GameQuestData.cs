@@ -104,7 +104,7 @@ namespace network.common.data
                 catch (Exception ex)
                 {
                     // 디버깅을 위해 어떤 값이 문제인지 출력
-                    Console.WriteLine($"Failed to parse int list: '{value}' - {ex.Message}");
+                    LogManager.WriteErrorLog($"Failed to parse int list: '{value}' - {ex.Message}");
                     return new List<int>();
                 }
             }

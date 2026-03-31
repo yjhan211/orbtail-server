@@ -12,20 +12,14 @@ using user_server.services;
 
 namespace user_server.network;
 
-public class GameSession : IPeer
+public class GameSession : SessionBase
 {
-    private readonly UserToken _token;
-    private readonly SemaphoreSlim _sessionLock;
-    private readonly ILogger _logger;
-    private readonly ICacheHelper _cacheHelper;
-    private readonly IRedLockFactory _redLock;
-    private readonly IProtocolRouter _protocolRouter;
     private readonly IProtocolRouter _subscribeRouter;
     private readonly PlayerService _playerService;
     private readonly MatchingManager _matchingManager;
     private readonly Action<long, GameSession> _onSessionRegistered;
 
-    public long? PlayerId { get; private set; }
+    public new long? PlayerId { get; private set; }
     public PlayerInfo? PlayerInfo { get; private set; }
 
     public GameSession(
@@ -36,23 +30,16 @@ public class GameSession : IPeer
         PlayerService playerService,
         MatchingManager matchingManager,
         Action<long, GameSession> onSessionRegistered)
+        : base(token, logger, cacheHelper, redLock)
     {
-        _token = token;
-        _token.SetPeer(this);
-        _sessionLock = new SemaphoreSlim(1);
-        _logger = logger;
-        _cacheHelper = cacheHelper;
-        _redLock = redLock;
         _playerService = playerService;
         _matchingManager = matchingManager;
         _onSessionRegistered = onSessionRegistered;
 
-        _protocolRouter = new ProtocolRouter(logger);
         _subscribeRouter = new ProtocolRouter(logger);
-        InitializeProtocolHandlers();
     }
 
-    private void InitializeProtocolHandlers()
+    protected override void InitializeProtocolHandlers()
     {
         // 클라이언트 프로토콜
         _protocolRouter.RegisterHandler(Protocol.C_TO_U_HEART_BEAT, HandleHeartBeat);
@@ -76,43 +63,9 @@ public class GameSession : IPeer
         _subscribeRouter.RegisterHandler(Protocol.U_TO_U_DUPLICATE, _ => { ReceiveDuplicate(); return Task.CompletedTask; });
     }
 
-    public async Task OnMessageFromClient(Const<byte[]> buffer)
+    protected override bool ShouldSkipLogging(Protocol protocolId)
     {
-        try
-        {
-            await _sessionLock.WaitAsync();
-
-            using var packet = Packet.Create(buffer);
-            var protocolId = (Protocol)packet.PopProtocolId();
-            var playerId = packet.PopPlayerId();
-            var body = packet.PopBody();
-
-            if (protocolId != Protocol.C_TO_U_HEART_BEAT)
-            {
-                _logger.LogInformation("[Receive] Protocol: {Protocol}, PlayerId: {PlayerId}, BodyLength: {BodyLength}", protocolId, playerId, body.Length);
-            }
-
-            await _protocolRouter.RouteAsync(protocolId, body);
-
-            if (protocolId != Protocol.C_TO_U_HEART_BEAT)
-            {
-                _logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error processing client message");
-        }
-        finally
-        {
-            _sessionLock.Release();
-        }
-    }
-
-    private async Task HandleMessage<T>(byte[] body, Func<T, Task> handler) where T : IMessagePackObject
-    {
-        var message = MessagePackSerializer.Deserialize<T>(body);
-        await handler(message);
+        return protocolId == Protocol.C_TO_U_HEART_BEAT;
     }
 
     private Task HandleHeartBeat(byte[] _)
@@ -457,14 +410,12 @@ public class GameSession : IPeer
         Disconnect();
     }
 
-    public void Send(IPacket packet)
+    public override void Send(IPacket packet)
     {
         try
         {
             if (packet is Packet p)
             {
-                // _logger.LogInformation("Sending packet: Protocol={Protocol}, Size={Size}, PlayerId={PlayerId}, TokenReleased={TokenReleased}, SocketNull={SocketNull}",
-                //     (Protocol)p._protocolId, p.ToBytes().Length, PlayerId, _token.IsReleased, _token.Socket == null);
                 _token.Send(p);
                 if (p._protocolId != (int)Protocol.U_TO_C_HEART_BEAT)
                 {
@@ -493,12 +444,12 @@ public class GameSession : IPeer
         _token.Disconnect();
     }
 
-    public void OnRemoved()
+    public override void OnRemoved()
     {
         _logger.LogInformation($"Session removed: PlayerId={PlayerId}");
     }
 
-    public void OnDisconnect()
+    public override void OnDisconnect()
     {
         _logger.LogInformation($"Session disconnected: PlayerId={PlayerId}");
 
@@ -508,10 +459,5 @@ public class GameSession : IPeer
         //     var playerSubject = SubjectHelper.GetPlayerSubject(PlayerId.Value);
         //     _natsClient.Unsubscribe(playerSubject);
         // }
-    }
-
-    public Task<UserToken?> Release()
-    {
-        return Task.FromResult<UserToken?>(_token);
     }
 }

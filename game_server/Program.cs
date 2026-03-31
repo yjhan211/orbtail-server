@@ -83,9 +83,10 @@ internal static partial class Program
             )
         );
 
-        services.AddSingleton<RedisConnectionPool>(_ =>
+        services.AddSingleton<RedisConnectionPool>(sp =>
         {
-            var redisPool = new RedisConnectionPool();
+            var logger = sp.GetRequiredService<ILogger<RedisConnectionPool>>();
+            var redisPool = new RedisConnectionPool(logger);
             var redisEndpoints = hostContext.Configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
             redisPool.Initialize(redisEndpoints);
             return redisPool;

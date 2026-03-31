@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using network.interfaces;
 using RedLockNet;
 using RedLockNet.SERedis;
@@ -11,8 +12,14 @@ public class RedisConnectionPool : IRedisConnectionPool
 {
     private readonly ConcurrentDictionary<int, IDatabase> _databases = new();
     private readonly object _lock = new();
+    private readonly ILogger<RedisConnectionPool> _logger;
     private Lazy<ConnectionMultiplexer>? _lazyConnection;
     private ConfigurationOptions? _options;
+
+    public RedisConnectionPool(ILogger<RedisConnectionPool> logger)
+    {
+        _logger = logger;
+    }
 
     public void Initialize(string connectionString)
     {
@@ -88,11 +95,11 @@ public class RedisConnectionPool : IRedisConnectionPool
             {
                 if (i == retryCount - 1)
                 {
-                    Console.WriteLine($"Redis timeout after {retryCount} retries: {ex.Message}");
+                    _logger.LogWarning("Redis timeout after {RetryCount} retries: {Message}", retryCount, ex.Message);
                     throw;
                 }
 
-                Console.WriteLine($"Redis timeout (attempt {i + 1}/{retryCount}), retrying in {delay}ms...");
+                _logger.LogWarning("Redis timeout (attempt {Attempt}/{RetryCount}), retrying in {Delay}ms...", i + 1, retryCount, delay);
                 await Task.Delay(delay);
                 delay *= 2; // 지수 백오프
             }
@@ -100,11 +107,11 @@ public class RedisConnectionPool : IRedisConnectionPool
             {
                 if (i == retryCount - 1)
                 {
-                    Console.WriteLine($"Redis connection error after {retryCount} retries: {ex.Message}");
+                    _logger.LogError("Redis connection error after {RetryCount} retries: {Message}", retryCount, ex.Message);
                     throw;
                 }
 
-                Console.WriteLine($"Redis connection error (attempt {i + 1}/{retryCount}), retrying in {delay}ms...");
+                _logger.LogWarning("Redis connection error (attempt {Attempt}/{RetryCount}), retrying in {Delay}ms...", i + 1, retryCount, delay);
                 await Task.Delay(delay);
                 delay *= 2; // 지수 백오프
             }
