@@ -94,8 +94,8 @@ internal static class Program
     {
         var logger = sp.GetRequiredService<ILogger<RedisConnectionPool>>();
         var redisPool = new RedisConnectionPool(logger);
-        var redisEndpoints = hostContext.Configuration["redisEndpoints"]
-                             ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
+        string redisEndpoints = hostContext.Configuration["redisEndpoints"]
+                                ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
 
         redisPool.Initialize(redisEndpoints);
         return redisPool;
