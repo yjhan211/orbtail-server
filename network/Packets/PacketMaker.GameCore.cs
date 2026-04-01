@@ -95,7 +95,10 @@ public static partial class PacketMaker
         var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_UPDATE);
         G_TO_C_INTERACTABLE_UPDATE body = new()
         {
-            InteractId = interactId, Order = order, IsExplored = isExplored, ExploredBy = exploredBy
+            InteractId = interactId,
+            Order = order,
+            IsExplored = isExplored,
+            ExploredBy = exploredBy
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
