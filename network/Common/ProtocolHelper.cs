@@ -22,6 +22,7 @@ namespace network.common
             Protocol.G_TO_C_MOVE,
             Protocol.C_TO_G_ATTACK,
             Protocol.C_TO_G_INTERACT,
+            Protocol.G_TO_C_ERROR,
         };
 
         /// <summary>
@@ -76,6 +77,9 @@ namespace network.common
 
             // 중복 로그인
             Protocol.U_TO_U_DUPLICATE,
+
+            // 에러
+            Protocol.U_TO_C_ERROR,
         };
 
         /// <summary>
