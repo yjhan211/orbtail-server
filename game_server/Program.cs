@@ -1,14 +1,12 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.core;
 using network.infrastructure;
-using network.managers;
-using network.config;
-using network.helpers;
 using network.interfaces;
+using network.managers;
 using Serilog;
 
 namespace game_server;
@@ -27,7 +25,7 @@ internal static partial class Program
     private static int ExtractGameServerId(string podName)
     {
         var match = MyRegex().Match(podName);
-        if (match.Success && int.TryParse(match.Groups[1].Value, out var id)) return id + 1;
+        if (match.Success && int.TryParse(match.Groups[1].Value, out int id)) return id + 1;
         return 0;
     }
 
@@ -39,15 +37,17 @@ internal static partial class Program
     private static void ConfigureLogging(HostBuilderContext hostingContext, ILoggingBuilder logging)
     {
         // 서버 구성 가져오기
-        var serverType = hostingContext.Configuration["serverType"] ?? "GameServer";
-        var serverId = ExtractGameServerId(hostingContext.Configuration["gameServerId"] ?? "");
+        string serverType = hostingContext.Configuration["serverType"] ?? "GameServer";
+        int serverId = ExtractGameServerId(hostingContext.Configuration["gameServerId"] ?? "");
 
         // Serilog 구성
         var serilogLogger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .Enrich.WithProperty("serverType", serverType)
             .Enrich.WithProperty("serverId", serverId)
-            .WriteTo.Console(outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}")
+            .WriteTo.Console(
+                outputTemplate:
+                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 
         // 기본 공급자 지우기
@@ -76,10 +76,7 @@ internal static partial class Program
         services.AddSingleton<INatsClientFactory, NatsClientFactory>();
 
         services.AddSingleton<LogManager>(sp =>
-            new LogManager(
-                serverConfig.ServerType,
-                serverConfig.ServerId,
-                sp.GetRequiredService<ILogger<LogManager>>()
+            new LogManager(sp.GetRequiredService<ILogger<LogManager>>()
             )
         );
 
@@ -87,7 +84,8 @@ internal static partial class Program
         {
             var logger = sp.GetRequiredService<ILogger<RedisConnectionPool>>();
             var redisPool = new RedisConnectionPool(logger);
-            var redisEndpoints = hostContext.Configuration["redisEndpoints"] ?? throw new InvalidOperationException("RedisEndpoints is not configured.");
+            string redisEndpoints = hostContext.Configuration["redisEndpoints"] ??
+                                    throw new InvalidOperationException("RedisEndpoints is not configured.");
             redisPool.Initialize(redisEndpoints);
             return redisPool;
         });

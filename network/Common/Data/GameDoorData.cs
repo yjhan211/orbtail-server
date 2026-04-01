@@ -27,7 +27,7 @@ namespace network.common.data
         /// <summary>
         /// 특정 문 정보 가져오기
         /// </summary>
-        public static DoorInfoData Get(int doorId)
+        public static DoorInfoData? Get(int doorId)
         {
             return _doors.TryGetValue(doorId, out var door) ? door : null;
         }

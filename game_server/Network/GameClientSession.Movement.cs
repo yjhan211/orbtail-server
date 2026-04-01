@@ -1,14 +1,8 @@
-using game_server.services;
-using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.core;
-using network.interfaces;
 using network.packets;
-using network.routing;
-using network.utils;
 
 namespace game_server.network;
 
@@ -21,24 +15,32 @@ public partial class GameClientSession
         // 탐색 중에는 이동 불가
         if (CurrentState == PlayerState.Exploring)
         {
-            _logger.LogDebug("Player {PlayerId} tried to move while exploring, ignoring", PlayerId);
+            Logger.LogDebug("Player {PlayerId} tried to move while exploring, ignoring", PlayerId);
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "탐색 중에는 이동할 수 없습니다");
             return;
         }
 
         // SLEEP 중에는 이동 불가
         if (_isSleeping)
         {
-            _logger.LogDebug("Player {PlayerId} tried to move while sleeping, ignoring", PlayerId);
+            Logger.LogDebug("Player {PlayerId} tried to move while sleeping, ignoring", PlayerId);
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "수면 중에는 이동할 수 없습니다");
             return;
         }
 
         try
         {
             var now = DateTime.UtcNow;
-            var deltaTime = (float)(now - _lastMoveTime).TotalSeconds;
+            float deltaTime = (float)(now - _lastMoveTime).TotalSeconds;
             _lastMoveTime = now;
 
             // 1. 클라이언트 Position 검증
+            if (msg.Position == null! || msg.Velocity == null!)
+            {
+                Logger.LogWarning("Player {PlayerId} HandleMove: null Position/Velocity", PlayerId);
+                return;
+            }
+
             var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
 
             // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
@@ -46,13 +48,13 @@ public partial class GameClientSession
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
             // 3. 주기적 저장 (1초마다)
-            var needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
-            var isIdle = msg.Velocity.Magnitude() < 0.01f;
+            bool needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
+            bool isIdle = msg.Velocity.Magnitude() < 0.01f;
 
             if (needsDbUpdate && !isIdle)
             {
-                await using var playerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
-                var playerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
+                await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+                var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
                 if (playerInfo != null)
                 {
@@ -62,7 +64,7 @@ public partial class GameClientSession
                     playerInfo.ObjectInfo.MoveTimestamp = now;
                     playerInfo.ObjectInfo.UpdateCellFromPosition(); // Position에서 Cell 자동 계산
 
-                    await playerInfo.Save(_cacheHelper);
+                    await playerInfo.Save(CacheHelper);
                     _lastSaveTime = now;
                 }
             }
@@ -70,16 +72,17 @@ public partial class GameClientSession
             _lastValidatedPosition = validatedPosition;
 
             // 4. Area 변경 처리 (퇴장 조건 통과한 경우만)
-            var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
             if (newArea != CurrentArea)
             {
                 // 가장 가까운 문 기준으로 잠김 체크 (클라이언트는 이미 막고 있음, 서버는 보정 역할)
                 // 1. 진입하려는 영역의 가장 가까운 문이 잠겨있으면 차단
-                var entryBlockedDoor = _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, newArea, currentCell.X, currentCell.Y);
+                var entryBlockedDoor =
+                    _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, newArea, currentCell.X, currentCell.Y);
                 if (entryBlockedDoor != null)
                 {
-                    _logger.LogWarning("Player {PlayerId} blocked entering area {NewArea} (locked door: {DoorId})",
+                    Logger.LogWarning("Player {PlayerId} blocked entering area {NewArea} (locked door: {DoorId})",
                         PlayerId, newArea, entryBlockedDoor.DoorId);
 
                     // 진입 차단: fallback (밖쪽)으로 보정
@@ -89,10 +92,12 @@ public partial class GameClientSession
                 }
 
                 // 2. 현재 영역의 가장 가까운 문이 잠겨있으면 퇴장 차단
-                var exitBlockedDoor = _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, CurrentArea, currentCell.X, currentCell.Y);
+                var exitBlockedDoor =
+                    _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, CurrentArea, currentCell.X,
+                        currentCell.Y);
                 if (exitBlockedDoor != null)
                 {
-                    _logger.LogWarning("Player {PlayerId} blocked exiting area {CurrentArea} (locked door: {DoorId})",
+                    Logger.LogWarning("Player {PlayerId} blocked exiting area {CurrentArea} (locked door: {DoorId})",
                         PlayerId, CurrentArea, exitBlockedDoor.DoorId);
 
                     // 퇴장 차단: position (안쪽)으로 보정
@@ -101,7 +106,7 @@ public partial class GameClientSession
                     return;
                 }
 
-                _logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
+                Logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
                 var oldArea = CurrentArea;
                 CurrentArea = newArea; // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
@@ -123,45 +128,37 @@ public partial class GameClientSession
             );
 
             var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-            var sameAreaSessions = otherSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea).ToList();
+            var sameAreaSessions = otherSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea)
+                .ToList();
 
-            foreach (var session in sameAreaSessions)
-            {
-                session.Send(packet);
-            }
-
+            foreach (var session in sameAreaSessions) session.Send(packet);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"HandleMove error for player {PlayerId}");
+            Logger.LogError(ex, $"HandleMove error for player {PlayerId}");
+            SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, "이동 처리 오류");
         }
     }
 
     /// <summary>
-    /// 클라이언트 Position 검증 (치트 방지)
-    /// 정상이면 클라이언트 Position 사용, 비정상이면 서버 계산 Position 사용
+    ///     클라이언트 Position 검증 (치트 방지)
+    ///     정상이면 클라이언트 Position 사용, 비정상이면 서버 계산 Position 사용
     /// </summary>
     private Vector3f ValidatePosition(Vector3f clientPos, Vector3f velocity, float deltaTime)
     {
         const float maxSpeed = 10f; // 최대 속도 (units/s)
         const float tolerance = 1.5f; // 허용 오차 (50%)
 
-        // null 체크: 클라이언트 데이터가 null이면 마지막 유효 위치 또는 기본값 반환
-        if (clientPos == null || velocity == null)
-        {
-            _logger.LogWarning("Player {PlayerId} ValidatePosition: null data received (clientPos={ClientPos}, velocity={Velocity})",
-                PlayerId, clientPos == null ? "null" : "ok", velocity == null ? "null" : "ok");
-            return _lastValidatedPosition ?? new Vector3f(0, 0, 0);
-        }
+        // clientPos, velocity는 호출 전에 null 체크 완료
 
         // Z값은 항상 0으로 고정
         clientPos.Z = 0;
 
         // 1. 속도 제한 체크
-        var speed = velocity.Magnitude();
+        float speed = velocity.Magnitude();
         if (speed > maxSpeed)
         {
-            _logger.LogWarning("Player {PlayerId} 속도 초과: {Speed:F2} > {MaxSpeed}", PlayerId, speed, maxSpeed);
+            Logger.LogWarning("Player {PlayerId} 속도 초과: {Speed:F2} > {MaxSpeed}", PlayerId, speed, maxSpeed);
             // 클라이언트 위치를 신뢰하지 않고 서버 계산 위치 사용
             if (_lastValidatedPosition != null)
             {
@@ -178,12 +175,12 @@ public partial class GameClientSession
         if (_lastValidatedPosition != null && deltaTime > 0)
         {
             var delta = clientPos - _lastValidatedPosition;
-            var distance = delta.Magnitude();
-            var maxDistance = maxSpeed * deltaTime * tolerance;
+            float distance = delta.Magnitude();
+            float maxDistance = maxSpeed * deltaTime * tolerance;
 
             if (distance > maxDistance)
             {
-                _logger.LogWarning("Player {PlayerId} 텔레포트 감지: distance={Distance:F2}, maxAllowed={MaxDistance:F2}",
+                Logger.LogWarning("Player {PlayerId} 텔레포트 감지: distance={Distance:F2}, maxAllowed={MaxDistance:F2}",
                     PlayerId, distance, maxDistance);
                 // 서버 계산 위치로 보정
                 return new Vector3f(
@@ -199,16 +196,18 @@ public partial class GameClientSession
         if (!GameMapData.IsMoveablePosition(CurrentMapId, clientCell))
         {
             // 이동 불가능한 위치 → 마지막 유효 위치로 보정
-            if (_lastValidatedPosition != null && _lastValidCell != null)
+            if (_lastValidatedPosition is not null && _lastValidCell is not null)
             {
-                _logger.LogWarning("Player {PlayerId} 이동 불가 위치 감지: ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY}), 보정 → ({VX:F2},{VY:F2})",
+                Logger.LogWarning(
+                    "Player {PlayerId} 이동 불가 위치 감지: ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY}), 보정 → ({VX:F2},{VY:F2})",
                     PlayerId, clientPos.X, clientPos.Y, clientCell.X, clientCell.Y,
                     _lastValidatedPosition.X, _lastValidatedPosition.Y);
                 return _lastValidatedPosition;
             }
 
             // 마지막 유효 위치가 없으면 (첫 이동) 클라이언트 위치 그대로 사용 (초기 스폰 위치 신뢰)
-            _logger.LogWarning("Player {PlayerId} 이동 불가 위치 감지 (첫 이동): ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY})",
+            Logger.LogWarning(
+                "Player {PlayerId} 이동 불가 위치 감지 (첫 이동): ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY})",
                 PlayerId, clientPos.X, clientPos.Y, clientCell.X, clientCell.Y);
         }
 
@@ -222,18 +221,15 @@ public partial class GameClientSession
     #region Isometric 좌표 변환 (Unity Isometric Z as Y 타일맵)
 
     /// <summary>
-    /// World Position을 Cell 좌표로 변환
-    /// Unity Isometric Z as Y 타일맵의 WorldToCell과 동일한 로직
-    ///
-    /// 클라이언트 MapController.WorldToCell:
-    ///   var unityCell = tileMap.WorldToCell(position);
-    ///   return new Vector3Int(unityCell.x + CellOffsetX, unityCell.y + CellOffsetY + 1, 0);
-    ///
-    /// Unity Isometric Z as Y 역변환:
-    ///   unityCellX = floor(WorldX + 2 * WorldY)
-    ///   unityCellY = floor(2 * WorldY - WorldX)
-    ///
-    /// 최종 Cell = unityCell + CellOffset (Y는 +1 추가)
+    ///     World Position을 Cell 좌표로 변환
+    ///     Unity Isometric Z as Y 타일맵의 WorldToCell과 동일한 로직
+    ///     클라이언트 MapController.WorldToCell:
+    ///     var unityCell = tileMap.WorldToCell(position);
+    ///     return new Vector3Int(unityCell.x + CellOffsetX, unityCell.y + CellOffsetY + 1, 0);
+    ///     Unity Isometric Z as Y 역변환:
+    ///     unityCellX = floor(WorldX + 2 * WorldY)
+    ///     unityCellY = floor (2 * WorldY - WorldX)
+    ///     최종 Cell = unityCell + CellOffset (Y는 +1 추가)
     /// </summary>
     private static Cell WorldPositionToCell(Vector3f worldPos)
     {
@@ -253,10 +249,11 @@ public partial class GameClientSession
         {
             if (!PlayerId.HasValue) return;
 
-            _logger.LogInformation("Player {PlayerId} moved from Area {OldArea} to {NewArea}", PlayerId, oldArea, newArea);
+            Logger.LogInformation("Player {PlayerId} moved from Area {OldArea} to {NewArea}", PlayerId, oldArea,
+                newArea);
 
             var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-            var playerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
+            var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
             if (playerInfo == null) return;
 
@@ -272,7 +269,8 @@ public partial class GameClientSession
             // 1. 이전 Area의 플레이어들에게 퇴장 알림 + 나에게 기존 플레이어 삭제 알림
             if (oldArea != AreaType.None)
             {
-                var oldAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == oldArea).ToList();
+                var oldAreaSessions =
+                    allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == oldArea).ToList();
                 using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
 
                 foreach (var session in oldAreaSessions)
@@ -288,32 +286,30 @@ public partial class GameClientSession
                     }
                 }
 
-                _logger.LogDebug("Sent LEAVE to {Count} players in old Area {OldArea}, removed them from my view",
+                Logger.LogDebug("Sent LEAVE to {Count} players in old Area {OldArea}, removed them from my view",
                     oldAreaSessions.Count, oldArea);
             }
 
             // 2. 새 Area의 플레이어들에게 진입 알림 (내 최신 Cell 포함)
             if (newArea != AreaType.None)
             {
-                var newAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == newArea).ToList();
+                var newAreaSessions =
+                    allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == newArea).ToList();
                 var myCell = _lastValidatedPosition != null
                     ? WorldPositionToCell(_lastValidatedPosition)
                     : playerInfo.ObjectInfo.Cell;
                 using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(playerInfo, myCell);
 
-                foreach (var session in newAreaSessions)
-                {
-                    session.Send(enterPacket);
-                }
+                foreach (var session in newAreaSessions) session.Send(enterPacket);
 
-                _logger.LogDebug("Sent ENTER to {Count} players in new Area {NewArea}", newAreaSessions.Count, newArea);
+                Logger.LogDebug("Sent ENTER to {Count} players in new Area {NewArea}", newAreaSessions.Count, newArea);
 
                 // 3. 나에게 새 Area의 다른 플레이어 정보 전송 (세션의 최신 Cell 사용)
                 foreach (var session in newAreaSessions)
                 {
                     if (!session.PlayerId.HasValue) continue;
 
-                    var otherPlayerInfo = await PlayerInfo.Load(_cacheHelper, session.PlayerId.Value);
+                    var otherPlayerInfo = await PlayerInfo.Load(CacheHelper, session.PlayerId.Value);
                     if (otherPlayerInfo != null)
                     {
                         // 세션의 최신 위치에서 Cell 계산 (없으면 캐시된 Cell 사용)
@@ -321,7 +317,7 @@ public partial class GameClientSession
                             ? WorldPositionToCell(session._lastValidatedPosition)
                             : otherPlayerInfo.ObjectInfo.Cell;
 
-                        _logger.LogInformation("Sending Player {OtherId} to Player {MyId}: Cell=({CellX},{CellY})",
+                        Logger.LogInformation("Sending Player {OtherId} to Player {MyId}: Cell=({CellX},{CellY})",
                             session.PlayerId, PlayerId, otherCell.X, otherCell.Y);
 
                         using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(otherPlayerInfo, otherCell);
@@ -329,7 +325,7 @@ public partial class GameClientSession
                     }
                 }
 
-                _logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
+                Logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
 
                 // 4. 나에게 새 Area의 Interactable 목록 전송
                 SendInteractableList(newArea);
@@ -343,12 +339,12 @@ public partial class GameClientSession
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "HandleAreaChange error for player {PlayerId}", PlayerId);
+            Logger.LogError(ex, "HandleAreaChange error for player {PlayerId}", PlayerId);
         }
     }
 
     /// <summary>
-    /// Area 도착 시 탈출 조건 체크
+    ///     Area 도착 시 탈출 조건 체크
     /// </summary>
     private void CheckAreaArrivalForExit(AreaType arrivedArea)
     {
@@ -357,74 +353,77 @@ public partial class GameClientSession
         try
         {
             // target_area 조건 체크
-            var (advanced, escaped) = _exitInstanceManager.OnAreaVisited(CurrentMapSubId, (int)arrivedArea, PlayerId.Value);
+            (bool advanced, bool escaped) =
+                _exitInstanceManager.OnAreaVisited(CurrentMapSubId, (int)arrivedArea, PlayerId.Value);
 
             if (advanced)
             {
                 var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-                var newStepOrder = state.CurrentStepOrder;
+                int newStepOrder = state.CurrentStepOrder;
 
                 // 탈출 성공 시 게임 타이머 정리
                 if (escaped)
                 {
                     CleanupGameTimer(CurrentMapSubId);
-                    _logger.LogInformation("Game timer cleaned up after escape success (area visit): MatchingId={MatchingId}", CurrentMapSubId);
+                    Logger.LogInformation(
+                        "Game timer cleaned up after escape success (area visit): MatchingId={MatchingId}",
+                        CurrentMapSubId);
                 }
 
                 // 진행 결과 응답
                 using var resultPacket = PacketMaker.G_TO_C_EXIT_ADVANCE_RESULT(
-                    success: true,
-                    errorCode: ErrorCode.SUCCESS,
-                    escaped: escaped,
-                    newStepOrder: newStepOrder
+                    true,
+                    ErrorCode.SUCCESS,
+                    escaped,
+                    newStepOrder
                 );
                 Send(resultPacket);
 
                 // 같은 인스턴스의 다른 플레이어들에게 브로드캐스트
                 BroadcastExitStepUpdate(PlayerId.Value, newStepOrder, escaped);
 
-                _logger.LogInformation("Player {PlayerId} area visit advanced exit step: Area={Area}, NewStep={NewStep}, Escaped={Escaped}",
+                Logger.LogInformation(
+                    "Player {PlayerId} area visit advanced exit step: Area={Area}, NewStep={NewStep}, Escaped={Escaped}",
                     PlayerId, arrivedArea, newStepOrder, escaped);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CheckAreaArrivalForExit error for player {PlayerId}", PlayerId);
+            Logger.LogError(ex, "CheckAreaArrivalForExit error for player {PlayerId}", PlayerId);
         }
     }
 
-    public void SendInteractableList(AreaType areaType)
+    private void SendInteractableList(AreaType areaType)
     {
         var objects = _interactableStateManager.GetAreaObjectStates(CurrentMapSubId, areaType);
         if (objects.Count == 0)
         {
-            _logger.LogDebug("No interactable objects in area {AreaType}", areaType);
+            Logger.LogDebug("No interactable objects in area {AreaType}", areaType);
             return;
         }
 
         // 각 오브젝트의 액션 개수 로그
         foreach (var obj in objects)
-        {
-            _logger.LogDebug("InteractableObject Id={InteractId}: {ActionCount} actions",
-                obj.InteractId, obj.Actions?.Count ?? 0);
-        }
+            Logger.LogDebug("InteractableObject Id={InteractId}: {ActionCount} actions",
+                obj.InteractId, obj.Actions.Count);
 
         // 청크로 분할하여 전송 (패킷 크기 제한)
         const int chunkSize = 3;
         for (int i = 0; i < objects.Count; i += chunkSize)
         {
             var chunk = objects.Skip(i).Take(chunkSize).ToList();
-            bool isEnd = (i + chunkSize >= objects.Count);
+            bool isEnd = i + chunkSize >= objects.Count;
             using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, chunk, isEnd);
             Send(packet);
         }
 
-        _logger.LogDebug("Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
+        Logger.LogDebug(
+            "Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
             objects.Count, areaType, PlayerId, CurrentMapSubId);
     }
 
     /// <summary>
-    /// 복도 규칙 위반 체크 및 정신오염도 증가 처리
+    ///     복도 규칙 위반 체크 및 정신오염도 증가 처리
     /// </summary>
     private void CheckCorridorRuleViolation(Vector3f position, Vector3f velocity, AreaType currentArea)
     {
@@ -432,7 +431,7 @@ public partial class GameClientSession
 
         try
         {
-            var corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(CurrentMapSubId);
+            int corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(CurrentMapSubId);
             // 복도 규칙 1번(종소리 중 이동 금지) 또는 6번(정지 금지)일 때만 체크
             if (corridorRuleId != 1 && corridorRuleId != 6) return;
 
@@ -446,7 +445,8 @@ public partial class GameClientSession
 
             if (result.IsViolation)
             {
-                _logger.LogInformation("Player {PlayerId} violated corridor rule {RuleId}: {Message}, Corruption +{Delta}",
+                Logger.LogInformation(
+                    "Player {PlayerId} violated corridor rule {RuleId}: {Message}, Corruption +{Delta}",
                     PlayerId, corridorRuleId, result.Message, result.CorruptionDelta);
 
                 // 정신오염도 증가
@@ -455,7 +455,7 @@ public partial class GameClientSession
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CheckCorridorRuleViolation error for player {PlayerId}", PlayerId);
+            Logger.LogError(ex, "CheckCorridorRuleViolation error for player {PlayerId}", PlayerId);
         }
     }
 }

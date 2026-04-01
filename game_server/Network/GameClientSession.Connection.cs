@@ -1,14 +1,9 @@
-using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.core;
-using network.interfaces;
 using network.packets;
-using network.routing;
-using network.utils;
 
 namespace game_server.network;
 
@@ -18,7 +13,8 @@ public partial class GameClientSession
     {
         try
         {
-            _logger.LogInformation("Client connection request: PlayerId={MsgPlayerId}, MatchingId={MsgMatchingId}", msg.PlayerId, msg.MatchingId);
+            Logger.LogInformation("Client connection request: PlayerId={MsgPlayerId}, MatchingId={MsgMatchingId}",
+                msg.PlayerId, msg.MatchingId);
 
             // TODO: MatchingId 검증 (Redis에서 매칭 정보 확인)
             // 지금은 간단하게 PlayerId만 설정
@@ -37,8 +33,8 @@ public partial class GameClientSession
             _registerSessionCallback(PlayerId.Value, this);
 
             // 초기 위치 로드
-            await using var playerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
-            var playerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
+            await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+            var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
             if (playerInfo != null)
             {
@@ -46,8 +42,10 @@ public partial class GameClientSession
                 _lastValidCell = playerInfo.ObjectInfo.Cell;
                 // 초기 Area 설정
                 CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
-                _logger.LogInformation("Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                    PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X, _lastValidCell?.Y);
+                Logger.LogInformation(
+                    "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
+                    PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
+                    _lastValidCell?.Y);
 
                 // 초기 Area의 Interactable 목록 전송
                 if (CurrentArea != AreaType.None)
@@ -63,23 +61,20 @@ public partial class GameClientSession
             using var connectResultPacket = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId.Value);
             var response = new G_TO_C_CONNECT_RESULT
             {
-                Success = true,
-                ErrorCode = ErrorCode.SUCCESS,
-                Message = "Connected to GameServer"
+                Success = true, ErrorCode = ErrorCode.SUCCESS, Message = "Connected to GameServer"
             };
             connectResultPacket.SetBody(MessagePackSerializer.Serialize(response));
             Send(connectResultPacket);
 
-            _logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
+            Logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
 
             // 인게임 기본 아이템 지급
-            if (GameRuleData.InGameItemList != null)
+            foreach ((int itemId, int count) in GameRuleData.InGameItemList)
             {
-                foreach (var (itemId, count) in GameRuleData.InGameItemList)
-                {
-                    _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, count);
-                    _logger.LogInformation("InGame default item added: PlayerId={PlayerId}, ItemId={ItemId}, Count={Count}", PlayerId, itemId, count);
-                }
+                _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, count);
+                Logger.LogInformation(
+                    "InGame default item added: PlayerId={PlayerId}, ItemId={ItemId}, Count={Count}", PlayerId,
+                    itemId, count);
             }
 
             // 인게임 인벤토리 목록 전송
@@ -100,15 +95,13 @@ public partial class GameClientSession
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to handle connect");
+            Logger.LogError(ex, "Failed to handle connect");
 
             // 연결 실패 응답
             using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT);
             var response = new G_TO_C_CONNECT_RESULT
             {
-                Success = false,
-                ErrorCode = ErrorCode.FATAL,
-                Message = ex.Message
+                Success = false, ErrorCode = ErrorCode.FATAL, Message = ex.Message
             };
             packet.SetBody(MessagePackSerializer.Serialize(response));
             Send(packet);
@@ -117,16 +110,14 @@ public partial class GameClientSession
 
     private async Task BroadcastPlayerJoin()
     {
-        if (!PlayerId.HasValue)
-        {
-            return;
-        }
+        if (!PlayerId.HasValue) return;
 
         try
         {
             var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
             // 같은 Area의 플레이어만 필터링
-            var sameAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea && s.PlayerId.HasValue).ToList();
+            var sameAreaSessions = allSessions
+                .Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea && s.PlayerId.HasValue).ToList();
 
             // 1. 나에게 같은 Area의 다른 플레이어들 정보 전송
             if (sameAreaSessions.Count > 0)
@@ -134,40 +125,36 @@ public partial class GameClientSession
                 var playerInfoList = new List<PlayerInfo>();
                 foreach (var session in sameAreaSessions)
                 {
-                    await using var playerLock = await PlayerInfo.Lock(_redLock, session.PlayerId!.Value);
-                    var playerInfo = await PlayerInfo.Load(_cacheHelper, session.PlayerId!.Value);
-                    if (playerInfo != null)
-                    {
-                        playerInfoList.Add(playerInfo);
-                    }
+                    await using var playerLock = await PlayerInfo.Lock(RedLock, session.PlayerId!.Value);
+                    var playerInfo = await PlayerInfo.Load(CacheHelper, session.PlayerId!.Value);
+                    if (playerInfo != null) playerInfoList.Add(playerInfo);
                 }
 
                 if (playerInfoList.Count > 0)
                 {
                     using var packet = PacketMaker.G_TO_C_PLAYER_INFO(playerInfoList);
                     Send(packet);
-                    _logger.LogInformation("Sent {Count} PlayerInfo in Area {Area} to PlayerId={L}", playerInfoList.Count, CurrentArea, PlayerId);
+                    Logger.LogInformation("Sent {Count} PlayerInfo in Area {Area} to PlayerId={L}",
+                        playerInfoList.Count, CurrentArea, PlayerId);
                 }
             }
 
             // 2. 내 정보 로드
-            await using var myPlayerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
-            var myPlayerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
+            await using var myPlayerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+            var myPlayerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
             if (myPlayerInfo != null)
             {
                 // 3. 같은 Area의 다른 플레이어들에게 내 정보 브로드캐스트
                 using var myPacket = PacketMaker.G_TO_C_PLAYER_INFO([myPlayerInfo]);
-                foreach (var session in sameAreaSessions)
-                {
-                    session.Send(myPacket);
-                }
-                _logger.LogInformation("Broadcasted my PlayerInfo (PlayerId={L}) to {Count} players in Area {Area}", PlayerId, sameAreaSessions.Count, CurrentArea);
+                foreach (var session in sameAreaSessions) session.Send(myPacket);
+                Logger.LogInformation("Broadcasted my PlayerInfo (PlayerId={L}) to {Count} players in Area {Area}",
+                    PlayerId, sameAreaSessions.Count, CurrentArea);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to broadcast player join for PlayerId={L}", PlayerId);
+            Logger.LogError(ex, "Failed to broadcast player join for PlayerId={L}", PlayerId);
         }
     }
 
@@ -176,7 +163,6 @@ public partial class GameClientSession
         _lastHeartbeatTime = DateTime.UtcNow;
 
         // 하트비트 응답 전송
-        var serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         using var packet = PacketMaker.G_TO_C_HEART_BEAT(DateTime.UtcNow);
         Send(packet);
 
@@ -184,91 +170,91 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    /// 하트비트 타임아웃 체크. 타임아웃되면 true 반환
+    ///     하트비트 타임아웃 체크. 타임아웃되면 true 반환
     /// </summary>
     public bool IsHeartbeatTimedOut()
     {
-        var elapsed = (DateTime.UtcNow - _lastHeartbeatTime).TotalSeconds;
+        double elapsed = (DateTime.UtcNow - _lastHeartbeatTime).TotalSeconds;
         return elapsed > HeartbeatTimeoutSeconds;
     }
 
     /// <summary>
-    /// 강제 연결 해제
+    ///     강제 연결 해제
     /// </summary>
     public void ForceDisconnect()
     {
-        _logger.LogWarning("Force disconnecting PlayerId={PlayerId} due to heartbeat timeout", PlayerId);
-        _token.Disconnect();
+        Logger.LogWarning("Force disconnecting PlayerId={PlayerId} due to heartbeat timeout", PlayerId);
+        Token.Disconnect();
     }
 
     /// <summary>
-    /// 게임 타이머 시작 (매칭당 최초 1회만)
+    ///     게임 타이머 시작 (매칭당 최초 1회만)
     /// </summary>
     private void StartGameTimerIfNeeded(long matchingId)
     {
-        lock (_timerLock)
+        lock (TimerLock)
         {
-            if (_gameTimers.ContainsKey(matchingId))
+            if (GameTimers.ContainsKey(matchingId))
             {
-                _logger.LogDebug("Game timer already exists for MatchingId={MatchingId}", matchingId);
+                Logger.LogDebug("Game timer already exists for MatchingId={MatchingId}", matchingId);
                 return;
             }
 
-            _logger.LogInformation("게임 타이머 시작: MatchingId={MatchingId} ({Minutes}분)", matchingId, GameDurationMinutes);
+            Logger.LogInformation("게임 타이머 시작: MatchingId={MatchingId} ({Minutes}분)", matchingId, GameDurationMinutes);
 
-            var timer = new Timer(_ =>
-            {
-                EndGameByTimeout(matchingId);
-            }, null, TimeSpan.FromSeconds(GameDurationSeconds), Timeout.InfiniteTimeSpan);
+            var timer = new Timer(_ => { EndGameByTimeout(matchingId); }, null,
+                TimeSpan.FromSeconds(GameDurationSeconds), Timeout.InfiniteTimeSpan);
 
-            _gameTimers[matchingId] = timer;
+            GameTimers[matchingId] = timer;
         }
     }
 
     /// <summary>
-    /// 시간 초과로 게임 종료
+    ///     시간 초과로 게임 종료
     /// </summary>
     private void EndGameByTimeout(long matchingId)
     {
-        _logger.LogInformation("게임 시간 초과: MatchingId={MatchingId}, 타이머 시작 세션 PlayerId={PlayerId}, CurrentMapSubId={CurrentMapSubId}",
+        Logger.LogInformation(
+            "게임 시간 초과: MatchingId={MatchingId}, 타이머 시작 세션 PlayerId={PlayerId}, CurrentMapSubId={CurrentMapSubId}",
             matchingId, PlayerId, CurrentMapSubId);
 
         // 타이머 정리
-        lock (_timerLock)
+        lock (TimerLock)
         {
-            if (_gameTimers.TryGetValue(matchingId, out var timer))
+            if (GameTimers.TryGetValue(matchingId, out var timer))
             {
                 timer.Dispose();
-                _gameTimers.Remove(matchingId);
+                GameTimers.Remove(matchingId);
             }
         }
 
         // 해당 매칭의 모든 플레이어에게 게임 종료 패킷 전송
         var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
-        _logger.LogInformation("게임 종료 패킷 전송 대상: MatchingId={MatchingId}, 필터(MapId={MapId}, MapSubId={MapSubId}), 대상 세션 수={Count}",
+        Logger.LogInformation(
+            "게임 종료 패킷 전송 대상: MatchingId={MatchingId}, 필터(MapId={MapId}, MapSubId={MapSubId}), 대상 세션 수={Count}",
             matchingId, CurrentMapId, matchingId, sessions.Count);
 
-        using var packet = PacketMaker.G_TO_C_GAME_END(matchingId, isEscaped: false);
+        using var packet = PacketMaker.G_TO_C_GAME_END(matchingId, false);
 
         foreach (var session in sessions)
         {
-            _logger.LogInformation("게임 종료 패킷 전송: PlayerId={PlayerId}, 세션의 CurrentMapSubId={SessionMapSubId}",
+            Logger.LogInformation("게임 종료 패킷 전송: PlayerId={PlayerId}, 세션의 CurrentMapSubId={SessionMapSubId}",
                 session.PlayerId, session.CurrentMapSubId);
             session.Send(packet);
         }
     }
 
     /// <summary>
-    /// 매칭 종료 시 타이머 정리
+    ///     매칭 종료 시 타이머 정리
     /// </summary>
-    public static void CleanupGameTimer(long matchingId)
+    private static void CleanupGameTimer(long matchingId)
     {
-        lock (_timerLock)
+        lock (TimerLock)
         {
-            if (_gameTimers.TryGetValue(matchingId, out var timer))
+            if (GameTimers.TryGetValue(matchingId, out var timer))
             {
                 timer.Dispose();
-                _gameTimers.Remove(matchingId);
+                GameTimers.Remove(matchingId);
             }
         }
     }

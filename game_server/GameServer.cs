@@ -3,47 +3,29 @@ using System.Net;
 using game_server.controllers;
 using game_server.network;
 using game_server.services;
-using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.helpers;
-using network.common.data.models;
 using network.core;
 using network.helpers;
-using network.packets;
-using network.config;
+using network.infrastructure;
 using network.interfaces;
+using network.packets;
 
 namespace game_server;
 
-public class GameServer : IHostedService
+public class GameServer(
+    IConfiguration configuration,
+    ILogger<GameServer> logger,
+    INatsClientFactory natsClientFactory,
+    ICacheHelper cacheHelper,
+    INetworkService networkService,
+    IRedisConnectionPool redisPool,
+    ServerConfig serverConfig)
+    : IHostedService
 {
-    private readonly IConfiguration _configuration;
-    private readonly ILogger<GameServer> _logger;
-    private readonly INatsClientFactory _natsClientFactory;
-    private readonly ICacheHelper _cacheHelper;
-    private readonly INetworkService _networkService;
-    private readonly IRedisConnectionPool _redisPool;
-    private readonly Dictionary<Protocol, Func<long, byte[], Task>> _protocolHandlers;
-
-    private readonly List<InstanceMapController> _instanceControllerList = [];
-    private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
-    private readonly InteractableStateManager _interactableStateManager = new();
-    private readonly InGameInventoryManager _inGameInventoryManager = new();
-    private readonly AreaRuleManager _areaRuleManager = new();
-    private readonly ExitInstanceManager _exitInstanceManager = new();
-    private readonly ItemPoolManager _itemPoolManager = new();
-    private readonly CorridorRuleManager _corridorRuleManager = new();
-    private readonly InteractRuleManager _interactRuleManager = new();
-    private readonly DoorStateManager _doorStateManager = new();
-    private readonly SabotageManager _sabotageManager = new();
-    private CancellationTokenSource _cts = new();
-    private Timer? _heartbeatCheckTimer;
-    private Timer? _infirmaryHealingTimer;
-    private Timer? _corridorStopCheckTimer;
-
     // 하트비트 체크 간격 (10초마다 체크)
     private const int HeartbeatCheckIntervalSeconds = 10;
 
@@ -53,37 +35,29 @@ public class GameServer : IHostedService
 
     // 복도 정지 체크 간격
     private const int CorridorStopCheckIntervalMs = 500;
+    private readonly AreaRuleManager _areaRuleManager = new();
+    private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
+    private readonly CorridorRuleManager _corridorRuleManager = new();
+    private readonly DoorStateManager _doorStateManager = new();
+    private readonly ExitInstanceManager _exitInstanceManager = new();
+    private readonly InGameInventoryManager _inGameInventoryManager = new();
 
-    private readonly ServerConfig _serverConfig;
+    private readonly List<InstanceMapController> _instanceControllerList = [];
+    private readonly InteractableStateManager _interactableStateManager = new();
+    private readonly InteractRuleManager _interactRuleManager = new();
+    private readonly ItemPoolManager _itemPoolManager = new();
+    private readonly SabotageManager _sabotageManager = new();
 
-    public GameServer(
-        IConfiguration configuration,
-        ILogger<GameServer> logger,
-        INatsClientFactory natsClientFactory,
-        ICacheHelper cacheHelper,
-        INetworkService networkService,
-        IRedisConnectionPool redisPool,
-        ServerConfig serverConfig)
-    {
-        _configuration = configuration;
-        _logger = logger;
-        _natsClientFactory = natsClientFactory;
-        _cacheHelper = cacheHelper;
-        _networkService = networkService;
-        _redisPool = redisPool;
-        _serverConfig = serverConfig;
-
-        _protocolHandlers = new Dictionary<Protocol, Func<long, byte[], Task>>
-        {
-            // Session-based game - no need for logout protocol
-        };
-    }
+    private Timer? _corridorStopCheckTimer;
+    private CancellationTokenSource _cts = new();
+    private Timer? _heartbeatCheckTimer;
+    private Timer? _infirmaryHealingTimer;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         try
         {
-            _logger.LogInformation("Game server starting...");
+            logger.LogInformation("Game server starting...");
 
             InitializeServices();
             InitializeControllers();
@@ -94,19 +68,19 @@ public class GameServer : IHostedService
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-            _logger.LogInformation("Game server started successfully.");
+            logger.LogInformation("Game server started successfully.");
             return Task.CompletedTask;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Game server starting failed.");
+            logger.LogError(ex, "Game server starting failed.");
             throw;
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Game server stopping...");
+        logger.LogInformation("Game server stopping...");
 
         await _cts.CancelAsync();
 
@@ -133,35 +107,35 @@ public class GameServer : IHostedService
 
         _cts.Dispose();
 
-        _logger.LogInformation("Game server stopped.");
+        logger.LogInformation("Game server stopped.");
     }
 
     private void InitializeServices()
     {
-        var natsEndpoint = _configuration.GetRequiredString("natsEndPoint");
+        string natsEndpoint = configuration.GetRequiredString("natsEndPoint");
 
         try
         {
-            _natsClientFactory.Initialize(natsEndpoint);
+            natsClientFactory.Initialize(natsEndpoint);
             // 서버 환경에서 CSV 파일 경로 설정
             // Dev: 소스 디렉토리에서 직접 읽기 (Docker 볼륨 마운트 대응)
-            var networkSourcePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "network"));
-            if (Directory.Exists(Path.Combine(networkSourcePath, "Common", "csv")))
-                GameDataHelper.SetBasePath(networkSourcePath);
-            else
-                GameDataHelper.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
+            string networkSourcePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..",
+                "..", "..", "network"));
+            GameDataHelper.SetBasePath(Directory.Exists(Path.Combine(networkSourcePath, "Common", "csv"))
+                ? networkSourcePath
+                : AppDomain.CurrentDomain.BaseDirectory);
             GameDataHelper.Initialize();
-            MapHelper.Initialize(_serverConfig.GameServerNum);
-            _interactableStateManager.Initialize(msg => _logger.LogInformation(msg));
-            _inGameInventoryManager.Initialize(msg => _logger.LogInformation(msg));
+            MapHelper.Initialize(serverConfig.GameServerNum);
+            _interactableStateManager.Initialize(msg => logger.LogInformation(msg));
+            _inGameInventoryManager.Initialize(msg => logger.LogInformation(msg));
             _corridorRuleManager.Initialize(
-                msg => _logger.LogInformation(msg),
+                msg => logger.LogInformation(msg),
                 OnCorridorStopViolation);
-            _areaRuleManager.Initialize(msg => _logger.LogInformation(msg));
-            _interactRuleManager.Initialize(msg => _logger.LogInformation(msg), _areaRuleManager);
-            _exitInstanceManager.Initialize(msg => _logger.LogInformation(msg));
-            _itemPoolManager.Initialize(msg => _logger.LogInformation(msg));
-            _sabotageManager.Initialize(msg => _logger.LogInformation(msg));
+            _areaRuleManager.Initialize(msg => logger.LogInformation(msg));
+            _interactRuleManager.Initialize(msg => logger.LogInformation(msg), _areaRuleManager);
+            _exitInstanceManager.Initialize(msg => logger.LogInformation(msg));
+            _itemPoolManager.Initialize(msg => logger.LogInformation(msg));
+            _sabotageManager.Initialize(msg => logger.LogInformation(msg));
             _sabotageManager.SetStateChangeCallback(OnSabotageStateChange);
             _sabotageManager.SetTimeoutCallback(OnSabotageTimeout);
         }
@@ -173,17 +147,19 @@ public class GameServer : IHostedService
 
     private void InitializeControllers()
     {
-        var instanceController = new InstanceMapController(_logger, _natsClientFactory.Create(), _cacheHelper, _serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager, _exitInstanceManager, _corridorRuleManager);
+        var instanceController = new InstanceMapController(logger, natsClientFactory.Create(), cacheHelper,
+            serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager,
+            _exitInstanceManager, _corridorRuleManager);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
 
     private void StartTcpServer()
     {
-        var port = _configuration.GetValue<short>("clientPort", 9001);
-        _networkService.SessionCreatedCallback += OnClientSessionCreated;
-        _networkService.Listen(IPAddress.Any, port);
-        _logger.LogInformation($"TCP server listening on port {port}");
+        short port = configuration.GetValue<short>("clientPort", 9001);
+        networkService.SessionCreatedCallback += OnClientSessionCreated;
+        networkService.Listen(IPAddress.Any, port);
+        logger.LogInformation($"TCP server listening on port {port}");
     }
 
     private void StartHeartbeatChecker()
@@ -193,7 +169,7 @@ public class GameServer : IHostedService
             null,
             TimeSpan.FromSeconds(HeartbeatCheckIntervalSeconds),
             TimeSpan.FromSeconds(HeartbeatCheckIntervalSeconds));
-        _logger.LogInformation("Heartbeat checker started (interval: {Interval}s)", HeartbeatCheckIntervalSeconds);
+        logger.LogInformation("Heartbeat checker started (interval: {Interval}s)", HeartbeatCheckIntervalSeconds);
     }
 
     private void StartInfirmaryHealingTimer()
@@ -203,12 +179,12 @@ public class GameServer : IHostedService
             null,
             TimeSpan.FromSeconds(InfirmaryHealingIntervalSeconds),
             TimeSpan.FromSeconds(InfirmaryHealingIntervalSeconds));
-        _logger.LogInformation("Infirmary healing timer started (interval: {Interval}s, amount: {Amount})",
+        logger.LogInformation("Infirmary healing timer started (interval: {Interval}s, amount: {Amount})",
             InfirmaryHealingIntervalSeconds, InfirmaryHealingAmount);
     }
 
     /// <summary>
-    /// 보건실에 있는 플레이어들의 정신오염도 감소 처리
+    ///     보건실에 있는 플레이어들의 정신오염도 감소 처리
     /// </summary>
     private void ProcessInfirmaryHealing(object? state)
     {
@@ -216,19 +192,14 @@ public class GameServer : IHostedService
         {
             // 보건실(Classroom3)에 있고 Corruption > 0인 플레이어 찾기
             var playersInInfirmary = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue &&
-                           s.CurrentArea == AreaType.Classroom3 &&
-                           s.Corruption > 0)
+                .Where(s => s is { PlayerId: not null, CurrentArea: AreaType.Classroom3, Corruption: > 0 })
                 .ToList();
 
-            foreach (var session in playersInInfirmary)
-            {
-                session.ModifyStats(corruptionDelta: -InfirmaryHealingAmount);
-            }
+            foreach (var session in playersInInfirmary) session.ModifyStats(corruptionDelta: -InfirmaryHealingAmount);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing infirmary healing");
+            logger.LogError(ex, "Error processing infirmary healing");
         }
     }
 
@@ -239,11 +210,12 @@ public class GameServer : IHostedService
             null,
             TimeSpan.FromMilliseconds(CorridorStopCheckIntervalMs),
             TimeSpan.FromMilliseconds(CorridorStopCheckIntervalMs));
-        _logger.LogInformation("Corridor stop check timer started (interval: {Interval}ms)", CorridorStopCheckIntervalMs);
+        logger.LogInformation("Corridor stop check timer started (interval: {Interval}ms)",
+            CorridorStopCheckIntervalMs);
     }
 
     /// <summary>
-    /// 복도에서 정지한 플레이어들의 정신오염도 증가 처리 (규칙 6)
+    ///     복도에서 정지한 플레이어들의 정신오염도 증가 처리 (규칙 6)
     /// </summary>
     private void ProcessCorridorStopCheck(object? state)
     {
@@ -251,23 +223,24 @@ public class GameServer : IHostedService
         {
             var violations = _corridorRuleManager.CheckAllStoppedPlayersForRule6();
 
-            foreach (var (matchingId, playerId, result) in violations)
+            foreach ((long matchingId, long playerId, var result) in violations)
             {
                 // 규칙 6번이 적용된 매칭인지 확인
-                var corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(matchingId);
+                int corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(matchingId);
                 if (corridorRuleId != 6) continue;
 
                 if (_clientSessions.TryGetValue(playerId, out var session))
                 {
                     session.ModifyStats(corruptionDelta: result.CorruptionDelta);
-                    _logger.LogInformation("Player {PlayerId} corridor stop violation (timer): {Message}, Corruption +{Delta}",
+                    logger.LogInformation(
+                        "Player {PlayerId} corridor stop violation (timer): {Message}, Corruption +{Delta}",
                         playerId, result.Message, result.CorruptionDelta);
                 }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing corridor stop check");
+            logger.LogError(ex, "Error processing corridor stop check");
         }
     }
 
@@ -281,18 +254,17 @@ public class GameServer : IHostedService
 
             foreach (var session in timedOutSessions)
             {
-                _logger.LogWarning("Heartbeat timeout for PlayerId={PlayerId}, forcing disconnect", session.PlayerId);
+                logger.LogWarning("Heartbeat timeout for PlayerId={PlayerId}, forcing disconnect", session.PlayerId);
                 session.ForceDisconnect();
             }
 
             if (timedOutSessions.Count > 0)
-            {
-                _logger.LogInformation("Disconnected {Count} sessions due to heartbeat timeout", timedOutSessions.Count);
-            }
+                logger.LogInformation("Disconnected {Count} sessions due to heartbeat timeout",
+                    timedOutSessions.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error checking heartbeat timeouts");
+            logger.LogError(ex, "Error checking heartbeat timeouts");
         }
     }
 
@@ -300,13 +272,13 @@ public class GameServer : IHostedService
     {
         try
         {
-            var redLockFactory = _redisPool.GetRedLockFactory();
-            _natsClientFactory.Create();
+            var redLockFactory = redisPool.GetRedLockFactory();
+            natsClientFactory.Create();
             _ = new GameClientSession(
                 token,
                 redLockFactory,
-                _logger,
-                _cacheHelper,
+                logger,
+                cacheHelper,
                 OnClientSessionLeave,
                 RegisterClientSession,
                 GetSessionsByInstance,
@@ -320,11 +292,11 @@ public class GameServer : IHostedService
                 _doorStateManager,
                 _sabotageManager);
 
-            _logger.LogInformation("Game client session created");
+            logger.LogInformation("Game client session created");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create game client session");
+            logger.LogError(ex, "Failed to create game client session");
         }
     }
 
@@ -333,29 +305,24 @@ public class GameServer : IHostedService
         if (session.PlayerId.HasValue)
         {
             _clientSessions.TryRemove(session.PlayerId.Value, out _);
-            _logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", session.PlayerId.Value);
+            logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", session.PlayerId.Value);
 
             // 복도 규칙 플레이어 상태 정리
             if (session.CurrentMapSubId > 0)
-            {
                 _corridorRuleManager.RemovePlayerState(session.CurrentMapSubId, session.PlayerId.Value);
-            }
 
             // 인스턴스 컨트롤러에 연결 해제 알림 (모든 유저 연결 해제 시 게임 종료 처리)
             if (session.CurrentMapSubId > 0)
-            {
                 foreach (var controller in _instanceControllerList)
-                {
-                    controller.OnPlayerDisconnected(session.CurrentMapId, session.CurrentMapSubId, session.PlayerId.Value);
-                }
-            }
+                    controller.OnPlayerDisconnected(session.CurrentMapId, session.CurrentMapSubId,
+                        session.PlayerId.Value);
         }
     }
 
     private void RegisterClientSession(long playerId, GameClientSession session)
     {
         _clientSessions.TryAdd(playerId, session);
-        _logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
+        logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
     }
 
     private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
@@ -366,23 +333,25 @@ public class GameServer : IHostedService
     }
 
     /// <summary>
-    /// 복도 정지 위반 시 해당 플레이어의 정신오염도 증가
+    ///     복도 정지 위반 시 해당 플레이어의 정신오염도 증가
     /// </summary>
     private void OnCorridorStopViolation(long matchingId, long playerId, int corruptionDelta)
     {
         if (_clientSessions.TryGetValue(playerId, out var session))
         {
             session.ModifyStats(corruptionDelta: corruptionDelta);
-            _logger.LogInformation("Player {PlayerId} corridor stop violation: Corruption +{Delta}", playerId, corruptionDelta);
+            logger.LogInformation("Player {PlayerId} corridor stop violation: Corruption +{Delta}", playerId,
+                corruptionDelta);
         }
     }
 
     /// <summary>
-    /// 사보타주 상태 변경 콜백 - InteractableState 업데이트 및 브로드캐스트
+    ///     사보타주 상태 변경 콜백 - InteractableState 업데이트 및 브로드캐스트
     /// </summary>
     private void OnSabotageStateChange(long matchingId, int interactId, int newState, AreaType triggerArea)
     {
-        _logger.LogInformation("Sabotage state change: MatchingId={MatchingId}, InteractId={InteractId}, NewState={NewState}, TriggerArea={TriggerArea}",
+        logger.LogInformation(
+            "Sabotage state change: MatchingId={MatchingId}, InteractId={InteractId}, NewState={NewState}, TriggerArea={TriggerArea}",
             matchingId, interactId, newState, triggerArea);
 
         // InteractableStateManager 상태 업데이트
@@ -394,20 +363,18 @@ public class GameServer : IHostedService
             .ToList();
 
         using var packet = PacketMaker.G_TO_C_INTERACTABLE_STATE_CHANGE(interactId, newState);
-        foreach (var session in sessionsInArea)
-        {
-            session.Send(packet);
-        }
+        foreach (var session in sessionsInArea) session.Send(packet);
 
-        _logger.LogInformation("Broadcasted INTERACTABLE_STATE_CHANGE to {Count} players in Area {Area}", sessionsInArea.Count, triggerArea);
+        logger.LogInformation("Broadcasted INTERACTABLE_STATE_CHANGE to {Count} players in Area {Area}",
+            sessionsInArea.Count, triggerArea);
     }
 
     /// <summary>
-    /// 사보타주 타임아웃 콜백 - 해당 매칭의 모든 플레이어에게 정신오염도 증가
+    ///     사보타주 타임아웃 콜백 - 해당 매칭의 모든 플레이어에게 정신오염도 증가
     /// </summary>
     private void OnSabotageTimeout(long matchingId, AreaType triggerArea, int corruptionDelta)
     {
-        _logger.LogInformation("Sabotage timeout: MatchingId={MatchingId}, Area={Area}, Corruption +{Delta}",
+        logger.LogInformation("Sabotage timeout: MatchingId={MatchingId}, Area={Area}, Corruption +{Delta}",
             matchingId, triggerArea, corruptionDelta);
 
         // 해당 매칭의 모든 플레이어에게 정신오염도 증가
@@ -415,12 +382,9 @@ public class GameServer : IHostedService
             .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
             .ToList();
 
-        foreach (var session in matchingSessions)
-        {
-            session.ModifyStats(corruptionDelta: corruptionDelta);
-        }
+        foreach (var session in matchingSessions) session.ModifyStats(corruptionDelta: corruptionDelta);
 
-        _logger.LogInformation("Applied corruption +{Delta} to {Count} players in MatchingId={MatchingId}",
+        logger.LogInformation("Applied corruption +{Delta} to {Count} players in MatchingId={MatchingId}",
             corruptionDelta, matchingSessions.Count, matchingId);
     }
 

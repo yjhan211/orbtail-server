@@ -32,6 +32,7 @@ public sealed class GameSession : SessionBase
         _onSessionRegistered = onSessionRegistered;
 
         _subscribeRouter = new ProtocolRouter();
+        // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
     }
 

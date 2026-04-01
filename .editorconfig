@@ -23,6 +23,11 @@ csharp_new_line_before_members_in_object_initializers = true
 csharp_new_line_before_members_in_anonymous_types = true
 csharp_new_line_between_query_expression_clauses = true
 
+# --- Rider 전용: 오타 검사 비활성화 ---
+resharper_identifier_typo_highlighting = none
+resharper_string_literal_typo_highlighting = none
+resharper_comment_typo_highlighting = none
+
 # --- Rider 전용: 줄바꿈/래핑 ---
 resharper_place_constructor_initializer_on_same_line = false
 resharper_wrap_before_declaration_lpar = false

@@ -2,157 +2,98 @@ using System.Collections.Concurrent;
 using network.common;
 using network.common.data;
 
-namespace game_server.services
+namespace game_server.services;
+
+/// <summary>
+///     단일 매칭 인스턴스의 상호작용 규칙 상태
+///     area_rule.csv 기반으로 금지된 액션을 판정한다.
+///     페널티 적용은 interactable_action.csv + InteractableStateManager에서 처리.
+/// </summary>
+public class MatchingInteractRuleState
 {
-    /// <summary>
-    /// 상호작용 규칙 위반 결과
-    /// </summary>
-    public class InteractViolationResult
+    // 이 매칭에 선택된 규칙들의 (TargetInteractId, TargetActionId) -> RuleId 매핑
+    // TargetActionId가 0이면 해당 interactable의 모든 액션이 위반
+    private readonly Dictionary<(int interactId, int actionId), int> _forbiddenActions = new();
+
+    public MatchingInteractRuleState(List<int> selectedRuleIds)
     {
-        public bool IsViolation { get; set; }
-        public int ViolatedRuleId { get; set; }
-        public int CorruptionDelta { get; set; }
-        public string? Message { get; set; }
-    }
-
-    /// <summary>
-    /// 단일 매칭 인스턴스의 상호작용 규칙 상태
-    /// </summary>
-    public class MatchingInteractRuleState
-    {
-        // 이 매칭에 선택된 규칙들의 (TargetInteractId, TargetActionId) -> RuleId 매핑
-        // TargetActionId가 0이면 해당 interactable의 모든 액션이 위반
-        private readonly Dictionary<(int interactId, int actionId), int> _forbiddenActions = new();
-
-        // 위반당 정신오염도 증가량
-        private const int CorruptionPerViolation = 20;
-
-        public MatchingInteractRuleState(List<int> selectedRuleIds)
+        foreach (int ruleId in selectedRuleIds)
         {
-            foreach (var ruleId in selectedRuleIds)
-            {
-                var rule = GameAreaRuleData.Get(ruleId);
-                if (rule != null && rule.TargetInteractId > 0)
-                {
-                    var key = (rule.TargetInteractId, rule.TargetActionId);
-                    if (!_forbiddenActions.ContainsKey(key))
-                    {
-                        _forbiddenActions[key] = ruleId;
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// 오브젝트 액션 시 규칙 위반 체크
-        /// 페널티는 interactable_action.csv에서만 적용됨 (area_rule.csv 기반 추가 페널티 없음)
-        /// </summary>
-        public InteractViolationResult CheckExplore(int interactId, int actionId)
-        {
-            // area_rule.csv 기반 페널티 비활성화 - interactable_action.csv에서만 페널티 적용
-            return new InteractViolationResult();
-        }
-
-        /// <summary>
-        /// 금지된 액션인지 확인만 (위반 처리 없이)
-        /// </summary>
-        public bool IsForbiddenAction(int interactId, int actionId)
-        {
-            return _forbiddenActions.ContainsKey((interactId, actionId)) ||
-                   _forbiddenActions.ContainsKey((interactId, 0));
-        }
-
-        /// <summary>
-        /// 특정 (interactId, actionId)에 해당하는 규칙 ID 반환 (없으면 0)
-        /// </summary>
-        public int GetRuleIdForAction(int interactId, int actionId)
-        {
-            if (_forbiddenActions.TryGetValue((interactId, actionId), out var ruleId))
-                return ruleId;
-            if (_forbiddenActions.TryGetValue((interactId, 0), out ruleId))
-                return ruleId;
-            return 0;
+            var rule = GameAreaRuleData.Get(ruleId);
+            if (rule.TargetInteractId <= 0) continue;
+            var key = (rule.TargetInteractId, rule.TargetActionId);
+            _forbiddenActions.TryAdd(key, ruleId);
         }
     }
 
     /// <summary>
-    /// MatchingId별로 상호작용 규칙 상태를 관리하는 매니저
+    ///     금지된 액션인지 확인
     /// </summary>
-    public class InteractRuleManager
+    public bool IsForbiddenAction(int interactId, int actionId)
     {
-        private Action<string>? _logAction;
-        private readonly ConcurrentDictionary<long, MatchingInteractRuleState> _matchingStates = new();
-        private AreaRuleManager? _areaRuleManager;
+        return _forbiddenActions.ContainsKey((interactId, actionId)) ||
+               _forbiddenActions.ContainsKey((interactId, 0));
+    }
+}
 
-        public void Initialize(Action<string>? logAction = null, AreaRuleManager? areaRuleManager = null)
+/// <summary>
+///     MatchingId별로 상호작용 규칙 상태를 관리하는 매니저
+/// </summary>
+public class InteractRuleManager
+{
+    private readonly ConcurrentDictionary<long, MatchingInteractRuleState> _matchingStates = new();
+    private AreaRuleManager? _areaRuleManager;
+    private Action<string>? _logAction;
+
+    public void Initialize(Action<string>? logAction = null, AreaRuleManager? areaRuleManager = null)
+    {
+        _logAction = logAction;
+        _areaRuleManager = areaRuleManager;
+        _matchingStates.Clear();
+        _logAction?.Invoke("InteractRuleManager: Initialized");
+    }
+
+    /// <summary>
+    ///     매칭 인스턴스의 상호작용 규칙 상태를 가져오거나 새로 생성
+    /// </summary>
+    private MatchingInteractRuleState GetOrCreateMatchingState(long matchingId)
+    {
+        return _matchingStates.GetOrAdd(matchingId, id =>
         {
-            _logAction = logAction;
-            _areaRuleManager = areaRuleManager;
-            _matchingStates.Clear();
-            _logAction?.Invoke("InteractRuleManager: Initialized");
-        }
+            var allRules = _areaRuleManager?.GetAllRules(matchingId) ?? new Dictionary<AreaType, List<int>>();
+            var allRuleIds = allRules.Values.SelectMany(r => r).ToList();
 
-        /// <summary>
-        /// 매칭 인스턴스의 상호작용 규칙 상태를 가져오거나 새로 생성
-        /// </summary>
-        public MatchingInteractRuleState GetOrCreateMatchingState(long matchingId)
-        {
-            return _matchingStates.GetOrAdd(matchingId, id =>
-            {
-                // AreaRuleManager에서 이 매칭에 선택된 모든 규칙 ID 가져오기
-                var allRules = _areaRuleManager?.GetAllRules(matchingId) ?? new Dictionary<AreaType, List<int>>();
-                var allRuleIds = allRules.Values.SelectMany(r => r).ToList();
+            var state = new MatchingInteractRuleState(allRuleIds);
+            _logAction?.Invoke($"InteractRuleManager: Created state for MatchingId={id} with {allRuleIds.Count} rules");
 
-                var state = new MatchingInteractRuleState(allRuleIds);
-                _logAction?.Invoke($"InteractRuleManager: Created state for MatchingId={id} with {allRuleIds.Count} rules");
+            return state;
+        });
+    }
 
-                return state;
-            });
-        }
+    /// <summary>
+    ///     금지된 액션인지 확인
+    /// </summary>
+    public bool IsForbiddenAction(long matchingId, int interactId, int actionId)
+    {
+        var state = GetOrCreateMatchingState(matchingId);
+        return state.IsForbiddenAction(interactId, actionId);
+    }
 
-        /// <summary>
-        /// 오브젝트 액션 시 규칙 위반 체크
-        /// </summary>
-        public InteractViolationResult CheckExplore(long matchingId, int interactId, int actionId)
-        {
-            var state = GetOrCreateMatchingState(matchingId);
-            var result = state.CheckExplore(interactId, actionId);
+    /// <summary>
+    ///     매칭 종료 시 해당 매칭의 상태 정리
+    /// </summary>
+    public void RemoveMatchingState(long matchingId)
+    {
+        if (_matchingStates.TryRemove(matchingId, out _))
+            _logAction?.Invoke($"InteractRuleManager: Removed state for MatchingId={matchingId}");
+    }
 
-            if (result.IsViolation)
-            {
-                _logAction?.Invoke($"InteractRuleManager: MatchingId={matchingId} violated rule {result.ViolatedRuleId} by InteractId={interactId}, ActionId={actionId}");
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// 금지된 액션인지 확인
-        /// </summary>
-        public bool IsForbiddenAction(long matchingId, int interactId, int actionId)
-        {
-            var state = GetOrCreateMatchingState(matchingId);
-            return state.IsForbiddenAction(interactId, actionId);
-        }
-
-        /// <summary>
-        /// 매칭 종료 시 해당 매칭의 상태 정리
-        /// </summary>
-        public void RemoveMatchingState(long matchingId)
-        {
-            if (_matchingStates.TryRemove(matchingId, out _))
-            {
-                _logAction?.Invoke($"InteractRuleManager: Removed state for MatchingId={matchingId}");
-            }
-        }
-
-        /// <summary>
-        /// 전체 상태 초기화
-        /// </summary>
-        public void Reset()
-        {
-            _matchingStates.Clear();
-            _logAction?.Invoke("InteractRuleManager: All matching states cleared");
-        }
+    /// <summary>
+    ///     전체 상태 초기화
+    /// </summary>
+    public void Reset()
+    {
+        _matchingStates.Clear();
+        _logAction?.Invoke("InteractRuleManager: All matching states cleared");
     }
 }
