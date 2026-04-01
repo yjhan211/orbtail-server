@@ -46,7 +46,9 @@ public class MatchingInteractableState
                 var key = (interactable.Id, action.ActionId);
                 _actionStates[key] = new InteractableActionState
                 {
-                    Order = action.ActionId, IsExplored = false, ExploredBy = 0
+                    Order = action.ActionId,
+                    IsExplored = false,
+                    ExploredBy = 0
                 };
             }
         }
@@ -66,7 +68,8 @@ public class MatchingInteractableState
 
             var objectState = new InteractableObjectState
             {
-                InteractId = interactId, Actions = new List<InteractableActionState>()
+                InteractId = interactId,
+                Actions = new List<InteractableActionState>()
             };
 
             // InteractionType >= 3 (WRITING, RECEIVE_CALL, VENT 등)은 항상 선택 가능
@@ -133,7 +136,9 @@ public class MatchingInteractableState
                 !otherState.IsExplored)
                 _actionStates[otherKey] = new InteractableActionState
                 {
-                    Order = action.ActionId, IsExplored = true, ExploredBy = playerId // 선택한 플레이어가 잠금
+                    Order = action.ActionId,
+                    IsExplored = true,
+                    ExploredBy = playerId // 선택한 플레이어가 잠금
                 };
         }
 

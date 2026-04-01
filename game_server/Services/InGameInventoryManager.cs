@@ -62,7 +62,9 @@ public class PlayerInGameInventory(long matchingId)
             _items.TryRemove(itemUid, out _);
             updatedItem = new InGameItemInfo
             {
-                ItemUid = itemUid, ItemId = item.ItemId, Count = 0 // 삭제됨을 표시
+                ItemUid = itemUid,
+                ItemId = item.ItemId,
+                Count = 0 // 삭제됨을 표시
             };
         }
         else

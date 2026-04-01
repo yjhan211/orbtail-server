@@ -61,7 +61,9 @@ public partial class GameClientSession
             using var connectResultPacket = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId.Value);
             var response = new G_TO_C_CONNECT_RESULT
             {
-                Success = true, ErrorCode = ErrorCode.SUCCESS, Message = "Connected to GameServer"
+                Success = true,
+                ErrorCode = ErrorCode.SUCCESS,
+                Message = "Connected to GameServer"
             };
             connectResultPacket.SetBody(MessagePackSerializer.Serialize(response));
             Send(connectResultPacket);
@@ -101,7 +103,9 @@ public partial class GameClientSession
             using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT);
             var response = new G_TO_C_CONNECT_RESULT
             {
-                Success = false, ErrorCode = ErrorCode.FATAL, Message = ex.Message
+                Success = false,
+                ErrorCode = ErrorCode.FATAL,
+                Message = ex.Message
             };
             packet.SetBody(MessagePackSerializer.Serialize(response));
             Send(packet);

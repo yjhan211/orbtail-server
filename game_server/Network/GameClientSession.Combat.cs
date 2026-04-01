@@ -68,7 +68,9 @@ public partial class GameClientSession
     {
         _activePeriodicBuffs.Add(new PeriodicBuffEntry
         {
-            SubType = subType, Value = value, IntervalSeconds = intervalSeconds
+            SubType = subType,
+            Value = value,
+            IntervalSeconds = intervalSeconds
         });
 
         // 마스터 타이머가 없으면 시작 (1초 틱)

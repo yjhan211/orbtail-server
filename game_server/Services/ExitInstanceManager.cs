@@ -187,9 +187,9 @@ public class MatchingExitState
         lock (_stepLock)
         {
             return (
-                [.._acquiredItemIds],
-                [.._completedActions],
-                [.._visitedAreas]
+                [.. _acquiredItemIds],
+                [.. _completedActions],
+                [.. _visitedAreas]
             );
         }
     }

@@ -31,11 +31,11 @@ public class MatchingAreaRuleState
         var otherRules = new List<int>();
 
         foreach (var kvp in allRules)
-        foreach (int ruleId in kvp.Value)
-            if (kvp.Key == AreaType.Corridor)
-                corridorRules.Add(ruleId);
-            else
-                otherRules.Add(ruleId);
+            foreach (int ruleId in kvp.Value)
+                if (kvp.Key == AreaType.Corridor)
+                    corridorRules.Add(ruleId);
+                else
+                    otherRules.Add(ruleId);
 
         // 첫 번째 복도 규칙 선택 (랜덤)
         int? firstCorridorRule = null;
@@ -77,7 +77,7 @@ public class MatchingAreaRuleState
     /// <summary>
     ///     적용된 모든 규칙 ID 목록
     /// </summary>
-    public List<int> AllRuleIds => [.._allRuleIds];
+    public List<int> AllRuleIds => [.. _allRuleIds];
 
     private static void Shuffle<T>(IList<T> list, Random random)
     {
