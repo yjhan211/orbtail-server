@@ -1,5 +1,4 @@
 using MessagePack;
-using network.helpers;
 using network.interfaces;
 using RedLockNet;
 using StackExchange.Redis;
@@ -32,28 +31,27 @@ public partial class PlayerInfo
     public static async Task<PlayerInfo?> Load(ICacheHelper cacheHelper, long playerId)
     {
         var serialized = await cacheHelper.HashGetAsync(HashKey, playerId);
-        if (serialized == RedisValue.Null)
-        {
-            return null;
-        }
+        if (serialized == RedisValue.Null) return null;
 
         var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
 
-        playerInfo.ObjectInfo = await GameObjectInfo.Load(cacheHelper, ObjectType.PLAYER, playerId) ?? new GameObjectInfo(playerId);
-        playerInfo.InventoryInfo = await InventoryInfo.Load(cacheHelper, InventoryOwnerType.PLAYER, playerId) ?? new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
+        playerInfo.ObjectInfo = await GameObjectInfo.Load(cacheHelper, ObjectType.PLAYER, playerId) ??
+                                new GameObjectInfo(playerId);
+        playerInfo.InventoryInfo = await InventoryInfo.Load(cacheHelper, InventoryOwnerType.PLAYER, playerId) ??
+                                   new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
         playerInfo.QuestDiary = await QuestDiary.Load(cacheHelper, playerId);
         playerInfo.MailBox = await MailBox.Load(cacheHelper, playerId);
         playerInfo.IsNew = false;
 
         // ObjectInfo의 Cell, MapId, MapSubId를 LastCell, LastMapId, LastMapSubId로 동기화 (세션 기반 게임)
-        if (playerInfo.LastCell != null)
+        if (playerInfo.LastMapId != MapId.None)
         {
             playerInfo.ObjectInfo.Cell = playerInfo.LastCell;
             // Cell → World Position 변환 (Unity Isometric Z as Y 타일맵)
             playerInfo.ObjectInfo.Position = CellToWorldPosition(playerInfo.LastCell);
+            playerInfo.ObjectInfo.MapId = playerInfo.LastMapId;
+            playerInfo.ObjectInfo.MapSubId = playerInfo.LastMapSubId;
         }
-        playerInfo.ObjectInfo.MapId = playerInfo.LastMapId;
-        playerInfo.ObjectInfo.MapSubId = playerInfo.LastMapSubId;
 
         return playerInfo;
     }
@@ -77,7 +75,7 @@ public partial class PlayerInfo
 
     public static async Task Delete(ICacheHelper cacheHelper, long playerId)
     {
-        var objectField = GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, playerId);
+        string objectField = GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, playerId);
 
         await GameObjectInfo.Delete(cacheHelper, objectField);
         await InventoryInfo.Delete(cacheHelper, InventoryOwnerType.PLAYER, playerId);
@@ -87,9 +85,9 @@ public partial class PlayerInfo
     }
 
     /// <summary>
-    /// Cell 좌표를 Unity Isometric World Position으로 변환
-    /// 공식: WorldX = (GridCellX - GridCellY) * 0.5
-    ///       WorldY = (GridCellX + GridCellY) * 0.25 + 0.25
+    ///     Cell 좌표를 Unity Isometric World Position으로 변환
+    ///     공식: WorldX = (GridCellX - GridCellY) * 0.5
+    ///     WorldY = (GridCellX + GridCellY) * 0.25 + 0.25
     /// </summary>
     private static Vector3f CellToWorldPosition(Cell cell)
     {

@@ -18,7 +18,7 @@ namespace network.common.data.models
     public class InteractableObjectState : IMessagePackObject
     {
         [Key("interactId")] public int InteractId { get; set; }
-        [Key("actions")] public List<InteractableActionState> Actions { get; set; }
-        [Key("missionActionText")] public string MissionActionText { get; set; }
+        [Key("actions")] public List<InteractableActionState> Actions { get; set; } = new();
+        [Key("missionActionText")] public string MissionActionText { get; set; } = "";
     }
 }

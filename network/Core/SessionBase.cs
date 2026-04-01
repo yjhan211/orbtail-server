@@ -10,19 +10,17 @@ using network.utils;
 namespace network.core;
 
 /// <summary>
-/// GameClientSession / GameSession 공통 세션 로직 추상 클래스.
-/// 패킷 파싱, 프로토콜 라우팅, 세션 잠금, 기본 IPeer 구현을 공유한다.
+///     GameClientSession / GameSession 공통 세션 로직 추상 클래스.
+///     패킷 파싱, 프로토콜 라우팅, 세션 잠금, 기본 IPeer 구현을 공유한다.
 /// </summary>
 public abstract class SessionBase : IPeer
 {
-    protected readonly UserToken _token;
-    protected readonly SemaphoreSlim _sessionLock;
-    protected readonly ILogger _logger;
-    protected readonly ICacheHelper _cacheHelper;
-    protected readonly IRedLockFactory _redLock;
-    protected readonly IProtocolRouter _protocolRouter;
-
-    public long? PlayerId { get; protected set; }
+    protected readonly ICacheHelper CacheHelper;
+    protected readonly ILogger Logger;
+    protected readonly IProtocolRouter ProtocolRouter;
+    protected readonly IRedLockFactory RedLock;
+    private readonly SemaphoreSlim _sessionLock;
+    protected readonly UserToken Token;
 
     protected SessionBase(
         UserToken token,
@@ -30,27 +28,20 @@ public abstract class SessionBase : IPeer
         ICacheHelper cacheHelper,
         IRedLockFactory redLock)
     {
-        _token = token;
-        _token.SetPeer(this);
+        Token = token;
+        Token.SetPeer(this);
         _sessionLock = new SemaphoreSlim(1);
-        _logger = logger;
-        _cacheHelper = cacheHelper;
-        _redLock = redLock;
+        Logger = logger;
+        CacheHelper = cacheHelper;
+        RedLock = redLock;
 
-        _protocolRouter = new ProtocolRouter(logger);
+        ProtocolRouter = new ProtocolRouter();
         // InitializeProtocolHandlers()는 서브클래스 생성자에서 호출
         // (base 생성자 시점에는 서브클래스 필드가 아직 초기화되지 않음)
     }
 
-    /// <summary>
-    /// 프로토콜 핸들러를 _protocolRouter에 등록한다.
-    /// </summary>
-    protected abstract void InitializeProtocolHandlers();
-
-    /// <summary>
-    /// 로깅 대상에서 제외할 프로토콜인지 판단한다.
-    /// </summary>
-    protected abstract bool ShouldSkipLogging(Protocol protocolId);
+    // ReSharper disable once UnusedAutoPropertyAccessor.Global — 서브클래스(GameClientSession, GameSession)에서 사용
+    public long? PlayerId { get; protected set; }
 
     public virtual async Task OnMessageFromClient(Const<byte[]> buffer)
     {
@@ -60,25 +51,21 @@ public abstract class SessionBase : IPeer
 
             using var packet = Packet.Create(buffer);
             var protocolId = (Protocol)packet.PopProtocolId();
-            var playerId = packet.PopPlayerId();
-            var body = packet.PopBody();
+            long playerId = packet.PopPlayerId();
+            byte[] body = packet.PopBody();
 
             if (!ShouldSkipLogging(protocolId))
-            {
-                _logger.LogInformation("[Receive] Protocol: {Protocol}, PlayerId: {PlayerId}",
+                Logger.LogInformation("[Receive] Protocol: {Protocol}, PlayerId: {PlayerId}",
                     protocolId, playerId);
-            }
 
-            await _protocolRouter.RouteAsync(protocolId, body);
+            await ProtocolRouter.RouteAsync(protocolId, body);
 
             if (!ShouldSkipLogging(protocolId))
-            {
-                _logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
-            }
+                Logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing client message");
+            Logger.LogError(ex, "Error processing client message");
         }
         finally
         {
@@ -86,29 +73,36 @@ public abstract class SessionBase : IPeer
         }
     }
 
+    public virtual void Send(IPacket packet)
+    {
+        if (packet is Packet p) Token.Send(p);
+    }
+
+    public abstract void OnRemoved();
+
+    /// <summary>
+    ///     프로토콜 핸들러를 ProtocolRouter에 등록한다.
+    /// </summary>
+    protected abstract void InitializeProtocolHandlers();
+
+    /// <summary>
+    ///     로깅 대상에서 제외할 프로토콜인지 판단한다.
+    /// </summary>
+    protected abstract bool ShouldSkipLogging(Protocol protocolId);
+
     protected static async Task HandleMessage<T>(byte[] body, Func<T, Task> handler) where T : IMessagePackObject
     {
         var message = MessagePackSerializer.Deserialize<T>(body);
         await handler(message);
     }
 
-    public virtual void Send(IPacket packet)
-    {
-        if (packet is Packet p)
-        {
-            _token.Send(p);
-        }
-    }
-
-    public abstract void OnRemoved();
-
     public virtual void OnDisconnect()
     {
-        _logger.LogInformation("Session disconnected: PlayerId={PlayerId}", PlayerId);
+        Logger.LogInformation("Session disconnected: PlayerId={PlayerId}", PlayerId);
     }
 
     public Task<UserToken?> Release()
     {
-        return Task.FromResult<UserToken?>(_token);
+        return Task.FromResult<UserToken?>(Token);
     }
 }

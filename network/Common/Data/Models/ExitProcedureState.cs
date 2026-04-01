@@ -17,7 +17,7 @@ namespace network.common.data.models
         public int CurrentStepIndex { get; set; }
         public DateTime CreatedAt { get; set; }
 
-        public ExitProcedureStep CurrentStep =>
+        public ExitProcedureStep? CurrentStep =>
             CurrentStepIndex < Steps.Count ? Steps[CurrentStepIndex] : null;
 
         public bool IsCompleted => CurrentStepIndex >= Steps.Count;

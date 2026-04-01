@@ -5,15 +5,15 @@ namespace network.packets;
 
 public static class PacketBufferPool
 {
-    private static readonly ObjectPool<Packet> _pool = new(() => new Packet(), Config.MAX_CONNECTION);
+    private static readonly ObjectPool<Packet> Pool = new(() => new Packet(), Config.MAX_CONNECTION);
 
     public static Packet Pop()
     {
-        return _pool.Pop();
+        return Pool.Pop();
     }
 
     public static void Push(Packet packet)
     {
-        _pool.Push(packet);
+        Pool.Push(packet);
     }
 }

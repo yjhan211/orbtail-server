@@ -17,7 +17,7 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_CONNECT_RESULT(bool success, ErrorCode errorCode, string? message = null)
+    public static Packet G_TO_C_CONNECT_RESULT(bool success, ErrorCode errorCode, string message = "")
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT);
         G_TO_C_CONNECT_RESULT body = new() { Success = success, ErrorCode = errorCode, Message = message };
@@ -35,7 +35,8 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_MOVE(long playerId, Vector3f position, Vector3f velocity, float rotation, Cell cell, uint lastProcessedInput, long serverTimestamp)
+    public static Packet G_TO_C_MOVE(long playerId, Vector3f position, Vector3f velocity, float rotation, Cell cell,
+        uint lastProcessedInput, long serverTimestamp)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_MOVE, playerId);
         G_TO_C_MOVE body = new()
@@ -56,11 +57,7 @@ public static partial class PacketMaker
     public static Packet G_TO_C_AREA_PLAYER_ENTER(PlayerInfo playerInfo, Cell cell)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_AREA_PLAYER_ENTER);
-        G_TO_C_AREA_PLAYER_ENTER body = new()
-        {
-            PlayerInfo = playerInfo,
-            Cell = cell
-        };
+        G_TO_C_AREA_PLAYER_ENTER body = new() { PlayerInfo = playerInfo, Cell = cell };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -78,11 +75,7 @@ public static partial class PacketMaker
     public static Packet G_TO_C_AREA_EXIT_BLOCKED(AreaType areaType, Cell correctedCell)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_AREA_EXIT_BLOCKED);
-        G_TO_C_AREA_EXIT_BLOCKED body = new()
-        {
-            AreaType = areaType,
-            CorrectedCell = correctedCell
-        };
+        G_TO_C_AREA_EXIT_BLOCKED body = new() { AreaType = areaType, CorrectedCell = correctedCell };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -91,12 +84,7 @@ public static partial class PacketMaker
     public static Packet G_TO_C_INTERACTABLE_LIST(AreaType areaType, List<InteractableObjectState> objects, bool isEnd)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_LIST);
-        G_TO_C_INTERACTABLE_LIST body = new()
-        {
-            AreaType = areaType,
-            Objects = objects,
-            IsEnd = isEnd
-        };
+        G_TO_C_INTERACTABLE_LIST body = new() { AreaType = areaType, Objects = objects, IsEnd = isEnd };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -107,10 +95,7 @@ public static partial class PacketMaker
         var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_UPDATE);
         G_TO_C_INTERACTABLE_UPDATE body = new()
         {
-            InteractId = interactId,
-            Order = order,
-            IsExplored = isExplored,
-            ExploredBy = exploredBy
+            InteractId = interactId, Order = order, IsExplored = isExplored, ExploredBy = exploredBy
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

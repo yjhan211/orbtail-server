@@ -18,7 +18,7 @@ public static class MapHelper
 
     public static int GetManageServerId(long mapSubId)
     {
-        var result = (int)((mapSubId - 1) % _totalServerNum) + 1;
+        int result = (int)((mapSubId - 1) % _totalServerNum) + 1;
         return result;
     }
 }

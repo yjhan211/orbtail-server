@@ -15,7 +15,7 @@ internal class ObjectPool<T>
         _objects = [];
         _objectGenerator = objectGenerator;
 
-        foreach (var _ in Enumerable.Range(0, poolCapacity)) _objects.Add(objectGenerator());
+        foreach (int _ in Enumerable.Range(0, poolCapacity)) _objects.Add(objectGenerator());
     }
 
     public T Pop()

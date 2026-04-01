@@ -1,5 +1,4 @@
 using MessagePack;
-using network.helpers;
 using network.interfaces;
 
 // ReSharper disable once CheckNamespace

@@ -1,12 +1,14 @@
+// ReSharper disable All
+
 namespace Common.Helpers
 {
     /// <summary>
-    /// 한국어 조사 처리 헬퍼
+    ///     한국어 조사 처리 헬퍼
     /// </summary>
     public static class KoreanParticleHelper
     {
         /// <summary>
-        /// 마지막 글자의 받침 유무 확인
+        ///     마지막 글자의 받침 유무 확인
         /// </summary>
         public static bool HasFinalConsonant(string text)
         {
@@ -24,17 +26,17 @@ namespace Common.Helpers
                 // 숫자: 0,1,3,6,7,8 → 받침 있음 / 2,4,5,9 → 받침 없음
                 return lastChar switch
                 {
-                    '0' => true,  // 영
-                    '1' => true,  // 일
-                    '3' => true,  // 삼
-                    '6' => true,  // 육
-                    '7' => true,  // 칠
-                    '8' => true,  // 팔
+                    '0' => true, // 영
+                    '1' => true, // 일
+                    '3' => true, // 삼
+                    '6' => true, // 육
+                    '7' => true, // 칠
+                    '8' => true, // 팔
                     '2' => false, // 이
                     '4' => false, // 사
                     '5' => false, // 오
                     '9' => false, // 구
-                    _ => false    // 기타 (영문 등)
+                    _ => false // 기타 (영문 등)
                 };
             }
 
@@ -43,7 +45,7 @@ namespace Common.Helpers
         }
 
         /// <summary>
-        /// 을/를 선택
+        ///     을/를 선택
         /// </summary>
         public static string GetEulReul(string text)
         {
@@ -51,7 +53,7 @@ namespace Common.Helpers
         }
 
         /// <summary>
-        /// 이/가 선택
+        ///     이/가 선택
         /// </summary>
         public static string GetIGa(string text)
         {
@@ -59,7 +61,7 @@ namespace Common.Helpers
         }
 
         /// <summary>
-        /// 은/는 선택
+        ///     은/는 선택
         /// </summary>
         public static string GetEunNeun(string text)
         {
@@ -67,7 +69,7 @@ namespace Common.Helpers
         }
 
         /// <summary>
-        /// 과/와 선택
+        ///     과/와 선택
         /// </summary>
         public static string GetGwaWa(string text)
         {
@@ -75,7 +77,7 @@ namespace Common.Helpers
         }
 
         /// <summary>
-        /// 아/야 선택
+        ///     아/야 선택
         /// </summary>
         public static string GetAYa(string text)
         {
@@ -83,7 +85,7 @@ namespace Common.Helpers
         }
 
         /// <summary>
-        /// 이에요/예요 선택
+        ///     이에요/예요 선택
         /// </summary>
         public static string GetIeyoYeyo(string text)
         {
@@ -91,7 +93,7 @@ namespace Common.Helpers
         }
 
         /// <summary>
-        /// 으로/로 선택
+        ///     으로/로 선택
         /// </summary>
         public static string GetEuroRo(string text)
         {
@@ -114,8 +116,8 @@ namespace Common.Helpers
         }
 
         /// <summary>
-        /// 텍스트 내의 조사 플레이스홀더 치환
-        /// 예: "{을/를}" → "을" 또는 "를" (앞 단어 기준)
+        ///     텍스트 내의 조사 플레이스홀더 치환
+        ///     예: "{을/를}" → "을" 또는 "를" (앞 단어 기준)
         /// </summary>
         public static string ReplaceParticles(string text, string precedingWord)
         {

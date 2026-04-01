@@ -43,7 +43,7 @@ namespace network.common.data.models
             ObjectType = objectType;
             ObjectId = objectId;
             Cell = Cell.Clone(cell); // null 체크는 Cell.Clone 내부에서 처리
-            Position = cell != null ? new Vector3f(cell.X, cell.Y, 0) : new Vector3f(0, 0, 0);
+            Position = new Vector3f(cell.X, cell.Y, 0);
             Velocity = new Vector3f(0, 0, 0);
             Rotation = 0f;
             MapId = mapId;
@@ -53,36 +53,40 @@ namespace network.common.data.models
             IsFlip = isFlip;
         }
 
-        [Key("objectType")] public ObjectType ObjectType { get; set; }
+        [Key("objectType")]
+        public ObjectType ObjectType { get; set; }
 
-        [Key("objectId")] public long ObjectId { get; set; }
+        [Key("objectId")]
+        public long ObjectId { get; set; }
 
-        [Key("mapId")] public MapId MapId { get; set; }
+        [Key("mapId")]
+        public MapId MapId { get; set; }
 
-        [Key("mapSubId")] public long MapSubId { get; set; }
+        [Key("mapSubId")]
+        public long MapSubId { get; set; }
 
         // 현재 위치한 셀 (Position에서 자동 계산)
-        [Key("cell")] public Cell Cell { get; set; }
+        [Key("cell")]
+        public Cell Cell { get; set; }
 
         // 자유 이동 필드
-        [Key("position")] public Vector3f Position { get; set; }
+        [Key("position")]
+        public Vector3f Position { get; set; }
 
-        [Key("velocity")] public Vector3f Velocity { get; set; }
+        [Key("velocity")]
+        public Vector3f Velocity { get; set; }
 
-        [Key("rotation")] public float Rotation { get; set; }
+        [Key("rotation")]
+        public float Rotation { get; set; }
 
-        [Key("moveTimestamp")] public DateTime MoveTimestamp { get; set; }
+        [Key("moveTimestamp")]
+        public DateTime MoveTimestamp { get; set; }
 
-        [Key("debuffTimestamp")] public DateTime DebuffTimestamp { get; set; }
+        [Key("debuffTimestamp")]
+        public DateTime DebuffTimestamp { get; set; }
 
-        [Key("isFlip")] public bool IsFlip { get; set; }
-
-        // Position이 업데이트될 때 Cell도 자동으로 업데이트
-        public void UpdateCellFromPosition()
-        {
-            // 2D 게임: X축=가로, Y축=세로, Z축=0
-            Cell = new Cell((int)Math.Round(Position.X), (int)Math.Round(Position.Y));
-        }
+        [Key("isFlip")]
+        public bool IsFlip { get; set; }
 
         // 하위 호환성을 위한 속성 (Deprecated)
         [IgnoreMember]
@@ -97,6 +101,13 @@ namespace network.common.data.models
         {
             get => Cell;
             set => Cell = value;
+        }
+
+        // Position이 업데이트될 때 Cell도 자동으로 업데이트
+        public void UpdateCellFromPosition()
+        {
+            // 2D 게임: X축=가로, Y축=세로, Z축=0
+            Cell = new Cell((int)Math.Round(Position.X), (int)Math.Round(Position.Y));
         }
 
         public string GetGameObjectKey()

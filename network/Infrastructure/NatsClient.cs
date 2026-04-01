@@ -6,64 +6,17 @@ namespace network.infrastructure;
 
 public class NatsClient : INatsClient
 {
-    private readonly string _url;
+    private readonly IConnection _connection;
     private readonly ILogger? _logger;
-    private readonly List<IAsyncSubscription> _subscriptions = [];
     private readonly List<(string Subject, Action<string, byte[]> Handler)> _subscribedTopics = [];
-    private IConnection _connection;
+    private readonly List<IAsyncSubscription> _subscriptions = [];
+    private readonly string _url;
 
     public NatsClient(string url, ILogger? logger = null)
     {
         _url = url;
         _logger = logger;
         _connection = CreateConnection();
-    }
-
-    private IConnection CreateConnection()
-    {
-        var options = ConnectionFactory.GetDefaultOptions();
-        options.Url = _url;
-        options.MaxReconnect = Options.ReconnectForever;
-        options.ReconnectWait = 2000; // 2초 간격 재연결 시도
-
-        options.DisconnectedEventHandler += (_, args) =>
-        {
-            _logger?.LogWarning("NATS 연결 끊김: {Error}", args.Error?.Message ?? "unknown");
-        };
-
-        options.ReconnectedEventHandler += (_, _) =>
-        {
-            _logger?.LogInformation("NATS 재연결 성공: {Url}", _url);
-            ResubscribeAll();
-        };
-
-        options.ClosedEventHandler += (_, _) =>
-        {
-            _logger?.LogWarning("NATS 연결 종료: {Url}", _url);
-        };
-
-        return new ConnectionFactory().CreateConnection(options);
-    }
-
-    /// <summary>
-    /// 재연결 후 기존 구독 복원
-    /// </summary>
-    private void ResubscribeAll()
-    {
-        _subscriptions.Clear();
-        foreach (var (subject, handler) in _subscribedTopics)
-        {
-            var localHandler = handler;
-            void NatsHandler(object? sender, MsgHandlerEventArgs args)
-            {
-                localHandler(args.Message.Subject, args.Message.Data);
-            }
-
-            var subscription = _connection.SubscribeAsync(subject, NatsHandler);
-            _subscriptions.Add(subscription);
-        }
-
-        _logger?.LogInformation("NATS 구독 복원 완료: {Count}개", _subscribedTopics.Count);
     }
 
     public void Publish(string subject, byte[] message)
@@ -87,29 +40,65 @@ public class NatsClient : INatsClient
 
     public void Close()
     {
-        foreach (var subscription in _subscriptions)
-        {
-            subscription.Unsubscribe();
-        }
+        foreach (var subscription in _subscriptions) subscription.Unsubscribe();
 
         _subscriptions.Clear();
         _subscribedTopics.Clear();
         _connection.Close();
     }
+
+    private IConnection CreateConnection()
+    {
+        var options = ConnectionFactory.GetDefaultOptions();
+        options.Url = _url;
+        options.MaxReconnect = Options.ReconnectForever;
+        options.ReconnectWait = 2000; // 2초 간격 재연결 시도
+
+        options.DisconnectedEventHandler += (_, args) =>
+        {
+            _logger?.LogWarning("NATS 연결 끊김: {Error}", args.Error?.Message ?? "unknown");
+        };
+
+        options.ReconnectedEventHandler += (_, _) =>
+        {
+            _logger?.LogInformation("NATS 재연결 성공: {Url}", _url);
+            ResubscribeAll();
+        };
+
+        options.ClosedEventHandler += (_, _) => { _logger?.LogWarning("NATS 연결 종료: {Url}", _url); };
+
+        return new ConnectionFactory().CreateConnection(options);
+    }
+
+    /// <summary>
+    ///     재연결 후 기존 구독 복원
+    /// </summary>
+    private void ResubscribeAll()
+    {
+        _subscriptions.Clear();
+        foreach ((string subject, var handler) in _subscribedTopics)
+        {
+            var localHandler = handler;
+
+            void NatsHandler(object? sender, MsgHandlerEventArgs args)
+            {
+                localHandler(args.Message.Subject, args.Message.Data);
+            }
+
+            var subscription = _connection.SubscribeAsync(subject, NatsHandler);
+            _subscriptions.Add(subscription);
+        }
+
+        _logger?.LogInformation("NATS 구독 복원 완료: {Count}개", _subscribedTopics.Count);
+    }
 }
 
 /// <summary>
-/// NatsClient 팩토리
+///     NatsClient 팩토리
 /// </summary>
-public class NatsClientFactory : INatsClientFactory
+public class NatsClientFactory(ILogger<NatsClient>? logger = null) : INatsClientFactory
 {
     private string _natsEndpoint = "";
-    private readonly ILogger<NatsClient>? _logger;
-
-    public NatsClientFactory(ILogger<NatsClient>? logger = null)
-    {
-        _logger = logger;
-    }
 
     public void Initialize(string natsEndPoint)
     {
@@ -120,7 +109,7 @@ public class NatsClientFactory : INatsClientFactory
     {
         try
         {
-            return new NatsClient(_natsEndpoint, _logger);
+            return new NatsClient(_natsEndpoint, logger);
         }
         catch (Exception ex)
         {

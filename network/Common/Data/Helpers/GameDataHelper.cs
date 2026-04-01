@@ -65,7 +65,7 @@ namespace network.common.data.helpers
             }
         }
 
-        private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
+        private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager>? validate)[]
             _standardDataDefinitions =
             {
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),

@@ -2,9 +2,13 @@ using System.Net;
 using System.Net.Sockets;
 using network.managers;
 
+// ReSharper disable All
+
 namespace network.core;
 
+#pragma warning disable CS9113 // 매개 변수를 읽지 않았습니다.
 public class Connector(NetworkService networkService, LogManager logManager)
+#pragma warning restore CS9113 // 매개 변수를 읽지 않았습니다.
 {
     public delegate void ConnectEventHandler(UserToken token);
 

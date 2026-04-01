@@ -10,10 +10,27 @@ public class LogManager : ILogger
     private static ILogger? _staticLogger;
     private readonly ILogger _logger;
 
-    public LogManager(string serverType, int serverId, ILogger<LogManager> logger)
+    public LogManager(ILogger<LogManager> logger)
     {
         _logger = logger;
         _staticLogger ??= logger;
+    }
+
+    // ILogger 인터페이스 구현
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+    {
+        return _logger.BeginScope(state);
+    }
+
+    public bool IsEnabled(LogLevel logLevel)
+    {
+        return _logger.IsEnabled(logLevel);
+    }
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        _logger.Log(logLevel, eventId, state, exception, formatter);
     }
 
     public static void WriteInfoLog(string message)
@@ -44,38 +61,23 @@ public class LogManager : ILogger
         {
             var stackTrace = new StackTrace(true);
             logBuilder.AppendLine("\nStack Trace:");
-            for (var i = 1; i < stackTrace.FrameCount; i++)
+            for (int i = 1; i < stackTrace.FrameCount; i++)
             {
                 var frame = stackTrace.GetFrame(i);
                 if (frame == null) continue;
                 var method = frame.GetMethod();
                 if (method == null) continue;
-                var fileName = frame.GetFileName() ?? "Unknown File";
-                var lineNumber = frame.GetFileLineNumber();
-                var className = method.DeclaringType?.FullName ?? "Unknown Class";
-                var methodName = method.Name;
+                string fileName = frame.GetFileName() ?? "Unknown File";
+                int lineNumber = frame.GetFileLineNumber();
+                string className = method.DeclaringType?.FullName ?? "Unknown Class";
+                string methodName = method.Name;
                 if (lineNumber > 0)
                     logBuilder.AppendLine($"   at {className}.{methodName} in {fileName}:line {lineNumber}");
                 else
                     logBuilder.AppendLine($"   at {className}.{methodName}");
             }
         }
+
         _logger.LogDebug(logBuilder.ToString());
-    }
-
-    // ILogger 인터페이스 구현
-    public IDisposable? BeginScope<TState>(TState state) where TState : notnull
-    {
-        return _logger.BeginScope(state);
-    }
-
-    public bool IsEnabled(LogLevel logLevel)
-    {
-        return _logger.IsEnabled(logLevel);
-    }
-
-    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-    {
-        _logger.Log(logLevel, eventId, state, exception, formatter);
     }
 }

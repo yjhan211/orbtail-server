@@ -1,5 +1,4 @@
 using network.common;
-using network.infrastructure;
 using network.interfaces;
 using StackExchange.Redis;
 
@@ -7,11 +6,9 @@ namespace network.infrastructure;
 
 public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
 {
-    public IRedLockFactory GetRedLockFactory() => redisPool.GetRedLockFactory();
-
-    private async Task<T> ExecuteRedisCommandAsync<T>(Func<IDatabase, Task<T>> action, int db = -1)
+    public IRedLockFactory GetRedLockFactory()
     {
-        return await redisPool.ExecuteWithRetryAsync(action, db);
+        return redisPool.GetRedLockFactory();
     }
 
     public Task<bool> HashSetAsync(string key, long field, byte[] value, int db = -1)
@@ -82,26 +79,25 @@ public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
 
     public async Task<RedisValue[]> ListRangeAsync(List<string> keys, int start = 0, int end = -1, int db = -1)
     {
-        if (keys.Count == 0) return Array.Empty<RedisValue>();
+        if (keys.Count == 0) return [];
 
         var results = new List<RedisValue>();
 
-        for (var i = 0; i < keys.Count; i += Config.BATCH_SIZE)
+        for (int i = 0; i < keys.Count; i += Config.BATCH_SIZE)
         {
             var batchTasks = keys.Skip(i)
                 .Take(Config.BATCH_SIZE)
-                .Select(
-                    key =>
-                        ExecuteRedisCommandAsync(
-                            database =>
-                                database.ListRangeAsync(
-                                    key,
-                                    start,
-                                    end,
-                                    CommandFlags.PreferReplica
-                                ),
-                            db
-                        )
+                .Select(key =>
+                    ExecuteRedisCommandAsync(
+                        database =>
+                            database.ListRangeAsync(
+                                key,
+                                start,
+                                end,
+                                CommandFlags.PreferReplica
+                            ),
+                        db
+                    )
                 );
 
             var batchResults = await Task.WhenAll(batchTasks);
@@ -117,7 +113,7 @@ public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
         if (keys.Count == 0) return [];
 
         var results = new List<(string key, RedisValue value)>();
-        for (var i = 0; i < keys.Count; i += Config.BATCH_SIZE)
+        for (int i = 0; i < keys.Count; i += Config.BATCH_SIZE)
         {
             var batchTasks = keys.Skip(i)
                 .Take(Config.BATCH_SIZE)
@@ -184,10 +180,12 @@ public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
         return ExecuteRedisCommandAsync(database => database.SortedSetAddAsync(key, value, score), db);
     }
 
-    public async Task<byte[][]> SortedSetRangeByScoreAsync(string key, double start = double.NegativeInfinity, double stop = double.PositiveInfinity, int db = -1)
+    public async Task<byte[][]> SortedSetRangeByScoreAsync(string key, double start = double.NegativeInfinity,
+        double stop = double.PositiveInfinity, int db = -1)
     {
         var result = await ExecuteRedisCommandAsync(
-            database => database.SortedSetRangeByScoreAsync(key, start, stop, order: Order.Ascending, flags: CommandFlags.PreferReplica),
+            database => database.SortedSetRangeByScoreAsync(key, start, stop, order: Order.Ascending,
+                flags: CommandFlags.PreferReplica),
             db
         );
         return result.Select(rv => (byte[])rv!).ToArray();
@@ -196,5 +194,10 @@ public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
     public Task<bool> SortedSetRemoveAsync(string key, byte[] value, int db = -1)
     {
         return ExecuteRedisCommandAsync(database => database.SortedSetRemoveAsync(key, value), db);
+    }
+
+    private async Task<T> ExecuteRedisCommandAsync<T>(Func<IDatabase, Task<T>> action, int db = -1)
+    {
+        return await redisPool.ExecuteWithRetryAsync(action, db);
     }
 }

@@ -8,18 +8,12 @@ using StackExchange.Redis;
 
 namespace network.infrastructure;
 
-public class RedisConnectionPool : IRedisConnectionPool
+public class RedisConnectionPool(ILogger<RedisConnectionPool> logger) : IRedisConnectionPool
 {
     private readonly ConcurrentDictionary<int, IDatabase> _databases = new();
     private readonly object _lock = new();
-    private readonly ILogger<RedisConnectionPool> _logger;
     private Lazy<ConnectionMultiplexer>? _lazyConnection;
     private ConfigurationOptions? _options;
-
-    public RedisConnectionPool(ILogger<RedisConnectionPool> logger)
-    {
-        _logger = logger;
-    }
 
     public void Initialize(string connectionString)
     {
@@ -42,27 +36,11 @@ public class RedisConnectionPool : IRedisConnectionPool
         }, LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
-    private ConnectionMultiplexer GetConnection()
-    {
-        if (_lazyConnection == null) throw new InvalidOperationException("Redis connection is not initialized.");
-        return _lazyConnection.Value;
-    }
-
-    private IDatabase GetDatabase(int db = -1)
-    {
-        return _databases.GetOrAdd(db, dbNum => _lazyConnection!.Value.GetDatabase(dbNum));
-    }
-
-    private Task<IDatabase> GetDatabaseAsync(int db = -1)
-    {
-        return Task.FromResult(GetDatabase(db));
-    }
-
     public void Dispose()
     {
         lock (_lock)
         {
-            if (_lazyConnection != null && _lazyConnection.IsValueCreated)
+            if (_lazyConnection is { IsValueCreated: true })
                 _lazyConnection.Value.Dispose();
         }
     }
@@ -82,10 +60,9 @@ public class RedisConnectionPool : IRedisConnectionPool
 
     public async Task<T> ExecuteWithRetryAsync<T>(Func<IDatabase, Task<T>> action, int db = -1, int retryCount = 3)
     {
-        var delay = 100; // 시작 딜레이 (ms)
+        int delay = 100; // 시작 딜레이 (ms)
 
-        for (var i = 0; i < retryCount; i++)
-        {
+        for (int i = 0; i < retryCount; i++)
             try
             {
                 var database = await GetDatabaseAsync(db);
@@ -95,11 +72,12 @@ public class RedisConnectionPool : IRedisConnectionPool
             {
                 if (i == retryCount - 1)
                 {
-                    _logger.LogWarning("Redis timeout after {RetryCount} retries: {Message}", retryCount, ex.Message);
+                    logger.LogWarning("Redis timeout after {RetryCount} retries: {Message}", retryCount, ex.Message);
                     throw;
                 }
 
-                _logger.LogWarning("Redis timeout (attempt {Attempt}/{RetryCount}), retrying in {Delay}ms...", i + 1, retryCount, delay);
+                logger.LogWarning("Redis timeout (attempt {Attempt}/{RetryCount}), retrying in {Delay}ms...", i + 1,
+                    retryCount, delay);
                 await Task.Delay(delay);
                 delay *= 2; // 지수 백오프
             }
@@ -107,17 +85,34 @@ public class RedisConnectionPool : IRedisConnectionPool
             {
                 if (i == retryCount - 1)
                 {
-                    _logger.LogError("Redis connection error after {RetryCount} retries: {Message}", retryCount, ex.Message);
+                    logger.LogError("Redis connection error after {RetryCount} retries: {Message}", retryCount,
+                        ex.Message);
                     throw;
                 }
 
-                _logger.LogWarning("Redis connection error (attempt {Attempt}/{RetryCount}), retrying in {Delay}ms...", i + 1, retryCount, delay);
+                logger.LogWarning("Redis connection error (attempt {Attempt}/{RetryCount}), retrying in {Delay}ms...",
+                    i + 1, retryCount, delay);
                 await Task.Delay(delay);
                 delay *= 2; // 지수 백오프
             }
-        }
 
         throw new Exception($"Redis operation failed after {retryCount} retries");
+    }
+
+    private ConnectionMultiplexer GetConnection()
+    {
+        if (_lazyConnection == null) throw new InvalidOperationException("Redis connection is not initialized.");
+        return _lazyConnection.Value;
+    }
+
+    private IDatabase GetDatabase(int db = -1)
+    {
+        return _databases.GetOrAdd(db, dbNum => _lazyConnection!.Value.GetDatabase(dbNum));
+    }
+
+    private Task<IDatabase> GetDatabaseAsync(int db = -1)
+    {
+        return Task.FromResult(GetDatabase(db));
     }
 }
 

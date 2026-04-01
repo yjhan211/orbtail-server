@@ -7,15 +7,15 @@ namespace network.packets;
 public class Packet : IPacket
 {
     private long _playerId;
-    public int _protocolId;
+    public int ProtocolId;
 
-    public Packet(byte[] buffer)
+    private Packet(byte[] buffer)
     {
         Buffer = buffer;
         Position = Config.HEADER_SIZE;
     }
 
-    public Packet()
+    internal Packet()
     {
         Buffer = new byte[Config.BUFFER_SIZE];
     }
@@ -25,7 +25,7 @@ public class Packet : IPacket
 
     public byte[] ToBytes()
     {
-        var data = new byte[Position];
+        byte[] data = new byte[Position];
         Array.Copy(Buffer, data, Position);
         return data;
     }
@@ -49,11 +49,9 @@ public class Packet : IPacket
     public static Packet Create(Const<byte[]> buffer)
     {
         if (Config.BUFFER_SIZE < buffer.Value.Length)
-        {
             throw new Exception($"Invalid Buffer Size. size:{buffer.Value.Length}");
-        }
 
-        var clone = new byte[Config.BUFFER_SIZE];
+        byte[] clone = new byte[Config.BUFFER_SIZE];
         Array.Copy(buffer.Value, clone, buffer.Value.Length);
         return new Packet(clone);
     }
@@ -66,7 +64,7 @@ public class Packet : IPacket
 
     public void CopyTo(Packet target)
     {
-        target.SetProtocolId(_protocolId);
+        target.SetProtocolId(ProtocolId);
         target.SetPlayerId(_playerId);
         target.Overwrite(Buffer, Position);
     }
@@ -82,7 +80,7 @@ public class Packet : IPacket
         throw new NotImplementedException();
     }
 
-    public void Overwrite(byte[] source, int position)
+    private void Overwrite(byte[] source, int position)
     {
         Array.Copy(source, Buffer, source.Length);
         Position = position;
@@ -90,16 +88,16 @@ public class Packet : IPacket
 
     private void SetProtocolId(int protocolId)
     {
-        _protocolId = protocolId;
+        ProtocolId = protocolId;
         Position = Config.HEADER_SIZE;
-        var tempBuffer = BitConverter.GetBytes(_protocolId);
+        byte[] tempBuffer = BitConverter.GetBytes(ProtocolId);
         tempBuffer.CopyTo(Buffer, Position);
         Position += tempBuffer.Length;
     }
 
     public int PopProtocolId()
     {
-        var data = BitConverter.ToInt32(Buffer, Position);
+        int data = BitConverter.ToInt32(Buffer, Position);
         Position += sizeof(int);
 
         return data;
@@ -108,14 +106,14 @@ public class Packet : IPacket
     private void SetPlayerId(long playerId)
     {
         _playerId = playerId;
-        var tempBuffer = BitConverter.GetBytes(playerId);
+        byte[] tempBuffer = BitConverter.GetBytes(playerId);
         tempBuffer.CopyTo(Buffer, Position);
         Position += tempBuffer.Length;
     }
 
     public long PopPlayerId()
     {
-        var data = BitConverter.ToInt64(Buffer, Position);
+        long data = BitConverter.ToInt64(Buffer, Position);
         Position += sizeof(long);
 
         return data;
@@ -132,7 +130,7 @@ public class Packet : IPacket
 
     public byte[] PopBody()
     {
-        var tempBuffer = new byte[Buffer.Length - Position];
+        byte[] tempBuffer = new byte[Buffer.Length - Position];
         Array.Copy(Buffer, Position, tempBuffer, 0, tempBuffer.Length);
         Position += tempBuffer.Length;
 
@@ -141,8 +139,8 @@ public class Packet : IPacket
 
     public void RecordSize()
     {
-        var bodySize = Position - Config.HEADER_SIZE;
-        var header = BitConverter.GetBytes(bodySize);
+        int bodySize = Position - Config.HEADER_SIZE;
+        byte[] header = BitConverter.GetBytes(bodySize);
         header.CopyTo(Buffer, 0);
     }
 }
