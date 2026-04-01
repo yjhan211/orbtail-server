@@ -107,6 +107,10 @@ namespace network.common
         C_TO_G_PLAYER_INTERACT_SHARE_RULE,        // 상호작용 중 수칙 공유 요청
         G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT,  // 상호작용 중 수칙 공유 결과
 
+        // 범용 에러 프로토콜
+        U_TO_C_ERROR, // UserServer 범용 에러 응답
+        G_TO_C_ERROR, // GameServer 범용 에러 응답
+
         END
     }
 

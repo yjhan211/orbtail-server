@@ -21,7 +21,15 @@ public class NatsClient : INatsClient
 
     public void Publish(string subject, byte[] message)
     {
-        _connection.Publish(subject, message);
+        try
+        {
+            _connection.Publish(subject, message);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "NATS Publish 실패: Subject={Subject}", subject);
+            throw;
+        }
     }
 
     public void Subscribe(string subject, Action<string, byte[]> messageHandler)

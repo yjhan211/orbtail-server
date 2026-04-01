@@ -66,6 +66,7 @@ public abstract class SessionBase : IPeer
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error processing client message");
+            SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, ex.Message);
         }
         finally
         {
@@ -95,6 +96,12 @@ public abstract class SessionBase : IPeer
         var message = MessagePackSerializer.Deserialize<T>(body);
         await handler(message);
     }
+
+    /// <summary>
+    ///     미처리 예외 발생 시 클라이언트에 에러 응답을 전송한다.
+    ///     서브클래스에서 오버라이드하여 적절한 에러 패킷(U_TO_C_ERROR / G_TO_C_ERROR)을 전송한다.
+    /// </summary>
+    protected virtual void SendErrorResponse(ErrorCode errorCode, string message) { }
 
     public virtual void OnDisconnect()
     {

@@ -150,4 +150,11 @@ namespace network.common.data.models
         [Key("matchingId")] public long MatchingId { get; set; }
         [Key("isEscaped")] public bool IsEscaped { get; set; } // true: 탈출 성공, false: 탈출 실패 (시간 초과)
     }
+
+    [MessagePackObject]
+    public class G_TO_C_ERROR : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("message")] public string Message { get; set; }
+    }
 }

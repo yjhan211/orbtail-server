@@ -315,4 +315,11 @@ namespace network.common.data.models
     {
         [Key("damageType")] public DamageType DamageType { get; set; }
     }
+
+    [MessagePackObject]
+    public class U_TO_C_ERROR : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("message")] public string Message { get; set; }
+    }
 }

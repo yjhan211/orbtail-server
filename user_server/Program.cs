@@ -2,9 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using network.config;
 using network.core;
-using network.helpers;
 using network.infrastructure;
 using network.interfaces;
 using network.managers;
@@ -87,7 +85,7 @@ internal static class Program
     {
         var serverConfig = sp.GetRequiredService<ServerConfig>();
         var logger = sp.GetRequiredService<ILogger<LogManager>>();
-        return new LogManager(serverConfig.ServerType, serverConfig.ServerId, logger);
+        return new LogManager(logger);
     }
 
     private static RedisConnectionPool CreateRedisConnectionPool(IServiceProvider sp, HostBuilderContext hostContext)

@@ -31,7 +31,7 @@ public sealed class GameSession : SessionBase
         _matchingManager = matchingManager;
         _onSessionRegistered = onSessionRegistered;
 
-        _subscribeRouter = new ProtocolRouter(logger);
+        _subscribeRouter = new ProtocolRouter();
         InitializeProtocolHandlers();
     }
 
@@ -41,30 +41,30 @@ public sealed class GameSession : SessionBase
     protected override void InitializeProtocolHandlers()
     {
         // 클라이언트 프로토콜
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_HEART_BEAT, HandleHeartBeat);
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_LOGIN,
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_HEART_BEAT, HandleHeartBeat);
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_LOGIN,
             async bytes => await HandleMessage<C_TO_U_LOGIN>(bytes, Login));
         // C_TO_U_PLAYER_INFO는 세션 기반 게임에서는 GameServer에서 처리 (G_TO_C_PLAYER_INFO)
-        // _protocolRouter.RegisterHandler(Protocol.C_TO_U_PLAYER_INFO, async (bytes) => await HandleMessage<C_TO_U_PLAYER_INFO>(bytes, GetPlayerInfo));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_WEAR_ITEM,
+        // ProtocolRouter.RegisterHandler(Protocol.C_TO_U_PLAYER_INFO, async (bytes) => await HandleMessage<C_TO_U_PLAYER_INFO>(bytes, GetPlayerInfo));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_WEAR_ITEM,
             async bytes => await HandleMessage<C_TO_U_WEAR_ITEM>(bytes, WearItem));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_USE_ITEM,
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_USE_ITEM,
             async bytes => await HandleMessage<C_TO_U_USE_ITEM>(bytes, UseItem));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_MSG,
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_MSG,
             async bytes => await HandleMessage<C_TO_U_CHAT_MSG>(bytes, AppendChat));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_LOG, async _ => await SendChatHistory(ChatType.ALL));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_SET_NAME,
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_LOG, async _ => await SendChatHistory(ChatType.ALL));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_SET_NAME,
             async bytes => await HandleMessage<C_TO_U_SET_NAME>(bytes, SetName));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_INCREASE,
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_INCREASE,
             async bytes => await HandleMessage<C_TO_U_QUEST_INCREASE>(bytes, IncreaseQuestCount));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_SUCCESS,
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_SUCCESS,
             async bytes => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, CompleteQuest));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_LIST, async _ => await SendMailList());
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_RECEIVE,
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_LIST, async _ => await SendMailList());
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_RECEIVE,
             async bytes => await HandleMessage<C_TO_U_MAIL_RECEIVE>(bytes, ReceiveMail));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING,
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING,
             async bytes => await HandleMessage<C_TO_U_MATCHING>(bytes, HandleMatching));
-        _protocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING_CANCEL, async _ => await HandleMatchingCancel());
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING_CANCEL, async _ => await HandleMatchingCancel());
 
         // 구독 프로토콜
         _subscribeRouter.RegisterHandler(Protocol.U_TO_C_CHAT_MSG,
@@ -92,35 +92,35 @@ public sealed class GameSession : SessionBase
     {
         try
         {
-            _logger.LogInformation("Login request received: AccountToken={AccountToken}", msg.AccountToken);
+            Logger.LogInformation("Login request received: AccountToken={AccountToken}", msg.AccountToken);
 
             // AccountToken이 없거나 파싱 실패시 Redis INCR로 새 PlayerId 생성
             if (string.IsNullOrEmpty(msg.AccountToken) || !long.TryParse(msg.AccountToken, out long playerId))
             {
                 // Redis INCR을 사용해 1부터 순차 증가하는 PlayerId 생성
-                playerId = await _cacheHelper.StringIncrementAsync("player_id_counter");
-                _logger.LogInformation("Generated new PlayerId from Redis: {PlayerId}", playerId);
+                playerId = await CacheHelper.StringIncrementAsync("player_id_counter");
+                Logger.LogInformation("Generated new PlayerId from Redis: {PlayerId}", playerId);
             }
 
             PlayerId = playerId;
-            _logger.LogInformation("PlayerId set to {PlayerId}", PlayerId);
+            Logger.LogInformation("PlayerId set to {PlayerId}", PlayerId);
 
-            await using var playerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
-            _logger.LogInformation("Player lock acquired for PlayerId={PlayerId}", PlayerId);
+            await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+            Logger.LogInformation("Player lock acquired for PlayerId={PlayerId}", PlayerId);
 
-            PlayerInfo = await PlayerInfo.Load(_cacheHelper, PlayerId.Value);
+            PlayerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
             if (PlayerInfo == null)
             {
                 // 신규 플레이어 생성
-                _logger.LogInformation("Creating new player: PlayerId={PlayerId}", PlayerId);
+                Logger.LogInformation("Creating new player: PlayerId={PlayerId}", PlayerId);
                 PlayerInfo = new PlayerInfo(PlayerId.Value, false);
-                await PlayerInfo.Save(_cacheHelper);
-                _logger.LogInformation("New player created and saved: PlayerId={PlayerId}", PlayerId);
+                await PlayerInfo.Save(CacheHelper);
+                Logger.LogInformation("New player created and saved: PlayerId={PlayerId}", PlayerId);
             }
             else
             {
-                _logger.LogInformation("Existing player loaded: PlayerId={PlayerId}, Name={Name}", PlayerId,
+                Logger.LogInformation("Existing player loaded: PlayerId={PlayerId}, Name={Name}", PlayerId,
                     PlayerInfo.Name);
             }
 
@@ -129,7 +129,7 @@ public sealed class GameSession : SessionBase
 
             // 세션 등록
             _onSessionRegistered(PlayerId.Value, this);
-            _logger.LogInformation("Session registered for PlayerId={PlayerId}", PlayerId);
+            Logger.LogInformation("Session registered for PlayerId={PlayerId}", PlayerId);
 
             // TODO: SubjectHelper에 GetDuplicateLoginSubject, GetPlayerSubject 추가 필요
             // 중복 로그인 체크 (다른 세션에 중복 알림 전송)
@@ -141,9 +141,9 @@ public sealed class GameSession : SessionBase
             // _natsClient.Subscribe(playerSubject, (subject, body) => _ = OnMessageFromNatsWrapper(body));
 
             // 로그인 응답 전송
-            _logger.LogInformation("Creating login packet for PlayerId={PlayerId}", PlayerId);
+            Logger.LogInformation("Creating login packet for PlayerId={PlayerId}", PlayerId);
             using var loginPacket = PacketMaker.U_TO_C_LOGIN(PlayerInfo);
-            _logger.LogInformation("Sending U_TO_C_LOGIN packet for PlayerId={PlayerId}, Packet size={Size}", PlayerId,
+            Logger.LogInformation("Sending U_TO_C_LOGIN packet for PlayerId={PlayerId}, Packet size={Size}", PlayerId,
                 loginPacket.ToBytes().Length);
             Send(loginPacket);
 
@@ -163,16 +163,18 @@ public sealed class GameSession : SessionBase
                     Send(itemListPacket);
                 }
 
-                _logger.LogInformation(
+                Logger.LogInformation(
                     "Sent inventory item list in {ChunkCount} packets: PlayerId={PlayerId}, ItemCount={Count}",
                     totalChunks, PlayerId, PlayerInfo.InventoryInfo.ItemDict.Count);
             }
 
-            _logger.LogInformation("Player {PlayerId} logged in successfully", PlayerId);
+            Logger.LogInformation("Player {PlayerId} logged in successfully", PlayerId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Login failed for player {AccountToken}", msg.AccountToken);
+            Logger.LogError(ex, "Login failed for player {AccountToken}", msg.AccountToken);
+            SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, "로그인 처리 중 오류가 발생했습니다");
+            Disconnect();
         }
     }
 
@@ -180,10 +182,10 @@ public sealed class GameSession : SessionBase
     {
         try
         {
-            _logger.LogInformation("Setting up new player: PlayerId={PlayerId}", playerInfo.PlayerId);
+            Logger.LogInformation("Setting up new player: PlayerId={PlayerId}", playerInfo.PlayerId);
 
             // 아이템 UID 카운터 가져오기
-            long itemUidCounter = await _cacheHelper.StringIncrementAsync("item_uid_counter");
+            long itemUidCounter = await CacheHelper.StringIncrementAsync("item_uid_counter");
 
             // 기본 아이템 3종 먼저 추가 (Top, Bottom, Shoes)
             var defaultTop = new ItemInfo(itemUidCounter++, 104000001, 1);
@@ -194,7 +196,7 @@ public sealed class GameSession : SessionBase
             playerInfo.InventoryInfo.ItemDict.Add(defaultBottom.ItemUid, defaultBottom);
             playerInfo.InventoryInfo.ItemDict.Add(defaultShoes.ItemUid, defaultShoes);
 
-            _logger.LogInformation("Added default items: Top={TopUid}, Bottom={BottomUid}, Shoes={ShoesUid}",
+            Logger.LogInformation("Added default items: Top={TopUid}, Bottom={BottomUid}, Shoes={ShoesUid}",
                 defaultTop.ItemUid, defaultBottom.ItemUid, defaultShoes.ItemUid);
 
             // 기본 아이템 착용 (직접 처리)
@@ -206,7 +208,7 @@ public sealed class GameSession : SessionBase
             playerInfo.WearItemIdList.Add(defaultBottom.ItemId);
             playerInfo.WearItemIdList.Add(defaultShoes.ItemId);
 
-            _logger.LogInformation("Default items equipped for PlayerId={PlayerId}, WearItemCount={Count}",
+            Logger.LogInformation("Default items equipped for PlayerId={PlayerId}, WearItemCount={Count}",
                 playerInfo.PlayerId, playerInfo.WearItemIdList.Count);
 
             // 테스트용 코스튬 아이템 전부 지급
@@ -242,14 +244,14 @@ public sealed class GameSession : SessionBase
 
             // 저장
             playerInfo.IsNew = false;
-            await playerInfo.Save(_cacheHelper);
+            await playerInfo.Save(CacheHelper);
 
-            _logger.LogInformation("New player setup complete: PlayerId={PlayerId}, Total items={Count}",
+            Logger.LogInformation("New player setup complete: PlayerId={PlayerId}, Total items={Count}",
                 playerInfo.PlayerId, playerInfo.InventoryInfo.ItemDict.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to setup new player: PlayerId={PlayerId}", playerInfo.PlayerId);
+            Logger.LogError(ex, "Failed to setup new player: PlayerId={PlayerId}", playerInfo.PlayerId);
         }
     }
 
@@ -266,6 +268,10 @@ public sealed class GameSession : SessionBase
             using var packet = PacketMaker.U_TO_C_WEAR_ITEM(playerInfo);
             Send(packet);
         }
+        else
+        {
+            SendErrorResponse(errorCode, "아이템 착용 실패");
+        }
     }
 
     private async Task UseItem(C_TO_U_USE_ITEM msg)
@@ -279,6 +285,10 @@ public sealed class GameSession : SessionBase
             using var packet = PacketMaker.U_TO_C_USE_ITEM(playerInfo);
             Send(packet);
         }
+        else
+        {
+            SendErrorResponse(errorCode, "아이템 사용 실패");
+        }
     }
 
     private async Task SetName(C_TO_U_SET_NAME msg)
@@ -291,6 +301,10 @@ public sealed class GameSession : SessionBase
         {
             using var packet = PacketMaker.U_TO_C_SET_NAME(errorCode, playerInfo);
             Send(packet);
+        }
+        else
+        {
+            SendErrorResponse(errorCode, "이름 변경 실패");
         }
     }
 
@@ -313,18 +327,26 @@ public sealed class GameSession : SessionBase
             using var packet = PacketMaker.U_TO_C_QUEST_SUCCESS(msg.QuestId, errorCode);
             Send(packet);
         }
+        else
+        {
+            SendErrorResponse(errorCode, "퀘스트 완료 실패");
+        }
     }
 
     private async Task SendMailList()
     {
         if (PlayerId == null) return;
 
-        var mailDict = await _playerService.GetMailList(PlayerId.Value);
+        var (errorCode, mailDict) = await _playerService.GetMailList(PlayerId.Value);
 
-        if (mailDict != null)
+        if (errorCode == ErrorCode.SUCCESS && mailDict != null)
         {
             using var packet = PacketMaker.U_TO_C_MAIL_LIST(mailDict, true);
             Send(packet);
+        }
+        else
+        {
+            SendErrorResponse(errorCode, "메일 목록 조회 실패");
         }
     }
 
@@ -339,6 +361,10 @@ public sealed class GameSession : SessionBase
             using var packet = PacketMaker.U_TO_C_MAIL_RECEIVE(msg.MailUid, errorCode);
             Send(packet);
         }
+        else
+        {
+            SendErrorResponse(errorCode, "메일 수신 실패");
+        }
     }
 
     // ========== 채팅 ==========
@@ -347,7 +373,7 @@ public sealed class GameSession : SessionBase
     {
         if (PlayerId == null || PlayerInfo == null) return;
 
-        _logger.LogInformation($"Chat from {PlayerId}: {msg.ChatMessage}");
+        Logger.LogInformation($"Chat from {PlayerId}: {msg.ChatMessage}");
 
         // TODO: SubjectHelper에 GetChatSubject 추가 필요, GameObjectInfo에서 이름 필드 확인 필요
         // var chatSubject = SubjectHelper.GetChatSubject(ChatType.ALL);
@@ -395,7 +421,7 @@ public sealed class GameSession : SessionBase
 
     private void ReceiveDuplicate()
     {
-        _logger.LogWarning($"Duplicate login detected for player {PlayerId}");
+        Logger.LogWarning($"Duplicate login detected for player {PlayerId}");
         Disconnect();
     }
 
@@ -405,19 +431,19 @@ public sealed class GameSession : SessionBase
         {
             if (packet is Packet p)
             {
-                _token.Send(p);
-                if (p._protocolId != (int)Protocol.U_TO_C_HEART_BEAT)
-                    _logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}",
-                        (Protocol)p._protocolId, PlayerId);
+                Token.Send(p);
+                if (p.ProtocolId != (int)Protocol.U_TO_C_HEART_BEAT)
+                    Logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}",
+                        (Protocol)p.ProtocolId, PlayerId);
             }
             else
             {
-                _logger.LogWarning("Invalid packet type: {Type}, PlayerId={PlayerId}", packet.GetType().Name, PlayerId);
+                Logger.LogWarning("Invalid packet type: {Type}, PlayerId={PlayerId}", packet.GetType().Name, PlayerId);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send packet: PlayerId={PlayerId}", PlayerId);
+            Logger.LogError(ex, "Failed to send packet: PlayerId={PlayerId}", PlayerId);
         }
     }
 
@@ -429,23 +455,41 @@ public sealed class GameSession : SessionBase
 
     private void Disconnect()
     {
-        _token.Disconnect();
+        Token.Disconnect();
+    }
+
+    protected override void SendErrorResponse(ErrorCode errorCode, string message)
+    {
+        try
+        {
+            using var packet = PacketMaker.U_TO_C_ERROR(errorCode, message);
+            Send(packet);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "에러 응답 전송 실패: PlayerId={PlayerId}", PlayerId);
+        }
     }
 
     public override void OnRemoved()
     {
-        _logger.LogInformation($"Session removed: PlayerId={PlayerId}");
+        Logger.LogInformation("Session removed: PlayerId={PlayerId}", PlayerId);
+
+        // 매칭 큐에서 제거
+        if (PlayerId.HasValue)
+        {
+            _ = _matchingManager.CancelMatching(PlayerId.Value);
+        }
     }
 
     public override void OnDisconnect()
     {
-        _logger.LogInformation($"Session disconnected: PlayerId={PlayerId}");
+        Logger.LogInformation("Session disconnected: PlayerId={PlayerId}", PlayerId);
 
-        // TODO: INatsClient에 Unsubscribe 메서드가 없음 - NATS 라이브러리 확인 필요
-        // if (PlayerId.HasValue)
-        // {
-        //     var playerSubject = SubjectHelper.GetPlayerSubject(PlayerId.Value);
-        //     _natsClient.Unsubscribe(playerSubject);
-        // }
+        // 매칭 큐에서 제거
+        if (PlayerId.HasValue)
+        {
+            _ = _matchingManager.CancelMatching(PlayerId.Value);
+        }
     }
 }

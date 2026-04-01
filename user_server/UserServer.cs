@@ -71,7 +71,7 @@ public class UserServer(
 
         // MatchingManager 초기화
         natsClientFactory.Create();
-        _matchingManager = new MatchingManager(logger, cacheHelper, GetSession);
+        _matchingManager = new MatchingManager(logger, cacheHelper, redLock, GetSession);
 
         logger.LogInformation("Services initialized successfully");
     }
@@ -103,7 +103,8 @@ public class UserServer(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to create GameSession");
+            logger.LogError(ex, "GameSession 생성 실패, 연결 종료");
+            token.Disconnect();
         }
     }
 
@@ -137,7 +138,7 @@ public class UserServer(
                     if (session.PlayerId.HasValue)
                     {
                         _sessions.TryRemove(session.PlayerId.Value, out _);
-                        logger.LogInformation($"Session removed: PlayerId={session.PlayerId}");
+                        logger.LogInformation("Session removed: PlayerId={SessionPlayerId}", session.PlayerId);
                     }
 
                 await Task.Delay(100, ct);

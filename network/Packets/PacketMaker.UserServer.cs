@@ -174,4 +174,13 @@ public static partial class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+
+    public static Packet U_TO_C_ERROR(ErrorCode errorCode, string message = "")
+    {
+        var packet = Packet.Create((int)Protocol.U_TO_C_ERROR);
+        U_TO_C_ERROR body = new() { ErrorCode = errorCode, Message = message };
+
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
 }

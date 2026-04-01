@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.interfaces;
 
@@ -10,11 +11,13 @@ public class NetworkService : INetworkService
     private readonly BufferManager _bufferManager;
     private readonly Listener _clientListener = new();
     private readonly object _initEventArgsLock = new();
+    private readonly ILogger? _logger;
     private readonly SocketAsyncEventArgsManager _recvEventArgsManager;
     private readonly SocketAsyncEventArgsManager _sendEventArgsManager;
 
-    public NetworkService()
+    public NetworkService(ILogger<NetworkService>? logger = null)
     {
+        _logger = logger;
         _bufferManager = new BufferManager(Config.MAX_CONNECTION * Config.PRE_ALLOC_COUNT * Config.BUFFER_SIZE,
             Config.BUFFER_SIZE);
         _recvEventArgsManager = new SocketAsyncEventArgsManager(Config.MAX_CONNECTION);
@@ -149,8 +152,9 @@ public class NetworkService : INetworkService
             bool willRaiseEvent = userToken.Socket!.ReceiveAsync(recvArgs);
             if (!willRaiseEvent) ProcessRecv(recvArgs);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger?.LogWarning(ex, "패킷 처리 중 오류, 세션 제거");
             userToken?.OnRemoved();
         }
     }
