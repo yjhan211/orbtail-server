@@ -2,7 +2,6 @@ using MessagePack;
 using network.helpers;
 using network.interfaces;
 using RedLockNet;
-using RedLockNet.SERedis;
 using StackExchange.Redis;
 
 // ReSharper disable once CheckNamespace
@@ -15,7 +14,7 @@ public partial class PlayerInfo
         return await redLock.CreateLockAsync(GetLockKey(playerId), Config.LOCK_TTL);
     }
 
-    public async Task<IRedLock> Lock(RedLockFactory redLock)
+    public async Task<IRedLock> Lock(IRedLockFactory redLock)
     {
         return await redLock.CreateLockAsync(GetLockKey(), Config.LOCK_TTL);
     }

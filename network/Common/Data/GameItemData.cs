@@ -5,17 +5,17 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Diagnostics.CodeAnalysis;
-using Newtonsoft.Json;
+using System.Linq;
 using network.common.data.helpers;
 using network.managers;
+using Newtonsoft.Json;
 
 namespace network.common.data
 {
     public static class GameItemData
     {
-        private static readonly Dictionary<int, ItemInfoData> Items = new();
+        private static readonly Dictionary<int, ItemInfoData> _items = new();
 
         public static void Initialize(List<CsvRow> baseItemData, List<CsvRow> equipmentData,
             List<CsvRow> consumableData, List<CsvRow> putData)
@@ -59,13 +59,13 @@ namespace network.common.data
                         break;
                 }
 
-                Items[itemId] = ItemInfoData.CreateFromData(baseInfo, additionalData);
+                _items[itemId] = ItemInfoData.CreateFromData(baseInfo, additionalData);
             }
         }
 
         public static ItemInfoData Get(int id)
         {
-            if (!Items.TryGetValue(id, out var item))
+            if (!_items.TryGetValue(id, out var item))
             {
                 return null; // throw new KeyNotFoundException($"Item {id} not found");
             }
@@ -75,7 +75,7 @@ namespace network.common.data
 
         public static List<ItemInfoData> GetAllList()
         {
-            return Items.Values.ToList();
+            return _items.Values.ToList();
         }
 
         /// <summary>
@@ -83,7 +83,7 @@ namespace network.common.data
         /// </summary>
         public static List<ItemInfoData> GetConsumablesByBuffSubType(BuffSubType buffSubType)
         {
-            return Items.Values
+            return _items.Values
                 .Where(item => item.Type == ItemType.CONSUMABLE &&
                                item.ConsumableBuffList.Any(buff =>
                                {
@@ -136,7 +136,7 @@ namespace network.common.data
         public List<(int id, int value, int interval)> ConsumableBuffList { get; private set; }
 
         // 설치 아이템 관련
-        public int? MaxSellItems { get; private set; }
+        public int? MaxSell_items { get; private set; }
 
         // 아이템 타입 체크 헬퍼 메서드
         public bool IsEquipment => Type == ItemType.EQUIPMENT;

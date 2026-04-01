@@ -11,7 +11,7 @@ namespace network.common
         /// <summary>
         /// GameServer가 처리하는 실시간 프로토콜
         /// </summary>
-        private static readonly HashSet<Protocol> GameServerProtocols = new()
+        private static readonly HashSet<Protocol> _gameServerProtocols = new()
         {
             Protocol.C_TO_G_HEART_BEAT,
             Protocol.G_TO_C_HEART_BEAT,
@@ -27,7 +27,7 @@ namespace network.common
         /// <summary>
         /// UserServer가 처리하는 상태 관리 프로토콜
         /// </summary>
-        private static readonly HashSet<Protocol> UserServerProtocols = new()
+        private static readonly HashSet<Protocol> _userServerProtocols = new()
         {
             // 인증 및 세션
             Protocol.C_TO_U_HEART_BEAT,
@@ -83,7 +83,7 @@ namespace network.common
         /// </summary>
         public static bool IsGameServerProtocol(Protocol protocol)
         {
-            return GameServerProtocols.Contains(protocol);
+            return _gameServerProtocols.Contains(protocol);
         }
 
         /// <summary>
@@ -91,7 +91,7 @@ namespace network.common
         /// </summary>
         public static bool IsUserServerProtocol(Protocol protocol)
         {
-            return UserServerProtocols.Contains(protocol);
+            return _userServerProtocols.Contains(protocol);
         }
 
         /// <summary>

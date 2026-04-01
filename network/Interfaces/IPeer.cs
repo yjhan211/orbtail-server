@@ -1,4 +1,4 @@
-﻿using network.utils;
+using network.utils;
 
 namespace network.interfaces;
 

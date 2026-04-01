@@ -17,7 +17,7 @@ public static class SubjectHelper
     private const string BroadcastDestroy = "broadcast_destroy";
     private const string Logout = "logout";
 
-    private const string CreateJobResource = "create_job_resource"; // TODO
+    private const string CreateJobResource = "create_job_resource";
 
     private static string BuildSubject(string prefix, MapId mapId, long mapSubId, int serverId)
     {

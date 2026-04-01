@@ -1,4 +1,4 @@
-﻿using network.common;
+using network.common;
 using network.interfaces;
 using network.utils;
 

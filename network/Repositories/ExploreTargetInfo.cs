@@ -7,12 +7,6 @@ namespace network.common.data.models;
 
 public partial class ExploreTargetInfo
 {
-    // ReSharper disable once UnusedMember.Global
-    public string GetLockKey()
-    {
-        return $"explore_target_lock_{ExploreTargetUid}";
-    }
-
     private static string GetLockKey(long exploreTargetUid)
     {
         return $"explore_target_lock_{exploreTargetUid}";
@@ -51,11 +45,6 @@ public partial class ExploreTargetInfo
 
         exploreTargetInfo.ObjectInfo = objectInfo;
         return exploreTargetInfo;
-    }
-
-    public async Task Delete(ICacheHelper cacheHelper)
-    {
-        await cacheHelper.HashDeleteAsync(HashKey, ExploreTargetUid);
     }
 
     public static async Task Delete(ICacheHelper cacheHelper, long exploreTargetUid)

@@ -1,4 +1,4 @@
-﻿namespace network.utils;
+namespace network.utils;
 
 public readonly struct Const<T>(T value)
 {

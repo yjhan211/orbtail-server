@@ -9,20 +9,20 @@ namespace network.common.data
 {
     public static class GameSystemTextData
     {
-        private static readonly Dictionary<int, SystemTextData> Texts = new();
-        private static readonly Dictionary<SystemTextCategory, List<SystemTextData>> TextsByCategory = new();
+        private static readonly Dictionary<int, SystemTextData> _texts = new();
+        private static readonly Dictionary<SystemTextCategory, List<SystemTextData>> _textsByCategory = new();
 
         public static void Initialize(List<CsvRow> data)
         {
             foreach (var row in data)
             {
                 var text = SystemTextData.CreateFromData(row);
-                Texts[text.Id] = text;
+                _texts[text.Id] = text;
 
-                if (!TextsByCategory.TryGetValue(text.Category, out var list))
+                if (!_textsByCategory.TryGetValue(text.Category, out var list))
                 {
                     list = new List<SystemTextData>();
-                    TextsByCategory[text.Category] = list;
+                    _textsByCategory[text.Category] = list;
                 }
                 list.Add(text);
             }
@@ -30,7 +30,7 @@ namespace network.common.data
 
         public static SystemTextData Get(int id)
         {
-            return Texts.GetValueOrDefault(id);
+            return _texts.GetValueOrDefault(id);
         }
 
         public static string GetText(int id)
@@ -41,12 +41,12 @@ namespace network.common.data
 
         public static List<SystemTextData> GetByCategory(SystemTextCategory category)
         {
-            return TextsByCategory.GetValueOrDefault(category) ?? new List<SystemTextData>();
+            return _textsByCategory.GetValueOrDefault(category) ?? new List<SystemTextData>();
         }
 
         public static List<SystemTextData> GetAll()
         {
-            return Texts.Values.ToList();
+            return _texts.Values.ToList();
         }
 
         /// <summary>

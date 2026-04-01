@@ -13,35 +13,35 @@ namespace network.common.data
 {
     public static class GameAreaRuleData
     {
-        private static readonly Dictionary<int, AreaRuleInfoData> Rules = new();
-        private static readonly Dictionary<AreaType, List<AreaRuleInfoData>> RulesByArea = new();
+        private static readonly Dictionary<int, AreaRuleInfoData> _rules = new();
+        private static readonly Dictionary<AreaType, List<AreaRuleInfoData>> _rulesByArea = new();
 
         public static void Initialize(List<CsvRow> csvData)
         {
-            Rules.Clear();
-            RulesByArea.Clear();
+            _rules.Clear();
+            _rulesByArea.Clear();
 
             foreach (var row in csvData)
             {
                 var rule = AreaRuleInfoData.CreateFromData(row);
-                Rules[rule.Id] = rule;
+                _rules[rule.Id] = rule;
 
-                if (!RulesByArea.ContainsKey(rule.AreaType))
+                if (!_rulesByArea.ContainsKey(rule.AreaType))
                 {
-                    RulesByArea[rule.AreaType] = new List<AreaRuleInfoData>();
+                    _rulesByArea[rule.AreaType] = new List<AreaRuleInfoData>();
                 }
-                RulesByArea[rule.AreaType].Add(rule);
+                _rulesByArea[rule.AreaType].Add(rule);
             }
         }
 
         public static AreaRuleInfoData Get(int id)
         {
-            return Rules.TryGetValue(id, out var rule) ? rule : null;
+            return _rules.TryGetValue(id, out var rule) ? rule : null;
         }
 
         public static List<AreaRuleInfoData> GetByArea(AreaType areaType)
         {
-            return RulesByArea.TryGetValue(areaType, out var rules) ? rules : new List<AreaRuleInfoData>();
+            return _rulesByArea.TryGetValue(areaType, out var rules) ? rules : new List<AreaRuleInfoData>();
         }
 
         /// <summary>
@@ -85,7 +85,7 @@ namespace network.common.data
             random ??= new Random();
             var result = new Dictionary<AreaType, List<int>>();
 
-            foreach (var areaType in RulesByArea.Keys)
+            foreach (var areaType in _rulesByArea.Keys)
             {
                 result[areaType] = SelectRulesForArea(areaType, random);
             }
@@ -96,9 +96,9 @@ namespace network.common.data
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameAreaRuleData Validation ===");
-            LogManager.WriteDebugLog($"Total {Rules.Count} rules loaded");
+            LogManager.WriteDebugLog($"Total {_rules.Count} rules loaded");
 
-            foreach (var (areaType, rules) in RulesByArea)
+            foreach (var (areaType, rules) in _rulesByArea)
             {
                 var group0Count = rules.Count(r => r.GroupId == 0);
                 var groupedCount = rules.Count(r => r.GroupId != 0);

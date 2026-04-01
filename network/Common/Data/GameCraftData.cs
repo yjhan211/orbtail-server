@@ -5,48 +5,48 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using Newtonsoft.Json;
+using System.Linq;
 using network.common.data.helpers;
 using network.managers;
+using Newtonsoft.Json;
 using UnityEngine;
 
 namespace network.common.data
 {
     public static class GameCraftData
     {
-        private static readonly Dictionary<int, CraftInfoData> Infos = new();
-        private static readonly Dictionary<int, List<CraftInfoData>> InfosByManual = new();
+        private static readonly Dictionary<int, CraftInfoData> _infos = new();
+        private static readonly Dictionary<int, List<CraftInfoData>> _infosByManual = new();
 
         public static void Initialize(List<CsvRow> csvData)
         {
             var infos = csvData.Select(CraftInfoData.CreateFromData);
             foreach (var info in infos)
             {
-                Infos[info.Id] = info;
-                if (!InfosByManual.TryGetValue(info.ManualId, out var _))
+                _infos[info.Id] = info;
+                if (!_infosByManual.TryGetValue(info.ManualId, out var _))
                 {
-                    InfosByManual[info.ManualId] = new List<CraftInfoData> { };
+                    _infosByManual[info.ManualId] = new List<CraftInfoData> { };
                 }
 
-                if (!InfosByManual[info.ManualId].Any(x => x.Id == info.Id))
+                if (!_infosByManual[info.ManualId].Any(x => x.Id == info.Id))
                 {
-                    InfosByManual[info.ManualId].Add(info);
+                    _infosByManual[info.ManualId].Add(info);
                 }
             }
         }
 
         public static CraftInfoData Get(int id)
         {
-            if (!Infos.TryGetValue(id, out var info)) throw new KeyNotFoundException($"CraftInfo {id} not found");
+            if (!_infos.TryGetValue(id, out var info)) throw new KeyNotFoundException($"CraftInfo {id} not found");
             return info;
         }
 
         public static List<CraftInfoData> GetListByManual(int manualId)
         {
-            if (!InfosByManual.TryGetValue(manualId, out var list))
+            if (!_infosByManual.TryGetValue(manualId, out var list))
             {
                 return new List<CraftInfoData> { };
             }
@@ -57,7 +57,7 @@ namespace network.common.data
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameCraftData Validation ===");
-            foreach (var (id, info) in Infos)
+            foreach (var (id, info) in _infos)
             {
                 LogManager.WriteDebugLog($"[{id}] {info.ManualId} | {info.TargetItem}");
             }

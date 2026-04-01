@@ -5,36 +5,36 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using Newtonsoft.Json;
+using System.Linq;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.managers;
+using Newtonsoft.Json;
 
 namespace network.common.data
 {
     public static class GameQuestData
     {
-        private static readonly Dictionary<int, QuestInfoData> Quests = new();
+        private static readonly Dictionary<int, QuestInfoData> _quests = new();
 
         public static void Initialize(List<CsvRow> csvData)
         {
             var questInfos = csvData.Select(QuestInfoData.CreateFromData);
-            foreach (var questInfo in questInfos) Quests[questInfo.Id] = questInfo;
+            foreach (var questInfo in questInfos) _quests[questInfo.Id] = questInfo;
         }
 
         public static QuestInfoData Get(int id)
         {
-            if (!Quests.TryGetValue(id, out var quest)) throw new KeyNotFoundException($"Quest {id} not found");
+            if (!_quests.TryGetValue(id, out var quest)) throw new KeyNotFoundException($"Quest {id} not found");
             return quest;
         }
 
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameQuestData Validation ===");
-            foreach (var (id, quest) in Quests)
+            foreach (var (id, quest) in _quests)
             {
                 LogManager.WriteDebugLog($"[{id}] {quest.Title}");
             }

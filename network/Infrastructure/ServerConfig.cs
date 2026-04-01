@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using network.interfaces;
 
-namespace network.config;
+namespace network.infrastructure;
 
 public class ServerConfig : IServerConfig
 {

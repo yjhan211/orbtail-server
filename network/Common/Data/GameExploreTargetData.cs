@@ -5,51 +5,51 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Diagnostics.CodeAnalysis;
-using Newtonsoft.Json;
+using System.Linq;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.managers;
+using Newtonsoft.Json;
 
 namespace network.common.data
 {
     public static class GameExploreTargetData
     {
-        private static readonly Dictionary<int, ExploreTargetInfoData> Infos = new();
-        private static readonly Dictionary<MapId, List<ExploreTargetInfoData>> InfosByMap = new();
+        private static readonly Dictionary<int, ExploreTargetInfoData> _infos = new();
+        private static readonly Dictionary<MapId, List<ExploreTargetInfoData>> _infosByMap = new();
 
         public static void Initialize(List<CsvRow> csvData)
         {
             var infos = csvData.Select(ExploreTargetInfoData.CreateFromData);
             foreach (var info in infos)
             {
-                Infos[info.Id] = info;
-                if (!InfosByMap.TryGetValue(info.MapId, out var _))
+                _infos[info.Id] = info;
+                if (!_infosByMap.TryGetValue(info.MapId, out var _))
                 {
-                    InfosByMap[info.MapId] = new List<ExploreTargetInfoData> { };
+                    _infosByMap[info.MapId] = new List<ExploreTargetInfoData> { };
                 }
-                if (!InfosByMap[info.MapId].Contains(info))
+                if (!_infosByMap[info.MapId].Contains(info))
                 {
-                    InfosByMap[info.MapId].Add(info);
+                    _infosByMap[info.MapId].Add(info);
                 }
             }
         }
 
         public static ExploreTargetInfoData Get(int id)
         {
-            if (!Infos.TryGetValue(id, out var info)) throw new KeyNotFoundException($"ExploreTarget {id} not found");
+            if (!_infos.TryGetValue(id, out var info)) throw new KeyNotFoundException($"ExploreTarget {id} not found");
             return info;
         }
 
         public static List<ExploreTargetInfoData> GetAll()
         {
-            return Infos.Values.ToList();
+            return _infos.Values.ToList();
         }
 
         public static List<ExploreTargetInfoData> GetListByMap(MapId mapId)
         {
-            if (!InfosByMap.TryGetValue(mapId, out var list))
+            if (!_infosByMap.TryGetValue(mapId, out var list))
             {
                 return new List<ExploreTargetInfoData> { };
             }
@@ -60,7 +60,7 @@ namespace network.common.data
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameExploreTargetData Validation ===");
-            foreach (var (id, info) in Infos)
+            foreach (var (id, info) in _infos)
             {
                 LogManager.WriteDebugLog($"[{id}] {info.Name}");
             }

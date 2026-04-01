@@ -1,6 +1,6 @@
-using StackExchange.Redis;
 using MessagePack;
 using network.interfaces;
+using StackExchange.Redis;
 
 // ReSharper disable once CheckNamespace
 namespace network.common.data.models;

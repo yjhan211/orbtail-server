@@ -11,16 +11,16 @@ namespace network.common.data
     public static class GameDoorData
     {
         // door_id -> DoorInfoData
-        private static readonly Dictionary<int, DoorInfoData> Doors = new();
+        private static readonly Dictionary<int, DoorInfoData> _doors = new();
 
         public static void Initialize(List<CsvRow> csvData)
         {
-            Doors.Clear();
+            _doors.Clear();
 
             foreach (var row in csvData)
             {
                 var door = DoorInfoData.CreateFromData(row);
-                Doors[door.DoorId] = door;
+                _doors[door.DoorId] = door;
             }
         }
 
@@ -29,7 +29,7 @@ namespace network.common.data
         /// </summary>
         public static DoorInfoData Get(int doorId)
         {
-            return Doors.TryGetValue(doorId, out var door) ? door : null;
+            return _doors.TryGetValue(doorId, out var door) ? door : null;
         }
 
         /// <summary>
@@ -37,7 +37,7 @@ namespace network.common.data
         /// </summary>
         public static IEnumerable<DoorInfoData> GetAll()
         {
-            return Doors.Values;
+            return _doors.Values;
         }
 
         /// <summary>
@@ -45,7 +45,7 @@ namespace network.common.data
         /// </summary>
         public static IEnumerable<DoorInfoData> GetByAreaType(AreaType areaType)
         {
-            foreach (var door in Doors.Values)
+            foreach (var door in _doors.Values)
             {
                 if (door.AreaType == areaType)
                 {
@@ -59,7 +59,7 @@ namespace network.common.data
         /// </summary>
         public static bool HasDoorsForArea(AreaType areaType)
         {
-            foreach (var door in Doors.Values)
+            foreach (var door in _doors.Values)
             {
                 if (door.AreaType == areaType)
                 {
@@ -74,7 +74,7 @@ namespace network.common.data
         /// </summary>
         public static DoorInfoData GetAtCell(int cellX, int cellY)
         {
-            foreach (var door in Doors.Values)
+            foreach (var door in _doors.Values)
             {
                 if ((int)door.PositionX == cellX && (int)door.PositionY == cellY)
                 {
@@ -90,7 +90,7 @@ namespace network.common.data
         /// </summary>
         public static DoorInfoData GetBlockingDoor(AreaType areaType)
         {
-            foreach (var door in Doors.Values)
+            foreach (var door in _doors.Values)
             {
                 if (door.AreaType == areaType && !door.IsInitiallyOpen)
                 {

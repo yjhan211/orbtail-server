@@ -2,19 +2,19 @@
 #pragma warning disable CS8618
 
 using System.Collections.Generic;
-using Newtonsoft.Json;
 using network.common.data.helpers;
+using Newtonsoft.Json;
 
 namespace network.common.data
 {
     public static class GameExitData
     {
-        private static readonly Dictionary<int, List<ExitStepData>> StepsByGroup = new();
+        private static readonly Dictionary<int, List<ExitStepData>> _stepsByGroup = new();
 
         public static void Initialize(List<CsvRow> stepData)
         {
             // Steps
-            StepsByGroup.Clear();
+            _stepsByGroup.Clear();
             foreach (var row in stepData)
             {
                 var groupId = int.Parse(row["group_id"]);
@@ -32,14 +32,14 @@ namespace network.common.data
                     SummaryTemplate = row["summary_template"]
                 };
 
-                if (!StepsByGroup.ContainsKey(groupId))
-                    StepsByGroup[groupId] = new List<ExitStepData>();
+                if (!_stepsByGroup.ContainsKey(groupId))
+                    _stepsByGroup[groupId] = new List<ExitStepData>();
 
-                StepsByGroup[groupId].Add(step);
+                _stepsByGroup[groupId].Add(step);
             }
 
             // 각 그룹 내에서 step_order로 정렬
-            foreach (var group in StepsByGroup.Values)
+            foreach (var group in _stepsByGroup.Values)
             {
                 group.Sort((a, b) => a.StepOrder.CompareTo(b.StepOrder));
             }
@@ -69,14 +69,14 @@ namespace network.common.data
 
         // Getters
         public static List<ExitStepData> GetStepsByGroup(int groupId) =>
-            StepsByGroup.GetValueOrDefault(groupId) ?? new List<ExitStepData>();
+            _stepsByGroup.GetValueOrDefault(groupId) ?? new List<ExitStepData>();
 
-        public static Dictionary<int, List<ExitStepData>> GetAllStepGroups() => StepsByGroup;
+        public static Dictionary<int, List<ExitStepData>> GetAllStepGroups() => _stepsByGroup;
 
         public static void Validate(managers.LogManager logger)
         {
             // 기본 검증
-            if (StepsByGroup.Count == 0)
+            if (_stepsByGroup.Count == 0)
                 throw new System.InvalidOperationException("No exit steps loaded");
         }
     }

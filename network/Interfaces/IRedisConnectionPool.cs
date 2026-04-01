@@ -1,4 +1,4 @@
-﻿using RedLockNet;
+using RedLockNet;
 using RedLockNet.SERedis;
 using StackExchange.Redis;
 

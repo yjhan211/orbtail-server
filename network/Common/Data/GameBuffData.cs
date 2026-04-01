@@ -5,42 +5,42 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using Newtonsoft.Json;
+using System.Linq;
 using network.common.data.helpers;
 using network.managers;
+using Newtonsoft.Json;
 
 namespace network.common.data
 {
     public static class GameBuffData
     {
-        private static readonly Dictionary<int, BuffInfoData> Buffs = new();
+        private static readonly Dictionary<int, BuffInfoData> _buffs = new();
 
         public static void Initialize(List<CsvRow> csvData)
         {
             var buffInfos = csvData.Select(BuffInfoData.CreateFromData);
-            foreach (var buffInfo in buffInfos) Buffs[buffInfo.Id] = buffInfo;
+            foreach (var buffInfo in buffInfos) _buffs[buffInfo.Id] = buffInfo;
         }
 
         public static BuffInfoData Get(int id)
         {
-            if (!Buffs.TryGetValue(id, out var buff)) throw new KeyNotFoundException($"Buff {id} not found");
+            if (!_buffs.TryGetValue(id, out var buff)) throw new KeyNotFoundException($"Buff {id} not found");
             return buff;
         }
 
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameBuffData Validation ===");
-            foreach (var (id, buff) in Buffs)
+            foreach (var (id, buff) in _buffs)
             {
                 LogManager.WriteDebugLog($"Buff {id}:");
                 LogManager.WriteDebugLog($"  Type: {buff.Type}");
                 LogManager.WriteDebugLog($"  SubType: {buff.SubType}");
             }
 
-            LogManager.WriteDebugLog($"Total {Buffs.Count} buffs validated successfully!");
+            LogManager.WriteDebugLog($"Total {_buffs.Count} buffs validated successfully!");
         }
 
         // 유틸리티 메서드

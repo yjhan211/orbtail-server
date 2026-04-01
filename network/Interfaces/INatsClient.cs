@@ -1,4 +1,4 @@
-﻿namespace network.interfaces;
+namespace network.interfaces;
 
 public interface INatsClient
 {

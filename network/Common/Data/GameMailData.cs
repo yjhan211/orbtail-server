@@ -5,35 +5,35 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using Newtonsoft.Json;
+using System.Linq;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.managers;
+using Newtonsoft.Json;
 
 namespace network.common.data
 {
     public static class GameMailData
     {
-        private static readonly Dictionary<int, MailInfoData> Mails = new();
+        private static readonly Dictionary<int, MailInfoData> _mails = new();
         public static void Initialize(List<CsvRow> csvData)
         {
             var mailInfos = csvData.Select(MailInfoData.CreateFromData);
-            foreach (var mailInfo in mailInfos) Mails[mailInfo.Id] = mailInfo;
+            foreach (var mailInfo in mailInfos) _mails[mailInfo.Id] = mailInfo;
         }
 
         public static MailInfoData Get(int id)
         {
-            if (!Mails.TryGetValue(id, out var mail)) throw new KeyNotFoundException($"Quest {id} not found");
+            if (!_mails.TryGetValue(id, out var mail)) throw new KeyNotFoundException($"Quest {id} not found");
             return mail;
         }
 
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameMailData Validation ===");
-            foreach (var (id, mail) in Mails)
+            foreach (var (id, mail) in _mails)
             {
                 LogManager.WriteDebugLog($"[{id}]{mail.From}: {mail.Comment}");
             }

@@ -9,34 +9,34 @@ namespace network.common.data
 {
     public static class GamePortalConditionData
     {
-        private static readonly Dictionary<int, PortalConditionData> Conditions = new();
-        private static readonly Dictionary<int, PortalConditionData> ConditionsByItemId = new();
-        private static readonly Dictionary<AreaType, PortalConditionData> ConditionsByAreaType = new();
+        private static readonly Dictionary<int, PortalConditionData> _conditions = new();
+        private static readonly Dictionary<int, PortalConditionData> _conditionsByItemId = new();
+        private static readonly Dictionary<AreaType, PortalConditionData> _conditionsByAreaType = new();
 
         public static void Initialize(List<CsvRow> data)
         {
             foreach (var row in data)
             {
                 var condition = PortalConditionData.CreateFromData(row);
-                Conditions[condition.Id] = condition;
-                ConditionsByItemId[condition.RequiredItemId] = condition;
-                ConditionsByAreaType[condition.TargetAreaType] = condition;
+                _conditions[condition.Id] = condition;
+                _conditionsByItemId[condition.RequiredItemId] = condition;
+                _conditionsByAreaType[condition.TargetAreaType] = condition;
             }
         }
 
         public static PortalConditionData Get(int id)
         {
-            return Conditions.GetValueOrDefault(id);
+            return _conditions.GetValueOrDefault(id);
         }
 
         public static PortalConditionData GetByItemId(int itemId)
         {
-            return ConditionsByItemId.GetValueOrDefault(itemId);
+            return _conditionsByItemId.GetValueOrDefault(itemId);
         }
 
         public static PortalConditionData GetByAreaType(AreaType areaType)
         {
-            return ConditionsByAreaType.GetValueOrDefault(areaType);
+            return _conditionsByAreaType.GetValueOrDefault(areaType);
         }
 
         /// <summary>
@@ -44,12 +44,12 @@ namespace network.common.data
         /// </summary>
         public static bool IsConditionalPortal(AreaType areaType)
         {
-            return ConditionsByAreaType.ContainsKey(areaType);
+            return _conditionsByAreaType.ContainsKey(areaType);
         }
 
         public static List<PortalConditionData> GetAll()
         {
-            return Conditions.Values.ToList();
+            return _conditions.Values.ToList();
         }
 
         /// <summary>

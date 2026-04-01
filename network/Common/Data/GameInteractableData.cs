@@ -6,22 +6,22 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json;
 using network.common.data.helpers;
 using network.managers;
+using Newtonsoft.Json;
 
 namespace network.common.data
 {
     public static class GameInteractableData
     {
-        private static readonly Dictionary<int, InteractableInfoData> Infos = new();
-        private static readonly Dictionary<int, List<InteractableInfoData>> InfosByZone = new();
-        private static readonly Dictionary<int, List<int>> ItemPools = new();
+        private static readonly Dictionary<int, InteractableInfoData> _infos = new();
+        private static readonly Dictionary<int, List<InteractableInfoData>> _infosByZone = new();
+        private static readonly Dictionary<int, List<int>> _itemPools = new();
 
         public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData, List<CsvRow> violationData, List<CsvRow> itemPoolData)
         {
             // 아이템 풀 데이터 로드
-            ItemPools.Clear();
+            _itemPools.Clear();
             foreach (var row in itemPoolData)
             {
                 var poolId = int.Parse(row["id"]);
@@ -29,12 +29,12 @@ namespace network.common.data
                 var itemIds = string.IsNullOrEmpty(itemIdListJson) || itemIdListJson == "[]"
                     ? new List<int>()
                     : JsonConvert.DeserializeObject<List<int>>(itemIdListJson) ?? new List<int>();
-                ItemPools[poolId] = itemIds;
+                _itemPools[poolId] = itemIds;
             }
 
             // 기존 데이터 클리어
-            Infos.Clear();
-            InfosByZone.Clear();
+            _infos.Clear();
+            _infosByZone.Clear();
 
             // violation 데이터를 (id, action_id) 키로 매핑
             var violationsByKey = new Dictionary<(int, int), CsvRow>();
@@ -59,12 +59,12 @@ namespace network.common.data
             foreach (var row in infoData)
             {
                 var info = InteractableInfoData.CreateFromData(row, actionsByInteractId);
-                Infos[info.Id] = info;
+                _infos[info.Id] = info;
 
-                if (!InfosByZone.TryGetValue(info.ZoneId, out var list))
+                if (!_infosByZone.TryGetValue(info.ZoneId, out var list))
                 {
                     list = new List<InteractableInfoData>();
-                    InfosByZone[info.ZoneId] = list;
+                    _infosByZone[info.ZoneId] = list;
                 }
                 list.Add(info);
             }
@@ -72,17 +72,17 @@ namespace network.common.data
 
         public static List<int> GetItemPool(int poolId)
         {
-            return ItemPools.TryGetValue(poolId, out var pool) ? pool : new List<int>();
+            return _itemPools.TryGetValue(poolId, out var pool) ? pool : new List<int>();
         }
 
         public static HashSet<int> GetAllItemPoolIds()
         {
-            return new HashSet<int>(ItemPools.Keys);
+            return new HashSet<int>(_itemPools.Keys);
         }
 
         public static InteractableInfoData Get(int id)
         {
-            if (!Infos.TryGetValue(id, out var info))
+            if (!_infos.TryGetValue(id, out var info))
             {
                 return null;
             }
@@ -91,12 +91,12 @@ namespace network.common.data
 
         public static List<InteractableInfoData> GetAll()
         {
-            return Infos.Values.ToList();
+            return _infos.Values.ToList();
         }
 
         public static List<InteractableInfoData> GetByZone(int zoneId)
         {
-            if (!InfosByZone.TryGetValue(zoneId, out var list))
+            if (!_infosByZone.TryGetValue(zoneId, out var list))
             {
                 return new List<InteractableInfoData>();
             }
@@ -106,7 +106,7 @@ namespace network.common.data
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameInteractableData Validation ===");
-            foreach (var (id, info) in Infos)
+            foreach (var (id, info) in _infos)
             {
                 LogManager.WriteDebugLog($"[{id}] {info.Name} - Actions: {info.Actions.Count}");
             }

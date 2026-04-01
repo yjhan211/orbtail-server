@@ -14,16 +14,16 @@ namespace network.common.data
     /// </summary>
     public static class StoryArkData
     {
-        private static readonly List<StoryArkEntry> Entries = new();
+        private static readonly List<StoryArkEntry> _entries = new();
 
         public static void Initialize(List<CsvRow> csvData)
         {
-            Entries.Clear();
+            _entries.Clear();
 
             foreach (var row in csvData)
             {
                 var entry = StoryArkEntry.CreateFromData(row);
-                Entries.Add(entry);
+                _entries.Add(entry);
             }
         }
 
@@ -31,14 +31,14 @@ namespace network.common.data
         {
             // id는 1부터 시작, 인덱스는 0부터
             var index = id - 1;
-            if (index >= 0 && index < Entries.Count)
+            if (index >= 0 && index < _entries.Count)
             {
-                return Entries[index];
+                return _entries[index];
             }
             return null;
         }
 
-        public static int Count => Entries.Count;
+        public static int Count => _entries.Count;
 
         /// <summary>
         /// 전체 편지 내용을 하나의 문자열로 반환
@@ -46,7 +46,7 @@ namespace network.common.data
         public static string GetFullContent()
         {
             var result = new System.Text.StringBuilder();
-            foreach (var entry in Entries)
+            foreach (var entry in _entries)
             {
                 if (result.Length > 0)
                 {
@@ -71,13 +71,13 @@ namespace network.common.data
 
         public static List<StoryArkEntry> GetAll()
         {
-            return new List<StoryArkEntry>(Entries);
+            return new List<StoryArkEntry>(_entries);
         }
 
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== StoryArkData Validation ===");
-            LogManager.WriteDebugLog($"Total {Entries.Count} story entries loaded");
+            LogManager.WriteDebugLog($"Total {_entries.Count} story entries loaded");
             LogManager.WriteDebugLog($"Full content length: {GetFullContent().Length} chars");
             LogManager.WriteDebugLog("StoryArkData validation completed!");
         }

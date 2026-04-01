@@ -1,6 +1,6 @@
-﻿using System.Net.Sockets;
+using System.Net.Sockets;
 
-namespace network.managers;
+namespace network.core;
 
 public class SocketAsyncEventArgsManager(int capacity)
 {

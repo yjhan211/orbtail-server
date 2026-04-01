@@ -12,7 +12,7 @@ public class ProtocolRouter : IProtocolRouter
     private readonly Dictionary<Protocol, Func<byte[], Task>> _handlers;
     private readonly ILogger _logger;
 
-    private static readonly IReadOnlyList<Protocol> NonAuthProtocols = new List<Protocol>
+    private static readonly IReadOnlyList<Protocol> _nonAuthProtocols = new List<Protocol>
     {
         Protocol.C_TO_U_HEART_BEAT,
         Protocol.C_TO_U_LOGIN
@@ -41,6 +41,6 @@ public class ProtocolRouter : IProtocolRouter
 
     public bool IsNonAuthProtocol(Protocol protocol)
     {
-        return NonAuthProtocols.Contains(protocol);
+        return _nonAuthProtocols.Contains(protocol);
     }
 }

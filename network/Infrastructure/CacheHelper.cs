@@ -3,7 +3,7 @@ using network.infrastructure;
 using network.interfaces;
 using StackExchange.Redis;
 
-namespace network.helpers;
+namespace network.infrastructure;
 
 public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
 {

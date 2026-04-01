@@ -1,4 +1,4 @@
-﻿// ReSharper disable All
+// ReSharper disable All
 
 using System;
 using System.Collections.Generic;
@@ -66,7 +66,7 @@ namespace network.common.data.helpers
         }
 
         private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
-            StandardDataDefinitions =
+            _standardDataDefinitions =
             {
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
                 (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize, validate: GameLoadingTextData.Validate),
@@ -125,8 +125,8 @@ namespace network.common.data.helpers
             // 모든 CSV 데이터 로드
             var loadedData = new Dictionary<string, List<CsvRow>>();
 
-            // StandardDataDefinitions 파일 로드
-            foreach (var (fileName, init, _) in StandardDataDefinitions)
+            // _standardDataDefinitions 파일 로드
+            foreach (var (fileName, init, _) in _standardDataDefinitions)
             {
                 var filePath = GetCsvFilePath(fileName);
                 Log($"[GameDataHelper] Loading: {filePath}");
@@ -222,7 +222,7 @@ namespace network.common.data.helpers
             }
 
             // 일반 데이터 초기화
-            foreach (var (fileName, init, _) in StandardDataDefinitions)
+            foreach (var (fileName, init, _) in _standardDataDefinitions)
                 try
                 {
                     init(loadedData[fileName]);

@@ -1,11 +1,10 @@
-﻿// ReSharper disable All
+// ReSharper disable All
 using System;
 
 namespace network.common
 {
     /// <summary>
     /// 네트워크 및 서버 관련 설정 상수
-    /// TODO: 향후 IOptions<NetworkConfig> 패턴으로 외부화 권장
     /// </summary>
     public class Config
     {
