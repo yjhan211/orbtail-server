@@ -66,6 +66,7 @@ artifacts/
 *.jfm
 _ReSharper*/
 *.[Rr]e[Ss]harper
+*.DotSettings
 *.DotSettings.user
 
 # Test Results
