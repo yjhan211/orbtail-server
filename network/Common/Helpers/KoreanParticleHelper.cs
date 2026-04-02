@@ -128,5 +128,32 @@ namespace Common.Helpers
             text = text.Replace("{으로/로}", GetEuroRo(precedingWord));
             return text;
         }
+
+        /// <summary>
+        ///     플레이스홀더를 치환하면서 뒤따르는 조사(을/를, 이/가 등)를 자동 교정
+        ///     예: "{아이템}을" + replacement="열쇠" → "열쇠를"
+        /// </summary>
+        public static string ReplaceWithParticle(string text, string placeholder, string replacement)
+        {
+            var particles = new[] { ("을", "를"), ("이", "가"), ("은", "는"), ("과", "와") };
+
+            foreach ((string withBatchim, string withoutBatchim) in particles)
+            {
+                string patternWith = placeholder + withBatchim;
+                string patternWithout = placeholder + withoutBatchim;
+
+                if (text.Contains(patternWith) || text.Contains(patternWithout))
+                {
+                    string correctParticle = HasFinalConsonant(replacement) ? withBatchim : withoutBatchim;
+                    text = text.Replace(patternWith, replacement + correctParticle);
+                    text = text.Replace(patternWithout, replacement + correctParticle);
+                }
+            }
+
+            // 조사 없이 단독 플레이스홀더도 치환
+            text = text.Replace(placeholder, replacement);
+
+            return text;
+        }
     }
 }
