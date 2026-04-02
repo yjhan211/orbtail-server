@@ -28,6 +28,10 @@ resharper_identifier_typo_highlighting = none
 resharper_string_literal_typo_highlighting = none
 resharper_comment_typo_highlighting = none
 
+# --- Rider 전용: 네임스페이스-폴더 불일치 경고 비활성화 (서버 네임스페이스와 통일) ---
+resharper_check_namespace_highlighting = none
+dotnet_diagnostic.IDE0130.severity = none
+
 # --- Rider 전용: 줄바꿈/래핑 ---
 resharper_place_constructor_initializer_on_same_line = false
 resharper_wrap_before_declaration_lpar = false
