@@ -6,5 +6,5 @@ public interface IServerConfig
     public int GameServerNum { get; }
     public int ServerId { get; }
 
-    void Validate();
+    public void Validate();
 }
