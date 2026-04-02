@@ -27,6 +27,7 @@ namespace network.common.data.helpers
             public const string SystemText = "system_text.csv";
             public const string DoorInfo = "door_info.csv";
             public const string CorruptionText = "corruption_text.csv";
+            public const string ErrorMessage = "error_message.csv";
 
             public static class Interactable
             {
@@ -75,6 +76,7 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
                 (fileName: DataFiles.DoorInfo, init: GameDoorData.Initialize, validate: null),
                 (fileName: DataFiles.CorruptionText, init: GameCorruptionTextData.Initialize, validate: GameCorruptionTextData.Validate),
+                (fileName: DataFiles.ErrorMessage, init: GameErrorMessageData.Initialize, validate: null),
             };
 
         /// <summary>
