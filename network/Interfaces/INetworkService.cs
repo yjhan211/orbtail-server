@@ -6,9 +6,9 @@ namespace network.interfaces;
 
 public interface INetworkService
 {
-    Action<UserToken>? SessionCreatedCallback { get; set; }
+    public Action<UserToken>? SessionCreatedCallback { get; set; }
 
-    void Listen(IPAddress address, short port);
-    void OnConnectCompleted(Socket socket, UserToken userToken);
-    void CloseClientSocket(UserToken? userToken);
+    public void Listen(IPAddress address, short port);
+    public void OnConnectCompleted(Socket socket, UserToken userToken);
+    public void CloseClientSocket(UserToken? userToken);
 }

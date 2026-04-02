@@ -5,7 +5,7 @@ namespace user_server.services;
 
 public interface IMatchingManager
 {
-    Task<ErrorCode> AddToQueue(long playerId, GameSession session);
-    Task<ErrorCode> CancelMatching(long playerId);
-    void Dispose();
+    public Task<ErrorCode> AddToQueue(long playerId, GameSession session);
+    public Task<ErrorCode> CancelMatching(long playerId);
+    public void Dispose();
 }

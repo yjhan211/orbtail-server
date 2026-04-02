@@ -2,13 +2,13 @@ namespace network.interfaces;
 
 public interface INatsClient
 {
-    void Publish(string subject, byte[] message);
-    void Subscribe(string subject, Action<string, byte[]> messageHandler);
-    void Close();
+    public void Publish(string subject, byte[] message);
+    public void Subscribe(string subject, Action<string, byte[]> messageHandler);
+    public void Close();
 }
 
 public interface INatsClientFactory
 {
-    void Initialize(string natsEndPoint);
-    INatsClient Create();
+    public void Initialize(string natsEndPoint);
+    public INatsClient Create();
 }
