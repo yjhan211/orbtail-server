@@ -4,12 +4,7 @@ nul
 # IDE and Editor Files
 .vscode/
 .vs/
-**/.idea/*
-!.idea/.idea.projectA/
-.idea/.idea.projectA/*
-!.idea/.idea.projectA/.idea/
-.idea/.idea.projectA/.idea/*
-!.idea/.idea.projectA/.idea/indexLayout.xml
+**/.idea/
 *.suo
 *.user
 *.sln.docstates
