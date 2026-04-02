@@ -12,7 +12,7 @@ public class NetworkService : INetworkService
     private readonly Listener _clientListener = new();
     private readonly object _initEventArgsLock = new();
     private readonly ILogger? _logger;
-    private readonly SocketAsyncEventArgsManager _recvEventArgsManager;
+    private readonly SocketAsyncEventArgsManager _receiveEventArgsManager;
     private readonly SocketAsyncEventArgsManager _sendEventArgsManager;
 
     public NetworkService(ILogger<NetworkService>? logger = null)
@@ -20,7 +20,7 @@ public class NetworkService : INetworkService
         _logger = logger;
         _bufferManager = new BufferManager(Config.MAX_CONNECTION * Config.PRE_ALLOC_COUNT * Config.BUFFER_SIZE,
             Config.BUFFER_SIZE);
-        _recvEventArgsManager = new SocketAsyncEventArgsManager(Config.MAX_CONNECTION);
+        _receiveEventArgsManager = new SocketAsyncEventArgsManager(Config.MAX_CONNECTION);
         _sendEventArgsManager = new SocketAsyncEventArgsManager(Config.MAX_CONNECTION);
 
         InitializeEventArgs();
@@ -37,17 +37,17 @@ public class NetworkService : INetworkService
     // from Connector
     public void OnConnectCompleted(Socket socket, UserToken userToken)
     {
-        SocketAsyncEventArgs recvArgs = new();
-        recvArgs.Completed += (sender, e) => RecvCompleted(sender!, e);
-        recvArgs.UserToken = userToken;
-        recvArgs.SetBuffer(new byte[Config.BUFFER_SIZE], 0, Config.BUFFER_SIZE);
+        SocketAsyncEventArgs receiveArgs = new();
+        receiveArgs.Completed += (sender, e) => ReceiveCompleted(sender!, e);
+        receiveArgs.UserToken = userToken;
+        receiveArgs.SetBuffer(new byte[Config.BUFFER_SIZE], 0, Config.BUFFER_SIZE);
 
         SocketAsyncEventArgs sendArgs = new();
         sendArgs.Completed += (sender, e) => SendCompleted(sender!, e);
         sendArgs.UserToken = userToken;
         sendArgs.SetBuffer(new byte[Config.BUFFER_SIZE], 0, Config.BUFFER_SIZE);
 
-        BeginRecv(userToken, socket, recvArgs, sendArgs);
+        BeginReceive(userToken, socket, receiveArgs, sendArgs);
     }
 
     public void CloseClientSocket(UserToken? userToken)
@@ -58,7 +58,7 @@ public class NetworkService : INetworkService
 
         lock (_initEventArgsLock)
         {
-            _recvEventArgsManager.Push(userToken.RecvEventArgs!);
+            _receiveEventArgsManager.Push(userToken.ReceiveEventArgs!);
             _sendEventArgsManager.Push(userToken.SendEventArgs!);
         }
     }
@@ -69,11 +69,11 @@ public class NetworkService : INetworkService
         {
             var userToken = new UserToken();
 
-            SocketAsyncEventArgs recvArgs = new();
-            recvArgs.Completed += (sender, e) => RecvCompleted(sender!, e);
-            recvArgs.UserToken = userToken;
-            _bufferManager.SetBuffer(recvArgs);
-            _recvEventArgsManager.Push(recvArgs);
+            SocketAsyncEventArgs receiveArgs = new();
+            receiveArgs.Completed += (sender, e) => ReceiveCompleted(sender!, e);
+            receiveArgs.UserToken = userToken;
+            _bufferManager.SetBuffer(receiveArgs);
+            _receiveEventArgsManager.Push(receiveArgs);
 
             SocketAsyncEventArgs sendArgs = new();
             sendArgs.Completed += (sender, e) => SendCompleted(sender!, e);
@@ -86,71 +86,71 @@ public class NetworkService : INetworkService
     // from Listener
     private void OnNewClient(Socket clientSocket, object _)
     {
-        SocketAsyncEventArgs recvArgs;
+        SocketAsyncEventArgs receiveArgs;
         SocketAsyncEventArgs sendArgs;
 
         lock (_initEventArgsLock)
         {
-            recvArgs = _recvEventArgsManager.Pop();
+            receiveArgs = _receiveEventArgsManager.Pop();
             sendArgs = _sendEventArgsManager.Pop();
         }
 
-        object? argsToken = recvArgs.UserToken;
+        object? argsToken = receiveArgs.UserToken;
         if (argsToken == null) throw new Exception("[OnNewClient] Invalid UserToken");
 
 
         var userToken = (UserToken)argsToken;
         SessionCreatedCallback?.Invoke(userToken);
-        BeginRecv(userToken, clientSocket, recvArgs, sendArgs);
+        BeginReceive(userToken, clientSocket, receiveArgs, sendArgs);
     }
 
-    private void BeginRecv(UserToken userToken, Socket socket, SocketAsyncEventArgs recvArgs,
+    private void BeginReceive(UserToken userToken, Socket socket, SocketAsyncEventArgs receiveArgs,
         SocketAsyncEventArgs sendArgs)
     {
-        userToken.SetEventArgs(recvArgs, sendArgs);
+        userToken.SetEventArgs(receiveArgs, sendArgs);
         userToken.Socket = socket;
 
-        bool willRaiseEvent = socket.ReceiveAsync(recvArgs);
-        if (!willRaiseEvent) ProcessRecv(recvArgs);
+        bool willRaiseEvent = socket.ReceiveAsync(receiveArgs);
+        if (!willRaiseEvent) ProcessReceive(receiveArgs);
     }
 
-    private void RecvCompleted(object _, SocketAsyncEventArgs args)
+    private void ReceiveCompleted(object _, SocketAsyncEventArgs args)
     {
         if (args.LastOperation != SocketAsyncOperation.Receive)
             throw new ArgumentException("The last operation completed on the socket was not a receive.");
 
-        ProcessRecv(args);
+        ProcessReceive(args);
     }
 
-    private void ProcessRecv(SocketAsyncEventArgs recvArgs)
+    private void ProcessReceive(SocketAsyncEventArgs receiveArgs)
     {
         UserToken? userToken = null;
         try
         {
-            if (recvArgs.UserToken is not UserToken token) return;
+            if (receiveArgs.UserToken is not UserToken token) return;
 
             userToken = token;
-            if (recvArgs.SocketError != SocketError.Success)
+            if (receiveArgs.SocketError != SocketError.Success)
             {
                 userToken.OnRemoved();
                 return;
             }
 
-            if (recvArgs.Buffer == null) throw new Exception("[ProcessRecv] invalid Buffer");
+            if (receiveArgs.Buffer == null) throw new Exception("[ProcessReceive] invalid Buffer");
 
-            if (recvArgs.BytesTransferred <= 0)
+            if (receiveArgs.BytesTransferred <= 0)
             {
                 userToken.OnRemoved();
                 return;
             }
 
             (var errorCode, string? _) =
-                userToken.OnReceived(recvArgs.Buffer, recvArgs.Offset, recvArgs.BytesTransferred);
+                userToken.OnReceived(receiveArgs.Buffer, receiveArgs.Offset, receiveArgs.BytesTransferred);
             if (errorCode != ErrorCode.SUCCESS) return;
 
             // 다음 패킷 수신 대기
-            bool willRaiseEvent = userToken.Socket!.ReceiveAsync(recvArgs);
-            if (!willRaiseEvent) ProcessRecv(recvArgs);
+            bool willRaiseEvent = userToken.Socket!.ReceiveAsync(receiveArgs);
+            if (!willRaiseEvent) ProcessReceive(receiveArgs);
         }
         catch (Exception ex)
         {

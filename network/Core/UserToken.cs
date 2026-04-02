@@ -14,7 +14,7 @@ public class UserToken
     public readonly SemaphoreSlim LockDisconnect = new(1);
     private Timer? _heartbeatTimer;
     private IPeer? _peer;
-    public SocketAsyncEventArgs? RecvEventArgs { get; private set; }
+    public SocketAsyncEventArgs? ReceiveEventArgs { get; private set; }
     public SocketAsyncEventArgs? SendEventArgs { get; private set; }
     public Socket? Socket { get; set; }
     public bool IsReleased { get; set; }
@@ -42,7 +42,7 @@ public class UserToken
 
     public void SetEventArgs(SocketAsyncEventArgs receiveEventArgs, SocketAsyncEventArgs sendEventArgs)
     {
-        RecvEventArgs = receiveEventArgs;
+        ReceiveEventArgs = receiveEventArgs;
         SendEventArgs = sendEventArgs;
     }
 
