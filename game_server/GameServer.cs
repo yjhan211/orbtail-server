@@ -42,7 +42,7 @@ public class GameServer(
     private readonly ExitInstanceManager _exitInstanceManager = new();
     private readonly InGameInventoryManager _inGameInventoryManager = new();
 
-    private readonly List<InstanceMapController> _instanceControllerList = [];
+    private readonly List<InstanceMapManager> _instanceControllerList = [];
     private readonly InteractableStateManager _interactableStateManager = new();
     private readonly InteractRuleManager _interactRuleManager = new();
     private readonly ItemPoolManager _itemPoolManager = new();
@@ -147,7 +147,7 @@ public class GameServer(
 
     private void InitializeControllers()
     {
-        var instanceController = new InstanceMapController(logger, natsClientFactory.Create(), cacheHelper,
+        var instanceController = new InstanceMapManager(logger, natsClientFactory.Create(), cacheHelper,
             serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager,
             _exitInstanceManager, _corridorRuleManager);
         instanceController.Initialize();

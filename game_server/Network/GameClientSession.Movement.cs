@@ -223,7 +223,7 @@ public partial class GameClientSession
     /// <summary>
     ///     World Position을 Cell 좌표로 변환
     ///     Unity Isometric Z as Y 타일맵의 WorldToCell과 동일한 로직
-    ///     클라이언트 MapController.WorldToCell:
+    ///     클라이언트 MapManager.WorldToCell:
     ///     var unityCell = tileMap.WorldToCell(position);
     ///     return new Vector3Int(unityCell.x + CellOffsetX, unityCell.y + CellOffsetY + 1, 0);
     ///     Unity Isometric Z as Y 역변환:

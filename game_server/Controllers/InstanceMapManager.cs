@@ -11,7 +11,7 @@ using network.packets;
 
 namespace game_server.controllers;
 
-public sealed class InstanceMapController(
+public sealed class InstanceMapManager(
     ILogger logger,
     INatsClient natsClient,
     ICacheHelper cacheHelper,
@@ -22,7 +22,7 @@ public sealed class InstanceMapController(
     AreaRuleManager areaRuleManager,
     ExitInstanceManager exitInstanceManager,
     CorridorRuleManager corridorRuleManager)
-    : BaseMapController(logger, natsClient, cacheHelper, serverConfig)
+    : BaseMapManager(logger, natsClient, cacheHelper, serverConfig)
 {
     private readonly ConcurrentDictionary<string, Timer> _gameTimers = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _objectInstanceDict = new();
@@ -347,7 +347,7 @@ public sealed class InstanceMapController(
             }
 
             _warningTimers.Clear();
-            Logger.LogInformation("InstanceMapController 종료: 모든 타이머 정리 완료");
+            Logger.LogInformation("InstanceMapManager 종료: 모든 타이머 정리 완료");
         }
         finally
         {

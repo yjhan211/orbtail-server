@@ -3,7 +3,7 @@ using network.interfaces;
 
 namespace game_server.controllers;
 
-public abstract class BaseMapController(
+public abstract class BaseMapManager(
     ILogger logger,
     INatsClient natsClient,
     ICacheHelper cacheHelper,
