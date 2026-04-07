@@ -18,7 +18,7 @@ namespace network.common.data.helpers
         // 서버 환경에서 CSV 파일 기본 경로 (SetBasePath로 설정 가능)
         private static string _basePath = "";
 
-        private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager>? validate)[]
+        private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
             _standardDataDefinitions =
             {
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
