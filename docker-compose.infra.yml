@@ -3,7 +3,7 @@
 services:
   redis:
     image: redis:7-alpine
-    container_name: scholarcamp-redis-dev
+    container_name: manitto-redis-dev
     ports:
       - "6379:6379"
     volumes:
@@ -17,7 +17,7 @@ services:
 
   nats:
     image: nats:latest
-    container_name: scholarcamp-nats-dev
+    container_name: manitto-nats-dev
     ports:
       - "4222:4222"
       - "8222:8222"

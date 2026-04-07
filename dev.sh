@@ -46,7 +46,7 @@ function print_warning() {
 
 function show_help() {
     cat << EOF
-ScholarCamp Development Helper
+Manitto Development Helper
 
 Usage: ./dev.sh [command]
        COMPOSE_FILE=docker-compose.yml ./dev.sh [command]  (for production mode)
@@ -87,13 +87,13 @@ function stop_conflicting_mode() {
     # dev 모드 시작 시 infra-only 중지, infra-only 시작 시 dev 중지
     if [[ "$COMPOSE_FILE" == *"dev.yml"* ]]; then
         # infra-only가 실행 중이면 중지
-        if docker compose -f docker-compose.infra.yml ps --status running 2>/dev/null | grep -q scholarcamp; then
+        if docker compose -f docker-compose.infra.yml ps --status running 2>/dev/null | grep -q manitto; then
             print_warning "infra-only 모드가 실행 중입니다. 중지합니다..."
             docker compose -f docker-compose.infra.yml down
         fi
     else
         # dev 모드가 실행 중이면 중지
-        if docker compose -f docker-compose.dev.yml ps --status running 2>/dev/null | grep -q scholarcamp; then
+        if docker compose -f docker-compose.dev.yml ps --status running 2>/dev/null | grep -q manitto; then
             print_warning "dev 모드가 실행 중입니다. 중지합니다..."
             docker compose -f docker-compose.dev.yml down
         fi
