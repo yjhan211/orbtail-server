@@ -62,7 +62,9 @@ namespace network.common.data.models
         {
             var instance = new ExitProcedureInstance
             {
-                GroupId = groupId, CurrentStepIndex = 0, CreatedAt = DateTime.UtcNow
+                GroupId = groupId,
+                CurrentStepIndex = 0,
+                CreatedAt = DateTime.UtcNow
             };
 
             // 그룹에서 스텝 정의 가져오기
