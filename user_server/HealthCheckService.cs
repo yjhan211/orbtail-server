@@ -33,8 +33,8 @@ public class HealthCheckService(ILogger<HealthCheckService> logger, IConfigurati
 
         _app.MapMetrics();
 
-        logger.LogInformation("Health check service starting on port 8080")
-            ;
+        logger.LogInformation("Health check service starting on port 8080");
+
         _ = _app.RunAsync(cancellationToken);
         return Task.CompletedTask;
     }

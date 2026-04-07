@@ -184,7 +184,7 @@ public partial class GameClientSession
     private void BroadcastExitStepUpdate(long advancedByPlayerId, int newStepOrder, bool escaped)
     {
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        var otherSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.PlayerId.HasValue).ToList();
+        var otherSessions = GetOtherValidSessions(allSessions);
 
         using var packet = PacketMaker.G_TO_C_EXIT_STEP_UPDATE(advancedByPlayerId, newStepOrder, escaped);
         foreach (var session in otherSessions)

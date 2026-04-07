@@ -126,16 +126,15 @@ public class GameServer(
                 : AppDomain.CurrentDomain.BaseDirectory);
             GameDataHelper.Initialize();
             MapHelper.Initialize(serverConfig.GameServerNum);
-            _interactableStateManager.Initialize(msg => logger.LogInformation(msg));
-            _inGameInventoryManager.Initialize(msg => logger.LogInformation(msg));
-            _corridorRuleManager.Initialize(
-                msg => logger.LogInformation(msg),
-                OnCorridorStopViolation);
-            _areaRuleManager.Initialize(msg => logger.LogInformation(msg));
-            _interactRuleManager.Initialize(msg => logger.LogInformation(msg), _areaRuleManager);
-            _exitInstanceManager.Initialize(msg => logger.LogInformation(msg));
-            _itemPoolManager.Initialize(msg => logger.LogInformation(msg));
-            _sabotageManager.Initialize(msg => logger.LogInformation(msg));
+            Action<string> log = msg => logger.LogInformation(msg);
+            _interactableStateManager.Initialize(log);
+            _inGameInventoryManager.Initialize(log);
+            _corridorRuleManager.Initialize(log, OnCorridorStopViolation);
+            _areaRuleManager.Initialize(log);
+            _interactRuleManager.Initialize(log, _areaRuleManager);
+            _exitInstanceManager.Initialize(log);
+            _itemPoolManager.Initialize(log);
+            _sabotageManager.Initialize(log);
             _sabotageManager.SetStateChangeCallback(OnSabotageStateChange);
             _sabotageManager.SetTimeoutCallback(OnSabotageTimeout);
         }

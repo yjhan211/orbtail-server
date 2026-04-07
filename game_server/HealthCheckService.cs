@@ -18,7 +18,7 @@ public class HealthCheckService(ILogger<HealthCheckService> logger, IConfigurati
         var builder = WebApplication.CreateBuilder();
 
         builder.Services.AddHealthChecks().AddRedis(_redisEndpoints, name: "redis", tags: ["ready"]);
-        builder.WebHost.UseUrls($"http" + $"://*:8080");
+        builder.WebHost.UseUrls("http://*:8080");
 
         _app = builder.Build();
 

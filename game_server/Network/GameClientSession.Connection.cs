@@ -105,7 +105,7 @@ public partial class GameClientSession
             {
                 Success = false,
                 ErrorCode = ErrorCode.FATAL,
-                Message = ex.Message
+                Message = "연결 처리 중 오류가 발생했습니다"
             };
             packet.SetBody(MessagePackSerializer.Serialize(response));
             Send(packet);
@@ -196,21 +196,18 @@ public partial class GameClientSession
     /// </summary>
     private void StartGameTimerIfNeeded(long matchingId)
     {
-        lock (TimerLock)
+        if (GameTimers.ContainsKey(matchingId))
         {
-            if (GameTimers.ContainsKey(matchingId))
-            {
-                Logger.LogDebug("Game timer already exists for MatchingId={MatchingId}", matchingId);
-                return;
-            }
-
-            Logger.LogInformation("게임 타이머 시작: MatchingId={MatchingId} ({Minutes}분)", matchingId, GameDurationMinutes);
-
-            var timer = new Timer(_ => { EndGameByTimeout(matchingId); }, null,
-                TimeSpan.FromSeconds(GameDurationSeconds), Timeout.InfiniteTimeSpan);
-
-            GameTimers[matchingId] = timer;
+            Logger.LogDebug("Game timer already exists for MatchingId={MatchingId}", matchingId);
+            return;
         }
+
+        Logger.LogInformation("게임 타이머 시작: MatchingId={MatchingId} ({Minutes}분)", matchingId, GameDurationMinutes);
+
+        var timer = new Timer(_ => { EndGameByTimeout(matchingId); }, null,
+            TimeSpan.FromSeconds(GameDurationSeconds), Timeout.InfiniteTimeSpan);
+
+        GameTimers.TryAdd(matchingId, timer);
     }
 
     /// <summary>
@@ -223,14 +220,8 @@ public partial class GameClientSession
             matchingId, PlayerId, CurrentMapSubId);
 
         // 타이머 정리
-        lock (TimerLock)
-        {
-            if (GameTimers.TryGetValue(matchingId, out var timer))
-            {
-                timer.Dispose();
-                GameTimers.Remove(matchingId);
-            }
-        }
+        if (GameTimers.TryRemove(matchingId, out var timer))
+            timer.Dispose();
 
         // 해당 매칭의 모든 플레이어에게 게임 종료 패킷 전송
         var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
@@ -253,13 +244,7 @@ public partial class GameClientSession
     /// </summary>
     private static void CleanupGameTimer(long matchingId)
     {
-        lock (TimerLock)
-        {
-            if (GameTimers.TryGetValue(matchingId, out var timer))
-            {
-                timer.Dispose();
-                GameTimers.Remove(matchingId);
-            }
-        }
+        if (GameTimers.TryRemove(matchingId, out var timer))
+            timer.Dispose();
     }
 }

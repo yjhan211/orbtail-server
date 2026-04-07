@@ -18,70 +18,26 @@ namespace network.common.data.helpers
         // 서버 환경에서 CSV 파일 기본 경로 (SetBasePath로 설정 가능)
         private static string _basePath = "";
 
-        private static class DataFiles
-        {
-            public const string GameRule = "game_rule.csv";
-            public const string LoadingText = "loading_text.csv";
-            public const string AreaName = "area_name.csv";
-            public const string AreaRule = "area_rule.csv";
-            public const string SystemText = "system_text.csv";
-            public const string DoorInfo = "door_info.csv";
-            public const string CorruptionText = "corruption_text.csv";
-            public const string ErrorMessage = "error_message.csv";
-
-            public static class Interactable
-            {
-                public const string Info = "interactable_info.csv";
-                public const string Action = "interactable_action.csv";
-                public const string Violation = "interactable_action_violation.csv";
-                public const string ItemPool = "interactable_item_pool.csv";
-
-                public static readonly string[] ALL = new[] { Info, Action, Violation, ItemPool };
-            }
-
-            public static class Exit
-            {
-                public const string Step = "exit_step.csv";
-
-                public static readonly string[] ALL = new[] { Step };
-            }
-
-            public static class Item
-            {
-                public const string Base = "item_info.csv";
-                public const string Equipment = "item_info_equipment.csv";
-                public const string Consumable = "item_info_consumable.csv";
-
-                public static readonly string[] ALL = new[] { Base, Equipment, Consumable };
-            }
-
-            public const string BuffInfo = "buff_info.csv";
-
-            public static class Map
-            {
-                public const string MapInfo = "map_info.csv";
-                public const string MapRegion = "map_region.csv";
-
-                public static readonly string[] ALL = new[] { MapInfo, MapRegion };
-            }
-        }
-
         private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager>? validate)[]
             _standardDataDefinitions =
             {
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
-                (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize, validate: GameLoadingTextData.Validate),
-                (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize, validate: GameAreaNameData.Validate),
-                (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize, validate: GameAreaRuleData.Validate),
+                (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize,
+                    validate: GameLoadingTextData.Validate),
+                (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize,
+                    validate: GameAreaNameData.Validate),
+                (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize,
+                    validate: GameAreaRuleData.Validate),
                 (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
                 (fileName: DataFiles.DoorInfo, init: GameDoorData.Initialize, validate: null),
-                (fileName: DataFiles.CorruptionText, init: GameCorruptionTextData.Initialize, validate: GameCorruptionTextData.Validate),
-                (fileName: DataFiles.ErrorMessage, init: GameErrorMessageData.Initialize, validate: null),
+                (fileName: DataFiles.CorruptionText, init: GameCorruptionTextData.Initialize,
+                    validate: GameCorruptionTextData.Validate),
+                (fileName: DataFiles.ErrorMessage, init: GameErrorMessageData.Initialize, validate: null)
             };
 
         /// <summary>
-        /// 서버 환경에서 CSV 파일 경로의 기본 디렉토리 설정
-        /// Unity 환경에서는 호출할 필요 없음
+        ///     서버 환경에서 CSV 파일 경로의 기본 디렉토리 설정
+        ///     Unity 환경에서는 호출할 필요 없음
         /// </summary>
         public static void SetBasePath(string basePath)
         {
@@ -242,7 +198,7 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Item.Base],
                 loadedData[DataFiles.Item.Equipment],
                 loadedData[DataFiles.Item.Consumable],
-                new List<CsvRow>()  // Put (미사용)
+                new List<CsvRow>() // Put (미사용)
             );
 
             // 맵 데이터 초기화
@@ -272,7 +228,7 @@ namespace network.common.data.helpers
         }
 
         /// <summary>
-        /// CSV 간 참조 무결성 검증
+        ///     CSV 간 참조 무결성 검증
         /// </summary>
         private static void ValidateReferentialIntegrity()
         {
@@ -289,13 +245,15 @@ namespace network.common.data.helpers
                 {
                     if (action.ResultType == ActionResultType.REWARD_POOL && !poolIds.Contains(action.ResultId))
                     {
-                        errors.Add($"interactable_action [{info.Id}_{action.ActionId}]: result_id={action.ResultId}이 item_pool에 없음");
+                        errors.Add(
+                            $"interactable_action [{info.Id}_{action.ActionId}]: result_id={action.ResultId}이 item_pool에 없음");
                     }
 
                     // 5. interactable_action require_item_id (≠0) → item_info id 존재
                     if (action.RequireItemId != 0 && !itemIds.Contains(action.RequireItemId))
                     {
-                        errors.Add($"interactable_action [{info.Id}_{action.ActionId}]: require_item_id={action.RequireItemId}이 item_info에 없음");
+                        errors.Add(
+                            $"interactable_action [{info.Id}_{action.ActionId}]: require_item_id={action.RequireItemId}이 item_info에 없음");
                     }
                 }
             }
@@ -319,7 +277,8 @@ namespace network.common.data.helpers
                     {
                         if (!itemIds.Contains(targetItemId))
                         {
-                            errors.Add($"exit_step [group={groupId}, order={step.StepOrder}]: target_item_id={targetItemId}이 item_info에 없음");
+                            errors.Add(
+                                $"exit_step [group={groupId}, order={step.StepOrder}]: target_item_id={targetItemId}이 item_info에 없음");
                         }
                     }
 
@@ -334,11 +293,13 @@ namespace network.common.data.helpers
                             var interactable = GameInteractableData.Get(interactId);
                             if (interactable == null)
                             {
-                                errors.Add($"exit_step [group={groupId}, order={step.StepOrder}]: interactable {interactId}이 interactable_info에 없음");
+                                errors.Add(
+                                    $"exit_step [group={groupId}, order={step.StepOrder}]: interactable {interactId}이 interactable_info에 없음");
                             }
                             else if (!interactable.Actions.Any(a => a.ActionId == actionId))
                             {
-                                errors.Add($"exit_step [group={groupId}, order={step.StepOrder}]: action {interactId}_{actionId}이 interactable_action에 없음");
+                                errors.Add(
+                                    $"exit_step [group={groupId}, order={step.StepOrder}]: action {interactId}_{actionId}이 interactable_action에 없음");
                             }
                         }
                     }
@@ -351,10 +312,59 @@ namespace network.common.data.helpers
                 {
                     LogError($"[Integrity] {error}");
                 }
+
                 throw new InvalidDataException($"참조 무결성 검증 실패: {errors.Count}건\n{string.Join("\n", errors)}");
             }
 
             Log($"[GameDataHelper] Referential integrity validation passed!");
+        }
+
+        private static class DataFiles
+        {
+            public const string GameRule = "game_rule.csv";
+            public const string LoadingText = "loading_text.csv";
+            public const string AreaName = "area_name.csv";
+            public const string AreaRule = "area_rule.csv";
+            public const string SystemText = "system_text.csv";
+            public const string DoorInfo = "door_info.csv";
+            public const string CorruptionText = "corruption_text.csv";
+            public const string ErrorMessage = "error_message.csv";
+
+            public const string BuffInfo = "buff_info.csv";
+
+            public static class Interactable
+            {
+                public const string Info = "interactable_info.csv";
+                public const string Action = "interactable_action.csv";
+                public const string Violation = "interactable_action_violation.csv";
+                public const string ItemPool = "interactable_item_pool.csv";
+
+                public static readonly string[] ALL = new[] { Info, Action, Violation, ItemPool };
+            }
+
+            public static class Exit
+            {
+                public const string Step = "exit_step.csv";
+
+                public static readonly string[] ALL = new[] { Step };
+            }
+
+            public static class Item
+            {
+                public const string Base = "item_info.csv";
+                public const string Equipment = "item_info_equipment.csv";
+                public const string Consumable = "item_info_consumable.csv";
+
+                public static readonly string[] ALL = new[] { Base, Equipment, Consumable };
+            }
+
+            public static class Map
+            {
+                public const string MapInfo = "map_info.csv";
+                public const string MapRegion = "map_region.csv";
+
+                public static readonly string[] ALL = new[] { MapInfo, MapRegion };
+            }
         }
     }
 }

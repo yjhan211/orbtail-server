@@ -128,8 +128,7 @@ public partial class GameClientSession
             );
 
             var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-            var sameAreaSessions = otherSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea)
-                .ToList();
+            var sameAreaSessions = GetSessionsInArea(otherSessions, CurrentArea);
 
             foreach (var session in sameAreaSessions) session.Send(packet);
         }
@@ -269,8 +268,7 @@ public partial class GameClientSession
             // 1. 이전 Area의 플레이어들에게 퇴장 알림 + 나에게 기존 플레이어 삭제 알림
             if (oldArea != AreaType.None)
             {
-                var oldAreaSessions =
-                    allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == oldArea).ToList();
+                var oldAreaSessions = GetSessionsInArea(allSessions, oldArea);
                 using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
 
                 foreach (var session in oldAreaSessions)
@@ -293,8 +291,7 @@ public partial class GameClientSession
             // 2. 새 Area의 플레이어들에게 진입 알림 (내 최신 Cell 포함)
             if (newArea != AreaType.None)
             {
-                var newAreaSessions =
-                    allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == newArea).ToList();
+                var newAreaSessions = GetSessionsInArea(allSessions, newArea);
                 var myCell = _lastValidatedPosition != null
                     ? WorldPositionToCell(_lastValidatedPosition)
                     : playerInfo.ObjectInfo.Cell;

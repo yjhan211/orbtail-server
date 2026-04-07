@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -22,8 +23,7 @@ public partial class GameClientSession : SessionBase
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
     private static readonly TimeSpan InteractCooldown = TimeSpan.FromSeconds(5);
-    private static readonly Dictionary<long, Timer> GameTimers = new();
-    private static readonly object TimerLock = new();
+    private static readonly ConcurrentDictionary<long, Timer> GameTimers = new();
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly AreaRuleManager _areaRuleManager;
     private readonly CorridorRuleManager _corridorRuleManager;
@@ -197,6 +197,30 @@ public partial class GameClientSession : SessionBase
         _interactTimeoutCts = null;
         Logger.LogInformation("GameClient disconnected: PlayerId={PlayerId}", PlayerId);
         _onLeaveCallback(this);
+    }
+
+    /// <summary>
+    ///     특정 영역의 세션 목록 반환
+    /// </summary>
+    /// <param name="allSessions">전체 세션 목록</param>
+    /// <param name="area">필터링할 영역</param>
+    /// <param name="excludeSelf">자신을 제외할지 여부</param>
+    private List<GameClientSession> GetSessionsInArea(
+        List<GameClientSession> allSessions, AreaType area, bool excludeSelf = true)
+    {
+        return allSessions
+            .Where(s => s.CurrentArea == area && (!excludeSelf || s.PlayerId != PlayerId))
+            .ToList();
+    }
+
+    /// <summary>
+    ///     같은 인스턴스의 다른 모든 세션 목록 반환 (영역 무관, PlayerId.HasValue 보장)
+    /// </summary>
+    private List<GameClientSession> GetOtherValidSessions(List<GameClientSession> allSessions)
+    {
+        return allSessions
+            .Where(s => s.PlayerId.HasValue && s.PlayerId != PlayerId)
+            .ToList();
     }
 
     private class PeriodicBuffEntry

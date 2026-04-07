@@ -313,8 +313,10 @@ public sealed class GameSession : SessionBase
     {
         if (PlayerId == null) return;
 
-        _ = await _playerService.IncreaseQuestCount(PlayerId.Value, msg);
-        // TODO: Send quest update packet
+        var errorCode = await _playerService.IncreaseQuestCount(PlayerId.Value, msg);
+        // 응답 프로토콜 미정의 — 실패 시 에러 응답만 전송
+        if (errorCode != ErrorCode.SUCCESS)
+            SendErrorResponse(errorCode, "퀘스트 카운트 증가 실패");
     }
 
     private async Task CompleteQuest(C_TO_U_QUEST_SUCCESS msg)
@@ -390,10 +392,10 @@ public sealed class GameSession : SessionBase
         return Task.CompletedTask;
     }
 
-    private async Task SendChatHistory(ChatType _)
+    private Task SendChatHistory(ChatType _)
     {
-        // TODO: Implement chat history
-        await Task.CompletedTask;
+        // 채팅 히스토리 미구현 — 빈 응답
+        return Task.CompletedTask;
     }
 
     // ========== 매칭 ==========

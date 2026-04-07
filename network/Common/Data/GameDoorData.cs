@@ -1,4 +1,5 @@
 // ReSharper disable All
+
 #pragma warning disable CS8618 // 생성자를 종료할 때 null을 허용하지 않는 필드에 null이 아닌 값을 포함해야 합니다. null 허용으로 선언해 보세요.
 #pragma warning disable CS8625 // Null 리터럴을 null을 허용하지 않는 참조 형식으로 변환할 수 없습니다.
 #pragma warning disable CS8603 // 가능한 null 참조 반환입니다.
@@ -25,7 +26,7 @@ namespace network.common.data
         }
 
         /// <summary>
-        /// 특정 문 정보 가져오기
+        ///     특정 문 정보 가져오기
         /// </summary>
         public static DoorInfoData? Get(int doorId)
         {
@@ -33,7 +34,7 @@ namespace network.common.data
         }
 
         /// <summary>
-        /// 모든 문 정보 가져오기
+        ///     모든 문 정보 가져오기
         /// </summary>
         public static IEnumerable<DoorInfoData> GetAll()
         {
@@ -41,7 +42,7 @@ namespace network.common.data
         }
 
         /// <summary>
-        /// 특정 영역으로 연결된 문들 가져오기
+        ///     특정 영역으로 연결된 문들 가져오기
         /// </summary>
         public static IEnumerable<DoorInfoData> GetByAreaType(AreaType areaType)
         {
@@ -55,7 +56,7 @@ namespace network.common.data
         }
 
         /// <summary>
-        /// 특정 영역에 문이 있는지 확인
+        ///     특정 영역에 문이 있는지 확인
         /// </summary>
         public static bool HasDoorsForArea(AreaType areaType)
         {
@@ -66,11 +67,12 @@ namespace network.common.data
                     return true;
                 }
             }
+
             return false;
         }
 
         /// <summary>
-        /// 특정 셀 위치에 있는 문 가져오기
+        ///     특정 셀 위치에 있는 문 가져오기
         /// </summary>
         public static DoorInfoData GetAtCell(int cellX, int cellY)
         {
@@ -81,12 +83,13 @@ namespace network.common.data
                     return door;
                 }
             }
+
             return null;
         }
 
         /// <summary>
-        /// 특정 영역의 문 가져오기 (area_type = 해당 문이 속한 "안쪽" 영역)
-        /// is_initially_open=0인 잠금 가능한 문만 반환
+        ///     특정 영역의 문 가져오기 (area_type = 해당 문이 속한 "안쪽" 영역)
+        ///     is_initially_open=0인 잠금 가능한 문만 반환
         /// </summary>
         public static DoorInfoData GetBlockingDoor(AreaType areaType)
         {
@@ -97,6 +100,7 @@ namespace network.common.data
                     return door;
                 }
             }
+
             return null;
         }
     }
@@ -127,7 +131,8 @@ namespace network.common.data
                 RequiredItemId = row.ContainsKey("required_item_id") ? int.Parse(row["required_item_id"]) : 0,
                 PositionX = posX,
                 PositionY = posY,
-                InteractDistance = row.ContainsKey("interact_distance") ? float.Parse(row["interact_distance"]) : 3f,
+                InteractDistance =
+                    row.ContainsKey("interact_distance") ? float.Parse(row["interact_distance"]) : 3f,
                 AreaType = row.ContainsKey("area_type") ? (AreaType)int.Parse(row["area_type"]) : AreaType.None,
                 IsInitiallyOpen = row.ContainsKey("is_initially_open") && row["is_initially_open"] == "1",
                 FallbackCellX = row.ContainsKey("fallback_cell_x") ? int.Parse(row["fallback_cell_x"]) : (int)posX,

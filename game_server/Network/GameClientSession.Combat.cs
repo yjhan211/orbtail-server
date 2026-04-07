@@ -10,8 +10,8 @@ public partial class GameClientSession
 {
     private Task HandleAttack(C_TO_G_ATTACK msg)
     {
-        Logger.LogInformation($"Player {PlayerId} attack: {msg.TargetId}");
-        // TODO: 공격 처리
+        // 미구현 — 클라이언트에 에러 응답
+        SendErrorResponse(ErrorCode.NOT_IMPLEMENTED, "공격 기능 미구현");
         return Task.CompletedTask;
     }
 
@@ -25,8 +25,8 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        Logger.LogInformation($"Player {PlayerId} interact: {msg.TargetId}");
-        // TODO: 상호작용 처리
+        // 미구현 — 클라이언트에 에러 응답
+        SendErrorResponse(ErrorCode.NOT_IMPLEMENTED, "상호작용 기능 미구현");
         return Task.CompletedTask;
     }
 
@@ -49,7 +49,7 @@ public partial class GameClientSession
 
         // 같은 Area의 다른 플레이어들에게 상태 브로드캐스트
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        var sameAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea).ToList();
+        var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea);
 
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, msg.State);
         foreach (var session in sameAreaSessions) session.Send(packet);
@@ -147,7 +147,7 @@ public partial class GameClientSession
 
         // 같은 Area의 모든 플레이어에게 상태 브로드캐스트 (본인 포함)
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        var sameAreaSessions = allSessions.Where(s => s.CurrentArea == CurrentArea).ToList();
+        var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
 
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
         foreach (var session in sameAreaSessions) session.Send(packet);

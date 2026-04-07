@@ -44,6 +44,16 @@ namespace network.common
         /// <summary>분산 락 TTL</summary>
         public static readonly TimeSpan LOCK_TTL = TimeSpan.FromSeconds(30);
 
+        // Corruption 임계값
+        /// <summary>불안 단계 시작 (정신 오염도 %)</summary>
+        public const int CORRUPTION_UNEASE = 25;
+
+        /// <summary>혼란 단계 시작 (정신 오염도 %)</summary>
+        public const int CORRUPTION_CONFUSION = 50;
+
+        /// <summary>광기 단계 시작 (정신 오염도 %)</summary>
+        public const int CORRUPTION_MADNESS = 75;
+
         // Game Session Settings
         /// <summary>게임 세션 지속 시간 (분)</summary>
         public static readonly int GAME_DURATION_MINUTES = 20;

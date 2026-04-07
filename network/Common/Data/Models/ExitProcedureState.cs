@@ -1,4 +1,5 @@
 // ReSharper disable All
+
 #pragma warning disable CS8618
 
 using System;
@@ -8,7 +9,7 @@ using System.Linq;
 namespace network.common.data.models
 {
     /// <summary>
-    /// 동적으로 생성된 탈출 절차 인스턴스
+    ///     동적으로 생성된 탈출 절차 인스턴스
     /// </summary>
     public class ExitProcedureInstance
     {
@@ -31,7 +32,7 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    /// 탈출 절차의 각 단계
+    ///     탈출 절차의 각 단계
     /// </summary>
     public class ExitProcedureStep
     {
@@ -40,7 +41,7 @@ namespace network.common.data.models
         public bool IsCompleted { get; set; }
 
         /// <summary>
-        /// 텍스트 반환
+        ///     텍스트 반환
         /// </summary>
         public string GetFormattedText() => StepData.TextTemplate;
 
@@ -50,20 +51,18 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    /// 탈출 절차 생성기
+    ///     탈출 절차 생성기
     /// </summary>
     public static class ExitProcedureGenerator
     {
         /// <summary>
-        /// 그룹 ID를 기반으로 탈출 절차 인스턴스 생성
+        ///     그룹 ID를 기반으로 탈출 절차 인스턴스 생성
         /// </summary>
         public static ExitProcedureInstance Generate(int groupId)
         {
             var instance = new ExitProcedureInstance
             {
-                GroupId = groupId,
-                CurrentStepIndex = 0,
-                CreatedAt = DateTime.UtcNow
+                GroupId = groupId, CurrentStepIndex = 0, CreatedAt = DateTime.UtcNow
             };
 
             // 그룹에서 스텝 정의 가져오기
@@ -71,11 +70,7 @@ namespace network.common.data.models
 
             foreach (var stepDef in stepDefinitions)
             {
-                var step = new ExitProcedureStep
-                {
-                    StepOrder = stepDef.StepOrder,
-                    StepData = stepDef
-                };
+                var step = new ExitProcedureStep { StepOrder = stepDef.StepOrder, StepData = stepDef };
 
                 instance.Steps.Add(step);
             }

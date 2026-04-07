@@ -36,7 +36,7 @@ public partial class GameClientSession
 
         // 같은 Area의 다른 플레이어들에게 탐색 시작 브로드캐스트
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        var sameAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea).ToList();
+        var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea);
 
         using var packet = PacketMaker.G_TO_C_EXPLORE_START(PlayerId.Value, msg.InteractId);
         foreach (var session in sameAreaSessions) session.Send(packet);
@@ -312,7 +312,7 @@ public partial class GameClientSession
     private void BroadcastInteractableUpdate(int interactId, int actionId, bool isExplored, long exploredBy)
     {
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        var sameAreaSessions = allSessions.Where(s => s.CurrentArea == CurrentArea).ToList();
+        var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
 
         using var packet = PacketMaker.G_TO_C_INTERACTABLE_UPDATE(interactId, actionId, isExplored, exploredBy);
         foreach (var session in sameAreaSessions) session.Send(packet);
@@ -331,7 +331,7 @@ public partial class GameClientSession
 
         // 같은 Area의 다른 플레이어들에게 탐색 종료 브로드캐스트
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        var sameAreaSessions = allSessions.Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea).ToList();
+        var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea);
 
         using var packet = PacketMaker.G_TO_C_EXPLORE_END(PlayerId.Value);
         foreach (var session in sameAreaSessions) session.Send(packet);
