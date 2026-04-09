@@ -106,6 +106,19 @@ public partial class GameClientSession
                     return;
                 }
 
+                // 구역 폐쇄 체크: 폐쇄된 구역 진입 시 스태미나 페널티
+                if (_areaClosureManager.IsAreaClosed(CurrentMapSubId, newArea))
+                {
+                    int penalty = _areaClosureManager.GetClosedAreaPenalty();
+                    ModifyStats(staminaDelta: -penalty);
+                    Logger.LogInformation("폐쇄 구역 진입 페널티: PlayerId={PlayerId}, Area={Area}, -스태미나{Penalty}",
+                        PlayerId, newArea, penalty);
+                    CheckResourceElimination();
+                }
+
+                // 구역 이동 시 스태미나 소모
+                ModifyStats(staminaDelta: -GameServer.MoveStaminaCost);
+
                 Logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
                 var oldArea = CurrentArea;

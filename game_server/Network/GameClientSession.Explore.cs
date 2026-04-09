@@ -251,6 +251,9 @@ public partial class GameClientSession
             // target_interactable_action 조건 체크
             CheckActionCompletedForExit(msg.InteractId, msg.ActionId);
 
+            // 미션 진행 체크 (해당 구역/오브젝트/액션이 현재 미션과 일치하면 완료)
+            CheckMissionProgress(CurrentArea, msg.InteractId, msg.ActionId);
+
             // 사보타주 해결 체크 (전화 받기 등)
             _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, msg.ActionId);
 

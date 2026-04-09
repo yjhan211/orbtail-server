@@ -3,11 +3,13 @@ using System.Net;
 using game_server.controllers;
 using game_server.network;
 using game_server.services;
+using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.helpers;
+using network.common.data.models;
 using network.core;
 using network.helpers;
 using network.infrastructure;
@@ -55,6 +57,16 @@ public class GameServer(
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
     private Timer? _infirmaryHealingTimer;
+    private Timer? _resourceTickTimer;        // 정신력 자연감소 + 타겟 근접 회복 + 시한부
+    private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
+    private Timer? _targetLocationTimer;      // 타겟 위치 전송
+
+    // 자원 틱 설정 (가데이터 — 기획 확정 후 조정)
+    private const int ResourceTickIntervalSeconds = 5;
+    private const int MentalDecayAmount = 2;            // 정신력 자연감소량 (5초당)
+    private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당)
+    private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당)
+    internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -68,6 +80,9 @@ public class GameServer(
             StartHeartbeatChecker();
             StartInfirmaryHealingTimer();
             StartCorridorStopCheckTimer();
+            StartResourceTickTimer();
+            StartAreaClosureTickTimer();
+            StartTargetLocationTimer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -105,6 +120,10 @@ public class GameServer(
             await _corridorStopCheckTimer.DisposeAsync();
             _corridorStopCheckTimer = null;
         }
+
+        if (_resourceTickTimer != null) { await _resourceTickTimer.DisposeAsync(); _resourceTickTimer = null; }
+        if (_areaClosureTickTimer != null) { await _areaClosureTickTimer.DisposeAsync(); _areaClosureTickTimer = null; }
+        if (_targetLocationTimer != null) { await _targetLocationTimer.DisposeAsync(); _targetLocationTimer = null; }
 
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
@@ -202,6 +221,137 @@ public class GameServer(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error processing infirmary healing");
+        }
+    }
+
+    // ===== 자원 틱 (정신력 자연감소, 타겟 근접 회복, 시한부) =====
+
+    private void StartResourceTickTimer()
+    {
+        _resourceTickTimer = new Timer(ProcessResourceTick, null,
+            TimeSpan.FromSeconds(ResourceTickIntervalSeconds),
+            TimeSpan.FromSeconds(ResourceTickIntervalSeconds));
+        logger.LogInformation("자원 틱 타이머 시작 ({Interval}초)", ResourceTickIntervalSeconds);
+    }
+
+    private void ProcessResourceTick(object? state)
+    {
+        try
+        {
+            var activeSessions = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue)
+                .ToList();
+
+            foreach (var session in activeSessions)
+            {
+                // 1. 정신력 자연감소 (모든 활성 플레이어)
+                int corruptionDelta = MentalDecayAmount;
+
+                // 2. 타겟 동일 구역 → 감소 정지 + 회복
+                var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
+                if (targetSession != null && targetSession.CurrentArea == session.CurrentArea &&
+                    session.CurrentArea != AreaType.None)
+                {
+                    corruptionDelta = -TargetProximityRecovery; // 감소 대신 회복
+                }
+
+                // 3. 시한부 추가 감소
+                var terminalPlayers = _manittoChainManager.GetTerminalPlayers(session.CurrentMapSubId);
+                if (terminalPlayers.Contains(session.PlayerId!.Value))
+                    corruptionDelta += TerminalDecayAmount;
+
+                session.ModifyStats(corruptionDelta: corruptionDelta);
+
+                // 4. 자원 고갈 탈락 체크
+                session.CheckResourceElimination();
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "자원 틱 처리 중 오류");
+        }
+    }
+
+    // ===== 구역 폐쇄 틱 =====
+
+    private void StartAreaClosureTickTimer()
+    {
+        _areaClosureTickTimer = new Timer(ProcessAreaClosureTick, null,
+            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        logger.LogInformation("구역 폐쇄 타이머 시작 (10초 간격)");
+    }
+
+    private void ProcessAreaClosureTick(object? state)
+    {
+        try
+        {
+            // 매칭별로 폐쇄 스케줄 체크
+            var matchingIds = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue)
+                .Select(s => s.CurrentMapSubId)
+                .Distinct()
+                .ToList();
+
+            foreach (long matchingId in matchingIds)
+            {
+                var (warningArea, closingArea) = _areaClosureManager.CheckClosureSchedule(matchingId);
+
+                var sessions = _clientSessions.Values
+                    .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
+                    .ToList();
+
+                // 경고 브로드캐스트
+                if (warningArea.HasValue)
+                {
+                    using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+                    var msg = new G_TO_C_AREA_CLOSURE_WARNING
+                    {
+                        AreaType = warningArea.Value,
+                        SecondsRemaining = 30
+                    };
+                    packet.SetBody(MessagePackSerializer.Serialize(msg));
+                    foreach (var s in sessions) s.Send(packet);
+                }
+
+                // 폐쇄 확정 브로드캐스트
+                if (closingArea.HasValue)
+                {
+                    using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
+                    var msg = new G_TO_C_AREA_CLOSED { AreaType = closingArea.Value };
+                    packet.SetBody(MessagePackSerializer.Serialize(msg));
+                    foreach (var s in sessions) s.Send(packet);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "구역 폐쇄 틱 처리 중 오류");
+        }
+    }
+
+    // ===== 타겟 위치 전송 =====
+
+    private void StartTargetLocationTimer()
+    {
+        _targetLocationTimer = new Timer(ProcessTargetLocation, null,
+            TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+        logger.LogInformation("타겟 위치 전송 타이머 시작 (3초 간격)");
+    }
+
+    private void ProcessTargetLocation(object? state)
+    {
+        try
+        {
+            var activeSessions = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue && s.TargetPlayerId != 0)
+                .ToList();
+
+            foreach (var session in activeSessions)
+                session.SendTargetLocation();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "타겟 위치 전송 처리 중 오류");
         }
     }
 
