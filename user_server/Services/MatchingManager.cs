@@ -14,7 +14,7 @@ public class MatchingManager : IMatchingManager
     private const string MatchingQueueKey = "matching_queue";
     private const string MatchingIdKey = "matching_id";
     private const int MatchingTimeoutSeconds = 5;
-    private const int PlayersPerMatch = 2; // 매칭 인원수
+    private const int PlayersPerMatch = 5; // 매칭 인원수
     private readonly ICacheHelper _cacheHelper;
     private readonly Func<long, GameSession?> _getSession;
     private readonly ILogger _logger;
@@ -130,11 +130,15 @@ public class MatchingManager : IMatchingManager
                 _logger.LogInformation("매칭 성공! matching_id: {MatchingId}, 참가자: {GroupEntriesLength}명", matchingId,
                     groupEntries.Length);
 
-                foreach (byte[] entry in groupEntries)
+                // 원형 체인 생성: 셔플 후 A→B→C→D→E→A (화살표 = 마니또 관계)
+                var chain = BuildManittoChain(groupEntries);
+
+                foreach (var link in chain)
                 {
                     try
                     {
-                        await ProcessMatchedEntry(entry, matchingId);
+                        await ProcessMatchedEntry(link.Entry, matchingId, link.TargetPlayerId,
+                            link.TargetJobTitle, link.MyJobTitle);
                     }
                     catch (Exception ex)
                     {
@@ -143,7 +147,7 @@ public class MatchingManager : IMatchingManager
                     finally
                     {
                         // 성공/실패 관계없이 큐에서 제거
-                        await _cacheHelper.SortedSetRemoveAsync(MatchingQueueKey, entry);
+                        await _cacheHelper.SortedSetRemoveAsync(MatchingQueueKey, link.Entry);
                     }
                 }
             }
@@ -154,10 +158,56 @@ public class MatchingManager : IMatchingManager
         }
     }
 
-    private async Task ProcessMatchedEntry(byte[] entry, long matchingId)
+    /// <summary>
+    ///     원형 체인 생성: 셔플 후 i번째 플레이어의 타겟 = (i+1)%N번째 플레이어
+    ///     직책(JobTitle)도 무작위 배정
+    /// </summary>
+    private List<ManittoChainLink> BuildManittoChain(byte[][] groupEntries)
+    {
+        // 셔플
+        var entries = groupEntries.ToList();
+        var rng = Random.Shared;
+        for (int i = entries.Count - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            (entries[i], entries[j]) = (entries[j], entries[i]);
+        }
+
+        // 직책 셔플 배정
+        var jobs = Enum.GetValues<JobTitle>().Where(j => j != JobTitle.NONE).ToList();
+        for (int i = jobs.Count - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            (jobs[i], jobs[j]) = (jobs[j], jobs[i]);
+        }
+
+        // PlayerId 역직렬화
+        var players = entries.Select(e => MessagePackSerializer.Deserialize<MatchingQueueData>(e)).ToList();
+
+        var chain = new List<ManittoChainLink>();
+        for (int i = 0; i < entries.Count; i++)
+        {
+            int targetIndex = (i + 1) % entries.Count;
+            chain.Add(new ManittoChainLink
+            {
+                Entry = entries[i],
+                TargetPlayerId = players[targetIndex].PlayerId,
+                MyJobTitle = jobs[i],
+                TargetJobTitle = jobs[targetIndex]
+            });
+        }
+
+        _logger.LogInformation("마니또 체인 생성: {Chain}",
+            string.Join(" → ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" → {players[0].PlayerId}");
+
+        return chain;
+    }
+
+    private async Task ProcessMatchedEntry(byte[] entry, long matchingId,
+        long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle)
     {
         var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
-        _logger.LogInformation("플레이어 {DataPlayerId} 처리 중...", data.PlayerId);
+        _logger.LogInformation("플레이어 {DataPlayerId} 처리 중... (타겟: {TargetPlayerId})", data.PlayerId, targetPlayerId);
 
         var session = _getSession(data.PlayerId);
         if (session?.PlayerInfo == null)
@@ -165,8 +215,6 @@ public class MatchingManager : IMatchingManager
             _logger.LogWarning("플레이어 {DataPlayerId} 세션 또는 PlayerInfo가 null", data.PlayerId);
             return;
         }
-
-        _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 알림 전송 시작", data.PlayerId);
 
         const MapId mapId = MapId.School;
         var mapInfo = GameMapData.GetMapInfo(mapId);
@@ -185,8 +233,6 @@ public class MatchingManager : IMatchingManager
         playerInfo.LastMapSubId = matchingId;
         playerInfo.LastCell = spawnPosition;
         await playerInfo.Save(_cacheHelper);
-        _logger.LogInformation("플레이어 {DataPlayerId} LastCell 업데이트 완료: {SpawnPosition}",
-            data.PlayerId, spawnPosition);
 
         // 게임서버 정보
         string gameServerIp = Environment.GetEnvironmentVariable("GAME_SERVER_IP") ?? "127.0.0.1";
@@ -198,11 +244,13 @@ public class MatchingManager : IMatchingManager
 
         using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
             matchingId, mapId, matchingId, spawnPosition,
-            gameServerIp, gameServerPort, gameEndTimestamp
+            gameServerIp, gameServerPort, gameEndTimestamp,
+            targetPlayerId, targetJobTitle, myJobTitle
         );
 
         session.Send(packet);
-        _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 패킷 전송 완료", data.PlayerId);
+        _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 패킷 전송 (타겟: {TargetPlayerId}, 내 직책: {MyJob}, 타겟 직책: {TargetJob})",
+            data.PlayerId, targetPlayerId, myJobTitle, targetJobTitle);
     }
 
     public void Dispose()
@@ -223,4 +271,15 @@ public class MatchingQueueData
 
     [Key(2)]
     public string UserChannel { get; set; } = string.Empty;
+}
+
+/// <summary>
+///     원형 체인의 한 링크: 플레이어 → 타겟 관계 + 직책
+/// </summary>
+public class ManittoChainLink
+{
+    public byte[] Entry { get; set; } = Array.Empty<byte>();
+    public long TargetPlayerId { get; set; }
+    public JobTitle MyJobTitle { get; set; }
+    public JobTitle TargetJobTitle { get; set; }
 }

@@ -174,6 +174,19 @@ namespace network.common
     }
 
     /// <summary>
+    ///     마니또 게임 직책 (5인 매칭 시 무작위 배정)
+    /// </summary>
+    public enum JobTitle : short
+    {
+        NONE = 0,
+        HEALTH_COMMITTEE = 1,   // 보건위원
+        BROADCAST_MEMBER = 2,   // 방송부원
+        DISCIPLINE_MEMBER = 3,  // 선도부원
+        LIBRARY_COMMITTEE = 4,  // 도서위원
+        SPORTS_CAPTAIN = 5,     // 체육부장
+    }
+
+    /// <summary>
     /// 상호작용 오브젝트 탐색 타입
     /// </summary>
     public enum InteractionType : short

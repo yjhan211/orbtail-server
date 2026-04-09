@@ -23,6 +23,13 @@ public partial class GameClientSession
             CurrentMapId = MapId.School; // TODO: 매칭 정보에서 가져오기
             CurrentMapSubId = msg.MatchingId;
 
+            // 마니또 체인 정보 저장
+            TargetPlayerId = msg.TargetPlayerId;
+            MyJobTitle = msg.MyJobTitle;
+            TargetJobTitle = msg.TargetJobTitle;
+            Logger.LogInformation("마니또 체인: PlayerId={PlayerId}, 타겟={Target}, 내 직책={MyJob}, 타겟 직책={TargetJob}",
+                PlayerId, TargetPlayerId, MyJobTitle, TargetJobTitle);
+
             // 인게임 스탯 초기화
             ResetInGameStats();
 

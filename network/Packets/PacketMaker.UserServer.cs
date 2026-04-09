@@ -148,7 +148,9 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId, MapId mapId, long mapSubId, Cell spawnPosition, string gameServerIp, int gameServerPort, long gameEndTimestamp)
+    public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId, MapId mapId, long mapSubId, Cell spawnPosition,
+        string gameServerIp, int gameServerPort, long gameEndTimestamp,
+        long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING_SUCCESS);
         U_TO_C_MATCHING_SUCCESS body = new()
@@ -159,7 +161,10 @@ public static partial class PacketMaker
             SpawnPosition = spawnPosition,
             GameServerIp = gameServerIp,
             GameServerPort = gameServerPort,
-            GameEndTimestamp = gameEndTimestamp
+            GameEndTimestamp = gameEndTimestamp,
+            TargetPlayerId = targetPlayerId,
+            TargetJobTitle = targetJobTitle,
+            MyJobTitle = myJobTitle
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

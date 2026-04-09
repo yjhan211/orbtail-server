@@ -103,6 +103,11 @@ public partial class GameClientSession : SessionBase
     public long CurrentMapSubId { get; private set; }
     public AreaType CurrentArea { get; private set; } = AreaType.None;
     private PlayerState CurrentState { get; set; } = PlayerState.Idle;
+
+    // 마니또 체인 정보
+    public long TargetPlayerId { get; private set; }
+    public JobTitle MyJobTitle { get; private set; }
+    public JobTitle TargetJobTitle { get; private set; }
     private int? CurrentExploringInteractId { get; set; }
 
     // 인게임 스탯 (게임 종료 시 초기화)

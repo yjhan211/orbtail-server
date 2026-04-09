@@ -18,6 +18,11 @@ namespace network.common.data.models
     {
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("matchingId")] public long MatchingId { get; set; }
+
+        // 마니또 체인 정보 (UserServer → Client → GameServer 전달)
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+        [Key("targetJobTitle")] public JobTitle TargetJobTitle { get; set; }
+        [Key("myJobTitle")] public JobTitle MyJobTitle { get; set; }
     }
 
     [MessagePackObject]
