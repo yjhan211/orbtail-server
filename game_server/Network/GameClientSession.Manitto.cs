@@ -157,8 +157,8 @@ public partial class GameClientSession
         packet.SetBody(MessagePackSerializer.Serialize(result));
         Send(packet);
 
-        // 흔적 브로드캐스트
-        BroadcastTraceCreated(CurrentArea, msg.InteractId, "누군가 무언가를 남겼다...", false);
+        // 흔적 저장 (탐색 시 발견됨)
+        StoreTrace(CurrentArea, msg.InteractId, "누군가 무언가를 남겼다...", false);
 
         return Task.CompletedTask;
     }
@@ -225,40 +225,78 @@ public partial class GameClientSession
             Send(stepPacket);
         }
 
-        // 흔적 생성 (같은 구역 플레이어에게 알림)
-        BroadcastTraceCreated(result.TraceArea, result.TraceInteractId, result.TraceDescription, true);
+        // 흔적 저장 (탐색 시 발견됨)
+        StoreTrace(result.TraceArea, result.TraceInteractId, result.TraceDescription, true);
     }
 
     /// <summary>
-    ///     흔적 생성 브로드캐스트
+    ///     흔적 저장 (TraceManager에 등록, 오브젝트 탐색 시 발견됨)
     /// </summary>
-    private void BroadcastTraceCreated(AreaType area, int interactId, string description, bool isMissionTrace)
+    private void StoreTrace(AreaType area, int interactId, string description, bool isMissionTrace)
     {
         if (!PlayerId.HasValue) return;
 
-        var trace = new TraceInfo
-        {
-            TraceId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            AreaType = area,
-            InteractId = interactId,
-            Description = description,
-            PlacedByPlayerId = PlayerId.Value,
-            IsMissionTrace = isMissionTrace
-        };
+        _traceManager.AddTrace(CurrentMapSubId, area, interactId, description, PlayerId.Value, isMissionTrace);
+        Logger.LogInformation("흔적 저장: PlayerId={PlayerId}, Area={Area}, InteractId={InteractId}, Mission={IsMission}",
+            PlayerId, area, interactId, isMissionTrace);
+    }
+
+    /// <summary>
+    ///     오브젝트 탐색 시 흔적 발견 체크.
+    ///     해당 오브젝트에 미발견 흔적이 있으면 발견 처리 + 정신력 효과 적용.
+    /// </summary>
+    public void CheckTraceDiscovery(int interactId)
+    {
+        if (!PlayerId.HasValue) return;
+
+        var undiscovered = _traceManager.GetUndiscoveredTraces(CurrentMapSubId, interactId, PlayerId.Value);
+        if (undiscovered.Count == 0) return;
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        var areaSessionsExceptMe = allSessions
-            .Where(s => s.CurrentArea == area && s.PlayerId != PlayerId)
-            .ToList();
 
-        if (areaSessionsExceptMe.Count == 0) return;
+        foreach (var stored in undiscovered)
+        {
+            _traceManager.MarkDiscovered(CurrentMapSubId, interactId, PlayerId.Value, stored.TraceId);
 
-        using var packet = Packet.Create((int)Protocol.G_TO_C_TRACE_CREATED);
-        var msg = new G_TO_C_TRACE_CREATED { Trace = trace };
-        packet.SetBody(MessagePackSerializer.Serialize(msg));
+            // 발견자에게 흔적 알림
+            var traceInfo = new TraceInfo
+            {
+                TraceId = stored.TraceId,
+                AreaType = stored.AreaType,
+                InteractId = stored.InteractId,
+                Description = stored.Description,
+                PlacedByPlayerId = stored.PlacedByPlayerId,
+                IsMissionTrace = stored.IsMissionTrace
+            };
 
-        foreach (var session in areaSessionsExceptMe)
-            session.Send(packet);
+            using var packet = Packet.Create((int)Protocol.G_TO_C_TRACE_CREATED);
+            var msg = new G_TO_C_TRACE_CREATED { Trace = traceInfo };
+            packet.SetBody(MessagePackSerializer.Serialize(msg));
+            Send(packet);
+
+            // 정신력 효과: 흔적 배치자(마니또)에게 회복, 배치자의 타겟에게 오염도 증가
+            var placerSession = allSessions.FirstOrDefault(s => s.PlayerId == stored.PlacedByPlayerId);
+            if (placerSession != null)
+            {
+                // 마니또(배치자) 정신력 회복
+                placerSession.ModifyStats(corruptionDelta: -GameServer.TraceFoundManittoRecovery);
+                Logger.LogInformation("흔적 발견 → 마니또 회복: PlayerId={Placer}, -오염도{Amount}",
+                    stored.PlacedByPlayerId, GameServer.TraceFoundManittoRecovery);
+
+                // 타겟(배치자의 타겟) 오염도 증가
+                var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == placerSession.TargetPlayerId);
+                if (targetSession != null)
+                {
+                    targetSession.ModifyStats(corruptionDelta: GameServer.TraceFoundTargetDecay);
+                    Logger.LogInformation("흔적 발견 → 타겟 오염도 증가: PlayerId={Target}, +오염도{Amount}",
+                        placerSession.TargetPlayerId, GameServer.TraceFoundTargetDecay);
+                    targetSession.CheckResourceElimination();
+                }
+            }
+
+            Logger.LogInformation("흔적 발견: PlayerId={Discoverer}, TraceId={TraceId}, 배치자={Placer}",
+                PlayerId, stored.TraceId, stored.PlacedByPlayerId);
+        }
     }
 
     /// <summary>
@@ -272,5 +310,158 @@ public partial class GameClientSession
             _ = ProcessElimination(PlayerId.Value, EliminationReason.STAMINA_ZERO);
         else if (Corruption >= MaxCorruption)
             _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO);
+    }
+
+    // ===== 상호작용 선택지 =====
+
+    /// <summary>
+    ///     대화 수락 시 양쪽에 선택지 전송 (질문자=requester, 답변자=responder)
+    /// </summary>
+    private void SendInteractionChoices(GameClientSession askerSession, GameClientSession answererSession)
+    {
+        if (!askerSession.PlayerId.HasValue || !answererSession.PlayerId.HasValue) return;
+
+        // 질문 선택지 생성
+        var questions = _interactionChoiceService.GenerateQuestions(
+            CurrentMapSubId,
+            askerSession.PlayerId.Value,
+            answererSession.PlayerId.Value,
+            CurrentArea,
+            answererSession._previousArea);
+
+        askerSession._pendingQuestions = questions;
+
+        // 질문자에게 선택지 전송
+        using var askerPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_CHOICES, askerSession.PlayerId.Value);
+        var askerMsg = new G_TO_C_INTERACTION_CHOICES
+        {
+            PartnerPlayerId = answererSession.PlayerId.Value,
+            IsAsker = true,
+            Questions = questions
+        };
+        askerPacket.SetBody(MessagePackSerializer.Serialize(askerMsg));
+        askerSession.Send(askerPacket);
+
+        // 답변자에게 대기 알림 (질문 선택 대기)
+        using var answererPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_CHOICES, answererSession.PlayerId.Value);
+        var answererMsg = new G_TO_C_INTERACTION_CHOICES
+        {
+            PartnerPlayerId = askerSession.PlayerId.Value,
+            IsAsker = false,
+            Questions = new List<InteractionQuestion>() // 빈 목록 (대기 상태)
+        };
+        answererPacket.SetBody(MessagePackSerializer.Serialize(answererMsg));
+        answererSession.Send(answererPacket);
+    }
+
+    /// <summary>
+    ///     질문자가 질문 선택
+    /// </summary>
+    private Task HandleInteractionAsk(C_TO_G_INTERACTION_ASK msg)
+    {
+        if (!PlayerId.HasValue || !_activeConversationPlayerId.HasValue) return Task.CompletedTask;
+
+        long partnerPlayerId = _activeConversationPlayerId.Value;
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var partnerSession = allSessions.FirstOrDefault(s => s.PlayerId == partnerPlayerId);
+        if (partnerSession == null) return Task.CompletedTask;
+
+        _lastAskedQuestion = msg.QuestionType;
+
+        // 답변 선택지 생성
+        var answers = _interactionChoiceService.GenerateAnswers(
+            CurrentMapSubId,
+            partnerPlayerId,
+            msg.QuestionType);
+
+        partnerSession._pendingAnswers = answers;
+
+        // 질문 텍스트 찾기
+        string questionText = _pendingQuestions?
+            .FirstOrDefault(q => q.QuestionType == msg.QuestionType)?.Text ?? "질문";
+
+        // 답변자에게 답변 선택지 전송
+        using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ANSWER_CHOICES, partnerPlayerId);
+        var answerMsg = new G_TO_C_INTERACTION_ANSWER_CHOICES
+        {
+            QuestionType = msg.QuestionType,
+            QuestionText = questionText,
+            Answers = answers
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(answerMsg));
+        partnerSession.Send(packet);
+
+        Logger.LogInformation("상호작용 질문: Asker={Asker}, Answerer={Answerer}, Type={Type}",
+            PlayerId, partnerPlayerId, msg.QuestionType);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     답변자가 답변 선택
+    /// </summary>
+    private Task HandleInteractionAnswer(C_TO_G_INTERACTION_ANSWER msg)
+    {
+        if (!PlayerId.HasValue || !_activeConversationPlayerId.HasValue) return Task.CompletedTask;
+        if (_pendingAnswers == null || msg.AnswerIndex < 0 || msg.AnswerIndex >= _pendingAnswers.Count)
+            return Task.CompletedTask;
+
+        long askerPlayerId = _activeConversationPlayerId.Value;
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var askerSession = allSessions.FirstOrDefault(s => s.PlayerId == askerPlayerId);
+        if (askerSession == null) return Task.CompletedTask;
+
+        var selectedAnswer = _pendingAnswers[msg.AnswerIndex];
+
+        // 로그 기록 + 사칭 발각 체크
+        var (isFakeDetected, conflictInfo) = _interactionChoiceService.ProcessAnswer(
+            CurrentMapSubId,
+            askerPlayerId,
+            PlayerId.Value,
+            selectedAnswer.ClaimedJob,
+            CurrentArea,
+            selectedAnswer.IsTrue);
+
+        // 양쪽에 결과 전송
+        var resultForAsker = new G_TO_C_INTERACTION_RESULT
+        {
+            PartnerPlayerId = PlayerId.Value,
+            QuestionType = askerSession._lastAskedQuestion,
+            ClaimedJob = selectedAnswer.ClaimedJob,
+            ClaimedArea = CurrentArea,
+            IsFakeDetected = isFakeDetected,
+            ConflictInfo = conflictInfo
+        };
+
+        using (var askerPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_RESULT, askerPlayerId))
+        {
+            askerPacket.SetBody(MessagePackSerializer.Serialize(resultForAsker));
+            askerSession.Send(askerPacket);
+        }
+
+        var resultForAnswerer = new G_TO_C_INTERACTION_RESULT
+        {
+            PartnerPlayerId = askerPlayerId,
+            QuestionType = askerSession._lastAskedQuestion,
+            ClaimedJob = selectedAnswer.ClaimedJob,
+            ClaimedArea = CurrentArea,
+            IsFakeDetected = isFakeDetected,
+            ConflictInfo = conflictInfo
+        };
+
+        using (var answererPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_RESULT, PlayerId.Value))
+        {
+            answererPacket.SetBody(MessagePackSerializer.Serialize(resultForAnswerer));
+            Send(answererPacket);
+        }
+
+        Logger.LogInformation("상호작용 답변: Answerer={Answerer}, Asker={Asker}, ClaimedJob={Job}, Fake={Fake}",
+            PlayerId, askerPlayerId, selectedAnswer.ClaimedJob, isFakeDetected);
+
+        // 선택지 상태 클리어
+        _pendingAnswers = null;
+        askerSession._pendingQuestions = null;
+
+        return Task.CompletedTask;
     }
 }

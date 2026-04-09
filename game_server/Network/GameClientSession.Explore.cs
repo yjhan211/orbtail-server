@@ -255,6 +255,9 @@ public partial class GameClientSession
             // 미션 진행 체크 (해당 구역/오브젝트/액션이 현재 미션과 일치하면 완료)
             CheckMissionProgress(CurrentArea, msg.InteractId, msg.ActionId);
 
+            // 흔적 발견 체크 (오브젝트에 미발견 흔적이 있으면 발견 처리)
+            CheckTraceDiscovery(msg.InteractId);
+
             // 사보타주 해결 체크 (전화 받기 등)
             _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, msg.ActionId);
 

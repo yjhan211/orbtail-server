@@ -43,12 +43,21 @@ public partial class GameClientSession : SessionBase
     private readonly ManittoChainManager _manittoChainManager;
     private readonly MissionManager _missionManager;
     private readonly AreaClosureManager _areaClosureManager;
+    private readonly TraceManager _traceManager;
+    private readonly InteractionLogManager _interactionLogManager;
+    private readonly InteractionChoiceService _interactionChoiceService;
 
     // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
     private readonly HashSet<(int RuleId, long TargetPlayerId)> _sharedRules = new();
 
     // 활성 대화 상대 PlayerId (수락 후 대화 중)
     private long? _activeConversationPlayerId;
+
+    // 마니또 상호작용 선택지 상태
+    private List<InteractionQuestion>? _pendingQuestions;     // 질문자의 선택지
+    private List<InteractionAnswer>? _pendingAnswers;         // 답변자의 선택지
+    private InteractionQuestionType _lastAskedQuestion;       // 마지막 질문 유형
+    private AreaType _previousArea = AreaType.None;           // 이전 구역 (동선추궁용)
     private CancellationTokenSource? _interactTimeoutCts;
     private bool _isSleeping;
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
@@ -83,7 +92,10 @@ public partial class GameClientSession : SessionBase
         SabotageManager sabotageManager,
         ManittoChainManager manittoChainManager,
         MissionManager missionManager,
-        AreaClosureManager areaClosureManager)
+        AreaClosureManager areaClosureManager,
+        TraceManager traceManager,
+        InteractionLogManager interactionLogManager,
+        InteractionChoiceService interactionChoiceService)
         : base(token, logger, cacheHelper, redLock)
     {
         _onLeaveCallback = onLeaveCallback;
@@ -101,6 +113,9 @@ public partial class GameClientSession : SessionBase
         _manittoChainManager = manittoChainManager;
         _missionManager = missionManager;
         _areaClosureManager = areaClosureManager;
+        _traceManager = traceManager;
+        _interactionLogManager = interactionLogManager;
+        _interactionChoiceService = interactionChoiceService;
 
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
@@ -185,6 +200,12 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_DETECT_MANITTO>(bytes, HandleDetectManitto));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_TRACE,
             async bytes => await HandleMessage<C_TO_G_PLACE_TRACE>(bytes, HandlePlaceTrace));
+
+        // 상호작용 선택지 프로토콜
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ASK,
+            async bytes => await HandleMessage<C_TO_G_INTERACTION_ASK>(bytes, HandleInteractionAsk));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ANSWER,
+            async bytes => await HandleMessage<C_TO_G_INTERACTION_ANSWER>(bytes, HandleInteractionAnswer));
     }
 
     protected override bool ShouldSkipLogging(Protocol protocolId)

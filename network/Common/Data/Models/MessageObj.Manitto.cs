@@ -136,4 +136,96 @@ namespace network.common.data.models
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("status")] public ManittoStatus Status { get; set; }
     }
+
+    // ===== 1:1 상호작용 선택지 =====
+
+    /// <summary>
+    ///     질문 선택지 카테고리
+    /// </summary>
+    public enum InteractionQuestionType : short
+    {
+        ASK_JOB = 1,          // 직책 추궁: "너 무슨 직책이야?"
+        ASK_LOCATION = 2,     // 동선 추궁: "[X구역]에서 방금 나왔지?"
+        CROSS_CHECK = 3,      // 교차 검증: "[Y]도 도서위원이라던데?"
+        ASK_TRACE = 4         // 흔적 추궁: "여기 누가 온 것 같던데?"
+    }
+
+    /// <summary>
+    ///     질문 선택지 항목
+    /// </summary>
+    [MessagePackObject]
+    public class InteractionQuestion : IMessagePackObject
+    {
+        [Key("questionType")] public InteractionQuestionType QuestionType { get; set; }
+        [Key("text")] public string Text { get; set; }
+        /// <summary>교차검증 시 참조 플레이어 ID</summary>
+        [Key("referencePlayerId")] public long ReferencePlayerId { get; set; }
+        /// <summary>동선추궁 시 참조 구역</summary>
+        [Key("referenceArea")] public AreaType ReferenceArea { get; set; }
+    }
+
+    /// <summary>
+    ///     답변 선택지 항목
+    /// </summary>
+    [MessagePackObject]
+    public class InteractionAnswer : IMessagePackObject
+    {
+        [Key("isTrue")] public bool IsTrue { get; set; }  // 진실인지 거짓인지
+        [Key("claimedJob")] public JobTitle ClaimedJob { get; set; }
+        [Key("text")] public string Text { get; set; }
+    }
+
+    /// <summary>
+    ///     대화 수락 시 질문 선택지 전송
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_INTERACTION_CHOICES : IMessagePackObject
+    {
+        [Key("partnerPlayerId")] public long PartnerPlayerId { get; set; }
+        [Key("isAsker")] public bool IsAsker { get; set; }  // true=질문자, false=답변자(대기)
+        [Key("questions")] public List<InteractionQuestion> Questions { get; set; }
+    }
+
+    /// <summary>
+    ///     질문자가 질문 선택
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_INTERACTION_ASK : IMessagePackObject
+    {
+        [Key("questionType")] public InteractionQuestionType QuestionType { get; set; }
+    }
+
+    /// <summary>
+    ///     답변자에게 답변 선택지 전송
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_INTERACTION_ANSWER_CHOICES : IMessagePackObject
+    {
+        [Key("questionType")] public InteractionQuestionType QuestionType { get; set; }
+        [Key("questionText")] public string QuestionText { get; set; }
+        [Key("answers")] public List<InteractionAnswer> Answers { get; set; }
+    }
+
+    /// <summary>
+    ///     답변자가 답변 선택
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_INTERACTION_ANSWER : IMessagePackObject
+    {
+        [Key("answerIndex")] public int AnswerIndex { get; set; }  // 선택한 답변 인덱스
+    }
+
+    /// <summary>
+    ///     상호작용 결과 (양쪽에 전송)
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_INTERACTION_RESULT : IMessagePackObject
+    {
+        [Key("partnerPlayerId")] public long PartnerPlayerId { get; set; }
+        [Key("questionType")] public InteractionQuestionType QuestionType { get; set; }
+        [Key("claimedJob")] public JobTitle ClaimedJob { get; set; }       // 상대가 주장한 직책
+        [Key("claimedArea")] public AreaType ClaimedArea { get; set; }     // 상대가 주장한 알리바이(구역)
+        [Key("isFakeDetected")] public bool IsFakeDetected { get; set; }   // 사칭 발각 여부
+        [Key("conflictInfo")] public string ConflictInfo { get; set; }     // 충돌 정보 (교차검증 결과)
+    }
 }

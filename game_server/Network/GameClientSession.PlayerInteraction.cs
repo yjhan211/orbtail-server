@@ -186,6 +186,9 @@ public partial class GameClientSession
             // 수락 시 양쪽 세션에 활성 대화 상대 설정
             requesterSession._activeConversationPlayerId = PlayerId.Value;
             _activeConversationPlayerId = requesterPlayerId;
+
+            // 마니또 상호작용 선택지 생성: 요청자가 질문자, 응답자가 답변자
+            SendInteractionChoices(requesterSession, this);
         }
         else
         {

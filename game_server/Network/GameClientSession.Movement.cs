@@ -107,14 +107,11 @@ public partial class GameClientSession
                     return;
                 }
 
-                // 구역 폐쇄 체크: 폐쇄된 구역 진입 시 스태미나 페널티
+                // 폐쇄 구역 진입 경고 (지속 페널티는 ResourceTick에서 처리)
                 if (_areaClosureManager.IsAreaClosed(CurrentMapSubId, newArea))
                 {
-                    int penalty = _areaClosureManager.GetClosedAreaPenalty();
-                    ModifyStats(staminaDelta: -penalty);
-                    Logger.LogInformation("폐쇄 구역 진입 페널티: PlayerId={PlayerId}, Area={Area}, -스태미나{Penalty}",
-                        PlayerId, newArea, penalty);
-                    CheckResourceElimination();
+                    Logger.LogInformation("폐쇄 구역 진입: PlayerId={PlayerId}, Area={Area} (체류 시 스태미나 지속 감소)",
+                        PlayerId, newArea);
                 }
 
                 // 구역 이동 시 스태미나 소모
@@ -123,6 +120,7 @@ public partial class GameClientSession
                 Logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
                 var oldArea = CurrentArea;
+                _previousArea = oldArea; // 이전 구역 기록 (상호작용 동선추궁용)
                 CurrentArea = newArea; // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
                 await HandleAreaChange(oldArea, newArea);
             }

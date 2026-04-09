@@ -49,9 +49,11 @@ public class GameServer(
     private readonly InteractRuleManager _interactRuleManager = new();
     private readonly ItemPoolManager _itemPoolManager = new();
     private readonly SabotageManager _sabotageManager = new();
+    private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
     private readonly MissionManager _missionManager = new(logger);
     private readonly AreaClosureManager _areaClosureManager = new(logger);
+    private readonly TraceManager _traceManager = new();
 
     private Timer? _corridorStopCheckTimer;
     private CancellationTokenSource _cts = new();
@@ -61,12 +63,15 @@ public class GameServer(
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
 
-    // 자원 틱 설정 (가데이터 — 기획 확정 후 조정)
+    // 자원 틱 설정 (GDD 기반 확정 수치)
     private const int ResourceTickIntervalSeconds = 5;
-    private const int MentalDecayAmount = 2;            // 정신력 자연감소량 (5초당)
-    private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당)
-    private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당)
+    private const int MentalDecayAmount = 2;            // 정신력 자연감소량 (5초당 오염도 +2)
+    private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
+    private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
     internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모
+    private const int ClosedAreaStaminaPenaltyPerTick = 20; // 폐쇄 구역 체류 시 틱당 스태미나 감소
+    internal const int TraceFoundManittoRecovery = 15;   // 흔적 발견 시 마니또 정신력 회복량
+    internal const int TraceFoundTargetDecay = 10;       // 흔적 발견 시 타겟 오염도 증가량
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -262,7 +267,14 @@ public class GameServer(
 
                 session.ModifyStats(corruptionDelta: corruptionDelta);
 
-                // 4. 자원 고갈 탈락 체크
+                // 4. 폐쇄 구역 체류 시 스태미나 지속 감소
+                if (session.CurrentArea != AreaType.None &&
+                    _areaClosureManager.IsAreaClosed(session.CurrentMapSubId, session.CurrentArea))
+                {
+                    session.ModifyStats(staminaDelta: -ClosedAreaStaminaPenaltyPerTick);
+                }
+
+                // 5. 자원 고갈 탈락 체크
                 session.CheckResourceElimination();
             }
         }
@@ -445,7 +457,10 @@ public class GameServer(
                 _sabotageManager,
                 _manittoChainManager,
                 _missionManager,
-                _areaClosureManager);
+                _areaClosureManager,
+                _traceManager,
+                _interactionLogManager,
+                new InteractionChoiceService(_interactionLogManager, _manittoChainManager));
 
             logger.LogInformation("Game client session created");
         }

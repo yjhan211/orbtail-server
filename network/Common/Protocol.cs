@@ -136,6 +136,13 @@ namespace network.common
         C_TO_G_PLACE_TRACE,           // 흔적 배치 요청
         G_TO_C_PLACE_TRACE_RESULT,    // 흔적 배치 결과
 
+        // 1:1 상호작용 선택지 프로토콜 (마니또)
+        G_TO_C_INTERACTION_CHOICES,   // 대화 수락 시 질문/답변 선택지 전송
+        C_TO_G_INTERACTION_ASK,       // 질문자: 질문 선택
+        G_TO_C_INTERACTION_ANSWER_CHOICES, // 답변자: 답변 선택지 전송
+        C_TO_G_INTERACTION_ANSWER,    // 답변자: 답변 선택
+        G_TO_C_INTERACTION_RESULT,    // 양쪽: 상호작용 결과 (주장 직책, 로그 기록 등)
+
         // 범용 에러 프로토콜
         U_TO_C_ERROR, // UserServer 범용 에러 응답
         G_TO_C_ERROR, // GameServer 범용 에러 응답

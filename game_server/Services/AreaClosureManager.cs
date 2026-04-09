@@ -13,7 +13,7 @@ public class AreaClosureManager
     private const int ClosureWarningSeconds = 30;   // 폐쇄 전 경고 시간
     private const int ClosureIntervalSeconds = 180; // 구역 간 폐쇄 간격 (3분)
     private const int FirstClosureDelaySeconds = 300; // 첫 폐쇄까지 딜레이 (5분)
-    private const int ClosedAreaStaminaPenalty = 20; // 폐쇄 구역 진입 시 스태미나 감소
+    // 폐쇄 구역 체류 페널티는 GameServer.ClosedAreaStaminaPenaltyPerTick에서 처리
 
     // 폐쇄 대상 구역 (복도, 강당 등 핵심 구역은 제외)
     private static readonly AreaType[] ClosableAreas =
@@ -114,11 +114,6 @@ public class AreaClosureManager
         if (!_states.TryGetValue(matchingId, out var state)) return false;
         return state.ClosedAreas.Contains(area);
     }
-
-    /// <summary>
-    ///     폐쇄 구역 진입 시 스태미나 페널티
-    /// </summary>
-    public int GetClosedAreaPenalty() => ClosedAreaStaminaPenalty;
 
     /// <summary>
     ///     매칭 정리
