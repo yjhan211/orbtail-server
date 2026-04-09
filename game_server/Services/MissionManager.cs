@@ -109,6 +109,17 @@ public class MissionManager
     }
 
     /// <summary>
+    ///     현재 미션 목적지가 폐쇄되었는지 확인
+    /// </summary>
+    public bool IsCurrentMissionAreaClosed(long matchingId, long playerId, AreaClosureManager closureManager)
+    {
+        var step = GetCurrentStep(matchingId, playerId);
+        if (step == null) return false;
+
+        return closureManager.IsAreaClosed(matchingId, (AreaType)step.TargetArea);
+    }
+
+    /// <summary>
     ///     매칭 정리
     /// </summary>
     public void CleanupMatching(long matchingId)

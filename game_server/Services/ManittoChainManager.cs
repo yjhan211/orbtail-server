@@ -20,19 +20,22 @@ public class ManittoChainManager
     }
 
     /// <summary>
-    ///     매칭 시작 시 체인 등록
+    ///     플레이어 접속 시 링크 등록 (누적)
     /// </summary>
-    public void InitializeChain(long matchingId, List<ChainLink> chain)
+    public void RegisterLink(long matchingId, ChainLink link)
     {
-        var state = new MatchingChainState
-        {
-            MatchingId = matchingId,
-            Links = chain.ToDictionary(l => l.PlayerId),
-            AliveCount = chain.Count
-        };
+        var state = _states.GetOrAdd(matchingId, _ => new MatchingChainState { MatchingId = matchingId });
 
-        _states[matchingId] = state;
-        _logger.LogInformation("마니또 체인 등록: MatchingId={MatchingId}, {Count}명", matchingId, chain.Count);
+        if (state.Links.ContainsKey(link.PlayerId))
+        {
+            _logger.LogDebug("이미 등록된 링크: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId, link.PlayerId);
+            return;
+        }
+
+        state.Links[link.PlayerId] = link;
+        state.AliveCount = state.Links.Count;
+        _logger.LogInformation("마니또 체인 링크 등록: MatchingId={MatchingId}, PlayerId={PlayerId}, 현재 {Count}명",
+            matchingId, link.PlayerId, state.AliveCount);
     }
 
     /// <summary>

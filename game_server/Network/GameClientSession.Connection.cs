@@ -31,21 +31,14 @@ public partial class GameClientSession
             Logger.LogInformation("마니또 체인: PlayerId={PlayerId}, 타겟={Target}, 내 직책={MyJob}, 타겟 직책={TargetJob}",
                 PlayerId, TargetPlayerId, MyJobTitle, TargetJobTitle);
 
-            // 체인 매니저에 등록 (최초 접속자가 초기화)
-            if (_manittoChainManager.GetLink(msg.MatchingId, msg.PlayerId) == null)
+            // 체인 매니저에 링크 등록 (각 플레이어가 접속할 때마다 누적)
+            _manittoChainManager.RegisterLink(msg.MatchingId, new ChainLink
             {
-                // 아직 체인이 없으면 이 세션이 속한 체인 링크만 등록
-                _manittoChainManager.InitializeChain(msg.MatchingId, new List<services.ChainLink>
-                {
-                    new()
-                    {
-                        PlayerId = msg.PlayerId,
-                        TargetPlayerId = msg.TargetPlayerId,
-                        MyJobTitle = msg.MyJobTitle,
-                        TargetJobTitle = msg.TargetJobTitle
-                    }
-                });
-            }
+                PlayerId = msg.PlayerId,
+                TargetPlayerId = msg.TargetPlayerId,
+                MyJobTitle = msg.MyJobTitle,
+                TargetJobTitle = msg.TargetJobTitle
+            });
 
             // 미션 초기화
             _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
@@ -121,6 +114,9 @@ public partial class GameClientSession
 
             // 복도 종소리 스케줄 전송
             SendCorridorBellSchedule();
+
+            // 미션 정보 전송
+            SendMissionInfo();
 
             // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
             await BroadcastPlayerJoin();

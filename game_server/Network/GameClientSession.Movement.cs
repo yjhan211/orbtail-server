@@ -11,6 +11,7 @@ public partial class GameClientSession
     private async Task HandleMove(C_TO_G_MOVE msg)
     {
         if (PlayerId == null) return;
+        if (IsEliminated) return;
 
         // 탐색 중에는 이동 불가
         if (CurrentState == PlayerState.Exploring)

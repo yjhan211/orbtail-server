@@ -117,6 +117,12 @@ public partial class GameClientSession : SessionBase
     public long TargetPlayerId { get; private set; }
     public JobTitle MyJobTitle { get; private set; }
     public JobTitle TargetJobTitle { get; private set; }
+    public ManittoStatus ManittoStatus { get; set; } = ManittoStatus.ACTIVE;
+
+    /// <summary>
+    ///     탈락/관전 상태에서 행동 가능한지 체크
+    /// </summary>
+    public bool IsEliminated => ManittoStatus == ManittoStatus.ELIMINATED || ManittoStatus == ManittoStatus.SPECTATING;
     private int? CurrentExploringInteractId { get; set; }
 
     // 인게임 스탯 (게임 종료 시 초기화)
@@ -177,6 +183,8 @@ public partial class GameClientSession : SessionBase
         // 마니또 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DETECT_MANITTO,
             async bytes => await HandleMessage<C_TO_G_DETECT_MANITTO>(bytes, HandleDetectManitto));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_TRACE,
+            async bytes => await HandleMessage<C_TO_G_PLACE_TRACE>(bytes, HandlePlaceTrace));
     }
 
     protected override bool ShouldSkipLogging(Protocol protocolId)

@@ -11,6 +11,7 @@ public partial class GameClientSession
     private Task HandleExploreStart(C_TO_G_EXPLORE_START msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsEliminated) return Task.CompletedTask;
 
         // 스태미나 0 이하이면 탐색 시작 차단
         if (Stamina <= 0)

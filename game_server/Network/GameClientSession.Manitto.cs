@@ -12,6 +12,31 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     /// <summary>
+    ///     미션 정보 전송 (게임 접속 시)
+    /// </summary>
+    private void SendMissionInfo()
+    {
+        if (!PlayerId.HasValue) return;
+
+        var currentStep = _missionManager.GetCurrentStep(CurrentMapSubId, PlayerId.Value);
+        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
+        if (state == null) return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_MISSION_INFO, PlayerId.Value);
+        var msg = new G_TO_C_MISSION_INFO
+        {
+            JobTitle = MyJobTitle,
+            CurrentStep = state.CurrentStepOrder,
+            TotalSteps = state.TotalSteps,
+            TargetArea = currentStep?.TargetArea ?? 0,
+            TargetInteractId = currentStep?.TargetInteractId ?? 0,
+            TargetActionId = currentStep?.TargetActionId ?? 0
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
+    }
+
+    /// <summary>
     ///     색출 요청 처리 (1회 한정)
     /// </summary>
     private Task HandleDetectManitto(C_TO_G_DETECT_MANITTO msg)
@@ -59,6 +84,13 @@ public partial class GameClientSession
         eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
         foreach (var session in allSessions) session.Send(eliminatedPacket);
 
+        // 세션 ManittoStatus 동기화
+        foreach (var (playerId, newStatus) in affected)
+        {
+            var s = allSessions.FirstOrDefault(s => s.PlayerId == playerId);
+            if (s != null) s.ManittoStatus = newStatus;
+        }
+
         // 2. 영향받는 플레이어에게 개별 상태 변경 알림
         foreach (var (playerId, newStatus) in affected)
         {
@@ -85,6 +117,48 @@ public partial class GameClientSession
             using var endPacket = PacketMaker.G_TO_C_GAME_END(CurrentMapSubId, true);
             foreach (var session in allSessions) session.Send(endPacket);
         }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     흔적 배치 요청 처리 (마니또 전용)
+    /// </summary>
+    private Task HandlePlaceTrace(C_TO_G_PLACE_TRACE msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        const int placeTraceCost = 10; // 스태미나 소모 (가데이터)
+
+        // 스태미나 부족
+        if (Stamina < placeTraceCost)
+        {
+            using var failPacket = Packet.Create((int)Protocol.G_TO_C_PLACE_TRACE_RESULT, PlayerId.Value);
+            var failMsg = new G_TO_C_PLACE_TRACE_RESULT
+            {
+                ErrorCode = ErrorCode.INSUFFICIENT_STAMINA,
+                StaminaCost = placeTraceCost
+            };
+            failPacket.SetBody(MessagePackSerializer.Serialize(failMsg));
+            Send(failPacket);
+            return Task.CompletedTask;
+        }
+
+        // 스태미나 소모
+        ModifyStats(staminaDelta: -placeTraceCost);
+
+        // 성공 응답
+        using var packet = Packet.Create((int)Protocol.G_TO_C_PLACE_TRACE_RESULT, PlayerId.Value);
+        var result = new G_TO_C_PLACE_TRACE_RESULT
+        {
+            ErrorCode = ErrorCode.SUCCESS,
+            StaminaCost = placeTraceCost
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(result));
+        Send(packet);
+
+        // 흔적 브로드캐스트
+        BroadcastTraceCreated(CurrentArea, msg.InteractId, "누군가 무언가를 남겼다...", false);
 
         return Task.CompletedTask;
     }
