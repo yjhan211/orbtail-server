@@ -107,6 +107,35 @@ namespace network.common
         C_TO_G_PLAYER_INTERACT_SHARE_RULE,        // 상호작용 중 수칙 공유 요청
         G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT,  // 상호작용 중 수칙 공유 결과
 
+        // 미션 프로토콜
+        G_TO_C_MISSION_INFO,          // 게임 시작 시 미션 정보 전달
+        G_TO_C_MISSION_STEP_COMPLETE, // 미션 단계 완료 알림
+        G_TO_C_MISSION_ALL_COMPLETE,  // 미션 전체 완료 알림
+
+        // 구역 폐쇄 프로토콜
+        G_TO_C_AREA_CLOSURE_WARNING,  // 폐쇄 30초 전 경고
+        G_TO_C_AREA_CLOSED,           // 구역 폐쇄 확정
+
+        // 타겟 위치 추적 프로토콜
+        G_TO_C_TARGET_LOCATION,       // 마니또 → 타겟 구역 위치
+
+        // 흔적 프로토콜
+        G_TO_C_TRACE_CREATED,         // 흔적 생성 알림
+        G_TO_C_TRACE_LIST,            // 현재 구역 흔적 목록
+
+        // 색출 프로토콜
+        C_TO_G_DETECT_MANITTO,        // 마니또 지목 요청
+        G_TO_C_DETECT_RESULT,         // 지목 결과 (성공/실패)
+
+        // 탈락 & 체인 프로토콜
+        G_TO_C_PLAYER_ELIMINATED,     // 플레이어 탈락 알림 (전체 브로드캐스트)
+        G_TO_C_CHAIN_BREAK,           // 체인 단절 → 시한부/해방 상태 알림
+        G_TO_C_PLAYER_STATUS_CHANGE,  // 플레이어 상태 변경 (시한부, 해방 등)
+
+        // 마니또 전용: 흔적 배치 프로토콜
+        C_TO_G_PLACE_TRACE,           // 흔적 배치 요청
+        G_TO_C_PLACE_TRACE_RESULT,    // 흔적 배치 결과
+
         // 범용 에러 프로토콜
         U_TO_C_ERROR, // UserServer 범용 에러 응답
         G_TO_C_ERROR, // GameServer 범용 에러 응답
@@ -196,6 +225,16 @@ namespace network.common
         MAIL_NOT_FOUND = 800,
         MAIL_ALREADY_RECEIVED = 801,
         MAIL_EXPIRED = 802,
+
+        // 미션 (750~799)
+        MISSION_NOT_AVAILABLE = 750,
+        MISSION_ALREADY_COMPLETED = 751,
+        MISSION_AREA_CLOSED = 752,
+
+        // 색출 (850~899)
+        DETECT_ALREADY_USED = 850,
+        DETECT_TARGET_NOT_FOUND = 851,
+        DETECT_NOT_AVAILABLE = 852,  // 최종 2인 등 비활성 상황
 
         // 레거시 호환 (900~)
         ALREADY_HAS_JOB = 900,

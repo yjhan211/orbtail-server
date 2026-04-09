@@ -187,6 +187,29 @@ namespace network.common
     }
 
     /// <summary>
+    ///     탈락 사유
+    /// </summary>
+    public enum EliminationReason : short
+    {
+        NONE = 0,
+        DETECTED = 1,           // 색출당함
+        MENTAL_ZERO = 2,        // 정신력 0
+        STAMINA_ZERO = 3,       // 스태미나 0
+    }
+
+    /// <summary>
+    ///     마니또 체인 내 플레이어 상태
+    /// </summary>
+    public enum ManittoStatus : short
+    {
+        ACTIVE = 0,             // 정상 활동
+        ELIMINATED = 1,         // 탈락
+        TERMINAL = 2,           // 시한부 (타겟이 탈락하여 마니또 역할 상실)
+        FREED = 3,              // 해방 (마니또가 탈락하여 스토커 없음)
+        SPECTATING = 4,         // 관전
+    }
+
+    /// <summary>
     /// 상호작용 오브젝트 탐색 타입
     /// </summary>
     public enum InteractionType : short

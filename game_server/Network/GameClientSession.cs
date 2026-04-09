@@ -40,6 +40,9 @@ public partial class GameClientSession : SessionBase
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly SabotageManager _sabotageManager;
+    private readonly ManittoChainManager _manittoChainManager;
+    private readonly MissionManager _missionManager;
+    private readonly AreaClosureManager _areaClosureManager;
 
     // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
     private readonly HashSet<(int RuleId, long TargetPlayerId)> _sharedRules = new();
@@ -77,7 +80,10 @@ public partial class GameClientSession : SessionBase
         CorridorRuleManager corridorRuleManager,
         InteractRuleManager interactRuleManager,
         DoorStateManager doorStateManager,
-        SabotageManager sabotageManager)
+        SabotageManager sabotageManager,
+        ManittoChainManager manittoChainManager,
+        MissionManager missionManager,
+        AreaClosureManager areaClosureManager)
         : base(token, logger, cacheHelper, redLock)
     {
         _onLeaveCallback = onLeaveCallback;
@@ -92,6 +98,9 @@ public partial class GameClientSession : SessionBase
         _interactRuleManager = interactRuleManager;
         _doorStateManager = doorStateManager;
         _sabotageManager = sabotageManager;
+        _manittoChainManager = manittoChainManager;
+        _missionManager = missionManager;
+        _areaClosureManager = areaClosureManager;
 
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
@@ -164,6 +173,10 @@ public partial class GameClientSession : SessionBase
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_SHARE_RULE,
             async bytes =>
                 await HandleMessage<C_TO_G_PLAYER_INTERACT_SHARE_RULE>(bytes, HandlePlayerInteractShareRule));
+
+        // 마니또 프로토콜
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DETECT_MANITTO,
+            async bytes => await HandleMessage<C_TO_G_DETECT_MANITTO>(bytes, HandleDetectManitto));
     }
 
     protected override bool ShouldSkipLogging(Protocol protocolId)

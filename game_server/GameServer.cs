@@ -47,6 +47,9 @@ public class GameServer(
     private readonly InteractRuleManager _interactRuleManager = new();
     private readonly ItemPoolManager _itemPoolManager = new();
     private readonly SabotageManager _sabotageManager = new();
+    private readonly ManittoChainManager _manittoChainManager = new(logger);
+    private readonly MissionManager _missionManager = new(logger);
+    private readonly AreaClosureManager _areaClosureManager = new(logger);
 
     private Timer? _corridorStopCheckTimer;
     private CancellationTokenSource _cts = new();
@@ -289,7 +292,10 @@ public class GameServer(
                 _corridorRuleManager,
                 _interactRuleManager,
                 _doorStateManager,
-                _sabotageManager);
+                _sabotageManager,
+                _manittoChainManager,
+                _missionManager,
+                _areaClosureManager);
 
             logger.LogInformation("Game client session created");
         }

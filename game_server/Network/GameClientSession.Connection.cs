@@ -1,3 +1,4 @@
+using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -29,6 +30,28 @@ public partial class GameClientSession
             TargetJobTitle = msg.TargetJobTitle;
             Logger.LogInformation("마니또 체인: PlayerId={PlayerId}, 타겟={Target}, 내 직책={MyJob}, 타겟 직책={TargetJob}",
                 PlayerId, TargetPlayerId, MyJobTitle, TargetJobTitle);
+
+            // 체인 매니저에 등록 (최초 접속자가 초기화)
+            if (_manittoChainManager.GetLink(msg.MatchingId, msg.PlayerId) == null)
+            {
+                // 아직 체인이 없으면 이 세션이 속한 체인 링크만 등록
+                _manittoChainManager.InitializeChain(msg.MatchingId, new List<services.ChainLink>
+                {
+                    new()
+                    {
+                        PlayerId = msg.PlayerId,
+                        TargetPlayerId = msg.TargetPlayerId,
+                        MyJobTitle = msg.MyJobTitle,
+                        TargetJobTitle = msg.TargetJobTitle
+                    }
+                });
+            }
+
+            // 미션 초기화
+            _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
+
+            // 구역 폐쇄 초기화 (매칭당 최초 1회)
+            _areaClosureManager.InitializeMatching(msg.MatchingId);
 
             // 인게임 스탯 초기화
             ResetInGameStats();

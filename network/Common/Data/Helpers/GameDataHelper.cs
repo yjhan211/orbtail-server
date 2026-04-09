@@ -179,6 +179,22 @@ namespace network.common.data.helpers
                 }
             }
 
+            // 미션 관련 파일 로드
+            foreach (var fileName in DataFiles.Mission.ALL)
+            {
+                var filePath = GetCsvFilePath(fileName);
+                try
+                {
+                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                }
+                catch (Exception ex)
+                {
+                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    throw;
+                }
+            }
+
             // 일반 데이터 초기화
             foreach (var (fileName, init, _) in _standardDataDefinitions)
                 try
@@ -217,6 +233,9 @@ namespace network.common.data.helpers
 
             // 탈출 의식 데이터 초기화
             GameExitData.Initialize(loadedData[DataFiles.Exit.Step]);
+
+            // 미션 데이터 초기화
+            GameMissionData.Initialize(loadedData[DataFiles.Mission.Step]);
 
             ValidateAllData();
         }
@@ -345,6 +364,13 @@ namespace network.common.data.helpers
             public static class Exit
             {
                 public const string Step = "exit_step.csv";
+
+                public static readonly string[] ALL = new[] { Step };
+            }
+
+            public static class Mission
+            {
+                public const string Step = "mission_step.csv";
 
                 public static readonly string[] ALL = new[] { Step };
             }
