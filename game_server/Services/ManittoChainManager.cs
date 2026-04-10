@@ -173,7 +173,7 @@ public class ManittoChainManager
 public class MatchingChainState
 {
     public long MatchingId { get; set; }
-    public Dictionary<long, ChainLink> Links { get; set; } = new();
+    public ConcurrentDictionary<long, ChainLink> Links { get; set; } = new();
     public int AliveCount { get; set; }
 }
 

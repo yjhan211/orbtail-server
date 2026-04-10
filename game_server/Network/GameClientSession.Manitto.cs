@@ -274,24 +274,23 @@ public partial class GameClientSession
             packet.SetBody(MessagePackSerializer.Serialize(msg));
             Send(packet);
 
-            // 정신력 효과: 흔적 배치자(마니또)에게 회복, 배치자의 타겟에게 오염도 증가
-            var placerSession = allSessions.FirstOrDefault(s => s.PlayerId == stored.PlacedByPlayerId);
-            if (placerSession != null)
+            // 마니또 배치 흔적만 정신력 효과 적용 (미션 흔적은 단서 역할만)
+            if (!stored.IsMissionTrace)
             {
-                // 마니또(배치자) 정신력 회복
-                placerSession.ModifyStats(corruptionDelta: -GameServer.TraceFoundManittoRecovery);
-                Logger.LogInformation("흔적 발견 → 마니또 회복: PlayerId={Placer}, -오염도{Amount}",
-                    stored.PlacedByPlayerId, GameServer.TraceFoundManittoRecovery);
-
-                // 타겟(배치자의 타겟) 오염도 증가
-                var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == placerSession.TargetPlayerId);
-                if (targetSession != null)
+                // GDD 2.3.2: 마니또(배치자) 정신력 회복
+                var placerSession = allSessions.FirstOrDefault(s => s.PlayerId == stored.PlacedByPlayerId);
+                if (placerSession != null)
                 {
-                    targetSession.ModifyStats(corruptionDelta: GameServer.TraceFoundTargetDecay);
-                    Logger.LogInformation("흔적 발견 → 타겟 오염도 증가: PlayerId={Target}, +오염도{Amount}",
-                        placerSession.TargetPlayerId, GameServer.TraceFoundTargetDecay);
-                    targetSession.CheckResourceElimination();
+                    placerSession.ModifyStats(corruptionDelta: -GameServer.TraceFoundManittoRecovery);
+                    Logger.LogInformation("흔적 발견 → 마니또 회복: PlayerId={Placer}, -오염도{Amount}",
+                        stored.PlacedByPlayerId, GameServer.TraceFoundManittoRecovery);
                 }
+
+                // GDD 2.3.2: 발견자(▓▓) 오염도 증가 ("누군가 당신을 지켜보고 있습니다")
+                ModifyStats(corruptionDelta: GameServer.TraceFoundTargetDecay);
+                Logger.LogInformation("흔적 발견 → 발견자 오염도 증가: PlayerId={Discoverer}, +오염도{Amount}",
+                    PlayerId, GameServer.TraceFoundTargetDecay);
+                CheckResourceElimination();
             }
 
             Logger.LogInformation("흔적 발견: PlayerId={Discoverer}, TraceId={TraceId}, 배치자={Placer}",

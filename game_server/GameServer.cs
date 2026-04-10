@@ -244,25 +244,29 @@ public class GameServer(
         try
         {
             var activeSessions = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue)
+                .Where(s => s.PlayerId.HasValue && !s.IsEliminated)
                 .ToList();
 
             foreach (var session in activeSessions)
             {
+                bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
+
                 // 1. 정신력 자연감소 (모든 활성 플레이어)
                 int corruptionDelta = MentalDecayAmount;
 
-                // 2. 타겟 동일 구역 → 감소 정지 + 회복
-                var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                if (targetSession != null && targetSession.CurrentArea == session.CurrentArea &&
-                    session.CurrentArea != AreaType.None)
+                // 2. 타겟 동일 구역 → 감소 정지 + 회복 (시한부는 회복 불가 — GDD 2.5.4)
+                if (!isTerminal)
                 {
-                    corruptionDelta = -TargetProximityRecovery; // 감소 대신 회복
+                    var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
+                    if (targetSession != null && targetSession.CurrentArea == session.CurrentArea &&
+                        session.CurrentArea != AreaType.None)
+                    {
+                        corruptionDelta = -TargetProximityRecovery; // 감소 대신 회복
+                    }
                 }
 
-                // 3. 시한부 추가 감소
-                var terminalPlayers = _manittoChainManager.GetTerminalPlayers(session.CurrentMapSubId);
-                if (terminalPlayers.Contains(session.PlayerId!.Value))
+                // 3. 시한부 추가 감소 (GDD 2.5.4: 정신력 지속 감소)
+                if (isTerminal)
                     corruptionDelta += TerminalDecayAmount;
 
                 session.ModifyStats(corruptionDelta: corruptionDelta);

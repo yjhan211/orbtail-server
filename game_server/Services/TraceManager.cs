@@ -13,6 +13,7 @@ public class TraceManager
 {
     // matchingId → (interactId → 흔적 목록)
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<int, List<StoredTrace>>> _traces = new();
+    private static long _nextTraceId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
     /// <summary>
     ///     흔적 저장 (미션 완료 또는 마니또 배치 시)
@@ -25,7 +26,7 @@ public class TraceManager
 
         var trace = new StoredTrace
         {
-            TraceId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            TraceId = Interlocked.Increment(ref _nextTraceId),
             AreaType = area,
             InteractId = interactId,
             Description = description,

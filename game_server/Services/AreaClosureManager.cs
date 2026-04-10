@@ -15,14 +15,15 @@ public class AreaClosureManager
     private const int FirstClosureDelaySeconds = 300; // 첫 폐쇄까지 딜레이 (5분)
     // 폐쇄 구역 체류 페널티는 GameServer.ClosedAreaStaminaPenaltyPerTick에서 처리
 
-    // 폐쇄 대상 구역 (복도, 강당 등 핵심 구역은 제외)
+    // 폐쇄 불가 구역: 도서관, 강당, 운동장 (GDD 핵심 구역 + 복도)
+    // 폐쇄 대상: 나머지 11개 구역 (14개 - 3개 안전구역)
     private static readonly AreaType[] ClosableAreas =
     {
         AreaType.Classroom1,    // 고사실
         AreaType.Classroom2,    // 방송실
-        AreaType.Classroom3,    // 보건실
-        AreaType.Classroom4,    // 3-1
-        AreaType.Classroom5,    // 3-2
+        AreaType.Classroom3,    // 임시 보건실
+        AreaType.Classroom4,    // 교실 3-1
+        AreaType.Classroom5,    // 교실 3-2
         AreaType.Storage1,      // 창고 A
         AreaType.Storage2,      // 창고 B
         AreaType.AdminOffice1,  // 행정실
