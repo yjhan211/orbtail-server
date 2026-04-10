@@ -228,4 +228,56 @@ namespace network.common.data.models
         [Key("isFakeDetected")] public bool IsFakeDetected { get; set; }   // 사칭 발각 여부
         [Key("conflictInfo")] public string ConflictInfo { get; set; }     // 충돌 정보 (교차검증 결과)
     }
+
+    // ===== 시한부 사보타주 =====
+
+    /// <summary>
+    ///     시한부 전용: 미션 오브젝트 훼손 요청
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_SABOTAGE_MISSION : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_SABOTAGE_RESULT : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("staminaCost")] public int StaminaCost { get; set; }
+    }
+
+    /// <summary>
+    ///     훼손으로 미션 목적지가 재설정된 플레이어에게 전송
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_MISSION_REDIRECTED : IMessagePackObject
+    {
+        [Key("currentStep")] public int CurrentStep { get; set; }
+        [Key("newTargetArea")] public int NewTargetArea { get; set; }
+        [Key("newTargetInteractId")] public int NewTargetInteractId { get; set; }
+        [Key("newTargetActionId")] public int NewTargetActionId { get; set; }
+    }
+
+    // ===== 게임 결과 =====
+
+    [MessagePackObject]
+    public class GameResultPlayerInfo : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("jobTitle")] public JobTitle JobTitle { get; set; }
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+        [Key("manittoPlayerId")] public long ManittoPlayerId { get; set; }
+        [Key("eliminationReason")] public EliminationReason EliminationReason { get; set; }
+        [Key("survivalTimeSeconds")] public int SurvivalTimeSeconds { get; set; }
+        [Key("finalStatus")] public ManittoStatus FinalStatus { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_GAME_RESULT : IMessagePackObject
+    {
+        [Key("winnerId")] public long WinnerId { get; set; }
+        [Key("isTimeout")] public bool IsTimeout { get; set; }
+        [Key("players")] public List<GameResultPlayerInfo> Players { get; set; }
+    }
 }

@@ -97,6 +97,8 @@ public class ManittoChainManager
         if (link.Status == ManittoStatus.ELIMINATED) return affected;
 
         link.Status = ManittoStatus.ELIMINATED;
+        link.EliminationReason = reason;
+        link.EliminatedAt = DateTime.UtcNow;
         state.AliveCount--;
 
         _logger.LogInformation("플레이어 탈락: MatchingId={MatchingId}, PlayerId={PlayerId}, 사유={Reason}, 생존={Alive}",
@@ -162,6 +164,57 @@ public class ManittoChainManager
     }
 
     /// <summary>
+    ///     시간 초과 시 승자 판정: 생존자 중 자원 총합 최대
+    /// </summary>
+    public long? DetermineWinnerByResources(long matchingId,
+        Func<long, (int stamina, int corruption, int maxCorruption)> getResources)
+    {
+        if (!_states.TryGetValue(matchingId, out var state)) return null;
+
+        var alive = state.Links.Values
+            .Where(l => l.Status != ManittoStatus.ELIMINATED && l.Status != ManittoStatus.SPECTATING)
+            .ToList();
+
+        if (alive.Count == 0) return null;
+        if (alive.Count == 1) return alive[0].PlayerId;
+
+        // 자원 총합 = Stamina + (MaxCorruption - Corruption)
+        long winnerId = alive
+            .Select(l =>
+            {
+                var (stamina, corruption, maxCorruption) = getResources(l.PlayerId);
+                return (l.PlayerId, Score: stamina + (maxCorruption - corruption));
+            })
+            .OrderByDescending(x => x.Score)
+            .First().PlayerId;
+
+        return winnerId;
+    }
+
+    /// <summary>
+    ///     게임 결과 데이터 생성 (체인 전체 공개)
+    /// </summary>
+    public List<(long playerId, JobTitle job, long targetId, long manittoId,
+        EliminationReason reason, ManittoStatus finalStatus)> BuildGameResult(long matchingId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state))
+            return new();
+
+        var links = state.Links.Values.ToList();
+        var result = new List<(long, JobTitle, long, long, EliminationReason, ManittoStatus)>();
+
+        foreach (var link in links)
+        {
+            // 이 플레이어의 마니또 = 이 플레이어를 타겟으로 가진 링크
+            long manittoId = links.FirstOrDefault(l => l.TargetPlayerId == link.PlayerId)?.PlayerId ?? 0;
+            result.Add((link.PlayerId, link.MyJobTitle, link.TargetPlayerId, manittoId,
+                link.EliminationReason, link.Status));
+        }
+
+        return result;
+    }
+
+    /// <summary>
     ///     매칭 정리
     /// </summary>
     public void CleanupMatching(long matchingId)
@@ -185,4 +238,6 @@ public class ChainLink
     public JobTitle TargetJobTitle { get; set; }
     public ManittoStatus Status { get; set; } = ManittoStatus.ACTIVE;
     public bool HasUsedDetection { get; set; }
+    public EliminationReason EliminationReason { get; set; } = EliminationReason.NONE;
+    public DateTime? EliminatedAt { get; set; }
 }

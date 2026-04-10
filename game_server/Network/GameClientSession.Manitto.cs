@@ -84,11 +84,14 @@ public partial class GameClientSession
         eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
         foreach (var session in allSessions) session.Send(eliminatedPacket);
 
-        // 세션 ManittoStatus 동기화
+        // 세션 ManittoStatus 동기화 (탈락자 → SPECTATING으로 관전 전환)
         foreach (var (playerId, newStatus) in affected)
         {
             var s = allSessions.FirstOrDefault(s => s.PlayerId == playerId);
-            if (s != null) s.ManittoStatus = newStatus;
+            if (s == null) continue;
+            s.ManittoStatus = newStatus == ManittoStatus.ELIMINATED
+                ? ManittoStatus.SPECTATING
+                : newStatus;
         }
 
         // 2. 영향받는 플레이어에게 개별 상태 변경 알림
@@ -114,11 +117,44 @@ public partial class GameClientSession
         if (isGameOver)
         {
             Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);
-            using var endPacket = PacketMaker.G_TO_C_GAME_END(CurrentMapSubId, true);
-            foreach (var session in allSessions) session.Send(endPacket);
+            SendGameResult(allSessions, winnerId ?? 0, false);
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     게임 결과 패킷 전송 (체인 전체 공개)
+    /// </summary>
+    private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout)
+    {
+        var chainData = _manittoChainManager.BuildGameResult(CurrentMapSubId);
+        var gameStartTime = DateTime.UtcNow; // 근사값 (AreaClosureManager의 GameStartTime 참조)
+
+        var players = chainData.Select(d => new GameResultPlayerInfo
+        {
+            PlayerId = d.playerId,
+            JobTitle = d.job,
+            TargetPlayerId = d.targetId,
+            ManittoPlayerId = d.manittoId,
+            EliminationReason = d.reason,
+            FinalStatus = d.finalStatus,
+            SurvivalTimeSeconds = 0 // 근사값; 추후 정확한 타이밍 필요 시 개선
+        }).ToList();
+
+        using var resultPacket = Packet.Create((int)Protocol.G_TO_C_GAME_RESULT);
+        var resultMsg = new G_TO_C_GAME_RESULT
+        {
+            WinnerId = winnerId,
+            IsTimeout = isTimeout,
+            Players = players
+        };
+        resultPacket.SetBody(MessagePackSerializer.Serialize(resultMsg));
+        foreach (var session in allSessions) session.Send(resultPacket);
+
+        // 기존 게임 종료 패킷도 전송 (클라이언트 호환)
+        using var endPacket = PacketMaker.G_TO_C_GAME_END(CurrentMapSubId, !isTimeout);
+        foreach (var session in allSessions) session.Send(endPacket);
     }
 
     /// <summary>
@@ -309,6 +345,77 @@ public partial class GameClientSession
             _ = ProcessElimination(PlayerId.Value, EliminationReason.STAMINA_ZERO);
         else if (Corruption >= MaxCorruption)
             _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO);
+    }
+
+    // ===== 시한부 사보타주 (GDD 2.5.4) =====
+
+    private const int SabotageStaminaCost = 25; // 스태미나 소모 (미션 보상 총합 50의 절반)
+
+    /// <summary>
+    ///     시한부 전용: 미션 오브젝트 훼손 요청 처리.
+    ///     훼손된 오브젝트에 해당하는 미션 단계를 가진 플레이어의 목적지가 무작위 재설정.
+    /// </summary>
+    private Task HandleSabotageMission(C_TO_G_SABOTAGE_MISSION msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        // 시한부만 사보타주 가능
+        if (ManittoStatus != ManittoStatus.TERMINAL)
+        {
+            SendSabotageResult(ErrorCode.SABOTAGE_NOT_TERMINAL, SabotageStaminaCost);
+            return Task.CompletedTask;
+        }
+
+        if (Stamina < SabotageStaminaCost)
+        {
+            SendSabotageResult(ErrorCode.INSUFFICIENT_STAMINA, SabotageStaminaCost);
+            return Task.CompletedTask;
+        }
+
+        // 스태미나 차감
+        ModifyStats(staminaDelta: -SabotageStaminaCost);
+
+        // 성공 응답
+        SendSabotageResult(ErrorCode.SUCCESS, SabotageStaminaCost);
+
+        // 영향받는 미션 재설정
+        var affected = _missionManager.RedirectMissionsByInteractId(
+            CurrentMapSubId, msg.InteractId, _areaClosureManager);
+
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        foreach (var (playerId, step, newArea, newInteractId, newActionId) in affected)
+        {
+            var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == playerId);
+            if (targetSession == null) continue;
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_MISSION_REDIRECTED, playerId);
+            var redirectMsg = new G_TO_C_MISSION_REDIRECTED
+            {
+                CurrentStep = step,
+                NewTargetArea = newArea,
+                NewTargetInteractId = newInteractId,
+                NewTargetActionId = newActionId
+            };
+            packet.SetBody(MessagePackSerializer.Serialize(redirectMsg));
+            targetSession.Send(packet);
+        }
+
+        Logger.LogInformation("사보타주: PlayerId={PlayerId}, InteractId={InteractId}, 영향받은 플레이어={Count}명",
+            PlayerId, msg.InteractId, affected.Count);
+
+        // 사보타주 후 스태미나 탈락 체크
+        CheckResourceElimination();
+
+        return Task.CompletedTask;
+    }
+
+    private void SendSabotageResult(ErrorCode errorCode, int cost)
+    {
+        if (!PlayerId.HasValue) return;
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SABOTAGE_RESULT, PlayerId.Value);
+        var msg = new G_TO_C_SABOTAGE_RESULT { ErrorCode = errorCode, StaminaCost = cost };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
     }
 
     // ===== 상호작용 선택지 =====

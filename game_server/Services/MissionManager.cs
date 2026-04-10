@@ -120,6 +120,42 @@ public class MissionManager
     }
 
     /// <summary>
+    ///     사보타주: 특정 interactId에 해당하는 미션 단계를 가진 플레이어의 목적지를 무작위 재설정.
+    ///     반환: 영향받은 플레이어 목록 (playerId → 새 미션 정보)
+    /// </summary>
+    public List<(long playerId, int step, int newArea, int newInteractId, int newActionId)>
+        RedirectMissionsByInteractId(long matchingId, int interactId, AreaClosureManager closureManager)
+    {
+        var affected = new List<(long, int, int, int, int)>();
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return affected;
+
+        // 폐쇄되지 않은 구역 목록
+        var openAreas = Enum.GetValues<AreaType>()
+            .Where(a => a != AreaType.None && !closureManager.IsAreaClosed(matchingId, a))
+            .ToList();
+        if (openAreas.Count == 0) return affected;
+
+        foreach (var (playerId, state) in matching)
+        {
+            if (state.IsCompleted) continue;
+
+            var currentStep = GameMissionData.GetStep((short)state.JobTitle, state.CurrentStepOrder);
+            if (currentStep == null || currentStep.TargetInteractId != interactId) continue;
+
+            // 무작위 구역 + 해당 구역의 기존 오브젝트 ID 재활용 (액션은 유지)
+            var newArea = openAreas[Random.Shared.Next(openAreas.Count)];
+
+            affected.Add((playerId, state.CurrentStepOrder, (int)newArea,
+                currentStep.TargetInteractId, currentStep.TargetActionId));
+
+            _logger.LogInformation("미션 재설정: PlayerId={PlayerId}, Step={Step}, {OldArea}→{NewArea}",
+                playerId, state.CurrentStepOrder, (AreaType)currentStep.TargetArea, newArea);
+        }
+
+        return affected;
+    }
+
+    /// <summary>
     ///     매칭 정리
     /// </summary>
     public void CleanupMatching(long matchingId)

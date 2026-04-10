@@ -143,6 +143,14 @@ namespace network.common
         C_TO_G_INTERACTION_ANSWER,    // 답변자: 답변 선택
         G_TO_C_INTERACTION_RESULT,    // 양쪽: 상호작용 결과 (주장 직책, 로그 기록 등)
 
+        // 시한부 사보타주 프로토콜
+        C_TO_G_SABOTAGE_MISSION,      // 시한부: 미션 오브젝트 훼손 요청
+        G_TO_C_SABOTAGE_RESULT,       // 훼손 결과 (성공/실패)
+        G_TO_C_MISSION_REDIRECTED,    // 미션 목적지 재설정 알림 (훼손 피해자)
+
+        // 게임 결과 프로토콜
+        G_TO_C_GAME_RESULT,           // 게임 종료 시 전체 결과 (체인 공개)
+
         // 범용 에러 프로토콜
         U_TO_C_ERROR, // UserServer 범용 에러 응답
         G_TO_C_ERROR, // GameServer 범용 에러 응답
@@ -242,6 +250,11 @@ namespace network.common
         DETECT_ALREADY_USED = 850,
         DETECT_TARGET_NOT_FOUND = 851,
         DETECT_NOT_AVAILABLE = 852,  // 최종 2인 등 비활성 상황
+
+        // 사보타주 (860~869)
+        SABOTAGE_NOT_TERMINAL = 860,       // 시한부가 아님
+        SABOTAGE_INVALID_TARGET = 861,     // 훼손 대상 없음
+        SABOTAGE_AREA_MISMATCH = 862,      // 해당 구역에 없음
 
         // 레거시 호환 (900~)
         ALREADY_HAS_JOB = 900,

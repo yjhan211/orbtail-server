@@ -237,32 +237,29 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     시간 초과로 게임 종료
+    ///     시간 초과로 게임 종료. 생존자 중 자원 총합 최대인 플레이어가 승리.
     /// </summary>
     private void EndGameByTimeout(long matchingId)
     {
-        Logger.LogInformation(
-            "게임 시간 초과: MatchingId={MatchingId}, 타이머 시작 세션 PlayerId={PlayerId}, CurrentMapSubId={CurrentMapSubId}",
-            matchingId, PlayerId, CurrentMapSubId);
+        Logger.LogInformation("게임 시간 초과: MatchingId={MatchingId}", matchingId);
 
         // 타이머 정리
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
 
-        // 해당 매칭의 모든 플레이어에게 게임 종료 패킷 전송
         var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
-        Logger.LogInformation(
-            "게임 종료 패킷 전송 대상: MatchingId={MatchingId}, 필터(MapId={MapId}, MapSubId={MapSubId}), 대상 세션 수={Count}",
-            matchingId, CurrentMapId, matchingId, sessions.Count);
 
-        using var packet = PacketMaker.G_TO_C_GAME_END(matchingId, false);
-
-        foreach (var session in sessions)
+        // 승자 판정: 자원 총합 최대
+        long? winnerId = _manittoChainManager.DetermineWinnerByResources(matchingId, playerId =>
         {
-            Logger.LogInformation("게임 종료 패킷 전송: PlayerId={PlayerId}, 세션의 CurrentMapSubId={SessionMapSubId}",
-                session.PlayerId, session.CurrentMapSubId);
-            session.Send(packet);
-        }
+            var s = sessions.FirstOrDefault(s => s.PlayerId == playerId);
+            return s != null ? (s.Stamina, s.Corruption, s.MaxCorruption) : (0, 100, 100);
+        });
+
+        Logger.LogInformation("시간 초과 승자: MatchingId={MatchingId}, WinnerId={WinnerId}", matchingId, winnerId);
+
+        // 결과 패킷 전송
+        SendGameResult(sessions, winnerId ?? 0, true);
     }
 
     /// <summary>
