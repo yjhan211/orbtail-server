@@ -41,6 +41,7 @@ publish/
 
 # Claude Code
 .claude/
+manitto/*
 
 # Temporary and Cache Files
 [Tt]emp/

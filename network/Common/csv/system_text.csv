@@ -15,33 +15,33 @@ id,category,text_kr
 23,3,방송실로 이동하십시오
 30,4,손톱으로 긁어야 합니다. 괜찮으시겠습니까?
 31,4,무시한다
-40,5,<color=#22D3EE>강당 열쇠</color>를 획득해야 합니다.
-100,3,<color=#22D3EE>{Item.SpawnArea}</color>에서 <color=#22D3EE>{Item.Name}</color>을 <color=#22D3EE>회수</color>하십시오. <color=#22D3EE>{Debuff.Warning}</color>
-101,3,저들이 <color=#F1325A>{Item.Name}</color>을 절대로 찾게 해서는 안 돼. <color=#F1325A>{Item.SpawnArea}</color>에 숨겨둔 건 나만 알아야 해.
-102,3,<color=#22D3EE>{Item.Name}</color> <color=#22D3EE>회수</color>하기
-110,3,<color=#22D3EE>{Spot.Name}</color>까지 <color=#22D3EE>운반</color>하십시오.
-111,3,<color=#F1325A>{Spot.Name}</color>까지 가면 안 돼. 너의 비밀이 세상에 알려지고 말아.
-112,3,<color=#22D3EE>{Spot.Name}</color>까지 <color=#22D3EE>운반</color>하기
-113,3,<color=#22D3EE>{Item.Name}</color>을 <color=#22D3EE>집어넣는다</color>.
-120,3,<color=#22D3EE>장비</color>에 <color=#22D3EE>{Item.Name}</color>을 <color=#22D3EE>삽입</color>하십시오.
-121,3,"<color=#F1325A>장비</color>를 작동시키면 안 돼. 목소리가 바깥으로 새어나가면, 모든 게 끝이야."
-122,3,<color=#22D3EE>{Item.Name}</color> <color=#22D3EE>삽입</color>하기
-123,3,<color=#22D3EE>{Item.Name}</color>을 <color=#22D3EE>삽입한다</color>.
-130,3,<color=#22D3EE>{Condition.Text}</color> <color=#22D3EE>마이크</color> 앞에서 <color=#22D3EE>메시지</color>를 정확히 <color=#22D3EE>읽으십시오</color>.
-131,3,<color=#F1325A>마이크</color>에 대고 말하지 마. 네 목소리를 다른 사람에게 들려주고 싶지 않아.
-132,3,<color=#22D3EE>메시지</color> <color=#22D3EE>읽기</color>
-133,3,<color=#22D3EE>메시지</color>를 <color=#22D3EE>읽는다</color>.
-200,3,<color=#22D3EE>{Item.SpawnArea}</color>에서 <color=#22D3EE>{Item.Name}</color>을 <color=#22D3EE>확보</color>하십시오. <color=#22D3EE>{Item.Warning}</color>
-201,3,<color=#F1325A>그 아이</color>를 건드리지 마. 누구에게도 넘겨줄 수 없어.
-202,3,<color=#22D3EE>{Item.Name}</color> <color=#22D3EE>확보</color>하기
-210,3,<color=#22D3EE>운반자</color>를 <color=#22D3EE>지정</color>하십시오. <color=#22D3EE>{Debuff.Warning}</color>
-211,3,그 아이를 <color=#F1325A>들고 가면 안 돼</color>. 여기서 나가려 하지 마.
-212,3,<color=#22D3EE>운반자</color> <color=#22D3EE>지정</color>하기
-220,3,<color=#22D3EE>{Spot.Name}</color>까지 <color=#22D3EE>호위</color>하십시오.
-221,3,<color=#F1325A>{Spot.Name}</color>에 데려가려고 하지 마. 굳이 그럴 필요는 없잖아?
-222,3,<color=#22D3EE>{Spot.Name}</color>까지 <color=#22D3EE>호위</color>하기
-223,3,<color=#22D3EE>{Item.Name}</color>을 <color=#22D3EE>투입한다</color>.
-230,3,<color=#22D3EE>{Condition.Text}</color> <color=#22D3EE>개체</color>를 <color=#22D3EE>투입</color>하십시오.
-231,3,<color=#F1325A>투입하지 마</color>. 다시는 만날 수 없어.
-232,3,<color=#22D3EE>개체</color> <color=#22D3EE>투입</color>하기
-233,3,<color=#22D3EE>개체</color>를 <color=#22D3EE>투입한다</color>.
+40,5,<color=#A8D4E0>강당 열쇠</color>를 획득해야 합니다.
+100,3,<color=#A8D4E0>{Item.SpawnArea}</color>에서 <color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>회수</color>하십시오. <color=#A8D4E0>{Debuff.Warning}</color>
+101,3,저들이 <color=#FF7E9A>{Item.Name}</color>을 절대로 찾게 해서는 안 돼. <color=#FF7E9A>{Item.SpawnArea}</color>에 숨겨둔 건 나만 알아야 해.
+102,3,<color=#A8D4E0>{Item.Name}</color> <color=#A8D4E0>회수</color>하기
+110,3,<color=#A8D4E0>{Spot.Name}</color>까지 <color=#A8D4E0>운반</color>하십시오.
+111,3,<color=#FF7E9A>{Spot.Name}</color>까지 가면 안 돼. 너의 비밀이 세상에 알려지고 말아.
+112,3,<color=#A8D4E0>{Spot.Name}</color>까지 <color=#A8D4E0>운반</color>하기
+113,3,<color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>집어넣는다</color>.
+120,3,<color=#A8D4E0>장비</color>에 <color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>삽입</color>하십시오.
+121,3,"<color=#FF7E9A>장비</color>를 작동시키면 안 돼. 목소리가 바깥으로 새어나가면, 모든 게 끝이야."
+122,3,<color=#A8D4E0>{Item.Name}</color> <color=#A8D4E0>삽입</color>하기
+123,3,<color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>삽입한다</color>.
+130,3,<color=#A8D4E0>{Condition.Text}</color> <color=#A8D4E0>마이크</color> 앞에서 <color=#A8D4E0>메시지</color>를 정확히 <color=#A8D4E0>읽으십시오</color>.
+131,3,<color=#FF7E9A>마이크</color>에 대고 말하지 마. 네 목소리를 다른 사람에게 들려주고 싶지 않아.
+132,3,<color=#A8D4E0>메시지</color> <color=#A8D4E0>읽기</color>
+133,3,<color=#A8D4E0>메시지</color>를 <color=#A8D4E0>읽는다</color>.
+200,3,<color=#A8D4E0>{Item.SpawnArea}</color>에서 <color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>확보</color>하십시오. <color=#A8D4E0>{Item.Warning}</color>
+201,3,<color=#FF7E9A>그 아이</color>를 건드리지 마. 누구에게도 넘겨줄 수 없어.
+202,3,<color=#A8D4E0>{Item.Name}</color> <color=#A8D4E0>확보</color>하기
+210,3,<color=#A8D4E0>운반자</color>를 <color=#A8D4E0>지정</color>하십시오. <color=#A8D4E0>{Debuff.Warning}</color>
+211,3,그 아이를 <color=#FF7E9A>들고 가면 안 돼</color>. 여기서 나가려 하지 마.
+212,3,<color=#A8D4E0>운반자</color> <color=#A8D4E0>지정</color>하기
+220,3,<color=#A8D4E0>{Spot.Name}</color>까지 <color=#A8D4E0>호위</color>하십시오.
+221,3,<color=#FF7E9A>{Spot.Name}</color>에 데려가려고 하지 마. 굳이 그럴 필요는 없잖아?
+222,3,<color=#A8D4E0>{Spot.Name}</color>까지 <color=#A8D4E0>호위</color>하기
+223,3,<color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>투입한다</color>.
+230,3,<color=#A8D4E0>{Condition.Text}</color> <color=#A8D4E0>개체</color>를 <color=#A8D4E0>투입</color>하십시오.
+231,3,<color=#FF7E9A>투입하지 마</color>. 다시는 만날 수 없어.
+232,3,<color=#A8D4E0>개체</color> <color=#A8D4E0>투입</color>하기
+233,3,<color=#A8D4E0>개체</color>를 <color=#A8D4E0>투입한다</color>.
