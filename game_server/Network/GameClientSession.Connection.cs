@@ -253,7 +253,7 @@ public partial class GameClientSession
         long? winnerId = _manittoChainManager.DetermineWinnerByResources(matchingId, playerId =>
         {
             var s = sessions.FirstOrDefault(s => s.PlayerId == playerId);
-            return s != null ? (s.Stamina, s.Corruption, s.MaxCorruption) : (0, 100, 100);
+            return s != null ? (s.Stamina, s.Corruption, MaxCorruption) : (0, 100, 100);
         });
 
         Logger.LogInformation("시간 초과 승자: MatchingId={MatchingId}, WinnerId={WinnerId}", matchingId, winnerId);
