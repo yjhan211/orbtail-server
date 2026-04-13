@@ -51,4 +51,16 @@ namespace network.common.data.models
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
     }
+
+    /// <summary>
+    ///     봇 채움 매칭 시 Redis에 저장되는 봇 정보
+    /// </summary>
+    [MessagePackObject]
+    public class BotMatchingInfo
+    {
+        [Key(0)] public long PlayerId { get; set; }
+        [Key(1)] public long TargetPlayerId { get; set; }
+        [Key(2)] public JobTitle MyJobTitle { get; set; }
+        [Key(3)] public JobTitle TargetJobTitle { get; set; }
+    }
 }

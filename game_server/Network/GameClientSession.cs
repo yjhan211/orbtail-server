@@ -46,6 +46,7 @@ public partial class GameClientSession : SessionBase
     private readonly TraceManager _traceManager;
     private readonly InteractionLogManager _interactionLogManager;
     private readonly InteractionChoiceService _interactionChoiceService;
+    private readonly BotPlayerManager _botPlayerManager;
 
     // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
     private readonly HashSet<(int RuleId, long TargetPlayerId)> _sharedRules = new();
@@ -95,7 +96,8 @@ public partial class GameClientSession : SessionBase
         AreaClosureManager areaClosureManager,
         TraceManager traceManager,
         InteractionLogManager interactionLogManager,
-        InteractionChoiceService interactionChoiceService)
+        InteractionChoiceService interactionChoiceService,
+        BotPlayerManager botPlayerManager)
         : base(token, logger, cacheHelper, redLock)
     {
         _onLeaveCallback = onLeaveCallback;
@@ -116,6 +118,7 @@ public partial class GameClientSession : SessionBase
         _traceManager = traceManager;
         _interactionLogManager = interactionLogManager;
         _interactionChoiceService = interactionChoiceService;
+        _botPlayerManager = botPlayerManager;
 
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
@@ -244,8 +247,34 @@ public partial class GameClientSession : SessionBase
         _interactTimeoutCts?.Cancel();
         _interactTimeoutCts?.Dispose();
         _interactTimeoutCts = null;
+
+        // 게임 진행 중 이탈 시 페널티 기록
+        if (PlayerId.HasValue && !IsEliminated && CurrentMapSubId > 0)
+        {
+            _ = RecordLeavePenaltyAsync(PlayerId.Value);
+        }
+
         Logger.LogInformation("GameClient disconnected: PlayerId={PlayerId}", PlayerId);
         _onLeaveCallback(this);
+    }
+
+    /// <summary>
+    ///     게임 중 이탈 페널티 기록: Redis Hash에 이탈 횟수 누적
+    /// </summary>
+    private async Task RecordLeavePenaltyAsync(long playerId)
+    {
+        try
+        {
+            const string key = "leave_penalties";
+            var existing = await CacheHelper.HashGetAsync(key, playerId);
+            long count = existing.IsNullOrEmpty ? 1 : BitConverter.ToInt64((byte[])existing!) + 1;
+            await CacheHelper.HashSetAsync(key, playerId, BitConverter.GetBytes(count));
+            Logger.LogInformation("이탈 페널티 기록: PlayerId={PlayerId}, 누적={Count}", playerId, count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "이탈 페널티 기록 실패: PlayerId={PlayerId}", playerId);
+        }
     }
 
     /// <summary>

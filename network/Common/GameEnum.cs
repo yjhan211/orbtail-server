@@ -14,7 +14,6 @@ namespace network.common
         Library = 1,
         Classroom1 = 2, // 고사실
         Classroom2 = 3, // 방송실
-        Classroom3 = 4, // 보건실
         Classroom4 = 5, // 3-1
         Classroom5 = 6, // 3-2
         Corridor = 7,
@@ -179,7 +178,6 @@ namespace network.common
     public enum JobTitle : short
     {
         NONE = 0,
-        HEALTH_COMMITTEE = 1,   // 보건위원
         BROADCAST_MEMBER = 2,   // 방송부원
         DISCIPLINE_MEMBER = 3,  // 선도부원
         LIBRARY_COMMITTEE = 4,  // 도서위원

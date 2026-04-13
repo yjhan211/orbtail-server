@@ -169,7 +169,6 @@ public class InteractionChoiceService
 
     private static string GetJobTitleKorean(JobTitle job) => job switch
     {
-        JobTitle.HEALTH_COMMITTEE => "보건위원",
         JobTitle.BROADCAST_MEMBER => "방송부원",
         JobTitle.DISCIPLINE_MEMBER => "선도부원",
         JobTitle.LIBRARY_COMMITTEE => "도서위원",

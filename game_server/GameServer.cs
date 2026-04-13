@@ -31,10 +31,6 @@ public class GameServer(
     // 하트비트 체크 간격 (10초마다 체크)
     private const int HeartbeatCheckIntervalSeconds = 10;
 
-    // 보건실 힐링 설정
-    private const int InfirmaryHealingIntervalSeconds = 1;
-    private const int InfirmaryHealingAmount = 5;
-
     // 복도 정지 체크 간격
     private const int CorridorStopCheckIntervalMs = 500;
     private readonly AreaRuleManager _areaRuleManager = new();
@@ -54,18 +50,23 @@ public class GameServer(
     private readonly MissionManager _missionManager = new(logger);
     private readonly AreaClosureManager _areaClosureManager = new(logger);
     private readonly TraceManager _traceManager = new();
+    private readonly BotPlayerManager _botPlayerManager = new(logger);
 
     private Timer? _corridorStopCheckTimer;
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
-    private Timer? _infirmaryHealingTimer;
     private Timer? _resourceTickTimer;        // 정신력 자연감소 + 타겟 근접 회복 + 시한부
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
 
-    // 자원 틱 설정 (GDD 기반 확정 수치)
+    // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private const int ResourceTickIntervalSeconds = 5;
-    private const int MentalDecayAmount = 2;            // 정신력 자연감소량 (5초당 오염도 +2)
+    // 오염도 점진적 가속: 0~5분 +1, 5~10분 +2, 10분+ +3
+    private const int MentalDecayPhase1 = 1;            // 0~5분: 5초당 오염도 +1
+    private const int MentalDecayPhase2 = 2;            // 5~10분: 5초당 오염도 +2
+    private const int MentalDecayPhase3 = 3;            // 10분+: 5초당 오염도 +3
+    private const int Phase2StartSeconds = 300;          // 5분
+    private const int Phase3StartSeconds = 600;          // 10분
     private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
     internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모
@@ -83,7 +84,6 @@ public class GameServer(
             InitializeControllers();
             StartTcpServer();
             StartHeartbeatChecker();
-            StartInfirmaryHealingTimer();
             StartCorridorStopCheckTimer();
             StartResourceTickTimer();
             StartAreaClosureTickTimer();
@@ -112,12 +112,6 @@ public class GameServer(
         {
             await _heartbeatCheckTimer.DisposeAsync();
             _heartbeatCheckTimer = null;
-        }
-
-        if (_infirmaryHealingTimer != null)
-        {
-            await _infirmaryHealingTimer.DisposeAsync();
-            _infirmaryHealingTimer = null;
         }
 
         if (_corridorStopCheckTimer != null)
@@ -198,37 +192,6 @@ public class GameServer(
         logger.LogInformation("Heartbeat checker started (interval: {Interval}s)", HeartbeatCheckIntervalSeconds);
     }
 
-    private void StartInfirmaryHealingTimer()
-    {
-        _infirmaryHealingTimer = new Timer(
-            ProcessInfirmaryHealing,
-            null,
-            TimeSpan.FromSeconds(InfirmaryHealingIntervalSeconds),
-            TimeSpan.FromSeconds(InfirmaryHealingIntervalSeconds));
-        logger.LogInformation("Infirmary healing timer started (interval: {Interval}s, amount: {Amount})",
-            InfirmaryHealingIntervalSeconds, InfirmaryHealingAmount);
-    }
-
-    /// <summary>
-    ///     보건실에 있는 플레이어들의 정신오염도 감소 처리
-    /// </summary>
-    private void ProcessInfirmaryHealing(object? state)
-    {
-        try
-        {
-            // 보건실(Classroom3)에 있고 Corruption > 0인 플레이어 찾기
-            var playersInInfirmary = _clientSessions.Values
-                .Where(s => s is { PlayerId: not null, CurrentArea: AreaType.Classroom3, Corruption: > 0 })
-                .ToList();
-
-            foreach (var session in playersInInfirmary) session.ModifyStats(corruptionDelta: -InfirmaryHealingAmount);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error processing infirmary healing");
-        }
-    }
-
     // ===== 자원 틱 (정신력 자연감소, 타겟 근접 회복, 시한부) =====
 
     private void StartResourceTickTimer()
@@ -237,6 +200,20 @@ public class GameServer(
             TimeSpan.FromSeconds(ResourceTickIntervalSeconds),
             TimeSpan.FromSeconds(ResourceTickIntervalSeconds));
         logger.LogInformation("자원 틱 타이머 시작 ({Interval}초)", ResourceTickIntervalSeconds);
+    }
+
+    /// <summary>
+    ///     경과 시간에 따른 오염도 자연증가량 결정 (GDD v0.0.5 점진적 가속)
+    /// </summary>
+    private int GetMentalDecayAmount(long matchingId)
+    {
+        var closureState = _areaClosureManager.GetMatchingState(matchingId);
+        if (closureState == null) return MentalDecayPhase1;
+
+        double elapsed = (DateTime.UtcNow - closureState.GameStartTime).TotalSeconds;
+        if (elapsed >= Phase3StartSeconds) return MentalDecayPhase3;
+        if (elapsed >= Phase2StartSeconds) return MentalDecayPhase2;
+        return MentalDecayPhase1;
     }
 
     private void ProcessResourceTick(object? state)
@@ -251,18 +228,24 @@ public class GameServer(
             {
                 bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
 
-                // 1. 정신력 자연감소 (모든 활성 플레이어)
-                int corruptionDelta = MentalDecayAmount;
+                // 1. 정신력 자연감소 — 점진적 가속 (0~5분 +1, 5~10분 +2, 10분+ +3)
+                int corruptionDelta = GetMentalDecayAmount(session.CurrentMapSubId);
 
                 // 2. 타겟 동일 구역 → 감소 정지 + 회복 (시한부는 회복 불가 — GDD 2.5.4)
-                if (!isTerminal)
+                if (!isTerminal && session.CurrentArea != AreaType.None)
                 {
                     var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                    if (targetSession != null && targetSession.CurrentArea == session.CurrentArea &&
-                        session.CurrentArea != AreaType.None)
+                    bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
+
+                    // 봇이 타겟인 경우에도 확인
+                    if (!targetInSameArea)
                     {
-                        corruptionDelta = -TargetProximityRecovery; // 감소 대신 회복
+                        var targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
+                        targetInSameArea = targetBot is { IsEliminated: false } && targetBot.CurrentArea == session.CurrentArea;
                     }
+
+                    if (targetInSameArea)
+                        corruptionDelta = -TargetProximityRecovery; // 감소 대신 회복
                 }
 
                 // 3. 시한부 추가 감소 (GDD 2.5.4: 정신력 지속 감소)
@@ -280,6 +263,19 @@ public class GameServer(
 
                 // 5. 자원 고갈 탈락 체크
                 session.CheckResourceElimination();
+            }
+
+            // 6. 봇 플레이어 자원 틱
+            var matchingIds = activeSessions
+                .Select(s => s.CurrentMapSubId)
+                .Distinct()
+                .ToList();
+
+            foreach (long matchingId in matchingIds)
+            {
+                if (!_botPlayerManager.HasBots(matchingId)) continue;
+                int botDecay = GetMentalDecayAmount(matchingId);
+                _botPlayerManager.ProcessBotTick(matchingId, botDecay, _areaClosureManager);
             }
         }
         catch (Exception ex)
@@ -464,7 +460,8 @@ public class GameServer(
                 _areaClosureManager,
                 _traceManager,
                 _interactionLogManager,
-                new InteractionChoiceService(_interactionLogManager, _manittoChainManager));
+                new InteractionChoiceService(_interactionLogManager, _manittoChainManager),
+                _botPlayerManager);
 
             logger.LogInformation("Game client session created");
         }

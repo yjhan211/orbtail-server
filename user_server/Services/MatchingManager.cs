@@ -13,8 +13,13 @@ public class MatchingManager : IMatchingManager
 {
     private const string MatchingQueueKey = "matching_queue";
     private const string MatchingIdKey = "matching_id";
+    private const string BotInfoKeyPrefix = "matching_bots"; // Redis Hash: field=matchingId
     private const int MatchingTimeoutSeconds = 5;
+    private const int BotFillTimeoutSeconds = 30; // 봇 채움 대기 시간
+    private const int LeavePenaltySeconds = 30; // 이탈 1회당 추가 대기 시간
+    private const int MaxLeavePenaltySeconds = 300; // 최대 페널티 대기 시간 (5분)
     private const int PlayersPerMatch = 5; // 매칭 인원수
+    private static long _botIdCounter; // 봇 PlayerId (음수)
     private readonly ICacheHelper _cacheHelper;
     private readonly Func<long, GameSession?> _getSession;
     private readonly ILogger _logger;
@@ -47,11 +52,18 @@ public class MatchingManager : IMatchingManager
             };
 
             byte[] serialized = MessagePackSerializer.Serialize(queueData);
-            long score = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+            // 이탈 페널티: 이탈 횟수에 비례한 추가 대기 시간
+            long penaltyDelay = await GetLeavePenaltyDelayAsync(playerId);
+            long score = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + penaltyDelay;
 
             await _cacheHelper.SortedSetAddAsync(MatchingQueueKey, serialized, score);
 
-            _logger.LogInformation("플레이어 {PlayerId} 매칭 큐 추가", playerId);
+            if (penaltyDelay > 0)
+                _logger.LogInformation("플레이어 {PlayerId} 매칭 큐 추가 (이탈 페널티 {Penalty}초)", playerId, penaltyDelay);
+            else
+                _logger.LogInformation("플레이어 {PlayerId} 매칭 큐 추가", playerId);
+
             return ErrorCode.SUCCESS;
         }
         catch (Exception ex)
@@ -151,10 +163,91 @@ public class MatchingManager : IMatchingManager
                     }
                 }
             }
+
+            // 봇 채움: 30초 이상 대기 중인 플레이어가 있으면 봇으로 채움
+            await CheckBotFillAsync();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "매칭 큐 처리 중 오류 발생");
+        }
+    }
+
+    /// <summary>
+    ///     30초 이상 대기 중인 플레이어가 5명 미만이면 봇으로 채워서 매칭
+    /// </summary>
+    private async Task CheckBotFillAsync()
+    {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        long botCutoff = now - BotFillTimeoutSeconds;
+
+        byte[][] longWaitEntries = await _cacheHelper.SortedSetRangeByScoreAsync(
+            MatchingQueueKey, double.NegativeInfinity, botCutoff);
+
+        if (longWaitEntries.Length == 0 || longWaitEntries.Length >= PlayersPerMatch) return;
+
+        int botsNeeded = PlayersPerMatch - longWaitEntries.Length;
+        var allEntries = new List<byte[]>(longWaitEntries);
+
+        // 봇 데이터 생성
+        for (int i = 0; i < botsNeeded; i++)
+        {
+            long botId = Interlocked.Decrement(ref _botIdCounter); // -1, -2, ...
+            var botData = new MatchingQueueData
+            {
+                PlayerId = botId,
+                RequestTime = DateTime.UtcNow,
+                UserChannel = "bot"
+            };
+            allEntries.Add(MessagePackSerializer.Serialize(botData));
+        }
+
+        long matchingId = await _cacheHelper.StringIncrementAsync(MatchingIdKey);
+        _logger.LogInformation("봇 채움 매칭: MatchingId={MatchingId}, 실제 {Real}명 + 봇 {Bot}명",
+            matchingId, longWaitEntries.Length, botsNeeded);
+
+        var chain = BuildManittoChain(allEntries.ToArray());
+
+        // 봇 정보를 Redis에 저장 (game_server에서 로드)
+        var botInfoList = new List<BotMatchingInfo>();
+        foreach (var link in chain)
+        {
+            var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
+            if (data.PlayerId >= 0) continue;
+            botInfoList.Add(new BotMatchingInfo
+            {
+                PlayerId = data.PlayerId,
+                TargetPlayerId = link.TargetPlayerId,
+                MyJobTitle = link.MyJobTitle,
+                TargetJobTitle = link.TargetJobTitle
+            });
+        }
+
+        if (botInfoList.Count > 0)
+        {
+            byte[] serialized = MessagePackSerializer.Serialize(botInfoList);
+            await _cacheHelper.HashSetAsync(BotInfoKeyPrefix, matchingId, serialized);
+        }
+
+        // 실제 플레이어만 매칭 성공 패킷 전송
+        foreach (var link in chain)
+        {
+            var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
+            if (data.PlayerId < 0) continue; // 봇은 스킵
+
+            try
+            {
+                await ProcessMatchedEntry(link.Entry, matchingId, link.TargetPlayerId,
+                    link.TargetJobTitle, link.MyJobTitle);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "봇 채움 매칭 entry 처리 실패: {PlayerId}", data.PlayerId);
+            }
+            finally
+            {
+                await _cacheHelper.SortedSetRemoveAsync(MatchingQueueKey, link.Entry);
+            }
         }
     }
 
@@ -251,6 +344,26 @@ public class MatchingManager : IMatchingManager
         session.Send(packet);
         _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 패킷 전송 (타겟: {TargetPlayerId}, 내 직책: {MyJob}, 타겟 직책: {TargetJob})",
             data.PlayerId, targetPlayerId, myJobTitle, targetJobTitle);
+    }
+
+    /// <summary>
+    ///     이탈 페널티 대기 시간 조회: 이탈 횟수 × 30초 (최대 300초)
+    /// </summary>
+    private async Task<long> GetLeavePenaltyDelayAsync(long playerId)
+    {
+        try
+        {
+            var value = await _cacheHelper.HashGetAsync("leave_penalties", playerId);
+            if (value.IsNullOrEmpty) return 0;
+
+            long leaveCount = BitConverter.ToInt64((byte[])value!);
+            long penalty = Math.Min(leaveCount * LeavePenaltySeconds, MaxLeavePenaltySeconds);
+            return penalty;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     public void Dispose()

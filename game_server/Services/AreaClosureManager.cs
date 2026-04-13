@@ -16,12 +16,11 @@ public class AreaClosureManager
     // 폐쇄 구역 체류 페널티는 GameServer.ClosedAreaStaminaPenaltyPerTick에서 처리
 
     // 폐쇄 불가 구역: 도서관, 강당, 운동장 (GDD 핵심 구역 + 복도)
-    // 폐쇄 대상: 나머지 11개 구역 (14개 - 3개 안전구역)
+    // 폐쇄 대상: 나머지 10개 구역 (13개 - 3개 안전구역)
     private static readonly AreaType[] ClosableAreas =
     {
         AreaType.Classroom1,    // 고사실
         AreaType.Classroom2,    // 방송실
-        AreaType.Classroom3,    // 임시 보건실
         AreaType.Classroom4,    // 교실 3-1
         AreaType.Classroom5,    // 교실 3-2
         AreaType.Storage1,      // 창고 A
@@ -105,6 +104,15 @@ public class AreaClosureManager
         }
 
         return (warningArea, closingArea);
+    }
+
+    /// <summary>
+    ///     매칭 상태 조회 (게임 시작 시각 등)
+    /// </summary>
+    public MatchingClosureState? GetMatchingState(long matchingId)
+    {
+        _states.TryGetValue(matchingId, out var state);
+        return state;
     }
 
     /// <summary>

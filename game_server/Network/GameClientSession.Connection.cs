@@ -46,6 +46,9 @@ public partial class GameClientSession
             // 구역 폐쇄 초기화 (매칭당 최초 1회)
             _areaClosureManager.InitializeMatching(msg.MatchingId);
 
+            // 봇 로드 (매칭당 최초 1회)
+            await LoadBotsIfNeeded(msg.MatchingId);
+
             // 인게임 스탯 초기화
             ResetInGameStats();
 
@@ -218,6 +221,39 @@ public partial class GameClientSession
     }
 
     /// <summary>
+    ///     Redis에서 봇 정보 로드 (매칭당 최초 1회)
+    /// </summary>
+    private async Task LoadBotsIfNeeded(long matchingId)
+    {
+        if (_botPlayerManager.HasBots(matchingId)) return;
+
+        try
+        {
+            var botData = await CacheHelper.HashGetAsync("matching_bots", matchingId);
+            if (botData.IsNullOrEmpty) return;
+
+            var botInfoList = MessagePackSerializer.Deserialize<List<BotMatchingInfo>>((byte[])botData!);
+            _botPlayerManager.RegisterBots(matchingId, botInfoList);
+
+            // 봇도 체인 매니저에 등록
+            foreach (var bot in botInfoList)
+            {
+                _manittoChainManager.RegisterLink(matchingId, new ChainLink
+                {
+                    PlayerId = bot.PlayerId,
+                    TargetPlayerId = bot.TargetPlayerId,
+                    MyJobTitle = bot.MyJobTitle,
+                    TargetJobTitle = bot.TargetJobTitle
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "봇 정보 로드 실패: MatchingId={MatchingId}", matchingId);
+        }
+    }
+
+    /// <summary>
     ///     게임 타이머 시작 (매칭당 최초 1회만)
     /// </summary>
     private void StartGameTimerIfNeeded(long matchingId)
@@ -249,11 +285,14 @@ public partial class GameClientSession
 
         var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
 
-        // 승자 판정: 자원 총합 최대
+        // 승자 판정: 자원 총합 최대 (봇 포함)
         long? winnerId = _manittoChainManager.DetermineWinnerByResources(matchingId, playerId =>
         {
             var s = sessions.FirstOrDefault(s => s.PlayerId == playerId);
-            return s != null ? (s.Stamina, s.Corruption, MaxCorruption) : (0, 100, 100);
+            if (s != null) return (s.Stamina, s.Corruption, MaxCorruption);
+
+            var bot = _botPlayerManager.GetBot(matchingId, playerId);
+            return bot != null ? (bot.Stamina, bot.Corruption, 100) : (0, 100, 100);
         });
 
         Logger.LogInformation("시간 초과 승자: MatchingId={MatchingId}, WinnerId={WinnerId}", matchingId, winnerId);
