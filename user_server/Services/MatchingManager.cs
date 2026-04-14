@@ -14,11 +14,11 @@ public class MatchingManager : IMatchingManager
     private const string MatchingQueueKey = "matching_queue";
     private const string MatchingIdKey = "matching_id";
     private const string BotInfoKeyPrefix = "matching_bots"; // Redis Hash: field=matchingId
-    private const int MatchingTimeoutSeconds = 5;
+    private const int MatchingTimeoutSeconds = 3;
     private const int BotFillTimeoutSeconds = 30; // 봇 채움 대기 시간
     private const int LeavePenaltySeconds = 30; // 이탈 1회당 추가 대기 시간
     private const int MaxLeavePenaltySeconds = 300; // 최대 페널티 대기 시간 (5분)
-    private const int PlayersPerMatch = 5; // 매칭 인원수
+    private const int PlayersPerMatch = 1; // 매칭 인원수 (테스트용)
     private static long _botIdCounter; // 봇 PlayerId (음수)
     private readonly ICacheHelper _cacheHelper;
     private readonly Func<long, GameSession?> _getSession;

@@ -188,23 +188,31 @@ public sealed class GameSession : SessionBase
             // 아이템 UID 카운터 가져오기
             long itemUidCounter = await CacheHelper.StringIncrementAsync("item_uid_counter");
 
-            // 기본 아이템 3종 먼저 추가 (Top, Bottom, Shoes)
-            var defaultTop = new ItemInfo(itemUidCounter++, 104000001, 1);
-            var defaultBottom = new ItemInfo(itemUidCounter++, 105000001, 1);
-            var defaultShoes = new ItemInfo(itemUidCounter++, 106000001, 1);
+            // 기본 아이템 5종 먼저 추가 (Hair, Face, Top, Bottom, Shoes)
+            var defaultHair = new ItemInfo(itemUidCounter++, 101000003, 1);
+            var defaultFace = new ItemInfo(itemUidCounter++, 102000003, 1);
+            var defaultTop = new ItemInfo(itemUidCounter++, 104000005, 1);
+            var defaultBottom = new ItemInfo(itemUidCounter++, 105000005, 1);
+            var defaultShoes = new ItemInfo(itemUidCounter++, 106000003, 1);
 
+            playerInfo.InventoryInfo.ItemDict.Add(defaultHair.ItemUid, defaultHair);
+            playerInfo.InventoryInfo.ItemDict.Add(defaultFace.ItemUid, defaultFace);
             playerInfo.InventoryInfo.ItemDict.Add(defaultTop.ItemUid, defaultTop);
             playerInfo.InventoryInfo.ItemDict.Add(defaultBottom.ItemUid, defaultBottom);
             playerInfo.InventoryInfo.ItemDict.Add(defaultShoes.ItemUid, defaultShoes);
 
-            Logger.LogInformation("Added default items: Top={TopUid}, Bottom={BottomUid}, Shoes={ShoesUid}",
-                defaultTop.ItemUid, defaultBottom.ItemUid, defaultShoes.ItemUid);
+            Logger.LogInformation("Added default items: Hair={HairUid}, Face={FaceUid}, Top={TopUid}, Bottom={BottomUid}, Shoes={ShoesUid}",
+                defaultHair.ItemUid, defaultFace.ItemUid, defaultTop.ItemUid, defaultBottom.ItemUid, defaultShoes.ItemUid);
 
             // 기본 아이템 착용 (직접 처리)
+            defaultHair.IsWear = true;
+            defaultFace.IsWear = true;
             defaultTop.IsWear = true;
             defaultBottom.IsWear = true;
             defaultShoes.IsWear = true;
 
+            playerInfo.WearItemIdList.Add(defaultHair.ItemId);
+            playerInfo.WearItemIdList.Add(defaultFace.ItemId);
             playerInfo.WearItemIdList.Add(defaultTop.ItemId);
             playerInfo.WearItemIdList.Add(defaultBottom.ItemId);
             playerInfo.WearItemIdList.Add(defaultShoes.ItemId);
@@ -226,9 +234,10 @@ public sealed class GameSession : SessionBase
                     case EquipType.TOP:
                     case EquipType.BOTTOM:
                     case EquipType.SHOES:
-                        // 기본 아이템 3종은 이미 추가했으므로 스킵
-                        if (itemInfoData.Id == 104000001 || itemInfoData.Id == 105000001 ||
-                            itemInfoData.Id == 106000001) continue;
+                        // 기본 아이템 5종은 이미 추가했으므로 스킵
+                        if (itemInfoData.Id == 101000003 || itemInfoData.Id == 102000003 ||
+                            itemInfoData.Id == 104000005 || itemInfoData.Id == 105000005 ||
+                            itemInfoData.Id == 106000003) continue;
 
                         var item = new ItemInfo(itemUidCounter++, itemInfoData.Id, 1);
                         playerInfo.InventoryInfo.ItemDict.Add(item.ItemUid, item);
