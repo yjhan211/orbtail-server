@@ -40,7 +40,7 @@ publish/
 *.publishsettings
 
 # Claude Code
-.claude/*
+**/.claude/*
 !.claude/agents/
 manitto/*
 
