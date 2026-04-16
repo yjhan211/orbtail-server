@@ -8,23 +8,53 @@ namespace network.common
         Camp,
     }
 
+    /// <summary>
+    ///     구역 타입. 넘버링: 층 × 10 + 순번 (층 = value / 10)
+    /// </summary>
     public enum AreaType
     {
         None = 0,
-        Library = 1,
-        Classroom1 = 2, // 고사실
-        Classroom2 = 3, // 방송실
-        Classroom4 = 5, // 3-1
-        Classroom5 = 6, // 3-2
-        Corridor = 7,
-        Storage1 = 8,
-        Storage2 = 9,
-        AdminOffice1 = 10,
-        AdminOffice2 = 11,
-        Gym = 12,
-        Ground = 13,
-        Terrace1 = 14,
-        Terrace2 = 15,
+
+        // 0층
+        Junkyard = 1,           // 쓰레기장
+        Ground = 2,             // 운동장
+
+        // 1층
+        AdminOffice = 10,       // 행정실
+        Corridor1F = 11,        // 1층복도
+        StaffRoom = 12,         // 교무실
+        Gym = 13,               // 강당
+        Storage = 14,           // 창고
+
+        // 2층
+        Classroom2 = 20,        // 교실2
+        Corridor2F = 21,        // 2층복도
+        Library = 22,           // 도서관
+
+        // 3층
+        Classroom3 = 30,        // 교실3
+        Corridor3F = 31,        // 3층복도
+        ExamRoom = 32,          // 고사실
+
+        // 4층
+        Classroom4 = 40,        // 교실4
+        Corridor4F = 41,        // 4층복도
+        BroadcastRoom = 42,     // 방송실
+    }
+
+    public static class AreaTypeExtensions
+    {
+        /// <summary>
+        ///     복도 구역 여부 (1~4층복도)
+        /// </summary>
+        public static bool IsCorridor(this AreaType area) =>
+            area is AreaType.Corridor1F or AreaType.Corridor2F or AreaType.Corridor3F or AreaType.Corridor4F;
+
+        /// <summary>
+        ///     구역의 층 번호 (0~4). None이면 -1
+        /// </summary>
+        public static int GetFloor(this AreaType area) =>
+            area == AreaType.None ? -1 : (int)area / 10;
     }
 
     public enum SocialActionType
@@ -173,15 +203,19 @@ namespace network.common
     }
 
     /// <summary>
-    ///     마니또 게임 직책 (5인 매칭 시 무작위 배정)
+    ///     마니또 게임 직책 (풀 8개 중 5개 선택, 각 플레이어에 1개 배정)
     /// </summary>
     public enum JobTitle : short
     {
         NONE = 0,
-        BROADCAST_MEMBER = 2,   // 방송부원
-        DISCIPLINE_MEMBER = 3,  // 선도부원
-        LIBRARY_COMMITTEE = 4,  // 도서위원
-        SPORTS_CAPTAIN = 5,     // 체육부장
+        BROADCAST_MEMBER = 1,   // 방송부원
+        DISCIPLINE_MEMBER = 2,  // 선도부원
+        LIBRARY_COMMITTEE = 3,  // 도서위원
+        SPORTS_CAPTAIN = 4,     // 체육부장
+        SCIENCE_MEMBER = 5,     // 과학부원
+        CLEANING_MEMBER = 6,    // 미화부원
+        STUDENT_PRESIDENT = 7,  // 학생회장
+        HEALTH_MEMBER = 8,      // 보건부원
     }
 
     /// <summary>

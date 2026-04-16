@@ -13,23 +13,30 @@ public class BotPlayerManager
 {
     private const int BotMoveIntervalSeconds = 15; // 봇 이동 주기
 
-    // 봇이 이동 가능한 구역 (폐쇄 불가 구역 포함 전체)
+    // 봇이 이동 가능한 구역 (전체 16구역)
     private static readonly AreaType[] MovableAreas =
     {
-        AreaType.Library,
-        AreaType.Classroom1,
-        AreaType.Classroom2,
-        AreaType.Classroom4,
-        AreaType.Classroom5,
-        AreaType.Corridor,
-        AreaType.Storage1,
-        AreaType.Storage2,
-        AreaType.AdminOffice1,
-        AreaType.AdminOffice2,
-        AreaType.Gym,
+        // 0층
+        AreaType.Junkyard,
         AreaType.Ground,
-        AreaType.Terrace1,
-        AreaType.Terrace2,
+        // 1층
+        AreaType.AdminOffice,
+        AreaType.Corridor1F,
+        AreaType.StaffRoom,
+        AreaType.Gym,
+        AreaType.Storage,
+        // 2층
+        AreaType.Classroom2,
+        AreaType.Corridor2F,
+        AreaType.Library,
+        // 3층
+        AreaType.Classroom3,
+        AreaType.Corridor3F,
+        AreaType.ExamRoom,
+        // 4층
+        AreaType.Classroom4,
+        AreaType.Corridor4F,
+        AreaType.BroadcastRoom,
     };
 
     // matchingId → 봇 목록

@@ -158,7 +158,7 @@ public class MatchingCorridorRuleState
         {
             // 복도 진입/퇴장 처리
             bool wasInCorridor = state.IsInCorridor;
-            bool isNowInCorridor = currentArea == AreaType.Corridor;
+            bool isNowInCorridor = currentArea.IsCorridor();
 
             if (!wasInCorridor && isNowInCorridor)
             {
