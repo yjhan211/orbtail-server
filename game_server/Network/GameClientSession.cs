@@ -31,7 +31,6 @@ public partial class GameClientSession : SessionBase
     // 플레이어가 발견한 행동 수칙 (ruleId → 최초 발견자 PlayerId)
     private readonly Dictionary<int, long> _discoveredRules = new();
     private readonly DoorStateManager _doorStateManager;
-    private readonly ExitInstanceManager _exitInstanceManager;
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
     private readonly InGameInventoryManager _inGameInventoryManager;
     private readonly InteractableStateManager _interactableStateManager;
@@ -85,7 +84,6 @@ public partial class GameClientSession : SessionBase
         InteractableStateManager interactableStateManager,
         InGameInventoryManager inGameInventoryManager,
         AreaRuleManager areaRuleManager,
-        ExitInstanceManager exitInstanceManager,
         ItemPoolManager itemPoolManager,
         CorridorRuleManager corridorRuleManager,
         InteractRuleManager interactRuleManager,
@@ -106,7 +104,6 @@ public partial class GameClientSession : SessionBase
         _interactableStateManager = interactableStateManager;
         _inGameInventoryManager = inGameInventoryManager;
         _areaRuleManager = areaRuleManager;
-        _exitInstanceManager = exitInstanceManager;
         _itemPoolManager = itemPoolManager;
         _corridorRuleManager = corridorRuleManager;
         _interactRuleManager = interactRuleManager;
@@ -172,14 +169,6 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE,
             async bytes => await HandleMessage<C_TO_G_PLAYER_STATE>(bytes, HandlePlayerState));
-
-        // 탈출 절차 프로토콜
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_EXIT_ADVANCE,
-            async bytes => await HandleMessage<C_TO_G_EXIT_ADVANCE>(bytes, HandleExitAdvance));
-
-        // 로비 복귀 프로토콜
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RETURN_TO_LOBBY,
-            async bytes => await HandleMessage<C_TO_G_RETURN_TO_LOBBY>(bytes, HandleReturnToLobby));
 
         // 문 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_REQUEST,

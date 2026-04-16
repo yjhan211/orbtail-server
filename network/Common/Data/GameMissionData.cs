@@ -57,7 +57,7 @@ namespace network.common.data
         /// <summary>
         ///     해당 직책의 특정 단계 반환
         /// </summary>
-        public static MissionStepData? GetStep(short jobTitle, int stepOrder)
+        public static MissionStepData GetStep(short jobTitle, int stepOrder)
         {
             var steps = GetSteps(jobTitle);
             return steps.FirstOrDefault(s => s.StepOrder == stepOrder);

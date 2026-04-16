@@ -77,16 +77,6 @@ namespace network.common
         // 플레이어 스탯 프로토콜
         G_TO_C_PLAYER_STATS_UPDATE, // 스태미나/정신력 등 스탯 변경 알림
 
-        // 탈출 절차 프로토콜
-        G_TO_C_EXIT_STEP_INFO, // 탈출 절차 정보 (게임 접속 시 자동 전송)
-        C_TO_G_EXIT_ADVANCE, // 탈출 절차 다음 단계 진행 요청
-        G_TO_C_EXIT_ADVANCE_RESULT, // 탈출 절차 진행 결과 (성공/실패/탈출완료)
-        G_TO_C_EXIT_STEP_UPDATE, // 탈출 절차 단계 변경 브로드캐스트 (다른 플레이어가 진행시켜도 모두에게 알림)
-
-        // 로비 복귀 프로토콜
-        C_TO_G_RETURN_TO_LOBBY, // 로비 복귀 요청 (게임 완료 후)
-        G_TO_C_RETURN_TO_LOBBY_RESULT, // 로비 복귀 결과
-
         // 문 프로토콜
         C_TO_G_DOOR_OPEN_REQUEST, // 문 열기 요청
         G_TO_C_DOOR_STATE_UPDATE, // 문 상태 변경 브로드캐스트
@@ -216,14 +206,6 @@ namespace network.common
         REQUIRED_ITEM_MISSING = 508,  // 액션 수행에 필요한 아이템 미보유
         REQUIRED_ACTION_NOT_COMPLETED = 509,  // 선행 액션 미완료
         INSUFFICIENT_STAMINA = 510,  // 스태미나 부족
-
-        // 탈출 의식 (600~699)
-        EXIT_NOT_AVAILABLE = 600,
-        EXIT_CONDITION_NOT_MET = 601,
-        EXIT_STEP_INVALID = 602,
-        EXIT_ITEM_MISSING = 603,
-        EXIT_ALREADY_COMPLETED = 604,
-        EXIT_SPOT_MISMATCH = 605,
 
         // 문 (650~659)
         DOOR_NOT_FOUND = 650,
