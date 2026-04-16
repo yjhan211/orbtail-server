@@ -20,7 +20,6 @@ public sealed class InstanceMapManager(
     InteractableStateManager interactableStateManager,
     InGameInventoryManager inGameInventoryManager,
     AreaRuleManager areaRuleManager,
-    ExitInstanceManager exitInstanceManager,
     CorridorRuleManager corridorRuleManager)
     : BaseMapManager(logger, natsClient, cacheHelper, serverConfig)
 {
@@ -185,9 +184,6 @@ public sealed class InstanceMapManager(
                 // AreaRule 상태 정리
                 areaRuleManager.RemoveMatchingState(mapSubId);
 
-                // Exit 상태 정리
-                exitInstanceManager.RemoveMatchingState(mapSubId);
-
                 // CorridorRule 상태 정리
                 corridorRuleManager.RemoveMatchingState(mapSubId);
 
@@ -286,9 +282,6 @@ public sealed class InstanceMapManager(
 
         // AreaRule 상태 정리
         areaRuleManager.RemoveMatchingState(mapSubId);
-
-        // Exit 상태 정리
-        exitInstanceManager.RemoveMatchingState(mapSubId);
 
         // CorridorRule 상태 정리
         corridorRuleManager.RemoveMatchingState(mapSubId);

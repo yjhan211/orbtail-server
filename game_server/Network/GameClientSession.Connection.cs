@@ -108,9 +108,6 @@ public partial class GameClientSession
             // 인게임 인벤토리 목록 전송
             SendInGameInventoryList();
 
-            // 탈출 절차 정보 전송
-            SendExitStepInfo();
-
             // 문 초기 상태 설정 및 열린 문 목록 전송
             _doorStateManager.InitializeMatching(CurrentMapSubId);
             SendDoorStateList();

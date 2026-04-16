@@ -218,6 +218,22 @@ namespace network.common
         HEALTH_MEMBER = 8,      // 보건부원
     }
 
+    public static class JobTitleExtensions
+    {
+        public static string ToKorean(this JobTitle jobTitle) => jobTitle switch
+        {
+            JobTitle.BROADCAST_MEMBER => "방송부원",
+            JobTitle.DISCIPLINE_MEMBER => "선도부원",
+            JobTitle.LIBRARY_COMMITTEE => "도서위원",
+            JobTitle.SPORTS_CAPTAIN => "체육부장",
+            JobTitle.SCIENCE_MEMBER => "과학부원",
+            JobTitle.CLEANING_MEMBER => "미화부원",
+            JobTitle.STUDENT_PRESIDENT => "학생회장",
+            JobTitle.HEALTH_MEMBER => "보건부원",
+            _ => ""
+        };
+    }
+
     /// <summary>
     ///     탈락 사유
     /// </summary>

@@ -218,9 +218,6 @@ public partial class GameClientSession
                         AddInGameItem(rewardItemId);
                         Logger.LogInformation("Player {PlayerId} received reward from pool {PoolId}: ItemId={ItemId}",
                             PlayerId, resultId, rewardItemId);
-
-                        // 탈출 절차 목표 아이템인지 확인하고 진척도 갱신
-                        CheckAndAdvanceExitStep(rewardItemId);
                     }
 
                     break;
@@ -248,9 +245,6 @@ public partial class GameClientSession
                     Logger.LogInformation("Player {PlayerId} received stamina buff: +{Amount}", PlayerId, resultAmount);
                     break;
             }
-
-            // target_interactable_action 조건 체크
-            CheckActionCompletedForExit(msg.InteractId, msg.ActionId);
 
             // 미션 진행 체크 (해당 구역/오브젝트/액션이 현재 미션과 일치하면 완료)
             CheckMissionProgress(CurrentArea, msg.InteractId, msg.ActionId);

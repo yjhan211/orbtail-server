@@ -37,7 +37,6 @@ public class GameServer(
     private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
     private readonly CorridorRuleManager _corridorRuleManager = new();
     private readonly DoorStateManager _doorStateManager = new();
-    private readonly ExitInstanceManager _exitInstanceManager = new();
     private readonly InGameInventoryManager _inGameInventoryManager = new();
 
     private readonly List<InstanceMapManager> _instanceControllerList = [];
@@ -153,7 +152,6 @@ public class GameServer(
             _corridorRuleManager.Initialize(log, OnCorridorStopViolation);
             _areaRuleManager.Initialize(log);
             _interactRuleManager.Initialize(log, _areaRuleManager);
-            _exitInstanceManager.Initialize(log);
             _itemPoolManager.Initialize(log);
             _sabotageManager.Initialize(log);
             _sabotageManager.SetStateChangeCallback(OnSabotageStateChange);
@@ -169,7 +167,7 @@ public class GameServer(
     {
         var instanceController = new InstanceMapManager(logger, natsClientFactory.Create(), cacheHelper,
             serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager,
-            _exitInstanceManager, _corridorRuleManager);
+            _corridorRuleManager);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
@@ -449,7 +447,6 @@ public class GameServer(
                 _interactableStateManager,
                 _inGameInventoryManager,
                 _areaRuleManager,
-                _exitInstanceManager,
                 _itemPoolManager,
                 _corridorRuleManager,
                 _interactRuleManager,

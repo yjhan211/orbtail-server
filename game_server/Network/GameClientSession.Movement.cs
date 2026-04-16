@@ -339,10 +339,7 @@ public partial class GameClientSession
                 // 4. 나에게 새 Area의 Interactable 목록 전송
                 SendInteractableList(newArea);
 
-                // 5. Area 도착 시 탈출 조건 체크
-                CheckAreaArrivalForExit(newArea);
-
-                // 6. 사보타주 이벤트 트리거 (해당 Area 최초 진입 시)
+                // 5. 사보타주 이벤트 트리거 (해당 Area 최초 진입 시)
                 _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, newArea);
             }
         }
@@ -355,53 +352,6 @@ public partial class GameClientSession
     /// <summary>
     ///     Area 도착 시 탈출 조건 체크
     /// </summary>
-    private void CheckAreaArrivalForExit(AreaType arrivedArea)
-    {
-        if (!PlayerId.HasValue) return;
-
-        try
-        {
-            // target_area 조건 체크
-            (bool advanced, bool escaped) =
-                _exitInstanceManager.OnAreaVisited(CurrentMapSubId, (int)arrivedArea, PlayerId.Value);
-
-            if (advanced)
-            {
-                var state = _exitInstanceManager.GetOrCreateMatchingState(CurrentMapSubId);
-                int newStepOrder = state.CurrentStepOrder;
-
-                // 탈출 성공 시 게임 타이머 정리
-                if (escaped)
-                {
-                    CleanupGameTimer(CurrentMapSubId);
-                    Logger.LogInformation(
-                        "Game timer cleaned up after escape success (area visit): MatchingId={MatchingId}",
-                        CurrentMapSubId);
-                }
-
-                // 진행 결과 응답
-                using var resultPacket = PacketMaker.G_TO_C_EXIT_ADVANCE_RESULT(
-                    true,
-                    ErrorCode.SUCCESS,
-                    escaped,
-                    newStepOrder
-                );
-                Send(resultPacket);
-
-                // 같은 인스턴스의 다른 플레이어들에게 브로드캐스트
-                BroadcastExitStepUpdate(PlayerId.Value, newStepOrder, escaped);
-
-                Logger.LogInformation(
-                    "Player {PlayerId} area visit advanced exit step: Area={Area}, NewStep={NewStep}, Escaped={Escaped}",
-                    PlayerId, arrivedArea, newStepOrder, escaped);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "CheckAreaArrivalForExit error for player {PlayerId}", PlayerId);
-        }
-    }
-
     private void SendInteractableList(AreaType areaType)
     {
         var objects = _interactableStateManager.GetAreaObjectStates(CurrentMapSubId, areaType);

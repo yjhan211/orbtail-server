@@ -163,22 +163,6 @@ namespace network.common.data.helpers
                 }
             }
 
-            // 탈출 의식 관련 파일 로드
-            foreach (var fileName in DataFiles.Exit.ALL)
-            {
-                var filePath = GetCsvFilePath(fileName);
-                try
-                {
-                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
-                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
-                }
-                catch (Exception ex)
-                {
-                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
-                    throw;
-                }
-            }
-
             // 미션 관련 파일 로드
             foreach (var fileName in DataFiles.Mission.ALL)
             {
@@ -230,9 +214,6 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Interactable.Violation],
                 loadedData[DataFiles.Interactable.ItemPool]
             );
-
-            // 탈출 의식 데이터 초기화
-            GameExitData.Initialize(loadedData[DataFiles.Exit.Step]);
 
             // 미션 데이터 초기화
             GameMissionData.Initialize(loadedData[DataFiles.Mission.Step]);
@@ -286,45 +267,6 @@ namespace network.common.data.helpers
                 }
             }
 
-            // 3, 4. exit_step 검증
-            foreach (var (groupId, steps) in GameExitData.GetAllStepGroups())
-            {
-                foreach (var step in steps)
-                {
-                    // 3. target_item_id → item_info id 존재
-                    foreach (var targetItemId in step.TargetItemIds)
-                    {
-                        if (!itemIds.Contains(targetItemId))
-                        {
-                            errors.Add(
-                                $"exit_step [group={groupId}, order={step.StepOrder}]: target_item_id={targetItemId}이 item_info에 없음");
-                        }
-                    }
-
-                    // 4. target_interactable_action → interactable_info + interactable_action 유효 조합
-                    foreach (var actionKey in step.TargetInteractableActions)
-                    {
-                        var parts = actionKey.Split('_');
-                        if (parts.Length != 2) continue;
-
-                        if (int.TryParse(parts[0], out var interactId) && int.TryParse(parts[1], out var actionId))
-                        {
-                            var interactable = GameInteractableData.Get(interactId);
-                            if (interactable == null)
-                            {
-                                errors.Add(
-                                    $"exit_step [group={groupId}, order={step.StepOrder}]: interactable {interactId}이 interactable_info에 없음");
-                            }
-                            else if (!interactable.Actions.Any(a => a.ActionId == actionId))
-                            {
-                                errors.Add(
-                                    $"exit_step [group={groupId}, order={step.StepOrder}]: action {interactId}_{actionId}이 interactable_action에 없음");
-                            }
-                        }
-                    }
-                }
-            }
-
             if (errors.Count > 0)
             {
                 foreach (var error in errors)
@@ -359,13 +301,6 @@ namespace network.common.data.helpers
                 public const string ItemPool = "interactable_item_pool.csv";
 
                 public static readonly string[] ALL = new[] { Info, Action, Violation, ItemPool };
-            }
-
-            public static class Exit
-            {
-                public const string Step = "exit_step.csv";
-
-                public static readonly string[] ALL = new[] { Step };
             }
 
             public static class Mission
