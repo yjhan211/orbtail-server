@@ -136,7 +136,7 @@ public class SabotageManager
         // 교무실(Area 11) 전화기 사보타주: 5초 후 전화벨이 울림, 30초 내에 받지 않으면 타임아웃
         RegisterSabotageEvent(new SabotageEvent
         {
-            TriggerArea = AreaType.AdminOffice2, // 교무실
+            TriggerArea = AreaType.StaffRoom, // 교무실
             InteractId = 701000027, // 전화기
             DelaySeconds = 5,
             NewState = (int)InteractableStateType.SABOTAGE, // 전화벨 울림 상태

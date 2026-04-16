@@ -32,7 +32,7 @@ public class MatchingAreaRuleState
 
         foreach (var kvp in allRules)
             foreach (int ruleId in kvp.Value)
-                if (kvp.Key == AreaType.Corridor)
+                if (kvp.Key.IsCorridor())
                     corridorRules.Add(ruleId);
                 else
                     otherRules.Add(ruleId);
@@ -160,7 +160,7 @@ public class AreaRuleManager
         if (state.AllRuleIds.Count <= 0) return 0;
         int firstRuleId = state.AllRuleIds[0];
         var ruleData = GameAreaRuleData.Get(firstRuleId);
-        return ruleData.AreaType == AreaType.Corridor ? firstRuleId : 0;
+        return ruleData.AreaType.IsCorridor() ? firstRuleId : 0;
     }
 
     /// <summary>
