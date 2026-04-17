@@ -43,7 +43,6 @@ public partial class GameClientSession : SessionBase
     private readonly MissionManager _missionManager;
     private readonly AreaClosureManager _areaClosureManager;
     private readonly TraceManager _traceManager;
-    private readonly InteractionLogManager _interactionLogManager;
     private readonly InteractionChoiceService _interactionChoiceService;
     private readonly BotPlayerManager _botPlayerManager;
 
@@ -67,6 +66,7 @@ public partial class GameClientSession : SessionBase
 
     private Vector3f? _lastValidatedPosition;
     private Cell? _lastValidCell;
+    private bool _hasFirstMoveCalibrated;
 
     // 플레이어 상호작용 요청 상태
     private long? _pendingInteractPlayerId;
@@ -93,7 +93,6 @@ public partial class GameClientSession : SessionBase
         MissionManager missionManager,
         AreaClosureManager areaClosureManager,
         TraceManager traceManager,
-        InteractionLogManager interactionLogManager,
         InteractionChoiceService interactionChoiceService,
         BotPlayerManager botPlayerManager)
         : base(token, logger, cacheHelper, redLock)
@@ -113,7 +112,6 @@ public partial class GameClientSession : SessionBase
         _missionManager = missionManager;
         _areaClosureManager = areaClosureManager;
         _traceManager = traceManager;
-        _interactionLogManager = interactionLogManager;
         _interactionChoiceService = interactionChoiceService;
         _botPlayerManager = botPlayerManager;
 
@@ -130,9 +128,9 @@ public partial class GameClientSession : SessionBase
 
     // 마니또 체인 정보
     public long TargetPlayerId { get; private set; }
-    public JobTitle MyJobTitle { get; private set; }
-    public JobTitle TargetJobTitle { get; private set; }
-    public ManittoStatus ManittoStatus { get; set; } = ManittoStatus.ACTIVE;
+    private JobTitle MyJobTitle { get; set; }
+    private JobTitle TargetJobTitle { get; set; }
+    public ManittoStatus ManittoStatus { get; private set; } = ManittoStatus.ACTIVE;
 
     /// <summary>
     ///     탈락/관전 상태에서 행동 가능한지 체크
@@ -142,7 +140,7 @@ public partial class GameClientSession : SessionBase
 
     // 인게임 스탯 (게임 종료 시 초기화)
     private int Stamina { get; set; } = 100;
-    public int Corruption { get; private set; }
+    private int Corruption { get; set; }
 
     // 게임 타이머 설정 (Config에서 참조)
     private static int GameDurationMinutes => Config.GAME_DURATION_MINUTES;
@@ -277,16 +275,6 @@ public partial class GameClientSession : SessionBase
     {
         return allSessions
             .Where(s => s.CurrentArea == area && (!excludeSelf || s.PlayerId != PlayerId))
-            .ToList();
-    }
-
-    /// <summary>
-    ///     같은 인스턴스의 다른 모든 세션 목록 반환 (영역 무관, PlayerId.HasValue 보장)
-    /// </summary>
-    private List<GameClientSession> GetOtherValidSessions(List<GameClientSession> allSessions)
-    {
-        return allSessions
-            .Where(s => s.PlayerId.HasValue && s.PlayerId != PlayerId)
             .ToList();
     }
 

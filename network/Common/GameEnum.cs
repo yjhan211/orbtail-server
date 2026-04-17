@@ -40,6 +40,9 @@ namespace network.common
         Classroom4 = 40,        // 교실4
         Corridor4F = 41,        // 4층복도
         BroadcastRoom = 42,     // 방송실
+
+        // 캠프
+        Camp = 100,             // 캠프
     }
 
     public static class AreaTypeExtensions

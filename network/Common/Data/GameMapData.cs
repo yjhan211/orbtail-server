@@ -178,24 +178,29 @@ namespace network.common.data
                 }
             }
 
-            var regions = GetMapRegions(mapId);
-            var groundRegions = regions.Where(r => r.RegionType.Equals("ground", StringComparison.OrdinalIgnoreCase));
-            var isInGround = false;
-            foreach (var region in groundRegions)
+            // area 리전으로 walkable 판정
+            var areaRegions = _areaRegions.TryGetValue(mapId, out var areas) ? areas : new List<AreaRegion>();
+
+            if (areaRegions.Count > 0)
             {
-                if (position.X >= region.Start.X && position.X <= region.End.X &&
-                    position.Y >= region.Start.Y && position.Y <= region.End.Y)
+                var isInWalkable = false;
+                foreach (var area in areaRegions)
                 {
-                    isInGround = true;
-                    break;
+                    if (position.X >= area.Start.X && position.X <= area.End.X &&
+                        position.Y >= area.Start.Y && position.Y <= area.End.Y)
+                    {
+                        isInWalkable = true;
+                        break;
+                    }
+                }
+
+                if (!isInWalkable)
+                {
+                    return false;
                 }
             }
 
-            if (!isInGround)
-            {
-                return false;
-            }
-
+            var regions = GetMapRegions(mapId);
             var obstacleRegions =
                 regions.Where(r => r.RegionType.Equals("obstacle", StringComparison.OrdinalIgnoreCase));
             foreach (var region in obstacleRegions)

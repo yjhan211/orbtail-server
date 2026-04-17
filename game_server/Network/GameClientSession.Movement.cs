@@ -191,6 +191,18 @@ public partial class GameClientSession
 
             if (distance > maxDistance)
             {
+                // 첫 이동 시 서버 초기 좌표와 클라이언트 스폰 좌표 불일치 허용
+                // (Cell→World 변환이 타일맵 설정에 의존하므로 초기 보정 필요)
+                if (!_hasFirstMoveCalibrated)
+                {
+                    _hasFirstMoveCalibrated = true;
+                    Logger.LogInformation(
+                        "Player {PlayerId} 초기 위치 보정: 서버({SX:F2},{SY:F2}) → 클라이언트({CX:F2},{CY:F2}), distance={Distance:F2}",
+                        PlayerId, _lastValidatedPosition.X, _lastValidatedPosition.Y,
+                        clientPos.X, clientPos.Y, distance);
+                    return clientPos;
+                }
+
                 Logger.LogWarning("Player {PlayerId} 텔레포트 감지: distance={Distance:F2}, maxAllowed={MaxDistance:F2}",
                     PlayerId, distance, maxDistance);
                 // 서버 계산 위치로 보정
