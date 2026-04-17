@@ -112,9 +112,6 @@ public partial class GameClientSession
             _doorStateManager.InitializeMatching(CurrentMapSubId);
             SendDoorStateList();
 
-            // 복도 종소리 스케줄 전송
-            SendCorridorBellSchedule();
-
             // 미션 정보 전송
             SendMissionInfo();
 
@@ -298,12 +295,4 @@ public partial class GameClientSession
         SendGameResult(sessions, winnerId ?? 0, true);
     }
 
-    /// <summary>
-    ///     매칭 종료 시 타이머 정리
-    /// </summary>
-    private static void CleanupGameTimer(long matchingId)
-    {
-        if (GameTimers.TryRemove(matchingId, out var timer))
-            timer.Dispose();
-    }
 }

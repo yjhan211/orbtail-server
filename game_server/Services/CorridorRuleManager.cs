@@ -96,14 +96,6 @@ public class MatchingCorridorRuleState
     }
 
     /// <summary>
-    ///     종소리 스케줄 가져오기
-    /// </summary>
-    public List<BellEvent> GetBellSchedule()
-    {
-        return _bellSchedule.ToList(); // IReadOnlyList → 새 List 복사본 반환
-    }
-
-    /// <summary>
     ///     현재 종소리가 울리고 있는지 확인
     /// </summary>
     private bool IsBellRinging(out BellEvent? currentBell)
@@ -331,15 +323,6 @@ public class CorridorRuleManager
     public int GetActiveRuleId(long matchingId)
     {
         return 0;
-    }
-
-    /// <summary>
-    ///     종소리 스케줄 가져오기
-    /// </summary>
-    public List<BellEvent> GetBellSchedule(long matchingId)
-    {
-        var state = GetOrCreateMatchingState(matchingId);
-        return state.GetBellSchedule();
     }
 
     /// <summary>

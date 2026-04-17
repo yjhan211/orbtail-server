@@ -35,15 +35,4 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_CORRIDOR_BELL(List<BellEvent> bells)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_C_CORRIDOR_BELL);
-        G_TO_C_CORRIDOR_BELL body = new()
-        {
-            Bells = bells
-        };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
 }

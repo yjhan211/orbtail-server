@@ -17,12 +17,4 @@ namespace network.common.data.models
         [Key("d")] public int DurationSec { get; set; } // 지속 시간 (초)
     }
 
-    /// <summary>
-    /// 복도 종소리 스케줄 (게임 시작 시 전송)
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_CORRIDOR_BELL : IMessagePackObject
-    {
-        [Key("bells")] public List<BellEvent> Bells { get; set; } = new();
-    }
 }

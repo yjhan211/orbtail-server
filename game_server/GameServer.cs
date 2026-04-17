@@ -456,7 +456,6 @@ public class GameServer(
                 _missionManager,
                 _areaClosureManager,
                 _traceManager,
-                _interactionLogManager,
                 new InteractionChoiceService(_interactionLogManager, _manittoChainManager),
                 _botPlayerManager);
 

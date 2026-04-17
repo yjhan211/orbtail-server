@@ -8,23 +8,6 @@ namespace game_server.network;
 
 public partial class GameClientSession
 {
-    #region 복도 규칙
-
-    /// <summary>
-    ///     복도 종소리 스케줄 전송 (입장 시)
-    /// </summary>
-    private void SendCorridorBellSchedule()
-    {
-        if (!PlayerId.HasValue) return;
-
-        var bells = _corridorRuleManager.GetBellSchedule(CurrentMapSubId);
-        using var packet = PacketMaker.G_TO_C_CORRIDOR_BELL(bells);
-        Send(packet);
-        Logger.LogDebug("Sent CORRIDOR_BELL schedule to Player {PlayerId}: {Count} bells", PlayerId, bells.Count);
-    }
-
-    #endregion
-
     #region 플레이어 상호작용
 
     private const int InteractStaminaCost = 5;
@@ -426,15 +409,6 @@ public partial class GameClientSession
         {
             int doorId = msg.DoorId;
             var doorInfo = GameDoorData.Get(doorId);
-
-            // 문 정보 확인
-            if (doorInfo == null)
-            {
-                Logger.LogWarning("Player {PlayerId} tried to open unknown door: DoorId={DoorId}", PlayerId, doorId);
-                using var errorPacket = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_NOT_FOUND);
-                Send(errorPacket);
-                return Task.CompletedTask;
-            }
 
             // 이미 열려있는지 확인
             if (_doorStateManager.IsDoorOpen(CurrentMapSubId, doorId))
