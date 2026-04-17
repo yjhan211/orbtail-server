@@ -178,36 +178,19 @@ namespace network.common.data
                 }
             }
 
-            var regions = GetMapRegions(mapId);
-            var groundRegions = regions.Where(r =>
-                r.RegionType.Equals("ground", StringComparison.OrdinalIgnoreCase)).ToList();
-
-            // area 리전도 walkable로 취급 (_areaRegions에 별도 저장되므로 따로 조회)
+            // area 리전으로 walkable 판정
             var areaRegions = _areaRegions.TryGetValue(mapId, out var areas) ? areas : new List<AreaRegion>();
 
-            if (groundRegions.Count > 0 || areaRegions.Count > 0)
+            if (areaRegions.Count > 0)
             {
                 var isInWalkable = false;
-                foreach (var region in groundRegions)
+                foreach (var area in areaRegions)
                 {
-                    if (position.X >= region.Start.X && position.X <= region.End.X &&
-                        position.Y >= region.Start.Y && position.Y <= region.End.Y)
+                    if (position.X >= area.Start.X && position.X <= area.End.X &&
+                        position.Y >= area.Start.Y && position.Y <= area.End.Y)
                     {
                         isInWalkable = true;
                         break;
-                    }
-                }
-
-                if (!isInWalkable)
-                {
-                    foreach (var area in areaRegions)
-                    {
-                        if (position.X >= area.Start.X && position.X <= area.End.X &&
-                            position.Y >= area.Start.Y && position.Y <= area.End.Y)
-                        {
-                            isInWalkable = true;
-                            break;
-                        }
                     }
                 }
 
@@ -217,6 +200,7 @@ namespace network.common.data
                 }
             }
 
+            var regions = GetMapRegions(mapId);
             var obstacleRegions =
                 regions.Where(r => r.RegionType.Equals("obstacle", StringComparison.OrdinalIgnoreCase));
             foreach (var region in obstacleRegions)
