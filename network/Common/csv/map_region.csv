@@ -2,3 +2,4 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 2,area,92,91,99,103,100
 1,area,144,85,158,102,40
 1,area,132,62,169,70,41
+1,area,173,87,188,105,42
