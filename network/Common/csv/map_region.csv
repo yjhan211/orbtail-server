@@ -11,3 +11,4 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,area,103,53,120,84,22
 1,area,71,60,86,78,20
 1,area,64,-23,71,12,11
+1,area,87,-39,102,-21,10
