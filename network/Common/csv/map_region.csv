@@ -7,3 +7,4 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,area,141,1,148,37,31
 1,area,160,20,175,40,30
 1,area,157,-6,172,12,32
+1,area,88,35,127,43,21
