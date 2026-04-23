@@ -15,7 +15,7 @@
         <PackageReference Include="MessagePack.ReactiveProperty" Version="3.1.4" />
         <PackageReference Include="MessagePack.UnityShims" Version="3.1.4" />
         <PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.4" />
-        <PackageReference Include="log4net" Version="3.0.4" />
+        <PackageReference Include="log4net" Version="3.3.1" />
         <PackageReference Include="NATS.Client" Version="1.1.7" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>
         <PackageReference Include="Serilog.Extensions.Logging" Version="9.0.1-dev-02308" />
