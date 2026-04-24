@@ -198,6 +198,10 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_INTERACTION_ASK>(bytes, HandleInteractionAsk));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ANSWER,
             async bytes => await HandleMessage<C_TO_G_INTERACTION_ANSWER>(bytes, HandleInteractionAnswer));
+
+        // 구역 이동 프로토콜 (GDD v0.0.8: 문/계단 마커 방식)
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_AREA_MOVE,
+            async bytes => await HandleMessage<C_TO_G_AREA_MOVE>(bytes, HandleAreaMove));
     }
 
     protected override bool ShouldSkipLogging(Protocol protocolId)

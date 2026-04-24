@@ -264,6 +264,20 @@ public partial class GameClientSession
         return new Cell(cellX, cellY);
     }
 
+    /// <summary>
+    ///     Cell → World position 역변환 (구역 이동 시 스폰용).
+    ///     WorldPositionToCell의 역함수.
+    /// </summary>
+    internal static Vector3f CellToWorldPosition(Cell cell)
+    {
+        // cellX = worldX + 2*worldY, cellY = 2*worldY - worldX
+        // → worldX = (cellX - cellY) / 2,  worldY = (cellX + cellY) / 4
+        // 셀 중심으로 +0.5 보정 (floor된 값을 셀 중심으로 복원)
+        float wX = (cell.X - cell.Y) / 2f;
+        float wY = (cell.X + cell.Y) / 4f;
+        return new Vector3f(wX, wY, 0f);
+    }
+
     #endregion
 
     private async Task HandleAreaChange(AreaType oldArea, AreaType newArea)

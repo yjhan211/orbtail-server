@@ -264,6 +264,44 @@ namespace network.common.data
             return _areaRegions.TryGetValue(mapId, out var areas) ? areas : new List<AreaRegion>();
         }
 
+        /// <summary>
+        ///     특정 Area의 스폰 셀 반환 (영역 중심, 장애물/미걷기 구역이면 영역 내 다른 walkable 셀 검색)
+        ///     GDD v0.0.8: 구역 이동 시 목적지 스폰 포인트로 사용
+        /// </summary>
+        public static Cell GetAreaSpawnCell(MapId mapId, AreaType targetArea)
+        {
+            if (!_areaRegions.TryGetValue(mapId, out var areas))
+                return new Cell(0, 0);
+
+            foreach (var area in areas)
+            {
+                if (area.AreaType != targetArea) continue;
+
+                // 1순위: 영역 중심 셀
+                int centerX = (area.Start.X + area.End.X) / 2;
+                int centerY = (area.Start.Y + area.End.Y) / 2;
+                var center = new Cell(centerX, centerY);
+                if (IsMoveablePosition(mapId, center))
+                    return center;
+
+                // 2순위: 영역 내 walkable 셀 스캔 (중심부터 나선형)
+                for (int x = area.Start.X; x <= area.End.X; x++)
+                {
+                    for (int y = area.Start.Y; y <= area.End.Y; y++)
+                    {
+                        var candidate = new Cell(x, y);
+                        if (IsMoveablePosition(mapId, candidate))
+                            return candidate;
+                    }
+                }
+
+                // 3순위: 그냥 중심 반환 (walkable 아니더라도)
+                return center;
+            }
+
+            return new Cell(0, 0);
+        }
+
         public static (MapId mapId, Cell spawnPosition, bool isFlip)? GetPortalOrNull(GameObjectInfo objectInfo, bool isTutorial)
         {
             var currentCell = objectInfo.Cell;
