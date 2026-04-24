@@ -6,6 +6,7 @@
 
 using System.Collections.Generic;
 using network.common.data.helpers;
+using network.common.data.models;
 
 namespace network.common.data
 {
@@ -26,6 +27,7 @@ namespace network.common.data
     /// <summary>
     ///     두 구역 간의 연결 정보 (양방향 이동 가능)
     ///     GDD v0.0.8 기준: Door = 같은 층 인접, Stair = 엘리베이터식 층 간 이동
+    ///     SpawnCell: 이 방향 연결로 ToArea에 도착했을 때의 스폰 위치. (0,0)이면 미설정 — fallback 로직 사용.
     /// </summary>
     public class AreaConnectionInfo
     {
@@ -34,9 +36,10 @@ namespace network.common.data
         public AreaType ToArea { get; private set; }
         public ConnectionType Type { get; private set; }
         public StairSide StairSide { get; private set; }
+        public Cell SpawnCell { get; private set; }
 
         public static AreaConnectionInfo Create(MapId mapId, AreaType from, AreaType to,
-            ConnectionType type, StairSide side)
+            ConnectionType type, StairSide side, Cell spawnCell)
         {
             return new AreaConnectionInfo
             {
@@ -44,10 +47,15 @@ namespace network.common.data
                 FromArea = from,
                 ToArea = to,
                 Type = type,
-                StairSide = side
+                StairSide = side,
+                SpawnCell = spawnCell
             };
         }
 
+        /// <summary>
+        ///     CSV 한 행에서 forward(from→to) 방향 연결 정보 생성.
+        ///     역방향(to→from) 연결은 GameAreaConnectionData에서 reverse_spawn_x/y로 별도 생성.
+        /// </summary>
         public static AreaConnectionInfo CreateFromData(CsvRow row)
         {
             var typeStr = row.ContainsKey("connection_type") ? row["connection_type"] : "door";
@@ -66,13 +74,36 @@ namespace network.common.data
                 _ => StairSide.None
             };
 
+            int forwardX = row.ContainsKey("forward_spawn_x") && int.TryParse(row["forward_spawn_x"], out var fx) ? fx : 0;
+            int forwardY = row.ContainsKey("forward_spawn_y") && int.TryParse(row["forward_spawn_y"], out var fy) ? fy : 0;
+
             return new AreaConnectionInfo
             {
                 MapId = (MapId)int.Parse(row["map_id"]),
                 FromArea = (AreaType)int.Parse(row["from_area"]),
                 ToArea = (AreaType)int.Parse(row["to_area"]),
                 Type = type,
-                StairSide = side
+                StairSide = side,
+                SpawnCell = new Cell(forwardX, forwardY)
+            };
+        }
+
+        /// <summary>
+        ///     CSV 한 행에서 reverse(to→from) 방향 연결 정보 생성.
+        /// </summary>
+        public static AreaConnectionInfo CreateReverseFromData(CsvRow row, AreaConnectionInfo forward)
+        {
+            int reverseX = row.ContainsKey("reverse_spawn_x") && int.TryParse(row["reverse_spawn_x"], out var rx) ? rx : 0;
+            int reverseY = row.ContainsKey("reverse_spawn_y") && int.TryParse(row["reverse_spawn_y"], out var ry) ? ry : 0;
+
+            return new AreaConnectionInfo
+            {
+                MapId = forward.MapId,
+                FromArea = forward.ToArea,
+                ToArea = forward.FromArea,
+                Type = forward.Type,
+                StairSide = forward.StairSide,
+                SpawnCell = new Cell(reverseX, reverseY)
             };
         }
     }
@@ -96,21 +127,17 @@ namespace network.common.data
 
             foreach (var row in csvData)
             {
-                var conn = AreaConnectionInfo.CreateFromData(row);
-                AddBidirectional(conn);
+                var forward = AreaConnectionInfo.CreateFromData(row);
+                var reverse = AreaConnectionInfo.CreateReverseFromData(row, forward);
+                AddBidirectional(forward, reverse);
             }
         }
 
-        private static void AddBidirectional(AreaConnectionInfo conn)
+        private static void AddBidirectional(AreaConnectionInfo forward, AreaConnectionInfo reverse)
         {
-            _all.Add(conn);
-
-            // From → To
-            AddOne(conn.MapId, conn.FromArea, conn);
-
-            // To → From (역방향 조회용)
-            var reverse = CreateReverse(conn);
-            AddOne(conn.MapId, conn.ToArea, reverse);
+            _all.Add(forward);
+            AddOne(forward.MapId, forward.FromArea, forward);
+            AddOne(reverse.MapId, reverse.FromArea, reverse);
         }
 
         private static void AddOne(MapId mapId, AreaType fromArea, AreaConnectionInfo conn)
@@ -123,11 +150,6 @@ namespace network.common.data
             }
 
             list.Add(conn);
-        }
-
-        private static AreaConnectionInfo CreateReverse(AreaConnectionInfo conn)
-        {
-            return AreaConnectionInfo.Create(conn.MapId, conn.ToArea, conn.FromArea, conn.Type, conn.StairSide);
         }
 
         /// <summary>
@@ -186,6 +208,22 @@ namespace network.common.data
         public static IReadOnlyList<AreaConnectionInfo> GetAll()
         {
             return _all;
+        }
+
+        /// <summary>
+        ///     fromArea → toArea 이동 시 toArea 안의 스폰 셀 조회. 미설정(0,0) 또는 연결 없으면 null.
+        /// </summary>
+        public static Cell GetSpawnCell(MapId mapId, AreaType fromArea, AreaType toArea)
+        {
+            foreach (var conn in GetConnections(mapId, fromArea))
+            {
+                if (conn.ToArea != toArea) continue;
+                var cell = conn.SpawnCell;
+                if (cell.X == 0 && cell.Y == 0) return null;
+                return cell;
+            }
+
+            return null;
         }
     }
 }
