@@ -140,6 +140,7 @@ sysinfo.txt
 !vendor/*.unitypackage
 *.app
 *.zip
+!vendor/*.zip
 
 # Build Output
 Build_*/
