@@ -26,11 +26,13 @@ x86/
 [Aa][Rr][Mm]64/
 
 # Dependencies and Packages
-*/node_modules
-**/[Pp]ackages/*
-!**/[Pp]ackages/build/
+**/node_modules
 *.nupkg
 *.snupkg
+
+# NuGetForUnity 설치 산출물 (소스: client/Assets/packages.config + NuGet.config)
+client/Assets/Packages/
+# UPM(client/Packages/)은 추적: manifest.json, packages-lock.json
 
 # Configuration and Local Settings
 *.config.json
@@ -135,6 +137,7 @@ sysinfo.txt
 *.apk
 *.aab
 *.unitypackage
+!vendor/*.unitypackage
 *.app
 *.zip
 
