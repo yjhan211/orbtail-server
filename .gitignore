@@ -26,11 +26,19 @@ x86/
 [Aa][Rr][Mm]64/
 
 # Dependencies and Packages
-*/node_modules
-**/[Pp]ackages/*
-!**/[Pp]ackages/build/
+**/node_modules
 *.nupkg
 *.snupkg
+
+# NuGetForUnity 설치 산출물 (소스: client/Assets/packages.config + NuGet.config)
+client/Assets/Packages/
+# UPM(client/Packages/)은 추적: manifest.json, packages-lock.json
+
+# .NET legacy NuGet (client/packages.config 기반 복원 산출물)
+/packages/
+
+# 유료 Asset Store UPM 로컬 패키지 (각자 라이선스로 임포트)
+client/Packages/com.singularitygroup.hotreload/
 
 # Configuration and Local Settings
 *.config.json
@@ -135,8 +143,10 @@ sysinfo.txt
 *.apk
 *.aab
 *.unitypackage
+!vendor/*.unitypackage
 *.app
 *.zip
+!vendor/*.zip
 
 # Build Output
 Build_*/
