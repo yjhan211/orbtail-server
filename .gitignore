@@ -117,7 +117,6 @@ client/Assets/Spine/
 client/Assets/Spine Examples/
 client/Assets/Spine Examples.meta
 client/Assets/Sprite Shaders Ultimate/
-client/Assets/TextMesh Pro/
 
 # Common 코드 Junction (원본: network/Common → client/Assets/Scripts/Common)
 client/Assets/Scripts/Common/
