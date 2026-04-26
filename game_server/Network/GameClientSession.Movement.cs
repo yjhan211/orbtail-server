@@ -75,7 +75,9 @@ public partial class GameClientSession
             // 4. Area 변경 처리 (퇴장 조건 통과한 경우만)
             long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            if (newArea != CurrentArea)
+            // 셀이 어떤 영역에도 속하지 않으면 (영역 경계 바로 밖 등) CurrentArea를 None으로 덮어쓰지 않음
+            // — 일시적 None 상태에서 마커 클릭 시 IsAdjacent(None, X) = false로 INVALID_AREA 거절되는 문제 방지
+            if (newArea != CurrentArea && newArea != AreaType.None)
             {
                 // 가장 가까운 문 기준으로 잠김 체크 (클라이언트는 이미 막고 있음, 서버는 보정 역할)
                 // 1. 진입하려는 영역의 가장 가까운 문이 잠겨있으면 차단

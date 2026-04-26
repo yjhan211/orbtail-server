@@ -78,8 +78,10 @@ public partial class GameClientSession
             return;
         }
 
-        // 5. 목적지 스폰 셀 조회 — CSV 연결별 스폰(from→to 방향) 우선, 없으면 영역 중심 fallback
-        var spawnCell = GameAreaConnectionData.GetSpawnCell(CurrentMapId, CurrentArea, msg.TargetArea)
+        // 5. 목적지 스폰 셀 조회 — CSV 연결별 스폰(from→to 방향, 계단은 서/동 구분) 우선,
+        //    없으면 영역 중심 fallback
+        var spawnCell = GameAreaConnectionData.GetSpawnCell(CurrentMapId, CurrentArea, msg.TargetArea,
+                            msg.StairSide)
                         ?? GameMapData.GetAreaSpawnCell(CurrentMapId, msg.TargetArea);
 
         // 6. PlayerInfo 갱신 (스태미나 차감 + 위치/구역 이동)
