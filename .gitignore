@@ -34,6 +34,12 @@ x86/
 client/Assets/Packages/
 # UPM(client/Packages/)은 추적: manifest.json, packages-lock.json
 
+# .NET legacy NuGet (client/packages.config 기반 복원 산출물)
+/packages/
+
+# 유료 Asset Store UPM 로컬 패키지 (각자 라이선스로 임포트)
+client/Packages/com.singularitygroup.hotreload/
+
 # Configuration and Local Settings
 *.config.json
 publish/
@@ -117,13 +123,13 @@ client/Assets/Spine/
 client/Assets/Spine Examples/
 client/Assets/Spine Examples.meta
 client/Assets/Sprite Shaders Ultimate/
+client/Assets/TextMesh Pro/
 
 # Common 코드 Junction (원본: network/Common → client/Assets/Scripts/Common)
 client/Assets/Scripts/Common/
 
 # Unity (Client)
 [Ll]ibrary/
-!client/Assets/**/[Ll]ibrary/
 [Tt]emp/
 [Oo]bj/
 [Bb]uild/
@@ -140,6 +146,7 @@ sysinfo.txt
 !vendor/*.unitypackage
 *.app
 *.zip
+!vendor/*.zip
 
 # Build Output
 Build_*/
