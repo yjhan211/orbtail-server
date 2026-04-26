@@ -68,7 +68,7 @@ public class GameServer(
     private const int Phase3StartSeconds = 600;          // 10분
     private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
-    internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모
+    internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모 (인접 구역 진입)
     private const int ClosedAreaStaminaPenaltyPerTick = 20; // 폐쇄 구역 체류 시 틱당 스태미나 감소
     internal const int TraceFoundManittoRecovery = 15;   // 흔적 발견 시 마니또 정신력 회복량
     internal const int TraceFoundTargetDecay = 10;       // 흔적 발견 시 타겟 오염도 증가량
