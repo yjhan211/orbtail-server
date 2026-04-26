@@ -55,10 +55,8 @@ public partial class GameClientSession
             return;
         }
 
-        // 3. 이동 비용 산정 (Door=-3 인접, Stair=-1 엘리베이터)
-        int staminaCost = actualType == ConnectionType.Stair
-            ? GameServer.StairStaminaCost
-            : GameServer.MoveStaminaCost;
+        // 3. 이동 비용 산정 (모든 area 이동은 Door — 계단 개념 폐지)
+        int staminaCost = GameServer.MoveStaminaCost;
 
         // 4. 스태미나 검증
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);

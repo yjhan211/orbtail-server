@@ -187,22 +187,6 @@ namespace network.common.data
         }
 
         /// <summary>
-        ///     엘리베이터식 계단 사용 시 목적지 층의 같은 쪽(서/동) 복도 조회
-        ///     예) 4층복도의 서쪽계단으로 2층 선택 → 2층복도
-        /// </summary>
-        public static AreaType GetStairTarget(MapId mapId, AreaType fromCorridor, StairSide side, int targetFloor)
-        {
-            foreach (var conn in GetConnections(mapId, fromCorridor))
-            {
-                if (conn.Type != ConnectionType.Stair) continue;
-                if (conn.StairSide != side) continue;
-                if (conn.ToArea.GetFloor() == targetFloor) return conn.ToArea;
-            }
-
-            return AreaType.None;
-        }
-
-        /// <summary>
         ///     모든 연결 반환 (디버그/검증용)
         /// </summary>
         public static IReadOnlyList<AreaConnectionInfo> GetAll()
@@ -212,7 +196,8 @@ namespace network.common.data
 
         /// <summary>
         ///     fromArea → toArea 이동 시 toArea 안의 스폰 셀 조회. 미설정(0,0) 또는 연결 없으면 null.
-        ///     계단 연결은 같은 (from, to) 쌍이 서/동 두 개 존재할 수 있으므로 stairSide로 구분.
+        ///     같은 (from, to) 쌍이 서/동 두 개 존재할 수 있는 연결(층간 door 등)은 stairSide로 구분.
+        ///     conn.StairSide=None이면 항상 매치, West/East면 요청 stairSide와 일치해야 매치.
         /// </summary>
         public static Cell GetSpawnCell(MapId mapId, AreaType fromArea, AreaType toArea,
             StairSide stairSide = StairSide.None)
@@ -220,7 +205,7 @@ namespace network.common.data
             foreach (var conn in GetConnections(mapId, fromArea))
             {
                 if (conn.ToArea != toArea) continue;
-                if (conn.Type == ConnectionType.Stair && conn.StairSide != stairSide) continue;
+                if (conn.StairSide != StairSide.None && conn.StairSide != stairSide) continue;
                 var cell = conn.SpawnCell;
                 if (cell.X == 0 && cell.Y == 0) return null;
                 return cell;
