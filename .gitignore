@@ -123,6 +123,7 @@ client/Assets/Scripts/Common/
 
 # Unity (Client)
 [Ll]ibrary/
+!client/Assets/**/[Ll]ibrary/
 [Tt]emp/
 [Oo]bj/
 [Bb]uild/
