@@ -208,6 +208,8 @@ public partial class GameClientSession
     public void SendTargetLocation()
     {
         if (!PlayerId.HasValue || TargetPlayerId == 0) return;
+        // 1인 매칭으로 본인이 본인을 타겟으로 가지는 케이스 방어
+        if (TargetPlayerId == PlayerId.Value) return;
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == TargetPlayerId);
