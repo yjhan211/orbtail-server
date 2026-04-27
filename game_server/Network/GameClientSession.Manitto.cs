@@ -155,6 +155,9 @@ public partial class GameClientSession
         // 기존 게임 종료 패킷도 전송 (클라이언트 호환)
         using var endPacket = PacketMaker.G_TO_C_GAME_END(CurrentMapSubId, !isTimeout);
         foreach (var session in allSessions) session.Send(endPacket);
+
+        // 결과 화면 이후 퇴장은 페널티 면제
+        foreach (var session in allSessions) session.MarkGameEnded();
     }
 
     /// <summary>

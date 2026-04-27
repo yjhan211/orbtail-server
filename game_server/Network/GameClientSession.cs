@@ -132,6 +132,12 @@ public partial class GameClientSession : SessionBase
     private JobTitle TargetJobTitle { get; set; }
     public ManittoStatus ManittoStatus { get; private set; } = ManittoStatus.ACTIVE;
 
+    // 이탈 페널티 면제 플래그
+    /// <summary>게임 결과 화면 이후 퇴장: 페널티 면제</summary>
+    private bool _isGameEnded;
+    /// <summary>서버 셧다운/크래시로 인한 종료: 페널티 면제</summary>
+    private bool _isServerInitiatedDisconnect;
+
     /// <summary>
     ///     탈락/관전 상태에서 행동 가능한지 체크
     /// </summary>
@@ -239,8 +245,10 @@ public partial class GameClientSession : SessionBase
         _interactTimeoutCts?.Dispose();
         _interactTimeoutCts = null;
 
-        // 게임 진행 중 이탈 시 페널티 기록
-        if (PlayerId.HasValue && !IsEliminated && CurrentMapSubId > 0)
+        // 게임 진행 중 의도적 이탈 시 페널티 기록
+        // 면제: SPECTATING/ELIMINATED, 게임 결과 화면 이후, 서버 주도 종료
+        if (PlayerId.HasValue && !IsEliminated && CurrentMapSubId > 0
+            && !_isGameEnded && !_isServerInitiatedDisconnect)
         {
             _ = RecordLeavePenaltyAsync(PlayerId.Value);
         }
@@ -250,16 +258,82 @@ public partial class GameClientSession : SessionBase
     }
 
     /// <summary>
-    ///     게임 중 이탈 페널티 기록: Redis Hash에 이탈 횟수 누적
+    ///     게임 결과 패킷 전송 후 호출. 이후 퇴장은 페널티 면제.
+    ///     동시에 정상 완료 보상으로 이탈 횟수 1 감소.
+    /// </summary>
+    public void MarkGameEnded()
+    {
+        _isGameEnded = true;
+        if (PlayerId.HasValue)
+            _ = RecordGameCompletionPenaltyDecayAsync(PlayerId.Value);
+    }
+
+    /// <summary>
+    ///     정상 게임 완료 시 이탈 횟수 1 감소.
+    /// </summary>
+    private async Task RecordGameCompletionPenaltyDecayAsync(long playerId)
+    {
+        try
+        {
+            const string penaltyKey = "leave_penalties";
+            const string decayAtKey = "leave_penalty_decay_at";
+
+            var existing = await CacheHelper.HashGetAsync(penaltyKey, playerId);
+            if (existing.IsNullOrEmpty) return;
+
+            long count = BitConverter.ToInt64((byte[])existing!);
+            if (count <= 0) return;
+
+            count = Math.Max(0, count - 1);
+
+            if (count == 0)
+            {
+                await CacheHelper.HashDeleteAsync(penaltyKey, playerId);
+                await CacheHelper.HashDeleteAsync(decayAtKey, playerId);
+            }
+            else
+            {
+                await CacheHelper.HashSetAsync(penaltyKey, playerId, BitConverter.GetBytes(count));
+            }
+
+            Logger.LogInformation("정상 완료 페널티 감소: PlayerId={PlayerId}, 남은횟수={Count}", playerId, count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "정상 완료 페널티 감소 실패: PlayerId={PlayerId}", playerId);
+        }
+    }
+
+    /// <summary>
+    ///     서버 셧다운/크래시 시 호출. 비자발적 이탈로 간주하여 페널티 면제.
+    /// </summary>
+    public void MarkServerInitiatedDisconnect()
+    {
+        _isServerInitiatedDisconnect = true;
+    }
+
+    /// <summary>
+    ///     게임 중 이탈 페널티 기록: Redis Hash에 이탈 횟수 누적.
+    ///     최초 기록 시 24h 감쇠 기준 시각(leave_penalty_decay_at)도 설정.
     /// </summary>
     private async Task RecordLeavePenaltyAsync(long playerId)
     {
         try
         {
-            const string key = "leave_penalties";
-            var existing = await CacheHelper.HashGetAsync(key, playerId);
+            const string penaltyKey = "leave_penalties";
+            const string decayAtKey = "leave_penalty_decay_at";
+
+            var existing = await CacheHelper.HashGetAsync(penaltyKey, playerId);
             long count = existing.IsNullOrEmpty ? 1 : BitConverter.ToInt64((byte[])existing!) + 1;
-            await CacheHelper.HashSetAsync(key, playerId, BitConverter.GetBytes(count));
+            await CacheHelper.HashSetAsync(penaltyKey, playerId, BitConverter.GetBytes(count));
+
+            // 최초 페널티 기록 시 감쇠 기준 시각 설정 (이미 있으면 덮어쓰지 않음)
+            if (existing.IsNullOrEmpty)
+            {
+                long nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                await CacheHelper.HashSetAsync(decayAtKey, playerId, BitConverter.GetBytes(nowTs));
+            }
+
             Logger.LogInformation("이탈 페널티 기록: PlayerId={PlayerId}, 누적={Count}", playerId, count);
         }
         catch (Exception ex)
