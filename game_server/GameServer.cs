@@ -104,6 +104,10 @@ public class GameServer(
     {
         logger.LogInformation("Game server stopping...");
 
+        // 서버 셧다운 시 모든 세션을 서버 주도 종료로 마킹 → 페널티 면제
+        foreach (var session in _clientSessions.Values)
+            session.MarkServerInitiatedDisconnect();
+
         await _cts.CancelAsync();
 
         // 타이머 정리
