@@ -50,6 +50,7 @@ publish/
 # Claude Code
 **/.claude/*
 !.claude/agents/
+!.claude/settings.json
 manitto/*
 
 # Temporary and Cache Files
