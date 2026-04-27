@@ -60,5 +60,18 @@ namespace network.common
 
         /// <summary>게임 세션 지속 시간 (초)</summary>
         public static readonly int GAME_DURATION_SECONDS = GAME_DURATION_MINUTES * 60;
+
+        // 패키지 Y 추가 상수 (#24)
+        /// <summary>강당 체류 시 자연증가에 추가되는 오염도 (5초당). GDD §3.1.1, 패키지 Y 3A.</summary>
+        public const int AUDITORIUM_STAY_CORRUPTION_BONUS = 1;
+
+        /// <summary>강당 체류 페널티 적용 구역 (AreaType enum 값: 13 = Auditorium)</summary>
+        public const int AUDITORIUM_AREA_TYPE = 13;
+
+        /// <summary>흔적 배치 스태미나 비용. GDD §3.1.2, 패키지 Y 2A: -10 → -5.</summary>
+        public const int TRACE_PLACE_STAMINA_COST = 5;
+
+        /// <summary>사보타주 4B: ▓▓ 위치 공개 지속 시간 (초). GDD §2.5.4.</summary>
+        public const int SABOTAGE_TARGET_EXPOSE_SECONDS = 5;
     }
 }

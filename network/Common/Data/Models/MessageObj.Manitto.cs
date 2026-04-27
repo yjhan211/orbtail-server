@@ -232,11 +232,15 @@ namespace network.common.data.models
     // ===== 시한부 사보타주 =====
 
     /// <summary>
-    ///     시한부 전용: 미션 오브젝트 훼손 요청
+    ///     시한부 전용: 사보타주 요청 (패키지 Y 4B 개선, #24)
+    ///     대상 1명 지정 → 다음 미션 단계 무효화 + ▓▓ 위치 5초 공개
     /// </summary>
     [MessagePackObject]
     public class C_TO_G_SABOTAGE_MISSION : IMessagePackObject
     {
+        /// <summary>사보타주 대상 플레이어 ID (생존자 중 1명)</summary>
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+        /// <summary>레거시 호환 (interactId 기반 재설정, 미사용)</summary>
         [Key("interactId")] public int InteractId { get; set; }
     }
 
@@ -257,6 +261,22 @@ namespace network.common.data.models
         [Key("newTargetArea")] public int NewTargetArea { get; set; }
         [Key("newTargetInteractId")] public int NewTargetInteractId { get; set; }
         [Key("newTargetActionId")] public int NewTargetActionId { get; set; }
+    }
+
+    /// <summary>
+    ///     사보타주 4B: ▓▓(타겟) 위치를 모든 생존자에게 5초간 공개 (패키지 Y, #24)
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_SABOTAGE_TARGET_EXPOSED : IMessagePackObject
+    {
+        /// <summary>사보타주를 발동한 시한부 플레이어 ID</summary>
+        [Key("terminalPlayerId")] public long TerminalPlayerId { get; set; }
+        /// <summary>시한부의 타겟(▓▓) 플레이어 ID</summary>
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+        /// <summary>타겟이 현재 위치한 구역</summary>
+        [Key("targetAreaType")] public AreaType TargetAreaType { get; set; }
+        /// <summary>위치 공개 지속 시간 (초)</summary>
+        [Key("exposeDurationSeconds")] public int ExposeDurationSeconds { get; set; }
     }
 
     // ===== 게임 결과 =====

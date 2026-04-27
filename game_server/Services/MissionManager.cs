@@ -21,18 +21,39 @@ public class MissionManager
     }
 
     /// <summary>
-    ///     플레이어 미션 초기화 (게임 시작 시)
+    ///     플레이어 미션 초기화 (게임 시작 시).
+    ///     미션 데이터가 없는 직책은 경고 로그 후 완료 상태로 처리 (방어 로직, #24).
     /// </summary>
     public void InitializePlayer(long matchingId, long playerId, JobTitle jobTitle)
     {
         var matchingDict = _matchingStates.GetOrAdd(matchingId, _ => new ConcurrentDictionary<long, PlayerMissionState>());
+
+        int totalSteps = GameMissionData.GetTotalSteps((short)jobTitle);
+
+        // 방어: 미션 데이터 없는 직책 → 완료 상태로 초기화 (미션 없이 생존만)
+        if (totalSteps == 0)
+        {
+            _logger.LogWarning("미션 데이터 없는 직책: PlayerId={PlayerId}, JobTitle={JobTitle} — 미션 없음으로 초기화",
+                playerId, jobTitle);
+
+            var emptyState = new PlayerMissionState
+            {
+                PlayerId = playerId,
+                JobTitle = jobTitle,
+                CurrentStepOrder = 1,
+                TotalSteps = 0,
+                IsCompleted = true
+            };
+            matchingDict[playerId] = emptyState;
+            return;
+        }
 
         var state = new PlayerMissionState
         {
             PlayerId = playerId,
             JobTitle = jobTitle,
             CurrentStepOrder = 1,
-            TotalSteps = GameMissionData.GetTotalSteps((short)jobTitle),
+            TotalSteps = totalSteps,
             IsCompleted = false
         };
 
@@ -153,6 +174,42 @@ public class MissionManager
         }
 
         return affected;
+    }
+
+    /// <summary>
+    ///     사보타주 4B (패키지 Y, #24): 대상 플레이어의 현재 미션 단계를 무효화 (강제 스킵, 보상 미지급).
+    ///     반환: (성공 여부, 무효화된 단계, 다음 단계 정보)
+    ///     GDD 2.5.4: "다음 단계 미션 무효화 — 해당 단계 완료 처리, 보상 미지급"
+    /// </summary>
+    public (bool success, int invalidatedStep, MissionStepData? nextStep) InvalidateCurrentStep(
+        long matchingId, long targetPlayerId)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching))
+            return (false, 0, null);
+        if (!matching.TryGetValue(targetPlayerId, out var state))
+            return (false, 0, null);
+        if (state.IsCompleted)
+            return (false, 0, null);
+
+        int invalidated = state.CurrentStepOrder;
+        state.CurrentStepOrder++;
+
+        MissionStepData? nextStep = null;
+        if (state.CurrentStepOrder > state.TotalSteps)
+        {
+            // 마지막 단계가 무효화되면 미션 전체 완료(보상 없이)
+            state.IsCompleted = true;
+            _logger.LogInformation("사보타주 4B — 마지막 단계 무효화(보상 없음): PlayerId={Target}, Step={Step}",
+                targetPlayerId, invalidated);
+        }
+        else
+        {
+            nextStep = GameMissionData.GetStep((short)state.JobTitle, state.CurrentStepOrder);
+            _logger.LogInformation("사보타주 4B — 미션 단계 무효화: PlayerId={Target}, Step={Step}→{Next}",
+                targetPlayerId, invalidated, state.CurrentStepOrder);
+        }
+
+        return (true, invalidated, nextStep);
     }
 
     /// <summary>

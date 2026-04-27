@@ -137,6 +137,7 @@ namespace network.common
         C_TO_G_SABOTAGE_MISSION,      // 시한부: 미션 오브젝트 훼손 요청
         G_TO_C_SABOTAGE_RESULT,       // 훼손 결과 (성공/실패)
         G_TO_C_MISSION_REDIRECTED,    // 미션 목적지 재설정 알림 (훼손 피해자)
+        G_TO_C_SABOTAGE_TARGET_EXPOSED, // 4B: 사보타주 발동 시 ▓▓ 위치 5초 공개 (전체 브로드캐스트, 패키지 Y #24)
 
         // 게임 결과 프로토콜
         G_TO_C_GAME_RESULT,           // 게임 종료 시 전체 결과 (체인 공개)

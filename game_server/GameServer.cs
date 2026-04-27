@@ -250,6 +250,16 @@ public class GameServer(
                 if (isTerminal)
                     corruptionDelta += TerminalDecayAmount;
 
+                // 4. 강당 체류 오염도 추가 증가 (패키지 Y 3A, GDD §3.1.1, #24)
+                // 강당 캠핑 억제: 자연증가에 +1/5초 추가. 단, 타겟 근접 회복 중인 경우 적용 안 함
+                if (!isTerminal && session.CurrentArea == (AreaType)Config.AUDITORIUM_AREA_TYPE)
+                {
+                    var targetSession2 = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
+                    bool targetInAuditorium = targetSession2 != null && targetSession2.CurrentArea == session.CurrentArea;
+                    if (!targetInAuditorium)
+                        corruptionDelta += Config.AUDITORIUM_STAY_CORRUPTION_BONUS;
+                }
+
                 session.ModifyStats(corruptionDelta: corruptionDelta);
 
                 // 4. 폐쇄 구역 체류 시 스태미나 지속 감소
