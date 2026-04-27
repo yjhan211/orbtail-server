@@ -164,7 +164,7 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
 
-        const int placeTraceCost = 10; // 스태미나 소모 (가데이터)
+        const int placeTraceCost = 5; // 스태미나 소모 (패키지 Y: -10 → -5, #24)
 
         // 스태미나 부족
         if (Stamina < placeTraceCost)
@@ -347,13 +347,15 @@ public partial class GameClientSession
             _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO);
     }
 
-    // ===== 시한부 사보타주 (GDD 2.5.4) =====
+    // ===== 시한부 사보타주 (GDD 2.5.4, 패키지 Y 4B, #24) =====
 
-    private const int SabotageStaminaCost = 25; // 스태미나 소모 (미션 보상 총합 50의 절반)
+    private const int SabotageStaminaCost = 25; // 스태미나 소모 (-25, GDD 확정)
+    private const int SabotageExposeSeconds = 5; // ▓▓ 위치 공개 지속 시간 (4B 옵션)
 
     /// <summary>
-    ///     시한부 전용: 미션 오브젝트 훼손 요청 처리.
-    ///     훼손된 오브젝트에 해당하는 미션 단계를 가진 플레이어의 목적지가 무작위 재설정.
+    ///     시한부 전용: 사보타주 처리 (패키지 Y 4B).
+    ///     대상 1명 지정 → 현재 미션 단계 무효화(보상 없음) + ▓▓ 위치를 모든 생존자에게 5초 공개.
+    ///     GDD 2.5.4: "단계 무효화 + ▓▓ 위치 5초 공개"
     /// </summary>
     private Task HandleSabotageMission(C_TO_G_SABOTAGE_MISSION msg)
     {
@@ -372,36 +374,90 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+
+        // 대상 세션 확인 (targetPlayerId가 없으면 레거시 interactId 모드로 폴백)
+        GameClientSession? targetSession = null;
+        if (msg.TargetPlayerId != 0)
+            targetSession = allSessions.FirstOrDefault(s => s.PlayerId == msg.TargetPlayerId);
+
         // 스태미나 차감
         ModifyStats(staminaDelta: -SabotageStaminaCost);
 
-        // 성공 응답
+        // 성공 응답 (요청자에게)
         SendSabotageResult(ErrorCode.SUCCESS, SabotageStaminaCost);
 
-        // 영향받는 미션 재설정
-        var affected = _missionManager.RedirectMissionsByInteractId(
-            CurrentMapSubId, msg.InteractId, _areaClosureManager);
-
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        foreach (var (playerId, step, newArea, newInteractId, newActionId) in affected)
+        // === 4B Step 1: 대상 미션 단계 무효화 ===
+        if (targetSession != null && targetSession.PlayerId.HasValue)
         {
-            var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == playerId);
-            if (targetSession == null) continue;
+            var (success, invalidatedStep, nextStep) =
+                _missionManager.InvalidateCurrentStep(CurrentMapSubId, targetSession.PlayerId.Value);
 
-            using var packet = Packet.Create((int)Protocol.G_TO_C_MISSION_REDIRECTED, playerId);
-            var redirectMsg = new G_TO_C_MISSION_REDIRECTED
+            if (success)
             {
-                CurrentStep = step,
-                NewTargetArea = newArea,
-                NewTargetInteractId = newInteractId,
-                NewTargetActionId = newActionId
-            };
-            packet.SetBody(MessagePackSerializer.Serialize(redirectMsg));
-            targetSession.Send(packet);
+                // 무효화 알림 (대상에게)
+                using var redirectPacket = Packet.Create(
+                    (int)Protocol.G_TO_C_MISSION_REDIRECTED, targetSession.PlayerId.Value);
+                var redirectMsg = new G_TO_C_MISSION_REDIRECTED
+                {
+                    CurrentStep = invalidatedStep,
+                    NewTargetArea = nextStep?.TargetArea ?? 0,
+                    NewTargetInteractId = nextStep?.TargetInteractId ?? 0,
+                    NewTargetActionId = nextStep?.TargetActionId ?? 0
+                };
+                redirectPacket.SetBody(MessagePackSerializer.Serialize(redirectMsg));
+                targetSession.Send(redirectPacket);
+            }
+        }
+        else if (msg.InteractId != 0)
+        {
+            // 레거시: interactId 기반 재설정
+            var affected = _missionManager.RedirectMissionsByInteractId(
+                CurrentMapSubId, msg.InteractId, _areaClosureManager);
+
+            foreach (var (playerId, step, newArea, newInteractId, newActionId) in affected)
+            {
+                var victim = allSessions.FirstOrDefault(s => s.PlayerId == playerId);
+                if (victim == null) continue;
+
+                using var packet = Packet.Create((int)Protocol.G_TO_C_MISSION_REDIRECTED, playerId);
+                var redirectMsg = new G_TO_C_MISSION_REDIRECTED
+                {
+                    CurrentStep = step,
+                    NewTargetArea = newArea,
+                    NewTargetInteractId = newInteractId,
+                    NewTargetActionId = newActionId
+                };
+                packet.SetBody(MessagePackSerializer.Serialize(redirectMsg));
+                victim.Send(packet);
+            }
         }
 
-        Logger.LogInformation("사보타주: PlayerId={PlayerId}, InteractId={InteractId}, 영향받은 플레이어={Count}명",
-            PlayerId, msg.InteractId, affected.Count);
+        // === 4B Step 2: ▓▓ 위치를 모든 생존자에게 5초 공개 ===
+        // 시한부 본인의 타겟(▓▓) 위치 공개
+        var myTargetSession = allSessions.FirstOrDefault(s => s.PlayerId == TargetPlayerId);
+        if (myTargetSession != null)
+        {
+            using var exposePacket = Packet.Create((int)Protocol.G_TO_C_SABOTAGE_TARGET_EXPOSED);
+            var exposeMsg = new G_TO_C_SABOTAGE_TARGET_EXPOSED
+            {
+                TerminalPlayerId = PlayerId.Value,
+                TargetPlayerId = TargetPlayerId,
+                TargetAreaType = myTargetSession.CurrentArea,
+                ExposeDurationSeconds = SabotageExposeSeconds
+            };
+            exposePacket.SetBody(MessagePackSerializer.Serialize(exposeMsg));
+            // 모든 생존자에게 브로드캐스트
+            foreach (var s in allSessions.Where(s => !s.IsEliminated))
+                s.Send(exposePacket);
+
+            Logger.LogInformation(
+                "사보타주 4B — ▓▓ 위치 공개: Terminal={PlayerId}, Target={Target}, Area={Area}, {Sec}초",
+                PlayerId, TargetPlayerId, myTargetSession.CurrentArea, SabotageExposeSeconds);
+        }
+
+        Logger.LogInformation("사보타주: PlayerId={PlayerId}, TargetPlayerId={Target}, InteractId={InteractId}",
+            PlayerId, msg.TargetPlayerId, msg.InteractId);
 
         // 사보타주 후 스태미나 탈락 체크
         CheckResourceElimination();

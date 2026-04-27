@@ -15,19 +15,34 @@ public class AreaClosureManager
     private const int FirstClosureDelaySeconds = 300; // 첫 폐쇄까지 딜레이 (5분)
     // 폐쇄 구역 체류 페널티는 GameServer.ClosedAreaStaminaPenaltyPerTick에서 처리
 
-    // 폐쇄 불가 (7구역): 1층 전체 + 0층 전체
+    // 폐쇄 불가 (6구역): 1층 전체(행정실/1층복도/교무실/강당) + 외부(창고/운동장)
     // 폐쇄 대상 (9구역): 2~4층 전체
-    private static readonly AreaType[] ClosableAreas =
+    //
+    // [복도 hard 후순위 규칙, GDD §2.1.5, v0.0.8→v0.1.0 hard 강화, 패키지 M1A, #24]
+    // 복도(2층/3층/4층복도) 3개는 말단 6구역(교실4/방송실/교실3/고사실/교실2/도서관)이
+    // 모두 폐쇄된 이후에만 셔플 후보로 진입한다. 이 순서를 보장하기 위해
+    // InitializeMatching()에서 말단 6구역을 앞에, 복도 3개를 뒤에 배치한 후 각 그룹 내부만 셔플.
+    //
+    // 이유: v0.1.0 트리 구조에서 복도 1개 폐쇄 = 척추 절단 → 직책 미션 데드락 발생 (8/8 직책 영향).
+    //       말단 6구역 폐쇄(~18분) 이후에만 복도 폐쇄 허용 → 미션 페이즈 전구간 데드락 0 보장.
+
+    // 말단 6구역 (hard 선순위 — 복도보다 먼저 폐쇄됨)
+    private static readonly AreaType[] LeafClosableAreas =
     {
         AreaType.Classroom4,    // 교실4 (4층)
-        AreaType.Corridor4F,    // 4층복도
         AreaType.BroadcastRoom, // 방송실 (4층)
         AreaType.Classroom3,    // 교실3 (3층)
-        AreaType.Corridor3F,    // 3층복도
         AreaType.ExamRoom,      // 고사실 (3층)
         AreaType.Classroom2,    // 교실2 (2층)
-        AreaType.Corridor2F,    // 2층복도
         AreaType.Library,       // 도서관 (2층)
+    };
+
+    // 복도 3개 (hard 후순위 — 말단 6구역 전부 폐쇄 후에만 셔플 후보)
+    private static readonly AreaType[] CorridorClosableAreas =
+    {
+        AreaType.Corridor4F,    // 4층복도
+        AreaType.Corridor3F,    // 3층복도
+        AreaType.Corridor2F,    // 2층복도
     };
 
     // matchingId → ClosureState
@@ -40,12 +55,17 @@ public class AreaClosureManager
     }
 
     /// <summary>
-    ///     매칭 시작 시 폐쇄 스케줄 생성 (무작위 순서)
+    ///     매칭 시작 시 폐쇄 스케줄 생성.
+    ///     복도 hard 후순위 규칙(GDD §2.1.5): 말단 6구역을 셔플 후 앞에, 복도 3개를 셔플 후 뒤에 배치.
+    ///     이 순서로 폐쇄가 진행되므로 복도는 말단 구역 전부 폐쇄(~18분) 이후에만 폐쇄됨.
     /// </summary>
     public MatchingClosureState InitializeMatching(long matchingId)
     {
         var rng = Random.Shared;
-        var shuffled = ClosableAreas.OrderBy(_ => rng.Next()).ToList();
+        // 말단 6구역 내부 셔플 → 복도 3개 내부 셔플 → 순서대로 결합 (hard 후순위)
+        var shuffledLeaves = LeafClosableAreas.OrderBy(_ => rng.Next()).ToList();
+        var shuffledCorridors = CorridorClosableAreas.OrderBy(_ => rng.Next()).ToList();
+        var shuffled = shuffledLeaves.Concat(shuffledCorridors).ToList();
 
         var state = new MatchingClosureState
         {
