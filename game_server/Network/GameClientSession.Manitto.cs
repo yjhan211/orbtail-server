@@ -381,6 +381,17 @@ public partial class GameClientSession
         if (msg.TargetPlayerId != 0)
             targetSession = allSessions.FirstOrDefault(s => s.PlayerId == msg.TargetPlayerId);
 
+        // E3 사전 체크: 대상이 이미 미션을 완료한 경우 스태미나 미차감 + 실패 응답 (GDD §2.5.4, #56)
+        if (targetSession?.PlayerId.HasValue == true)
+        {
+            var targetState = _missionManager.GetState(CurrentMapSubId, targetSession.PlayerId.Value);
+            if (targetState?.IsCompleted == true)
+            {
+                SendSabotageResult(ErrorCode.MISSION_ALREADY_COMPLETED, SabotageStaminaCost);
+                return Task.CompletedTask;
+            }
+        }
+
         // 스태미나 차감
         ModifyStats(staminaDelta: -SabotageStaminaCost);
 
