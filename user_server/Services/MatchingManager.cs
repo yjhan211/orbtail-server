@@ -14,10 +14,13 @@ public class MatchingManager : IMatchingManager
     private const string MatchingQueueKey = "matching_queue";
     private const string MatchingIdKey = "matching_id";
     private const string BotInfoKeyPrefix = "matching_bots"; // Redis Hash: field=matchingId
+    private const string LeavePenaltyKey = "leave_penalties"; // Redis Hash: field=playerId, value=int64 count
+    private const string LeavePenaltyDecayAtKey = "leave_penalty_decay_at"; // Redis Hash: field=playerId, value=int64 unix timestamp
     private const int MatchingTimeoutSeconds = 3;
     private const int BotFillTimeoutSeconds = 30; // 봇 채움 대기 시간
     private const int LeavePenaltySeconds = 30; // 이탈 1회당 추가 대기 시간
     private const int MaxLeavePenaltySeconds = 300; // 최대 페널티 대기 시간 (5분)
+    private const int PenaltyDecayIntervalHours = 24; // 24시간 경과 시 이탈 횟수 1 감소
     private const int PlayersPerMatch = 1; // 매칭 인원수 (테스트용)
     private static long _botIdCounter; // 봇 PlayerId (음수)
     private readonly ICacheHelper _cacheHelper;
@@ -347,22 +350,116 @@ public class MatchingManager : IMatchingManager
     }
 
     /// <summary>
-    ///     이탈 페널티 대기 시간 조회: 이탈 횟수 × 30초 (최대 300초)
+    ///     이탈 페널티 대기 시간 조회: 이탈 횟수 × 30초 (최대 300초).
+    ///     24시간 경과 시 이탈 횟수 1 감소 (시간 경과 감쇠).
     /// </summary>
     private async Task<long> GetLeavePenaltyDelayAsync(long playerId)
     {
         try
         {
-            var value = await _cacheHelper.HashGetAsync("leave_penalties", playerId);
+            var value = await _cacheHelper.HashGetAsync(LeavePenaltyKey, playerId);
             if (value.IsNullOrEmpty) return 0;
 
             long leaveCount = BitConverter.ToInt64((byte[])value!);
+            if (leaveCount <= 0) return 0;
+
+            // 24시간 경과 감쇠: decayAt 이후 24h가 지났으면 leaveCount 1 감소
+            leaveCount = await ApplyTimeDecayAsync(playerId, leaveCount);
+            if (leaveCount <= 0) return 0;
+
             long penalty = Math.Min(leaveCount * LeavePenaltySeconds, MaxLeavePenaltySeconds);
             return penalty;
         }
         catch
         {
             return 0;
+        }
+    }
+
+    /// <summary>
+    ///     24시간 경과마다 이탈 횟수 1 감소 (반복 적용).
+    ///     decayAt 기록이 없으면 첫 조회 시점으로 초기화.
+    /// </summary>
+    private async Task<long> ApplyTimeDecayAsync(long playerId, long leaveCount)
+    {
+        try
+        {
+            var decayAtValue = await _cacheHelper.HashGetAsync(LeavePenaltyDecayAtKey, playerId);
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+            if (decayAtValue.IsNullOrEmpty)
+            {
+                // 최초 조회 시 기준 시각 설정 (현재 시각)
+                await _cacheHelper.HashSetAsync(LeavePenaltyDecayAtKey, playerId, BitConverter.GetBytes(now));
+                return leaveCount;
+            }
+
+            long decayAt = BitConverter.ToInt64((byte[])decayAtValue!);
+            long elapsedSeconds = now - decayAt;
+            long decayIntervalSeconds = PenaltyDecayIntervalHours * 3600L;
+
+            if (elapsedSeconds < decayIntervalSeconds) return leaveCount;
+
+            // 경과된 24h 단위 횟수만큼 감소
+            long decayCount = elapsedSeconds / decayIntervalSeconds;
+            leaveCount = Math.Max(0, leaveCount - decayCount);
+
+            // 다음 decayAt 갱신 (경과분 제외)
+            long newDecayAt = decayAt + decayCount * decayIntervalSeconds;
+
+            if (leaveCount <= 0)
+            {
+                // 페널티 완전 소멸 → 두 키 모두 삭제
+                await _cacheHelper.HashDeleteAsync(LeavePenaltyKey, playerId);
+                await _cacheHelper.HashDeleteAsync(LeavePenaltyDecayAtKey, playerId);
+                _logger.LogInformation("이탈 페널티 감쇠 소멸: PlayerId={PlayerId}", playerId);
+            }
+            else
+            {
+                await _cacheHelper.HashSetAsync(LeavePenaltyKey, playerId, BitConverter.GetBytes(leaveCount));
+                await _cacheHelper.HashSetAsync(LeavePenaltyDecayAtKey, playerId, BitConverter.GetBytes(newDecayAt));
+                _logger.LogInformation("이탈 페널티 감쇠: PlayerId={PlayerId}, 남은횟수={Count}", playerId, leaveCount);
+            }
+
+            return leaveCount;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "이탈 페널티 감쇠 처리 실패: PlayerId={PlayerId}", playerId);
+            return leaveCount;
+        }
+    }
+
+    /// <summary>
+    ///     정상 게임 완료 시 이탈 횟수 1 감소. game_server에서 NATS로 호출.
+    /// </summary>
+    public async Task RecordGameCompletionAsync(long playerId)
+    {
+        try
+        {
+            var value = await _cacheHelper.HashGetAsync(LeavePenaltyKey, playerId);
+            if (value.IsNullOrEmpty) return;
+
+            long leaveCount = BitConverter.ToInt64((byte[])value!);
+            if (leaveCount <= 0) return;
+
+            leaveCount = Math.Max(0, leaveCount - 1);
+
+            if (leaveCount == 0)
+            {
+                await _cacheHelper.HashDeleteAsync(LeavePenaltyKey, playerId);
+                await _cacheHelper.HashDeleteAsync(LeavePenaltyDecayAtKey, playerId);
+            }
+            else
+            {
+                await _cacheHelper.HashSetAsync(LeavePenaltyKey, playerId, BitConverter.GetBytes(leaveCount));
+            }
+
+            _logger.LogInformation("정상 완료 페널티 감소: PlayerId={PlayerId}, 남은횟수={Count}", playerId, leaveCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "정상 완료 페널티 감소 실패: PlayerId={PlayerId}", playerId);
         }
     }
 
