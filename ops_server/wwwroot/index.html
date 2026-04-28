@@ -15,6 +15,16 @@
         .status-FREED     { color: #a855f7; }
         .status-ELIMINATED{ color: #6b7280; }
         .status-SPECTATING{ color: #6b7280; }
+        /* 폐쇄 스케줄 */
+        .closure-closed   { background: #374151; color: #9ca3af; }
+        .closure-next     { background: #78350f; color: #fbbf24; border: 1px solid #d97706; }
+        .closure-warning  { background: #7f1d1d; color: #f87171; border: 1px solid #ef4444; animation: pulse 1s infinite; }
+        .closure-pending  { background: #1f2937; color: #4b5563; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+        /* 미션 단계 */
+        .step-done    { color: #22c55e; }
+        .step-current { color: #facc15; font-weight: bold; }
+        .step-future  { color: #4b5563; }
     </style>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
@@ -47,16 +57,27 @@
             <h2 id="detail-title" class="text-lg font-bold">인스턴스 상세</h2>
             <button onclick="closeDetail()" class="text-gray-400 hover:text-white text-sm">닫기 ✕</button>
         </div>
+
+        <!-- 구역 폐쇄 스케줄 섹션 -->
+        <div id="closure-section" class="mb-6">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">구역 폐쇄 스케줄</h3>
+            <div id="closure-countdown" class="text-xs text-yellow-400 mb-2 hidden"></div>
+            <div id="closure-sequence" class="flex flex-wrap gap-1"></div>
+        </div>
+
+        <!-- 플레이어 테이블 섹션 -->
         <div id="detail-content" class="overflow-x-auto">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">플레이어 상태</h3>
             <table class="w-full text-sm">
                 <thead>
                     <tr class="text-gray-400 border-b border-gray-700">
                         <th class="text-left pb-2">PlayerId</th>
+                        <th class="text-left pb-2">직책</th>
                         <th class="text-left pb-2">구역</th>
                         <th class="text-left pb-2">스태미나</th>
                         <th class="text-left pb-2">오염도</th>
                         <th class="text-left pb-2">상태</th>
-                        <th class="text-left pb-2">미션</th>
+                        <th class="text-left pb-2">미션 단계</th>
                         <th class="text-left pb-2">마니또</th>
                         <th class="text-left pb-2">타겟</th>
                     </tr>

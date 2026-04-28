@@ -130,6 +130,27 @@ public class MissionManager
     }
 
     /// <summary>
+    ///     어드민 운영툴용 직책별 전체 미션 단계 조회.
+    ///     정적 GameMissionData 기준으로 조합하고, playerState 기준으로 현재/완료 여부를 마킹한다.
+    /// </summary>
+    public List<(int order, int targetArea, int targetInteractId, bool isCompleted, bool isCurrent)>
+        GetAllStepsForAdmin(long matchingId, long playerId)
+    {
+        var result = new List<(int, int, int, bool, bool)>();
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return result;
+        if (!matching.TryGetValue(playerId, out var state)) return result;
+
+        var allSteps = GameMissionData.GetSteps((short)state.JobTitle);
+        foreach (var step in allSteps)
+        {
+            bool isCompleted = state.IsCompleted || step.StepOrder < state.CurrentStepOrder;
+            bool isCurrent = !state.IsCompleted && step.StepOrder == state.CurrentStepOrder;
+            result.Add((step.StepOrder, step.TargetArea, step.TargetInteractId, isCompleted, isCurrent));
+        }
+        return result;
+    }
+
+    /// <summary>
     ///     현재 미션 목적지가 폐쇄되었는지 확인
     /// </summary>
     public bool IsCurrentMissionAreaClosed(long matchingId, long playerId, AreaClosureManager closureManager)

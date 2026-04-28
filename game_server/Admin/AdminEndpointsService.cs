@@ -48,6 +48,16 @@ public static class AdminEndpoints
             return Results.Ok(snapshot);
         });
 
+        // GET /admin/instance/{matchingId}/full — 인스턴스 풀 상세 (폐쇄 스케줄 + 미션 전체 단계)
+        app.MapGet("/admin/instance/{matchingId:long}/full", (long matchingId) =>
+        {
+            var snapshot = gameServer.GetFullInstanceSnapshot(matchingId);
+            if (snapshot == null)
+                return Results.NotFound(new { error = $"Instance {matchingId} not found" });
+
+            return Results.Ok(snapshot);
+        });
+
         // GET /admin/health — 어드민 서비스 헬스
         app.MapGet("/admin/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
     }

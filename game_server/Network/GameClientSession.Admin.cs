@@ -1,3 +1,5 @@
+using network.common;
+
 namespace game_server.network;
 
 /// <summary>
@@ -14,4 +16,7 @@ public partial class GameClientSession
 
     /// <summary>봇 플레이어 여부 (PlayerId < 0)</summary>
     internal bool IsBot => PlayerId.HasValue && PlayerId.Value < 0;
+
+    /// <summary>직책 (어드민 전용)</summary>
+    internal JobTitle AdminJobTitle => MyJobTitle;
 }

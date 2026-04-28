@@ -135,6 +135,34 @@ public class AreaClosureManager
     }
 
     /// <summary>
+    ///     어드민 운영툴용 폐쇄 스케줄 요약 조회.
+    ///     다음 폐쇄 시각, 카운트다운, 경고 활성 여부를 계산해 반환한다.
+    /// </summary>
+    public (List<int> closureSequence, List<int> closedAreaIds, int nextAreaType,
+        long nextAtUnix, int secondsLeft, bool warningActive) GetClosureSnapshot(long matchingId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state))
+            return ([], [], -1, -1, -1, false);
+
+        var sequence = state.ClosureOrder.Select(a => (int)a).ToList();
+        var closed = state.ClosedAreas.Select(a => (int)a).ToList();
+
+        if (state.NextClosureIndex >= state.ClosureOrder.Count)
+            return (sequence, closed, -1, -1, -1, false);
+
+        double elapsed = (DateTime.UtcNow - state.GameStartTime).TotalSeconds;
+        double nextClosureTime = FirstClosureDelaySeconds + state.NextClosureIndex * ClosureIntervalSeconds;
+        double remaining = nextClosureTime - elapsed;
+
+        int nextAreaType = (int)state.ClosureOrder[state.NextClosureIndex];
+        long nextAtUnix = ((DateTimeOffset)state.GameStartTime).ToUnixTimeSeconds() + (long)nextClosureTime;
+        int secondsLeft = remaining > 0 ? (int)Math.Ceiling(remaining) : 0;
+        bool warningActive = remaining > 0 && remaining <= ClosureWarningSeconds;
+
+        return (sequence, closed, nextAreaType, nextAtUnix, secondsLeft, warningActive);
+    }
+
+    /// <summary>
     ///     해당 구역이 폐쇄되었는지 확인
     /// </summary>
     public bool IsAreaClosed(long matchingId, AreaType area)

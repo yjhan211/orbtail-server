@@ -23,7 +23,8 @@ async function fetchInstances() {
 
 async function fetchInstance(matchingId) {
     try {
-        const res = await fetch(`/api/instance/${matchingId}`);
+        // 풀 스냅샷 endpoint 사용 (폐쇄 스케줄 + 미션 전체 단계 포함)
+        const res = await fetch(`/api/instance/${matchingId}/full`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.json();
     } catch (e) {
@@ -164,6 +165,8 @@ function renderDetail(snapshot) {
     document.getElementById('detail-title').textContent =
         `인스턴스 #${snapshot.matchingId} — ${snapshot.mapId || '맵 불명'} (${snapshot.aliveCount}/${snapshot.playerCount}명 생존)`;
 
+    renderClosureSchedule(snapshot.closure);
+
     const tbody = document.getElementById('detail-tbody');
     tbody.innerHTML = snapshot.players
         .sort((a, b) => (a.isEliminated ? 1 : -1) - (b.isEliminated ? 1 : -1))
@@ -171,19 +174,84 @@ function renderDetail(snapshot) {
         .join('');
 }
 
+// ─── 구역 폐쇄 스케줄 렌더링 ───────────────────────────────────────────────
+
+function renderClosureSchedule(closure) {
+    const section = document.getElementById('closure-section');
+    const countdown = document.getElementById('closure-countdown');
+    const sequence = document.getElementById('closure-sequence');
+
+    if (!closure) {
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+
+    // 카운트다운 표시
+    if (closure.nextClosureSecondsLeft >= 0) {
+        const mins = Math.floor(closure.nextClosureSecondsLeft / 60);
+        const secs = closure.nextClosureSecondsLeft % 60;
+        const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        countdown.textContent = closure.warningActive
+            ? `경고! 다음 폐쇄까지 ${timeStr}`
+            : `다음 폐쇄까지 ${timeStr}`;
+        countdown.className = closure.warningActive
+            ? 'text-xs text-red-400 mb-2 font-bold'
+            : 'text-xs text-yellow-400 mb-2';
+        countdown.classList.remove('hidden');
+    } else {
+        countdown.classList.add('hidden');
+    }
+
+    // 시퀀스 태그 렌더링
+    const closedSet = new Set(closure.closedAreaIds ?? []);
+    sequence.innerHTML = (closure.closureSequence ?? []).map(areaType => {
+        const isClosed = closedSet.has(areaType);
+        const isNext = areaType === closure.nextClosureAreaType && !isClosed;
+        const isWarning = isNext && closure.warningActive;
+        let cls = 'closure-pending';
+        if (isClosed) cls = 'closure-closed';
+        else if (isWarning) cls = 'closure-warning';
+        else if (isNext) cls = 'closure-next';
+        const label = areaTypeLabel(areaType);
+        return `<span class="text-xs px-2 py-1 rounded ${cls}">${label}</span>`;
+    }).join('');
+}
+
+// AreaType 정수 → 라벨 (fallback: 숫자)
+const AREA_LABELS = {
+    1:'행정실', 2:'교무실', 3:'강당', 4:'1층복도',
+    5:'2층복도', 6:'3층복도', 7:'4층복도',
+    8:'교실2', 9:'교실3', 10:'교실4',
+    11:'도서관', 12:'고사실', 13:'방송실',
+    14:'창고', 15:'운동장'
+};
+function areaTypeLabel(t) { return AREA_LABELS[t] ?? `Area${t}`; }
+
+// ─── 플레이어 행 렌더링 ────────────────────────────────────────────────────
+
 function buildPlayerRow(p) {
     const staminaPct = Math.max(0, Math.min(100, p.stamina));
     const corruptPct = Math.max(0, Math.min(100, p.corruption));
-    const missionStr = p.missionCompleted
-        ? '<span class="text-green-400">완료</span>'
-        : `${p.missionStep}/${p.missionTotalSteps}`;
     const botBadge = p.isBot ? '<span class="ml-1 text-xs bg-gray-700 px-1 rounded">BOT</span>' : '';
     const statusClass = `status-${p.manittoStatus}`;
     const rowClass = p.isEliminated ? 'opacity-40' : '';
+    const jobStr = p.jobTitle || '—';
+
+    // 미션 단계 — allSteps 있으면 가로 흐름, 없으면 숫자 fallback
+    let missionStr;
+    if (p.allSteps && p.allSteps.length > 0) {
+        missionStr = buildMissionSteps(p.allSteps, p.missionCompleted);
+    } else {
+        missionStr = p.missionCompleted
+            ? '<span class="text-green-400">완료</span>'
+            : `${p.missionStep}/${p.missionTotalSteps}`;
+    }
 
     return `
         <tr class="border-b border-gray-800 ${rowClass}">
             <td class="py-2 pr-4">${p.playerId}${botBadge}</td>
+            <td class="py-2 pr-4 text-xs text-gray-300">${jobStr}</td>
             <td class="py-2 pr-4 text-xs">${p.area}</td>
             <td class="py-2 pr-4">
                 <div class="flex items-center gap-1">
@@ -202,11 +270,28 @@ function buildPlayerRow(p) {
                 </div>
             </td>
             <td class="py-2 pr-4 text-xs ${statusClass}">${p.manittoStatus}</td>
-            <td class="py-2 pr-4 text-xs">${missionStr}</td>
+            <td class="py-2 pr-4">${missionStr}</td>
             <td class="py-2 pr-4 text-xs text-gray-400">${p.manittoOfMe ?? '—'}</td>
             <td class="py-2 text-xs text-gray-400">${p.targetPlayerId || '—'}</td>
         </tr>
     `;
+}
+
+function buildMissionSteps(steps, allCompleted) {
+    if (allCompleted) {
+        return steps.map(s =>
+            `<span class="step-done text-xs" title="${s.targetAreaName}">✓${s.order}</span>`
+        ).join('<span class="text-gray-600 mx-0.5">→</span>');
+    }
+    return steps.map(s => {
+        if (s.isCompleted) {
+            return `<span class="step-done text-xs" title="${s.targetAreaName}">✓${s.order}</span>`;
+        }
+        if (s.isCurrent) {
+            return `<span class="step-current text-xs" title="${s.targetAreaName}">▶${s.order}:${s.targetAreaName}</span>`;
+        }
+        return `<span class="step-future text-xs" title="${s.targetAreaName}">${s.order}</span>`;
+    }).join('<span class="text-gray-700 mx-0.5">→</span>');
 }
 
 function updateLastUpdate() {

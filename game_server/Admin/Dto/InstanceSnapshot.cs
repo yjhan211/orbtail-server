@@ -12,6 +12,46 @@ public class InstanceSnapshot
     public double ElapsedSeconds { get; set; }
     public List<string> ClosedAreas { get; set; } = [];
     public List<PlayerSnapshot> Players { get; set; } = [];
+
+    /// <summary>구역 폐쇄 스케줄 상세 (풀 스냅샷 전용)</summary>
+    public ClosureSnapshot? Closure { get; set; }
+}
+
+/// <summary>
+///     구역 폐쇄 스케줄 스냅샷
+/// </summary>
+public class ClosureSnapshot
+{
+    /// <summary>전체 폐쇄 시퀀스 (AreaType 정수 목록)</summary>
+    public List<int> ClosureSequence { get; set; } = [];
+
+    /// <summary>이미 폐쇄된 구역 (AreaType 정수 목록)</summary>
+    public List<int> ClosedAreaIds { get; set; } = [];
+
+    /// <summary>다음 폐쇄 예정 구역 (없으면 -1)</summary>
+    public int NextClosureAreaType { get; set; } = -1;
+
+    /// <summary>다음 폐쇄 예정 Unix 타임스탬프 초 단위 (없으면 -1)</summary>
+    public long NextClosureAtUnix { get; set; } = -1;
+
+    /// <summary>다음 폐쇄 카운트다운 잔여 초 (없으면 -1)</summary>
+    public int NextClosureSecondsLeft { get; set; } = -1;
+
+    /// <summary>30초 경고 활성 여부</summary>
+    public bool WarningActive { get; set; }
+}
+
+/// <summary>
+///     미션 단계 상세 (어드민 전용)
+/// </summary>
+public class MissionFullStep
+{
+    public int Order { get; set; }
+    public int TargetAreaType { get; set; }
+    public string TargetAreaName { get; set; } = "";
+    public int TargetInteractId { get; set; }
+    public bool IsCompleted { get; set; }
+    public bool IsCurrent { get; set; }
 }
 
 /// <summary>

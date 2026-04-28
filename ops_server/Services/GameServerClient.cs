@@ -35,6 +35,19 @@ public class GameServerClient(HttpClient httpClient)
             return null;
         }
     }
+
+    public async Task<InstanceSnapshot?> GetFullInstanceAsync(long matchingId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await httpClient.GetFromJsonAsync<InstanceSnapshot>($"/admin/instance/{matchingId}/full", JsonOpts, ct);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[GameServerClient] GetFullInstance({matchingId}) 오류: {ex.Message}");
+            return null;
+        }
+    }
 }
 
 // ─── DTO mirrors (game_server Admin DTO와 구조 일치) ───────────────────────
@@ -65,6 +78,27 @@ public class InstanceSnapshot
     public double ElapsedSeconds { get; set; }
     public List<string> ClosedAreas { get; set; } = [];
     public List<PlayerSnapshot> Players { get; set; } = [];
+    public ClosureSnapshot? Closure { get; set; }
+}
+
+public class ClosureSnapshot
+{
+    public List<int> ClosureSequence { get; set; } = [];
+    public List<int> ClosedAreaIds { get; set; } = [];
+    public int NextClosureAreaType { get; set; } = -1;
+    public long NextClosureAtUnix { get; set; } = -1;
+    public int NextClosureSecondsLeft { get; set; } = -1;
+    public bool WarningActive { get; set; }
+}
+
+public class MissionFullStep
+{
+    public int Order { get; set; }
+    public int TargetAreaType { get; set; }
+    public string TargetAreaName { get; set; } = "";
+    public int TargetInteractId { get; set; }
+    public bool IsCompleted { get; set; }
+    public bool IsCurrent { get; set; }
 }
 
 public class PlayerSnapshot
@@ -82,4 +116,6 @@ public class PlayerSnapshot
     public bool MissionCompleted { get; set; }
     public long? ManittoOfMe { get; set; }
     public string ChainStatus { get; set; } = "";
+    public string JobTitle { get; set; } = "";
+    public List<MissionFullStep> AllSteps { get; set; } = [];
 }

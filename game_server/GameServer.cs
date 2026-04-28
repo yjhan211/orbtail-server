@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.core;
@@ -623,6 +624,54 @@ public class GameServer(
             ElapsedSeconds = Math.Round(elapsed, 1),
             ClosedAreas = closedAreas
         };
+    }
+
+    /// <summary>
+    ///     인스턴스 풀 스냅샷 (폐쇄 스케줄 + 미션 전체 단계 포함)
+    /// </summary>
+    public InstanceSnapshot? GetFullInstanceSnapshot(long matchingId)
+    {
+        var base_ = GetInstanceSnapshot(matchingId);
+        if (base_ == null) return null;
+
+        // 폐쇄 스케줄 조립
+        var (sequence, closedIds, nextArea, nextAtUnix, secondsLeft, warningActive) =
+            _areaClosureManager.GetClosureSnapshot(matchingId);
+
+        base_.Closure = new ClosureSnapshot
+        {
+            ClosureSequence = sequence,
+            ClosedAreaIds = closedIds,
+            NextClosureAreaType = nextArea,
+            NextClosureAtUnix = nextAtUnix,
+            NextClosureSecondsLeft = secondsLeft,
+            WarningActive = warningActive
+        };
+
+        // 플레이어별 직책 + 전체 미션 단계 보강
+        var sessions = _clientSessions.Values
+            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
+            .ToDictionary(s => s.PlayerId!.Value);
+
+        foreach (var player in base_.Players)
+        {
+            if (!sessions.TryGetValue(player.PlayerId, out var session)) continue;
+
+            player.JobTitle = session.AdminJobTitle.ToKorean();
+
+            var rawSteps = _missionManager.GetAllStepsForAdmin(matchingId, player.PlayerId);
+            player.AllSteps = rawSteps.Select(s => new MissionFullStep
+            {
+                Order = s.order,
+                TargetAreaType = s.targetArea,
+                TargetAreaName = GameAreaNameData.Get((AreaType)s.targetArea),
+                TargetInteractId = s.targetInteractId,
+                IsCompleted = s.isCompleted,
+                IsCurrent = s.isCurrent
+            }).ToList();
+        }
+
+        return base_;
     }
 
     /// <summary>

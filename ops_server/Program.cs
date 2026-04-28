@@ -40,6 +40,15 @@ app.MapGet("/api/instance/{matchingId:long}", async (long matchingId, GameServer
         : Results.Ok(result);
 });
 
+// 프록시: 인스턴스 풀 상세 (폐쇄 스케줄 + 미션 전체 단계)
+app.MapGet("/api/instance/{matchingId:long}/full", async (long matchingId, GameServerClient client, CancellationToken ct) =>
+{
+    var result = await client.GetFullInstanceAsync(matchingId, ct);
+    return result is null
+        ? Results.NotFound(new { error = $"Instance {matchingId} not found" })
+        : Results.Ok(result);
+});
+
 // ops_server 헬스
 app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
 
