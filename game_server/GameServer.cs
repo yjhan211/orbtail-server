@@ -49,7 +49,9 @@ public class GameServer(
     private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
     private readonly MissionManager _missionManager = new(logger);
-    private readonly AreaClosureManager _areaClosureManager = new(logger);
+    private readonly MatchingConfigService _matchingConfigService = new(cacheHelper, logger);
+    // _areaClosureManager은 InitializeServices()에서 _matchingConfigService 생성 후 초기화
+    private AreaClosureManager _areaClosureManager = null!;
     private readonly TraceManager _traceManager = new();
     private readonly BotPlayerManager _botPlayerManager = new(logger);
 
@@ -139,6 +141,9 @@ public class GameServer(
     private void InitializeServices()
     {
         string natsEndpoint = configuration.GetRequiredString("natsEndPoint");
+
+        // MatchingConfigService 의존 — _matchingConfigService 필드 초기화 후 생성
+        _areaClosureManager = new AreaClosureManager(logger, _matchingConfigService);
 
         try
         {
@@ -581,6 +586,11 @@ public class GameServer(
     // ===== 운영 어드민 API =====
 
     /// <summary>
+    ///     글로벌 매칭 config 서비스 (AdminEndpoints에서 직접 접근)
+    /// </summary>
+    public MatchingConfigService MatchingConfigService => _matchingConfigService;
+
+    /// <summary>
     ///     활성 인스턴스 ID 목록 반환 (MatchingId 기준 dedup)
     /// </summary>
     public IReadOnlyList<long> GetActiveInstanceIds()
@@ -634,21 +644,27 @@ public class GameServer(
         var base_ = GetInstanceSnapshot(matchingId);
         if (base_ == null) return null;
 
-        // 폐쇄 스케줄 조립
-        var (sequence, closedIds, nextArea, nextAtUnix, secondsLeft, warningActive) =
+        // 폐쇄 스케줄 조립 (startDelaySec, intervalSec 포함)
+        var (sequence, closedIds, nextArea, nextAtUnix, secondsLeft, warningActive, startDelaySec, intervalSec) =
             _areaClosureManager.GetClosureSnapshot(matchingId);
+
+        // 시퀀스 한글명 목록
+        var areaNames = sequence.Select(a => GameAreaNameData.Get((AreaType)a)).ToList();
 
         base_.Closure = new ClosureSnapshot
         {
             ClosureSequence = sequence,
+            AreaNames = areaNames,
             ClosedAreaIds = closedIds,
             NextClosureAreaType = nextArea,
             NextClosureAtUnix = nextAtUnix,
             NextClosureSecondsLeft = secondsLeft,
-            WarningActive = warningActive
+            WarningActive = warningActive,
+            StartDelaySec = startDelaySec,
+            IntervalSec = intervalSec
         };
 
-        // 플레이어별 직책 + 전체 미션 단계 보강
+        // 플레이어별 직책 + 전체 미션 단계 보강 (description 포함)
         var sessions = _clientSessions.Values
             .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
             .ToDictionary(s => s.PlayerId!.Value);
@@ -660,14 +676,21 @@ public class GameServer(
             player.JobTitle = session.AdminJobTitle.ToKorean();
 
             var rawSteps = _missionManager.GetAllStepsForAdmin(matchingId, player.PlayerId);
-            player.AllSteps = rawSteps.Select(s => new MissionFullStep
+            player.AllSteps = rawSteps.Select(s =>
             {
-                Order = s.order,
-                TargetAreaType = s.targetArea,
-                TargetAreaName = GameAreaNameData.Get((AreaType)s.targetArea),
-                TargetInteractId = s.targetInteractId,
-                IsCompleted = s.isCompleted,
-                IsCurrent = s.isCurrent
+                // mission_step.csv에서 description 조회
+                var csvStep = GameMissionData.GetStep((short)session.AdminJobTitle, s.order);
+                return new MissionFullStep
+                {
+                    Order = s.order,
+                    TargetAreaType = s.targetArea,
+                    TargetAreaName = GameAreaNameData.Get((AreaType)s.targetArea),
+                    TargetInteractId = s.targetInteractId,
+                    IsCompleted = s.isCompleted,
+                    IsCurrent = s.isCurrent,
+                    Description = csvStep?.TraceDescription ?? "",
+                    TargetObjectName = ""  // 인터랙터블 이름 조회는 추후 확장
+                };
             }).ToList();
         }
 

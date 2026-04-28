@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 
 namespace ops_server.services;
@@ -48,6 +49,53 @@ public class GameServerClient(HttpClient httpClient)
             return null;
         }
     }
+
+    public async Task<MatchingConfigSnapshot?> GetMatchingConfigAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await httpClient.GetFromJsonAsync<MatchingConfigSnapshot>("/admin/matching-config", JsonOpts, ct);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[GameServerClient] GetMatchingConfig 오류: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task<MatchingConfigApiResponse?> PostClosureConfigAsync(object body, CancellationToken ct = default)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(body, JsonOpts);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await httpClient.PostAsync("/admin/matching-config/closure", content, ct);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<MatchingConfigApiResponse>(JsonOpts, ct);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[GameServerClient] PostClosureConfig 오류: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task<MatchingConfigApiResponse?> PostJobPoolConfigAsync(object body, CancellationToken ct = default)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(body, JsonOpts);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await httpClient.PostAsync("/admin/matching-config/job-pool", content, ct);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<MatchingConfigApiResponse>(JsonOpts, ct);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[GameServerClient] PostJobPoolConfig 오류: {ex.Message}");
+            return null;
+        }
+    }
 }
 
 // ─── DTO mirrors (game_server Admin DTO와 구조 일치) ───────────────────────
@@ -84,11 +132,14 @@ public class InstanceSnapshot
 public class ClosureSnapshot
 {
     public List<int> ClosureSequence { get; set; } = [];
+    public List<string> AreaNames { get; set; } = [];
     public List<int> ClosedAreaIds { get; set; } = [];
     public int NextClosureAreaType { get; set; } = -1;
     public long NextClosureAtUnix { get; set; } = -1;
     public int NextClosureSecondsLeft { get; set; } = -1;
     public bool WarningActive { get; set; }
+    public int StartDelaySec { get; set; }
+    public int IntervalSec { get; set; }
 }
 
 public class MissionFullStep
@@ -99,6 +150,8 @@ public class MissionFullStep
     public int TargetInteractId { get; set; }
     public bool IsCompleted { get; set; }
     public bool IsCurrent { get; set; }
+    public string Description { get; set; } = "";
+    public string TargetObjectName { get; set; } = "";
 }
 
 public class PlayerSnapshot
@@ -118,4 +171,18 @@ public class PlayerSnapshot
     public string ChainStatus { get; set; } = "";
     public string JobTitle { get; set; } = "";
     public List<MissionFullStep> AllSteps { get; set; } = [];
+}
+
+public class MatchingConfigSnapshot
+{
+    public int StartDelaySec { get; set; }
+    public int IntervalSec { get; set; }
+    public List<int>? ForcedSequence { get; set; }
+    public List<int>? ForcedJobs { get; set; }
+}
+
+public class MatchingConfigApiResponse
+{
+    public string Message { get; set; } = "";
+    public MatchingConfigSnapshot? Config { get; set; }
 }

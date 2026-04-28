@@ -25,6 +25,9 @@ public class ClosureSnapshot
     /// <summary>전체 폐쇄 시퀀스 (AreaType 정수 목록)</summary>
     public List<int> ClosureSequence { get; set; } = [];
 
+    /// <summary>폐쇄 시퀀스 한글명 목록 (ClosureSequence와 1:1 대응)</summary>
+    public List<string> AreaNames { get; set; } = [];
+
     /// <summary>이미 폐쇄된 구역 (AreaType 정수 목록)</summary>
     public List<int> ClosedAreaIds { get; set; } = [];
 
@@ -39,6 +42,12 @@ public class ClosureSnapshot
 
     /// <summary>30초 경고 활성 여부</summary>
     public bool WarningActive { get; set; }
+
+    /// <summary>이 인스턴스에 적용된 폐쇄 시작 딜레이 (초)</summary>
+    public int StartDelaySec { get; set; }
+
+    /// <summary>이 인스턴스에 적용된 폐쇄 간격 (초)</summary>
+    public int IntervalSec { get; set; }
 }
 
 /// <summary>
@@ -52,6 +61,12 @@ public class MissionFullStep
     public int TargetInteractId { get; set; }
     public bool IsCompleted { get; set; }
     public bool IsCurrent { get; set; }
+
+    /// <summary>mission_step.csv trace_description_kr — 이 단계에서 남긴 흔적 설명</summary>
+    public string Description { get; set; } = "";
+
+    /// <summary>대상 인터랙터블 이름 (TargetInteractId 기반, 없으면 빈 문자열)</summary>
+    public string TargetObjectName { get; set; } = "";
 }
 
 /// <summary>

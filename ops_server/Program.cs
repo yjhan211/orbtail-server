@@ -49,6 +49,33 @@ app.MapGet("/api/instance/{matchingId:long}/full", async (long matchingId, GameS
         : Results.Ok(result);
 });
 
+// 프록시: 글로벌 매칭 config 조회
+app.MapGet("/api/matching-config", async (GameServerClient client, CancellationToken ct) =>
+{
+    var result = await client.GetMatchingConfigAsync(ct);
+    return result is null
+        ? Results.Problem("game_server 연결 실패")
+        : Results.Ok(result);
+});
+
+// 프록시: 폐쇄 config 변경
+app.MapPost("/api/matching-config/closure", async (System.Text.Json.JsonElement body, GameServerClient client, CancellationToken ct) =>
+{
+    var result = await client.PostClosureConfigAsync(body, ct);
+    return result is null
+        ? Results.Problem("game_server 연결 실패")
+        : Results.Ok(result);
+});
+
+// 프록시: 직책 풀 config 변경
+app.MapPost("/api/matching-config/job-pool", async (System.Text.Json.JsonElement body, GameServerClient client, CancellationToken ct) =>
+{
+    var result = await client.PostJobPoolConfigAsync(body, ct);
+    return result is null
+        ? Results.Problem("game_server 연결 실패")
+        : Results.Ok(result);
+});
+
 // ops_server 헬스
 app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
 
