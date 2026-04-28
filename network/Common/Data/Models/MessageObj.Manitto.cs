@@ -42,6 +42,9 @@ namespace network.common.data.models
     {
         [Key("areaType")] public AreaType AreaType { get; set; }
         [Key("secondsRemaining")] public int SecondsRemaining { get; set; }
+
+        /// <summary>서버 측 폐쇄 예정 시각 (UTC Unix ms). 클라이언트는 이 값으로 카운트다운하여 네트워크 지연 보정.</summary>
+        [Key("closureAtUnixMs")] public long ClosureAtUnixMs { get; set; }
     }
 
     [MessagePackObject]

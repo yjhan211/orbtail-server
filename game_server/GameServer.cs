@@ -312,9 +312,10 @@ public class GameServer(
 
     private void StartAreaClosureTickTimer()
     {
+        // 1초 간격 — 클라 카운트다운 종료 시점과 실제 폐쇄 트리거 사이 지연을 최소화
         _areaClosureTickTimer = new Timer(ProcessAreaClosureTick, null,
-            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
-        logger.LogInformation("구역 폐쇄 타이머 시작 (10초 간격)");
+            TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        logger.LogInformation("구역 폐쇄 타이머 시작 (1초 간격)");
     }
 
     private void ProcessAreaClosureTick(object? state)
@@ -330,7 +331,8 @@ public class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
-                var (warningArea, closingArea) = _areaClosureManager.CheckClosureSchedule(matchingId);
+                var (warningArea, warningSeconds, closureAtUnixMs, closingArea) =
+                    _areaClosureManager.CheckClosureSchedule(matchingId);
 
                 var sessions = _clientSessions.Values
                     .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
@@ -343,7 +345,8 @@ public class GameServer(
                     var msg = new G_TO_C_AREA_CLOSURE_WARNING
                     {
                         AreaType = warningArea.Value,
-                        SecondsRemaining = 30
+                        SecondsRemaining = warningSeconds,
+                        ClosureAtUnixMs = closureAtUnixMs
                     };
                     packet.SetBody(MessagePackSerializer.Serialize(msg));
                     foreach (var s in sessions) s.Send(packet);
