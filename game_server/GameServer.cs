@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using game_server.admin.dto;
 using game_server.controllers;
 using game_server.network;
 using game_server.services;
@@ -575,4 +576,121 @@ public class GameServer(
     // private void SubscribeToLogoutEvents() { ... }
     // private async Task ProcessMessage(byte[] message) { ... }
     // private async Task HandleLogout(long playerId, byte[] body) { ... }
+
+    // ===== 운영 어드민 API =====
+
+    /// <summary>
+    ///     활성 인스턴스 ID 목록 반환 (MatchingId 기준 dedup)
+    /// </summary>
+    public IReadOnlyList<long> GetActiveInstanceIds()
+    {
+        return _clientSessions.Values
+            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId > 0)
+            .Select(s => s.CurrentMapSubId)
+            .Distinct()
+            .ToList();
+    }
+
+    /// <summary>
+    ///     인스턴스 요약 (목록 뷰용)
+    /// </summary>
+    public InstanceSummary? GetInstanceSummary(long matchingId)
+    {
+        var sessions = _clientSessions.Values
+            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
+            .ToList();
+
+        if (sessions.Count == 0) return null;
+
+        var closureState = _areaClosureManager.GetMatchingState(matchingId);
+        double elapsed = closureState != null
+            ? (DateTime.UtcNow - closureState.GameStartTime).TotalSeconds
+            : 0;
+
+        var closedAreas = closureState?.ClosedAreas
+            .Select(a => a.ToString())
+            .ToList() ?? [];
+
+        int aliveCount = sessions.Count(s => !s.IsEliminated);
+        string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString() ?? "";
+
+        return new InstanceSummary
+        {
+            MatchingId = matchingId,
+            MapId = mapId,
+            PlayerCount = sessions.Count,
+            AliveCount = aliveCount,
+            ElapsedSeconds = Math.Round(elapsed, 1),
+            ClosedAreas = closedAreas
+        };
+    }
+
+    /// <summary>
+    ///     인스턴스 상세 스냅샷 (플레이어별 코어 상태 포함)
+    /// </summary>
+    public InstanceSnapshot? GetInstanceSnapshot(long matchingId)
+    {
+        var sessions = _clientSessions.Values
+            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
+            .ToList();
+
+        if (sessions.Count == 0) return null;
+
+        var closureState = _areaClosureManager.GetMatchingState(matchingId);
+        double elapsed = closureState != null
+            ? (DateTime.UtcNow - closureState.GameStartTime).TotalSeconds
+            : 0;
+
+        var closedAreas = closureState?.ClosedAreas
+            .Select(a => a.ToString())
+            .ToList() ?? [];
+
+        var playerSnapshots = sessions.Select(s =>
+        {
+            var missionState = _missionManager.GetState(matchingId, s.PlayerId!.Value);
+            var chainLink = _manittoChainManager.GetLink(matchingId, s.PlayerId!.Value);
+
+            // 이 플레이어를 타겟으로 가진 마니또 PlayerId
+            long? manittoOfMe = null;
+            if (closureState != null)
+            {
+                var allLinks = sessions
+                    .Select(other => _manittoChainManager.GetLink(matchingId, other.PlayerId!.Value))
+                    .Where(l => l != null && l.TargetPlayerId == s.PlayerId!.Value)
+                    .FirstOrDefault();
+                manittoOfMe = allLinks?.PlayerId;
+            }
+
+            return new PlayerSnapshot
+            {
+                PlayerId = s.PlayerId!.Value,
+                Area = s.CurrentArea.ToString(),
+                Stamina = s.AdminStamina,
+                Corruption = s.AdminCorruption,
+                ManittoStatus = s.ManittoStatus.ToString(),
+                TargetPlayerId = s.TargetPlayerId,
+                IsBot = s.IsBot,
+                IsEliminated = s.IsEliminated,
+                MissionStep = missionState?.CurrentStepOrder ?? 0,
+                MissionTotalSteps = missionState?.TotalSteps ?? 0,
+                MissionCompleted = missionState?.IsCompleted ?? false,
+                ManittoOfMe = manittoOfMe,
+                ChainStatus = chainLink?.Status.ToString() ?? ""
+            };
+        }).ToList();
+
+        int aliveCount = sessions.Count(s => !s.IsEliminated);
+        string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString() ?? "";
+
+        return new InstanceSnapshot
+        {
+            MatchingId = matchingId,
+            MapId = mapId,
+            PlayerCount = sessions.Count,
+            AliveCount = aliveCount,
+            ElapsedSeconds = Math.Round(elapsed, 1),
+            ClosedAreas = closedAreas,
+            Players = playerSnapshots
+        };
+    }
 }

@@ -1,3 +1,4 @@
+using game_server.admin;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
@@ -8,7 +9,10 @@ using Prometheus;
 
 namespace game_server;
 
-public class HealthCheckService(ILogger<HealthCheckService> logger, IConfiguration configuration) : IHostedService
+public class HealthCheckService(
+    ILogger<HealthCheckService> logger,
+    IConfiguration configuration,
+    GameServer gameServer) : IHostedService
 {
     private readonly string _redisEndpoints = configuration["redisEndPoints"] ?? "localhost:6379";
     private WebApplication? _app;
@@ -33,6 +37,9 @@ public class HealthCheckService(ILogger<HealthCheckService> logger, IConfigurati
         });
 
         _app.MapMetrics();
+
+        // 운영 어드민 endpoint 등록
+        _app.MapAdminEndpoints(gameServer);
 
         logger.LogInformation("Health check service starting on port 8080");
 

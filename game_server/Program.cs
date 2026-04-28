@@ -93,8 +93,10 @@ internal static partial class Program
         services.AddSingleton<IRedLockFactory>(sp => sp.GetRequiredService<RedisConnectionPool>().GetRedLockFactory());
         services.AddSingleton<CacheHelper>();
         services.AddSingleton<ICacheHelper, CacheHelper>();
+        // GameServer를 싱글턴으로 등록하여 HealthCheckService에서 어드민 endpoint용으로 주입 가능
+        services.AddSingleton<GameServer>();
         services.AddHostedService<HealthCheckService>();
-        services.AddHostedService<GameServer>();
+        services.AddHostedService(sp => sp.GetRequiredService<GameServer>());
     }
 
     [GeneratedRegex(@"-(\d+)$")]
