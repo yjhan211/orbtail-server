@@ -9,6 +9,16 @@ using user_server.network;
 
 namespace user_server.services;
 
+/// <summary>
+///     game_server MatchingConfigService와 공유하는 Redis 키 상수.
+///     값 변경 시 양쪽 동시 수정 필요.
+/// </summary>
+internal static class MatchingConfigRedisKeys
+{
+    internal const string Key = "matching_config";
+    internal const string JobPoolField = "job_pool";
+}
+
 public class MatchingManager : IMatchingManager
 {
     private const string MatchingQueueKey = "matching_queue";
@@ -146,7 +156,7 @@ public class MatchingManager : IMatchingManager
                     groupEntries.Length);
 
                 // 원형 체인 생성: 셔플 후 A→B→C→D→E→A (화살표 = 마니또 관계)
-                var chain = BuildManittoChain(groupEntries);
+                var chain = await BuildManittoChain(groupEntries);
 
                 foreach (var link in chain)
                 {
@@ -209,7 +219,7 @@ public class MatchingManager : IMatchingManager
         _logger.LogInformation("봇 채움 매칭: MatchingId={MatchingId}, 실제 {Real}명 + 봇 {Bot}명",
             matchingId, longWaitEntries.Length, botsNeeded);
 
-        var chain = BuildManittoChain(allEntries.ToArray());
+        var chain = await BuildManittoChain(allEntries.ToArray());
 
         // 봇 정보를 Redis에 저장 (game_server에서 로드)
         var botInfoList = new List<BotMatchingInfo>();
@@ -256,9 +266,9 @@ public class MatchingManager : IMatchingManager
 
     /// <summary>
     ///     원형 체인 생성: 셔플 후 i번째 플레이어의 타겟 = (i+1)%N번째 플레이어
-    ///     직책(JobTitle)도 무작위 배정
+    ///     직책(JobTitle)도 무작위 배정. Redis 직책 풀 강제 지정이 있으면 우선 사용.
     /// </summary>
-    private List<ManittoChainLink> BuildManittoChain(byte[][] groupEntries)
+    private async Task<List<ManittoChainLink>> BuildManittoChain(byte[][] groupEntries)
     {
         // 셔플
         var entries = groupEntries.ToList();
@@ -269,8 +279,39 @@ public class MatchingManager : IMatchingManager
             (entries[i], entries[j]) = (entries[j], entries[i]);
         }
 
+        // 직책 풀 결정 — Redis 강제 지정 우선, 없으면 무작위
+        List<JobTitle> jobs;
+        try
+        {
+            var raw = await _cacheHelper.HashGetAsync(
+                MatchingConfigRedisKeys.Key,
+                MatchingConfigRedisKeys.JobPoolField);
+
+            if (raw.HasValue)
+            {
+                var ints = System.Text.Json.JsonSerializer.Deserialize<List<int>>((string)raw!);
+                if (ints != null && ints.Count > 0)
+                {
+                    jobs = ints.Select(v => (JobTitle)v).ToList();
+                    _logger.LogInformation("직책 풀 강제 지정 적용: {Jobs}", string.Join(",", jobs));
+                }
+                else
+                {
+                    jobs = Enum.GetValues<JobTitle>().Where(j => j != JobTitle.NONE).ToList();
+                }
+            }
+            else
+            {
+                jobs = Enum.GetValues<JobTitle>().Where(j => j != JobTitle.NONE).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Redis 직책 풀 config 읽기 실패, 무작위 사용");
+            jobs = Enum.GetValues<JobTitle>().Where(j => j != JobTitle.NONE).ToList();
+        }
+
         // 직책 셔플 배정
-        var jobs = Enum.GetValues<JobTitle>().Where(j => j != JobTitle.NONE).ToList();
         for (int i = jobs.Count - 1; i > 0; i--)
         {
             int j = rng.Next(i + 1);
