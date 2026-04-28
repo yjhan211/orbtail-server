@@ -31,7 +31,8 @@ public class MatchingManager : IMatchingManager
     private const int LeavePenaltySeconds = 30; // 이탈 1회당 추가 대기 시간
     private const int MaxLeavePenaltySeconds = 300; // 최대 페널티 대기 시간 (5분)
     private const int PenaltyDecayIntervalHours = 24; // 24시간 경과 시 이탈 횟수 1 감소
-    private const int PlayersPerMatch = 1; // 매칭 인원수 (테스트용)
+    private const int PlayersPerMatch = 1; // 매칭 트리거 최소 인원 (테스트용 — 1인 즉시 매칭)
+    private const int GamePlayersPerMatch = 5; // 실제 게임 인원 (부족한 만큼 봇 채움)
     private static long _botIdCounter; // 봇 PlayerId (음수)
     private readonly ICacheHelper _cacheHelper;
     private readonly Func<long, GameSession?> _getSession;
@@ -152,14 +153,54 @@ public class MatchingManager : IMatchingManager
                 byte[][] groupEntries = entriesToMatch.Skip(i).Take(PlayersPerMatch).ToArray();
                 long matchingId = await _cacheHelper.StringIncrementAsync(MatchingIdKey);
 
-                _logger.LogInformation("매칭 성공! matching_id: {MatchingId}, 참가자: {GroupEntriesLength}명", matchingId,
-                    groupEntries.Length);
+                // 부족한 인원은 봇으로 즉시 채움 — 1인 즉시 매칭에서 자기자신 타겟 방지
+                int botsNeeded = Math.Max(0, GamePlayersPerMatch - groupEntries.Length);
+                var allGroupEntries = new List<byte[]>(groupEntries);
+                for (int b = 0; b < botsNeeded; b++)
+                {
+                    long botId = Interlocked.Decrement(ref _botIdCounter);
+                    var botData = new MatchingQueueData
+                    {
+                        PlayerId = botId,
+                        RequestTime = DateTime.UtcNow,
+                        UserChannel = "bot"
+                    };
+                    allGroupEntries.Add(MessagePackSerializer.Serialize(botData));
+                }
+
+                _logger.LogInformation("매칭 성공! matching_id: {MatchingId}, 실제 {Real}명 + 봇 {Bot}명",
+                    matchingId, groupEntries.Length, botsNeeded);
 
                 // 원형 체인 생성: 셔플 후 A→B→C→D→E→A (화살표 = 마니또 관계)
-                var chain = await BuildManittoChain(groupEntries);
+                var chain = await BuildManittoChain(allGroupEntries.ToArray());
 
+                // 봇 정보 Redis 저장 (game_server에서 로드)
+                var botInfoList = new List<BotMatchingInfo>();
                 foreach (var link in chain)
                 {
+                    var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
+                    if (data.PlayerId >= 0) continue;
+                    botInfoList.Add(new BotMatchingInfo
+                    {
+                        PlayerId = data.PlayerId,
+                        TargetPlayerId = link.TargetPlayerId,
+                        MyJobTitle = link.MyJobTitle,
+                        TargetJobTitle = link.TargetJobTitle
+                    });
+                }
+
+                if (botInfoList.Count > 0)
+                {
+                    byte[] serialized = MessagePackSerializer.Serialize(botInfoList);
+                    await _cacheHelper.HashSetAsync(BotInfoKeyPrefix, matchingId, serialized);
+                }
+
+                // 실제 플레이어만 매칭 성공 패킷 전송 + 큐 제거
+                foreach (var link in chain)
+                {
+                    var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
+                    if (data.PlayerId < 0) continue; // 봇은 스킵
+
                     try
                     {
                         await ProcessMatchedEntry(link.Entry, matchingId, link.TargetPlayerId,
@@ -171,7 +212,6 @@ public class MatchingManager : IMatchingManager
                     }
                     finally
                     {
-                        // 성공/실패 관계없이 큐에서 제거
                         await _cacheHelper.SortedSetRemoveAsync(MatchingQueueKey, link.Entry);
                     }
                 }
@@ -197,9 +237,9 @@ public class MatchingManager : IMatchingManager
         byte[][] longWaitEntries = await _cacheHelper.SortedSetRangeByScoreAsync(
             MatchingQueueKey, double.NegativeInfinity, botCutoff);
 
-        if (longWaitEntries.Length == 0 || longWaitEntries.Length >= PlayersPerMatch) return;
+        if (longWaitEntries.Length == 0 || longWaitEntries.Length >= GamePlayersPerMatch) return;
 
-        int botsNeeded = PlayersPerMatch - longWaitEntries.Length;
+        int botsNeeded = GamePlayersPerMatch - longWaitEntries.Length;
         var allEntries = new List<byte[]>(longWaitEntries);
 
         // 봇 데이터 생성
@@ -316,6 +356,18 @@ public class MatchingManager : IMatchingManager
         {
             int j = rng.Next(i + 1);
             (jobs[i], jobs[j]) = (jobs[j], jobs[i]);
+        }
+
+        // 강제 풀이 인원보다 적으면 무작위 직책으로 부족분 보충 (NONE 제외, 풀 직책 우선 유지)
+        if (jobs.Count < entries.Count)
+        {
+            var fillPool = Enum.GetValues<JobTitle>()
+                .Where(j => j != JobTitle.NONE && !jobs.Contains(j))
+                .OrderBy(_ => rng.Next())
+                .ToList();
+            int needed = entries.Count - jobs.Count;
+            jobs.AddRange(fillPool.Take(needed));
+            _logger.LogInformation("직책 풀 부족 — 무작위로 {Needed}개 보충", needed);
         }
 
         // PlayerId 역직렬화

@@ -28,7 +28,10 @@ public class GameServerClient(HttpClient httpClient)
     {
         try
         {
-            return await httpClient.GetFromJsonAsync<InstanceSnapshot>($"/admin/instance/{matchingId}", JsonOpts, ct);
+            var response = await httpClient.GetAsync($"/admin/instance/{matchingId}", ct);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<InstanceSnapshot>(JsonOpts, ct);
         }
         catch (Exception ex)
         {
@@ -41,7 +44,10 @@ public class GameServerClient(HttpClient httpClient)
     {
         try
         {
-            return await httpClient.GetFromJsonAsync<InstanceSnapshot>($"/admin/instance/{matchingId}/full", JsonOpts, ct);
+            var response = await httpClient.GetAsync($"/admin/instance/{matchingId}/full", ct);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<InstanceSnapshot>(JsonOpts, ct);
         }
         catch (Exception ex)
         {

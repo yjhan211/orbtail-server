@@ -67,6 +67,7 @@ public partial class GameClientSession : SessionBase
     private Vector3f? _lastValidatedPosition;
     private Cell? _lastValidCell;
     private bool _hasFirstMoveCalibrated;
+    private long _lastClientMoveTimestamp; // 클라이언트 측 Unix ms — 패킷 클러스터 영향 없는 정확한 deltaTime 계산용
 
     // 플레이어 상호작용 요청 상태
     private long? _pendingInteractPlayerId;

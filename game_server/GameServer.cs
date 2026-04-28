@@ -77,7 +77,7 @@ public class GameServer(
     internal const int TraceFoundManittoRecovery = 15;   // 흔적 발견 시 마니또 정신력 회복량
     internal const int TraceFoundTargetDecay = 10;       // 흔적 발견 시 타겟 오염도 증가량
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -85,6 +85,10 @@ public class GameServer(
 
             InitializeServices();
             InitializeControllers();
+
+            // Redis에서 폐쇄 config 복원 (재시작/핫리로드 후에도 어드민 설정 유지)
+            await _matchingConfigService.LoadClosureConfigFromRedisAsync();
+
             StartTcpServer();
             StartHeartbeatChecker();
             StartCorridorStopCheckTimer();
@@ -95,7 +99,6 @@ public class GameServer(
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
             logger.LogInformation("Game server started successfully.");
-            return Task.CompletedTask;
         }
         catch (Exception ex)
         {
@@ -271,8 +274,6 @@ public class GameServer(
                         corruptionDelta += Config.AUDITORIUM_STAY_CORRUPTION_BONUS;
                 }
 
-                session.ModifyStats(corruptionDelta: corruptionDelta);
-
                 // 4. 폐쇄 구역 체류 시 오염도 추가 증가 (GDD §2.1.5, v0.1.9, #66)
                 // 밀폐된 위험 구역 체류 = 정신적 압박 상승 (메타포: 폐쇄 공간의 공포)
                 // 자연증가와 합산하여 한 번에 ModifyStats 호출
@@ -281,6 +282,8 @@ public class GameServer(
                 {
                     corruptionDelta += Config.CLOSED_AREA_CORRUPTION_TICK;
                 }
+
+                session.ModifyStats(corruptionDelta: corruptionDelta);
 
                 // 5. 자원 고갈 탈락 체크
                 session.CheckResourceElimination();

@@ -43,6 +43,8 @@ internal static partial class Program
         // Serilog 구성
         var serilogLogger = new LoggerConfiguration()
             .MinimumLevel.Debug()
+            .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+            .MinimumLevel.Override("Microsoft.Hosting.Lifetime", Serilog.Events.LogEventLevel.Information)
             .Enrich.WithProperty("serverType", serverType)
             .Enrich.WithProperty("serverId", serverId)
             .WriteTo.Console(

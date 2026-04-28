@@ -2,6 +2,10 @@ using ops_server.services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ASP.NET Core HTTP 요청 라이프사이클 + HttpClient 송수신 로그 차단 (정상 200 요청 노이즈 제거)
+builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+
 // ─── 서비스 등록 ───────────────────────────────────────────────────────────
 
 string gameServerBaseUrl = builder.Configuration["GameServerUrl"] ?? "http://game-server:8080";
