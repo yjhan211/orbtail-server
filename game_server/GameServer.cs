@@ -69,7 +69,7 @@ public class GameServer(
     private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
     internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모 (인접 구역 진입)
-    private const int ClosedAreaStaminaPenaltyPerTick = 20; // 폐쇄 구역 체류 시 틱당 스태미나 감소
+    // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
     internal const int TraceFoundManittoRecovery = 15;   // 흔적 발견 시 마니또 정신력 회복량
     internal const int TraceFoundTargetDecay = 10;       // 흔적 발견 시 타겟 오염도 증가량
 
@@ -266,11 +266,13 @@ public class GameServer(
 
                 session.ModifyStats(corruptionDelta: corruptionDelta);
 
-                // 4. 폐쇄 구역 체류 시 스태미나 지속 감소
+                // 4. 폐쇄 구역 체류 시 오염도 추가 증가 (GDD §2.1.5, v0.1.9, #66)
+                // 밀폐된 위험 구역 체류 = 정신적 압박 상승 (메타포: 폐쇄 공간의 공포)
+                // 자연증가와 합산하여 한 번에 ModifyStats 호출
                 if (session.CurrentArea != AreaType.None &&
                     _areaClosureManager.IsAreaClosed(session.CurrentMapSubId, session.CurrentArea))
                 {
-                    session.ModifyStats(staminaDelta: -ClosedAreaStaminaPenaltyPerTick);
+                    corruptionDelta += Config.CLOSED_AREA_CORRUPTION_TICK;
                 }
 
                 // 5. 자원 고갈 탈락 체크

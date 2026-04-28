@@ -73,5 +73,12 @@ namespace network.common
 
         /// <summary>사보타주 4B: ▓▓ 위치 공개 지속 시간 (초). GDD §2.5.4.</summary>
         public const int SABOTAGE_TARGET_EXPOSE_SECONDS = 5;
+
+        /// <summary>폐쇄 구역 체류 시 5초당 오염도 증가량. GDD §2.1.5, v0.1.9, #66.
+        ///     스태미나 패널티(-20/5초)에서 오염도 패널티로 변경.
+        ///     메타포: 밀폐된 위험 구역 체류 = 정신적 압박 상승.
+        ///     자연증가와 합산됨 (후반 10분+ 기준 총 +5/5초).
+        ///     수치는 플레이테스트 후 최종 확정 예정 (미확정 #67).</summary>
+        public const int CLOSED_AREA_CORRUPTION_TICK = 2;
     }
 }
