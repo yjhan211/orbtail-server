@@ -89,5 +89,20 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  ops_server:
+    build:
+      context: .
+      dockerfile: ops_server/Dockerfile
+    container_name: manitto-ops-server-dev
+    ports:
+      - "5000:8080"
+    environment:
+      - GameServerUrl=http://game_server:8080
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - game_server
+      - user_server
+    restart: unless-stopped
+
 volumes:
   redis-data-dev:
