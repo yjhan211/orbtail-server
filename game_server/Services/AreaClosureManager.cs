@@ -11,8 +11,6 @@ namespace game_server.services;
 public class AreaClosureManager
 {
     private const int ClosureWarningSeconds = 30;   // 폐쇄 전 경고 시간
-    private const int ClosureIntervalSeconds = 180; // 구역 간 폐쇄 간격 (3분)
-    private const int FirstClosureDelaySeconds = 300; // 첫 폐쇄까지 딜레이 (5분)
     // 폐쇄 구역 체류 페널티는 GameServer.ClosedAreaStaminaPenaltyPerTick에서 처리
 
     // 폐쇄 불가 (6구역): 1층 전체(행정실/1층복도/교무실/강당) + 외부(창고/운동장)
@@ -48,38 +46,55 @@ public class AreaClosureManager
     // matchingId → ClosureState
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();
     private readonly ILogger _logger;
+    private readonly MatchingConfigService _matchingConfig;
 
-    public AreaClosureManager(ILogger logger)
+    public AreaClosureManager(ILogger logger, MatchingConfigService matchingConfig)
     {
         _logger = logger;
+        _matchingConfig = matchingConfig;
     }
 
     /// <summary>
     ///     매칭 시작 시 폐쇄 스케줄 생성.
-    ///     복도 hard 후순위 규칙(GDD §2.1.5): 말단 6구역을 셔플 후 앞에, 복도 3개를 셔플 후 뒤에 배치.
-    ///     이 순서로 폐쇄가 진행되므로 복도는 말단 구역 전부 폐쇄(~18분) 이후에만 폐쇄됨.
+    ///     MatchingConfigService에서 config를 읽어 적용한다.
+    ///     forcedSequence가 null이면 기존 무작위 규칙(복도 hard 후순위 GDD §2.1.5) 사용.
+    ///     복도 hard 후순위 규칙: 말단 6구역을 셔플 후 앞에, 복도 3개를 셔플 후 뒤에 배치.
     /// </summary>
     public MatchingClosureState InitializeMatching(long matchingId)
     {
+        var config = _matchingConfig.GetClosureConfig();
         var rng = Random.Shared;
-        // 말단 6구역 내부 셔플 → 복도 3개 내부 셔플 → 순서대로 결합 (hard 후순위)
-        var shuffledLeaves = LeafClosableAreas.OrderBy(_ => rng.Next()).ToList();
-        var shuffledCorridors = CorridorClosableAreas.OrderBy(_ => rng.Next()).ToList();
-        var shuffled = shuffledLeaves.Concat(shuffledCorridors).ToList();
+
+        List<AreaType> sequence;
+        if (config.ForcedSequence != null && config.ForcedSequence.Count > 0)
+        {
+            // 강제 시퀀스 사용 (그대로 적용)
+            sequence = config.ForcedSequence;
+        }
+        else
+        {
+            // 기존 무작위 로직 — 복도 hard 후순위 규칙
+            var shuffledLeaves = LeafClosableAreas.OrderBy(_ => rng.Next()).ToList();
+            var shuffledCorridors = CorridorClosableAreas.OrderBy(_ => rng.Next()).ToList();
+            sequence = shuffledLeaves.Concat(shuffledCorridors).ToList();
+        }
 
         var state = new MatchingClosureState
         {
             MatchingId = matchingId,
-            ClosureOrder = shuffled,
+            ClosureOrder = sequence,
             ClosedAreas = new HashSet<AreaType>(),
             NextClosureIndex = 0,
-            GameStartTime = DateTime.UtcNow
+            GameStartTime = DateTime.UtcNow,
+            StartDelaySec = config.StartDelaySec,
+            IntervalSec = config.IntervalSec
         };
 
         _states[matchingId] = state;
 
-        _logger.LogInformation("구역 폐쇄 스케줄 생성: MatchingId={MatchingId}, 순서={Order}",
-            matchingId, string.Join("→", shuffled));
+        _logger.LogInformation(
+            "구역 폐쇄 스케줄 생성: MatchingId={MatchingId}, startDelay={StartDelay}s, interval={Interval}s, 순서={Order}",
+            matchingId, config.StartDelaySec, config.IntervalSec, string.Join("→", sequence));
 
         return state;
     }
@@ -94,7 +109,7 @@ public class AreaClosureManager
         if (state.NextClosureIndex >= state.ClosureOrder.Count) return (null, null);
 
         double elapsed = (DateTime.UtcNow - state.GameStartTime).TotalSeconds;
-        double nextClosureTime = FirstClosureDelaySeconds + state.NextClosureIndex * ClosureIntervalSeconds;
+        double nextClosureTime = state.StartDelaySec + state.NextClosureIndex * state.IntervalSec;
         double warningTime = nextClosureTime - ClosureWarningSeconds;
 
         AreaType? warningArea = null;
@@ -137,21 +152,23 @@ public class AreaClosureManager
     /// <summary>
     ///     어드민 운영툴용 폐쇄 스케줄 요약 조회.
     ///     다음 폐쇄 시각, 카운트다운, 경고 활성 여부를 계산해 반환한다.
+    ///     startDelaySec / intervalSec은 이 인스턴스에 적용된 값이다.
     /// </summary>
     public (List<int> closureSequence, List<int> closedAreaIds, int nextAreaType,
-        long nextAtUnix, int secondsLeft, bool warningActive) GetClosureSnapshot(long matchingId)
+        long nextAtUnix, int secondsLeft, bool warningActive, int startDelaySec, int intervalSec)
+        GetClosureSnapshot(long matchingId)
     {
         if (!_states.TryGetValue(matchingId, out var state))
-            return ([], [], -1, -1, -1, false);
+            return ([], [], -1, -1, -1, false, MatchingConfigService.DefaultStartDelaySec, MatchingConfigService.DefaultIntervalSec);
 
         var sequence = state.ClosureOrder.Select(a => (int)a).ToList();
         var closed = state.ClosedAreas.Select(a => (int)a).ToList();
 
         if (state.NextClosureIndex >= state.ClosureOrder.Count)
-            return (sequence, closed, -1, -1, -1, false);
+            return (sequence, closed, -1, -1, -1, false, state.StartDelaySec, state.IntervalSec);
 
         double elapsed = (DateTime.UtcNow - state.GameStartTime).TotalSeconds;
-        double nextClosureTime = FirstClosureDelaySeconds + state.NextClosureIndex * ClosureIntervalSeconds;
+        double nextClosureTime = state.StartDelaySec + state.NextClosureIndex * state.IntervalSec;
         double remaining = nextClosureTime - elapsed;
 
         int nextAreaType = (int)state.ClosureOrder[state.NextClosureIndex];
@@ -159,7 +176,7 @@ public class AreaClosureManager
         int secondsLeft = remaining > 0 ? (int)Math.Ceiling(remaining) : 0;
         bool warningActive = remaining > 0 && remaining <= ClosureWarningSeconds;
 
-        return (sequence, closed, nextAreaType, nextAtUnix, secondsLeft, warningActive);
+        return (sequence, closed, nextAreaType, nextAtUnix, secondsLeft, warningActive, state.StartDelaySec, state.IntervalSec);
     }
 
     /// <summary>
@@ -188,4 +205,10 @@ public class MatchingClosureState
     public int NextClosureIndex { get; set; }
     public DateTime GameStartTime { get; set; }
     public HashSet<int> WarningsSent { get; set; } = new(); // 경고 보낸 인덱스
+
+    /// <summary>이 인스턴스에 적용된 폐쇄 시작 딜레이 (초) — 생성 시 config에서 복사</summary>
+    public int StartDelaySec { get; set; } = MatchingConfigService.DefaultStartDelaySec;
+
+    /// <summary>이 인스턴스에 적용된 폐쇄 간격 (초) — 생성 시 config에서 복사</summary>
+    public int IntervalSec { get; set; } = MatchingConfigService.DefaultIntervalSec;
 }
