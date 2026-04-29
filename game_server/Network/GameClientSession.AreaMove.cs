@@ -58,20 +58,12 @@ public partial class GameClientSession
         // 3. 이동 비용 산정 (모든 area 이동은 Door — 계단 개념 폐지)
         int staminaCost = GameServer.MoveStaminaCost;
 
-        // 4. 스태미나 검증
-        await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-        var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
-        if (playerInfo == null)
-        {
-            SendAreaMoveError(ErrorCode.SERVER_INTERNAL_ERROR, msg.TargetArea);
-            return;
-        }
-
-        if (playerInfo.Stamina < staminaCost)
+        // 4. 스태미나 검증 (세션 인-메모리 Stamina 기준 — 영구 PlayerInfo.Stamina와 분리)
+        if (Stamina < staminaCost)
         {
             Logger.LogInformation(
                 "Player {PlayerId} 스태미나 부족 (요청 {Cost}, 보유 {Have})",
-                PlayerId, staminaCost, playerInfo.Stamina);
+                PlayerId, staminaCost, Stamina);
             SendAreaMoveError(ErrorCode.INSUFFICIENT_STAMINA, msg.TargetArea);
             return;
         }
@@ -82,8 +74,15 @@ public partial class GameClientSession
                             msg.StairSide)
                         ?? GameMapData.GetAreaSpawnCell(CurrentMapId, msg.TargetArea);
 
-        // 6. PlayerInfo 갱신 (스태미나 차감 + 위치/구역 이동)
-        playerInfo.Stamina -= staminaCost;
+        // 6. 위치/구역 정보 영구 저장 (스태미나는 인-게임 한정이라 Redis 갱신 안 함)
+        await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+        var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+        if (playerInfo == null)
+        {
+            SendAreaMoveError(ErrorCode.SERVER_INTERNAL_ERROR, msg.TargetArea);
+            return;
+        }
+
         playerInfo.ObjectInfo.Cell = spawnCell;
         var spawnPos = CellToWorldPosition(spawnCell);
         playerInfo.ObjectInfo.Position = spawnPos;
@@ -97,6 +96,9 @@ public partial class GameClientSession
         CurrentArea = msg.TargetArea;
         _lastValidatedPosition = spawnPos;
 
+        // 8. 스태미나 차감 + G_TO_C_PLAYER_STATS_UPDATE 송신 (다른 스태미나 변경 흐름과 동일 경로)
+        ModifyStats(staminaDelta: -staminaCost);
+
         Logger.LogInformation(
             "Player {PlayerId} AreaMove: {From} → {To} (cost {Cost}, type {Type})",
             PlayerId, oldArea, msg.TargetArea, staminaCost, actualType);
@@ -104,17 +106,17 @@ public partial class GameClientSession
         // HandleAreaChange는 Movement에 정의됨 — 폐쇄 알림, 동선 추적 등 공통 처리
         await HandleAreaChange(oldArea, msg.TargetArea);
 
-        // 8. 응답 (요청자에게만 — 다른 플레이어는 G_TO_C_MOVE 브로드캐스트로 위치 동기화)
+        // 9. 응답 (요청자에게만 — 다른 플레이어는 G_TO_C_MOVE 브로드캐스트로 위치 동기화)
         using var resultPacket = PacketMaker.G_TO_C_AREA_MOVE_RESULT(
             ErrorCode.SUCCESS,
             msg.TargetArea,
             spawnCell.X,
             spawnCell.Y,
             staminaCost,
-            playerInfo.Stamina);
+            Stamina);
         Send(resultPacket);
 
-        // 9. 위치 텔레포트 브로드캐스트 (같은 새 Area의 플레이어들에게)
+        // 10. 위치 텔레포트 브로드캐스트 (같은 새 Area의 플레이어들에게)
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         using var movePacket = PacketMaker.G_TO_C_MOVE(
             PlayerId.Value,

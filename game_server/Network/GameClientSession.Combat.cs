@@ -384,7 +384,7 @@ public partial class GameClientSession
     {
         StopAllPeriodicBuffs();
         _isSleeping = false;
-        Stamina = 100;
+        Stamina = 40; // 디버깅용 시작값 (정식: 100)
         Corruption = 66; // 게임 시작 시 오염도 시작값
         CurrentState = PlayerState.Idle;
         CurrentExploringInteractId = null;
