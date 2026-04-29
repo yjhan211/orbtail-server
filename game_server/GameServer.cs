@@ -64,10 +64,10 @@ public class GameServer(
 
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private const int ResourceTickIntervalSeconds = 5;
-    // 오염도 점진적 가속: 0~5분 +1, 5~10분 +2, 10분+ +3
-    private const int MentalDecayPhase1 = 1;            // 0~5분: 5초당 오염도 +1
-    private const int MentalDecayPhase2 = 2;            // 5~10분: 5초당 오염도 +2
-    private const int MentalDecayPhase3 = 3;            // 10분+: 5초당 오염도 +3
+    // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
+    private const int MentalDecayPhase1 = 2;            // 0~5분: 5초당 오염도 +2
+    private const int MentalDecayPhase2 = 4;            // 5~10분: 5초당 오염도 +4
+    private const int MentalDecayPhase3 = 6;            // 10분+: 5초당 오염도 +6
     private const int Phase2StartSeconds = 300;          // 5분
     private const int Phase3StartSeconds = 600;          // 10분
     private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
@@ -240,32 +240,29 @@ public class GameServer(
             {
                 bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
 
-                // 1. 정신력 자연감소 — 점진적 가속 (0~5분 +1, 5~10분 +2, 10분+ +3)
-                int corruptionDelta = GetMentalDecayAmount(session.CurrentMapSubId);
+                // [TEMP] 1. 정신력 자연감소 — 디버깅용 비활성
+                int corruptionDelta = 0;
+                // int corruptionDelta = GetMentalDecayAmount(session.CurrentMapSubId);
 
-                // 2. 타겟 동일 구역 → 감소 정지 + 회복 (시한부는 회복 불가 — GDD 2.5.4)
-                if (!isTerminal && session.CurrentArea != AreaType.None)
-                {
-                    var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                    bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
+                // [TEMP] 2. 타겟 동일 구역 회복 — 디버깅용 비활성
+                // if (!isTerminal && session.CurrentArea != AreaType.None)
+                // {
+                //     var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
+                //     bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
+                //     if (!targetInSameArea)
+                //     {
+                //         var targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
+                //         targetInSameArea = targetBot is { IsEliminated: false } && targetBot.CurrentArea == session.CurrentArea;
+                //     }
+                //     if (targetInSameArea)
+                //         corruptionDelta = -TargetProximityRecovery;
+                // }
 
-                    // 봇이 타겟인 경우에도 확인
-                    if (!targetInSameArea)
-                    {
-                        var targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
-                        targetInSameArea = targetBot is { IsEliminated: false } && targetBot.CurrentArea == session.CurrentArea;
-                    }
-
-                    if (targetInSameArea)
-                        corruptionDelta = -TargetProximityRecovery; // 감소 대신 회복
-                }
-
-                // 3. 시한부 추가 감소 (GDD 2.5.4: 정신력 지속 감소)
-                if (isTerminal)
-                    corruptionDelta += TerminalDecayAmount;
+                // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
+                // if (isTerminal)
+                //     corruptionDelta += TerminalDecayAmount;
 
                 // 4. 강당 체류 오염도 추가 증가 (패키지 Y 3A, GDD §3.1.1, #24)
-                // 강당 캠핑 억제: 자연증가에 +1/5초 추가. 단, 타겟 근접 회복 중인 경우 적용 안 함
                 if (!isTerminal && session.CurrentArea == (AreaType)Config.AUDITORIUM_AREA_TYPE)
                 {
                     var targetSession2 = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
@@ -274,9 +271,7 @@ public class GameServer(
                         corruptionDelta += Config.AUDITORIUM_STAY_CORRUPTION_BONUS;
                 }
 
-                // 4. 폐쇄 구역 체류 시 오염도 추가 증가 (GDD §2.1.5, v0.1.9, #66)
-                // 밀폐된 위험 구역 체류 = 정신적 압박 상승 (메타포: 폐쇄 공간의 공포)
-                // 자연증가와 합산하여 한 번에 ModifyStats 호출
+                // 4. 폐쇄 구역 체류 시 오염도 추가 증가
                 if (session.CurrentArea != AreaType.None &&
                     _areaClosureManager.IsAreaClosed(session.CurrentMapSubId, session.CurrentArea))
                 {

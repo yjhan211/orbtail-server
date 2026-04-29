@@ -61,7 +61,8 @@ public class BotPlayerManager
             TargetJobTitle = info.TargetJobTitle,
             CurrentArea = MovableAreas[Random.Shared.Next(MovableAreas.Length)],
             Stamina = 100,
-            Corruption = 0,
+            Corruption = 66, // 게임 시작 시 오염도 시작값
+
             ManittoStatus = ManittoStatus.ACTIVE,
             LastMoveTime = DateTime.UtcNow
         }).ToList();
