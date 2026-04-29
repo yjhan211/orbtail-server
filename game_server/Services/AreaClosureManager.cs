@@ -103,10 +103,11 @@ public class AreaClosureManager
     ///     현재 시각 기준 폐쇄해야 할 구역 확인.
     ///     반환: (경고할 구역, 폐쇄 확정할 구역)
     /// </summary>
-    public (AreaType? warningArea, AreaType? closingArea) CheckClosureSchedule(long matchingId)
+    public (AreaType? warningArea, int warningSeconds, long closureAtUnixMs, AreaType? closingArea)
+        CheckClosureSchedule(long matchingId)
     {
-        if (!_states.TryGetValue(matchingId, out var state)) return (null, null);
-        if (state.NextClosureIndex >= state.ClosureOrder.Count) return (null, null);
+        if (!_states.TryGetValue(matchingId, out var state)) return (null, 0, 0, null);
+        if (state.NextClosureIndex >= state.ClosureOrder.Count) return (null, 0, 0, null);
 
         double elapsed = (DateTime.UtcNow - state.GameStartTime).TotalSeconds;
         double nextClosureTime = state.StartDelaySec + state.NextClosureIndex * state.IntervalSec;
@@ -114,6 +115,8 @@ public class AreaClosureManager
 
         AreaType? warningArea = null;
         AreaType? closingArea = null;
+        int warningSeconds = 0;
+        long closureAtUnixMs = 0;
 
         // 폐쇄 시간 도달
         if (elapsed >= nextClosureTime)
@@ -132,12 +135,17 @@ public class AreaClosureManager
         {
             warningArea = state.ClosureOrder[state.NextClosureIndex];
             state.WarningsSent.Add(state.NextClosureIndex);
-            int remaining = (int)(nextClosureTime - elapsed);
-            _logger.LogInformation("구역 폐쇄 경고: MatchingId={MatchingId}, Area={Area}, {Remaining}초 후",
-                matchingId, warningArea, remaining);
+            warningSeconds = Math.Max(1, (int)Math.Ceiling(nextClosureTime - elapsed));
+
+            // 정확한 폐쇄 시각 (UTC Unix ms) — 클라이언트 카운트다운 동기화용
+            var closureAtUtc = state.GameStartTime.AddSeconds(nextClosureTime);
+            closureAtUnixMs = ((DateTimeOffset)closureAtUtc).ToUnixTimeMilliseconds();
+
+            _logger.LogInformation("구역 폐쇄 경고: MatchingId={MatchingId}, Area={Area}, {Remaining}초 후 (closure at {UnixMs}ms)",
+                matchingId, warningArea, warningSeconds, closureAtUnixMs);
         }
 
-        return (warningArea, closingArea);
+        return (warningArea, warningSeconds, closureAtUnixMs, closingArea);
     }
 
     /// <summary>

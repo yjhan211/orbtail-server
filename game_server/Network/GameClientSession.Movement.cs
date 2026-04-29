@@ -32,7 +32,15 @@ public partial class GameClientSession
         try
         {
             var now = DateTime.UtcNow;
-            float deltaTime = (float)(now - _lastMoveTime).TotalSeconds;
+
+            // 클라이언트 측 timestamp로 deltaTime 산출 — 서버 도착 클러스터링/지연 영향 제거.
+            // 첫 패킷이거나 시계가 뒤로 갔으면 0으로 처리 (ValidatePosition이 deltaTime>0 조건으로 검증 스킵).
+            float deltaTime;
+            if (_lastClientMoveTimestamp == 0 || msg.ClientTimestamp <= _lastClientMoveTimestamp)
+                deltaTime = 0f;
+            else
+                deltaTime = (msg.ClientTimestamp - _lastClientMoveTimestamp) / 1000f;
+            _lastClientMoveTimestamp = msg.ClientTimestamp;
             _lastMoveTime = now;
 
             // 1. 클라이언트 Position 검증

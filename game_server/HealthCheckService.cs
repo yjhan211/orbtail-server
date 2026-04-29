@@ -21,6 +21,9 @@ public class HealthCheckService(
     {
         var builder = WebApplication.CreateBuilder();
 
+        // ASP.NET Core HTTP 요청 라이프사이클 로그 차단 (메인 Serilog와 별개 파이프라인)
+        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+
         builder.Services.AddHealthChecks().AddRedis(_redisEndpoints, name: "redis", tags: ["ready"]);
         builder.WebHost.UseUrls("http://*:8080");
 

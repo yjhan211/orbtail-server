@@ -72,15 +72,15 @@ public static class AdminEndpoints
         {
             if (req.ResetAll)
             {
-                matchingConfig.ResetClosureConfig();
+                await matchingConfig.ResetClosureConfigAsync();
                 var snapshot = await matchingConfig.GetSnapshotAsync();
                 return Results.Ok(new { message = "폐쇄 config 기본값 복원 완료. 다음 매칭부터 적용됩니다.", config = snapshot });
             }
 
             if (req.ResetSequence)
-                matchingConfig.ClearForcedSequence();
+                await matchingConfig.ClearForcedSequenceAsync();
 
-            matchingConfig.SetClosureConfig(req.StartDelaySec, req.IntervalSec, req.Sequence);
+            await matchingConfig.SetClosureConfigAsync(req.StartDelaySec, req.IntervalSec, req.Sequence);
             var updated = await matchingConfig.GetSnapshotAsync();
             return Results.Ok(new { message = "폐쇄 config 변경 완료. 다음 매칭부터 적용됩니다.", config = updated });
         });

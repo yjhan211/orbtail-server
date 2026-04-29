@@ -33,6 +33,8 @@ internal static class Program
 
         var serilogLogger = new LoggerConfiguration()
             .MinimumLevel.Debug()
+            .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+            .MinimumLevel.Override("Microsoft.Hosting.Lifetime", Serilog.Events.LogEventLevel.Information)
             .Enrich.WithProperty("serverType", serverConfig.ServerType)
             .Enrich.WithProperty("serverId", serverConfig.ServerId)
             .WriteTo.Console(outputTemplate:

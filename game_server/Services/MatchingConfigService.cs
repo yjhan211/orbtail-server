@@ -17,11 +17,14 @@ public class MatchingConfigService
     // Redis 공유 키 (user_server도 동일 키를 읽는다)
     public const string JobPoolRedisKey = "matching_config";
     public const string JobPoolRedisField = "job_pool";
+    public const string StartDelayRedisField = "start_delay_sec";
+    public const string IntervalRedisField = "interval_sec";
+    public const string ForcedSequenceRedisField = "forced_sequence";
 
     private readonly ICacheHelper _cacheHelper;
     private readonly ILogger _logger;
 
-    // 폐쇄 config (메모리 — game_server 단독 사용)
+    // 폐쇄 config (메모리 캐시 — Redis와 동기화)
     private int _startDelaySec = DefaultStartDelaySec;
     private int _intervalSec = DefaultIntervalSec;
     private List<AreaType>? _forcedSequence; // null = 무작위
@@ -46,18 +49,64 @@ public class MatchingConfigService
         };
 
     /// <summary>
-    ///     폐쇄 config 부분 업데이트. null 인자는 변경하지 않는다.
+    ///     서버 시작 시 Redis에서 폐쇄 config 로드 (재시작/핫리로드 후에도 보존).
+    ///     키가 없으면 기본값 유지.
     /// </summary>
-    public void SetClosureConfig(int? startDelaySec, int? intervalSec, List<int>? sequence)
+    public async Task LoadClosureConfigFromRedisAsync()
+    {
+        try
+        {
+            var startRaw = await _cacheHelper.HashGetAsync(JobPoolRedisKey, StartDelayRedisField);
+            if (startRaw.HasValue && int.TryParse((string)startRaw!, out int sd))
+                _startDelaySec = Math.Max(0, sd);
+
+            var intervalRaw = await _cacheHelper.HashGetAsync(JobPoolRedisKey, IntervalRedisField);
+            if (intervalRaw.HasValue && int.TryParse((string)intervalRaw!, out int iv))
+                _intervalSec = Math.Max(1, iv);
+
+            var seqRaw = await _cacheHelper.HashGetAsync(JobPoolRedisKey, ForcedSequenceRedisField);
+            if (seqRaw.HasValue)
+            {
+                var ints = JsonSerializer.Deserialize<List<int>>((string)seqRaw!);
+                _forcedSequence = ints?.Select(v => (AreaType)v).ToList();
+            }
+
+            _logger.LogInformation(
+                "Redis에서 폐쇄 config 로드 — startDelaySec={StartDelay}, intervalSec={Interval}, forcedSequence={Seq}",
+                _startDelaySec, _intervalSec,
+                _forcedSequence != null ? string.Join(",", _forcedSequence) : "무작위");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Redis 폐쇄 config 로드 실패 — 기본값 사용");
+        }
+    }
+
+    /// <summary>
+    ///     폐쇄 config 부분 업데이트. null 인자는 변경하지 않는다. Redis에 영속화.
+    /// </summary>
+    public async Task SetClosureConfigAsync(int? startDelaySec, int? intervalSec, List<int>? sequence)
     {
         if (startDelaySec.HasValue)
+        {
             _startDelaySec = Math.Max(0, startDelaySec.Value);
+            await _cacheHelper.HashSetAsync(JobPoolRedisKey, StartDelayRedisField,
+                System.Text.Encoding.UTF8.GetBytes(_startDelaySec.ToString()));
+        }
 
         if (intervalSec.HasValue)
+        {
             _intervalSec = Math.Max(1, intervalSec.Value);
+            await _cacheHelper.HashSetAsync(JobPoolRedisKey, IntervalRedisField,
+                System.Text.Encoding.UTF8.GetBytes(_intervalSec.ToString()));
+        }
 
         if (sequence != null)
+        {
             _forcedSequence = sequence.Select(v => (AreaType)v).ToList();
+            byte[] json = JsonSerializer.SerializeToUtf8Bytes(sequence);
+            await _cacheHelper.HashSetAsync(JobPoolRedisKey, ForcedSequenceRedisField, json);
+        }
 
         _logger.LogInformation(
             "폐쇄 config 변경 — startDelaySec={StartDelay}, intervalSec={Interval}, forcedSequence={Seq}",
@@ -65,17 +114,21 @@ public class MatchingConfigService
             _forcedSequence != null ? string.Join(",", _forcedSequence) : "무작위");
     }
 
-    public void ResetClosureConfig()
+    public async Task ResetClosureConfigAsync()
     {
         _startDelaySec = DefaultStartDelaySec;
         _intervalSec = DefaultIntervalSec;
         _forcedSequence = null;
+        await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, StartDelayRedisField);
+        await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, IntervalRedisField);
+        await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, ForcedSequenceRedisField);
         _logger.LogInformation("폐쇄 config 초기화 (기본값 복원)");
     }
 
-    public void ClearForcedSequence()
+    public async Task ClearForcedSequenceAsync()
     {
         _forcedSequence = null;
+        await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, ForcedSequenceRedisField);
         _logger.LogInformation("폐쇄 시퀀스 강제 지정 해제 (무작위 복원)");
     }
 
