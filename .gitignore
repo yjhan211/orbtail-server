@@ -89,8 +89,14 @@ TestResults/
 # Environment Files
 .env
 .env.local
+.env.dev
+.env.prod
 .env.*.local
 *.env
+# 단, *.example 템플릿은 추적 (커밋 가능)
+!.env.local.example
+!.env.dev.example
+!.env.prod.example
 
 # Database
 *.db
