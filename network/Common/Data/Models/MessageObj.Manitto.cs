@@ -7,6 +7,11 @@ namespace network.common.data.models
 {
     // ===== 미션 =====
 
+    /// <summary>
+    ///     v0.2.0 — 게임 시작 시 직책 + 부품 진행 정보 전달.
+    ///     CurrentStep / TotalSteps는 회수+결합 결과 부품 수 기반(호환).
+    ///     TargetArea / TargetInteractId / TargetActionId는 v0.2.0에서 의미 없음(0 송신).
+    /// </summary>
     [MessagePackObject]
     public class G_TO_C_MISSION_INFO : IMessagePackObject
     {
@@ -16,6 +21,23 @@ namespace network.common.data.models
         [Key("targetArea")] public int TargetArea { get; set; }
         [Key("targetInteractId")] public int TargetInteractId { get; set; }
         [Key("targetActionId")] public int TargetActionId { get; set; }
+        /// <summary>v0.2.0 — 직책별 모든 부품(소재 4 + 중간재 2 + 최종 1) 메타데이터</summary>
+        [Key("parts")] public List<MissionPartInfo> Parts { get; set; }
+    }
+
+    /// <summary>
+    ///     v0.2.0 — 부품 메타 정보 (클라 UI 표시용)
+    /// </summary>
+    [MessagePackObject]
+    public class MissionPartInfo : IMessagePackObject
+    {
+        [Key("partId")] public int PartId { get; set; }
+        [Key("partNameKr")] public string PartNameKr { get; set; }
+        [Key("partTier")] public int PartTier { get; set; }
+        [Key("targetArea")] public int TargetArea { get; set; }
+        [Key("targetObjectType")] public int TargetObjectType { get; set; }
+        [Key("prerequisiteShareGroup")] public int PrerequisiteShareGroup { get; set; }
+        [Key("isCollected")] public bool IsCollected { get; set; }
     }
 
     [MessagePackObject]
@@ -33,6 +55,84 @@ namespace network.common.data.models
     public class G_TO_C_MISSION_ALL_COMPLETE : IMessagePackObject
     {
         [Key("jobTitle")] public JobTitle JobTitle { get; set; }
+    }
+
+    // ===== 부품 결합 시스템 (v0.2.0 — 이슈 #38) =====
+
+    /// <summary>
+    ///     부품 회수 알림 (소재 회수). object_action result_type=1 액션 선택 → 직책 발견 풀 매칭 시 송신.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_PART_COLLECTED : IMessagePackObject
+    {
+        [Key("partId")] public int PartId { get; set; }
+        [Key("partNameKr")] public string PartNameKr { get; set; }
+        [Key("partTier")] public int PartTier { get; set; }
+        [Key("staminaReward")] public int StaminaReward { get; set; }
+    }
+
+    /// <summary>
+    ///     부품 결합 결과. 중간재(IsRaceComplete=false) 또는 최종(IsRaceComplete=true).
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_PART_COMBINED : IMessagePackObject
+    {
+        [Key("recipeId")] public int RecipeId { get; set; }
+        [Key("inputPartA")] public int InputPartA { get; set; }
+        [Key("inputPartB")] public int InputPartB { get; set; }
+        [Key("outputPartId")] public int OutputPartId { get; set; }
+        [Key("outputPartNameKr")] public string OutputPartNameKr { get; set; }
+        [Key("staminaReward")] public int StaminaReward { get; set; }
+        [Key("isRaceComplete")] public bool IsRaceComplete { get; set; }
+    }
+
+    /// <summary>
+    ///     부품 결합 요청.
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_COMBINE_PARTS : IMessagePackObject
+    {
+        [Key("partA")] public int PartA { get; set; }
+        [Key("partB")] public int PartB { get; set; }
+    }
+
+    /// <summary>
+    ///     선행 아이템 회수 알림. (장갑/드라이버/로프/걸레/결재 잉크 등 share_group 1~5)
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_PREREQUISITE_COLLECTED : IMessagePackObject
+    {
+        [Key("shareGroup")] public int ShareGroup { get; set; }
+        [Key("itemNameKr")] public string ItemNameKr { get; set; }
+        [Key("staminaReward")] public int StaminaReward { get; set; }
+    }
+
+    /// <summary>
+    ///     색출 적중 시 부품 전이 알림. 마니또(피탈자) → 색출자(획득자)로 가장 가치 높은 부품 1개 이동.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_PART_STOLEN : IMessagePackObject
+    {
+        [Key("partId")] public int PartId { get; set; }
+        [Key("partNameKr")] public string PartNameKr { get; set; }
+        [Key("partTier")] public int PartTier { get; set; }
+        /// <summary>피탈자(마니또) 플레이어 ID</summary>
+        [Key("fromPlayerId")] public long FromPlayerId { get; set; }
+        /// <summary>획득자(색출자) 플레이어 ID</summary>
+        [Key("toPlayerId")] public long ToPlayerId { get; set; }
+    }
+
+    /// <summary>
+    ///     사보타주 부품 무효화 알림. 대상의 가장 가치 높은 부품 1개 인벤토리에서 제거(재회수 불가).
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_PART_INVALIDATED : IMessagePackObject
+    {
+        [Key("partId")] public int PartId { get; set; }
+        [Key("partNameKr")] public string PartNameKr { get; set; }
+        [Key("partTier")] public int PartTier { get; set; }
+        /// <summary>무효화 대상 플레이어 ID</summary>
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
     }
 
     // ===== 구역 폐쇄 =====

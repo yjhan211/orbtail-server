@@ -97,10 +97,16 @@ namespace network.common
         C_TO_G_PLAYER_INTERACT_SHARE_RULE,        // 상호작용 중 수칙 공유 요청
         G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT,  // 상호작용 중 수칙 공유 결과
 
-        // 미션 프로토콜
-        G_TO_C_MISSION_INFO,          // 게임 시작 시 미션 정보 전달
-        G_TO_C_MISSION_STEP_COMPLETE, // 미션 단계 완료 알림
-        G_TO_C_MISSION_ALL_COMPLETE,  // 미션 전체 완료 알림
+        // 미션 프로토콜 (v0.2.0 — 부품 결합 시스템)
+        G_TO_C_MISSION_INFO,          // 게임 시작 시 미션 정보 전달 (직책 + 부품 진행)
+        G_TO_C_MISSION_STEP_COMPLETE, // 레거시 호환: 소재 1개 회수 알림 (G_TO_C_PART_COLLECTED 권장)
+        G_TO_C_MISSION_ALL_COMPLETE,  // 레거시 호환: race 완주 알림 (G_TO_C_PART_COMBINED.IsRaceComplete 권장)
+        G_TO_C_PART_COLLECTED,        // 부품 회수 알림 (소재)
+        G_TO_C_PART_COMBINED,         // 부품 결합 결과 (중간재 또는 최종)
+        C_TO_G_COMBINE_PARTS,         // 부품 결합 요청
+        G_TO_C_PREREQUISITE_COLLECTED, // 선행 아이템 회수 알림
+        G_TO_C_PART_STOLEN,           // 색출 적중 시 부품 전이 알림
+        G_TO_C_PART_INVALIDATED,      // 사보타주 부품 무효화 알림
 
         // 구역 폐쇄 프로토콜
         G_TO_C_AREA_CLOSURE_WARNING,  // 폐쇄 30초 전 경고
