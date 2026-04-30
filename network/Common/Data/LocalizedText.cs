@@ -83,6 +83,23 @@ namespace network.common.data
             return new LocalizedText(texts);
         }
 
+        /// <summary>
+        ///     FromCsv와 동일하나 CSV의 \n 이스케이프(문자 그대로의 백슬래시-n)를 실제 개행 문자로 치환한다.
+        ///     설명/결과 텍스트처럼 줄바꿈이 포함된 컬럼에 사용.
+        /// </summary>
+        public static LocalizedText FromCsvMultiline(CsvRow row, string prefix)
+        {
+            var texts = new Dictionary<string, string>();
+            foreach (var lang in SupportedLanguages)
+            {
+                var col = $"{prefix}_{lang}";
+                if (row.ContainsKey(col))
+                    texts[lang] = (row[col] ?? "").Replace("\\n", "\n");
+            }
+
+            return new LocalizedText(texts);
+        }
+
         public override string ToString()
         {
             return Kr;

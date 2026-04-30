@@ -106,7 +106,7 @@ namespace network.common.data
             LogManager.WriteDebugLog("=== GameInteractableData Validation ===");
             foreach (var (id, info) in _infos)
             {
-                LogManager.WriteDebugLog($"[{id}] {info.Name} - Actions: {info.Actions.Count}");
+                LogManager.WriteDebugLog($"[{id}] {info.Name?.Kr} - Actions: {info.Actions.Count}");
             }
             LogManager.WriteDebugLog("All validations passed successfully!");
         }
@@ -117,9 +117,9 @@ namespace network.common.data
         public int Id { get; private set; }
         public int ZoneId { get; private set; }
         public InteractableObjectType ObjectType { get; private set; }
-        public string Name { get; private set; }
-        public string ShortName { get; private set; }
-        public string Description { get; private set; }
+        public LocalizedText Name { get; private set; }
+        public LocalizedText ShortName { get; private set; }
+        public LocalizedText Description { get; private set; }
         public InteractionType InteractionType { get; private set; }
         public List<InteractableActionData> Actions { get; private set; }
 
@@ -148,9 +148,9 @@ namespace network.common.data
                 Id = id,
                 ZoneId = int.Parse(row["area_type"]),
                 ObjectType = objectType,
-                Name = row["name"],
-                ShortName = row["short_name"],
-                Description = row["description"].Replace("\\n", "\n"),
+                Name = LocalizedText.FromCsv(row, "name"),
+                ShortName = LocalizedText.FromCsv(row, "short_name"),
+                Description = LocalizedText.FromCsvMultiline(row, "description"),
                 InteractionType = row.ContainsKey("interaction_type") ? (InteractionType)int.Parse(row["interaction_type"]) : InteractionType.EXPLORE,
                 Actions = actions
             };
@@ -162,22 +162,22 @@ namespace network.common.data
         public int InteractId { get; private set; }
         public int ActionId { get; private set; }
         public int State { get; private set; }  // 0=기본, 1+=특수 상태
-        public string ActionText { get; private set; }
+        public LocalizedText ActionText { get; private set; }
 
         // 기본 결과 (규칙 무관 또는 미채택 시)
-        public string ResultText { get; private set; }
+        public LocalizedText ResultText { get; private set; }
         public ActionResultType ResultType { get; private set; }
         public int ResultId { get; private set; }
         public int ResultAmount { get; private set; }
 
         // 규칙 위반 시 결과 (비어있으면 기본 결과 사용)
-        public string ViolationResultText { get; private set; }
+        public LocalizedText ViolationResultText { get; private set; }
         public ActionResultType ViolationResultType { get; private set; }
         public int ViolationResultId { get; private set; }
         public int ViolationResultAmount { get; private set; }
 
-        // 위반 결과가 정의되어 있는지 여부
-        public bool HasViolationResult => !string.IsNullOrEmpty(ViolationResultText);
+        // 위반 결과가 정의되어 있는지 여부 (한국어 텍스트 기준)
+        public bool HasViolationResult => ViolationResultText != null && !string.IsNullOrEmpty(ViolationResultText.Kr);
 
         public int PortalTriggerId { get; private set; }
         public int StaminaCost { get; private set; }
@@ -189,20 +189,20 @@ namespace network.common.data
             var actionId = int.Parse(row["action_id"]);
 
             // 기본 결과 (공통 풀의 row 기반)
-            var resultText = row["result_text"].Replace("\\n", "\n");
+            var resultText = LocalizedText.FromCsvMultiline(row, "result_text");
             var resultType = row.ContainsKey("result_type") ? (ActionResultType)int.Parse(row["result_type"]) : ActionResultType.NONE;
             var resultId = row.ContainsKey("result_id") ? int.Parse(row["result_id"]) : 0;
             var resultAmount = row.ContainsKey("result_amount") ? int.Parse(row["result_amount"]) : 0;
 
             // 위반 결과 (별도 CSV에서 조회)
-            var violationResultText = "";
+            LocalizedText violationResultText = new LocalizedText("");
             var violationResultType = ActionResultType.NONE;
             var violationResultId = 0;
             var violationResultAmount = 0;
 
             if (violationsByKey.TryGetValue((interactId, actionId), out var violationRow))
             {
-                violationResultText = violationRow["result_text"].Replace("\\n", "\n");
+                violationResultText = LocalizedText.FromCsvMultiline(violationRow, "result_text");
                 violationResultType = (ActionResultType)int.Parse(violationRow["result_type"]);
                 violationResultId = int.Parse(violationRow["result_id"]);
                 violationResultAmount = int.Parse(violationRow["result_amount"]);
@@ -213,7 +213,7 @@ namespace network.common.data
                 InteractId = interactId,
                 ActionId = actionId,
                 State = row.ContainsKey("state") && !string.IsNullOrEmpty(row["state"]) ? int.Parse(row["state"]) : 0,
-                ActionText = row["action_text"],
+                ActionText = LocalizedText.FromCsv(row, "action_text"),
                 ResultText = resultText,
                 ResultType = resultType,
                 ResultId = resultId,
