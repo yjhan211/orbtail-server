@@ -77,8 +77,8 @@ public partial class BotPlayerManager
                 MyJobTitle = info.MyJobTitle,
                 TargetJobTitle = info.TargetJobTitle,
                 CurrentArea = startArea,
-                Stamina = 100,
-                Corruption = 66,
+                Stamina = 40,    // 디버깅용 시작값 (정식: 100) — 실제 플레이어와 동일
+                Corruption = 66, // 게임 시작 시 오염도 시작값
                 ManittoStatus = ManittoStatus.ACTIVE,
                 LastMoveTime = DateTime.UtcNow,
                 LastMissionTickTime = DateTime.UtcNow,
