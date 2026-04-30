@@ -1,8 +1,8 @@
 share_group,item_name_kr,item_name_en,item_name_jp,target_part_id,location_area,location_object_type,description_kr,description_en,description_jp
-1,장갑,,,203,10,6,RFID 칩은 손가락 지문이 묻으면 인식 불가,,
-1,장갑,,,501,32,6,산성 시약 직접 접촉 시 표피 손상,,
-1,장갑,,,801,13,6,비위생 환경에서 키트 개봉 시 오염,,
-2,드라이버,,,102,32,4,PCB 분해에는 정전기 방지 도구 필요,,
-3,로프,,,402,14,10,묶어두지 않으면 한 번에 들 수 없는 무게,,
-4,걸레,,,601,12,6,오염된 키 본은 가소성 왁스에 자국이 남지 않음,,
-5,결재 잉크,,,702,30,4,인장 헤드 분리 시 봉인 잉크 도포 필요,,
+1,장갑,Gloves,手袋,203,10,6,RFID 칩은 손가락 지문이 묻으면 인식 불가,The RFID chip becomes unreadable if smudged with fingerprints.,RFIDチップは指紋が付くと認識不能。
+1,장갑,Gloves,手袋,501,32,6,산성 시약 직접 접촉 시 표피 손상,Direct contact with the acidic reagent damages the skin.,酸性試薬に直接触れると表皮が損傷する。
+1,장갑,Gloves,手袋,801,13,6,비위생 환경에서 키트 개봉 시 오염,Opening the kit in unsanitary conditions risks contamination.,不衛生な環境でキットを開けると汚染される。
+2,드라이버,Screwdriver,ドライバー,102,32,4,PCB 분해에는 정전기 방지 도구 필요,Disassembling the PCB requires an antistatic tool.,PCBの分解には静電気防止ツールが必要。
+3,로프,Rope,ロープ,402,14,10,묶어두지 않으면 한 번에 들 수 없는 무게,A weight too heavy to carry at once unless bound.,束ねないと一度に運べない重量。
+4,걸레,Cloth,雑巾,601,12,6,오염된 키 본은 가소성 왁스에 자국이 남지 않음,A contaminated key mold leaves no impression on plastic wax.,汚れた鍵型は可塑性ワックスに跡を残せない。
+5,결재 잉크,Approval Ink,決裁インク,702,30,4,인장 헤드 분리 시 봉인 잉크 도포 필요,Separating the seal head requires applying sealing ink.,印章ヘッドの分離には封印インクの塗布が必要。
