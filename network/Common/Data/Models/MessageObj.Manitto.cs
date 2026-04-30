@@ -88,12 +88,15 @@ namespace network.common.data.models
 
     /// <summary>
     ///     부품 결합 요청.
+    ///     #87 N12: 동시 race 완주 시 결합 시작 시각이 빠른 쪽이 우선. 0이면 서버는 패킷 도착 시각으로 폴백.
     /// </summary>
     [MessagePackObject]
     public class C_TO_G_COMBINE_PARTS : IMessagePackObject
     {
         [Key("partA")] public int PartA { get; set; }
         [Key("partB")] public int PartB { get; set; }
+        /// <summary>클라이언트 결합 액션 시작 시각 (UTC Unix ms). #87 동시성 가드용. 미지원 클라는 0.</summary>
+        [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
     }
 
     /// <summary>

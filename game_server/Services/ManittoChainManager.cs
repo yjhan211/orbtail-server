@@ -48,6 +48,15 @@ public class ManittoChainManager
     }
 
     /// <summary>
+    ///     해당 매칭에 등록된 모든 플레이어/봇의 직책 목록 (#87 — 폐쇄 셔플 우선순위 결정용).
+    /// </summary>
+    public List<JobTitle> GetMatchingJobs(long matchingId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state)) return new();
+        return state.Links.Values.Select(l => l.MyJobTitle).Distinct().ToList();
+    }
+
+    /// <summary>
     ///     색출 시도. 1회 한정.
     ///     반환: (성공 여부, 에러코드)
     /// </summary>

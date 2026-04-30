@@ -43,11 +43,13 @@ public partial class GameClientSession
             // 미션 초기화
             _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
 
-            // 구역 폐쇄 초기화 (매칭당 최초 1회)
-            _areaClosureManager.InitializeMatching(msg.MatchingId);
-
-            // 봇 로드 (매칭당 최초 1회)
+            // 봇 로드 (매칭당 최초 1회) — 폐쇄 초기화 전에 로드해 직책 풀을 확정 (#87)
             await LoadBotsIfNeeded(msg.MatchingId);
+
+            // 구역 폐쇄 초기화 (매칭당 최초 1회)
+            // #87: 매칭의 직책 풀을 셔플 우선순위에 반영 (5분 1단계 보장 + LB/CL 후순위)
+            var jobPool = _manittoChainManager.GetMatchingJobs(msg.MatchingId);
+            _areaClosureManager.InitializeMatching(msg.MatchingId, jobPool);
 
             // 인게임 스탯 초기화
             ResetInGameStats();

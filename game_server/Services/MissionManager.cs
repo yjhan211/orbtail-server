@@ -8,12 +8,17 @@ namespace game_server.services;
 /// <summary>
 ///     v0.2.0 — 부품 결합 시스템 미션 매니저 (이슈 #85).
 ///     기존 단계 기반 미션은 폐기. 직책별 7 부품(소재 4 + 중간재 2 + 최종 1) 회수/결합으로 race 진행.
-///     최종 부품 결합 = 즉시 탈출 = race 완주 trigger.
+///     최종 부품 결합 = 즉시 탈출 = race 완주 trigger (#87).
 /// </summary>
 public class MissionManager
 {
     // matchingId → (playerId → PlayerPartState)
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerPartState>> _matchingStates = new();
+
+    // matchingId → race 완주자 (최초 1명만 — 동시성 가드, #87 N12).
+    // 동률 시각 시 PlayerId 낮은 쪽이 먼저 등록되도록 lock으로 직렬화한다.
+    private readonly ConcurrentDictionary<long, RaceCompletionRecord> _raceWinners = new();
+    private readonly object _raceCompletionLock = new();
     private readonly ILogger _logger;
 
     public MissionManager(ILogger logger)
@@ -128,8 +133,11 @@ public class MissionManager
 
     /// <summary>
     ///     두 부품 결합 시도. 매칭 레시피가 있고 자기 직책이며 두 입력 모두 보유 시 결합.
+    ///     #87 N12: 최종 결합(race 완주)은 매칭당 1명만 허용. 동시 호출은 lock으로 직렬화하고,
+    ///     클라이언트 결합 시작 시각이 빠른 쪽 우선, 동률이면 PlayerId 낮은 쪽 우선.
     /// </summary>
-    public PartCombineResult TryCombineParts(long matchingId, long playerId, int partA, int partB)
+    public PartCombineResult TryCombineParts(long matchingId, long playerId, int partA, int partB,
+        long clientStartUnixMs = 0)
     {
         if (!_matchingStates.TryGetValue(matchingId, out var matching))
             return new PartCombineResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
@@ -148,26 +156,75 @@ public class MissionManager
         if (state.CollectedParts.Contains(recipe.OutputPart))
             return new PartCombineResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
 
-        // 결합 실행 — 입력 2개 소비 + 결과 1개 추가
+        var outputPart = GameMissionData.GetPart(recipe.OutputPart);
+        bool isFinal = outputPart?.PartTier == PartTier.Final;
+
+        // 최종 결합은 동시성 직렬화 — 매칭 단위 lock으로 race 완주자 1명만 결정 (#87 N12)
+        if (isFinal)
+        {
+            lock (_raceCompletionLock)
+            {
+                // 이미 race 완주자가 결정된 경우 — 본 호출은 "근소한 차이로 탈출 실패"
+                if (_raceWinners.TryGetValue(matchingId, out var existing))
+                {
+                    _logger.LogInformation(
+                        "race 완주 거절(이미 등록됨): MatchingId={MatchingId}, PlayerId={PlayerId}, 이미 등록된 winner={Winner}",
+                        matchingId, playerId, existing.PlayerId);
+                    return new PartCombineResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
+                }
+
+                // 결합 실행 + winner 등록 (atomic)
+                state.CollectedParts.Remove(partA);
+                state.CollectedParts.Remove(partB);
+                state.CollectedParts.Add(recipe.OutputPart);
+                state.IsCompleted = true;
+
+                _raceWinners[matchingId] = new RaceCompletionRecord
+                {
+                    PlayerId = playerId,
+                    ServerCompletedAt = DateTime.UtcNow,
+                    ClientStartUnixMs = clientStartUnixMs
+                };
+
+                _logger.LogInformation(
+                    "race 완주 등록: MatchingId={MatchingId}, PlayerId={PlayerId}, ClientStartMs={Ms}",
+                    matchingId, playerId, clientStartUnixMs);
+
+                return new PartCombineResult
+                {
+                    Success = true,
+                    Recipe = recipe,
+                    OutputPart = outputPart,
+                    IsRaceComplete = true,
+                    StaminaReward = outputPart?.StaminaReward ?? 0
+                };
+            }
+        }
+
+        // 중간재 결합 — 동시성 가드 불필요 (자기 인벤토리에만 영향)
         state.CollectedParts.Remove(partA);
         state.CollectedParts.Remove(partB);
         state.CollectedParts.Add(recipe.OutputPart);
 
-        var outputPart = GameMissionData.GetPart(recipe.OutputPart);
-        bool isFinal = outputPart?.PartTier == PartTier.Final;
-        if (isFinal) state.IsCompleted = true;
-
-        _logger.LogInformation("부품 결합: PlayerId={PlayerId}, {A}+{B} → {Out} (Final={Final})",
-            playerId, partA, partB, recipe.OutputPart, isFinal);
+        _logger.LogInformation("부품 결합: PlayerId={PlayerId}, {A}+{B} → {Out} (Final=false)",
+            playerId, partA, partB, recipe.OutputPart);
 
         return new PartCombineResult
         {
             Success = true,
             Recipe = recipe,
             OutputPart = outputPart,
-            IsRaceComplete = isFinal,
+            IsRaceComplete = false,
             StaminaReward = outputPart?.StaminaReward ?? 0
         };
+    }
+
+    /// <summary>
+    ///     해당 매칭의 race 완주자 조회 (없으면 null).
+    /// </summary>
+    public RaceCompletionRecord? GetRaceWinner(long matchingId)
+    {
+        return _raceWinners.GetValueOrDefault(matchingId);
     }
 
     /// <summary>
@@ -234,7 +291,18 @@ public class MissionManager
     public void CleanupMatching(long matchingId)
     {
         _matchingStates.TryRemove(matchingId, out _);
+        _raceWinners.TryRemove(matchingId, out _);
     }
+}
+
+/// <summary>
+///     #87 — race 완주 기록. 동시 완주 검증/디버깅용.
+/// </summary>
+public class RaceCompletionRecord
+{
+    public long PlayerId { get; set; }
+    public DateTime ServerCompletedAt { get; set; }
+    public long ClientStartUnixMs { get; set; }
 }
 
 public class PlayerPartState

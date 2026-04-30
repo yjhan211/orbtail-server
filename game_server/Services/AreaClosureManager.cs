@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data;
 
 namespace game_server.services;
 
@@ -59,8 +60,15 @@ public class AreaClosureManager
     ///     MatchingConfigService에서 config를 읽어 적용한다.
     ///     forcedSequence가 null이면 기존 무작위 규칙(복도 hard 후순위 GDD §2.1.5) 사용.
     ///     복도 hard 후순위 규칙: 말단 6구역을 셔플 후 앞에, 복도 3개를 셔플 후 뒤에 배치.
+    ///
+    ///     #87 추가 규칙 (jobsInMatching 제공 시):
+    ///     - 1번째 슬롯(시작 5분)은 이번 매칭 직책들의 1단계(Material) 발견 구역 제외 강제 —
+    ///       race 자동 패배 차단.
+    ///     - LB(도서위원, 3) 발견 구역은 후순위 (도서관/창고/교실3/교실2 중 최소 1개 폐쇄 면역,
+    ///       M4' 보정).
+    ///     - CL(미화부원, 6) 강당 출구 후순위 (CL 과강화 보정).
     /// </summary>
-    public MatchingClosureState InitializeMatching(long matchingId)
+    public MatchingClosureState InitializeMatching(long matchingId, List<JobTitle>? jobsInMatching = null)
     {
         var config = _matchingConfig.GetClosureConfig();
         var rng = Random.Shared;
@@ -77,6 +85,10 @@ public class AreaClosureManager
             var shuffledLeaves = LeafClosableAreas.OrderBy(_ => rng.Next()).ToList();
             var shuffledCorridors = CorridorClosableAreas.OrderBy(_ => rng.Next()).ToList();
             sequence = shuffledLeaves.Concat(shuffledCorridors).ToList();
+
+            // #87: 직책 풀에 따른 셔플 우선순위 보정
+            if (jobsInMatching != null && jobsInMatching.Count > 0)
+                sequence = ApplyJobAwareShuffle(sequence, jobsInMatching);
         }
 
         var state = new MatchingClosureState
@@ -97,6 +109,70 @@ public class AreaClosureManager
             matchingId, config.StartDelaySec, config.IntervalSec, string.Join("→", sequence));
 
         return state;
+    }
+
+    /// <summary>
+    ///     #87: 직책 풀 인지 셔플. 시작 5분 내 1단계 보장 + LB/CL 후순위 보정.
+    /// </summary>
+    private static List<AreaType> ApplyJobAwareShuffle(List<AreaType> baseSequence, List<JobTitle> jobs)
+    {
+        var result = new List<AreaType>(baseSequence);
+
+        // 1) 이번 매칭 모든 직책의 1단계(Material) 발견 구역 집합
+        var stage1Areas = new HashSet<AreaType>();
+        foreach (var job in jobs)
+        {
+            var materials = GameMissionData.GetMaterials((short)job);
+            foreach (var part in materials)
+            {
+                if (part.TargetArea > 0) stage1Areas.Add((AreaType)part.TargetArea);
+            }
+        }
+
+        // 첫 슬롯(시작 5분 폐쇄)이 1단계 발견 구역이면, 1단계가 아닌 area를 앞으로 swap
+        if (stage1Areas.Contains(result[0]))
+        {
+            for (int i = 1; i < result.Count; i++)
+            {
+                if (stage1Areas.Contains(result[i])) continue;
+                (result[0], result[i]) = (result[i], result[0]);
+                break;
+            }
+        }
+
+        // 2) LB(도서위원=3) 발견 구역 후순위 — 도서관/창고/교실3/교실2 중 최소 1개 폐쇄 면역
+        // 창고는 폐쇄 불가이므로 사실상 도서관/교실3/교실2 중 1개를 가능한 한 뒤로 보낸다.
+        if (jobs.Contains(JobTitle.LIBRARY_COMMITTEE))
+            DemoteOneOfTheseAreasIfPossible(result,
+                new[] { AreaType.Library, AreaType.Classroom3, AreaType.Classroom2 });
+
+        // 3) CL(미화부원=6) 강당 출구(=강당) 후순위 — 강당은 폐쇄 불가지만,
+        // 미화부원 발견 구역(교실2/2층복도 등)도 한 번 보정해 race 자동 패배를 더 차단한다.
+        if (jobs.Contains(JobTitle.CLEANING_MEMBER))
+            DemoteOneOfTheseAreasIfPossible(result,
+                new[] { AreaType.Classroom2 });
+
+        return result;
+    }
+
+    /// <summary>
+    ///     주어진 후보 구역들 중 시퀀스에 포함된 것 1개를 가능한 한 뒤로(말단 그룹 끝쪽) 이동.
+    ///     복도 hard 후순위 규칙은 깨뜨리지 않도록 말단 그룹 내부에서만 swap한다.
+    /// </summary>
+    private static void DemoteOneOfTheseAreasIfPossible(List<AreaType> seq, IEnumerable<AreaType> candidates)
+    {
+        // 말단 6구역 영역 = 인덱스 [0..5] (생성 시 leaves가 앞에 배치됨)
+        const int leafGroupEnd = 6;
+        foreach (var candidate in candidates)
+        {
+            int idx = seq.IndexOf(candidate);
+            if (idx < 0 || idx >= leafGroupEnd) continue;
+
+            int targetIdx = leafGroupEnd - 1;
+            if (idx == targetIdx) return;     // 이미 말단 그룹 끝
+            (seq[idx], seq[targetIdx]) = (seq[targetIdx], seq[idx]);
+            return;
+        }
     }
 
     /// <summary>
