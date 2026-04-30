@@ -676,22 +676,21 @@ public class GameServer(
 
             player.JobTitle = session.AdminJobTitle.ToKorean();
 
-            var rawSteps = _missionManager.GetAllStepsForAdmin(matchingId, player.PlayerId);
-            player.AllSteps = rawSteps.Select(s =>
+            // v0.2.0 — 부품 진행도로 어드민 표시 재구성
+            var jobParts = GameMissionData.GetParts((short)session.AdminJobTitle);
+            var partState = _missionManager.GetState(matchingId, player.PlayerId);
+            int order = 0;
+            player.AllSteps = jobParts.Select(p => new MissionFullStep
             {
-                // mission_step.csv에서 description 조회
-                var csvStep = GameMissionData.GetStep((short)session.AdminJobTitle, s.order);
-                return new MissionFullStep
-                {
-                    Order = s.order,
-                    TargetAreaType = s.targetArea,
-                    TargetAreaName = GameAreaNameData.Get((AreaType)s.targetArea),
-                    TargetInteractId = s.targetInteractId,
-                    IsCompleted = s.isCompleted,
-                    IsCurrent = s.isCurrent,
-                    Description = csvStep?.TraceDescription ?? "",
-                    TargetObjectName = ""  // 인터랙터블 이름 조회는 추후 확장
-                };
+                Order = ++order,
+                PartId = p.PartId,
+                PartNameKr = p.PartNameKr,
+                PartTier = (int)p.PartTier,
+                TargetAreaType = p.TargetArea,
+                TargetAreaName = p.TargetArea > 0 ? GameAreaNameData.Get((AreaType)p.TargetArea) : "",
+                TargetObjectType = p.TargetObjectType,
+                IsCollected = partState?.CollectedParts.Contains(p.PartId) ?? false,
+                PrerequisiteShareGroup = p.PrerequisiteShareGroup
             }).ToList();
         }
 
@@ -744,8 +743,10 @@ public class GameServer(
                 TargetPlayerId = s.TargetPlayerId,
                 IsBot = s.IsBot,
                 IsEliminated = s.IsEliminated,
-                MissionStep = missionState?.CurrentStepOrder ?? 0,
-                MissionTotalSteps = missionState?.TotalSteps ?? 0,
+                MissionStep = missionState?.CollectedParts.Count ?? 0,
+                MissionTotalSteps = missionState != null
+                    ? GameMissionData.GetTotalParts((short)missionState.JobTitle)
+                    : 0,
                 MissionCompleted = missionState?.IsCompleted ?? false,
                 ManittoOfMe = manittoOfMe,
                 ChainStatus = chainLink?.Status.ToString() ?? ""

@@ -81,15 +81,6 @@ namespace network.common.data
         /// </summary>
         public static int GetTotalParts(short jobTitle) => GetParts(jobTitle).Count;
 
-        /// <summary>
-        ///     호환 stub — Phase 3b 마이그레이션 전 임시. 단계 기반 호출자가 빌드 통과하도록.
-        /// </summary>
-        public static MissionPartData GetStep(short jobTitle, int stepOrder)
-        {
-            var parts = GetParts(jobTitle);
-            return stepOrder >= 1 && stepOrder <= parts.Count ? parts[stepOrder - 1] : null;
-        }
-
         public static void Validate(managers.LogManager logger)
         {
             if (_partsByJob.Count == 0)
@@ -121,19 +112,5 @@ namespace network.common.data
         public int StaminaReward { get; set; }       // 소재 회수 시 +12, 중간재 결합 시 +20, 최종 0
         public int PrerequisiteShareGroup { get; set; } // 0=선행 없음, 1+=선행 그룹 ID
         public int CombineProgressSeconds { get; set; } // 결합 progress (소재=0, 결합 부품=5)
-
-        // ===== 호환 프로퍼티 (Phase 3b 마이그레이션 전 임시) =====
-
-        /// <summary>호환 stub — 단계 기반 호출자용. Phase 3b에서 폐기.</summary>
-        public int StepOrder => PartId % 100;
-
-        /// <summary>호환 stub — Phase 3b에서 폐기.</summary>
-        public int TargetInteractId => 0;
-
-        /// <summary>호환 stub — Phase 3b에서 폐기.</summary>
-        public int TargetActionId => 0;
-
-        /// <summary>호환 stub — Phase 3b에서 폐기.</summary>
-        public string TraceDescription => "";
     }
 }

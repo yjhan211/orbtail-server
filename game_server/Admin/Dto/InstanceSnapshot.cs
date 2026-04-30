@@ -51,22 +51,27 @@ public class ClosureSnapshot
 }
 
 /// <summary>
-///     미션 단계 상세 (어드민 전용)
+///     v0.2.0 — 부품 진행 상세 (어드민 전용). 직책별 7부품(소재 4 + 중간재 2 + 최종 1).
 /// </summary>
 public class MissionFullStep
 {
+    /// <summary>부품 정렬 순서 (1~7)</summary>
     public int Order { get; set; }
+    /// <summary>part_id (예: 101)</summary>
+    public int PartId { get; set; }
+    /// <summary>part_name_kr</summary>
+    public string PartNameKr { get; set; } = "";
+    /// <summary>0=Material, 1=Intermediate, 2=Final</summary>
+    public int PartTier { get; set; }
+    /// <summary>소재만 의미 있음 (중간재/최종은 0)</summary>
     public int TargetAreaType { get; set; }
     public string TargetAreaName { get; set; } = "";
-    public int TargetInteractId { get; set; }
-    public bool IsCompleted { get; set; }
-    public bool IsCurrent { get; set; }
-
-    /// <summary>mission_step.csv trace_description_kr — 이 단계에서 남긴 흔적 설명</summary>
-    public string Description { get; set; } = "";
-
-    /// <summary>대상 인터랙터블 이름 (TargetInteractId 기반, 없으면 빈 문자열)</summary>
-    public string TargetObjectName { get; set; } = "";
+    /// <summary>소재만 의미 있음 (중간재/최종은 0)</summary>
+    public int TargetObjectType { get; set; }
+    /// <summary>회수/결합 완료 여부</summary>
+    public bool IsCollected { get; set; }
+    /// <summary>선행 아이템 그룹 (0=없음)</summary>
+    public int PrerequisiteShareGroup { get; set; }
 }
 
 /// <summary>
