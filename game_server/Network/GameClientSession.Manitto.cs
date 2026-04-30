@@ -219,6 +219,10 @@ public partial class GameClientSession
 
         // 결과 화면 이후 퇴장은 페널티 면제
         foreach (var session in allSessions) session.MarkGameEnded();
+
+        // 게임 타이머 정리 — race 완주/색출로 종료되었을 때 타임아웃이 후행 발사되지 않도록 (#87)
+        if (GameTimers.TryRemove(CurrentMapSubId, out var timer))
+            timer.Dispose();
     }
 
     /// <summary>
@@ -287,11 +291,18 @@ public partial class GameClientSession
     }
 
     /// <summary>
+    ///     #87: 블러프 우회(off-pool 오브젝트 사용) 시 추가 스태미나 비용. 기본 액션 비용에 더한다.
+    ///     기존 -3 또는 0 → 총 -8이 되도록 추가량을 산정.
+    /// </summary>
+    private const int BluffBypassExtraStaminaCost = 5;
+
+    /// <summary>
     ///     v0.2.0 — 탐색 완료 시 부품/선행 아이템 회수 체크.
     ///     object_action.csv의 result_type=1 (REWARD_POOL) 액션 선택 시 호출됨.
     ///     1) 자기 직책 발견 풀 매칭 → 부품 회수 (G_TO_C_PART_COLLECTED)
     ///     2) prerequisite_item.csv 매칭 → 선행 아이템 회수 (G_TO_C_PREREQUISITE_COLLECTED)
     ///     3) 둘 다 매칭 안되면 일반 탐색 — 미션 진행 없음
+    ///         #87: 자기 직책 발견 풀에 없는 오브젝트 사용 시 우회 비용 -5 스태미나 추가 차감(N11).
     /// </summary>
     public void CheckMissionProgress(AreaType area, int interactId, int actionId)
     {
@@ -341,7 +352,49 @@ public partial class GameClientSession
         if (TryCollectPrerequisiteWithNotice(area, objectType))
             return;
 
-        // 3. 일반 탐색 — 부품/선행 매칭 없음. result_type=1의 일반 보상은 호출 측에서 이미 처리됨.
+        // 3. 블러프 우회(off-pool) 비용 적용 (#87 N11)
+        ApplyBluffBypassCost(area, objectType);
+    }
+
+    /// <summary>
+    ///     #87: off-pool 오브젝트 탐색 시 추가 스태미나 차감.
+    ///     자기 직책 1단계 발견 풀(소재 + 선행 아이템) 어느 것도 매칭되지 않은 (area, objectType) 사용에 적용.
+    /// </summary>
+    private void ApplyBluffBypassCost(AreaType area, int objectType)
+    {
+        if (!PlayerId.HasValue) return;
+
+        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
+        if (state == null) return;
+
+        // 자기 직책의 모든 소재(Tier 0) (area, object_type) 풀 검사
+        var materials = GameMissionData.GetMaterials((short)state.JobTitle);
+        bool inMaterialPool = materials.Any(p =>
+            p.TargetArea == (int)area && p.TargetObjectType == objectType);
+        if (inMaterialPool) return;
+
+        // 자기 직책의 선행 아이템 위치 풀 검사
+        bool inPrereqPool = false;
+        foreach (var part in materials)
+        {
+            if (part.PrerequisiteShareGroup <= 0) continue;
+            var prereq = PrerequisiteItemData.GetForPart(part.PartId);
+            if (prereq == null) continue;
+            if (prereq.LocationArea == (int)area && prereq.LocationObjectType == objectType)
+            {
+                inPrereqPool = true;
+                break;
+            }
+        }
+        if (inPrereqPool) return;
+
+        // 우회 비용 차감 + 클라이언트 동기화
+        int prevStamina = Stamina;
+        ModifyStats(staminaDelta: -BluffBypassExtraStaminaCost);
+        int delta = Stamina - prevStamina;
+        Logger.LogInformation(
+            "블러프 우회 비용: PlayerId={PlayerId}, Area={Area}, ObjType={ObjType}, -{Cost}=({Delta})",
+            PlayerId, area, objectType, BluffBypassExtraStaminaCost, delta);
     }
 
     /// <summary>
@@ -405,13 +458,14 @@ public partial class GameClientSession
 
     /// <summary>
     ///     v0.2.0 — 부품 결합 요청 처리. 두 부품 결합 시도 → 결과 송신.
-    ///     최종 결합(IsRaceComplete) 시 race 완주 처리도 함께.
+    ///     #87: 최종 결합(IsRaceComplete) 시 즉시 게임 종료 — 다른 생존자 RACE_LOST 처리.
     /// </summary>
     private Task HandleCombineParts(C_TO_G_COMBINE_PARTS msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
 
-        var result = _missionManager.TryCombineParts(CurrentMapSubId, PlayerId.Value, msg.PartA, msg.PartB);
+        var result = _missionManager.TryCombineParts(
+            CurrentMapSubId, PlayerId.Value, msg.PartA, msg.PartB, msg.ClientStartUnixMs);
         if (!result.Success)
         {
             // 실패 시 ErrorCode만 응답 (결과 패킷 + IsRaceComplete=false)
@@ -459,10 +513,40 @@ public partial class GameClientSession
             allCompletePacket.SetBody(MessagePackSerializer.Serialize(allCompleteMsg));
             Send(allCompletePacket);
 
-            Logger.LogInformation("race 완주: PlayerId={PlayerId}, 직책={Job}", PlayerId, MyJobTitle);
+            Logger.LogInformation("race 완주: PlayerId={PlayerId}, 직책={Job} — 즉시 게임 종료", PlayerId, MyJobTitle);
+
+            // #87: 30초 봉쇄 폐기 — race 완주 즉시 게임 종료
+            EndGameByRaceCompletion(PlayerId.Value);
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     #87: race 완주에 의한 게임 즉시 종료.
+    ///     완주자를 winner로 하고, 그 외 모든 생존자를 RACE_LOST 사유로 탈락 처리한 뒤 결과 패킷을 전송한다.
+    /// </summary>
+    private void EndGameByRaceCompletion(long winnerId)
+    {
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+
+        // 완주자 외 모든 생존자 탈락 (RACE_LOST)
+        foreach (var session in allSessions)
+        {
+            if (!session.PlayerId.HasValue) continue;
+            if (session.PlayerId.Value == winnerId) continue;
+            if (session.IsEliminated) continue;
+
+            // 체인 매니저에 탈락 등록 (chain break 브로드캐스트는 생략 — 어차피 즉시 게임 종료)
+            _manittoChainManager.EliminatePlayer(CurrentMapSubId, session.PlayerId.Value, EliminationReason.RACE_LOST);
+            session.ManittoStatus = ManittoStatus.SPECTATING;
+        }
+
+        // 완주자 본인은 ELIMINATED가 아니므로 별도 처리 없음 (BuildGameResult에서 정상 노출)
+        Logger.LogInformation("게임 즉시 종료(race 완주): MatchingId={MatchingId}, Winner={WinnerId}",
+            CurrentMapSubId, winnerId);
+
+        SendGameResult(allSessions, winnerId, isTimeout: false);
     }
 
     /// <summary>
