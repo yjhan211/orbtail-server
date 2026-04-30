@@ -231,7 +231,7 @@ public partial class GameClientSession
             var botInfoList = MessagePackSerializer.Deserialize<List<BotMatchingInfo>>((byte[])botData!);
             _botPlayerManager.RegisterBots(matchingId, botInfoList);
 
-            // 봇도 체인 매니저에 등록
+            // 봇도 체인 매니저 + 미션 매니저에 등록 (#26: 봇 부품 회수/결합 시뮬용)
             foreach (var bot in botInfoList)
             {
                 _manittoChainManager.RegisterLink(matchingId, new ChainLink
@@ -241,6 +241,9 @@ public partial class GameClientSession
                     MyJobTitle = bot.MyJobTitle,
                     TargetJobTitle = bot.TargetJobTitle
                 });
+
+                // 봇 부품 상태 초기화 — 자기 직책 발견 풀 기준
+                _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
             }
         }
         catch (Exception ex)
