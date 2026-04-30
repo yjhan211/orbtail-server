@@ -235,71 +235,6 @@ public class MissionManager
     {
         _matchingStates.TryRemove(matchingId, out _);
     }
-
-    // ===== 호환 stub (Phase 3b 마이그레이션 전 임시) =====
-    // 기존 단계 기반 호출자가 빌드 통과하도록 — 실제 동작은 부품 결합 API로 대체될 예정.
-
-    public bool IsCurrentMissionAreaClosed(long matchingId, long playerId, AreaClosureManager closureManager)
-    {
-        // 부품 시스템에서는 미션 구역 개념 변경 — Phase 3b에서 재정의
-        return false;
-    }
-
-    public List<(long playerId, int step, int newArea, int newInteractId, int newActionId)>
-        RedirectMissionsByInteractId(long matchingId, int interactId, AreaClosureManager closureManager)
-    {
-        return new List<(long, int, int, int, int)>();
-    }
-
-    public (bool success, int invalidatedStep, MissionPartData? nextStep) InvalidateCurrentStep(
-        long matchingId, long targetPlayerId)
-    {
-        // Phase 3b에서 새 사보타주 흐름으로 통합 마이그레이션
-        var partId = InvalidateHighestPart(matchingId, targetPlayerId);
-        return (partId.HasValue, partId ?? 0, null);
-    }
-
-    /// <summary>
-    ///     호환 stub — Phase 3b 마이그레이션 전 임시. 단계 기반 미션 호출자가 일시 비활성 동작하도록.
-    /// </summary>
-    public MissionPartData? GetCurrentStep(long matchingId, long playerId)
-    {
-        // Phase 3b에서 부품 진행 상태 조회로 마이그레이션
-        return null;
-    }
-
-    /// <summary>
-    ///     호환 stub — Phase 3b 마이그레이션 전 임시.
-    /// </summary>
-    public MissionCompleteResult? TryCompleteStep(long matchingId, long playerId,
-        AreaType area, int interactId, int actionId)
-    {
-        // Phase 3b에서 TryCollectPart + TryCombineParts로 흐름 재구성
-        return null;
-    }
-
-    /// <summary>
-    ///     호환 stub — admin 운영툴용. Phase 3b에서 부품 진행 상태 표시로 마이그레이션.
-    /// </summary>
-    public List<(int order, int targetArea, int targetInteractId, bool isCompleted, bool isCurrent)>
-        GetAllStepsForAdmin(long matchingId, long playerId)
-    {
-        return new List<(int, int, int, bool, bool)>();
-    }
-}
-
-/// <summary>
-///     호환 stub — Phase 3b 마이그레이션 전 임시. TryCompleteStep null 반환 케이스 보존용.
-/// </summary>
-public class MissionCompleteResult
-{
-    public int CompletedStep { get; set; }
-    public int StaminaReward { get; set; }
-    public string TraceDescription { get; set; } = "";
-    public AreaType TraceArea { get; set; }
-    public int TraceInteractId { get; set; }
-    public bool IsAllCompleted { get; set; }
-    public MissionPartData? NextStep { get; set; }
 }
 
 public class PlayerPartState
@@ -309,14 +244,6 @@ public class PlayerPartState
     public HashSet<int> CollectedParts { get; set; } = new();           // 회수+결합 결과 부품 ID
     public HashSet<int> CollectedPrereqGroups { get; set; } = new();    // 회수한 선행 아이템 share_group
     public bool IsCompleted { get; set; }                               // 최종 결합 시 true (race 완주)
-
-    // ===== 호환 프로퍼티 (Phase 3b 마이그레이션 전 임시) =====
-
-    /// <summary>호환 stub — 부품 진행도(CollectedParts.Count)를 단계로 환산. Phase 3b에서 폐기.</summary>
-    public int CurrentStepOrder => CollectedParts.Count + 1;
-
-    /// <summary>호환 stub — 직책 총 부품 수. Phase 3b에서 폐기.</summary>
-    public int TotalSteps => GameMissionData.GetTotalParts((short)JobTitle);
 }
 
 public class PartCollectResult
