@@ -216,8 +216,10 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Interactable.ItemPool]
             );
 
-            // 미션 데이터 초기화
+            // 미션 데이터 초기화 (v0.2.0 — 부품 결합 시스템)
             GameMissionData.Initialize(loadedData[DataFiles.Mission.Step]);
+            PartRecipeData.Initialize(loadedData[DataFiles.Mission.PartRecipe]);
+            PrerequisiteItemData.Initialize(loadedData[DataFiles.Mission.PrerequisiteItem]);
 
             ValidateAllData();
         }
@@ -308,8 +310,10 @@ namespace network.common.data.helpers
             public static class Mission
             {
                 public const string Step = "mission_step.csv";
+                public const string PartRecipe = "part_recipe.csv";
+                public const string PrerequisiteItem = "prerequisite_item.csv";
 
-                public static readonly string[] ALL = new[] { Step };
+                public static readonly string[] ALL = new[] { Step, PartRecipe, PrerequisiteItem };
             }
 
             public static class Item
