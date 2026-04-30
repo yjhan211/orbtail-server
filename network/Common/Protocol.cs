@@ -232,6 +232,9 @@ namespace network.common
         MISSION_NOT_AVAILABLE = 750,
         MISSION_ALREADY_COMPLETED = 751,
         MISSION_AREA_CLOSED = 752,
+        PREREQUISITE_REQUIRED = 753,    // v0.2.0 — 부품 회수 시 선행 아이템 필요
+        INVALID_PARAMETER = 754,        // v0.2.0 — 결합 레시피 매칭 실패 등
+        INSUFFICIENT_ITEM = 755,        // v0.2.0 — 결합 입력 부품 미보유
 
         // 색출 (850~899)
         DETECT_ALREADY_USED = 850,
