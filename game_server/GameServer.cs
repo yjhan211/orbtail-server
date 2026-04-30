@@ -294,13 +294,207 @@ public class GameServer(
             {
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 int botDecay = GetMentalDecayAmount(matchingId);
-                _botPlayerManager.ProcessBotTick(matchingId, botDecay, _areaClosureManager);
+                var eliminatedBots = _botPlayerManager.ProcessBotTick(matchingId, botDecay, _areaClosureManager);
+
+                // #26: 봇 탈락 → 체인 단절 알림 + 영향받는 플레이어/봇 상태 변경
+                foreach (var (botId, reason) in eliminatedBots)
+                    ProcessBotElimination(matchingId, botId, reason, activeSessions);
+
+                // #26: v0.2.0 부품 회수/결합 시뮬
+                ProcessBotMissionForMatching(matchingId, activeSessions);
+
+                // #26: 시한부 봇 사보타주 + 색출 시뮬
+                ProcessBotTerminalActionsForMatching(matchingId, activeSessions);
             }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "자원 틱 처리 중 오류");
         }
+    }
+
+    /// <summary>
+    ///     #26: 봇 자원 고갈 탈락 시 체인 단절 처리 + 게임 종료 판정.
+    ///     ManittoChainManager.EliminatePlayer로 체인 단절 (마니또 시한부 / 타겟 해방 등) 일괄 적용.
+    /// </summary>
+    private void ProcessBotElimination(long matchingId, long botId, EliminationReason reason,
+        List<GameClientSession> activeSessions)
+    {
+        try
+        {
+            var affected = _manittoChainManager.EliminatePlayer(matchingId, botId, reason);
+            var matchingSessions = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
+                .ToList();
+
+            // 1) 전체에게 봇 탈락 알림 (G_TO_C_PLAYER_ELIMINATED)
+            using (var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED))
+            {
+                var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED { PlayerId = botId, Reason = reason };
+                eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
+                foreach (var s in matchingSessions) s.Send(eliminatedPacket);
+            }
+
+            // 2) 영향받는 봇/세션 상태 동기화 + 체인 단절 알림
+            foreach (var (affectedId, newStatus) in affected)
+            {
+                var session = matchingSessions.FirstOrDefault(s => s.PlayerId == affectedId);
+                if (session != null)
+                {
+                    session.ApplyChainBreakStatus(newStatus, botId);
+                    continue;
+                }
+
+                // 봇 영향
+                var bot = _botPlayerManager.GetBot(matchingId, affectedId);
+                if (bot == null) continue;
+                if (newStatus == ManittoStatus.ELIMINATED)
+                {
+                    bot.IsEliminated = true;
+                    bot.ManittoStatus = ManittoStatus.SPECTATING;
+                }
+                else
+                {
+                    bot.ManittoStatus = newStatus;
+                }
+            }
+
+            // 3) 게임 종료 판정 — 봇 탈락으로 최후 1인 결정 가능
+            var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(matchingId);
+            if (isGameOver && matchingSessions.Count > 0)
+            {
+                logger.LogInformation("게임 종료(봇 탈락 후): MatchingId={MatchingId}, Winner={WinnerId}",
+                    matchingId, winnerId);
+                matchingSessions[0].EndGameByBotRaceCompletion(winnerId ?? 0);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "봇 탈락 처리 중 오류: BotId={BotId}", botId);
+        }
+    }
+
+    /// <summary>
+    ///     #26: 봇 미션 시뮬 — 부품 회수 + 자동 결합. 최종 결합 시 즉시 게임 종료.
+    /// </summary>
+    private void ProcessBotMissionForMatching(long matchingId, List<GameClientSession> activeSessions)
+    {
+        try
+        {
+            var missionResult = _botPlayerManager.ProcessBotMissionTick(matchingId, _missionManager);
+
+            // race 완주 봇 발생 — 즉시 게임 종료 처리 (#87 정합)
+            if (missionResult.RaceWinnerBotId == 0) return;
+
+            long winnerBotId = missionResult.RaceWinnerBotId;
+            var sessions = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
+                .ToList();
+            if (sessions.Count == 0) return;
+
+            logger.LogInformation("봇 race 완주: MatchingId={MatchingId}, WinnerBotId={Bot}", matchingId, winnerBotId);
+
+            // 봇 winner 등록 후 임의 세션을 통해 게임 종료 트리거
+            sessions[0].EndGameByBotRaceCompletion(winnerBotId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "봇 미션 틱 처리 중 오류: MatchingId={MatchingId}", matchingId);
+        }
+    }
+
+    /// <summary>
+    ///     #26: 시한부 봇 사보타주 + 색출 시뮬.
+    /// </summary>
+    private void ProcessBotTerminalActionsForMatching(long matchingId, List<GameClientSession> activeSessions)
+    {
+        try
+        {
+            // 1) 시한부 봇 사보타주 — 살아있는 사람 PlayerId(세션 + 다른 봇) 후보 목록
+            var sessionPlayerIds = activeSessions
+                .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
+                .Select(s => s.PlayerId!.Value);
+            var aliveBotIds = _botPlayerManager.GetBots(matchingId)
+                .Where(b => !b.IsEliminated)
+                .Select(b => b.PlayerId);
+            var aliveCandidates = sessionPlayerIds.Concat(aliveBotIds).Distinct().ToList();
+
+            var sabotaged = _botPlayerManager.ProcessTerminalSabotage(matchingId, _missionManager, aliveCandidates);
+            foreach (var (botId, victim, partId) in sabotaged)
+            {
+                if (!partId.HasValue) continue;
+                var part = GameMissionData.GetPart(partId.Value);
+                var victimSession = _clientSessions.Values.FirstOrDefault(s => s.PlayerId == victim);
+                if (victimSession == null) continue;
+
+                using var packet = Packet.Create(
+                    (int)Protocol.G_TO_C_PART_INVALIDATED, victim);
+                var msg = new G_TO_C_PART_INVALIDATED
+                {
+                    PartId = partId.Value,
+                    PartNameKr = part?.PartNameKr ?? "",
+                    PartTier = part != null ? (int)part.PartTier : 0,
+                    TargetPlayerId = victim
+                };
+                packet.SetBody(MessagePackSerializer.Serialize(msg));
+                victimSession.Send(packet);
+                logger.LogInformation("봇 사보타주 알림 송신: VictimSession={V}, PartId={Part}", victim, partId.Value);
+            }
+
+            // 2) 색출 시도 — 봇별로 자기 마니또(자기를 타겟으로 가진 사람) 후보 추리
+            var attempts = _botPlayerManager.CollectDetectionAttempts(matchingId, botId =>
+            {
+                // 봇의 마니또 = 봇을 TargetPlayerId로 가진 링크 (봇/세션 모두 가능)
+                var manittoLink = _manittoChainManager.GetLink(matchingId, botId);
+                if (manittoLink == null) return null;
+                // ManittoChainManager 내부에서 자기 마니또(=자기를 타겟으로 가진) 찾기
+                // RegisterLink로 모든 링크 등록되어 있으므로 검색 가능
+                return FindManittoOf(matchingId, botId);
+            });
+
+            foreach (var (detecterBotId, candidate) in attempts)
+            {
+                var (isCorrect, _) = _manittoChainManager.TryDetect(matchingId, detecterBotId, candidate);
+                logger.LogInformation("봇 색출 결과: BotId={B}, Cand={C}, Correct={R}",
+                    detecterBotId, candidate, isCorrect);
+
+                if (!isCorrect) continue;
+
+                // 적중 — 부품 전이 + 마니또 탈락
+                int? stolen = _missionManager.StealHighestPart(matchingId, candidate, detecterBotId);
+                _traceManager.InvalidateTracesByPlacer(matchingId, candidate);
+                logger.LogInformation("봇 색출 적중: BotId={B}, Manitto={M}, StolenPart={P}",
+                    detecterBotId, candidate, stolen);
+
+                // 마니또 탈락 — 세션 중 임의를 통해 ProcessElimination
+                var anySession = activeSessions.FirstOrDefault(s => s.CurrentMapSubId == matchingId);
+                anySession?.ProcessBotDetectedElimination(candidate);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "봇 시한부/색출 처리 중 오류: MatchingId={MatchingId}", matchingId);
+        }
+    }
+
+    /// <summary>
+    ///     매칭 내에서 botId의 마니또(=botId를 타겟으로 가진 링크)를 찾는다.
+    /// </summary>
+    private long? FindManittoOf(long matchingId, long botId)
+    {
+        // ChainLink 직접 순회 — ManittoChainManager에 헬퍼가 없으므로 BuildGameResult 활용은 무거움.
+        // Reflection 우회 대신 단순 GetLink 순회로 대체 — 매칭 인원 5명 안팎이라 비용 무시 가능.
+        // 모든 PlayerId 후보(세션 + 봇)에서 TargetPlayerId == botId인 링크 찾기
+        var sessionIds = _clientSessions.Values
+            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
+            .Select(s => s.PlayerId!.Value);
+        var botIds = _botPlayerManager.GetBots(matchingId).Select(b => b.PlayerId);
+        foreach (long candidateId in sessionIds.Concat(botIds))
+        {
+            var link = _manittoChainManager.GetLink(matchingId, candidateId);
+            if (link != null && link.TargetPlayerId == botId) return candidateId;
+        }
+        return null;
     }
 
     // ===== 구역 폐쇄 틱 =====

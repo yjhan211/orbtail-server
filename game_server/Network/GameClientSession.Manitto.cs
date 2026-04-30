@@ -146,13 +146,32 @@ public partial class GameClientSession
         foreach (var session in allSessions) session.Send(eliminatedPacket);
 
         // 세션 ManittoStatus 동기화 (탈락자 → SPECTATING으로 관전 전환)
+        // #26: 봇 상태도 함께 동기화 (BotPlayerManager) — 시한부 진입 시 사보타주 트리거 등
         foreach (var (playerId, newStatus) in affected)
         {
             var s = allSessions.FirstOrDefault(s => s.PlayerId == playerId);
-            if (s == null) continue;
-            s.ManittoStatus = newStatus == ManittoStatus.ELIMINATED
-                ? ManittoStatus.SPECTATING
-                : newStatus;
+            if (s != null)
+            {
+                s.ManittoStatus = newStatus == ManittoStatus.ELIMINATED
+                    ? ManittoStatus.SPECTATING
+                    : newStatus;
+                continue;
+            }
+
+            // 봇 상태 동기화
+            var bot = _botPlayerManager.GetBot(CurrentMapSubId, playerId);
+            if (bot != null)
+            {
+                if (newStatus == ManittoStatus.ELIMINATED)
+                {
+                    bot.IsEliminated = true;
+                    bot.ManittoStatus = ManittoStatus.SPECTATING;
+                }
+                else
+                {
+                    bot.ManittoStatus = newStatus;
+                }
+            }
         }
 
         // 2. 영향받는 플레이어에게 개별 상태 변경 알림
@@ -223,6 +242,26 @@ public partial class GameClientSession
         // 게임 타이머 정리 — race 완주/색출로 종료되었을 때 타임아웃이 후행 발사되지 않도록 (#87)
         if (GameTimers.TryRemove(CurrentMapSubId, out var timer))
             timer.Dispose();
+
+        // #26: 봇 상태 + Redis matching_bots Hash 엔트리 정리 (TTL/누수 방지)
+        _botPlayerManager.CleanupMatching(CurrentMapSubId);
+        _ = CleanupRedisMatchingBotsAsync(CurrentMapSubId);
+    }
+
+    /// <summary>
+    ///     #26: Redis "matching_bots" Hash에서 매칭 엔트리 제거. 비동기 실패 시 무시 (다음 매칭 시 재로드).
+    /// </summary>
+    private async Task CleanupRedisMatchingBotsAsync(long matchingId)
+    {
+        try
+        {
+            await CacheHelper.HashDeleteAsync("matching_bots", matchingId);
+            Logger.LogInformation("Redis matching_bots 정리: MatchingId={MatchingId}", matchingId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Redis matching_bots 정리 실패: MatchingId={MatchingId}", matchingId);
+        }
     }
 
     /// <summary>
@@ -276,15 +315,26 @@ public partial class GameClientSession
         // 1인 매칭으로 본인이 본인을 타겟으로 가지는 케이스 방어
         if (TargetPlayerId == PlayerId.Value) return;
 
+        AreaType targetArea;
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == TargetPlayerId);
-        if (targetSession == null) return;
+        if (targetSession != null)
+        {
+            targetArea = targetSession.CurrentArea;
+        }
+        else
+        {
+            // #26: 타겟이 봇인 경우 BotPlayerManager에서 위치 조회
+            var bot = _botPlayerManager.GetBot(CurrentMapSubId, TargetPlayerId);
+            if (bot == null || bot.IsEliminated) return;
+            targetArea = bot.CurrentArea;
+        }
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_TARGET_LOCATION, PlayerId.Value);
         var msg = new G_TO_C_TARGET_LOCATION
         {
             TargetPlayerId = TargetPlayerId,
-            AreaType = targetSession.CurrentArea
+            AreaType = targetArea
         };
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);
@@ -520,6 +570,45 @@ public partial class GameClientSession
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     #26: 봇 race 완주 시 게임 즉시 종료. 임의 세션에서 호출되어 winner는 봇 PlayerId.
+    /// </summary>
+    public void EndGameByBotRaceCompletion(long botWinnerId)
+    {
+        EndGameByRaceCompletion(botWinnerId);
+    }
+
+    /// <summary>
+    ///     #26: 봇 탈락에 의한 체인 단절 영향을 본 세션에 반영.
+    ///     ManittoStatus 갱신 + ELIMINATED가 아닌 경우 G_TO_C_CHAIN_BREAK 송신.
+    /// </summary>
+    public void ApplyChainBreakStatus(ManittoStatus newStatus, long eliminatedPlayerId)
+    {
+        ManittoStatus = newStatus == ManittoStatus.ELIMINATED
+            ? ManittoStatus.SPECTATING
+            : newStatus;
+
+        if (newStatus == ManittoStatus.ELIMINATED) return;
+        if (!PlayerId.HasValue) return;
+
+        using var chainPacket = Packet.Create((int)Protocol.G_TO_C_CHAIN_BREAK, PlayerId.Value);
+        var chainMsg = new G_TO_C_CHAIN_BREAK
+        {
+            EliminatedPlayerId = eliminatedPlayerId,
+            NewStatus = newStatus
+        };
+        chainPacket.SetBody(MessagePackSerializer.Serialize(chainMsg));
+        Send(chainPacket);
+    }
+
+    /// <summary>
+    ///     #26: 봇 색출 적중 시 마니또(피탈자) 탈락 처리. 임의 세션이 트리거 역할만 수행.
+    /// </summary>
+    public void ProcessBotDetectedElimination(long manittoPlayerId)
+    {
+        _ = ProcessElimination(manittoPlayerId, EliminationReason.DETECTED);
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -38,6 +39,12 @@ public partial class GameClientSession
         long targetPlayerId = msg.PlayerId;
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == targetPlayerId);
+
+        // #26: 대상이 봇이면 자동 응답 처리 (휴리스틱)
+        if (targetSession == null && BotPlayerManager.IsBotPlayerId(targetPlayerId))
+        {
+            return HandleBotInteractRequest(targetPlayerId);
+        }
 
         // 대상 없으면 에러
         if (targetSession == null)
@@ -366,6 +373,42 @@ public partial class GameClientSession
 
         // 대화 종료
         EndConversation(targetPlayerId, targetSession);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     #26: 봇이 대상일 때 1:1 상호작용 자동 응답.
+    ///     - DecideAcceptInteraction으로 수락/거절 결정
+    ///     - 수락 시: 양쪽에 RESULT(accepted=true) 송신 → 즉시 종료(대화는 게임 진행상 0.x초 단위로 빈번)
+    ///     - 거절 시: 양쪽에 RESULT(accepted=false) 송신
+    ///     클라이언트 측 봇 대화 UX는 단순화 — 수락/거절 결과만 전달.
+    /// </summary>
+    private Task HandleBotInteractRequest(long botPlayerId)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        bool accepted = _botPlayerManager.DecideAcceptInteraction(CurrentMapSubId, botPlayerId, _missionManager);
+        long requesterPlayerId = PlayerId.Value;
+
+        // 봇은 응답 기록만 갱신 (직책 밝히기는 클라이언트 UX 미구현 — 추후 확장 지점)
+        _botPlayerManager.NoteRespondedTo(CurrentMapSubId, botPlayerId, requesterPlayerId);
+
+        // 요청자에게 봇이 즉시 결정한 결과 전송 (대화 UI 없이 결과만)
+        using (var requesterResult =
+               PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(accepted, botPlayerId, ErrorCode.SUCCESS))
+        {
+            Send(requesterResult);
+        }
+
+        Logger.LogInformation(
+            "봇 1:1 자동 응답: BotId={Bot}, Requester={Requester}, Accepted={Acc}",
+            botPlayerId, requesterPlayerId, accepted);
+
+        if (!accepted)
+        {
+            _lastInteractRejectTime = DateTime.UtcNow;
+        }
 
         return Task.CompletedTask;
     }
