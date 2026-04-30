@@ -36,7 +36,7 @@ namespace network.common.data
             _infos.Clear();
             _infosByZone.Clear();
 
-            // violation 데이터를 (id, action_id) 키로 매핑
+            // violation 데이터를 (interact_id, action_id) 키로 매핑 — 인스턴스 단위 위반 결과
             var violationsByKey = new Dictionary<(int, int), CsvRow>();
             foreach (var row in violationData)
             {
@@ -45,20 +45,18 @@ namespace network.common.data
                 violationsByKey[(id, actionId)] = row;
             }
 
-            // 액션 데이터를 id별로 그룹화
-            var actionsByInteractId = actionData
-                .GroupBy(row => int.Parse(row["id"]))
+            // 공통 액션 풀 데이터를 object_type별로 그룹화 (GDD §2.4.2 — 통합 풀)
+            var actionsByObjectType = actionData
+                .GroupBy(row => int.Parse(row["object_type"]))
                 .ToDictionary(
                     g => g.Key,
-                    g => g.OrderBy(row => int.Parse(row["action_id"]))
-                          .Select(row => InteractableActionData.CreateFromData(row, violationsByKey))
-                          .ToList()
+                    g => g.OrderBy(row => int.Parse(row["action_id"])).ToList()
                 );
 
-            // 인터랙터블 정보 생성
+            // 인터랙터블 정보 생성 — 각 인터랙터블의 object_type에 매칭되는 공통 풀에서 액션 복제 + 인스턴스별 violation 부여
             foreach (var row in infoData)
             {
-                var info = InteractableInfoData.CreateFromData(row, actionsByInteractId);
+                var info = InteractableInfoData.CreateFromData(row, actionsByObjectType, violationsByKey);
                 _infos[info.Id] = info;
 
                 if (!_infosByZone.TryGetValue(info.ZoneId, out var list))
@@ -118,25 +116,43 @@ namespace network.common.data
     {
         public int Id { get; private set; }
         public int ZoneId { get; private set; }
+        public InteractableObjectType ObjectType { get; private set; }
         public string Name { get; private set; }
         public string ShortName { get; private set; }
         public string Description { get; private set; }
         public InteractionType InteractionType { get; private set; }
         public List<InteractableActionData> Actions { get; private set; }
 
-        public static InteractableInfoData CreateFromData(CsvRow row, Dictionary<int, List<InteractableActionData>> actionsByInteractId)
+        public static InteractableInfoData CreateFromData(
+            CsvRow row,
+            Dictionary<int, List<CsvRow>> actionsByObjectType,
+            Dictionary<(int, int), CsvRow> violationsByKey)
         {
             var id = int.Parse(row["id"]);
+            var objectType = row.ContainsKey("object_type") && !string.IsNullOrEmpty(row["object_type"])
+                ? (InteractableObjectType)int.Parse(row["object_type"])
+                : InteractableObjectType.None;
+
+            // object_type에 해당하는 공통 풀에서 액션 데이터를 복제하고, 인스턴스 ID(id)와 인스턴스별 violation을 부여
+            var actions = new List<InteractableActionData>();
+            if (actionsByObjectType.TryGetValue((int)objectType, out var poolRows))
+            {
+                foreach (var poolRow in poolRows)
+                {
+                    actions.Add(InteractableActionData.CreateFromData(id, poolRow, violationsByKey));
+                }
+            }
 
             return new InteractableInfoData
             {
                 Id = id,
                 ZoneId = int.Parse(row["area_type"]),
+                ObjectType = objectType,
                 Name = row["name"],
                 ShortName = row["short_name"],
                 Description = row["description"].Replace("\\n", "\n"),
                 InteractionType = row.ContainsKey("interaction_type") ? (InteractionType)int.Parse(row["interaction_type"]) : InteractionType.EXPLORE,
-                Actions = actionsByInteractId.TryGetValue(id, out var actions) ? actions : new List<InteractableActionData>()
+                Actions = actions
             };
         }
     }
@@ -168,12 +184,11 @@ namespace network.common.data
         public int RequireItemId { get; private set; }  // 0이면 조건 없음, 0보다 크면 해당 아이템 필요
         public string RequireAction { get; private set; }  // 빈 문자열이면 조건 없음, "interactableId_actionId" 형식
 
-        public static InteractableActionData CreateFromData(CsvRow row, Dictionary<(int, int), CsvRow> violationsByKey)
+        public static InteractableActionData CreateFromData(int interactId, CsvRow row, Dictionary<(int, int), CsvRow> violationsByKey)
         {
-            var interactId = int.Parse(row["id"]);
             var actionId = int.Parse(row["action_id"]);
 
-            // 기본 결과
+            // 기본 결과 (공통 풀의 row 기반)
             var resultText = row["result_text"].Replace("\\n", "\n");
             var resultType = row.ContainsKey("result_type") ? (ActionResultType)int.Parse(row["result_type"]) : ActionResultType.NONE;
             var resultId = row.ContainsKey("result_id") ? int.Parse(row["result_id"]) : 0;

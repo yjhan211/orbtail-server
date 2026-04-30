@@ -60,6 +60,27 @@ namespace network.common
             area == AreaType.None ? -1 : (int)area / 10;
     }
 
+    /// <summary>
+    ///     상호작용 오브젝트 타입 — 공통 선택지 풀 매칭용 (GDD §2.4.2).
+    ///     interactable_info.csv 의 object_type 컬럼이 이 enum 값을 사용한다.
+    /// </summary>
+    public enum InteractableObjectType
+    {
+        None = 0,
+        Chalkboard = 1,        // 칠판
+        TeacherDesk = 2,       // 교탁, 방송용 교탁
+        StudentDesk = 3,       // 학생 책상, 2인용 책상
+        OfficeDesk = 4,        // 사서 책상, 사무용 책상, 서랍장
+        Locker = 5,            // 사물함
+        Cabinet = 6,           // 캐비닛, 서류함, 보관함, 청소도구함
+        Bookshelf = 7,         // 책장, 서가, 회의록류
+        Computer = 8,          // 컴퓨터, 노트북, 방송장치
+        Printer = 9,           // 복합기, 프린터
+        SportsGear = 10,       // 농구골대, 철봉, 공바구니, 뜀틀
+        Stage = 11,             // 무대
+        Misc = 12,              // 가방류, 공, 시험지, 시계, 벤치 등 단일 narrative 오브젝트
+    }
+
     public enum SocialActionType
     {
         NONE = 0,

@@ -298,7 +298,7 @@ namespace network.common.data.helpers
             public static class Interactable
             {
                 public const string Info = "interactable_info.csv";
-                public const string Action = "interactable_action.csv";
+                public const string Action = "object_action.csv";  // GDD §2.4.2 — object_type 기반 통합 풀
                 public const string Violation = "interactable_action_violation.csv";
                 public const string ItemPool = "interactable_item_pool.csv";
 
