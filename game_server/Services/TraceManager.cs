@@ -80,6 +80,27 @@ public class TraceManager
     {
         _traces.TryRemove(matchingId, out _);
     }
+
+    /// <summary>
+    ///     v0.2.0 — 색출 적중 시 마니또(피탈자)가 배치한 모든 흔적 함정 무효화 (§2.5.1).
+    ///     마니또 배치 흔적(IsMissionTrace=false)만 제거. 미션 흔적(단서 역할)은 유지.
+    /// </summary>
+    public int InvalidateTracesByPlacer(long matchingId, long placerId)
+    {
+        if (!_traces.TryGetValue(matchingId, out var matchingTraces)) return 0;
+
+        int removedCount = 0;
+        foreach (var (interactId, objectTraces) in matchingTraces)
+        {
+            lock (objectTraces)
+            {
+                int before = objectTraces.Count;
+                objectTraces.RemoveAll(t => t.PlacedByPlayerId == placerId && !t.IsMissionTrace);
+                removedCount += before - objectTraces.Count;
+            }
+        }
+        return removedCount;
+    }
 }
 
 public class StoredTrace

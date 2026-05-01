@@ -199,6 +199,8 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_PLACE_TRACE>(bytes, HandlePlaceTrace));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SABOTAGE_MISSION,
             async bytes => await HandleMessage<C_TO_G_SABOTAGE_MISSION>(bytes, HandleSabotageMission));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_PARTS,
+            async bytes => await HandleMessage<C_TO_G_COMBINE_PARTS>(bytes, HandleCombineParts));
 
         // 상호작용 선택지 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ASK,

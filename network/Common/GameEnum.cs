@@ -267,6 +267,7 @@ namespace network.common
         DETECTED = 1,           // 색출당함
         MENTAL_ZERO = 2,        // 정신력 0
         STAMINA_ZERO = 3,       // 스태미나 0
+        RACE_LOST = 4,          // 다른 직책의 race 완주로 패배 (#87)
     }
 
     /// <summary>

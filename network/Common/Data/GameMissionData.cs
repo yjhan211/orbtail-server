@@ -10,85 +10,107 @@ using network.managers;
 namespace network.common.data
 {
     /// <summary>
-    ///     직책별 단계별 미션 데이터.
-    ///     job_title → step_order 순서로 미션 진행.
+    ///     v0.2.0 — 부품 결합 시스템(이슈 #85). 직책별 7 부품(소재 4 + 중간재 2 + 최종 1) 정의.
+    ///     기존 단계 기반 미션은 폐기. 부품 회수/결합으로 race 진행.
     /// </summary>
     public static class GameMissionData
     {
-        // JobTitle(short) → step_order 순 정렬된 미션 단계 목록
-        private static readonly Dictionary<short, List<MissionStepData>> _stepsByJob = new();
+        // job_title → part_id 순 정렬된 부품 목록
+        private static readonly Dictionary<short, List<MissionPartData>> _partsByJob = new();
+
+        // part_id → MissionPartData 직접 조회
+        private static readonly Dictionary<int, MissionPartData> _partsById = new();
 
         public static void Initialize(List<CsvRow> data)
         {
-            _stepsByJob.Clear();
+            _partsByJob.Clear();
+            _partsById.Clear();
+
             foreach (var row in data)
             {
                 short jobTitle = short.Parse(row["job_title"]);
-                int stepOrder = int.Parse(row["step_order"]);
-
-                var step = new MissionStepData
+                var part = new MissionPartData
                 {
                     JobTitle = jobTitle,
-                    StepOrder = stepOrder,
+                    PartId = int.Parse(row["part_id"]),
+                    PartNameKr = row["part_name_kr"],
+                    PartTier = (PartTier)int.Parse(row["part_tier"]),
                     TargetArea = int.Parse(row["target_area"]),
-                    TargetInteractId = int.Parse(row["target_interact_id"]),
-                    TargetActionId = int.Parse(row["target_action_id"]),
-                    TraceDescription = row["trace_description_kr"],
-                    StaminaReward = int.Parse(row["stamina_reward"])
+                    TargetObjectType = int.Parse(row["target_object_type"]),
+                    StaminaReward = int.Parse(row["stamina_reward"]),
+                    PrerequisiteShareGroup = int.Parse(row["prerequisite_share_group"]),
+                    CombineProgressSeconds = int.Parse(row["combine_progress_seconds"])
                 };
 
-                if (!_stepsByJob.ContainsKey(jobTitle))
-                    _stepsByJob[jobTitle] = new List<MissionStepData>();
-
-                _stepsByJob[jobTitle].Add(step);
+                if (!_partsByJob.ContainsKey(jobTitle))
+                    _partsByJob[jobTitle] = new List<MissionPartData>();
+                _partsByJob[jobTitle].Add(part);
+                _partsById[part.PartId] = part;
             }
 
-            // 각 직책 내에서 step_order 정렬
-            foreach (var steps in _stepsByJob.Values)
-                steps.Sort((a, b) => a.StepOrder.CompareTo(b.StepOrder));
+            foreach (var parts in _partsByJob.Values)
+                parts.Sort((a, b) => a.PartId.CompareTo(b.PartId));
         }
 
         /// <summary>
-        ///     해당 직책의 모든 미션 단계 반환
+        ///     해당 직책의 모든 부품(소재 + 중간재 + 최종) 반환
         /// </summary>
-        public static List<MissionStepData> GetSteps(short jobTitle) =>
-            _stepsByJob.GetValueOrDefault(jobTitle) ?? new List<MissionStepData>();
+        public static List<MissionPartData> GetParts(short jobTitle) =>
+            _partsByJob.GetValueOrDefault(jobTitle) ?? new List<MissionPartData>();
 
         /// <summary>
-        ///     해당 직책의 특정 단계 반환
+        ///     해당 직책의 소재(Tier 0)만 반환 — 회수 가능 부품
         /// </summary>
-        public static MissionStepData GetStep(short jobTitle, int stepOrder)
-        {
-            var steps = GetSteps(jobTitle);
-            return steps.FirstOrDefault(s => s.StepOrder == stepOrder);
-        }
+        public static List<MissionPartData> GetMaterials(short jobTitle) =>
+            GetParts(jobTitle).Where(p => p.PartTier == PartTier.Material).ToList();
 
         /// <summary>
-        ///     해당 직책의 총 미션 단계 수
+        ///     해당 직책의 최종 부품(Tier 2) 반환 — race 완주 trigger
         /// </summary>
-        public static int GetTotalSteps(short jobTitle) => GetSteps(jobTitle).Count;
+        public static MissionPartData GetFinalPart(short jobTitle) =>
+            GetParts(jobTitle).FirstOrDefault(p => p.PartTier == PartTier.Final);
+
+        /// <summary>
+        ///     part_id로 부품 직접 조회
+        /// </summary>
+        public static MissionPartData GetPart(int partId) =>
+            _partsById.GetValueOrDefault(partId);
+
+        /// <summary>
+        ///     해당 직책의 총 부품 수 (소재 4 + 중간재 2 + 최종 1 = 7)
+        /// </summary>
+        public static int GetTotalParts(short jobTitle) => GetParts(jobTitle).Count;
 
         public static void Validate(managers.LogManager logger)
         {
-            if (_stepsByJob.Count == 0)
-                throw new InvalidOperationException("미션 데이터가 로드되지 않았습니다");
+            if (_partsByJob.Count == 0)
+                throw new InvalidOperationException("미션 부품 데이터가 로드되지 않았습니다");
 
-            foreach (var (jobTitle, steps) in _stepsByJob)
+            foreach (var (jobTitle, parts) in _partsByJob)
             {
-                if (steps.Count == 0)
-                    LogManager.WriteInfoLog($"[GameMissionData] 직책 {jobTitle}에 미션 단계가 없습니다");
+                if (parts.Count != 7)
+                    LogManager.WriteInfoLog($"[GameMissionData] 직책 {jobTitle} 부품 수 비정상: {parts.Count}/7");
             }
         }
     }
 
-    public class MissionStepData
+    public enum PartTier
+    {
+        Material = 0,    // 소재 — 회수 대상
+        Intermediate = 1, // 중간재 — 결합 결과
+        Final = 2,       // 최종 — race 완주 trigger
+    }
+
+    public class MissionPartData
     {
         public short JobTitle { get; set; }
-        public int StepOrder { get; set; }
-        public int TargetArea { get; set; }        // AreaType enum 값
-        public int TargetInteractId { get; set; }
-        public int TargetActionId { get; set; }
-        public string TraceDescription { get; set; }  // 흔적 설명
-        public int StaminaReward { get; set; }     // 완료 시 스태미나 보상
+        public int PartId { get; set; }              // 예: 101 (BR_M1)
+        public string PartNameKr { get; set; }       // 예: "손상된 마이크 헤드"
+        public PartTier PartTier { get; set; }
+        public int TargetArea { get; set; }          // 소재만 의미 있음 (중간재/최종은 0)
+        public int TargetObjectType { get; set; }    // 소재만 의미 있음 (Cabinet/Locker 등)
+        public int StaminaReward { get; set; }       // 소재 회수 시 +12, 중간재 결합 시 +20, 최종 0
+        public int PrerequisiteShareGroup { get; set; } // 0=선행 없음, 1+=선행 그룹 ID
+        public int CombineProgressSeconds { get; set; } // 결합 progress (소재=0, 결합 부품=5)
     }
 }

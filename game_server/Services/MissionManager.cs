@@ -6,13 +6,19 @@ using network.common.data;
 namespace game_server.services;
 
 /// <summary>
-///     인스턴스별 플레이어 미션 진행 관리.
-///     직책(JobTitle)별 단계별 미션 추적, 완료 판정, 흔적 생성.
+///     v0.2.0 — 부품 결합 시스템 미션 매니저 (이슈 #85).
+///     기존 단계 기반 미션은 폐기. 직책별 7 부품(소재 4 + 중간재 2 + 최종 1) 회수/결합으로 race 진행.
+///     최종 부품 결합 = 즉시 탈출 = race 완주 trigger (#87).
 /// </summary>
 public class MissionManager
 {
-    // matchingId → (playerId → MissionState)
-    private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerMissionState>> _matchingStates = new();
+    // matchingId → (playerId → PlayerPartState)
+    private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerPartState>> _matchingStates = new();
+
+    // matchingId → race 완주자 (최초 1명만 — 동시성 가드, #87 N12).
+    // 동률 시각 시 PlayerId 낮은 쪽이 먼저 등록되도록 lock으로 직렬화한다.
+    private readonly ConcurrentDictionary<long, RaceCompletionRecord> _raceWinners = new();
+    private readonly object _raceCompletionLock = new();
     private readonly ILogger _logger;
 
     public MissionManager(ILogger logger)
@@ -21,243 +27,308 @@ public class MissionManager
     }
 
     /// <summary>
-    ///     플레이어 미션 초기화 (게임 시작 시).
-    ///     미션 데이터가 없는 직책은 경고 로그 후 완료 상태로 처리 (방어 로직, #24).
+    ///     플레이어 부품 상태 초기화 (게임 시작 시).
     /// </summary>
     public void InitializePlayer(long matchingId, long playerId, JobTitle jobTitle)
     {
-        var matchingDict = _matchingStates.GetOrAdd(matchingId, _ => new ConcurrentDictionary<long, PlayerMissionState>());
+        var matchingDict = _matchingStates.GetOrAdd(matchingId,
+            _ => new ConcurrentDictionary<long, PlayerPartState>());
 
-        int totalSteps = GameMissionData.GetTotalSteps((short)jobTitle);
+        int totalParts = GameMissionData.GetTotalParts((short)jobTitle);
 
-        // 방어: 미션 데이터 없는 직책 → 완료 상태로 초기화 (미션 없이 생존만)
-        if (totalSteps == 0)
+        // 방어: 부품 데이터 없는 직책 → 완료 상태로 초기화
+        if (totalParts == 0)
         {
-            _logger.LogWarning("미션 데이터 없는 직책: PlayerId={PlayerId}, JobTitle={JobTitle} — 미션 없음으로 초기화",
+            _logger.LogWarning("부품 데이터 없는 직책: PlayerId={PlayerId}, JobTitle={JobTitle} — 부품 없음으로 초기화",
                 playerId, jobTitle);
 
-            var emptyState = new PlayerMissionState
+            matchingDict[playerId] = new PlayerPartState
             {
                 PlayerId = playerId,
                 JobTitle = jobTitle,
-                CurrentStepOrder = 1,
-                TotalSteps = 0,
                 IsCompleted = true
             };
-            matchingDict[playerId] = emptyState;
             return;
         }
 
-        var state = new PlayerMissionState
+        var state = new PlayerPartState
         {
             PlayerId = playerId,
             JobTitle = jobTitle,
-            CurrentStepOrder = 1,
-            TotalSteps = totalSteps,
             IsCompleted = false
         };
 
         matchingDict[playerId] = state;
-        _logger.LogInformation("미션 초기화: PlayerId={PlayerId}, 직책={JobTitle}, 총 {Total}단계",
-            playerId, jobTitle, state.TotalSteps);
+        _logger.LogInformation("부품 초기화: PlayerId={PlayerId}, 직책={JobTitle}, 총 {Total} 부품",
+            playerId, jobTitle, totalParts);
     }
 
     /// <summary>
-    ///     현재 미션 단계 정보 조회
+    ///     부품 회수 시도 (action 2/3 result_type=1 trigger).
+    ///     자기 직책 발견 풀에서 (area, objectType) 매칭 부품을 찾아 인벤토리에 추가.
     /// </summary>
-    public MissionStepData? GetCurrentStep(long matchingId, long playerId)
+    public PartCollectResult? TryCollectPart(long matchingId, long playerId, AreaType area, int objectType)
     {
         if (!_matchingStates.TryGetValue(matchingId, out var matching)) return null;
         if (!matching.TryGetValue(playerId, out var state)) return null;
         if (state.IsCompleted) return null;
 
-        return GameMissionData.GetStep((short)state.JobTitle, state.CurrentStepOrder);
+        // 직책 발견 풀에서 매칭 부품 찾기 (소재만)
+        var materials = GameMissionData.GetMaterials((short)state.JobTitle);
+        var matchingPart = materials.FirstOrDefault(p =>
+            p.TargetArea == (int)area && p.TargetObjectType == objectType);
+
+        if (matchingPart == null) return null;
+        if (state.CollectedParts.Contains(matchingPart.PartId))
+            return new PartCollectResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
+
+        // 선행 아이템 검증
+        if (matchingPart.PrerequisiteShareGroup > 0 &&
+            !state.CollectedPrereqGroups.Contains(matchingPart.PrerequisiteShareGroup))
+        {
+            return new PartCollectResult
+            {
+                ErrorCode = ErrorCode.PREREQUISITE_REQUIRED,
+                MissingPrerequisiteGroup = matchingPart.PrerequisiteShareGroup
+            };
+        }
+
+        state.CollectedParts.Add(matchingPart.PartId);
+        _logger.LogInformation("부품 회수: PlayerId={PlayerId}, PartId={PartId} ({Name})",
+            playerId, matchingPart.PartId, matchingPart.PartNameKr);
+
+        return new PartCollectResult
+        {
+            Success = true,
+            Part = matchingPart,
+            StaminaReward = matchingPart.StaminaReward
+        };
     }
 
     /// <summary>
-    ///     미션 상태 조회
+    ///     선행 아이템 회수 시도. (area, objectType)이 PrerequisiteItemData에 매칭되면 share_group 등록.
     /// </summary>
-    public PlayerMissionState? GetState(long matchingId, long playerId)
+    public bool TryCollectPrerequisite(long matchingId, long playerId, AreaType area, int objectType)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return false;
+        if (!matching.TryGetValue(playerId, out var state)) return false;
+
+        // 자기 직책의 선행 아이템 중 매칭 위치 찾기
+        var materials = GameMissionData.GetMaterials((short)state.JobTitle);
+        foreach (var part in materials)
+        {
+            if (part.PrerequisiteShareGroup <= 0) continue;
+            var prereq = PrerequisiteItemData.GetForPart(part.PartId);
+            if (prereq == null) continue;
+            if (prereq.LocationArea == (int)area && prereq.LocationObjectType == objectType)
+            {
+                state.CollectedPrereqGroups.Add(prereq.ShareGroup);
+                _logger.LogInformation("선행 아이템 회수: PlayerId={PlayerId}, ShareGroup={Group} ({Name})",
+                    playerId, prereq.ShareGroup, prereq.ItemNameKr);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    ///     두 부품 결합 시도. 매칭 레시피가 있고 자기 직책이며 두 입력 모두 보유 시 결합.
+    ///     #87 N12: 최종 결합(race 완주)은 매칭당 1명만 허용. 동시 호출은 lock으로 직렬화하고,
+    ///     클라이언트 결합 시작 시각이 빠른 쪽 우선, 동률이면 PlayerId 낮은 쪽 우선.
+    /// </summary>
+    public PartCombineResult TryCombineParts(long matchingId, long playerId, int partA, int partB,
+        long clientStartUnixMs = 0)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching))
+            return new PartCombineResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
+        if (!matching.TryGetValue(playerId, out var state))
+            return new PartCombineResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
+        if (state.IsCompleted)
+            return new PartCombineResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
+
+        var recipe = PartRecipeData.TryCombine(partA, partB);
+        if (recipe == null || recipe.JobTitle != (short)state.JobTitle)
+            return new PartCombineResult { ErrorCode = ErrorCode.INVALID_PARAMETER };
+
+        if (!state.CollectedParts.Contains(partA) || !state.CollectedParts.Contains(partB))
+            return new PartCombineResult { ErrorCode = ErrorCode.INSUFFICIENT_ITEM };
+
+        if (state.CollectedParts.Contains(recipe.OutputPart))
+            return new PartCombineResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
+
+        var outputPart = GameMissionData.GetPart(recipe.OutputPart);
+        bool isFinal = outputPart?.PartTier == PartTier.Final;
+
+        // 최종 결합은 동시성 직렬화 — 매칭 단위 lock으로 race 완주자 1명만 결정 (#87 N12)
+        if (isFinal)
+        {
+            lock (_raceCompletionLock)
+            {
+                // 이미 race 완주자가 결정된 경우 — 본 호출은 "근소한 차이로 탈출 실패"
+                if (_raceWinners.TryGetValue(matchingId, out var existing))
+                {
+                    _logger.LogInformation(
+                        "race 완주 거절(이미 등록됨): MatchingId={MatchingId}, PlayerId={PlayerId}, 이미 등록된 winner={Winner}",
+                        matchingId, playerId, existing.PlayerId);
+                    return new PartCombineResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
+                }
+
+                // 결합 실행 + winner 등록 (atomic)
+                state.CollectedParts.Remove(partA);
+                state.CollectedParts.Remove(partB);
+                state.CollectedParts.Add(recipe.OutputPart);
+                state.IsCompleted = true;
+
+                _raceWinners[matchingId] = new RaceCompletionRecord
+                {
+                    PlayerId = playerId,
+                    ServerCompletedAt = DateTime.UtcNow,
+                    ClientStartUnixMs = clientStartUnixMs
+                };
+
+                _logger.LogInformation(
+                    "race 완주 등록: MatchingId={MatchingId}, PlayerId={PlayerId}, ClientStartMs={Ms}",
+                    matchingId, playerId, clientStartUnixMs);
+
+                return new PartCombineResult
+                {
+                    Success = true,
+                    Recipe = recipe,
+                    OutputPart = outputPart,
+                    IsRaceComplete = true,
+                    StaminaReward = outputPart?.StaminaReward ?? 0
+                };
+            }
+        }
+
+        // 중간재 결합 — 동시성 가드 불필요 (자기 인벤토리에만 영향)
+        state.CollectedParts.Remove(partA);
+        state.CollectedParts.Remove(partB);
+        state.CollectedParts.Add(recipe.OutputPart);
+
+        _logger.LogInformation("부품 결합: PlayerId={PlayerId}, {A}+{B} → {Out} (Final=false)",
+            playerId, partA, partB, recipe.OutputPart);
+
+        return new PartCombineResult
+        {
+            Success = true,
+            Recipe = recipe,
+            OutputPart = outputPart,
+            IsRaceComplete = false,
+            StaminaReward = outputPart?.StaminaReward ?? 0
+        };
+    }
+
+    /// <summary>
+    ///     해당 매칭의 race 완주자 조회 (없으면 null).
+    /// </summary>
+    public RaceCompletionRecord? GetRaceWinner(long matchingId)
+    {
+        return _raceWinners.GetValueOrDefault(matchingId);
+    }
+
+    /// <summary>
+    ///     색출 적중 시 마니또의 가장 가치 높은 부품 1개 본인에게 전이 (N10).
+    ///     우선순위: Final &gt; Intermediate &gt; Material.
+    /// </summary>
+    public int? StealHighestPart(long matchingId, long sourcePlayerId, long targetPlayerId)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return null;
+        if (!matching.TryGetValue(sourcePlayerId, out var sourceState)) return null;
+        if (!matching.TryGetValue(targetPlayerId, out var targetState)) return null;
+        if (sourceState.CollectedParts.Count == 0) return null;
+
+        int? stolen = sourceState.CollectedParts
+            .Select(GameMissionData.GetPart)
+            .Where(p => p != null)
+            .OrderByDescending(p => (int)p.PartTier)
+            .ThenByDescending(p => p.PartId)
+            .Select(p => (int?)p.PartId)
+            .FirstOrDefault();
+
+        if (stolen.HasValue)
+        {
+            sourceState.CollectedParts.Remove(stolen.Value);
+            targetState.CollectedParts.Add(stolen.Value);
+            _logger.LogInformation("색출 부품 전이: PartId={PartId} from {From} to {To}",
+                stolen.Value, sourcePlayerId, targetPlayerId);
+        }
+        return stolen;
+    }
+
+    /// <summary>
+    ///     사보타주 시 대상의 가장 가치 높은 부품 1개 무효화 (v0.2.0 — 미션 단계 무효화 → 부품 무효화).
+    /// </summary>
+    public int? InvalidateHighestPart(long matchingId, long targetPlayerId)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return null;
+        if (!matching.TryGetValue(targetPlayerId, out var state)) return null;
+        if (state.CollectedParts.Count == 0) return null;
+
+        int? invalidated = state.CollectedParts
+            .Select(GameMissionData.GetPart)
+            .Where(p => p != null)
+            .OrderByDescending(p => (int)p.PartTier)
+            .ThenByDescending(p => p.PartId)
+            .Select(p => (int?)p.PartId)
+            .FirstOrDefault();
+
+        if (invalidated.HasValue)
+        {
+            state.CollectedParts.Remove(invalidated.Value);
+            _logger.LogInformation("사보타주 부품 무효화: PlayerId={Player}, PartId={PartId}",
+                targetPlayerId, invalidated.Value);
+        }
+        return invalidated;
+    }
+
+    public PlayerPartState? GetState(long matchingId, long playerId)
     {
         if (!_matchingStates.TryGetValue(matchingId, out var matching)) return null;
         return matching.GetValueOrDefault(playerId);
     }
 
-    /// <summary>
-    ///     미션 단계 완료 시도. 해당 구역/오브젝트/액션이 현재 미션과 일치하면 완료 처리.
-    /// </summary>
-    public MissionCompleteResult? TryCompleteStep(long matchingId, long playerId, AreaType area, int interactId, int actionId)
-    {
-        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return null;
-        if (!matching.TryGetValue(playerId, out var state)) return null;
-        if (state.IsCompleted) return null;
-
-        var currentStep = GameMissionData.GetStep((short)state.JobTitle, state.CurrentStepOrder);
-        if (currentStep == null) return null;
-
-        // 구역, 오브젝트, 액션 모두 일치해야 완료
-        if (currentStep.TargetArea != (int)area) return null;
-        if (currentStep.TargetInteractId != interactId) return null;
-        if (currentStep.TargetActionId != actionId) return null;
-
-        int completedStep = state.CurrentStepOrder;
-        state.CurrentStepOrder++;
-
-        MissionStepData? nextStep = null;
-        if (state.CurrentStepOrder > state.TotalSteps)
-        {
-            state.IsCompleted = true;
-            _logger.LogInformation("미션 전체 완료: PlayerId={PlayerId}, 직책={JobTitle}", playerId, state.JobTitle);
-        }
-        else
-        {
-            nextStep = GameMissionData.GetStep((short)state.JobTitle, state.CurrentStepOrder);
-        }
-
-        _logger.LogInformation("미션 단계 완료: PlayerId={PlayerId}, Step={Step}/{Total}, 보상={Reward}",
-            playerId, completedStep, state.TotalSteps, currentStep.StaminaReward);
-
-        return new MissionCompleteResult
-        {
-            CompletedStep = completedStep,
-            StaminaReward = currentStep.StaminaReward,
-            TraceDescription = currentStep.TraceDescription,
-            TraceArea = area,
-            TraceInteractId = interactId,
-            IsAllCompleted = state.IsCompleted,
-            NextStep = nextStep
-        };
-    }
-
-    /// <summary>
-    ///     어드민 운영툴용 직책별 전체 미션 단계 조회.
-    ///     정적 GameMissionData 기준으로 조합하고, playerState 기준으로 현재/완료 여부를 마킹한다.
-    /// </summary>
-    public List<(int order, int targetArea, int targetInteractId, bool isCompleted, bool isCurrent)>
-        GetAllStepsForAdmin(long matchingId, long playerId)
-    {
-        var result = new List<(int, int, int, bool, bool)>();
-        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return result;
-        if (!matching.TryGetValue(playerId, out var state)) return result;
-
-        var allSteps = GameMissionData.GetSteps((short)state.JobTitle);
-        foreach (var step in allSteps)
-        {
-            bool isCompleted = state.IsCompleted || step.StepOrder < state.CurrentStepOrder;
-            bool isCurrent = !state.IsCompleted && step.StepOrder == state.CurrentStepOrder;
-            result.Add((step.StepOrder, step.TargetArea, step.TargetInteractId, isCompleted, isCurrent));
-        }
-        return result;
-    }
-
-    /// <summary>
-    ///     현재 미션 목적지가 폐쇄되었는지 확인
-    /// </summary>
-    public bool IsCurrentMissionAreaClosed(long matchingId, long playerId, AreaClosureManager closureManager)
-    {
-        var step = GetCurrentStep(matchingId, playerId);
-        if (step == null) return false;
-
-        return closureManager.IsAreaClosed(matchingId, (AreaType)step.TargetArea);
-    }
-
-    /// <summary>
-    ///     사보타주: 특정 interactId에 해당하는 미션 단계를 가진 플레이어의 목적지를 무작위 재설정.
-    ///     반환: 영향받은 플레이어 목록 (playerId → 새 미션 정보)
-    /// </summary>
-    public List<(long playerId, int step, int newArea, int newInteractId, int newActionId)>
-        RedirectMissionsByInteractId(long matchingId, int interactId, AreaClosureManager closureManager)
-    {
-        var affected = new List<(long, int, int, int, int)>();
-        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return affected;
-
-        // 폐쇄되지 않은 구역 목록
-        var openAreas = Enum.GetValues<AreaType>()
-            .Where(a => a != AreaType.None && !closureManager.IsAreaClosed(matchingId, a))
-            .ToList();
-        if (openAreas.Count == 0) return affected;
-
-        foreach (var (playerId, state) in matching)
-        {
-            if (state.IsCompleted) continue;
-
-            var currentStep = GameMissionData.GetStep((short)state.JobTitle, state.CurrentStepOrder);
-            if (currentStep == null || currentStep.TargetInteractId != interactId) continue;
-
-            // 무작위 구역 + 해당 구역의 기존 오브젝트 ID 재활용 (액션은 유지)
-            var newArea = openAreas[Random.Shared.Next(openAreas.Count)];
-
-            affected.Add((playerId, state.CurrentStepOrder, (int)newArea,
-                currentStep.TargetInteractId, currentStep.TargetActionId));
-
-            _logger.LogInformation("미션 재설정: PlayerId={PlayerId}, Step={Step}, {OldArea}→{NewArea}",
-                playerId, state.CurrentStepOrder, (AreaType)currentStep.TargetArea, newArea);
-        }
-
-        return affected;
-    }
-
-    /// <summary>
-    ///     사보타주 4B (패키지 Y, #24): 대상 플레이어의 현재 미션 단계를 무효화 (강제 스킵, 보상 미지급).
-    ///     반환: (성공 여부, 무효화된 단계, 다음 단계 정보)
-    ///     GDD 2.5.4: "다음 단계 미션 무효화 — 해당 단계 완료 처리, 보상 미지급"
-    /// </summary>
-    public (bool success, int invalidatedStep, MissionStepData? nextStep) InvalidateCurrentStep(
-        long matchingId, long targetPlayerId)
-    {
-        if (!_matchingStates.TryGetValue(matchingId, out var matching))
-            return (false, 0, null);
-        if (!matching.TryGetValue(targetPlayerId, out var state))
-            return (false, 0, null);
-        if (state.IsCompleted)
-            return (false, 0, null);
-
-        int invalidated = state.CurrentStepOrder;
-        state.CurrentStepOrder++;
-
-        MissionStepData? nextStep = null;
-        if (state.CurrentStepOrder > state.TotalSteps)
-        {
-            // 마지막 단계가 무효화되면 미션 전체 완료(보상 없이)
-            state.IsCompleted = true;
-            _logger.LogInformation("사보타주 4B — 마지막 단계 무효화(보상 없음): PlayerId={Target}, Step={Step}",
-                targetPlayerId, invalidated);
-        }
-        else
-        {
-            nextStep = GameMissionData.GetStep((short)state.JobTitle, state.CurrentStepOrder);
-            _logger.LogInformation("사보타주 4B — 미션 단계 무효화: PlayerId={Target}, Step={Step}→{Next}",
-                targetPlayerId, invalidated, state.CurrentStepOrder);
-        }
-
-        return (true, invalidated, nextStep);
-    }
-
-    /// <summary>
-    ///     매칭 정리
-    /// </summary>
     public void CleanupMatching(long matchingId)
     {
         _matchingStates.TryRemove(matchingId, out _);
+        _raceWinners.TryRemove(matchingId, out _);
     }
 }
 
-public class PlayerMissionState
+/// <summary>
+///     #87 — race 완주 기록. 동시 완주 검증/디버깅용.
+/// </summary>
+public class RaceCompletionRecord
+{
+    public long PlayerId { get; set; }
+    public DateTime ServerCompletedAt { get; set; }
+    public long ClientStartUnixMs { get; set; }
+}
+
+public class PlayerPartState
 {
     public long PlayerId { get; set; }
     public JobTitle JobTitle { get; set; }
-    public int CurrentStepOrder { get; set; }
-    public int TotalSteps { get; set; }
-    public bool IsCompleted { get; set; }
+    public HashSet<int> CollectedParts { get; set; } = new();           // 회수+결합 결과 부품 ID
+    public HashSet<int> CollectedPrereqGroups { get; set; } = new();    // 회수한 선행 아이템 share_group
+    public bool IsCompleted { get; set; }                               // 최종 결합 시 true (race 완주)
 }
 
-public class MissionCompleteResult
+public class PartCollectResult
 {
-    public int CompletedStep { get; set; }
+    public bool Success { get; set; }
+    public ErrorCode ErrorCode { get; set; } = ErrorCode.SUCCESS;
+    public MissionPartData? Part { get; set; }
     public int StaminaReward { get; set; }
-    public string TraceDescription { get; set; } = "";
-    public AreaType TraceArea { get; set; }
-    public int TraceInteractId { get; set; }
-    public bool IsAllCompleted { get; set; }
-    public MissionStepData? NextStep { get; set; }
+    public int MissingPrerequisiteGroup { get; set; }
+}
+
+public class PartCombineResult
+{
+    public bool Success { get; set; }
+    public ErrorCode ErrorCode { get; set; } = ErrorCode.SUCCESS;
+    public PartRecipe? Recipe { get; set; }
+    public MissionPartData? OutputPart { get; set; }
+    public bool IsRaceComplete { get; set; }
+    public int StaminaReward { get; set; }
 }

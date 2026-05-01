@@ -15,8 +15,8 @@ else
     exit 1
 fi
 
-# Use development compose file by default for hot reload
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.dev.yml}"
+# Use local compose file by default for hot reload (개발자 PC용)
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.local.yml}"
 DOCKER_COMPOSE="$DOCKER_COMPOSE -f $COMPOSE_FILE"
 
 # Colors for output
@@ -49,10 +49,10 @@ function show_help() {
 Manitto Development Helper
 
 Usage: ./dev.sh [command]
-       COMPOSE_FILE=docker-compose.yml ./dev.sh [command]  (for production mode)
+       COMPOSE_FILE=docker-compose.prod.yml ./dev.sh [command]  (for prod-like mode)
 
 Commands:
-    start           Start all services (uses dev mode with hot reload by default)
+    start           Start all services (uses local mode with hot reload by default)
     stop            Stop all services
     restart         Restart all services
     logs [service]  Show logs (optionally for specific service)
@@ -64,38 +64,38 @@ Commands:
     k-logs          Show Kubernetes pod logs (interactive)
     help            Show this help message
 
-Development Mode (default):
-    - Uses docker-compose.dev.yml
+Local Mode (default — 개발자 PC용):
+    - Uses docker-compose.local.yml
     - Hot reload enabled with dotnet watch
     - Code changes are automatically detected and server restarts
     - Just edit your code and save!
 
-Production Mode:
-    COMPOSE_FILE=docker-compose.yml ./dev.sh start
-    - Uses optimized production images
-    - Requires rebuild after code changes
+Prod-like Mode (외부 dev/prod 환경 검증용):
+    COMPOSE_FILE=docker-compose.prod.yml ./dev.sh start
+    - Uses GHCR Docker images (optimized release build)
+    - Requires .env.dev or .env.prod for environment variables
 
 Examples:
-    ./dev.sh start                    # Start with hot reload (dev mode)
+    ./dev.sh start                    # Start with hot reload (local mode)
     ./dev.sh logs game_server         # View game server logs
     ./dev.sh k-logs                   # Interactive K8s log viewer
-    COMPOSE_FILE=docker-compose.yml ./dev.sh start  # Production mode
+    COMPOSE_FILE=docker-compose.prod.yml ./dev.sh start  # Prod-like mode
 EOF
 }
 
 function stop_conflicting_mode() {
-    # dev 모드 시작 시 infra-only 중지, infra-only 시작 시 dev 중지
-    if [[ "$COMPOSE_FILE" == *"dev.yml"* ]]; then
+    # local 모드 시작 시 infra-only 중지, infra-only 시작 시 local 중지
+    if [[ "$COMPOSE_FILE" == *"local.yml"* ]]; then
         # infra-only가 실행 중이면 중지
         if docker compose -f docker-compose.infra.yml ps --status running 2>/dev/null | grep -q manitto; then
             print_warning "infra-only 모드가 실행 중입니다. 중지합니다..."
             docker compose -f docker-compose.infra.yml down
         fi
     else
-        # dev 모드가 실행 중이면 중지
-        if docker compose -f docker-compose.dev.yml ps --status running 2>/dev/null | grep -q manitto; then
-            print_warning "dev 모드가 실행 중입니다. 중지합니다..."
-            docker compose -f docker-compose.dev.yml down
+        # local 모드가 실행 중이면 중지
+        if docker compose -f docker-compose.local.yml ps --status running 2>/dev/null | grep -q manitto; then
+            print_warning "local 모드가 실행 중입니다. 중지합니다..."
+            docker compose -f docker-compose.local.yml down
         fi
     fi
 }
@@ -105,14 +105,15 @@ function start_services() {
 
     stop_conflicting_mode
 
-    if [[ "$COMPOSE_FILE" == *"dev.yml"* ]]; then
-        print_warning "Starting in DEVELOPMENT mode with hot reload..."
+    if [[ "$COMPOSE_FILE" == *"local.yml"* ]]; then
+        print_warning "Starting in LOCAL mode with hot reload..."
         echo "Code changes will be automatically detected!"
+        $DOCKER_COMPOSE up -d --build
     else
-        print_warning "Starting in PRODUCTION mode..."
+        print_warning "Starting in PROD-LIKE mode..."
+        $DOCKER_COMPOSE up -d
     fi
 
-    $DOCKER_COMPOSE up -d --build
     print_success "Services started"
     echo ""
     print_warning "Waiting for services to be ready..."
