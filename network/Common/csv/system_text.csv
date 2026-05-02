@@ -68,3 +68,26 @@ id,category,text_kr,text_en,text_jp
 10021,4,추가 항목 조회...,More options...,項目をさらに見る...
 10022,4,다른 행동으로...,Other actions...,他の行動へ...
 10023,4,되돌아가기,Back,戻る
+10024,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 요청합니다,<color=#A8D4E0>{0}</color> requests a <color=#A8D4E0>conversation</color>,<color=#A8D4E0>{0}</color>様が<color=#A8D4E0>対話</color>を要請しています
+10025,4,<color=#A8D4E0>{0}</color>님에게 상호작용 요청 중...,Requesting interaction with <color=#A8D4E0>{0}</color>...,<color=#A8D4E0>{0}</color>様に相互作用を要請中...
+10026,4,알려진 <color=#FF7E9A>행동 수칙</color>을 <color=#FF7E9A>위반</color>하고 있습니다.,Violating a known <color=#FF7E9A>conduct rule</color>.,既知の<color=#FF7E9A>行動規則</color>に<color=#FF7E9A>違反</color>しています。
+10027,4,정보 공유하기,Share Info,情報を共有する
+10028,4,아이템 요청하기,Request Item,アイテムを要請する
+10029,4,아이템 사용하기,Use Item,アイテムを使用する
+10030,4,심문하기,Interrogate,尋問する
+10031,4,<color=#A8D4E0>{0}</color> 수칙 공유하기,Share <color=#A8D4E0>{0}</color> rules,<color=#A8D4E0>{0}</color>規則を共有する
+10032,4,다른 장소 수칙 공유하기,Share rules from another area,他の場所の規則を共有する
+10033,4,다른 수칙 공유하기,Share another rule,他の規則を共有する
+10034,4,<color=#A8D4E0>{0}</color> 사용하기{1},Use <color=#A8D4E0>{0}</color>{1},<color=#A8D4E0>{0}</color>を使用する{1}
+10035,4,다른 아이템 사용하기,Use another item,他のアイテムを使用する
+10036,4,(체력 +{0}),(HP +{0}),(体力 +{0})
+10037,4,(정신오염 -{0}),(Corruption -{0}),(精神汚染 -{0})
+10038,4,<color=#FF7E9A>질문 선택지</color>가 아직 도착하지 않았습니다.,<color=#FF7E9A>Question options</color> have not arrived yet.,<color=#FF7E9A>質問の選択肢</color>がまだ到着していません。
+10039,4,상대방이 말을 고르고 있습니다...,The other player is choosing words...,相手が言葉を選んでいます...
+10040,4,<color=#A8D4E0>체력이 {0} 증가합니다.</color>,<color=#A8D4E0>HP increased by {0}.</color>,<color=#A8D4E0>体力が{0}増加します。</color>
+10041,4,<color=#A8D4E0>정신오염도가 {0} 감소합니다.</color>,<color=#A8D4E0>Corruption decreased by {0}.</color>,<color=#A8D4E0>精神汚染度が{0}減少します。</color>
+10042,4,<color=#A8D4E0>상대방이 당신에게 {0} 아이템을 사용했습니다.</color>,<color=#A8D4E0>The other player used {0} on you.</color>,<color=#A8D4E0>相手があなたに{0}アイテムを使用しました。</color>
+10043,4,상대방이 행동 수칙을 공유합니다.,The other player shares a conduct rule.,相手が行動規則を共有します。
+10044,4,학생 수첩에 증언으로 기록합니다.,Recorded as testimony in the student notebook.,学生手帳に証言として記録します。
+10045,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#A8D4E0>accepted</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>様が<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。
+10046,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#FF7E9A>거절</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#FF7E9A>declined</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>様が<color=#A8D4E0>対話</color>を<color=#FF7E9A>拒否</color>しました。
