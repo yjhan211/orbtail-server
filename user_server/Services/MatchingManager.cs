@@ -31,8 +31,8 @@ public class MatchingManager : IMatchingManager
     private const int LeavePenaltySeconds = 30; // 이탈 1회당 추가 대기 시간
     private const int MaxLeavePenaltySeconds = 300; // 최대 페널티 대기 시간 (5분)
     private const int PenaltyDecayIntervalHours = 24; // 24시간 경과 시 이탈 횟수 1 감소
-    private const int PlayersPerMatch = 1; // 매칭 트리거 최소 인원 (테스트용 — 1인 즉시 매칭)
-    private const int GamePlayersPerMatch = 5; // 실제 게임 인원 (부족한 만큼 봇 채움)
+    private const int PlayersPerMatch = 2; // 매칭 트리거 최소 인원 (시연용 — 2인 매칭)
+    private const int GamePlayersPerMatch = 2; // 실제 게임 인원 (시연용 — 봇 채움 없이 2인)
     private static long _botIdCounter; // 봇 PlayerId (음수)
     private readonly ICacheHelper _cacheHelper;
     private readonly Func<long, GameSession?> _getSession;
