@@ -45,3 +45,26 @@ id,category,text_kr,text_en,text_jp
 231,3,<color=#FF7E9A>투입하지 마</color>. 다시는 만날 수 없어.,<color=#FF7E9A>Don't submit them</color>. We will never meet again.,<color=#FF7E9A>投入するな</color>。二度と会えなくなる。
 232,3,<color=#A8D4E0>개체</color> <color=#A8D4E0>투입</color>하기,<color=#A8D4E0>Submit</color> the <color=#A8D4E0>subject</color>,<color=#A8D4E0>個体</color>を<color=#A8D4E0>投入</color>する
 233,3,<color=#A8D4E0>개체</color>를 <color=#A8D4E0>투입한다</color>.,<color=#A8D4E0>Submit</color> the <color=#A8D4E0>subject</color>.,<color=#A8D4E0>個体</color>を<color=#A8D4E0>投入する</color>。
+10001,4,<color=#A8D4E0>{0}</color>님과의 <color=#A8D4E0>대화</color>가 <color=#A8D4E0>종료</color>되었습니다.,Conversation with <color=#A8D4E0>{0}</color> has <color=#A8D4E0>ended</color>.,<color=#A8D4E0>{0}</color>様との<color=#A8D4E0>対話</color>が<color=#A8D4E0>終了</color>しました。
+10002,4,<color=#A8D4E0>{0}</color>님의 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>Accepted</color> conversation with <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>様の<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。
+10003,4,<color=#A8D4E0>{0}</color>님의 대화를 <color=#A8D4E0>거절</color>했습니다.,<color=#A8D4E0>Declined</color> conversation with <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>様の対話を<color=#A8D4E0>拒否</color>しました。
+10004,4,응답 시간이 초과되었습니다.,Response timed out.,応答時間が超過しました。
+10005,4,<color=#00E676>선행 조건</color>이 완료되지 않았습니다.,<color=#00E676>Prerequisite</color> not met.,<color=#00E676>先行条件</color>が完了していません。
+10006,4,<color=#00E676>{0}</color>을(를) 가지고 있지 않습니다.,You do not have <color=#00E676>{0}</color>.,<color=#00E676>{0}</color>を所持していません。
+10007,4,아직 요청할 수 없습니다.,Cannot request yet.,まだ要請できません。
+10008,4,서버에 <color=#FF7E9A>연결</color>할 수 없습니다. <color=#FF7E9A>설정</color>을 확인하세요.,Cannot <color=#FF7E9A>connect</color> to server. Check <color=#FF7E9A>settings</color>.,サーバーに<color=#FF7E9A>接続</color>できません。<color=#FF7E9A>設定</color>を確認してください。
+10009,4,<color=#A8D4E0>{0}</color>을(를) 사용했습니다.,Used <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>を使用しました。
+10010,4,새로운 <color=#A8D4E0>행동 수칙</color>을 발견했습니다!,Discovered a new <color=#A8D4E0>conduct rule</color>!,新たな<color=#A8D4E0>行動規則</color>を発見しました!
+10011,4,<color=#FF7E9A>사칭 발각</color> {0},<color=#FF7E9A>Impersonation Exposed</color> {0},<color=#FF7E9A>なりすまし発覚</color> {0}
+10012,4,<color=#FF7E9A>가용 체력</color>이 모두 <color=#FF7E9A>소진</color>되었습니다.,<color=#FF7E9A>Available stamina</color> fully <color=#FF7E9A>depleted</color>.,<color=#FF7E9A>使用可能な体力</color>が全て<color=#FF7E9A>尽きました</color>。
+10013,4,공유할 수 있는 <color=#FF7E9A>행동 수칙</color>이 없습니다.,No <color=#FF7E9A>conduct rules</color> available to share.,共有できる<color=#FF7E9A>行動規則</color>がありません。
+10014,4,사용할 수 있는 <color=#FF7E9A>아이템</color>이 없습니다.,No usable <color=#FF7E9A>items</color>.,使用可能な<color=#FF7E9A>アイテム</color>がありません。
+10015,4,<color=#A8D4E0>게임 매칭</color>을 시작합니다.,<color=#A8D4E0>Matching</color> started.,<color=#A8D4E0>マッチング</color>を開始します。
+10016,4,<color=#A8D4E0>게임 매칭</color>을 중지합니다.,<color=#A8D4E0>Matching</color> stopped.,<color=#A8D4E0>マッチング</color>を中止します。
+10017,4,<color=#A8D4E0>게임 매칭</color>에 성공했습니다!,<color=#A8D4E0>Matching</color> succeeded!,<color=#A8D4E0>マッチング</color>に成功しました!
+10018,4,<color=#FF7E9A>게임 매칭</color> 시작에 실패했습니다.,Failed to start <color=#FF7E9A>matching</color>.,<color=#FF7E9A>マッチング</color>の開始に失敗しました。
+10019,4,행동 종료하기,End Action,行動を終える
+10020,4,대화 종료하기,End Conversation,対話を終える
+10021,4,추가 항목 조회...,More options...,項目をさらに見る...
+10022,4,다른 행동으로...,Other actions...,他の行動へ...
+10023,4,되돌아가기,Back,戻る
