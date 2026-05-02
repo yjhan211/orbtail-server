@@ -333,6 +333,7 @@ namespace network.common.data.models
         [Key("claimedArea")] public AreaType ClaimedArea { get; set; }     // 상대가 주장한 알리바이(구역)
         [Key("isFakeDetected")] public bool IsFakeDetected { get; set; }   // 사칭 발각 여부
         [Key("conflictInfo")] public string ConflictInfo { get; set; }     // 충돌 정보 (교차검증 결과)
+        [Key("answerText")] public string AnswerText { get; set; }         // 답변자가 고른 답변 텍스트 (양쪽 동일 표시용)
     }
 
     // ===== 시한부 사보타주 =====

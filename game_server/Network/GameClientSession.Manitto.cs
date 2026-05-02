@@ -956,7 +956,8 @@ public partial class GameClientSession
             ClaimedJob = selectedAnswer.ClaimedJob,
             ClaimedArea = CurrentArea,
             IsFakeDetected = isFakeDetected,
-            ConflictInfo = conflictInfo
+            ConflictInfo = conflictInfo,
+            AnswerText = selectedAnswer.Text
         };
 
         using (var askerPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_RESULT, askerPlayerId))
@@ -972,7 +973,8 @@ public partial class GameClientSession
             ClaimedJob = selectedAnswer.ClaimedJob,
             ClaimedArea = CurrentArea,
             IsFakeDetected = isFakeDetected,
-            ConflictInfo = conflictInfo
+            ConflictInfo = conflictInfo,
+            AnswerText = selectedAnswer.Text
         };
 
         using (var answererPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_RESULT, PlayerId.Value))
