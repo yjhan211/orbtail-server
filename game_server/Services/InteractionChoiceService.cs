@@ -1,4 +1,5 @@
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.services;
@@ -30,24 +31,22 @@ public class InteractionChoiceService
         AreaType? answererPreviousArea)
     {
         var questions = new List<InteractionQuestion>();
+        string currentAreaName = GameAreaNameData.Get(currentArea);
 
-        // 1. 직책 추궁 (항상 포함)
+        // 1. 만남 장소 추궁 (항상 포함)
+        questions.Add(new InteractionQuestion
+        {
+            QuestionType = InteractionQuestionType.ASK_LOCATION,
+            Text = $"{currentAreaName}으로 온 이유가 궁금합니다.",
+            ReferenceArea = currentArea
+        });
+
+        // 2. 직책 추궁 (항상 포함)
         questions.Add(new InteractionQuestion
         {
             QuestionType = InteractionQuestionType.ASK_JOB,
-            Text = "너 무슨 직책이야?"
+            Text = "직책이 무엇인지 궁금합니다."
         });
-
-        // 2. 동선 추궁 (상대의 이전 구역 정보가 있을 때)
-        if (answererPreviousArea.HasValue && answererPreviousArea.Value != AreaType.None)
-        {
-            questions.Add(new InteractionQuestion
-            {
-                QuestionType = InteractionQuestionType.ASK_LOCATION,
-                Text = $"{answererPreviousArea.Value} 구역에서 방금 나왔지?",
-                ReferenceArea = answererPreviousArea.Value
-            });
-        }
 
         // 3. 교차 검증 (이전 조우에서 상대가 주장한 직책과 충돌 가능성)
         var askerLogs = _logManager.GetLogs(matchingId, askerPlayerId);
@@ -58,37 +57,36 @@ public class InteractionChoiceService
 
         if (answererPreviousClaim != null)
         {
-            // 상대가 이전에 주장한 직책이 있으면, 다른 플레이어도 같은 직책을 주장했는지 확인
             var sameClaim = askerLogs
                 .Where(l => l.OtherPlayerId != answererPlayerId &&
                             l.ClaimedJobTitle == answererPreviousClaim.ClaimedJobTitle)
                 .FirstOrDefault();
 
+            string prevJob = answererPreviousClaim.ClaimedJobTitle.ToKorean();
             if (sameClaim != null)
             {
                 questions.Add(new InteractionQuestion
                 {
                     QuestionType = InteractionQuestionType.CROSS_CHECK,
-                    Text = $"다른 사람도 {GetJobTitleKorean(answererPreviousClaim.ClaimedJobTitle)}(이)라고 하던데?",
+                    Text = $"다른 분도 {prevJob}이라고 주장하시던데, 사실인가요?",
                     ReferencePlayerId = sameClaim.OtherPlayerId
                 });
             }
             else
             {
-                // 이전에 다른 직책을 주장했는지 확인 (거짓말 추궁)
                 questions.Add(new InteractionQuestion
                 {
                     QuestionType = InteractionQuestionType.CROSS_CHECK,
-                    Text = $"저번에 {GetJobTitleKorean(answererPreviousClaim.ClaimedJobTitle)}(이)라고 했잖아. 정말이야?"
+                    Text = $"저번에 {prevJob}이라고 하셨는데, 정말 그러신가요?"
                 });
             }
         }
 
-        // 4. 흔적 추궁 (해당 구역에 흔적이 있을 때) - 질문 생성만 하고 실제 흔적 존재 여부는 외부에서 판단
+        // 4. 흔적 추궁
         questions.Add(new InteractionQuestion
         {
             QuestionType = InteractionQuestionType.ASK_TRACE,
-            Text = "여기 누가 온 흔적이 있던데, 혹시 알아?"
+            Text = "여기서 무엇을 보셨는지 궁금합니다."
         });
 
         return questions;
@@ -109,30 +107,36 @@ public class InteractionChoiceService
 
         JobTitle realJob = link.MyJobTitle;
 
-        // 진실 답변
+        // 1. 직책 응답 (50% 확률로 진실 또는 사칭)
+        bool tellTruth = Random.Shared.Next(2) == 0;
+        JobTitle claimedJob = tellTruth
+            ? realJob
+            : Enum.GetValues<JobTitle>()
+                .Where(j => j != JobTitle.NONE && j != realJob)
+                .OrderBy(_ => Random.Shared.Next())
+                .First();
         answers.Add(new InteractionAnswer
         {
-            IsTrue = true,
-            ClaimedJob = realJob,
-            Text = $"나는 {GetJobTitleKorean(realJob)}이야."
+            IsTrue = tellTruth,
+            ClaimedJob = claimedJob,
+            Text = $"{claimedJob.ToKorean()} 미션을 수행하러 왔습니다."
         });
 
-        // 거짓 답변: 실제 직책이 아닌 다른 직책 중 랜덤 1~2개
-        var fakeJobs = Enum.GetValues<JobTitle>()
-            .Where(j => j != JobTitle.NONE && j != realJob)
-            .OrderBy(_ => Random.Shared.Next())
-            .Take(2)
-            .ToList();
-
-        foreach (var fakeJob in fakeJobs)
+        // 2. 알리바이
+        answers.Add(new InteractionAnswer
         {
-            answers.Add(new InteractionAnswer
-            {
-                IsTrue = false,
-                ClaimedJob = fakeJob,
-                Text = $"나는 {GetJobTitleKorean(fakeJob)}이야."
-            });
-        }
+            IsTrue = false,
+            ClaimedJob = JobTitle.NONE,
+            Text = "구역 폐쇄로 인해 지나가던 도중입니다."
+        });
+
+        // 3. 자백
+        answers.Add(new InteractionAnswer
+        {
+            IsTrue = false,
+            ClaimedJob = JobTitle.NONE,
+            Text = "저는 당신의 마니또입니다."
+        });
 
         return answers;
     }
@@ -161,18 +165,9 @@ public class InteractionChoiceService
         if (conflict.claimers != null && conflict.claimers.Contains(answererPlayerId))
         {
             isFakeDetected = true;
-            conflictInfo = $"{GetJobTitleKorean(claimedJob)}을(를) 주장하는 사람이 여러 명 발견되었습니다!";
+            conflictInfo = $"{claimedJob.ToKorean()}을(를) 주장하는 사람이 여러 명 발견되었습니다!";
         }
 
         return (isFakeDetected, conflictInfo);
     }
-
-    private static string GetJobTitleKorean(JobTitle job) => job switch
-    {
-        JobTitle.BROADCAST_MEMBER => "방송부원",
-        JobTitle.DISCIPLINE_MEMBER => "선도부원",
-        JobTitle.LIBRARY_COMMITTEE => "도서위원",
-        JobTitle.SPORTS_CAPTAIN => "체육부장",
-        _ => "알 수 없음"
-    };
 }
