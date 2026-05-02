@@ -91,3 +91,22 @@ id,category,text_kr,text_en,text_jp
 10044,4,학생 수첩에 증언으로 기록합니다.,Recorded as testimony in the student notebook.,学生手帳に証言として記録します。
 10045,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#A8D4E0>accepted</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>様が<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。
 10046,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#FF7E9A>거절</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#FF7E9A>declined</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>様が<color=#A8D4E0>対話</color>を<color=#FF7E9A>拒否</color>しました。
+11000,5,방송부원,Broadcasting Member,放送部員
+11001,5,선도부원,Disciplinary Member,風紀委員
+11002,5,도서위원,Library Committee,図書委員
+11003,5,체육부장,Sports Captain,体育部長
+11004,5,과학부원,Science Member,科学部員
+11005,5,미화부원,Cleaning Member,美化部員
+11006,5,학생회장,Student President,生徒会長
+11007,5,보건부원,Health Member,保健委員
+11020,6,<color=#A8D4E0>{0}</color>으로 온 이유가 궁금합니다.,Why did you come to <color=#A8D4E0>{0}</color>?,<color=#A8D4E0>{0}</color>に来た理由が気になります。
+11021,6,직책이 무엇인지 궁금합니다.,What is your role?,役職が何なのか気になります。
+11022,6,"다른 분도 <color=#A8D4E0>{0}</color>이라고 주장하시던데, 사실인가요?","Someone else also claimed to be a <color=#A8D4E0>{0}</color>. Is that true?","他の方も<color=#A8D4E0>{0}</color>だと主張していましたが、本当ですか?"
+11023,6,"저번에 <color=#A8D4E0>{0}</color>이라고 하셨는데, 정말 그러신가요?","Last time you said you were a <color=#A8D4E0>{0}</color>. Really?","前回は<color=#A8D4E0>{0}</color>だと仰っていましたが、本当にそうなんですか?"
+11024,6,여기서 무엇을 보셨는지 궁금합니다.,What did you see here?,ここで何を見たのか気になります。
+11030,6,<color=#A8D4E0>{0}</color> 미션을 수행하러 왔습니다.,I came to perform the <color=#A8D4E0>{0}</color> mission.,<color=#A8D4E0>{0}</color>のミッションを遂行しに来ました。
+11031,6,구역 폐쇄로 인해 지나가던 도중입니다.,I was passing by due to area closure.,区域閉鎖のため通りかかったところです。
+11032,6,저는 당신의 마니또입니다.,I am your manitto.,私はあなたのマニートです。
+11040,6,저는 <color=#A8D4E0>{0}</color>입니다.,I am a <color=#A8D4E0>{0}</color>.,私は<color=#A8D4E0>{0}</color>です。
+11041,6,저는 그때 <color=#A8D4E0>{0}</color>에 있었습니다.,I was at the <color=#A8D4E0>{0}</color> at that time.,私はその時<color=#A8D4E0>{0}</color>にいました。
+11042,6,<color=#FF7E9A>{0}</color>을(를) 주장하는 사람이 여러 명 발견되었습니다!,Multiple people are claiming to be a <color=#FF7E9A>{0}</color>!,<color=#FF7E9A>{0}</color>を主張する人が複数発見されました!

@@ -7,6 +7,7 @@ namespace game_server.services;
 /// <summary>
 ///     1:1 상호작용 시 질문/답변 선택지 동적 생성.
 ///     GDD 2.4 기반: 활동 로그 기반 동적 생성, 교차 검증, 사칭 발각.
+///     모든 텍스트는 textId + TextArg 스킴으로 직렬화 — 클라가 현재 언어로 변환.
 /// </summary>
 public class InteractionChoiceService
 {
@@ -31,13 +32,13 @@ public class InteractionChoiceService
         AreaType? answererPreviousArea)
     {
         var questions = new List<InteractionQuestion>();
-        string currentAreaName = GameAreaNameData.Get(currentArea);
 
         // 1. 만남 장소 추궁 (항상 포함)
         questions.Add(new InteractionQuestion
         {
             QuestionType = InteractionQuestionType.ASK_LOCATION,
-            Text = $"{currentAreaName}으로 온 이유가 궁금합니다.",
+            TextId = 11020,
+            Args = new List<TextArg> { new() { Type = TextArgType.AREA_TYPE, IntValue = (int)currentArea } },
             ReferenceArea = currentArea
         });
 
@@ -45,7 +46,7 @@ public class InteractionChoiceService
         questions.Add(new InteractionQuestion
         {
             QuestionType = InteractionQuestionType.ASK_JOB,
-            Text = "직책이 무엇인지 궁금합니다."
+            TextId = 11021
         });
 
         // 3. 교차 검증 (이전 조우에서 상대가 주장한 직책과 충돌 가능성)
@@ -62,13 +63,14 @@ public class InteractionChoiceService
                             l.ClaimedJobTitle == answererPreviousClaim.ClaimedJobTitle)
                 .FirstOrDefault();
 
-            string prevJob = answererPreviousClaim.ClaimedJobTitle.ToKorean();
+            var jobArg = new TextArg { Type = TextArgType.JOB_TITLE, IntValue = (int)answererPreviousClaim.ClaimedJobTitle };
             if (sameClaim != null)
             {
                 questions.Add(new InteractionQuestion
                 {
                     QuestionType = InteractionQuestionType.CROSS_CHECK,
-                    Text = $"다른 분도 {prevJob}이라고 주장하시던데, 사실인가요?",
+                    TextId = 11022,
+                    Args = new List<TextArg> { jobArg },
                     ReferencePlayerId = sameClaim.OtherPlayerId
                 });
             }
@@ -77,7 +79,8 @@ public class InteractionChoiceService
                 questions.Add(new InteractionQuestion
                 {
                     QuestionType = InteractionQuestionType.CROSS_CHECK,
-                    Text = $"저번에 {prevJob}이라고 하셨는데, 정말 그러신가요?"
+                    TextId = 11023,
+                    Args = new List<TextArg> { jobArg }
                 });
             }
         }
@@ -86,7 +89,7 @@ public class InteractionChoiceService
         questions.Add(new InteractionQuestion
         {
             QuestionType = InteractionQuestionType.ASK_TRACE,
-            Text = "여기서 무엇을 보셨는지 궁금합니다."
+            TextId = 11024
         });
 
         return questions;
@@ -119,7 +122,8 @@ public class InteractionChoiceService
         {
             IsTrue = tellTruth,
             ClaimedJob = claimedJob,
-            Text = $"{claimedJob.ToKorean()} 미션을 수행하러 왔습니다."
+            TextId = 11030,
+            Args = new List<TextArg> { new() { Type = TextArgType.JOB_TITLE, IntValue = (int)claimedJob } }
         });
 
         // 2. 알리바이
@@ -127,7 +131,7 @@ public class InteractionChoiceService
         {
             IsTrue = false,
             ClaimedJob = JobTitle.NONE,
-            Text = "구역 폐쇄로 인해 지나가던 도중입니다."
+            TextId = 11031
         });
 
         // 3. 자백
@@ -135,7 +139,7 @@ public class InteractionChoiceService
         {
             IsTrue = false,
             ClaimedJob = JobTitle.NONE,
-            Text = "저는 당신의 마니또입니다."
+            TextId = 11032
         });
 
         return answers;
@@ -143,9 +147,9 @@ public class InteractionChoiceService
 
     /// <summary>
     ///     답변 처리: 로그 기록 + 사칭 발각 체크
-    ///     반환: (사칭 발각 여부, 충돌 정보 텍스트)
+    ///     반환: (사칭 발각 여부, 충돌 정보 textId — 0이면 없음, 충돌 args)
     /// </summary>
-    public (bool isFakeDetected, string conflictInfo) ProcessAnswer(
+    public (bool isFakeDetected, int conflictTextId, List<TextArg> conflictArgs) ProcessAnswer(
         long matchingId,
         long askerPlayerId,
         long answererPlayerId,
@@ -157,17 +161,14 @@ public class InteractionChoiceService
         _logManager.AddLog(matchingId, askerPlayerId, answererPlayerId, claimedJob, area);
 
         // 사칭 발각 체크: 같은 직책을 주장하는 다른 플레이어가 있는지
-        bool isFakeDetected = false;
-        string conflictInfo = "";
-
         var duplicates = _logManager.DetectDuplicateClaims(matchingId);
         var conflict = duplicates.FirstOrDefault(d => d.job == claimedJob && d.claimers.Count > 1);
         if (conflict.claimers != null && conflict.claimers.Contains(answererPlayerId))
         {
-            isFakeDetected = true;
-            conflictInfo = $"{claimedJob.ToKorean()}을(를) 주장하는 사람이 여러 명 발견되었습니다!";
+            var args = new List<TextArg> { new() { Type = TextArgType.JOB_TITLE, IntValue = (int)claimedJob } };
+            return (true, 11042, args);
         }
 
-        return (isFakeDetected, conflictInfo);
+        return (false, 0, null);
     }
 }

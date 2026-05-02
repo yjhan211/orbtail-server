@@ -256,6 +256,28 @@ namespace network.common
             JobTitle.HEALTH_MEMBER => "보건부원",
             _ => ""
         };
+
+        /// <summary>
+        ///     직책명을 현재 언어로 반환. system_text.csv 11000~11007 textId 룩업.
+        /// </summary>
+        public static string ToLocalized(this JobTitle jobTitle, string lang)
+        {
+            int textId = jobTitle switch
+            {
+                JobTitle.BROADCAST_MEMBER => 11000,
+                JobTitle.DISCIPLINE_MEMBER => 11001,
+                JobTitle.LIBRARY_COMMITTEE => 11002,
+                JobTitle.SPORTS_CAPTAIN => 11003,
+                JobTitle.SCIENCE_MEMBER => 11004,
+                JobTitle.CLEANING_MEMBER => 11005,
+                JobTitle.STUDENT_PRESIDENT => 11006,
+                JobTitle.HEALTH_MEMBER => 11007,
+                _ => 0
+            };
+            if (textId == 0) return "";
+            var data = network.common.data.GameSystemTextData.Get(textId);
+            return data?.Text?.Get(lang) ?? jobTitle.ToKorean();
+        }
     }
 
     /// <summary>

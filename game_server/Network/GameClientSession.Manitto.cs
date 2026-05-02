@@ -902,16 +902,16 @@ public partial class GameClientSession
 
         partnerSession._pendingAnswers = answers;
 
-        // 질문 텍스트 찾기
-        string questionText = _pendingQuestions?
-            .FirstOrDefault(q => q.QuestionType == msg.QuestionType)?.Text ?? "질문";
+        // 질문 textId/args 찾기 — 양쪽 화면에 같은 질문 표시
+        var pendingQuestion = _pendingQuestions?.FirstOrDefault(q => q.QuestionType == msg.QuestionType);
 
         // 답변자에게 답변 선택지 전송
         using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ANSWER_CHOICES, partnerPlayerId);
         var answerMsg = new G_TO_C_INTERACTION_ANSWER_CHOICES
         {
             QuestionType = msg.QuestionType,
-            QuestionText = questionText,
+            QuestionTextId = pendingQuestion?.TextId ?? 0,
+            QuestionArgs = pendingQuestion?.Args,
             Answers = answers
         };
         packet.SetBody(MessagePackSerializer.Serialize(answerMsg));
@@ -940,7 +940,7 @@ public partial class GameClientSession
         var selectedAnswer = _pendingAnswers[msg.AnswerIndex];
 
         // 로그 기록 + 사칭 발각 체크
-        var (isFakeDetected, conflictInfo) = _interactionChoiceService.ProcessAnswer(
+        var (isFakeDetected, conflictTextId, conflictArgs) = _interactionChoiceService.ProcessAnswer(
             CurrentMapSubId,
             askerPlayerId,
             PlayerId.Value,
@@ -956,8 +956,10 @@ public partial class GameClientSession
             ClaimedJob = selectedAnswer.ClaimedJob,
             ClaimedArea = CurrentArea,
             IsFakeDetected = isFakeDetected,
-            ConflictInfo = conflictInfo,
-            AnswerText = selectedAnswer.Text
+            ConflictTextId = conflictTextId,
+            ConflictArgs = conflictArgs,
+            AnswerTextId = selectedAnswer.TextId,
+            AnswerArgs = selectedAnswer.Args
         };
 
         using (var askerPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_RESULT, askerPlayerId))
@@ -973,8 +975,10 @@ public partial class GameClientSession
             ClaimedJob = selectedAnswer.ClaimedJob,
             ClaimedArea = CurrentArea,
             IsFakeDetected = isFakeDetected,
-            ConflictInfo = conflictInfo,
-            AnswerText = selectedAnswer.Text
+            ConflictTextId = conflictTextId,
+            ConflictArgs = conflictArgs,
+            AnswerTextId = selectedAnswer.TextId,
+            AnswerArgs = selectedAnswer.Args
         };
 
         using (var answererPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_RESULT, PlayerId.Value))
