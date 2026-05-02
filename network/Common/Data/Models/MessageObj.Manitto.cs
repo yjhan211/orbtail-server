@@ -257,13 +257,36 @@ namespace network.common.data.models
     }
 
     /// <summary>
+    ///     다국어 텍스트 args의 타입. 클라가 enum 값을 다국어 라벨로 변환할 수 있게 한다.
+    /// </summary>
+    public enum TextArgType : byte
+    {
+        RAW_STRING = 0,
+        INT_NUMBER = 1,
+        AREA_TYPE = 2,    // IntValue를 AreaType으로 캐스팅 → GameAreaNameData 룩업
+        JOB_TITLE = 3     // IntValue를 JobTitle로 캐스팅 → 직책 textId(11000~)로 룩업
+    }
+
+    /// <summary>
+    ///     system_text.csv textId 포맷 인자. 서버는 enum 값을 그대로 보내고 클라가 현재 언어로 변환.
+    /// </summary>
+    [MessagePackObject]
+    public class TextArg : IMessagePackObject
+    {
+        [Key("type")] public TextArgType Type { get; set; }
+        [Key("intValue")] public int IntValue { get; set; }
+        [Key("stringValue")] public string StringValue { get; set; }
+    }
+
+    /// <summary>
     ///     질문 선택지 항목
     /// </summary>
     [MessagePackObject]
     public class InteractionQuestion : IMessagePackObject
     {
         [Key("questionType")] public InteractionQuestionType QuestionType { get; set; }
-        [Key("text")] public string Text { get; set; }
+        [Key("textId")] public int TextId { get; set; }
+        [Key("args")] public List<TextArg> Args { get; set; }
         /// <summary>교차검증 시 참조 플레이어 ID</summary>
         [Key("referencePlayerId")] public long ReferencePlayerId { get; set; }
         /// <summary>동선추궁 시 참조 구역</summary>
@@ -278,7 +301,8 @@ namespace network.common.data.models
     {
         [Key("isTrue")] public bool IsTrue { get; set; }  // 진실인지 거짓인지
         [Key("claimedJob")] public JobTitle ClaimedJob { get; set; }
-        [Key("text")] public string Text { get; set; }
+        [Key("textId")] public int TextId { get; set; }
+        [Key("args")] public List<TextArg> Args { get; set; }
     }
 
     /// <summary>
@@ -308,7 +332,8 @@ namespace network.common.data.models
     public class G_TO_C_INTERACTION_ANSWER_CHOICES : IMessagePackObject
     {
         [Key("questionType")] public InteractionQuestionType QuestionType { get; set; }
-        [Key("questionText")] public string QuestionText { get; set; }
+        [Key("questionTextId")] public int QuestionTextId { get; set; }
+        [Key("questionArgs")] public List<TextArg> QuestionArgs { get; set; }
         [Key("answers")] public List<InteractionAnswer> Answers { get; set; }
     }
 
@@ -332,8 +357,10 @@ namespace network.common.data.models
         [Key("claimedJob")] public JobTitle ClaimedJob { get; set; }       // 상대가 주장한 직책
         [Key("claimedArea")] public AreaType ClaimedArea { get; set; }     // 상대가 주장한 알리바이(구역)
         [Key("isFakeDetected")] public bool IsFakeDetected { get; set; }   // 사칭 발각 여부
-        [Key("conflictInfo")] public string ConflictInfo { get; set; }     // 충돌 정보 (교차검증 결과)
-        [Key("answerText")] public string AnswerText { get; set; }         // 답변자가 고른 답변 텍스트 (양쪽 동일 표시용)
+        [Key("conflictTextId")] public int ConflictTextId { get; set; }    // 사칭 발각 시 충돌 정보 textId (0이면 미표시)
+        [Key("conflictArgs")] public List<TextArg> ConflictArgs { get; set; }
+        [Key("answerTextId")] public int AnswerTextId { get; set; }        // 답변자가 고른 답변 textId (양쪽 동일 표시용)
+        [Key("answerArgs")] public List<TextArg> AnswerArgs { get; set; }
     }
 
     // ===== 시한부 사보타주 =====
