@@ -28,13 +28,31 @@ namespace network.common.data
 
         public static string GetRandomText()
         {
+            return GetRandomText("kr");
+        }
+
+        /// <summary>
+        ///     지정 언어로 랜덤 로딩 텍스트 반환. 빈 값/미등록 언어는 한국어 fallback.
+        /// </summary>
+        public static string GetRandomText(string lang)
+        {
             if (_loadingTexts == null || _loadingTexts.Count == 0)
             {
                 return "당신의 눈이 당신을 속이기 시작했다면,\n그것은 시스템 오류가 아닙니다.";
             }
 
             var randomIndex = _random.Next(0, _loadingTexts.Count);
-            return _loadingTexts[randomIndex].Kr;
+            return _loadingTexts[randomIndex].Get(lang);
+        }
+
+        /// <summary>
+        ///     랜덤 로딩 LocalizedText 반환. 호출자가 자기 시점 언어로 Get(lang) 가능.
+        /// </summary>
+        public static LocalizedText GetRandomLocalizedText()
+        {
+            if (_loadingTexts == null || _loadingTexts.Count == 0) return null;
+            var randomIndex = _random.Next(0, _loadingTexts.Count);
+            return _loadingTexts[randomIndex];
         }
 
         public static void Validate(LogManager logManager)
