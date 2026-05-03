@@ -1,23 +1,23 @@
 id,category,text_kr,text_en,text_jp
 1,1,강당 문이 열렸습니다,The Auditorium door has been opened.,講堂の扉が開かれました。
 2,1,교실2 문이 열렸습니다,The Classroom 2 door has been opened.,教室2の扉が開かれました。
-3,1,교무실 문이 열렸습니다,The Staff Room door has been opened.,職員室の扉が開かれました。
+3,1,교무실 문이 열렸습니다,The Faculty door has been opened.,職員室の扉が開かれました。
 4,1,방송실 문이 열렸습니다,The Broadcast Room door has been opened.,放送室の扉が開かれました。
 5,1,도서관 문이 열렸습니다,The Library door has been opened.,図書館の扉が開かれました。
 10,2,탈출 절차가 갱신되었습니다,Escape procedure updated.,脱出手順が更新されました。
 11,2,필수 아이템을 획득했습니다,Required item acquired.,必須アイテムを獲得しました。
 12,2,규칙 쪽지를 획득했습니다,Rule note acquired.,規則のメモを獲得しました。
-13,2,정신오염도가 상승했습니다,Mental corruption has risen.,精神汚染度が上昇しました。
+13,2,정신오염도가 상승했습니다,Mental Corruption rose.,精神汚染度が上昇しました。
 14,2,스태미나가 소모되었습니다,Stamina has been depleted.,スタミナが消費されました。
 20,3,강당 열쇠를 확보하십시오,Secure the Auditorium key.,講堂の鍵を確保してください。
 21,3,A의 이름과 목소리를 파악해야 합니다,You must identify A's name and voice.,Aの名前と声を把握しなければなりません。
-22,3,교무실에서 학생증을 획득하십시오,Acquire the student ID from the Staff Room.,職員室で学生証を獲得してください。
+22,3,교무실에서 학생증을 획득하십시오,Acquire the student ID from the Faculty.,職員室で学生証を獲得してください。
 23,3,방송실로 이동하십시오,Move to the Broadcast Room.,放送室へ移動してください。
-30,4,손톱으로 긁어야 합니다. 괜찮으시겠습니까?,You will have to scrape with your nails. Are you sure?,爪で引っ掻かなければなりません。よろしいですか?
+30,4,손톱으로 긁어야 합니다. 괜찮으시겠습니까?,You will have to scratch with your fingernails. Are you sure?,爪で引っ掻かなければなりません。よろしいですか?
 31,4,무시한다,Ignore,無視する
 40,5,<color=#A8D4E0>강당 열쇠</color>를 획득해야 합니다.,You must acquire the <color=#A8D4E0>Auditorium key</color>.,<color=#A8D4E0>講堂の鍵</color>を獲得しなければなりません。
 100,3,<color=#A8D4E0>{Item.SpawnArea}</color>에서 <color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>회수</color>하십시오. <color=#A8D4E0>{Debuff.Warning}</color>,<color=#A8D4E0>Retrieve</color> the <color=#A8D4E0>{Item.Name}</color> from the <color=#A8D4E0>{Item.SpawnArea}</color>. <color=#A8D4E0>{Debuff.Warning}</color>,<color=#A8D4E0>{Item.SpawnArea}</color>から<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>回収</color>してください。<color=#A8D4E0>{Debuff.Warning}</color>
-101,3,저들이 <color=#FF7E9A>{Item.Name}</color>을 절대로 찾게 해서는 안 돼. <color=#FF7E9A>{Item.SpawnArea}</color>에 숨겨둔 건 나만 알아야 해.,They must never find <color=#FF7E9A>{Item.Name}</color>. Only I should know that I hid it in the <color=#FF7E9A>{Item.SpawnArea}</color>.,奴らに<color=#FF7E9A>{Item.Name}</color>を絶対に見つけさせてはいけない。<color=#FF7E9A>{Item.SpawnArea}</color>に隠したことは私だけが知っているべきだ。
+101,3,저들이 <color=#FF7E9A>{Item.Name}</color>을 절대로 찾게 해서는 안 돼. <color=#FF7E9A>{Item.SpawnArea}</color>에 숨겨둔 건 나만 알아야 해.,They must never find <color=#FF7E9A>{Item.Name}</color>. Only I should know that I hid it in the <color=#FF7E9A>{Item.SpawnArea}</color>.,あいつらに<color=#FF7E9A>{Item.Name}</color>を絶対に見つけさせてはいけない。<color=#FF7E9A>{Item.SpawnArea}</color>に隠したことは私だけが知っているべきだ。
 102,3,<color=#A8D4E0>{Item.Name}</color> <color=#A8D4E0>회수</color>하기,<color=#A8D4E0>Retrieve</color> the <color=#A8D4E0>{Item.Name}</color>,<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>回収</color>する
 110,3,<color=#A8D4E0>{Spot.Name}</color>까지 <color=#A8D4E0>운반</color>하십시오.,<color=#A8D4E0>Transport</color> it to the <color=#A8D4E0>{Spot.Name}</color>.,<color=#A8D4E0>{Spot.Name}</color>まで<color=#A8D4E0>運搬</color>してください。
 111,3,<color=#FF7E9A>{Spot.Name}</color>까지 가면 안 돼. 너의 비밀이 세상에 알려지고 말아.,Don't go all the way to <color=#FF7E9A>{Spot.Name}</color>. Your secret will be exposed to the world.,<color=#FF7E9A>{Spot.Name}</color>まで行ってはいけない。お前の秘密が世間に知られてしまう。
@@ -45,9 +45,9 @@ id,category,text_kr,text_en,text_jp
 231,3,<color=#FF7E9A>투입하지 마</color>. 다시는 만날 수 없어.,<color=#FF7E9A>Don't submit them</color>. We will never meet again.,<color=#FF7E9A>投入するな</color>。二度と会えなくなる。
 232,3,<color=#A8D4E0>개체</color> <color=#A8D4E0>투입</color>하기,<color=#A8D4E0>Submit</color> the <color=#A8D4E0>subject</color>,<color=#A8D4E0>個体</color>を<color=#A8D4E0>投入</color>する
 233,3,<color=#A8D4E0>개체</color>를 <color=#A8D4E0>투입한다</color>.,<color=#A8D4E0>Submit</color> the <color=#A8D4E0>subject</color>.,<color=#A8D4E0>個体</color>を<color=#A8D4E0>投入する</color>。
-10001,4,<color=#A8D4E0>{0}</color>님과의 <color=#A8D4E0>대화</color>가 <color=#A8D4E0>종료</color>되었습니다.,Conversation with <color=#A8D4E0>{0}</color> has <color=#A8D4E0>ended</color>.,<color=#A8D4E0>{0}</color>様との<color=#A8D4E0>対話</color>が<color=#A8D4E0>終了</color>しました。
-10002,4,<color=#A8D4E0>{0}</color>님의 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>Accepted</color> conversation with <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>様の<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。
-10003,4,<color=#A8D4E0>{0}</color>님의 대화를 <color=#A8D4E0>거절</color>했습니다.,<color=#A8D4E0>Declined</color> conversation with <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>様の対話を<color=#A8D4E0>拒否</color>しました。
+10001,4,<color=#A8D4E0>{0}</color>님과의 <color=#A8D4E0>대화</color>가 <color=#A8D4E0>종료</color>되었습니다.,Conversation with <color=#A8D4E0>{0}</color> has <color=#A8D4E0>ended</color>.,<color=#A8D4E0>{0}</color>さんとの<color=#A8D4E0>対話</color>が<color=#A8D4E0>終了</color>しました。
+10002,4,<color=#A8D4E0>{0}</color>님의 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>Accepted</color> conversation with <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>さんの<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。
+10003,4,<color=#A8D4E0>{0}</color>님의 대화를 <color=#A8D4E0>거절</color>했습니다.,<color=#A8D4E0>Declined</color> conversation with <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>さんの対話を<color=#A8D4E0>拒否</color>しました。
 10004,4,응답 시간이 초과되었습니다.,Response timed out.,応答時間が超過しました。
 10005,4,<color=#00E676>선행 조건</color>이 완료되지 않았습니다.,<color=#00E676>Prerequisite</color> not met.,<color=#00E676>先行条件</color>が完了していません。
 10006,4,<color=#00E676>{0}</color>을(를) 가지고 있지 않습니다.,You do not have <color=#00E676>{0}</color>.,<color=#00E676>{0}</color>を所持していません。
@@ -68,8 +68,8 @@ id,category,text_kr,text_en,text_jp
 10021,4,추가 항목 조회...,More options...,項目をさらに見る...
 10022,4,다른 행동으로...,Other actions...,他の行動へ...
 10023,4,되돌아가기,Back,戻る
-10024,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 요청합니다,<color=#A8D4E0>{0}</color> requests a <color=#A8D4E0>conversation</color>,<color=#A8D4E0>{0}</color>様が<color=#A8D4E0>対話</color>を要請しています
-10025,4,<color=#A8D4E0>{0}</color>님에게 상호작용 요청 중...,Requesting interaction with <color=#A8D4E0>{0}</color>...,<color=#A8D4E0>{0}</color>様に相互作用を要請中...
+10024,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 요청합니다,<color=#A8D4E0>{0}</color> requests a <color=#A8D4E0>conversation</color>,<color=#A8D4E0>{0}</color>さんが<color=#A8D4E0>対話</color>を要請しています
+10025,4,<color=#A8D4E0>{0}</color>님에게 상호작용 요청 중...,Requesting interaction with <color=#A8D4E0>{0}</color>...,<color=#A8D4E0>{0}</color>さんに相互作用を要請中...
 10026,4,알려진 <color=#FF7E9A>행동 수칙</color>을 <color=#FF7E9A>위반</color>하고 있습니다.,Violating a known <color=#FF7E9A>conduct rule</color>.,既知の<color=#FF7E9A>行動規則</color>に<color=#FF7E9A>違反</color>しています。
 10027,4,정보 공유하기,Share Info,情報を共有する
 10028,4,아이템 요청하기,Request Item,アイテムを要請する
@@ -89,8 +89,8 @@ id,category,text_kr,text_en,text_jp
 10042,4,<color=#A8D4E0>상대방이 당신에게 {0} 아이템을 사용했습니다.</color>,<color=#A8D4E0>The other player used {0} on you.</color>,<color=#A8D4E0>相手があなたに{0}アイテムを使用しました。</color>
 10043,4,상대방이 행동 수칙을 공유합니다.,The other player shares a conduct rule.,相手が行動規則を共有します。
 10044,4,학생 수첩에 증언으로 기록합니다.,Recorded as testimony in the student notebook.,学生手帳に証言として記録します。
-10045,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#A8D4E0>accepted</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>様が<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。
-10046,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#FF7E9A>거절</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#FF7E9A>declined</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>様が<color=#A8D4E0>対話</color>を<color=#FF7E9A>拒否</color>しました。
+10045,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#A8D4E0>accepted</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>さんが<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。
+10046,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#FF7E9A>거절</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#FF7E9A>declined</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>さんが<color=#A8D4E0>対話</color>を<color=#FF7E9A>拒否</color>しました。
 11000,5,방송부원,Broadcasting Member,放送部員
 11001,5,선도부원,Disciplinary Member,風紀委員
 11002,5,도서위원,Library Committee,図書委員
