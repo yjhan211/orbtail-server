@@ -1,6 +1,6 @@
 using network.common;
 
-namespace game_server.services;
+namespace network.helpers;
 
 /// <summary>
 ///     5/11 영상 + 5/14 심사용 빌드 시연 모드.
@@ -9,6 +9,7 @@ namespace game_server.services;
 ///     - 폐쇄 셔플 보호 (H2) — 도서관·교실2 면역
 ///     - 봇 race 페이스 캡 (H4) — 봇 7:00 이전 결합 차단
 ///     - 봇 4명 직책 + 6단계 동선 스크립트 (W7)
+///     - 매칭 직책 강제 (W7) — user_server에서 5인 매칭 시 LB+BR/DC/SC/HE 보장
 ///
 ///     설계 보고서: design/outputs/audit-reports/2026-05-03_시연시나리오-종합보고서.md
 /// </summary>
@@ -22,6 +23,12 @@ public static class DemoMode
     /// <summary>봇 race 페이스 캡 (H4). 봇은 게임 시작 후 이 시간 이전 결합 차단.</summary>
     public const int BotRaceMinSeconds = 420; // 7분
 
+    /// <summary>시연 매칭 인원 — 시연자 1명 + 봇 4명.</summary>
+    public const int MatchPlayerCount = 5;
+
+    /// <summary>시연 매칭 시 시연자(본인)가 배치될 체인 인덱스 (BR=0 → LB=1 → DC=2 → SC=3 → HE=4 → BR).</summary>
+    public const int PlayerChainIndex = 1;
+
     /// <summary>시연 시나리오 봇 4명 직책 (체인: BR → LB(본인) → DC → SC → HE → BR).</summary>
     public static readonly JobTitle[] BotJobOrder =
     {
@@ -29,6 +36,19 @@ public static class DemoMode
         JobTitle.DISCIPLINE_MEMBER,  // DC — 본인의 ▓▓
         JobTitle.SCIENCE_MEMBER,     // SC — 06:40 색출 실패 → 탈락
         JobTitle.HEALTH_MEMBER       // HE — 12:00 강제 탈락 (시한부 narrative)
+    };
+
+    /// <summary>
+    ///     시연 매칭 체인 직책 순서. 인덱스 0~4가 그대로 ManittoChain 인덱스에 대응.
+    ///     PlayerChainIndex(=1) 위치만 시연자(LB), 나머지 4자리는 봇.
+    /// </summary>
+    public static readonly JobTitle[] ChainJobOrder =
+    {
+        JobTitle.BROADCAST_MEMBER,   // index 0: BR 봇 (본인의 마니또)
+        JobTitle.LIBRARY_COMMITTEE,  // index 1: LB 본인
+        JobTitle.DISCIPLINE_MEMBER,  // index 2: DC 봇 (본인의 ▓▓)
+        JobTitle.SCIENCE_MEMBER,     // index 3: SC 봇
+        JobTitle.HEALTH_MEMBER       // index 4: HE 봇
     };
 
     /// <summary>시연자(본인) 직책: LB 도서위원.</summary>
