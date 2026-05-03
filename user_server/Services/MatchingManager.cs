@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.helpers;
 using network.interfaces;
 using network.packets;
 using user_server.network;
@@ -31,8 +32,14 @@ public class MatchingManager : IMatchingManager
     private const int LeavePenaltySeconds = 30; // 이탈 1회당 추가 대기 시간
     private const int MaxLeavePenaltySeconds = 300; // 최대 페널티 대기 시간 (5분)
     private const int PenaltyDecayIntervalHours = 24; // 24시간 경과 시 이탈 횟수 1 감소
-    private const int PlayersPerMatch = 2; // 매칭 트리거 최소 인원 (시연용 — 2인 매칭)
-    private const int GamePlayersPerMatch = 2; // 실제 게임 인원 (시연용 — 봇 채움 없이 2인)
+    private const int DefaultPlayersPerMatch = 2; // 매칭 트리거 최소 인원 (시연용 — 2인 매칭)
+    private const int DefaultGamePlayersPerMatch = 2; // 실제 게임 인원 (시연용 — 봇 채움 없이 2인)
+
+    /// <summary>매칭 트리거 최소 인원. DEMO_MODE=LB 시 1명만으로 트리거(즉시 봇 4명 채움).</summary>
+    private static int PlayersPerMatch => DemoMode.IsActive ? 1 : DefaultPlayersPerMatch;
+
+    /// <summary>실제 게임 인원. DEMO_MODE=LB 시 5인(시연자 1 + 봇 4) 강제.</summary>
+    private static int GamePlayersPerMatch => DemoMode.IsActive ? DemoMode.MatchPlayerCount : DefaultGamePlayersPerMatch;
     private static long _botIdCounter; // 봇 PlayerId (음수)
     private readonly ICacheHelper _cacheHelper;
     private readonly Func<long, GameSession?> _getSession;
@@ -307,9 +314,13 @@ public class MatchingManager : IMatchingManager
     /// <summary>
     ///     원형 체인 생성: 셔플 후 i번째 플레이어의 타겟 = (i+1)%N번째 플레이어
     ///     직책(JobTitle)도 무작위 배정. Redis 직책 풀 강제 지정이 있으면 우선 사용.
+    ///     DEMO_MODE=LB 시 시연자(LB)+봇4명(BR/DC/SC/HE) 체인 강제 — 셔플 없음.
     /// </summary>
     private async Task<List<ManittoChainLink>> BuildManittoChain(byte[][] groupEntries)
     {
+        if (DemoMode.IsActive && groupEntries.Length == DemoMode.MatchPlayerCount)
+            return BuildDemoManittoChain(groupEntries);
+
         // 셔플
         var entries = groupEntries.ToList();
         var rng = Random.Shared;
@@ -388,6 +399,97 @@ public class MatchingManager : IMatchingManager
 
         _logger.LogInformation("마니또 체인 생성: {Chain}",
             string.Join(" → ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" → {players[0].PlayerId}");
+
+        return chain;
+    }
+
+    /// <summary>
+    ///     시연 모드 체인 강제 생성. 시연자(실 PlayerId)는 인덱스 1(LB)에,
+    ///     봇 4명은 인덱스 0/2/3/4에 BR/DC/SC/HE 순서로 고정 배치.
+    ///     체인: BR → LB(본인) → DC → SC → HE → BR.
+    ///     셔플하지 않음 — 결정론 시드 + 영상 비트 정합성 보장.
+    /// </summary>
+    private List<ManittoChainLink> BuildDemoManittoChain(byte[][] groupEntries)
+    {
+        var realEntries = new List<byte[]>();
+        var botEntries = new List<byte[]>();
+
+        foreach (var entry in groupEntries)
+        {
+            var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
+            if (data.PlayerId >= 0) realEntries.Add(entry);
+            else botEntries.Add(entry);
+        }
+
+        if (realEntries.Count != 1 || botEntries.Count != 4)
+        {
+            _logger.LogWarning(
+                "DEMO_MODE 매칭 구성 비정상 (실 {Real}명 / 봇 {Bot}명) — 일반 체인 폴백",
+                realEntries.Count, botEntries.Count);
+            return BuildDemoFallback(groupEntries);
+        }
+
+        // 인덱스 0/2/3/4 = 봇, 인덱스 1 = 시연자
+        var ordered = new byte[DemoMode.MatchPlayerCount][];
+        ordered[DemoMode.PlayerChainIndex] = realEntries[0];
+        int botCursor = 0;
+        for (int i = 0; i < DemoMode.MatchPlayerCount; i++)
+        {
+            if (i == DemoMode.PlayerChainIndex) continue;
+            ordered[i] = botEntries[botCursor++];
+        }
+
+        var players = ordered.Select(e => MessagePackSerializer.Deserialize<MatchingQueueData>(e)).ToList();
+        var jobs = DemoMode.ChainJobOrder;
+
+        var chain = new List<ManittoChainLink>();
+        for (int i = 0; i < ordered.Length; i++)
+        {
+            int targetIndex = (i + 1) % ordered.Length;
+            chain.Add(new ManittoChainLink
+            {
+                Entry = ordered[i],
+                TargetPlayerId = players[targetIndex].PlayerId,
+                MyJobTitle = jobs[i],
+                TargetJobTitle = jobs[targetIndex]
+            });
+        }
+
+        _logger.LogInformation(
+            "DEMO_MODE 체인 강제: {Chain}",
+            string.Join(" → ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" → {players[0].PlayerId}");
+
+        return chain;
+    }
+
+    /// <summary>
+    ///     DEMO_MODE 매칭 구성이 비정상일 때 (실 0명 등) 일반 체인 알고리즘으로 폴백.
+    /// </summary>
+    private List<ManittoChainLink> BuildDemoFallback(byte[][] groupEntries)
+    {
+        var entries = groupEntries.ToList();
+        var rng = new Random(DemoMode.Seed);
+        for (int i = entries.Count - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            (entries[i], entries[j]) = (entries[j], entries[i]);
+        }
+
+        var jobs = DemoMode.ChainJobOrder.ToList();
+        var players = entries.Select(e => MessagePackSerializer.Deserialize<MatchingQueueData>(e)).ToList();
+
+        var chain = new List<ManittoChainLink>();
+        for (int i = 0; i < entries.Count; i++)
+        {
+            int targetIndex = (i + 1) % entries.Count;
+            chain.Add(new ManittoChainLink
+            {
+                Entry = entries[i],
+                TargetPlayerId = players[targetIndex].PlayerId,
+                MyJobTitle = jobs[i],
+                TargetJobTitle = jobs[targetIndex]
+            });
+        }
 
         return chain;
     }
