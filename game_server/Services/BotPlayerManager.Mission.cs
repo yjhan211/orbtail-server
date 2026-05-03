@@ -282,6 +282,41 @@ public partial class BotPlayerManager
         if (bot == null) return;
         bot.DetectionUrgency = Math.Max(0, bot.DetectionUrgency + delta);
     }
+
+    /// <summary>
+    ///     H6 — DEMO_MODE BR 봇이 09:30 시점 도서관에 함정 흔적 1회 배치.
+    ///     1회 캡(HasPlacedDemoTrapTrace)으로 영상 09:40 비트 정합. BR 외 직책은 배치 안 함.
+    ///     반환: 배치 성공 시 (BR PlayerId, area, interactId, description), 아니면 null.
+    /// </summary>
+    public (long brPlayerId, AreaType area, int interactId, string description)? ProcessDemoBotTracePlacement(
+        long matchingId, TraceManager traceManager)
+    {
+        if (!DemoMode.IsActive) return null;
+        if (!_botStates.TryGetValue(matchingId, out var bots)) return null;
+
+        var br = bots.FirstOrDefault(b =>
+            b.MyJobTitle == JobTitle.BROADCAST_MEMBER
+            && !b.IsEliminated
+            && !b.HasPlacedDemoTrapTrace);
+        if (br == null) return null;
+
+        var elapsed = DateTime.UtcNow - br.GameStartTime;
+        if (elapsed.TotalSeconds < DemoMode.BrTracePlacementSeconds) return null;
+
+        // 동선 스크립트상 BR이 09:30에 도서관에 있어야 정합. 다른 곳이면 보류 (다음 틱 재시도).
+        if (br.CurrentArea != DemoMode.BrTraceArea) return null;
+
+        traceManager.AddTrace(matchingId, DemoMode.BrTraceArea, DemoMode.BrTraceInteractId,
+            DemoMode.BrTraceDescription, br.PlayerId, isMissionTrace: false);
+        br.HasPlacedDemoTrapTrace = true;
+        br.LastTracePlaceTime = DateTime.UtcNow;
+
+        _logger.LogInformation(
+            "DEMO_MODE H6: BR 봇 함정 흔적 배치 (BotId={Bot}, Area={Area}, InteractId={Iid}, 경과 {Sec}s)",
+            br.PlayerId, DemoMode.BrTraceArea, DemoMode.BrTraceInteractId, (int)elapsed.TotalSeconds);
+
+        return (br.PlayerId, DemoMode.BrTraceArea, DemoMode.BrTraceInteractId, DemoMode.BrTraceDescription);
+    }
 }
 
 /// <summary>

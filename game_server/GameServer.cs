@@ -305,6 +305,9 @@ public class GameServer(
 
                 // #26: 시한부 봇 사보타주 + 색출 시뮬
                 ProcessBotTerminalActionsForMatching(matchingId, activeSessions);
+
+                // H6: DEMO_MODE BR 봇 09:30 함정 흔적 1회 배치
+                _botPlayerManager.ProcessDemoBotTracePlacement(matchingId, _traceManager);
             }
         }
         catch (Exception ex)
