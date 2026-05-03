@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using game_server.services;
+using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
@@ -211,6 +212,37 @@ public partial class GameClientSession : SessionBase
         // 구역 이동 프로토콜 (GDD v0.0.8: 문/계단 마커 방식)
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_AREA_MOVE,
             async bytes => await HandleMessage<C_TO_G_AREA_MOVE>(bytes, HandleAreaMove));
+
+        // 소셜 액션 프로토콜
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SOCIAL_ACTION,
+            async bytes => await HandleMessage<C_TO_G_SOCIAL_ACTION>(bytes, HandleSocialAction));
+    }
+
+    /// <summary>
+    ///     본인이 SOCIAL 액션 요청 → 같은 area 모든 클라(본인 포함)에 G_TO_C_SOCIAL_ACTION broadcast.
+    /// </summary>
+    private Task HandleSocialAction(C_TO_G_SOCIAL_ACTION msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
+
+        var broadcast = new G_TO_C_SOCIAL_ACTION
+        {
+            PlayerId = PlayerId.Value,
+            SocialActionType = msg.SocialActionType
+        };
+
+        var bodyBytes = MessagePackSerializer.Serialize(broadcast);
+        foreach (var session in sameAreaSessions)
+        {
+            using var packet = Packet.Create((int)Protocol.G_TO_C_SOCIAL_ACTION, session.PlayerId ?? 0);
+            packet.SetBody(bodyBytes);
+            session.Send(packet);
+        }
+
+        return Task.CompletedTask;
     }
 
     protected override bool ShouldSkipLogging(Protocol protocolId)

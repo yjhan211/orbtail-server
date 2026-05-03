@@ -261,6 +261,12 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class C_TO_G_SOCIAL_ACTION : IMessagePackObject
+    {
+        [Key("socialType")] public SocialActionType SocialActionType { get; set; }
+    }
+
+    [MessagePackObject]
     public class G_TO_U_SOCIAL_ACTION : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
