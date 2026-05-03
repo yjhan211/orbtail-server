@@ -1,0 +1,36 @@
+name: Server Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.cs'
+      - '**.csproj'
+      - 'server.sln'
+  push:
+    branches: [main]
+    paths:
+      - '**.cs'
+      - '**.csproj'
+      - 'server.sln'
+
+jobs:
+  test:
+    name: dotnet test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore server.sln
+
+      - name: Build
+        run: dotnet build server.sln --no-restore --configuration Release
+
+      - name: Run regression tests
+        run: dotnet test demo_regression_tests/demo_regression_tests.csproj --no-build --configuration Release --verbosity normal
