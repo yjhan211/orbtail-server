@@ -110,5 +110,5 @@ id,category,text_kr,text_en,text_jp
 11040,6,저는 <color=#A8D4E0>{0}</color>입니다.,I am a <color=#A8D4E0>{0}</color>.,私は<color=#A8D4E0>{0}</color>です。
 11041,6,저는 그때 <color=#A8D4E0>{0}</color>에 있었습니다.,I was at the <color=#A8D4E0>{0}</color> at that time.,私はその時<color=#A8D4E0>{0}</color>にいました。
 11042,6,<color=#FF7E9A>{0}</color>을(를) 주장하는 사람이 여러 명 발견되었습니다!,Multiple people are claiming to be a <color=#FF7E9A>{0}</color>!,<color=#FF7E9A>{0}</color>を主張する人が複数発見されました!
-11050,4,수락,Accept,承諾
+11050,4,<color=#A8D4E0>수락</color>,<color=#A8D4E0>Accept</color>,<color=#A8D4E0>承諾</color>
 11051,4,거절,Decline,拒否
