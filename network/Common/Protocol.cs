@@ -148,6 +148,10 @@ namespace network.common
         // 게임 결과 프로토콜
         G_TO_C_GAME_RESULT,           // 게임 종료 시 전체 결과 (체인 공개)
 
+        // 소셜 액션 프로토콜
+        C_TO_G_SOCIAL_ACTION,         // 본인 소셜 액션 요청 (LAUGH, SITGROUND 등)
+        G_TO_C_SOCIAL_ACTION,         // 같은 area 모든 클라에 broadcast
+
         // 구역 이동 프로토콜 (GDD v0.0.8: 문/계단 마커 방식)
         C_TO_G_AREA_MOVE,             // 문/계단 마커 클릭 → 구역 이동 요청
         G_TO_C_AREA_MOVE_RESULT,      // 이동 결과 (목적지 구역 + 스폰 셀 + 비용)
