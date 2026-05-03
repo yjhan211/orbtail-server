@@ -122,6 +122,7 @@ namespace network.common
         // 색출 프로토콜
         C_TO_G_DETECT_MANITTO,        // 마니또 지목 요청
         G_TO_C_DETECT_RESULT,         // 지목 결과 (성공/실패)
+        G_TO_C_DETECTION_ANNOUNCE,    // 색출 시도 전체 브로드캐스트 (영상 cut 시각화 — DEMO_MODE 06:40 SC→DC)
 
         // 탈락 & 체인 프로토콜
         G_TO_C_PLAYER_ELIMINATED,     // 플레이어 탈락 알림 (전체 브로드캐스트)

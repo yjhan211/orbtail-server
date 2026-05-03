@@ -458,6 +458,8 @@ public class GameServer(
                 logger.LogInformation("봇 색출 결과: BotId={B}, Cand={C}, Correct={R}",
                     detecterBotId, candidate, isCorrect);
 
+                BroadcastDetectionAnnounce(matchingId, activeSessions, detecterBotId, candidate, isCorrect);
+
                 if (!isCorrect) continue;
 
                 // 적중 — 부품 전이 + 마니또 탈락
@@ -475,6 +477,40 @@ public class GameServer(
         {
             logger.LogError(ex, "봇 시한부/색출 처리 중 오류: MatchingId={MatchingId}", matchingId);
         }
+    }
+
+    /// <summary>
+    ///     색출 시도를 매칭 내 모든 활성 세션에 브로드캐스트 — 영상 cut 시각화용.
+    ///     봇 detecter는 ChainLink로 직책 조회. 시도 결과(isCorrect) 포함.
+    /// </summary>
+    private void BroadcastDetectionAnnounce(long matchingId, List<GameClientSession> activeSessions,
+        long detecterId, long targetId, bool isCorrect)
+    {
+        var detecterLink = _manittoChainManager.GetLink(matchingId, detecterId);
+        var targetLink = _manittoChainManager.GetLink(matchingId, targetId);
+        if (detecterLink == null || targetLink == null) return;
+
+        var msg = new G_TO_C_DETECTION_ANNOUNCE
+        {
+            DetecterPlayerId = detecterId,
+            DetecterJobTitle = detecterLink.MyJobTitle,
+            TargetPlayerId = targetId,
+            TargetJobTitle = targetLink.MyJobTitle,
+            IsCorrect = isCorrect
+        };
+        byte[] body = MessagePackSerializer.Serialize(msg);
+
+        foreach (var session in activeSessions)
+        {
+            if (session.CurrentMapSubId != matchingId) continue;
+            if (session.IsEliminated) continue;
+            using var packet = Packet.Create((int)Protocol.G_TO_C_DETECTION_ANNOUNCE);
+            packet.SetBody(body);
+            session.Send(packet);
+        }
+
+        logger.LogInformation("색출 broadcast: Detecter={D}({DJ}), Target={T}({TJ}), Correct={R}",
+            detecterId, detecterLink.MyJobTitle, targetId, targetLink.MyJobTitle, isCorrect);
     }
 
     /// <summary>

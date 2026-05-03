@@ -219,6 +219,21 @@ namespace network.common.data.models
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
     }
 
+    /// <summary>
+    ///     색출 시도 전체 브로드캐스트 — 모든 생존 클라이언트가 누가 누구를 색출했는지 시각화 (영상 cut용).
+    ///     DEMO_MODE 06:40 SC→DC 비트가 대표 사례. 통상 플레이에서도 색출 시도가 외부에 노출되는지 여부는
+    ///     기획 결정 사안이며, 본 패킷은 시연 시나리오 cut 보장이 1차 용도.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_DETECTION_ANNOUNCE : IMessagePackObject
+    {
+        [Key("detecterPlayerId")] public long DetecterPlayerId { get; set; }
+        [Key("detecterJobTitle")] public JobTitle DetecterJobTitle { get; set; }
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+        [Key("targetJobTitle")] public JobTitle TargetJobTitle { get; set; }
+        [Key("isCorrect")] public bool IsCorrect { get; set; }
+    }
+
     // ===== 탈락 & 체인 =====
 
     [MessagePackObject]
