@@ -37,7 +37,7 @@ public partial class BotPlayerManager
         if (totalParts > 0 && collected * 100 / totalParts >= 80) return false;
 
         // 응답 빈도 70%
-        return Random.Shared.Next(100) < 70;
+        return _rng.Next(100) < 70;
     }
 
     /// <summary>
@@ -63,7 +63,7 @@ public partial class BotPlayerManager
             InteractionQuestionType.CROSS_CHECK,
             InteractionQuestionType.ASK_TRACE
         };
-        return values[Random.Shared.Next(values.Length)];
+        return values[_rng.Next(values.Length)];
     }
 
     /// <summary>
@@ -75,9 +75,9 @@ public partial class BotPlayerManager
         if (answerCount <= 1) return 0;
 
         // 진실(0번)이 33% 정도 — 거짓 2개에 더 분산
-        int roll = Random.Shared.Next(100);
+        int roll = _rng.Next(100);
         if (roll < 34) return 0;
-        return 1 + Random.Shared.Next(answerCount - 1);
+        return 1 + _rng.Next(answerCount - 1);
     }
 
     /// <summary>
@@ -96,7 +96,7 @@ public partial class BotPlayerManager
         if (total > 0 && collected * 100 / total >= 50) return BotJobReveal.Silent;
 
         // 50% 진실 / 50% 블러프
-        return Random.Shared.Next(100) < 50 ? BotJobReveal.Truth : BotJobReveal.Bluff;
+        return _rng.Next(100) < 50 ? BotJobReveal.Truth : BotJobReveal.Bluff;
     }
 
     /// <summary>

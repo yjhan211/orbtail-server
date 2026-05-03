@@ -90,7 +90,7 @@ public partial class BotPlayerManager
         var fallback = openAreas.Where(a => a != bot.CurrentArea).ToList();
         if (fallback.Count == 0) return;
 
-        bot.CurrentArea = fallback[Random.Shared.Next(fallback.Count)];
+        bot.CurrentArea = fallback[_rng.Next(fallback.Count)];
         bot.Stamina = Math.Max(0, bot.Stamina - BotMoveStaminaCost);
         _logger.LogDebug("봇 이동(폴백 무작위): BotId={BotId}, → {Area}", bot.PlayerId, bot.CurrentArea);
     }
@@ -100,7 +100,7 @@ public partial class BotPlayerManager
     ///     mission_step.csv의 자기 직책 Material 4개 TargetArea + prerequisite_item 위치를
     ///     중복 제거 후 셔플하여 봇 동선이 직책 단서로 작동하도록 한다(블러프 메카닉 정합).
     /// </summary>
-    private static List<AreaType> BuildJobAreaQueue(JobTitle job)
+    private List<AreaType> BuildJobAreaQueue(JobTitle job)
     {
         var areas = new HashSet<AreaType>();
 
@@ -114,6 +114,6 @@ public partial class BotPlayerManager
             if (prereq.LocationArea > 0) areas.Add((AreaType)prereq.LocationArea);
         }
 
-        return areas.OrderBy(_ => Random.Shared.Next()).ToList();
+        return areas.OrderBy(_ => _rng.Next()).ToList();
     }
 }

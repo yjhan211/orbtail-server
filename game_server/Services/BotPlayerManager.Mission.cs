@@ -138,6 +138,13 @@ public partial class BotPlayerManager
     {
         var owned = state.CollectedParts;
 
+        // H4 봇 race 페이스 캡 — DemoMode에서 봇은 7:00 이전 결합 차단 (시연자 race 보장)
+        if (DemoMode.IsActive)
+        {
+            var elapsed = DateTime.UtcNow - bot.GameStartTime;
+            if (elapsed.TotalSeconds < DemoMode.BotRaceMinSeconds) return;
+        }
+
         // 가능한 모든 레시피 시도 (PartRecipeData 직접 참조)
         foreach (var recipe in PartRecipeData.GetRecipes((short)bot.MyJobTitle))
         {
@@ -189,7 +196,7 @@ public partial class BotPlayerManager
             var candidates = aliveCandidatePlayerIds.Where(id => id != bot.PlayerId).ToList();
             if (candidates.Count == 0) continue;
 
-            long victim = candidates[Random.Shared.Next(candidates.Count)];
+            long victim = candidates[_rng.Next(candidates.Count)];
             int? invalidated = missionManager.InvalidateHighestPart(matchingId, victim);
 
             // 비용 차감

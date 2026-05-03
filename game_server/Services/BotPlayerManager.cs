@@ -53,6 +53,10 @@ public partial class BotPlayerManager
     private readonly ConcurrentDictionary<long, List<BotPlayerState>> _botStates = new();
     private readonly ILogger _logger;
 
+    // H1 결정론 시드 — DemoMode 활성화 시 시드 기반 RNG, 아니면 Random.Shared 위임.
+    // 모든 봇 의사결정(이동/색출/응답/사보타주)이 본 인스턴스 사용.
+    private readonly Random _rng = DemoMode.IsActive ? new Random(DemoMode.Seed) : Random.Shared;
+
     public BotPlayerManager(ILogger logger)
     {
         _logger = logger;
@@ -68,7 +72,7 @@ public partial class BotPlayerManager
             var visitQueue = BuildJobAreaQueue(info.MyJobTitle);
             var startArea = visitQueue.Count > 0
                 ? visitQueue[0]
-                : MovableAreas[Random.Shared.Next(MovableAreas.Length)];
+                : MovableAreas[_rng.Next(MovableAreas.Length)];
 
             return new BotPlayerState
             {
@@ -82,6 +86,7 @@ public partial class BotPlayerManager
                 ManittoStatus = ManittoStatus.ACTIVE,
                 LastMoveTime = DateTime.UtcNow,
                 LastMissionTickTime = DateTime.UtcNow,
+                GameStartTime = DateTime.UtcNow,
                 JobAreaQueue = visitQueue,
                 JobAreaQueueIndex = 0
             };
@@ -162,6 +167,9 @@ public class BotPlayerState
     public bool IsEliminated { get; set; }
     public ManittoStatus ManittoStatus { get; set; } = ManittoStatus.ACTIVE;
     public DateTime LastMoveTime { get; set; } = DateTime.UtcNow;
+
+    /// <summary>매칭 시작 시각. DemoMode H4 봇 race 페이스 캡 계산용.</summary>
+    public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
 
     // === v0.2.0 부품 시뮬 상태 ===
     /// <summary>마지막 미션 행동(회수/결합) 시각</summary>
