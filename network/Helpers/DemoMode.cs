@@ -26,6 +26,46 @@ public static class DemoMode
     /// <summary>H3 — SC 봇이 색출을 강제로 시도하는 게임 경과 시간 (06:40).</summary>
     public const int ScDetectionAttemptSeconds = 400;
 
+    /// <summary>
+    ///     W3 — 봇 6단계 동선 스크립트. JobTitle별 (경과초, 위치) 웨이포인트 리스트.
+    ///     elapsed >= sec 중 가장 큰 sec의 area로 봇 위치 강제 (시계열 순서).
+    ///     영상 비트 정합:
+    ///     02:50 SC 도서관 1:1 / 04:30 DC 도서관 / 06:00 BR 도서관(회복 흔적) / 09:30 BR 도서관(함정 발동) / HE 강당 캠핑
+    /// </summary>
+    public static readonly Dictionary<JobTitle, IReadOnlyList<(int elapsedSec, AreaType area)>> BotMovementScript = new()
+    {
+        [JobTitle.BROADCAST_MEMBER] = new[]
+        {
+            (0, AreaType.BroadcastRoom),  // 시작 (4F 방송실)
+            (60, AreaType.Corridor4F),    // 01:00 4F 복도
+            (180, AreaType.Corridor2F),   // 03:00 2F 도서관 인근 진입
+            (360, AreaType.Library),      // 06:00 도서관 (회복 흔적 배치)
+            (480, AreaType.Corridor2F),   // 08:00 후퇴
+            (570, AreaType.Library)       // 09:30 도서관 재방문 (09:40 함정 흔적 발동 위치)
+        },
+        [JobTitle.DISCIPLINE_MEMBER] = new[]
+        {
+            (0, AreaType.Corridor1F),     // 시작 (1F 복도)
+            (60, AreaType.AdminOffice),   // 01:00 행정실 (DC 발견 구역)
+            (180, AreaType.Corridor2F),   // 03:00 2F 진입
+            (270, AreaType.Library),      // 04:30 도서관 진입 (04:50 LB 조우 셋업)
+            (360, AreaType.Corridor2F),   // 06:00 후퇴
+            (480, AreaType.AdminOffice)   // 08:00 1F 회귀
+        },
+        [JobTitle.SCIENCE_MEMBER] = new[]
+        {
+            (0, AreaType.ExamRoom),       // 시작 (3F 고사실)
+            (120, AreaType.Corridor3F),   // 02:00 3F 복도 경유
+            (170, AreaType.Library),      // 02:50 도서관 (1:1 with LB)
+            (240, AreaType.Corridor3F),   // 04:00 후퇴
+            (300, AreaType.ExamRoom)      // 05:00 고사실 회귀 (06:40 색출 위치)
+        },
+        [JobTitle.HEALTH_MEMBER] = new[]
+        {
+            (0, AreaType.Gym)             // 강당 캠핑 (12:00 강제 탈락까지 고정)
+        }
+    };
+
     /// <summary>시연 매칭 인원 — 시연자 1명 + 봇 4명.</summary>
     public const int MatchPlayerCount = 5;
 
