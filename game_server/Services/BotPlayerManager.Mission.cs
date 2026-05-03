@@ -215,12 +215,19 @@ public partial class BotPlayerManager
     ///     봇 색출 휴리스틱. 자기 race 진행을 방해하는 흔적 함정 누적 점수가 임계값 초과 시
     ///     자기 마니또(자기를 타겟으로 가진 플레이어) 후보 1명을 색출.
     ///     호출자(GameServer)가 색출 결과를 ManittoChainManager로 위임.
+    ///     H3+D4: DemoMode 활성화 시 SC 봇이 06:40에 DC를 강제 지목, 그 외 봇 색출은 비활성.
     /// </summary>
     public List<(long detecterBotId, long candidateManittoId)> CollectDetectionAttempts(long matchingId,
         Func<long, long?> findMyManittoForBot)
     {
         var result = new List<(long, long)>();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
+
+        if (DemoMode.IsActive)
+        {
+            TryAddDemoForcedDetection(bots, result);
+            return result; // D4: 시연 모드에서는 강제 트리거(SC→DC) 외 봇 색출 비활성
+        }
 
         foreach (var bot in GetActiveBots(bots))
         {
@@ -237,6 +244,32 @@ public partial class BotPlayerManager
             result.Add((bot.PlayerId, candidate.Value));
         }
         return result;
+    }
+
+    /// <summary>
+    ///     H3 — SC 봇이 06:40 경과 시 DC를 색출 강제 지목 (영상 4컷 비트).
+    ///     실제 마니또 관계와 무관하게 target=DC로 고정 — 결과 빗나감은 ManittoChainManager.TryDetect에서 보정.
+    /// </summary>
+    private void TryAddDemoForcedDetection(List<BotPlayerState> bots, List<(long, long)> result)
+    {
+        var sc = bots.FirstOrDefault(b => b.MyJobTitle == JobTitle.SCIENCE_MEMBER
+            && !b.IsEliminated && !b.HasUsedDetection);
+        if (sc == null) return;
+
+        var elapsed = DateTime.UtcNow - sc.GameStartTime;
+        if (elapsed.TotalSeconds < DemoMode.ScDetectionAttemptSeconds) return;
+
+        var dc = bots.FirstOrDefault(b => b.MyJobTitle == JobTitle.DISCIPLINE_MEMBER && !b.IsEliminated);
+        if (dc == null)
+        {
+            _logger.LogWarning("DEMO_MODE 색출 강제: DC 봇이 없어 SC 강제 색출 스킵");
+            return;
+        }
+
+        sc.HasUsedDetection = true;
+        _logger.LogInformation("DEMO_MODE 색출 강제: SC({Sc}) → DC({Dc}) (경과 {S}s)",
+            sc.PlayerId, dc.PlayerId, (int)elapsed.TotalSeconds);
+        result.Add((sc.PlayerId, dc.PlayerId));
     }
 
     /// <summary>

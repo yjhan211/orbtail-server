@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
+using network.helpers;
 
 namespace game_server.services;
 
@@ -30,6 +31,20 @@ public partial class BotPlayerManager
                 totalCorruptionDelta += 5;
             bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
 
+            // H8 — DemoMode HE 봇 12:00 강제 탈락 (오염도 100으로 가속)
+            if (DemoMode.IsActive
+                && bot.MyJobTitle == JobTitle.HEALTH_MEMBER
+                && bot.Corruption < 100)
+            {
+                var elapsedSec = (DateTime.UtcNow - bot.GameStartTime).TotalSeconds;
+                if (elapsedSec >= DemoMode.HeForcedEliminationSeconds)
+                {
+                    bot.Corruption = 100;
+                    _logger.LogInformation(
+                        "DEMO_MODE H8: HE 봇 강제 탈락 트리거 (경과 {Sec}s)", (int)elapsedSec);
+                }
+            }
+
             // 2) 폐쇄 구역 체류 시 스태미나 감소(가드: 능동 회피 실패 시에만 발생)
             if (areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
                 bot.Stamina = Math.Max(0, bot.Stamina - 20);
@@ -45,14 +60,46 @@ public partial class BotPlayerManager
                 continue;
             }
 
-            // 4) 주기적 이동 — 폐쇄 회피 + 직책 큐 다음 구역
-            if ((DateTime.UtcNow - bot.LastMoveTime).TotalSeconds >= BotMoveIntervalSeconds)
+            // 4) 이동 — DemoMode 시 W3 스크립트, 아니면 12초 주기 큐 순회
+            if (DemoMode.IsActive)
+            {
+                AdvanceToScriptedArea(bot, matchingId, areaClosureManager);
+            }
+            else if ((DateTime.UtcNow - bot.LastMoveTime).TotalSeconds >= BotMoveIntervalSeconds)
             {
                 AdvanceToNextArea(bot, matchingId, areaClosureManager);
                 bot.LastMoveTime = DateTime.UtcNow;
             }
         }
         return newlyEliminated;
+    }
+
+    /// <summary>
+    ///     W3 시연 모드 — 봇 위치를 BotMovementScript에 따라 강제. 매 틱(5초)마다 평가.
+    ///     큐 순회 로직 우회. 폐쇄된 위치는 도착 보류(다음 웨이포인트로 진행되면 자연 해소).
+    /// </summary>
+    private void AdvanceToScriptedArea(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
+    {
+        if (!DemoMode.BotMovementScript.TryGetValue(bot.MyJobTitle, out var script) || script.Count == 0)
+            return;
+
+        int elapsedSec = (int)(DateTime.UtcNow - bot.GameStartTime).TotalSeconds;
+        AreaType target = script[0].area;
+        foreach (var (sec, area) in script)
+        {
+            if (sec > elapsedSec) break;
+            target = area;
+        }
+
+        if (bot.CurrentArea == target) return;
+        if (closureManager.IsAreaClosed(matchingId, target)) return; // 폐쇄면 보류
+
+        var prev = bot.CurrentArea;
+        bot.CurrentArea = target;
+        bot.Stamina = Math.Max(0, bot.Stamina - BotMoveStaminaCost);
+        bot.LastMoveTime = DateTime.UtcNow;
+        _logger.LogInformation("DEMO_MODE 봇 이동(스크립트): BotId={Bot}, Job={Job}, {Prev} → {Area} (경과 {Sec}s)",
+            bot.PlayerId, bot.MyJobTitle, prev, target, elapsedSec);
     }
 
     /// <summary>

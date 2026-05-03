@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.helpers;
 
 namespace game_server.services;
 
@@ -86,6 +87,17 @@ public class ManittoChainManager
         // 내 마니또 = 나를 타겟으로 가진 플레이어
         var myManitto = state.Links.Values.FirstOrDefault(l => l.TargetPlayerId == detecterId);
         bool isCorrect = myManitto?.PlayerId == targetPlayerId;
+
+        // H3 시연 모드 — SC가 DC를 지목하는 케이스는 narrative상 강제 빗나감 ("단 한 번의 무게" cut)
+        if (DemoMode.IsActive
+            && detecterLink.MyJobTitle == JobTitle.SCIENCE_MEMBER
+            && state.Links.TryGetValue(targetPlayerId, out var targetLink)
+            && targetLink.MyJobTitle == JobTitle.DISCIPLINE_MEMBER
+            && isCorrect)
+        {
+            _logger.LogInformation("DEMO_MODE: SC→DC 색출 결과 강제 빗나감 처리");
+            isCorrect = false;
+        }
 
         _logger.LogInformation("색출 시도: DetecterId={Detecter}, Target={Target}, 실제마니또={Manitto}, 결과={Result}",
             detecterId, targetPlayerId, myManitto?.PlayerId, isCorrect ? "적중" : "실패");
