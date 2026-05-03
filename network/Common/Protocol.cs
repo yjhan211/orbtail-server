@@ -132,6 +132,7 @@ namespace network.common
         // 마니또 전용: 흔적 배치 프로토콜
         C_TO_G_PLACE_TRACE,           // 흔적 배치 요청
         G_TO_C_PLACE_TRACE_RESULT,    // 흔적 배치 결과
+        G_TO_C_TRACE_PLACED_ANNOUNCE, // 흔적 배치 발생 전체 브로드캐스트 (영상 cut 시각화 — DEMO_MODE 09:30 BR 도서관)
 
         // 1:1 상호작용 선택지 프로토콜 (마니또)
         G_TO_C_INTERACTION_CHOICES,   // 대화 수락 시 질문/답변 선택지 전송

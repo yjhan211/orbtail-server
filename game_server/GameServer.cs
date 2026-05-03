@@ -307,7 +307,9 @@ public class GameServer(
                 ProcessBotTerminalActionsForMatching(matchingId, activeSessions);
 
                 // H6: DEMO_MODE BR 봇 09:30 함정 흔적 1회 배치
-                _botPlayerManager.ProcessDemoBotTracePlacement(matchingId, _traceManager);
+                var tracePlaced = _botPlayerManager.ProcessDemoBotTracePlacement(matchingId, _traceManager);
+                if (tracePlaced.HasValue)
+                    BroadcastTracePlacedAnnounce(matchingId, activeSessions, tracePlaced.Value);
             }
         }
         catch (Exception ex)
@@ -514,6 +516,39 @@ public class GameServer(
 
         logger.LogInformation("색출 broadcast: Detecter={D}({DJ}), Target={T}({TJ}), Correct={R}",
             detecterId, detecterLink.MyJobTitle, targetId, targetLink.MyJobTitle, isCorrect);
+    }
+
+    /// <summary>
+    ///     흔적 배치를 매칭 내 모든 활성 세션에 브로드캐스트 — 영상 cut 시각화용.
+    ///     봇 placer는 ChainLink로 직책 조회. 발견자 본인 효과는 기존 TRACE_CREATED 흐름 유지(본 패킷은 cut 신호만).
+    /// </summary>
+    private void BroadcastTracePlacedAnnounce(long matchingId, List<GameClientSession> activeSessions,
+        (long placerPlayerId, AreaType area, int interactId, string description) trace)
+    {
+        var placerLink = _manittoChainManager.GetLink(matchingId, trace.placerPlayerId);
+        if (placerLink == null) return;
+
+        var msg = new G_TO_C_TRACE_PLACED_ANNOUNCE
+        {
+            PlacerPlayerId = trace.placerPlayerId,
+            PlacerJobTitle = placerLink.MyJobTitle,
+            AreaType = trace.area,
+            InteractId = trace.interactId,
+            Description = trace.description
+        };
+        byte[] body = MessagePackSerializer.Serialize(msg);
+
+        foreach (var session in activeSessions)
+        {
+            if (session.CurrentMapSubId != matchingId) continue;
+            if (session.IsEliminated) continue;
+            using var packet = Packet.Create((int)Protocol.G_TO_C_TRACE_PLACED_ANNOUNCE);
+            packet.SetBody(body);
+            session.Send(packet);
+        }
+
+        logger.LogInformation("흔적 배치 broadcast: Placer={P}({J}), Area={A}, InteractId={I}",
+            trace.placerPlayerId, placerLink.MyJobTitle, trace.area, trace.interactId);
     }
 
     /// <summary>
