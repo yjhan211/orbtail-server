@@ -29,6 +29,18 @@ public static class DemoMode
     /// <summary>H8 — HE 봇이 강제 탈락하는 게임 경과 시간 (12:00, 시한부 narrative).</summary>
     public const int HeForcedEliminationSeconds = 720;
 
+    /// <summary>H6 — BR 봇이 함정 흔적을 도서관에 1회 배치하는 게임 경과 시간 (09:30).</summary>
+    public const int BrTracePlacementSeconds = 570;
+
+    /// <summary>H6 — BR 봇 함정 흔적이 부착될 도서관 인터랙터블 ID (701000044 = 하늘색 배낭).</summary>
+    public const int BrTraceInteractId = 701000044;
+
+    /// <summary>H6 — BR 봇 함정 흔적 위치 (도서관).</summary>
+    public const AreaType BrTraceArea = AreaType.Library;
+
+    /// <summary>H6 — BR 봇 함정 흔적 description (영상 narrative '마니또의 양면 선택' cut).</summary>
+    public const string BrTraceDescription = "도서관 의자 옆에 누군가 머무른 흔적이 남아 있습니다.";
+
     /// <summary>
     ///     W3 — 봇 6단계 동선 스크립트. JobTitle별 (경과초, 위치) 웨이포인트 리스트.
     ///     elapsed >= sec 중 가장 큰 sec의 area로 봇 위치 강제 (시계열 순서).

@@ -188,6 +188,9 @@ public class BotPlayerState
     /// <summary>봇이 마지막으로 흔적 함정을 배치한 시각 — 너무 자주 안 깔도록 쿨다운</summary>
     public DateTime LastTracePlaceTime { get; set; } = DateTime.MinValue;
 
+    /// <summary>H6 — 시연 모드 BR 봇이 도서관 함정 흔적을 1회 배치했는지 (캡 강제용).</summary>
+    public bool HasPlacedDemoTrapTrace { get; set; }
+
     /// <summary>봇이 마지막으로 사보타주를 시도한 시각 — 시한부 진입 후 쿨다운</summary>
     public DateTime LastSabotageTryTime { get; set; } = DateTime.MinValue;
 
