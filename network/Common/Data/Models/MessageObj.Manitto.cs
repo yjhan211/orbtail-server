@@ -203,6 +203,22 @@ namespace network.common.data.models
         [Key("staminaCost")] public int StaminaCost { get; set; }
     }
 
+    /// <summary>
+    ///     흔적 배치 발생 전체 브로드캐스트 — 모든 생존 클라이언트가 누가 어디에 흔적을 깔았는지 시각화 (영상 cut용).
+    ///     DEMO_MODE 09:30 BR 도서관 함정 흔적 비트가 대표 사례. 통상 플레이에서도 흔적 배치가
+    ///     외부에 노출되는지 여부는 기획 결정 사안이며, 본 패킷은 시연 시나리오 cut 보장이 1차 용도.
+    ///     발견자 본인 효과(정신력 변동)는 기존 G_TO_C_TRACE_CREATED 흐름 유지 — 본 패킷은 시각 cut 신호만.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_TRACE_PLACED_ANNOUNCE : IMessagePackObject
+    {
+        [Key("placerPlayerId")] public long PlacerPlayerId { get; set; }
+        [Key("placerJobTitle")] public JobTitle PlacerJobTitle { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("description")] public string Description { get; set; } = "";
+    }
+
     // ===== 색출 =====
 
     [MessagePackObject]
