@@ -23,6 +23,9 @@ public static class DemoMode
     /// <summary>봇 race 페이스 캡 (H4). 봇은 게임 시작 후 이 시간 이전 결합 차단.</summary>
     public const int BotRaceMinSeconds = 420; // 7분
 
+    /// <summary>H3 — SC 봇이 색출을 강제로 시도하는 게임 경과 시간 (06:40).</summary>
+    public const int ScDetectionAttemptSeconds = 400;
+
     /// <summary>시연 매칭 인원 — 시연자 1명 + 봇 4명.</summary>
     public const int MatchPlayerCount = 5;
 
