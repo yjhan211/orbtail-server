@@ -31,6 +31,20 @@ public partial class BotPlayerManager
                 totalCorruptionDelta += 5;
             bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
 
+            // H8 — DemoMode HE 봇 12:00 강제 탈락 (오염도 100으로 가속)
+            if (DemoMode.IsActive
+                && bot.MyJobTitle == JobTitle.HEALTH_MEMBER
+                && bot.Corruption < 100)
+            {
+                var elapsedSec = (DateTime.UtcNow - bot.GameStartTime).TotalSeconds;
+                if (elapsedSec >= DemoMode.HeForcedEliminationSeconds)
+                {
+                    bot.Corruption = 100;
+                    _logger.LogInformation(
+                        "DEMO_MODE H8: HE 봇 강제 탈락 트리거 (경과 {Sec}s)", (int)elapsedSec);
+                }
+            }
+
             // 2) 폐쇄 구역 체류 시 스태미나 감소(가드: 능동 회피 실패 시에만 발생)
             if (areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
                 bot.Stamina = Math.Max(0, bot.Stamina - 20);

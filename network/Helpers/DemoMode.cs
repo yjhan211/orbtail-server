@@ -26,6 +26,9 @@ public static class DemoMode
     /// <summary>H3 — SC 봇이 색출을 강제로 시도하는 게임 경과 시간 (06:40).</summary>
     public const int ScDetectionAttemptSeconds = 400;
 
+    /// <summary>H8 — HE 봇이 강제 탈락하는 게임 경과 시간 (12:00, 시한부 narrative).</summary>
+    public const int HeForcedEliminationSeconds = 720;
+
     /// <summary>
     ///     W3 — 봇 6단계 동선 스크립트. JobTitle별 (경과초, 위치) 웨이포인트 리스트.
     ///     elapsed >= sec 중 가장 큰 sec의 area로 봇 위치 강제 (시계열 순서).
