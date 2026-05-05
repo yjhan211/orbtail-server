@@ -10,13 +10,14 @@ namespace game_server.services;
 ///     봇 이동 AI. 자기 직책 발견 구역 우선 순회 + 폐쇄 회피.
 ///     #26: "허수아비" 무작위 이동 → 직책별 목적성 동선으로 폴리싱.
 ///     #125: 영역 전환/영역 내 셀 wander 시 BotMovementEvent 반환 → GameServer가 패킷 브로드캐스트.
+///     #127: walking pathfinding — 셀 단위 walk + 영역 경계 통과 BFS. WanderInArea 제거.
 /// </summary>
 public partial class BotPlayerManager
 {
-    /// <summary>영역 내 셀 wander 주기 (Phase 2). 실제 플레이어 50ms 대비 봇은 5초로 충분.</summary>
-    private const int BotCellWanderIntervalSeconds = 5;
+    /// <summary>봇 walking 속도 (실제 플레이어 walkSpeed=3과 동일).</summary>
+    private const float BotWalkSpeed = 3.0f;
 
-    /// <summary>봇 자원 틱 결과. 자원 고갈 탈락 + 위치 이동 이벤트를 함께 반환.</summary>
+    /// <summary>봇 자원 틱 결과. 자원 고갈 탈락 + 위치 이동 이벤트(DemoMode 영역 전환만)를 함께 반환.</summary>
     public class BotTickResult
     {
         public List<(long botPlayerId, EliminationReason reason)> Eliminated { get; } = new();
@@ -24,8 +25,8 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     봇 AI 틱(자원 변동 + 이동). GameServer.ProcessResourceTick에서 매칭별로 호출.
-    ///     반환: 자원 고갈 탈락 봇 + 위치 이동 이벤트 — 호출자가 패킷 브로드캐스트.
+    ///     봇 자원 틱(5초). 자원 변동 + 탈락 + DemoMode 스크립트 영역 전환만 처리.
+    ///     일반 walking은 ProcessBotMovementTick(250ms)에서 별도 처리.
     /// </summary>
     public BotTickResult ProcessBotTick(
         long matchingId, int corruptionDelta, AreaClosureManager areaClosureManager)
@@ -72,33 +73,171 @@ public partial class BotPlayerManager
                 continue;
             }
 
-            // 4) 영역 이동 — DemoMode 시 W3 스크립트, 아니면 12초 주기 큐 순회
-            BotMovementEvent? areaMove = null;
+            // 4) DemoMode 스크립트 영역 전환만 처리 (영상 narrative timing 보호 — walking 우회 텔레포트)
             if (DemoMode.IsActive)
             {
-                areaMove = AdvanceToScriptedArea(bot, matchingId, areaClosureManager);
-            }
-            else if ((DateTime.UtcNow - bot.LastMoveTime).TotalSeconds >= BotMoveIntervalSeconds)
-            {
-                areaMove = AdvanceToNextArea(bot, matchingId, areaClosureManager);
-                bot.LastMoveTime = DateTime.UtcNow;
-            }
-
-            if (areaMove != null)
-            {
-                result.Movements.Add(areaMove);
-                continue; // 영역 전환한 틱은 셀 wander 생략
-            }
-
-            // 5) Phase 2 — 영역 내 셀 wander (5초 주기, 같은 영역 내 walkable 셀 hop)
-            if ((DateTime.UtcNow - bot.LastCellWanderTime).TotalSeconds >= BotCellWanderIntervalSeconds)
-            {
-                var wander = WanderInArea(bot, matchingId);
-                bot.LastCellWanderTime = DateTime.UtcNow;
-                if (wander != null) result.Movements.Add(wander);
+                var areaMove = AdvanceToScriptedArea(bot, matchingId, areaClosureManager);
+                if (areaMove != null) result.Movements.Add(areaMove);
             }
         }
         return result;
+    }
+
+    /// <summary>
+    ///     #127: 봇 walking 틱(250ms). DemoMode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
+    ///     실제 플레이어와 동일한 walkSpeed=3.0 적용. 매 틱 G_TO_C_MOVE 동등 이벤트 발행.
+    /// </summary>
+    public List<BotMovementEvent> ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager)
+    {
+        var movements = new List<BotMovementEvent>();
+        if (DemoMode.IsActive) return movements; // DemoMode는 ProcessBotTick에서 스크립트 텔레포트
+        if (!_botStates.TryGetValue(matchingId, out var bots)) return movements;
+
+        foreach (var bot in bots)
+        {
+            if (bot.IsEliminated) continue;
+            var ev = WalkStep(bot, matchingId, closureManager);
+            if (ev != null) movements.Add(ev);
+        }
+        return movements;
+    }
+
+    /// <summary>
+    ///     봇 한 명의 walking step 처리. 경로가 없으면 새 wander 타겟 선택.
+    ///     영역 전환 단계는 텔레포트(LEAVE+ENTER+MOVE) 이벤트 반환,
+    ///     일반 셀 walk는 진행 방향 + 속도 포함 MOVE 이벤트 반환.
+    /// </summary>
+    private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
+    {
+        var now = DateTime.UtcNow;
+        float deltaSec = (float)(now - bot.LastWalkStepTime).TotalSeconds;
+        if (deltaSec <= 0) deltaSec = 0.25f;
+        bot.LastWalkStepTime = now;
+
+        // 경로 없거나 완료 → 새 타겟 결정
+        if (bot.Path.Count == 0 || bot.PathIndex >= bot.Path.Count)
+        {
+            ChooseNewWanderTarget(bot, matchingId, closureManager);
+            if (bot.Path.Count == 0) return null;
+        }
+
+        var nextStep = bot.Path[bot.PathIndex];
+
+        // 1) 영역 경계 통과 — 텔레포트 이벤트 발행
+        if (nextStep.IsAreaTransition)
+        {
+            var fromArea = bot.CurrentArea;
+            var fromCell = bot.Cell;
+            bot.CurrentArea = nextStep.Area;
+            bot.Cell = nextStep.Cell;
+            bot.Position = CellToWorldPosition(nextStep.Cell);
+            bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+            bot.PathIndex++;
+            return new BotMovementEvent
+            {
+                BotPlayerId = bot.PlayerId,
+                FromArea = fromArea,
+                ToArea = bot.CurrentArea,
+                FromCell = fromCell,
+                ToCell = bot.Cell,
+                Position = bot.Position,
+                Velocity = new Vector3f(0f, 0f, 0f),
+                Rotation = bot.Rotation,
+                IsAreaTransition = true
+            };
+        }
+
+        // 2) 일반 셀 walk — walkSpeed × deltaSec 만큼 진행
+        var targetPos = CellToWorldPosition(nextStep.Cell);
+        float dx = targetPos.X - bot.Position.X;
+        float dy = targetPos.Y - bot.Position.Y;
+        float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+        float maxDist = BotWalkSpeed * deltaSec;
+
+        Vector3f newPosition;
+        Vector3f velocity;
+
+        if (dist <= maxDist || dist < 0.01f)
+        {
+            // 도달 → 다음 인덱스
+            newPosition = targetPos;
+            bot.Cell = nextStep.Cell;
+            bot.Position = newPosition;
+            velocity = new Vector3f(0f, 0f, 0f);
+            bot.PathIndex++;
+        }
+        else
+        {
+            float dirX = dx / dist;
+            float dirY = dy / dist;
+            newPosition = new Vector3f(
+                bot.Position.X + dirX * maxDist,
+                bot.Position.Y + dirY * maxDist,
+                0f);
+            velocity = new Vector3f(dirX * BotWalkSpeed, dirY * BotWalkSpeed, 0f);
+            bot.Position = newPosition;
+        }
+
+        bot.WalkVelocity = velocity;
+
+        return new BotMovementEvent
+        {
+            BotPlayerId = bot.PlayerId,
+            FromArea = bot.CurrentArea,
+            ToArea = bot.CurrentArea,
+            FromCell = bot.Cell,
+            ToCell = nextStep.Cell,
+            Position = newPosition,
+            Velocity = velocity,
+            Rotation = bot.Rotation,
+            IsAreaTransition = false
+        };
+    }
+
+    /// <summary>
+    ///     봇이 도착했거나 경로가 비었을 때 새 목적지 선택 + 경로 계산.
+    ///     #127 1차: 무작위 영역의 스폰 셀로 (직책 풀 이용은 후속).
+    ///     폐쇄 영역은 회피.
+    /// </summary>
+    private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
+    {
+        var mapId = GetMatchingMapId(matchingId);
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+
+        var openAreas = MovableAreas
+            .Where(a => !closureManager.IsAreaClosed(matchingId, a))
+            .ToList();
+        if (openAreas.Count == 0) return;
+
+        // 직책 큐 우선, 비어있으면 무작위
+        AreaType targetArea;
+        if (bot.JobAreaQueue.Count > 0)
+        {
+            targetArea = bot.JobAreaQueue[bot.JobAreaQueueIndex % bot.JobAreaQueue.Count];
+            bot.JobAreaQueueIndex = (bot.JobAreaQueueIndex + 1) % bot.JobAreaQueue.Count;
+            if (closureManager.IsAreaClosed(matchingId, targetArea))
+                targetArea = openAreas[_rng.Next(openAreas.Count)];
+        }
+        else
+        {
+            targetArea = openAreas[_rng.Next(openAreas.Count)];
+        }
+
+        var targetCell = GameMapData.GetAreaSpawnCell(mapId, targetArea);
+        var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, targetArea, targetCell,
+            a => closureManager.IsAreaClosed(matchingId, a));
+        if (path == null || path.Count == 0)
+        {
+            _logger.LogDebug("봇 경로 계산 실패: BotId={Bot}, {From} → {To}",
+                bot.PlayerId, bot.CurrentArea, targetArea);
+            return;
+        }
+
+        bot.Path = path;
+        bot.PathIndex = 0;
+        _logger.LogDebug("봇 새 경로: BotId={Bot}, {From}@{Cell} → {To}@{TargetCell}, 단계={Steps}",
+            bot.PlayerId, bot.CurrentArea, bot.Cell, targetArea, targetCell, path.Count);
     }
 
     /// <summary>
@@ -130,49 +269,8 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     다음 이동 결정 — 자기 직책 발견 구역 큐를 우선 순회하며 폐쇄 구역은 능동 회피.
-    ///     큐가 비거나 모두 폐쇄되면 폴백으로 열린 구역 무작위 선택.
-    /// </summary>
-    private BotMovementEvent? AdvanceToNextArea(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
-    {
-        var openAreas = MovableAreas
-            .Where(a => !closureManager.IsAreaClosed(matchingId, a))
-            .ToHashSet();
-
-        if (openAreas.Count == 0) return null;
-
-        // 1) 큐에서 폐쇄되지 않고 현재 구역과 다른 다음 구역 찾기
-        if (bot.JobAreaQueue.Count > 0)
-        {
-            for (int i = 0; i < bot.JobAreaQueue.Count; i++)
-            {
-                int idx = (bot.JobAreaQueueIndex + i) % bot.JobAreaQueue.Count;
-                var candidate = bot.JobAreaQueue[idx];
-                if (!openAreas.Contains(candidate)) continue;
-                if (candidate == bot.CurrentArea) continue;
-
-                bot.JobAreaQueueIndex = (idx + 1) % bot.JobAreaQueue.Count;
-                bot.Stamina = Math.Max(0, bot.Stamina - BotMoveStaminaCost);
-                var ev = TransitionBotArea(bot, matchingId, candidate);
-                _logger.LogDebug("봇 이동(직책 큐): BotId={BotId}, Job={Job}, → {Area}",
-                    bot.PlayerId, bot.MyJobTitle, candidate);
-                return ev;
-            }
-        }
-
-        // 2) 폴백: 열린 구역 무작위 선택 (현재 구역 제외)
-        var fallback = openAreas.Where(a => a != bot.CurrentArea).ToList();
-        if (fallback.Count == 0) return null;
-
-        var pick = fallback[_rng.Next(fallback.Count)];
-        bot.Stamina = Math.Max(0, bot.Stamina - BotMoveStaminaCost);
-        var fallbackEv = TransitionBotArea(bot, matchingId, pick);
-        _logger.LogDebug("봇 이동(폴백 무작위): BotId={BotId}, → {Area}", bot.PlayerId, pick);
-        return fallbackEv;
-    }
-
-    /// <summary>
     ///     봇 영역 전환 — Cell/Position을 새 영역의 스폰 셀로 갱신하고 BotMovementEvent 생성.
+    ///     DemoMode 스크립트 텔레포트 전용. walking 경로 통과 시점은 WalkStep에서 처리.
     /// </summary>
     private BotMovementEvent TransitionBotArea(BotPlayerState bot, long matchingId, AreaType targetArea)
     {
@@ -185,6 +283,8 @@ public partial class BotPlayerManager
         bot.CurrentArea = targetArea;
         bot.Cell = newCell;
         bot.Position = newPosition;
+        bot.Path.Clear();
+        bot.PathIndex = 0;
 
         return new BotMovementEvent
         {
@@ -197,59 +297,6 @@ public partial class BotPlayerManager
             Velocity = new Vector3f(0f, 0f, 0f),
             Rotation = bot.Rotation,
             IsAreaTransition = true
-        };
-    }
-
-    /// <summary>
-    ///     Phase 2 — 영역 내 셀 wander. 같은 영역 안에서 walkable 인근 셀로 1칸 hop.
-    ///     실제 플레이어의 C_TO_G_MOVE/G_TO_C_MOVE 흐름 동등 (봇은 5초 주기).
-    /// </summary>
-    private BotMovementEvent? WanderInArea(BotPlayerState bot, long matchingId)
-    {
-        var mapId = GetMatchingMapId(matchingId);
-        var areaRegion = GameMapData.GetAreas(mapId)
-            .FirstOrDefault(r => r.AreaType == bot.CurrentArea);
-        if (areaRegion == null) return null;
-
-        // 인근 8방향 + 2칸 hop 후보 — 폐쇄적이지 않게 약간의 거리감
-        var deltas = new[]
-        {
-            (-1, 0), (1, 0), (0, -1), (0, 1),
-            (-1, -1), (-1, 1), (1, -1), (1, 1),
-            (-2, 0), (2, 0), (0, -2), (0, 2)
-        };
-
-        var candidates = new List<Cell>();
-        foreach (var (dx, dy) in deltas)
-        {
-            var cand = new Cell(bot.Cell.X + dx, bot.Cell.Y + dy);
-            if (!areaRegion.Contains(cand)) continue;
-            if (!GameMapData.IsMoveablePosition(mapId, cand)) continue;
-            if (cand.X == bot.Cell.X && cand.Y == bot.Cell.Y) continue;
-            candidates.Add(cand);
-        }
-
-        if (candidates.Count == 0) return null;
-
-        var pick = candidates[_rng.Next(candidates.Count)];
-        var fromCell = bot.Cell;
-        var fromPosition = bot.Position;
-        var newPosition = CellToWorldPosition(pick);
-
-        bot.Cell = pick;
-        bot.Position = newPosition;
-
-        return new BotMovementEvent
-        {
-            BotPlayerId = bot.PlayerId,
-            FromArea = bot.CurrentArea,
-            ToArea = bot.CurrentArea,
-            FromCell = fromCell,
-            ToCell = pick,
-            Position = newPosition,
-            Velocity = new Vector3f(0f, 0f, 0f),
-            Rotation = bot.Rotation,
-            IsAreaTransition = false
         };
     }
 
@@ -277,9 +324,9 @@ public partial class BotPlayerManager
 }
 
 /// <summary>
-///     봇 이동 이벤트. ProcessBotTick이 반환하면 GameServer가 같은 영역 인간 세션에 패킷 브로드캐스트.
+///     봇 이동 이벤트. ProcessBotTick / ProcessBotMovementTick이 반환하면 GameServer가 같은 영역 인간 세션에 패킷 브로드캐스트.
 ///     영역 전환 시: G_TO_C_AREA_PLAYER_LEAVE(이전) + G_TO_C_AREA_PLAYER_ENTER(새) + G_TO_C_MOVE(텔레포트)
-///     영역 내 wander 시: G_TO_C_MOVE 만 (같은 영역 인간들에게)
+///     영역 내 walk 시: G_TO_C_MOVE 만 (같은 영역 인간들에게)
 /// </summary>
 public class BotMovementEvent
 {

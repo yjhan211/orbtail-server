@@ -125,9 +125,23 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
+    ///     봇 기본 의상 5종 (user_server SetupNewPlayer와 동일).
+    ///     Hair / Face / Top / Bottom / Shoes — 외형 노출용 최소 세트.
+    /// </summary>
+    private static readonly int[] BotDefaultWearItemIds =
+    {
+        101000003, // Hair
+        102000003, // Face
+        104000005, // Top
+        105000005, // Bottom
+        106000003  // Shoes
+    };
+
+    /// <summary>
     ///     봇의 PlayerInfo를 합성해서 반환 — G_TO_C_AREA_PLAYER_ENTER / G_TO_C_PLAYER_INFO 등
     ///     실제 플레이어 패킷 동등 시각화에 사용.
     ///     #125: 봇은 Redis에 저장되지 않으므로 매 호출 시 BotPlayerState로부터 합성.
+    ///     #127: 기본 의상 5종 착용으로 외형 노출.
     /// </summary>
     public PlayerInfo? SynthesizePlayerInfo(long matchingId, long botPlayerId)
     {
@@ -144,7 +158,8 @@ public partial class BotPlayerManager
             LastMapSubId = matchingId,
             LastCell = bot.Cell,
             Hp = 5000,
-            Stamina = bot.Stamina
+            Stamina = bot.Stamina,
+            WearItemIdList = new List<int>(BotDefaultWearItemIds)
         };
         info.ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, mapId, matchingId, bot.Cell)
         {
@@ -250,6 +265,19 @@ public class BotPlayerState
 
     /// <summary>마지막 셀 wander(영역 내 이동) 시각. Phase 2 — 영역 내 자연 이동.</summary>
     public DateTime LastCellWanderTime { get; set; } = DateTime.UtcNow;
+
+    // === #127 walking pathfinding ===
+    /// <summary>현재 따라가는 경로. 비어있으면 다음 틱에 새 타겟 결정.</summary>
+    public List<BotPathfinder.Step> Path { get; set; } = new();
+
+    /// <summary>Path에서 다음으로 도달할 인덱스. Path 길이와 같으면 도착 완료.</summary>
+    public int PathIndex { get; set; }
+
+    /// <summary>현재 진행 방향(월드 좌표) × walkSpeed. 클라 애니메이션용.</summary>
+    public Vector3f WalkVelocity { get; set; } = new(0f, 0f, 0f);
+
+    /// <summary>마지막 walk 틱 처리 시각. 250ms 간격 봇 이동 타이머가 사용.</summary>
+    public DateTime LastWalkStepTime { get; set; } = DateTime.UtcNow;
 
     /// <summary>매칭 시작 시각. DemoMode H4 봇 race 페이스 캡 계산용.</summary>
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
