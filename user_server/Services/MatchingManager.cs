@@ -181,22 +181,18 @@ public class MatchingManager : IMatchingManager
                 // 원형 체인 생성: 셔플 후 A→B→C→D→E→A (화살표 = 마니또 관계)
                 var chain = await BuildManittoChain(allGroupEntries.ToArray());
 
-                // 봇 정보 Redis 저장 (game_server에서 로드)
-                // issue22 디버그: 봇 타겟을 자기 자신으로 강제 — 봇이 사용자를 타겟팅하지 않도록.
-                // (DemoMode 비활성 시에만 적용 — 영상/빌드 시나리오에선 정상 체인 유지)
+                // 봇 정보 Redis 저장 (game_server에서 로드). 5인 원형 체인 정합 — 봇 타겟은 체인 다음 노드.
                 var botInfoList = new List<BotMatchingInfo>();
                 foreach (var link in chain)
                 {
                     var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
                     if (data.PlayerId >= 0) continue;
-                    long botTargetPlayerId = DemoMode.IsActive ? link.TargetPlayerId : data.PlayerId;
-                    var botTargetJob = DemoMode.IsActive ? link.TargetJobTitle : link.MyJobTitle;
                     botInfoList.Add(new BotMatchingInfo
                     {
                         PlayerId = data.PlayerId,
-                        TargetPlayerId = botTargetPlayerId,
+                        TargetPlayerId = link.TargetPlayerId,
                         MyJobTitle = link.MyJobTitle,
-                        TargetJobTitle = botTargetJob
+                        TargetJobTitle = link.TargetJobTitle
                     });
                 }
 
@@ -272,21 +268,18 @@ public class MatchingManager : IMatchingManager
 
         var chain = await BuildManittoChain(allEntries.ToArray());
 
-        // 봇 정보를 Redis에 저장 (game_server에서 로드)
-        // issue22 디버그: 봇 타겟을 자기 자신으로 강제 (DemoMode 비활성 시).
+        // 봇 정보를 Redis에 저장 (game_server에서 로드). 원형 체인 정합 — 봇 타겟은 체인 다음 노드.
         var botInfoList = new List<BotMatchingInfo>();
         foreach (var link in chain)
         {
             var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
             if (data.PlayerId >= 0) continue;
-            long botTargetPlayerId = DemoMode.IsActive ? link.TargetPlayerId : data.PlayerId;
-            var botTargetJob = DemoMode.IsActive ? link.TargetJobTitle : link.MyJobTitle;
             botInfoList.Add(new BotMatchingInfo
             {
                 PlayerId = data.PlayerId,
-                TargetPlayerId = botTargetPlayerId,
+                TargetPlayerId = link.TargetPlayerId,
                 MyJobTitle = link.MyJobTitle,
-                TargetJobTitle = botTargetJob
+                TargetJobTitle = link.TargetJobTitle
             });
         }
 

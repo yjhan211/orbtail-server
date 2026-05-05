@@ -54,6 +54,7 @@ public class GameServer(
     private AreaClosureManager _areaClosureManager = null!;
     private readonly TraceManager _traceManager = new();
     private readonly BotPlayerManager _botPlayerManager = new(logger);
+    private readonly GameEventLogManager _gameEventLogManager = new();
 
     private Timer? _corridorStopCheckTimer;
     private CancellationTokenSource _cts = new();
@@ -305,7 +306,10 @@ public class GameServer(
 
                 // #26: 봇 탈락 → 체인 단절 알림 + 영향받는 플레이어/봇 상태 변경
                 foreach (var (botId, reason) in tickResult.Eliminated)
+                {
+                    _gameEventLogManager.LogElimination(matchingId, botId, reason.ToString(), isBot: true);
                     ProcessBotElimination(matchingId, botId, reason, activeSessions);
+                }
 
                 // #26: v0.2.0 부품 회수/결합 시뮬
                 ProcessBotMissionForMatching(matchingId, activeSessions);
@@ -394,6 +398,26 @@ public class GameServer(
         try
         {
             var missionResult = _botPlayerManager.ProcessBotMissionTick(matchingId, _missionManager);
+
+            // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
+            foreach (var (botId, partId) in missionResult.CollectedParts)
+            {
+                var part = GameMissionData.GetPart(partId);
+                _gameEventLogManager.LogMission(matchingId, botId,
+                    $"부품 회수: {part?.PartNameKr ?? partId.ToString()}", isBot: true);
+            }
+            foreach (var (botId, shareGroup) in missionResult.CollectedPrereqs)
+                _gameEventLogManager.LogMission(matchingId, botId,
+                    $"선행 아이템 회수 (그룹 {shareGroup})", isBot: true);
+            foreach (var (botId, outputPartId, isRace) in missionResult.Combined)
+            {
+                var part = GameMissionData.GetPart(outputPartId);
+                _gameEventLogManager.LogMission(matchingId, botId,
+                    isRace
+                        ? $"최종 결합 완성! ({part?.PartNameKr ?? outputPartId.ToString()}) — race 완주"
+                        : $"부품 결합: {part?.PartNameKr ?? outputPartId.ToString()}",
+                    isBot: true);
+            }
 
             // race 완주 봇 발생 — 즉시 게임 종료 처리 (#87 정합)
             if (missionResult.RaceWinnerBotId == 0) return;
@@ -575,6 +599,9 @@ public class GameServer(
 
         if (ev.IsAreaTransition)
         {
+            _gameEventLogManager.LogMove(matchingId, ev.BotPlayerId,
+                ev.FromArea.ToString(), ev.ToArea.ToString(), isBot: true);
+
             // 1) 이전 영역의 인간들에게 LEAVE
             using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(ev.BotPlayerId);
             foreach (var session in matchingSessions)
@@ -679,6 +706,8 @@ public class GameServer(
                 // 폐쇄 확정 브로드캐스트
                 if (closingArea.HasValue)
                 {
+                    _gameEventLogManager.LogClosure(matchingId, ((AreaType)closingArea.Value).ToString());
+
                     using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
                     var msg = new G_TO_C_AREA_CLOSED { AreaType = closingArea.Value };
                     packet.SetBody(MessagePackSerializer.Serialize(msg));
@@ -850,7 +879,8 @@ public class GameServer(
                 _areaClosureManager,
                 _traceManager,
                 new InteractionChoiceService(_interactionLogManager, _manittoChainManager),
-                _botPlayerManager);
+                _botPlayerManager,
+                _gameEventLogManager);
 
             logger.LogInformation("Game client session created");
         }
@@ -961,6 +991,11 @@ public class GameServer(
     public MatchingConfigService MatchingConfigService => _matchingConfigService;
 
     /// <summary>
+    ///     운영툴 진행 로그 매니저 (AdminEndpoints에서 events 조회용)
+    /// </summary>
+    public GameEventLogManager GameEventLogManager => _gameEventLogManager;
+
+    /// <summary>
     ///     활성 인스턴스 ID 목록 반환 (MatchingId 기준 dedup)
     /// </summary>
     public IReadOnlyList<long> GetActiveInstanceIds()
@@ -980,8 +1015,9 @@ public class GameServer(
         var sessions = _clientSessions.Values
             .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
             .ToList();
+        var bots = _botPlayerManager.GetBots(matchingId);
 
-        if (sessions.Count == 0) return null;
+        if (sessions.Count == 0 && bots.Count == 0) return null;
 
         var closureState = _areaClosureManager.GetMatchingState(matchingId);
         double elapsed = closureState != null
@@ -992,14 +1028,15 @@ public class GameServer(
             .Select(a => a.ToString())
             .ToList() ?? [];
 
-        int aliveCount = sessions.Count(s => !s.IsEliminated);
-        string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString() ?? "";
+        int aliveCount = sessions.Count(s => !s.IsEliminated) + bots.Count(b => !b.IsEliminated);
+        string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString()
+                       ?? _botPlayerManager.GetMatchingMapId(matchingId).ToString();
 
         return new InstanceSummary
         {
             MatchingId = matchingId,
             MapId = mapId,
-            PlayerCount = sessions.Count,
+            PlayerCount = sessions.Count + bots.Count,
             AliveCount = aliveCount,
             ElapsedSeconds = Math.Round(elapsed, 1),
             ClosedAreas = closedAreas
@@ -1034,19 +1071,32 @@ public class GameServer(
             IntervalSec = intervalSec
         };
 
-        // 플레이어별 직책 + 전체 미션 단계 보강 (description 포함)
+        // 플레이어별 직책 + 전체 미션 단계 보강 (description 포함). 인간 + 봇 모두 처리.
         var sessions = _clientSessions.Values
             .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
             .ToDictionary(s => s.PlayerId!.Value);
+        var botMap = _botPlayerManager.GetBots(matchingId).ToDictionary(b => b.PlayerId);
 
         foreach (var player in base_.Players)
         {
-            if (!sessions.TryGetValue(player.PlayerId, out var session)) continue;
+            JobTitle jobTitle;
+            if (sessions.TryGetValue(player.PlayerId, out var session))
+            {
+                jobTitle = session.AdminJobTitle;
+            }
+            else if (botMap.TryGetValue(player.PlayerId, out var bot))
+            {
+                jobTitle = bot.MyJobTitle;
+            }
+            else
+            {
+                continue;
+            }
 
-            player.JobTitle = session.AdminJobTitle.ToKorean();
+            player.JobTitle = jobTitle.ToKorean();
 
             // v0.2.0 — 부품 진행도로 어드민 표시 재구성
-            var jobParts = GameMissionData.GetParts((short)session.AdminJobTitle);
+            var jobParts = GameMissionData.GetParts((short)jobTitle);
             var partState = _missionManager.GetState(matchingId, player.PlayerId);
             int order = 0;
             player.AllSteps = jobParts.Select(p => new MissionFullStep
@@ -1075,7 +1125,9 @@ public class GameServer(
             .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
             .ToList();
 
-        if (sessions.Count == 0) return null;
+        var bots = _botPlayerManager.GetBots(matchingId);
+
+        if (sessions.Count == 0 && bots.Count == 0) return null;
 
         var closureState = _areaClosureManager.GetMatchingState(matchingId);
         double elapsed = closureState != null
@@ -1086,23 +1138,23 @@ public class GameServer(
             .Select(a => a.ToString())
             .ToList() ?? [];
 
-        var playerSnapshots = sessions.Select(s =>
+        // 모든 PlayerId(인간+봇)에 대한 ChainLink 조회 → ManittoOfMe 역방향 매핑
+        var allPlayerIds = sessions.Select(s => s.PlayerId!.Value).Concat(bots.Select(b => b.PlayerId)).ToList();
+        var allLinks = allPlayerIds
+            .Select(id => _manittoChainManager.GetLink(matchingId, id))
+            .Where(l => l != null)
+            .ToList();
+        long? FindManittoOf(long playerId) =>
+            allLinks.FirstOrDefault(l => l!.TargetPlayerId == playerId)?.PlayerId;
+
+        var playerSnapshots = new List<PlayerSnapshot>();
+
+        // 1) 인간 플레이어
+        foreach (var s in sessions)
         {
             var missionState = _missionManager.GetState(matchingId, s.PlayerId!.Value);
             var chainLink = _manittoChainManager.GetLink(matchingId, s.PlayerId!.Value);
-
-            // 이 플레이어를 타겟으로 가진 마니또 PlayerId
-            long? manittoOfMe = null;
-            if (closureState != null)
-            {
-                var allLinks = sessions
-                    .Select(other => _manittoChainManager.GetLink(matchingId, other.PlayerId!.Value))
-                    .Where(l => l != null && l.TargetPlayerId == s.PlayerId!.Value)
-                    .FirstOrDefault();
-                manittoOfMe = allLinks?.PlayerId;
-            }
-
-            return new PlayerSnapshot
+            playerSnapshots.Add(new PlayerSnapshot
             {
                 PlayerId = s.PlayerId!.Value,
                 Area = s.CurrentArea.ToString(),
@@ -1117,19 +1169,45 @@ public class GameServer(
                     ? GameMissionData.GetTotalParts((short)missionState.JobTitle)
                     : 0,
                 MissionCompleted = missionState?.IsCompleted ?? false,
-                ManittoOfMe = manittoOfMe,
+                ManittoOfMe = FindManittoOf(s.PlayerId!.Value),
                 ChainStatus = chainLink?.Status.ToString() ?? ""
-            };
-        }).ToList();
+            });
+        }
 
-        int aliveCount = sessions.Count(s => !s.IsEliminated);
-        string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString() ?? "";
+        // 2) 봇 — TCP 세션이 없으므로 BotPlayerManager._botStates에서 조회
+        foreach (var bot in bots)
+        {
+            var missionState = _missionManager.GetState(matchingId, bot.PlayerId);
+            var chainLink = _manittoChainManager.GetLink(matchingId, bot.PlayerId);
+            playerSnapshots.Add(new PlayerSnapshot
+            {
+                PlayerId = bot.PlayerId,
+                Area = bot.CurrentArea.ToString(),
+                Stamina = bot.Stamina,
+                Corruption = bot.Corruption,
+                ManittoStatus = bot.ManittoStatus.ToString(),
+                TargetPlayerId = bot.TargetPlayerId,
+                IsBot = true,
+                IsEliminated = bot.IsEliminated,
+                MissionStep = missionState?.CollectedParts.Count ?? 0,
+                MissionTotalSteps = missionState != null
+                    ? GameMissionData.GetTotalParts((short)missionState.JobTitle)
+                    : 0,
+                MissionCompleted = missionState?.IsCompleted ?? false,
+                ManittoOfMe = FindManittoOf(bot.PlayerId),
+                ChainStatus = chainLink?.Status.ToString() ?? ""
+            });
+        }
+
+        int aliveCount = sessions.Count(s => !s.IsEliminated) + bots.Count(b => !b.IsEliminated);
+        string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString()
+                       ?? _botPlayerManager.GetMatchingMapId(matchingId).ToString();
 
         return new InstanceSnapshot
         {
             MatchingId = matchingId,
             MapId = mapId,
-            PlayerCount = sessions.Count,
+            PlayerCount = sessions.Count + bots.Count,
             AliveCount = aliveCount,
             ElapsedSeconds = Math.Round(elapsed, 1),
             ClosedAreas = closedAreas,

@@ -380,6 +380,14 @@ public partial class GameClientSession
 
         // 아이템 스펙 그대로 델타값 전송 (이펙트 표시용). 변환 발생 시 플래그 전달 (클라 경고 알럿용).
         SendPlayerStatsUpdate(staminaDelta, totalCorDelta, conversionCor > 0);
+
+        // 운영툴 진행 로그
+        if (PlayerId.HasValue)
+        {
+            _gameEventLogManager.LogResource(CurrentMapSubId, PlayerId.Value,
+                staminaDelta, totalCorDelta, Stamina, Corruption,
+                conversionCor > 0, reason: "", isBot: false);
+        }
     }
 
     /// <summary>

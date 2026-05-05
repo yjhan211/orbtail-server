@@ -9,6 +9,8 @@ const POLL_INTERVAL_MS = 5000;
 let _selectedMatchingId = null;
 let _pollTimer = null;
 let _seqList = [];      // 강제 폐쇄 시퀀스 (AreaType 정수 목록)
+let _eventLastSeq = 0;  // 이벤트 로그 폴링 진행 커서
+let _eventEntries = []; // 누적된 이벤트 (최근 200개 유지)
 
 // ─── 직책 정의 ──────────────────────────────────────────────────────────────
 
@@ -48,6 +50,19 @@ async function fetchInstance(matchingId) {
     }
 }
 
+async function fetchInstanceEvents(matchingId, sinceSeq) {
+    try {
+        const url = `/api/instance/${matchingId}/events`
+            + (sinceSeq > 0 ? `?since=${sinceSeq}` : '');
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        return await res.json();
+    } catch (e) {
+        console.error('[ops] fetchInstanceEvents 실패:', e);
+        return null;
+    }
+}
+
 async function fetchMatchingConfig() {
     try {
         const res = await fetch('/api/matching-config');
@@ -67,6 +82,19 @@ async function poll() {
     if (_selectedMatchingId !== null) {
         const detail = await fetchInstance(_selectedMatchingId);
         if (detail) renderDetail(detail);
+
+        // 진행 로그 — 마지막 Seq 이후만 증분 폴링
+        const evResp = await fetchInstanceEvents(_selectedMatchingId, _eventLastSeq);
+        if (evResp && evResp.events && evResp.events.length > 0) {
+            // 서버가 최신순으로 반환 → 시간순 처리
+            const newOnes = evResp.events.slice().reverse();
+            for (const ev of newOnes) {
+                if (ev.seq > _eventLastSeq) _eventLastSeq = ev.seq;
+                _eventEntries.push(ev);
+            }
+            if (_eventEntries.length > 200) _eventEntries.splice(0, _eventEntries.length - 200);
+            renderEventLog();
+        }
     }
 
     updateLastUpdate();
@@ -177,13 +205,31 @@ function buildCardHtml(inst) {
 
 async function openDetail(matchingId) {
     _selectedMatchingId = matchingId;
+    _eventLastSeq = 0;
+    _eventEntries = [];
+    document.getElementById('event-log').innerHTML = '<p class="text-gray-600">로그 대기 중...</p>';
+    document.getElementById('event-count').textContent = '0건';
+
     const detail = await fetchInstance(matchingId);
     if (detail) renderDetail(detail);
+
+    // 첫 로그 batch 즉시 로드 (since=0 → 전체)
+    const evResp = await fetchInstanceEvents(matchingId, 0);
+    if (evResp && evResp.events) {
+        _eventEntries = evResp.events.slice().reverse();
+        for (const ev of _eventEntries) {
+            if (ev.seq > _eventLastSeq) _eventLastSeq = ev.seq;
+        }
+        renderEventLog();
+    }
+
     document.getElementById('detail-section').classList.remove('hidden');
 }
 
 function closeDetail() {
     _selectedMatchingId = null;
+    _eventLastSeq = 0;
+    _eventEntries = [];
     document.getElementById('detail-section').classList.add('hidden');
 }
 
@@ -344,6 +390,38 @@ function buildStepTooltip(s) {
     if (s.description) parts.push(s.description);
     if (s.targetObjectName) parts.push(`대상: ${s.targetObjectName}`);
     return parts.join('\n').replace(/"/g, '&quot;');
+}
+
+// ─── 진행 로그 렌더링 ──────────────────────────────────────────────────────
+
+function renderEventLog() {
+    const log = document.getElementById('event-log');
+    const count = document.getElementById('event-count');
+    if (_eventEntries.length === 0) {
+        log.innerHTML = '<p class="text-gray-600">로그 없음</p>';
+        count.textContent = '0건';
+        return;
+    }
+
+    const lines = _eventEntries.map(ev => {
+        const t = new Date(ev.timestampUnixMs);
+        const ts = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}`;
+        const actor = ev.playerId === 0 ? '시스템' : (ev.isBot ? `Bot${ev.playerId}` : `P${ev.playerId}`);
+        const cls = `ev-${ev.type}` + (ev.isBot ? ' ev-bot' : '');
+        const safeDesc = (ev.description || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        return `<div class="${cls} px-1 py-0.5 leading-tight">`
+            + `<span class="text-gray-500">${ts}</span> `
+            + `<span class="text-gray-400">[${ev.type}]</span> `
+            + `<span class="text-gray-300">${actor}</span> `
+            + `<span>${safeDesc}</span>`
+            + `</div>`;
+    });
+    log.innerHTML = lines.join('');
+    count.textContent = `${_eventEntries.length}건`;
+
+    if (document.getElementById('event-autoscroll').checked) {
+        log.scrollTop = log.scrollHeight;
+    }
 }
 
 function updateLastUpdate() {
