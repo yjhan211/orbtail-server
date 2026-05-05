@@ -4,7 +4,7 @@ area_type,name_kr,name_en,name_jp
 2,운동장,Schoolyard,グラウンド
 10,행정실,Admin Office,事務室
 11,1F,1F,1F
-12,교무실,Faculty,職員室
+12,교무실,Staff Room,職員室
 13,강당,Auditorium,講堂
 14,창고,Storage,倉庫
 20,1-1,1-1,1-1
@@ -12,7 +12,7 @@ area_type,name_kr,name_en,name_jp
 22,도서관,Library,図書館
 30,2-1,2-1,2-1
 31,3F,3F,3F
-32,고사실,Testing,試験室
+32,고사실,Exam Room,試験室
 40,3-1,3-1,3-1
 41,4F,4F,4F
 42,방송실,Broadcast Room,放送室
