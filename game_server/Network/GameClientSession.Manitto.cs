@@ -273,21 +273,7 @@ public partial class GameClientSession
 
         const int placeTraceCost = 5; // 스태미나 소모 (패키지 Y: -10 → -5, #24)
 
-        // 스태미나 부족
-        if (Stamina < placeTraceCost)
-        {
-            using var failPacket = Packet.Create((int)Protocol.G_TO_C_PLACE_TRACE_RESULT, PlayerId.Value);
-            var failMsg = new G_TO_C_PLACE_TRACE_RESULT
-            {
-                ErrorCode = ErrorCode.INSUFFICIENT_STAMINA,
-                StaminaCost = placeTraceCost
-            };
-            failPacket.SetBody(MessagePackSerializer.Serialize(failMsg));
-            Send(failPacket);
-            return Task.CompletedTask;
-        }
-
-        // 스태미나 소모
+        // 권고안 B 2026-05-05: Stamina 부족해도 ModifyStats가 Cor 1:2 변환 — 사전 차단 제거.
         ModifyStats(staminaDelta: -placeTraceCost);
 
         // 성공 응답
@@ -708,15 +694,14 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     스태미나/정신력이 0 이하일 때 탈락 체크
+    ///     정신력 100 도달 시 탈락 체크. 권고안 B(2026-05-05): Stamina 0 단독으로는 탈락 트리거 안 됨
+    ///     (대신 ModifyStats가 Stamina 부족분을 Corruption 1:2 변환).
     /// </summary>
     public void CheckResourceElimination()
     {
         if (!PlayerId.HasValue) return;
 
-        if (Stamina <= 0)
-            _ = ProcessElimination(PlayerId.Value, EliminationReason.STAMINA_ZERO);
-        else if (Corruption >= MaxCorruption)
+        if (Corruption >= MaxCorruption)
             _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO);
     }
 
@@ -741,11 +726,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        if (Stamina < SabotageStaminaCost)
-        {
-            SendSabotageResult(ErrorCode.INSUFFICIENT_STAMINA, SabotageStaminaCost);
-            return Task.CompletedTask;
-        }
+        // 권고안 B 2026-05-05: 시한부 사보타주도 Cor 1:2 변환 허용 (-25 → +50 cor = 자가 탈락 위험으로 자연 균형).
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
 

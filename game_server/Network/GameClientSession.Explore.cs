@@ -13,13 +13,7 @@ public partial class GameClientSession
         if (!PlayerId.HasValue) return Task.CompletedTask;
         if (IsEliminated) return Task.CompletedTask;
 
-        // 스태미나 0 이하이면 탐색 시작 차단
-        if (Stamina <= 0)
-        {
-            Logger.LogWarning("Player {PlayerId} cannot start explore: Stamina={Stamina}", PlayerId, Stamina);
-            SendExploreResult(false, 0, 0, 0, ErrorCode.INSUFFICIENT_STAMINA);
-            return Task.CompletedTask;
-        }
+        // 권고안 B 2026-05-05: Stamina 0이어도 탐색 가능 — ModifyStats가 Cor 1:2 변환.
 
         // 이미 탐색 중이면 무시
         if (CurrentState == PlayerState.Exploring)
@@ -110,16 +104,7 @@ public partial class GameClientSession
             }
         }
 
-        // 스태미나 체크 - 액션의 StaminaCost 이상 스태미나가 있는지 확인
-        if (actionDataForCheck is { StaminaCost: > 0 } &&
-            Stamina < actionDataForCheck.StaminaCost)
-        {
-            Logger.LogWarning(
-                "Player {PlayerId} insufficient stamina: Current={Stamina}, Required={Cost} for InteractId={InteractId}, ActionId={ActionId}",
-                PlayerId, Stamina, actionDataForCheck.StaminaCost, msg.InteractId, msg.ActionId);
-            SendExploreResult(false, msg.InteractId, msg.ActionId, 0, ErrorCode.INSUFFICIENT_STAMINA);
-            return Task.CompletedTask;
-        }
+        // 권고안 B 2026-05-05: Stamina 부족해도 ModifyStats가 Cor 1:2 변환 — 사전 차단 제거.
 
         // State 체크 - 액션의 state가 현재 Interactable state와 일치하는지 확인
         // state=0은 기본 상태(항상 가능), state>0은 해당 상태일 때만 가능

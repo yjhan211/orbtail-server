@@ -18,14 +18,7 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
 
-        // 스태미나 체크
-        if (Stamina < InteractStaminaCost)
-        {
-            using var errPacket =
-                PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(msg.PlayerId, ErrorCode.INSUFFICIENT_STAMINA);
-            Send(errPacket);
-            return Task.CompletedTask;
-        }
+        // 권고안 B 2026-05-05: Stamina 부족해도 ModifyStats가 Cor 1:2 변환 — 사전 차단 제거.
 
         // 쿨다운 체크 (거절/타임아웃 후 5초)
         if (DateTime.UtcNow - _lastInteractRejectTime < InteractCooldown)
@@ -245,14 +238,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        // 스태미나 체크
-        if (Stamina < InteractStaminaCost)
-        {
-            using var errPacket =
-                PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(false, ErrorCode.INSUFFICIENT_STAMINA, 0);
-            Send(errPacket);
-            return Task.CompletedTask;
-        }
+        // 권고안 B 2026-05-05: Stamina 부족해도 ModifyStats가 Cor 1:2 변환 — 사전 차단 제거.
 
         // 아이템 검증
         var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
@@ -331,14 +317,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        // 스태미나 체크
-        if (Stamina < InteractStaminaCost)
-        {
-            using var errPacket =
-                PacketMaker.G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT(false, ErrorCode.INSUFFICIENT_STAMINA, 0);
-            Send(errPacket);
-            return Task.CompletedTask;
-        }
+        // 권고안 B 2026-05-05: Stamina 부족해도 ModifyStats가 Cor 1:2 변환 — 사전 차단 제거.
 
         // 수칙 소유 검증
         if (!_discoveredRules.ContainsKey(msg.RuleId))

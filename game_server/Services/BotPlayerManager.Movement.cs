@@ -60,18 +60,18 @@ public partial class BotPlayerManager
                     }
                 }
 
-                // 2) 폐쇄 구역 체류 시 스태미나 감소(가드: 능동 회피 실패 시에만 발생)
+                // 2) 폐쇄 구역 체류 시 오염도 가속 (권고안 B 2026-05-05 — 변별력 보강 +4/틱).
+                //    이전엔 stamina -20이었으나 자원 통합 후 stamina 0이어도 탈락 안 되므로 cor로 변경.
                 if (areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
-                    bot.Stamina = Math.Max(0, bot.Stamina - 20);
+                    bot.Corruption = Math.Min(100, bot.Corruption + 4);
 
-                // 3) 탈락 체크
-                if (bot.Stamina <= 0 || bot.Corruption >= 100)
+                // 3) 탈락 체크 — Corruption 100만 트리거 (권고안 B). Stamina 0은 비탈락.
+                if (bot.Corruption >= 100)
                 {
                     bot.IsEliminated = true;
-                    var reason = bot.Stamina <= 0 ? EliminationReason.STAMINA_ZERO : EliminationReason.MENTAL_ZERO;
-                    _logger.LogInformation("봇 탈락: MatchingId={MatchingId}, BotId={BotId}, 사유={Reason}",
-                        matchingId, bot.PlayerId, reason);
-                    result.Eliminated.Add((bot.PlayerId, reason));
+                    _logger.LogInformation("봇 탈락: MatchingId={MatchingId}, BotId={BotId}, 사유=MENTAL_ZERO",
+                        matchingId, bot.PlayerId);
+                    result.Eliminated.Add((bot.PlayerId, EliminationReason.MENTAL_ZERO));
                     continue;
                 }
 
