@@ -115,6 +115,14 @@ public partial class BotPlayerManager
         if (deltaSec <= 0) deltaSec = 0.25f;
         bot.LastWalkStepTime = now;
 
+        // 상호작용 중에는 walking 정지 (실제 플레이어 정지 동작과 동등).
+        // InteractionStayUntil 시각이 지나면 자동 해제.
+        if (bot.IsInInteraction)
+        {
+            if (now >= bot.InteractionStayUntil) bot.IsInInteraction = false;
+            else return null;
+        }
+
         // issue22 디버그: 도착 후 대기 중이면 walking 스킵
         if (now < bot.LoopWaitUntil) return null;
 

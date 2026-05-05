@@ -285,6 +285,12 @@ public class BotPlayerState
     /// <summary>issue22 디버그 — 이 시각까지는 walking step 스킵 (도착 후 대기).</summary>
     public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;
 
+    /// <summary>1:1 상호작용 응답/대화 진행 중. true면 봇 walking/액션 모두 정지 (실제 플레이어와 동등).</summary>
+    public bool IsInInteraction { get; set; }
+
+    /// <summary>상호작용 수락 후 봇 정지 유지 종료 시각. WalkStep이 이 시각 이후 IsInInteraction을 자동 해제.</summary>
+    public DateTime InteractionStayUntil { get; set; } = DateTime.MinValue;
+
     /// <summary>매칭 시작 시각. DemoMode H4 봇 race 페이스 캡 계산용.</summary>
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
 

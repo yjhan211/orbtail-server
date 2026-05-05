@@ -34,6 +34,13 @@ public partial class GameClientSession
             return;
         }
 
+        // 1:1 상호작용 요청 중 또는 대화 진행 중에는 영역 이동 차단 (실제 플레이어 정지 동작과 동등).
+        if (_pendingInteractPlayerId.HasValue || _activeConversationPlayerId.HasValue)
+        {
+            SendAreaMoveError(ErrorCode.INVALID_GAME_STATE, msg.TargetArea);
+            return;
+        }
+
         // 1. 인접 그래프 검증
         if (!GameAreaConnectionData.IsAdjacent(CurrentMapId, CurrentArea, msg.TargetArea))
         {
