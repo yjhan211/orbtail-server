@@ -96,7 +96,7 @@ public partial class BotPlayerManager
                 Cell = startCell,
                 Position = startPosition,
                 Rotation = 0f,
-                Stamina = 40,    // 디버깅용 시작값 (정식: 100) — 실제 플레이어와 동일
+                Stamina = 100,   // 실제 플레이어와 동일
                 Corruption = 66, // 게임 시작 시 오염도 시작값
                 ManittoStatus = ManittoStatus.ACTIVE,
                 LastMoveTime = DateTime.UtcNow,
@@ -278,6 +278,12 @@ public class BotPlayerState
 
     /// <summary>마지막 walk 틱 처리 시각. 250ms 간격 봇 이동 타이머가 사용.</summary>
     public DateTime LastWalkStepTime { get; set; } = DateTime.UtcNow;
+
+    /// <summary>issue22 디버그 loop 다음 목적지 (Classroom4 ↔ BroadcastRoom 왕복).</summary>
+    public AreaType LoopTarget { get; set; } = AreaType.Classroom4;
+
+    /// <summary>issue22 디버그 — 이 시각까지는 walking step 스킵 (도착 후 대기).</summary>
+    public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;
 
     /// <summary>매칭 시작 시각. DemoMode H4 봇 race 페이스 캡 계산용.</summary>
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;

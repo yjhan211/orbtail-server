@@ -115,6 +115,9 @@ public partial class BotPlayerManager
         if (deltaSec <= 0) deltaSec = 0.25f;
         bot.LastWalkStepTime = now;
 
+        // issue22 디버그: 도착 후 대기 중이면 walking 스킵
+        if (now < bot.LoopWaitUntil) return null;
+
         // 경로 없거나 완료 → 새 타겟 결정
         if (bot.Path.Count == 0 || bot.PathIndex >= bot.Path.Count)
         {
@@ -201,10 +204,13 @@ public partial class BotPlayerManager
         };
     }
 
+    /// <summary>봇 도착 후 대기 시간 (issue22 디버그 loop).</summary>
+    private const int BotLoopWaitSeconds = 5;
+
     /// <summary>
     ///     봇이 도착했거나 경로가 비었을 때 새 목적지 선택 + 경로 계산.
-    ///     #127 디버그 (issue22): walking 시각 검증을 위해 Corridor4F 안에서만 wander.
-    ///     영역 전환 텔레포트 없이 셀 단위 walk만 발생 → 부드러운 이동 검증 가능.
+    ///     #127 디버그 (issue22): Corridor4F ↔ Classroom4(3-1 표시) ↔ BroadcastRoom 무한 루프.
+    ///     1) 4F 복도 → 3-1 → 5초 대기 → 4F 복도 → 방송실 → 5초 대기 → 반복
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
     {
@@ -212,53 +218,40 @@ public partial class BotPlayerManager
         bot.Path.Clear();
         bot.PathIndex = 0;
 
-        // 4F 복도 안의 walkable 셀 중 무작위 한 곳을 타겟으로 잡는다.
-        var areaRegion = GameMapData.GetAreas(mapId)
-            .FirstOrDefault(r => r.AreaType == AreaType.Corridor4F);
-        if (areaRegion == null) return;
-
-        // 봇이 4F 복도 밖에 있으면 4F 복도로 강제 텔레포트(디버그용 — 첫 1회)
-        if (bot.CurrentArea != AreaType.Corridor4F)
+        // 봇이 LoopTarget(Classroom4 또는 BroadcastRoom)에 도착한 경우 → 대기 + 다음 타겟으로 flip
+        if (bot.CurrentArea == bot.LoopTarget)
         {
-            var entryCell = GameMapData.GetAreaSpawnCell(mapId, AreaType.Corridor4F);
-            bot.CurrentArea = AreaType.Corridor4F;
-            bot.Cell = entryCell;
-            bot.Position = CellToWorldPosition(entryCell);
-            // 다음 틱에 새 경로 잡도록 PathIndex/Path는 빈 채로 유지
-            return;
+            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotLoopWaitSeconds);
+            var nextTarget = bot.LoopTarget == AreaType.Classroom4
+                ? AreaType.BroadcastRoom
+                : AreaType.Classroom4;
+            _logger.LogInformation("봇 도착 (issue22 loop): BotId={Bot}, {Area}에서 {Sec}초 대기 → 다음 {Next}",
+                bot.PlayerId, bot.CurrentArea, BotLoopWaitSeconds, nextTarget);
+            bot.LoopTarget = nextTarget;
+            return; // 다음 틱에 새 경로 시작
         }
 
-        // 4F 복도는 일자형 — 복도 중심선(centerY) 위 양 끝 ping-pong.
-        // 현재 위치보다 먼 끝을 타겟으로 → 봇이 끝까지 가서 반대로 출발 → 무한 왕복.
-        int centerY = (areaRegion.Start.Y + areaRegion.End.Y) / 2;
-        int midX = (areaRegion.Start.X + areaRegion.End.X) / 2;
-        int targetX = bot.Cell.X < midX ? areaRegion.End.X : areaRegion.Start.X;
-
-        // 끝 셀이 막혀있으면 가장 가까운 walkable 셀로 폴백
-        Cell targetCell = new(targetX, centerY);
-        int step = bot.Cell.X < midX ? -1 : 1; // 끝에서 안쪽으로 후퇴
-        while (!GameMapData.IsMoveablePosition(mapId, targetCell)
-               && targetCell.X != bot.Cell.X
-               && targetCell.X >= areaRegion.Start.X
-               && targetCell.X <= areaRegion.End.X)
-        {
-            targetCell = new Cell(targetCell.X + step, centerY);
-        }
-        if (!GameMapData.IsMoveablePosition(mapId, targetCell)) return;
+        // 그 외 → LoopTarget으로 경로 계산 (영역 전환 포함).
+        // targetCell = LoopTarget 진입 도어 셀. issue22 loop는 항상 Corridor4F를 경유
+        // (Classroom4 ↔ Corridor4F ↔ BroadcastRoom)하므로 Corridor4F → LoopTarget 도어를 사용.
+        // bot.CurrentArea ↔ LoopTarget 직접 연결이 없는 케이스(Classroom4↔BroadcastRoom)에서
+        // GetSpawnCell이 null 반환되어 영역 중심으로 추락하는 문제 방지.
+        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, AreaType.Corridor4F, bot.LoopTarget)
+                         ?? GameMapData.GetAreaSpawnCell(mapId, bot.LoopTarget);
         var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
-            AreaType.Corridor4F, targetCell,
+            bot.LoopTarget, targetCell,
             a => closureManager.IsAreaClosed(matchingId, a));
         if (path == null || path.Count == 0)
         {
-            _logger.LogDebug("봇 경로 계산 실패: BotId={Bot}, {From} → 4F 복도 {To}",
-                bot.PlayerId, bot.CurrentArea, targetCell);
+            _logger.LogDebug("봇 경로 계산 실패: BotId={Bot}, {From} → {To}",
+                bot.PlayerId, bot.CurrentArea, bot.LoopTarget);
             return;
         }
 
         bot.Path = path;
         bot.PathIndex = 0;
-        _logger.LogInformation("봇 새 경로(4F 복도 디버그): BotId={Bot}, {Cell} → {Target}, 단계={Steps}",
-            bot.PlayerId, bot.Cell, targetCell, path.Count);
+        _logger.LogInformation("봇 새 경로(issue22 loop): BotId={Bot}, {From}@{Cell} → {To}@{TargetCell}, 단계={Steps}",
+            bot.PlayerId, bot.CurrentArea, bot.Cell, bot.LoopTarget, targetCell, path.Count);
     }
 
     /// <summary>
