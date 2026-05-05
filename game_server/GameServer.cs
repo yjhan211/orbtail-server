@@ -61,6 +61,7 @@ public class GameServer(
     private Timer? _resourceTickTimer;        // 정신력 자연감소 + 타겟 근접 회복 + 시한부
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
+    private Timer? _botMovementTimer;         // #127 봇 walking step (250ms)
 
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private const int ResourceTickIntervalSeconds = 5;
@@ -95,6 +96,7 @@ public class GameServer(
             StartResourceTickTimer();
             StartAreaClosureTickTimer();
             StartTargetLocationTimer();
+            StartBotMovementTimer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -133,6 +135,7 @@ public class GameServer(
         if (_resourceTickTimer != null) { await _resourceTickTimer.DisposeAsync(); _resourceTickTimer = null; }
         if (_areaClosureTickTimer != null) { await _areaClosureTickTimer.DisposeAsync(); _areaClosureTickTimer = null; }
         if (_targetLocationTimer != null) { await _targetLocationTimer.DisposeAsync(); _targetLocationTimer = null; }
+        if (_botMovementTimer != null) { await _botMovementTimer.DisposeAsync(); _botMovementTimer = null; }
 
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
@@ -712,6 +715,46 @@ public class GameServer(
         catch (Exception ex)
         {
             logger.LogError(ex, "타겟 위치 전송 처리 중 오류");
+        }
+    }
+
+    // ===== #127 봇 walking 타이머 =====
+
+    private const int BotMovementTickIntervalMs = 250; // 봇 walking step 주기
+
+    private void StartBotMovementTimer()
+    {
+        _botMovementTimer = new Timer(ProcessBotMovement, null,
+            TimeSpan.FromMilliseconds(BotMovementTickIntervalMs),
+            TimeSpan.FromMilliseconds(BotMovementTickIntervalMs));
+        logger.LogInformation("봇 walking 타이머 시작 ({Ms}ms 간격)", BotMovementTickIntervalMs);
+    }
+
+    private void ProcessBotMovement(object? state)
+    {
+        try
+        {
+            var activeSessions = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue)
+                .ToList();
+            if (activeSessions.Count == 0) return;
+
+            var matchingIds = activeSessions
+                .Select(s => s.CurrentMapSubId)
+                .Distinct()
+                .ToList();
+
+            foreach (long matchingId in matchingIds)
+            {
+                if (!_botPlayerManager.HasBots(matchingId)) continue;
+                var movements = _botPlayerManager.ProcessBotMovementTick(matchingId, _areaClosureManager);
+                foreach (var ev in movements)
+                    BroadcastBotMovement(matchingId, ev, activeSessions);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "봇 walking 틱 처리 중 오류");
         }
     }
 
