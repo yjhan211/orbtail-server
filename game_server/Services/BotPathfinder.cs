@@ -44,7 +44,11 @@ public static class BotPathfinder
         {
             var fromA = areaSeq[i].Area;
             var toA = areaSeq[i + 1].Area;
-            var forwardConn = areaSeq[i + 1].IncomingConn; // BFS가 선택한 fromA → toA conn (StairSide 포함)
+
+            // BFS는 임의의 conn을 선택하지만, 같은 (fromA → toA) 쌍에 west/east 두 conn이 있으면
+            // 봇 현재 셀에서 fromA 측 도어가 더 가까운 쪽 우선 (계단 가까운 쪽 선택).
+            var forwardConn = PickClosestConnection(mapId, fromA, toA, currentCell)
+                              ?? areaSeq[i + 1].IncomingConn;
 
             // 현재 영역 측 도어 셀 = 반대 방향 conn(toA → fromA, 같은 StairSide)의 SpawnCell
             Cell? exitCell = null;
@@ -144,6 +148,32 @@ public static class BotPathfinder
             }
         }
         return null;
+    }
+
+    /// <summary>
+    ///     같은 (fromArea → toArea) 쌍에 여러 conn(west/east 계단 등)이 있을 때
+    ///     fromArea 측 도어 셀이 currentCell과 가장 가까운 conn을 선택.
+    ///     맨해튼 거리 기준. SpawnCell이 (0,0)인 미설정 conn은 제외.
+    /// </summary>
+    private static AreaConnectionInfo? PickClosestConnection(MapId mapId, AreaType fromArea, AreaType toArea, Cell currentCell)
+    {
+        AreaConnectionInfo? best = null;
+        int bestDist = int.MaxValue;
+        foreach (var conn in GameAreaConnectionData.GetConnections(mapId, fromArea))
+        {
+            if (conn.ToArea != toArea) continue;
+            if (conn.SpawnCell.X == 0 && conn.SpawnCell.Y == 0) continue;
+            // exit cell(fromArea 측 도어) = reverse conn의 SpawnCell
+            var exit = FindReverseSpawnCell(mapId, conn);
+            if (exit == null) continue;
+            int dist = Math.Abs(exit.X - currentCell.X) + Math.Abs(exit.Y - currentCell.Y);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = conn;
+            }
+        }
+        return best;
     }
 
     /// <summary>
