@@ -34,6 +34,13 @@ public partial class GameClientSession
             return;
         }
 
+        // 1:1 상호작용 요청 중 또는 대화 진행 중에는 영역 이동 차단 (실제 플레이어 정지 동작과 동등).
+        if (_pendingInteractPlayerId.HasValue || _activeConversationPlayerId.HasValue)
+        {
+            SendAreaMoveError(ErrorCode.INVALID_GAME_STATE, msg.TargetArea);
+            return;
+        }
+
         // 1. 인접 그래프 검증
         if (!GameAreaConnectionData.IsAdjacent(CurrentMapId, CurrentArea, msg.TargetArea))
         {
@@ -58,15 +65,7 @@ public partial class GameClientSession
         // 3. 이동 비용 산정 (모든 area 이동은 Door — 계단 개념 폐지)
         int staminaCost = GameServer.MoveStaminaCost;
 
-        // 4. 스태미나 검증 (세션 인-메모리 Stamina 기준 — 영구 PlayerInfo.Stamina와 분리)
-        if (Stamina < staminaCost)
-        {
-            Logger.LogInformation(
-                "Player {PlayerId} 스태미나 부족 (요청 {Cost}, 보유 {Have})",
-                PlayerId, staminaCost, Stamina);
-            SendAreaMoveError(ErrorCode.INSUFFICIENT_STAMINA, msg.TargetArea);
-            return;
-        }
+        // 4. 스태미나 부족 시 ModifyStats가 Cor 1:2 변환 (권고안 B 2026-05-05) — 사전 차단 제거.
 
         // 5. 목적지 스폰 셀 조회 — CSV 연결별 스폰(from→to 방향, 계단은 서/동 구분) 우선,
         //    없으면 영역 중심 fallback

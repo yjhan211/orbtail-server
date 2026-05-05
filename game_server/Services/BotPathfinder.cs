@@ -177,11 +177,112 @@ public static class BotPathfinder
                         path.Insert(0, p);
                         c = p;
                     }
-                    return path;
+                    var smoothed = SmoothPath(mapId, areaRegion, path);
+                    return InsertIsoAxisCorners(mapId, areaRegion, smoothed);
                 }
                 queue.Enqueue(neighbor);
             }
         }
         return null;
+    }
+
+    /// <summary>
+    ///     #127 옵션 C: 셀 X축/Y축에 정렬된 L자 경로로 분해.
+    ///     #36 InteractableObject.TryComputeIsoAxisWaypoint 동등 — isometric 맵에서 직선 이동이
+    ///     사선처럼 보이는 문제 해결. 셀 dx/dy 중 더 큰 축을 먼저 걷고, 코너에서 다음 축으로 이동.
+    ///     L 코너 셀이 walkable이 아니면 직선 폴백.
+    /// </summary>
+    private static List<Cell> InsertIsoAxisCorners(MapId mapId, GameMapData.AreaRegion area, List<Cell> smoothed)
+    {
+        if (smoothed.Count <= 1) return smoothed;
+
+        var result = new List<Cell> { smoothed[0] };
+        for (int i = 0; i < smoothed.Count - 1; i++)
+        {
+            var a = smoothed[i];
+            var b = smoothed[i + 1];
+            int dx = b.X - a.X;
+            int dy = b.Y - a.Y;
+
+            // 이미 한 축에 정렬됨 — 코너 불필요
+            if (dx == 0 || dy == 0)
+            {
+                result.Add(b);
+                continue;
+            }
+
+            // 더 긴 축을 먼저 걸음 (#36 TryComputeIsoAxisWaypoint와 동일)
+            Cell corner = Math.Abs(dx) >= Math.Abs(dy)
+                ? new Cell(a.X + dx, a.Y)
+                : new Cell(a.X, a.Y + dy);
+
+            // 두 segment(L 양변) 모두 LOS 통과 + 영역 안인지 확인
+            if (area.Contains(corner)
+                && GameMapData.IsMoveablePosition(mapId, corner)
+                && HasClearLine(mapId, area, a, corner)
+                && HasClearLine(mapId, area, corner, b))
+            {
+                result.Add(corner);
+                result.Add(b);
+            }
+            else
+            {
+                // L 코너 막힘 — 직선 폴백
+                result.Add(b);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    ///     #127 폴리싱: BFS 결과를 line-of-sight로 평활화.
+    ///     셀 그리드는 8방향이라 BFS 최단경로가 staircase 형태가 되어 봇이 좌우로 흔들린다.
+    ///     "i에서 j까지 직선으로 이동 가능하면 중간 셀 제거" 규칙으로 turning point만 남김 → 자연스러운 직선 walking.
+    /// </summary>
+    private static List<Cell> SmoothPath(MapId mapId, GameMapData.AreaRegion area, List<Cell> path)
+    {
+        if (path.Count <= 2) return path;
+
+        var smoothed = new List<Cell> { path[0] };
+        int i = 0;
+        while (i < path.Count - 1)
+        {
+            int j = path.Count - 1;
+            while (j > i + 1)
+            {
+                if (HasClearLine(mapId, area, path[i], path[j])) break;
+                j--;
+            }
+            smoothed.Add(path[j]);
+            i = j;
+        }
+        return smoothed;
+    }
+
+    /// <summary>
+    ///     Bresenham 라인 트레이싱으로 from → to 사이 모든 중간 셀이 walkable + 영역 안에 있는지 확인.
+    /// </summary>
+    private static bool HasClearLine(MapId mapId, GameMapData.AreaRegion area, Cell from, Cell to)
+    {
+        int dx = Math.Abs(to.X - from.X);
+        int dy = Math.Abs(to.Y - from.Y);
+        int sx = from.X < to.X ? 1 : -1;
+        int sy = from.Y < to.Y ? 1 : -1;
+        int err = dx - dy;
+        int x = from.X, y = from.Y;
+        const int maxSteps = 200; // 안전 상한
+        int steps = 0;
+
+        while (steps++ < maxSteps)
+        {
+            var c = new Cell(x, y);
+            if (!area.Contains(c)) return false;
+            if (!GameMapData.IsMoveablePosition(mapId, c)) return false;
+            if (x == to.X && y == to.Y) return true;
+            int e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x += sx; }
+            if (e2 < dx) { err += dx; y += sy; }
+        }
+        return false;
     }
 }

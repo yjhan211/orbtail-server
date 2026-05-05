@@ -331,39 +331,68 @@ public partial class GameClientSession
         return hasPeriodicBuff;
     }
 
+    /// <summary>스태미나 부족 시 코럽션 대체 변환비 (1 stamina deficit = StaminaToCorruptionRatio cor). 권고안 B (2026-05-05).</summary>
+    private const int StaminaToCorruptionRatio = 2;
+
     /// <summary>
-    ///     스탯 변경 (외부에서 호출 가능 - 환경 효과 등)
+    ///     스탯 변경 (외부에서 호출 가능 - 환경 효과 등).
+    ///     2026-05-05 권고안 B: 스태미나 부족 시 부족분만큼 Corruption 1:2 변환.
+    ///     단, 양수 staminaDelta(회복)는 그대로 처리.
     /// </summary>
     public void ModifyStats(int staminaDelta = 0, int corruptionDelta = 0)
     {
         int oldStamina = Stamina;
         int oldCorruption = Corruption;
+        int conversionCor = 0;
 
-        if (staminaDelta != 0) Stamina = Math.Clamp(Stamina + staminaDelta, 0, MaxStamina);
+        if (staminaDelta != 0)
+        {
+            int newStamina = Stamina + staminaDelta;
+            if (newStamina < 0)
+            {
+                // 부족분만큼 Corruption 대체 (1:2 변환)
+                int deficit = -newStamina;
+                conversionCor = deficit * StaminaToCorruptionRatio;
+                Stamina = 0;
+            }
+            else
+            {
+                Stamina = Math.Min(newStamina, MaxStamina);
+            }
+        }
 
-        if (corruptionDelta != 0) Corruption = Math.Clamp(Corruption + corruptionDelta, 0, MaxCorruption);
+        int totalCorDelta = corruptionDelta + conversionCor;
+        if (totalCorDelta != 0) Corruption = Math.Clamp(Corruption + totalCorDelta, 0, MaxCorruption);
 
         // 값이 변경되지 않았으면 패킷 전송 안함
         if (Stamina == oldStamina && Corruption == oldCorruption) return;
 
+        if (conversionCor > 0)
+        {
+            Logger.LogInformation(
+                "Player {PlayerId} Stamina 부족 → Cor 대체: 요청 ΔSt={DeltaS}, 변환 ΔCor=+{ConvCor}",
+                PlayerId, staminaDelta, conversionCor);
+        }
+
         Logger.LogInformation(
             "Player {PlayerId} Stats: Stamina {OldS}→{NewS} ({DeltaS:+#;-#;0}), Corruption {OldC}→{NewC} ({DeltaC:+#;-#;0})",
-            PlayerId, oldStamina, Stamina, staminaDelta, oldCorruption, Corruption, corruptionDelta);
+            PlayerId, oldStamina, Stamina, staminaDelta, oldCorruption, Corruption, totalCorDelta);
 
-        // 아이템 스펙 그대로 델타값 전송 (이펙트 표시용)
-        SendPlayerStatsUpdate(staminaDelta, corruptionDelta);
+        // 아이템 스펙 그대로 델타값 전송 (이펙트 표시용). 변환 발생 시 플래그 전달 (클라 경고 알럿용).
+        SendPlayerStatsUpdate(staminaDelta, totalCorDelta, conversionCor > 0);
     }
 
     /// <summary>
     ///     스탯 업데이트 패킷 전송
     /// </summary>
-    private void SendPlayerStatsUpdate(int staminaDelta, int corruptionDelta)
+    private void SendPlayerStatsUpdate(int staminaDelta, int corruptionDelta, bool staminaConverted = false)
     {
-        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Stamina, staminaDelta, Corruption, corruptionDelta);
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Stamina, staminaDelta, Corruption, corruptionDelta,
+            staminaConverted);
         Send(packet);
         Logger.LogDebug(
-            "Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina} ({StaminaDelta:+#;-#;0}), Corruption={Corruption} ({CorruptionDelta:+#;-#;0})",
-            PlayerId, Stamina, staminaDelta, Corruption, corruptionDelta);
+            "Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina} ({StaminaDelta:+#;-#;0}), Corruption={Corruption} ({CorruptionDelta:+#;-#;0}), Converted={Converted}",
+            PlayerId, Stamina, staminaDelta, Corruption, corruptionDelta, staminaConverted);
     }
 
     /// <summary>
@@ -384,7 +413,7 @@ public partial class GameClientSession
     {
         StopAllPeriodicBuffs();
         _isSleeping = false;
-        Stamina = 40; // 디버깅용 시작값 (정식: 100)
+        Stamina = 20; // 디버깅용 (테스트: 변환 메카닉 빨리 발동) — 정식: 100
         Corruption = 66; // 게임 시작 시 오염도 시작값
         CurrentState = PlayerState.Idle;
         CurrentExploringInteractId = null;

@@ -32,8 +32,8 @@ public class MatchingManager : IMatchingManager
     private const int LeavePenaltySeconds = 30; // 이탈 1회당 추가 대기 시간
     private const int MaxLeavePenaltySeconds = 300; // 최대 페널티 대기 시간 (5분)
     private const int PenaltyDecayIntervalHours = 24; // 24시간 경과 시 이탈 횟수 1 감소
-    private const int DefaultPlayersPerMatch = 1; // 매칭 트리거 최소 인원 (#127 walking 디버그 — 1인 트리거)
-    private const int DefaultGamePlayersPerMatch = 2; // 실제 게임 인원 (#127 walking 디버그 — 1인 + 봇 1명)
+    private const int DefaultPlayersPerMatch = 1; // 매칭 트리거 최소 인원 (#22 디버그 — 1인 트리거)
+    private const int DefaultGamePlayersPerMatch = 5; // 실제 게임 인원 (#22 디버그 — 1인 + 봇 4명, 각 층별 1명)
 
     /// <summary>매칭 트리거 최소 인원. DEMO_MODE=LB 시 1명만으로 트리거(즉시 봇 4명 채움).</summary>
     private static int PlayersPerMatch => DemoMode.IsActive ? 1 : DefaultPlayersPerMatch;
@@ -182,17 +182,21 @@ public class MatchingManager : IMatchingManager
                 var chain = await BuildManittoChain(allGroupEntries.ToArray());
 
                 // 봇 정보 Redis 저장 (game_server에서 로드)
+                // issue22 디버그: 봇 타겟을 자기 자신으로 강제 — 봇이 사용자를 타겟팅하지 않도록.
+                // (DemoMode 비활성 시에만 적용 — 영상/빌드 시나리오에선 정상 체인 유지)
                 var botInfoList = new List<BotMatchingInfo>();
                 foreach (var link in chain)
                 {
                     var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
                     if (data.PlayerId >= 0) continue;
+                    long botTargetPlayerId = DemoMode.IsActive ? link.TargetPlayerId : data.PlayerId;
+                    var botTargetJob = DemoMode.IsActive ? link.TargetJobTitle : link.MyJobTitle;
                     botInfoList.Add(new BotMatchingInfo
                     {
                         PlayerId = data.PlayerId,
-                        TargetPlayerId = link.TargetPlayerId,
+                        TargetPlayerId = botTargetPlayerId,
                         MyJobTitle = link.MyJobTitle,
-                        TargetJobTitle = link.TargetJobTitle
+                        TargetJobTitle = botTargetJob
                     });
                 }
 
@@ -269,17 +273,20 @@ public class MatchingManager : IMatchingManager
         var chain = await BuildManittoChain(allEntries.ToArray());
 
         // 봇 정보를 Redis에 저장 (game_server에서 로드)
+        // issue22 디버그: 봇 타겟을 자기 자신으로 강제 (DemoMode 비활성 시).
         var botInfoList = new List<BotMatchingInfo>();
         foreach (var link in chain)
         {
             var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
             if (data.PlayerId >= 0) continue;
+            long botTargetPlayerId = DemoMode.IsActive ? link.TargetPlayerId : data.PlayerId;
+            var botTargetJob = DemoMode.IsActive ? link.TargetJobTitle : link.MyJobTitle;
             botInfoList.Add(new BotMatchingInfo
             {
                 PlayerId = data.PlayerId,
-                TargetPlayerId = link.TargetPlayerId,
+                TargetPlayerId = botTargetPlayerId,
                 MyJobTitle = link.MyJobTitle,
-                TargetJobTitle = link.TargetJobTitle
+                TargetJobTitle = botTargetJob
             });
         }
 

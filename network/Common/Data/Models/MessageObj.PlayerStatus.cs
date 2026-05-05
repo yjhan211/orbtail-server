@@ -30,5 +30,7 @@ namespace network.common.data.models
         [Key("staminaDelta")] public int StaminaDelta { get; set; }
         [Key("corruption")] public int Corruption { get; set; }
         [Key("corruptionDelta")] public int CorruptionDelta { get; set; }
+        /// <summary>v0.2.1 — Stamina 부족 시 Cor 변환 발생 여부. true면 클라가 경고 알럿 표시.</summary>
+        [Key("staminaConverted")] public bool StaminaConverted { get; set; }
     }
 }

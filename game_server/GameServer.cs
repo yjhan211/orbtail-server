@@ -720,7 +720,7 @@ public class GameServer(
 
     // ===== #127 봇 walking 타이머 =====
 
-    private const int BotMovementTickIntervalMs = 250; // 봇 walking step 주기
+    private const int BotMovementTickIntervalMs = 50; // 봇 walking step 주기 (실제 플레이어 sendInterval=50ms와 동등 — 클라 보간 일치)
 
     private void StartBotMovementTimer()
     {

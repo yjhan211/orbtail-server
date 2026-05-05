@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.helpers;
 using network.packets;
 
 namespace game_server.network;
@@ -17,14 +18,7 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
 
-        // 스태미나 체크
-        if (Stamina < InteractStaminaCost)
-        {
-            using var errPacket =
-                PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(msg.PlayerId, ErrorCode.INSUFFICIENT_STAMINA);
-            Send(errPacket);
-            return Task.CompletedTask;
-        }
+        // 권고안 B 2026-05-05: Stamina 부족해도 ModifyStats가 Cor 1:2 변환 — 사전 차단 제거.
 
         // 쿨다운 체크 (거절/타임아웃 후 5초)
         if (DateTime.UtcNow - _lastInteractRejectTime < InteractCooldown)
@@ -193,6 +187,24 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
 
+        // 봇 대상 대화 종료 — 5초 후 봇 정지 해제 (WalkStep이 InteractionStayUntil 시각 후 자동 해제).
+        if (BotPlayerManager.IsBotPlayerId(msg.PlayerId))
+        {
+            var bot = _botPlayerManager.GetBot(CurrentMapSubId, msg.PlayerId);
+            if (bot != null) bot.InteractionStayUntil = DateTime.UtcNow.AddSeconds(5);
+
+            // active conversation 해제 → HandleAreaMove 차단 풀림.
+            if (_activeConversationPlayerId == msg.PlayerId) _activeConversationPlayerId = null;
+
+            using var endPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_END(msg.PlayerId);
+            Send(endPacket);
+
+            Logger.LogInformation(
+                "봇 대화 종료: BotId={Bot}, requester={Requester}, 5초 후 walking 재개",
+                msg.PlayerId, PlayerId);
+            return Task.CompletedTask;
+        }
+
         if (!_activeConversationPlayerId.HasValue)
         {
             Logger.LogWarning("PlayerInteractEnd failed: no active conversation for PlayerId={PlayerId}", PlayerId);
@@ -226,14 +238,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        // 스태미나 체크
-        if (Stamina < InteractStaminaCost)
-        {
-            using var errPacket =
-                PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(false, ErrorCode.INSUFFICIENT_STAMINA, 0);
-            Send(errPacket);
-            return Task.CompletedTask;
-        }
+        // 권고안 B 2026-05-05: Stamina 부족해도 ModifyStats가 Cor 1:2 변환 — 사전 차단 제거.
 
         // 아이템 검증
         var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
@@ -312,14 +317,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        // 스태미나 체크
-        if (Stamina < InteractStaminaCost)
-        {
-            using var errPacket =
-                PacketMaker.G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT(false, ErrorCode.INSUFFICIENT_STAMINA, 0);
-            Send(errPacket);
-            return Task.CompletedTask;
-        }
+        // 권고안 B 2026-05-05: Stamina 부족해도 ModifyStats가 Cor 1:2 변환 — 사전 차단 제거.
 
         // 수칙 소유 검증
         if (!_discoveredRules.ContainsKey(msg.RuleId))
@@ -379,22 +377,53 @@ public partial class GameClientSession
 
     /// <summary>
     ///     #26: 봇이 대상일 때 1:1 상호작용 자동 응답.
-    ///     - DecideAcceptInteraction으로 수락/거절 결정
+    ///     - DecideAcceptInteraction으로 수락/거절 결정 (DemoMode 시)
+    ///     - issue22 디버그(DemoMode 비활성): 무조건 수락 + 3초 지연 (실제 플레이어 응답 시뮬)
     ///     - 수락 시: 양쪽에 RESULT(accepted=true) 송신 → 즉시 종료(대화는 게임 진행상 0.x초 단위로 빈번)
     ///     - 거절 시: 양쪽에 RESULT(accepted=false) 송신
     ///     클라이언트 측 봇 대화 UX는 단순화 — 수락/거절 결과만 전달.
     /// </summary>
-    private Task HandleBotInteractRequest(long botPlayerId)
+    private async Task HandleBotInteractRequest(long botPlayerId)
     {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
-
-        bool accepted = _botPlayerManager.DecideAcceptInteraction(CurrentMapSubId, botPlayerId, _missionManager);
+        if (!PlayerId.HasValue) return;
         long requesterPlayerId = PlayerId.Value;
+
+        // 상호작용 응답 대기/대화 중 봇 정지 — 실제 플레이어 정지 동작과 동등.
+        // InteractionStayUntil은 사용자가 INTERACT_END를 안 보내고 끊어지는 등의 이상 케이스용 fallback.
+        // 정상 종료 시 HandlePlayerInteractEnd가 +5초로 단축 → 5초 후 봇 walking 재개.
+        var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
+        if (bot != null)
+        {
+            bot.IsInInteraction = true;
+            bot.InteractionStayUntil = DateTime.UtcNow.AddMinutes(5); // 안전 fallback
+        }
+
+        // pending 저장 — HandleAreaMove에서 영역 이동 차단 + 클라 InteractAlert UX와 정합.
+        _pendingInteractPlayerId = botPlayerId;
+
+        // 요청자에게 ack(REQUEST) 송신 → 클라이언트 InteractAlert(대기 UI) 표시.
+        // 실제 플레이어 대상일 때 HandlePlayerInteractRequest 본 흐름에서 보내는 것과 동등.
+        using (var requesterAck = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(botPlayerId, ErrorCode.SUCCESS))
+        {
+            Send(requesterAck);
+        }
+
+        bool accepted;
+        if (DemoMode.IsActive)
+        {
+            accepted = _botPlayerManager.DecideAcceptInteraction(CurrentMapSubId, botPlayerId, _missionManager);
+        }
+        else
+        {
+            // issue22 디버그: 봇 응답 3초 지연 후 무조건 수락
+            await Task.Delay(TimeSpan.FromSeconds(3));
+            accepted = true;
+        }
 
         // 봇은 응답 기록만 갱신 (직책 밝히기는 클라이언트 UX 미구현 — 추후 확장 지점)
         _botPlayerManager.NoteRespondedTo(CurrentMapSubId, botPlayerId, requesterPlayerId);
 
-        // 요청자에게 봇이 즉시 결정한 결과 전송 (대화 UI 없이 결과만)
+        // 요청자에게 봇이 결정한 결과 전송 (대화 UI 없이 결과만)
         using (var requesterResult =
                PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(accepted, botPlayerId, ErrorCode.SUCCESS))
         {
@@ -405,12 +434,20 @@ public partial class GameClientSession
             "봇 1:1 자동 응답: BotId={Bot}, Requester={Requester}, Accepted={Acc}",
             botPlayerId, requesterPlayerId, accepted);
 
-        if (!accepted)
+        // pending 해제 + 수락 시 active conversation으로 전환.
+        _pendingInteractPlayerId = null;
+        if (accepted)
+        {
+            _activeConversationPlayerId = botPlayerId;
+        }
+        else
         {
             _lastInteractRejectTime = DateTime.UtcNow;
+            // 거절 시 즉시 정지 해제
+            if (bot != null) bot.IsInInteraction = false;
         }
-
-        return Task.CompletedTask;
+        // 수락 시: IsInInteraction는 InteractionStayUntil(5분)까지 유지 → 봇 정지.
+        // 사용자가 INTERACT_END 보내면 HandlePlayerInteractEnd가 +5초로 단축.
     }
 
     /// <summary>
