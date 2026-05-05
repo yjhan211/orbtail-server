@@ -21,7 +21,8 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_PLAYER_STATS_UPDATE(int stamina, int staminaDelta, int corruption, int corruptionDelta)
+    public static Packet G_TO_C_PLAYER_STATS_UPDATE(int stamina, int staminaDelta, int corruption, int corruptionDelta,
+        bool staminaConverted = false)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_STATS_UPDATE);
         G_TO_C_PLAYER_STATS_UPDATE body = new()
@@ -29,7 +30,8 @@ public static partial class PacketMaker
             Stamina = stamina,
             StaminaDelta = staminaDelta,
             Corruption = corruption,
-            CorruptionDelta = corruptionDelta
+            CorruptionDelta = corruptionDelta,
+            StaminaConverted = staminaConverted
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
