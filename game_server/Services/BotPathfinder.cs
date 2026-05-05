@@ -32,7 +32,7 @@ public static class BotPathfinder
         AreaType toArea, Cell toCell,
         Func<AreaType, bool>? isAreaBlocked = null)
     {
-        // 1) 영역 시퀀스 BFS (인접 그래프)
+        // 1) 영역 시퀀스 BFS (인접 그래프) — 각 hop에서 사용된 connection도 함께 반환
         var areaSeq = BfsAreaGraph(mapId, fromArea, toArea, isAreaBlocked);
         if (areaSeq == null) return null;
 
@@ -42,35 +42,27 @@ public static class BotPathfinder
         // 2) 각 영역 사이 walk + 경계 통과
         for (int i = 0; i < areaSeq.Count - 1; i++)
         {
-            var fromA = areaSeq[i];
-            var toA = areaSeq[i + 1];
+            var fromA = areaSeq[i].Area;
+            var toA = areaSeq[i + 1].Area;
+            var forwardConn = areaSeq[i + 1].IncomingConn; // BFS가 선택한 fromA → toA conn (StairSide 포함)
 
-            // 현재 영역 측 도어 셀 = 반대 방향 SpawnCell (toA → fromA 연결의 SpawnCell이 fromA에 있음)
-            var exitCell = GameAreaConnectionData.GetSpawnCell(mapId, toA, fromA);
+            // 현재 영역 측 도어 셀 = 반대 방향 conn(toA → fromA, 같은 StairSide)의 SpawnCell
+            Cell? exitCell = null;
+            if (forwardConn != null)
+                exitCell = FindReverseSpawnCell(mapId, forwardConn);
             if (exitCell == null)
-            {
-                // 미설정 — 영역 중심 폴백
-                exitCell = GameMapData.GetAreaSpawnCell(mapId, fromA);
-            }
+                exitCell = GameMapData.GetAreaSpawnCell(mapId, fromA); // 폴백
 
             // 현재 셀 → 출구 셀 (영역 안에서 walk)
             var cellPath = BfsCellsInArea(mapId, fromA, currentCell, exitCell);
-            if (cellPath == null)
-            {
-                // walk 실패 — 다음 영역으로 그냥 텔레포트 시도 (드물게 발생)
-            }
-            else
+            if (cellPath != null)
             {
                 foreach (var c in cellPath.Skip(1)) // 시작 셀(현재 위치) 제외
                     path.Add(new Step { Cell = c, Area = fromA, IsAreaTransition = false });
             }
 
-            // 영역 경계 통과 (텔레포트)
-            var entryCell = GameAreaConnectionData.GetSpawnCell(mapId, fromA, toA);
-            if (entryCell == null)
-            {
-                entryCell = GameMapData.GetAreaSpawnCell(mapId, toA);
-            }
+            // 영역 경계 통과 (텔레포트) — 선택된 conn의 SpawnCell이 toA 측 도어 위치
+            Cell entryCell = forwardConn?.SpawnCell ?? GameMapData.GetAreaSpawnCell(mapId, toA);
             path.Add(new Step
             {
                 Cell = entryCell,
@@ -92,17 +84,28 @@ public static class BotPathfinder
         return path;
     }
 
+    /// <summary>BFS 영역 시퀀스 한 노드 — 그 영역으로 진입할 때 사용된 conn 정보를 함께 보관.</summary>
+    private class AreaSeqNode
+    {
+        public AreaType Area { get; set; }
+        /// <summary>이 영역으로 진입한 connection (시작 영역은 null). StairSide/SpawnCell 포함.</summary>
+        public AreaConnectionInfo? IncomingConn { get; set; }
+    }
+
     /// <summary>
-    ///     영역 그래프 BFS. fromArea → toArea 최단 영역 시퀀스.
+    ///     영역 그래프 BFS. fromArea → toArea 최단 영역 시퀀스 + 사용된 connection.
+    ///     같은 (from→to) 쌍에 west/east 두 conn이 있을 경우 SpawnCell이 (0,0) 아닌 첫 번째 사용.
     ///     isAreaBlocked가 true 반환하는 영역은 회피.
     /// </summary>
-    private static List<AreaType>? BfsAreaGraph(MapId mapId, AreaType fromArea, AreaType toArea,
+    private static List<AreaSeqNode>? BfsAreaGraph(MapId mapId, AreaType fromArea, AreaType toArea,
         Func<AreaType, bool>? isAreaBlocked)
     {
-        if (fromArea == toArea) return new List<AreaType> { fromArea };
+        if (fromArea == toArea)
+            return new List<AreaSeqNode> { new() { Area = fromArea, IncomingConn = null } };
 
         var visited = new HashSet<AreaType> { fromArea };
-        var parent = new Dictionary<AreaType, AreaType>();
+        // parent[next] = (prev area, conn used to enter next)
+        var parent = new Dictionary<AreaType, (AreaType prev, AreaConnectionInfo conn)>();
         var queue = new Queue<AreaType>();
         queue.Enqueue(fromArea);
 
@@ -114,24 +117,47 @@ public static class BotPathfinder
                 var next = conn.ToArea;
                 if (visited.Contains(next)) continue;
                 if (isAreaBlocked != null && isAreaBlocked(next) && next != toArea) continue;
+                // 미설정 SpawnCell(0,0) conn은 사용 불가 — 영역 중심 폴백 회피용 가드
+                if (conn.SpawnCell.X == 0 && conn.SpawnCell.Y == 0) continue;
 
                 visited.Add(next);
-                parent[next] = current;
+                parent[next] = (current, conn);
 
                 if (next == toArea)
                 {
-                    // 경로 복원
-                    var seq = new List<AreaType> { toArea };
+                    var seq = new List<AreaSeqNode>
+                    {
+                        new() { Area = toArea, IncomingConn = conn }
+                    };
                     var c = toArea;
                     while (parent.TryGetValue(c, out var p))
                     {
-                        seq.Insert(0, p);
-                        c = p;
+                        // p.prev로 거슬러 올라가며, p.prev로 진입한 conn을 찾아야 함
+                        AreaConnectionInfo? prevConn = null;
+                        if (parent.TryGetValue(p.prev, out var pp)) prevConn = pp.conn;
+                        seq.Insert(0, new AreaSeqNode { Area = p.prev, IncomingConn = prevConn });
+                        c = p.prev;
                     }
                     return seq;
                 }
                 queue.Enqueue(next);
             }
+        }
+        return null;
+    }
+
+    /// <summary>
+    ///     forwardConn(fromA → toA, west/east StairSide 포함)에 짝을 이루는 reverse conn(toA → fromA)의 SpawnCell.
+    ///     양방향 같은 도어를 통하므로 fromA 측 도어 셀(= 봇이 walking으로 도달해야 할 출구)을 의미.
+    /// </summary>
+    private static Cell? FindReverseSpawnCell(MapId mapId, AreaConnectionInfo forwardConn)
+    {
+        foreach (var rev in GameAreaConnectionData.GetConnections(mapId, forwardConn.ToArea))
+        {
+            if (rev.ToArea != forwardConn.FromArea) continue;
+            if (rev.StairSide != forwardConn.StairSide) continue;
+            if (rev.SpawnCell.X == 0 && rev.SpawnCell.Y == 0) continue;
+            return rev.SpawnCell;
         }
         return null;
     }
