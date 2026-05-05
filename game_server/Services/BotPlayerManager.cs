@@ -78,9 +78,9 @@ public partial class BotPlayerManager
         var bots = botInfoList.Select(info =>
         {
             var visitQueue = BuildJobAreaQueue(info.MyJobTitle);
-            var startArea = visitQueue.Count > 0
-                ? visitQueue[0]
-                : MovableAreas[_rng.Next(MovableAreas.Length)];
+            // issue22 디버그: walking 시각 검증을 위해 봇 시작 위치를 4F 복도로 강제.
+            // ChooseNewWanderTarget도 4F 복도 안에서만 wander.
+            var startArea = AreaType.Corridor4F;
 
             var startCell = GameMapData.GetAreaSpawnCell(mapId, startArea);
             var startPosition = CellToWorldPosition(startCell);
@@ -91,7 +91,7 @@ public partial class BotPlayerManager
                 TargetPlayerId = info.TargetPlayerId,
                 MyJobTitle = info.MyJobTitle,
                 TargetJobTitle = info.TargetJobTitle,
-                Name = $"Bot_{info.MyJobTitle}_{info.PlayerId}",
+                Name = $"Bot{Math.Abs(info.PlayerId)}",
                 CurrentArea = startArea,
                 Cell = startCell,
                 Position = startPosition,
@@ -125,13 +125,13 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     봇 기본 의상 5종 (user_server SetupNewPlayer와 동일).
-    ///     Hair / Face / Top / Bottom / Shoes — 외형 노출용 최소 세트.
+    ///     봇 기본 의상 (user_server SetupNewPlayer 5종 + 봇 식별용 새싹 헤어밴드).
     /// </summary>
     private static readonly int[] BotDefaultWearItemIds =
     {
         101000003, // Hair
         102000003, // Face
+        103000002, // 새싹 헤어밴드 — 봇 식별용 액세서리
         104000005, // Top
         105000005, // Bottom
         106000003  // Shoes

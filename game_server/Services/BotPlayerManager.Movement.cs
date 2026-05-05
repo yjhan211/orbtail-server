@@ -38,47 +38,48 @@ public partial class BotPlayerManager
         {
             if (bot.IsEliminated) continue;
 
-            // 1) 오염도 적용 (시한부 추가)
-            int totalCorruptionDelta = corruptionDelta;
-            if (bot.ManittoStatus == ManittoStatus.TERMINAL)
-                totalCorruptionDelta += 5;
-            bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
-
-            // H8 — DemoMode HE 봇 12:00 강제 탈락 (오염도 100으로 가속)
-            if (DemoMode.IsActive
-                && bot.MyJobTitle == JobTitle.HEALTH_MEMBER
-                && bot.Corruption < 100)
-            {
-                var elapsedSec = (DateTime.UtcNow - bot.GameStartTime).TotalSeconds;
-                if (elapsedSec >= DemoMode.HeForcedEliminationSeconds)
-                {
-                    bot.Corruption = 100;
-                    _logger.LogInformation(
-                        "DEMO_MODE H8: HE 봇 강제 탈락 트리거 (경과 {Sec}s)", (int)elapsedSec);
-                }
-            }
-
-            // 2) 폐쇄 구역 체류 시 스태미나 감소(가드: 능동 회피 실패 시에만 발생)
-            if (areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
-                bot.Stamina = Math.Max(0, bot.Stamina - 20);
-
-            // 3) 탈락 체크
-            if (bot.Stamina <= 0 || bot.Corruption >= 100)
-            {
-                bot.IsEliminated = true;
-                var reason = bot.Stamina <= 0 ? EliminationReason.STAMINA_ZERO : EliminationReason.MENTAL_ZERO;
-                _logger.LogInformation("봇 탈락: MatchingId={MatchingId}, BotId={BotId}, 사유={Reason}",
-                    matchingId, bot.PlayerId, reason);
-                result.Eliminated.Add((bot.PlayerId, reason));
-                continue;
-            }
-
-            // 4) DemoMode 스크립트 영역 전환만 처리 (영상 narrative timing 보호 — walking 우회 텔레포트)
+            // issue22 디버그: walking 시각 검증을 위해 자원 자연 감소 + 탈락 비활성.
+            // DemoMode일 때만 기존 자원/탈락 로직 유지(영상 시나리오 정합).
             if (DemoMode.IsActive)
             {
+                // 1) 오염도 적용 (시한부 추가)
+                int totalCorruptionDelta = corruptionDelta;
+                if (bot.ManittoStatus == ManittoStatus.TERMINAL)
+                    totalCorruptionDelta += 5;
+                bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
+
+                // H8 — DemoMode HE 봇 12:00 강제 탈락 (오염도 100으로 가속)
+                if (bot.MyJobTitle == JobTitle.HEALTH_MEMBER && bot.Corruption < 100)
+                {
+                    var elapsedSec = (DateTime.UtcNow - bot.GameStartTime).TotalSeconds;
+                    if (elapsedSec >= DemoMode.HeForcedEliminationSeconds)
+                    {
+                        bot.Corruption = 100;
+                        _logger.LogInformation(
+                            "DEMO_MODE H8: HE 봇 강제 탈락 트리거 (경과 {Sec}s)", (int)elapsedSec);
+                    }
+                }
+
+                // 2) 폐쇄 구역 체류 시 스태미나 감소(가드: 능동 회피 실패 시에만 발생)
+                if (areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
+                    bot.Stamina = Math.Max(0, bot.Stamina - 20);
+
+                // 3) 탈락 체크
+                if (bot.Stamina <= 0 || bot.Corruption >= 100)
+                {
+                    bot.IsEliminated = true;
+                    var reason = bot.Stamina <= 0 ? EliminationReason.STAMINA_ZERO : EliminationReason.MENTAL_ZERO;
+                    _logger.LogInformation("봇 탈락: MatchingId={MatchingId}, BotId={BotId}, 사유={Reason}",
+                        matchingId, bot.PlayerId, reason);
+                    result.Eliminated.Add((bot.PlayerId, reason));
+                    continue;
+                }
+
+                // 4) DemoMode 스크립트 영역 전환만 처리 (영상 narrative timing 보호 — walking 우회 텔레포트)
                 var areaMove = AdvanceToScriptedArea(bot, matchingId, areaClosureManager);
                 if (areaMove != null) result.Movements.Add(areaMove);
             }
+            // 디버그 모드(DemoMode 비활성): 자원 변동/탈락 모두 스킵 → 봇이 무한 walking
         }
         return result;
     }
@@ -180,6 +181,12 @@ public partial class BotPlayerManager
 
         bot.WalkVelocity = velocity;
 
+        // velocity.X 부호에 따라 Rotation 갱신 (실제 플레이어 PlayerMovement.cs와 동일 규칙).
+        // shouldFlip = velocity.X > 0 → rotation = 180 (오른쪽 보기), 아니면 0 (왼쪽 보기).
+        // |velocity.X| < 0.1 시에는 직전 Rotation 유지(떨림 방지 — 클라 IsFlip 갱신 가드와 일치).
+        if (velocity.X > 0.1f) bot.Rotation = 180f;
+        else if (velocity.X < -0.1f) bot.Rotation = 0f;
+
         return new BotMovementEvent
         {
             BotPlayerId = bot.PlayerId,
@@ -196,8 +203,8 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     봇이 도착했거나 경로가 비었을 때 새 목적지 선택 + 경로 계산.
-    ///     #127 1차: 무작위 영역의 스폰 셀로 (직책 풀 이용은 후속).
-    ///     폐쇄 영역은 회피.
+    ///     #127 디버그 (issue22): walking 시각 검증을 위해 Corridor4F 안에서만 wander.
+    ///     영역 전환 텔레포트 없이 셀 단위 walk만 발생 → 부드러운 이동 검증 가능.
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
     {
@@ -205,39 +212,53 @@ public partial class BotPlayerManager
         bot.Path.Clear();
         bot.PathIndex = 0;
 
-        var openAreas = MovableAreas
-            .Where(a => !closureManager.IsAreaClosed(matchingId, a))
-            .ToList();
-        if (openAreas.Count == 0) return;
+        // 4F 복도 안의 walkable 셀 중 무작위 한 곳을 타겟으로 잡는다.
+        var areaRegion = GameMapData.GetAreas(mapId)
+            .FirstOrDefault(r => r.AreaType == AreaType.Corridor4F);
+        if (areaRegion == null) return;
 
-        // 직책 큐 우선, 비어있으면 무작위
-        AreaType targetArea;
-        if (bot.JobAreaQueue.Count > 0)
+        // 봇이 4F 복도 밖에 있으면 4F 복도로 강제 텔레포트(디버그용 — 첫 1회)
+        if (bot.CurrentArea != AreaType.Corridor4F)
         {
-            targetArea = bot.JobAreaQueue[bot.JobAreaQueueIndex % bot.JobAreaQueue.Count];
-            bot.JobAreaQueueIndex = (bot.JobAreaQueueIndex + 1) % bot.JobAreaQueue.Count;
-            if (closureManager.IsAreaClosed(matchingId, targetArea))
-                targetArea = openAreas[_rng.Next(openAreas.Count)];
-        }
-        else
-        {
-            targetArea = openAreas[_rng.Next(openAreas.Count)];
+            var entryCell = GameMapData.GetAreaSpawnCell(mapId, AreaType.Corridor4F);
+            bot.CurrentArea = AreaType.Corridor4F;
+            bot.Cell = entryCell;
+            bot.Position = CellToWorldPosition(entryCell);
+            // 다음 틱에 새 경로 잡도록 PathIndex/Path는 빈 채로 유지
+            return;
         }
 
-        var targetCell = GameMapData.GetAreaSpawnCell(mapId, targetArea);
-        var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, targetArea, targetCell,
+        // 4F 복도는 일자형 — 복도 중심선(centerY) 위 양 끝 ping-pong.
+        // 현재 위치보다 먼 끝을 타겟으로 → 봇이 끝까지 가서 반대로 출발 → 무한 왕복.
+        int centerY = (areaRegion.Start.Y + areaRegion.End.Y) / 2;
+        int midX = (areaRegion.Start.X + areaRegion.End.X) / 2;
+        int targetX = bot.Cell.X < midX ? areaRegion.End.X : areaRegion.Start.X;
+
+        // 끝 셀이 막혀있으면 가장 가까운 walkable 셀로 폴백
+        Cell targetCell = new(targetX, centerY);
+        int step = bot.Cell.X < midX ? -1 : 1; // 끝에서 안쪽으로 후퇴
+        while (!GameMapData.IsMoveablePosition(mapId, targetCell)
+               && targetCell.X != bot.Cell.X
+               && targetCell.X >= areaRegion.Start.X
+               && targetCell.X <= areaRegion.End.X)
+        {
+            targetCell = new Cell(targetCell.X + step, centerY);
+        }
+        if (!GameMapData.IsMoveablePosition(mapId, targetCell)) return;
+        var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
+            AreaType.Corridor4F, targetCell,
             a => closureManager.IsAreaClosed(matchingId, a));
         if (path == null || path.Count == 0)
         {
-            _logger.LogDebug("봇 경로 계산 실패: BotId={Bot}, {From} → {To}",
-                bot.PlayerId, bot.CurrentArea, targetArea);
+            _logger.LogDebug("봇 경로 계산 실패: BotId={Bot}, {From} → 4F 복도 {To}",
+                bot.PlayerId, bot.CurrentArea, targetCell);
             return;
         }
 
         bot.Path = path;
         bot.PathIndex = 0;
-        _logger.LogDebug("봇 새 경로: BotId={Bot}, {From}@{Cell} → {To}@{TargetCell}, 단계={Steps}",
-            bot.PlayerId, bot.CurrentArea, bot.Cell, targetArea, targetCell, path.Count);
+        _logger.LogInformation("봇 새 경로(4F 복도 디버그): BotId={Bot}, {Cell} → {Target}, 단계={Steps}",
+            bot.PlayerId, bot.Cell, targetCell, path.Count);
     }
 
     /// <summary>
