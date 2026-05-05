@@ -372,10 +372,25 @@ public partial class GameClientSession
 
                 Logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
 
-                // 4. 나에게 새 Area의 Interactable 목록 전송
+                // 4. #125: 새 Area의 봇들 ENTER도 나에게 전송 (실제 플레이어 동등)
+                var newAreaBots = _botPlayerManager.GetBots(CurrentMapSubId)
+                    .Where(b => !b.IsEliminated && b.CurrentArea == newArea)
+                    .ToList();
+                foreach (var bot in newAreaBots)
+                {
+                    var botInfo = _botPlayerManager.SynthesizePlayerInfo(CurrentMapSubId, bot.PlayerId);
+                    if (botInfo == null) continue;
+                    using var botEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(botInfo, bot.Cell);
+                    Send(botEnterPacket);
+                }
+                if (newAreaBots.Count > 0)
+                    Logger.LogDebug("Sent {Count} bots in new Area {NewArea} to Player {PlayerId}",
+                        newAreaBots.Count, newArea, PlayerId);
+
+                // 5. 나에게 새 Area의 Interactable 목록 전송
                 SendInteractableList(newArea);
 
-                // 5. 사보타주 이벤트 트리거 (해당 Area 최초 진입 시)
+                // 6. 사보타주 이벤트 트리거 (해당 Area 최초 진입 시)
                 _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, newArea);
             }
         }

@@ -294,10 +294,14 @@ public class GameServer(
             {
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 int botDecay = GetMentalDecayAmount(matchingId);
-                var eliminatedBots = _botPlayerManager.ProcessBotTick(matchingId, botDecay, _areaClosureManager);
+                var tickResult = _botPlayerManager.ProcessBotTick(matchingId, botDecay, _areaClosureManager);
+
+                // #125: 봇 위치 이동 이벤트 → 같은 영역 인간 세션에 패킷 브로드캐스트
+                foreach (var ev in tickResult.Movements)
+                    BroadcastBotMovement(matchingId, ev, activeSessions);
 
                 // #26: 봇 탈락 → 체인 단절 알림 + 영향받는 플레이어/봇 상태 변경
-                foreach (var (botId, reason) in eliminatedBots)
+                foreach (var (botId, reason) in tickResult.Eliminated)
                     ProcessBotElimination(matchingId, botId, reason, activeSessions);
 
                 // #26: v0.2.0 부품 회수/결합 시뮬
@@ -549,6 +553,60 @@ public class GameServer(
 
         logger.LogInformation("흔적 배치 broadcast: Placer={P}({J}), Area={A}, InteractId={I}",
             trace.placerPlayerId, placerLink.MyJobTitle, trace.area, trace.interactId);
+    }
+
+    /// <summary>
+    ///     #125: 봇 이동 이벤트를 같은 매칭의 영향권 인간 세션에 패킷 브로드캐스트.
+    ///     - 영역 전환: G_TO_C_AREA_PLAYER_LEAVE(이전 영역) + G_TO_C_AREA_PLAYER_ENTER(새 영역) + G_TO_C_MOVE(텔레포트)
+    ///     - 영역 내 wander: G_TO_C_MOVE(같은 영역)
+    /// </summary>
+    private void BroadcastBotMovement(long matchingId, BotMovementEvent ev,
+        List<GameClientSession> activeSessions)
+    {
+        var matchingSessions = activeSessions
+            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
+            .ToList();
+        if (matchingSessions.Count == 0) return;
+
+        long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        if (ev.IsAreaTransition)
+        {
+            // 1) 이전 영역의 인간들에게 LEAVE
+            using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(ev.BotPlayerId);
+            foreach (var session in matchingSessions)
+            {
+                if (session.CurrentArea != ev.FromArea) continue;
+                session.Send(leavePacket);
+            }
+
+            // 2) 새 영역의 인간들에게 ENTER (합성 PlayerInfo)
+            var botInfo = _botPlayerManager.SynthesizePlayerInfo(matchingId, ev.BotPlayerId);
+            if (botInfo != null)
+            {
+                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(botInfo, ev.ToCell);
+                foreach (var session in matchingSessions)
+                {
+                    if (session.CurrentArea != ev.ToArea) continue;
+                    session.Send(enterPacket);
+                }
+            }
+        }
+
+        // 3) 새 영역의 인간들에게 MOVE (텔레포트 또는 wander)
+        using var movePacket = PacketMaker.G_TO_C_MOVE(
+            ev.BotPlayerId,
+            ev.Position,
+            ev.Velocity,
+            ev.Rotation,
+            ev.ToCell,
+            lastProcessedInput: 0u,
+            serverTimestamp);
+        foreach (var session in matchingSessions)
+        {
+            if (session.CurrentArea != ev.ToArea) continue;
+            session.Send(movePacket);
+        }
     }
 
     /// <summary>

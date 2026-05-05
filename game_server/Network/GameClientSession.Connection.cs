@@ -44,7 +44,7 @@ public partial class GameClientSession
             _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
 
             // 봇 로드 (매칭당 최초 1회) — 폐쇄 초기화 전에 로드해 직책 풀을 확정 (#87)
-            await LoadBotsIfNeeded(msg.MatchingId);
+            await LoadBotsIfNeeded(msg.MatchingId, CurrentMapId);
 
             // 구역 폐쇄 초기화 (매칭당 최초 1회)
             // #87: 매칭의 직책 풀을 셔플 우선순위에 반영 (5분 1단계 보장 + LB/CL 후순위)
@@ -180,6 +180,27 @@ public partial class GameClientSession
                 Logger.LogInformation("Broadcasted my PlayerInfo (PlayerId={L}) to {Count} players in Area {Area}",
                     PlayerId, sameAreaSessions.Count, CurrentArea);
             }
+
+            // 4. #125: 같은 Area의 봇들 정보를 나에게 전송 (실제 플레이어 동등 시각화)
+            var sameAreaBots = _botPlayerManager.GetBots(CurrentMapSubId)
+                .Where(b => !b.IsEliminated && b.CurrentArea == CurrentArea)
+                .ToList();
+            if (sameAreaBots.Count > 0)
+            {
+                var botInfoList = new List<PlayerInfo>();
+                foreach (var bot in sameAreaBots)
+                {
+                    var botInfo = _botPlayerManager.SynthesizePlayerInfo(CurrentMapSubId, bot.PlayerId);
+                    if (botInfo != null) botInfoList.Add(botInfo);
+                }
+                if (botInfoList.Count > 0)
+                {
+                    using var botPacket = PacketMaker.G_TO_C_PLAYER_INFO(botInfoList);
+                    Send(botPacket);
+                    Logger.LogInformation("Sent {Count} bot PlayerInfo in Area {Area} to PlayerId={L}",
+                        botInfoList.Count, CurrentArea, PlayerId);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -217,9 +238,10 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     Redis에서 봇 정보 로드 (매칭당 최초 1회)
+    ///     Redis에서 봇 정보 로드 (매칭당 최초 1회).
+    ///     #125: 봇 위치 초기화에 MapId가 필요하므로 인자로 전달.
     /// </summary>
-    private async Task LoadBotsIfNeeded(long matchingId)
+    private async Task LoadBotsIfNeeded(long matchingId, MapId mapId)
     {
         if (_botPlayerManager.HasBots(matchingId)) return;
 
@@ -229,7 +251,7 @@ public partial class GameClientSession
             if (botData.IsNullOrEmpty) return;
 
             var botInfoList = MessagePackSerializer.Deserialize<List<BotMatchingInfo>>((byte[])botData!);
-            _botPlayerManager.RegisterBots(matchingId, botInfoList);
+            _botPlayerManager.RegisterBots(matchingId, mapId, botInfoList);
 
             // 봇도 체인 매니저 + 미션 매니저에 등록 (#26: 봇 부품 회수/결합 시뮬용)
             foreach (var bot in botInfoList)
