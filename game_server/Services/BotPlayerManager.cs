@@ -50,6 +50,18 @@ public partial class BotPlayerManager
     private const int BotMoveStaminaCost = 3;             // 이동 시 스태미나 소모
     private const int DetectScoreThreshold = 18;          // 색출 휴리스틱 임계값 — 함정 흔적 발견 누적 점수
 
+    /// <summary>
+    ///     issue22 디버그 — 봇별 층 할당 (4층/3층/2층/1층 각 1명). RegisterBots에서 인덱스 % 4로 분배.
+    ///     각 층의 양 끝 영역을 ping-pong하며, 복도(corridor)를 경유.
+    /// </summary>
+    private static readonly (AreaType endpointA, AreaType endpointB, AreaType corridor)[] BotFloorAssignments =
+    {
+        (AreaType.Classroom4, AreaType.BroadcastRoom, AreaType.Corridor4F), // 4층
+        (AreaType.Classroom3, AreaType.ExamRoom, AreaType.Corridor3F),       // 3층
+        (AreaType.Classroom2, AreaType.Library, AreaType.Corridor2F),         // 2층
+        (AreaType.StaffRoom, AreaType.AdminOffice, AreaType.Corridor1F)       // 1층
+    };
+
     // matchingId → 봇 목록
     private readonly ConcurrentDictionary<long, List<BotPlayerState>> _botStates = new();
 
@@ -75,12 +87,15 @@ public partial class BotPlayerManager
     {
         _botMapIds[matchingId] = mapId;
 
+        int botIndex = 0;
         var bots = botInfoList.Select(info =>
         {
             var visitQueue = BuildJobAreaQueue(info.MyJobTitle);
-            // issue22 디버그: walking 시각 검증을 위해 봇 시작 위치를 4F 복도로 강제.
-            // ChooseNewWanderTarget도 4F 복도 안에서만 wander.
-            var startArea = AreaType.Corridor4F;
+
+            // issue22 디버그: 봇별 층 할당 (4F/3F/2F/1F). 인덱스 % 4로 분배해 봇 4명까지 각 층 1명.
+            var assignment = BotFloorAssignments[botIndex % BotFloorAssignments.Length];
+            botIndex++;
+            var startArea = assignment.corridor;
 
             var startCell = GameMapData.GetAreaSpawnCell(mapId, startArea);
             var startPosition = CellToWorldPosition(startCell);
@@ -104,7 +119,11 @@ public partial class BotPlayerManager
                 LastCellWanderTime = DateTime.UtcNow,
                 GameStartTime = DateTime.UtcNow,
                 JobAreaQueue = visitQueue,
-                JobAreaQueueIndex = 0
+                JobAreaQueueIndex = 0,
+                LoopEndpointA = assignment.endpointA,
+                LoopEndpointB = assignment.endpointB,
+                LoopCorridor = assignment.corridor,
+                LoopTarget = assignment.endpointA
             };
         }).ToList();
 
@@ -279,8 +298,16 @@ public class BotPlayerState
     /// <summary>마지막 walk 틱 처리 시각. 250ms 간격 봇 이동 타이머가 사용.</summary>
     public DateTime LastWalkStepTime { get; set; } = DateTime.UtcNow;
 
-    /// <summary>issue22 디버그 loop 다음 목적지 (Classroom4 ↔ BroadcastRoom 왕복).</summary>
+    /// <summary>issue22 디버그 loop 다음 목적지 (LoopEndpointA ↔ LoopEndpointB 왕복).</summary>
     public AreaType LoopTarget { get; set; } = AreaType.Classroom4;
+
+    /// <summary>봇별 loop 양 끝 — 층별 ping-pong 동선용 (RegisterBots에서 층별로 할당).</summary>
+    public AreaType LoopEndpointA { get; set; } = AreaType.Classroom4;
+
+    public AreaType LoopEndpointB { get; set; } = AreaType.BroadcastRoom;
+
+    /// <summary>봇이 경유하는 복도 — 영역 진입 도어 셀 산정에 사용.</summary>
+    public AreaType LoopCorridor { get; set; } = AreaType.Corridor4F;
 
     /// <summary>issue22 디버그 — 이 시각까지는 walking step 스킵 (도착 후 대기).</summary>
     public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;

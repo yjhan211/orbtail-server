@@ -217,8 +217,8 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     봇이 도착했거나 경로가 비었을 때 새 목적지 선택 + 경로 계산.
-    ///     #127 디버그 (issue22): Corridor4F ↔ Classroom4(3-1 표시) ↔ BroadcastRoom 무한 루프.
-    ///     1) 4F 복도 → 3-1 → 5초 대기 → 4F 복도 → 방송실 → 5초 대기 → 반복
+    ///     #127 디버그 (issue22): 봇별 층(4F/3F/2F/1F) 안에서 양 끝 영역(LoopEndpointA ↔ LoopEndpointB) ping-pong.
+    ///     RegisterBots에서 BotFloorAssignments로 층 할당.
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
     {
@@ -226,25 +226,22 @@ public partial class BotPlayerManager
         bot.Path.Clear();
         bot.PathIndex = 0;
 
-        // 봇이 LoopTarget(Classroom4 또는 BroadcastRoom)에 도착한 경우 → 대기 + 다음 타겟으로 flip
+        // 봇이 LoopTarget에 도착한 경우 → 대기 + 다음 타겟으로 flip (A ↔ B)
         if (bot.CurrentArea == bot.LoopTarget)
         {
             bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotLoopWaitSeconds);
-            var nextTarget = bot.LoopTarget == AreaType.Classroom4
-                ? AreaType.BroadcastRoom
-                : AreaType.Classroom4;
+            var nextTarget = bot.LoopTarget == bot.LoopEndpointA
+                ? bot.LoopEndpointB
+                : bot.LoopEndpointA;
             _logger.LogInformation("봇 도착 (issue22 loop): BotId={Bot}, {Area}에서 {Sec}초 대기 → 다음 {Next}",
                 bot.PlayerId, bot.CurrentArea, BotLoopWaitSeconds, nextTarget);
             bot.LoopTarget = nextTarget;
             return; // 다음 틱에 새 경로 시작
         }
 
-        // 그 외 → LoopTarget으로 경로 계산 (영역 전환 포함).
-        // targetCell = LoopTarget 진입 도어 셀. issue22 loop는 항상 Corridor4F를 경유
-        // (Classroom4 ↔ Corridor4F ↔ BroadcastRoom)하므로 Corridor4F → LoopTarget 도어를 사용.
-        // bot.CurrentArea ↔ LoopTarget 직접 연결이 없는 케이스(Classroom4↔BroadcastRoom)에서
-        // GetSpawnCell이 null 반환되어 영역 중심으로 추락하는 문제 방지.
-        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, AreaType.Corridor4F, bot.LoopTarget)
+        // 그 외 → LoopTarget으로 경로 계산. 봇별 LoopCorridor를 경유하므로
+        // GetSpawnCell(corridor → LoopTarget)을 사용해 진입 도어 셀로 정확히 도착.
+        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.LoopCorridor, bot.LoopTarget)
                          ?? GameMapData.GetAreaSpawnCell(mapId, bot.LoopTarget);
         var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
             bot.LoopTarget, targetCell,
