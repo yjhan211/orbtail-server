@@ -52,6 +52,10 @@ public partial class BotPlayerManager
 
     // matchingId → 봇 목록
     private readonly ConcurrentDictionary<long, List<BotPlayerState>> _botStates = new();
+
+    // matchingId → 인스턴스가 사용하는 MapId. 봇 ENTER/MOVE 패킷의 LastMapId/Position 변환에 필요.
+    private readonly ConcurrentDictionary<long, MapId> _botMapIds = new();
+
     private readonly ILogger _logger;
 
     // H1 결정론 시드 — DemoMode 활성화 시 시드 기반 RNG, 아니면 Random.Shared 위임.
@@ -65,9 +69,12 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     매칭에 봇 등록. 직책별 발견 구역 큐를 미리 셔플해 동선에 목적성을 부여한다.
+    ///     #125: 봇 위치(Cell/Position) 초기화 — 영역별 스폰 셀에서 시작. 클라 AREA_PLAYER_ENTER 동등.
     /// </summary>
-    public void RegisterBots(long matchingId, List<BotMatchingInfo> botInfoList)
+    public void RegisterBots(long matchingId, MapId mapId, List<BotMatchingInfo> botInfoList)
     {
+        _botMapIds[matchingId] = mapId;
+
         var bots = botInfoList.Select(info =>
         {
             var visitQueue = BuildJobAreaQueue(info.MyJobTitle);
@@ -75,18 +82,26 @@ public partial class BotPlayerManager
                 ? visitQueue[0]
                 : MovableAreas[_rng.Next(MovableAreas.Length)];
 
+            var startCell = GameMapData.GetAreaSpawnCell(mapId, startArea);
+            var startPosition = CellToWorldPosition(startCell);
+
             return new BotPlayerState
             {
                 PlayerId = info.PlayerId,
                 TargetPlayerId = info.TargetPlayerId,
                 MyJobTitle = info.MyJobTitle,
                 TargetJobTitle = info.TargetJobTitle,
+                Name = $"Bot_{info.MyJobTitle}_{info.PlayerId}",
                 CurrentArea = startArea,
+                Cell = startCell,
+                Position = startPosition,
+                Rotation = 0f,
                 Stamina = 40,    // 디버깅용 시작값 (정식: 100) — 실제 플레이어와 동일
                 Corruption = 66, // 게임 시작 시 오염도 시작값
                 ManittoStatus = ManittoStatus.ACTIVE,
                 LastMoveTime = DateTime.UtcNow,
                 LastMissionTickTime = DateTime.UtcNow,
+                LastCellWanderTime = DateTime.UtcNow,
                 GameStartTime = DateTime.UtcNow,
                 JobAreaQueue = visitQueue,
                 JobAreaQueueIndex = 0
@@ -96,8 +111,59 @@ public partial class BotPlayerManager
         _botStates[matchingId] = bots;
 
         _logger.LogInformation(
-            "봇 {Count}명 등록(목적성 동선): MatchingId={MatchingId}, IDs=[{Ids}]",
-            bots.Count, matchingId, string.Join(",", bots.Select(b => $"{b.PlayerId}({b.MyJobTitle})")));
+            "봇 {Count}명 등록(목적성 동선): MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
+            bots.Count, matchingId, mapId,
+            string.Join(",", bots.Select(b => $"{b.PlayerId}({b.MyJobTitle}@{b.CurrentArea})")));
+    }
+
+    /// <summary>
+    ///     매칭에서 사용 중인 MapId 조회. 등록되지 않은 매칭이면 MapId.School 폴백.
+    /// </summary>
+    public MapId GetMatchingMapId(long matchingId)
+    {
+        return _botMapIds.TryGetValue(matchingId, out var mapId) ? mapId : MapId.School;
+    }
+
+    /// <summary>
+    ///     봇의 PlayerInfo를 합성해서 반환 — G_TO_C_AREA_PLAYER_ENTER / G_TO_C_PLAYER_INFO 등
+    ///     실제 플레이어 패킷 동등 시각화에 사용.
+    ///     #125: 봇은 Redis에 저장되지 않으므로 매 호출 시 BotPlayerState로부터 합성.
+    /// </summary>
+    public PlayerInfo? SynthesizePlayerInfo(long matchingId, long botPlayerId)
+    {
+        var bot = GetBot(matchingId, botPlayerId);
+        if (bot == null) return null;
+
+        var mapId = GetMatchingMapId(matchingId);
+        var info = new PlayerInfo
+        {
+            PlayerId = bot.PlayerId,
+            Name = bot.Name,
+            State = PlayerState.NONE,
+            LastMapId = mapId,
+            LastMapSubId = matchingId,
+            LastCell = bot.Cell,
+            Hp = 5000,
+            Stamina = bot.Stamina
+        };
+        info.ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, mapId, matchingId, bot.Cell)
+        {
+            Position = bot.Position,
+            Velocity = new Vector3f(0f, 0f, 0f),
+            Rotation = bot.Rotation
+        };
+        return info;
+    }
+
+    /// <summary>
+    ///     Cell → World 변환. GameClientSession의 동일 함수와 동일 공식이지만
+    ///     BotPlayerManager가 game_server.network에 의존하지 않도록 본 클래스 내부에 두었다.
+    /// </summary>
+    internal static Vector3f CellToWorldPosition(Cell cell)
+    {
+        float wX = (cell.X - cell.Y) / 2f;
+        float wY = (cell.X + cell.Y) / 4f;
+        return new Vector3f(wX, wY, 0f);
     }
 
     /// <summary>
@@ -139,6 +205,7 @@ public partial class BotPlayerManager
     public void CleanupMatching(long matchingId)
     {
         _botStates.TryRemove(matchingId, out _);
+        _botMapIds.TryRemove(matchingId, out _);
     }
 
     /// <summary>
@@ -168,6 +235,21 @@ public class BotPlayerState
     public bool IsEliminated { get; set; }
     public ManittoStatus ManittoStatus { get; set; } = ManittoStatus.ACTIVE;
     public DateTime LastMoveTime { get; set; } = DateTime.UtcNow;
+
+    /// <summary>봇 표시 이름 (PlayerInfo.Name 동등) — 매칭 시 직책+ID로 합성.</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>봇 현재 셀 (실제 플레이어 ObjectInfo.Cell 동등). 영역 전환/셀 wander 시 갱신.</summary>
+    public Cell Cell { get; set; } = new(0, 0);
+
+    /// <summary>봇 월드 좌표 (실제 플레이어 ObjectInfo.Position 동등).</summary>
+    public Vector3f Position { get; set; } = new(0f, 0f, 0f);
+
+    /// <summary>봇 로테이션 (실제 플레이어 ObjectInfo.Rotation 동등).</summary>
+    public float Rotation { get; set; }
+
+    /// <summary>마지막 셀 wander(영역 내 이동) 시각. Phase 2 — 영역 내 자연 이동.</summary>
+    public DateTime LastCellWanderTime { get; set; } = DateTime.UtcNow;
 
     /// <summary>매칭 시작 시각. DemoMode H4 봇 race 페이스 캡 계산용.</summary>
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
