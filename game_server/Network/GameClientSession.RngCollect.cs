@@ -144,10 +144,13 @@ public partial class GameClientSession
             int roll = _rngCollectRng.Next(100);
             if (roll < 60)
             {
+                // 자잘한 소모품 4종 풀 — 랜덤 선택
+                int[] consumablePool = { 201000001, 201000002, 201000003, 201000006 };
+                itemId = consumablePool[_rngCollectRng.Next(consumablePool.Length)];
+
                 resultType = 2;
-                itemId = 201000001; // 바 브레이크 — 스태미나 +10 소모품 (item_info_consumable.csv buff [1, 10])
-                itemNameKr = "바 브레이크";
-                staminaReward = 10;
+                itemNameKr = GameItemData.Get(itemId)?.Name?.Get("kr") ?? "스태미나 회복제";
+                staminaReward = 10; // 정보용 (실제 buff는 인벤토리 사용 시 적용)
                 // 인벤토리 슬롯 +1 추가 + G_TO_C_INGAME_INVENTORY_UPDATE 자동 송신
                 AddInGameItem(itemId, 1);
             }
