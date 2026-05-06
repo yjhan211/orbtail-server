@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.helpers;
 using network.packets;
 
 namespace game_server.network;
@@ -613,6 +614,13 @@ public partial class GameClientSession
     /// </summary>
     private void EndGameByRaceCompletion(long winnerId)
     {
+        if (DevFlags.DisableGameEnd)
+        {
+            Logger.LogWarning("[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): EndGameByRaceCompletion winner={Winner}",
+                winnerId);
+            return;
+        }
+
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
 
         // 완주자 외 모든 생존자 탈락 (RACE_LOST)
