@@ -141,12 +141,24 @@ public partial class BotPlayerManager
         // 1) 영역 경계 통과 — 도어 앞 짧은 멈춤 후 텔레포트 (포탈 들어가는 시각적 단서)
         if (nextStep.IsAreaTransition)
         {
-            // 첫 진입: 멈춤 시각 설정 후 이번 틱은 정지 이벤트로 끝
+            // 첫 진입: 멈춤 시각 설정 + velocity 0 정지 이벤트 발행
+            // (클라가 발소리/walk 애니를 즉시 정지하도록 명시 알림 — 미발행 시 LateUpdate 0.3초 timeout까지 발소리 잔존)
             if (bot.TransitionPauseUntil == DateTime.MinValue)
             {
                 bot.TransitionPauseUntil = now.AddMilliseconds(BotTransitionPauseMs);
                 bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
-                return null;
+                return new BotMovementEvent
+                {
+                    BotPlayerId = bot.PlayerId,
+                    FromArea = bot.CurrentArea,
+                    ToArea = bot.CurrentArea,
+                    FromCell = bot.Cell,
+                    ToCell = bot.Cell,
+                    Position = bot.Position,
+                    Velocity = new Vector3f(0f, 0f, 0f),
+                    Rotation = bot.Rotation,
+                    IsAreaTransition = false
+                };
             }
 
             // 멈춤 진행 중: 패킷 발행 없이 대기
