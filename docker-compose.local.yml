@@ -49,6 +49,8 @@ services:
       - DOTNET_USE_POLLING_FILE_WATCHER=true
       # #79 RNG 채집 시연/테스트용 — 모든 게임 종료 트리거 차단. 운영/시연 빌드에서는 제거
       - DISABLE_GAME_END=1
+      # #79 LB 시연 모드 — 본인 LB 강제 + 봇 4명 BR/DC/SC/HE 고정 + 결정론 시드
+      - DEMO_MODE=LB
     depends_on:
       redis:
         condition: service_healthy
@@ -84,6 +86,8 @@ services:
       - GAME_SERVER_PORT=${GAME_SERVER_PORT:-9001}
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
+      # #79 LB 시연 모드 — 매칭 시 본인 LB + 봇 4명 BR/DC/SC/HE 직책 강제 배정
+      - DEMO_MODE=LB
     depends_on:
       redis:
         condition: service_healthy
