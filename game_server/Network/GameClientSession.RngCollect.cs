@@ -19,7 +19,7 @@ public partial class GameClientSession
     /// <summary>30초 쿨타임 추적: (PlayerId, InteractId) → 다음 회수 가능 시각.</summary>
     private static readonly ConcurrentDictionary<(long, int), DateTime> _rngCollectCooldowns = new();
 
-    private const int RngCollectCooldownSeconds = 30;
+    private const int RngCollectCooldownSeconds = 5; // TODO: 테스트 후 30으로 복원 (#79 시연 빌드 직전)
     private static readonly Random _rngCollectRng = new();
 
     private Task HandleRngCollect(C_TO_G_RNG_COLLECT msg)
