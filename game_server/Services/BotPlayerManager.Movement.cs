@@ -134,6 +134,9 @@ public partial class BotPlayerManager
         {
             ChooseNewWanderTarget(bot, matchingId, closureManager);
             if (bot.Path.Count == 0) return null;
+            // ChooseNewWanderTarget이 LoopWaitUntil(+3초)을 설정하므로 새 path는 다음 틱부터 진행.
+            // 같은 틱에서 walking 시작 시 영역 도착 후 3초 휴식이 무력화되어 발소리/walk 애니가 끊기지 않음.
+            return null;
         }
 
         var nextStep = bot.Path[bot.PathIndex];
