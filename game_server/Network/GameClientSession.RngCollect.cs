@@ -145,10 +145,11 @@ public partial class GameClientSession
             if (roll < 60)
             {
                 resultType = 2;
-                itemId = 201000001; // 스태미나 회복제 (item_info_consumable.csv: buff [1, 10] = +10 stamina)
-                itemNameKr = "스태미나 회복제";
+                itemId = 201000001; // 바 브레이크 — 스태미나 +10 소모품 (item_info_consumable.csv buff [1, 10])
+                itemNameKr = "바 브레이크";
                 staminaReward = 10;
-                // TODO: 후속 — 인벤토리 스태미나 회복 처리 (서버 ModifyStats + InGameInventoryAdd)
+                // 인벤토리 슬롯 +1 추가 + G_TO_C_INGAME_INVENTORY_UPDATE 자동 송신
+                AddInGameItem(itemId, 1);
             }
             else
             {
