@@ -39,7 +39,10 @@ namespace network.common.data
                     TargetObjectType = int.Parse(row["target_object_type"]),
                     StaminaReward = int.Parse(row["stamina_reward"]),
                     PrerequisiteShareGroup = int.Parse(row["prerequisite_share_group"]),
-                    CombineProgressSeconds = int.Parse(row["combine_progress_seconds"])
+                    CombineProgressSeconds = int.Parse(row["combine_progress_seconds"]),
+                    SpriteItemId = row.ContainsKey("sprite_item_id") && !string.IsNullOrEmpty(row["sprite_item_id"])
+                        ? int.Parse(row["sprite_item_id"])
+                        : 0
                 };
 
                 if (!_partsByJob.ContainsKey(jobTitle))
@@ -112,5 +115,6 @@ namespace network.common.data
         public int StaminaReward { get; set; }       // 소재 회수 시 +12, 중간재 결합 시 +20, 최종 0
         public int PrerequisiteShareGroup { get; set; } // 0=선행 없음, 1+=선행 그룹 ID
         public int CombineProgressSeconds { get; set; } // 결합 progress (소재=0, 결합 부품=5)
+        public int SpriteItemId { get; set; }           // ItemSprites/<id>.png — 기존 item_info sprite 재활용 (#79)
     }
 }

@@ -32,7 +32,10 @@ namespace network.common.data
                     TargetPartId = int.Parse(row["target_part_id"]),
                     LocationArea = int.Parse(row["location_area"]),
                     LocationObjectType = int.Parse(row["location_object_type"]),
-                    DescriptionKr = row["description_kr"]
+                    DescriptionKr = row["description_kr"],
+                    SpriteItemId = row.ContainsKey("sprite_item_id") && !string.IsNullOrEmpty(row["sprite_item_id"])
+                        ? int.Parse(row["sprite_item_id"])
+                        : 0
                 };
 
                 _byTargetPart[item.TargetPartId] = item;
@@ -64,5 +67,6 @@ namespace network.common.data
         public int LocationArea { get; set; }     // 선행 아이템 발견 위치 area
         public int LocationObjectType { get; set; } // 선행 아이템 발견 위치 object_type
         public string DescriptionKr { get; set; } // 미충족 시 안내 문구
+        public int SpriteItemId { get; set; }     // ItemSprites/<id>.png 재활용 (#79)
     }
 }
