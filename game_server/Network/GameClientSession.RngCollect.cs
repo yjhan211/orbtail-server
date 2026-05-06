@@ -20,6 +20,7 @@ public partial class GameClientSession
     private static readonly ConcurrentDictionary<(long, int), DateTime> _rngCollectCooldowns = new();
 
     private const int RngCollectCooldownSeconds = 5; // TODO: 테스트 후 30으로 복원 (#79 시연 빌드 직전)
+    private const int RngCollectStaminaCost = 5;     // 채집 시작 시 차감 (기존 EXPLORE와 동등 부담, #79 결정)
     private static readonly Random _rngCollectRng = new();
 
     private Task HandleRngCollect(C_TO_G_RNG_COLLECT msg)
@@ -49,6 +50,9 @@ public partial class GameClientSession
             SendRngCollectResult(msg.InteractId, 0, 0, "잘못된 오브젝트", 0, 0);
             return Task.CompletedTask;
         }
+
+        // 채집 시작 비용 차감 (스태미나 0이어도 ModifyStats가 정신력 1:2 변환 처리)
+        ModifyStats(-RngCollectStaminaCost);
 
         // 자기 직책 소재 부품 풀 매칭 (mission_step.csv target_area + target_object_type)
         var materials = GameMissionData.GetMaterials((short)MyJobTitle);
