@@ -111,6 +111,38 @@ namespace network.common.data.models
     }
 
     /// <summary>
+    ///     v0.2.1 (#79) — RNG 채집 요청. 클라가 1.5초 progress 시작 시 송신.
+    ///     서버는 RNG 풀(50/15/25/10 자기 풀 또는 60/40 외부 풀) 결정 후 G_TO_C_RNG_COLLECT_RESULT 응답.
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_RNG_COLLECT : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        /// <summary>클라 채집 액션 시작 시각 (UTC Unix ms). 동시성/쿨타임 가드용. 미지원 클라는 0.</summary>
+        [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
+    }
+
+    /// <summary>
+    ///     v0.2.1 (#79) — RNG 채집 결과 통합 패킷. 5종 결과(부품/선행/디코이/빈손/소모품) 단일 응답.
+    ///     - 부품/선행 회수 시 추가로 G_TO_C_PART_COLLECTED / G_TO_C_PREREQUISITE_COLLECTED 송신 (인벤토리 갱신용)
+    ///     - 본 패킷은 ItemAlert / 시각 이펙트 / 쿨타임 갱신 트리거 전용
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_RNG_COLLECT_RESULT : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        /// <summary>0=빈손, 1=디코이, 2=소모품, 3=부품, 4=선행</summary>
+        [Key("resultType")] public int ResultType { get; set; }
+        /// <summary>부품/선행/소모품의 식별자 (resultType 0/1은 0)</summary>
+        [Key("itemId")] public int ItemId { get; set; }
+        /// <summary>표시용 한국어 이름. 클라가 LocaleManager로 다국어 처리 시 키로 활용</summary>
+        [Key("itemNameKr")] public string ItemNameKr { get; set; }
+        [Key("staminaReward")] public int StaminaReward { get; set; }
+        /// <summary>다음 채집 가능까지 쿨타임 (초). 30초 표준, 0이면 클라 기본값 사용</summary>
+        [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
+    }
+
+    /// <summary>
     ///     색출 적중 시 부품 전이 알림. 마니또(피탈자) → 색출자(획득자)로 가장 가치 높은 부품 1개 이동.
     /// </summary>
     [MessagePackObject]

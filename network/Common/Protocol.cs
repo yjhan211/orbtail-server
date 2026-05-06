@@ -162,6 +162,10 @@ namespace network.common
         U_TO_C_ERROR, // UserServer 범용 에러 응답
         G_TO_C_ERROR, // GameServer 범용 에러 응답
 
+        // RNG 채집 프로토콜 (v0.2.1, #79)
+        C_TO_G_RNG_COLLECT,            // RNG 채집 요청 (1.5초 progress 시작 시 송신)
+        G_TO_C_RNG_COLLECT_RESULT,     // RNG 결과 통합 (부품/선행/디코이/빈손/소모품)
+
         END
     }
 
