@@ -102,9 +102,10 @@ public partial class GameClientSession
             if (roll < 60)
             {
                 resultType = 2;
-                itemNameKr = "스태미나 회복제 +10";
+                itemId = 201000001; // 스태미나 회복제 (item_info_consumable.csv: buff [1, 10] = +10 stamina)
+                itemNameKr = "스태미나 회복제";
                 staminaReward = 10;
-                // TODO: 후속 — 인벤토리 스태미나 회복 처리
+                // TODO: 후속 — 인벤토리 스태미나 회복 처리 (서버 ModifyStats + InGameInventoryAdd)
             }
             else
             {
