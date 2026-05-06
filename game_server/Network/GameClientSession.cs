@@ -206,6 +206,10 @@ public partial class GameClientSession : SessionBase
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_PARTS,
             async bytes => await HandleMessage<C_TO_G_COMBINE_PARTS>(bytes, HandleCombineParts));
 
+        // RNG 채집 프로토콜 (v0.2.1, #79)
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RNG_COLLECT,
+            async bytes => await HandleMessage<C_TO_G_RNG_COLLECT>(bytes, HandleRngCollect));
+
         // 상호작용 선택지 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ASK,
             async bytes => await HandleMessage<C_TO_G_INTERACTION_ASK>(bytes, HandleInteractionAsk));
