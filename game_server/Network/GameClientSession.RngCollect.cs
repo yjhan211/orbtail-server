@@ -72,12 +72,51 @@ public partial class GameClientSession
 
             if (roll < 50)
             {
-                // 부품 회수 (50%)
-                resultType = 3;
-                itemId = matchedPart.PartId;
-                itemNameKr = matchedPart.PartNameKr;
-                staminaReward = matchedPart.StaminaReward;
-                // TODO: 후속 — 부품 인벤토리 갱신 + G_TO_C_PART_COLLECTED 송신 (기존 v0.2.0 흐름 통합)
+                // 부품 회수 (50%) — MissionManager.TryCollectPart로 PartCollectionState 갱신 + G_TO_C_PART_COLLECTED + MISSION_STEP_COMPLETE 송신
+                var collectResult = _missionManager.TryCollectPart(CurrentMapSubId, PlayerId.Value,
+                    (AreaType)info.ZoneId, (int)info.ObjectType);
+                if (collectResult != null && collectResult.Success && collectResult.Part != null)
+                {
+                    resultType = 3;
+                    itemId = collectResult.Part.PartId;
+                    itemNameKr = collectResult.Part.PartNameKr;
+                    staminaReward = collectResult.StaminaReward;
+                    ApplyStaminaReward(staminaReward);
+
+                    // G_TO_C_PART_COLLECTED — 부품 회수 알림 (기존 v0.2.0 흐름)
+                    using var partPacket = Packet.Create((int)Protocol.G_TO_C_PART_COLLECTED, PlayerId.Value);
+                    var partMsg = new G_TO_C_PART_COLLECTED
+                    {
+                        PartId = collectResult.Part.PartId,
+                        PartNameKr = collectResult.Part.PartNameKr,
+                        PartTier = (int)collectResult.Part.PartTier,
+                        StaminaReward = collectResult.StaminaReward
+                    };
+                    partPacket.SetBody(MessagePackSerializer.Serialize(partMsg));
+                    Send(partPacket);
+
+                    // G_TO_C_MISSION_STEP_COMPLETE — MissionDisplay 갱신 (구 클라 호환)
+                    using var stepPacket = Packet.Create((int)Protocol.G_TO_C_MISSION_STEP_COMPLETE, PlayerId.Value);
+                    var stepMsg = new G_TO_C_MISSION_STEP_COMPLETE
+                    {
+                        CompletedStep = collectResult.Part.PartId,
+                        StaminaReward = collectResult.StaminaReward,
+                        NextTargetArea = 0,
+                        NextTargetInteractId = 0,
+                        NextTargetActionId = 0
+                    };
+                    stepPacket.SetBody(MessagePackSerializer.Serialize(stepMsg));
+                    Send(stepPacket);
+
+                    _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
+                        $"RNG 부품 회수: {collectResult.Part.PartNameKr} (체력+{collectResult.StaminaReward})", isBot: false);
+                }
+                else
+                {
+                    // 이미 회수된 부품 또는 매칭 실패 → 디코이 폴백
+                    resultType = 1;
+                    itemNameKr = "쓸모없는 잡동사니";
+                }
             }
             else if (roll < 65 && hasPrerequisite)
             {
