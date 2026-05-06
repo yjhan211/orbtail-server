@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.helpers;
 using network.packets;
 
 namespace game_server.network;
@@ -298,6 +299,15 @@ public partial class GameClientSession
     /// </summary>
     private void EndGameByTimeout(long matchingId)
     {
+        if (DevFlags.DisableGameEnd)
+        {
+            Logger.LogWarning("[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): EndGameByTimeout matchingId={MatchingId}",
+                matchingId);
+            // 타이머는 정리 (재발화 방지)
+            if (GameTimers.TryRemove(matchingId, out var t)) t.Dispose();
+            return;
+        }
+
         Logger.LogInformation("게임 시간 초과: MatchingId={MatchingId}", matchingId);
 
         // 타이머 정리

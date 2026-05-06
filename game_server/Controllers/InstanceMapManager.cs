@@ -145,6 +145,13 @@ public sealed class InstanceMapManager(
 
     private async void EndGame(string instanceKey, long mapSubId)
     {
+        if (DevFlags.DisableGameEnd)
+        {
+            Logger.LogWarning("[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): InstanceMapManager.EndGame instanceKey={InstanceKey}",
+                instanceKey);
+            return;
+        }
+
         try
         {
             Logger.LogInformation("게임 종료 처리 시작: {InstanceKey}", instanceKey);

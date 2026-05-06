@@ -53,6 +53,16 @@ app.MapGet("/api/instance/{matchingId:long}/full", async (long matchingId, GameS
         : Results.Ok(result);
 });
 
+// 프록시: 인스턴스 진행 로그 (이동/자원/미션/탈락)
+app.MapGet("/api/instance/{matchingId:long}/events",
+    async (long matchingId, int? limit, long? since, GameServerClient client, CancellationToken ct) =>
+    {
+        var result = await client.GetInstanceEventsAsync(matchingId, limit, since, ct);
+        return result is null
+            ? Results.NotFound(new { error = $"Instance {matchingId} not found" })
+            : Results.Ok(result);
+    });
+
 // 프록시: 글로벌 매칭 config 조회
 app.MapGet("/api/matching-config", async (GameServerClient client, CancellationToken ct) =>
 {

@@ -17,6 +17,9 @@ public partial class BotPlayerManager
     /// <summary>봇 walking 속도 (실제 플레이어 walkSpeed=3과 동일).</summary>
     private const float BotWalkSpeed = 3.0f;
 
+    /// <summary>영역 전환 직전 도어 앞에서 잠시 멈추는 시간(ms). 포탈 들어가는 시각적 단서.</summary>
+    private const int BotTransitionPauseMs = 600;
+
     /// <summary>봇 자원 틱 결과. 자원 고갈 탈락 + 위치 이동 이벤트(DemoMode 영역 전환만)를 함께 반환.</summary>
     public class BotTickResult
     {
@@ -131,13 +134,42 @@ public partial class BotPlayerManager
         {
             ChooseNewWanderTarget(bot, matchingId, closureManager);
             if (bot.Path.Count == 0) return null;
+            // ChooseNewWanderTarget이 LoopWaitUntil(+3초)을 설정하므로 새 path는 다음 틱부터 진행.
+            // 같은 틱에서 walking 시작 시 영역 도착 후 3초 휴식이 무력화되어 발소리/walk 애니가 끊기지 않음.
+            return null;
         }
 
         var nextStep = bot.Path[bot.PathIndex];
 
-        // 1) 영역 경계 통과 — 텔레포트 이벤트 발행
+        // 1) 영역 경계 통과 — 도어 앞 짧은 멈춤 후 텔레포트 (포탈 들어가는 시각적 단서)
         if (nextStep.IsAreaTransition)
         {
+            // 첫 진입: 멈춤 시각 설정 + velocity 0 정지 이벤트 발행
+            // (클라가 발소리/walk 애니를 즉시 정지하도록 명시 알림 — 미발행 시 LateUpdate 0.3초 timeout까지 발소리 잔존)
+            if (bot.TransitionPauseUntil == DateTime.MinValue)
+            {
+                bot.TransitionPauseUntil = now.AddMilliseconds(BotTransitionPauseMs);
+                bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+                return new BotMovementEvent
+                {
+                    BotPlayerId = bot.PlayerId,
+                    FromArea = bot.CurrentArea,
+                    ToArea = bot.CurrentArea,
+                    FromCell = bot.Cell,
+                    ToCell = bot.Cell,
+                    Position = bot.Position,
+                    Velocity = new Vector3f(0f, 0f, 0f),
+                    Rotation = bot.Rotation,
+                    IsAreaTransition = false
+                };
+            }
+
+            // 멈춤 진행 중: 패킷 발행 없이 대기
+            if (now < bot.TransitionPauseUntil) return null;
+
+            // 멈춤 종료 → 실제 영역 전환
+            bot.TransitionPauseUntil = DateTime.MinValue;
+
             var fromArea = bot.CurrentArea;
             var fromCell = bot.Cell;
             bot.CurrentArea = nextStep.Area;
@@ -212,51 +244,60 @@ public partial class BotPlayerManager
         };
     }
 
-    /// <summary>봇 도착 후 대기 시간 (issue22 디버그 loop).</summary>
-    private const int BotLoopWaitSeconds = 5;
+    /// <summary>봇 도착 후 다음 영역으로 출발 전 대기 시간 (자연스러운 휴식).</summary>
+    private const int BotArrivalWaitSeconds = 3;
 
     /// <summary>
     ///     봇이 도착했거나 경로가 비었을 때 새 목적지 선택 + 경로 계산.
-    ///     #127 디버그 (issue22): 봇별 층(4F/3F/2F/1F) 안에서 양 끝 영역(LoopEndpointA ↔ LoopEndpointB) ping-pong.
-    ///     RegisterBots에서 BotFloorAssignments로 층 할당.
+    ///     직책 미션 큐(JobAreaQueue) 순회 — 부품 회수 영역 + 선행 아이템 위치를
+    ///     셔플한 큐에서 다음 영역을 골라 walking pathfinder로 이동.
+    ///     ProcessBotMissionTick이 영역 도달 시 자동으로 부품 회수 시뮬.
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
     {
         var mapId = GetMatchingMapId(matchingId);
         bot.Path.Clear();
         bot.PathIndex = 0;
+        bot.TransitionPauseUntil = DateTime.MinValue;
 
-        // 봇이 LoopTarget에 도착한 경우 → 대기 + 다음 타겟으로 flip (A ↔ B)
-        if (bot.CurrentArea == bot.LoopTarget)
+        if (bot.JobAreaQueue.Count == 0) return;
+
+        // 폐쇄되지 않고 현재 영역과 다른 다음 큐 영역 찾기
+        AreaType targetArea = AreaType.None;
+        for (int i = 0; i < bot.JobAreaQueue.Count; i++)
         {
-            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotLoopWaitSeconds);
-            var nextTarget = bot.LoopTarget == bot.LoopEndpointA
-                ? bot.LoopEndpointB
-                : bot.LoopEndpointA;
-            _logger.LogInformation("봇 도착 (issue22 loop): BotId={Bot}, {Area}에서 {Sec}초 대기 → 다음 {Next}",
-                bot.PlayerId, bot.CurrentArea, BotLoopWaitSeconds, nextTarget);
-            bot.LoopTarget = nextTarget;
-            return; // 다음 틱에 새 경로 시작
+            int idx = (bot.JobAreaQueueIndex + i) % bot.JobAreaQueue.Count;
+            var candidate = bot.JobAreaQueue[idx];
+            if (closureManager.IsAreaClosed(matchingId, candidate)) continue;
+            if (candidate == bot.CurrentArea) continue;
+            targetArea = candidate;
+            bot.JobAreaQueueIndex = (idx + 1) % bot.JobAreaQueue.Count;
+            break;
         }
 
-        // 그 외 → LoopTarget으로 경로 계산. 봇별 LoopCorridor를 경유하므로
-        // GetSpawnCell(corridor → LoopTarget)을 사용해 진입 도어 셀로 정확히 도착.
-        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.LoopCorridor, bot.LoopTarget)
-                         ?? GameMapData.GetAreaSpawnCell(mapId, bot.LoopTarget);
+        if (targetArea == AreaType.None) return;
+
+        // 도착 후 잠시 대기 (자연스러운 휴식 + ProcessBotMissionTick이 부품 회수할 시간)
+        bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotArrivalWaitSeconds);
+
+        // 진입 도어 셀로 정확히 도착하도록 경로 계산.
+        // 직접 인접하지 않으면 영역 그래프 BFS가 경유 영역 자동 산출.
+        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, targetArea)
+                         ?? GameMapData.GetAreaSpawnCell(mapId, targetArea);
         var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
-            bot.LoopTarget, targetCell,
+            targetArea, targetCell,
             a => closureManager.IsAreaClosed(matchingId, a));
         if (path == null || path.Count == 0)
         {
             _logger.LogDebug("봇 경로 계산 실패: BotId={Bot}, {From} → {To}",
-                bot.PlayerId, bot.CurrentArea, bot.LoopTarget);
+                bot.PlayerId, bot.CurrentArea, targetArea);
             return;
         }
 
         bot.Path = path;
         bot.PathIndex = 0;
-        _logger.LogInformation("봇 새 경로(issue22 loop): BotId={Bot}, {From}@{Cell} → {To}@{TargetCell}, 단계={Steps}",
-            bot.PlayerId, bot.CurrentArea, bot.Cell, bot.LoopTarget, targetCell, path.Count);
+        _logger.LogInformation("봇 새 경로(직책 큐): BotId={Bot}, Job={Job}, {From}@{Cell} → {To}@{TargetCell}, 단계={Steps}",
+            bot.PlayerId, bot.MyJobTitle, bot.CurrentArea, bot.Cell, targetArea, targetCell, path.Count);
     }
 
     /// <summary>

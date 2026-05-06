@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.helpers;
 using network.packets;
 
 namespace game_server.network;
@@ -131,6 +132,7 @@ public partial class GameClientSession
     /// </summary>
     private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason)
     {
+        _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
         var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason);
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
@@ -366,6 +368,9 @@ public partial class GameClientSession
             partPacket.SetBody(MessagePackSerializer.Serialize(partMsg));
             Send(partPacket);
 
+            _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
+                $"부품 회수: {collectResult.Part.PartNameKr} (체력+{collectResult.StaminaReward})", isBot: false);
+
             // 호환: 단계 완료 패킷도 송신 (구 클라이언트 호환용)
             using var legacyPacket = Packet.Create((int)Protocol.G_TO_C_MISSION_STEP_COMPLETE, PlayerId.Value);
             var legacyMsg = new G_TO_C_MISSION_STEP_COMPLETE
@@ -541,6 +546,12 @@ public partial class GameClientSession
         packet.SetBody(MessagePackSerializer.Serialize(combinedMsg));
         Send(packet);
 
+        _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
+            result.IsRaceComplete
+                ? $"최종 결합 완성! ({result.OutputPart?.PartNameKr ?? ""}) — race 완주"
+                : $"부품 결합: {result.OutputPart?.PartNameKr ?? ""} (체력+{result.StaminaReward})",
+            isBot: false);
+
         // 호환: 최종 결합 시 ALL_COMPLETE 패킷 송신 (구 클라이언트 호환)
         if (result.IsRaceComplete)
         {
@@ -603,6 +614,13 @@ public partial class GameClientSession
     /// </summary>
     private void EndGameByRaceCompletion(long winnerId)
     {
+        if (DevFlags.DisableGameEnd)
+        {
+            Logger.LogWarning("[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): EndGameByRaceCompletion winner={Winner}",
+                winnerId);
+            return;
+        }
+
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
 
         // 완주자 외 모든 생존자 탈락 (RACE_LOST)

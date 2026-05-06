@@ -56,6 +56,29 @@ public class GameServerClient(HttpClient httpClient)
         }
     }
 
+    public async Task<InstanceEventsResponse?> GetInstanceEventsAsync(long matchingId,
+        int? limit, long? since, CancellationToken ct = default)
+    {
+        try
+        {
+            string url = $"/admin/instance/{matchingId}/events";
+            var query = new List<string>();
+            if (limit.HasValue) query.Add($"limit={limit.Value}");
+            if (since.HasValue) query.Add($"since={since.Value}");
+            if (query.Count > 0) url += "?" + string.Join("&", query);
+
+            var response = await httpClient.GetAsync(url, ct);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<InstanceEventsResponse>(JsonOpts, ct);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[GameServerClient] GetInstanceEvents({matchingId}) 오류: {ex.Message}");
+            return null;
+        }
+    }
+
     public async Task<MatchingConfigSnapshot?> GetMatchingConfigAsync(CancellationToken ct = default)
     {
         try
@@ -191,4 +214,21 @@ public class MatchingConfigApiResponse
 {
     public string Message { get; set; } = "";
     public MatchingConfigSnapshot? Config { get; set; }
+}
+
+public class InstanceEventsResponse
+{
+    public long MatchingId { get; set; }
+    public int Count { get; set; }
+    public List<GameEventEntryDto> Events { get; set; } = [];
+}
+
+public class GameEventEntryDto
+{
+    public long Seq { get; set; }
+    public long TimestampUnixMs { get; set; }
+    public string Type { get; set; } = "";
+    public long PlayerId { get; set; }
+    public bool IsBot { get; set; }
+    public string Description { get; set; } = "";
 }

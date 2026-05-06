@@ -380,6 +380,14 @@ public partial class GameClientSession
 
         // 아이템 스펙 그대로 델타값 전송 (이펙트 표시용). 변환 발생 시 플래그 전달 (클라 경고 알럿용).
         SendPlayerStatsUpdate(staminaDelta, totalCorDelta, conversionCor > 0);
+
+        // 운영툴 진행 로그
+        if (PlayerId.HasValue)
+        {
+            _gameEventLogManager.LogResource(CurrentMapSubId, PlayerId.Value,
+                staminaDelta, totalCorDelta, Stamina, Corruption,
+                conversionCor > 0, reason: "", isBot: false);
+        }
     }
 
     /// <summary>
@@ -413,7 +421,7 @@ public partial class GameClientSession
     {
         StopAllPeriodicBuffs();
         _isSleeping = false;
-        Stamina = 20; // 디버깅용 (테스트: 변환 메카닉 빨리 발동) — 정식: 100
+        Stamina = 100;
         Corruption = 66; // 게임 시작 시 오염도 시작값
         CurrentState = PlayerState.Idle;
         CurrentExploringInteractId = null;

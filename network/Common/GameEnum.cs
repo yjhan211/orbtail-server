@@ -316,6 +316,7 @@ namespace network.common
         SABOTAGE = 4,      // 사보타주
         VENT = 5,       // 벤트
         MEETING = 6,    // 회의 소집
+        RNG_COLLECT = 7,    // RNG 채집 — 1.5초 자동 액션 후 RNG 풀 결과 (v0.2.1, #79)
     }
 
     /// <summary>

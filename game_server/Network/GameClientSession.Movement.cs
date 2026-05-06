@@ -132,6 +132,8 @@ public partial class GameClientSession
                 var oldArea = CurrentArea;
                 _previousArea = oldArea; // 이전 구역 기록 (상호작용 동선추궁용)
                 CurrentArea = newArea; // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
+                _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
+                    oldArea.ToString(), newArea.ToString(), isBot: false);
                 await HandleAreaChange(oldArea, newArea);
             }
 
@@ -332,8 +334,18 @@ public partial class GameClientSession
                     }
                 }
 
-                Logger.LogDebug("Sent LEAVE to {Count} players in old Area {OldArea}, removed them from my view",
-                    oldAreaSessions.Count, oldArea);
+                // #79: 나에게 이전 Area의 봇들 삭제 알림 (봇은 TCP 세션이 없어 별도 처리)
+                var oldAreaBots = _botPlayerManager.GetBots(CurrentMapSubId)
+                    .Where(b => !b.IsEliminated && b.CurrentArea == oldArea)
+                    .ToList();
+                foreach (var bot in oldAreaBots)
+                {
+                    using var botLeavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(bot.PlayerId);
+                    Send(botLeavePacket);
+                }
+
+                Logger.LogDebug("Sent LEAVE to {Count} players + {BotCount} bots in old Area {OldArea}",
+                    oldAreaSessions.Count, oldAreaBots.Count, oldArea);
             }
 
             // 2. 새 Area의 플레이어들에게 진입 알림 (내 최신 Cell 포함)

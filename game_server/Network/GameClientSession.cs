@@ -46,6 +46,7 @@ public partial class GameClientSession : SessionBase
     private readonly TraceManager _traceManager;
     private readonly InteractionChoiceService _interactionChoiceService;
     private readonly BotPlayerManager _botPlayerManager;
+    private readonly GameEventLogManager _gameEventLogManager;
 
     // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
     private readonly HashSet<(int RuleId, long TargetPlayerId)> _sharedRules = new();
@@ -96,7 +97,8 @@ public partial class GameClientSession : SessionBase
         AreaClosureManager areaClosureManager,
         TraceManager traceManager,
         InteractionChoiceService interactionChoiceService,
-        BotPlayerManager botPlayerManager)
+        BotPlayerManager botPlayerManager,
+        GameEventLogManager gameEventLogManager)
         : base(token, logger, cacheHelper, redLock)
     {
         _onLeaveCallback = onLeaveCallback;
@@ -116,6 +118,7 @@ public partial class GameClientSession : SessionBase
         _traceManager = traceManager;
         _interactionChoiceService = interactionChoiceService;
         _botPlayerManager = botPlayerManager;
+        _gameEventLogManager = gameEventLogManager;
 
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
@@ -202,6 +205,10 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_SABOTAGE_MISSION>(bytes, HandleSabotageMission));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_PARTS,
             async bytes => await HandleMessage<C_TO_G_COMBINE_PARTS>(bytes, HandleCombineParts));
+
+        // RNG 채집 프로토콜 (v0.2.1, #79)
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RNG_COLLECT,
+            async bytes => await HandleMessage<C_TO_G_RNG_COLLECT>(bytes, HandleRngCollect));
 
         // 상호작용 선택지 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ASK,

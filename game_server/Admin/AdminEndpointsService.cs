@@ -60,6 +60,16 @@ public static class AdminEndpoints
             return Results.Ok(snapshot);
         });
 
+        // GET /admin/instance/{matchingId}/events — 인스턴스 진행 로그 (이동/자원/미션/탈락)
+        // 쿼리: limit=N (기본 200), since=Seq (해당 Seq 초과 이벤트만)
+        app.MapGet("/admin/instance/{matchingId:long}/events",
+            (long matchingId, int? limit, long? since) =>
+            {
+                int take = Math.Clamp(limit ?? 200, 1, 200);
+                var events = gameServer.GameEventLogManager.GetRecent(matchingId, take, since);
+                return Results.Ok(new { matchingId, count = events.Count, events });
+            });
+
         // GET /admin/matching-config — 현재 글로벌 매칭 config 조회
         app.MapGet("/admin/matching-config", async () =>
         {
