@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -9,45 +10,90 @@ using network.packets;
 namespace game_server.network;
 
 /// <summary>
-///     RNG 채집 흐름 — 클릭 후 1.5초 progress → C_TO_G_RNG_COLLECT → 서버 RNG 분포 결정 → G_TO_C_RNG_COLLECT_RESULT.
-///     자기 직책 풀: 50/15/25/10. 자기 풀 외: 60/40 (소모품 ItemPoolManager / 빈손).
-///     #134: 모든 InteractObject가 RNG_COLLECT로 통합 (EXPLORE/SINGLE/SABOTAGE 등 폐기).
+///     RNG 채집 2단계 흐름 (#134):
+///       1) C_TO_G_RNG_COLLECT_START — RippleMarker 클릭 즉시
+///          → stamina 차감 + cooldown 등록(short, 4초) + EXPLORE_START broadcast + cooldown broadcast + ACK
+///       2) C_TO_G_RNG_COLLECT_FINISH — progress 1.5~2초 후
+///          → RNG 결과 산출 + cooldown 갱신(30초) + EXPLORE_END broadcast + cooldown broadcast + RESULT
+///     PendingFinish dict로 START가 미처리된 FINISH 거부 + 부정행위 차단.
 /// </summary>
 public partial class GameClientSession
 {
     private const int RngCollectCooldownSeconds = 30;
+
+    /// <summary>1단계 짧은 cooldown — progress 도중 차단용. progress 폐기/finish 미수신 시 자동 해제.</summary>
+    private const int RngCollectStartCooldownSeconds = 4;
+
     private const int RngCollectStaminaCost = 5;
 
-    private Task HandleRngCollect(C_TO_G_RNG_COLLECT msg)
+    /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
+    /// FINISH 도착 시 이 set에 있어야 결과 산출 진행.</summary>
+    private readonly HashSet<int> _pendingFinish = new();
+
+    private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (IsEliminated) return Task.CompletedTask;
+        if (IsEliminated)
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
+            return Task.CompletedTask;
+        }
 
-        // 30초 쿨타임 체크 (인스턴스 단위 — 같은 매칭 누구든 회수 시 차단)
+        // 쿨타임 체크 (인스턴스 단위)
         if (RngCollectCooldownStore.IsInCooldown(CurrentMapSubId, msg.InteractId, out int remaining))
         {
-            Logger.LogDebug("RNG 채집 쿨타임 거부: PlayerId={PlayerId}, InteractId={InteractId}, 남은={Sec}s",
+            Logger.LogDebug("RNG START 쿨타임 거부: PlayerId={PlayerId}, InteractId={InteractId}, 남은={Sec}s",
                 PlayerId, msg.InteractId, remaining);
-            SendRngCollectResult(msg.InteractId, 0, 0, 0, remaining);
+            SendRngCollectAck(msg.InteractId, ErrorCode.ACTION_ALREADY_EXPLORED, remaining);
             return Task.CompletedTask;
         }
 
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {
-            Logger.LogWarning("RNG 채집 InteractId 미존재: {InteractId}", msg.InteractId);
-            SendRngCollectResult(msg.InteractId, 0, 0, 0, 0);
+            Logger.LogWarning("RNG START InteractId 미존재: {InteractId}", msg.InteractId);
+            SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
             return Task.CompletedTask;
         }
 
-        // 채집 시작 비용 차감 (스태미나 0이어도 ModifyStats가 정신력 1:2 변환 처리)
+        // stamina 차감 (즉시) — 정신력 1:2 변환은 ModifyStats가 처리
         ModifyStats(-RngCollectStaminaCost);
 
-        // 사보타주 상태 자동 복구 (RNG_COLLECT 통합 — InteractionPanel 폐기 후 사보타주도 RNG로 해결)
+        // 1단계 짧은 cooldown 등록 — progress 도중 차단. FINISH 도착 시 30초로 갱신.
+        RngCollectCooldownStore.SetCooldown(CurrentMapSubId, msg.InteractId, RngCollectStartCooldownSeconds);
+
+        // 사보타주 상태 자동 복구
         var currentState = _interactableStateManager.GetInteractableState(CurrentMapSubId, msg.InteractId);
         if (currentState == (int)InteractableStateType.SABOTAGE)
-        {
             _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, 0);
+
+        _pendingFinish.Add(msg.InteractId);
+
+        Logger.LogInformation("RNG 채집 START: PlayerId={PlayerId}, InteractId={InteractId}",
+            PlayerId, msg.InteractId);
+
+        SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
+        BroadcastRngCollectCooldown(msg.InteractId, RngCollectStartCooldownSeconds);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleRngCollectFinish(C_TO_G_RNG_COLLECT_FINISH msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsEliminated) return Task.CompletedTask;
+
+        if (!_pendingFinish.Remove(msg.InteractId))
+        {
+            Logger.LogWarning("RNG FINISH — START 미수신 또는 중복: PlayerId={PlayerId}, InteractId={InteractId}",
+                PlayerId, msg.InteractId);
+            return Task.CompletedTask;
+        }
+
+        var info = GameInteractableData.Get(msg.InteractId);
+        if (info == null)
+        {
+            Logger.LogWarning("RNG FINISH InteractId 미존재: {InteractId}", msg.InteractId);
+            return Task.CompletedTask;
         }
 
         var outcome = RngCollectCore.Resolve(
@@ -60,7 +106,7 @@ public partial class GameClientSession
             itemPoolManager: _itemPoolManager,
             isBot: false);
 
-        // 부품 회수 시 패킷 송신 (PART_COLLECTED + MISSION_STEP_COMPLETE)
+        // 부품 회수 시 패킷 송신
         if (outcome is { ResultType: 3, CollectedPart: not null })
         {
             ApplyStaminaReward(outcome.StaminaReward);
@@ -92,23 +138,38 @@ public partial class GameClientSession
                 $"RNG 부품 회수: {outcome.CollectedPart.PartNameKr} (체력+{outcome.StaminaReward})", isBot: false);
         }
 
-        // 소모품 인벤토리 업데이트 패킷
         if (outcome.AddedInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedInventoryItem);
 
         Logger.LogInformation(
-            "RNG 채집: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, ItemId={ItemId}, Stamina={Sta}",
-            PlayerId, msg.InteractId, outcome.ResultType, outcome.ItemId, outcome.StaminaReward);
+            "RNG 채집 FINISH: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, ItemId={ItemId}",
+            PlayerId, msg.InteractId, outcome.ResultType, outcome.ItemId);
 
         SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId,
             outcome.StaminaReward, RngCollectCooldownSeconds);
 
+        // FINISH 시점에 30초 cooldown 갱신 broadcast (RngCollectCore.Resolve 내부에서 SetCooldown 30 호출됨)
         BroadcastRngCollectCooldown(msg.InteractId, RngCollectCooldownSeconds);
         return Task.CompletedTask;
     }
 
+    private void SendRngCollectAck(int interactId, ErrorCode errorCode, int cooldownRemain)
+    {
+        if (!PlayerId.HasValue) return;
+
+        var msg = new G_TO_C_RNG_COLLECT_ACK
+        {
+            InteractId = interactId,
+            ErrorCode = errorCode,
+            CooldownRemainSeconds = cooldownRemain
+        };
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_RNG_COLLECT_ACK, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
+    }
+
     /// <summary>
     ///     같은 매칭 인스턴스의 모든 플레이어 클라에게 InteractId + cooldown broadcast.
-    ///     결과 정보는 포함 X — 직책 노출 방지.
     /// </summary>
     private void BroadcastRngCollectCooldown(int interactId, int cooldownSeconds)
     {

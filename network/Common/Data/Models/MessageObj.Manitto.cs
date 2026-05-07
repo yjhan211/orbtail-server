@@ -152,6 +152,38 @@ namespace network.common.data.models
     }
 
     /// <summary>
+    ///     #134 — RNG 채집 시작 요청. RippleMarker 클릭 즉시 송신. 서버가 stamina 차감 + 쿨타임 등록 + ACK 응답.
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_RNG_COLLECT_START : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
+    }
+
+    /// <summary>
+    ///     #134 — RNG 채집 시작 승인/거부 응답.
+    ///     ErrorCode=SUCCESS면 progress 진행 후 FINISH 송신. 거부면 클라가 InteractionPanel 닫음.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_RNG_COLLECT_ACK : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        /// <summary>거부 시 cooldown 남은 초 (이미 회수됨 케이스). 성공 시 0.</summary>
+        [Key("cooldownRemainSeconds")] public int CooldownRemainSeconds { get; set; }
+    }
+
+    /// <summary>
+    ///     #134 — RNG 채집 progress 완료 → 결과 산출 요청. 서버가 RNG 분포로 결과 결정 + RESULT 응답.
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_RNG_COLLECT_FINISH : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+    }
+
+    /// <summary>
     ///     색출 적중 시 부품 전이 알림. 마니또(피탈자) → 색출자(획득자)로 가장 가치 높은 부품 1개 이동.
     /// </summary>
     [MessagePackObject]
