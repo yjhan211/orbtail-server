@@ -35,7 +35,6 @@ public partial class GameClientSession : SessionBase
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
     private readonly InGameInventoryManager _inGameInventoryManager;
     private readonly InteractableStateManager _interactableStateManager;
-    private readonly InteractRuleManager _interactRuleManager;
     private readonly ItemPoolManager _itemPoolManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly Action<long, GameClientSession> _registerSessionCallback;
@@ -89,7 +88,6 @@ public partial class GameClientSession : SessionBase
         AreaRuleManager areaRuleManager,
         ItemPoolManager itemPoolManager,
         CorridorRuleManager corridorRuleManager,
-        InteractRuleManager interactRuleManager,
         DoorStateManager doorStateManager,
         SabotageManager sabotageManager,
         ManittoChainManager manittoChainManager,
@@ -109,7 +107,6 @@ public partial class GameClientSession : SessionBase
         _areaRuleManager = areaRuleManager;
         _itemPoolManager = itemPoolManager;
         _corridorRuleManager = corridorRuleManager;
-        _interactRuleManager = interactRuleManager;
         _doorStateManager = doorStateManager;
         _sabotageManager = sabotageManager;
         _manittoChainManager = manittoChainManager;
@@ -168,12 +165,6 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT,
             async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_START,
-            async bytes => await HandleMessage<C_TO_G_EXPLORE_START>(bytes, HandleExploreStart));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_SELECT,
-            async bytes => await HandleMessage<C_TO_G_EXPLORE_SELECT>(bytes, HandleExploreSelect));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_EXPLORE_END,
-            async bytes => await HandleMessage<C_TO_G_EXPLORE_END>(bytes, HandleExploreEnd));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,
             async bytes => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE,

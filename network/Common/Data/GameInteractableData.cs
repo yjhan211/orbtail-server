@@ -18,7 +18,7 @@ namespace network.common.data
         private static readonly Dictionary<int, List<InteractableInfoData>> _infosByZone = new();
         private static readonly Dictionary<int, List<int>> _itemPools = new();
 
-        public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData, List<CsvRow> violationData, List<CsvRow> itemPoolData)
+        public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData, List<CsvRow> itemPoolData)
         {
             // 아이템 풀 데이터 로드
             _itemPools.Clear();
@@ -36,15 +36,6 @@ namespace network.common.data
             _infos.Clear();
             _infosByZone.Clear();
 
-            // violation 데이터를 (interact_id, action_id) 키로 매핑 — 인스턴스 단위 위반 결과
-            var violationsByKey = new Dictionary<(int, int), CsvRow>();
-            foreach (var row in violationData)
-            {
-                var id = int.Parse(row["id"]);
-                var actionId = int.Parse(row["action_id"]);
-                violationsByKey[(id, actionId)] = row;
-            }
-
             // 공통 액션 풀 데이터를 object_type별로 그룹화 (GDD §2.4.2 — 통합 풀)
             var actionsByObjectType = actionData
                 .GroupBy(row => int.Parse(row["object_type"]))
@@ -53,10 +44,10 @@ namespace network.common.data
                     g => g.OrderBy(row => int.Parse(row["action_id"])).ToList()
                 );
 
-            // 인터랙터블 정보 생성 — 각 인터랙터블의 object_type에 매칭되는 공통 풀에서 액션 복제 + 인스턴스별 violation 부여
+            // 인터랙터블 정보 생성 — 각 인터랙터블의 object_type에 매칭되는 공통 풀에서 액션 복제
             foreach (var row in infoData)
             {
-                var info = InteractableInfoData.CreateFromData(row, actionsByObjectType, violationsByKey);
+                var info = InteractableInfoData.CreateFromData(row, actionsByObjectType);
                 _infos[info.Id] = info;
 
                 if (!_infosByZone.TryGetValue(info.ZoneId, out var list))
@@ -126,21 +117,20 @@ namespace network.common.data
 
         public static InteractableInfoData CreateFromData(
             CsvRow row,
-            Dictionary<int, List<CsvRow>> actionsByObjectType,
-            Dictionary<(int, int), CsvRow> violationsByKey)
+            Dictionary<int, List<CsvRow>> actionsByObjectType)
         {
             var id = int.Parse(row["id"]);
             var objectType = row.ContainsKey("object_type") && !string.IsNullOrEmpty(row["object_type"])
                 ? (InteractableObjectType)int.Parse(row["object_type"])
                 : InteractableObjectType.None;
 
-            // object_type에 해당하는 공통 풀에서 액션 데이터를 복제하고, 인스턴스 ID(id)와 인스턴스별 violation을 부여
+            // object_type에 해당하는 공통 풀에서 액션 데이터를 복제
             var actions = new List<InteractableActionData>();
             if (actionsByObjectType.TryGetValue((int)objectType, out var poolRows))
             {
                 foreach (var poolRow in poolRows)
                 {
-                    actions.Add(InteractableActionData.CreateFromData(id, poolRow, violationsByKey));
+                    actions.Add(InteractableActionData.CreateFromData(id, poolRow));
                 }
             }
 
@@ -166,27 +156,18 @@ namespace network.common.data
         public int State { get; private set; }  // 0=기본, 1+=특수 상태
         public LocalizedText ActionText { get; private set; }
 
-        // 기본 결과 (규칙 무관 또는 미채택 시)
+        // 기본 결과 (RNG 채집 + 사보타주 등에서 사용)
         public LocalizedText ResultText { get; private set; }
         public ActionResultType ResultType { get; private set; }
         public int ResultId { get; private set; }
         public int ResultAmount { get; private set; }
-
-        // 규칙 위반 시 결과 (비어있으면 기본 결과 사용)
-        public LocalizedText ViolationResultText { get; private set; }
-        public ActionResultType ViolationResultType { get; private set; }
-        public int ViolationResultId { get; private set; }
-        public int ViolationResultAmount { get; private set; }
-
-        // 위반 결과가 정의되어 있는지 여부 (한국어 텍스트 기준)
-        public bool HasViolationResult => ViolationResultText != null && !string.IsNullOrEmpty(ViolationResultText.Kr);
 
         public int PortalTriggerId { get; private set; }
         public int StaminaCost { get; private set; }
         public int RequireItemId { get; private set; }  // 0이면 조건 없음, 0보다 크면 해당 아이템 필요
         public string RequireAction { get; private set; }  // 빈 문자열이면 조건 없음, "interactableId_actionId" 형식
 
-        public static InteractableActionData CreateFromData(int interactId, CsvRow row, Dictionary<(int, int), CsvRow> violationsByKey)
+        public static InteractableActionData CreateFromData(int interactId, CsvRow row)
         {
             var actionId = int.Parse(row["action_id"]);
 
@@ -195,20 +176,6 @@ namespace network.common.data
             var resultType = row.ContainsKey("result_type") ? (ActionResultType)int.Parse(row["result_type"]) : ActionResultType.NONE;
             var resultId = row.ContainsKey("result_id") ? int.Parse(row["result_id"]) : 0;
             var resultAmount = row.ContainsKey("result_amount") ? int.Parse(row["result_amount"]) : 0;
-
-            // 위반 결과 (별도 CSV에서 조회)
-            LocalizedText violationResultText = new LocalizedText("");
-            var violationResultType = ActionResultType.NONE;
-            var violationResultId = 0;
-            var violationResultAmount = 0;
-
-            if (violationsByKey.TryGetValue((interactId, actionId), out var violationRow))
-            {
-                violationResultText = LocalizedText.FromCsvMultiline(violationRow, "result_text");
-                violationResultType = (ActionResultType)int.Parse(violationRow["result_type"]);
-                violationResultId = int.Parse(violationRow["result_id"]);
-                violationResultAmount = int.Parse(violationRow["result_amount"]);
-            }
 
             return new InteractableActionData
             {
@@ -220,10 +187,6 @@ namespace network.common.data
                 ResultType = resultType,
                 ResultId = resultId,
                 ResultAmount = resultAmount,
-                ViolationResultText = violationResultText,
-                ViolationResultType = violationResultType,
-                ViolationResultId = violationResultId,
-                ViolationResultAmount = violationResultAmount,
                 PortalTriggerId = row.ContainsKey("portal_trigger_id") ? int.Parse(row["portal_trigger_id"]) : 0,
                 StaminaCost = row.ContainsKey("stamina_cost") ? int.Parse(row["stamina_cost"]) : 0,
                 RequireItemId = row.ContainsKey("require_item_id") && !string.IsNullOrEmpty(row["require_item_id"]) ? int.Parse(row["require_item_id"]) : 0,

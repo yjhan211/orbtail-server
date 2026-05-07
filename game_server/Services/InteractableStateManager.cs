@@ -229,12 +229,9 @@ public class InteractableStateManager
     }
 
     /// <summary>
-    ///     특정 액션의 결과 정보 반환 (ResultType, ResultId, ResultAmount)
-    ///     isViolation=true이고 violation 결과가 정의되어 있으면 violation_* 값 반환
-    ///     그 외에는 기본 result_* 값 반환
+    ///     특정 액션의 결과 정보 반환 (ResultType, ResultId, ResultAmount).
     /// </summary>
-    public (ActionResultType resultType, int resultId, int resultAmount) GetActionResult(int interactId, int actionId,
-        bool isViolation = false)
+    public (ActionResultType resultType, int resultId, int resultAmount) GetActionResult(int interactId, int actionId)
     {
         var interactable = GameInteractableData.Get(interactId);
 
@@ -242,11 +239,6 @@ public class InteractableStateManager
         if (action == null)
             return (ActionResultType.NONE, 0, 0);
 
-        // 규칙 위반이고 위반 결과가 정의되어 있으면 위반 결과 사용
-        if (isViolation && action.HasViolationResult)
-            return (action.ViolationResultType, action.ViolationResultId, action.ViolationResultAmount);
-
-        // 기본 결과 반환
         return (action.ResultType, action.ResultId, action.ResultAmount);
     }
 

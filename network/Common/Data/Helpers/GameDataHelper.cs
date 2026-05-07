@@ -212,7 +212,6 @@ namespace network.common.data.helpers
             GameInteractableData.Initialize(
                 loadedData[DataFiles.Interactable.Info],
                 loadedData[DataFiles.Interactable.Action],
-                loadedData[DataFiles.Interactable.Violation],
                 loadedData[DataFiles.Interactable.ItemPool]
             );
 
@@ -301,10 +300,9 @@ namespace network.common.data.helpers
             {
                 public const string Info = "interactable_info.csv";
                 public const string Action = "object_action.csv";  // GDD §2.4.2 — object_type 기반 통합 풀
-                public const string Violation = "interactable_action_violation.csv";
                 public const string ItemPool = "interactable_item_pool.csv";
 
-                public static readonly string[] ALL = new[] { Info, Action, Violation, ItemPool };
+                public static readonly string[] ALL = new[] { Info, Action, ItemPool };
             }
 
             public static class Mission

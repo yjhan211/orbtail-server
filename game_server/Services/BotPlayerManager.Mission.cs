@@ -22,7 +22,7 @@ public partial class BotPlayerManager
     ///     - 스태미나 부족 시 자동 소모품 사용
     /// </summary>
     public BotMissionTickResult ProcessBotMissionTick(long matchingId, MissionManager missionManager,
-        InGameInventoryManager inventoryManager)
+        InGameInventoryManager inventoryManager, ItemPoolManager itemPoolManager)
     {
         var result = new BotMissionTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
@@ -37,7 +37,7 @@ public partial class BotPlayerManager
             if (state == null || state.IsCompleted) continue;
 
             // 1) 봇 walking 도착 후 RNG 채집 (PendingRngInteractId가 있을 때만)
-            TryRngCollectIfArrived(bot, matchingId, missionManager, inventoryManager, state, result);
+            TryRngCollectIfArrived(bot, matchingId, missionManager, inventoryManager, itemPoolManager, state, result);
 
             // 2) 결합 시도 (회수 직후 보유 부품 검사)
             TryAutoCombine(bot, matchingId, missionManager, state, result);
@@ -72,7 +72,7 @@ public partial class BotPlayerManager
     /// </summary>
     private void TryRngCollectIfArrived(BotPlayerState bot, long matchingId,
         MissionManager missionManager, InGameInventoryManager inventoryManager,
-        PlayerPartState state, BotMissionTickResult result)
+        ItemPoolManager itemPoolManager, PlayerPartState state, BotMissionTickResult result)
     {
         if (bot.PendingRngInteractId <= 0) return;
 
@@ -127,7 +127,7 @@ public partial class BotPlayerManager
 
         // (3) progress 완료 → RNG 결과 산출
         var outcome = RngCollectCore.Resolve(matchingId, bot.PlayerId, bot.MyJobTitle,
-            info, missionManager, inventoryManager, isBot: true);
+            info, missionManager, inventoryManager, itemPoolManager, isBot: true);
 
         if (outcome is { ResultType: 3, CollectedPart: not null })
         {

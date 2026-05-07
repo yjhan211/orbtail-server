@@ -135,11 +135,17 @@ namespace network.common.data.models
         [Key("resultType")] public int ResultType { get; set; }
         /// <summary>부품/선행/소모품의 식별자 (resultType 0/1은 0)</summary>
         [Key("itemId")] public int ItemId { get; set; }
-        /// <summary>표시용 한국어 이름. 클라가 LocaleManager로 다국어 처리 시 키로 활용</summary>
+        /// <summary>표시용 한국어 이름 (소모품 명, 부품 명 등). 빈손/디코이 시 빈 문자열.</summary>
         [Key("itemNameKr")] public string ItemNameKr { get; set; }
         [Key("staminaReward")] public int StaminaReward { get; set; }
         /// <summary>다음 채집 가능까지 쿨타임 (초). 30초 표준, 0이면 클라 기본값 사용</summary>
         [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
+        /// <summary>발견 시 결과 텍스트 kr (object_action.csv result_text). 빈손/디코이 시 빈 문자열.</summary>
+        [Key("resultTextKr")] public string ResultTextKr { get; set; }
+        /// <summary>결과 텍스트 en</summary>
+        [Key("resultTextEn")] public string ResultTextEn { get; set; }
+        /// <summary>결과 텍스트 jp</summary>
+        [Key("resultTextJp")] public string ResultTextJp { get; set; }
     }
 
     /// <summary>

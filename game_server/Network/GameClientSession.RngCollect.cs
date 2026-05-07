@@ -9,15 +9,14 @@ using network.packets;
 namespace game_server.network;
 
 /// <summary>
-///     v0.2.1 (#79) — RNG 채집 흐름.
-///     클라가 1.5초 progress 후 C_TO_G_RNG_COLLECT 송신 → 서버 RNG 풀 결정 → G_TO_C_RNG_COLLECT_RESULT 응답.
-///     자기 직책 부품 풀 매칭: 50/15/25/10 (LB 등 선행 미사용 직책은 50/0/40/10)
-///     자기 풀 외: 60/40 (자잘한 소모품/빈손)
+///     RNG 채집 흐름 — 클릭 후 1.5초 progress → C_TO_G_RNG_COLLECT → 서버 RNG 분포 결정 → G_TO_C_RNG_COLLECT_RESULT.
+///     자기 직책 풀: 50/15/25/10. 자기 풀 외: 60/40 (소모품 ItemPoolManager / 빈손).
+///     #134: 모든 InteractObject가 RNG_COLLECT로 통합 (EXPLORE/SINGLE/SABOTAGE 등 폐기).
 /// </summary>
 public partial class GameClientSession
 {
     private const int RngCollectCooldownSeconds = 30;
-    private const int RngCollectStaminaCost = 5;     // 채집 시작 시 차감 (기존 EXPLORE와 동등 부담, #79 결정)
+    private const int RngCollectStaminaCost = 5;
 
     private Task HandleRngCollect(C_TO_G_RNG_COLLECT msg)
     {
@@ -29,24 +28,29 @@ public partial class GameClientSession
         {
             Logger.LogDebug("RNG 채집 쿨타임 거부: PlayerId={PlayerId}, InteractId={InteractId}, 남은={Sec}s",
                 PlayerId, msg.InteractId, remaining);
-            // 빈손 응답 + 남은 쿨타임 전달 (클라가 ItemAlert 표시)
-            SendRngCollectResult(msg.InteractId, 0, 0, "아직 다시 살펴볼 수 없다", 0, remaining);
+            SendRngCollectResult(msg.InteractId, 0, 0, "", "아직 다시 살펴볼 수 없다.", "Not ready yet.", "まだ調べられない。", 0, remaining);
             return Task.CompletedTask;
         }
 
-        // InteractableInfoData 조회
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {
             Logger.LogWarning("RNG 채집 InteractId 미존재: {InteractId}", msg.InteractId);
-            SendRngCollectResult(msg.InteractId, 0, 0, "잘못된 오브젝트", 0, 0);
+            SendRngCollectResult(msg.InteractId, 0, 0, "", RngCollectCore.EmptyResultKr, RngCollectCore.EmptyResultEn,
+                RngCollectCore.EmptyResultJp, 0, 0);
             return Task.CompletedTask;
         }
 
         // 채집 시작 비용 차감 (스태미나 0이어도 ModifyStats가 정신력 1:2 변환 처리)
         ModifyStats(-RngCollectStaminaCost);
 
-        // 공통 로직 — 봇/플레이어 동일한 RNG 분포 + 인벤토리/부품 처리.
+        // 사보타주 상태 자동 복구 (RNG_COLLECT 통합 — InteractionPanel 폐기 후 사보타주도 RNG로 해결)
+        var currentState = _interactableStateManager.GetInteractableState(CurrentMapSubId, msg.InteractId);
+        if (currentState == (int)InteractableStateType.SABOTAGE)
+        {
+            _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, 0);
+        }
+
         var outcome = RngCollectCore.Resolve(
             matchingId: CurrentMapSubId,
             playerId: PlayerId.Value,
@@ -54,6 +58,7 @@ public partial class GameClientSession
             info: info,
             missionManager: _missionManager,
             inventoryManager: _inGameInventoryManager,
+            itemPoolManager: _itemPoolManager,
             isBot: false);
 
         // 부품 회수 시 패킷 송신 (PART_COLLECTED + MISSION_STEP_COMPLETE)
@@ -88,18 +93,17 @@ public partial class GameClientSession
                 $"RNG 부품 회수: {outcome.CollectedPart.PartNameKr} (체력+{outcome.StaminaReward})", isBot: false);
         }
 
-        // 소모품 인벤토리 업데이트 패킷 (RngCollectCore가 AddItem만 호출, 패킷은 여기서)
+        // 소모품 인벤토리 업데이트 패킷
         if (outcome.AddedInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedInventoryItem);
 
         Logger.LogInformation(
             "RNG 채집: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, Item={Item}, Stamina={Sta}",
             PlayerId, msg.InteractId, outcome.ResultType, outcome.ItemNameKr, outcome.StaminaReward);
 
-        // 회수자 본인에게는 결과 패킷
         SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId, outcome.ItemNameKr,
+            outcome.ResultTextKr, outcome.ResultTextEn, outcome.ResultTextJp,
             outcome.StaminaReward, RngCollectCooldownSeconds);
 
-        // 매칭 내 모든 클라(본인 포함)에게 쿨타임 broadcast — 마커 30초 숨김
         BroadcastRngCollectCooldown(msg.InteractId, RngCollectCooldownSeconds);
         return Task.CompletedTask;
     }
@@ -127,6 +131,7 @@ public partial class GameClientSession
     }
 
     private void SendRngCollectResult(int interactId, int resultType, int itemId, string itemNameKr,
+        string resultTextKr, string resultTextEn, string resultTextJp,
         int staminaReward, int cooldownSeconds)
     {
         if (!PlayerId.HasValue) return;
@@ -137,6 +142,9 @@ public partial class GameClientSession
             ResultType = resultType,
             ItemId = itemId,
             ItemNameKr = itemNameKr,
+            ResultTextKr = resultTextKr,
+            ResultTextEn = resultTextEn,
+            ResultTextJp = resultTextJp,
             StaminaReward = staminaReward,
             CooldownSeconds = cooldownSeconds
         };
