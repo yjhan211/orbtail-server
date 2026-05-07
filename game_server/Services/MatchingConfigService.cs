@@ -126,18 +126,22 @@ public class MatchingConfigService
     {
         _startDelaySec = DefaultStartDelaySec;
         _intervalSec = DefaultIntervalSec;
-        _forcedSequence = null;
+        // DEMO_MODE 활성 시 DemoMode.ForcedClosureSequence로 복원 (GDD 정합), 비활성 시 무작위(null)
+        _forcedSequence = DemoMode.IsActive ? new List<AreaType>(DemoMode.ForcedClosureSequence) : null;
         await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, StartDelayRedisField);
         await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, IntervalRedisField);
         await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, ForcedSequenceRedisField);
-        _logger.LogInformation("폐쇄 config 초기화 (기본값 복원)");
+        _logger.LogInformation("폐쇄 config 초기화 (DEMO_MODE={Demo}, 시퀀스={Seq})",
+            DemoMode.IsActive, _forcedSequence != null ? "DemoMode 시퀀스" : "무작위");
     }
 
     public async Task ClearForcedSequenceAsync()
     {
-        _forcedSequence = null;
+        // DEMO_MODE 활성 시 DemoMode.ForcedClosureSequence로 복원, 비활성 시 무작위(null)
+        _forcedSequence = DemoMode.IsActive ? new List<AreaType>(DemoMode.ForcedClosureSequence) : null;
         await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, ForcedSequenceRedisField);
-        _logger.LogInformation("폐쇄 시퀀스 강제 지정 해제 (무작위 복원)");
+        _logger.LogInformation("폐쇄 시퀀스 강제 지정 해제 (DEMO_MODE={Demo}, 시퀀스={Seq})",
+            DemoMode.IsActive, _forcedSequence != null ? "DemoMode 시퀀스" : "무작위");
     }
 
     // ─── 직책 풀 Config (Redis 공유) ─────────────────────────────────────────
