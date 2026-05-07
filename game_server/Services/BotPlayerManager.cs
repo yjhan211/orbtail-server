@@ -127,23 +127,44 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     봇 기본 의상 (user_server SetupNewPlayer 5종 + 봇 식별용 새싹 헤어밴드).
+    ///     봇 기본 의상 (user_server SetupNewPlayer 5종, 액세서리는 직책별로 차등).
     /// </summary>
     private static readonly int[] BotDefaultWearItemIds =
     {
         101000003, // Hair
         102000003, // Face
-        103000002, // 새싹 헤어밴드 — 봇 식별용 액세서리
         104000005, // Top
         105000005, // Bottom
         106000003  // Shoes
     };
 
     /// <summary>
+    ///     봇 직책별 액세서리 (시연 시각 식별용).
+    /// </summary>
+    private static readonly Dictionary<JobTitle, int> BotAccessoryByJob = new()
+    {
+        { JobTitle.BROADCAST_MEMBER, 103000001 },  // 리본 헤어밴드
+        { JobTitle.DISCIPLINE_MEMBER, 103000004 }, // 프리뮬라
+        { JobTitle.SCIENCE_MEMBER, 103000005 },    // 뽀송 귀마개
+        { JobTitle.HEALTH_MEMBER, 103000006 }      // 베레모
+    };
+
+    /// <summary>
+    ///     봇 기본 의상 + 직책별 액세서리 조합 wear list 생성.
+    /// </summary>
+    private static List<int> BuildBotWearItems(JobTitle jobTitle)
+    {
+        var list = new List<int>(BotDefaultWearItemIds);
+        if (BotAccessoryByJob.TryGetValue(jobTitle, out var accessoryId))
+            list.Add(accessoryId);
+        return list;
+    }
+
+    /// <summary>
     ///     봇의 PlayerInfo를 합성해서 반환 — G_TO_C_AREA_PLAYER_ENTER / G_TO_C_PLAYER_INFO 등
     ///     실제 플레이어 패킷 동등 시각화에 사용.
     ///     #125: 봇은 Redis에 저장되지 않으므로 매 호출 시 BotPlayerState로부터 합성.
-    ///     #127: 기본 의상 5종 착용으로 외형 노출.
+    ///     #127: 기본 의상 5종 + 직책별 액세서리(시연 식별).
     /// </summary>
     public PlayerInfo? SynthesizePlayerInfo(long matchingId, long botPlayerId)
     {
@@ -161,7 +182,7 @@ public partial class BotPlayerManager
             LastCell = bot.Cell,
             Hp = 5000,
             Stamina = bot.Stamina,
-            WearItemIdList = new List<int>(BotDefaultWearItemIds)
+            WearItemIdList = BuildBotWearItems(bot.MyJobTitle)
         };
         info.ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, mapId, matchingId, bot.Cell)
         {
