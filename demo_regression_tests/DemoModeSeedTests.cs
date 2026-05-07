@@ -56,8 +56,7 @@ public class DemoModeSeedTests
     [InlineData(JobTitle.SCIENCE_MEMBER, 0, AreaType.ExamRoom)]
     [InlineData(JobTitle.SCIENCE_MEMBER, 170, AreaType.Library)]
     [InlineData(JobTitle.SCIENCE_MEMBER, 300, AreaType.ExamRoom)]
-    [InlineData(JobTitle.HEALTH_MEMBER, 0, AreaType.Gym)]
-    [InlineData(JobTitle.HEALTH_MEMBER, 720, AreaType.Gym)]
+    // HEALTH_MEMBER는 BotMovementScript에서 폐기 — 직책 큐 자연 walking으로 전환됨 (#134).
     public void BotMovementScript_AreaAtTime(JobTitle job, int elapsedSec, AreaType expected)
     {
         var script = DemoMode.BotMovementScript[job];
