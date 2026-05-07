@@ -726,8 +726,8 @@ public class GameServer(
     private void StartTargetLocationTimer()
     {
         _targetLocationTimer = new Timer(ProcessTargetLocation, null,
-            TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
-        logger.LogInformation("타겟 위치 전송 타이머 시작 (3초 간격)");
+            TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        logger.LogInformation("타겟 위치 전송 타이머 시작 (1초 간격)");
     }
 
     private void ProcessTargetLocation(object? state)
