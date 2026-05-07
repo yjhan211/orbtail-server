@@ -364,4 +364,7 @@ public class BotPlayerState
 
     /// <summary>RNG 채집 progress 시작 시각. 0이면 아직 시작 안 함. 시작 후 1.5초 경과 시 결과 산출.</summary>
     public DateTime RngCollectProgressStartTime { get; set; } = DateTime.MinValue;
+
+    /// <summary>walking 시작 시 G_TO_C_EXPLORE_END broadcast가 필요한지 — ChooseNewWanderTarget이 set, 다음 ProcessBotMovementTick에서 수집 + reset.</summary>
+    public bool PendingExploreEndBroadcast { get; set; }
 }

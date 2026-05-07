@@ -905,9 +905,11 @@ public class GameServer(
             foreach (long matchingId in matchingIds)
             {
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
-                var movements = _botPlayerManager.ProcessBotMovementTick(matchingId, _areaClosureManager);
-                foreach (var ev in movements)
+                var movementResult = _botPlayerManager.ProcessBotMovementTick(matchingId, _areaClosureManager);
+                foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
+                if (movementResult.ExploreEnds.Count > 0)
+                    BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
             }
         }
         catch (Exception ex)

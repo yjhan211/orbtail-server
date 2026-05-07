@@ -27,6 +27,13 @@ public partial class BotPlayerManager
         public List<BotMovementEvent> Movements { get; } = new();
     }
 
+    /// <summary>#134 봇 walking 틱 결과 — Movements + ExploreEnds (walking 시작 시 EXPLORE_END broadcast 안전망).</summary>
+    public class BotWalkingTickResult
+    {
+        public List<BotMovementEvent> Movements { get; } = new();
+        public List<(long botId, AreaType area)> ExploreEnds { get; } = new();
+    }
+
     /// <summary>
     ///     봇 자원 틱(5초). 자원 변동 + 탈락 + DemoMode 스크립트 영역 전환만 처리.
     ///     일반 walking은 ProcessBotMovementTick(250ms)에서 별도 처리.
@@ -87,22 +94,27 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     #127: 봇 walking 틱(250ms). DemoMode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
+    ///     #127: 봇 walking 틱(50ms). DemoMode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
     ///     실제 플레이어와 동일한 walkSpeed=3.0 적용. 매 틱 G_TO_C_MOVE 동등 이벤트 발행.
+    ///     #134: 추가로 ChooseNewWanderTarget 시 PendingExploreEndBroadcast가 set된 봇은 ExploreEnds list에 수집 — walking 시작 안전망.
     /// </summary>
-    public List<BotMovementEvent> ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager)
+    public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager)
     {
-        var movements = new List<BotMovementEvent>();
-        // DEMO_MODE에서도 walking 활성 (스크립트 영역 텔레포트는 ProcessBotTick이 5초 주기로 별도 강제)
-        if (!_botStates.TryGetValue(matchingId, out var bots)) return movements;
+        var result = new BotWalkingTickResult();
+        if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
 
         foreach (var bot in bots)
         {
             if (bot.IsEliminated) continue;
             var ev = WalkStep(bot, matchingId, closureManager);
-            if (ev != null) movements.Add(ev);
+            if (ev != null) result.Movements.Add(ev);
+            if (bot.PendingExploreEndBroadcast)
+            {
+                result.ExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
+                bot.PendingExploreEndBroadcast = false;
+            }
         }
-        return movements;
+        return result;
     }
 
     /// <summary>
@@ -282,6 +294,8 @@ public partial class BotPlayerManager
         bot.PathIndex = 0;
         bot.TransitionPauseUntil = DateTime.MinValue;
         bot.PendingRngInteractId = 0;
+        // walking 시작 시 EXPLORE_END broadcast 안전망 — 다음 ProcessBotMovementTick에서 수집.
+        bot.PendingExploreEndBroadcast = true;
 
         // 1) 현재 영역에 아직 탐색하지 않은 InteractObject가 남아있으면 같은 영역 내 다음 셀로 walking
         if (TryWalkToNextInteractInQueue(bot, matchingId, mapId, closureManager)) return;
@@ -381,6 +395,8 @@ public partial class BotPlayerManager
             bot.Path = path;
             bot.PathIndex = 0;
             bot.PendingRngInteractId = nextId;
+            // walking 시작 시 EXPLORE_END broadcast 안전망 — 봇이 RNG progress 끝나고 같은 영역 내 다음 셀로 이동 시 EXPLORE_1 잔존 회피.
+            bot.PendingExploreEndBroadcast = true;
             // 짧은 대기 — 클라가 walking 시작 직전 잠시 멈춤
             bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(1);
             _logger.LogInformation(
