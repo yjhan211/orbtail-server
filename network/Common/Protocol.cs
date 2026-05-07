@@ -165,6 +165,7 @@ namespace network.common
         // RNG 채집 프로토콜 (v0.2.1, #79)
         C_TO_G_RNG_COLLECT,            // RNG 채집 요청 (1.5초 progress 시작 시 송신)
         G_TO_C_RNG_COLLECT_RESULT,     // RNG 결과 통합 (부품/선행/디코이/빈손/소모품)
+        G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST, // 인스턴스 단위 쿨타임 broadcast — 매칭 내 모든 클라가 마커 30초 숨김 (#134)
 
         END
     }

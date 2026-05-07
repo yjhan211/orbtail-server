@@ -16,7 +16,7 @@ namespace game_server.network;
 /// </summary>
 public partial class GameClientSession
 {
-    /// <summary>30초 쿨타임 추적: (PlayerId, InteractId) → 다음 회수 가능 시각.</summary>
+    /// <summary>30초 쿨타임 추적: (MatchingId, InteractId) → 다음 회수 가능 시각. 인스턴스 단위 — 누구든 회수 시 같은 매칭 모든 플레이어 차단.</summary>
     private static readonly ConcurrentDictionary<(long, int), DateTime> _rngCollectCooldowns = new();
 
     private const int RngCollectCooldownSeconds = 30;
@@ -29,9 +29,9 @@ public partial class GameClientSession
         if (IsEliminated) return Task.CompletedTask;
 
         var now = DateTime.UtcNow;
-        var key = (PlayerId.Value, msg.InteractId);
+        var key = (CurrentMapSubId, msg.InteractId);
 
-        // 30초 쿨타임 체크
+        // 30초 쿨타임 체크 (인스턴스 단위 — 같은 매칭 누구든 회수 시 차단)
         if (_rngCollectCooldowns.TryGetValue(key, out var nextAvailable) && now < nextAvailable)
         {
             int remaining = (int)Math.Ceiling((nextAvailable - now).TotalSeconds);
@@ -161,15 +161,41 @@ public partial class GameClientSession
             }
         }
 
-        // 30초 쿨타임 등록
+        // 30초 쿨타임 등록 (인스턴스 단위)
         _rngCollectCooldowns[key] = now.AddSeconds(RngCollectCooldownSeconds);
 
         Logger.LogInformation(
             "RNG 채집: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, Item={Item}, Stamina={Sta}",
             PlayerId, msg.InteractId, resultType, itemNameKr, staminaReward);
 
+        // 회수자 본인에게는 결과 패킷
         SendRngCollectResult(msg.InteractId, resultType, itemId, itemNameKr, staminaReward, RngCollectCooldownSeconds);
+
+        // 매칭 내 모든 클라(본인 포함)에게 쿨타임 broadcast — 마커 30초 숨김
+        BroadcastRngCollectCooldown(msg.InteractId, RngCollectCooldownSeconds);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     같은 매칭 인스턴스의 모든 플레이어 클라에게 InteractId + cooldown broadcast.
+    ///     결과 정보는 포함 X — 직책 노출 방지.
+    /// </summary>
+    private void BroadcastRngCollectCooldown(int interactId, int cooldownSeconds)
+    {
+        var sessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var msg = new G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST
+        {
+            InteractId = interactId,
+            CooldownSeconds = cooldownSeconds
+        };
+        var body = MessagePackSerializer.Serialize(msg);
+        foreach (var session in sessions)
+        {
+            if (!session.PlayerId.HasValue) continue;
+            using var packet = Packet.Create((int)Protocol.G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST, session.PlayerId.Value);
+            packet.SetBody(body);
+            session.Send(packet);
+        }
     }
 
     private void SendRngCollectResult(int interactId, int resultType, int itemId, string itemNameKr,
