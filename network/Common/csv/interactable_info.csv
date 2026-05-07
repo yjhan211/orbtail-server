@@ -1,51 +1,51 @@
 id,area_type,object_type,short_name_kr,short_name_en,short_name_jp,description_kr,description_en,description_jp,interaction_type,cell_x,cell_y
-701000001,13,11,무대,Stage,舞台,객석의 한 자리에 조명이 멈춰 있습니다.,A spotlight rests on a single audience seat.,観客席の一席に、照明が止まったままだ。,7,51,33
-701000002,13,10,공 바구니,Ball Basket,ボール籠,비어 있어야 할 바구니에 손길이 닿은 흔적입니다.,Traces of a hand on what should be empty.,空のはずの籠に、誰かの手の跡。,7,40,46
-701000003,13,10,농구 골대,Basketball Hoop,バスケットゴール,그림자가 누군가 서 있던 자리에서 굳어 있습니다.,A shadow stays where someone once stood.,誰かが立っていた場所で、影が止まっている。,7,42,31
-701000004,13,10,철봉,Pull-up Bar,鉄棒,손바닥 자국이 미지근하게 남아 있습니다.,"A handprint lingers, faintly warm.",手のひらの跡が、ほのかに温かい。,7,34,37
-701000005,13,10,철봉,Pull-up Bar,鉄棒,누가 매달려 있었던 듯 미세하게 흔들립니다.,"It sways, as if someone just hung from it.",誰かがぶら下がっていたかのように、微かに揺れている。,7,0,0
-701000006,42,8,제어 장치,Control Unit,制御装置,꺼져 있는 전원에서 작은 신호가 깜빡입니다.,A faint signal blinks though the power is off.,電源は切れているのに、小さな信号が点滅している。,7,182,101
-701000007,42,8,송출 장치,Transmitter,送出装置,빈 채널에서 누군가의 숨소리가 들립니다.,A breath drifts from an empty channel.,空のチャンネルから、誰かの息づかいが聞こえる。,7,176,101
-701000010,12,6,압수품 보관함,Confiscation Locker,押収品保管庫,"잠금쇠가 풀려 있고, 안쪽이 한 자리만 비어 있습니다.","The lock is open, with one slot suspiciously empty.",鍵は開いていて、中の一か所だけが空いている。,7,97,0
-701000011,12,7,교무 회의록,Faculty Minutes,教務会議録,같은 이름이 페이지마다 반복되어 적혀 있습니다.,The same name repeats on every page.,同じ名前が、ページごとに繰り返されている。,7,100,-1
-701000022,10,9,행정실 책상,Admin Office Desk,行政室の机,누군가의 자리였던 의자가 살짝 빠져 있습니다.,"A chair sits slightly pulled out, as if just left.",誰かの席だった椅子が、わずかに引かれている。,7,93,-28
-701000023,12,4,압수품 보관함,Confiscated Items Cabinet,押収品保管庫,누군가의 이름이 적힌 봉투가 사라져 있습니다.,An envelope marked with a name is missing.,誰かの名前が書かれた封筒が、消えている。,7,0,0
-701000024,12,4,사무용 책상,Office Desk,事務机,잘 정리된 책상 위에 한 자리만 비어 있습니다.,One spot on the tidy desk is conspicuously empty.,整った机の上で、一か所だけが空いている。,7,102,11
-701000025,12,4,사무용 책상,Office Desk,事務机,펼쳐진 노트에 잉크가 채 마르지 않았습니다.,Ink on the open notebook has yet to dry.,開かれたノートの、インクがまだ乾いていない。,7,97,0
-701000026,12,9,소형 복합기,Compact Printer,小型複合機,출력함에 누군가의 사진이 한 장 끼어 있습니다.,A single photo of someone is stuck in the tray.,排紙トレイに、誰かの写真が一枚挟まっている。,7,92,-1
-701000027,12,4,사무용 책상,Office Desk,事務机,의자 등받이에 따스한 온기가 남아 있습니다.,The chair's backrest still holds warmth.,椅子の背もたれに、温もりが残っている。,7,100,-1
-701000028,12,4,사무용 책상,Office Desk,事務机,서랍 한 칸이 살짝 열려 안을 보여 줍니다.,"A drawer hangs open, baring its insides.",引き出しの一段が、僅かに開いて中を覗かせている。,7,105,10
-701000050,20,5,학생용 책상,Student Desk,生徒用机,한 자리에만 같은 이름이 여러 번 새겨져 있습니다.,One desk bears the same name carved over and over.,一席だけ、同じ名前が幾度も刻まれている。,7,0,0
-701000051,20,6,청소 도구함,Cleaning Cabinet,清掃用具庫,빗자루가 누군가가 쓰던 방향으로 기울어져 있습니다.,The broom leans the way someone last held it.,箒が、誰かが使っていた向きに傾いている。,7,84,65
-701000052,40,12,빨간 배낭,Red Backpack,赤いバックパック,지퍼가 살짝 열려 안의 무언가를 가려 둡니다.,"The zipper is half open, hiding something within.",ジッパーが半開きで、中の何かを隠している。,7,152,93
-701000053,40,12,파란 배낭,Blue Backpack,青いバックパック,끈이 의자 등받이에 단단히 묶여 있습니다.,A strap is tightly tied to the chair's back.,紐が、椅子の背もたれにきつく結ばれている。,7,147,89
-701000054,30,2,교탁,Lectern,教卓,출석부에 한 줄만 빨갛게 그어져 있습니다.,A single line in the roll book is crossed in red.,出席簿の一行だけが、赤く線で消されている。,7,166,38
-701000055,30,1,칠판,Blackboard,黒板,지워진 글씨 사이로 누군가의 이름이 비칩니다.,A name shows through the erased writing.,消された文字の間に、誰かの名前が透けて見える。,7,163,39
-701000056,13,12,농구공,Basketball,バスケットボール,가만히 있어야 할 공이 천천히 굴러갑니다.,A ball that should be still keeps slowly rolling.,静止しているはずのボールが、ゆっくり転がっている。,7,44,39
-701000044,22,12,하늘색 배낭,Sky Blue Backpack,空色のバックパック,익숙한 모양의 가방이 주인 없이 놓여 있습니다.,A familiar-shaped bag rests without an owner.,見慣れた形の鞄が、持ち主のないまま置かれている。,7,108,63
-701000018,32,12,버려진 시험지,Discarded Exam,捨てられた試験紙,답란이 모두 같은 답으로 채워져 있습니다.,Every answer slot is filled with the same response.,解答欄の全てが、同じ答えで埋められている。,7,166,0
-701000060,30,7,사물함,Locker,ロッカー,잠겨 있어야 할 사물함의 문이 살짝 열려 있습니다.,A locker meant to be locked sits slightly ajar.,施錠されているはずのロッカーが、わずかに開いている。,7,173,30
-701000061,20,12,파란색 배낭,Blue Backpack,青いリュック,가방 안에서 누군가의 호명 소리가 새어 나옵니다.,A faint voice calling a name leaks from inside.,鞄の中から、誰かの名を呼ぶ声が漏れている。,7,77,75
-701000062,40,4,칠판,Blackboard,黒板,깨끗이 닦인 표면에 글자 자국이 남아 있습니다.,Faint traces of letters remain on the wiped surface.,綺麗に拭われた表面に、文字の痕跡が残っている。,7,149,101
-701000063,14,6,철제 캐비넷,Steel Cabinet,鉄製キャビネット,안쪽에서 무언가가 부딪치는 소리가 들립니다.,Something keeps knocking from inside.,内側から、何かがぶつかる音が聞こえる。,7,14,34
-701000064,32,7,고사실 책상,Exam Room Desk,考査室の机,책상 모서리에 손톱 자국이 길게 패여 있습니다.,Long fingernail marks line the desk's edge.,机の縁に、爪の跡が長く刻まれている。,7,166,4
-701000065,22,6,도서관 책장,Library Bookshelf,図書館の本棚,한 권만 빠져 있는 자리가 유난히 깨끗합니다.,The empty slot for one missing book is too clean.,一冊だけ抜けたその場所が、妙に綺麗だ。,7,117,76
-701000066,40,5,사물함,Locker,ロッカー,자물쇠 위에 누군가의 머리카락이 걸려 있습니다.,A strand of hair clings to the lock.,錠前に、誰かの髪の毛が絡んでいる。,7,156,93
-701000067,30,9,검정색 배낭,Black Backpack,黒いリュック,처음 보는 가방이 익숙한 자리에 놓여 있습니다.,An unfamiliar bag sits in a familiar spot.,見覚えのない鞄が、見覚えのある席に置かれている。,7,163,29
-701000068,10,4,행정실 책상,Admin Desk,行政室の机,서류 더미가 누군가의 손길에 흩어져 있습니다.,Stacks of papers lie scattered by hands unknown.,書類の山が、誰かの手で乱されている。,7,91,-36
-701000069,30,10,청소 도구함,Cleaning Cabinet,掃除用具入れ,걸레에서 갓 쥐어진 듯한 물기가 떨어집니다.,Water still drips from a freshly wrung cloth.,雑巾から、絞ったばかりのような水滴が落ちる。,7,173,26
-701000070,32,6,고사실 책상,Exam Room Desk,考査室の机,답안지가 작은 글씨들로 빼곡히 채워져 있습니다.,The answer sheet is densely packed with tiny writing.,解答用紙が、小さな文字で隙間なく埋まっている。,7,160,5
-701000071,12,3,사무용 책상,Office Desk,事務机,학생 명단 위에 한 이름만 동그라미가 그려져 있습니다.,A single name is circled on the student list.,生徒名簿の中で、一つの名前だけが丸で囲まれている。,7,94,9
-701000072,30,12,잡동사니,Clutter,がらくた,누군가의 소지품이 익숙한 손길로 분류되어 있습니다.,Personal items are sorted with familiar care.,誰かの持ち物が、慣れた手つきで仕分けられている。,7,166,38
-701000073,22,5,도서관 카트,Library Cart,図書館のカート,카트 위 책들이 모두 같은 페이지에 펼쳐져 있습니다.,Every book on the cart is open to the same page.,カートの上の本は、全て同じページで開かれている。,7,117,65
-701000074,40,7,휴지통,Trash Bin,ゴミ箱,구겨진 종이마다 같은 이름이 적혀 있습니다.,Every crumpled paper bears the same name.,くしゃくしゃの紙には、同じ名前が書かれている。,7,152,99
-701000075,13,5,에어컨,Air Conditioner,エアコン,멈춰 있는데도 차가운 바람이 흘러나옵니다.,Cold air seeps out though it isn't running.,止まっているのに、冷たい風が漏れてくる。,7,51,45
-701000076,42,9,기록 장치,Recording Device,記録装置,정지된 기기에서 같은 시각이 반복 표시됩니다.,A halted device replays the same timestamp.,停止した機器に、同じ時刻が繰り返し表示される。,7,185,99
-701000077,30,4,휴지통,Trash Bin,ゴミ箱,사진 한 장이 반쯤 찢긴 채 놓여 있습니다.,A photo lies torn in half.,一枚の写真が、半分に破られた状態で置かれている。,7,169,36
-701000078,20,1,체육 매트,Gym Mat,体育マット,매트 위에 누군가가 누워 있던 자국이 선명합니다.,The shape of a body remains pressed into the mat.,マットの上に、誰かが横たわっていた跡が鮮明だ。,7,85,76
-701000079,10,12,회의록 보관함,Meeting Records Cabinet,議事録保管庫,서류 한 권이 다른 글씨로 덧대어져 있습니다.,One ledger has been overwritten in another's hand.,一冊の書類が、別の筆跡で書き直されている。,7,99,-23
-701000080,22,1,휴지통,Trash Bin,ゴミ箱,찢긴 책장들이 한쪽 페이지만 모아져 있습니다.,Torn-out pages are sorted by a single side.,破られた頁が、片面ずつ揃えて捨てられている。,7,117,61
-701000081,13,6,강당 캐비닛,Gym Cabinet,講堂のキャビネット,잠긴 문 너머에서 미세한 진동이 느껴집니다.,A faint vibration pulses past the locked door.,鍵のかかった扉の向こうから、微かな震えが伝わる。,7,51,33
-701000082,10,6,대형 복합기,Large Multifunction Printer,大型複合機,대기 모드인데도 롤러가 가만히 돌고 있습니다.,The rollers turn even in standby.,待機中のはずなのに、ローラーが静かに回り続けている。,7,100,-36
-701000083,32,4,창틀,Window Frame,窓枠,창틀 안쪽에 손가락 자국이 진하게 찍혀 있습니다.,Fingerprints stain the inner edge of the frame.,窓枠の内側に、指の跡が濃く残されている。,7,171,11
-701000084,14,10,공 바구니,Ball Basket,ボールかご,바구니 안의 공들이 한쪽으로 몰려 있습니다.,The balls in the basket are gathered to one side.,籠の中のボールが、片側に寄せ集められている。,7,10,38
+701000001,13,11,무대,Stage,舞台,객석의 한 자리에 조명이 멈춰 있습니다...,A spotlight rests on a single audience seat....,観客席の一席に、照明が止まったままだ...,7,51,33
+701000002,13,10,공 바구니,Ball Basket,ボール籠,비어 있어야 할 바구니에 손길이 닿은 흔적입니다...,Traces of a hand on what should be empty....,空のはずの籠に、誰かの手の跡...,7,40,46
+701000003,13,10,농구 골대,Basketball Hoop,バスケットゴール,그림자가 누군가 서 있던 자리에서 굳어 있습니다...,A shadow stays where someone once stood....,誰かが立っていた場所で、影が止まっている...,7,42,31
+701000004,13,10,철봉,Pull-up Bar,鉄棒,손바닥 자국이 미지근하게 남아 있습니다...,"A handprint lingers, faintly warm....",手のひらの跡が、ほのかに温かい...,7,34,37
+701000005,13,10,철봉,Pull-up Bar,鉄棒,누가 매달려 있었던 듯 미세하게 흔들립니다...,"It sways, as if someone just hung from it....",誰かがぶら下がっていたかのように、微かに揺れている...,7,0,0
+701000006,42,8,제어 장치,Control Unit,制御装置,꺼져 있는 전원에서 작은 신호가 깜빡입니다...,A faint signal blinks though the power is off....,電源は切れているのに、小さな信号が点滅している...,7,182,101
+701000007,42,8,송출 장치,Transmitter,送出装置,빈 채널에서 누군가의 숨소리가 들립니다...,A breath drifts from an empty channel....,空のチャンネルから、誰かの息づかいが聞こえる...,7,176,101
+701000010,12,6,압수품 보관함,Confiscation Locker,押収品保管庫,"잠금쇠가 풀려 있고, 안쪽이 한 자리만 비어 있습니다...","The lock is open, with one slot suspiciously empty....",鍵は開いていて、中の一か所だけが空いている...,7,97,0
+701000011,12,7,교무 회의록,Faculty Minutes,教務会議録,같은 이름이 페이지마다 반복되어 적혀 있습니다...,The same name repeats on every page....,同じ名前が、ページごとに繰り返されている...,7,100,-1
+701000022,10,9,행정실 책상,Admin Office Desk,行政室の机,누군가의 자리였던 의자가 살짝 빠져 있습니다...,"A chair sits slightly pulled out, as if just left....",誰かの席だった椅子が、わずかに引かれている...,7,93,-28
+701000023,12,4,압수품 보관함,Confiscated Items Cabinet,押収品保管庫,누군가의 이름이 적힌 봉투가 사라져 있습니다...,An envelope marked with a name is missing....,誰かの名前が書かれた封筒が、消えている...,7,0,0
+701000024,12,4,사무용 책상,Office Desk,事務机,잘 정리된 책상 위에 한 자리만 비어 있습니다...,One spot on the tidy desk is conspicuously empty....,整った机の上で、一か所だけが空いている...,7,102,11
+701000025,12,4,사무용 책상,Office Desk,事務机,펼쳐진 노트에 잉크가 채 마르지 않았습니다...,Ink on the open notebook has yet to dry....,開かれたノートの、インクがまだ乾いていない...,7,97,0
+701000026,12,9,소형 복합기,Compact Printer,小型複合機,출력함에 누군가의 사진이 한 장 끼어 있습니다...,A single photo of someone is stuck in the tray....,排紙トレイに、誰かの写真が一枚挟まっている...,7,92,-1
+701000027,12,4,사무용 책상,Office Desk,事務机,의자 등받이에 따스한 온기가 남아 있습니다...,The chair's backrest still holds warmth....,椅子の背もたれに、温もりが残っている...,7,100,-1
+701000028,12,4,사무용 책상,Office Desk,事務机,서랍 한 칸이 살짝 열려 안을 보여 줍니다...,"A drawer hangs open, baring its insides....",引き出しの一段が、僅かに開いて中を覗かせている...,7,105,10
+701000050,20,5,학생용 책상,Student Desk,生徒用机,한 자리에만 같은 이름이 여러 번 새겨져 있습니다...,One desk bears the same name carved over and over....,一席だけ、同じ名前が幾度も刻まれている...,7,0,0
+701000051,20,6,청소 도구함,Cleaning Cabinet,清掃用具庫,빗자루가 누군가가 쓰던 방향으로 기울어져 있습니다...,The broom leans the way someone last held it....,箒が、誰かが使っていた向きに傾いている...,7,84,65
+701000052,40,12,빨간 배낭,Red Backpack,赤いバックパック,지퍼가 살짝 열려 안의 무언가를 가려 둡니다...,"The zipper is half open, hiding something within....",ジッパーが半開きで、中の何かを隠している...,7,152,93
+701000053,40,12,파란 배낭,Blue Backpack,青いバックパック,끈이 의자 등받이에 단단히 묶여 있습니다...,A strap is tightly tied to the chair's back....,紐が、椅子の背もたれにきつく結ばれている...,7,147,89
+701000054,30,2,교탁,Lectern,教卓,출석부에 한 줄만 빨갛게 그어져 있습니다...,A single line in the roll book is crossed in red....,出席簿の一行だけが、赤く線で消されている...,7,166,38
+701000055,30,1,칠판,Blackboard,黒板,지워진 글씨 사이로 누군가의 이름이 비칩니다...,A name shows through the erased writing....,消された文字の間に、誰かの名前が透けて見える...,7,163,39
+701000056,13,12,농구공,Basketball,バスケットボール,가만히 있어야 할 공이 천천히 굴러갑니다...,A ball that should be still keeps slowly rolling....,静止しているはずのボールが、ゆっくり転がっている...,7,44,39
+701000044,22,12,하늘색 배낭,Sky Blue Backpack,空色のバックパック,익숙한 모양의 가방이 주인 없이 놓여 있습니다...,A familiar-shaped bag rests without an owner....,見慣れた形の鞄が、持ち主のないまま置かれている...,7,108,63
+701000018,32,12,버려진 시험지,Discarded Exam,捨てられた試験紙,답란이 모두 같은 답으로 채워져 있습니다...,Every answer slot is filled with the same response....,解答欄の全てが、同じ答えで埋められている...,7,166,0
+701000060,30,7,사물함,Locker,ロッカー,잠겨 있어야 할 사물함의 문이 살짝 열려 있습니다...,A locker meant to be locked sits slightly ajar....,施錠されているはずのロッカーが、わずかに開いている...,7,173,30
+701000061,20,12,파란색 배낭,Blue Backpack,青いリュック,가방 안에서 누군가의 호명 소리가 새어 나옵니다...,A faint voice calling a name leaks from inside....,鞄の中から、誰かの名を呼ぶ声が漏れている...,7,77,75
+701000062,40,4,칠판,Blackboard,黒板,깨끗이 닦인 표면에 글자 자국이 남아 있습니다...,Faint traces of letters remain on the wiped surface....,綺麗に拭われた表面に、文字の痕跡が残っている...,7,149,101
+701000063,14,6,철제 캐비넷,Steel Cabinet,鉄製キャビネット,안쪽에서 무언가가 부딪치는 소리가 들립니다...,Something keeps knocking from inside....,内側から、何かがぶつかる音が聞こえる...,7,14,34
+701000064,32,7,고사실 책상,Exam Room Desk,考査室の机,책상 모서리에 손톱 자국이 길게 패여 있습니다...,Long fingernail marks line the desk's edge....,机の縁に、爪の跡が長く刻まれている...,7,166,4
+701000065,22,6,도서관 책장,Library Bookshelf,図書館の本棚,한 권만 빠져 있는 자리가 유난히 깨끗합니다...,The empty slot for one missing book is too clean....,一冊だけ抜けたその場所が、妙に綺麗だ...,7,117,76
+701000066,40,5,사물함,Locker,ロッカー,자물쇠 위에 누군가의 머리카락이 걸려 있습니다...,A strand of hair clings to the lock....,錠前に、誰かの髪の毛が絡んでいる...,7,156,93
+701000067,30,9,검정색 배낭,Black Backpack,黒いリュック,처음 보는 가방이 익숙한 자리에 놓여 있습니다...,An unfamiliar bag sits in a familiar spot....,見覚えのない鞄が、見覚えのある席に置かれている...,7,163,29
+701000068,10,4,행정실 책상,Admin Desk,行政室の机,서류 더미가 누군가의 손길에 흩어져 있습니다...,Stacks of papers lie scattered by hands unknown....,書類の山が、誰かの手で乱されている...,7,91,-36
+701000069,30,10,청소 도구함,Cleaning Cabinet,掃除用具入れ,걸레에서 갓 쥐어진 듯한 물기가 떨어집니다...,Water still drips from a freshly wrung cloth....,雑巾から、絞ったばかりのような水滴が落ちる...,7,173,26
+701000070,32,6,고사실 책상,Exam Room Desk,考査室の机,답안지가 작은 글씨들로 빼곡히 채워져 있습니다...,The answer sheet is densely packed with tiny writing....,解答用紙が、小さな文字で隙間なく埋まっている...,7,160,5
+701000071,12,3,사무용 책상,Office Desk,事務机,학생 명단 위에 한 이름만 동그라미가 그려져 있습니다...,A single name is circled on the student list....,生徒名簿の中で、一つの名前だけが丸で囲まれている...,7,94,9
+701000072,30,12,잡동사니,Clutter,がらくた,누군가의 소지품이 익숙한 손길로 분류되어 있습니다...,Personal items are sorted with familiar care....,誰かの持ち物が、慣れた手つきで仕分けられている...,7,166,38
+701000073,22,5,도서관 카트,Library Cart,図書館のカート,카트 위 책들이 모두 같은 페이지에 펼쳐져 있습니다...,Every book on the cart is open to the same page....,カートの上の本は、全て同じページで開かれている...,7,117,65
+701000074,40,7,휴지통,Trash Bin,ゴミ箱,구겨진 종이마다 같은 이름이 적혀 있습니다...,Every crumpled paper bears the same name....,くしゃくしゃの紙には、同じ名前が書かれている...,7,152,99
+701000075,13,5,에어컨,Air Conditioner,エアコン,멈춰 있는데도 차가운 바람이 흘러나옵니다...,Cold air seeps out though it isn't running....,止まっているのに、冷たい風が漏れてくる...,7,51,45
+701000076,42,9,기록 장치,Recording Device,記録装置,정지된 기기에서 같은 시각이 반복 표시됩니다...,A halted device replays the same timestamp....,停止した機器に、同じ時刻が繰り返し表示される...,7,185,99
+701000077,30,4,휴지통,Trash Bin,ゴミ箱,사진 한 장이 반쯤 찢긴 채 놓여 있습니다...,A photo lies torn in half....,一枚の写真が、半分に破られた状態で置かれている...,7,169,36
+701000078,20,1,체육 매트,Gym Mat,体育マット,매트 위에 누군가가 누워 있던 자국이 선명합니다...,The shape of a body remains pressed into the mat....,マットの上に、誰かが横たわっていた跡が鮮明だ...,7,85,76
+701000079,10,12,회의록 보관함,Meeting Records Cabinet,議事録保管庫,서류 한 권이 다른 글씨로 덧대어져 있습니다...,One ledger has been overwritten in another's hand....,一冊の書類が、別の筆跡で書き直されている...,7,99,-23
+701000080,22,1,휴지통,Trash Bin,ゴミ箱,찢긴 책장들이 한쪽 페이지만 모아져 있습니다...,Torn-out pages are sorted by a single side....,破られた頁が、片面ずつ揃えて捨てられている...,7,117,61
+701000081,13,6,강당 캐비닛,Gym Cabinet,講堂のキャビネット,잠긴 문 너머에서 미세한 진동이 느껴집니다...,A faint vibration pulses past the locked door....,鍵のかかった扉の向こうから、微かな震えが伝わる...,7,51,33
+701000082,10,6,대형 복합기,Large Multifunction Printer,大型複合機,대기 모드인데도 롤러가 가만히 돌고 있습니다...,The rollers turn even in standby....,待機中のはずなのに、ローラーが静かに回り続けている...,7,100,-36
+701000083,32,4,창틀,Window Frame,窓枠,창틀 안쪽에 손가락 자국이 진하게 찍혀 있습니다...,Fingerprints stain the inner edge of the frame....,窓枠の内側に、指の跡が濃く残されている...,7,171,11
+701000084,14,10,공 바구니,Ball Basket,ボールかご,바구니 안의 공들이 한쪽으로 몰려 있습니다...,The balls in the basket are gathered to one side....,籠の中のボールが、片側に寄せ集められている...,7,10,38
