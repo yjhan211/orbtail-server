@@ -54,17 +54,15 @@ public static class BotPathfinder
             Cell? exitCell = null;
             if (forwardConn != null)
                 exitCell = FindReverseSpawnCell(mapId, forwardConn);
+            if (exitCell == null)
+                exitCell = GameMapData.GetAreaSpawnCell(mapId, fromA); // 폴백
 
-            // exitCell이 있을 때만 walking으로 도달 (폴백 영역 중앙으로 가는 시각 부자연스러움 방지)
-            // null이면 walking 생략하고 바로 다음 영역 entry로 텔레포트
-            if (exitCell != null)
+            // 현재 셀 → 출구 셀 (영역 안에서 walk)
+            var cellPath = BfsCellsInArea(mapId, fromA, currentCell, exitCell);
+            if (cellPath != null)
             {
-                var cellPath = BfsCellsInArea(mapId, fromA, currentCell, exitCell);
-                if (cellPath != null)
-                {
-                    foreach (var c in cellPath.Skip(1)) // 시작 셀(현재 위치) 제외
-                        path.Add(new Step { Cell = c, Area = fromA, IsAreaTransition = false });
-                }
+                foreach (var c in cellPath.Skip(1)) // 시작 셀(현재 위치) 제외
+                    path.Add(new Step { Cell = c, Area = fromA, IsAreaTransition = false });
             }
 
             // 영역 경계 통과 (텔레포트) — 선택된 conn의 SpawnCell이 toA 측 도어 위치
