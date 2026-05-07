@@ -74,6 +74,8 @@ public partial class GameClientSession
 
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
         BroadcastRngCollectCooldown(msg.InteractId, RngCollectStartCooldownSeconds);
+        // EXPLORE_1 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
+        BroadcastPlayerState(global::network.common.PlayerState.EXPLORE_1);
         return Task.CompletedTask;
     }
 
@@ -149,7 +151,21 @@ public partial class GameClientSession
 
         // FINISH 시점에 30초 cooldown 갱신 broadcast (RngCollectCore.Resolve 내부에서 SetCooldown 30 호출됨)
         BroadcastRngCollectCooldown(msg.InteractId, RngCollectCooldownSeconds);
+        // IDLE 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
+        BroadcastPlayerState(global::network.common.PlayerState.IDLE);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     같은 영역 모든 클라(본인 포함)에 G_TO_C_PLAYER_STATE broadcast.
+    /// </summary>
+    private void BroadcastPlayerState(global::network.common.PlayerState state)
+    {
+        if (!PlayerId.HasValue) return;
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
+        foreach (var session in sameAreaSessions) session.Send(packet);
     }
 
     private void SendRngCollectAck(int interactId, ErrorCode errorCode, int cooldownRemain)
