@@ -340,6 +340,10 @@ public partial class BotPlayerManager
         if (bot.CurrentArea == target) return null;
         if (closureManager.IsAreaClosed(matchingId, target)) return null;
 
+        // walking 중이면 텔레포트 보류 — 봇이 복도 중앙 등에서 갑자기 사라지는 시각 부자연스러움 회피.
+        // 도착 후 LoopWaitUntil 시점에 평가되어 자연스럽게 텔레포트.
+        if (bot.Path.Count > 0 && bot.PathIndex < bot.Path.Count) return null;
+
         var ev = TransitionBotArea(bot, matchingId, target);
         bot.Stamina = Math.Max(0, bot.Stamina - BotMoveStaminaCost);
         bot.LastMoveTime = DateTime.UtcNow;
