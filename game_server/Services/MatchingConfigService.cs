@@ -201,11 +201,20 @@ public class MatchingConfigService
     }
 
     /// <summary>
-    ///     직책 풀 config 초기화 (무작위 복원).
+    ///     직책 풀 config 초기화. DEMO_MODE 활성 시 ChainJobOrder로 복원, 비활성 시 무작위.
     /// </summary>
     public async Task ResetJobPoolConfigAsync()
     {
-        await SetJobPoolConfigAsync(null);
+        if (DemoMode.IsActive)
+        {
+            // user_server가 Redis 직접 읽으므로 DemoMode.ChainJobOrder를 명시적으로 Redis에 쓰기
+            await SetJobPoolConfigAsync(DemoMode.ChainJobOrder.Select(j => (int)j).ToList());
+            _logger.LogInformation("직책 풀 config 초기화 — DEMO_MODE 활성 → ChainJobOrder 적용");
+        }
+        else
+        {
+            await SetJobPoolConfigAsync(null);
+        }
     }
 
     // ─── 현재 전체 config 조회 (GET endpoint용) ───────────────────────────────
