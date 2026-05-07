@@ -106,7 +106,7 @@ namespace network.common.data
             LogManager.WriteDebugLog("=== GameInteractableData Validation ===");
             foreach (var (id, info) in _infos)
             {
-                LogManager.WriteDebugLog($"[{id}] {info.Name?.Kr} - Actions: {info.Actions.Count}");
+                LogManager.WriteDebugLog($"[{id}] {info.ShortName?.Kr} - Actions: {info.Actions.Count}");
             }
             LogManager.WriteDebugLog("All validations passed successfully!");
         }
@@ -117,7 +117,6 @@ namespace network.common.data
         public int Id { get; private set; }
         public int ZoneId { get; private set; }
         public InteractableObjectType ObjectType { get; private set; }
-        public LocalizedText Name { get; private set; }
         public LocalizedText ShortName { get; private set; }
         public LocalizedText Description { get; private set; }
         public InteractionType InteractionType { get; private set; }
@@ -150,7 +149,6 @@ namespace network.common.data
                 Id = id,
                 ZoneId = int.Parse(row["area_type"]),
                 ObjectType = objectType,
-                Name = LocalizedText.FromCsv(row, "name"),
                 ShortName = LocalizedText.FromCsv(row, "short_name"),
                 Description = LocalizedText.FromCsvMultiline(row, "description"),
                 InteractionType = row.ContainsKey("interaction_type") ? (InteractionType)int.Parse(row["interaction_type"]) : InteractionType.EXPLORE,
