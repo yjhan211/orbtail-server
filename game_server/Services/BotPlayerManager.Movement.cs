@@ -268,8 +268,9 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     봇이 도착했거나 경로가 비었을 때 새 목적지 선택 + 경로 계산.
-    ///     #134 — 직책 큐의 다음 영역에서 자기 직책 부품 발견 InteractObject 후보를 골라 셀까지 walking.
-    ///     쿨타임 없는 InteractObject만 후보. 도착 시 ProcessBotMissionTick이 RNG 채집 트리거.
+    ///     #134 — 두 모드:
+    ///       1) 영역 내 다음 InteractObject로 셀 walking (InteractQueueInArea에 남은 게 있을 때)
+    ///       2) 다음 영역으로 walking + 진입 시 그 영역의 모든 후보로 큐 채움
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
     {
@@ -279,9 +280,12 @@ public partial class BotPlayerManager
         bot.TransitionPauseUntil = DateTime.MinValue;
         bot.PendingRngInteractId = 0;
 
+        // 1) 현재 영역에 아직 탐색하지 않은 InteractObject가 남아있으면 같은 영역 내 다음 셀로 walking
+        if (TryWalkToNextInteractInQueue(bot, matchingId, mapId, closureManager)) return;
+
+        // 2) 직책 큐의 다음 영역으로 이동
         if (bot.JobAreaQueue.Count == 0) return;
 
-        // 폐쇄되지 않고 현재 영역과 다른 다음 큐 영역 찾기
         AreaType targetArea = AreaType.None;
         for (int i = 0; i < bot.JobAreaQueue.Count; i++)
         {
@@ -296,18 +300,30 @@ public partial class BotPlayerManager
 
         if (targetArea == AreaType.None) return;
 
-        // 영역 내 InteractObject 후보 선택: 자기 직책 부품 발견 풀 우선 → 쿨타임 없는 것 → 셀 좌표 매핑된 것
-        var interactCell = PickInteractObjectCell(matchingId, bot, targetArea, out int pendingInteractId);
+        // 새 영역의 모든 후보 InteractObject로 큐 채움 (쿨타임 없는 + 셀 좌표 매핑된 것만)
+        var queue = BuildInteractQueueForArea(matchingId, bot, targetArea);
+        bot.InteractQueueInArea = queue;
 
         // 도착 후 잠시 대기 (자연스러운 휴식 + ProcessBotMissionTick이 RNG 채집 트리거할 시간)
         bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotArrivalWaitSeconds);
 
-        // InteractObject 후보 없거나 좌표 미매핑 시 영역 spawn cell로 폴백 (기존 동작)
+        // 첫 InteractObject 셀로 path 계산. 큐 비었으면 영역 spawn cell로 폴백.
         Cell targetCell;
-        if (interactCell != null)
+        if (queue.Count > 0)
         {
-            targetCell = interactCell;
-            bot.PendingRngInteractId = pendingInteractId;
+            var firstId = queue[0];
+            queue.RemoveAt(0);
+            var info = GameInteractableData.Get(firstId);
+            if (info != null)
+            {
+                targetCell = new Cell(info.CellX, info.CellY);
+                bot.PendingRngInteractId = firstId;
+            }
+            else
+            {
+                targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, targetArea)
+                    ?? GameMapData.GetAreaSpawnCell(mapId, targetArea);
+            }
         }
         else
         {
@@ -329,48 +345,81 @@ public partial class BotPlayerManager
         bot.Path = path;
         bot.PathIndex = 0;
         _logger.LogInformation(
-            "봇 새 경로(직책 큐): BotId={Bot}, Job={Job}, {From}@{Cell} → {To}@{TargetCell}, InteractId={Iid}, 단계={Steps}",
+            "봇 새 경로(직책 큐): BotId={Bot}, Job={Job}, {From}@{Cell} → {To}@{TargetCell}, InteractId={Iid}, 영역내큐={QSize}, 단계={Steps}",
             bot.PlayerId, bot.MyJobTitle, bot.CurrentArea, bot.Cell, targetArea, targetCell,
-            bot.PendingRngInteractId, path.Count);
+            bot.PendingRngInteractId, queue.Count, path.Count);
     }
 
     /// <summary>
-    ///     #134 — 영역 내 InteractObject 후보 셀 선택. 자기 직책 부품 발견 풀 우선,
-    ///     없으면 영역 내 임의 InteractObject. 쿨타임 없는 것 + 셀 좌표 매핑된 것만 후보.
-    ///     반환 null이면 후보 없음 (호출자는 영역 spawn 셀로 폴백).
+    ///     #134 — 같은 영역 내에 아직 탐색하지 않은 InteractObject가 큐에 남아있으면 그 셀까지 walking.
+    ///     큐에서 첫 번째 ID를 꺼내 PendingRngInteractId로 설정. 쿨타임 발생한 항목은 건너뛰고 다음.
+    ///     반환 true면 같은 영역 walking path가 설정됨. false면 큐 소진 — 호출자가 다음 영역으로 진행.
     /// </summary>
-    private Cell? PickInteractObjectCell(long matchingId, BotPlayerState bot, AreaType targetArea,
-        out int interactId)
+    private bool TryWalkToNextInteractInQueue(BotPlayerState bot, long matchingId, MapId mapId,
+        AreaClosureManager closureManager)
     {
-        interactId = 0;
-        var candidates = GameInteractableData.GetByZone((int)targetArea);
-        if (candidates.Count == 0) return null;
+        while (bot.InteractQueueInArea.Count > 0)
+        {
+            int nextId = bot.InteractQueueInArea[0];
+            bot.InteractQueueInArea.RemoveAt(0);
 
-        // 자기 직책 부품 발견 풀 매칭 우선
+            var info = GameInteractableData.Get(nextId);
+            if (info == null) continue;
+            if (info.ZoneId != (int)bot.CurrentArea) continue;
+            if (info.CellX == 0 && info.CellY == 0) continue;
+            if (RngCollectCooldownStore.IsInCooldown(matchingId, nextId, out _)) continue;
+
+            var targetCell = new Cell(info.CellX, info.CellY);
+            var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
+                bot.CurrentArea, targetCell,
+                a => closureManager.IsAreaClosed(matchingId, a));
+            if (path == null || path.Count == 0) continue;
+
+            bot.Path = path;
+            bot.PathIndex = 0;
+            bot.PendingRngInteractId = nextId;
+            // 짧은 대기 — 클라가 walking 시작 직전 잠시 멈춤
+            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(1);
+            _logger.LogInformation(
+                "봇 영역내 다음 InteractObject: BotId={Bot}, Area={Area}, InteractId={Iid}@{Cell}, 큐잔량={Q}",
+                bot.PlayerId, bot.CurrentArea, nextId, targetCell, bot.InteractQueueInArea.Count);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    ///     #134 — 새 영역 진입 시 그 영역의 모든 InteractObject 후보를 큐로 빌드.
+    ///     자기 직책 부품 발견 풀 InteractObject가 큐 앞쪽 (탐색 동기 부여), 그 외는 뒤쪽.
+    ///     쿨타임 없는 것 + 셀 좌표 매핑된 것만 후보.
+    /// </summary>
+    private List<int> BuildInteractQueueForArea(long matchingId, BotPlayerState bot, AreaType targetArea)
+    {
+        var candidates = GameInteractableData.GetByZone((int)targetArea);
+        if (candidates.Count == 0) return new List<int>();
+
         var materials = GameMissionData.GetMaterials((short)bot.MyJobTitle);
         var jobObjectTypes = materials
             .Where(p => p.TargetArea == (int)targetArea)
             .Select(p => p.TargetObjectType)
             .ToHashSet();
 
-        var preferred = candidates
-            .Where(c => jobObjectTypes.Contains((int)c.ObjectType))
+        var available = candidates
             .Where(c => c.CellX != 0 || c.CellY != 0)
             .Where(c => !RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _))
             .ToList();
 
-        var pool = preferred.Count > 0
-            ? preferred
-            : candidates
-                .Where(c => c.CellX != 0 || c.CellY != 0)
-                .Where(c => !RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _))
-                .ToList();
+        // 자기 직책 풀 매칭 셔플 → 그 외 셔플
+        var preferred = available
+            .Where(c => jobObjectTypes.Contains((int)c.ObjectType))
+            .OrderBy(_ => _rng.Next())
+            .Select(c => c.Id);
+        var others = available
+            .Where(c => !jobObjectTypes.Contains((int)c.ObjectType))
+            .OrderBy(_ => _rng.Next())
+            .Select(c => c.Id);
 
-        if (pool.Count == 0) return null;
-
-        var picked = pool[_rng.Next(pool.Count)];
-        interactId = picked.Id;
-        return new Cell(picked.CellX, picked.CellY);
+        return preferred.Concat(others).ToList();
     }
 
     /// <summary>

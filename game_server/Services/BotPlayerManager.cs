@@ -350,6 +350,11 @@ public class BotPlayerState
     /// ChooseNewWanderTarget에서 영역 + 셀 선택 시 설정, 도착 후 RNG 채집 시 0으로 clear.</summary>
     public int PendingRngInteractId { get; set; }
 
+    /// <summary>현재 영역 내에서 아직 탐색하지 않은 InteractObject Id 큐.
+    /// 영역 진입 시 그 영역의 모든 후보로 채움. RNG 채집 후 첫 번째를 꺼내 다음 셀로 walking.
+    /// 비면 ChooseNewWanderTarget이 다음 영역 결정.</summary>
+    public List<int> InteractQueueInArea { get; set; } = new();
+
     /// <summary>마지막으로 자동 소모품을 사용한 시각 (재사용 쿨다운).</summary>
     public DateTime LastAutoConsumableUseTime { get; set; } = DateTime.MinValue;
 }
