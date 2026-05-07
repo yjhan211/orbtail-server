@@ -78,9 +78,8 @@ public partial class BotPlayerManager
                     continue;
                 }
 
-                // 4) DemoMode 스크립트 영역 전환만 처리 (영상 narrative timing 보호 — walking 우회 텔레포트)
-                var areaMove = AdvanceToScriptedArea(bot, matchingId, areaClosureManager);
-                if (areaMove != null) result.Movements.Add(areaMove);
+                // 4) DemoMode 스크립트 텔레포트 폐기 — 봇은 직책 큐(JobAreaQueue) 따라 walking으로만 이동.
+                //    H3/H6/H8 narrative 트리거(색출/흔적/탈락)는 BotPlayerManager.Mission.cs에서 별도 시간 기반 처리.
             }
             // 디버그 모드(DemoMode 비활성): 자원 변동/탈락 모두 스킵 → 봇이 무한 walking
         }
