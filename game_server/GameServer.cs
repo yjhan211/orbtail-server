@@ -67,9 +67,9 @@ public class GameServer(
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private const int ResourceTickIntervalSeconds = 5;
     // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
-    private const int MentalDecayPhase1 = 2;            // 0~5분: 5초당 오염도 +2
-    private const int MentalDecayPhase2 = 4;            // 5~10분: 5초당 오염도 +4
-    private const int MentalDecayPhase3 = 6;            // 10분+: 5초당 오염도 +6
+    private const int MentalDecayPhase1 = 1;            // 0~5분: 5초당 오염도 +1 (GDD §3.1.1)
+    private const int MentalDecayPhase2 = 2;            // 5~10분: 5초당 오염도 +2 (GDD §3.1.1)
+    private const int MentalDecayPhase3 = 3;            // 10분+: 5초당 오염도 +3 (GDD §3.1.1)
     private const int Phase2StartSeconds = 300;          // 5분
     private const int Phase3StartSeconds = 600;          // 10분
     private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
