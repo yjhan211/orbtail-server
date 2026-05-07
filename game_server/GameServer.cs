@@ -43,7 +43,6 @@ public class GameServer(
 
     private readonly List<InstanceMapManager> _instanceControllerList = [];
     private readonly InteractableStateManager _interactableStateManager = new();
-    private readonly InteractRuleManager _interactRuleManager = new();
     private readonly ItemPoolManager _itemPoolManager = new();
     private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
@@ -63,13 +62,14 @@ public class GameServer(
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
     private Timer? _botMovementTimer;         // #127 봇 walking step (250ms)
+    private Timer? _botMissionTimer;          // #134 봇 미션 처리 (RNG 채집/결합 — 1초 주기)
 
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private const int ResourceTickIntervalSeconds = 5;
     // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
-    private const int MentalDecayPhase1 = 2;            // 0~5분: 5초당 오염도 +2
-    private const int MentalDecayPhase2 = 4;            // 5~10분: 5초당 오염도 +4
-    private const int MentalDecayPhase3 = 6;            // 10분+: 5초당 오염도 +6
+    private const int MentalDecayPhase1 = 1;            // 0~5분: 5초당 오염도 +1 (GDD §3.1.1)
+    private const int MentalDecayPhase2 = 2;            // 5~10분: 5초당 오염도 +2 (GDD §3.1.1)
+    private const int MentalDecayPhase3 = 3;            // 10분+: 5초당 오염도 +3 (GDD §3.1.1)
     private const int Phase2StartSeconds = 300;          // 5분
     private const int Phase3StartSeconds = 600;          // 10분
     private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
@@ -98,6 +98,7 @@ public class GameServer(
             StartAreaClosureTickTimer();
             StartTargetLocationTimer();
             StartBotMovementTimer();
+            StartBotMissionTimer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -137,6 +138,7 @@ public class GameServer(
         if (_areaClosureTickTimer != null) { await _areaClosureTickTimer.DisposeAsync(); _areaClosureTickTimer = null; }
         if (_targetLocationTimer != null) { await _targetLocationTimer.DisposeAsync(); _targetLocationTimer = null; }
         if (_botMovementTimer != null) { await _botMovementTimer.DisposeAsync(); _botMovementTimer = null; }
+        if (_botMissionTimer != null) { await _botMissionTimer.DisposeAsync(); _botMissionTimer = null; }
 
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
@@ -169,7 +171,6 @@ public class GameServer(
             _inGameInventoryManager.Initialize(log);
             _corridorRuleManager.Initialize(log, OnCorridorStopViolation);
             _areaRuleManager.Initialize(log);
-            _interactRuleManager.Initialize(log, _areaRuleManager);
             _itemPoolManager.Initialize(log);
             _sabotageManager.Initialize(log);
             _sabotageManager.SetStateChangeCallback(OnSabotageStateChange);
@@ -311,8 +312,7 @@ public class GameServer(
                     ProcessBotElimination(matchingId, botId, reason, activeSessions);
                 }
 
-                // #26: v0.2.0 부품 회수/결합 시뮬
-                ProcessBotMissionForMatching(matchingId, activeSessions);
+                // 봇 미션 처리(부품 회수/결합/RNG 채집)는 별도 1초 타이머(ProcessBotMission)에서 수행.
 
                 // #26: 시한부 봇 사보타주 + 색출 시뮬
                 ProcessBotTerminalActionsForMatching(matchingId, activeSessions);
@@ -397,7 +397,8 @@ public class GameServer(
     {
         try
         {
-            var missionResult = _botPlayerManager.ProcessBotMissionTick(matchingId, _missionManager);
+            var missionResult = _botPlayerManager.ProcessBotMissionTick(
+                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager);
 
             // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
             foreach (var (botId, partId) in missionResult.CollectedParts)
@@ -418,6 +419,16 @@ public class GameServer(
                         : $"부품 결합: {part?.PartNameKr ?? outputPartId.ToString()}",
                     isBot: true);
             }
+
+            // #134 — 봇 RNG progress 시작/종료 → 같은 영역 인간 세션에 EXPLORE_START/END (봇 EXPLORE_1 애니 동기화)
+            if (missionResult.BotExploreStarts.Count > 0)
+                BroadcastBotExploreStarts(matchingId, missionResult.BotExploreStarts, activeSessions);
+            if (missionResult.BotExploreEnds.Count > 0)
+                BroadcastBotExploreEnds(matchingId, missionResult.BotExploreEnds, activeSessions);
+
+            // #134 — 봇 RNG 채집으로 발생한 인스턴스 쿨타임 broadcast
+            if (missionResult.RngCooldownBroadcasts.Count > 0)
+                BroadcastBotRngCooldowns(matchingId, missionResult.RngCooldownBroadcasts);
 
             // race 완주 봇 발생 — 즉시 게임 종료 처리 (#87 정합)
             if (missionResult.RaceWinnerBotId == 0) return;
@@ -583,6 +594,88 @@ public class GameServer(
     }
 
     /// <summary>
+    ///     #134 — 봇 RNG progress 시작을 같은 영역 인간 세션에 G_TO_C_EXPLORE_START broadcast.
+    ///     클라가 봇 캐릭터를 EXPLORE_1 상태로 설정 → 탐색 애니메이션 + 사운드 자동 재생.
+    /// </summary>
+    private void BroadcastBotExploreStarts(long matchingId,
+        List<(long botId, int interactId, AreaType area)> starts,
+        List<GameClientSession> activeSessions)
+    {
+        foreach (var (botId, interactId, area) in starts)
+        {
+            var sameAreaSessions = activeSessions
+                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId && s.CurrentArea == area)
+                .ToList();
+            if (sameAreaSessions.Count == 0) continue;
+
+            var msg = new G_TO_C_EXPLORE_START { PlayerId = botId, InteractId = interactId };
+            var body = MessagePackSerializer.Serialize(msg);
+            foreach (var session in sameAreaSessions)
+            {
+                using var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_START, session.PlayerId!.Value);
+                packet.SetBody(body);
+                session.Send(packet);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     #134 — 봇 RNG progress 종료 broadcast. 클라가 봇 캐릭터 EXPLORE_1 → IDLE 복귀.
+    /// </summary>
+    private void BroadcastBotExploreEnds(long matchingId,
+        List<(long botId, AreaType area)> ends, List<GameClientSession> activeSessions)
+    {
+        foreach (var (botId, area) in ends)
+        {
+            var sameAreaSessions = activeSessions
+                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId && s.CurrentArea == area)
+                .ToList();
+            if (sameAreaSessions.Count == 0) continue;
+
+            var msg = new G_TO_C_EXPLORE_END { PlayerId = botId };
+            var body = MessagePackSerializer.Serialize(msg);
+            foreach (var session in sameAreaSessions)
+            {
+                using var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_END, session.PlayerId!.Value);
+                packet.SetBody(body);
+                session.Send(packet);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     #134 — 봇이 RNG 채집한 InteractObject 쿨타임을 같은 매칭 모든 클라에 broadcast.
+    ///     플레이어 회수 시 GameClientSession.BroadcastRngCollectCooldown과 동일한 패킷.
+    ///     결과 정보(직책 매칭 여부)는 포함 X — 노출 방지.
+    /// </summary>
+    private void BroadcastBotRngCooldowns(long matchingId, List<(int interactId, int cooldownSeconds)> broadcasts)
+    {
+        var sessions = _clientSessions.Values
+            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
+            .ToList();
+        if (sessions.Count == 0) return;
+
+        foreach (var (interactId, cooldown) in broadcasts)
+        {
+            var msg = new G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST
+            {
+                InteractId = interactId,
+                CooldownSeconds = cooldown
+            };
+            var body = MessagePackSerializer.Serialize(msg);
+            foreach (var session in sessions)
+            {
+                using var packet = Packet.Create((int)Protocol.G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST,
+                    session.PlayerId!.Value);
+                packet.SetBody(body);
+                session.Send(packet);
+            }
+            logger.LogInformation("봇 RNG 쿨타임 broadcast: MatchingId={Mid}, InteractId={Iid}, Cooldown={Sec}s",
+                matchingId, interactId, cooldown);
+        }
+    }
+
+    /// <summary>
     ///     #125: 봇 이동 이벤트를 같은 매칭의 영향권 인간 세션에 패킷 브로드캐스트.
     ///     - 영역 전환: G_TO_C_AREA_PLAYER_LEAVE(이전 영역) + G_TO_C_AREA_PLAYER_ENTER(새 영역) + G_TO_C_MOVE(텔레포트)
     ///     - 영역 내 wander: G_TO_C_MOVE(같은 영역)
@@ -726,8 +819,8 @@ public class GameServer(
     private void StartTargetLocationTimer()
     {
         _targetLocationTimer = new Timer(ProcessTargetLocation, null,
-            TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
-        logger.LogInformation("타겟 위치 전송 타이머 시작 (3초 간격)");
+            TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        logger.LogInformation("타겟 위치 전송 타이머 시작 (1초 간격)");
     }
 
     private void ProcessTargetLocation(object? state)
@@ -759,6 +852,42 @@ public class GameServer(
         logger.LogInformation("봇 walking 타이머 시작 ({Ms}ms 간격)", BotMovementTickIntervalMs);
     }
 
+    private const int BotMissionTickIntervalMs = 1000; // #134 봇 미션 처리(RNG 채집/결합) 주기
+
+    private void StartBotMissionTimer()
+    {
+        _botMissionTimer = new Timer(ProcessBotMission, null,
+            TimeSpan.FromMilliseconds(BotMissionTickIntervalMs),
+            TimeSpan.FromMilliseconds(BotMissionTickIntervalMs));
+        logger.LogInformation("봇 미션 타이머 시작 ({Ms}ms 간격)", BotMissionTickIntervalMs);
+    }
+
+    private void ProcessBotMission(object? state)
+    {
+        try
+        {
+            var activeSessions = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue)
+                .ToList();
+            if (activeSessions.Count == 0) return;
+
+            var matchingIds = activeSessions
+                .Select(s => s.CurrentMapSubId)
+                .Distinct()
+                .ToList();
+
+            foreach (long matchingId in matchingIds)
+            {
+                if (!_botPlayerManager.HasBots(matchingId)) continue;
+                ProcessBotMissionForMatching(matchingId, activeSessions);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "봇 미션 틱 처리 중 오류");
+        }
+    }
+
     private void ProcessBotMovement(object? state)
     {
         try
@@ -776,9 +905,11 @@ public class GameServer(
             foreach (long matchingId in matchingIds)
             {
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
-                var movements = _botPlayerManager.ProcessBotMovementTick(matchingId, _areaClosureManager);
-                foreach (var ev in movements)
+                var movementResult = _botPlayerManager.ProcessBotMovementTick(matchingId, _areaClosureManager);
+                foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
+                if (movementResult.ExploreEnds.Count > 0)
+                    BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
             }
         }
         catch (Exception ex)
@@ -871,7 +1002,6 @@ public class GameServer(
                 _areaRuleManager,
                 _itemPoolManager,
                 _corridorRuleManager,
-                _interactRuleManager,
                 _doorStateManager,
                 _sabotageManager,
                 _manittoChainManager,

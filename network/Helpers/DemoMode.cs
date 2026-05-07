@@ -74,11 +74,9 @@ public static class DemoMode
             (170, AreaType.Library),      // 02:50 도서관 (1:1 with LB)
             (240, AreaType.Corridor3F),   // 04:00 후퇴
             (300, AreaType.ExamRoom)      // 05:00 고사실 회귀 (06:40 색출 위치)
-        },
-        [JobTitle.HEALTH_MEMBER] = new[]
-        {
-            (0, AreaType.Gym)             // 강당 캠핑 (12:00 강제 탈락까지 고정)
         }
+        // HEALTH_MEMBER 단일 영역 고정 항목 제거 — 직책 큐 따라 자연 walking 시각.
+        // 12:00 강제 탈락(H8)은 ProcessBotTick의 HeForcedEliminationSeconds 흐름에서 그대로 유지.
     };
 
     /// <summary>시연 매칭 인원 — 시연자 1명 + 봇 4명.</summary>

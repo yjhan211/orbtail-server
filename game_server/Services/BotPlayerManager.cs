@@ -46,7 +46,7 @@ public partial class BotPlayerManager
 
     // 봇 행동 시정수
     private const int BotMoveIntervalSeconds = 12;        // 봇 이동 주기 (자기 직책 발견 구역 순회)
-    private const int BotMissionTickIntervalSeconds = 4;  // 봇 미션 행동 (회수/결합) 주기
+    private const int BotMissionTickIntervalSeconds = 1;  // 봇 미션 행동 (회수/결합) 주기 — 도착 후 RNG 빠른 트리거
     private const int BotMoveStaminaCost = 3;             // 이동 시 스태미나 소모
     private const int DetectScoreThreshold = 18;          // 색출 휴리스틱 임계값 — 함정 흔적 발견 누적 점수
 
@@ -127,23 +127,44 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     봇 기본 의상 (user_server SetupNewPlayer 5종 + 봇 식별용 새싹 헤어밴드).
+    ///     봇 기본 의상 (user_server SetupNewPlayer 5종, 액세서리는 직책별로 차등).
     /// </summary>
     private static readonly int[] BotDefaultWearItemIds =
     {
         101000003, // Hair
         102000003, // Face
-        103000002, // 새싹 헤어밴드 — 봇 식별용 액세서리
         104000005, // Top
         105000005, // Bottom
         106000003  // Shoes
     };
 
     /// <summary>
+    ///     봇 직책별 액세서리 (시연 시각 식별용).
+    /// </summary>
+    private static readonly Dictionary<JobTitle, int> BotAccessoryByJob = new()
+    {
+        { JobTitle.BROADCAST_MEMBER, 103000001 },  // 리본 헤어밴드
+        { JobTitle.DISCIPLINE_MEMBER, 103000004 }, // 프리뮬라
+        { JobTitle.SCIENCE_MEMBER, 103000005 },    // 뽀송 귀마개
+        { JobTitle.HEALTH_MEMBER, 103000006 }      // 베레모
+    };
+
+    /// <summary>
+    ///     봇 기본 의상 + 직책별 액세서리 조합 wear list 생성.
+    /// </summary>
+    private static List<int> BuildBotWearItems(JobTitle jobTitle)
+    {
+        var list = new List<int>(BotDefaultWearItemIds);
+        if (BotAccessoryByJob.TryGetValue(jobTitle, out var accessoryId))
+            list.Add(accessoryId);
+        return list;
+    }
+
+    /// <summary>
     ///     봇의 PlayerInfo를 합성해서 반환 — G_TO_C_AREA_PLAYER_ENTER / G_TO_C_PLAYER_INFO 등
     ///     실제 플레이어 패킷 동등 시각화에 사용.
     ///     #125: 봇은 Redis에 저장되지 않으므로 매 호출 시 BotPlayerState로부터 합성.
-    ///     #127: 기본 의상 5종 착용으로 외형 노출.
+    ///     #127: 기본 의상 5종 + 직책별 액세서리(시연 식별).
     /// </summary>
     public PlayerInfo? SynthesizePlayerInfo(long matchingId, long botPlayerId)
     {
@@ -151,17 +172,21 @@ public partial class BotPlayerManager
         if (bot == null) return null;
 
         var mapId = GetMatchingMapId(matchingId);
+        // 봇이 RNG progress 중이면 EXPLORE_1로 합성 → 영역 진입 시 클라가 봇 캐릭터 탐색 애니 즉시 표시.
+        var state = bot.RngCollectProgressStartTime != DateTime.MinValue
+            ? PlayerState.EXPLORE_1
+            : PlayerState.IDLE;
         var info = new PlayerInfo
         {
             PlayerId = bot.PlayerId,
             Name = bot.Name,
-            State = PlayerState.NONE,
+            State = state,
             LastMapId = mapId,
             LastMapSubId = matchingId,
             LastCell = bot.Cell,
             Hp = 5000,
             Stamina = bot.Stamina,
-            WearItemIdList = new List<int>(BotDefaultWearItemIds)
+            WearItemIdList = BuildBotWearItems(bot.MyJobTitle)
         };
         info.ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, mapId, matchingId, bot.Cell)
         {
@@ -323,4 +348,23 @@ public class BotPlayerState
 
     /// <summary>봇이 마지막으로 1:1 응답한 상대 (자기 자신과 동일 PlayerId면 응답 X)</summary>
     public long LastInteractRespondedTo { get; set; }
+
+    // === #134 RNG 채집 통합 ===
+    /// <summary>봇이 walking으로 접근 중인 InteractObject Id. 0이면 없음.
+    /// ChooseNewWanderTarget에서 영역 + 셀 선택 시 설정, 도착 후 RNG 채집 시 0으로 clear.</summary>
+    public int PendingRngInteractId { get; set; }
+
+    /// <summary>현재 영역 내에서 아직 탐색하지 않은 InteractObject Id 큐.
+    /// 영역 진입 시 그 영역의 모든 후보로 채움. RNG 채집 후 첫 번째를 꺼내 다음 셀로 walking.
+    /// 비면 ChooseNewWanderTarget이 다음 영역 결정.</summary>
+    public List<int> InteractQueueInArea { get; set; } = new();
+
+    /// <summary>마지막으로 자동 소모품을 사용한 시각 (재사용 쿨다운).</summary>
+    public DateTime LastAutoConsumableUseTime { get; set; } = DateTime.MinValue;
+
+    /// <summary>RNG 채집 progress 시작 시각. 0이면 아직 시작 안 함. 시작 후 1.5초 경과 시 결과 산출.</summary>
+    public DateTime RngCollectProgressStartTime { get; set; } = DateTime.MinValue;
+
+    /// <summary>walking 시작 시 G_TO_C_EXPLORE_END broadcast가 필요한지 — ChooseNewWanderTarget이 set, 다음 ProcessBotMovementTick에서 수집 + reset.</summary>
+    public bool PendingExploreEndBroadcast { get; set; }
 }

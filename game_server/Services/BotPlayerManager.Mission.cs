@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
+using network.common.data.models;
 using network.helpers;
 
 namespace game_server.services;
@@ -15,10 +16,13 @@ public partial class BotPlayerManager
 {
     /// <summary>
     ///     봇 미션 틱. 매칭 단위로 game_server에서 주기 호출.
-    ///     - 현재 구역에서 부품/선행 회수 시도
+    ///     #134 — RNG 채집 통합. 봇이 InteractObject 셀에 도착하면 RNG 결과 산출 + 인스턴스 쿨타임 broadcast.
+    ///     - 도착한 InteractObject에서 RNG 채집 (RngCollectCore 공통 로직)
     ///     - 4 소재 보유 시 결합 트리거 (M1+M2 → I1, M3+M4 → I2, I1+I2 → F)
+    ///     - 스태미나 부족 시 자동 소모품 사용
     /// </summary>
-    public BotMissionTickResult ProcessBotMissionTick(long matchingId, MissionManager missionManager)
+    public BotMissionTickResult ProcessBotMissionTick(long matchingId, MissionManager missionManager,
+        InGameInventoryManager inventoryManager, ItemPoolManager itemPoolManager)
     {
         var result = new BotMissionTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
@@ -32,78 +36,223 @@ public partial class BotPlayerManager
             var state = missionManager.GetState(matchingId, bot.PlayerId);
             if (state == null || state.IsCompleted) continue;
 
-            // 1) 현재 구역에서 부품 회수 시도 (자기 직책 발견 풀 매칭)
-            TryCollectAtCurrentArea(bot, matchingId, missionManager, state, result);
+            // 1) 봇 walking 도착 후 RNG 채집 (PendingRngInteractId가 있을 때만)
+            TryRngCollectIfArrived(bot, matchingId, missionManager, inventoryManager, itemPoolManager, state, result);
 
             // 2) 결합 시도 (회수 직후 보유 부품 검사)
             TryAutoCombine(bot, matchingId, missionManager, state, result);
+
+            // 3) 스태미나 부족 시 자동 소모품 사용 (인벤토리에 회복 아이템 있을 때)
+            TryAutoUseConsumable(bot, matchingId, inventoryManager);
         }
 
         return result;
     }
 
+    /// <summary>봇이 자동 소모품을 사용하기 위한 스태미나 임계값.</summary>
+    private const int BotAutoConsumableStaminaThreshold = 30;
+
+    /// <summary>봇 자동 소모품 재사용 쿨다운(초).</summary>
+    private const int BotAutoConsumableCooldownSeconds = 20;
+
+    /// <summary>봇 채집 시작 시 차감되는 스태미나 (플레이어 RngCollectStaminaCost와 동일).</summary>
+    private const int BotRngCollectStaminaCost = 5;
+
+    /// <summary>봇 RNG 채집 progress 지속 시간 (플레이어 클라 2초 progress와 동등).</summary>
+    private const double BotRngCollectProgressSeconds = 2.0;
+
+    /// <summary>봇 RNG 인스턴스 쿨타임 — RngCollectCore의 동등 상수 (BotPlayerManager 내부 노출용).</summary>
+    private const int RngCollectCooldownSeconds = 30;
+
     /// <summary>
-    ///     봇 현재 구역의 자기 직책 부품/선행 아이템 회수 시도.
-    ///     mission_step.csv의 (target_area, target_object_type)에 부합하면 회수.
+    ///     #134 — 봇이 walking으로 InteractObject 셀에 도착했을 때 RNG 채집 트리거.
+    ///     2단계 흐름:
+    ///       (1) 첫 호출: progress 시작 → ExploreStart broadcast (다른 클라가 봇 캐릭터 EXPLORE_1 애니메이션 동기화)
+    ///       (2) 1.5초 경과 후: RngCollectCore.Resolve → 결과 산출 + ExploreEnd + 쿨타임 broadcast
     /// </summary>
-    private void TryCollectAtCurrentArea(BotPlayerState bot, long matchingId,
-        MissionManager missionManager, PlayerPartState state, BotMissionTickResult result)
+    private void TryRngCollectIfArrived(BotPlayerState bot, long matchingId,
+        MissionManager missionManager, InGameInventoryManager inventoryManager,
+        ItemPoolManager itemPoolManager, PlayerPartState state, BotMissionTickResult result)
     {
-        var materials = GameMissionData.GetMaterials((short)bot.MyJobTitle);
+        if (bot.PendingRngInteractId <= 0) return;
 
-        // (a) 현재 구역의 미회수 소재 — 선행 충족 시 회수
-        var pendingHere = materials.FirstOrDefault(p =>
-            p.TargetArea == (int)bot.CurrentArea &&
-            !state.CollectedParts.Contains(p.PartId));
+        // 도착 판정: walking path가 비어있고 (도달 완료) 영역이 InteractObject 영역과 동일
+        if (bot.Path.Count > 0 && bot.PathIndex < bot.Path.Count) return;
 
-        if (pendingHere != null)
+        var info = GameInteractableData.Get(bot.PendingRngInteractId);
+        if (info == null)
         {
-            bool prereqOk = pendingHere.PrerequisiteShareGroup <= 0
-                || state.CollectedPrereqGroups.Contains(pendingHere.PrerequisiteShareGroup);
-
-            if (!prereqOk)
-            {
-                // 선행 미보유 — 선행 위치를 큐 앞으로 끌어오기
-                EnqueuePrereqAreaIfMissing(bot, pendingHere.PartId);
-            }
-            else
-            {
-                var collect = missionManager.TryCollectPart(matchingId, bot.PlayerId,
-                    bot.CurrentArea, pendingHere.TargetObjectType);
-                if (collect is { Success: true, Part: not null })
-                {
-                    bot.Stamina = Math.Min(100, bot.Stamina + collect.StaminaReward);
-                    _logger.LogInformation(
-                        "봇 부품 회수: BotId={BotId}, Job={Job}, PartId={Part}({Name}), 스태미나+{R}",
-                        bot.PlayerId, bot.MyJobTitle, collect.Part.PartId, collect.Part.PartNameKr,
-                        collect.StaminaReward);
-                    result.CollectedParts.Add((bot.PlayerId, collect.Part.PartId));
-                    return;
-                }
-            }
-        }
-
-        // (b) 현재 구역의 자기 직책 선행 아이템 — 자동 회수
-        foreach (var part in materials)
-        {
-            if (part.PrerequisiteShareGroup <= 0) continue;
-            if (state.CollectedPrereqGroups.Contains(part.PrerequisiteShareGroup)) continue;
-
-            var prereq = PrerequisiteItemData.GetForPart(part.PartId);
-            if (prereq == null) continue;
-            if (prereq.LocationArea != (int)bot.CurrentArea) continue;
-
-            bool ok = missionManager.TryCollectPrerequisite(matchingId, bot.PlayerId,
-                bot.CurrentArea, prereq.LocationObjectType);
-            if (!ok) continue;
-
-            bot.Stamina = Math.Min(100, bot.Stamina + 6); // 선행 보상(GameClientSession.Manitto.cs와 동일)
-            _logger.LogInformation(
-                "봇 선행 회수: BotId={BotId}, ShareGroup={G} ({Name})",
-                bot.PlayerId, prereq.ShareGroup, prereq.ItemNameKr);
-            result.CollectedPrereqs.Add((bot.PlayerId, prereq.ShareGroup));
+            SkipPendingInteract(bot, matchingId, bot.PendingRngInteractId, result);
             return;
         }
+        if (info.ZoneId != (int)bot.CurrentArea)
+        {
+            SkipPendingInteract(bot, matchingId, info.Id, result);
+            return;
+        }
+
+        // 쿨타임 체크 — walking 도중 다른 누군가가 회수한 경우 progress 시작 X. 즉시 다음 InteractObject로 진행.
+        // 봇 본인이 1단계 진입 후 cooldown 등록한 경우는 우회 (자기 cooldown).
+        if (bot.RngCollectProgressStartTime == DateTime.MinValue
+            && RngCollectCooldownStore.IsInCooldown(matchingId, info.Id, out _))
+        {
+            _logger.LogInformation(
+                "봇 RNG 스킵(이미 회수됨): BotId={Bot}, InteractId={Iid}",
+                bot.PlayerId, info.Id);
+            // 다른 봇/플레이어가 등록한 cooldown — clear 안 함.
+            bot.PendingRngInteractId = 0;
+            bot.RngCollectProgressStartTime = DateTime.MinValue;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+
+        // (1) 첫 진입: progress 시작 → ExploreStart broadcast + 마커 즉시 숨김
+        if (bot.RngCollectProgressStartTime == DateTime.MinValue)
+        {
+            bot.RngCollectProgressStartTime = now;
+            ApplyBotStaminaCost(bot, BotRngCollectStaminaCost);
+
+            // 1단계 cooldown 30초 등록 — 정상 완료 시 동일하게 갱신, 폐기 시 SkipPendingInteract가 clear broadcast로 해제.
+            RngCollectCooldownStore.SetCooldown(matchingId, info.Id, RngCollectCooldownSeconds);
+
+            result.BotExploreStarts.Add((bot.PlayerId, info.Id, bot.CurrentArea));
+            result.RngCooldownBroadcasts.Add((info.Id, RngCollectCooldownSeconds));
+
+            _logger.LogInformation(
+                "봇 RNG progress 시작: BotId={BotId}, InteractId={Iid}, Area={Area}",
+                bot.PlayerId, info.Id, bot.CurrentArea);
+            return;
+        }
+
+        // (2) progress 진행 중 — 1.5초 미만이면 대기
+        if ((now - bot.RngCollectProgressStartTime).TotalSeconds < BotRngCollectProgressSeconds) return;
+
+        // (3) progress 완료 → RNG 결과 산출
+        var outcome = RngCollectCore.Resolve(matchingId, bot.PlayerId, bot.MyJobTitle,
+            info, missionManager, inventoryManager, itemPoolManager, isBot: true);
+
+        if (outcome is { ResultType: 3, CollectedPart: not null })
+        {
+            bot.Stamina = Math.Min(100, bot.Stamina + outcome.StaminaReward);
+            _logger.LogInformation(
+                "봇 RNG 부품 회수: BotId={BotId}, Job={Job}, InteractId={Iid}, PartId={Part}({Name})",
+                bot.PlayerId, bot.MyJobTitle, info.Id, outcome.CollectedPart.PartId,
+                outcome.CollectedPart.PartNameKr);
+            result.CollectedParts.Add((bot.PlayerId, outcome.CollectedPart.PartId));
+        }
+        else
+        {
+            _logger.LogInformation(
+                "봇 RNG 결과: BotId={BotId}, InteractId={Iid}, ResultType={Type}, Item={Item}",
+                bot.PlayerId, info.Id, outcome.ResultType, outcome.ItemId);
+        }
+
+        // ExploreEnd + 쿨타임 broadcast (다른 클라가 봇 EXPLORE_1 → IDLE 복귀 + 마커 30초 숨김)
+        result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
+        result.RngCooldownBroadcasts.Add((info.Id, outcome.CooldownSeconds));
+
+        bot.PendingRngInteractId = 0;
+        bot.RngCollectProgressStartTime = DateTime.MinValue;
+    }
+
+    /// <summary>
+    ///     #134 — RNG progress 폐기 정리. 1단계 진입 후 폐기(영역 어긋남/InteractId 미존재 등) 시
+    ///     봇이 자기가 등록한 cooldown clear + clear broadcast(cooldownSeconds=0)로 마커 복원 + ExploreEnd.
+    ///     LoopWaitUntil도 reset해서 walking 보류 없이 즉시 다음 ChooseNewWanderTarget.
+    /// </summary>
+    private static void SkipPendingInteract(BotPlayerState bot, long matchingId, int interactId,
+        BotMissionTickResult result)
+    {
+        bool wasInProgress = bot.RngCollectProgressStartTime != DateTime.MinValue;
+        bot.PendingRngInteractId = 0;
+        bot.RngCollectProgressStartTime = DateTime.MinValue;
+        bot.LoopWaitUntil = DateTime.MinValue;
+
+        // 1단계 진입했었다면 자기가 등록한 cooldown 해제 + 클라 마커 복원 broadcast.
+        if (wasInProgress && interactId > 0)
+        {
+            RngCollectCooldownStore.ClearCooldown(matchingId, interactId);
+            result.RngCooldownBroadcasts.Add((interactId, 0));
+            result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
+        }
+    }
+
+    /// <summary>
+    ///     봇 스태미나 차감 — 부족분만큼 corruption 1:2 변환 (플레이어 ModifyStats 동등).
+    /// </summary>
+    private static void ApplyBotStaminaCost(BotPlayerState bot, int cost)
+    {
+        int newStamina = bot.Stamina - cost;
+        if (newStamina < 0)
+        {
+            int deficit = -newStamina;
+            bot.Stamina = 0;
+            bot.Corruption = Math.Min(100, bot.Corruption + deficit * 2);
+        }
+        else
+        {
+            bot.Stamina = newStamina;
+        }
+    }
+
+    /// <summary>
+    ///     #134 — 봇 자동 소모품 사용. Stamina < 임계값일 때 인벤토리 회복 아이템 소비.
+    ///     CONDITION_ADD(stamina up) 또는 CORRUPTION_DOWN buff를 즉시 적용.
+    /// </summary>
+    private void TryAutoUseConsumable(BotPlayerState bot, long matchingId, InGameInventoryManager inventoryManager)
+    {
+        if (bot.Stamina >= BotAutoConsumableStaminaThreshold) return;
+        if ((DateTime.UtcNow - bot.LastAutoConsumableUseTime).TotalSeconds < BotAutoConsumableCooldownSeconds) return;
+
+        var inventory = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId);
+        var items = inventory.GetAllItems();
+        if (items.Count == 0) return;
+
+        // 가장 효율 높은 회복 아이템 선택 — CONDITION_ADD value 합 기준
+        InGameItemInfo? bestItem = null;
+        int bestStaminaGain = 0;
+        int bestCorruptionDown = 0;
+
+        foreach (var item in items)
+        {
+            if (item.Count <= 0) continue;
+            var data = GameItemData.Get(item.ItemId);
+            if (data == null) continue;
+            if (data.ConsumableBuffList.Count == 0) continue;
+
+            int staminaGain = 0;
+            int corruptionDown = 0;
+            foreach (var (buffId, value, _) in data.ConsumableBuffList)
+            {
+                var buff = GameBuffData.Get(buffId);
+                if (buff == null) continue;
+                if (buff.SubType == BuffSubType.CONDITION_ADD) staminaGain += value;
+                else if (buff.SubType == BuffSubType.CORRUPTION_DOWN) corruptionDown += value;
+            }
+
+            if (staminaGain <= 0 && corruptionDown <= 0) continue;
+
+            if (staminaGain > bestStaminaGain || (staminaGain == bestStaminaGain && corruptionDown > bestCorruptionDown))
+            {
+                bestItem = item;
+                bestStaminaGain = staminaGain;
+                bestCorruptionDown = corruptionDown;
+            }
+        }
+
+        if (bestItem == null) return;
+
+        if (!inventoryManager.TryRemoveItem(matchingId, bot.PlayerId, bestItem.ItemUid, 1, out _)) return;
+
+        bot.Stamina = Math.Min(100, bot.Stamina + bestStaminaGain);
+        bot.Corruption = Math.Max(0, bot.Corruption - bestCorruptionDown);
+        bot.LastAutoConsumableUseTime = DateTime.UtcNow;
+
+        _logger.LogInformation(
+            "봇 자동 소모품 사용: BotId={Bot}, ItemId={Iid}, Stamina+{S}, Cor-{C}, → Stamina={NS}, Cor={NC}",
+            bot.PlayerId, bestItem.ItemId, bestStaminaGain, bestCorruptionDown, bot.Stamina, bot.Corruption);
     }
 
     /// <summary>
@@ -327,6 +476,15 @@ public class BotMissionTickResult
     public List<(long botPlayerId, int partId)> CollectedParts { get; } = new();
     public List<(long botPlayerId, int shareGroup)> CollectedPrereqs { get; } = new();
     public List<(long botPlayerId, int outputPartId, bool isRaceComplete)> Combined { get; } = new();
+
+    /// <summary>#134 — 봇이 RNG 채집한 InteractObject 인스턴스 쿨타임 broadcast 정보.</summary>
+    public List<(int interactId, int cooldownSeconds)> RngCooldownBroadcasts { get; } = new();
+
+    /// <summary>#134 — 봇이 RNG progress 시작했음을 같은 영역 인간 세션에 알림 (G_TO_C_EXPLORE_START).</summary>
+    public List<(long botId, int interactId, AreaType area)> BotExploreStarts { get; } = new();
+
+    /// <summary>#134 — 봇이 RNG progress 종료했음을 같은 영역 인간 세션에 알림 (G_TO_C_EXPLORE_END).</summary>
+    public List<(long botId, AreaType area)> BotExploreEnds { get; } = new();
 
     /// <summary>race 완주 봇 PlayerId — 0이면 없음, GameServer가 즉시 게임 종료 처리.</summary>
     public long RaceWinnerBotId { get; set; }

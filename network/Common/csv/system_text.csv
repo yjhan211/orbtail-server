@@ -14,7 +14,7 @@ id,category,text_kr,text_en,text_jp
 22,3,교무실에서 학생증을 획득하십시오,Acquire the student ID from the Staff Room.,職員室で学生証を獲得してください。
 23,3,방송실로 이동하십시오,Move to the Broadcast Room.,放送室へ移動してください。
 30,4,손톱으로 긁어야 합니다. 괜찮으시겠습니까?,You will have to scratch with your fingernails. Are you sure?,爪で引っ掻かなければなりません。よろしいですか?
-31,4,무시한다,Ignore,無視する
+31,4,무시합니다,Ignore,無視する
 40,5,<color=#A8D4E0>강당 열쇠</color>를 획득해야 합니다.,You must acquire the <color=#A8D4E0>Auditorium key</color>.,<color=#A8D4E0>講堂の鍵</color>を獲得しなければなりません。
 100,3,<color=#A8D4E0>{Item.SpawnArea}</color>에서 <color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>회수</color>하십시오. <color=#A8D4E0>{Debuff.Warning}</color>,<color=#A8D4E0>Retrieve</color> the <color=#A8D4E0>{Item.Name}</color> from the <color=#A8D4E0>{Item.SpawnArea}</color>. <color=#A8D4E0>{Debuff.Warning}</color>,<color=#A8D4E0>{Item.SpawnArea}</color>から<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>回収</color>してください。<color=#A8D4E0>{Debuff.Warning}</color>
 101,3,저들이 <color=#FF7E9A>{Item.Name}</color>을 절대로 찾게 해서는 안 돼. <color=#FF7E9A>{Item.SpawnArea}</color>에 숨겨둔 건 나만 알아야 해.,They must never find <color=#FF7E9A>{Item.Name}</color>. Only I should know that I hid it in the <color=#FF7E9A>{Item.SpawnArea}</color>.,あいつらに<color=#FF7E9A>{Item.Name}</color>を絶対に見つけさせてはいけない。<color=#FF7E9A>{Item.SpawnArea}</color>に隠したことは私だけが知っているべきだ。
@@ -24,9 +24,9 @@ id,category,text_kr,text_en,text_jp
 112,3,<color=#A8D4E0>{Spot.Name}</color>까지 <color=#A8D4E0>운반</color>하기,<color=#A8D4E0>Transport</color> to the <color=#A8D4E0>{Spot.Name}</color>,<color=#A8D4E0>{Spot.Name}</color>まで<color=#A8D4E0>運搬</color>する
 113,3,<color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>집어넣는다</color>.,<color=#A8D4E0>Place</color> the <color=#A8D4E0>{Item.Name}</color>.,<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>差し入れる</color>。
 120,3,<color=#A8D4E0>장비</color>에 <color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>삽입</color>하십시오.,<color=#A8D4E0>Insert</color> the <color=#A8D4E0>{Item.Name}</color> into the <color=#A8D4E0>equipment</color>.,<color=#A8D4E0>装備</color>に<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>挿入</color>してください。
-121,3,"<color=#FF7E9A>장비</color>를 작동시키면 안 돼. 목소리가 바깥으로 새어나가면, 모든 게 끝이야.","Don't operate the <color=#FF7E9A>equipment</color>. If my voice leaks outside, everything is over.","<color=#FF7E9A>装備</color>を作動させてはいけない。声が外に漏れたら、全てが終わる。"
+121,3,"<color=#FF7E9A>장비</color>를 작동시키면 안 돼. 목소리가 바깥으로 새어나가면, 모든 게 끝이야.","Don't operate the <color=#FF7E9A>equipment</color>. If my voice leaks outside, everything is over.",<color=#FF7E9A>装備</color>を作動させてはいけない。声が外に漏れたら、全てが終わる。
 122,3,<color=#A8D4E0>{Item.Name}</color> <color=#A8D4E0>삽입</color>하기,<color=#A8D4E0>Insert</color> the <color=#A8D4E0>{Item.Name}</color>,<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>挿入</color>する
-123,3,<color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>삽입한다</color>.,<color=#A8D4E0>Insert</color> the <color=#A8D4E0>{Item.Name}</color>.,<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>挿入する</color>。
+123,3,<color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>삽입합니다</color>.,<color=#A8D4E0>Insert</color> the <color=#A8D4E0>{Item.Name}</color>.,<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>挿入する</color>。
 130,3,<color=#A8D4E0>{Condition.Text}</color> <color=#A8D4E0>마이크</color> 앞에서 <color=#A8D4E0>메시지</color>를 정확히 <color=#A8D4E0>읽으십시오</color>.,<color=#A8D4E0>{Condition.Text}</color> <color=#A8D4E0>Read</color> the <color=#A8D4E0>message</color> precisely in front of the <color=#A8D4E0>microphone</color>.,<color=#A8D4E0>{Condition.Text}</color><color=#A8D4E0>マイク</color>の前で<color=#A8D4E0>メッセージ</color>を正確に<color=#A8D4E0>読み上げて</color>ください。
 131,3,<color=#FF7E9A>마이크</color>에 대고 말하지 마. 네 목소리를 다른 사람에게 들려주고 싶지 않아.,Don't speak into the <color=#FF7E9A>microphone</color>. I don't want anyone else to hear your voice.,<color=#FF7E9A>マイク</color>に向かって話すな。お前の声を他の誰にも聞かせたくない。
 132,3,<color=#A8D4E0>메시지</color> <color=#A8D4E0>읽기</color>,<color=#A8D4E0>Read</color> the <color=#A8D4E0>message</color>,<color=#A8D4E0>メッセージ</color>を<color=#A8D4E0>読む</color>
@@ -40,11 +40,11 @@ id,category,text_kr,text_en,text_jp
 220,3,<color=#A8D4E0>{Spot.Name}</color>까지 <color=#A8D4E0>호위</color>하십시오.,<color=#A8D4E0>Escort</color> them to the <color=#A8D4E0>{Spot.Name}</color>.,<color=#A8D4E0>{Spot.Name}</color>まで<color=#A8D4E0>護衛</color>してください。
 221,3,<color=#FF7E9A>{Spot.Name}</color>에 데려가려고 하지 마. 굳이 그럴 필요는 없잖아?,"Don't try to take them to the <color=#FF7E9A>{Spot.Name}</color>. You don't have to, do you?",<color=#FF7E9A>{Spot.Name}</color>へ連れて行こうとするな。わざわざそうする必要はないだろう?
 222,3,<color=#A8D4E0>{Spot.Name}</color>까지 <color=#A8D4E0>호위</color>하기,<color=#A8D4E0>Escort</color> to the <color=#A8D4E0>{Spot.Name}</color>,<color=#A8D4E0>{Spot.Name}</color>まで<color=#A8D4E0>護衛</color>する
-223,3,<color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>투입한다</color>.,<color=#A8D4E0>Submit</color> the <color=#A8D4E0>{Item.Name}</color>.,<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>投入する</color>。
+223,3,<color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>투입합니다</color>.,<color=#A8D4E0>Submit</color> the <color=#A8D4E0>{Item.Name}</color>.,<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>投入する</color>。
 230,3,<color=#A8D4E0>{Condition.Text}</color> <color=#A8D4E0>개체</color>를 <color=#A8D4E0>투입</color>하십시오.,<color=#A8D4E0>{Condition.Text}</color> <color=#A8D4E0>Submit</color> the <color=#A8D4E0>subject</color>.,<color=#A8D4E0>{Condition.Text}</color><color=#A8D4E0>個体</color>を<color=#A8D4E0>投入</color>してください。
 231,3,<color=#FF7E9A>투입하지 마</color>. 다시는 만날 수 없어.,<color=#FF7E9A>Don't submit them</color>. We will never meet again.,<color=#FF7E9A>投入するな</color>。二度と会えなくなる。
 232,3,<color=#A8D4E0>개체</color> <color=#A8D4E0>투입</color>하기,<color=#A8D4E0>Submit</color> the <color=#A8D4E0>subject</color>,<color=#A8D4E0>個体</color>を<color=#A8D4E0>投入</color>する
-233,3,<color=#A8D4E0>개체</color>를 <color=#A8D4E0>투입한다</color>.,<color=#A8D4E0>Submit</color> the <color=#A8D4E0>subject</color>.,<color=#A8D4E0>個体</color>を<color=#A8D4E0>投入する</color>。
+233,3,<color=#A8D4E0>개체</color>를 <color=#A8D4E0>투입합니다</color>.,<color=#A8D4E0>Submit</color> the <color=#A8D4E0>subject</color>.,<color=#A8D4E0>個体</color>を<color=#A8D4E0>投入する</color>。
 10001,4,<color=#A8D4E0>{0}</color>님과의 <color=#A8D4E0>대화</color>가 <color=#A8D4E0>종료</color>되었습니다.,Conversation with <color=#A8D4E0>{0}</color> has <color=#A8D4E0>ended</color>.,<color=#A8D4E0>{0}</color>さんとの<color=#A8D4E0>対話</color>が<color=#A8D4E0>終了</color>しました。
 10002,4,<color=#A8D4E0>{0}</color>님의 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>Accepted</color> conversation with <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>さんの<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。
 10003,4,<color=#A8D4E0>{0}</color>님의 대화를 <color=#A8D4E0>거절</color>했습니다.,<color=#A8D4E0>Declined</color> conversation with <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>さんの対話を<color=#A8D4E0>拒否</color>しました。
@@ -101,8 +101,8 @@ id,category,text_kr,text_en,text_jp
 11007,5,보건부원,Health Member,保健委員
 11020,6,<color=#A8D4E0>{0}</color>으로 온 이유가 궁금합니다.,Why did you come to <color=#A8D4E0>{0}</color>?,<color=#A8D4E0>{0}</color>に来た理由が気になります。
 11021,6,직책이 무엇인지 궁금합니다.,What is your role?,役職が何なのか気になります。
-11022,6,"다른 분도 <color=#A8D4E0>{0}</color>이라고 주장하시던데, 사실인가요?","Someone else also claimed to be a <color=#A8D4E0>{0}</color>. Is that true?","他の方も<color=#A8D4E0>{0}</color>だと主張していましたが、本当ですか?"
-11023,6,"저번에 <color=#A8D4E0>{0}</color>이라고 하셨는데, 정말 그러신가요?","Last time you said you were a <color=#A8D4E0>{0}</color>. Really?","前回は<color=#A8D4E0>{0}</color>だと仰っていましたが、本当にそうなんですか?"
+11022,6,"다른 분도 <color=#A8D4E0>{0}</color>이라고 주장하시던데, 사실인가요?",Someone else also claimed to be a <color=#A8D4E0>{0}</color>. Is that true?,他の方も<color=#A8D4E0>{0}</color>だと主張していましたが、本当ですか?
+11023,6,"저번에 <color=#A8D4E0>{0}</color>이라고 하셨는데, 정말 그러신가요?",Last time you said you were a <color=#A8D4E0>{0}</color>. Really?,前回は<color=#A8D4E0>{0}</color>だと仰っていましたが、本当にそうなんですか?
 11024,6,여기서 무엇을 보셨는지 궁금합니다.,What did you see here?,ここで何を見たのか気になります。
 11030,6,<color=#A8D4E0>{0}</color> 미션을 수행하러 왔습니다.,I came to perform the <color=#A8D4E0>{0}</color> mission.,<color=#A8D4E0>{0}</color>のミッションを遂行しに来ました。
 11031,6,구역 폐쇄로 인해 지나가던 도중입니다.,I was passing by due to area closure.,区域閉鎖のため通りかかったところです。

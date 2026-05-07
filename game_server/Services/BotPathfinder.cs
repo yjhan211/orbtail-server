@@ -159,6 +159,7 @@ public static class BotPathfinder
     {
         AreaConnectionInfo? best = null;
         int bestDist = int.MaxValue;
+        AreaConnectionInfo? zeroDistFallback = null;
         foreach (var conn in GameAreaConnectionData.GetConnections(mapId, fromArea))
         {
             if (conn.ToArea != toArea) continue;
@@ -167,13 +168,21 @@ public static class BotPathfinder
             var exit = FindReverseSpawnCell(mapId, conn);
             if (exit == null) continue;
             int dist = Math.Abs(exit.X - currentCell.X) + Math.Abs(exit.Y - currentCell.Y);
+
+            // dist=0 conn은 walking 0 즉시 텔레포트 시각 부자연스러움 — 다른 conn 우선, 없으면 폴백
+            if (dist == 0)
+            {
+                zeroDistFallback ??= conn;
+                continue;
+            }
+
             if (dist < bestDist)
             {
                 bestDist = dist;
                 best = conn;
             }
         }
-        return best;
+        return best ?? zeroDistFallback;
     }
 
     /// <summary>

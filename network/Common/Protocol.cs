@@ -162,9 +162,15 @@ namespace network.common
         U_TO_C_ERROR, // UserServer 범용 에러 응답
         G_TO_C_ERROR, // GameServer 범용 에러 응답
 
-        // RNG 채집 프로토콜 (v0.2.1, #79)
-        C_TO_G_RNG_COLLECT,            // RNG 채집 요청 (1.5초 progress 시작 시 송신)
-        G_TO_C_RNG_COLLECT_RESULT,     // RNG 결과 통합 (부품/선행/디코이/빈손/소모품)
+        // RNG 채집 프로토콜 (v0.2.1, #79 — 단일 패킷, deprecated)
+        C_TO_G_RNG_COLLECT,            // [deprecated] 단일 요청 — START/FINISH로 분리됨
+        G_TO_C_RNG_COLLECT_RESULT,     // RNG 결과 (부품/선행/디코이/빈손/소모품) — FINISH 응답
+        G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST, // 인스턴스 단위 쿨타임 broadcast — 매칭 내 모든 클라가 마커 숨김 (#134)
+
+        // RNG 채집 2단계 프로토콜 (#134) — START 즉시 stamina 차감 + cooldown 등록, FINISH 완료 후 결과 산출
+        C_TO_G_RNG_COLLECT_START,      // 채집 시작 요청 (RippleMarker 클릭 즉시)
+        G_TO_C_RNG_COLLECT_ACK,        // 채집 시작 승인/거부 응답
+        C_TO_G_RNG_COLLECT_FINISH,     // progress 완료 — 결과 산출 요청
 
         END
     }

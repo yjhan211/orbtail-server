@@ -125,7 +125,7 @@ namespace network.common.data.models
     /// <summary>
     ///     v0.2.1 (#79) — RNG 채집 결과 통합 패킷. 5종 결과(부품/선행/디코이/빈손/소모품) 단일 응답.
     ///     - 부품/선행 회수 시 추가로 G_TO_C_PART_COLLECTED / G_TO_C_PREREQUISITE_COLLECTED 송신 (인벤토리 갱신용)
-    ///     - 본 패킷은 ItemAlert / 시각 이펙트 / 쿨타임 갱신 트리거 전용
+    ///     - 본 패킷은 ItemAlert / 시각 이펙트 / 쿨타임 갱신 트리거 전용 (회수자 한정)
     /// </summary>
     [MessagePackObject]
     public class G_TO_C_RNG_COLLECT_RESULT : IMessagePackObject
@@ -133,13 +133,54 @@ namespace network.common.data.models
         [Key("interactId")] public int InteractId { get; set; }
         /// <summary>0=빈손, 1=디코이, 2=소모품, 3=부품, 4=선행</summary>
         [Key("resultType")] public int ResultType { get; set; }
-        /// <summary>부품/선행/소모품의 식별자 (resultType 0/1은 0)</summary>
+        /// <summary>부품/선행/소모품의 식별자 (resultType 0/1은 0). 클라가 csv로 텍스트 조회.</summary>
         [Key("itemId")] public int ItemId { get; set; }
-        /// <summary>표시용 한국어 이름. 클라가 LocaleManager로 다국어 처리 시 키로 활용</summary>
-        [Key("itemNameKr")] public string ItemNameKr { get; set; }
         [Key("staminaReward")] public int StaminaReward { get; set; }
         /// <summary>다음 채집 가능까지 쿨타임 (초). 30초 표준, 0이면 클라 기본값 사용</summary>
         [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
+    }
+
+    /// <summary>
+    ///     v0.2.1 (#134) — RNG 채집 인스턴스 쿨타임 broadcast. 매칭 내 모든 클라가 받아 해당 InteractId 마커를
+    ///     cooldownSeconds 동안 숨김. 결과(itemId/이름/사유) 정보는 포함 X — 직책 노출 방지 (회수자만 RESULT 받음).
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
+    }
+
+    /// <summary>
+    ///     #134 — RNG 채집 시작 요청. RippleMarker 클릭 즉시 송신. 서버가 stamina 차감 + 쿨타임 등록 + ACK 응답.
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_RNG_COLLECT_START : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
+    }
+
+    /// <summary>
+    ///     #134 — RNG 채집 시작 승인/거부 응답.
+    ///     ErrorCode=SUCCESS면 progress 진행 후 FINISH 송신. 거부면 클라가 InteractionPanel 닫음.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_RNG_COLLECT_ACK : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        /// <summary>거부 시 cooldown 남은 초 (이미 회수됨 케이스). 성공 시 0.</summary>
+        [Key("cooldownRemainSeconds")] public int CooldownRemainSeconds { get; set; }
+    }
+
+    /// <summary>
+    ///     #134 — RNG 채집 progress 완료 → 결과 산출 요청. 서버가 RNG 분포로 결과 결정 + RESULT 응답.
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_RNG_COLLECT_FINISH : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
     }
 
     /// <summary>

@@ -27,6 +27,13 @@ public partial class BotPlayerManager
         public List<BotMovementEvent> Movements { get; } = new();
     }
 
+    /// <summary>#134 봇 walking 틱 결과 — Movements + ExploreEnds (walking 시작 시 EXPLORE_END broadcast 안전망).</summary>
+    public class BotWalkingTickResult
+    {
+        public List<BotMovementEvent> Movements { get; } = new();
+        public List<(long botId, AreaType area)> ExploreEnds { get; } = new();
+    }
+
     /// <summary>
     ///     봇 자원 틱(5초). 자원 변동 + 탈락 + DemoMode 스크립트 영역 전환만 처리.
     ///     일반 walking은 ProcessBotMovementTick(250ms)에서 별도 처리.
@@ -78,9 +85,8 @@ public partial class BotPlayerManager
                     continue;
                 }
 
-                // 4) DemoMode 스크립트 영역 전환만 처리 (영상 narrative timing 보호 — walking 우회 텔레포트)
-                var areaMove = AdvanceToScriptedArea(bot, matchingId, areaClosureManager);
-                if (areaMove != null) result.Movements.Add(areaMove);
+                // 4) DemoMode 스크립트 텔레포트 폐기 — 봇은 직책 큐(JobAreaQueue) 따라 walking으로만 이동.
+                //    H3/H6/H8 narrative 트리거(색출/흔적/탈락)는 BotPlayerManager.Mission.cs에서 별도 시간 기반 처리.
             }
             // 디버그 모드(DemoMode 비활성): 자원 변동/탈락 모두 스킵 → 봇이 무한 walking
         }
@@ -88,22 +94,27 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     #127: 봇 walking 틱(250ms). DemoMode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
+    ///     #127: 봇 walking 틱(50ms). DemoMode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
     ///     실제 플레이어와 동일한 walkSpeed=3.0 적용. 매 틱 G_TO_C_MOVE 동등 이벤트 발행.
+    ///     #134: 추가로 ChooseNewWanderTarget 시 PendingExploreEndBroadcast가 set된 봇은 ExploreEnds list에 수집 — walking 시작 안전망.
     /// </summary>
-    public List<BotMovementEvent> ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager)
+    public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager)
     {
-        var movements = new List<BotMovementEvent>();
-        if (DemoMode.IsActive) return movements; // DemoMode는 ProcessBotTick에서 스크립트 텔레포트
-        if (!_botStates.TryGetValue(matchingId, out var bots)) return movements;
+        var result = new BotWalkingTickResult();
+        if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
 
         foreach (var bot in bots)
         {
             if (bot.IsEliminated) continue;
             var ev = WalkStep(bot, matchingId, closureManager);
-            if (ev != null) movements.Add(ev);
+            if (ev != null) result.Movements.Add(ev);
+            if (bot.PendingExploreEndBroadcast)
+            {
+                result.ExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
+                bot.PendingExploreEndBroadcast = false;
+            }
         }
-        return movements;
+        return result;
     }
 
     /// <summary>
@@ -123,7 +134,27 @@ public partial class BotPlayerManager
         if (bot.IsInInteraction)
         {
             if (now >= bot.InteractionStayUntil) bot.IsInInteraction = false;
-            else return null;
+            else
+            {
+                // 첫 진입 시 velocity 0 패킷 1회 발행 (이전 walking 패킷의 velocity가 그대로면 클라 발소리 잔존)
+                if (bot.WalkVelocity.X != 0f || bot.WalkVelocity.Y != 0f)
+                {
+                    bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+                    return new BotMovementEvent
+                    {
+                        BotPlayerId = bot.PlayerId,
+                        FromArea = bot.CurrentArea,
+                        ToArea = bot.CurrentArea,
+                        FromCell = bot.Cell,
+                        ToCell = bot.Cell,
+                        Position = bot.Position,
+                        Velocity = new Vector3f(0f, 0f, 0f),
+                        Rotation = bot.Rotation,
+                        IsAreaTransition = false
+                    };
+                }
+                return null;
+            }
         }
 
         // issue22 디버그: 도착 후 대기 중이면 walking 스킵
@@ -132,6 +163,9 @@ public partial class BotPlayerManager
         // 경로 없거나 완료 → 새 타겟 결정
         if (bot.Path.Count == 0 || bot.PathIndex >= bot.Path.Count)
         {
+            // #134 — 도착 후 RNG 채집이 아직 안 됐으면 walking 보류 (ProcessBotMissionTick이 PendingRngInteractId 처리 후 0으로 클리어할 때까지 대기).
+            if (bot.PendingRngInteractId != 0) return null;
+
             ChooseNewWanderTarget(bot, matchingId, closureManager);
             if (bot.Path.Count == 0) return null;
             // ChooseNewWanderTarget이 LoopWaitUntil(+3초)을 설정하므로 새 path는 다음 틱부터 진행.
@@ -249,9 +283,9 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     봇이 도착했거나 경로가 비었을 때 새 목적지 선택 + 경로 계산.
-    ///     직책 미션 큐(JobAreaQueue) 순회 — 부품 회수 영역 + 선행 아이템 위치를
-    ///     셔플한 큐에서 다음 영역을 골라 walking pathfinder로 이동.
-    ///     ProcessBotMissionTick이 영역 도달 시 자동으로 부품 회수 시뮬.
+    ///     #134 — 두 모드:
+    ///       1) 영역 내 다음 InteractObject로 셀 walking (InteractQueueInArea에 남은 게 있을 때)
+    ///       2) 다음 영역으로 walking + 진입 시 그 영역의 모든 후보로 큐 채움
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
     {
@@ -259,10 +293,16 @@ public partial class BotPlayerManager
         bot.Path.Clear();
         bot.PathIndex = 0;
         bot.TransitionPauseUntil = DateTime.MinValue;
+        bot.PendingRngInteractId = 0;
+        // walking 시작 시 EXPLORE_END broadcast 안전망 — 다음 ProcessBotMovementTick에서 수집.
+        bot.PendingExploreEndBroadcast = true;
 
+        // 1) 현재 영역에 아직 탐색하지 않은 InteractObject가 남아있으면 같은 영역 내 다음 셀로 walking
+        if (TryWalkToNextInteractInQueue(bot, matchingId, mapId, closureManager)) return;
+
+        // 2) 직책 큐의 다음 영역으로 이동
         if (bot.JobAreaQueue.Count == 0) return;
 
-        // 폐쇄되지 않고 현재 영역과 다른 다음 큐 영역 찾기
         AreaType targetArea = AreaType.None;
         for (int i = 0; i < bot.JobAreaQueue.Count; i++)
         {
@@ -277,13 +317,45 @@ public partial class BotPlayerManager
 
         if (targetArea == AreaType.None) return;
 
-        // 도착 후 잠시 대기 (자연스러운 휴식 + ProcessBotMissionTick이 부품 회수할 시간)
+        // 새 영역의 모든 후보 InteractObject로 큐 채움 (쿨타임 없는 + 셀 좌표 매핑된 것만)
+        var queue = BuildInteractQueueForArea(matchingId, bot, targetArea);
+        bot.InteractQueueInArea = queue;
+
+        // 도착 후 잠시 대기 (자연스러운 휴식 + ProcessBotMissionTick이 RNG 채집 트리거할 시간)
         bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotArrivalWaitSeconds);
 
-        // 진입 도어 셀로 정확히 도착하도록 경로 계산.
-        // 직접 인접하지 않으면 영역 그래프 BFS가 경유 영역 자동 산출.
-        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, targetArea)
-                         ?? GameMapData.GetAreaSpawnCell(mapId, targetArea);
+        // 첫 InteractObject 셀로 path 계산. 큐 비었으면 영역 spawn cell로 폴백.
+        // 큐에서 쿨타임 발생한 항목은 건너뛰고 다음 후보 선택 (walking path 설정 직전 한 번 더 검증).
+        Cell targetCell;
+        int firstId = 0;
+        while (queue.Count > 0)
+        {
+            int candidateId = queue[0];
+            queue.RemoveAt(0);
+            if (RngCollectCooldownStore.IsInCooldown(matchingId, candidateId, out _)) continue;
+            firstId = candidateId;
+            break;
+        }
+        if (firstId > 0)
+        {
+            var info = GameInteractableData.Get(firstId);
+            if (info != null)
+            {
+                targetCell = new Cell(info.CellX, info.CellY);
+                bot.PendingRngInteractId = firstId;
+            }
+            else
+            {
+                targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, targetArea)
+                    ?? GameMapData.GetAreaSpawnCell(mapId, targetArea);
+            }
+        }
+        else
+        {
+            targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, targetArea)
+                ?? GameMapData.GetAreaSpawnCell(mapId, targetArea);
+        }
+
         var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
             targetArea, targetCell,
             a => closureManager.IsAreaClosed(matchingId, a));
@@ -291,13 +363,101 @@ public partial class BotPlayerManager
         {
             _logger.LogDebug("봇 경로 계산 실패: BotId={Bot}, {From} → {To}",
                 bot.PlayerId, bot.CurrentArea, targetArea);
+            bot.PendingRngInteractId = 0;
             return;
         }
 
         bot.Path = path;
         bot.PathIndex = 0;
-        _logger.LogInformation("봇 새 경로(직책 큐): BotId={Bot}, Job={Job}, {From}@{Cell} → {To}@{TargetCell}, 단계={Steps}",
-            bot.PlayerId, bot.MyJobTitle, bot.CurrentArea, bot.Cell, targetArea, targetCell, path.Count);
+        _logger.LogInformation(
+            "봇 새 경로(직책 큐): BotId={Bot}, Job={Job}, {From}@{Cell} → {To}@{TargetCell}, InteractId={Iid}, 영역내큐={QSize}, 단계={Steps}",
+            bot.PlayerId, bot.MyJobTitle, bot.CurrentArea, bot.Cell, targetArea, targetCell,
+            bot.PendingRngInteractId, queue.Count, path.Count);
+    }
+
+    /// <summary>
+    ///     #134 — 같은 영역 내에 아직 탐색하지 않은 InteractObject가 큐에 남아있으면 그 셀까지 walking.
+    ///     큐에서 첫 번째 ID를 꺼내 PendingRngInteractId로 설정. 쿨타임 발생한 항목은 건너뛰고 다음.
+    ///     반환 true면 같은 영역 walking path가 설정됨. false면 큐 소진 — 호출자가 다음 영역으로 진행.
+    /// </summary>
+    private bool TryWalkToNextInteractInQueue(BotPlayerState bot, long matchingId, MapId mapId,
+        AreaClosureManager closureManager)
+    {
+        while (bot.InteractQueueInArea.Count > 0)
+        {
+            int nextId = bot.InteractQueueInArea[0];
+            bot.InteractQueueInArea.RemoveAt(0);
+
+            var info = GameInteractableData.Get(nextId);
+            if (info == null) continue;
+            if (info.ZoneId != (int)bot.CurrentArea) continue;
+            if (info.CellX == 0 && info.CellY == 0) continue;
+            if (RngCollectCooldownStore.IsInCooldown(matchingId, nextId, out _)) continue;
+
+            var targetCell = new Cell(info.CellX, info.CellY);
+            var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
+                bot.CurrentArea, targetCell,
+                a => closureManager.IsAreaClosed(matchingId, a));
+            if (path == null || path.Count == 0) continue;
+
+            bot.Path = path;
+            bot.PathIndex = 0;
+            bot.PendingRngInteractId = nextId;
+            // walking 시작 시 EXPLORE_END broadcast 안전망 — 봇이 RNG progress 끝나고 같은 영역 내 다음 셀로 이동 시 EXPLORE_1 잔존 회피.
+            bot.PendingExploreEndBroadcast = true;
+            // 짧은 대기 — 클라가 walking 시작 직전 잠시 멈춤
+            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(1);
+            _logger.LogInformation(
+                "봇 영역내 다음 InteractObject: BotId={Bot}, Area={Area}, InteractId={Iid}@{Cell}, 큐잔량={Q}",
+                bot.PlayerId, bot.CurrentArea, nextId, targetCell, bot.InteractQueueInArea.Count);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    ///     #134 — 새 영역 진입 시 그 영역의 모든 InteractObject 후보를 큐로 빌드.
+    ///     자기 직책 부품 발견 풀 InteractObject가 큐 앞쪽 (탐색 동기 부여), 그 외는 뒤쪽.
+    ///     쿨타임 없는 것 + 셀 좌표 매핑된 것만 후보.
+    /// </summary>
+    private List<int> BuildInteractQueueForArea(long matchingId, BotPlayerState bot, AreaType targetArea)
+    {
+        var candidates = GameInteractableData.GetByZone((int)targetArea);
+        if (candidates.Count == 0) return new List<int>();
+
+        var materials = GameMissionData.GetMaterials((short)bot.MyJobTitle);
+        var jobObjectTypes = materials
+            .Where(p => p.TargetArea == (int)targetArea)
+            .Select(p => p.TargetObjectType)
+            .ToHashSet();
+
+        int unmappedCount = candidates.Count(c => c.CellX == 0 && c.CellY == 0);
+        int cooldownCount = candidates.Count(c =>
+            (c.CellX != 0 || c.CellY != 0) && RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _));
+
+        var available = candidates
+            .Where(c => c.CellX != 0 || c.CellY != 0)
+            .Where(c => !RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _))
+            .ToList();
+
+        // 자기 직책 풀 매칭 셔플 → 그 외 셔플
+        var preferred = available
+            .Where(c => jobObjectTypes.Contains((int)c.ObjectType))
+            .OrderBy(_ => _rng.Next())
+            .Select(c => c.Id);
+        var others = available
+            .Where(c => !jobObjectTypes.Contains((int)c.ObjectType))
+            .OrderBy(_ => _rng.Next())
+            .Select(c => c.Id);
+
+        var queue = preferred.Concat(others).ToList();
+        if (unmappedCount > 0 || cooldownCount > 0)
+        {
+            _logger.LogInformation(
+                "봇 영역 큐 빌드: BotId={Bot}, Area={Area}, 전체={Total}, 큐에추가={Q}, 좌표미매핑={Unmapped}, 쿨타임={Cd}",
+                bot.PlayerId, targetArea, candidates.Count, queue.Count, unmappedCount, cooldownCount);
+        }
+        return queue;
     }
 
     /// <summary>
@@ -319,6 +479,10 @@ public partial class BotPlayerManager
 
         if (bot.CurrentArea == target) return null;
         if (closureManager.IsAreaClosed(matchingId, target)) return null;
+
+        // walking 중이면 텔레포트 보류 — 봇이 복도 중앙 등에서 갑자기 사라지는 시각 부자연스러움 회피.
+        // 도착 후 LoopWaitUntil 시점에 평가되어 자연스럽게 텔레포트.
+        if (bot.Path.Count > 0 && bot.PathIndex < bot.Path.Count) return null;
 
         var ev = TransitionBotArea(bot, matchingId, target);
         bot.Stamina = Math.Max(0, bot.Stamina - BotMoveStaminaCost);
