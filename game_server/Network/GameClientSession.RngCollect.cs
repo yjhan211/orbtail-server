@@ -28,7 +28,7 @@ public partial class GameClientSession
         {
             Logger.LogDebug("RNG 채집 쿨타임 거부: PlayerId={PlayerId}, InteractId={InteractId}, 남은={Sec}s",
                 PlayerId, msg.InteractId, remaining);
-            SendRngCollectResult(msg.InteractId, 0, 0, "", "아직 다시 살펴볼 수 없다.", "Not ready yet.", "まだ調べられない。", 0, remaining);
+            SendRngCollectResult(msg.InteractId, 0, 0, 0, remaining);
             return Task.CompletedTask;
         }
 
@@ -36,8 +36,7 @@ public partial class GameClientSession
         if (info == null)
         {
             Logger.LogWarning("RNG 채집 InteractId 미존재: {InteractId}", msg.InteractId);
-            SendRngCollectResult(msg.InteractId, 0, 0, "", RngCollectCore.EmptyResultKr, RngCollectCore.EmptyResultEn,
-                RngCollectCore.EmptyResultJp, 0, 0);
+            SendRngCollectResult(msg.InteractId, 0, 0, 0, 0);
             return Task.CompletedTask;
         }
 
@@ -97,11 +96,10 @@ public partial class GameClientSession
         if (outcome.AddedInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedInventoryItem);
 
         Logger.LogInformation(
-            "RNG 채집: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, Item={Item}, Stamina={Sta}",
-            PlayerId, msg.InteractId, outcome.ResultType, outcome.ItemNameKr, outcome.StaminaReward);
+            "RNG 채집: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, ItemId={ItemId}, Stamina={Sta}",
+            PlayerId, msg.InteractId, outcome.ResultType, outcome.ItemId, outcome.StaminaReward);
 
-        SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId, outcome.ItemNameKr,
-            outcome.ResultTextKr, outcome.ResultTextEn, outcome.ResultTextJp,
+        SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId,
             outcome.StaminaReward, RngCollectCooldownSeconds);
 
         BroadcastRngCollectCooldown(msg.InteractId, RngCollectCooldownSeconds);
@@ -130,8 +128,7 @@ public partial class GameClientSession
         }
     }
 
-    private void SendRngCollectResult(int interactId, int resultType, int itemId, string itemNameKr,
-        string resultTextKr, string resultTextEn, string resultTextJp,
+    private void SendRngCollectResult(int interactId, int resultType, int itemId,
         int staminaReward, int cooldownSeconds)
     {
         if (!PlayerId.HasValue) return;
@@ -141,10 +138,6 @@ public partial class GameClientSession
             InteractId = interactId,
             ResultType = resultType,
             ItemId = itemId,
-            ItemNameKr = itemNameKr,
-            ResultTextKr = resultTextKr,
-            ResultTextEn = resultTextEn,
-            ResultTextJp = resultTextJp,
             StaminaReward = staminaReward,
             CooldownSeconds = cooldownSeconds
         };

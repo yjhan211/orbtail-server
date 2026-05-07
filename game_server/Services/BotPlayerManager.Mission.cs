@@ -142,7 +142,7 @@ public partial class BotPlayerManager
         {
             _logger.LogInformation(
                 "봇 RNG 결과: BotId={BotId}, InteractId={Iid}, ResultType={Type}, Item={Item}",
-                bot.PlayerId, info.Id, outcome.ResultType, outcome.ItemNameKr);
+                bot.PlayerId, info.Id, outcome.ResultType, outcome.ItemId);
         }
 
         // ExploreEnd + 쿨타임 broadcast (다른 클라가 봇 EXPLORE_1 → IDLE 복귀 + 마커 30초 숨김)
