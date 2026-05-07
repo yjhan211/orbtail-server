@@ -82,22 +82,22 @@ public partial class BotPlayerManager
         var info = GameInteractableData.Get(bot.PendingRngInteractId);
         if (info == null)
         {
-            bot.PendingRngInteractId = 0;
-            bot.RngCollectProgressStartTime = DateTime.MinValue;
+            SkipPendingInteract(bot);
             return;
         }
         if (info.ZoneId != (int)bot.CurrentArea)
         {
-            bot.PendingRngInteractId = 0;
-            bot.RngCollectProgressStartTime = DateTime.MinValue;
+            SkipPendingInteract(bot);
             return;
         }
 
-        // 쿨타임 체크 — 다른 누군가가 먼저 회수한 경우 스킵
+        // 쿨타임 체크 — walking 도중 다른 누군가가 회수한 경우 progress 시작 X. 즉시 다음 InteractObject로 진행.
         if (RngCollectCooldownStore.IsInCooldown(matchingId, info.Id, out _))
         {
-            bot.PendingRngInteractId = 0;
-            bot.RngCollectProgressStartTime = DateTime.MinValue;
+            _logger.LogInformation(
+                "봇 RNG 스킵(이미 회수됨): BotId={Bot}, InteractId={Iid}",
+                bot.PlayerId, info.Id);
+            SkipPendingInteract(bot);
             return;
         }
 
@@ -151,6 +151,18 @@ public partial class BotPlayerManager
 
         bot.PendingRngInteractId = 0;
         bot.RngCollectProgressStartTime = DateTime.MinValue;
+    }
+
+    /// <summary>
+    ///     #134 — RNG progress를 시작하지 않고 즉시 다음 InteractObject로 진행하기 위한 정리.
+    ///     도착 시 쿨타임/잘못된 InteractId/영역 어긋남 등으로 progress가 의미 없는 케이스에서 호출.
+    ///     LoopWaitUntil도 reset해서 walking 보류 없이 다음 ChooseNewWanderTarget 즉시 호출 가능.
+    /// </summary>
+    private static void SkipPendingInteract(BotPlayerState bot)
+    {
+        bot.PendingRngInteractId = 0;
+        bot.RngCollectProgressStartTime = DateTime.MinValue;
+        bot.LoopWaitUntil = DateTime.MinValue;
     }
 
     /// <summary>

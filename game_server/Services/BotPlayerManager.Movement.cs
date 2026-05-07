@@ -325,11 +325,19 @@ public partial class BotPlayerManager
         bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotArrivalWaitSeconds);
 
         // 첫 InteractObject 셀로 path 계산. 큐 비었으면 영역 spawn cell로 폴백.
+        // 큐에서 쿨타임 발생한 항목은 건너뛰고 다음 후보 선택 (walking path 설정 직전 한 번 더 검증).
         Cell targetCell;
-        if (queue.Count > 0)
+        int firstId = 0;
+        while (queue.Count > 0)
         {
-            var firstId = queue[0];
+            int candidateId = queue[0];
             queue.RemoveAt(0);
+            if (RngCollectCooldownStore.IsInCooldown(matchingId, candidateId, out _)) continue;
+            firstId = candidateId;
+            break;
+        }
+        if (firstId > 0)
+        {
             var info = GameInteractableData.Get(firstId);
             if (info != null)
             {
