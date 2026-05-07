@@ -397,7 +397,8 @@ public class GameServer(
     {
         try
         {
-            var missionResult = _botPlayerManager.ProcessBotMissionTick(matchingId, _missionManager);
+            var missionResult = _botPlayerManager.ProcessBotMissionTick(
+                matchingId, _missionManager, _inGameInventoryManager);
 
             // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
             foreach (var (botId, partId) in missionResult.CollectedParts)
@@ -418,6 +419,10 @@ public class GameServer(
                         : $"부품 결합: {part?.PartNameKr ?? outputPartId.ToString()}",
                     isBot: true);
             }
+
+            // #134 — 봇 RNG 채집으로 발생한 인스턴스 쿨타임 broadcast
+            if (missionResult.RngCooldownBroadcasts.Count > 0)
+                BroadcastBotRngCooldowns(matchingId, missionResult.RngCooldownBroadcasts);
 
             // race 완주 봇 발생 — 즉시 게임 종료 처리 (#87 정합)
             if (missionResult.RaceWinnerBotId == 0) return;
@@ -580,6 +585,38 @@ public class GameServer(
 
         logger.LogInformation("흔적 배치 broadcast: Placer={P}({J}), Area={A}, InteractId={I}",
             trace.placerPlayerId, placerLink.MyJobTitle, trace.area, trace.interactId);
+    }
+
+    /// <summary>
+    ///     #134 — 봇이 RNG 채집한 InteractObject 쿨타임을 같은 매칭 모든 클라에 broadcast.
+    ///     플레이어 회수 시 GameClientSession.BroadcastRngCollectCooldown과 동일한 패킷.
+    ///     결과 정보(직책 매칭 여부)는 포함 X — 노출 방지.
+    /// </summary>
+    private void BroadcastBotRngCooldowns(long matchingId, List<(int interactId, int cooldownSeconds)> broadcasts)
+    {
+        var sessions = _clientSessions.Values
+            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
+            .ToList();
+        if (sessions.Count == 0) return;
+
+        foreach (var (interactId, cooldown) in broadcasts)
+        {
+            var msg = new G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST
+            {
+                InteractId = interactId,
+                CooldownSeconds = cooldown
+            };
+            var body = MessagePackSerializer.Serialize(msg);
+            foreach (var session in sessions)
+            {
+                using var packet = Packet.Create((int)Protocol.G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST,
+                    session.PlayerId!.Value);
+                packet.SetBody(body);
+                session.Send(packet);
+            }
+            logger.LogInformation("봇 RNG 쿨타임 broadcast: MatchingId={Mid}, InteractId={Iid}, Cooldown={Sec}s",
+                matchingId, interactId, cooldown);
+        }
     }
 
     /// <summary>

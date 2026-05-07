@@ -268,9 +268,8 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     봇이 도착했거나 경로가 비었을 때 새 목적지 선택 + 경로 계산.
-    ///     직책 미션 큐(JobAreaQueue) 순회 — 부품 회수 영역 + 선행 아이템 위치를
-    ///     셔플한 큐에서 다음 영역을 골라 walking pathfinder로 이동.
-    ///     ProcessBotMissionTick이 영역 도달 시 자동으로 부품 회수 시뮬.
+    ///     #134 — 직책 큐의 다음 영역에서 자기 직책 부품 발견 InteractObject 후보를 골라 셀까지 walking.
+    ///     쿨타임 없는 InteractObject만 후보. 도착 시 ProcessBotMissionTick이 RNG 채집 트리거.
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
     {
@@ -278,6 +277,7 @@ public partial class BotPlayerManager
         bot.Path.Clear();
         bot.PathIndex = 0;
         bot.TransitionPauseUntil = DateTime.MinValue;
+        bot.PendingRngInteractId = 0;
 
         if (bot.JobAreaQueue.Count == 0) return;
 
@@ -296,13 +296,25 @@ public partial class BotPlayerManager
 
         if (targetArea == AreaType.None) return;
 
-        // 도착 후 잠시 대기 (자연스러운 휴식 + ProcessBotMissionTick이 부품 회수할 시간)
+        // 영역 내 InteractObject 후보 선택: 자기 직책 부품 발견 풀 우선 → 쿨타임 없는 것 → 셀 좌표 매핑된 것
+        var interactCell = PickInteractObjectCell(matchingId, bot, targetArea, out int pendingInteractId);
+
+        // 도착 후 잠시 대기 (자연스러운 휴식 + ProcessBotMissionTick이 RNG 채집 트리거할 시간)
         bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotArrivalWaitSeconds);
 
-        // 진입 도어 셀로 정확히 도착하도록 경로 계산.
-        // 직접 인접하지 않으면 영역 그래프 BFS가 경유 영역 자동 산출.
-        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, targetArea)
-                         ?? GameMapData.GetAreaSpawnCell(mapId, targetArea);
+        // InteractObject 후보 없거나 좌표 미매핑 시 영역 spawn cell로 폴백 (기존 동작)
+        Cell targetCell;
+        if (interactCell != null)
+        {
+            targetCell = interactCell;
+            bot.PendingRngInteractId = pendingInteractId;
+        }
+        else
+        {
+            targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, targetArea)
+                ?? GameMapData.GetAreaSpawnCell(mapId, targetArea);
+        }
+
         var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
             targetArea, targetCell,
             a => closureManager.IsAreaClosed(matchingId, a));
@@ -310,13 +322,55 @@ public partial class BotPlayerManager
         {
             _logger.LogDebug("봇 경로 계산 실패: BotId={Bot}, {From} → {To}",
                 bot.PlayerId, bot.CurrentArea, targetArea);
+            bot.PendingRngInteractId = 0;
             return;
         }
 
         bot.Path = path;
         bot.PathIndex = 0;
-        _logger.LogInformation("봇 새 경로(직책 큐): BotId={Bot}, Job={Job}, {From}@{Cell} → {To}@{TargetCell}, 단계={Steps}",
-            bot.PlayerId, bot.MyJobTitle, bot.CurrentArea, bot.Cell, targetArea, targetCell, path.Count);
+        _logger.LogInformation(
+            "봇 새 경로(직책 큐): BotId={Bot}, Job={Job}, {From}@{Cell} → {To}@{TargetCell}, InteractId={Iid}, 단계={Steps}",
+            bot.PlayerId, bot.MyJobTitle, bot.CurrentArea, bot.Cell, targetArea, targetCell,
+            bot.PendingRngInteractId, path.Count);
+    }
+
+    /// <summary>
+    ///     #134 — 영역 내 InteractObject 후보 셀 선택. 자기 직책 부품 발견 풀 우선,
+    ///     없으면 영역 내 임의 InteractObject. 쿨타임 없는 것 + 셀 좌표 매핑된 것만 후보.
+    ///     반환 null이면 후보 없음 (호출자는 영역 spawn 셀로 폴백).
+    /// </summary>
+    private Cell? PickInteractObjectCell(long matchingId, BotPlayerState bot, AreaType targetArea,
+        out int interactId)
+    {
+        interactId = 0;
+        var candidates = GameInteractableData.GetByZone((int)targetArea);
+        if (candidates.Count == 0) return null;
+
+        // 자기 직책 부품 발견 풀 매칭 우선
+        var materials = GameMissionData.GetMaterials((short)bot.MyJobTitle);
+        var jobObjectTypes = materials
+            .Where(p => p.TargetArea == (int)targetArea)
+            .Select(p => p.TargetObjectType)
+            .ToHashSet();
+
+        var preferred = candidates
+            .Where(c => jobObjectTypes.Contains((int)c.ObjectType))
+            .Where(c => c.CellX != 0 || c.CellY != 0)
+            .Where(c => !RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _))
+            .ToList();
+
+        var pool = preferred.Count > 0
+            ? preferred
+            : candidates
+                .Where(c => c.CellX != 0 || c.CellY != 0)
+                .Where(c => !RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _))
+                .ToList();
+
+        if (pool.Count == 0) return null;
+
+        var picked = pool[_rng.Next(pool.Count)];
+        interactId = picked.Id;
+        return new Cell(picked.CellX, picked.CellY);
     }
 
     /// <summary>
