@@ -407,6 +407,10 @@ public partial class BotPlayerManager
             .Select(p => p.TargetObjectType)
             .ToHashSet();
 
+        int unmappedCount = candidates.Count(c => c.CellX == 0 && c.CellY == 0);
+        int cooldownCount = candidates.Count(c =>
+            (c.CellX != 0 || c.CellY != 0) && RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _));
+
         var available = candidates
             .Where(c => c.CellX != 0 || c.CellY != 0)
             .Where(c => !RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _))
@@ -422,7 +426,14 @@ public partial class BotPlayerManager
             .OrderBy(_ => _rng.Next())
             .Select(c => c.Id);
 
-        return preferred.Concat(others).ToList();
+        var queue = preferred.Concat(others).ToList();
+        if (unmappedCount > 0 || cooldownCount > 0)
+        {
+            _logger.LogInformation(
+                "봇 영역 큐 빌드: BotId={Bot}, Area={Area}, 전체={Total}, 큐에추가={Q}, 좌표미매핑={Unmapped}, 쿨타임={Cd}",
+                bot.PlayerId, targetArea, candidates.Count, queue.Count, unmappedCount, cooldownCount);
+        }
+        return queue;
     }
 
     /// <summary>

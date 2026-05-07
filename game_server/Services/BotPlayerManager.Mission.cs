@@ -61,6 +61,9 @@ public partial class BotPlayerManager
     /// <summary>봇 RNG 채집 progress 지속 시간 (플레이어 클라 1.5초 progress와 동등).</summary>
     private const double BotRngCollectProgressSeconds = 1.5;
 
+    /// <summary>봇 RNG 인스턴스 쿨타임 — RngCollectCore의 동등 상수 (BotPlayerManager 내부 노출용).</summary>
+    private const int RngCollectCooldownSeconds = 30;
+
     /// <summary>
     ///     #134 — 봇이 walking으로 InteractObject 셀에 도착했을 때 RNG 채집 트리거.
     ///     2단계 흐름:
@@ -100,12 +103,19 @@ public partial class BotPlayerManager
 
         var now = DateTime.UtcNow;
 
-        // (1) 첫 진입: progress 시작 → ExploreStart broadcast
+        // (1) 첫 진입: progress 시작 → ExploreStart broadcast + 마커 즉시 숨김
         if (bot.RngCollectProgressStartTime == DateTime.MinValue)
         {
             bot.RngCollectProgressStartTime = now;
             ApplyBotStaminaCost(bot, BotRngCollectStaminaCost);
+
+            // 쿨타임 즉시 등록 — 봇이 progress 1.5초 진행 중에도 다른 누구든 이 InteractObject 차단.
+            RngCollectCooldownStore.SetCooldown(matchingId, info.Id, RngCollectCooldownSeconds);
+
             result.BotExploreStarts.Add((bot.PlayerId, info.Id, bot.CurrentArea));
+            // 진행 도중에도 마커 숨기기 위해 쿨타임 broadcast 즉시 전송 (RNG 결과 산출 전).
+            result.RngCooldownBroadcasts.Add((info.Id, RngCollectCooldownSeconds));
+
             _logger.LogInformation(
                 "봇 RNG progress 시작: BotId={BotId}, InteractId={Iid}, Area={Area}",
                 bot.PlayerId, info.Id, bot.CurrentArea);

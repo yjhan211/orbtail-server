@@ -172,11 +172,15 @@ public partial class BotPlayerManager
         if (bot == null) return null;
 
         var mapId = GetMatchingMapId(matchingId);
+        // 봇이 RNG progress 중이면 EXPLORE_1로 합성 → 영역 진입 시 클라가 봇 캐릭터 탐색 애니 즉시 표시.
+        var state = bot.RngCollectProgressStartTime != DateTime.MinValue
+            ? PlayerState.EXPLORE_1
+            : PlayerState.IDLE;
         var info = new PlayerInfo
         {
             PlayerId = bot.PlayerId,
             Name = bot.Name,
-            State = PlayerState.NONE,
+            State = state,
             LastMapId = mapId,
             LastMapSubId = matchingId,
             LastCell = bot.Cell,
