@@ -121,6 +121,8 @@ namespace network.common.data
         public LocalizedText ShortName { get; private set; }
         public LocalizedText Description { get; private set; }
         public InteractionType InteractionType { get; private set; }
+        public int CellX { get; private set; }
+        public int CellY { get; private set; }
         public List<InteractableActionData> Actions { get; private set; }
 
         public static InteractableInfoData CreateFromData(
@@ -152,6 +154,8 @@ namespace network.common.data
                 ShortName = LocalizedText.FromCsv(row, "short_name"),
                 Description = LocalizedText.FromCsvMultiline(row, "description"),
                 InteractionType = row.ContainsKey("interaction_type") ? (InteractionType)int.Parse(row["interaction_type"]) : InteractionType.EXPLORE,
+                CellX = row.ContainsKey("cell_x") && int.TryParse(row["cell_x"], out int cx) ? cx : 0,
+                CellY = row.ContainsKey("cell_y") && int.TryParse(row["cell_y"], out int cy) ? cy : 0,
                 Actions = actions
             };
         }
