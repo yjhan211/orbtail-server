@@ -46,7 +46,7 @@ public partial class BotPlayerManager
 
     // 봇 행동 시정수
     private const int BotMoveIntervalSeconds = 12;        // 봇 이동 주기 (자기 직책 발견 구역 순회)
-    private const int BotMissionTickIntervalSeconds = 4;  // 봇 미션 행동 (회수/결합) 주기
+    private const int BotMissionTickIntervalSeconds = 1;  // 봇 미션 행동 (회수/결합) 주기 — 도착 후 RNG 빠른 트리거
     private const int BotMoveStaminaCost = 3;             // 이동 시 스태미나 소모
     private const int DetectScoreThreshold = 18;          // 색출 휴리스틱 임계값 — 함정 흔적 발견 누적 점수
 

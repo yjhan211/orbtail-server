@@ -63,6 +63,7 @@ public class GameServer(
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
     private Timer? _botMovementTimer;         // #127 봇 walking step (250ms)
+    private Timer? _botMissionTimer;          // #134 봇 미션 처리 (RNG 채집/결합 — 1초 주기)
 
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private const int ResourceTickIntervalSeconds = 5;
@@ -98,6 +99,7 @@ public class GameServer(
             StartAreaClosureTickTimer();
             StartTargetLocationTimer();
             StartBotMovementTimer();
+            StartBotMissionTimer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -137,6 +139,7 @@ public class GameServer(
         if (_areaClosureTickTimer != null) { await _areaClosureTickTimer.DisposeAsync(); _areaClosureTickTimer = null; }
         if (_targetLocationTimer != null) { await _targetLocationTimer.DisposeAsync(); _targetLocationTimer = null; }
         if (_botMovementTimer != null) { await _botMovementTimer.DisposeAsync(); _botMovementTimer = null; }
+        if (_botMissionTimer != null) { await _botMissionTimer.DisposeAsync(); _botMissionTimer = null; }
 
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
@@ -311,8 +314,7 @@ public class GameServer(
                     ProcessBotElimination(matchingId, botId, reason, activeSessions);
                 }
 
-                // #26: v0.2.0 부품 회수/결합 시뮬
-                ProcessBotMissionForMatching(matchingId, activeSessions);
+                // 봇 미션 처리(부품 회수/결합/RNG 채집)는 별도 1초 타이머(ProcessBotMission)에서 수행.
 
                 // #26: 시한부 봇 사보타주 + 색출 시뮬
                 ProcessBotTerminalActionsForMatching(matchingId, activeSessions);
@@ -794,6 +796,42 @@ public class GameServer(
             TimeSpan.FromMilliseconds(BotMovementTickIntervalMs),
             TimeSpan.FromMilliseconds(BotMovementTickIntervalMs));
         logger.LogInformation("봇 walking 타이머 시작 ({Ms}ms 간격)", BotMovementTickIntervalMs);
+    }
+
+    private const int BotMissionTickIntervalMs = 1000; // #134 봇 미션 처리(RNG 채집/결합) 주기
+
+    private void StartBotMissionTimer()
+    {
+        _botMissionTimer = new Timer(ProcessBotMission, null,
+            TimeSpan.FromMilliseconds(BotMissionTickIntervalMs),
+            TimeSpan.FromMilliseconds(BotMissionTickIntervalMs));
+        logger.LogInformation("봇 미션 타이머 시작 ({Ms}ms 간격)", BotMissionTickIntervalMs);
+    }
+
+    private void ProcessBotMission(object? state)
+    {
+        try
+        {
+            var activeSessions = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue)
+                .ToList();
+            if (activeSessions.Count == 0) return;
+
+            var matchingIds = activeSessions
+                .Select(s => s.CurrentMapSubId)
+                .Distinct()
+                .ToList();
+
+            foreach (long matchingId in matchingIds)
+            {
+                if (!_botPlayerManager.HasBots(matchingId)) continue;
+                ProcessBotMissionForMatching(matchingId, activeSessions);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "봇 미션 틱 처리 중 오류");
+        }
     }
 
     private void ProcessBotMovement(object? state)

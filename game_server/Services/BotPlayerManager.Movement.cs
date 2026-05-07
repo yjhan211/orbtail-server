@@ -151,6 +151,9 @@ public partial class BotPlayerManager
         // 경로 없거나 완료 → 새 타겟 결정
         if (bot.Path.Count == 0 || bot.PathIndex >= bot.Path.Count)
         {
+            // #134 — 도착 후 RNG 채집이 아직 안 됐으면 walking 보류 (ProcessBotMissionTick이 PendingRngInteractId 처리 후 0으로 클리어할 때까지 대기).
+            if (bot.PendingRngInteractId != 0) return null;
+
             ChooseNewWanderTarget(bot, matchingId, closureManager);
             if (bot.Path.Count == 0) return null;
             // ChooseNewWanderTarget이 LoopWaitUntil(+3초)을 설정하므로 새 path는 다음 틱부터 진행.
