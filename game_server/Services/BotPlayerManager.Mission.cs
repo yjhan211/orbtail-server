@@ -92,7 +92,9 @@ public partial class BotPlayerManager
         }
 
         // 쿨타임 체크 — walking 도중 다른 누군가가 회수한 경우 progress 시작 X. 즉시 다음 InteractObject로 진행.
-        if (RngCollectCooldownStore.IsInCooldown(matchingId, info.Id, out _))
+        // 봇 본인이 1단계 진입 후 cooldown 등록한 경우는 우회 (자기 cooldown).
+        if (bot.RngCollectProgressStartTime == DateTime.MinValue
+            && RngCollectCooldownStore.IsInCooldown(matchingId, info.Id, out _))
         {
             _logger.LogInformation(
                 "봇 RNG 스킵(이미 회수됨): BotId={Bot}, InteractId={Iid}",
