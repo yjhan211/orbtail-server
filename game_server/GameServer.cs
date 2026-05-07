@@ -422,6 +422,12 @@ public class GameServer(
                     isBot: true);
             }
 
+            // #134 — 봇 RNG progress 시작/종료 → 같은 영역 인간 세션에 EXPLORE_START/END (봇 EXPLORE_1 애니 동기화)
+            if (missionResult.BotExploreStarts.Count > 0)
+                BroadcastBotExploreStarts(matchingId, missionResult.BotExploreStarts, activeSessions);
+            if (missionResult.BotExploreEnds.Count > 0)
+                BroadcastBotExploreEnds(matchingId, missionResult.BotExploreEnds, activeSessions);
+
             // #134 — 봇 RNG 채집으로 발생한 인스턴스 쿨타임 broadcast
             if (missionResult.RngCooldownBroadcasts.Count > 0)
                 BroadcastBotRngCooldowns(matchingId, missionResult.RngCooldownBroadcasts);
@@ -587,6 +593,56 @@ public class GameServer(
 
         logger.LogInformation("흔적 배치 broadcast: Placer={P}({J}), Area={A}, InteractId={I}",
             trace.placerPlayerId, placerLink.MyJobTitle, trace.area, trace.interactId);
+    }
+
+    /// <summary>
+    ///     #134 — 봇 RNG progress 시작을 같은 영역 인간 세션에 G_TO_C_EXPLORE_START broadcast.
+    ///     클라가 봇 캐릭터를 EXPLORE_1 상태로 설정 → 탐색 애니메이션 + 사운드 자동 재생.
+    /// </summary>
+    private void BroadcastBotExploreStarts(long matchingId,
+        List<(long botId, int interactId, AreaType area)> starts,
+        List<GameClientSession> activeSessions)
+    {
+        foreach (var (botId, interactId, area) in starts)
+        {
+            var sameAreaSessions = activeSessions
+                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId && s.CurrentArea == area)
+                .ToList();
+            if (sameAreaSessions.Count == 0) continue;
+
+            var msg = new G_TO_C_EXPLORE_START { PlayerId = botId, InteractId = interactId };
+            var body = MessagePackSerializer.Serialize(msg);
+            foreach (var session in sameAreaSessions)
+            {
+                using var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_START, session.PlayerId!.Value);
+                packet.SetBody(body);
+                session.Send(packet);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     #134 — 봇 RNG progress 종료 broadcast. 클라가 봇 캐릭터 EXPLORE_1 → IDLE 복귀.
+    /// </summary>
+    private void BroadcastBotExploreEnds(long matchingId,
+        List<(long botId, AreaType area)> ends, List<GameClientSession> activeSessions)
+    {
+        foreach (var (botId, area) in ends)
+        {
+            var sameAreaSessions = activeSessions
+                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId && s.CurrentArea == area)
+                .ToList();
+            if (sameAreaSessions.Count == 0) continue;
+
+            var msg = new G_TO_C_EXPLORE_END { PlayerId = botId };
+            var body = MessagePackSerializer.Serialize(msg);
+            foreach (var session in sameAreaSessions)
+            {
+                using var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_END, session.PlayerId!.Value);
+                packet.SetBody(body);
+                session.Send(packet);
+            }
+        }
     }
 
     /// <summary>

@@ -58,10 +58,14 @@ public partial class BotPlayerManager
     /// <summary>봇 채집 시작 시 차감되는 스태미나 (플레이어 RngCollectStaminaCost와 동일).</summary>
     private const int BotRngCollectStaminaCost = 5;
 
+    /// <summary>봇 RNG 채집 progress 지속 시간 (플레이어 클라 1.5초 progress와 동등).</summary>
+    private const double BotRngCollectProgressSeconds = 1.5;
+
     /// <summary>
     ///     #134 — 봇이 walking으로 InteractObject 셀에 도착했을 때 RNG 채집 트리거.
-    ///     PendingRngInteractId가 설정되어 있고 현재 셀이 InteractObject 셀과 일치하면
-    ///     RngCollectCore.Resolve로 결과 산출 + 인스턴스 쿨타임 broadcast 정보 추가.
+    ///     2단계 흐름:
+    ///       (1) 첫 호출: progress 시작 → ExploreStart broadcast (다른 클라가 봇 캐릭터 EXPLORE_1 애니메이션 동기화)
+    ///       (2) 1.5초 경과 후: RngCollectCore.Resolve → 결과 산출 + ExploreEnd + 쿨타임 broadcast
     /// </summary>
     private void TryRngCollectIfArrived(BotPlayerState bot, long matchingId,
         MissionManager missionManager, InGameInventoryManager inventoryManager,
@@ -76,12 +80,13 @@ public partial class BotPlayerManager
         if (info == null)
         {
             bot.PendingRngInteractId = 0;
+            bot.RngCollectProgressStartTime = DateTime.MinValue;
             return;
         }
         if (info.ZoneId != (int)bot.CurrentArea)
         {
-            // 영역이 어긋나면(폐쇄 회피 등으로 다른 영역에 도착) 보류
             bot.PendingRngInteractId = 0;
+            bot.RngCollectProgressStartTime = DateTime.MinValue;
             return;
         }
 
@@ -89,16 +94,31 @@ public partial class BotPlayerManager
         if (RngCollectCooldownStore.IsInCooldown(matchingId, info.Id, out _))
         {
             bot.PendingRngInteractId = 0;
+            bot.RngCollectProgressStartTime = DateTime.MinValue;
             return;
         }
 
-        // 채집 시작 비용 — 봇은 stamina 부족분을 corruption 1:2 변환 (플레이어 ModifyStats 동등 처리)
-        ApplyBotStaminaCost(bot, BotRngCollectStaminaCost);
+        var now = DateTime.UtcNow;
 
+        // (1) 첫 진입: progress 시작 → ExploreStart broadcast
+        if (bot.RngCollectProgressStartTime == DateTime.MinValue)
+        {
+            bot.RngCollectProgressStartTime = now;
+            ApplyBotStaminaCost(bot, BotRngCollectStaminaCost);
+            result.BotExploreStarts.Add((bot.PlayerId, info.Id, bot.CurrentArea));
+            _logger.LogInformation(
+                "봇 RNG progress 시작: BotId={BotId}, InteractId={Iid}, Area={Area}",
+                bot.PlayerId, info.Id, bot.CurrentArea);
+            return;
+        }
+
+        // (2) progress 진행 중 — 1.5초 미만이면 대기
+        if ((now - bot.RngCollectProgressStartTime).TotalSeconds < BotRngCollectProgressSeconds) return;
+
+        // (3) progress 완료 → RNG 결과 산출
         var outcome = RngCollectCore.Resolve(matchingId, bot.PlayerId, bot.MyJobTitle,
             info, missionManager, inventoryManager, isBot: true);
 
-        // 부품 회수 시 보상 stamina + 운영툴 로그
         if (outcome is { ResultType: 3, CollectedPart: not null })
         {
             bot.Stamina = Math.Min(100, bot.Stamina + outcome.StaminaReward);
@@ -115,11 +135,12 @@ public partial class BotPlayerManager
                 bot.PlayerId, info.Id, outcome.ResultType, outcome.ItemNameKr);
         }
 
-        // 매칭 내 모든 클라에 broadcast — 마커 30초 숨김
+        // ExploreEnd + 쿨타임 broadcast (다른 클라가 봇 EXPLORE_1 → IDLE 복귀 + 마커 30초 숨김)
+        result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
         result.RngCooldownBroadcasts.Add((info.Id, outcome.CooldownSeconds));
 
-        // 사용 후 clear — 다음 ChooseNewWanderTarget이 새 InteractObject 선택
         bot.PendingRngInteractId = 0;
+        bot.RngCollectProgressStartTime = DateTime.MinValue;
     }
 
     /// <summary>
@@ -422,6 +443,12 @@ public class BotMissionTickResult
 
     /// <summary>#134 — 봇이 RNG 채집한 InteractObject 인스턴스 쿨타임 broadcast 정보.</summary>
     public List<(int interactId, int cooldownSeconds)> RngCooldownBroadcasts { get; } = new();
+
+    /// <summary>#134 — 봇이 RNG progress 시작했음을 같은 영역 인간 세션에 알림 (G_TO_C_EXPLORE_START).</summary>
+    public List<(long botId, int interactId, AreaType area)> BotExploreStarts { get; } = new();
+
+    /// <summary>#134 — 봇이 RNG progress 종료했음을 같은 영역 인간 세션에 알림 (G_TO_C_EXPLORE_END).</summary>
+    public List<(long botId, AreaType area)> BotExploreEnds { get; } = new();
 
     /// <summary>race 완주 봇 PlayerId — 0이면 없음, GameServer가 즉시 게임 종료 처리.</summary>
     public long RaceWinnerBotId { get; set; }

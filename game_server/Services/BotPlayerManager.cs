@@ -357,4 +357,7 @@ public class BotPlayerState
 
     /// <summary>마지막으로 자동 소모품을 사용한 시각 (재사용 쿨다운).</summary>
     public DateTime LastAutoConsumableUseTime { get; set; } = DateTime.MinValue;
+
+    /// <summary>RNG 채집 progress 시작 시각. 0이면 아직 시작 안 함. 시작 후 1.5초 경과 시 결과 산출.</summary>
+    public DateTime RngCollectProgressStartTime { get; set; } = DateTime.MinValue;
 }
