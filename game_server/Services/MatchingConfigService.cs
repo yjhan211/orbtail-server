@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.helpers;
 using network.interfaces;
 #pragma warning disable CS8618
 
@@ -69,6 +70,13 @@ public class MatchingConfigService
             {
                 var ints = JsonSerializer.Deserialize<List<int>>((string)seqRaw!);
                 _forcedSequence = ints?.Select(v => (AreaType)v).ToList();
+            }
+
+            // DEMO_MODE 활성 + Redis에 강제 시퀀스 없으면 DemoMode.ForcedClosureSequence 기본 적용
+            if (_forcedSequence == null && DemoMode.IsActive)
+            {
+                _forcedSequence = new List<AreaType>(DemoMode.ForcedClosureSequence);
+                _logger.LogInformation("DEMO_MODE 활성 — 폐쇄 시퀀스 기본값으로 DemoMode.ForcedClosureSequence 적용");
             }
 
             _logger.LogInformation(
@@ -143,10 +151,17 @@ public class MatchingConfigService
         try
         {
             var raw = await _cacheHelper.HashGetAsync(JobPoolRedisKey, JobPoolRedisField);
-            if (!raw.HasValue) return null;
+            if (raw.HasValue)
+            {
+                var ints = JsonSerializer.Deserialize<List<int>>((string)raw!);
+                return ints?.Select(v => (JobTitle)v).ToList();
+            }
 
-            var ints = JsonSerializer.Deserialize<List<int>>((string)raw!);
-            return ints?.Select(v => (JobTitle)v).ToList();
+            // DEMO_MODE 활성 + Redis에 강제 직책 풀 없으면 DemoMode.ChainJobOrder 기본 적용
+            if (DemoMode.IsActive)
+                return new List<JobTitle>(DemoMode.ChainJobOrder);
+
+            return null;
         }
         catch (Exception ex)
         {

@@ -94,7 +94,7 @@ public partial class BotPlayerManager
     public List<BotMovementEvent> ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager)
     {
         var movements = new List<BotMovementEvent>();
-        if (DemoMode.IsActive) return movements; // DemoMode는 ProcessBotTick에서 스크립트 텔레포트
+        // DEMO_MODE에서도 walking 활성 (스크립트 영역 텔레포트는 ProcessBotTick이 5초 주기로 별도 강제)
         if (!_botStates.TryGetValue(matchingId, out var bots)) return movements;
 
         foreach (var bot in bots)
@@ -123,7 +123,27 @@ public partial class BotPlayerManager
         if (bot.IsInInteraction)
         {
             if (now >= bot.InteractionStayUntil) bot.IsInInteraction = false;
-            else return null;
+            else
+            {
+                // 첫 진입 시 velocity 0 패킷 1회 발행 (이전 walking 패킷의 velocity가 그대로면 클라 발소리 잔존)
+                if (bot.WalkVelocity.X != 0f || bot.WalkVelocity.Y != 0f)
+                {
+                    bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+                    return new BotMovementEvent
+                    {
+                        BotPlayerId = bot.PlayerId,
+                        FromArea = bot.CurrentArea,
+                        ToArea = bot.CurrentArea,
+                        FromCell = bot.Cell,
+                        ToCell = bot.Cell,
+                        Position = bot.Position,
+                        Velocity = new Vector3f(0f, 0f, 0f),
+                        Rotation = bot.Rotation,
+                        IsAreaTransition = false
+                    };
+                }
+                return null;
+            }
         }
 
         // issue22 디버그: 도착 후 대기 중이면 walking 스킵
