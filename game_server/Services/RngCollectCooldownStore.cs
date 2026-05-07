@@ -31,4 +31,12 @@ public static class RngCollectCooldownStore
         var keys = _cooldowns.Keys.Where(k => k.Item1 == matchingId).ToList();
         foreach (var key in keys) _cooldowns.TryRemove(key, out _);
     }
+
+    /// <summary>
+    ///     특정 InteractObject의 cooldown 즉시 해제 — progress 폐기 시 다른 봇/플레이어가 곧바로 시도 가능.
+    /// </summary>
+    public static void ClearCooldown(long matchingId, int interactId)
+    {
+        _cooldowns.TryRemove((matchingId, interactId), out _);
+    }
 }

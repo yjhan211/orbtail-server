@@ -20,10 +20,6 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int RngCollectCooldownSeconds = 30;
-
-    /// <summary>1단계 짧은 cooldown — progress 도중 차단용. progress 폐기/finish 미수신 시 자동 해제.</summary>
-    private const int RngCollectStartCooldownSeconds = 4;
-
     private const int RngCollectStaminaCost = 5;
 
     /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
@@ -59,8 +55,8 @@ public partial class GameClientSession
         // stamina 차감 (즉시) — 정신력 1:2 변환은 ModifyStats가 처리
         ModifyStats(-RngCollectStaminaCost);
 
-        // 1단계 짧은 cooldown 등록 — progress 도중 차단. FINISH 도착 시 30초로 갱신.
-        RngCollectCooldownStore.SetCooldown(CurrentMapSubId, msg.InteractId, RngCollectStartCooldownSeconds);
+        // 1단계 cooldown 30초 등록. FINISH 도착 시 RngCollectCore.Resolve가 동일하게 갱신.
+        RngCollectCooldownStore.SetCooldown(CurrentMapSubId, msg.InteractId, RngCollectCooldownSeconds);
 
         // 사보타주 상태 자동 복구
         var currentState = _interactableStateManager.GetInteractableState(CurrentMapSubId, msg.InteractId);
@@ -73,7 +69,7 @@ public partial class GameClientSession
             PlayerId, msg.InteractId);
 
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
-        BroadcastRngCollectCooldown(msg.InteractId, RngCollectStartCooldownSeconds);
+        BroadcastRngCollectCooldown(msg.InteractId, RngCollectCooldownSeconds);
         // EXPLORE_1 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
         BroadcastPlayerState(global::network.common.PlayerState.EXPLORE_1);
         return Task.CompletedTask;
