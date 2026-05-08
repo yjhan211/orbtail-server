@@ -15,7 +15,8 @@ public static class RngCollectCore
 {
     private const int RngCollectCooldownSeconds = 30;
     private const int FailStaminaReward = 0;
-    private const int ConsumableStaminaReward = 10;
+    // 소모품 회수 stamina 보상 제거 (#135) — 회복은 아이템 사용 시점에만.
+    private const int ConsumableStaminaReward = 0;
     private static readonly Random _rng = new();
 
     public static RngCollectOutcome Resolve(
@@ -30,21 +31,25 @@ public static class RngCollectCore
     {
         var outcome = new RngCollectOutcome();
 
-        // object_action.csv (object_type, action_id=1) — reward_pool_id 추출
-        var primaryAction = info.Actions.FirstOrDefault(a => a.ActionId == 1) ?? info.Actions.FirstOrDefault();
-        int rewardPoolId = primaryAction != null && primaryAction.ResultType == ActionResultType.REWARD_POOL
-            ? primaryAction.ResultId : 0;
-
+        // 자기 풀 매칭은 영역(area) 단위 (#135) — object_type 무시. 한 영역에 자기 부품 1개씩 배치된다는 가정.
         var materials = GameMissionData.GetMaterials((short)jobTitle);
-        var matchedPart = materials.FirstOrDefault(p =>
-            p.TargetArea == info.ZoneId && p.TargetObjectType == (int)info.ObjectType);
+        var matchedPart = materials.FirstOrDefault(p => p.TargetArea == info.ZoneId);
+
+        // 자기 부품 이미 회수했으면 그 영역은 자기 풀 외 분기(영역 풀 소모품)로 처리 (#135).
+        if (matchedPart != null)
+        {
+            var state = missionManager.GetState(matchingId, playerId);
+            if (state != null && state.CollectedParts.Contains(matchedPart.PartId))
+                matchedPart = null;
+        }
 
         if (matchedPart != null)
         {
             int roll = _rng.Next(100);
             bool hasPrerequisite = matchedPart.PrerequisiteShareGroup > 0;
 
-            if (roll < 50)
+            // 자기 풀: 90% 부품 / 7% 선행(있을 때) / 디코이/빈손 — 시연 시간 내 회수 가능하도록 상향 (#135)
+            if (roll < 90)
             {
                 var collectResult = missionManager.TryCollectPart(matchingId, playerId,
                     (AreaType)info.ZoneId, (int)info.ObjectType);
@@ -52,20 +57,24 @@ public static class RngCollectCore
                 {
                     outcome.ResultType = 3;
                     outcome.ItemId = collectResult.Part.PartId;
-                    outcome.StaminaReward = collectResult.StaminaReward;
+                    outcome.StaminaReward = 0; // 부품 회수 stamina 보상 제거 (#135)
                     outcome.CollectedPart = collectResult.Part;
+
+                    // #135 — 부품을 인벤토리에 추가 (ItemType.PART, ItemId = 700000000 + PartId)
+                    int partItemId = 700000000 + collectResult.Part.PartId;
+                    outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, partItemId, 1);
                 }
                 else
                 {
                     outcome.ResultType = 1; // 디코이 폴백
                 }
             }
-            else if (roll < 65 && hasPrerequisite)
+            else if (roll < 97 && hasPrerequisite)
             {
                 outcome.ResultType = 4;
                 outcome.ItemId = matchedPart.PrerequisiteShareGroup;
             }
-            else if (roll < 90)
+            else if (roll < 99)
             {
                 outcome.ResultType = 1; // 디코이
             }
@@ -77,19 +86,21 @@ public static class RngCollectCore
         else
         {
             int roll = _rng.Next(100);
-            if (roll < 60)
+            // 자기 풀 외: 75% 소모품 / 25% 빈손. 풀은 영역(AreaType) 단위 — area_item_pool.csv (#135)
+            if (roll < 75)
             {
-                int? itemId = itemPoolManager.GetNextItemFromPool(matchingId, info.Id, rewardPoolId);
-                if (itemId.HasValue && itemId.Value > 0)
+                var areaPool = GameInteractableData.GetItemPoolByArea(info.ZoneId);
+                if (areaPool.Count > 0)
                 {
+                    int itemId = areaPool[_rng.Next(areaPool.Count)];
                     outcome.ResultType = 2;
-                    outcome.ItemId = itemId.Value;
+                    outcome.ItemId = itemId;
                     outcome.StaminaReward = ConsumableStaminaReward;
-                    outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, itemId.Value, 1);
+                    outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, itemId, 1);
                 }
                 else
                 {
-                    outcome.ResultType = 0; // 풀 없으면 빈손
+                    outcome.ResultType = 0; // 영역 풀 비어있으면 빈손
                 }
             }
             else

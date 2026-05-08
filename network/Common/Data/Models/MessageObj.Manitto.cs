@@ -38,6 +38,9 @@ namespace network.common.data.models
         [Key("targetObjectType")] public int TargetObjectType { get; set; }
         [Key("prerequisiteShareGroup")] public int PrerequisiteShareGroup { get; set; }
         [Key("isCollected")] public bool IsCollected { get; set; }
+        [Key("narrativeKr")] public string NarrativeKr { get; set; }
+        [Key("narrativeEn")] public string NarrativeEn { get; set; }
+        [Key("narrativeJp")] public string NarrativeJp { get; set; }
     }
 
     [MessagePackObject]

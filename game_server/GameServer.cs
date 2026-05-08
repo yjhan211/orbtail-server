@@ -298,7 +298,8 @@ public class GameServer(
             foreach (long matchingId in matchingIds)
             {
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
-                int botDecay = GetMentalDecayAmount(matchingId);
+                // 봇 자연 정신오염 증가 제거 (#135) — 시연 시간 내 봇 조기 탈락 방지
+                const int botDecay = 0;
                 var tickResult = _botPlayerManager.ProcessBotTick(matchingId, botDecay, _areaClosureManager);
 
                 // #125: 봇 위치 이동 이벤트 → 같은 영역 인간 세션에 패킷 브로드캐스트

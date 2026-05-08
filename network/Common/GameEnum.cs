@@ -117,6 +117,8 @@ namespace network.common
         MATERIAL,
         INSTALLATION,
         PUTABLE,
+        // 6 대역은 사물(열쇠 등) legacy — enum에 정의 X.
+        PART = 7, // v0.2.0 부품 결합 시스템 (#135). ItemId = 700000000 + PartId
     }
 
     public enum EquipType

@@ -73,10 +73,9 @@ public class MissionManager
         if (!matching.TryGetValue(playerId, out var state)) return null;
         if (state.IsCompleted) return null;
 
-        // 직책 발견 풀에서 매칭 부품 찾기 (소재만)
+        // 직책 발견 풀에서 매칭 부품 찾기 — 영역(area) 단위 매칭 (#135). object_type 무시.
         var materials = GameMissionData.GetMaterials((short)state.JobTitle);
-        var matchingPart = materials.FirstOrDefault(p =>
-            p.TargetArea == (int)area && p.TargetObjectType == objectType);
+        var matchingPart = materials.FirstOrDefault(p => p.TargetArea == (int)area);
 
         if (matchingPart == null) return null;
         if (state.CollectedParts.Contains(matchingPart.PartId))

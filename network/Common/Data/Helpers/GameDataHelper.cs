@@ -214,6 +214,7 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Interactable.Action],
                 loadedData[DataFiles.Interactable.ItemPool]
             );
+            GameInteractableData.InitializeAreaItemPool(loadedData[DataFiles.Interactable.AreaItemPool]);
 
             // 미션 데이터 초기화 (v0.2.0 — 부품 결합 시스템)
             GameMissionData.Initialize(loadedData[DataFiles.Mission.Step]);
@@ -301,8 +302,9 @@ namespace network.common.data.helpers
                 public const string Info = "interactable_info.csv";
                 public const string Action = "object_action.csv";  // GDD §2.4.2 — object_type 기반 통합 풀
                 public const string ItemPool = "interactable_item_pool.csv";
+                public const string AreaItemPool = "area_item_pool.csv";  // #135 — 영역 단위 ItemPool
 
-                public static readonly string[] ALL = new[] { Info, Action, ItemPool };
+                public static readonly string[] ALL = new[] { Info, Action, ItemPool, AreaItemPool };
             }
 
             public static class Mission
