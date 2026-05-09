@@ -92,7 +92,7 @@ id,category,text_kr,text_en,text_jp
 10045,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#A8D4E0>accepted</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>さんが<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。
 10046,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#FF7E9A>거절</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#FF7E9A>declined</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>さんが<color=#A8D4E0>対話</color>を<color=#FF7E9A>拒否</color>しました。
 10047,4,<color=#FF7E9A>선물</color> 준비에 실패했습니다.,Failed to prepare the <color=#FF7E9A>gift</color>.,<color=#FF7E9A>贈り物</color>の準備に失敗しました。
-10048,4,<color=#A8D4E0>{0}</color>에 <color=#FF7E9A>{1}</color>을 위한 선물을 준비합니다.,Preparing a gift for <color=#FF7E9A>{1}</color> at <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>に<color=#FF7E9A>{1}</color>への贈り物を用意します。
+10048,4,<color=#A8D4E0>{0}</color>에 <color=#A8D4E0>{1}</color>을 위한 선물을 준비합니다.,Preparing a gift for <color=#A8D4E0>{1}</color> at <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>に<color=#A8D4E0>{1}</color>への贈り物を用意します。
 10049,4,<color=#FF7E9A>다른 이를 향한 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>gift meant for someone else</color>.,<color=#FF7E9A>他の誰かに向けた贈り物</color>を見つけました。
 10050,4,<color=#FF7E9A>마니또의 비밀 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>secret gift from your manitto</color>.,<color=#FF7E9A>マニットの秘密の贈り物</color>を見つけました。
 10051,4,<color=#A8D4E0>전달</color> 비밀 선물이 전해졌습니다. ({0}/{1}),<color=#A8D4E0>Delivery</color> Secret gift delivered. ({0}/{1}),<color=#A8D4E0>届け物</color> 秘密の贈り物が届きました。({0}/{1})
