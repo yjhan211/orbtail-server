@@ -43,6 +43,9 @@ namespace network.common.data
                     SpriteItemId = row.ContainsKey("sprite_item_id") && !string.IsNullOrEmpty(row["sprite_item_id"])
                         ? int.Parse(row["sprite_item_id"])
                         : 0,
+                    PartItemType = row.ContainsKey("part_item_type") && !string.IsNullOrEmpty(row["part_item_type"])
+                        ? (PartItemType)int.Parse(row["part_item_type"])
+                        : PartItemType.None,
                     NarrativeKr = row.ContainsKey("narrative_kr") ? row["narrative_kr"] : "",
                     NarrativeEn = row.ContainsKey("narrative_en") ? row["narrative_en"] : "",
                     NarrativeJp = row.ContainsKey("narrative_jp") ? row["narrative_jp"] : ""
@@ -107,6 +110,13 @@ namespace network.common.data
         Final = 2,       // 최종 — race 완주 trigger
     }
 
+    public enum PartItemType
+    {
+        None = 0,
+        Body = 1,
+        Charge = 2
+    }
+
     public class MissionPartData
     {
         public short JobTitle { get; set; }
@@ -119,6 +129,7 @@ namespace network.common.data
         public int PrerequisiteShareGroup { get; set; } // 0=선행 없음, 1+=선행 그룹 ID
         public int CombineProgressSeconds { get; set; } // 결합 progress (소재=0, 결합 부품=5)
         public int SpriteItemId { get; set; }           // ItemSprites/<id>.png — 기존 item_info sprite 재활용 (#79)
+        public PartItemType PartItemType { get; set; }  // 0=None, 1=Body, 2=Charge. 머지 UX에서 본체/충전재 역할 분리
         public string NarrativeKr { get; set; }         // MissionDisplay 메인 타이틀 (예: "도서관 책장 살피기"). 비어있으면 PartNameKr fallback
         public string NarrativeEn { get; set; }
         public string NarrativeJp { get; set; }
