@@ -16,9 +16,9 @@
 3,301,포스트잇 뭉치,Sticky Notes,付箋の束,0,30,7,12,0,0,301000008,포스트잇 뭉치 회수하기,Recover sticky notes,付箋の束を回収する
 3,302,필기용 노트,Writing Notebook,筆記用ノート,0,22,6,12,0,0,301000001,필기용 노트 회수하기,Recover writing notebook,筆記用ノートを回収する
 3,303,보조 배터리,Backup Battery,予備バッテリー,0,20,5,12,0,0,301000002,보조 배터리 찾기,Find backup battery,予備バッテリーを探す
-3,304,우주의 노트,Cosmic Notebook,宇宙のノート,0,42,9,12,0,0,107000002,우주의 노트 찾기,Find cosmic notebook,宇宙のノートを探す
-3,305,짜맞춘 노트,Pieced Note,つなげたノート,1,0,0,20,0,5,301000001,필기 맥락 파악하기,Grasp writing context,筆記の文脈を把握する
-3,306,해독의 단서,Decryption Clue,解読の手がかり,1,0,0,20,0,5,202000003,쪽지 해석하기,Decode the note,メモを解釈する
+3,304,방전된 노트,Drained Notebook,放電したノート,0,42,9,12,0,0,107000002,방전된 노트 찾기,Find drained notebook,放電したノートを探す
+3,305,과거와의 필담,Conversation with the Past,過去との筆談,1,0,0,20,0,5,301000001,과거와 대화하기,Talk with the past,過去と対話する
+3,306,우주의 노트,Cosmic Notebook,宇宙のノート,1,0,0,20,0,5,107000002,우주의 노트 복원하기,Restore cosmic notebook,宇宙のノートを復元する
 3,307,해독된 진실,Revealed Truth,明かされた真実,2,0,0,0,0,5,107000002,진실에 닿기,Reach the truth,真実に辿り着く
 4,401,등산용 로프 다발,Climbing Rope Bundle,登山用ロープの束,0,30,10,12,0,0,301000006,,,
 4,402,카라비너 세트,Carabiner Set,カラビナセット,0,14,6,12,3,0,301000021,,,

@@ -537,27 +537,18 @@ public partial class GameClientSession
     private Task HandleCombineParts(C_TO_G_COMBINE_PARTS msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (!HasInGamePartItem(msg.PartA) || !HasInGamePartItem(msg.PartB))
+        {
+            SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INSUFFICIENT_ITEM);
+            return Task.CompletedTask;
+        }
 
         var result = _missionManager.TryCombineParts(
-            CurrentMapSubId, PlayerId.Value, msg.PartA, msg.PartB, msg.ClientStartUnixMs);
+            CurrentMapSubId, PlayerId.Value, msg.PartA, msg.PartB, msg.ClientStartUnixMs,
+            requireCollectedParts: false);
         if (!result.Success)
         {
-            // 실패 시 ErrorCode만 응답 (결과 패킷 + IsRaceComplete=false)
-            using var failPacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId.Value);
-            var failMsg = new G_TO_C_PART_COMBINED
-            {
-                RecipeId = 0,
-                InputPartA = msg.PartA,
-                InputPartB = msg.PartB,
-                OutputPartId = 0,
-                OutputPartNameKr = "",
-                StaminaReward = 0,
-                IsRaceComplete = false
-            };
-            failPacket.SetBody(MessagePackSerializer.Serialize(failMsg));
-            Send(failPacket);
-
-            SendErrorResponse(result.ErrorCode, "부품 결합 실패");
+            SendCombinePartsFailure(msg.PartA, msg.PartB, result.ErrorCode);
             return Task.CompletedTask;
         }
 
@@ -602,6 +593,32 @@ public partial class GameClientSession
         }
 
         return Task.CompletedTask;
+    }
+
+    private bool HasInGamePartItem(int partId)
+    {
+        int itemId = 700000000 + partId;
+        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId!.Value);
+        return inventory.GetItemCount(itemId) > 0;
+    }
+
+    private void SendCombinePartsFailure(int partA, int partB, ErrorCode errorCode)
+    {
+        using var failPacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId!.Value);
+        var failMsg = new G_TO_C_PART_COMBINED
+        {
+            RecipeId = 0,
+            InputPartA = partA,
+            InputPartB = partB,
+            OutputPartId = 0,
+            OutputPartNameKr = "",
+            StaminaReward = 0,
+            IsRaceComplete = false
+        };
+        failPacket.SetBody(MessagePackSerializer.Serialize(failMsg));
+        Send(failPacket);
+
+        SendErrorResponse(errorCode, "부품 결합 실패");
     }
 
     /// <summary>
