@@ -10,8 +10,8 @@ using network.managers;
 namespace network.common.data
 {
     /// <summary>
-    ///     부품 결합 레시피 (v0.2.0). 직책당 3 레시피 = 8 × 3 = 24 레시피.
-    ///     소재 2개 → 중간재 / 중간재 2개 → 최종.
+    ///     부품 결합 레시피 (v0.2.0). 직책당 2 레시피 = 8 × 2 = 16 레시피.
+    ///     소재 2개 → 중간재. 최종 미션은 결합이 아니라 비밀 선물 발견 조건으로 처리한다.
     /// </summary>
     public static class PartRecipeData
     {
@@ -74,8 +74,8 @@ namespace network.common.data
 
             foreach (var (jobTitle, recipes) in _recipesByJob)
             {
-                if (recipes.Count != 3)
-                    LogManager.WriteInfoLog($"[PartRecipeData] 직책 {jobTitle} 레시피 수 비정상: {recipes.Count}/3");
+                if (recipes.Count != 2)
+                    LogManager.WriteInfoLog($"[PartRecipeData] 직책 {jobTitle} 레시피 수 비정상: {recipes.Count}/2");
             }
         }
     }

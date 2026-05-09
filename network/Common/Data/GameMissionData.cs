@@ -10,7 +10,7 @@ using network.managers;
 namespace network.common.data
 {
     /// <summary>
-    ///     v0.2.0 — 부품 결합 시스템(이슈 #85). 직책별 7 부품(소재 4 + 중간재 2 + 최종 1) 정의.
+    ///     v0.2.0 — 부품 결합 시스템(이슈 #85). 직책별 6 부품(소재 4 + 중간재 2) 정의.
     ///     기존 단계 기반 미션은 폐기. 부품 회수/결합으로 race 진행.
     /// </summary>
     public static class GameMissionData
@@ -62,7 +62,7 @@ namespace network.common.data
         }
 
         /// <summary>
-        ///     해당 직책의 모든 부품(소재 + 중간재 + 최종) 반환
+        ///     해당 직책의 모든 부품(소재 + 중간재) 반환
         /// </summary>
         public static List<MissionPartData> GetParts(short jobTitle) =>
             _partsByJob.GetValueOrDefault(jobTitle) ?? new List<MissionPartData>();
@@ -74,19 +74,13 @@ namespace network.common.data
             GetParts(jobTitle).Where(p => p.PartTier == PartTier.Material).ToList();
 
         /// <summary>
-        ///     해당 직책의 최종 부품(Tier 2) 반환 — race 완주 trigger
-        /// </summary>
-        public static MissionPartData GetFinalPart(short jobTitle) =>
-            GetParts(jobTitle).FirstOrDefault(p => p.PartTier == PartTier.Final);
-
-        /// <summary>
         ///     part_id로 부품 직접 조회
         /// </summary>
         public static MissionPartData GetPart(int partId) =>
             _partsById.GetValueOrDefault(partId);
 
         /// <summary>
-        ///     해당 직책의 총 부품 수 (소재 4 + 중간재 2 + 최종 1 = 7)
+        ///     해당 직책의 총 부품 수 (소재 4 + 중간재 2 = 6)
         /// </summary>
         public static int GetTotalParts(short jobTitle) => GetParts(jobTitle).Count;
 
@@ -97,8 +91,8 @@ namespace network.common.data
 
             foreach (var (jobTitle, parts) in _partsByJob)
             {
-                if (parts.Count != 7)
-                    LogManager.WriteInfoLog($"[GameMissionData] 직책 {jobTitle} 부품 수 비정상: {parts.Count}/7");
+                if (parts.Count != 6)
+                    LogManager.WriteInfoLog($"[GameMissionData] 직책 {jobTitle} 부품 수 비정상: {parts.Count}/6");
             }
         }
     }
@@ -107,7 +101,7 @@ namespace network.common.data
     {
         Material = 0,    // 소재 — 회수 대상
         Intermediate = 1, // 중간재 — 결합 결과
-        Final = 2,       // 최종 — race 완주 trigger
+        Final = 2,       // 레거시: 최종 미션은 비밀 선물 발견 조건으로 이전 예정
     }
 
     public enum PartItemType
