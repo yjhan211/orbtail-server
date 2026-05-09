@@ -59,6 +59,14 @@ namespace network.common.data
         public static List<PartRecipe> GetRecipes(short jobTitle) =>
             _recipesByJob.GetValueOrDefault(jobTitle) ?? new List<PartRecipe>();
 
+        /// <summary>
+        ///     특정 부품을 입력으로 사용하는 레시피 목록.
+        /// </summary>
+        public static List<PartRecipe> GetRecipesUsingInput(int partId) =>
+            _recipesByJob.Values.SelectMany(recipes => recipes)
+                .Where(recipe => recipe.InputPartA == partId || recipe.InputPartB == partId)
+                .ToList();
+
         public static void Validate(managers.LogManager logger)
         {
             if (_recipesByJob.Count == 0)
