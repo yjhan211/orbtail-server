@@ -425,12 +425,6 @@ public partial class BotPlayerManager
         var candidates = GameInteractableData.GetByZone((int)targetArea);
         if (candidates.Count == 0) return new List<int>();
 
-        var materials = GameMissionData.GetMaterials((short)bot.MyJobTitle);
-        var jobObjectTypes = materials
-            .Where(p => p.TargetArea == (int)targetArea)
-            .Select(p => p.TargetObjectType)
-            .ToHashSet();
-
         int unmappedCount = candidates.Count(c => c.CellX == 0 && c.CellY == 0);
         int cooldownCount = candidates.Count(c =>
             (c.CellX != 0 || c.CellY != 0) && RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _));
@@ -440,17 +434,8 @@ public partial class BotPlayerManager
             .Where(c => !RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _))
             .ToList();
 
-        // 자기 직책 풀 매칭 셔플 → 그 외 셔플
-        var preferred = available
-            .Where(c => jobObjectTypes.Contains((int)c.ObjectType))
-            .OrderBy(_ => _rng.Next())
-            .Select(c => c.Id);
-        var others = available
-            .Where(c => !jobObjectTypes.Contains((int)c.ObjectType))
-            .OrderBy(_ => _rng.Next())
-            .Select(c => c.Id);
-
-        var queue = preferred.Concat(others).ToList();
+        // 영역 단위 부품 매칭 (#135) — 같은 영역 내 사물은 동등. 단순 셔플.
+        var queue = available.OrderBy(_ => _rng.Next()).Select(c => c.Id).ToList();
         if (unmappedCount > 0 || cooldownCount > 0)
         {
             _logger.LogInformation(

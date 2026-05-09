@@ -33,7 +33,10 @@ public partial class GameClientSession
             TargetArea = p.TargetArea,
             TargetObjectType = p.TargetObjectType,
             PrerequisiteShareGroup = p.PrerequisiteShareGroup,
-            IsCollected = state.CollectedParts.Contains(p.PartId)
+            IsCollected = state.CollectedParts.Contains(p.PartId),
+            NarrativeKr = p.NarrativeKr ?? "",
+            NarrativeEn = p.NarrativeEn ?? "",
+            NarrativeJp = p.NarrativeJp ?? ""
         }).ToList();
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_MISSION_INFO, PlayerId.Value);
@@ -355,7 +358,7 @@ public partial class GameClientSession
         var collectResult = _missionManager.TryCollectPart(CurrentMapSubId, PlayerId.Value, area, objectType);
         if (collectResult != null && collectResult.Success && collectResult.Part != null)
         {
-            ApplyStaminaReward(collectResult.StaminaReward);
+            // 부품 회수 stamina 보상 제거 (#135)
 
             using var partPacket = Packet.Create((int)Protocol.G_TO_C_PART_COLLECTED, PlayerId.Value);
             var partMsg = new G_TO_C_PART_COLLECTED
@@ -363,7 +366,7 @@ public partial class GameClientSession
                 PartId = collectResult.Part.PartId,
                 PartNameKr = collectResult.Part.PartNameKr,
                 PartTier = (int)collectResult.Part.PartTier,
-                StaminaReward = collectResult.StaminaReward
+                StaminaReward = 0
             };
             partPacket.SetBody(MessagePackSerializer.Serialize(partMsg));
             Send(partPacket);
@@ -467,9 +470,8 @@ public partial class GameClientSession
         bool success = _missionManager.TryCollectPrerequisite(CurrentMapSubId, PlayerId.Value, area, objectType);
         if (!success) return false;
 
-        // 선행 아이템 회수 시 소량 스태미나 보상(소재의 절반 = 6)
-        const int prerequisiteStaminaReward = 6;
-        ApplyStaminaReward(prerequisiteStaminaReward);
+        // 선행 아이템 회수 stamina 보상 제거 (#135)
+        const int prerequisiteStaminaReward = 0;
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_PREREQUISITE_COLLECTED, PlayerId.Value);
         var msg = new G_TO_C_PREREQUISITE_COLLECTED
@@ -498,38 +500,59 @@ public partial class GameClientSession
     }
 
     /// <summary>
+    ///     #135 — 결합 후 인벤토리 sync: input 부품 제거(Count=0 알림) + output 부품 추가 한 번에 broadcast.
+    /// </summary>
+    private void SyncInventoryAfterCombine(int inputA, int inputB, int outputPartId)
+    {
+        if (!PlayerId.HasValue) return;
+
+        var items = new List<InGameItemInfo>();
+
+        foreach (int input in new[] { inputA, inputB })
+        {
+            int inputItemId = 700000000 + input;
+            var removed = _inGameInventoryManager.RemoveItemByItemId(CurrentMapSubId, PlayerId.Value, inputItemId);
+            if (removed != null)
+                items.Add(new InGameItemInfo { ItemUid = removed.ItemUid, ItemId = removed.ItemId, Count = 0 });
+        }
+
+        if (outputPartId > 0)
+        {
+            int outputItemId = 700000000 + outputPartId;
+            var added = _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, outputItemId, 1);
+            items.Add(added);
+        }
+
+        if (items.Count > 0)
+        {
+            using var packet = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
+            Send(packet);
+        }
+    }
+
+    /// <summary>
     ///     v0.2.0 — 부품 결합 요청 처리. 두 부품 결합 시도 → 결과 송신.
     ///     #87: 최종 결합(IsRaceComplete) 시 즉시 게임 종료 — 다른 생존자 RACE_LOST 처리.
     /// </summary>
     private Task HandleCombineParts(C_TO_G_COMBINE_PARTS msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-
-        var result = _missionManager.TryCombineParts(
-            CurrentMapSubId, PlayerId.Value, msg.PartA, msg.PartB, msg.ClientStartUnixMs);
-        if (!result.Success)
+        if (!HasInGamePartItem(msg.PartA) || !HasInGamePartItem(msg.PartB))
         {
-            // 실패 시 ErrorCode만 응답 (결과 패킷 + IsRaceComplete=false)
-            using var failPacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId.Value);
-            var failMsg = new G_TO_C_PART_COMBINED
-            {
-                RecipeId = 0,
-                InputPartA = msg.PartA,
-                InputPartB = msg.PartB,
-                OutputPartId = 0,
-                OutputPartNameKr = "",
-                StaminaReward = 0,
-                IsRaceComplete = false
-            };
-            failPacket.SetBody(MessagePackSerializer.Serialize(failMsg));
-            Send(failPacket);
-
-            SendErrorResponse(result.ErrorCode, "부품 결합 실패");
+            SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INSUFFICIENT_ITEM);
             return Task.CompletedTask;
         }
 
-        // 스태미나 보상 적용
-        ApplyStaminaReward(result.StaminaReward);
+        var result = _missionManager.TryCombineParts(
+            CurrentMapSubId, PlayerId.Value, msg.PartA, msg.PartB, msg.ClientStartUnixMs,
+            requireCollectedParts: false);
+        if (!result.Success)
+        {
+            SendCombinePartsFailure(msg.PartA, msg.PartB, result.ErrorCode);
+            return Task.CompletedTask;
+        }
+
+        // 결합 stamina 보상 제거 (#135)
 
         // 결합 결과 송신
         using var packet = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId.Value);
@@ -545,6 +568,9 @@ public partial class GameClientSession
         };
         packet.SetBody(MessagePackSerializer.Serialize(combinedMsg));
         Send(packet);
+
+        // #135 — 인벤토리 동기화: input 부품 제거 + output 부품 추가 (ItemType.PART)
+        SyncInventoryAfterCombine(msg.PartA, msg.PartB, result.OutputPart?.PartId ?? 0);
 
         _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
             result.IsRaceComplete
@@ -567,6 +593,32 @@ public partial class GameClientSession
         }
 
         return Task.CompletedTask;
+    }
+
+    private bool HasInGamePartItem(int partId)
+    {
+        int itemId = 700000000 + partId;
+        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId!.Value);
+        return inventory.GetItemCount(itemId) > 0;
+    }
+
+    private void SendCombinePartsFailure(int partA, int partB, ErrorCode errorCode)
+    {
+        using var failPacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId!.Value);
+        var failMsg = new G_TO_C_PART_COMBINED
+        {
+            RecipeId = 0,
+            InputPartA = partA,
+            InputPartB = partB,
+            OutputPartId = 0,
+            OutputPartNameKr = "",
+            StaminaReward = 0,
+            IsRaceComplete = false
+        };
+        failPacket.SetBody(MessagePackSerializer.Serialize(failMsg));
+        Send(failPacket);
+
+        SendErrorResponse(errorCode, "부품 결합 실패");
     }
 
     /// <summary>

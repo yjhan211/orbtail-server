@@ -73,10 +73,9 @@ public class MissionManager
         if (!matching.TryGetValue(playerId, out var state)) return null;
         if (state.IsCompleted) return null;
 
-        // 직책 발견 풀에서 매칭 부품 찾기 (소재만)
+        // 직책 발견 풀에서 매칭 부품 찾기 — 영역(area) 단위 매칭 (#135). object_type 무시.
         var materials = GameMissionData.GetMaterials((short)state.JobTitle);
-        var matchingPart = materials.FirstOrDefault(p =>
-            p.TargetArea == (int)area && p.TargetObjectType == objectType);
+        var matchingPart = materials.FirstOrDefault(p => p.TargetArea == (int)area);
 
         if (matchingPart == null) return null;
         if (state.CollectedParts.Contains(matchingPart.PartId))
@@ -137,7 +136,7 @@ public class MissionManager
     ///     클라이언트 결합 시작 시각이 빠른 쪽 우선, 동률이면 PlayerId 낮은 쪽 우선.
     /// </summary>
     public PartCombineResult TryCombineParts(long matchingId, long playerId, int partA, int partB,
-        long clientStartUnixMs = 0)
+        long clientStartUnixMs = 0, bool requireCollectedParts = true)
     {
         if (!_matchingStates.TryGetValue(matchingId, out var matching))
             return new PartCombineResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
@@ -150,7 +149,7 @@ public class MissionManager
         if (recipe == null || recipe.JobTitle != (short)state.JobTitle)
             return new PartCombineResult { ErrorCode = ErrorCode.INVALID_PARAMETER };
 
-        if (!state.CollectedParts.Contains(partA) || !state.CollectedParts.Contains(partB))
+        if (requireCollectedParts && (!state.CollectedParts.Contains(partA) || !state.CollectedParts.Contains(partB)))
             return new PartCombineResult { ErrorCode = ErrorCode.INSUFFICIENT_ITEM };
 
         if (state.CollectedParts.Contains(recipe.OutputPart))
@@ -174,8 +173,6 @@ public class MissionManager
                 }
 
                 // 결합 실행 + winner 등록 (atomic)
-                state.CollectedParts.Remove(partA);
-                state.CollectedParts.Remove(partB);
                 state.CollectedParts.Add(recipe.OutputPart);
                 state.IsCompleted = true;
 
@@ -202,8 +199,6 @@ public class MissionManager
         }
 
         // 중간재 결합 — 동시성 가드 불필요 (자기 인벤토리에만 영향)
-        state.CollectedParts.Remove(partA);
-        state.CollectedParts.Remove(partB);
         state.CollectedParts.Add(recipe.OutputPart);
 
         _logger.LogInformation("부품 결합: PlayerId={PlayerId}, {A}+{B} → {Out} (Final=false)",

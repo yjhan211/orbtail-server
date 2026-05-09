@@ -17,6 +17,27 @@ namespace network.common.data
         private static readonly Dictionary<int, InteractableInfoData> _infos = new();
         private static readonly Dictionary<int, List<InteractableInfoData>> _infosByZone = new();
         private static readonly Dictionary<int, List<int>> _itemPools = new();
+        private static readonly Dictionary<int, List<int>> _areaItemPools = new();
+
+        /// <summary>
+        ///     #135 — 영역(AreaType) 단위 ItemPool. 자기 풀 외 사물 RNG 채집 시 영역 풀에서 추출.
+        /// </summary>
+        public static void InitializeAreaItemPool(List<CsvRow> areaItemPoolData)
+        {
+            _areaItemPools.Clear();
+            foreach (var row in areaItemPoolData)
+            {
+                int areaType = int.Parse(row["area_type"]);
+                var json = row["item_id_list"];
+                var ids = string.IsNullOrEmpty(json) || json == "[]"
+                    ? new List<int>()
+                    : JsonConvert.DeserializeObject<List<int>>(json) ?? new List<int>();
+                _areaItemPools[areaType] = ids;
+            }
+        }
+
+        public static List<int> GetItemPoolByArea(int areaType) =>
+            _areaItemPools.TryGetValue(areaType, out var pool) ? pool : new List<int>();
 
         public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData, List<CsvRow> itemPoolData)
         {
