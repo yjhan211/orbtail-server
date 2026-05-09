@@ -108,8 +108,6 @@ public partial class GameClientSession
                     itemId, count);
             }
 
-            AddDemoLibraryCommitteeParts();
-
             // 인게임 인벤토리 목록 전송
             SendInGameInventoryList();
 
@@ -137,25 +135,6 @@ public partial class GameClientSession
             };
             packet.SetBody(MessagePackSerializer.Serialize(response));
             Send(packet);
-        }
-    }
-
-    /// <summary>
-    ///     #135 테스트 임시 지급: LB 시연 모드에서 도서위원 소재 부품 4개를 시작 인벤토리에 넣는다.
-    /// </summary>
-    private void AddDemoLibraryCommitteeParts()
-    {
-        if (!DemoMode.IsActive || MyJobTitle != JobTitle.LIBRARY_COMMITTEE || !PlayerId.HasValue) return;
-
-        foreach (int partId in new[] { 301, 302, 303, 304 })
-        {
-            int itemId = GameMissionData.GetPartItemId(partId);
-            if (itemId == 0) continue;
-
-            _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, 1);
-            Logger.LogInformation(
-                "DEMO_MODE LB test part added: PlayerId={PlayerId}, PartId={PartId}, ItemId={ItemId}",
-                PlayerId, partId, itemId);
         }
     }
 
