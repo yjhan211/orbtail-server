@@ -510,7 +510,9 @@ public partial class GameClientSession
 
         foreach (int input in new[] { inputA, inputB })
         {
-            int inputItemId = 700000000 + input;
+            int inputItemId = GameMissionData.GetPartItemId(input);
+            if (inputItemId == 0) continue;
+
             var removed = _inGameInventoryManager.RemoveItemByItemId(CurrentMapSubId, PlayerId.Value, inputItemId);
             if (removed != null)
                 items.Add(new InGameItemInfo { ItemUid = removed.ItemUid, ItemId = removed.ItemId, Count = 0 });
@@ -518,7 +520,9 @@ public partial class GameClientSession
 
         if (outputPartId > 0)
         {
-            int outputItemId = 700000000 + outputPartId;
+            int outputItemId = GameMissionData.GetPartItemId(outputPartId);
+            if (outputItemId == 0) return;
+
             var added = _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, outputItemId, 1);
             items.Add(added);
         }
@@ -569,7 +573,7 @@ public partial class GameClientSession
         packet.SetBody(MessagePackSerializer.Serialize(combinedMsg));
         Send(packet);
 
-        // #135 — 인벤토리 동기화: input 부품 제거 + output 부품 추가 (ItemType.PART)
+        // #135 — 인벤토리 동기화: input 부품 제거 + output 선물 파트 추가
         SyncInventoryAfterCombine(msg.PartA, msg.PartB, result.OutputPart?.PartId ?? 0);
 
         _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
@@ -597,7 +601,9 @@ public partial class GameClientSession
 
     private bool HasInGamePartItem(int partId)
     {
-        int itemId = 700000000 + partId;
+        int itemId = GameMissionData.GetPartItemId(partId);
+        if (itemId == 0) return false;
+
         var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId!.Value);
         return inventory.GetItemCount(itemId) > 0;
     }

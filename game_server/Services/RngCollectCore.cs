@@ -60,9 +60,10 @@ public static class RngCollectCore
                     outcome.StaminaReward = 0; // 부품 회수 stamina 보상 제거 (#135)
                     outcome.CollectedPart = collectResult.Part;
 
-                    // #135 — 부품을 인벤토리에 추가 (ItemType.PART, ItemId = 700000000 + PartId)
-                    int partItemId = 700000000 + collectResult.Part.PartId;
-                    outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, partItemId, 1);
+                    // #135 — 부품을 인벤토리에 추가 (본체/충전재 ID 대역 분리)
+                    int partItemId = GameMissionData.GetPartItemId(collectResult.Part.PartId);
+                    if (partItemId > 0)
+                        outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, partItemId, 1);
                 }
                 else
                 {

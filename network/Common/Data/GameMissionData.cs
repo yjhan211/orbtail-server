@@ -79,6 +79,36 @@ namespace network.common.data
         public static MissionPartData GetPart(int partId) =>
             _partsById.GetValueOrDefault(partId);
 
+        public static int GetPartItemId(int partId)
+        {
+            var part = GetPart(partId);
+            if (part == null) return 0;
+
+            var itemType = GetPartItemType(part);
+            return itemType == ItemType.NONE ? 0 : (int)itemType * 100000000 + partId;
+        }
+
+        public static bool TryGetPartIdFromItemId(int itemId, out int partId)
+        {
+            partId = itemId % 100000000;
+            return partId > 0 && IsPartItemType(GameItemData.GetItemType(itemId)) && GetPart(partId) != null;
+        }
+
+        public static bool IsPartItemType(ItemType itemType) =>
+            itemType is ItemType.PART_BODY or ItemType.PART_CHARGE or ItemType.PART_GIFT;
+
+        private static ItemType GetPartItemType(MissionPartData part)
+        {
+            if (part.PartTier == PartTier.Intermediate) return ItemType.PART_GIFT;
+
+            return part.PartItemType switch
+            {
+                PartItemType.Body => ItemType.PART_BODY,
+                PartItemType.Charge => ItemType.PART_CHARGE,
+                _ => ItemType.NONE
+            };
+        }
+
         /// <summary>
         ///     해당 직책의 총 부품 수 (소재 4 + 중간재 2 = 6)
         /// </summary>

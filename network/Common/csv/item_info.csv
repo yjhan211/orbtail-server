@@ -124,50 +124,50 @@
 601000008,3-2 교실 열쇠,Class 3-2 Key,3-2教室の鍵,[],열지 못할 것은 없어요,Nothing it cannot open.,開けられないものはありません。,1
 601000009,분필,Chalk,チョーク,[],백색 분필 한 자루,A single piece of white chalk.,白いチョーク一本。,1
 700000101,손상된 마이크 헤드,Damaged Mic Head,破損したマイクヘッド,[],,,,1
-700000102,변조된 회로 기판,Modified Circuit Board,改造された回路基板,[],,,,1
-700000103,비상 호출 코드 메모,Emergency Call Code Memo,緊急呼出コードのメモ,[],,,,1
+800000102,변조된 회로 기판,Modified Circuit Board,改造された回路基板,[],,,,1
+800000103,비상 호출 코드 메모,Emergency Call Code Memo,緊急呼出コードのメモ,[],,,,1
 700000104,외부 안테나 케이블,External Antenna Cable,外部アンテナケーブル,[],,,,1
-700000105,복원 마이크,Restored Mic,復元マイク,[],,,,1
-700000106,비상 송출 케이블,Emergency Broadcast Cable,緊急送信ケーブル,[],,,,1
+900000105,복원 마이크,Restored Mic,復元マイク,[],,,,1
+900000106,비상 송출 케이블,Emergency Broadcast Cable,緊急送信ケーブル,[],,,,1
 700000201,학생증 잔해,Student ID Fragments,学生証の残骸,[],,,,1
-700000202,출입증 인쇄 양식,ID Print Template,通行証印刷フォーム,[],,,,1
+800000202,출입증 인쇄 양식,ID Print Template,通行証印刷フォーム,[],,,,1
 700000203,전자 인증 칩,Electronic Auth Chip,電子認証チップ,[],,,,1
-700000204,통제실 매뉴얼,Control Room Manual,管制室マニュアル,[],,,,1
-700000205,위조 학생증,Forged Student ID,偽造学生証,[],,,,1
-700000206,인증 모듈,Auth Module,認証モジュール,[],,,,1
-700000301,포스트잇 뭉치,Sticky Notes,付箋の束,[],찢겨진 노트 조각 회수하기,Recover torn note piece,引き裂かれたノートの切れ端を回収する,1
+800000204,통제실 매뉴얼,Control Room Manual,管制室マニュアル,[],,,,1
+900000205,위조 학생증,Forged Student ID,偽造学生証,[],,,,1
+900000206,인증 모듈,Auth Module,認証モジュール,[],,,,1
+800000301,포스트잇 뭉치,Sticky Notes,付箋の束,[],찢겨진 노트 조각 회수하기,Recover torn note piece,引き裂かれたノートの切れ端を回収する,1
 700000302,필기용 노트,Writing Notebook,筆記用ノート,[],또 다른 노트 조각 회수하기,Recover another note piece,もう一つのノートの切れ端を回収する,1
-700000303,보조 배터리,Backup Battery,予備バッテリー,[],사라진 학생의 메모 찾기,Find missing student's memo,消えた生徒のメモを探す,1
+800000303,보조 배터리,Backup Battery,予備バッテリー,[],사라진 학생의 메모 찾기,Find missing student's memo,消えた生徒のメモを探す,1
 700000304,방전된 노트,Drained Notebook,放電したノート,[],방전된 노트 찾기,Find drained notebook,放電したノートを探す,1
-700000305,과거와의 필담,Conversation with the Past,過去との筆談,[],과거와 대화하기,Talk with the past,過去と対話する,1
-700000306,우주의 노트,Cosmic Notebook,宇宙のノート,[],우주의 노트 복원하기,Restore cosmic notebook,宇宙のノートを復元する,1
+900000305,과거와의 필담,Conversation with the Past,過去との筆談,[],과거와 대화하기,Talk with the past,過去と対話する,1
+900000306,우주의 노트,Cosmic Notebook,宇宙のノート,[],우주의 노트 복원하기,Restore cosmic notebook,宇宙のノートを復元する,1
 700000401,등산용 로프 다발,Climbing Rope Bundle,登山用ロープの束,[],,,,1
-700000402,카라비너 세트,Carabiner Set,カラビナセット,[],,,,1
+800000402,카라비너 세트,Carabiner Set,カラビナセット,[],,,,1
 700000403,체육 일지,P.E. Log,体育日誌,[],,,,1
-700000404,매트 보호대,Mat Padding,マット保護パッド,[],,,,1
-700000405,등반 장비 세트,Climbing Gear Set,登攀装備セット,[],,,,1
-700000406,외벽 강하용 보호장구,External Descent Harness,外壁降下用保護具,[],,,,1
+800000404,매트 보호대,Mat Padding,マット保護パッド,[],,,,1
+900000405,등반 장비 세트,Climbing Gear Set,登攀装備セット,[],,,,1
+900000406,외벽 강하용 보호장구,External Descent Harness,外壁降下用保護具,[],,,,1
 700000501,시약 A (산성),Reagent A (Acidic),試薬A(酸性),[],,,,1
-700000502,시약 B (촉매),Reagent B (Catalyst),試薬B(触媒),[],,,,1
+800000502,시약 B (촉매),Reagent B (Catalyst),試薬B(触媒),[],,,,1
 700000503,실험 노트,Lab Notebook,実験ノート,[],,,,1
-700000504,비상구 자물쇠 견본,Emergency Lock Sample,非常口錠の見本,[],,,,1
-700000505,합성 시약 베이스,Synthesized Reagent Base,合成試薬ベース,[],,,,1
-700000506,부식 시험 샘플,Corrosion Test Sample,腐食試験サンプル,[],,,,1
+800000504,비상구 자물쇠 견본,Emergency Lock Sample,非常口錠の見本,[],,,,1
+900000505,합성 시약 베이스,Synthesized Reagent Base,合成試薬ベース,[],,,,1
+900000506,부식 시험 샘플,Corrosion Test Sample,腐食試験サンプル,[],,,,1
 700000601,마스터 키 본,Master Key Mold,マスターキー型,[],,,,1
-700000602,왁스 블록,Wax Block,ワックスブロック,[],,,,1
+800000602,왁스 블록,Wax Block,ワックスブロック,[],,,,1
 700000603,청소 일지,Cleaning Log,清掃日誌,[],,,,1
-700000604,빈 키 블랭크,Blank Key,キーブランク,[],,,,1
-700000605,키 본 패턴,Key Mold Pattern,キー型のパターン,[],,,,1
-700000606,각인 전 키 블랭크,Pre-engraved Key Blank,刻印前のキーブランク,[],,,,1
+800000604,빈 키 블랭크,Blank Key,キーブランク,[],,,,1
+900000605,키 본 패턴,Key Mold Pattern,キー型のパターン,[],,,,1
+900000606,각인 전 키 블랭크,Pre-engraved Key Blank,刻印前のキーブランク,[],,,,1
 700000701,학생회 결재선 양식,Student Council Approval Form,生徒会決裁フォーム,[],,,,1
-700000702,인장 헤드,Seal Head,印章ヘッド,[],,,,1
+800000702,인장 헤드,Seal Head,印章ヘッド,[],,,,1
 700000703,인장 그립,Seal Grip,印章グリップ,[],,,,1
-700000704,비상게이트 인증 코드,Emergency Gate Auth Code,非常ゲート認証コード,[],,,,1
-700000705,결재 완료 양식,Approved Form,決裁完了フォーム,[],,,,1
-700000706,인장 + 코드 패키지,Seal + Code Package,印章+コードパッケージ,[],,,,1
+800000704,비상게이트 인증 코드,Emergency Gate Auth Code,非常ゲート認証コード,[],,,,1
+900000705,결재 완료 양식,Approved Form,決裁完了フォーム,[],,,,1
+900000706,인장 + 코드 패키지,Seal + Code Package,印章+コードパッケージ,[],,,,1
 700000801,응급 처방 양식,Emergency Prescription Form,救急処方フォーム,[],,,,1
-700000802,약물 식별 카드,Drug Identification Card,薬物識別カード,[],,,,1
+800000802,약물 식별 카드,Drug Identification Card,薬物識別カード,[],,,,1
 700000803,보건실 통로 도면,Health Office Passage Map,保健室通路図,[],,,,1
-700000804,응급 키트,Emergency Kit,救急キット,[],,,,1
-700000805,작성된 처방전,Filled Prescription,記入済み処方箋,[],,,,1
-700000806,통로 진입 도구,Passage Entry Tool,通路進入道具,[],,,,1
+800000804,응급 키트,Emergency Kit,救急キット,[],,,,1
+900000805,작성된 처방전,Filled Prescription,記入済み処方箋,[],,,,1
+900000806,통로 진입 도구,Passage Entry Tool,通路進入道具,[],,,,1

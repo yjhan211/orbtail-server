@@ -149,7 +149,9 @@ public partial class GameClientSession
 
         foreach (int partId in new[] { 301, 302, 303, 304 })
         {
-            int itemId = 700000000 + partId;
+            int itemId = GameMissionData.GetPartItemId(partId);
+            if (itemId == 0) continue;
+
             _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, 1);
             Logger.LogInformation(
                 "DEMO_MODE LB test part added: PlayerId={PlayerId}, PartId={PartId}, ItemId={ItemId}",
