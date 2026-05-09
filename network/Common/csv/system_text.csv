@@ -112,3 +112,35 @@ id,category,text_kr,text_en,text_jp
 11042,6,<color=#FF7E9A>{0}</color>을(를) 주장하는 사람이 여러 명 발견되었습니다!,Multiple people are claiming to be a <color=#FF7E9A>{0}</color>!,<color=#FF7E9A>{0}</color>を主張する人が複数発見されました!
 11050,4,<color=#A8D4E0>수락</color>,<color=#A8D4E0>Accept</color>,<color=#A8D4E0>承諾</color>
 11051,4,거절,Decline,拒否
+12000,7,사운드 설정,Sound Settings,サウンド設定
+12001,7,환경 설정,Preferences,環境設定
+12002,7,서버 선택,Server Selection,サーバー選択
+12003,7,효과음,Sound Effects,効果音
+12004,7,배경 음악,Background Music,BGM
+12005,7,[안내],[Notice],[案内]
+12006,7,언어 선택,Language,言語
+12007,7,사용자 서버 설정,User Server Settings,ユーザーサーバー設定
+12008,7,마스터 볼륨,Master Volume,マスター音量
+12009,7,계정 설정,Account Settings,アカウント設定
+12010,7,플레이어 아이디를 입력하세요.,Enter Player ID.,プレイヤーIDを入力してください。
+12011,7,도서위원 미션 3회 완료,Complete 3 Library Committee missions,図書委員ミッションを3回完了
+12012,7,커스터마이징,Customization,カスタマイズ
+12013,7,급식 조리의 대가,School Lunch Master,給食調理の達人
+12014,7,[퇴교 절차],[Dismissal Procedure],[下校手順]
+12015,7,의심 중,Suspicious,疑念あり
+12016,7,의심하기,Suspect,疑う
+12017,7,운동장,Schoolyard,グラウンド
+12018,7,도서관,Library,図書館
+12019,7,[행동 수칙],[Conduct Rules],[行動規則]
+12020,7,방송실,Broadcast Room,放送室
+12021,7,[시스템 로그],[System Log],[システムログ]
+12022,7,퇴교 절차 매뉴얼,Dismissal Procedure Manual,下校手順マニュアル
+12023,7,강당,Auditorium,講堂
+12024,7,교무실,Staff Room,職員室
+12025,7,고사실,Exam Room,試験室
+12026,7,그룹 현황,Group Status,グループ状況
+12027,7,행정실,Admin Office,事務室
+12028,7,창고,Storage,倉庫
+12029,7,지도,Map,地図
+12030,7,배낭,Backpack,バックパック
+12031,7,[ 확인 ],[ Confirm ],[ 確認 ]

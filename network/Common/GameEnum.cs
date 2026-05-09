@@ -355,6 +355,9 @@ namespace network.common
         ALERT = 2,          // 알럿 메시지
         EXIT_STEP = 3,      // 탈출 절차 관련
         INTERACTION = 4,    // 상호작용 관련
+        JOB_TITLE = 5,      // 직책명
+        INTERROGATION = 6,  // 심문 선택지
+        UI = 7,             // 고정 UI 라벨
     }
 
     /// <summary>
