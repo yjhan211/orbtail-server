@@ -145,6 +145,8 @@ public partial class GameClientSession
         SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId,
             outcome.StaminaReward, RngCollectCooldownSeconds);
 
+        CheckGiftDiscovery(msg.InteractId);
+
         // FINISH 시점에 30초 cooldown 갱신 broadcast (RngCollectCore.Resolve 내부에서 SetCooldown 30 호출됨)
         BroadcastRngCollectCooldown(msg.InteractId, RngCollectCooldownSeconds);
         // IDLE 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.

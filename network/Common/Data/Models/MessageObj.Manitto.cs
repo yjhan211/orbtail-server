@@ -279,6 +279,43 @@ namespace network.common.data.models
         [Key("staminaCost")] public int StaminaCost { get; set; }
     }
 
+    [MessagePackObject]
+    public class C_TO_G_PLACE_GIFT : IMessagePackObject
+    {
+        [Key("itemUid")] public long ItemUid { get; set; }
+        [Key("itemId")] public int ItemId { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_PLACE_GIFT_RESULT : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("itemUid")] public long ItemUid { get; set; }
+        [Key("itemId")] public int ItemId { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_GIFT_DISCOVERED : IMessagePackObject
+    {
+        [Key("discoveryType")] public GiftDiscoveryType DiscoveryType { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("itemId")] public int ItemId { get; set; }
+        [Key("corruptionDelta")] public int CorruptionDelta { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_GIFT_PROGRESS : IMessagePackObject
+    {
+        [Key("deliveredCount")] public int DeliveredCount { get; set; }
+        [Key("requiredCount")] public int RequiredCount { get; set; }
+        [Key("finalPartId")] public int FinalPartId { get; set; }
+        [Key("isRaceComplete")] public bool IsRaceComplete { get; set; }
+    }
+
     /// <summary>
     ///     흔적 배치 발생 전체 브로드캐스트 — 모든 생존 클라이언트가 누가 어디에 흔적을 깔았는지 시각화 (영상 cut용).
     ///     DEMO_MODE 09:30 BR 도서관 함정 흔적 비트가 대표 사례. 통상 플레이에서도 흔적 배치가

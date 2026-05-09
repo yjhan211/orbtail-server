@@ -123,6 +123,13 @@ namespace network.common
         PART_GIFT = 9,   // v0.2.0 충전 완료 선물. ItemId = 900000000 + PartId
     }
 
+    public enum GiftDiscoveryType
+    {
+        None = 0,
+        Target = 1,
+        Other = 2
+    }
+
     public enum EquipType
     {
         NONE = 0,

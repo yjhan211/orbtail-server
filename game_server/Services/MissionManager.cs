@@ -214,6 +214,178 @@ public class MissionManager
         };
     }
 
+    public PlaceGiftResult TryPlaceGift(long matchingId, long playerId, long targetPlayerId,
+        long itemUid, int itemId, AreaType area, int interactId)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching))
+            return new PlaceGiftResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
+        if (!matching.TryGetValue(playerId, out var state))
+            return new PlaceGiftResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
+        if (state.IsCompleted)
+            return new PlaceGiftResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
+        if (targetPlayerId == 0 || !matching.ContainsKey(targetPlayerId))
+            return new PlaceGiftResult { ErrorCode = ErrorCode.PLAYER_NOT_FOUND };
+
+        if (GameItemData.GetItemType(itemId) != ItemType.PART_GIFT ||
+            !GameMissionData.TryGetPartIdFromItemId(itemId, out int partId))
+            return new PlaceGiftResult { ErrorCode = ErrorCode.INVALID_ITEM_TYPE };
+
+        var part = GameMissionData.GetPart(partId);
+        if (part == null || part.PartTier != PartTier.Intermediate || part.JobTitle != (short)state.JobTitle)
+            return new PlaceGiftResult { ErrorCode = ErrorCode.INVALID_ITEM };
+
+        if (!state.CollectedParts.Contains(partId))
+            return new PlaceGiftResult { ErrorCode = ErrorCode.INSUFFICIENT_ITEM };
+
+        var interactable = GameInteractableData.Get(interactId);
+        if (interactable == null)
+            return new PlaceGiftResult { ErrorCode = ErrorCode.INTERACTABLE_NOT_FOUND };
+        if (interactable.ZoneId != (int)area)
+            return new PlaceGiftResult { ErrorCode = ErrorCode.AREA_MISMATCH };
+
+        lock (state.SyncRoot)
+        {
+            if (state.IsCompleted)
+                return new PlaceGiftResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
+            if (state.DeliveredGiftCount >= PlayerPartState.RequiredGiftDeliveries ||
+                state.PlacedGifts.Count >= PlayerPartState.RequiredGiftDeliveries)
+                return new PlaceGiftResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
+            if (state.PlacedGifts.Any(g => g.ItemUid == itemUid || g.ItemId == itemId))
+                return new PlaceGiftResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
+
+            state.PlacedGifts.Add(new PlacedGift
+            {
+                ItemUid = itemUid,
+                ItemId = itemId,
+                PartId = partId,
+                OwnerPlayerId = playerId,
+                TargetPlayerId = targetPlayerId,
+                AreaType = area,
+                InteractId = interactId
+            });
+        }
+
+        _logger.LogInformation(
+            "비밀 선물 설치: MatchingId={MatchingId}, Owner={Owner}, Target={Target}, ItemId={ItemId}, InteractId={InteractId}",
+            matchingId, playerId, targetPlayerId, itemId, interactId);
+
+        return new PlaceGiftResult
+        {
+            Success = true,
+            ItemUid = itemUid,
+            ItemId = itemId,
+            InteractId = interactId,
+            AreaType = area,
+            TargetPlayerId = targetPlayerId
+        };
+    }
+
+    public void RollbackPlacedGift(long matchingId, long playerId, long itemUid)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return;
+        if (!matching.TryGetValue(playerId, out var state)) return;
+
+        lock (state.SyncRoot)
+        {
+            state.PlacedGifts.RemoveAll(g => g.ItemUid == itemUid && !g.IsDiscovered);
+        }
+    }
+
+    public bool TryDiscoverGift(long matchingId, long playerId, int interactId, out GiftDiscoveryResult result)
+    {
+        result = new GiftDiscoveryResult();
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return false;
+
+        foreach (var ownerState in matching.Values)
+        {
+            lock (ownerState.SyncRoot)
+            {
+                var targetGift = ownerState.PlacedGifts.FirstOrDefault(g =>
+                    !g.IsDiscovered && g.TargetPlayerId == playerId && g.InteractId == interactId);
+                if (targetGift == null) continue;
+
+                targetGift.IsDiscovered = true;
+                ownerState.DeliveredGiftCount = ownerState.PlacedGifts.Count(g => g.IsDiscovered);
+
+                int finalPartId = 0;
+                bool raceComplete = false;
+                if (ownerState.DeliveredGiftCount >= PlayerPartState.RequiredGiftDeliveries)
+                {
+                    var finalPart = GameMissionData.GetParts((short)ownerState.JobTitle)
+                        .FirstOrDefault(p => p.PartTier == PartTier.Final);
+                    if (finalPart != null)
+                    {
+                        finalPartId = finalPart.PartId;
+                        ownerState.CollectedParts.Add(finalPart.PartId);
+                    }
+
+                    raceComplete = TryRegisterRaceCompletion(matchingId, ownerState.PlayerId, 0);
+                    ownerState.IsCompleted = raceComplete || ownerState.IsCompleted;
+                }
+
+                result = new GiftDiscoveryResult
+                {
+                    DiscoveryType = GiftDiscoveryType.Target,
+                    OwnerPlayerId = ownerState.PlayerId,
+                    DiscovererPlayerId = playerId,
+                    TargetPlayerId = targetGift.TargetPlayerId,
+                    ItemId = targetGift.ItemId,
+                    InteractId = interactId,
+                    DeliveredCount = ownerState.DeliveredGiftCount,
+                    RequiredCount = PlayerPartState.RequiredGiftDeliveries,
+                    FinalPartId = finalPartId,
+                    IsRaceComplete = raceComplete
+                };
+
+                _logger.LogInformation(
+                    "비밀 선물 발견: MatchingId={MatchingId}, Owner={Owner}, Target={Target}, Delivered={Delivered}/{Required}",
+                    matchingId, ownerState.PlayerId, playerId, result.DeliveredCount, result.RequiredCount);
+                return true;
+            }
+        }
+
+        foreach (var ownerState in matching.Values)
+        {
+            lock (ownerState.SyncRoot)
+            {
+                var otherGift = ownerState.PlacedGifts.FirstOrDefault(g =>
+                    !g.IsDiscovered && g.TargetPlayerId != playerId && g.InteractId == interactId);
+                if (otherGift == null) continue;
+
+                result = new GiftDiscoveryResult
+                {
+                    DiscoveryType = GiftDiscoveryType.Other,
+                    OwnerPlayerId = ownerState.PlayerId,
+                    DiscovererPlayerId = playerId,
+                    TargetPlayerId = otherGift.TargetPlayerId,
+                    ItemId = otherGift.ItemId,
+                    InteractId = interactId,
+                    DeliveredCount = ownerState.DeliveredGiftCount,
+                    RequiredCount = PlayerPartState.RequiredGiftDeliveries
+                };
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryRegisterRaceCompletion(long matchingId, long playerId, long clientStartUnixMs)
+    {
+        lock (_raceCompletionLock)
+        {
+            if (_raceWinners.ContainsKey(matchingId)) return false;
+
+            _raceWinners[matchingId] = new RaceCompletionRecord
+            {
+                PlayerId = playerId,
+                ServerCompletedAt = DateTime.UtcNow,
+                ClientStartUnixMs = clientStartUnixMs
+            };
+            return true;
+        }
+    }
+
     /// <summary>
     ///     해당 매칭의 race 완주자 조회 (없으면 null).
     /// </summary>
@@ -302,11 +474,28 @@ public class RaceCompletionRecord
 
 public class PlayerPartState
 {
+    public const int RequiredGiftDeliveries = 2;
+
+    public object SyncRoot { get; } = new();
     public long PlayerId { get; set; }
     public JobTitle JobTitle { get; set; }
     public HashSet<int> CollectedParts { get; set; } = new();           // 회수+결합 결과 부품 ID
     public HashSet<int> CollectedPrereqGroups { get; set; } = new();    // 회수한 선행 아이템 share_group
+    public List<PlacedGift> PlacedGifts { get; set; } = new();
+    public int DeliveredGiftCount { get; set; }
     public bool IsCompleted { get; set; }                               // 최종 결합 시 true (race 완주)
+}
+
+public class PlacedGift
+{
+    public long ItemUid { get; set; }
+    public int ItemId { get; set; }
+    public int PartId { get; set; }
+    public long OwnerPlayerId { get; set; }
+    public long TargetPlayerId { get; set; }
+    public AreaType AreaType { get; set; }
+    public int InteractId { get; set; }
+    public bool IsDiscovered { get; set; }
 }
 
 public class PartCollectResult
@@ -326,4 +515,29 @@ public class PartCombineResult
     public MissionPartData? OutputPart { get; set; }
     public bool IsRaceComplete { get; set; }
     public int StaminaReward { get; set; }
+}
+
+public class PlaceGiftResult
+{
+    public bool Success { get; set; }
+    public ErrorCode ErrorCode { get; set; } = ErrorCode.SUCCESS;
+    public long ItemUid { get; set; }
+    public int ItemId { get; set; }
+    public int InteractId { get; set; }
+    public AreaType AreaType { get; set; }
+    public long TargetPlayerId { get; set; }
+}
+
+public class GiftDiscoveryResult
+{
+    public GiftDiscoveryType DiscoveryType { get; set; }
+    public long OwnerPlayerId { get; set; }
+    public long DiscovererPlayerId { get; set; }
+    public long TargetPlayerId { get; set; }
+    public int ItemId { get; set; }
+    public int InteractId { get; set; }
+    public int DeliveredCount { get; set; }
+    public int RequiredCount { get; set; } = PlayerPartState.RequiredGiftDeliveries;
+    public int FinalPartId { get; set; }
+    public bool IsRaceComplete { get; set; }
 }

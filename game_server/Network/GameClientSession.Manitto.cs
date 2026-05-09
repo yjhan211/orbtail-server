@@ -297,6 +297,74 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
+    private Task HandlePlaceGift(C_TO_G_PLACE_GIFT msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        var inventoryItem = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
+            .GetItem(msg.ItemUid);
+        if (inventoryItem == null || inventoryItem.ItemId != msg.ItemId || inventoryItem.Count <= 0)
+        {
+            SendPlaceGiftResult(ErrorCode.ITEM_NOT_FOUND, msg, CurrentArea, TargetPlayerId);
+            return Task.CompletedTask;
+        }
+
+        var result = _missionManager.TryPlaceGift(
+            CurrentMapSubId,
+            PlayerId.Value,
+            TargetPlayerId,
+            msg.ItemUid,
+            msg.ItemId,
+            CurrentArea,
+            msg.InteractId);
+
+        if (!result.Success)
+        {
+            SendPlaceGiftResult(result.ErrorCode, msg, result.AreaType, result.TargetPlayerId);
+            return Task.CompletedTask;
+        }
+
+        if (!_inGameInventoryManager.TryRemoveItem(CurrentMapSubId, PlayerId.Value, msg.ItemUid, 1,
+                out var updatedItem) || updatedItem == null)
+        {
+            _missionManager.RollbackPlacedGift(CurrentMapSubId, PlayerId.Value, msg.ItemUid);
+            SendPlaceGiftResult(ErrorCode.ITEM_NOT_FOUND, msg, result.AreaType, result.TargetPlayerId);
+            return Task.CompletedTask;
+        }
+
+        using (var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE([updatedItem]))
+        {
+            Send(inventoryPacket);
+        }
+
+        SendPlaceGiftResult(ErrorCode.SUCCESS, msg, result.AreaType, result.TargetPlayerId);
+
+        _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
+            $"비밀 선물 설치: ItemId={msg.ItemId}, InteractId={msg.InteractId}, Target={TargetPlayerId}",
+            isBot: false);
+
+        return Task.CompletedTask;
+    }
+
+    private void SendPlaceGiftResult(ErrorCode errorCode, C_TO_G_PLACE_GIFT request, AreaType areaType,
+        long targetPlayerId)
+    {
+        if (!PlayerId.HasValue) return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_PLACE_GIFT_RESULT, PlayerId.Value);
+        var msg = new G_TO_C_PLACE_GIFT_RESULT
+        {
+            ErrorCode = errorCode,
+            ItemUid = request.ItemUid,
+            ItemId = request.ItemId,
+            InteractId = request.InteractId,
+            TargetPlayerId = targetPlayerId,
+            AreaType = areaType
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
+    }
+
     /// <summary>
     ///     마니또 → 타겟 구역 위치 전송
     /// </summary>
@@ -767,6 +835,66 @@ public partial class GameClientSession
             Logger.LogInformation("흔적 발견: PlayerId={Discoverer}, TraceId={TraceId}, 배치자={Placer}",
                 PlayerId, stored.TraceId, stored.PlacedByPlayerId);
         }
+    }
+
+    private const int GiftFoundCorruptionDelta = 30;
+
+    public void CheckGiftDiscovery(int interactId)
+    {
+        if (!PlayerId.HasValue) return;
+        if (!_missionManager.TryDiscoverGift(CurrentMapSubId, PlayerId.Value, interactId, out var result)) return;
+
+        if (result.DiscoveryType == GiftDiscoveryType.Other)
+        {
+            SendGiftDiscovered(result, 0);
+            return;
+        }
+
+        ModifyStats(corruptionDelta: GiftFoundCorruptionDelta);
+        SendGiftDiscovered(result, GiftFoundCorruptionDelta);
+        SendGiftProgressToOwner(result);
+
+        if (result.IsRaceComplete)
+        {
+            EndGameByRaceCompletion(result.OwnerPlayerId);
+            return;
+        }
+
+        CheckResourceElimination();
+    }
+
+    private void SendGiftDiscovered(GiftDiscoveryResult result, int corruptionDelta)
+    {
+        if (!PlayerId.HasValue) return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_GIFT_DISCOVERED, PlayerId.Value);
+        var msg = new G_TO_C_GIFT_DISCOVERED
+        {
+            DiscoveryType = result.DiscoveryType,
+            InteractId = result.InteractId,
+            ItemId = result.ItemId,
+            CorruptionDelta = corruptionDelta
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
+    }
+
+    private void SendGiftProgressToOwner(GiftDiscoveryResult result)
+    {
+        var sessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var ownerSession = sessions.FirstOrDefault(s => s.PlayerId == result.OwnerPlayerId);
+        if (ownerSession == null) return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_GIFT_PROGRESS, result.OwnerPlayerId);
+        var msg = new G_TO_C_GIFT_PROGRESS
+        {
+            DeliveredCount = result.DeliveredCount,
+            RequiredCount = result.RequiredCount,
+            FinalPartId = result.FinalPartId,
+            IsRaceComplete = result.IsRaceComplete
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        ownerSession.Send(packet);
     }
 
     /// <summary>
