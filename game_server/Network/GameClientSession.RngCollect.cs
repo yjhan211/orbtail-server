@@ -20,6 +20,7 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int RngCollectCooldownSeconds = 30;
+    private const int RngCollectGiftResultType = 5;
     private const int RngCollectStaminaCost = 5;
 
     /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
@@ -94,6 +95,9 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        if (TryHandleGiftDiscoveryBeforeCollect(msg.InteractId, out var otherGiftDiscovery))
+            return Task.CompletedTask;
+
         var outcome = RngCollectCore.Resolve(
             matchingId: CurrentMapSubId,
             playerId: PlayerId.Value,
@@ -145,11 +149,51 @@ public partial class GameClientSession
         SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId,
             outcome.StaminaReward, RngCollectCooldownSeconds);
 
+        if (otherGiftDiscovery != null)
+            SendGiftDiscovered(otherGiftDiscovery, 0);
+        else
+            CheckGiftDiscovery(msg.InteractId);
+
         // FINISH 시점에 30초 cooldown 갱신 broadcast (RngCollectCore.Resolve 내부에서 SetCooldown 30 호출됨)
         BroadcastRngCollectCooldown(msg.InteractId, RngCollectCooldownSeconds);
         // IDLE 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
         return Task.CompletedTask;
+    }
+
+    private bool TryHandleGiftDiscoveryBeforeCollect(int interactId, out GiftDiscoveryResult? otherGiftDiscovery)
+    {
+        otherGiftDiscovery = null;
+        if (!PlayerId.HasValue) return false;
+        if (!_missionManager.TryDiscoverGift(CurrentMapSubId, PlayerId.Value, interactId, out var result)) return false;
+
+        if (result.DiscoveryType == GiftDiscoveryType.Other)
+        {
+            otherGiftDiscovery = result;
+            return false;
+        }
+
+        var receivedGift = _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, result.ItemId, 1,
+            GiftState.Received);
+        SendInGameInventoryUpdate(receivedGift);
+
+        ModifyStats(corruptionDelta: GiftFoundCorruptionDelta);
+        SendGiftDiscovered(result, GiftFoundCorruptionDelta);
+        SendGiftProgressToOwner(result);
+
+        SendRngCollectResult(interactId, RngCollectGiftResultType, result.ItemId, 0, 0);
+        RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
+        BroadcastRngCollectCooldown(interactId, 0);
+        BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+
+        if (result.IsRaceComplete)
+        {
+            EndGameByRaceCompletion(result.OwnerPlayerId);
+            return true;
+        }
+
+        CheckResourceElimination();
+        return true;
     }
 
     /// <summary>

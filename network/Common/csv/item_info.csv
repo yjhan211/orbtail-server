@@ -1,183 +1,173 @@
-﻿id,name_kr,name_en,name_jp,requirements,comment_kr,comment_en,comment_jp,reusable
-101000001,고영희 단발,Goyounghee Bob,コ・ヨンヒ ボブ,[],인기스타 고영희를 닮은 단발,A bob cut just like the famous star Goyounghee.,人気スターのコ・ヨンヒに似たボブ。,1
-101000002,사자 머리,Lion's Mane,ライオンヘア,[],자유롭고 활기찬 영혼의 표현,An expression of a free and lively spirit.,自由で活発な魂の表現。,1
-101000003,단정한 머리,Neat Tied Hair,清楚なまとめ髪,[],한 방향으로 단정하게 묶은 머리,Hair tied neatly to one side.,一方向にきちんと結んだ髪。,1
-101000004,모범생 머리,Honor Student Cut,優等生ヘア,[],반듯하고 부드러운 짧은 머리,Short hair that's clean and soft.,まっすぐで柔らかいショートヘア。,1
-101000005,하늘 바람머리,Skyward Breeze,スカイブリーズ,[],경쾌한 인상의 숏컷,A short cut with a breezy feel.,軽やかな印象のショートカット。,1
-101000006,여름 밤 단발,Summer Night Bob,夏の夜のボブ,[],달빛 아래 머물던 추억,A memory that lingered under the moonlight.,月明かりの下にとどまった思い出。,1
-101000007,겨울 아침 웨이브,Winter Morning Waves,冬の朝のウェーブ,[],함박 눈 내리던 등교길,The walk to school as snow fell in heavy flakes.,大雪の降る登校道。,1
-101000008,벚꽃 만두머리,Cherry Blossom Buns,桜のお団子ヘア,[],봄 바람 살랑이던 하교길,The walk home as the spring breeze whispered.,春風がそよぐ下校道。,1
-101000009,잿빛 땋은머리,Ash Braids,アッシュの三つ編み,[],섬세한 인상의 양갈래 머리,Twin braids with a delicate impression.,繊細な印象のツインテール三つ編み。,1
-101000010,체리 포니테일,Cherry Ponytail,チェリーポニーテール,[],통통 튀는 상큼한 머릿결,Bouncy and refreshing strands.,弾むように爽やかな髪。,1
-101000011,솜사탕 구름,Cotton Candy Cloud,綿あめクラウド,[],가볍고 포근한 스타일의 단발,A light and cozy bob.,軽くてふんわりとしたボブ。,1
-101000012,카라멜 허쉬컷,Caramel Hush Cut,キャラメルハーシーカット,[],햇살 아래 녹아드는 따뜻함,Warmth that melts beneath the sunlight.,陽射しに溶けていく温もり。,1
-102000001,섬세한 친구 얼굴,Delicate Friend's Face,繊細な友達の顔,[],여리고 다정했던 내 친구,My fragile and tender friend.,か弱くて優しかった私の友達。,1
-102000002,활기찬 친구 얼굴,Lively Friend's Face,活発な友達の顔,[],매 순간 반짝이던 너의 두 눈,Your eyes that sparkled in every moment.,いつも輝いていた君の瞳。,1
-102000003,그리운 친구 얼굴,Wistful Friend's Face,懐かしい友達の顔,[],잘 지내고 있는지 궁금해요,I wonder if you're doing well.,元気にしているのか気になります。,1
-102000004,반듯한 친구 얼굴,Upright Friend's Face,真面目な友達の顔,[],남 모르게 부러워했어요,I secretly envied you.,密かに羨ましく思っていました。,1
-102000005,조용한 친구 얼굴,Quiet Friend's Face,静かな友達の顔,[],어떤 생각에 잠겨있는지 궁금해요,I wonder what thoughts you're lost in.,何を考え込んでいるのか気になります。,1
-102000006,영롱한 친구 얼굴,Radiant Friend's Face,煌めく友達の顔,[],무슨 말을 해도 재밌게 들어줬어요,You always listened to me as if everything I said was interesting.,何を話しても面白そうに聞いてくれました。,1
-102000007,겁쟁이 친구 얼굴,Timid Friend's Face,臆病な友達の顔,[],이제는 괜찮아졌으면 해요,I hope you're doing better now.,今はもう大丈夫であってほしいです。,1
-102000008,명랑한 친구 얼굴,Cheerful Friend's Face,陽気な友達の顔,[],항상 밝게 웃어줬어요,You always smiled brightly for me.,いつも明るく笑ってくれました。,1
-102000009,설레는 친구 얼굴,Excited Friend's Face,ときめく友達の顔,[],어떤 걸 기다리고 있었을까요?,I wonder what you were waiting for.,何を待っていたのでしょうか?,1
-102000010,차분한 친구 얼굴,Composed Friend's Face,落ち着いた友達の顔,[],당황하는 기색이 없어요,Never showed a hint of being flustered.,慌てる素振りがありません。,1
-102000011,귀여운 친구 얼굴,Cute Friend's Face,可愛い友達の顔,[],동생처럼 놀리고 싶어져요,Makes me want to tease them like a younger sibling.,妹のようにからかいたくなります。,1
-102000012,성숙한 친구 얼굴,Mature Friend's Face,大人びた友達の顔,[],고민을 잘 들어줬어요,A good listener for my worries.,悩みをよく聞いてくれました。,1
-103000001,리본 헤어밴드,Ribbon Headband,リボンヘアバンド,[],어디에도 잘 어울리는 귀여운 포인트,A cute accent that matches anything.,何にでも似合う可愛いアクセント。,1
-103000002,새싹 헤어밴드,Sprout Headband,若葉のヘアバンド,[],놀이공원에서의 즐거운 추억,A happy memory from the amusement park.,遊園地での楽しい思い出。,1
-103000003,동그란 뿔테 안경,Round Frame Glasses,丸い黒縁メガネ,[],귀엽고 지적인 인상을 줘요,Gives a cute and intellectual impression.,可愛くて知的な印象を与えます。,1
-103000004,프리뮬라,Primula,プリムラ,[],가장 먼저 피어나는 꽃,The very first flower to bloom.,一番先に咲く花。,1
-103000005,뽀송 귀마개,Fluffy Earmuffs,ふんわりイヤーマフ,[],찬 바람에도 끄덕없어요,Unfazed even by the cold wind.,冷たい風にも平気です。,1
-103000006,베레모,Beret,ベレー帽,[],보헤미안 감성의 패션 아이템,A fashion item with bohemian flair.,ボヘミアン感性のファッションアイテム。,1
-104000001,리본 동복 상의,Ribbon Winter Top,リボン冬服トップス,[],리본으로 포인트를 준 동복,A winter uniform accented with a ribbon.,リボンでポイントを加えた冬服。,1
-104000002,노랑 트레이닝 상의,Yellow Track Top,黄色のジャージトップス,[],무엇이든 시작할 수 있어요,You can begin anything.,何でも始められます。,1
-104000003,하늘 트레이닝 상의,Sky Blue Track Top,空色のジャージトップス,[],무엇이든 시작할 수 있어요,You can begin anything.,何でも始められます。,1
-104000004,빨강 트레이닝 상의,Red Track Top,赤いジャージトップス,[],무엇이든 시작할 수 있어요,You can begin anything.,何でも始められます。,1
-104000005,리본 하복 상의,Ribbon Summer Top,リボン夏服トップス,[],리본으로 포인트를 준 셔츠,A shirt accented with a ribbon.,リボンでポイントを加えたシャツ。,1
-104000006,넥타이 동복 상의,Necktie Winter Top,ネクタイ冬服トップス,[],넥타이로 포인트를 준 동복,A winter uniform accented with a necktie.,ネクタイでポイントを加えた冬服。,1
-104000007,넥타이 하복 상의,Necktie Summer Top,ネクタイ夏服トップス,[],넥타이로 포인트를 준 셔츠,A shirt accented with a necktie.,ネクタイでポイントを加えたシャツ。,1
-104000008,노랑 후드티,Yellow Hoodie,黄色のパーカー,[],친구들과 함께 입어요.,Wear it together with your friends.,友達と一緒に着ます。,1
-104000009,파랑 후드티,Blue Hoodie,青色のパーカー,[],친구들과 함께 입어요.,Wear it together with your friends.,友達と一緒に着ます。,1
-104000010,빨강 후드티,Red Hoodie,赤いパーカー,[],친구들과 함께 입어요.,Wear it together with your friends.,友達と一緒に着ます。,1
-104000011,레이스 캐미솔,Lace Camisole,レースキャミソール,[],시원하고 부드러운 재질의 나시,A cool and soft sleeveless top.,涼しくて柔らかい素材のキャミ。,1
-104000012,피코트,Pea Coat,ピーコート,[],클래식한 겨울 코트,A classic winter coat.,クラシックな冬のコート。,1
-104000013,꽈배기 니트,Cable Knit,ケーブルニット,[],포근한 재질의 가디건,A cozy cardigan.,ふんわりとした素材のカーディガン。,1
-104000014,멜빵 블라우스,Suspender Blouse,サスペンダーブラウス,[],귀여운 포인트가 가득해요,Full of cute accents.,可愛いポイントがいっぱいです。,1
-104000015,뷔스티에,Bustier,ビスチェ,[],시대를 초월한 클래식,A timeless classic.,時代を超えたクラシック。,1
-104000016,왕관 티셔츠,Crown T-Shirt,王冠のTシャツ,[],편안하게 입을 수 있어요,Comfortable to wear.,楽に着られます。,1
-104000017,하양 세일러 상의,White Sailor Top,白いセーラートップス,[],복고풍 감성의 교복 상의,A retro-style uniform top.,レトロ感性の制服トップス。,1
-104000018,검정 세일러 상의,Black Sailor Top,黒いセーラートップス,[],복고풍 감성의 교복 상의,A retro-style uniform top.,レトロ感性の制服トップス。,1
-105000001,동복 치마,Winter Skirt,冬服スカート,[],클래식한 라인의 동복 치마,A winter skirt with a classic silhouette.,クラシックなラインの冬服スカート。,1
-105000002,노랑 트레이닝 하의,Yellow Track Pants,黄色のジャージパンツ,[],어디든 달려갈 수 있어요,You can run anywhere.,どこへでも走っていけます。,1
-105000003,하늘 트레이닝 하의,Sky Blue Track Pants,空色のジャージパンツ,[],어디든 달려갈 수 있어요,You can run anywhere.,どこへでも走っていけます。,1
-105000004,빨강 트레이닝 하의,Red Track Pants,赤いジャージパンツ,[],어디든 달려갈 수 있어요,You can run anywhere.,どこへでも走っていけます。,1
-105000005,하복 치마,Summer Skirt,夏服スカート,[],경쾌한 디자인의 하복 치마,A summer skirt with a breezy design.,軽快なデザインの夏服スカート。,1
-105000006,동복 바지,Winter Pants,冬服パンツ,[],클래식한 라인의 동복 바지,Winter pants with a classic silhouette.,クラシックなラインの冬服パンツ。,1
-105000007,하복 바지,Summer Pants,夏服パンツ,[],경쾌한 디자인의 하복 바지,Summer pants with a breezy design.,軽快なデザインの夏服パンツ。,1
-105000008,청반바지,Denim Shorts,デニムショートパンツ,[],베이직한 디자인의 반바지,Shorts with a basic design.,ベーシックなデザインのショートパンツ。,1
-105000009,검정 레깅스,Black Leggings,黒のレギンス,[],베이직한 디자인의 레깅스,Leggings with a basic design.,ベーシックなデザインのレギンス。,1
-105000010,체크무늬 치마,Plaid Skirt,チェック柄スカート,[],풍성한 볼륨을 가진 치마,A skirt with rich volume.,ボリュームのあるスカート。,1
-105000011,프릴 반바지,Frill Shorts,フリルショートパンツ,[],러블리한 디테일과 간편함,Lovely details with easy comfort.,ラブリーなディテールと手軽さ。,1
-105000012,카고 반바지,Cargo Shorts,カーゴショートパンツ,[],자연스러운 편안함,Natural comfort.,自然な心地よさ。,1
-105000013,검정 세일러 스커트,Black Sailor Skirt,黒のセーラースカート,[],복고풍 감성의 교복 하의,A retro-style uniform bottom.,レトロ感性の制服ボトムス。,1
-105000018,하양 세일러 스커트,White Sailor Skirt,白のセーラースカート,[],복고풍 감성의 교복 하의,A retro-style uniform bottom.,レトロ感性の制服ボトムス。,1
-106000001,레그워머 운동화,Leg Warmer Sneakers,レッグウォーマースニーカー,[],레그워머로 포인트를 준 운동화,Sneakers accented with leg warmers.,レッグウォーマーでポイントを加えたスニーカー。,1
-106000002,러닝화,Running Shoes,ランニングシューズ,[],걸릴 건 아무것도 없어요,Nothing can hold you back.,引っかかるものは何もありません。,1
-106000003,메리제인,Mary Janes,メリージェーン,[],에나멜 재질의 클래식한 구두,Classic enamel-finished shoes.,エナメル素材のクラシックな靴。,1
-106000004,로퍼,Loafers,ローファー,[],에나멜 재질의 클래식한 구두,Classic enamel-finished shoes.,エナメル素材のクラシックな靴。,1
-106000005,형광 슬리퍼,Neon Slippers,蛍光スリッパ,[],경쾌한 디자인의 슬리퍼,Slippers with a breezy design.,軽快なデザインのスリッパ。,1
-106000006,흰 나비 샌들,White Butterfly Sandals,白い蝶のサンダル,[],리본으로 포인트를 준 트랜디한 샌들,Trendy sandals accented with a ribbon.,リボンでポイントを加えたトレンディなサンダル。,1
-106000007,어그부츠,Ugg Boots,アグブーツ,[],따뜻하고 푹신한 겨울 필수템,A warm and fluffy winter essential.,暖かくてふかふかな冬の必需品。,1
-106000008,양털 어그부츠,Sheepskin Ugg Boots,シープスキンアグブーツ,[],때가 타지 않게 아껴신어요,Wear them carefully so they don't get dirty.,汚れないように大切に履きます。,1
-106000009,빨강 구두,Red Shoes,赤い靴,[],더 좋은 곳으로 데려다 줄 거에요,They'll take you somewhere better.,もっと良い場所へ連れて行ってくれます。,1
-106000010,글래디에이터 샌들,Gladiator Sandals,グラディエーターサンダル,[],페스티벌과 어울리는 화려함,A glamour that suits a festival.,フェスティバルに似合う華やかさ。,1
-106000011,스니커즈,Sneakers,スニーカー,[],한껏 가벼워진 발 끝,Toes that feel feather-light.,軽やかになった足元。,1
-106000012,검정 스트랩 샌들,Black Strap Sandals,黒のストラップサンダル,[],발목까지 이어지는 디테일,Details that extend up to the ankle.,足首まで続くディテール。,1
-106000013,하얀 스트랩 샌들,White Strap Sandals,白のストラップサンダル,[],발목까지 이어지는 디테일,Details that extend up to the ankle.,足首まで続くディテール。,1
-107000001,손전등,Flashlight,懐中電灯,[],어두운 곳도 두렵지 않아요,The dark holds no fear.,暗い場所も怖くありません。,1
-107000002,우주의 노트,Cosmic Notebook,宇宙のノート,[],다양한 용도로 활용할 수 있는 패드,A pad with versatile uses.,様々な用途に使えるパッド。,1
-108000001,고양이 베개,Cat Pillow,猫のクッション,[],포근한 재질의 고양이 베개,A cozy cat-shaped pillow.,ふんわりとした素材の猫クッション。,1
-109000001,극세사 담요,Microfiber Blanket,マイクロファイバー毛布,[],포근한 재질의 담요,A cozy blanket.,ふんわりとした素材の毛布。,1
-201000001,바 브레이크,Bar Break,バーブレイク,[],달콤한 일상의 재충전,A sweet recharge for daily life.,甘い日常のリチャージ。,0
-201000002,브윙칩,Bwing Chips,ブウィングチップ,[],햇감자와 매운 디핑소스의 조화,A harmony of fresh potatoes and spicy dipping sauce.,新じゃがと辛いディップソースの調和。,0
-201000003,밤양갱,Chestnut Yokan,栗ようかん,[],우리는 너무 많이 생각하고는 해요,We tend to think far too much.,私たちはあまりにも考えすぎることがあります。,0
-201000004,AA 건전지,AA Battery,単三電池,[],보편적으로 사용되는 규격의 건전지,A widely used standard battery.,一般的に使われる規格の電池。,0
-201000005,구운 감자,Baked Potato,焼きじゃがいも,[],포슬포슬 따끈하게 익었어요,Fluffy and warmly baked.,ホクホクと温かく焼けました。,0
-201000006,브윅스,Bwicks,ブウィクス,[],작지만 커다란 즐거움,A small but immense pleasure.,小さくても大きな楽しみ。,0
-201000007,비타민 앰플,Vitamin Ampoule,ビタミンアンプル,[],잠시나마 여유를 줘요,Gives you a brief moment of ease.,束の間の余裕をくれます。,0
-201000008,신경 안정제,Sedative,精神安定剤,[],호흡을 가다듬을 수 있어요,Helps you steady your breathing.,呼吸を整えることができます。,0
-202000001,초급 조리 교본,Basic Cooking Manual,初級調理教本,[],기초적인 요리 레시피 모음집,A collection of basic cooking recipes.,基礎的な料理レシピ集。,0
-202000002,초급 야영 교본,Basic Camping Manual,初級野営教本,[],기초적인 야영 레시피 모음집,A collection of basic camping recipes.,基礎的な野営レシピ集。,0
-202000003,행동 수칙 쪽지,Code of Conduct Note,行動規則のメモ,[],내용을 반드시 숙지해야 해요,The contents must be memorized.,内容は必ず熟知しておかなければなりません。,0
-301000001,리갈 패드,Legal Pad,リーガルパッド,[],대중적으로 사용되는 필기 노트,A widely used writing pad.,広く使われている筆記ノート。,0
-301000002,보조 배터리,Power Bank,モバイルバッテリー,[],무엇이든 충전할 수 있어요,Charges anything.,何でも充電できます。,0
-301000003,고장난 손전등,Broken Flashlight,壊れた懐中電灯,[],무슨 일인지 전원이 켜지지 않아요,"For some reason, it won't turn on.",なぜか電源が入りません。,0
-301000005,방수천,Waterproof Cloth,防水布,[],습기를 차단하는 방수 소재의 천,A waterproof cloth that blocks moisture.,湿気を遮断する防水素材の布。,0
-301000006,밧줄,Rope,ロープ,[],물건을 고정하거나 묶을 수 있어요,Can be used to secure or tie things.,物を固定したり結んだりできます。,0
-301000007,폴대,Pole,ポール,[],구조물 설치에 필수적인 지지대,An essential support for structures.,構造物の設置に必須の支柱。,0
-301000008,포스트잇,Post-it Notes,ポストイット,[],손쉽게 떼고 붙일 수 있어요,Easy to peel and stick.,簡単に剥がして貼れます。,0
-301000009,샤프,Mechanical Pencil,シャープペンシル,[],사각사각 기분 좋은 필기감,A pleasantly crisp writing feel.,サクサクと心地よい書き味。,0
-301000010,지우개,Eraser,消しゴム,[],사람은 누구나 실수하고는 해요,Everyone makes mistakes.,人は誰でも間違えるものです。,0
-301000011,고장난 우주의 노트,Broken Cosmic Notebook,壊れた宇宙のノート,[],무슨 일인지 전원이 켜지지 않아요,"For some reason, it won't turn on.",なぜか電源が入りません。,0
-301000012,책가방,Backpack,ランドセル,[],기본적인 책가방,A basic backpack.,基本的な通学かばん。,0
-301000013,감자 한 박스,Box of Potatoes,じゃがいも一箱,[],감자가 한아름 담긴 상자,A box stuffed with potatoes.,じゃがいもがどっさり入った箱。,0
-301000014,필통,Pencil Case,筆箱,[],필기구가 들어있을까요?,Could there be writing tools inside?,筆記具が入っているでしょうか?,0
-301000015,밤 한 박스,Box of Chestnuts,栗一箱,[],밤이 한아름 담긴 상자,A box stuffed with chestnuts.,栗がどっさり入った箱。,0
-301000016,수수께끼의 택배,Mystery Parcel,謎の宅配,[],누군가의 앞으로 온 택배,A parcel addressed to someone.,誰か宛てに届いた宅配。,0
-301000017,검정 비닐 봉투,Black Plastic Bag,黒いビニール袋,[],무언가 한가득 담겨 있어요,Something is packed inside.,何かがぎっしり詰まっています。,0
-301000018,포대 자루,Burlap Sack,麻袋,[],무언가 한가득 담겨 있어요,Something is packed inside.,何かがぎっしり詰まっています。,0
-301000019,고장난 알람 시계,Broken Alarm Clock,壊れた目覚まし時計,[],한 때는 엄청난 소리를 냈어요,It once made a thunderous sound.,かつてはものすごい音を立てていました。,0
-301000020,빈 포장지,Empty Wrapper,空の包装紙,[],내용물은 없지만 쓸 데는 많아요,"Empty inside, but useful in many ways.",中身はないけれど用途はたくさんあります。,0
-301000021,공구함,Toolbox,工具箱,[],제작에 필요한 공구들이 가득,Filled with tools needed for crafting.,製作に必要な工具がぎっしり。,0
-301000022,노란 꽃,Yellow Flower,黄色い花,[],틈새로 피어난 꽃,A flower bloomed through a crevice.,隙間から咲いた花。,0
-301000023,파란 꽃,Blue Flower,青い花,[],틈새로 피어난 꽃,A flower bloomed through a crevice.,隙間から咲いた花。,0
-301000024,하얀 비닐 봉투,White Plastic Bag,白いビニール袋,[],무언가 한가득 담겨 있어요,Something is packed inside.,何かがぎっしり詰まっています。,0
-401000001,허름한 텐트,Worn Tent,くたびれたテント,[],허름하지만 아늑한 느낌이 들어요,Worn yet cozy.,くたびれているけれど居心地が良いです。,1
-401000002,허름한 좌판,Worn Stall,くたびれた露店,[],아껴쓰고 나눠쓰고 다시쓰고 바꿔써요,"Save it, share it, reuse it, swap it.",大切に使い、分け合い、繰り返し使い、交換します。,1
-401000003,고양이 베개,Cat Pillow,猫のクッション,[],포근한 재질의 고양이 베개,A cozy cat-shaped pillow.,ふんわりとした素材の猫クッション。,1
-501000001,체육 매트,Gym Mat,体育マット,[],충격을 흡수하고 편안함을 제공해줘요,Absorbs impact and provides comfort.,衝撃を吸収して快適さを与えてくれます。,1
-601000001,LP판,LP Record,LPレコード,[],표면에 아무것도 적혀 있지 않아요,Nothing is written on its surface.,表面には何も書かれていません。,1
-601000002,머리 없는 인형,Headless Doll,首のない人形,[],누군가가 아주 아끼던 인형,A doll someone cherished deeply.,誰かがとても大切にしていた人形。,1
-601000003,카세트 테이프,Cassette Tape,カセットテープ,[],소중한 추억을 간직해요,Holds precious memories.,大切な思い出を秘めています。,1
-601000004,강당 열쇠,Auditorium Key,講堂の鍵,[],열지 못할 것은 없어요,Nothing it cannot open.,開けられないものはありません。,1
-601000005,교무실 열쇠,Staff Room Key,職員室の鍵,[],열지 못할 것은 없어요,Nothing it cannot open.,開けられないものはありません。,1
-601000006,학생증 - A,Student ID - A,学生証 - A,[],A의 낡은 학생증,A's worn-out student ID.,Aの古びた学生証。,1
-601000007,3-1 교실 열쇠,Class 3-1 Key,3-1教室の鍵,[],열지 못할 것은 없어요,Nothing it cannot open.,開けられないものはありません。,1
-601000008,3-2 교실 열쇠,Class 3-2 Key,3-2教室の鍵,[],열지 못할 것은 없어요,Nothing it cannot open.,開けられないものはありません。,1
-601000009,분필,Chalk,チョーク,[],백색 분필 한 자루,A single piece of white chalk.,白いチョーク一本。,1
-700000101,손상된 마이크 헤드,Damaged Mic Head,破損したマイクヘッド,[],,,,1
-700000102,변조된 회로 기판,Modified Circuit Board,改造された回路基板,[],,,,1
-700000103,비상 호출 코드 메모,Emergency Call Code Memo,緊急呼出コードのメモ,[],,,,1
-700000104,외부 안테나 케이블,External Antenna Cable,外部アンテナケーブル,[],,,,1
-700000105,복원 마이크,Restored Mic,復元マイク,[],,,,1
-700000106,비상 송출 케이블,Emergency Broadcast Cable,緊急送信ケーブル,[],,,,1
-700000107,비상 방송 송출 세트,Emergency Broadcast Kit,緊急放送送信セット,[],,,,1
-700000201,학생증 잔해,Student ID Fragments,学生証の残骸,[],,,,1
-700000202,출입증 인쇄 양식,ID Print Template,通行証印刷フォーム,[],,,,1
-700000203,전자 인증 칩,Electronic Auth Chip,電子認証チップ,[],,,,1
-700000204,통제실 매뉴얼,Control Room Manual,管制室マニュアル,[],,,,1
-700000205,위조 학생증,Forged Student ID,偽造学生証,[],,,,1
-700000206,인증 모듈,Auth Module,認証モジュール,[],,,,1
-700000207,출입증 위조본,Forged ID Pass,通行証の偽造品,[],,,,1
-700000301,포스트잇 뭉치,Sticky Notes,付箋の束,[],찢겨진 노트 조각 회수하기,Recover torn note piece,引き裂かれたノートの切れ端を回収する,1
-700000302,필기용 노트,Writing Notebook,筆記用ノート,[],또 다른 노트 조각 회수하기,Recover another note piece,もう一つのノートの切れ端を回収する,1
-700000303,보조 배터리,Backup Battery,予備バッテリー,[],사라진 학생의 메모 찾기,Find missing student's memo,消えた生徒のメモを探す,1
-700000304,방전된 노트,Drained Notebook,放電したノート,[],방전된 노트 찾기,Find drained notebook,放電したノートを探す,1
-700000305,과거와의 필담,Conversation with the Past,過去との筆談,[],과거와 대화하기,Talk with the past,過去と対話する,1
-700000306,우주의 노트,Cosmic Notebook,宇宙のノート,[],우주의 노트 복원하기,Restore cosmic notebook,宇宙のノートを復元する,1
-700000307,해독된 진실,Revealed Truth,明かされた真実,[],진실에 닿기,Reach the truth,真実に辿り着く,1
-700000401,등산용 로프 다발,Climbing Rope Bundle,登山用ロープの束,[],,,,1
-700000402,카라비너 세트,Carabiner Set,カラビナセット,[],,,,1
-700000403,체육 일지,P.E. Log,体育日誌,[],,,,1
-700000404,매트 보호대,Mat Padding,マット保護パッド,[],,,,1
-700000405,등반 장비 세트,Climbing Gear Set,登攀装備セット,[],,,,1
-700000406,외벽 강하용 보호장구,External Descent Harness,外壁降下用保護具,[],,,,1
-700000407,외벽 등반 도구,External Climbing Tool,外壁登攀道具,[],,,,1
-700000501,시약 A (산성),Reagent A (Acidic),試薬A(酸性),[],,,,1
-700000502,시약 B (촉매),Reagent B (Catalyst),試薬B(触媒),[],,,,1
-700000503,실험 노트,Lab Notebook,実験ノート,[],,,,1
-700000504,비상구 자물쇠 견본,Emergency Lock Sample,非常口錠の見本,[],,,,1
-700000505,합성 시약 베이스,Synthesized Reagent Base,合成試薬ベース,[],,,,1
-700000506,부식 시험 샘플,Corrosion Test Sample,腐食試験サンプル,[],,,,1
-700000507,자물쇠 부식 시약,Lock Corrosion Reagent,錠前腐食試薬,[],,,,1
-700000601,마스터 키 본,Master Key Mold,マスターキー型,[],,,,1
-700000602,왁스 블록,Wax Block,ワックスブロック,[],,,,1
-700000603,청소 일지,Cleaning Log,清掃日誌,[],,,,1
-700000604,빈 키 블랭크,Blank Key,キーブランク,[],,,,1
-700000605,키 본 패턴,Key Mold Pattern,キー型のパターン,[],,,,1
-700000606,각인 전 키 블랭크,Pre-engraved Key Blank,刻印前のキーブランク,[],,,,1
-700000607,마스터 키 복제본,Master Key Duplicate,マスターキー複製,[],,,,1
-700000701,학생회 결재선 양식,Student Council Approval Form,生徒会決裁フォーム,[],,,,1
-700000702,인장 헤드,Seal Head,印章ヘッド,[],,,,1
-700000703,인장 그립,Seal Grip,印章グリップ,[],,,,1
-700000704,비상게이트 인증 코드,Emergency Gate Auth Code,非常ゲート認証コード,[],,,,1
-700000705,결재 완료 양식,Approved Form,決裁完了フォーム,[],,,,1
-700000706,인장 + 코드 패키지,Seal + Code Package,印章+コードパッケージ,[],,,,1
-700000707,학생회 인장,Student Council Seal,生徒会印章,[],,,,1
-700000801,응급 처방 양식,Emergency Prescription Form,救急処方フォーム,[],,,,1
-700000802,약물 식별 카드,Drug Identification Card,薬物識別カード,[],,,,1
-700000803,보건실 통로 도면,Health Office Passage Map,保健室通路図,[],,,,1
-700000804,응급 키트,Emergency Kit,救急キット,[],,,,1
-700000805,작성된 처방전,Filled Prescription,記入済み処方箋,[],,,,1
-700000806,통로 진입 도구,Passage Entry Tool,通路進入道具,[],,,,1
-700000807,인증된 응급 처방전,Certified Emergency Prescription,認証済み救急処方箋,[],,,,1
+id,name_kr,name_en,name_jp,requirements,comment_kr,reusable
+101000001,고영희 단발,Goyounghee Bob,コ・ヨンヒ ボブ,[],인기스타 고영희를 닮은 단발,1
+101000002,사자 머리,Lion's Mane,ライオンヘア,[],자유롭고 활기찬 영혼의 표현,1
+101000003,단정한 머리,Neat Tied Hair,清楚なまとめ髪,[],한 방향으로 단정하게 묶은 머리,1
+101000004,모범생 머리,Honor Student Cut,優等生ヘア,[],반듯하고 부드러운 짧은 머리,1
+101000005,하늘 바람머리,Skyward Breeze,スカイブリーズ,[],경쾌한 인상의 숏컷,1
+101000006,여름 밤 단발,Summer Night Bob,夏の夜のボブ,[],달빛 아래 머물던 추억,1
+101000007,겨울 아침 웨이브,Winter Morning Waves,冬の朝のウェーブ,[],함박 눈 내리던 등교길,1
+101000008,벚꽃 만두머리,Cherry Blossom Buns,桜のお団子ヘア,[],봄 바람 살랑이던 하교길,1
+101000009,잿빛 땋은머리,Ash Braids,アッシュの三つ編み,[],섬세한 인상의 양갈래 머리,1
+101000010,체리 포니테일,Cherry Ponytail,チェリーポニーテール,[],통통 튀는 상큼한 머릿결,1
+101000011,솜사탕 구름,Cotton Candy Cloud,綿あめクラウド,[],가볍고 포근한 스타일의 단발,1
+101000012,카라멜 허쉬컷,Caramel Hush Cut,キャラメルハーシーカット,[],햇살 아래 녹아드는 따뜻함,1
+102000001,섬세한 친구 얼굴,Delicate Friend's Face,繊細な友達の顔,[],여리고 다정했던 내 친구,1
+102000002,활기찬 친구 얼굴,Lively Friend's Face,活発な友達の顔,[],매 순간 반짝이던 너의 두 눈,1
+102000003,그리운 친구 얼굴,Wistful Friend's Face,懐かしい友達の顔,[],잘 지내고 있는지 궁금해요,1
+102000004,반듯한 친구 얼굴,Upright Friend's Face,真面目な友達の顔,[],남 모르게 부러워했어요,1
+102000005,조용한 친구 얼굴,Quiet Friend's Face,静かな友達の顔,[],어떤 생각에 잠겨있는지 궁금해요,1
+102000006,영롱한 친구 얼굴,Radiant Friend's Face,煌めく友達の顔,[],무슨 말을 해도 재밌게 들어줬어요,1
+102000007,겁쟁이 친구 얼굴,Timid Friend's Face,臆病な友達の顔,[],이제는 괜찮아졌으면 해요,1
+102000008,명랑한 친구 얼굴,Cheerful Friend's Face,陽気な友達の顔,[],항상 밝게 웃어줬어요,1
+102000009,설레는 친구 얼굴,Excited Friend's Face,ときめく友達の顔,[],어떤 걸 기다리고 있었을까요?,1
+102000010,차분한 친구 얼굴,Composed Friend's Face,落ち着いた友達の顔,[],당황하는 기색이 없어요,1
+102000011,귀여운 친구 얼굴,Cute Friend's Face,可愛い友達の顔,[],동생처럼 놀리고 싶어져요,1
+102000012,성숙한 친구 얼굴,Mature Friend's Face,大人びた友達の顔,[],고민을 잘 들어줬어요,1
+103000001,리본 헤어밴드,Ribbon Headband,リボンヘアバンド,[],어디에도 잘 어울리는 귀여운 포인트,1
+103000002,새싹 헤어밴드,Sprout Headband,若葉のヘアバンド,[],놀이공원에서의 즐거운 추억,1
+103000003,동그란 뿔테 안경,Round Frame Glasses,丸い黒縁メガネ,[],귀엽고 지적인 인상을 줘요,1
+103000004,프리뮬라,Primula,プリムラ,[],가장 먼저 피어나는 꽃,1
+103000005,뽀송 귀마개,Fluffy Earmuffs,ふんわりイヤーマフ,[],찬 바람에도 끄덕없어요,1
+103000006,베레모,Beret,ベレー帽,[],보헤미안 감성의 패션 아이템,1
+104000001,리본 동복 상의,Ribbon Winter Top,リボン冬服トップス,[],리본으로 포인트를 준 동복,1
+104000002,노랑 트레이닝 상의,Yellow Track Top,黄色のジャージトップス,[],무엇이든 시작할 수 있어요,1
+104000003,하늘 트레이닝 상의,Sky Blue Track Top,空色のジャージトップス,[],무엇이든 시작할 수 있어요,1
+104000004,빨강 트레이닝 상의,Red Track Top,赤いジャージトップス,[],무엇이든 시작할 수 있어요,1
+104000005,리본 하복 상의,Ribbon Summer Top,リボン夏服トップス,[],리본으로 포인트를 준 셔츠,1
+104000006,넥타이 동복 상의,Necktie Winter Top,ネクタイ冬服トップス,[],넥타이로 포인트를 준 동복,1
+104000007,넥타이 하복 상의,Necktie Summer Top,ネクタイ夏服トップス,[],넥타이로 포인트를 준 셔츠,1
+104000008,노랑 후드티,Yellow Hoodie,黄色のパーカー,[],친구들과 함께 입어요.,1
+104000009,파랑 후드티,Blue Hoodie,青色のパーカー,[],친구들과 함께 입어요.,1
+104000010,빨강 후드티,Red Hoodie,赤いパーカー,[],친구들과 함께 입어요.,1
+104000011,레이스 캐미솔,Lace Camisole,レースキャミソール,[],시원하고 부드러운 재질의 나시,1
+104000012,피코트,Pea Coat,ピーコート,[],클래식한 겨울 코트,1
+104000013,꽈배기 니트,Cable Knit,ケーブルニット,[],포근한 재질의 가디건,1
+104000014,멜빵 블라우스,Suspender Blouse,サスペンダーブラウス,[],귀여운 포인트가 가득해요,1
+104000015,뷔스티에,Bustier,ビスチェ,[],시대를 초월한 클래식,1
+104000016,왕관 티셔츠,Crown T-Shirt,王冠のTシャツ,[],편안하게 입을 수 있어요,1
+104000017,하양 세일러 상의,White Sailor Top,白いセーラートップス,[],복고풍 감성의 교복 상의,1
+104000018,검정 세일러 상의,Black Sailor Top,黒いセーラートップス,[],복고풍 감성의 교복 상의,1
+105000001,동복 치마,Winter Skirt,冬服スカート,[],클래식한 라인의 동복 치마,1
+105000002,노랑 트레이닝 하의,Yellow Track Pants,黄色のジャージパンツ,[],어디든 달려갈 수 있어요,1
+105000003,하늘 트레이닝 하의,Sky Blue Track Pants,空色のジャージパンツ,[],어디든 달려갈 수 있어요,1
+105000004,빨강 트레이닝 하의,Red Track Pants,赤いジャージパンツ,[],어디든 달려갈 수 있어요,1
+105000005,하복 치마,Summer Skirt,夏服スカート,[],경쾌한 디자인의 하복 치마,1
+105000006,동복 바지,Winter Pants,冬服パンツ,[],클래식한 라인의 동복 바지,1
+105000007,하복 바지,Summer Pants,夏服パンツ,[],경쾌한 디자인의 하복 바지,1
+105000008,청반바지,Denim Shorts,デニムショートパンツ,[],베이직한 디자인의 반바지,1
+105000009,검정 레깅스,Black Leggings,黒のレギンス,[],베이직한 디자인의 레깅스,1
+105000010,체크무늬 치마,Plaid Skirt,チェック柄スカート,[],풍성한 볼륨을 가진 치마,1
+105000011,프릴 반바지,Frill Shorts,フリルショートパンツ,[],러블리한 디테일과 간편함,1
+105000012,카고 반바지,Cargo Shorts,カーゴショートパンツ,[],자연스러운 편안함,1
+105000013,검정 세일러 스커트,Black Sailor Skirt,黒のセーラースカート,[],복고풍 감성의 교복 하의,1
+105000018,하양 세일러 스커트,White Sailor Skirt,白のセーラースカート,[],복고풍 감성의 교복 하의,1
+106000001,레그워머 운동화,Leg Warmer Sneakers,レッグウォーマースニーカー,[],레그워머로 포인트를 준 운동화,1
+106000002,러닝화,Running Shoes,ランニングシューズ,[],걸릴 건 아무것도 없어요,1
+106000003,메리제인,Mary Janes,メリージェーン,[],에나멜 재질의 클래식한 구두,1
+106000004,로퍼,Loafers,ローファー,[],에나멜 재질의 클래식한 구두,1
+106000005,형광 슬리퍼,Neon Slippers,蛍光スリッパ,[],경쾌한 디자인의 슬리퍼,1
+106000006,흰 나비 샌들,White Butterfly Sandals,白い蝶のサンダル,[],리본으로 포인트를 준 트랜디한 샌들,1
+106000007,어그부츠,Ugg Boots,アグブーツ,[],따뜻하고 푹신한 겨울 필수템,1
+106000008,양털 어그부츠,Sheepskin Ugg Boots,シープスキンアグブーツ,[],때가 타지 않게 아껴신어요,1
+106000009,빨강 구두,Red Shoes,赤い靴,[],더 좋은 곳으로 데려다 줄 거에요,1
+106000010,글래디에이터 샌들,Gladiator Sandals,グラディエーターサンダル,[],페스티벌과 어울리는 화려함,1
+106000011,스니커즈,Sneakers,スニーカー,[],한껏 가벼워진 발 끝,1
+106000012,검정 스트랩 샌들,Black Strap Sandals,黒のストラップサンダル,[],발목까지 이어지는 디테일,1
+106000013,하얀 스트랩 샌들,White Strap Sandals,白のストラップサンダル,[],발목까지 이어지는 디테일,1
+107000001,손전등,Flashlight,懐中電灯,[],어두운 곳도 두렵지 않아요,1
+107000002,우주의 노트,Cosmic Notebook,宇宙のノート,[],다양한 용도로 활용할 수 있는 패드,1
+108000001,고양이 베개,Cat Pillow,猫のクッション,[],포근한 재질의 고양이 베개,1
+109000001,극세사 담요,Microfiber Blanket,マイクロファイバー毛布,[],포근한 재질의 담요,1
+201000001,바 브레이크,Bar Break,バーブレイク,[],달콤한 일상의 재충전,0
+201000002,브윙칩,Bwing Chips,ブウィングチップ,[],햇감자와 매운 디핑소스의 조화,0
+201000003,밤양갱,Chestnut Yokan,栗ようかん,[],우리는 너무 많이 생각하고는 해요,0
+201000004,AA 건전지,AA Battery,単三電池,[],보편적으로 사용되는 규격의 건전지,0
+201000005,구운 감자,Baked Potato,焼きじゃがいも,[],포슬포슬 따끈하게 익었어요,0
+201000006,브윅스,Bwicks,ブウィクス,[],작지만 커다란 즐거움,0
+202000001,초급 조리 교본,Basic Cooking Manual,初級調理教本,[],기초적인 요리 레시피 모음집,0
+202000002,초급 야영 교본,Basic Camping Manual,初級野営教本,[],기초적인 야영 레시피 모음집,0
+202000003,행동 수칙 쪽지,Code of Conduct Note,行動規則のメモ,[],내용을 반드시 숙지해야 해요,0
+301000001,리갈 패드,Legal Pad,リーガルパッド,[],대중적으로 사용되는 필기 노트,0
+301000002,보조 배터리,Power Bank,モバイルバッテリー,[],무엇이든 충전할 수 있어요,0
+301000003,고장난 손전등,Broken Flashlight,壊れた懐中電灯,[],무슨 일인지 전원이 켜지지 않아요,0
+301000005,방수천,Waterproof Cloth,防水布,[],습기를 차단하는 방수 소재의 천,0
+301000006,밧줄,Rope,ロープ,[],물건을 고정하거나 묶을 수 있어요,0
+301000007,폴대,Pole,ポール,[],구조물 설치에 필수적인 지지대,0
+301000008,포스트잇,Post-it Notes,ポストイット,[],손쉽게 떼고 붙일 수 있어요,0
+301000009,샤프,Mechanical Pencil,シャープペンシル,[],사각사각 기분 좋은 필기감,0
+301000010,지우개,Eraser,消しゴム,[],사람은 누구나 실수하고는 해요,0
+301000011,고장난 우주의 노트,Broken Cosmic Notebook,壊れた宇宙のノート,[],무슨 일인지 전원이 켜지지 않아요,0
+301000012,책가방,Backpack,ランドセル,[],기본적인 책가방,0
+301000013,감자 한 박스,Box of Potatoes,じゃがいも一箱,[],감자가 한아름 담긴 상자,0
+301000014,필통,Pencil Case,筆箱,[],필기구가 들어있을까요?,0
+301000015,밤 한 박스,Box of Chestnuts,栗一箱,[],밤이 한아름 담긴 상자,0
+301000016,수수께끼의 택배,Mystery Parcel,謎の宅配,[],누군가의 앞으로 온 택배,0
+301000017,검정 비닐 봉투,Black Plastic Bag,黒いビニール袋,[],무언가 한가득 담겨 있어요,0
+301000018,포대 자루,Burlap Sack,麻袋,[],무언가 한가득 담겨 있어요,0
+301000019,고장난 알람 시계,Broken Alarm Clock,壊れた目覚まし時計,[],한 때는 엄청난 소리를 냈어요,0
+301000020,빈 포장지,Empty Wrapper,空の包装紙,[],내용물은 없지만 쓸 데는 많아요,0
+301000021,공구함,Toolbox,工具箱,[],제작에 필요한 공구들이 가득,0
+301000022,노란 꽃,Yellow Flower,黄色い花,[],틈새로 피어난 꽃,0
+301000023,파란 꽃,Blue Flower,青い花,[],틈새로 피어난 꽃,0
+301000024,하얀 비닐 봉투,White Plastic Bag,白いビニール袋,[],무언가 한가득 담겨 있어요,0
+401000001,허름한 텐트,Worn Tent,くたびれたテント,[],허름하지만 아늑한 느낌이 들어요,1
+401000002,허름한 좌판,Worn Stall,くたびれた露店,[],아껴쓰고 나눠쓰고 다시쓰고 바꿔써요,1
+401000003,고양이 베개,Cat Pillow,猫のクッション,[],포근한 재질의 고양이 베개,1
+501000001,체육 매트,Gym Mat,体育マット,[],충격을 흡수하고 편안함을 제공해줘요,1
+601000001,LP판,LP Record,LPレコード,[],표면에 아무것도 적혀 있지 않아요,1
+601000002,머리 없는 인형,Headless Doll,首のない人形,[],누군가가 아주 아끼던 인형,1
+601000003,카세트 테이프,Cassette Tape,カセットテープ,[],소중한 추억을 간직해요,1
+601000004,강당 열쇠,Auditorium Key,講堂の鍵,[],열지 못할 것은 없어요,1
+601000005,교무실 열쇠,Staff Room Key,職員室の鍵,[],열지 못할 것은 없어요,1
+601000006,학생증 - A,Student ID - A,学生証 - A,[],A의 낡은 학생증,1
+601000007,3-1 교실 열쇠,Class 3-1 Key,3-1教室の鍵,[],열지 못할 것은 없어요,1
+601000008,3-2 교실 열쇠,Class 3-2 Key,3-2教室の鍵,[],열지 못할 것은 없어요,1
+601000009,분필,Chalk,チョーク,[],백색 분필 한 자루,1
+700000101,손상된 마이크 헤드,Damaged Mic Head,破損したマイクヘッド,[],,1
+800000102,변조된 회로 기판,Modified Circuit Board,改造された回路基板,[],,1
+800000103,비상 호출 코드 메모,Emergency Call Code Memo,緊急呼出コードのメモ,[],,1
+700000104,외부 안테나 케이블,External Antenna Cable,外部アンテナケーブル,[],,1
+900000105,복원 마이크,Restored Mic,復元マイク,[],,1
+900000106,비상 송출 케이블,Emergency Broadcast Cable,緊急送信ケーブル,[],,1
+700000201,학생증 잔해,Student ID Fragments,学生証の残骸,[],,1
+800000202,출입증 인쇄 양식,ID Print Template,通行証印刷フォーム,[],,1
+700000203,전자 인증 칩,Electronic Auth Chip,電子認証チップ,[],,1
+800000204,통제실 매뉴얼,Control Room Manual,管制室マニュアル,[],,1
+900000205,위조 학생증,Forged Student ID,偽造学生証,[],,1
+900000206,인증 모듈,Authentication Module,認証モジュール,[],,1
+800000301,포스트잇 뭉치,Sticky Notes,付箋の束,[],찢겨진 노트 조각 회수하기,1
+700000302,필기용 노트,Writing Notebook,筆記用ノート,[],또 다른 노트 조각 회수하기,1
+800000303,보조 배터리,Power Bank,モバイルバッテリー,[],사라진 학생의 메모 찾기,1
+700000304,방전된 노트,Drained Notebook,放電したノート,[],방전된 노트 찾기,1
+900000305,과거와의 필담,Past Notes,過去との筆談,[],과거와 대화하기,1
+900000306,우주의 노트,Cosmic Notebook,宇宙のノート,[],우주의 노트 복원하기,1
+700000401,등산용 로프 다발,Climbing Rope Bundle,登山用ロープの束,[],,1
+800000402,카라비너 세트,Carabiner Set,カラビナセット,[],,1
+700000403,체육 일지,P.E. Log,体育日誌,[],,1
+800000404,매트 보호대,Mat Padding,マット保護パッド,[],,1
+900000405,등반 장비 세트,Climbing Gear Set,登攀装備セット,[],,1
+900000406,외벽 강하용 보호장구,External Descent Harness,外壁降下用保護具,[],,1
+700000501,시약 A (산성),Reagent A (Acidic),試薬A(酸性),[],,1
+800000502,시약 B (촉매),Reagent B (Catalyst),試薬B(触媒),[],,1
+700000503,실험 노트,Lab Notebook,実験ノート,[],,1
+800000504,비상구 자물쇠 견본,Emergency Lock Sample,非常口錠の見本,[],,1
+900000505,합성 시약 베이스,Synthesized Reagent Base,合成試薬ベース,[],,1
+900000506,부식 시험 샘플,Corrosion Test Sample,腐食試験サンプル,[],,1
+700000601,마스터 키 본,Master Key Mold,マスターキー型,[],,1
+800000602,왁스 블록,Wax Block,ワックスブロック,[],,1
+700000603,청소 일지,Cleaning Log,清掃日誌,[],,1
+800000604,빈 키 블랭크,Key Blank,キーブランク,[],,1
+900000605,키 본 패턴,Key Mold Pattern,キー型のパターン,[],,1
+900000606,각인 전 키 블랭크,Unengraved Key Blank,刻印前のキーブランク,[],,1
+700000701,학생회 결재선 양식,Student Council Approval Form,生徒会決裁フォーム,[],,1
+800000702,인장 헤드,Seal Head,印章ヘッド,[],,1
+700000703,인장 그립,Seal Grip,印章グリップ,[],,1
+800000704,비상게이트 인증 코드,Emergency Gate Auth Code,非常ゲート認証コード,[],,1
+900000705,결재 완료 양식,Approved Form,決裁完了フォーム,[],,1
+900000706,인장 + 코드 패키지,Seal + Code Package,印章+コードパッケージ,[],,1
+700000801,응급 처방 양식,Emergency Prescription Form,救急処方フォーム,[],,1
+800000802,약물 식별 카드,Drug Identification Card,薬物識別カード,[],,1
+700000803,보건실 통로 도면,Health Office Passage Map,保健室通路図,[],,1
+800000804,응급 키트,Emergency Kit,救急キット,[],,1
+900000805,작성된 처방전,Filled Prescription,記入済み処方箋,[],,1
+900000806,통로 진입 도구,Passage Entry Tool,通路進入道具,[],,1

@@ -1,22 +1,22 @@
 code,message_kr,message_en,message_jp
 0,성공,Success,成功
 1,알 수 없는 오류가 발생했습니다.,An unknown error occurred.,不明なエラーが発生しました。
-2,잘못된 요청입니다.,Invalid request.,不正なリクエストです。
+2,잘못된 요청입니다.,Invalid request.,無効なリクエストです。
 3,서버 내부 오류가 발생했습니다.,An internal server error occurred.,サーバー内部エラーが発生しました。
 4,요청 시간이 초과되었습니다.,The request timed out.,リクエストがタイムアウトしました。
-5,아직 구현되지 않은 기능입니다.,This feature is not yet implemented.,まだ実装されていない機能です。
+5,아직 구현되지 않은 기능입니다.,This feature is not yet implemented.,この機能はまだ実装されていません。
 100,인증에 실패했습니다.,Authentication failed.,認証に失敗しました。
 101,세션이 만료되었습니다. 다시 로그인해주세요.,Your session has expired. Please log in again.,セッションの有効期限が切れました。再度ログインしてください。
 102,세션을 찾을 수 없습니다.,Session not found.,セッションが見つかりません。
 103,플레이어 정보를 찾을 수 없습니다.,Player information not found.,プレイヤー情報が見つかりません。
 104,이미 연결되어 있습니다.,Already connected.,既に接続されています。
 105,유효하지 않은 플레이어 ID입니다.,Invalid player ID.,無効なプレイヤーIDです。
-200,이미 매칭 대기 중입니다.,Already in matchmaking queue.,既にマッチング待機中です。
-201,매칭 대기열에 없습니다.,Not in matchmaking queue.,マッチング待機列にいません。
+200,이미 매칭 대기 중입니다.,You are already in the matchmaking queue.,既にマッチング待機中です。
+201,매칭 대기열에 없습니다.,You are not in the matchmaking queue.,マッチング待機列にいません。
 202,매칭에 실패했습니다.,Matchmaking failed.,マッチングに失敗しました。
 203,매칭 시간이 초과되었습니다.,Matchmaking timed out.,マッチングがタイムアウトしました。
 204,매칭이 취소되었습니다.,Matchmaking was canceled.,マッチングがキャンセルされました。
-205,유효하지 않은 맵입니다.,Invalid map.,無効なマップです。
+205,유효하지 않은 맵입니다.,Invalid map selected.,無効なマップです。
 300,게임이 시작되지 않았습니다.,The game has not started.,ゲームが開始されていません。
 301,게임이 이미 종료되었습니다.,The game has already ended.,ゲームは既に終了しています。
 302,유효하지 않은 위치입니다.,Invalid location.,無効な位置です。
@@ -24,26 +24,26 @@ code,message_kr,message_en,message_jp
 304,플레이어가 사망 상태입니다.,The player is dead.,プレイヤーは死亡状態です。
 305,아직 행동할 수 없습니다.,You cannot act yet.,まだ行動できません。
 306,유효하지 않은 게임 상태입니다.,Invalid game state.,無効なゲーム状態です。
-400,상호작용 대상을 찾을 수 없습니다.,Interaction target not found.,相互作用の対象が見つかりません。
-401,지금은 상호작용할 수 없습니다.,You cannot interact right now.,今は相互作用できません。
+400,상호작용 대상을 찾을 수 없습니다.,Could not find the interaction target.,インタラクト対象が見つかりません。
+401,지금은 상호작용할 수 없습니다.,You cannot interact right now.,今はインタラクトできません。
 402,이미 사용된 오브젝트입니다.,This object has already been used.,既に使用されたオブジェクトです。
-403,이미 탐색 중입니다.,Already searching.,既に探索中です。
+403,이미 탐색 중입니다.,Already exploring.,既に探索中です。
 404,탐색 중이 아닙니다.,Not currently searching.,探索中ではありません。
 405,유효하지 않은 선택입니다.,Invalid selection.,無効な選択です。
 406,해당 행동을 찾을 수 없습니다.,That action could not be found.,該当の行動が見つかりません。
 407,이미 탐색한 선택지입니다.,This option has already been explored.,既に探索した選択肢です。
 408,구역이 일치하지 않습니다.,The area does not match.,エリアが一致しません。
 500,아이템을 찾을 수 없습니다.,Item not found.,アイテムが見つかりません。
-501,보유하지 않은 아이템입니다.,You do not own this item.,所持していないアイテムです。
+501,보유하지 않은 아이템입니다.,You do not have this item.,所持していないアイテムです。
 502,사용할 수 없는 아이템입니다.,This item cannot be used.,使用できないアイテムです。
 503,이미 사용한 아이템입니다.,This item has already been used.,既に使用したアイテムです。
 504,인벤토리가 가득 찼습니다.,Inventory is full.,インベントリがいっぱいです。
-505,재화가 부족합니다.,Insufficient currency.,通貨が不足しています。
+505,재화가 부족합니다.,Not enough currency.,通貨が不足しています。
 506,유효하지 않은 아이템입니다.,Invalid item.,無効なアイテムです。
 507,유효하지 않은 아이템 유형입니다.,Invalid item type.,無効なアイテムタイプです。
 508,필요한 <color=#00E676>아이템</color>을 보유하고 있지 않습니다.,You do not have the required <color=#00E676>item</color>.,必要な<color=#00E676>アイテム</color>を所持していません。
 509,선행 <color=#00E676>조건</color>을 완료하지 않았습니다.,The prerequisite <color=#00E676>condition</color> has not been met.,先行<color=#00E676>条件</color>を満たしていません。
-510,<color=#FF7E9A>가용 체력이 모두 소진되었습니다</color>,<color=#FF7E9A>All available stamina has been depleted</color>,<color=#FF7E9A>使用可能な体力が全て尽きました</color>
+510,<color=#FF7E9A>가용 체력이 모두 소진되었습니다.</color>,<color=#FF7E9A>All available stamina has been depleted.</color>,<color=#FF7E9A>使用可能な体力が全て尽きました。</color>
 600,탈출할 수 없습니다.,You cannot escape.,脱出できません。
 601,탈출 조건을 충족하지 않았습니다.,Escape conditions are not met.,脱出条件を満たしていません。
 602,유효하지 않은 탈출 단계입니다.,Invalid escape step.,無効な脱出段階です。
@@ -57,9 +57,21 @@ code,message_kr,message_en,message_jp
 700,퀘스트를 찾을 수 없습니다.,Quest not found.,クエストが見つかりません。
 701,이미 완료한 퀘스트입니다.,You have already completed this quest.,既に完了したクエストです。
 702,퀘스트 조건을 충족하지 않았습니다.,Quest conditions are not met.,クエストの条件を満たしていません。
+750,아직 수행할 수 없는 미션입니다.,This mission is not available yet.,このミッションはまだ実行できません。
+751,이미 완료한 미션입니다.,This mission has already been completed.,このミッションは既に完了しています。
+752,현재 폐쇄된 구역의 미션입니다.,This mission is in a closed area.,このミッションは閉鎖中のエリアにあります。
+753,먼저 필요한 <color=#00E676>아이템</color>을 수집해야 합니다.,Collect the required <color=#00E676>item</color> first.,先に必要な<color=#00E676>アイテム</color>を集めてください。
+754,잘못된 미션 요청입니다.,Invalid mission request.,無効なミッションリクエストです。
+755,결합에 필요한 <color=#00E676>부품</color>이 부족합니다.,You do not have the <color=#00E676>parts</color> required for assembly.,結合に必要な<color=#00E676>部品</color>が足りません。
 800,메일을 찾을 수 없습니다.,Mail not found.,メールが見つかりません。
 801,이미 수령한 메일입니다.,You have already received this mail.,既に受け取ったメールです。
 802,만료된 메일입니다.,This mail has expired.,期限切れのメールです。
-900,이미 작업 중입니다.,Already in progress.,既に作業中です。
-901,다른 스킬을 사용 중입니다.,You are using another skill.,他のスキルを使用中です。
+850,이미 색출 기회를 사용했습니다.,You have already used your detection attempt.,既に見破る機会を使用しました。
+851,색출 대상을 찾을 수 없습니다.,Could not find the detection target.,見破る対象が見つかりません。
+852,지금은 색출할 수 없습니다.,Detection is not available right now.,今は見破ることができません。
+860,지금은 방해할 수 없습니다.,You cannot sabotage right now.,今は妨害できません。
+861,방해 대상을 찾을 수 없습니다.,Could not find the sabotage target.,妨害対象が見つかりません。
+862,해당 구역에서만 방해할 수 있습니다.,You can sabotage only in the target area.,対象エリアでのみ妨害できます。
+900,이미 직책이 배정되었습니다.,A role has already been assigned.,既に役職が割り当てられています。
+901,다른 스킬을 사용 중입니다.,Another skill is already in use.,他のスキルを使用中です。
 999,치명적인 오류가 발생했습니다.,A fatal error occurred.,致命的なエラーが発生しました。

@@ -422,7 +422,7 @@ public partial class GameClientSession
         StopAllPeriodicBuffs();
         _isSleeping = false;
         Stamina = 100;
-        Corruption = 66; // 게임 시작 시 오염도 시작값
+        Corruption = 50; // 게임 시작 시 정신력 50%
         CurrentState = PlayerState.Idle;
         CurrentExploringInteractId = null;
         Logger.LogInformation("Player {PlayerId} in-game stats reset: Stamina={Stamina}, Corruption={Corruption}",

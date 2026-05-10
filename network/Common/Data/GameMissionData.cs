@@ -10,7 +10,7 @@ using network.managers;
 namespace network.common.data
 {
     /// <summary>
-    ///     v0.2.0 — 부품 결합 시스템(이슈 #85). 직책별 7 부품(소재 4 + 중간재 2 + 최종 1) 정의.
+    ///     v0.2.0 — 부품 결합 시스템(이슈 #85). 직책별 7 부품(소재 4 + 중간재 2 + 전달 1) 정의.
     ///     기존 단계 기반 미션은 폐기. 부품 회수/결합으로 race 진행.
     /// </summary>
     public static class GameMissionData
@@ -34,6 +34,8 @@ namespace network.common.data
                     JobTitle = jobTitle,
                     PartId = int.Parse(row["part_id"]),
                     PartNameKr = row["part_name_kr"],
+                    PartNameEn = row.ContainsKey("part_name_en") ? row["part_name_en"] : "",
+                    PartNameJp = row.ContainsKey("part_name_jp") ? row["part_name_jp"] : "",
                     PartTier = (PartTier)int.Parse(row["part_tier"]),
                     TargetArea = int.Parse(row["target_area"]),
                     TargetObjectType = int.Parse(row["target_object_type"]),
@@ -43,6 +45,9 @@ namespace network.common.data
                     SpriteItemId = row.ContainsKey("sprite_item_id") && !string.IsNullOrEmpty(row["sprite_item_id"])
                         ? int.Parse(row["sprite_item_id"])
                         : 0,
+                    PartItemType = row.ContainsKey("part_item_type") && !string.IsNullOrEmpty(row["part_item_type"])
+                        ? (PartItemType)int.Parse(row["part_item_type"])
+                        : PartItemType.None,
                     NarrativeKr = row.ContainsKey("narrative_kr") ? row["narrative_kr"] : "",
                     NarrativeEn = row.ContainsKey("narrative_en") ? row["narrative_en"] : "",
                     NarrativeJp = row.ContainsKey("narrative_jp") ? row["narrative_jp"] : ""
@@ -59,7 +64,7 @@ namespace network.common.data
         }
 
         /// <summary>
-        ///     해당 직책의 모든 부품(소재 + 중간재 + 최종) 반환
+        ///     해당 직책의 모든 부품(소재 + 중간재) 반환
         /// </summary>
         public static List<MissionPartData> GetParts(short jobTitle) =>
             _partsByJob.GetValueOrDefault(jobTitle) ?? new List<MissionPartData>();
@@ -71,19 +76,43 @@ namespace network.common.data
             GetParts(jobTitle).Where(p => p.PartTier == PartTier.Material).ToList();
 
         /// <summary>
-        ///     해당 직책의 최종 부품(Tier 2) 반환 — race 완주 trigger
-        /// </summary>
-        public static MissionPartData GetFinalPart(short jobTitle) =>
-            GetParts(jobTitle).FirstOrDefault(p => p.PartTier == PartTier.Final);
-
-        /// <summary>
         ///     part_id로 부품 직접 조회
         /// </summary>
         public static MissionPartData GetPart(int partId) =>
             _partsById.GetValueOrDefault(partId);
 
+        public static int GetPartItemId(int partId)
+        {
+            var part = GetPart(partId);
+            if (part == null) return 0;
+
+            var itemType = GetPartItemType(part);
+            return itemType == ItemType.NONE ? 0 : (int)itemType * 100000000 + partId;
+        }
+
+        public static bool TryGetPartIdFromItemId(int itemId, out int partId)
+        {
+            partId = itemId % 100000000;
+            return partId > 0 && IsPartItemType(GameItemData.GetItemType(itemId)) && GetPart(partId) != null;
+        }
+
+        public static bool IsPartItemType(ItemType itemType) =>
+            itemType is ItemType.PART_BODY or ItemType.PART_CHARGE or ItemType.PART_GIFT;
+
+        private static ItemType GetPartItemType(MissionPartData part)
+        {
+            if (part.PartTier == PartTier.Intermediate) return ItemType.PART_GIFT;
+
+            return part.PartItemType switch
+            {
+                PartItemType.Body => ItemType.PART_BODY,
+                PartItemType.Charge => ItemType.PART_CHARGE,
+                _ => ItemType.NONE
+            };
+        }
+
         /// <summary>
-        ///     해당 직책의 총 부품 수 (소재 4 + 중간재 2 + 최종 1 = 7)
+        ///     해당 직책의 총 부품 수 (소재 4 + 중간재 2 + 전달 1 = 7)
         /// </summary>
         public static int GetTotalParts(short jobTitle) => GetParts(jobTitle).Count;
 
@@ -104,7 +133,14 @@ namespace network.common.data
     {
         Material = 0,    // 소재 — 회수 대상
         Intermediate = 1, // 중간재 — 결합 결과
-        Final = 2,       // 최종 — race 완주 trigger
+        Final = 2,       // 최종 미션: 조합한 선물을 타겟에게 전달
+    }
+
+    public enum PartItemType
+    {
+        None = 0,
+        Body = 1,
+        Charge = 2
     }
 
     public class MissionPartData
@@ -112,6 +148,8 @@ namespace network.common.data
         public short JobTitle { get; set; }
         public int PartId { get; set; }              // 예: 101 (BR_M1)
         public string PartNameKr { get; set; }       // 예: "손상된 마이크 헤드"
+        public string PartNameEn { get; set; }
+        public string PartNameJp { get; set; }
         public PartTier PartTier { get; set; }
         public int TargetArea { get; set; }          // 소재만 의미 있음 (중간재/최종은 0)
         public int TargetObjectType { get; set; }    // 소재만 의미 있음 (Cabinet/Locker 등)
@@ -119,6 +157,7 @@ namespace network.common.data
         public int PrerequisiteShareGroup { get; set; } // 0=선행 없음, 1+=선행 그룹 ID
         public int CombineProgressSeconds { get; set; } // 결합 progress (소재=0, 결합 부품=5)
         public int SpriteItemId { get; set; }           // ItemSprites/<id>.png — 기존 item_info sprite 재활용 (#79)
+        public PartItemType PartItemType { get; set; }  // 0=None, 1=Body, 2=Charge. 머지 UX에서 본체/충전재 역할 분리
         public string NarrativeKr { get; set; }         // MissionDisplay 메인 타이틀 (예: "도서관 책장 살피기"). 비어있으면 PartNameKr fallback
         public string NarrativeEn { get; set; }
         public string NarrativeJp { get; set; }

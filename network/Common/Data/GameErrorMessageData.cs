@@ -30,9 +30,17 @@ namespace network.common.data
         /// </summary>
         public static string Get(ErrorCode errorCode)
         {
+            return Get(errorCode, null);
+        }
+
+        /// <summary>
+        /// 에러 코드에 해당하는 메시지를 지정 언어로 반환
+        /// </summary>
+        public static string Get(ErrorCode errorCode, string lang)
+        {
             if (_messages.TryGetValue(errorCode, out var message))
             {
-                return message.Kr;
+                return string.IsNullOrEmpty(lang) ? message.Kr : message.Get(lang);
             }
 
             return $"오류가 발생했습니다. (코드: {(int)errorCode})";

@@ -14,6 +14,7 @@ namespace network.common.data.models
         [Key("itemUid")] public long ItemUid { get; set; }   // MatchingId + Sequence 조합
         [Key("itemId")] public int ItemId { get; set; }     // 아이템 종류
         [Key("count")] public int Count { get; set; }       // 수량
+        [Key("giftState")] public GiftState GiftState { get; set; }
     }
 
     // 인게임 배낭 전체 목록 (게임 시작 시)

@@ -245,23 +245,21 @@ public class GameServer(
             {
                 bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
 
-                // [TEMP] 1. 정신력 자연감소 — 디버깅용 비활성
-                int corruptionDelta = 0;
-                // int corruptionDelta = GetMentalDecayAmount(session.CurrentMapSubId);
+                int corruptionDelta = GetMentalDecayAmount(session.CurrentMapSubId);
 
-                // [TEMP] 2. 타겟 동일 구역 회복 — 디버깅용 비활성
-                // if (!isTerminal && session.CurrentArea != AreaType.None)
-                // {
-                //     var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                //     bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
-                //     if (!targetInSameArea)
-                //     {
-                //         var targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
-                //         targetInSameArea = targetBot is { IsEliminated: false } && targetBot.CurrentArea == session.CurrentArea;
-                //     }
-                //     if (targetInSameArea)
-                //         corruptionDelta = -TargetProximityRecovery;
-                // }
+                if (!isTerminal && session.CurrentArea != AreaType.None)
+                {
+                    var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
+                    bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
+                    if (!targetInSameArea)
+                    {
+                        var targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
+                        targetInSameArea = targetBot is { IsEliminated: false } && targetBot.CurrentArea == session.CurrentArea;
+                    }
+
+                    if (targetInSameArea)
+                        corruptionDelta = -TargetProximityRecovery;
+                }
 
                 // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
                 // if (isTerminal)
@@ -431,19 +429,22 @@ public class GameServer(
             if (missionResult.RngCooldownBroadcasts.Count > 0)
                 BroadcastBotRngCooldowns(matchingId, missionResult.RngCooldownBroadcasts);
 
-            // race 완주 봇 발생 — 즉시 게임 종료 처리 (#87 정합)
-            if (missionResult.RaceWinnerBotId == 0) return;
+            if (missionResult.GiftDiscoveries.Count > 0)
+                SendBotGiftProgress(matchingId, missionResult.GiftDiscoveries, activeSessions);
 
-            long winnerBotId = missionResult.RaceWinnerBotId;
+            // race 완주 발생 — 즉시 게임 종료 처리 (#87 정합)
+            if (missionResult.RaceWinnerPlayerId == 0) return;
+
+            long winnerPlayerId = missionResult.RaceWinnerPlayerId;
             var sessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                 .ToList();
             if (sessions.Count == 0) return;
 
-            logger.LogInformation("봇 race 완주: MatchingId={MatchingId}, WinnerBotId={Bot}", matchingId, winnerBotId);
+            logger.LogInformation("race 완주: MatchingId={MatchingId}, WinnerId={Winner}", matchingId, winnerPlayerId);
 
-            // 봇 winner 등록 후 임의 세션을 통해 게임 종료 트리거
-            sessions[0].EndGameByBotRaceCompletion(winnerBotId);
+            // 임의 세션을 통해 게임 종료 트리거
+            sessions[0].EndGameByBotRaceCompletion(winnerPlayerId);
         }
         catch (Exception ex)
         {
@@ -641,6 +642,38 @@ public class GameServer(
                 packet.SetBody(body);
                 session.Send(packet);
             }
+        }
+    }
+
+    private void SendBotGiftProgress(long matchingId, List<GiftDiscoveryResult> discoveries,
+        List<GameClientSession> activeSessions)
+    {
+        foreach (var discovery in discoveries)
+        {
+            var ownerSession = activeSessions.FirstOrDefault(s =>
+                s.PlayerId == discovery.OwnerPlayerId && s.CurrentMapSubId == matchingId && !s.IsEliminated);
+            if (ownerSession == null) continue;
+
+            var msg = new G_TO_C_GIFT_PROGRESS
+            {
+                DeliveredCount = discovery.DeliveredCount,
+                RequiredCount = discovery.RequiredCount,
+                FinalPartId = discovery.FinalPartId,
+                IsRaceComplete = discovery.IsRaceComplete,
+                InteractId = discovery.InteractId,
+                AreaType = discovery.AreaType,
+                HasPlacedGiftAtInteract = discovery.HasPlacedGiftAtInteract,
+                HasPlacedGiftInArea = discovery.HasPlacedGiftInArea
+            };
+            var body = MessagePackSerializer.Serialize(msg);
+            using var packet = Packet.Create((int)Protocol.G_TO_C_GIFT_PROGRESS, discovery.OwnerPlayerId);
+            packet.SetBody(body);
+            ownerSession.Send(packet);
+
+            logger.LogInformation(
+                "봇 선물 발견 진행도 전송: MatchingId={MatchingId}, Owner={Owner}, BotTarget={Bot}, Delivered={Delivered}/{Required}",
+                matchingId, discovery.OwnerPlayerId, discovery.DiscovererPlayerId,
+                discovery.DeliveredCount, discovery.RequiredCount);
         }
     }
 

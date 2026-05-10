@@ -108,9 +108,8 @@ public partial class GameClientSession
                     itemId, count);
             }
 
-            AddDemoLibraryCommitteeParts();
-
             // 인게임 인벤토리 목록 전송
+            GiveTwoPlayerTestGiftsIfNeeded();
             SendInGameInventoryList();
 
             // 문 초기 상태 설정 및 열린 문 목록 전송
@@ -140,20 +139,34 @@ public partial class GameClientSession
         }
     }
 
-    /// <summary>
-    ///     #135 테스트 임시 지급: LB 시연 모드에서 도서위원 소재 부품 4개를 시작 인벤토리에 넣는다.
-    /// </summary>
-    private void AddDemoLibraryCommitteeParts()
+    private void GiveTwoPlayerTestGiftsIfNeeded()
     {
-        if (!DemoMode.IsActive || MyJobTitle != JobTitle.LIBRARY_COMMITTEE || !PlayerId.HasValue) return;
+        if (!DevFlags.TestTwoPlayerMatch) return;
+        if (!PlayerId.HasValue) return;
+        if (MyJobTitle != JobTitle.LIBRARY_COMMITTEE) return;
 
-        foreach (int partId in new[] { 301, 302, 303, 304 })
+        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
+        if (state == null) return;
+
+        int[] giftItemIds = { 900000305, 900000306 };
+        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+
+        foreach (int itemId in giftItemIds)
         {
-            int itemId = 700000000 + partId;
-            _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, 1);
-            Logger.LogInformation(
-                "DEMO_MODE LB test part added: PlayerId={PlayerId}, PartId={PartId}, ItemId={ItemId}",
-                PlayerId, partId, itemId);
+            if (!GameMissionData.TryGetPartIdFromItemId(itemId, out int partId)) continue;
+
+            lock (state.SyncRoot)
+            {
+                state.CollectedParts.Add(partId);
+            }
+
+            if (inventory.GetAllItems().Any(item => item.ItemId == itemId && item.GiftState == GiftState.Prepared))
+                continue;
+
+            _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, 1, GiftState.Prepared);
+            Logger.LogWarning(
+                "[DEV] 2인 테스트 선물 지급: PlayerId={PlayerId}, ItemId={ItemId}, PartId={PartId}",
+                PlayerId, itemId, partId);
         }
     }
 

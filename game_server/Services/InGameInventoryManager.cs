@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using network.common;
 using network.common.data.models;
 
 namespace game_server.services;
@@ -27,18 +28,18 @@ public class PlayerInGameInventory(long matchingId)
     ///     아이템 추가. 스택 가능하면 기존 아이템에 수량 추가, 아니면 새로 생성
     /// </summary>
     /// <returns>변경된 아이템 정보</returns>
-    public InGameItemInfo AddItem(int itemId, int count = 1)
+    public InGameItemInfo AddItem(int itemId, int count = 1, GiftState giftState = GiftState.None)
     {
-        // 같은 itemId가 있으면 수량 추가 (스택)
+        // 같은 itemId와 선물 상태가 있으면 수량 추가 (스택)
         foreach (var kvp in _items)
-            if (kvp.Value.ItemId == itemId)
+            if (kvp.Value.ItemId == itemId && kvp.Value.GiftState == giftState)
             {
                 kvp.Value.Count += count;
                 return kvp.Value;
             }
 
         // 없으면 새로 생성
-        var newItem = new InGameItemInfo { ItemUid = GenerateUid(), ItemId = itemId, Count = count };
+        var newItem = new InGameItemInfo { ItemUid = GenerateUid(), ItemId = itemId, Count = count, GiftState = giftState };
         _items[newItem.ItemUid] = newItem;
         return newItem;
     }
@@ -64,6 +65,7 @@ public class PlayerInGameInventory(long matchingId)
             {
                 ItemUid = itemUid,
                 ItemId = item.ItemId,
+                GiftState = item.GiftState,
                 Count = 0 // 삭제됨을 표시
             };
         }
@@ -164,12 +166,13 @@ public class InGameInventoryManager
     /// <summary>
     ///     아이템 추가
     /// </summary>
-    public InGameItemInfo AddItem(long matchingId, long playerId, int itemId, int count = 1)
+    public InGameItemInfo AddItem(long matchingId, long playerId, int itemId, int count = 1,
+        GiftState giftState = GiftState.None)
     {
         var inventory = GetPlayerInventory(matchingId, playerId);
-        var item = inventory.AddItem(itemId, count);
+        var item = inventory.AddItem(itemId, count, giftState);
         _logAction?.Invoke(
-            $"InGameInventoryManager: Added item (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, Count={count}, ItemUid={item.ItemUid})");
+            $"InGameInventoryManager: Added item (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, Count={count}, GiftState={giftState}, ItemUid={item.ItemUid})");
         return item;
     }
 

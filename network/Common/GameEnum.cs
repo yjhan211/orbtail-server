@@ -118,7 +118,23 @@ namespace network.common
         INSTALLATION,
         PUTABLE,
         // 6 대역은 사물(열쇠 등) legacy — enum에 정의 X.
-        PART = 7, // v0.2.0 부품 결합 시스템 (#135). ItemId = 700000000 + PartId
+        PART_BODY = 7,   // v0.2.0 부품 본체. ItemId = 700000000 + PartId
+        PART_CHARGE = 8, // v0.2.0 부품 충전재. ItemId = 800000000 + PartId
+        PART_GIFT = 9,   // v0.2.0 충전 완료 선물. ItemId = 900000000 + PartId
+    }
+
+    public enum GiftDiscoveryType
+    {
+        None = 0,
+        Target = 1,
+        Other = 2
+    }
+
+    public enum GiftState
+    {
+        None = 0,
+        Prepared = 1,
+        Received = 2
     }
 
     public enum EquipType
@@ -353,6 +369,9 @@ namespace network.common
         ALERT = 2,          // 알럿 메시지
         EXIT_STEP = 3,      // 탈출 절차 관련
         INTERACTION = 4,    // 상호작용 관련
+        JOB_TITLE = 5,      // 직책명
+        INTERROGATION = 6,  // 심문 선택지
+        UI = 7,             // 고정 UI 라벨
     }
 
     /// <summary>

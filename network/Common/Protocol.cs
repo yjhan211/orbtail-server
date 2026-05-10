@@ -172,6 +172,15 @@ namespace network.common
         G_TO_C_RNG_COLLECT_ACK,        // 채집 시작 승인/거부 응답
         C_TO_G_RNG_COLLECT_FINISH,     // progress 완료 — 결과 산출 요청
 
+        // 비밀 선물 프로토콜 (#129)
+        C_TO_G_PLACE_GIFT,             // 충전 완료 선물 설치 요청
+        G_TO_C_PLACE_GIFT_RESULT,      // 선물 설치 결과
+        G_TO_C_GIFT_DISCOVERED,        // 선물 발견 알림
+        G_TO_C_GIFT_PROGRESS,          // 설치자의 전달 진행도 갱신
+
+        C_TO_G_RECALL_GIFT,            // 배치한 선물 회수 요청
+        G_TO_C_RECALL_GIFT_RESULT,     // 선물 회수 결과
+
         END
     }
 

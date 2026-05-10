@@ -64,6 +64,8 @@ public partial class BotPlayerManager
     /// <summary>봇 RNG 인스턴스 쿨타임 — RngCollectCore의 동등 상수 (BotPlayerManager 내부 노출용).</summary>
     private const int RngCollectCooldownSeconds = 30;
 
+    private const int GiftFoundCorruptionDelta = 30;
+
     /// <summary>
     ///     #134 — 봇이 walking으로 InteractObject 셀에 도착했을 때 RNG 채집 트리거.
     ///     2단계 흐름:
@@ -149,12 +151,31 @@ public partial class BotPlayerManager
                 bot.PlayerId, info.Id, outcome.ResultType, outcome.ItemId);
         }
 
+        CheckGiftDiscoveryForBot(bot, matchingId, missionManager, info.Id, result);
+
         // ExploreEnd + 쿨타임 broadcast (다른 클라가 봇 EXPLORE_1 → IDLE 복귀 + 마커 30초 숨김)
         result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
         result.RngCooldownBroadcasts.Add((info.Id, outcome.CooldownSeconds));
 
         bot.PendingRngInteractId = 0;
         bot.RngCollectProgressStartTime = DateTime.MinValue;
+    }
+
+    private void CheckGiftDiscoveryForBot(BotPlayerState bot, long matchingId, MissionManager missionManager,
+        int interactId, BotMissionTickResult result)
+    {
+        if (!missionManager.TryDiscoverGift(matchingId, bot.PlayerId, interactId, out var discovery)) return;
+        if (discovery.DiscoveryType == GiftDiscoveryType.Other) return;
+
+        bot.Corruption = Math.Min(100, bot.Corruption + GiftFoundCorruptionDelta);
+        result.GiftDiscoveries.Add(discovery);
+
+        _logger.LogInformation(
+            "봇 비밀 선물 발견: BotId={BotId}, Owner={Owner}, InteractId={InteractId}, Corruption={Corruption}",
+            bot.PlayerId, discovery.OwnerPlayerId, interactId, bot.Corruption);
+
+        if (discovery.IsRaceComplete)
+            result.RaceWinnerPlayerId = discovery.OwnerPlayerId;
     }
 
     /// <summary>
@@ -317,7 +338,7 @@ public partial class BotPlayerManager
             result.Combined.Add((bot.PlayerId, recipe.OutputPart, combineResult.IsRaceComplete));
 
             if (combineResult.IsRaceComplete)
-                result.RaceWinnerBotId = bot.PlayerId;
+                result.RaceWinnerPlayerId = bot.PlayerId;
         }
     }
 
@@ -486,6 +507,9 @@ public class BotMissionTickResult
     /// <summary>#134 — 봇이 RNG progress 종료했음을 같은 영역 인간 세션에 알림 (G_TO_C_EXPLORE_END).</summary>
     public List<(long botId, AreaType area)> BotExploreEnds { get; } = new();
 
-    /// <summary>race 완주 봇 PlayerId — 0이면 없음, GameServer가 즉시 게임 종료 처리.</summary>
-    public long RaceWinnerBotId { get; set; }
+    /// <summary>봇이 발견한 선물 진행도 — 설치자에게 G_TO_C_GIFT_PROGRESS로 전달.</summary>
+    public List<GiftDiscoveryResult> GiftDiscoveries { get; } = new();
+
+    /// <summary>race 완주 PlayerId — 0이면 없음, GameServer가 즉시 게임 종료 처리.</summary>
+    public long RaceWinnerPlayerId { get; set; }
 }

@@ -7,10 +7,10 @@ id,category,text_kr,text_en,text_jp
 10,2,탈출 절차가 갱신되었습니다,Escape procedure updated.,脱出手順が更新されました。
 11,2,필수 아이템을 획득했습니다,Required item acquired.,必須アイテムを獲得しました。
 12,2,규칙 쪽지를 획득했습니다,Rule note acquired.,規則のメモを獲得しました。
-13,2,정신오염도가 상승했습니다,Mental Corruption rose.,精神汚染度が上昇しました。
-14,2,스태미나가 소모되었습니다,Stamina has been depleted.,スタミナが消費されました。
+13,2,정신오염도가 상승했습니다,Mental corruption increased.,精神汚染度が上昇しました。
+14,2,스태미나가 소모되었습니다,Stamina was consumed.,スタミナが消費されました。
 20,3,강당 열쇠를 확보하십시오,Secure the Auditorium key.,講堂の鍵を確保してください。
-21,3,A의 이름과 목소리를 파악해야 합니다,You must identify A's name and voice.,Aの名前と声を把握しなければなりません。
+21,3,A의 이름과 목소리를 파악해야 합니다,You must identify A's name and voice.,Aの名前と声を突き止めなければなりません。
 22,3,교무실에서 학생증을 획득하십시오,Acquire the student ID from the Staff Room.,職員室で学生証を獲得してください。
 23,3,방송실로 이동하십시오,Move to the Broadcast Room.,放送室へ移動してください。
 30,4,손톱으로 긁어야 합니다. 괜찮으시겠습니까?,You will have to scratch with your fingernails. Are you sure?,爪で引っ掻かなければなりません。よろしいですか?
@@ -84,31 +84,72 @@ id,category,text_kr,text_en,text_jp
 10037,4,(정신오염 -{0}),(Corruption -{0}),(精神汚染 -{0})
 10038,4,<color=#FF7E9A>질문 선택지</color>가 아직 도착하지 않았습니다.,<color=#FF7E9A>Question options</color> have not arrived yet.,<color=#FF7E9A>質問の選択肢</color>がまだ到着していません。
 10039,4,상대방이 말을 고르고 있습니다...,The other player is choosing words...,相手が言葉を選んでいます...
-10040,4,<color=#A8D4E0>체력이 {0} 증가합니다.</color>,<color=#A8D4E0>HP increased by {0}.</color>,<color=#A8D4E0>体力が{0}増加します。</color>
-10041,4,<color=#A8D4E0>정신오염도가 {0} 감소합니다.</color>,<color=#A8D4E0>Corruption decreased by {0}.</color>,<color=#A8D4E0>精神汚染度が{0}減少します。</color>
-10042,4,<color=#A8D4E0>상대방이 당신에게 {0} 아이템을 사용했습니다.</color>,<color=#A8D4E0>The other player used {0} on you.</color>,<color=#A8D4E0>相手があなたに{0}アイテムを使用しました。</color>
+10040,4,<color=#A8D4E0>체력이 {0} 증가합니다.</color>,<color=#A8D4E0>HP increases by {0}.</color>,<color=#A8D4E0>体力が{0}増加します。</color>
+10041,4,<color=#A8D4E0>정신오염도가 {0} 감소합니다.</color>,<color=#A8D4E0>Corruption decreases by {0}.</color>,<color=#A8D4E0>精神汚染度が{0}減少します。</color>
+10042,4,<color=#A8D4E0>상대방이 당신에게 {0} 아이템을 사용했습니다.</color>,<color=#A8D4E0>The other player used {0} on you.</color>,<color=#A8D4E0>相手があなたに{0}を使用しました。</color>
 10043,4,상대방이 행동 수칙을 공유합니다.,The other player shares a conduct rule.,相手が行動規則を共有します。
 10044,4,학생 수첩에 증언으로 기록합니다.,Recorded as testimony in the student notebook.,学生手帳に証言として記録します。
 10045,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#A8D4E0>accepted</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>さんが<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。
 10046,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#FF7E9A>거절</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#FF7E9A>declined</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>さんが<color=#A8D4E0>対話</color>を<color=#FF7E9A>拒否</color>しました。
+10047,4,<color=#FF7E9A>선물</color> 준비에 실패했습니다.,Failed to prepare the <color=#FF7E9A>gift</color>.,<color=#FF7E9A>贈り物</color>の準備に失敗しました。
+10048,4,<color=#A8D4E0>{0}</color>에 <color=#A8D4E0>{1}</color>을 위한 선물을 준비합니다.,Preparing a gift for <color=#A8D4E0>{1}</color> at <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>に<color=#A8D4E0>{1}</color>への贈り物を用意します。
+10049,4,<color=#FF7E9A>다른 이를 향한 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>gift meant for someone else</color>.,<color=#FF7E9A>他の誰かに向けた贈り物</color>を見つけました。
+10050,4,<color=#FF7E9A>마니또의 비밀 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>secret gift from your manitto</color>.,<color=#FF7E9A>マニットの秘密の贈り物</color>を見つけました。
+10051,4,<color=#A8D4E0>전달</color> 비밀 선물이 전해졌습니다. ({0}/{1}),<color=#A8D4E0>Delivery</color> Secret gift delivered. ({0}/{1}),<color=#A8D4E0>届け物</color> 秘密の贈り物が届きました。({0}/{1})
+10052,4,당신이 선물을 배치한 곳입니다. 재시도시 <color=#FF7E9A>회수</color>합니다.,This is where you placed your gift. Try again to <color=#FF7E9A>retrieve</color> it.,あなたが贈り物を置いた場所です。もう一度試すと<color=#FF7E9A>回収</color>します。
+10053,4,선물을 <color=#FF7E9A>회수</color>했습니다.,You <color=#FF7E9A>retrieved</color> the gift.,贈り物を<color=#FF7E9A>回収</color>しました。
+10054,4,선물 <color=#FF7E9A>회수</color>에 실패했습니다.,Failed to <color=#FF7E9A>retrieve</color> the gift.,贈り物の<color=#FF7E9A>回収</color>に失敗しました。
+10055,4,<color=#A8D4E0>{0}</color>과 마주했습니다. 정신력이 회복됩니다.,You encountered <color=#A8D4E0>{0}</color>. Your sanity is recovering.,<color=#A8D4E0>{0}</color>と出会いました。精神力が回復します。
 11000,5,방송부원,Broadcasting Member,放送部員
-11001,5,선도부원,Disciplinary Member,風紀委員
-11002,5,도서위원,Library Committee,図書委員
+11001,5,선도부원,Disciplinary Committee Member,風紀委員
+11002,5,도서위원,Library Committee Member,図書委員
 11003,5,체육부장,Sports Captain,体育部長
-11004,5,과학부원,Science Member,科学部員
-11005,5,미화부원,Cleaning Member,美化部員
+11004,5,과학부원,Science Club Member,科学部員
+11005,5,미화부원,Cleaning Committee Member,美化部員
 11006,5,학생회장,Student President,生徒会長
-11007,5,보건부원,Health Member,保健委員
+11007,5,보건부원,Health Committee Member,保健委員
 11020,6,<color=#A8D4E0>{0}</color>으로 온 이유가 궁금합니다.,Why did you come to <color=#A8D4E0>{0}</color>?,<color=#A8D4E0>{0}</color>に来た理由が気になります。
 11021,6,직책이 무엇인지 궁금합니다.,What is your role?,役職が何なのか気になります。
 11022,6,"다른 분도 <color=#A8D4E0>{0}</color>이라고 주장하시던데, 사실인가요?",Someone else also claimed to be a <color=#A8D4E0>{0}</color>. Is that true?,他の方も<color=#A8D4E0>{0}</color>だと主張していましたが、本当ですか?
-11023,6,"저번에 <color=#A8D4E0>{0}</color>이라고 하셨는데, 정말 그러신가요?",Last time you said you were a <color=#A8D4E0>{0}</color>. Really?,前回は<color=#A8D4E0>{0}</color>だと仰っていましたが、本当にそうなんですか?
+11023,6,"저번에 <color=#A8D4E0>{0}</color>이라고 하셨는데, 정말 그러신가요?",You said last time that you were a <color=#A8D4E0>{0}</color>. Is that true?,前回は<color=#A8D4E0>{0}</color>だと仰っていましたが、本当にそうなんですか?
 11024,6,여기서 무엇을 보셨는지 궁금합니다.,What did you see here?,ここで何を見たのか気になります。
 11030,6,<color=#A8D4E0>{0}</color> 미션을 수행하러 왔습니다.,I came to perform the <color=#A8D4E0>{0}</color> mission.,<color=#A8D4E0>{0}</color>のミッションを遂行しに来ました。
-11031,6,구역 폐쇄로 인해 지나가던 도중입니다.,I was passing by due to area closure.,区域閉鎖のため通りかかったところです。
-11032,6,저는 당신의 마니또입니다.,I am your manitto.,私はあなたのマニートです。
+11031,6,구역 폐쇄로 인해 지나가던 도중입니다.,I was passing through because of the area closure.,区域閉鎖のため通りかかったところです。
+11032,6,저는 당신의 마니또입니다.,I am your manitto.,私はあなたのマニットです。
 11040,6,저는 <color=#A8D4E0>{0}</color>입니다.,I am a <color=#A8D4E0>{0}</color>.,私は<color=#A8D4E0>{0}</color>です。
 11041,6,저는 그때 <color=#A8D4E0>{0}</color>에 있었습니다.,I was at the <color=#A8D4E0>{0}</color> at that time.,私はその時<color=#A8D4E0>{0}</color>にいました。
 11042,6,<color=#FF7E9A>{0}</color>을(를) 주장하는 사람이 여러 명 발견되었습니다!,Multiple people are claiming to be a <color=#FF7E9A>{0}</color>!,<color=#FF7E9A>{0}</color>を主張する人が複数発見されました!
 11050,4,<color=#A8D4E0>수락</color>,<color=#A8D4E0>Accept</color>,<color=#A8D4E0>承諾</color>
 11051,4,거절,Decline,拒否
+12000,7,사운드 설정,Sound Settings,サウンド設定
+12001,7,환경 설정,Preferences,環境設定
+12002,7,서버 선택,Server Selection,サーバー選択
+12003,7,효과음,Sound Effects,効果音
+12004,7,배경 음악,Background Music,BGM
+12005,7,[안내],[Notice],[案内]
+12006,7,언어 선택,Language,言語
+12007,7,사용자 서버 설정,User Server Settings,ユーザーサーバー設定
+12008,7,마스터 볼륨,Master Volume,マスター音量
+12009,7,계정 설정,Account Settings,アカウント設定
+12010,7,플레이어 아이디를 입력하세요.,Enter a player ID.,プレイヤーIDを入力してください。
+12011,7,도서위원 미션 3회 완료,Complete 3 Library Committee missions,図書委員ミッションを3回完了
+12012,7,커스터마이징,Customization,カスタマイズ
+12013,7,급식 조리의 대가,School Lunch Master,給食調理の達人
+12014,7,[퇴교 절차],[Dismissal Procedure],[下校手順]
+12015,7,의심 중,Under Suspicion,疑念あり
+12016,7,의심하기,Suspect,疑う
+12017,7,운동장,Schoolyard,グラウンド
+12018,7,도서관,Library,図書館
+12019,7,[행동 수칙],[Conduct Rules],[行動規則]
+12020,7,방송실,Broadcast Room,放送室
+12021,7,[시스템 로그],[System Log],[システムログ]
+12022,7,퇴교 절차 매뉴얼,Dismissal Procedure Manual,下校手順マニュアル
+12023,7,강당,Auditorium,講堂
+12024,7,교무실,Staff Room,職員室
+12025,7,고사실,Exam Room,試験室
+12026,7,그룹 현황,Group Status,グループ状況
+12027,7,행정실,Admin Office,事務室
+12028,7,창고,Storage,倉庫
+12029,7,지도,Map,地図
+12030,7,배낭,Backpack,バックパック
+12031,7,[ 확인 ],[ Confirm ],[ 確認 ]

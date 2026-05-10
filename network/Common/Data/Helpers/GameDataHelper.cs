@@ -17,6 +17,7 @@ namespace network.common.data.helpers
     {
         // 서버 환경에서 CSV 파일 기본 경로 (SetBasePath로 설정 가능)
         private static string _basePath = "";
+        private static bool _initialized;
 
         private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
             _standardDataDefinitions =
@@ -79,6 +80,12 @@ namespace network.common.data.helpers
 
         public static void Initialize()
         {
+            if (_initialized)
+            {
+                Log("[GameDataHelper] Initialize skipped (already initialized)");
+                return;
+            }
+
             Log("[GameDataHelper] Initialize started");
 
             // 모든 CSV 데이터 로드
@@ -222,6 +229,7 @@ namespace network.common.data.helpers
             PrerequisiteItemData.Initialize(loadedData[DataFiles.Mission.PrerequisiteItem]);
 
             ValidateAllData();
+            _initialized = true;
         }
 
         private static void ValidateAllData()

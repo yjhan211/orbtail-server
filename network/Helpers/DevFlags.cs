@@ -11,4 +11,10 @@ public static class DevFlags
     ///     활성화: 환경 변수 <c>DISABLE_GAME_END=1</c>
     /// </summary>
     public static bool DisableGameEnd => Environment.GetEnvironmentVariable("DISABLE_GAME_END") == "1";
+
+    /// <summary>
+    ///     2인 테스트 매칭 활성화. 첫 번째 실제 플레이어 + 두 번째 실제 플레이어 + 봇 3명으로 체인을 고정한다.
+    ///     활성화: 환경 변수 <c>TEST_TWO_PLAYER_MATCH=1</c>
+    /// </summary>
+    public static bool TestTwoPlayerMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
 }
