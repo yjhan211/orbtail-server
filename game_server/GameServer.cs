@@ -245,23 +245,21 @@ public class GameServer(
             {
                 bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
 
-                // [TEMP] 1. 정신력 자연감소 — 디버깅용 비활성
-                int corruptionDelta = 0;
-                // int corruptionDelta = GetMentalDecayAmount(session.CurrentMapSubId);
+                int corruptionDelta = GetMentalDecayAmount(session.CurrentMapSubId);
 
-                // [TEMP] 2. 타겟 동일 구역 회복 — 디버깅용 비활성
-                // if (!isTerminal && session.CurrentArea != AreaType.None)
-                // {
-                //     var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                //     bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
-                //     if (!targetInSameArea)
-                //     {
-                //         var targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
-                //         targetInSameArea = targetBot is { IsEliminated: false } && targetBot.CurrentArea == session.CurrentArea;
-                //     }
-                //     if (targetInSameArea)
-                //         corruptionDelta = -TargetProximityRecovery;
-                // }
+                if (!isTerminal && session.CurrentArea != AreaType.None)
+                {
+                    var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
+                    bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
+                    if (!targetInSameArea)
+                    {
+                        var targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
+                        targetInSameArea = targetBot is { IsEliminated: false } && targetBot.CurrentArea == session.CurrentArea;
+                    }
+
+                    if (targetInSameArea)
+                        corruptionDelta = -TargetProximityRecovery;
+                }
 
                 // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
                 // if (isTerminal)

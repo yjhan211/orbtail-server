@@ -99,6 +99,7 @@ id,category,text_kr,text_en,text_jp
 10052,4,당신이 선물을 배치한 곳입니다. 재시도시 <color=#FF7E9A>회수</color>합니다.,This is where you placed your gift. Try again to <color=#FF7E9A>retrieve</color> it.,あなたが贈り物を置いた場所です。もう一度試すと<color=#FF7E9A>回収</color>します。
 10053,4,선물을 <color=#FF7E9A>회수</color>했습니다.,You <color=#FF7E9A>retrieved</color> the gift.,贈り物を<color=#FF7E9A>回収</color>しました。
 10054,4,선물 <color=#FF7E9A>회수</color>에 실패했습니다.,Failed to <color=#FF7E9A>retrieve</color> the gift.,贈り物の<color=#FF7E9A>回収</color>に失敗しました。
+10055,4,<color=#A8D4E0>{0}</color>과 마주했습니다. 정신력이 회복됩니다.,You encountered <color=#A8D4E0>{0}</color>. Your sanity is recovering.,<color=#A8D4E0>{0}</color>と出会いました。精神力が回復します。
 11000,5,방송부원,Broadcasting Member,放送部員
 11001,5,선도부원,Disciplinary Committee Member,風紀委員
 11002,5,도서위원,Library Committee Member,図書委員
