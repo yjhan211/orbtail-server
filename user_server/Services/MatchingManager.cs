@@ -36,10 +36,13 @@ public class MatchingManager : IMatchingManager
     private const int DefaultGamePlayersPerMatch = 5; // 실제 게임 인원 (#22 디버그 — 1인 + 봇 4명, 각 층별 1명)
 
     /// <summary>매칭 트리거 최소 인원. DEMO_MODE=LB 시 1명만으로 트리거(즉시 봇 4명 채움).</summary>
-    private static int PlayersPerMatch => DemoMode.IsActive ? 1 : DefaultPlayersPerMatch;
+    private static int PlayersPerMatch => IsTwoPlayerTestMatch ? 2 : DemoMode.IsActive ? 1 : DefaultPlayersPerMatch;
 
-    /// <summary>실제 게임 인원. DEMO_MODE=LB 시 5인(시연자 1 + 봇 4) 강제.</summary>
-    private static int GamePlayersPerMatch => DemoMode.IsActive ? DemoMode.MatchPlayerCount : DefaultGamePlayersPerMatch;
+    /// <summary>실제 게임 인원. TEST_TWO_PLAYER_MATCH 시 실플레이어 2명 + 봇 3명.</summary>
+    private static int GamePlayersPerMatch =>
+        IsTwoPlayerTestMatch ? DefaultGamePlayersPerMatch : DemoMode.IsActive ? DemoMode.MatchPlayerCount : DefaultGamePlayersPerMatch;
+
+    private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
     private static long _botIdCounter; // 봇 PlayerId (음수)
     private readonly ICacheHelper _cacheHelper;
     private readonly Func<long, GameSession?> _getSession;
@@ -151,6 +154,8 @@ public class MatchingManager : IMatchingManager
 
             if (allEntries.Length == 0) return;
 
+            allEntries = SortEntriesByRequestTime(allEntries);
+
             int matchableCount = allEntries.Length / PlayersPerMatch * PlayersPerMatch;
             if (matchableCount < PlayersPerMatch) return;
 
@@ -238,6 +243,8 @@ public class MatchingManager : IMatchingManager
     /// </summary>
     private async Task CheckBotFillAsync()
     {
+        if (IsTwoPlayerTestMatch) return;
+
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long botCutoff = now - BotFillTimeoutSeconds;
 
@@ -318,6 +325,9 @@ public class MatchingManager : IMatchingManager
     /// </summary>
     private async Task<List<ManittoChainLink>> BuildManittoChain(byte[][] groupEntries)
     {
+        if (IsTwoPlayerTestMatch && groupEntries.Length == DefaultGamePlayersPerMatch)
+            return BuildTwoPlayerTestManittoChain(groupEntries);
+
         if (DemoMode.IsActive && groupEntries.Length == DemoMode.MatchPlayerCount)
             return BuildDemoManittoChain(groupEntries);
 
@@ -399,6 +409,79 @@ public class MatchingManager : IMatchingManager
 
         _logger.LogInformation("마니또 체인 생성: {Chain}",
             string.Join(" → ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" → {players[0].PlayerId}");
+
+        return chain;
+    }
+
+    /// <summary>
+    ///     매칭 신청 순서를 보존하기 위해 큐 엔트리를 RequestTime 기준으로 정렬한다.
+    /// </summary>
+    private static byte[][] SortEntriesByRequestTime(byte[][] entries)
+    {
+        return entries
+            .Select(entry => new
+            {
+                Entry = entry,
+                Data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry)
+            })
+            .OrderBy(x => x.Data.RequestTime)
+            .ThenBy(x => x.Data.PlayerId)
+            .Select(x => x.Entry)
+            .ToArray();
+    }
+
+    private List<ManittoChainLink> BuildTwoPlayerTestManittoChain(byte[][] groupEntries)
+    {
+        var entries = groupEntries
+            .Select(entry => new
+            {
+                Entry = entry,
+                Data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry)
+            })
+            .ToList();
+
+        var realPlayers = entries
+            .Where(x => x.Data.PlayerId >= 0)
+            .OrderBy(x => x.Data.RequestTime)
+            .ThenBy(x => x.Data.PlayerId)
+            .ToList();
+        var bots = entries.Where(x => x.Data.PlayerId < 0).ToList();
+
+        if (realPlayers.Count != 2 || bots.Count != 3)
+        {
+            _logger.LogWarning(
+                "TEST_TWO_PLAYER_MATCH 매칭 구성 비정상 (실 {Real}명 / 봇 {Bot}명) — 일반 체인 폴백",
+                realPlayers.Count, bots.Count);
+            return BuildDemoFallback(groupEntries);
+        }
+
+        var ordered = realPlayers.Concat(bots).ToList();
+        var players = ordered.Select(x => x.Data).ToList();
+        var jobs = new[]
+        {
+            JobTitle.LIBRARY_COMMITTEE,
+            JobTitle.DISCIPLINE_MEMBER,
+            JobTitle.BROADCAST_MEMBER,
+            JobTitle.SCIENCE_MEMBER,
+            JobTitle.HEALTH_MEMBER
+        };
+
+        var chain = new List<ManittoChainLink>();
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            int targetIndex = (i + 1) % ordered.Count;
+            chain.Add(new ManittoChainLink
+            {
+                Entry = ordered[i].Entry,
+                TargetPlayerId = players[targetIndex].PlayerId,
+                MyJobTitle = jobs[i],
+                TargetJobTitle = jobs[targetIndex]
+            });
+        }
+
+        _logger.LogInformation(
+            "TEST_TWO_PLAYER_MATCH 체인 강제: {Chain}",
+            string.Join(" -> ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" -> {players[0].PlayerId}");
 
         return chain;
     }
