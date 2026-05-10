@@ -130,6 +130,13 @@ namespace network.common
         Other = 2
     }
 
+    public enum GiftState
+    {
+        None = 0,
+        Prepared = 1,
+        Received = 2
+    }
+
     public enum EquipType
     {
         NONE = 0,

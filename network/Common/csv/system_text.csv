@@ -96,6 +96,9 @@ id,category,text_kr,text_en,text_jp
 10049,4,<color=#FF7E9A>다른 이를 향한 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>gift meant for someone else</color>.,<color=#FF7E9A>他の誰かに向けた贈り物</color>を見つけました。
 10050,4,<color=#FF7E9A>마니또의 비밀 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>secret gift from your manitto</color>.,<color=#FF7E9A>マニットの秘密の贈り物</color>を見つけました。
 10051,4,<color=#A8D4E0>전달</color> 비밀 선물이 전해졌습니다. ({0}/{1}),<color=#A8D4E0>Delivery</color> Secret gift delivered. ({0}/{1}),<color=#A8D4E0>届け物</color> 秘密の贈り物が届きました。({0}/{1})
+10052,4,당신이 선물을 배치한 곳입니다. 재시도시 <color=#FF7E9A>회수</color>합니다.,This is where you placed your gift. Try again to <color=#FF7E9A>retrieve</color> it.,あなたが贈り物を置いた場所です。もう一度試すと<color=#FF7E9A>回収</color>します。
+10053,4,선물을 <color=#FF7E9A>회수</color>했습니다.,You <color=#FF7E9A>retrieved</color> the gift.,贈り物を<color=#FF7E9A>回収</color>しました。
+10054,4,선물 <color=#FF7E9A>회수</color>에 실패했습니다.,Failed to <color=#FF7E9A>retrieve</color> the gift.,贈り物の<color=#FF7E9A>回収</color>に失敗しました。
 11000,5,방송부원,Broadcasting Member,放送部員
 11001,5,선도부원,Disciplinary Committee Member,風紀委員
 11002,5,도서위원,Library Committee Member,図書委員

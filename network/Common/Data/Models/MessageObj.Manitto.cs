@@ -299,6 +299,24 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class C_TO_G_RECALL_GIFT : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_RECALL_GIFT_RESULT : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("itemUid")] public long ItemUid { get; set; }
+        [Key("itemId")] public int ItemId { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("hasPlacedGiftAtInteract")] public bool HasPlacedGiftAtInteract { get; set; }
+        [Key("hasPlacedGiftInArea")] public bool HasPlacedGiftInArea { get; set; }
+    }
+
+    [MessagePackObject]
     public class G_TO_C_GIFT_DISCOVERED : IMessagePackObject
     {
         [Key("discoveryType")] public GiftDiscoveryType DiscoveryType { get; set; }

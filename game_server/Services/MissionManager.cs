@@ -291,6 +291,45 @@ public class MissionManager
         }
     }
 
+    public RecallGiftResult TryRecallGift(long matchingId, long playerId, int interactId)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching))
+            return new RecallGiftResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
+        if (!matching.TryGetValue(playerId, out var state))
+            return new RecallGiftResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
+
+        lock (state.SyncRoot)
+        {
+            var gift = state.PlacedGifts.FirstOrDefault(g =>
+                g.OwnerPlayerId == playerId && g.InteractId == interactId && !g.IsDiscovered);
+            if (gift == null)
+                return new RecallGiftResult { ErrorCode = ErrorCode.ITEM_NOT_FOUND, InteractId = interactId };
+
+            state.PlacedGifts.Remove(gift);
+
+            bool hasPlacedGiftAtInteract = state.PlacedGifts.Any(g =>
+                !g.IsDiscovered && g.InteractId == interactId);
+            bool hasPlacedGiftInArea = state.PlacedGifts.Any(g =>
+                !g.IsDiscovered && g.AreaType == gift.AreaType);
+
+            _logger.LogInformation(
+                "비밀 선물 회수: MatchingId={MatchingId}, Owner={Owner}, ItemId={ItemId}, InteractId={InteractId}",
+                matchingId, playerId, gift.ItemId, interactId);
+
+            return new RecallGiftResult
+            {
+                Success = true,
+                ItemUid = gift.ItemUid,
+                ItemId = gift.ItemId,
+                InteractId = interactId,
+                AreaType = gift.AreaType,
+                TargetPlayerId = gift.TargetPlayerId,
+                HasPlacedGiftAtInteract = hasPlacedGiftAtInteract,
+                HasPlacedGiftInArea = hasPlacedGiftInArea
+            };
+        }
+    }
+
     public bool TryDiscoverGift(long matchingId, long playerId, int interactId, out GiftDiscoveryResult result)
     {
         result = new GiftDiscoveryResult();
@@ -526,6 +565,19 @@ public class PlaceGiftResult
     public int InteractId { get; set; }
     public AreaType AreaType { get; set; }
     public long TargetPlayerId { get; set; }
+}
+
+public class RecallGiftResult
+{
+    public bool Success { get; set; }
+    public ErrorCode ErrorCode { get; set; } = ErrorCode.SUCCESS;
+    public long ItemUid { get; set; }
+    public int ItemId { get; set; }
+    public int InteractId { get; set; }
+    public AreaType AreaType { get; set; }
+    public long TargetPlayerId { get; set; }
+    public bool HasPlacedGiftAtInteract { get; set; }
+    public bool HasPlacedGiftInArea { get; set; }
 }
 
 public class GiftDiscoveryResult

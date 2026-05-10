@@ -178,6 +178,9 @@ namespace network.common
         G_TO_C_GIFT_DISCOVERED,        // 선물 발견 알림
         G_TO_C_GIFT_PROGRESS,          // 설치자의 전달 진행도 갱신
 
+        C_TO_G_RECALL_GIFT,            // 배치한 선물 회수 요청
+        G_TO_C_RECALL_GIFT_RESULT,     // 선물 회수 결과
+
         END
     }
 
