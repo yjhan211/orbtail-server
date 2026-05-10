@@ -99,7 +99,7 @@ public partial class BotPlayerManager
                 Position = startPosition,
                 Rotation = 0f,
                 Stamina = 100,   // 실제 플레이어와 동일
-                Corruption = 0, // 게임 시작 시 정신력 100%
+                Corruption = 50, // 게임 시작 시 정신력 50%
                 ManittoStatus = ManittoStatus.ACTIVE,
                 LastMoveTime = DateTime.UtcNow,
                 LastMissionTickTime = DateTime.UtcNow,
