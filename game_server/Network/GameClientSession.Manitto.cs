@@ -394,6 +394,8 @@ public partial class GameClientSession
         }
 
         SendPlaceGiftResult(ErrorCode.SUCCESS, msg, result.AreaType, result.TargetPlayerId);
+        RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
+        BroadcastRngCollectCooldown(msg.InteractId, 0);
 
         _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
             $"비밀 선물 설치: ItemId={msg.ItemId}, InteractId={msg.InteractId}, Target={TargetPlayerId}",

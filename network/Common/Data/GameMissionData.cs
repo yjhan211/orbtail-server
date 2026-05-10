@@ -34,6 +34,8 @@ namespace network.common.data
                     JobTitle = jobTitle,
                     PartId = int.Parse(row["part_id"]),
                     PartNameKr = row["part_name_kr"],
+                    PartNameEn = row.ContainsKey("part_name_en") ? row["part_name_en"] : "",
+                    PartNameJp = row.ContainsKey("part_name_jp") ? row["part_name_jp"] : "",
                     PartTier = (PartTier)int.Parse(row["part_tier"]),
                     TargetArea = int.Parse(row["target_area"]),
                     TargetObjectType = int.Parse(row["target_object_type"]),
@@ -146,6 +148,8 @@ namespace network.common.data
         public short JobTitle { get; set; }
         public int PartId { get; set; }              // 예: 101 (BR_M1)
         public string PartNameKr { get; set; }       // 예: "손상된 마이크 헤드"
+        public string PartNameEn { get; set; }
+        public string PartNameJp { get; set; }
         public PartTier PartTier { get; set; }
         public int TargetArea { get; set; }          // 소재만 의미 있음 (중간재/최종은 0)
         public int TargetObjectType { get; set; }    // 소재만 의미 있음 (Cabinet/Locker 등)
