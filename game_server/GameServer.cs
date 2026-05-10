@@ -661,7 +661,11 @@ public class GameServer(
                 DeliveredCount = discovery.DeliveredCount,
                 RequiredCount = discovery.RequiredCount,
                 FinalPartId = discovery.FinalPartId,
-                IsRaceComplete = discovery.IsRaceComplete
+                IsRaceComplete = discovery.IsRaceComplete,
+                InteractId = discovery.InteractId,
+                AreaType = discovery.AreaType,
+                HasPlacedGiftAtInteract = discovery.HasPlacedGiftAtInteract,
+                HasPlacedGiftInArea = discovery.HasPlacedGiftInArea
             };
             var body = MessagePackSerializer.Serialize(msg);
             using var packet = Packet.Create((int)Protocol.G_TO_C_GIFT_PROGRESS, discovery.OwnerPlayerId);

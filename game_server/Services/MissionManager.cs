@@ -345,6 +345,10 @@ public class MissionManager
 
                 targetGift.IsDiscovered = true;
                 ownerState.DeliveredGiftCount = ownerState.PlacedGifts.Count(g => g.IsDiscovered);
+                bool hasPlacedGiftAtInteract = ownerState.PlacedGifts.Any(g =>
+                    !g.IsDiscovered && g.InteractId == interactId);
+                bool hasPlacedGiftInArea = ownerState.PlacedGifts.Any(g =>
+                    !g.IsDiscovered && g.AreaType == targetGift.AreaType);
 
                 int finalPartId = 0;
                 bool raceComplete = false;
@@ -370,10 +374,13 @@ public class MissionManager
                     TargetPlayerId = targetGift.TargetPlayerId,
                     ItemId = targetGift.ItemId,
                     InteractId = interactId,
+                    AreaType = targetGift.AreaType,
                     DeliveredCount = ownerState.DeliveredGiftCount,
                     RequiredCount = PlayerPartState.RequiredGiftDeliveries,
                     FinalPartId = finalPartId,
-                    IsRaceComplete = raceComplete
+                    IsRaceComplete = raceComplete,
+                    HasPlacedGiftAtInteract = hasPlacedGiftAtInteract,
+                    HasPlacedGiftInArea = hasPlacedGiftInArea
                 };
 
                 _logger.LogInformation(
@@ -399,6 +406,7 @@ public class MissionManager
                     TargetPlayerId = otherGift.TargetPlayerId,
                     ItemId = otherGift.ItemId,
                     InteractId = interactId,
+                    AreaType = otherGift.AreaType,
                     DeliveredCount = ownerState.DeliveredGiftCount,
                     RequiredCount = PlayerPartState.RequiredGiftDeliveries
                 };
@@ -588,8 +596,11 @@ public class GiftDiscoveryResult
     public long TargetPlayerId { get; set; }
     public int ItemId { get; set; }
     public int InteractId { get; set; }
+    public AreaType AreaType { get; set; }
     public int DeliveredCount { get; set; }
     public int RequiredCount { get; set; } = PlayerPartState.RequiredGiftDeliveries;
     public int FinalPartId { get; set; }
     public bool IsRaceComplete { get; set; }
+    public bool HasPlacedGiftAtInteract { get; set; }
+    public bool HasPlacedGiftInArea { get; set; }
 }

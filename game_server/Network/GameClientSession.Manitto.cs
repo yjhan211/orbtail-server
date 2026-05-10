@@ -948,7 +948,11 @@ public partial class GameClientSession
             DeliveredCount = result.DeliveredCount,
             RequiredCount = result.RequiredCount,
             FinalPartId = result.FinalPartId,
-            IsRaceComplete = result.IsRaceComplete
+            IsRaceComplete = result.IsRaceComplete,
+            InteractId = result.InteractId,
+            AreaType = result.AreaType,
+            HasPlacedGiftAtInteract = result.HasPlacedGiftAtInteract,
+            HasPlacedGiftInArea = result.HasPlacedGiftInArea
         };
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         ownerSession.Send(packet);

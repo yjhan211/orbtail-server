@@ -332,6 +332,10 @@ namespace network.common.data.models
         [Key("requiredCount")] public int RequiredCount { get; set; }
         [Key("finalPartId")] public int FinalPartId { get; set; }
         [Key("isRaceComplete")] public bool IsRaceComplete { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("hasPlacedGiftAtInteract")] public bool HasPlacedGiftAtInteract { get; set; }
+        [Key("hasPlacedGiftInArea")] public bool HasPlacedGiftInArea { get; set; }
     }
 
     /// <summary>
