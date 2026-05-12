@@ -154,6 +154,8 @@ sysinfo.txt
 *.app
 *.zip
 !vendor/*.zip
+*.zip.meta
+!vendor/*.zip.meta
 
 # Build Output
 Build_*/
