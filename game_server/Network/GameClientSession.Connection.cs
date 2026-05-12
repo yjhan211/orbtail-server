@@ -109,7 +109,6 @@ public partial class GameClientSession
             }
 
             // 인게임 인벤토리 목록 전송
-            GiveTwoPlayerTestGiftsIfNeeded();
             SendInGameInventoryList();
 
             // 문 초기 상태 설정 및 열린 문 목록 전송
@@ -136,37 +135,6 @@ public partial class GameClientSession
             };
             packet.SetBody(MessagePackSerializer.Serialize(response));
             Send(packet);
-        }
-    }
-
-    private void GiveTwoPlayerTestGiftsIfNeeded()
-    {
-        if (!DevFlags.TestTwoPlayerMatch) return;
-        if (!PlayerId.HasValue) return;
-        if (MyJobTitle != JobTitle.LIBRARY_COMMITTEE) return;
-
-        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
-        if (state == null) return;
-
-        int[] giftItemIds = { 900000305, 900000306 };
-        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-
-        foreach (int itemId in giftItemIds)
-        {
-            if (!GameMissionData.TryGetPartIdFromItemId(itemId, out int partId)) continue;
-
-            lock (state.SyncRoot)
-            {
-                state.CollectedParts.Add(partId);
-            }
-
-            if (inventory.GetAllItems().Any(item => item.ItemId == itemId && item.GiftState == GiftState.Prepared))
-                continue;
-
-            _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, 1, GiftState.Prepared);
-            Logger.LogWarning(
-                "[DEV] 2인 테스트 선물 지급: PlayerId={PlayerId}, ItemId={ItemId}, PartId={PartId}",
-                PlayerId, itemId, partId);
         }
     }
 

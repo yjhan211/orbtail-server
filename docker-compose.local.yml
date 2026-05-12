@@ -50,7 +50,7 @@ services:
       # #79 RNG 채집 시연/테스트용 — 모든 게임 종료 트리거 차단. 운영/시연 빌드에서는 제거
       - DISABLE_GAME_END=1
       # #129 선물 수동 테스트 — 실플레이어 2명 + 봇 3명, 신청 순서대로 1번→2번 타겟 고정
-      - TEST_TWO_PLAYER_MATCH=1
+      - TEST_TWO_PLAYER_MATCH=0
     depends_on:
       redis:
         condition: service_healthy
@@ -87,7 +87,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
       # #129 선물 수동 테스트 — 실플레이어 2명 + 봇 3명, 신청 순서대로 1번→2번 타겟 고정
-      - TEST_TWO_PLAYER_MATCH=1
+      - TEST_TWO_PLAYER_MATCH=0
     depends_on:
       redis:
         condition: service_healthy
