@@ -167,6 +167,8 @@ public partial class GameClientSession
 
         if (msg.Accepted)
         {
+            requesterSession.ModifyStats(-InteractStaminaCost);
+
             // 수락 시 양쪽 세션에 활성 대화 상대 설정
             requesterSession._activeConversationPlayerId = PlayerId.Value;
             _activeConversationPlayerId = requesterPlayerId;
@@ -191,7 +193,12 @@ public partial class GameClientSession
         if (BotPlayerManager.IsBotPlayerId(msg.PlayerId))
         {
             var bot = _botPlayerManager.GetBot(CurrentMapSubId, msg.PlayerId);
-            if (bot != null) bot.InteractionStayUntil = DateTime.UtcNow.AddSeconds(5);
+            if (bot != null)
+            {
+                bot.IsInInteraction = false;
+                bot.InteractionStayUntil = DateTime.MinValue;
+                bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(5);
+            }
 
             // active conversation 해제 → HandleAreaMove 차단 풀림.
             if (_activeConversationPlayerId == msg.PlayerId) _activeConversationPlayerId = null;
@@ -392,11 +399,17 @@ public partial class GameClientSession
         // InteractionStayUntil은 사용자가 INTERACT_END를 안 보내고 끊어지는 등의 이상 케이스용 fallback.
         // 정상 종료 시 HandlePlayerInteractEnd가 +5초로 단축 → 5초 후 봇 walking 재개.
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
-        if (bot != null)
+        if (bot is not { IsEliminated: false } || bot.CurrentArea != CurrentArea)
         {
-            bot.IsInInteraction = true;
-            bot.InteractionStayUntil = DateTime.UtcNow.AddMinutes(5); // 안전 fallback
+            using var errorPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(botPlayerId, ErrorCode.AREA_MISMATCH);
+            Send(errorPacket);
+            Logger.LogInformation(
+                "봇 1:1 요청 실패: BotId={Bot}, Requester={Requester}, BotArea={BotArea}, RequesterArea={RequesterArea}",
+                botPlayerId, requesterPlayerId, bot?.CurrentArea, CurrentArea);
+            return;
         }
+
+        bot.HoldForInteraction(TimeSpan.FromMinutes(5)); // 안전 fallback
 
         // pending 저장 — HandleAreaMove에서 영역 이동 차단 + 클라 InteractAlert UX와 정합.
         _pendingInteractPlayerId = botPlayerId;
@@ -411,7 +424,8 @@ public partial class GameClientSession
         bool accepted;
         if (DemoMode.IsActive)
         {
-            accepted = _botPlayerManager.DecideAcceptInteraction(CurrentMapSubId, botPlayerId, _missionManager);
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            accepted = bot is { IsEliminated: false };
         }
         else
         {
@@ -438,13 +452,20 @@ public partial class GameClientSession
         _pendingInteractPlayerId = null;
         if (accepted)
         {
+            ModifyStats(-InteractStaminaCost);
+
             _activeConversationPlayerId = botPlayerId;
+            if (DemoMode.IsActive) SendBotInteractionChoices(botPlayerId);
         }
         else
         {
             _lastInteractRejectTime = DateTime.UtcNow;
             // 거절 시 즉시 정지 해제
-            if (bot != null) bot.IsInInteraction = false;
+            if (bot != null)
+            {
+                bot.IsInInteraction = false;
+                bot.InteractionStayUntil = DateTime.MinValue;
+            }
         }
         // 수락 시: IsInInteraction는 InteractionStayUntil(5분)까지 유지 → 봇 정지.
         // 사용자가 INTERACT_END 보내면 HandlePlayerInteractEnd가 +5초로 단축.

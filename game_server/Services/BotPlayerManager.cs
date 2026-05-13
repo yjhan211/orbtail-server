@@ -99,7 +99,7 @@ public partial class BotPlayerManager
                 Position = startPosition,
                 Rotation = 0f,
                 Stamina = 100,   // 실제 플레이어와 동일
-                Corruption = 50, // 게임 시작 시 정신력 50%
+                Corruption = 0, // 게임 시작 시 정신력 100%
                 ManittoStatus = ManittoStatus.ACTIVE,
                 LastMoveTime = DateTime.UtcNow,
                 LastMissionTickTime = DateTime.UtcNow,
@@ -318,6 +318,10 @@ public class BotPlayerState
     /// <summary>상호작용 수락 후 봇 정지 유지 종료 시각. WalkStep이 이 시각 이후 IsInInteraction을 자동 해제.</summary>
     public DateTime InteractionStayUntil { get; set; } = DateTime.MinValue;
 
+    public AreaType PendingForcedInteractArea { get; set; } = AreaType.None;
+
+    public int PendingForcedInteractId { get; set; }
+
     /// <summary>매칭 시작 시각. DemoMode H4 봇 race 페이스 캡 계산용.</summary>
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
 
@@ -348,6 +352,16 @@ public class BotPlayerState
 
     /// <summary>봇이 마지막으로 1:1 응답한 상대 (자기 자신과 동일 PlayerId면 응답 X)</summary>
     public long LastInteractRespondedTo { get; set; }
+
+    public HashSet<long> TargetInterrogatedPlayerIds { get; } = new();
+
+    public void HoldForInteraction(TimeSpan fallbackDuration)
+    {
+        IsInInteraction = true;
+        InteractionStayUntil = DateTime.UtcNow.Add(fallbackDuration);
+        TransitionPauseUntil = DateTime.MinValue;
+        WalkVelocity = new Vector3f(0f, 0f, 0f);
+    }
 
     // === #134 RNG 채집 통합 ===
     /// <summary>봇이 walking으로 접근 중인 InteractObject Id. 0이면 없음.

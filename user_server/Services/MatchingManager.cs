@@ -185,6 +185,7 @@ public class MatchingManager : IMatchingManager
 
                 // 원형 체인 생성: 셔플 후 A→B→C→D→E→A (화살표 = 마니또 관계)
                 var chain = await BuildManittoChain(allGroupEntries.ToArray());
+                await ApplyTwoPlayerTestTargetOutfitAsync(chain);
 
                 // 봇 정보 Redis 저장 (game_server에서 로드). 5인 원형 체인 정합 — 봇 타겟은 체인 다음 노드.
                 var botInfoList = new List<BotMatchingInfo>();
@@ -411,6 +412,64 @@ public class MatchingManager : IMatchingManager
             string.Join(" → ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" → {players[0].PlayerId}");
 
         return chain;
+    }
+
+    private async Task ApplyTwoPlayerTestTargetOutfitAsync(List<ManittoChainLink> chain)
+    {
+        if (!IsTwoPlayerTestMatch) return;
+
+        var targetOutfitItemIds = new[]
+        {
+            101000005, // 하늘 바람머리
+            102000005, // 조용한 친구 얼굴
+            103000003, // 동그란 뿔테 안경
+            104000007, // 넥타이 하복 상의
+            105000007, // 하복 바지
+            106000004  // 로퍼
+        };
+
+        var realPlayers = chain
+            .Select(link => MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry))
+            .Where(data => data.PlayerId >= 0)
+            .OrderBy(data => data.RequestTime)
+            .ThenBy(data => data.PlayerId)
+            .ToList();
+
+        if (realPlayers.Count < 2) return;
+
+        long targetPlayerId = realPlayers[1].PlayerId;
+
+        await using (await PlayerInfo.Lock(_redLock, targetPlayerId))
+        {
+            var targetPlayer = await PlayerInfo.Load(_cacheHelper, targetPlayerId);
+            if (targetPlayer == null)
+            {
+                _logger.LogWarning("2인 매칭 외형 복사 실패: 두 번째 플레이어 로드 실패 ({PlayerId})", targetPlayerId);
+                return;
+            }
+
+            foreach (var item in targetPlayer.InventoryInfo.ItemDict.Values) item.IsWear = false;
+
+            targetPlayer.WearItemIdList.Clear();
+            foreach (int itemId in targetOutfitItemIds)
+            {
+                var targetItem = targetPlayer.InventoryInfo.ItemDict.Values.FirstOrDefault(item => item.ItemId == itemId);
+                if (targetItem == null)
+                {
+                    long itemUid = await _cacheHelper.StringIncrementAsync("item_uid_counter");
+                    targetItem = new ItemInfo(itemUid, itemId, 1);
+                    targetPlayer.InventoryInfo.ItemDict.Add(targetItem.ItemUid, targetItem);
+                }
+
+                targetItem.IsWear = true;
+                targetPlayer.WearItemIdList.Add(itemId);
+            }
+
+            await targetPlayer.Save(_cacheHelper);
+        }
+
+        _logger.LogInformation("2인 매칭 타겟 외형 고정: Player2={TargetPlayerId}, Items={Items}",
+            targetPlayerId, string.Join(", ", targetOutfitItemIds));
     }
 
     /// <summary>

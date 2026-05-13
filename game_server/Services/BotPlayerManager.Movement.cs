@@ -157,6 +157,16 @@ public partial class BotPlayerManager
             }
         }
 
+        if (bot.PendingForcedInteractId > 0 && bot.PendingForcedInteractArea != AreaType.None)
+        {
+            if (TryStartBotInteractPath(bot, matchingId, bot.PendingForcedInteractArea,
+                    bot.PendingForcedInteractId, closureManager))
+                return null;
+
+            bot.PendingForcedInteractArea = AreaType.None;
+            bot.PendingForcedInteractId = 0;
+        }
+
         // issue22 디버그: 도착 후 대기 중이면 walking 스킵
         if (now < bot.LoopWaitUntil) return null;
 
@@ -406,13 +416,66 @@ public partial class BotPlayerManager
             // walking 시작 시 EXPLORE_END broadcast 안전망 — 봇이 RNG progress 끝나고 같은 영역 내 다음 셀로 이동 시 EXPLORE_1 잔존 회피.
             bot.PendingExploreEndBroadcast = true;
             // 짧은 대기 — 클라가 walking 시작 직전 잠시 멈춤
-            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(1);
+            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(5);
             _logger.LogInformation(
                 "봇 영역내 다음 InteractObject: BotId={Bot}, Area={Area}, InteractId={Iid}@{Cell}, 큐잔량={Q}",
                 bot.PlayerId, bot.CurrentArea, nextId, targetCell, bot.InteractQueueInArea.Count);
             return true;
         }
         return false;
+    }
+
+    public bool TrySendBotToInteract(long matchingId, long botPlayerId, AreaType area, int interactId,
+        AreaClosureManager closureManager)
+    {
+        var bot = GetBot(matchingId, botPlayerId);
+        if (bot == null || bot.IsEliminated) return false;
+        if (bot.IsInInteraction)
+        {
+            bot.PendingForcedInteractArea = area;
+            bot.PendingForcedInteractId = interactId;
+            _logger.LogInformation(
+                "봇 상호작용 중 선물 회수 이동 예약: BotId={Bot}, Area={Area}, InteractId={InteractId}",
+                bot.PlayerId, area, interactId);
+            return false;
+        }
+
+        return TryStartBotInteractPath(bot, matchingId, area, interactId, closureManager);
+    }
+
+    private bool TryStartBotInteractPath(BotPlayerState bot, long matchingId, AreaType area, int interactId,
+        AreaClosureManager closureManager)
+    {
+        if (bot.IsEliminated) return false;
+        if (closureManager.IsAreaClosed(matchingId, area)) return false;
+
+        var info = GameInteractableData.Get(interactId);
+        if (info == null || info.ZoneId != (int)area) return false;
+        if (info.CellX == 0 && info.CellY == 0) return false;
+
+        var mapId = GetMatchingMapId(matchingId);
+        var targetCell = new Cell(info.CellX, info.CellY);
+        var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
+            area, targetCell,
+            a => closureManager.IsAreaClosed(matchingId, a));
+        if (path == null || path.Count == 0) return false;
+
+        bot.Path = path;
+        bot.PathIndex = 0;
+        bot.PendingRngInteractId = interactId;
+        bot.InteractQueueInArea.Clear();
+        bot.RngCollectProgressStartTime = DateTime.MinValue;
+        bot.IsInInteraction = false;
+        bot.InteractionStayUntil = DateTime.MinValue;
+        bot.PendingForcedInteractArea = AreaType.None;
+        bot.PendingForcedInteractId = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        bot.PendingExploreEndBroadcast = true;
+
+        _logger.LogInformation(
+            "봇 선물 회수 이동 시작: BotId={Bot}, Area={Area}, InteractId={InteractId}, Steps={Steps}",
+            bot.PlayerId, area, interactId, path.Count);
+        return true;
     }
 
     /// <summary>

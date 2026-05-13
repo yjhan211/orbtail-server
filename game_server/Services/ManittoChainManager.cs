@@ -27,9 +27,31 @@ public class ManittoChainManager
     {
         var state = _states.GetOrAdd(matchingId, _ => new MatchingChainState { MatchingId = matchingId });
 
-        if (state.Links.ContainsKey(link.PlayerId))
+        if (state.Links.TryGetValue(link.PlayerId, out var existing))
         {
-            _logger.LogDebug("이미 등록된 링크: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId, link.PlayerId);
+            if (existing.TargetPlayerId != link.TargetPlayerId
+                || existing.MyJobTitle != link.MyJobTitle
+                || existing.TargetJobTitle != link.TargetJobTitle)
+            {
+                _logger.LogWarning(
+                    "마니또 체인 링크 갱신: MatchingId={MatchingId}, PlayerId={PlayerId}, Target {OldTarget}->{NewTarget}, Job {OldJob}->{NewJob}, TargetJob {OldTargetJob}->{NewTargetJob}",
+                    matchingId, link.PlayerId, existing.TargetPlayerId, link.TargetPlayerId,
+                    existing.MyJobTitle, link.MyJobTitle, existing.TargetJobTitle, link.TargetJobTitle);
+
+                existing.TargetPlayerId = link.TargetPlayerId;
+                existing.MyJobTitle = link.MyJobTitle;
+                existing.TargetJobTitle = link.TargetJobTitle;
+                existing.Status = link.Status;
+                existing.HasUsedDetection = link.HasUsedDetection;
+                existing.EliminationReason = link.EliminationReason;
+                existing.EliminatedAt = link.EliminatedAt;
+            }
+            else
+            {
+                _logger.LogDebug("?대? ?깅줉??留곹겕: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId,
+                    link.PlayerId);
+            }
+
             return;
         }
 
@@ -46,6 +68,12 @@ public class ManittoChainManager
     {
         if (!_states.TryGetValue(matchingId, out var state)) return null;
         return state.Links.GetValueOrDefault(playerId);
+    }
+
+    public ChainLink? FindManittoOf(long matchingId, long playerId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state)) return null;
+        return state.Links.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
     }
 
     /// <summary>

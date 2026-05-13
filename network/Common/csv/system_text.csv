@@ -94,12 +94,14 @@ id,category,text_kr,text_en,text_jp
 10047,4,<color=#FF7E9A>선물</color> 준비에 실패했습니다.,Failed to prepare the <color=#FF7E9A>gift</color>.,<color=#FF7E9A>贈り物</color>の準備に失敗しました。
 10048,4,<color=#A8D4E0>{0}</color>에 <color=#A8D4E0>{1}</color>을 위한 선물을 준비합니다.,Preparing a gift for <color=#A8D4E0>{1}</color> at <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>に<color=#A8D4E0>{1}</color>への贈り物を用意します。
 10049,4,<color=#FF7E9A>다른 이를 향한 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>gift meant for someone else</color>.,<color=#FF7E9A>他の誰かに向けた贈り物</color>を見つけました。
-10050,4,<color=#FF7E9A>마니또의 비밀 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>secret gift from your manitto</color>.,<color=#FF7E9A>マニットの秘密の贈り物</color>を見つけました。
+10050,4,<color=#FF7E9A>마니또의 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>secret gift from your manitto</color>.,<color=#FF7E9A>マニットの秘密の贈り物</color>を見つけました。
 10051,4,<color=#A8D4E0>전달</color> 비밀 선물이 전해졌습니다. ({0}/{1}),<color=#A8D4E0>Delivery</color> Secret gift delivered. ({0}/{1}),<color=#A8D4E0>届け物</color> 秘密の贈り物が届きました。({0}/{1})
+10057,4,<color=#A8D4E0>{0}</color>이 비밀 선물을 발견했습니다.,<color=#A8D4E0>{0}</color> found the secret gift.,<color=#A8D4E0>{0}</color>が秘密の贈り物を見つけました。
 10052,4,당신이 선물을 배치한 곳입니다. 재시도시 <color=#FF7E9A>회수</color>합니다.,This is where you placed your gift. Try again to <color=#FF7E9A>retrieve</color> it.,あなたが贈り物を置いた場所です。もう一度試すと<color=#FF7E9A>回収</color>します。
 10053,4,선물을 <color=#FF7E9A>회수</color>했습니다.,You <color=#FF7E9A>retrieved</color> the gift.,贈り物を<color=#FF7E9A>回収</color>しました。
 10054,4,선물 <color=#FF7E9A>회수</color>에 실패했습니다.,Failed to <color=#FF7E9A>retrieve</color> the gift.,贈り物の<color=#FF7E9A>回収</color>に失敗しました。
 10055,4,<color=#A8D4E0>{0}</color>과 마주했습니다. 정신력이 회복됩니다.,You encountered <color=#A8D4E0>{0}</color>. Your sanity is recovering.,<color=#A8D4E0>{0}</color>と出会いました。精神力が回復します。
+10056,4,답변이 <color=#A8D4E0>학생 수첩</color>에 기록되었습니다.,The answer was recorded in the <color=#A8D4E0>student notebook</color>.,回答が<color=#A8D4E0>学生手帳</color>に記録されました。
 11000,5,방송부원,Broadcasting Member,放送部員
 11001,5,선도부원,Disciplinary Committee Member,風紀委員
 11002,5,도서위원,Library Committee Member,図書委員
@@ -116,6 +118,11 @@ id,category,text_kr,text_en,text_jp
 11030,6,<color=#A8D4E0>{0}</color> 미션을 수행하러 왔습니다.,I came to perform the <color=#A8D4E0>{0}</color> mission.,<color=#A8D4E0>{0}</color>のミッションを遂行しに来ました。
 11031,6,구역 폐쇄로 인해 지나가던 도중입니다.,I was passing through because of the area closure.,区域閉鎖のため通りかかったところです。
 11032,6,저는 당신의 마니또입니다.,I am your manitto.,私はあなたのマニットです。
+11033,6,{0}에 온 이유가 무엇입니까?,Why did you come to {0}?,{0}に来た理由は何ですか?
+11034,6,구역 폐쇄로 인해 지나가는 도중이었습니다.,I was passing through because of the area closure.,区域閉鎖のため通りかかっているところでした。
+11035,6,<color=#A8D4E0>{0}</color> 미션을 수행하는 도중이었습니다.,I was working on the <color=#A8D4E0>{0}</color> mission.,<color=#A8D4E0>{0}</color>のミッションを遂行しているところでした。
+11036,6,스태미나 회복 물품을 수집하는 중입니다.,I am collecting stamina recovery items.,スタミナ回復アイテムを集めています。
+11037,6,<color=#A8D4E0>도서위원</color> 미션을 수행하러 왔습니다.,I came to perform the <color=#A8D4E0>Library Committee</color> mission.,<color=#A8D4E0>図書委員</color>のミッションを遂行しに来ました。
 11040,6,저는 <color=#A8D4E0>{0}</color>입니다.,I am a <color=#A8D4E0>{0}</color>.,私は<color=#A8D4E0>{0}</color>です。
 11041,6,저는 그때 <color=#A8D4E0>{0}</color>에 있었습니다.,I was at the <color=#A8D4E0>{0}</color> at that time.,私はその時<color=#A8D4E0>{0}</color>にいました。
 11042,6,<color=#FF7E9A>{0}</color>을(를) 주장하는 사람이 여러 명 발견되었습니다!,Multiple people are claiming to be a <color=#FF7E9A>{0}</color>!,<color=#FF7E9A>{0}</color>を主張する人が複数発見されました!
@@ -132,7 +139,7 @@ id,category,text_kr,text_en,text_jp
 12008,7,마스터 볼륨,Master Volume,マスター音量
 12009,7,계정 설정,Account Settings,アカウント設定
 12010,7,플레이어 아이디를 입력하세요.,Enter a player ID.,プレイヤーIDを入力してください。
-12011,7,도서위원 미션 3회 완료,Complete 3 Library Committee missions,図書委員ミッションを3回完了
+12011,7,도서위원 미션 3회 완료,Library Committee Mission x3,図書委員ミッションを3回完了
 12012,7,커스터마이징,Customization,カスタマイズ
 12013,7,급식 조리의 대가,School Lunch Master,給食調理の達人
 12014,7,[퇴교 절차],[Dismissal Procedure],[下校手順]
@@ -150,6 +157,27 @@ id,category,text_kr,text_en,text_jp
 12026,7,그룹 현황,Group Status,グループ状況
 12027,7,행정실,Admin Office,事務室
 12028,7,창고,Storage,倉庫
-12029,7,지도,Map,地図
+12029,7,현황,Status,状況
 12030,7,배낭,Backpack,バックパック
 12031,7,[ 확인 ],[ Confirm ],[ 確認 ]
+12032,7,[안내],[Guide],[案内]
+12033,7,당신은 {TargetName}의 마니또입니다.,You are {TargetName}'s Manitto.,あなたは{TargetName}のマニットです。
+12034,7,{TargetName}의 곁에 있어야 합니다.,You must stay near {TargetName}.,{TargetName}のそばにいなければなりません。
+12035,7,하지만 정체를 들켜서는 안 됩니다.,Do not reveal yourself.,正体を知られてはいけません。
+12036,7,"그리고, 누군가도 당신을 쫓고 있습니다.",Someone is following you too.,そして、あなたを追っている者もいます。
+12037,7,학교의 구역은 점차 폐쇄됩니다.,School zones will close one by one.,学校の区域は少しずつ閉鎖されます。
+12038,7,살아남아 미션을 완수하세요.,Survive and complete your missions.,生き延びて、ミッションを完遂してください。
+12039,7,오직 한 명만이 탈출합니다.,Only one person escapes.,脱出できるのはただ一人です。
+12040,7,첫사랑,First Love,初恋
+12041,7,반장,Class President,学級委員
+12042,7,만인의 짝꿍,Best Friend,みんなの相棒
+12043,7,그리운 친구,Dear Old Friend,懐かしい友達
+12044,7,당신은 승리했습니다.,You won.,あなたは勝利しました。
+12045,7,당신은 <color={0}>색출</color>되어 <color={0}>탈락</color>했습니다.,You were <color={0}>exposed</color> and <color={0}>eliminated</color>.,あなたは<color={0}>正体を暴かれて</color><color={0}>脱落</color>しました。
+12046,7,당신은 <color={0}>체력이 모두 소모</color>되어 <color={0}>탈락</color>했습니다.,Your <color={0}>stamina was fully depleted</color> and you were <color={0}>eliminated</color>.,あなたは<color={0}>体力がすべて尽きた</color>ため、<color={0}>脱落</color>しました。
+12047,7,다른 플레이어가 먼저 탈출하여 <color={0}>패배</color>했습니다.,Another player escaped first and you <color={0}>lost</color>.,他のプレイヤーが先に脱出したため、<color={0}>敗北</color>しました。
+12048,7,당신은 <color={0}>정신력이 모두 소모</color>되어 <color={0}>탈락</color>했습니다.,Your <color={0}>sanity was fully depleted</color> and you were <color={0}>eliminated</color>.,あなたは<color={0}>精神力がすべて尽きた</color>ため、<color={0}>脱落</color>しました。
+12049,7,클릭하여 로비로 복귀합니다.,Click to return to the lobby.,クリックしてロビーに戻ります。
+12050,7,결과 보고서,Result Report,結果報告書
+12051,7,요약,Summary,要約
+12052,7,<color=#F1325A>폐쇄된 구역</color>에 있습니다. 즉시 이탈하세요.,You are in a <color=#F1325A>closed zone</color>. Leave immediately.,<color=#F1325A>閉鎖区域</color>にいます。すぐに離脱してください。

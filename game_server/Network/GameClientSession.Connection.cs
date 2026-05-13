@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -69,6 +71,7 @@ public partial class GameClientSession
             {
                 _lastValidatedPosition = playerInfo.ObjectInfo.Position;
                 _lastValidCell = playerInfo.ObjectInfo.Cell;
+                _lastValidatedRotation = playerInfo.ObjectInfo.Rotation;
                 // 초기 Area 설정
                 CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
                 Logger.LogInformation(
@@ -109,7 +112,6 @@ public partial class GameClientSession
             }
 
             // 인게임 인벤토리 목록 전송
-            GiveTwoPlayerTestGiftsIfNeeded();
             SendInGameInventoryList();
 
             // 문 초기 상태 설정 및 열린 문 목록 전송
@@ -136,37 +138,6 @@ public partial class GameClientSession
             };
             packet.SetBody(MessagePackSerializer.Serialize(response));
             Send(packet);
-        }
-    }
-
-    private void GiveTwoPlayerTestGiftsIfNeeded()
-    {
-        if (!DevFlags.TestTwoPlayerMatch) return;
-        if (!PlayerId.HasValue) return;
-        if (MyJobTitle != JobTitle.LIBRARY_COMMITTEE) return;
-
-        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
-        if (state == null) return;
-
-        int[] giftItemIds = { 900000305, 900000306 };
-        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-
-        foreach (int itemId in giftItemIds)
-        {
-            if (!GameMissionData.TryGetPartIdFromItemId(itemId, out int partId)) continue;
-
-            lock (state.SyncRoot)
-            {
-                state.CollectedParts.Add(partId);
-            }
-
-            if (inventory.GetAllItems().Any(item => item.ItemId == itemId && item.GiftState == GiftState.Prepared))
-                continue;
-
-            _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, 1, GiftState.Prepared);
-            Logger.LogWarning(
-                "[DEV] 2인 테스트 선물 지급: PlayerId={PlayerId}, ItemId={ItemId}, PartId={PartId}",
-                PlayerId, itemId, partId);
         }
     }
 
@@ -276,14 +247,16 @@ public partial class GameClientSession
     /// </summary>
     private async Task LoadBotsIfNeeded(long matchingId, MapId mapId)
     {
-        if (_botPlayerManager.HasBots(matchingId)) return;
-
         try
         {
             var botData = await CacheHelper.HashGetAsync("matching_bots", matchingId);
             if (botData.IsNullOrEmpty) return;
 
             var botInfoList = MessagePackSerializer.Deserialize<List<BotMatchingInfo>>((byte[])botData!);
+            if (_botPlayerManager.HasBots(matchingId)
+                && IsSameBotChain(_botPlayerManager.GetBots(matchingId), botInfoList))
+                return;
+
             _botPlayerManager.RegisterBots(matchingId, mapId, botInfoList);
 
             // 봇도 체인 매니저 + 미션 매니저에 등록 (#26: 봇 부품 회수/결합 시뮬용)
@@ -305,6 +278,22 @@ public partial class GameClientSession
         {
             Logger.LogWarning(ex, "봇 정보 로드 실패: MatchingId={MatchingId}", matchingId);
         }
+    }
+
+    private static bool IsSameBotChain(List<BotPlayerState> existingBots, List<BotMatchingInfo> botInfoList)
+    {
+        if (existingBots.Count != botInfoList.Count) return false;
+
+        var existingById = existingBots.ToDictionary(b => b.PlayerId);
+        foreach (var botInfo in botInfoList)
+        {
+            if (!existingById.TryGetValue(botInfo.PlayerId, out var existing)) return false;
+            if (existing.TargetPlayerId != botInfo.TargetPlayerId) return false;
+            if (existing.MyJobTitle != botInfo.MyJobTitle) return false;
+            if (existing.TargetJobTitle != botInfo.TargetJobTitle) return false;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -361,7 +350,7 @@ public partial class GameClientSession
         Logger.LogInformation("시간 초과 승자: MatchingId={MatchingId}, WinnerId={WinnerId}", matchingId, winnerId);
 
         // 결과 패킷 전송
-        SendGameResult(sessions, winnerId ?? 0, true);
+        SendGameResult(sessions, winnerId ?? 0, true, matchingId);
     }
 
 }

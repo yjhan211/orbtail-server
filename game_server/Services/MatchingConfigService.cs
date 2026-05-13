@@ -41,13 +41,25 @@ public class MatchingConfigService
 
     // ─── 폐쇄 Config ────────────────────────────────────────────────────────
 
-    public ClosureConfig GetClosureConfig() =>
-        new()
+    public ClosureConfig GetClosureConfig()
+    {
+        if (DemoMode.IsActive)
+        {
+            return new ClosureConfig
+            {
+                StartDelaySec = DemoMode.ClosureStartDelaySec,
+                IntervalSec = DemoMode.ClosureIntervalSec,
+                ForcedSequence = new List<AreaType>(DemoMode.ForcedClosureSequence)
+            };
+        }
+
+        return new ClosureConfig
         {
             StartDelaySec = _startDelaySec,
             IntervalSec = _intervalSec,
             ForcedSequence = _forcedSequence != null ? new List<AreaType>(_forcedSequence) : null
         };
+    }
 
     /// <summary>
     ///     서버 시작 시 Redis에서 폐쇄 config 로드 (재시작/핫리로드 후에도 보존).
@@ -72,11 +84,13 @@ public class MatchingConfigService
                 _forcedSequence = ints?.Select(v => (AreaType)v).ToList();
             }
 
-            // DEMO_MODE 활성 + Redis에 강제 시퀀스 없으면 DemoMode.ForcedClosureSequence 기본 적용
-            if (_forcedSequence == null && DemoMode.IsActive)
+            // DEMO_MODE에서는 Redis에 남은 이전 설정보다 시연용 폐쇄 기본값을 우선한다.
+            if (DemoMode.IsActive)
             {
+                _startDelaySec = DemoMode.ClosureStartDelaySec;
+                _intervalSec = DemoMode.ClosureIntervalSec;
                 _forcedSequence = new List<AreaType>(DemoMode.ForcedClosureSequence);
-                _logger.LogInformation("DEMO_MODE 활성 — 폐쇄 시퀀스 기본값으로 DemoMode.ForcedClosureSequence 적용");
+                _logger.LogInformation("DEMO_MODE 활성 — 폐쇄 config를 시연 기본값으로 고정");
             }
 
             _logger.LogInformation(
@@ -124,8 +138,8 @@ public class MatchingConfigService
 
     public async Task ResetClosureConfigAsync()
     {
-        _startDelaySec = DefaultStartDelaySec;
-        _intervalSec = DefaultIntervalSec;
+        _startDelaySec = DemoMode.IsActive ? DemoMode.ClosureStartDelaySec : DefaultStartDelaySec;
+        _intervalSec = DemoMode.IsActive ? DemoMode.ClosureIntervalSec : DefaultIntervalSec;
         // DEMO_MODE 활성 시 DemoMode.ForcedClosureSequence로 복원 (GDD 정합), 비활성 시 무작위(null)
         _forcedSequence = DemoMode.IsActive ? new List<AreaType>(DemoMode.ForcedClosureSequence) : null;
         await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, StartDelayRedisField);

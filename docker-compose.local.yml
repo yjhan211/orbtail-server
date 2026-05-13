@@ -3,7 +3,7 @@ services:
     image: redis:7-alpine
     container_name: manitto-redis-dev
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data-dev:/data
     command: redis-server --appendonly yes
@@ -17,8 +17,8 @@ services:
     image: nats:latest
     container_name: manitto-nats-dev
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
     command: "-m 8222"
 
   game_server:
@@ -47,10 +47,11 @@ services:
       - natsEndPoint=nats://nats:4222
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
+      - DEMO_MODE=LB
       # #79 RNG 채집 시연/테스트용 — 모든 게임 종료 트리거 차단. 운영/시연 빌드에서는 제거
-      - DISABLE_GAME_END=1
+      - DISABLE_GAME_END=0
       # #129 선물 수동 테스트 — 실플레이어 2명 + 봇 3명, 신청 순서대로 1번→2번 타겟 고정
-      - TEST_TWO_PLAYER_MATCH=1
+      - TEST_TWO_PLAYER_MATCH=0
     depends_on:
       redis:
         condition: service_healthy
@@ -86,8 +87,9 @@ services:
       - GAME_SERVER_PORT=${GAME_SERVER_PORT:-9001}
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
+      - DEMO_MODE=LB
       # #129 선물 수동 테스트 — 실플레이어 2명 + 봇 3명, 신청 순서대로 1번→2번 타겟 고정
-      - TEST_TWO_PLAYER_MATCH=1
+      - TEST_TWO_PLAYER_MATCH=0
     depends_on:
       redis:
         condition: service_healthy

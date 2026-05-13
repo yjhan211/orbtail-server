@@ -1,6 +1,7 @@
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.helpers;
 
 namespace game_server.services;
 
@@ -11,6 +12,12 @@ namespace game_server.services;
 /// </summary>
 public class InteractionChoiceService
 {
+    public const int DemoQuestionTextId = 11033;
+    public const int DemoPassingAnswerTextId = 11034;
+    public const int DemoMissionAnswerTextId = 11035;
+    public const int DemoStaminaAnswerTextId = 11036;
+    public const int DemoManittoMissionAnswerTextId = 11037;
+
     private readonly InteractionLogManager _logManager;
     private readonly ManittoChainManager _chainManager;
 
@@ -31,6 +38,8 @@ public class InteractionChoiceService
         AreaType currentArea,
         AreaType? answererPreviousArea)
     {
+        if (DemoMode.IsActive) return GenerateDemoQuestions(currentArea);
+
         var questions = new List<InteractionQuestion>();
 
         // 1. 만남 장소 추궁 (항상 포함)
@@ -95,6 +104,20 @@ public class InteractionChoiceService
         return questions;
     }
 
+    public List<InteractionQuestion> GenerateDemoQuestions(AreaType currentArea)
+    {
+        return new List<InteractionQuestion>
+        {
+            new()
+            {
+                QuestionType = InteractionQuestionType.ASK_LOCATION,
+                TextId = DemoQuestionTextId,
+                Args = new List<TextArg> { new() { Type = TextArgType.AREA_TYPE, IntValue = (int)currentArea } },
+                ReferenceArea = currentArea
+            }
+        };
+    }
+
     /// <summary>
     ///     답변 선택지 생성 (답변자 기준)
     ///     진실: 실제 직책 / 거짓: 시스템이 제안하는 가짜 직책
@@ -133,6 +156,8 @@ public class InteractionChoiceService
             ClaimedJob = JobTitle.NONE,
             TextId = 11031
         });
+
+        if (DemoMode.IsActive) return answers;
 
         // 3. 자백
         answers.Add(new InteractionAnswer
