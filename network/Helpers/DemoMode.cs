@@ -20,6 +20,12 @@ public static class DemoMode
     /// <summary>결정론 시드 (H1). 모든 RNG가 이 값으로 인자.</summary>
     public const int Seed = 20260511;
 
+    /// <summary>데모 폐쇄 시작 지연: 게임 시작 후 60초.</summary>
+    public const int ClosureStartDelaySec = 60;
+
+    /// <summary>데모 폐쇄 간격: 첫 폐쇄 이후 30초마다.</summary>
+    public const int ClosureIntervalSec = 30;
+
     /// <summary>봇 race 페이스 캡 (H4). 봇은 게임 시작 후 이 시간 이전 결합 차단.</summary>
     public const int BotRaceMinSeconds = 420; // 7분
 
@@ -121,20 +127,16 @@ public static class DemoMode
     };
 
     /// <summary>
-    ///     시연용 폐쇄 시퀀스. 영상 시나리오 5:30 교실3, 8:30 방송실 cut과 정합.
+    ///     시연용 폐쇄 시퀀스. 60초 후 교실3(3-1)부터 시작하고 이후 30초마다 다음 구역을 닫는다.
     ///     도서관/교실2는 ProtectedAreas로 자동 제외.
     /// </summary>
     public static readonly List<AreaType> ForcedClosureSequence = new()
     {
-        AreaType.Classroom3,    // 5:30 — LB_M2 회수 완료, BR 봇은 더 이상 사용 안 함
-        AreaType.BroadcastRoom, // 8:30 — BR 봇 race 차단
-        AreaType.ExamRoom,      // 11:00 — SC 봇 부품 소실 (이미 탈락)
-        AreaType.AdminOffice,   // 12:30 — 영상 cut 외
-        AreaType.Storage,       // 13:30+ — 백업
-        AreaType.Gym,
-        AreaType.Junkyard,
-        AreaType.Corridor1F,
-        AreaType.Corridor2F,
-        AreaType.Corridor3F
+        AreaType.Classroom3,   // 3-1
+        AreaType.ExamRoom,     // 고사실
+        AreaType.AdminOffice,  // 행정실
+        AreaType.Storage,      // 창고
+        AreaType.Gym,          // 강당
+        AreaType.StaffRoom     // 교무실
     };
 }
