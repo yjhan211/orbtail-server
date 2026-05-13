@@ -191,7 +191,12 @@ public partial class GameClientSession
         if (BotPlayerManager.IsBotPlayerId(msg.PlayerId))
         {
             var bot = _botPlayerManager.GetBot(CurrentMapSubId, msg.PlayerId);
-            if (bot != null) bot.InteractionStayUntil = DateTime.UtcNow.AddSeconds(5);
+            if (bot != null)
+            {
+                bot.IsInInteraction = false;
+                bot.InteractionStayUntil = DateTime.MinValue;
+                bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(5);
+            }
 
             // active conversation 해제 → HandleAreaMove 차단 풀림.
             if (_activeConversationPlayerId == msg.PlayerId) _activeConversationPlayerId = null;

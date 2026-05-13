@@ -415,6 +415,40 @@ public partial class BotPlayerManager
         return false;
     }
 
+    public bool TrySendBotToInteract(long matchingId, long botPlayerId, AreaType area, int interactId,
+        AreaClosureManager closureManager)
+    {
+        var bot = GetBot(matchingId, botPlayerId);
+        if (bot == null || bot.IsEliminated) return false;
+        if (closureManager.IsAreaClosed(matchingId, area)) return false;
+
+        var info = GameInteractableData.Get(interactId);
+        if (info == null || info.ZoneId != (int)area) return false;
+        if (info.CellX == 0 && info.CellY == 0) return false;
+
+        var mapId = GetMatchingMapId(matchingId);
+        var targetCell = new Cell(info.CellX, info.CellY);
+        var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
+            area, targetCell,
+            a => closureManager.IsAreaClosed(matchingId, a));
+        if (path == null || path.Count == 0) return false;
+
+        bot.Path = path;
+        bot.PathIndex = 0;
+        bot.PendingRngInteractId = interactId;
+        bot.InteractQueueInArea.Clear();
+        bot.RngCollectProgressStartTime = DateTime.MinValue;
+        bot.IsInInteraction = false;
+        bot.InteractionStayUntil = DateTime.MinValue;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        bot.PendingExploreEndBroadcast = true;
+
+        _logger.LogInformation(
+            "봇 선물 회수 이동 시작: BotId={Bot}, Area={Area}, InteractId={InteractId}, Steps={Steps}",
+            bot.PlayerId, area, interactId, path.Count);
+        return true;
+    }
+
     /// <summary>
     ///     #134 — 새 영역 진입 시 그 영역의 모든 InteractObject 후보를 큐로 빌드.
     ///     자기 직책 부품 발견 풀 InteractObject가 큐 앞쪽 (탐색 동기 부여), 그 외는 뒤쪽.

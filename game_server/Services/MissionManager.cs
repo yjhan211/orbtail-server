@@ -291,6 +291,45 @@ public class MissionManager
         }
     }
 
+    public bool TryForceGiftDiscovery(long matchingId, long ownerPlayerId, long targetPlayerId,
+        int interactId, AreaType area, out GiftDiscoveryResult result)
+    {
+        result = new GiftDiscoveryResult();
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return false;
+        if (!matching.TryGetValue(ownerPlayerId, out var ownerState)) return false;
+        if (!matching.ContainsKey(targetPlayerId)) return false;
+
+        lock (ownerState.SyncRoot)
+        {
+            bool hasTargetGift = ownerState.PlacedGifts.Any(g =>
+                !g.IsDiscovered && g.TargetPlayerId == targetPlayerId && g.InteractId == interactId);
+            if (!hasTargetGift)
+            {
+                var giftPart = GameMissionData.GetParts((short)ownerState.JobTitle)
+                    .FirstOrDefault(p => p.PartTier == PartTier.Intermediate);
+                if (giftPart == null) return false;
+
+                int itemId = GameMissionData.GetPartItemId(giftPart.PartId);
+                if (itemId <= 0) return false;
+
+                ownerState.PlacedGifts.Add(new PlacedGift
+                {
+                    ItemUid = -Math.Abs(DateTime.UtcNow.Ticks),
+                    ItemId = itemId,
+                    PartId = giftPart.PartId,
+                    OwnerPlayerId = ownerPlayerId,
+                    TargetPlayerId = targetPlayerId,
+                    AreaType = area,
+                    InteractId = interactId
+                });
+            }
+        }
+
+        return TryDiscoverGift(matchingId, targetPlayerId, interactId, out result)
+               && result.DiscoveryType == GiftDiscoveryType.Target
+               && result.OwnerPlayerId == ownerPlayerId;
+    }
+
     public RecallGiftResult TryRecallGift(long matchingId, long playerId, int interactId)
     {
         if (!_matchingStates.TryGetValue(matchingId, out var matching))

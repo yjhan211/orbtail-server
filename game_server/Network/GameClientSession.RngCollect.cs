@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.helpers;
 using network.packets;
 
 namespace game_server.network;
@@ -149,6 +150,9 @@ public partial class GameClientSession
         SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId,
             outcome.StaminaReward, RngCollectCooldownSeconds);
 
+        if (otherGiftDiscovery == null)
+            TryForceDemoLibraryFinalGiftDiscovery(msg.InteractId, outcome);
+
         if (otherGiftDiscovery != null)
             SendGiftDiscovered(otherGiftDiscovery, 0);
         else
@@ -159,6 +163,54 @@ public partial class GameClientSession
         // IDLE 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
         return Task.CompletedTask;
+    }
+
+    private void TryForceDemoLibraryFinalGiftDiscovery(int interactId, RngCollectOutcome outcome)
+    {
+        if (!DemoMode.IsActive || !PlayerId.HasValue) return;
+        long playerId = PlayerId.Value;
+        if (MyJobTitle != JobTitle.LIBRARY_COMMITTEE) return;
+        if (outcome.CollectedPart is not { PartTier: PartTier.Material }) return;
+
+        var state = _missionManager.GetState(CurrentMapSubId, playerId);
+        if (state == null) return;
+
+        var materials = GameMissionData.GetMaterials((short)MyJobTitle);
+        if (materials.Count == 0) return;
+        int collectedMaterialCount = materials.Count(p => state.CollectedParts.Contains(p.PartId));
+        if (collectedMaterialCount < materials.Count) return;
+
+        var manitto = _manittoChainManager.FindManittoOf(CurrentMapSubId, playerId);
+        if (manitto == null) return;
+
+        if (!_missionManager.TryForceGiftDiscovery(
+                CurrentMapSubId,
+                manitto.PlayerId,
+                playerId,
+                interactId,
+                CurrentArea,
+                out var result))
+            return;
+
+        var receivedGift = _inGameInventoryManager.AddItem(CurrentMapSubId, playerId, result.ItemId, 1,
+            GiftState.Received);
+        SendInGameInventoryUpdate(receivedGift);
+
+        ModifyStats(corruptionDelta: GiftFoundCorruptionDelta);
+        SendGiftDiscovered(result, GiftFoundCorruptionDelta);
+        SendGiftProgressToOwner(result);
+
+        Logger.LogInformation(
+            "DEMO_MODE 도서위원 마지막 수집 선물 발견 강제: PlayerId={Player}, Manitto={Manitto}, InteractId={InteractId}",
+            playerId, manitto.PlayerId, interactId);
+
+        if (result.IsRaceComplete)
+        {
+            EndGameByRaceCompletion(result.OwnerPlayerId);
+            return;
+        }
+
+        CheckResourceElimination();
     }
 
     private bool TryHandleGiftDiscoveryBeforeCollect(int interactId, out GiftDiscoveryResult? otherGiftDiscovery)

@@ -442,12 +442,29 @@ public partial class GameClientSession
         SendPlaceGiftResult(ErrorCode.SUCCESS, msg, result.AreaType, result.TargetPlayerId);
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
         BroadcastRngCollectCooldown(msg.InteractId, 0);
+        SendTargetBotToPlacedGift(result.TargetPlayerId, result.AreaType, result.InteractId);
 
         _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
             $"비밀 선물 설치: ItemId={msg.ItemId}, InteractId={msg.InteractId}, Target={TargetPlayerId}",
             isBot: false);
 
         return Task.CompletedTask;
+    }
+
+    private void SendTargetBotToPlacedGift(long targetPlayerId, AreaType areaType, int interactId)
+    {
+        if (!BotPlayerManager.IsBotPlayerId(targetPlayerId)) return;
+
+        bool started = _botPlayerManager.TrySendBotToInteract(
+            CurrentMapSubId,
+            targetPlayerId,
+            areaType,
+            interactId,
+            _areaClosureManager);
+
+        if (started)
+            Logger.LogInformation("선물 설치 후 타겟 봇 회수 이동: BotId={Bot}, InteractId={InteractId}",
+                targetPlayerId, interactId);
     }
 
     private void SendPlaceGiftResult(ErrorCode errorCode, C_TO_G_PLACE_GIFT request, AreaType areaType,
@@ -1178,7 +1195,9 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        var questions = _interactionChoiceService.GenerateDemoQuestions();
+        var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
+        var area = bot?.CurrentArea ?? CurrentArea;
+        var questions = _interactionChoiceService.GenerateDemoQuestions(area);
         _pendingQuestions = questions;
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_CHOICES, PlayerId.Value);
@@ -1190,6 +1209,52 @@ public partial class GameClientSession
         };
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);
+    }
+
+    public bool TryStartTargetBotInterrogation(BotPlayerState bot)
+    {
+        if (!DemoMode.IsActive || !PlayerId.HasValue) return false;
+        if (IsEliminated || _activeConversationPlayerId.HasValue || _pendingInteractPlayerId.HasValue) return false;
+        if (CurrentState != PlayerState.Idle || _isSleeping) return false;
+        if (bot.IsEliminated || bot.IsInInteraction) return false;
+        if (bot.CurrentArea == AreaType.None || bot.CurrentArea != CurrentArea) return false;
+
+        _activeConversationPlayerId = bot.PlayerId;
+        _lastAskedQuestion = InteractionQuestionType.ASK_LOCATION;
+        _pendingQuestions = null;
+        _pendingAnswers = _interactionChoiceService.GenerateAnswers(
+            CurrentMapSubId,
+            PlayerId.Value,
+            _lastAskedQuestion);
+
+        bot.IsInInteraction = true;
+        bot.InteractionStayUntil = DateTime.UtcNow.AddMinutes(5);
+        bot.LoopWaitUntil = DateTime.MinValue;
+
+        using (var requestPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(bot.PlayerId, ErrorCode.SUCCESS))
+        {
+            Send(requestPacket);
+        }
+
+        using var answerChoicesPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ANSWER_CHOICES, PlayerId.Value);
+        var answerChoices = new G_TO_C_INTERACTION_ANSWER_CHOICES
+        {
+            QuestionType = _lastAskedQuestion,
+            QuestionTextId = InteractionChoiceService.DemoQuestionTextId,
+            QuestionArgs = new List<TextArg>
+            {
+                new() { Type = TextArgType.AREA_TYPE, IntValue = (int)bot.CurrentArea }
+            },
+            Answers = _pendingAnswers
+        };
+        answerChoicesPacket.SetBody(MessagePackSerializer.Serialize(answerChoices));
+        Send(answerChoicesPacket);
+
+        Logger.LogInformation(
+            "DEMO_MODE 타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
+            bot.PlayerId, PlayerId.Value, bot.CurrentArea);
+
+        return true;
     }
 
     /// <summary>
@@ -1253,17 +1318,7 @@ public partial class GameClientSession
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
         if (bot == null) return;
 
-        bool askerIsBotTarget = bot.TargetPlayerId == PlayerId.Value;
-        var answerArgs = askerIsBotTarget
-            ? new List<TextArg>()
-            : new List<TextArg>
-            {
-                new()
-                {
-                    Type = TextArgType.RAW_STRING,
-                    StringValue = ResolveDemoInteractionPlayerName(bot.TargetPlayerId)
-                }
-            };
+        var (answerTextId, answerArgs) = CreateDemoBotAnswer(bot);
 
         var result = new G_TO_C_INTERACTION_RESULT
         {
@@ -1274,9 +1329,7 @@ public partial class GameClientSession
             IsFakeDetected = false,
             ConflictTextId = 0,
             ConflictArgs = new List<TextArg>(),
-            AnswerTextId = askerIsBotTarget
-                ? InteractionChoiceService.DemoMissionAnswerTextId
-                : InteractionChoiceService.DemoManittoRevealAnswerTextId,
+            AnswerTextId = answerTextId,
             AnswerArgs = answerArgs
         };
 
@@ -1287,8 +1340,21 @@ public partial class GameClientSession
         _pendingQuestions = null;
 
         Logger.LogInformation(
-            "DEMO_MODE 봇 심문 응답: BotId={Bot}, Asker={Asker}, AskerIsTarget={IsTarget}",
-            botPlayerId, PlayerId.Value, askerIsBotTarget);
+            "DEMO_MODE 봇 심문 응답: BotId={Bot}, Asker={Asker}, AnswerTextId={AnswerTextId}",
+            botPlayerId, PlayerId.Value, answerTextId);
+    }
+
+    private static (int TextId, List<TextArg> Args) CreateDemoBotAnswer(BotPlayerState bot)
+    {
+        return Random.Shared.Next(3) switch
+        {
+            0 => (InteractionChoiceService.DemoPassingAnswerTextId, new List<TextArg>()),
+            1 => (InteractionChoiceService.DemoMissionAnswerTextId, new List<TextArg>
+            {
+                new() { Type = TextArgType.JOB_TITLE, IntValue = (int)bot.MyJobTitle }
+            }),
+            _ => (InteractionChoiceService.DemoStaminaAnswerTextId, new List<TextArg>())
+        };
     }
 
     private string ResolveDemoInteractionPlayerName(long playerId)
@@ -1311,11 +1377,28 @@ public partial class GameClientSession
             return Task.CompletedTask;
 
         long askerPlayerId = _activeConversationPlayerId.Value;
+        var selectedAnswer = _pendingAnswers[msg.AnswerIndex];
+        if (BotPlayerManager.IsBotPlayerId(askerPlayerId))
+        {
+            _interactionChoiceService.ProcessAnswer(
+                CurrentMapSubId,
+                askerPlayerId,
+                PlayerId.Value,
+                selectedAnswer.ClaimedJob,
+                CurrentArea,
+                selectedAnswer.IsTrue);
+
+            Logger.LogInformation(
+                "DEMO_MODE 타겟 봇 선심문 응답: BotId={Bot}, Answerer={Answerer}, TextId={TextId}",
+                askerPlayerId, PlayerId.Value, selectedAnswer.TextId);
+
+            _pendingAnswers = null;
+            return Task.CompletedTask;
+        }
+
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var askerSession = allSessions.FirstOrDefault(s => s.PlayerId == askerPlayerId);
         if (askerSession == null) return Task.CompletedTask;
-
-        var selectedAnswer = _pendingAnswers[msg.AnswerIndex];
 
         // 로그 기록 + 사칭 발각 체크
         var (isFakeDetected, conflictTextId, conflictArgs) = _interactionChoiceService.ProcessAnswer(

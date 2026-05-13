@@ -13,8 +13,9 @@ namespace game_server.services;
 public class InteractionChoiceService
 {
     public const int DemoQuestionTextId = 11033;
-    public const int DemoManittoRevealAnswerTextId = 11034;
+    public const int DemoPassingAnswerTextId = 11034;
     public const int DemoMissionAnswerTextId = 11035;
+    public const int DemoStaminaAnswerTextId = 11036;
 
     private readonly InteractionLogManager _logManager;
     private readonly ManittoChainManager _chainManager;
@@ -36,7 +37,7 @@ public class InteractionChoiceService
         AreaType currentArea,
         AreaType? answererPreviousArea)
     {
-        if (DemoMode.IsActive) return GenerateDemoQuestions();
+        if (DemoMode.IsActive) return GenerateDemoQuestions(currentArea);
 
         var questions = new List<InteractionQuestion>();
 
@@ -102,14 +103,16 @@ public class InteractionChoiceService
         return questions;
     }
 
-    public List<InteractionQuestion> GenerateDemoQuestions()
+    public List<InteractionQuestion> GenerateDemoQuestions(AreaType currentArea)
     {
         return new List<InteractionQuestion>
         {
             new()
             {
                 QuestionType = InteractionQuestionType.ASK_LOCATION,
-                TextId = DemoQuestionTextId
+                TextId = DemoQuestionTextId,
+                Args = new List<TextArg> { new() { Type = TextArgType.AREA_TYPE, IntValue = (int)currentArea } },
+                ReferenceArea = currentArea
             }
         };
     }
@@ -152,6 +155,8 @@ public class InteractionChoiceService
             ClaimedJob = JobTitle.NONE,
             TextId = 11031
         });
+
+        if (DemoMode.IsActive) return answers;
 
         // 3. 자백
         answers.Add(new InteractionAnswer

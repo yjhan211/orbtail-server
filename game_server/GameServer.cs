@@ -944,11 +944,35 @@ public class GameServer(
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
                     BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
+                StartTargetBotInterrogations(matchingId, activeSessions);
             }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "봇 walking 틱 처리 중 오류");
+        }
+    }
+
+    private void StartTargetBotInterrogations(long matchingId, List<GameClientSession> activeSessions)
+    {
+        if (!DemoMode.IsActive) return;
+
+        var matchingSessions = activeSessions
+            .Where(s => s.CurrentMapSubId == matchingId)
+            .ToList();
+
+        foreach (var session in matchingSessions)
+        {
+            if (!session.PlayerId.HasValue || session.IsEliminated) continue;
+            if (!BotPlayerManager.IsBotPlayerId(session.TargetPlayerId)) continue;
+
+            var bot = _botPlayerManager.GetBot(matchingId, session.TargetPlayerId);
+            if (bot == null || bot.IsEliminated || bot.IsInInteraction) continue;
+            if (bot.CurrentArea == AreaType.None || bot.CurrentArea != session.CurrentArea) continue;
+            if (bot.TargetInterrogatedPlayerIds.Contains(session.PlayerId.Value)) continue;
+
+            if (!session.TryStartTargetBotInterrogation(bot)) continue;
+            bot.TargetInterrogatedPlayerIds.Add(session.PlayerId.Value);
         }
     }
 

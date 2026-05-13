@@ -349,6 +349,8 @@ public class BotPlayerState
     /// <summary>봇이 마지막으로 1:1 응답한 상대 (자기 자신과 동일 PlayerId면 응답 X)</summary>
     public long LastInteractRespondedTo { get; set; }
 
+    public HashSet<long> TargetInterrogatedPlayerIds { get; } = new();
+
     // === #134 RNG 채집 통합 ===
     /// <summary>봇이 walking으로 접근 중인 InteractObject Id. 0이면 없음.
     /// ChooseNewWanderTarget에서 영역 + 셀 선택 시 설정, 도착 후 RNG 채집 시 0으로 clear.</summary>

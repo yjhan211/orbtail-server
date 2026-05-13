@@ -48,6 +48,12 @@ public class ManittoChainManager
         return state.Links.GetValueOrDefault(playerId);
     }
 
+    public ChainLink? FindManittoOf(long matchingId, long playerId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state)) return null;
+        return state.Links.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
+    }
+
     /// <summary>
     ///     해당 매칭에 등록된 모든 플레이어/봇의 직책 목록 (#87 — 폐쇄 셔플 우선순위 결정용).
     /// </summary>
