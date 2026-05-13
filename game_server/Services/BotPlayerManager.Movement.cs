@@ -406,7 +406,7 @@ public partial class BotPlayerManager
             // walking 시작 시 EXPLORE_END broadcast 안전망 — 봇이 RNG progress 끝나고 같은 영역 내 다음 셀로 이동 시 EXPLORE_1 잔존 회피.
             bot.PendingExploreEndBroadcast = true;
             // 짧은 대기 — 클라가 walking 시작 직전 잠시 멈춤
-            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(1);
+            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(5);
             _logger.LogInformation(
                 "봇 영역내 다음 InteractObject: BotId={Bot}, Area={Area}, InteractId={Iid}@{Cell}, 큐잔량={Q}",
                 bot.PlayerId, bot.CurrentArea, nextId, targetCell, bot.InteractQueueInArea.Count);

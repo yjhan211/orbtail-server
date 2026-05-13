@@ -1,6 +1,7 @@
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.helpers;
 
 namespace game_server.services;
 
@@ -11,6 +12,10 @@ namespace game_server.services;
 /// </summary>
 public class InteractionChoiceService
 {
+    public const int DemoQuestionTextId = 11033;
+    public const int DemoManittoRevealAnswerTextId = 11034;
+    public const int DemoMissionAnswerTextId = 11035;
+
     private readonly InteractionLogManager _logManager;
     private readonly ManittoChainManager _chainManager;
 
@@ -31,6 +36,8 @@ public class InteractionChoiceService
         AreaType currentArea,
         AreaType? answererPreviousArea)
     {
+        if (DemoMode.IsActive) return GenerateDemoQuestions();
+
         var questions = new List<InteractionQuestion>();
 
         // 1. 만남 장소 추궁 (항상 포함)
@@ -93,6 +100,18 @@ public class InteractionChoiceService
         });
 
         return questions;
+    }
+
+    public List<InteractionQuestion> GenerateDemoQuestions()
+    {
+        return new List<InteractionQuestion>
+        {
+            new()
+            {
+                QuestionType = InteractionQuestionType.ASK_LOCATION,
+                TextId = DemoQuestionTextId
+            }
+        };
     }
 
     /// <summary>

@@ -411,7 +411,8 @@ public partial class GameClientSession
         bool accepted;
         if (DemoMode.IsActive)
         {
-            accepted = _botPlayerManager.DecideAcceptInteraction(CurrentMapSubId, botPlayerId, _missionManager);
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            accepted = bot is { IsEliminated: false };
         }
         else
         {
@@ -439,6 +440,7 @@ public partial class GameClientSession
         if (accepted)
         {
             _activeConversationPlayerId = botPlayerId;
+            if (DemoMode.IsActive) SendBotInteractionChoices(botPlayerId);
         }
         else
         {

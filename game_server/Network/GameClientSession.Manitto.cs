@@ -1174,19 +1174,47 @@ public partial class GameClientSession
         answererSession.Send(answererPacket);
     }
 
+    private void SendBotInteractionChoices(long botPlayerId)
+    {
+        if (!PlayerId.HasValue) return;
+
+        var questions = _interactionChoiceService.GenerateDemoQuestions();
+        _pendingQuestions = questions;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_CHOICES, PlayerId.Value);
+        var msg = new G_TO_C_INTERACTION_CHOICES
+        {
+            PartnerPlayerId = botPlayerId,
+            IsAsker = true,
+            Questions = questions
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
+    }
+
     /// <summary>
     ///     질문자가 질문 선택
     /// </summary>
-    private Task HandleInteractionAsk(C_TO_G_INTERACTION_ASK msg)
+    private async Task HandleInteractionAsk(C_TO_G_INTERACTION_ASK msg)
     {
-        if (!PlayerId.HasValue || !_activeConversationPlayerId.HasValue) return Task.CompletedTask;
+        if (!PlayerId.HasValue || !_activeConversationPlayerId.HasValue) return;
 
         long partnerPlayerId = _activeConversationPlayerId.Value;
+        _lastAskedQuestion = msg.QuestionType;
+
+        if (BotPlayerManager.IsBotPlayerId(partnerPlayerId))
+        {
+            if (DemoMode.IsActive)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                SendDemoBotInteractionResult(partnerPlayerId);
+            }
+            return;
+        }
+
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var partnerSession = allSessions.FirstOrDefault(s => s.PlayerId == partnerPlayerId);
-        if (partnerSession == null) return Task.CompletedTask;
-
-        _lastAskedQuestion = msg.QuestionType;
+        if (partnerSession == null) return;
 
         // 답변 선택지 생성
         var answers = _interactionChoiceService.GenerateAnswers(
@@ -1205,7 +1233,7 @@ public partial class GameClientSession
         {
             QuestionType = msg.QuestionType,
             QuestionTextId = pendingQuestion?.TextId ?? 0,
-            QuestionArgs = pendingQuestion?.Args,
+            QuestionArgs = pendingQuestion?.Args ?? new List<TextArg>(),
             Answers = answers
         };
         packet.SetBody(MessagePackSerializer.Serialize(answerMsg));
@@ -1214,7 +1242,63 @@ public partial class GameClientSession
         Logger.LogInformation("상호작용 질문: Asker={Asker}, Answerer={Answerer}, Type={Type}",
             PlayerId, partnerPlayerId, msg.QuestionType);
 
-        return Task.CompletedTask;
+        return;
+    }
+
+    private void SendDemoBotInteractionResult(long botPlayerId)
+    {
+        if (!PlayerId.HasValue) return;
+        if (_activeConversationPlayerId != botPlayerId) return;
+
+        var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
+        if (bot == null) return;
+
+        bool askerIsBotTarget = bot.TargetPlayerId == PlayerId.Value;
+        var answerArgs = askerIsBotTarget
+            ? new List<TextArg>()
+            : new List<TextArg>
+            {
+                new()
+                {
+                    Type = TextArgType.RAW_STRING,
+                    StringValue = ResolveDemoInteractionPlayerName(bot.TargetPlayerId)
+                }
+            };
+
+        var result = new G_TO_C_INTERACTION_RESULT
+        {
+            PartnerPlayerId = botPlayerId,
+            QuestionType = _lastAskedQuestion,
+            ClaimedJob = bot.MyJobTitle,
+            ClaimedArea = bot.CurrentArea,
+            IsFakeDetected = false,
+            ConflictTextId = 0,
+            ConflictArgs = new List<TextArg>(),
+            AnswerTextId = askerIsBotTarget
+                ? InteractionChoiceService.DemoMissionAnswerTextId
+                : InteractionChoiceService.DemoManittoRevealAnswerTextId,
+            AnswerArgs = answerArgs
+        };
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_RESULT, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(result));
+        Send(packet);
+
+        _pendingQuestions = null;
+
+        Logger.LogInformation(
+            "DEMO_MODE 봇 심문 응답: BotId={Bot}, Asker={Asker}, AskerIsTarget={IsTarget}",
+            botPlayerId, PlayerId.Value, askerIsBotTarget);
+    }
+
+    private string ResolveDemoInteractionPlayerName(long playerId)
+    {
+        var bot = _botPlayerManager.GetBot(CurrentMapSubId, playerId);
+        if (bot != null && !string.IsNullOrEmpty(bot.Name)) return bot.Name;
+
+        return BotPlayerManager.IsBotPlayerId(playerId)
+            ? $"Bot{Math.Abs(playerId)}"
+            : $"Player{playerId}";
     }
 
     /// <summary>
