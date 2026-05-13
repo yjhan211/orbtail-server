@@ -127,12 +127,12 @@ public static class DemoMode
     };
 
     /// <summary>
-    ///     시연용 폐쇄 시퀀스. 60초 후 교실3(3-1)부터 시작하고 이후 30초마다 다음 구역을 닫는다.
+    ///     시연용 폐쇄 시퀀스. 60초 후 3-1부터 시작하고 이후 30초마다 다음 구역을 닫는다.
     ///     도서관/교실2는 ProtectedAreas로 자동 제외.
     /// </summary>
     public static readonly List<AreaType> ForcedClosureSequence = new()
     {
-        AreaType.Classroom3,   // 3-1
+        AreaType.Classroom4,   // 3-1
         AreaType.ExamRoom,     // 고사실
         AreaType.AdminOffice,  // 행정실
         AreaType.Storage,      // 창고
