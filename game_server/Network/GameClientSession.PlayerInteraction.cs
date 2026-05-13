@@ -167,6 +167,8 @@ public partial class GameClientSession
 
         if (msg.Accepted)
         {
+            requesterSession.ModifyStats(-InteractStaminaCost);
+
             // 수락 시 양쪽 세션에 활성 대화 상대 설정
             requesterSession._activeConversationPlayerId = PlayerId.Value;
             _activeConversationPlayerId = requesterPlayerId;
@@ -399,8 +401,7 @@ public partial class GameClientSession
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
         if (bot != null)
         {
-            bot.IsInInteraction = true;
-            bot.InteractionStayUntil = DateTime.UtcNow.AddMinutes(5); // 안전 fallback
+            bot.HoldForInteraction(TimeSpan.FromMinutes(5)); // 안전 fallback
         }
 
         // pending 저장 — HandleAreaMove에서 영역 이동 차단 + 클라 InteractAlert UX와 정합.
@@ -444,6 +445,8 @@ public partial class GameClientSession
         _pendingInteractPlayerId = null;
         if (accepted)
         {
+            ModifyStats(-InteractStaminaCost);
+
             _activeConversationPlayerId = botPlayerId;
             if (DemoMode.IsActive) SendBotInteractionChoices(botPlayerId);
         }
@@ -451,7 +454,11 @@ public partial class GameClientSession
         {
             _lastInteractRejectTime = DateTime.UtcNow;
             // 거절 시 즉시 정지 해제
-            if (bot != null) bot.IsInInteraction = false;
+            if (bot != null)
+            {
+                bot.IsInInteraction = false;
+                bot.InteractionStayUntil = DateTime.MinValue;
+            }
         }
         // 수락 시: IsInInteraction는 InteractionStayUntil(5분)까지 유지 → 봇 정지.
         // 사용자가 INTERACT_END 보내면 HandlePlayerInteractEnd가 +5초로 단축.

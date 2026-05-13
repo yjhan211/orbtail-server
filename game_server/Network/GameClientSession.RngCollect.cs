@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -99,6 +100,9 @@ public partial class GameClientSession
         if (TryHandleGiftDiscoveryBeforeCollect(msg.InteractId, out var otherGiftDiscovery))
             return Task.CompletedTask;
 
+        if (otherGiftDiscovery == null && TryForceDemoLibraryFinalGiftDiscovery(msg.InteractId, info))
+            return Task.CompletedTask;
+
         var outcome = RngCollectCore.Resolve(
             matchingId: CurrentMapSubId,
             playerId: PlayerId.Value,
@@ -150,9 +154,6 @@ public partial class GameClientSession
         SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId,
             outcome.StaminaReward, RngCollectCooldownSeconds);
 
-        if (otherGiftDiscovery == null)
-            TryForceDemoLibraryFinalGiftDiscovery(msg.InteractId, outcome);
-
         if (otherGiftDiscovery != null)
             SendGiftDiscovered(otherGiftDiscovery, 0);
         else
@@ -165,23 +166,28 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
-    private void TryForceDemoLibraryFinalGiftDiscovery(int interactId, RngCollectOutcome outcome)
+    private bool TryForceDemoLibraryFinalGiftDiscovery(int interactId, InteractableInfoData info)
     {
-        if (!DemoMode.IsActive || !PlayerId.HasValue) return;
+        if (!DemoMode.IsActive || !PlayerId.HasValue) return false;
         long playerId = PlayerId.Value;
-        if (MyJobTitle != JobTitle.LIBRARY_COMMITTEE) return;
-        if (outcome.CollectedPart is not { PartTier: PartTier.Material }) return;
+        if (MyJobTitle != JobTitle.LIBRARY_COMMITTEE) return false;
+        if (_forcedDemoGiftDiscoveryInteractIds.Contains(interactId)) return false;
 
         var state = _missionManager.GetState(CurrentMapSubId, playerId);
-        if (state == null) return;
+        if (state == null) return false;
 
         var materials = GameMissionData.GetMaterials((short)MyJobTitle);
-        if (materials.Count == 0) return;
-        int collectedMaterialCount = materials.Count(p => state.CollectedParts.Contains(p.PartId));
-        if (collectedMaterialCount < materials.Count) return;
+        if (materials.Count == 0) return false;
+        var remainingMaterials = materials.Where(p => !state.CollectedParts.Contains(p.PartId)).ToList();
+        if (remainingMaterials.Count != 1) return false;
+        if (remainingMaterials[0].PartTier != PartTier.Material) return false;
+        if (remainingMaterials[0].TargetArea != info.ZoneId) return false;
 
         var manitto = _manittoChainManager.FindManittoOf(CurrentMapSubId, playerId);
-        if (manitto == null) return;
+        if (manitto == null) return false;
+
+        var manittoState = _missionManager.GetState(CurrentMapSubId, manitto.PlayerId);
+        if (manittoState == null || manittoState.DeliveredGiftCount > 0) return false;
 
         if (!_missionManager.TryForceGiftDiscovery(
                 CurrentMapSubId,
@@ -190,7 +196,9 @@ public partial class GameClientSession
                 interactId,
                 CurrentArea,
                 out var result))
-            return;
+            return false;
+
+        _forcedDemoGiftDiscoveryInteractIds.Add(interactId);
 
         var receivedGift = _inGameInventoryManager.AddItem(CurrentMapSubId, playerId, result.ItemId, 1,
             GiftState.Received);
@@ -199,6 +207,9 @@ public partial class GameClientSession
         ModifyStats(corruptionDelta: GiftFoundCorruptionDelta);
         SendGiftDiscovered(result, GiftFoundCorruptionDelta);
         SendGiftProgressToOwner(result);
+        RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
+        BroadcastRngCollectCooldown(interactId, 0);
+        BroadcastPlayerState(global::network.common.PlayerState.IDLE);
 
         Logger.LogInformation(
             "DEMO_MODE 도서위원 마지막 수집 선물 발견 강제: PlayerId={Player}, Manitto={Manitto}, InteractId={InteractId}",
@@ -207,10 +218,11 @@ public partial class GameClientSession
         if (result.IsRaceComplete)
         {
             EndGameByRaceCompletion(result.OwnerPlayerId);
-            return;
+            return true;
         }
 
         CheckResourceElimination();
+        return true;
     }
 
     private bool TryHandleGiftDiscoveryBeforeCollect(int interactId, out GiftDiscoveryResult? otherGiftDiscovery)

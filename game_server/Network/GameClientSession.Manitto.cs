@@ -288,8 +288,12 @@ public partial class GameClientSession
         foreach (var session in allSessions) session.Send(resultPacket);
 
         // 기존 게임 종료 패킷도 전송 (클라이언트 호환)
-        using var endPacket = PacketMaker.G_TO_C_GAME_END(matchingId, !isTimeout);
-        foreach (var session in allSessions) session.Send(endPacket);
+        foreach (var session in allSessions)
+        {
+            bool isEscaped = !isTimeout && session.PlayerId == winnerId;
+            using var endPacket = PacketMaker.G_TO_C_GAME_END(matchingId, isEscaped);
+            session.Send(endPacket);
+        }
 
         // 결과 화면 이후 퇴장은 페널티 면제
         foreach (var session in allSessions) session.MarkGameEnded();
@@ -1218,6 +1222,7 @@ public partial class GameClientSession
         if (CurrentState != PlayerState.Idle || _isSleeping) return false;
         if (bot.IsEliminated || bot.IsInInteraction) return false;
         if (bot.CurrentArea == AreaType.None || bot.CurrentArea != CurrentArea) return false;
+        if (CurrentArea.IsCorridor()) return false;
 
         _activeConversationPlayerId = bot.PlayerId;
         _lastAskedQuestion = InteractionQuestionType.ASK_LOCATION;
@@ -1227,8 +1232,7 @@ public partial class GameClientSession
             PlayerId.Value,
             _lastAskedQuestion);
 
-        bot.IsInInteraction = true;
-        bot.InteractionStayUntil = DateTime.UtcNow.AddMinutes(5);
+        bot.HoldForInteraction(TimeSpan.FromMinutes(5));
         bot.LoopWaitUntil = DateTime.MinValue;
 
         using (var requestPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(bot.PlayerId, ErrorCode.SUCCESS))
@@ -1318,7 +1322,9 @@ public partial class GameClientSession
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
         if (bot == null) return;
 
-        var (answerTextId, answerArgs) = CreateDemoBotAnswer(bot);
+        var manitto = _manittoChainManager.FindManittoOf(CurrentMapSubId, PlayerId.Value);
+        bool isPlayersManitto = manitto?.PlayerId == botPlayerId;
+        var (answerTextId, answerArgs) = CreateDemoBotAnswer(bot, isPlayersManitto);
 
         var result = new G_TO_C_INTERACTION_RESULT
         {
@@ -1344,8 +1350,11 @@ public partial class GameClientSession
             botPlayerId, PlayerId.Value, answerTextId);
     }
 
-    private static (int TextId, List<TextArg> Args) CreateDemoBotAnswer(BotPlayerState bot)
+    private static (int TextId, List<TextArg> Args) CreateDemoBotAnswer(BotPlayerState bot, bool isPlayersManitto)
     {
+        if (isPlayersManitto)
+            return (InteractionChoiceService.DemoManittoMissionAnswerTextId, new List<TextArg>());
+
         return Random.Shared.Next(3) switch
         {
             0 => (InteractionChoiceService.DemoPassingAnswerTextId, new List<TextArg>()),

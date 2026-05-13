@@ -674,7 +674,32 @@ public class GameServer(
                 "봇 선물 발견 진행도 전송: MatchingId={MatchingId}, Owner={Owner}, BotTarget={Bot}, Delivered={Delivered}/{Required}",
                 matchingId, discovery.OwnerPlayerId, discovery.DiscovererPlayerId,
                 discovery.DeliveredCount, discovery.RequiredCount);
+            SendBotToNextPlacedGift(matchingId, discovery);
         }
+    }
+
+    private void SendBotToNextPlacedGift(long matchingId, GiftDiscoveryResult discovery)
+    {
+        if (discovery.IsRaceComplete) return;
+        if (!BotPlayerManager.IsBotPlayerId(discovery.DiscovererPlayerId)) return;
+        if (!_missionManager.TryGetNextPlacedGift(
+                matchingId,
+                discovery.OwnerPlayerId,
+                discovery.DiscovererPlayerId,
+                out var nextGift) || nextGift == null)
+            return;
+
+        bool started = _botPlayerManager.TrySendBotToInteract(
+            matchingId,
+            discovery.DiscovererPlayerId,
+            nextGift.AreaType,
+            nextGift.InteractId,
+            _areaClosureManager);
+
+        if (started)
+            logger.LogInformation(
+                "봇 다음 선물 회수 이동: MatchingId={MatchingId}, BotId={BotId}, InteractId={InteractId}",
+                matchingId, discovery.DiscovererPlayerId, nextGift.InteractId);
     }
 
     /// <summary>
@@ -969,6 +994,7 @@ public class GameServer(
             var bot = _botPlayerManager.GetBot(matchingId, session.TargetPlayerId);
             if (bot == null || bot.IsEliminated || bot.IsInInteraction) continue;
             if (bot.CurrentArea == AreaType.None || bot.CurrentArea != session.CurrentArea) continue;
+            if (session.CurrentArea.IsCorridor()) continue;
             if (bot.TargetInterrogatedPlayerIds.Contains(session.PlayerId.Value)) continue;
 
             if (!session.TryStartTargetBotInterrogation(bot)) continue;

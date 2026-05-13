@@ -157,6 +157,16 @@ public partial class BotPlayerManager
             }
         }
 
+        if (bot.PendingForcedInteractId > 0 && bot.PendingForcedInteractArea != AreaType.None)
+        {
+            if (TryStartBotInteractPath(bot, matchingId, bot.PendingForcedInteractArea,
+                    bot.PendingForcedInteractId, closureManager))
+                return null;
+
+            bot.PendingForcedInteractArea = AreaType.None;
+            bot.PendingForcedInteractId = 0;
+        }
+
         // issue22 디버그: 도착 후 대기 중이면 walking 스킵
         if (now < bot.LoopWaitUntil) return null;
 
@@ -420,6 +430,23 @@ public partial class BotPlayerManager
     {
         var bot = GetBot(matchingId, botPlayerId);
         if (bot == null || bot.IsEliminated) return false;
+        if (bot.IsInInteraction)
+        {
+            bot.PendingForcedInteractArea = area;
+            bot.PendingForcedInteractId = interactId;
+            _logger.LogInformation(
+                "봇 상호작용 중 선물 회수 이동 예약: BotId={Bot}, Area={Area}, InteractId={InteractId}",
+                bot.PlayerId, area, interactId);
+            return false;
+        }
+
+        return TryStartBotInteractPath(bot, matchingId, area, interactId, closureManager);
+    }
+
+    private bool TryStartBotInteractPath(BotPlayerState bot, long matchingId, AreaType area, int interactId,
+        AreaClosureManager closureManager)
+    {
+        if (bot.IsEliminated) return false;
         if (closureManager.IsAreaClosed(matchingId, area)) return false;
 
         var info = GameInteractableData.Get(interactId);
@@ -440,6 +467,8 @@ public partial class BotPlayerManager
         bot.RngCollectProgressStartTime = DateTime.MinValue;
         bot.IsInInteraction = false;
         bot.InteractionStayUntil = DateTime.MinValue;
+        bot.PendingForcedInteractArea = AreaType.None;
+        bot.PendingForcedInteractId = 0;
         bot.LoopWaitUntil = DateTime.MinValue;
         bot.PendingExploreEndBroadcast = true;
 

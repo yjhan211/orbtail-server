@@ -79,6 +79,7 @@ public partial class GameClientSession
             }
 
             _lastValidatedPosition = validatedPosition;
+            _lastValidatedRotation = msg.Rotation;
 
             // 4. Area 변경 처리 (퇴장 조건 통과한 경우만)
             long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();

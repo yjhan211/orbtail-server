@@ -94,12 +94,14 @@ id,category,text_kr,text_en,text_jp
 10047,4,<color=#FF7E9A>선물</color> 준비에 실패했습니다.,Failed to prepare the <color=#FF7E9A>gift</color>.,<color=#FF7E9A>贈り物</color>の準備に失敗しました。
 10048,4,<color=#A8D4E0>{0}</color>에 <color=#A8D4E0>{1}</color>을 위한 선물을 준비합니다.,Preparing a gift for <color=#A8D4E0>{1}</color> at <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>に<color=#A8D4E0>{1}</color>への贈り物を用意します。
 10049,4,<color=#FF7E9A>다른 이를 향한 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>gift meant for someone else</color>.,<color=#FF7E9A>他の誰かに向けた贈り物</color>を見つけました。
-10050,4,<color=#FF7E9A>마니또의 비밀 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>secret gift from your manitto</color>.,<color=#FF7E9A>マニットの秘密の贈り物</color>を見つけました。
+10050,4,<color=#FF7E9A>마니또의 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>secret gift from your manitto</color>.,<color=#FF7E9A>マニットの秘密の贈り物</color>を見つけました。
 10051,4,<color=#A8D4E0>전달</color> 비밀 선물이 전해졌습니다. ({0}/{1}),<color=#A8D4E0>Delivery</color> Secret gift delivered. ({0}/{1}),<color=#A8D4E0>届け物</color> 秘密の贈り物が届きました。({0}/{1})
+10057,4,<color=#A8D4E0>{0}</color>이 비밀 선물을 발견했습니다.,<color=#A8D4E0>{0}</color> found the secret gift.,<color=#A8D4E0>{0}</color>が秘密の贈り物を見つけました。
 10052,4,당신이 선물을 배치한 곳입니다. 재시도시 <color=#FF7E9A>회수</color>합니다.,This is where you placed your gift. Try again to <color=#FF7E9A>retrieve</color> it.,あなたが贈り物を置いた場所です。もう一度試すと<color=#FF7E9A>回収</color>します。
 10053,4,선물을 <color=#FF7E9A>회수</color>했습니다.,You <color=#FF7E9A>retrieved</color> the gift.,贈り物を<color=#FF7E9A>回収</color>しました。
 10054,4,선물 <color=#FF7E9A>회수</color>에 실패했습니다.,Failed to <color=#FF7E9A>retrieve</color> the gift.,贈り物の<color=#FF7E9A>回収</color>に失敗しました。
 10055,4,<color=#A8D4E0>{0}</color>과 마주했습니다. 정신력이 회복됩니다.,You encountered <color=#A8D4E0>{0}</color>. Your sanity is recovering.,<color=#A8D4E0>{0}</color>と出会いました。精神力が回復します。
+10056,4,답변이 <color=#A8D4E0>학생 수첩</color>에 기록되었습니다.,The answer was recorded in the <color=#A8D4E0>student notebook</color>.,回答が<color=#A8D4E0>学生手帳</color>に記録されました。
 11000,5,방송부원,Broadcasting Member,放送部員
 11001,5,선도부원,Disciplinary Committee Member,風紀委員
 11002,5,도서위원,Library Committee Member,図書委員
@@ -120,6 +122,7 @@ id,category,text_kr,text_en,text_jp
 11034,6,구역 폐쇄로 인해 지나가는 도중이었습니다.,I was passing through because of the area closure.,区域閉鎖のため通りかかっているところでした。
 11035,6,<color=#A8D4E0>{0}</color> 미션을 수행하는 도중이었습니다.,I was working on the <color=#A8D4E0>{0}</color> mission.,<color=#A8D4E0>{0}</color>のミッションを遂行しているところでした。
 11036,6,스태미나 회복 물품을 수집하는 중입니다.,I am collecting stamina recovery items.,スタミナ回復アイテムを集めています。
+11037,6,<color=#A8D4E0>도서위원</color> 미션을 수행하러 왔습니다.,I came to perform the <color=#A8D4E0>Library Committee</color> mission.,<color=#A8D4E0>図書委員</color>のミッションを遂行しに来ました。
 11040,6,저는 <color=#A8D4E0>{0}</color>입니다.,I am a <color=#A8D4E0>{0}</color>.,私は<color=#A8D4E0>{0}</color>です。
 11041,6,저는 그때 <color=#A8D4E0>{0}</color>에 있었습니다.,I was at the <color=#A8D4E0>{0}</color> at that time.,私はその時<color=#A8D4E0>{0}</color>にいました。
 11042,6,<color=#FF7E9A>{0}</color>을(를) 주장하는 사람이 여러 명 발견되었습니다!,Multiple people are claiming to be a <color=#FF7E9A>{0}</color>!,<color=#FF7E9A>{0}</color>を主張する人が複数発見されました!

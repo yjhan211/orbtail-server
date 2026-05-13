@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -69,6 +71,7 @@ public partial class GameClientSession
             {
                 _lastValidatedPosition = playerInfo.ObjectInfo.Position;
                 _lastValidCell = playerInfo.ObjectInfo.Cell;
+                _lastValidatedRotation = playerInfo.ObjectInfo.Rotation;
                 // 초기 Area 설정
                 CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
                 Logger.LogInformation(
@@ -244,14 +247,16 @@ public partial class GameClientSession
     /// </summary>
     private async Task LoadBotsIfNeeded(long matchingId, MapId mapId)
     {
-        if (_botPlayerManager.HasBots(matchingId)) return;
-
         try
         {
             var botData = await CacheHelper.HashGetAsync("matching_bots", matchingId);
             if (botData.IsNullOrEmpty) return;
 
             var botInfoList = MessagePackSerializer.Deserialize<List<BotMatchingInfo>>((byte[])botData!);
+            if (_botPlayerManager.HasBots(matchingId)
+                && IsSameBotChain(_botPlayerManager.GetBots(matchingId), botInfoList))
+                return;
+
             _botPlayerManager.RegisterBots(matchingId, mapId, botInfoList);
 
             // 봇도 체인 매니저 + 미션 매니저에 등록 (#26: 봇 부품 회수/결합 시뮬용)
@@ -273,6 +278,22 @@ public partial class GameClientSession
         {
             Logger.LogWarning(ex, "봇 정보 로드 실패: MatchingId={MatchingId}", matchingId);
         }
+    }
+
+    private static bool IsSameBotChain(List<BotPlayerState> existingBots, List<BotMatchingInfo> botInfoList)
+    {
+        if (existingBots.Count != botInfoList.Count) return false;
+
+        var existingById = existingBots.ToDictionary(b => b.PlayerId);
+        foreach (var botInfo in botInfoList)
+        {
+            if (!existingById.TryGetValue(botInfo.PlayerId, out var existing)) return false;
+            if (existing.TargetPlayerId != botInfo.TargetPlayerId) return false;
+            if (existing.MyJobTitle != botInfo.MyJobTitle) return false;
+            if (existing.TargetJobTitle != botInfo.TargetJobTitle) return false;
+        }
+
+        return true;
     }
 
     /// <summary>

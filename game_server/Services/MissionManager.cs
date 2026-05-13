@@ -301,10 +301,16 @@ public class MissionManager
 
         lock (ownerState.SyncRoot)
         {
+            bool hasDiscoveredTargetGift = ownerState.PlacedGifts.Any(g =>
+                g.IsDiscovered && g.TargetPlayerId == targetPlayerId && g.InteractId == interactId);
+            if (hasDiscoveredTargetGift) return false;
+
             bool hasTargetGift = ownerState.PlacedGifts.Any(g =>
                 !g.IsDiscovered && g.TargetPlayerId == targetPlayerId && g.InteractId == interactId);
             if (!hasTargetGift)
             {
+                if (ownerState.PlacedGifts.Count >= PlayerPartState.RequiredGiftDeliveries) return false;
+
                 var giftPart = GameMissionData.GetParts((short)ownerState.JobTitle)
                     .FirstOrDefault(p => p.PartTier == PartTier.Intermediate);
                 if (giftPart == null) return false;
@@ -454,6 +460,20 @@ public class MissionManager
         }
 
         return false;
+    }
+
+    public bool TryGetNextPlacedGift(long matchingId, long ownerPlayerId, long targetPlayerId, out PlacedGift? gift)
+    {
+        gift = null;
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return false;
+        if (!matching.TryGetValue(ownerPlayerId, out var ownerState)) return false;
+
+        lock (ownerState.SyncRoot)
+        {
+            gift = ownerState.PlacedGifts.FirstOrDefault(g =>
+                !g.IsDiscovered && g.TargetPlayerId == targetPlayerId);
+            return gift != null;
+        }
     }
 
     private bool TryRegisterRaceCompletion(long matchingId, long playerId, long clientStartUnixMs)

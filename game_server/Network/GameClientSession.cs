@@ -49,6 +49,7 @@ public partial class GameClientSession : SessionBase
 
     // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
     private readonly HashSet<(int RuleId, long TargetPlayerId)> _sharedRules = new();
+    private readonly HashSet<int> _forcedDemoGiftDiscoveryInteractIds = new();
 
     // 활성 대화 상대 PlayerId (수락 후 대화 중)
     private long? _activeConversationPlayerId;
@@ -67,6 +68,7 @@ public partial class GameClientSession : SessionBase
 
     private Vector3f? _lastValidatedPosition;
     private Cell? _lastValidCell;
+    private float _lastValidatedRotation;
     private bool _hasFirstMoveCalibrated;
     private long _lastClientMoveTimestamp; // 클라이언트 측 Unix ms — 패킷 클러스터 영향 없는 정확한 deltaTime 계산용
 

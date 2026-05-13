@@ -132,6 +132,17 @@ public partial class BotPlayerManager
         if ((now - bot.RngCollectProgressStartTime).TotalSeconds < BotRngCollectProgressSeconds) return;
 
         // (3) progress 완료 → RNG 결과 산출
+        if (TryHandleGiftDiscoveryForBot(bot, matchingId, missionManager, info.Id, result))
+        {
+            RngCollectCooldownStore.ClearCooldown(matchingId, info.Id);
+            result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
+            result.RngCooldownBroadcasts.Add((info.Id, 0));
+
+            bot.PendingRngInteractId = 0;
+            bot.RngCollectProgressStartTime = DateTime.MinValue;
+            return;
+        }
+
         var outcome = RngCollectCore.Resolve(matchingId, bot.PlayerId, bot.MyJobTitle,
             info, missionManager, inventoryManager, itemPoolManager, isBot: true);
 
@@ -151,8 +162,6 @@ public partial class BotPlayerManager
                 bot.PlayerId, info.Id, outcome.ResultType, outcome.ItemId);
         }
 
-        CheckGiftDiscoveryForBot(bot, matchingId, missionManager, info.Id, result);
-
         // ExploreEnd + 쿨타임 broadcast (다른 클라가 봇 EXPLORE_1 → IDLE 복귀 + 마커 30초 숨김)
         result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
         result.RngCooldownBroadcasts.Add((info.Id, outcome.CooldownSeconds));
@@ -161,11 +170,11 @@ public partial class BotPlayerManager
         bot.RngCollectProgressStartTime = DateTime.MinValue;
     }
 
-    private void CheckGiftDiscoveryForBot(BotPlayerState bot, long matchingId, MissionManager missionManager,
+    private bool TryHandleGiftDiscoveryForBot(BotPlayerState bot, long matchingId, MissionManager missionManager,
         int interactId, BotMissionTickResult result)
     {
-        if (!missionManager.TryDiscoverGift(matchingId, bot.PlayerId, interactId, out var discovery)) return;
-        if (discovery.DiscoveryType == GiftDiscoveryType.Other) return;
+        if (!missionManager.TryDiscoverGift(matchingId, bot.PlayerId, interactId, out var discovery)) return false;
+        if (discovery.DiscoveryType == GiftDiscoveryType.Other) return false;
 
         bot.Corruption = Math.Min(100, bot.Corruption + GiftFoundCorruptionDelta);
         result.GiftDiscoveries.Add(discovery);
@@ -176,6 +185,8 @@ public partial class BotPlayerManager
 
         if (discovery.IsRaceComplete)
             result.RaceWinnerPlayerId = discovery.OwnerPlayerId;
+
+        return true;
     }
 
     /// <summary>

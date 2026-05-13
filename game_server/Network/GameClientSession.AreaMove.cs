@@ -78,29 +78,44 @@ public partial class GameClientSession
         var spawnCell = GameAreaConnectionData.GetSpawnCell(CurrentMapId, CurrentArea, msg.TargetArea,
                             msg.StairSide)
                         ?? GameMapData.GetAreaSpawnCell(CurrentMapId, msg.TargetArea);
-
-        // 6. 위치/구역 정보 영구 저장 (스태미나는 인-게임 한정이라 Redis 갱신 안 함)
-        await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-        var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
-        if (playerInfo == null)
+        if (ReferenceEquals(spawnCell, null))
         {
+            Logger.LogWarning(
+                "Player {PlayerId} AreaMove failed: spawn cell not found, CurrentArea={CurrentArea}, RequestedArea={RequestedArea}, StairSide={StairSide}",
+                PlayerId, CurrentArea, msg.TargetArea, msg.StairSide);
             LogAreaMoveError(ErrorCode.SERVER_INTERNAL_ERROR, msg.TargetArea);
             SendAreaMoveError(ErrorCode.SERVER_INTERNAL_ERROR, msg.TargetArea);
             return;
         }
 
-        playerInfo.ObjectInfo.Cell = spawnCell;
+        // 6. 위치/구역 정보 영구 저장 (스태미나는 인-게임 한정이라 Redis 갱신 안 함)
+        await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+        var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+
         var spawnPos = CellToWorldPosition(spawnCell);
-        playerInfo.ObjectInfo.Position = spawnPos;
-        playerInfo.ObjectInfo.Velocity = new Vector3f(0f, 0f, 0f);
-        playerInfo.ObjectInfo.MoveTimestamp = DateTime.UtcNow;
-        await playerInfo.Save(CacheHelper);
+        float rotation = _lastValidatedRotation;
+        if (playerInfo != null)
+        {
+            playerInfo.ObjectInfo.Cell = spawnCell;
+            playerInfo.ObjectInfo.Position = spawnPos;
+            playerInfo.ObjectInfo.Velocity = new Vector3f(0f, 0f, 0f);
+            playerInfo.ObjectInfo.MoveTimestamp = DateTime.UtcNow;
+            rotation = playerInfo.ObjectInfo.Rotation;
+            await playerInfo.Save(CacheHelper);
+        }
+        else
+        {
+            Logger.LogWarning(
+                "Player {PlayerId} AreaMove: PlayerInfo missing in Redis, proceeding with session state only. CurrentArea={CurrentArea}, RequestedArea={RequestedArea}",
+                PlayerId, CurrentArea, msg.TargetArea);
+        }
 
         // 7. 세션 상태 갱신 + Area 변경 후처리
         var oldArea = CurrentArea;
         _previousArea = oldArea;
         CurrentArea = msg.TargetArea;
         _lastValidatedPosition = spawnPos;
+        _lastValidCell = spawnCell;
 
         // 8. 스태미나 차감 + G_TO_C_PLAYER_STATS_UPDATE 송신 (다른 스태미나 변경 흐름과 동일 경로)
         ModifyStats(staminaDelta: -staminaCost);
@@ -128,7 +143,7 @@ public partial class GameClientSession
             PlayerId.Value,
             spawnPos,
             new Vector3f(0f, 0f, 0f),
-            playerInfo.ObjectInfo.Rotation,
+            rotation,
             spawnCell,
             lastProcessedInput: 0u,
             serverTimestamp);
