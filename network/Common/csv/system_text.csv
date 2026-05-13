@@ -161,3 +161,13 @@ id,category,text_kr,text_en,text_jp
 12037,7,학교의 구역은 점차 폐쇄됩니다.,School zones will close one by one.,学校の区域は少しずつ閉鎖されます。
 12038,7,살아남아 미션을 완수하세요.,Survive and complete your missions.,生き延びて、ミッションを完遂してください。
 12039,7,오직 한 명만이 탈출합니다.,Only one person escapes.,脱出できるのはただ一人です。
+12040,7,첫사랑,First Love,初恋
+12041,7,반장,Class President,学級委員
+12042,7,만인의 짝꿍,Everyone's Best Friend,みんなの相棒
+12043,7,그리운 친구,Dear Old Friend,懐かしい友達
+12044,7,당신은 승리했습니다.,You won.,あなたは勝利しました。
+12045,7,당신은 <color={0}>색출</color>되어 <color={0}>탈락</color>했습니다.,You were <color={0}>exposed</color> and <color={0}>eliminated</color>.,あなたは<color={0}>正体を暴かれて</color><color={0}>脱落</color>しました。
+12046,7,당신은 <color={0}>체력이 모두 소모</color>되어 <color={0}>탈락</color>했습니다.,Your <color={0}>stamina was fully depleted</color> and you were <color={0}>eliminated</color>.,あなたは<color={0}>体力がすべて尽きた</color>ため、<color={0}>脱落</color>しました。
+12047,7,다른 플레이어가 먼저 탈출하여 <color={0}>패배</color>했습니다.,Another player escaped first and you <color={0}>lost</color>.,他のプレイヤーが先に脱出したため、<color={0}>敗北</color>しました。
+12048,7,당신은 <color={0}>정신력이 모두 소모</color>되어 <color={0}>탈락</color>했습니다.,Your <color={0}>sanity was fully depleted</color> and you were <color={0}>eliminated</color>.,あなたは<color={0}>精神力がすべて尽きた</color>ため、<color={0}>脱落</color>しました。
+12049,7,클릭하여 로비로 복귀합니다.,Click to return to the lobby.,クリックしてロビーに戻ります。
