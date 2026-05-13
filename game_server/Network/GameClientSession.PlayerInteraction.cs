@@ -399,10 +399,17 @@ public partial class GameClientSession
         // InteractionStayUntil은 사용자가 INTERACT_END를 안 보내고 끊어지는 등의 이상 케이스용 fallback.
         // 정상 종료 시 HandlePlayerInteractEnd가 +5초로 단축 → 5초 후 봇 walking 재개.
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
-        if (bot != null)
+        if (bot is not { IsEliminated: false } || bot.CurrentArea != CurrentArea)
         {
-            bot.HoldForInteraction(TimeSpan.FromMinutes(5)); // 안전 fallback
+            using var errorPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(botPlayerId, ErrorCode.AREA_MISMATCH);
+            Send(errorPacket);
+            Logger.LogInformation(
+                "봇 1:1 요청 실패: BotId={Bot}, Requester={Requester}, BotArea={BotArea}, RequesterArea={RequesterArea}",
+                botPlayerId, requesterPlayerId, bot?.CurrentArea, CurrentArea);
+            return;
         }
+
+        bot.HoldForInteraction(TimeSpan.FromMinutes(5)); // 안전 fallback
 
         // pending 저장 — HandleAreaMove에서 영역 이동 차단 + 클라 InteractAlert UX와 정합.
         _pendingInteractPlayerId = botPlayerId;
