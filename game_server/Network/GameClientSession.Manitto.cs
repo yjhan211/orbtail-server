@@ -1221,6 +1221,7 @@ public partial class GameClientSession
         if (IsEliminated || _activeConversationPlayerId.HasValue || _pendingInteractPlayerId.HasValue) return false;
         if (CurrentState != PlayerState.Idle || _isSleeping) return false;
         if (bot.IsEliminated || bot.IsInInteraction) return false;
+        if (bot.PendingRngInteractId > 0 || bot.PendingForcedInteractId > 0) return false;
         if (bot.CurrentArea == AreaType.None || bot.CurrentArea != CurrentArea) return false;
         if (CurrentArea.IsCorridor()) return false;
 
