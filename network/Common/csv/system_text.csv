@@ -171,3 +171,5 @@ id,category,text_kr,text_en,text_jp
 12047,7,다른 플레이어가 먼저 탈출하여 <color={0}>패배</color>했습니다.,Another player escaped first and you <color={0}>lost</color>.,他のプレイヤーが先に脱出したため、<color={0}>敗北</color>しました。
 12048,7,당신은 <color={0}>정신력이 모두 소모</color>되어 <color={0}>탈락</color>했습니다.,Your <color={0}>sanity was fully depleted</color> and you were <color={0}>eliminated</color>.,あなたは<color={0}>精神力がすべて尽きた</color>ため、<color={0}>脱落</color>しました。
 12049,7,클릭하여 로비로 복귀합니다.,Click to return to the lobby.,クリックしてロビーに戻ります。
+12050,7,결과 보고서,Result Report,結果報告書
+12051,7,요약,Summary,要約
