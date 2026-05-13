@@ -155,9 +155,9 @@ id,category,text_kr,text_en,text_jp
 12031,7,[ 확인 ],[ Confirm ],[ 確認 ]
 12032,7,[안내],[Guide],[案内]
 12033,7,당신은 {TargetName}의 마니또입니다.,You are {TargetName}'s Manitto.,あなたは{TargetName}のマニットです。
-12034,7,{TargetName}의 곁에 머무르세요.,Stay near {TargetName}.,{TargetName}のそばにいてください。
+12034,7,{TargetName}의 곁에 있어야 합니다.,You must stay near {TargetName}.,{TargetName}のそばにいなければなりません。
 12035,7,하지만 정체를 들켜서는 안 됩니다.,Do not reveal yourself.,正体を知られてはいけません。
-12036,7,"그리고, 누군가도 당신을 쫓고 있습니다.",Someone is following you too.,そして誰かもあなたを追っています。
+12036,7,"그리고, 누군가도 당신을 쫓고 있습니다.",Someone is following you too.,そして、あなたを追っている者もいます。
 12037,7,학교의 구역은 점차 폐쇄됩니다.,School zones will close one by one.,学校の区域は少しずつ閉鎖されます。
-12038,7,살아남아 미션을 완수하세요.,Survive and complete your missions.,生き残りミッションを完了してください。
+12038,7,살아남아 미션을 완수하세요.,Survive and complete your missions.,生き延びて、ミッションを完遂してください。
 12039,7,오직 한 명만이 탈출합니다.,Only one person escapes.,脱出できるのはただ一人です。
