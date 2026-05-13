@@ -195,15 +195,22 @@ public partial class GameClientSession
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
 
-        // 1. 전체에게 탈락 알림
-        using var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);
-        var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED
+        // 1. 전체에게 탈락 알림. 결과 보고서용 상세 정보는 탈락자 본인에게만 포함한다.
+        var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, CurrentMapSubId);
+        foreach (var session in allSessions)
         {
-            PlayerId = eliminatedPlayerId,
-            Reason = reason
-        };
-        eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
-        foreach (var session in allSessions) session.Send(eliminatedPacket);
+            using var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);
+            var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED
+            {
+                PlayerId = eliminatedPlayerId,
+                Reason = reason,
+                ResultPlayers = session.PlayerId == eliminatedPlayerId
+                    ? eliminatedResultPlayers
+                    : new List<GameResultPlayerInfo>()
+            };
+            eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
+            session.Send(eliminatedPacket);
+        }
 
         // 세션 ManittoStatus 동기화 (탈락자 → SPECTATING으로 관전 전환)
         // #26: 봇 상태도 함께 동기화 (BotPlayerManager) — 시한부 진입 시 사보타주 트리거 등
@@ -257,7 +264,7 @@ public partial class GameClientSession
         if (isGameOver)
         {
             Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);
-            SendGameResult(allSessions, winnerId ?? 0, false);
+            SendGameResult(allSessions, winnerId ?? 0, false, CurrentMapSubId);
         }
 
         return Task.CompletedTask;
@@ -266,21 +273,9 @@ public partial class GameClientSession
     /// <summary>
     ///     게임 결과 패킷 전송 (체인 전체 공개)
     /// </summary>
-    private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout)
+    private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout, long matchingId)
     {
-        var chainData = _manittoChainManager.BuildGameResult(CurrentMapSubId);
-        var gameStartTime = DateTime.UtcNow; // 근사값 (AreaClosureManager의 GameStartTime 참조)
-
-        var players = chainData.Select(d => new GameResultPlayerInfo
-        {
-            PlayerId = d.playerId,
-            JobTitle = d.job,
-            TargetPlayerId = d.targetId,
-            ManittoPlayerId = d.manittoId,
-            EliminationReason = d.reason,
-            FinalStatus = d.finalStatus,
-            SurvivalTimeSeconds = 0 // 근사값; 추후 정확한 타이밍 필요 시 개선
-        }).ToList();
+        var players = BuildGameResultPlayers(allSessions, matchingId);
 
         using var resultPacket = Packet.Create((int)Protocol.G_TO_C_GAME_RESULT);
         var resultMsg = new G_TO_C_GAME_RESULT
@@ -293,19 +288,70 @@ public partial class GameClientSession
         foreach (var session in allSessions) session.Send(resultPacket);
 
         // 기존 게임 종료 패킷도 전송 (클라이언트 호환)
-        using var endPacket = PacketMaker.G_TO_C_GAME_END(CurrentMapSubId, !isTimeout);
+        using var endPacket = PacketMaker.G_TO_C_GAME_END(matchingId, !isTimeout);
         foreach (var session in allSessions) session.Send(endPacket);
 
         // 결과 화면 이후 퇴장은 페널티 면제
         foreach (var session in allSessions) session.MarkGameEnded();
 
         // 게임 타이머 정리 — race 완주/색출로 종료되었을 때 타임아웃이 후행 발사되지 않도록 (#87)
-        if (GameTimers.TryRemove(CurrentMapSubId, out var timer))
+        if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
 
         // #26: 봇 상태 + Redis matching_bots Hash 엔트리 정리 (TTL/누수 방지)
-        _botPlayerManager.CleanupMatching(CurrentMapSubId);
-        _ = CleanupRedisMatchingBotsAsync(CurrentMapSubId);
+        _botPlayerManager.CleanupMatching(matchingId);
+        _ = CleanupRedisMatchingBotsAsync(matchingId);
+    }
+
+    private List<GameResultPlayerInfo> BuildGameResultPlayers(List<GameClientSession> allSessions, long matchingId)
+    {
+        var chainData = _manittoChainManager.BuildGameResult(matchingId);
+        return chainData.Select(d =>
+        {
+            var playerInfo = ResolveResultPlayerInfo(matchingId, d.playerId);
+            var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
+            var bot = _botPlayerManager.GetBot(matchingId, d.playerId);
+
+            return new GameResultPlayerInfo
+            {
+                PlayerId = d.playerId,
+                Name = ResolveResultPlayerName(d.playerId, playerInfo, bot),
+                JobTitle = d.job,
+                TargetPlayerId = d.targetId,
+                ManittoPlayerId = d.manittoId,
+                EliminationReason = d.reason,
+                FinalStatus = d.finalStatus,
+                Corruption = session?.Corruption ?? bot?.Corruption ?? 0,
+                MaxCorruption = MaxCorruption,
+                WearItemIdList = playerInfo?.WearItemIdList != null
+                    ? new List<int>(playerInfo.WearItemIdList)
+                    : new List<int>(),
+                SurvivalTimeSeconds = 0 // 근사값; 추후 정확한 타이밍 필요 시 개선
+            };
+        }).ToList();
+    }
+
+    private PlayerInfo? ResolveResultPlayerInfo(long matchingId, long playerId)
+    {
+        if (BotPlayerManager.IsBotPlayerId(playerId))
+            return _botPlayerManager.SynthesizePlayerInfo(matchingId, playerId);
+
+        try
+        {
+            return PlayerInfo.Load(CacheHelper, playerId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "결과 프로필 PlayerInfo 조회 실패: PlayerId={PlayerId}", playerId);
+            return null;
+        }
+    }
+
+    private static string ResolveResultPlayerName(long playerId, PlayerInfo? playerInfo, BotPlayerState? bot)
+    {
+        if (!string.IsNullOrEmpty(playerInfo?.Name)) return playerInfo.Name;
+        if (!string.IsNullOrEmpty(bot?.Name)) return bot.Name;
+        return BotPlayerManager.IsBotPlayerId(playerId) ? $"Bot{Math.Abs(playerId)}" : $"Player{playerId}";
     }
 
     /// <summary>
@@ -824,7 +870,7 @@ public partial class GameClientSession
         Logger.LogInformation("게임 즉시 종료(race 완주): MatchingId={MatchingId}, Winner={WinnerId}",
             CurrentMapSubId, winnerId);
 
-        SendGameResult(allSessions, winnerId, isTimeout: false);
+        SendGameResult(allSessions, winnerId, isTimeout: false, CurrentMapSubId);
     }
 
     /// <summary>

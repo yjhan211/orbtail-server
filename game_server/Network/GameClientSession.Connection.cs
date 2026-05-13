@@ -329,7 +329,7 @@ public partial class GameClientSession
         Logger.LogInformation("시간 초과 승자: MatchingId={MatchingId}, WinnerId={WinnerId}", matchingId, winnerId);
 
         // 결과 패킷 전송
-        SendGameResult(sessions, winnerId ?? 0, true);
+        SendGameResult(sessions, winnerId ?? 0, true, matchingId);
     }
 
 }

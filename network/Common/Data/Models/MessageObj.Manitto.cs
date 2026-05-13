@@ -392,6 +392,7 @@ namespace network.common.data.models
     {
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("reason")] public EliminationReason Reason { get; set; }
+        [Key("resultPlayers")] public List<GameResultPlayerInfo> ResultPlayers { get; set; } = new();
     }
 
     [MessagePackObject]
@@ -585,12 +586,16 @@ namespace network.common.data.models
     public class GameResultPlayerInfo : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
+        [Key("name")] public string Name { get; set; } = "";
         [Key("jobTitle")] public JobTitle JobTitle { get; set; }
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
         [Key("manittoPlayerId")] public long ManittoPlayerId { get; set; }
         [Key("eliminationReason")] public EliminationReason EliminationReason { get; set; }
         [Key("survivalTimeSeconds")] public int SurvivalTimeSeconds { get; set; }
         [Key("finalStatus")] public ManittoStatus FinalStatus { get; set; }
+        [Key("corruption")] public int Corruption { get; set; }
+        [Key("maxCorruption")] public int MaxCorruption { get; set; }
+        [Key("wearItemIdList")] public List<int> WearItemIdList { get; set; } = new();
     }
 
     [MessagePackObject]
