@@ -132,7 +132,7 @@ id,category,text_kr,text_en,text_jp
 12008,7,마스터 볼륨,Master Volume,マスター音量
 12009,7,계정 설정,Account Settings,アカウント設定
 12010,7,플레이어 아이디를 입력하세요.,Enter a player ID.,プレイヤーIDを入力してください。
-12011,7,도서위원 미션 3회 완료,Complete 3 Library Committee missions,図書委員ミッションを3回完了
+12011,7,도서위원 미션 3회 완료,Library Committee Mission x3,図書委員ミッションを3回完了
 12012,7,커스터마이징,Customization,カスタマイズ
 12013,7,급식 조리의 대가,School Lunch Master,給食調理の達人
 12014,7,[퇴교 절차],[Dismissal Procedure],[下校手順]
@@ -173,3 +173,4 @@ id,category,text_kr,text_en,text_jp
 12049,7,클릭하여 로비로 복귀합니다.,Click to return to the lobby.,クリックしてロビーに戻ります。
 12050,7,결과 보고서,Result Report,結果報告書
 12051,7,요약,Summary,要約
+12052,7,<color=#F1325A>폐쇄된 구역</color>에 있습니다.\n즉시 이탈하세요.,You are in a <color=#F1325A>closed zone</color>.\nLeave immediately.,<color=#F1325A>閉鎖区域</color>にいます。\nすぐに離脱してください。
