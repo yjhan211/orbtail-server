@@ -54,7 +54,16 @@ namespace network.common.data.helpers
             return $"Common/csv/{System.IO.Path.GetFileNameWithoutExtension(fileName)}";
 #elif UNITY_5_3_OR_NEWER
             // Unity (iOS, 윈도우, 에디터): StreamingAssets 경로 사용
-            return Path.Combine(Application.streamingAssetsPath, "Common", "csv", fileName);
+            var streamingAssetsPath = Path.Combine(Application.streamingAssetsPath, "Common", "csv", fileName);
+#if UNITY_EDITOR
+            if (!File.Exists(streamingAssetsPath))
+            {
+                var sourceCsvPath = Path.Combine(Application.dataPath, "Scripts", "Common", "csv", fileName);
+                if (File.Exists(sourceCsvPath))
+                    return sourceCsvPath;
+            }
+#endif
+            return streamingAssetsPath;
 #else
             // 서버 환경: 설정된 기본 경로 사용
             return Path.Combine(_basePath, "Common", "csv", fileName);

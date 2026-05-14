@@ -82,13 +82,14 @@ namespace network.common.data
         public static List<MissionGraphNodeData> GetAvailableNodes(
             short jobTitle,
             IEnumerable<int> collectedPartIds,
-            IEnumerable<int> completedNodeIds)
+            IEnumerable<int> completedNodeIds,
+            bool hasLostTarget = false)
         {
             var collectedPartSet = new HashSet<int>(collectedPartIds ?? Enumerable.Empty<int>());
             var completedNodeSet = new HashSet<int>(completedNodeIds ?? Enumerable.Empty<int>());
 
             return GetNodes(jobTitle)
-                .Where(node => node.AreRequirementsMet(collectedPartSet, completedNodeSet))
+                .Where(node => node.AreRequirementsMet(collectedPartSet, completedNodeSet, hasLostTarget))
                 .ToList();
         }
 
@@ -136,6 +137,7 @@ namespace network.common.data
         public List<int> RequiredPartIds { get; private set; }
         public List<int> RequiredItemIds { get; private set; }
         public List<int> RequiredNodeIds { get; private set; }
+        public bool RequiresTargetLost { get; private set; }
         public int OutputPartId { get; private set; }
         public int StaminaCost { get; private set; }
         public int CorruptionDelta { get; private set; }
@@ -160,6 +162,7 @@ namespace network.common.data
                 RequiredPartIds = ParseIntList(row, "required_part_ids"),
                 RequiredItemIds = ParseIntList(row, "required_item_ids"),
                 RequiredNodeIds = ParseIntList(row, "required_node_ids"),
+                RequiresTargetLost = ParseBool(row, "requires_target_lost"),
                 OutputPartId = ParseInt(row, "output_part_id"),
                 StaminaCost = ParseInt(row, "stamina_cost"),
                 CorruptionDelta = ParseInt(row, "corruption_delta"),
@@ -175,11 +178,16 @@ namespace network.common.data
         public bool IsInitiallyAvailable() =>
             RequiredPartIds.Count == 0 &&
             RequiredItemIds.Count == 0 &&
-            RequiredNodeIds.Count == 0;
+            RequiredNodeIds.Count == 0 &&
+            !RequiresTargetLost;
 
-        public bool AreRequirementsMet(HashSet<int> collectedPartIds, HashSet<int> completedNodeIds) =>
+        public bool AreRequirementsMet(
+            HashSet<int> collectedPartIds,
+            HashSet<int> completedNodeIds,
+            bool hasLostTarget = false) =>
             RequiredPartIds.All(collectedPartIds.Contains) &&
-            RequiredNodeIds.All(completedNodeIds.Contains);
+            RequiredNodeIds.All(completedNodeIds.Contains) &&
+            (!RequiresTargetLost || hasLostTarget);
 
         public bool MatchesInteractable(int areaType, int objectType, int interactId)
         {
@@ -205,6 +213,15 @@ namespace network.common.data
 
         private static string ParseString(CsvRow row, string columnName) =>
             row.ContainsKey(columnName) ? row[columnName] : "";
+
+        private static bool ParseBool(CsvRow row, string columnName)
+        {
+            if (!row.ContainsKey(columnName) || string.IsNullOrWhiteSpace(row[columnName]))
+                return false;
+
+            var value = row[columnName].Trim();
+            return value == "1" || value.Equals("true", System.StringComparison.OrdinalIgnoreCase);
+        }
 
         private static List<int> ParseIntList(CsvRow row, string columnName)
         {

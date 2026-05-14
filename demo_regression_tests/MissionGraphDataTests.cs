@@ -19,6 +19,7 @@ public class MissionGraphDataTests
         Assert.Equal(2, recipes.Count);
         Assert.Contains(nodes, node => node.NodeId == 3007 && node.NodeKind == MissionGraphNodeKind.GiftSabotage);
         Assert.Contains(nodes, node => node.NodeId == 3008 && node.NodeKind == MissionGraphNodeKind.RevengeClue);
+        Assert.Contains(nodes, node => node.NodeId == 3008 && node.RequiresTargetLost);
         Assert.All(nodes, node => Assert.False(string.IsNullOrWhiteSpace(node.VisibleTrace.Kr)));
     }
 
@@ -38,8 +39,16 @@ public class MissionGraphDataTests
             new[] { 305, 306 },
             Array.Empty<int>());
 
+        var availableAfterTargetLoss = GameMissionGraphData.GetAvailableNodes(
+            (short)JobTitle.LIBRARY_COMMITTEE,
+            new[] { 306 },
+            Array.Empty<int>(),
+            hasLostTarget: true);
+
         Assert.Contains(availableWithWrittenPage, node => node.NodeId == 3005);
         Assert.Contains(availableWithBothTools, node => node.NodeId == 3007);
+        Assert.DoesNotContain(availableWithBothTools, node => node.NodeId == 3008);
+        Assert.Contains(availableAfterTargetLoss, node => node.NodeId == 3008);
     }
 
     [Fact]

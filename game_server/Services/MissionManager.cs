@@ -598,7 +598,10 @@ public class MissionManager
                 candidate.OutputPartId == partId &&
                 !state.CompletedMissionNodeIds.Contains(candidate.NodeId) &&
                 candidate.MatchesInteractable((int)area, objectType, interactId) &&
-                candidate.AreRequirementsMet(state.CollectedParts, state.CompletedMissionNodeIds));
+                candidate.AreRequirementsMet(
+                    state.CollectedParts,
+                    state.CompletedMissionNodeIds,
+                    state.HasLostTarget));
 
         if (node != null)
             state.CompletedMissionNodeIds.Add(node.NodeId);
@@ -641,9 +644,10 @@ public class MissionManager
             state.UnlockedMissionNodeIds.Add(node.NodeId);
 
         foreach (var node in GameMissionGraphData.GetAvailableNodes(
-                     (short)state.JobTitle,
-                     state.CollectedParts,
-                     state.CompletedMissionNodeIds))
+                      (short)state.JobTitle,
+                      state.CollectedParts,
+                      state.CompletedMissionNodeIds,
+                      state.HasLostTarget))
         {
             state.UnlockedMissionNodeIds.Add(node.NodeId);
         }
