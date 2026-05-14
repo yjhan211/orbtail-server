@@ -587,7 +587,7 @@ public partial class GameClientSession
             Send(legacyPacket);
 
             // 미션 흔적 저장 (탐색 시 다른 플레이어가 발견 가능)
-            StoreTrace(area, interactId, $"여기서 무언가 회수된 흔적이 남아있다.", true);
+            StoreTrace(area, interactId, GetMissionCollectTraceDescription(collectResult), true);
             return;
         }
 
@@ -597,6 +597,19 @@ public partial class GameClientSession
 
         // 3. 블러프 우회(off-pool) 비용 적용 (#87 N11)
         ApplyBluffBypassCost(area, objectType);
+    }
+
+    private string GetMissionCollectTraceDescription(PartCollectResult collectResult)
+    {
+        foreach (int nodeId in collectResult.CompletedMissionNodeIds)
+        {
+            var node = GameMissionGraphData.GetNode(nodeId);
+            string trace = node?.VisibleTrace?.Kr ?? "";
+            if (!string.IsNullOrWhiteSpace(trace))
+                return trace;
+        }
+
+        return "여기서 무언가 회수된 흔적이 남아있다.";
     }
 
     /// <summary>

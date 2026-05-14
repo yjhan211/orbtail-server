@@ -19,6 +19,7 @@ public class MissionGraphDataTests
         Assert.Equal(2, recipes.Count);
         Assert.Contains(nodes, node => node.NodeId == 3007 && node.NodeKind == MissionGraphNodeKind.GiftSabotage);
         Assert.Contains(nodes, node => node.NodeId == 3008 && node.NodeKind == MissionGraphNodeKind.RevengeClue);
+        Assert.All(nodes, node => Assert.False(string.IsNullOrWhiteSpace(node.VisibleTrace.Kr)));
     }
 
     [Fact]
