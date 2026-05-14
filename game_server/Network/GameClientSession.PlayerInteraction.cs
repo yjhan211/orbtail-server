@@ -120,6 +120,9 @@ public partial class GameClientSession
         if (!PlayerId.HasValue) return Task.CompletedTask;
 
         long requesterPlayerId = msg.PlayerId;
+        if (BotPlayerManager.IsBotPlayerId(requesterPlayerId))
+            return HandleBotInteractResponse(requesterPlayerId, msg.Accepted);
+
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var requesterSession = allSessions.FirstOrDefault(s => s.PlayerId == requesterPlayerId);
 
@@ -198,6 +201,8 @@ public partial class GameClientSession
                 bot.IsInInteraction = false;
                 bot.InteractionStayUntil = DateTime.MinValue;
                 bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(5);
+                if (PlayerId.HasValue)
+                    bot.TargetEncounterStartedAtByPlayerId[PlayerId.Value] = DateTime.UtcNow;
             }
 
             // active conversation 해제 → HandleAreaMove 차단 풀림.

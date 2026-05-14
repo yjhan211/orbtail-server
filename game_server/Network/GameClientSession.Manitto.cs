@@ -679,6 +679,150 @@ public partial class GameClientSession
         return true;
     }
 
+    private Task HandleBotInteractResponse(long botPlayerId, bool accepted)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        if (_pendingBotRequesterPlayerId != botPlayerId)
+        {
+            Logger.LogWarning(
+                "BotInteractResponse failed: pending mismatch (Expected={Expected}, Actual={Actual}, Player={Player})",
+                _pendingBotRequesterPlayerId, botPlayerId, PlayerId.Value);
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(
+                false,
+                botPlayerId,
+                ErrorCode.INVALID_REQUEST);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
+
+        CancelTargetBotInterrogationTimeout();
+        _pendingBotRequesterPlayerId = null;
+
+        var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
+        if (bot == null || bot.IsEliminated || bot.CurrentArea != CurrentArea)
+        {
+            ReleaseTargetBotInterrogation(botPlayerId, resetEncounterDelay: true);
+            using var errPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(
+                false,
+                botPlayerId,
+                bot == null || bot.IsEliminated ? ErrorCode.PLAYER_NOT_FOUND : ErrorCode.AREA_MISMATCH);
+            Send(errPacket);
+            return Task.CompletedTask;
+        }
+
+        using (var resultPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(accepted, botPlayerId, ErrorCode.SUCCESS))
+        {
+            Send(resultPacket);
+        }
+
+        if (!accepted)
+        {
+            ReleaseTargetBotInterrogation(botPlayerId, resetEncounterDelay: true);
+            _lastInteractRejectTime = DateTime.UtcNow;
+            Logger.LogInformation(
+                "DEMO_MODE 타겟 봇 선심문 거절: BotId={Bot}, PlayerId={Player}",
+                botPlayerId, PlayerId.Value);
+            return Task.CompletedTask;
+        }
+
+        SendTargetBotInterrogationAnswerChoices(bot);
+        return Task.CompletedTask;
+    }
+
+    private void SendTargetBotInterrogationAnswerChoices(BotPlayerState bot)
+    {
+        if (!PlayerId.HasValue) return;
+
+        _activeConversationPlayerId = bot.PlayerId;
+        _lastAskedQuestion = InteractionQuestionType.ASK_LOCATION;
+        _pendingQuestions = null;
+        _pendingAnswers = _interactionChoiceService.GenerateAnswers(
+            CurrentMapSubId,
+            PlayerId.Value,
+            _lastAskedQuestion);
+
+        bot.HoldForInteraction(TimeSpan.FromMinutes(5));
+        bot.LoopWaitUntil = DateTime.MinValue;
+
+        using var answerChoicesPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ANSWER_CHOICES, PlayerId.Value);
+        var answerChoices = new G_TO_C_INTERACTION_ANSWER_CHOICES
+        {
+            QuestionType = _lastAskedQuestion,
+            QuestionTextId = InteractionChoiceService.DemoQuestionTextId,
+            QuestionArgs = new List<TextArg>
+            {
+                new() { Type = TextArgType.AREA_TYPE, IntValue = (int)bot.CurrentArea }
+            },
+            Answers = _pendingAnswers
+        };
+        answerChoicesPacket.SetBody(MessagePackSerializer.Serialize(answerChoices));
+        Send(answerChoicesPacket);
+
+        Logger.LogInformation(
+            "DEMO_MODE 타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
+            bot.PlayerId, PlayerId.Value, bot.CurrentArea);
+    }
+
+    private void StartTargetBotInterrogationTimeout(long botPlayerId)
+    {
+        CancelTargetBotInterrogationTimeout();
+
+        _botInteractTimeoutCts = new CancellationTokenSource();
+        var cts = _botInteractTimeoutCts;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10), cts.Token);
+                if (_pendingBotRequesterPlayerId != botPlayerId) return;
+
+                _pendingBotRequesterPlayerId = null;
+                ReleaseTargetBotInterrogation(botPlayerId, resetEncounterDelay: true);
+                _lastInteractRejectTime = DateTime.UtcNow;
+
+                using var timeoutPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(
+                    false,
+                    botPlayerId,
+                    ErrorCode.TIMEOUT);
+                Send(timeoutPacket);
+
+                Logger.LogInformation(
+                    "DEMO_MODE 타겟 봇 선심문 타임아웃: BotId={Bot}, PlayerId={Player}",
+                    botPlayerId, PlayerId);
+            }
+            catch (TaskCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex,
+                    "DEMO_MODE 타겟 봇 선심문 타임아웃 처리 오류: BotId={Bot}, PlayerId={Player}",
+                    botPlayerId, PlayerId);
+            }
+        }, cts.Token);
+    }
+
+    private void CancelTargetBotInterrogationTimeout()
+    {
+        _botInteractTimeoutCts?.Cancel();
+        _botInteractTimeoutCts?.Dispose();
+        _botInteractTimeoutCts = null;
+    }
+
+    private void ReleaseTargetBotInterrogation(long botPlayerId, bool resetEncounterDelay = false)
+    {
+        var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
+        if (bot == null) return;
+
+        bot.IsInInteraction = false;
+        bot.InteractionStayUntil = DateTime.MinValue;
+        bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(5);
+
+        if (resetEncounterDelay && PlayerId.HasValue)
+            bot.TargetEncounterStartedAtByPlayerId[PlayerId.Value] = DateTime.UtcNow;
+    }
+
     /// <summary>
     ///     스태미나 보상 적용 + 클라이언트 동기화.
     /// </summary>
@@ -1218,21 +1362,18 @@ public partial class GameClientSession
     public bool TryStartTargetBotInterrogation(BotPlayerState bot)
     {
         if (!DemoMode.IsActive || !PlayerId.HasValue) return false;
-        if (IsEliminated || _activeConversationPlayerId.HasValue || _pendingInteractPlayerId.HasValue) return false;
+        if (IsEliminated
+            || _activeConversationPlayerId.HasValue
+            || _pendingInteractPlayerId.HasValue
+            || _pendingBotRequesterPlayerId.HasValue)
+            return false;
         if (CurrentState != PlayerState.Idle || _isSleeping) return false;
         if (bot.IsEliminated || bot.IsInInteraction) return false;
         if (bot.CurrentArea == AreaType.None || bot.CurrentArea != CurrentArea) return false;
         if (CurrentArea.IsCorridor()) return false;
 
-        _activeConversationPlayerId = bot.PlayerId;
-        _lastAskedQuestion = InteractionQuestionType.ASK_LOCATION;
-        _pendingQuestions = null;
-        _pendingAnswers = _interactionChoiceService.GenerateAnswers(
-            CurrentMapSubId,
-            PlayerId.Value,
-            _lastAskedQuestion);
-
-        bot.HoldForInteraction(TimeSpan.FromMinutes(5));
+        _pendingBotRequesterPlayerId = bot.PlayerId;
+        bot.HoldForInteraction(TimeSpan.FromSeconds(13));
         bot.LoopWaitUntil = DateTime.MinValue;
 
         using (var requestPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(bot.PlayerId, ErrorCode.SUCCESS))
@@ -1240,19 +1381,7 @@ public partial class GameClientSession
             Send(requestPacket);
         }
 
-        using var answerChoicesPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ANSWER_CHOICES, PlayerId.Value);
-        var answerChoices = new G_TO_C_INTERACTION_ANSWER_CHOICES
-        {
-            QuestionType = _lastAskedQuestion,
-            QuestionTextId = InteractionChoiceService.DemoQuestionTextId,
-            QuestionArgs = new List<TextArg>
-            {
-                new() { Type = TextArgType.AREA_TYPE, IntValue = (int)bot.CurrentArea }
-            },
-            Answers = _pendingAnswers
-        };
-        answerChoicesPacket.SetBody(MessagePackSerializer.Serialize(answerChoices));
-        Send(answerChoicesPacket);
+        StartTargetBotInterrogationTimeout(bot.PlayerId);
 
         Logger.LogInformation(
             "DEMO_MODE 타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
