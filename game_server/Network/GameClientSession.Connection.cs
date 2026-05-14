@@ -80,6 +80,7 @@ public partial class GameClientSession
                 if (CurrentArea != AreaType.None)
                 {
                     SendInteractableList(CurrentArea);
+                    SendInteractCooldownSnapshot();
 
                     // 초기 Area에서도 사보타주 이벤트 트리거
                     _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, CurrentArea);

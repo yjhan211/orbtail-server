@@ -26,6 +26,28 @@ public static class RngCollectCooldownStore
         _cooldowns[(matchingId, interactId)] = DateTime.UtcNow.AddSeconds(seconds);
     }
 
+    public static List<(int InteractId, int RemainingSeconds)> GetSnapshot(long matchingId)
+    {
+        var now = DateTime.UtcNow;
+        var snapshot = new List<(int InteractId, int RemainingSeconds)>();
+
+        foreach (var ((storedMatchingId, interactId), nextAvailable) in _cooldowns)
+        {
+            if (storedMatchingId != matchingId) continue;
+
+            var remaining = (int)Math.Ceiling((nextAvailable - now).TotalSeconds);
+            if (remaining <= 0)
+            {
+                _cooldowns.TryRemove((storedMatchingId, interactId), out _);
+                continue;
+            }
+
+            snapshot.Add((interactId, remaining));
+        }
+
+        return snapshot;
+    }
+
     public static void ClearMatching(long matchingId)
     {
         var keys = _cooldowns.Keys.Where(k => k.Item1 == matchingId).ToList();
