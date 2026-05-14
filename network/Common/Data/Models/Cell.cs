@@ -51,6 +51,7 @@ namespace network.common.data.models
 
         public static Cell Clone(Cell cell)
         {
+            if (ReferenceEquals(cell, null)) return new Cell(0, 0);
             return new Cell(cell.X, cell.Y);
         }
 

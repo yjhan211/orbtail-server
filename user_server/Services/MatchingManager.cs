@@ -68,6 +68,10 @@ public class MatchingManager : IMatchingManager
     {
         try
         {
+            int removedCount = await RemovePlayerEntriesFromQueueAsync(playerId);
+            if (removedCount > 0)
+                _logger.LogInformation("플레이어 {PlayerId} 기존 매칭 큐 엔트리 {Count}개 정리", playerId, removedCount);
+
             var queueData = new MatchingQueueData
             {
                 PlayerId = playerId,
@@ -127,6 +131,32 @@ public class MatchingManager : IMatchingManager
             _logger.LogError(ex, "매칭 취소 실패: {PlayerId}", playerId);
             return ErrorCode.SERVER_INTERNAL_ERROR;
         }
+    }
+
+    private async Task<int> RemovePlayerEntriesFromQueueAsync(long playerId)
+    {
+        byte[][] allEntries = await _cacheHelper.SortedSetRangeByScoreAsync(MatchingQueueKey);
+        int removedCount = 0;
+
+        foreach (byte[] entry in allEntries)
+        {
+            try
+            {
+                var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
+                if (data.PlayerId != playerId) continue;
+
+                if (await _cacheHelper.SortedSetRemoveAsync(MatchingQueueKey, entry))
+                    removedCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "매칭 entry 역직렬화 실패, 큐에서 제거");
+                if (await _cacheHelper.SortedSetRemoveAsync(MatchingQueueKey, entry))
+                    removedCount++;
+            }
+        }
+
+        return removedCount;
     }
 
     /// <summary>
@@ -692,6 +722,8 @@ public class MatchingManager : IMatchingManager
     /// </summary>
     private async Task<long> GetLeavePenaltyDelayAsync(long playerId)
     {
+        if (DemoMode.IsActive) return 0;
+
         try
         {
             var value = await _cacheHelper.HashGetAsync(LeavePenaltyKey, playerId);

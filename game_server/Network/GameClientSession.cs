@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
 using network.core;
+using network.helpers;
 using network.interfaces;
 using network.packets;
 
@@ -60,6 +61,7 @@ public partial class GameClientSession : SessionBase
     private InteractionQuestionType _lastAskedQuestion;       // 마지막 질문 유형
     private AreaType _previousArea = AreaType.None;           // 이전 구역 (동선추궁용)
     private CancellationTokenSource? _interactTimeoutCts;
+    private CancellationTokenSource? _botInteractTimeoutCts;
     private bool _isSleeping;
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
     private DateTime _lastInteractRejectTime = DateTime.MinValue;
@@ -74,6 +76,7 @@ public partial class GameClientSession : SessionBase
 
     // 플레이어 상호작용 요청 상태
     private long? _pendingInteractPlayerId;
+    private long? _pendingBotRequesterPlayerId;
 
     private Timer? _periodicBuffTimer;
 
@@ -276,6 +279,9 @@ public partial class GameClientSession : SessionBase
         _interactTimeoutCts?.Cancel();
         _interactTimeoutCts?.Dispose();
         _interactTimeoutCts = null;
+        _botInteractTimeoutCts?.Cancel();
+        _botInteractTimeoutCts?.Dispose();
+        _botInteractTimeoutCts = null;
         Logger.LogInformation("GameClient removed: PlayerId={PlayerId}", PlayerId);
         _onLeaveCallback(this);
     }
@@ -283,6 +289,9 @@ public partial class GameClientSession : SessionBase
     public override void OnDisconnect()
     {
         StopAllPeriodicBuffs();
+        _botInteractTimeoutCts?.Cancel();
+        _botInteractTimeoutCts?.Dispose();
+        _botInteractTimeoutCts = null;
         _interactTimeoutCts?.Cancel();
         _interactTimeoutCts?.Dispose();
         _interactTimeoutCts = null;
@@ -360,6 +369,8 @@ public partial class GameClientSession : SessionBase
     /// </summary>
     private async Task RecordLeavePenaltyAsync(long playerId)
     {
+        if (DemoMode.IsActive) return;
+
         try
         {
             const string penaltyKey = "leave_penalties";

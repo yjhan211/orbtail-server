@@ -978,10 +978,13 @@ public class GameServer(
         }
     }
 
+    private static readonly TimeSpan TargetBotInterrogationDelay = TimeSpan.FromSeconds(3);
+
     private void StartTargetBotInterrogations(long matchingId, List<GameClientSession> activeSessions)
     {
         if (!DemoMode.IsActive) return;
 
+        var now = DateTime.UtcNow;
         var matchingSessions = activeSessions
             .Where(s => s.CurrentMapSubId == matchingId)
             .ToList();
@@ -992,13 +995,33 @@ public class GameServer(
             if (!BotPlayerManager.IsBotPlayerId(session.TargetPlayerId)) continue;
 
             var bot = _botPlayerManager.GetBot(matchingId, session.TargetPlayerId);
-            if (bot == null || bot.IsEliminated || bot.IsInInteraction) continue;
-            if (bot.CurrentArea == AreaType.None || bot.CurrentArea != session.CurrentArea) continue;
-            if (session.CurrentArea.IsCorridor()) continue;
-            if (bot.TargetInterrogatedPlayerIds.Contains(session.PlayerId.Value)) continue;
+            if (bot == null || bot.IsEliminated) continue;
+
+            long playerId = session.PlayerId.Value;
+            bool isSameEncounter = bot.CurrentArea != AreaType.None
+                                   && bot.CurrentArea == session.CurrentArea
+                                   && !session.CurrentArea.IsCorridor();
+            if (!isSameEncounter)
+            {
+                bot.TargetEncounterStartedAtByPlayerId.Remove(playerId);
+                bot.TargetInterrogationRequestedInEncounterPlayerIds.Remove(playerId);
+                continue;
+            }
+
+            if (bot.TargetInterrogationRequestedInEncounterPlayerIds.Contains(playerId)) continue;
+
+            if (!bot.TargetEncounterStartedAtByPlayerId.TryGetValue(playerId, out var encounterStartedAt))
+            {
+                bot.TargetEncounterStartedAtByPlayerId[playerId] = now;
+                continue;
+            }
+
+            if (now - encounterStartedAt < TargetBotInterrogationDelay) continue;
+            if (bot.IsInInteraction) continue;
 
             if (!session.TryStartTargetBotInterrogation(bot)) continue;
-            bot.TargetInterrogatedPlayerIds.Add(session.PlayerId.Value);
+            bot.TargetEncounterStartedAtByPlayerId[playerId] = now;
+            bot.TargetInterrogationRequestedInEncounterPlayerIds.Add(playerId);
         }
     }
 

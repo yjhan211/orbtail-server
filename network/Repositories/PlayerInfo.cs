@@ -46,6 +46,7 @@ public partial class PlayerInfo
         // ObjectInfo의 Cell, MapId, MapSubId를 LastCell, LastMapId, LastMapSubId로 동기화 (세션 기반 게임)
         if (playerInfo.LastMapId != MapId.None)
         {
+            playerInfo.LastCell ??= new Cell(0, 0);
             playerInfo.ObjectInfo.Cell = playerInfo.LastCell;
             // Cell → World Position 변환 (Unity Isometric Z as Y 타일맵)
             playerInfo.ObjectInfo.Position = CellToWorldPosition(playerInfo.LastCell);
