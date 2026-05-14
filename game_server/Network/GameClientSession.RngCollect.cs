@@ -215,12 +215,6 @@ public partial class GameClientSession
             "DEMO_MODE 도서위원 마지막 수집 선물 발견 강제: PlayerId={Player}, Manitto={Manitto}, InteractId={InteractId}",
             playerId, manitto.PlayerId, interactId);
 
-        if (result.IsRaceComplete)
-        {
-            EndGameByRaceCompletion(result.OwnerPlayerId);
-            return true;
-        }
-
         CheckResourceElimination();
         return true;
     }
@@ -249,12 +243,6 @@ public partial class GameClientSession
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
         BroadcastRngCollectCooldown(interactId, 0);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
-
-        if (result.IsRaceComplete)
-        {
-            EndGameByRaceCompletion(result.OwnerPlayerId);
-            return true;
-        }
 
         CheckResourceElimination();
         return true;

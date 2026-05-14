@@ -680,7 +680,6 @@ public class GameServer(
 
     private void SendBotToNextPlacedGift(long matchingId, GiftDiscoveryResult discovery)
     {
-        if (discovery.IsRaceComplete) return;
         if (!BotPlayerManager.IsBotPlayerId(discovery.DiscovererPlayerId)) return;
         if (!_missionManager.TryGetNextPlacedGift(
                 matchingId,

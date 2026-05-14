@@ -181,3 +181,13 @@ id,category,text_kr,text_en,text_jp
 12050,7,결과 보고서,Result Report,結果報告書
 12051,7,요약,Summary,要約
 12052,7,<color=#F1325A>폐쇄된 구역</color>에 있습니다. 즉시 이탈하세요.,You are in a <color=#F1325A>closed zone</color>. Leave immediately.,<color=#F1325A>閉鎖区域</color>にいます。すぐに離脱してください。
+12053,7,탐색,Search,探索
+12054,7,결합,Merge,結合
+12055,7,목표,Objective,目標
+12056,7,탈출 단서 모으기,Gather Clues,手がかり集め
+12057,7,도구 조합하기,Craft Tools,道具作成
+12058,7,다음 목표 확인하기,Follow Objective,次の目標
+12059,7,임무 완료,Complete,完了
+12060,7,{0} 찾기,Find {0},{0}を探す
+12061,7,{0} 결합,Merge {0},{0}を結合
+12062,7,{0} 진행하기,Follow {0},{0}を進める

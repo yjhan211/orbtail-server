@@ -186,9 +186,6 @@ public partial class BotPlayerManager
             "봇 비밀 선물 발견: BotId={BotId}, Owner={Owner}, InteractId={InteractId}, Corruption={Corruption}",
             bot.PlayerId, discovery.OwnerPlayerId, interactId, bot.Corruption);
 
-        if (discovery.IsRaceComplete)
-            result.RaceWinnerPlayerId = discovery.OwnerPlayerId;
-
         return true;
     }
 

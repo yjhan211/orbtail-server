@@ -395,22 +395,6 @@ public class MissionManager
                 bool hasPlacedGiftInArea = ownerState.PlacedGifts.Any(g =>
                     !g.IsDiscovered && g.AreaType == targetGift.AreaType);
 
-                int finalPartId = 0;
-                bool raceComplete = false;
-                if (ownerState.DeliveredGiftCount >= PlayerPartState.RequiredGiftDeliveries)
-                {
-                    var finalPart = GameMissionData.GetParts((short)ownerState.JobTitle)
-                        .FirstOrDefault(p => p.PartTier == PartTier.Final);
-                    if (finalPart != null)
-                    {
-                        finalPartId = finalPart.PartId;
-                        ownerState.CollectedParts.Add(finalPart.PartId);
-                    }
-
-                    raceComplete = TryRegisterRaceCompletion(matchingId, ownerState.PlayerId, 0);
-                    ownerState.IsCompleted = raceComplete || ownerState.IsCompleted;
-                }
-
                 result = new GiftDiscoveryResult
                 {
                     DiscoveryType = GiftDiscoveryType.Target,
@@ -422,8 +406,6 @@ public class MissionManager
                     AreaType = targetGift.AreaType,
                     DeliveredCount = ownerState.DeliveredGiftCount,
                     RequiredCount = PlayerPartState.RequiredGiftDeliveries,
-                    FinalPartId = finalPartId,
-                    IsRaceComplete = raceComplete,
                     HasPlacedGiftAtInteract = hasPlacedGiftAtInteract,
                     HasPlacedGiftInArea = hasPlacedGiftInArea
                 };
