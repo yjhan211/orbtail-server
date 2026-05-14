@@ -33,6 +33,9 @@ public partial class BotPlayerManager
                 continue;
             bot.LastMissionTickTime = DateTime.UtcNow;
 
+            // 플레이어와 대화 중일 때는 탐색/선물 회수를 잠시 멈춘다.
+            if (bot.IsInInteraction) continue;
+
             var state = missionManager.GetState(matchingId, bot.PlayerId);
             if (state == null || state.IsCompleted) continue;
 

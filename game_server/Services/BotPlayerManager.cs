@@ -353,14 +353,14 @@ public class BotPlayerState
     /// <summary>봇이 마지막으로 1:1 응답한 상대 (자기 자신과 동일 PlayerId면 응답 X)</summary>
     public long LastInteractRespondedTo { get; set; }
 
-    public HashSet<long> TargetInterrogatedPlayerIds { get; } = new();
+    public Dictionary<long, DateTime> TargetEncounterStartedAtByPlayerId { get; } = new();
+    public HashSet<long> TargetInterrogationRequestedInEncounterPlayerIds { get; } = new();
 
     public void HoldForInteraction(TimeSpan fallbackDuration)
     {
         IsInInteraction = true;
         InteractionStayUntil = DateTime.UtcNow.Add(fallbackDuration);
         TransitionPauseUntil = DateTime.MinValue;
-        WalkVelocity = new Vector3f(0f, 0f, 0f);
     }
 
     // === #134 RNG 채집 통합 ===

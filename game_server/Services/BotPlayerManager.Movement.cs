@@ -455,6 +455,27 @@ public partial class BotPlayerManager
 
         var mapId = GetMatchingMapId(matchingId);
         var targetCell = new Cell(info.CellX, info.CellY);
+        if (bot.CurrentArea == area && bot.Cell.Equals(targetCell))
+        {
+            bot.Path.Clear();
+            bot.PathIndex = 0;
+            bot.PendingRngInteractId = interactId;
+            bot.InteractQueueInArea.Clear();
+            bot.RngCollectProgressStartTime = DateTime.MinValue;
+            bot.IsInInteraction = false;
+            bot.InteractionStayUntil = DateTime.MinValue;
+            bot.PendingForcedInteractArea = AreaType.None;
+            bot.PendingForcedInteractId = 0;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            bot.TransitionPauseUntil = DateTime.MinValue;
+            bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+
+            _logger.LogInformation(
+                "Bot gift pickup queued at current cell: BotId={Bot}, Area={Area}, InteractId={InteractId}",
+                bot.PlayerId, area, interactId);
+            return true;
+        }
+
         var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
             area, targetCell,
             a => closureManager.IsAreaClosed(matchingId, a));

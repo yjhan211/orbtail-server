@@ -40,9 +40,10 @@ namespace network.common.data.models
         public GameObjectInfo(ObjectType objectType, long objectId, MapId mapId, long mapSubId, Cell cell,
             bool isFlip = false)
         {
+            cell ??= new Cell(0, 0);
             ObjectType = objectType;
             ObjectId = objectId;
-            Cell = Cell.Clone(cell); // null 체크는 Cell.Clone 내부에서 처리
+            Cell = Cell.Clone(cell);
             Position = new Vector3f(cell.X, cell.Y, 0);
             Velocity = new Vector3f(0, 0, 0);
             Rotation = 0f;
