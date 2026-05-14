@@ -228,6 +228,9 @@ namespace network.common.data.helpers
             GameMissionData.Initialize(loadedData[DataFiles.Mission.Step]);
             PartRecipeData.Initialize(loadedData[DataFiles.Mission.PartRecipe]);
             PrerequisiteItemData.Initialize(loadedData[DataFiles.Mission.PrerequisiteItem]);
+            GameMissionGraphData.Initialize(
+                loadedData[DataFiles.Mission.GraphNode],
+                loadedData[DataFiles.Mission.GraphRecipe]);
 
             ValidateAllData();
             _initialized = true;
@@ -381,6 +384,137 @@ namespace network.common.data.helpers
                         $"prerequisite_item [target_part_id={prerequisite.TargetPartId}]: sprite_item_id={prerequisite.SpriteItemId} not found in item_info");
                 }
             }
+
+            foreach (var node in GameMissionGraphData.GetAllNodes())
+            {
+                if (!Enum.IsDefined(typeof(JobTitle), (JobTitle)node.JobTitle))
+                    errors.Add($"mission_graph_node [{node.NodeId}]: job_title={node.JobTitle} invalid");
+
+                if (!Enum.IsDefined(typeof(MissionGraphNodeKind), node.NodeKind))
+                    errors.Add($"mission_graph_node [{node.NodeId}]: node_kind={node.NodeKind} invalid");
+
+                if (node.AreaType > 0 && !Enum.IsDefined(typeof(AreaType), (AreaType)node.AreaType))
+                    errors.Add($"mission_graph_node [{node.NodeId}]: area_type={node.AreaType} invalid");
+
+                if (node.ObjectType > 0 && !Enum.IsDefined(typeof(InteractableObjectType), (InteractableObjectType)node.ObjectType))
+                    errors.Add($"mission_graph_node [{node.NodeId}]: object_type={node.ObjectType} invalid");
+
+                if (node.InteractId > 0)
+                {
+                    var interactable = interactables.FirstOrDefault(info => info.Id == node.InteractId);
+                    if (interactable == null)
+                    {
+                        errors.Add($"mission_graph_node [{node.NodeId}]: interact_id={node.InteractId} not found");
+                    }
+                    else
+                    {
+                        if (node.AreaType > 0 && interactable.ZoneId != node.AreaType)
+                            errors.Add(
+                                $"mission_graph_node [{node.NodeId}]: interact_id={node.InteractId} area mismatch ({interactable.ZoneId} != {node.AreaType})");
+
+                        if (node.ObjectType > 0 && (int)interactable.ObjectType != node.ObjectType)
+                            errors.Add(
+                                $"mission_graph_node [{node.NodeId}]: interact_id={node.InteractId} object mismatch ({(int)interactable.ObjectType} != {node.ObjectType})");
+                    }
+                }
+                else if (node.AreaType > 0 && node.ObjectType > 0)
+                {
+                    bool hasTarget = interactables.Any(info =>
+                        info.ZoneId == node.AreaType && (int)info.ObjectType == node.ObjectType);
+                    if (!hasTarget)
+                    {
+                        errors.Add(
+                            $"mission_graph_node [{node.NodeId}]: no interactable for area={node.AreaType}, object_type={node.ObjectType}");
+                    }
+                }
+
+                foreach (var partId in node.RequiredPartIds)
+                {
+                    var part = GameMissionData.GetPart(partId);
+                    if (part == null)
+                        errors.Add($"mission_graph_node [{node.NodeId}]: required_part_id={partId} not found");
+                    else if (part.JobTitle != node.JobTitle)
+                        errors.Add($"mission_graph_node [{node.NodeId}]: required_part_id={partId} job mismatch");
+                }
+
+                foreach (var itemId in node.RequiredItemIds)
+                {
+                    if (!itemIds.Contains(itemId))
+                        errors.Add($"mission_graph_node [{node.NodeId}]: required_item_id={itemId} not found in item_info");
+                }
+
+                foreach (var requiredNodeId in node.RequiredNodeIds)
+                {
+                    var requiredNode = GameMissionGraphData.GetNode(requiredNodeId);
+                    if (requiredNode == null)
+                        errors.Add($"mission_graph_node [{node.NodeId}]: required_node_id={requiredNodeId} not found");
+                    else if (requiredNode.JobTitle != node.JobTitle)
+                        errors.Add($"mission_graph_node [{node.NodeId}]: required_node_id={requiredNodeId} job mismatch");
+                }
+
+                foreach (var unlockNodeId in node.UnlockNodeIds)
+                {
+                    var unlockNode = GameMissionGraphData.GetNode(unlockNodeId);
+                    if (unlockNode == null)
+                        errors.Add($"mission_graph_node [{node.NodeId}]: unlock_node_id={unlockNodeId} not found");
+                    else if (unlockNode.JobTitle != node.JobTitle)
+                        errors.Add($"mission_graph_node [{node.NodeId}]: unlock_node_id={unlockNodeId} job mismatch");
+                }
+
+                if (node.OutputPartId > 0)
+                {
+                    var outputPart = GameMissionData.GetPart(node.OutputPartId);
+                    if (outputPart == null)
+                        errors.Add($"mission_graph_node [{node.NodeId}]: output_part_id={node.OutputPartId} not found");
+                    else if (outputPart.JobTitle != node.JobTitle)
+                        errors.Add($"mission_graph_node [{node.NodeId}]: output_part_id={node.OutputPartId} job mismatch");
+                }
+            }
+
+            foreach (var recipe in GameMissionGraphData.GetAllRecipes())
+            {
+                if (!Enum.IsDefined(typeof(JobTitle), (JobTitle)recipe.JobTitle))
+                    errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: job_title={recipe.JobTitle} invalid");
+
+                if (recipe.InputPartIds.Count < 2)
+                    errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: input_part_ids must contain at least 2 parts");
+
+                foreach (var inputPartId in recipe.InputPartIds)
+                {
+                    var inputPart = GameMissionData.GetPart(inputPartId);
+                    if (inputPart == null)
+                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: input_part_id={inputPartId} not found");
+                    else if (inputPart.JobTitle != recipe.JobTitle)
+                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: input_part_id={inputPartId} job mismatch");
+                }
+
+                if (recipe.OutputPartId > 0)
+                {
+                    var outputPart = GameMissionData.GetPart(recipe.OutputPartId);
+                    if (outputPart == null)
+                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: output_part_id={recipe.OutputPartId} not found");
+                    else if (outputPart.JobTitle != recipe.JobTitle)
+                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: output_part_id={recipe.OutputPartId} job mismatch");
+                }
+
+                foreach (var requiredNodeId in recipe.RequiredNodeIds)
+                {
+                    var requiredNode = GameMissionGraphData.GetNode(requiredNodeId);
+                    if (requiredNode == null)
+                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: required_node_id={requiredNodeId} not found");
+                    else if (requiredNode.JobTitle != recipe.JobTitle)
+                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: required_node_id={requiredNodeId} job mismatch");
+                }
+
+                foreach (var unlockNodeId in recipe.UnlockNodeIds)
+                {
+                    var unlockNode = GameMissionGraphData.GetNode(unlockNodeId);
+                    if (unlockNode == null)
+                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: unlock_node_id={unlockNodeId} not found");
+                    else if (unlockNode.JobTitle != recipe.JobTitle)
+                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: unlock_node_id={unlockNodeId} job mismatch");
+                }
+            }
         }
 
         private static class DataFiles
@@ -412,8 +546,10 @@ namespace network.common.data.helpers
                 public const string Step = "mission_step.csv";
                 public const string PartRecipe = "part_recipe.csv";
                 public const string PrerequisiteItem = "prerequisite_item.csv";
+                public const string GraphNode = "mission_graph_node.csv";
+                public const string GraphRecipe = "mission_graph_recipe.csv";
 
-                public static readonly string[] ALL = new[] { Step, PartRecipe, PrerequisiteItem };
+                public static readonly string[] ALL = new[] { Step, PartRecipe, PrerequisiteItem, GraphNode, GraphRecipe };
             }
 
             public static class Item
