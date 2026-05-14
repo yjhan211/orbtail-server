@@ -154,6 +154,23 @@ namespace network.common.data.models
         [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
     }
 
+    [MessagePackObject]
+    public class InteractCooldownSnapshotEntry : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("remainSeconds")] public int RemainSeconds { get; set; }
+    }
+
+    /// <summary>
+    ///     #137 — 합류/리커넥트 클라이언트용 현재 InteractObject cooldown snapshot.
+    ///     실시간 갱신은 G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST가 계속 담당한다.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_INTERACT_COOLDOWN_SNAPSHOT : IMessagePackObject
+    {
+        [Key("entries")] public List<InteractCooldownSnapshotEntry> Entries { get; set; } = new();
+    }
+
     /// <summary>
     ///     #134 — RNG 채집 시작 요청. RippleMarker 클릭 즉시 송신. 서버가 stamina 차감 + 쿨타임 등록 + ACK 응답.
     /// </summary>

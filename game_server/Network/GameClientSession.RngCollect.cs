@@ -309,6 +309,32 @@ public partial class GameClientSession
         }
     }
 
+    private void SendInteractCooldownSnapshot()
+    {
+        if (!PlayerId.HasValue) return;
+
+        var snapshot = RngCollectCooldownStore.GetSnapshot(CurrentMapSubId);
+        if (snapshot.Count == 0) return;
+
+        var msg = new G_TO_C_INTERACT_COOLDOWN_SNAPSHOT
+        {
+            Entries = snapshot
+                .Select(entry => new InteractCooldownSnapshotEntry
+                {
+                    InteractId = entry.InteractId,
+                    RemainSeconds = entry.RemainingSeconds
+                })
+                .ToList()
+        };
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACT_COOLDOWN_SNAPSHOT, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
+
+        Logger.LogInformation("Interact cooldown snapshot sent: PlayerId={PlayerId}, Count={Count}",
+            PlayerId.Value, msg.Entries.Count);
+    }
+
     private void SendRngCollectResult(int interactId, int resultType, int itemId,
         int staminaReward, int cooldownSeconds)
     {
