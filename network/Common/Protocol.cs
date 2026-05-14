@@ -100,7 +100,7 @@ namespace network.common
         // 미션 프로토콜 (v0.2.0 — 부품 결합 시스템)
         G_TO_C_MISSION_INFO,          // 게임 시작 시 미션 정보 전달 (직책 + 부품 진행)
         G_TO_C_MISSION_STEP_COMPLETE, // 레거시 호환: 소재 1개 회수 알림 (G_TO_C_PART_COLLECTED 권장)
-        G_TO_C_MISSION_ALL_COMPLETE,  // 레거시 호환: race 완주 알림 (G_TO_C_PART_COMBINED.IsRaceComplete 권장)
+        G_TO_C_MISSION_ALL_COMPLETE,  // race 완주 알림 (G_TO_C_PART_COMBINED.IsRaceComplete 권장)
         G_TO_C_PART_COLLECTED,        // 부품 회수 알림 (소재)
         G_TO_C_PART_COMBINED,         // 부품 결합 결과 (중간재 또는 최종)
         C_TO_G_COMBINE_PARTS,         // 부품 결합 요청

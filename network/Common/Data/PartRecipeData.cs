@@ -59,6 +59,9 @@ namespace network.common.data
         public static List<PartRecipe> GetRecipes(short jobTitle) =>
             _recipesByJob.GetValueOrDefault(jobTitle) ?? new List<PartRecipe>();
 
+        public static List<PartRecipe> GetAllRecipes() =>
+            _recipesByJob.Values.SelectMany(recipes => recipes).ToList();
+
         /// <summary>
         ///     특정 부품을 입력으로 사용하는 레시피 목록.
         /// </summary>

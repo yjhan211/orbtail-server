@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using network.common;
 using network.common.data.helpers;
 using network.managers;
 #if UNITY_5_3_OR_NEWER
@@ -278,6 +279,8 @@ namespace network.common.data.helpers
                 }
             }
 
+            ValidateMissionReferentialIntegrity(errors, itemIds);
+
             if (errors.Count > 0)
             {
                 foreach (var error in errors)
@@ -289,6 +292,95 @@ namespace network.common.data.helpers
             }
 
             Log($"[GameDataHelper] Referential integrity validation passed!");
+        }
+
+        private static void ValidateMissionReferentialIntegrity(List<string> errors, HashSet<int> itemIds)
+        {
+            var partIds = new HashSet<int>(GameMissionData.GetAllParts().Select(part => part.PartId));
+            var interactables = GameInteractableData.GetAll();
+
+            foreach (var part in GameMissionData.GetAllParts())
+            {
+                if (!Enum.IsDefined(typeof(PartTier), part.PartTier))
+                    errors.Add($"mission_step [{part.PartId}]: part_tier={part.PartTier} invalid");
+
+                if (part.SpriteItemId > 0 && !itemIds.Contains(part.SpriteItemId))
+                    errors.Add($"mission_step [{part.PartId}]: sprite_item_id={part.SpriteItemId} not found in item_info");
+
+                if (part.TargetArea > 0 && !Enum.IsDefined(typeof(AreaType), part.TargetArea))
+                    errors.Add($"mission_step [{part.PartId}]: target_area={part.TargetArea} invalid");
+
+                if (part.TargetObjectType > 0 && !Enum.IsDefined(typeof(InteractableObjectType), part.TargetObjectType))
+                    errors.Add($"mission_step [{part.PartId}]: target_object_type={part.TargetObjectType} invalid");
+
+                if (part.TargetArea > 0 && part.TargetObjectType > 0)
+                {
+                    bool hasTarget = interactables.Any(info =>
+                        info.ZoneId == part.TargetArea && (int)info.ObjectType == part.TargetObjectType);
+                    if (!hasTarget)
+                    {
+                        errors.Add(
+                            $"mission_step [{part.PartId}]: no interactable for area={part.TargetArea}, object_type={part.TargetObjectType}");
+                    }
+                }
+            }
+
+            foreach (var recipe in PartRecipeData.GetAllRecipes())
+            {
+                var inputA = GameMissionData.GetPart(recipe.InputPartA);
+                var inputB = GameMissionData.GetPart(recipe.InputPartB);
+                var output = GameMissionData.GetPart(recipe.OutputPart);
+
+                if (inputA == null)
+                    errors.Add($"part_recipe [{recipe.Id}]: input_part_a={recipe.InputPartA} not found in mission_step");
+                if (inputB == null)
+                    errors.Add($"part_recipe [{recipe.Id}]: input_part_b={recipe.InputPartB} not found in mission_step");
+                if (output == null)
+                    errors.Add($"part_recipe [{recipe.Id}]: output_part={recipe.OutputPart} not found in mission_step");
+
+                if (inputA != null && inputA.JobTitle != recipe.JobTitle)
+                    errors.Add($"part_recipe [{recipe.Id}]: input_part_a job mismatch ({inputA.JobTitle} != {recipe.JobTitle})");
+                if (inputB != null && inputB.JobTitle != recipe.JobTitle)
+                    errors.Add($"part_recipe [{recipe.Id}]: input_part_b job mismatch ({inputB.JobTitle} != {recipe.JobTitle})");
+                if (output != null && output.JobTitle != recipe.JobTitle)
+                    errors.Add($"part_recipe [{recipe.Id}]: output_part job mismatch ({output.JobTitle} != {recipe.JobTitle})");
+            }
+
+            foreach (var prerequisite in PrerequisiteItemData.GetAll())
+            {
+                if (!partIds.Contains(prerequisite.TargetPartId))
+                {
+                    errors.Add(
+                        $"prerequisite_item [target_part_id={prerequisite.TargetPartId}]: target part not found in mission_step");
+                }
+
+                if (prerequisite.LocationArea > 0 && !Enum.IsDefined(typeof(AreaType), prerequisite.LocationArea))
+                    errors.Add(
+                        $"prerequisite_item [target_part_id={prerequisite.TargetPartId}]: location_area={prerequisite.LocationArea} invalid");
+
+                if (prerequisite.LocationObjectType > 0 &&
+                    !Enum.IsDefined(typeof(InteractableObjectType), prerequisite.LocationObjectType))
+                    errors.Add(
+                        $"prerequisite_item [target_part_id={prerequisite.TargetPartId}]: location_object_type={prerequisite.LocationObjectType} invalid");
+
+                if (prerequisite.LocationArea > 0 && prerequisite.LocationObjectType > 0)
+                {
+                    bool hasTarget = interactables.Any(info =>
+                        info.ZoneId == prerequisite.LocationArea &&
+                        (int)info.ObjectType == prerequisite.LocationObjectType);
+                    if (!hasTarget)
+                    {
+                        errors.Add(
+                            $"prerequisite_item [target_part_id={prerequisite.TargetPartId}]: no interactable for area={prerequisite.LocationArea}, object_type={prerequisite.LocationObjectType}");
+                    }
+                }
+
+                if (prerequisite.SpriteItemId > 0 && !itemIds.Contains(prerequisite.SpriteItemId))
+                {
+                    errors.Add(
+                        $"prerequisite_item [target_part_id={prerequisite.TargetPartId}]: sprite_item_id={prerequisite.SpriteItemId} not found in item_info");
+                }
+            }
         }
 
         private static class DataFiles

@@ -69,6 +69,9 @@ namespace network.common.data
         public static List<MissionPartData> GetParts(short jobTitle) =>
             _partsByJob.GetValueOrDefault(jobTitle) ?? new List<MissionPartData>();
 
+        public static List<MissionPartData> GetAllParts() =>
+            _partsById.Values.ToList();
+
         /// <summary>
         ///     해당 직책의 소재(Tier 0)만 반환 — 회수 가능 부품
         /// </summary>
@@ -80,6 +83,9 @@ namespace network.common.data
         /// </summary>
         public static MissionPartData GetPart(int partId) =>
             _partsById.GetValueOrDefault(partId);
+
+        public static bool ContainsPart(int partId) =>
+            _partsById.ContainsKey(partId);
 
         public static int GetPartItemId(int partId)
         {

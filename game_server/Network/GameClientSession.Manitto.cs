@@ -1124,12 +1124,6 @@ public partial class GameClientSession
         SendGiftDiscovered(result, GiftFoundCorruptionDelta);
         SendGiftProgressToOwner(result);
 
-        if (result.IsRaceComplete)
-        {
-            EndGameByRaceCompletion(result.OwnerPlayerId);
-            return;
-        }
-
         CheckResourceElimination();
     }
 
