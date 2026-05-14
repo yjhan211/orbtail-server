@@ -354,6 +354,7 @@ public class BotPlayerState
     public long LastInteractRespondedTo { get; set; }
 
     public Dictionary<long, DateTime> TargetEncounterStartedAtByPlayerId { get; } = new();
+    public HashSet<long> TargetInterrogationRequestedInEncounterPlayerIds { get; } = new();
 
     public void HoldForInteraction(TimeSpan fallbackDuration)
     {

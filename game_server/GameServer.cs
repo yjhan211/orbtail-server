@@ -1004,8 +1004,11 @@ public class GameServer(
             if (!isSameEncounter)
             {
                 bot.TargetEncounterStartedAtByPlayerId.Remove(playerId);
+                bot.TargetInterrogationRequestedInEncounterPlayerIds.Remove(playerId);
                 continue;
             }
+
+            if (bot.TargetInterrogationRequestedInEncounterPlayerIds.Contains(playerId)) continue;
 
             if (!bot.TargetEncounterStartedAtByPlayerId.TryGetValue(playerId, out var encounterStartedAt))
             {
@@ -1018,6 +1021,7 @@ public class GameServer(
 
             if (!session.TryStartTargetBotInterrogation(bot)) continue;
             bot.TargetEncounterStartedAtByPlayerId[playerId] = now;
+            bot.TargetInterrogationRequestedInEncounterPlayerIds.Add(playerId);
         }
     }
 
