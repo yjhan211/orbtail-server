@@ -33,7 +33,9 @@ public static class RngCollectCore
 
         // 자기 풀 매칭은 영역(area) 단위 (#135) — object_type 무시. 한 영역에 자기 부품 1개씩 배치된다는 가정.
         var materials = GameMissionData.GetMaterials((short)jobTitle);
-        var matchedPart = materials.FirstOrDefault(p => p.TargetArea == info.ZoneId);
+        var matchedPart = materials.FirstOrDefault(p =>
+            p.TargetArea == info.ZoneId &&
+            (p.TargetObjectType == 0 || p.TargetObjectType == (int)info.ObjectType));
 
         // 자기 부품 이미 회수했으면 그 영역은 자기 풀 외 분기(영역 풀 소모품)로 처리 (#135).
         if (matchedPart != null)
@@ -52,7 +54,7 @@ public static class RngCollectCore
             if (roll < 90)
             {
                 var collectResult = missionManager.TryCollectPart(matchingId, playerId,
-                    (AreaType)info.ZoneId, (int)info.ObjectType);
+                    (AreaType)info.ZoneId, (int)info.ObjectType, info.Id);
                 if (collectResult is { Success: true, Part: not null })
                 {
                     outcome.ResultType = 3;

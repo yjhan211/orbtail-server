@@ -57,6 +57,7 @@ public class MissionManager
             JobTitle = jobTitle,
             IsCompleted = false
         };
+        RefreshUnlockedMissionNodes(state);
 
         matchingDict[playerId] = state;
         _logger.LogInformation("부품 초기화: PlayerId={PlayerId}, 직책={JobTitle}, 총 {Total} 부품",
@@ -67,15 +68,17 @@ public class MissionManager
     ///     부품 회수 시도 (action 2/3 result_type=1 trigger).
     ///     자기 직책 발견 풀에서 (area, objectType) 매칭 부품을 찾아 인벤토리에 추가.
     /// </summary>
-    public PartCollectResult? TryCollectPart(long matchingId, long playerId, AreaType area, int objectType)
+    public PartCollectResult? TryCollectPart(long matchingId, long playerId, AreaType area, int objectType, int interactId = 0)
     {
         if (!_matchingStates.TryGetValue(matchingId, out var matching)) return null;
         if (!matching.TryGetValue(playerId, out var state)) return null;
         if (state.IsCompleted) return null;
 
-        // 직책 발견 풀에서 매칭 부품 찾기 — 영역(area) 단위 매칭 (#135). object_type 무시.
+        // 직책 발견 풀에서 매칭 부품 찾기 — #143부터 object_type까지 확인한다.
         var materials = GameMissionData.GetMaterials((short)state.JobTitle);
-        var matchingPart = materials.FirstOrDefault(p => p.TargetArea == (int)area);
+        var matchingPart = materials.FirstOrDefault(p =>
+            p.TargetArea == (int)area &&
+            (p.TargetObjectType == 0 || p.TargetObjectType == objectType));
 
         if (matchingPart == null) return null;
         if (state.CollectedParts.Contains(matchingPart.PartId))
@@ -93,6 +96,7 @@ public class MissionManager
         }
 
         state.CollectedParts.Add(matchingPart.PartId);
+        var graphProgress = ApplyGraphNodeProgressForPart(state, matchingPart.PartId, area, objectType, interactId);
         _logger.LogInformation("부품 회수: PlayerId={PlayerId}, PartId={PartId} ({Name})",
             playerId, matchingPart.PartId, matchingPart.PartNameKr);
 
@@ -100,7 +104,9 @@ public class MissionManager
         {
             Success = true,
             Part = matchingPart,
-            StaminaReward = matchingPart.StaminaReward
+            StaminaReward = matchingPart.StaminaReward,
+            CompletedMissionNodeIds = graphProgress.CompletedNodeIds,
+            UnlockedMissionNodeIds = graphProgress.UnlockedNodeIds
         };
     }
 
@@ -174,6 +180,7 @@ public class MissionManager
 
                 // 결합 실행 + winner 등록 (atomic)
                 state.CollectedParts.Add(recipe.OutputPart);
+                var graphProgress = ApplyGraphRecipeProgress(state, recipe);
                 state.IsCompleted = true;
 
                 _raceWinners[matchingId] = new RaceCompletionRecord
@@ -193,13 +200,17 @@ public class MissionManager
                     Recipe = recipe,
                     OutputPart = outputPart,
                     IsRaceComplete = true,
-                    StaminaReward = outputPart?.StaminaReward ?? 0
+                    StaminaReward = outputPart?.StaminaReward ?? 0,
+                    CompletedMissionRecipeId = graphProgress.CompletedRecipeId,
+                    CompletedMissionNodeIds = graphProgress.CompletedNodeIds,
+                    UnlockedMissionNodeIds = graphProgress.UnlockedNodeIds
                 };
             }
         }
 
         // 중간재 결합 — 동시성 가드 불필요 (자기 인벤토리에만 영향)
         state.CollectedParts.Add(recipe.OutputPart);
+        var intermediateGraphProgress = ApplyGraphRecipeProgress(state, recipe);
 
         _logger.LogInformation("부품 결합: PlayerId={PlayerId}, {A}+{B} → {Out} (Final=false)",
             playerId, partA, partB, recipe.OutputPart);
@@ -210,7 +221,10 @@ public class MissionManager
             Recipe = recipe,
             OutputPart = outputPart,
             IsRaceComplete = false,
-            StaminaReward = outputPart?.StaminaReward ?? 0
+            StaminaReward = outputPart?.StaminaReward ?? 0,
+            CompletedMissionRecipeId = intermediateGraphProgress.CompletedRecipeId,
+            CompletedMissionNodeIds = intermediateGraphProgress.CompletedNodeIds,
+            UnlockedMissionNodeIds = intermediateGraphProgress.UnlockedNodeIds
         };
     }
 
@@ -543,6 +557,73 @@ public class MissionManager
         return matching.GetValueOrDefault(playerId);
     }
 
+    private MissionGraphProgressResult ApplyGraphNodeProgressForPart(
+        PlayerPartState state,
+        int partId,
+        AreaType area,
+        int objectType,
+        int interactId)
+    {
+        var result = new MissionGraphProgressResult();
+        var completedBefore = state.CompletedMissionNodeIds.ToHashSet();
+        var unlockedBefore = state.UnlockedMissionNodeIds.ToHashSet();
+
+        var node = GameMissionGraphData.GetNodes((short)state.JobTitle)
+            .FirstOrDefault(candidate =>
+                candidate.OutputPartId == partId &&
+                !state.CompletedMissionNodeIds.Contains(candidate.NodeId) &&
+                candidate.MatchesInteractable((int)area, objectType, interactId) &&
+                candidate.AreRequirementsMet(state.CollectedParts, state.CompletedMissionNodeIds));
+
+        if (node != null)
+            state.CompletedMissionNodeIds.Add(node.NodeId);
+
+        RefreshUnlockedMissionNodes(state);
+
+        result.CompletedNodeIds = state.CompletedMissionNodeIds.Except(completedBefore).ToList();
+        result.UnlockedNodeIds = state.UnlockedMissionNodeIds.Except(unlockedBefore).ToList();
+        return result;
+    }
+
+    private MissionGraphProgressResult ApplyGraphRecipeProgress(PlayerPartState state, PartRecipe recipe)
+    {
+        var result = new MissionGraphProgressResult();
+        var unlockedBefore = state.UnlockedMissionNodeIds.ToHashSet();
+
+        if (GameMissionGraphData.TryFindRecipeByPartRecipe(
+                (short)state.JobTitle,
+                recipe.InputPartA,
+                recipe.InputPartB,
+                recipe.OutputPart,
+                out var graphRecipe))
+        {
+            if (state.CompletedMissionRecipeIds.Add(graphRecipe.RecipeId))
+                result.CompletedRecipeId = graphRecipe.RecipeId;
+
+            foreach (var unlockNodeId in graphRecipe.UnlockNodeIds)
+                state.UnlockedMissionNodeIds.Add(unlockNodeId);
+        }
+
+        RefreshUnlockedMissionNodes(state);
+
+        result.UnlockedNodeIds = state.UnlockedMissionNodeIds.Except(unlockedBefore).ToList();
+        return result;
+    }
+
+    private static void RefreshUnlockedMissionNodes(PlayerPartState state)
+    {
+        foreach (var node in GameMissionGraphData.GetInitiallyAvailableNodes((short)state.JobTitle))
+            state.UnlockedMissionNodeIds.Add(node.NodeId);
+
+        foreach (var node in GameMissionGraphData.GetAvailableNodes(
+                     (short)state.JobTitle,
+                     state.CollectedParts,
+                     state.CompletedMissionNodeIds))
+        {
+            state.UnlockedMissionNodeIds.Add(node.NodeId);
+        }
+    }
+
     public void CleanupMatching(long matchingId)
     {
         _matchingStates.TryRemove(matchingId, out _);
@@ -569,6 +650,9 @@ public class PlayerPartState
     public JobTitle JobTitle { get; set; }
     public HashSet<int> CollectedParts { get; set; } = new();           // 회수+결합 결과 부품 ID
     public HashSet<int> CollectedPrereqGroups { get; set; } = new();    // 회수한 선행 아이템 share_group
+    public HashSet<int> CompletedMissionNodeIds { get; set; } = new();
+    public HashSet<int> CompletedMissionRecipeIds { get; set; } = new();
+    public HashSet<int> UnlockedMissionNodeIds { get; set; } = new();
     public List<PlacedGift> PlacedGifts { get; set; } = new();
     public int DeliveredGiftCount { get; set; }
     public bool IsCompleted { get; set; }                               // 최종 결합 시 true (race 완주)
@@ -593,6 +677,8 @@ public class PartCollectResult
     public MissionPartData? Part { get; set; }
     public int StaminaReward { get; set; }
     public int MissingPrerequisiteGroup { get; set; }
+    public List<int> CompletedMissionNodeIds { get; set; } = new();
+    public List<int> UnlockedMissionNodeIds { get; set; } = new();
 }
 
 public class PartCombineResult
@@ -603,6 +689,16 @@ public class PartCombineResult
     public MissionPartData? OutputPart { get; set; }
     public bool IsRaceComplete { get; set; }
     public int StaminaReward { get; set; }
+    public int CompletedMissionRecipeId { get; set; }
+    public List<int> CompletedMissionNodeIds { get; set; } = new();
+    public List<int> UnlockedMissionNodeIds { get; set; } = new();
+}
+
+public class MissionGraphProgressResult
+{
+    public int CompletedRecipeId { get; set; }
+    public List<int> CompletedNodeIds { get; set; } = new();
+    public List<int> UnlockedNodeIds { get; set; } = new();
 }
 
 public class PlaceGiftResult

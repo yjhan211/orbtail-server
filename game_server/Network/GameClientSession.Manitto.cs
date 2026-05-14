@@ -548,7 +548,7 @@ public partial class GameClientSession
         int objectType = (int)interactable.ObjectType;
 
         // 1. 부품 회수 시도 (자기 직책 소재 풀 매칭)
-        var collectResult = _missionManager.TryCollectPart(CurrentMapSubId, PlayerId.Value, area, objectType);
+        var collectResult = _missionManager.TryCollectPart(CurrentMapSubId, PlayerId.Value, area, objectType, interactId);
         if (collectResult != null && collectResult.Success && collectResult.Part != null)
         {
             // 부품 회수 stamina 보상 제거 (#135)
