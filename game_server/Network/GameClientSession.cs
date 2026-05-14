@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
 using network.core;
+using network.helpers;
 using network.interfaces;
 using network.packets;
 
@@ -360,6 +361,8 @@ public partial class GameClientSession : SessionBase
     /// </summary>
     private async Task RecordLeavePenaltyAsync(long playerId)
     {
+        if (DemoMode.IsActive) return;
+
         try
         {
             const string penaltyKey = "leave_penalties";

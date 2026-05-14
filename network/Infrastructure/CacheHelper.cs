@@ -184,8 +184,7 @@ public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
         double stop = double.PositiveInfinity, int db = -1)
     {
         var result = await ExecuteRedisCommandAsync(
-            database => database.SortedSetRangeByScoreAsync(key, start, stop, order: Order.Ascending,
-                flags: CommandFlags.PreferReplica),
+            database => database.SortedSetRangeByScoreAsync(key, start, stop, order: Order.Ascending),
             db
         );
         return result.Select(rv => (byte[])rv!).ToArray();
