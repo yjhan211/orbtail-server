@@ -360,7 +360,6 @@ public class BotPlayerState
         IsInInteraction = true;
         InteractionStayUntil = DateTime.UtcNow.Add(fallbackDuration);
         TransitionPauseUntil = DateTime.MinValue;
-        WalkVelocity = new Vector3f(0f, 0f, 0f);
     }
 
     // === #134 RNG 채집 통합 ===
