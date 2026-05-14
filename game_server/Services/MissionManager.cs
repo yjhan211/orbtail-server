@@ -551,6 +551,31 @@ public class MissionManager
         return invalidated;
     }
 
+    public void NotifyTargetLost(
+        long matchingId,
+        long playerId,
+        long lostTargetPlayerId,
+        EliminationReason reason,
+        long? suspectedCausePlayerId = null)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return;
+        if (!matching.TryGetValue(playerId, out var state)) return;
+
+        state.HasLostTarget = true;
+        state.LostTargetPlayerId = lostTargetPlayerId;
+        state.TargetLossReason = reason;
+        state.TargetLostAt = DateTime.UtcNow;
+
+        if (suspectedCausePlayerId is > 0 && suspectedCausePlayerId != playerId)
+            state.RevengeCandidatePlayerIds.Add(suspectedCausePlayerId.Value);
+
+        RefreshUnlockedMissionNodes(state);
+
+        _logger.LogInformation(
+            "타겟 상실 기록: MatchingId={MatchingId}, PlayerId={PlayerId}, LostTarget={Target}, Reason={Reason}, Candidate={Candidate}",
+            matchingId, playerId, lostTargetPlayerId, reason, suspectedCausePlayerId);
+    }
+
     public PlayerPartState? GetState(long matchingId, long playerId)
     {
         if (!_matchingStates.TryGetValue(matchingId, out var matching)) return null;
@@ -653,6 +678,11 @@ public class PlayerPartState
     public HashSet<int> CompletedMissionNodeIds { get; set; } = new();
     public HashSet<int> CompletedMissionRecipeIds { get; set; } = new();
     public HashSet<int> UnlockedMissionNodeIds { get; set; } = new();
+    public bool HasLostTarget { get; set; }
+    public long LostTargetPlayerId { get; set; }
+    public EliminationReason TargetLossReason { get; set; } = EliminationReason.NONE;
+    public DateTime? TargetLostAt { get; set; }
+    public HashSet<long> RevengeCandidatePlayerIds { get; set; } = new();
     public List<PlacedGift> PlacedGifts { get; set; } = new();
     public int DeliveredGiftCount { get; set; }
     public bool IsCompleted { get; set; }                               // 최종 결합 시 true (race 완주)

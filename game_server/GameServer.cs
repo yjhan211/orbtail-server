@@ -374,6 +374,12 @@ public class GameServer(
                 }
             }
 
+            foreach (var (affectedId, newStatus) in affected)
+            {
+                if (newStatus != ManittoStatus.TERMINAL) continue;
+                _missionManager.NotifyTargetLost(matchingId, affectedId, botId, reason);
+            }
+
             // 3) 게임 종료 판정 — 봇 탈락으로 최후 1인 결정 가능
             var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(matchingId);
             if (isGameOver && matchingSessions.Count > 0)
@@ -519,7 +525,7 @@ public class GameServer(
 
                 // 마니또 탈락 — 세션 중 임의를 통해 ProcessElimination
                 var anySession = activeSessions.FirstOrDefault(s => s.CurrentMapSubId == matchingId);
-                anySession?.ProcessBotDetectedElimination(candidate);
+                anySession?.ProcessBotDetectedElimination(candidate, detecterBotId);
             }
         }
         catch (Exception ex)

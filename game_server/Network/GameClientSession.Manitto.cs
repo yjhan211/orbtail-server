@@ -138,7 +138,7 @@ public partial class GameClientSession
             // 마니또의 모든 흔적 함정 무효화 (§2.5.1)
             _traceManager.InvalidateTracesByPlacer(CurrentMapSubId, msg.TargetPlayerId);
 
-            _ = ProcessElimination(msg.TargetPlayerId, EliminationReason.DETECTED);
+            _ = ProcessElimination(msg.TargetPlayerId, EliminationReason.DETECTED, PlayerId.Value);
         }
 
         return Task.CompletedTask;
@@ -188,7 +188,7 @@ public partial class GameClientSession
     /// <summary>
     ///     플레이어 탈락 처리 + 체인 단절 브로드캐스트
     /// </summary>
-    private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason)
+    private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null)
     {
         _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
         var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason);
@@ -239,6 +239,12 @@ public partial class GameClientSession
                     bot.ManittoStatus = newStatus;
                 }
             }
+        }
+
+        foreach (var (playerId, newStatus) in affected)
+        {
+            if (newStatus != ManittoStatus.TERMINAL) continue;
+            _missionManager.NotifyTargetLost(CurrentMapSubId, playerId, eliminatedPlayerId, reason, causePlayerId);
         }
 
         // 2. 영향받는 플레이어에게 개별 상태 변경 알림
@@ -999,9 +1005,9 @@ public partial class GameClientSession
     /// <summary>
     ///     #26: 봇 색출 적중 시 마니또(피탈자) 탈락 처리. 임의 세션이 트리거 역할만 수행.
     /// </summary>
-    public void ProcessBotDetectedElimination(long manittoPlayerId)
+    public void ProcessBotDetectedElimination(long manittoPlayerId, long? detecterBotId = null)
     {
-        _ = ProcessElimination(manittoPlayerId, EliminationReason.DETECTED);
+        _ = ProcessElimination(manittoPlayerId, EliminationReason.DETECTED, detecterBotId);
     }
 
     /// <summary>
