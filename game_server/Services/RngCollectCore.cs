@@ -61,6 +61,7 @@ public static class RngCollectCore
                     outcome.ItemId = collectResult.Part.PartId;
                     outcome.StaminaReward = 0; // 부품 회수 stamina 보상 제거 (#135)
                     outcome.CollectedPart = collectResult.Part;
+                    outcome.CompletedMissionNodeIds = collectResult.CompletedMissionNodeIds;
 
                     // #135 — 부품을 인벤토리에 추가 (본체/충전재 ID 대역 분리)
                     int partItemId = GameMissionData.GetPartItemId(collectResult.Part.PartId);
@@ -137,6 +138,9 @@ public class RngCollectOutcome
 
     /// <summary>부품 회수 성공 시 데이터 (호출자 G_TO_C_PART_COLLECTED 송신용)</summary>
     public MissionPartData? CollectedPart { get; set; }
+
+    /// <summary>부품 회수와 함께 완료된 미션 그래프 노드 id.</summary>
+    public List<int> CompletedMissionNodeIds { get; set; } = new();
 
     /// <summary>소모품 회수 시 인벤토리에 추가된 아이템 (호출자 G_TO_C_INGAME_INVENTORY_UPDATE 송신용)</summary>
     public InGameItemInfo? AddedInventoryItem { get; set; }

@@ -587,7 +587,7 @@ public partial class GameClientSession
             Send(legacyPacket);
 
             // 미션 흔적 저장 (탐색 시 다른 플레이어가 발견 가능)
-            StoreTrace(area, interactId, GetMissionCollectTraceDescription(collectResult), true);
+            StoreTrace(area, interactId, GetMissionCollectTraceDescription(collectResult.CompletedMissionNodeIds), true);
             return;
         }
 
@@ -599,9 +599,9 @@ public partial class GameClientSession
         ApplyBluffBypassCost(area, objectType);
     }
 
-    private string GetMissionCollectTraceDescription(PartCollectResult collectResult)
+    private string GetMissionCollectTraceDescription(IEnumerable<int> completedMissionNodeIds)
     {
-        foreach (int nodeId in collectResult.CompletedMissionNodeIds)
+        foreach (int nodeId in completedMissionNodeIds)
         {
             var node = GameMissionGraphData.GetNode(nodeId);
             string trace = node?.VisibleTrace?.Kr ?? "";

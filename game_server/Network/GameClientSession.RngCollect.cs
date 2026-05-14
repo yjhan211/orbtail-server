@@ -143,6 +143,9 @@ public partial class GameClientSession
 
             _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
                 $"RNG 부품 회수: {outcome.CollectedPart.PartNameKr} (체력+{outcome.StaminaReward})", isBot: false);
+
+            StoreTrace((AreaType)info.ZoneId, msg.InteractId,
+                GetMissionCollectTraceDescription(outcome.CompletedMissionNodeIds), true);
         }
 
         if (outcome.AddedInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedInventoryItem);
