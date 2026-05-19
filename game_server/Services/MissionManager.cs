@@ -228,6 +228,92 @@ public class MissionManager
         };
     }
 
+    public MissionNodeExecuteResult TryExecuteMissionNode(
+        long matchingId,
+        long playerId,
+        int nodeId,
+        AreaType area,
+        int objectType,
+        int interactId = 0,
+        long clientStartUnixMs = 0)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
+        if (!matching.TryGetValue(playerId, out var state))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
+        if (state.IsCompleted)
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
+
+        var node = GameMissionGraphData.GetNode(nodeId);
+        if (node == null || node.JobTitle != (short)state.JobTitle)
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.INVALID_PARAMETER };
+        if (node.NodeKind == MissionGraphNodeKind.CollectPart)
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.INVALID_PARAMETER };
+        if (state.CompletedMissionNodeIds.Contains(node.NodeId))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
+        if (!node.MatchesInteractable((int)area, objectType, interactId))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.AREA_MISMATCH };
+        if (!node.AreRequirementsMet(state.CollectedParts, state.CompletedMissionNodeIds, state.HasLostTarget))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_NOT_AVAILABLE };
+
+        bool isMissionComplete = IsMissionCompleteNode(node);
+        if (isMissionComplete && !TryRegisterRaceCompletion(matchingId, playerId, clientStartUnixMs))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
+
+        var completedBefore = state.CompletedMissionNodeIds.ToHashSet();
+        var unlockedBefore = state.UnlockedMissionNodeIds.ToHashSet();
+
+        state.CompletedMissionNodeIds.Add(node.NodeId);
+        if (node.OutputPartId > 0)
+            state.CollectedParts.Add(node.OutputPartId);
+
+        foreach (var unlockNodeId in node.UnlockNodeIds)
+            state.UnlockedMissionNodeIds.Add(unlockNodeId);
+
+        var grantedReward = GrantShortRewardForNode(state, node);
+        RefreshUnlockedMissionNodes(state);
+
+        if (isMissionComplete)
+            state.IsCompleted = true;
+
+        _logger.LogInformation(
+            "미션 노드 실행: MatchingId={MatchingId}, PlayerId={PlayerId}, NodeId={NodeId}, Complete={Complete}",
+            matchingId, playerId, node.NodeId, isMissionComplete);
+
+        return new MissionNodeExecuteResult
+        {
+            Success = true,
+            Node = node,
+            CompletedMissionNodeIds = state.CompletedMissionNodeIds.Except(completedBefore).ToList(),
+            UnlockedMissionNodeIds = state.UnlockedMissionNodeIds.Except(unlockedBefore).ToList(),
+            GrantedShortReward = grantedReward,
+            IsMissionComplete = isMissionComplete
+        };
+    }
+
+    public bool TryConsumeShortRewardUse(
+        long matchingId,
+        long playerId,
+        MissionShortRewardType rewardType,
+        out MissionShortRewardState? reward)
+    {
+        reward = null;
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return false;
+        if (!matching.TryGetValue(playerId, out var state)) return false;
+
+        lock (state.SyncRoot)
+        {
+            reward = state.ShortRewards.FirstOrDefault(r => r.RewardType == rewardType && r.RemainingUses > 0);
+            if (reward == null) return false;
+
+            reward.RemainingUses--;
+            if (reward.RemainingUses <= 0)
+                state.ShortRewards.Remove(reward);
+
+            return true;
+        }
+    }
+
     public PlaceGiftResult TryPlaceGift(long matchingId, long playerId, long targetPlayerId,
         long itemUid, int itemId, AreaType area, int interactId)
     {
@@ -653,6 +739,46 @@ public class MissionManager
         }
     }
 
+    private static bool IsMissionCompleteNode(MissionGraphNodeData node) =>
+        node.NodeKey == "LIB-09" || node.SuspicionTag == "final_report";
+
+    private static MissionShortRewardState? GrantShortRewardForNode(PlayerPartState state, MissionGraphNodeData node)
+    {
+        return node.NodeKey switch
+        {
+            "LIB-05" => AddOrRefreshShortReward(state, MissionShortRewardType.SharpObservation, remainingUses: 2, valuePercent: 25),
+            "LIB-06" => AddOrRefreshShortReward(state, MissionShortRewardType.ClosedAreaResistance, remainingUses: 1, valuePercent: 30, durationSeconds: 8),
+            "LIB-07" => AddOrRefreshShortReward(state, MissionShortRewardType.DutyStaminaSaver, remainingUses: 3, valuePercent: 20),
+            "LIB-08" => AddOrRefreshShortReward(state, MissionShortRewardType.TargetEncounterStability, remainingUses: 1, valuePercent: 20),
+            _ => null
+        };
+    }
+
+    private static MissionShortRewardState AddOrRefreshShortReward(
+        PlayerPartState state,
+        MissionShortRewardType rewardType,
+        int remainingUses,
+        int valuePercent,
+        int durationSeconds = 0)
+    {
+        lock (state.SyncRoot)
+        {
+            var reward = state.ShortRewards.FirstOrDefault(r => r.RewardType == rewardType);
+            if (reward == null)
+            {
+                reward = new MissionShortRewardState { RewardType = rewardType };
+                state.ShortRewards.Add(reward);
+            }
+
+            reward.RemainingUses = remainingUses;
+            reward.ValuePercent = valuePercent;
+            reward.DurationSeconds = durationSeconds;
+            reward.GrantedAt = DateTime.UtcNow;
+            reward.ExpiresAt = durationSeconds > 0 ? reward.GrantedAt.AddSeconds(durationSeconds) : null;
+            return reward;
+        }
+    }
+
     public void CleanupMatching(long matchingId)
     {
         _matchingStates.TryRemove(matchingId, out _);
@@ -688,6 +814,7 @@ public class PlayerPartState
     public DateTime? TargetLostAt { get; set; }
     public HashSet<long> RevengeCandidatePlayerIds { get; set; } = new();
     public List<PlacedGift> PlacedGifts { get; set; } = new();
+    public List<MissionShortRewardState> ShortRewards { get; set; } = new();
     public int DeliveredGiftCount { get; set; }
     public bool IsCompleted { get; set; }                               // 최종 결합 시 true (race 완주)
 }
@@ -733,6 +860,36 @@ public class MissionGraphProgressResult
     public int CompletedRecipeId { get; set; }
     public List<int> CompletedNodeIds { get; set; } = new();
     public List<int> UnlockedNodeIds { get; set; } = new();
+}
+
+public class MissionNodeExecuteResult
+{
+    public bool Success { get; set; }
+    public ErrorCode ErrorCode { get; set; } = ErrorCode.SUCCESS;
+    public MissionGraphNodeData? Node { get; set; }
+    public List<int> CompletedMissionNodeIds { get; set; } = new();
+    public List<int> UnlockedMissionNodeIds { get; set; } = new();
+    public MissionShortRewardState? GrantedShortReward { get; set; }
+    public bool IsMissionComplete { get; set; }
+}
+
+public enum MissionShortRewardType
+{
+    None = 0,
+    SharpObservation = 1,
+    ClosedAreaResistance = 2,
+    DutyStaminaSaver = 3,
+    TargetEncounterStability = 4
+}
+
+public class MissionShortRewardState
+{
+    public MissionShortRewardType RewardType { get; set; }
+    public int RemainingUses { get; set; }
+    public int ValuePercent { get; set; }
+    public int DurationSeconds { get; set; }
+    public DateTime GrantedAt { get; set; }
+    public DateTime? ExpiresAt { get; set; }
 }
 
 public class PlaceGiftResult

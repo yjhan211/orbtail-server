@@ -113,10 +113,39 @@ public static class RngCollectCore
             }
         }
 
+        TryApplySharpObservationBonus(matchingId, playerId, info.ZoneId, missionManager, inventoryManager, outcome);
+
         RngCollectCooldownStore.SetCooldown(matchingId, info.Id, RngCollectCooldownSeconds);
         outcome.CooldownSeconds = RngCollectCooldownSeconds;
 
         return outcome;
+    }
+
+    private static void TryApplySharpObservationBonus(
+        long matchingId,
+        long playerId,
+        int areaType,
+        MissionManager missionManager,
+        InGameInventoryManager inventoryManager,
+        RngCollectOutcome outcome)
+    {
+        if (!missionManager.TryConsumeShortRewardUse(
+                matchingId,
+                playerId,
+                MissionShortRewardType.SharpObservation,
+                out var reward) ||
+            reward == null)
+            return;
+
+        if (_rng.Next(100) >= reward.ValuePercent)
+            return;
+
+        var areaPool = GameInteractableData.GetItemPoolByArea(areaType);
+        if (areaPool.Count == 0) return;
+
+        int bonusItemId = areaPool[_rng.Next(areaPool.Count)];
+        outcome.BonusItemId = bonusItemId;
+        outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
     }
 }
 
@@ -144,4 +173,10 @@ public class RngCollectOutcome
 
     /// <summary>소모품 회수 시 인벤토리에 추가된 아이템 (호출자 G_TO_C_INGAME_INVENTORY_UPDATE 송신용)</summary>
     public InGameItemInfo? AddedInventoryItem { get; set; }
+
+    /// <summary>예리한 관찰 보너스로 추가 지급된 소모품 ID.</summary>
+    public int BonusItemId { get; set; }
+
+    /// <summary>예리한 관찰 보너스로 인벤토리에 추가된 아이템.</summary>
+    public InGameItemInfo? AddedBonusInventoryItem { get; set; }
 }

@@ -149,10 +149,11 @@ public partial class GameClientSession
         }
 
         if (outcome.AddedInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedInventoryItem);
+        if (outcome.AddedBonusInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedBonusInventoryItem);
 
         Logger.LogInformation(
-            "RNG 채집 FINISH: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, ItemId={ItemId}",
-            PlayerId, msg.InteractId, outcome.ResultType, outcome.ItemId);
+            "RNG 채집 FINISH: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, ItemId={ItemId}, BonusItemId={BonusItemId}",
+            PlayerId, msg.InteractId, outcome.ResultType, outcome.ItemId, outcome.BonusItemId);
 
         SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId,
             outcome.StaminaReward, RngCollectCooldownSeconds);
