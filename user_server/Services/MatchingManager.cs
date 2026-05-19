@@ -44,6 +44,7 @@ public class MatchingManager : IMatchingManager
 
     private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
     private static JobTitle? ForcedPlayerJob => ParseForcedPlayerJob();
+    private static AreaType? ForcedPlayerSpawnArea => ParseForcedPlayerSpawnArea();
     private static long _botIdCounter; // 봇 PlayerId (음수)
     private readonly ICacheHelper _cacheHelper;
     private readonly Func<long, GameSession?> _getSession;
@@ -459,6 +460,19 @@ public class MatchingManager : IMatchingManager
             : null;
     }
 
+    private static AreaType? ParseForcedPlayerSpawnArea()
+    {
+        string? raw = Environment.GetEnvironmentVariable("FORCE_PLAYER_SPAWN_AREA");
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        if (Enum.TryParse(raw, true, out AreaType byName) && byName != AreaType.None)
+            return byName;
+
+        return short.TryParse(raw, out short byValue) && Enum.IsDefined(typeof(AreaType), byValue)
+            ? (AreaType)byValue
+            : null;
+    }
+
     private void ApplyForcedPlayerJob(List<MatchingQueueData> players, List<JobTitle> jobs)
     {
         var forcedJob = ForcedPlayerJob;
@@ -715,6 +729,13 @@ public class MatchingManager : IMatchingManager
         const MapId mapId = MapId.School;
         var mapInfo = GameMapData.GetMapInfo(mapId);
         var (spawnPosition, _) = mapInfo.GetInitialPosition();
+        var forcedSpawnArea = ForcedPlayerSpawnArea;
+        if (forcedSpawnArea.HasValue)
+        {
+            spawnPosition = GameMapData.GetAreaSpawnCell(mapId, forcedSpawnArea.Value);
+            _logger.LogInformation("플레이어 시작 위치 강제 지정 적용: PlayerId={PlayerId}, Area={Area}, Cell=({X},{Y})",
+                data.PlayerId, forcedSpawnArea.Value, spawnPosition.X, spawnPosition.Y);
+        }
 
         // RedLock으로 PlayerInfo 수정 보호
         await using var playerLock = await PlayerInfo.Lock(_redLock, data.PlayerId);
