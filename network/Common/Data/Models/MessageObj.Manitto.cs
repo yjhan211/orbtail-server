@@ -21,6 +21,8 @@ namespace network.common.data.models
         [Key("targetArea")] public int TargetArea { get; set; }
         [Key("targetInteractId")] public int TargetInteractId { get; set; }
         [Key("targetActionId")] public int TargetActionId { get; set; }
+        [Key("chunkIndex")] public int ChunkIndex { get; set; }
+        [Key("isEnd")] public bool IsEnd { get; set; } = true;
         /// <summary>v0.2.0 — 직책별 모든 부품(소재 4 + 중간재 2 + 최종 1) 메타데이터</summary>
         [Key("parts")] public List<MissionPartInfo> Parts { get; set; }
         /// <summary>#143 — 미션 그래프 노드 진행 상태. 구 클라이언트는 무시 가능.</summary>

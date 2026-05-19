@@ -15,6 +15,7 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int GiftRecallStaminaCost = 5;
+    private static readonly int MissionInfoPacketBudget = Config.BUFFER_SIZE - Config.HEADER_SIZE - 4 - 8 - 128;
 
     /// <summary>
     ///     v0.2.0 — 미션 정보 전송 (게임 접속 시). 직책별 7부품 메타데이터 전체 송신.
@@ -41,22 +42,94 @@ public partial class GameClientSession
             NarrativeJp = p.NarrativeJp ?? ""
         }).ToList();
 
-        using var packet = Packet.Create((int)Protocol.G_TO_C_MISSION_INFO, PlayerId.Value);
-        var msg = new G_TO_C_MISSION_INFO
+        var graphNodes = BuildMissionGraphNodeProgress(state);
+        var shortRewards = BuildMissionShortRewardInfoList(state);
+        var chunks = BuildMissionInfoChunks(state, allParts.Count, partInfos, graphNodes, shortRewards);
+
+        for (int i = 0; i < chunks.Count; i++)
         {
-            JobTitle = MyJobTitle,
-            CurrentStep = state.CollectedParts.Count,
-            TotalSteps = allParts.Count,
-            TargetArea = 0,           // v0.2.0 — 단일 타겟 개념 폐기 (Parts 메타로 대체)
-            TargetInteractId = 0,     // v0.2.0 — 폐기
-            TargetActionId = 0,       // v0.2.0 — 폐기
-            Parts = partInfos,
-            GraphNodes = BuildMissionGraphNodeProgress(state),
-            ShortRewards = BuildMissionShortRewardInfoList(state)
-        };
-        packet.SetBody(MessagePackSerializer.Serialize(msg));
-        Send(packet);
+            var chunkMsg = chunks[i];
+            chunkMsg.ChunkIndex = i;
+            chunkMsg.IsEnd = i == chunks.Count - 1;
+
+            using var chunkPacket = Packet.Create((int)Protocol.G_TO_C_MISSION_INFO, PlayerId.Value);
+            chunkPacket.SetBody(MessagePackSerializer.Serialize(chunkMsg));
+            Send(chunkPacket);
+        }
+
+        Logger.LogDebug(
+            "Sent mission info to PlayerId={PlayerId} in {ChunkCount} packets: Parts={PartCount}, Nodes={NodeCount}, Rewards={RewardCount}",
+            PlayerId, chunks.Count, partInfos.Count, graphNodes.Count, shortRewards.Count);
     }
+
+    private List<G_TO_C_MISSION_INFO> BuildMissionInfoChunks(
+        PlayerPartState state,
+        int totalSteps,
+        List<MissionPartInfo> parts,
+        List<MissionGraphNodeProgressInfo> graphNodes,
+        List<MissionShortRewardInfo> shortRewards)
+    {
+        var chunks = new List<G_TO_C_MISSION_INFO>();
+        var current = CreateMissionInfoChunk(state, totalSteps);
+
+        void CommitCurrent()
+        {
+            chunks.Add(current);
+            current = CreateMissionInfoChunk(state, totalSteps);
+        }
+
+        void AddItem<T>(
+            T item,
+            Action<G_TO_C_MISSION_INFO, T> add,
+            Action<G_TO_C_MISSION_INFO, T> remove)
+        {
+            add(current, item);
+            if (GetMissionInfoPayloadSize(current) <= MissionInfoPacketBudget) return;
+
+            remove(current, item);
+            if (!IsMissionInfoChunkEmpty(current)) CommitCurrent();
+
+            add(current, item);
+            int payloadSize = GetMissionInfoPayloadSize(current);
+            if (payloadSize > MissionInfoPacketBudget)
+            {
+                Logger.LogWarning(
+                    "Single mission info entry exceeds packet budget: PlayerId={PlayerId}, Size={Size}, Budget={Budget}",
+                    PlayerId, payloadSize, MissionInfoPacketBudget);
+            }
+        }
+
+        foreach (var part in parts)
+            AddItem(part, (msg, item) => msg.Parts.Add(item), (msg, item) => msg.Parts.Remove(item));
+
+        foreach (var node in graphNodes)
+            AddItem(node, (msg, item) => msg.GraphNodes.Add(item), (msg, item) => msg.GraphNodes.Remove(item));
+
+        foreach (var reward in shortRewards)
+            AddItem(reward, (msg, item) => msg.ShortRewards.Add(item), (msg, item) => msg.ShortRewards.Remove(item));
+
+        if (!IsMissionInfoChunkEmpty(current) || chunks.Count == 0) chunks.Add(current);
+        return chunks;
+    }
+
+    private G_TO_C_MISSION_INFO CreateMissionInfoChunk(PlayerPartState state, int totalSteps) => new()
+    {
+        JobTitle = MyJobTitle,
+        CurrentStep = state.CollectedParts.Count,
+        TotalSteps = totalSteps,
+        TargetArea = 0,
+        TargetInteractId = 0,
+        TargetActionId = 0,
+        Parts = [],
+        GraphNodes = [],
+        ShortRewards = []
+    };
+
+    private static int GetMissionInfoPayloadSize(G_TO_C_MISSION_INFO msg) =>
+        MessagePackSerializer.Serialize(msg).Length;
+
+    private static bool IsMissionInfoChunkEmpty(G_TO_C_MISSION_INFO msg) =>
+        msg.Parts.Count == 0 && msg.GraphNodes.Count == 0 && msg.ShortRewards.Count == 0;
 
     private Task HandleRecallGift(C_TO_G_RECALL_GIFT msg)
     {
