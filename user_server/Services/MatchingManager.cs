@@ -43,6 +43,7 @@ public class MatchingManager : IMatchingManager
         IsTwoPlayerTestMatch ? DefaultGamePlayersPerMatch : DemoMode.IsActive ? DemoMode.MatchPlayerCount : DefaultGamePlayersPerMatch;
 
     private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
+    private static JobTitle? ForcedPlayerJob => ParseForcedPlayerJob();
     private static long _botIdCounter; // 봇 PlayerId (음수)
     private readonly ICacheHelper _cacheHelper;
     private readonly Func<long, GameSession?> _getSession;
@@ -424,6 +425,7 @@ public class MatchingManager : IMatchingManager
 
         // PlayerId 역직렬화
         var players = entries.Select(e => MessagePackSerializer.Deserialize<MatchingQueueData>(e)).ToList();
+        ApplyForcedPlayerJob(players, jobs);
 
         var chain = new List<ManittoChainLink>();
         for (int i = 0; i < entries.Count; i++)
@@ -442,6 +444,37 @@ public class MatchingManager : IMatchingManager
             string.Join(" → ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" → {players[0].PlayerId}");
 
         return chain;
+    }
+
+    private static JobTitle? ParseForcedPlayerJob()
+    {
+        string? raw = Environment.GetEnvironmentVariable("FORCE_PLAYER_JOB");
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        if (Enum.TryParse(raw, true, out JobTitle byName) && byName != JobTitle.NONE)
+            return byName;
+
+        return short.TryParse(raw, out short byValue) && Enum.IsDefined(typeof(JobTitle), byValue)
+            ? (JobTitle)byValue
+            : null;
+    }
+
+    private void ApplyForcedPlayerJob(List<MatchingQueueData> players, List<JobTitle> jobs)
+    {
+        var forcedJob = ForcedPlayerJob;
+        if (!forcedJob.HasValue) return;
+
+        int playerIndex = players.FindIndex(player => player.PlayerId >= 0);
+        if (playerIndex < 0 || playerIndex >= jobs.Count) return;
+
+        int forcedJobIndex = jobs.IndexOf(forcedJob.Value);
+        if (forcedJobIndex >= 0)
+            (jobs[playerIndex], jobs[forcedJobIndex]) = (jobs[forcedJobIndex], jobs[playerIndex]);
+        else
+            jobs[playerIndex] = forcedJob.Value;
+
+        _logger.LogInformation("플레이어 직책 강제 지정 적용: PlayerId={PlayerId}, Job={Job}",
+            players[playerIndex].PlayerId, forcedJob.Value);
     }
 
     private async Task ApplyTwoPlayerTestTargetOutfitAsync(List<ManittoChainLink> chain)

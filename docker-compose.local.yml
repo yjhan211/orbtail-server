@@ -88,6 +88,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
       - DEMO_MODE=${DEMO_MODE:-}
+      - FORCE_PLAYER_JOB=${FORCE_PLAYER_JOB:-LIBRARY_COMMITTEE}
       # #129 선물 수동 테스트 — 실플레이어 2명 + 봇 3명, 신청 순서대로 1번→2번 타겟 고정
       - TEST_TWO_PLAYER_MATCH=0
     depends_on:
