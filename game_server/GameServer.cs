@@ -258,7 +258,7 @@ public class GameServer(
                     }
 
                     if (targetInSameArea)
-                        corruptionDelta = -TargetProximityRecovery;
+                        corruptionDelta = ApplyTargetEncounterStability(session, -TargetProximityRecovery);
                 }
 
                 // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
@@ -278,7 +278,8 @@ public class GameServer(
                 if (session.CurrentArea != AreaType.None &&
                     _areaClosureManager.IsAreaClosed(session.CurrentMapSubId, session.CurrentArea))
                 {
-                    corruptionDelta += Config.CLOSED_AREA_CORRUPTION_TICK;
+                    int closedAreaPenalty = ApplyClosedAreaResistance(session, Config.CLOSED_AREA_CORRUPTION_TICK);
+                    corruptionDelta += closedAreaPenalty;
                 }
 
                 session.ModifyStats(corruptionDelta: corruptionDelta);
@@ -326,6 +327,62 @@ public class GameServer(
         {
             logger.LogError(ex, "자원 틱 처리 중 오류");
         }
+    }
+
+    private int ApplyTargetEncounterStability(GameClientSession session, int baseRecoveryDelta)
+    {
+        if (!session.PlayerId.HasValue || baseRecoveryDelta >= 0) return baseRecoveryDelta;
+        if (!_missionManager.TryConsumeShortRewardUse(
+                session.CurrentMapSubId,
+                session.PlayerId.Value,
+                MissionShortRewardType.TargetEncounterStability,
+                out var reward) || reward == null)
+        {
+            return baseRecoveryDelta;
+        }
+
+        int bonusRecovery = Math.Max(1, (int)Math.Ceiling(Math.Abs(baseRecoveryDelta) * reward.ValuePercent / 100.0));
+        int adjustedDelta = baseRecoveryDelta - bonusRecovery;
+
+        logger.LogInformation(
+            "타겟 조우 안정 적용: PlayerId={PlayerId}, BaseRecovery={BaseRecovery}, AdjustedRecovery={AdjustedRecovery}, RemainingUses={RemainingUses}",
+            session.PlayerId, baseRecoveryDelta, adjustedDelta, reward.RemainingUses);
+
+        return adjustedDelta;
+    }
+
+    private int ApplyClosedAreaResistance(GameClientSession session, int basePenalty)
+    {
+        if (!session.PlayerId.HasValue || basePenalty <= 0) return basePenalty;
+
+        if (!_missionManager.TryGetActiveShortReward(
+                session.CurrentMapSubId,
+                session.PlayerId.Value,
+                MissionShortRewardType.ClosedAreaResistance,
+                out var reward) || reward == null)
+        {
+            if (!_missionManager.TryActivateTimedShortReward(
+                    session.CurrentMapSubId,
+                    session.PlayerId.Value,
+                    MissionShortRewardType.ClosedAreaResistance,
+                    out reward) || reward == null)
+            {
+                return basePenalty;
+            }
+
+            logger.LogInformation(
+                "폐쇄구역 대응 발동: PlayerId={PlayerId}, DurationSeconds={DurationSeconds}, ExpiresAt={ExpiresAt}",
+                session.PlayerId, reward.DurationSeconds, reward.ExpiresAt);
+        }
+
+        int reduction = Math.Max(1, (int)Math.Ceiling(basePenalty * reward.ValuePercent / 100.0));
+        int adjustedPenalty = Math.Max(0, basePenalty - reduction);
+
+        logger.LogInformation(
+            "폐쇄구역 대응 적용: PlayerId={PlayerId}, BasePenalty={BasePenalty}, AdjustedPenalty={AdjustedPenalty}",
+            session.PlayerId, basePenalty, adjustedPenalty);
+
+        return adjustedPenalty;
     }
 
     /// <summary>

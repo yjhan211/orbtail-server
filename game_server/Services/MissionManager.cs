@@ -303,7 +303,12 @@ public class MissionManager
 
         lock (state.SyncRoot)
         {
-            reward = state.ShortRewards.FirstOrDefault(r => r.RewardType == rewardType && r.RemainingUses > 0);
+            RemoveExpiredShortRewards(state, DateTime.UtcNow);
+
+            reward = state.ShortRewards.FirstOrDefault(r =>
+                r.RewardType == rewardType &&
+                r.DurationSeconds <= 0 &&
+                r.RemainingUses > 0);
             if (reward == null) return false;
 
             reward.RemainingUses--;
@@ -311,6 +316,58 @@ public class MissionManager
                 state.ShortRewards.Remove(reward);
 
             return true;
+        }
+    }
+
+    public bool TryActivateTimedShortReward(
+        long matchingId,
+        long playerId,
+        MissionShortRewardType rewardType,
+        out MissionShortRewardState? reward)
+    {
+        reward = null;
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return false;
+        if (!matching.TryGetValue(playerId, out var state)) return false;
+
+        lock (state.SyncRoot)
+        {
+            var now = DateTime.UtcNow;
+            RemoveExpiredShortRewards(state, now);
+
+            reward = state.ShortRewards.FirstOrDefault(r =>
+                r.RewardType == rewardType &&
+                r.DurationSeconds > 0 &&
+                r.RemainingUses > 0 &&
+                !r.IsActive(now));
+            if (reward == null) return false;
+
+            reward.RemainingUses--;
+            reward.ActivatedAt = now;
+            reward.ExpiresAt = now.AddSeconds(reward.DurationSeconds);
+            return true;
+        }
+    }
+
+    public bool TryGetActiveShortReward(
+        long matchingId,
+        long playerId,
+        MissionShortRewardType rewardType,
+        out MissionShortRewardState? reward)
+    {
+        reward = null;
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return false;
+        if (!matching.TryGetValue(playerId, out var state)) return false;
+
+        lock (state.SyncRoot)
+        {
+            var now = DateTime.UtcNow;
+            RemoveExpiredShortRewards(state, now);
+
+            reward = state.ShortRewards.FirstOrDefault(r =>
+                r.RewardType == rewardType &&
+                r.DurationSeconds > 0 &&
+                r.IsActive(now));
+            return reward != null;
         }
     }
 
@@ -774,9 +831,19 @@ public class MissionManager
             reward.ValuePercent = valuePercent;
             reward.DurationSeconds = durationSeconds;
             reward.GrantedAt = DateTime.UtcNow;
-            reward.ExpiresAt = durationSeconds > 0 ? reward.GrantedAt.AddSeconds(durationSeconds) : null;
+            reward.ActivatedAt = null;
+            reward.ExpiresAt = null;
             return reward;
         }
+    }
+
+    private static void RemoveExpiredShortRewards(PlayerPartState state, DateTime now)
+    {
+        state.ShortRewards.RemoveAll(reward =>
+            reward.DurationSeconds > 0 &&
+            reward.ExpiresAt.HasValue &&
+            reward.ExpiresAt.Value <= now &&
+            reward.RemainingUses <= 0);
     }
 
     public void CleanupMatching(long matchingId)
@@ -889,7 +956,13 @@ public class MissionShortRewardState
     public int ValuePercent { get; set; }
     public int DurationSeconds { get; set; }
     public DateTime GrantedAt { get; set; }
+    public DateTime? ActivatedAt { get; set; }
     public DateTime? ExpiresAt { get; set; }
+
+    public bool IsActive(DateTime now) =>
+        ActivatedAt.HasValue &&
+        ExpiresAt.HasValue &&
+        ExpiresAt.Value > now;
 }
 
 public class PlaceGiftResult
