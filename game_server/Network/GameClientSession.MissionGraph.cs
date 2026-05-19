@@ -113,6 +113,42 @@ public partial class GameClientSession
         Send(packet);
     }
 
+    private static List<MissionGraphNodeProgressInfo> BuildMissionGraphNodeProgress(PlayerPartState state)
+    {
+        lock (state.SyncRoot)
+        {
+            var availableNodeIds = GameMissionGraphData.GetAvailableNodes(
+                    (short)state.JobTitle,
+                    state.CollectedParts,
+                    state.CompletedMissionNodeIds,
+                    state.HasLostTarget)
+                .Select(node => node.NodeId)
+                .ToHashSet();
+
+            return GameMissionGraphData.GetNodes((short)state.JobTitle)
+                .Select(node => new MissionGraphNodeProgressInfo
+                {
+                    NodeId = node.NodeId,
+                    NodeKey = node.NodeKey,
+                    NodeKind = (int)node.NodeKind,
+                    IsCompleted = state.CompletedMissionNodeIds.Contains(node.NodeId),
+                    IsUnlocked = state.UnlockedMissionNodeIds.Contains(node.NodeId),
+                    IsAvailable = availableNodeIds.Contains(node.NodeId)
+                })
+                .ToList();
+        }
+    }
+
+    private static List<MissionShortRewardInfo> BuildMissionShortRewardInfoList(PlayerPartState state)
+    {
+        lock (state.SyncRoot)
+        {
+            return state.ShortRewards
+                .Select(ToShortRewardInfo)
+                .ToList();
+        }
+    }
+
     private static MissionShortRewardInfo ToShortRewardInfo(MissionShortRewardState? reward)
     {
         if (reward == null) return new MissionShortRewardInfo();

@@ -50,7 +50,9 @@ public partial class GameClientSession
             TargetArea = 0,           // v0.2.0 — 단일 타겟 개념 폐기 (Parts 메타로 대체)
             TargetInteractId = 0,     // v0.2.0 — 폐기
             TargetActionId = 0,       // v0.2.0 — 폐기
-            Parts = partInfos
+            Parts = partInfos,
+            GraphNodes = BuildMissionGraphNodeProgress(state),
+            ShortRewards = BuildMissionShortRewardInfoList(state)
         };
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);

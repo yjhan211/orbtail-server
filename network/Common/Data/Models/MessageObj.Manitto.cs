@@ -23,6 +23,10 @@ namespace network.common.data.models
         [Key("targetActionId")] public int TargetActionId { get; set; }
         /// <summary>v0.2.0 — 직책별 모든 부품(소재 4 + 중간재 2 + 최종 1) 메타데이터</summary>
         [Key("parts")] public List<MissionPartInfo> Parts { get; set; }
+        /// <summary>#143 — 미션 그래프 노드 진행 상태. 구 클라이언트는 무시 가능.</summary>
+        [Key("graphNodes")] public List<MissionGraphNodeProgressInfo> GraphNodes { get; set; } = new();
+        /// <summary>#143 — 현재 활성/대기 중인 단기 보상 상태.</summary>
+        [Key("shortRewards")] public List<MissionShortRewardInfo> ShortRewards { get; set; } = new();
     }
 
     /// <summary>
@@ -41,6 +45,17 @@ namespace network.common.data.models
         [Key("narrativeKr")] public string NarrativeKr { get; set; }
         [Key("narrativeEn")] public string NarrativeEn { get; set; }
         [Key("narrativeJp")] public string NarrativeJp { get; set; }
+    }
+
+    [MessagePackObject]
+    public class MissionGraphNodeProgressInfo : IMessagePackObject
+    {
+        [Key("nodeId")] public int NodeId { get; set; }
+        [Key("nodeKey")] public string NodeKey { get; set; } = "";
+        [Key("nodeKind")] public int NodeKind { get; set; }
+        [Key("isCompleted")] public bool IsCompleted { get; set; }
+        [Key("isUnlocked")] public bool IsUnlocked { get; set; }
+        [Key("isAvailable")] public bool IsAvailable { get; set; }
     }
 
     [MessagePackObject]
