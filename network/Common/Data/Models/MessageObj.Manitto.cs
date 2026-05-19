@@ -103,6 +103,47 @@ namespace network.common.data.models
     }
 
     /// <summary>
+    ///     #143 — 기능 아이템으로 열린 업무 선택지 실행 요청.
+    ///     interactId가 있으면 서버가 interactable CSV에서 area/objectType을 재확인한다.
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_MISSION_NODE_EXECUTE : IMessagePackObject
+    {
+        [Key("nodeId")] public int NodeId { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("objectType")] public int ObjectType { get; set; }
+        /// <summary>클라이언트 선택지 실행 시작 시각 (UTC Unix ms). 최종 업무 동시성 가드용.</summary>
+        [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
+    }
+
+    [MessagePackObject]
+    public class MissionShortRewardInfo : IMessagePackObject
+    {
+        [Key("rewardType")] public int RewardType { get; set; }
+        [Key("remainingUses")] public int RemainingUses { get; set; }
+        [Key("valuePercent")] public int ValuePercent { get; set; }
+        [Key("durationSeconds")] public int DurationSeconds { get; set; }
+        [Key("expiresAtUnixMs")] public long ExpiresAtUnixMs { get; set; }
+    }
+
+    /// <summary>
+    ///     #143 — 업무 선택지 실행 결과. UI는 completed/unlocked node와 granted reward를 반영한다.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_MISSION_NODE_EXECUTE_RESULT : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("nodeId")] public int NodeId { get; set; }
+        [Key("nodeKey")] public string NodeKey { get; set; } = "";
+        [Key("outputPartId")] public int OutputPartId { get; set; }
+        [Key("completedNodeIds")] public List<int> CompletedNodeIds { get; set; } = new();
+        [Key("unlockedNodeIds")] public List<int> UnlockedNodeIds { get; set; } = new();
+        [Key("isMissionComplete")] public bool IsMissionComplete { get; set; }
+        [Key("grantedShortReward")] public MissionShortRewardInfo GrantedShortReward { get; set; } = new();
+    }
+
+    /// <summary>
     ///     선행 아이템 회수 알림. (장갑/드라이버/로프/걸레/결재 잉크 등 share_group 1~5)
     /// </summary>
     [MessagePackObject]
