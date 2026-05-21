@@ -173,6 +173,32 @@ public class MissionGraphDataTests
         Assert.True(node.IsVictoryStorylet);
     }
 
+    [Fact]
+    public void StoryletNode_Uses_TargetAreaAndObject_ForInteractableMatch()
+    {
+        var row = new CsvRow(
+            new[] { "node_id", "job_title", "node_key", "node_kind", "area_type", "object_type", "target_area_type", "target_object_type" },
+            new[] { "4301", "0", "STORY-RECORD-DISCOVER-01", "2", "1", "1", "41", "9" });
+
+        var node = MissionGraphNodeData.CreateFromData(row);
+
+        Assert.True(node.MatchesInteractable(41, 9, 0));
+        Assert.False(node.MatchesInteractable(1, 1, 0));
+    }
+
+    [Fact]
+    public void StoryletNode_Requires_OutputItem_WhenSpecified()
+    {
+        var row = new CsvRow(
+            new[] { "node_id", "job_title", "node_key", "node_kind", "required_output_item_id" },
+            new[] { "4302", "0", "ROUTE-RECORD-INFO", "2", "9001" });
+
+        var node = MissionGraphNodeData.CreateFromData(row);
+
+        Assert.False(node.AreRequirementsMet(new HashSet<int>(), new HashSet<int>()));
+        Assert.True(node.AreRequirementsMet(new HashSet<int> { 9001 }, new HashSet<int>()));
+    }
+
     private static string FindNetworkBasePath()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

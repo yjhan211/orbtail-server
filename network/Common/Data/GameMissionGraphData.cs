@@ -289,6 +289,7 @@ namespace network.common.data
             HashSet<int> completedNodeIds,
             bool hasLostTarget = false) =>
             RequiredPartIds.All(collectedPartIds.Contains) &&
+            (RequiredOutputItemId <= 0 || collectedPartIds.Contains(RequiredOutputItemId)) &&
             RequiredNodeIds.All(completedNodeIds.Contains) &&
             (!RequiresTargetLost || hasLostTarget);
 
@@ -297,13 +298,16 @@ namespace network.common.data
             if (InteractId > 0)
                 return interactId == InteractId;
 
-            if (AreaType > 0 && areaType != AreaType)
+            int expectedAreaType = TargetAreaType > 0 ? TargetAreaType : AreaType;
+            int expectedObjectType = TargetObjectType > 0 ? TargetObjectType : ObjectType;
+
+            if (expectedAreaType > 0 && areaType != expectedAreaType)
                 return false;
 
-            if (ObjectType > 0 && objectType != ObjectType)
+            if (expectedObjectType > 0 && objectType != expectedObjectType)
                 return false;
 
-            return AreaType > 0 || ObjectType > 0;
+            return expectedAreaType > 0 || expectedObjectType > 0;
         }
 
         private static int ParseInt(CsvRow row, string columnName)
