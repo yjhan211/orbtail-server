@@ -163,9 +163,16 @@ namespace network.common.data.models
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
         [Key("nodeId")] public int NodeId { get; set; }
         [Key("nodeKey")] public string NodeKey { get; set; } = "";
+        [Key("storyletId")] public string StoryletId { get; set; } = "";
+        [Key("routeId")] public string RouteId { get; set; } = "";
         [Key("outputPartId")] public int OutputPartId { get; set; }
         [Key("completedNodeIds")] public List<int> CompletedNodeIds { get; set; } = new();
         [Key("unlockedNodeIds")] public List<int> UnlockedNodeIds { get; set; } = new();
+        [Key("claimedStoryletIds")] public List<string> ClaimedStoryletIds { get; set; } = new();
+        [Key("lostStoryletIds")] public List<string> LostStoryletIds { get; set; } = new();
+        [Key("alternateRouteNodeIds")] public List<int> AlternateRouteNodeIds { get; set; } = new();
+        [Key("visibleTraceTextId")] public int VisibleTraceTextId { get; set; }
+        [Key("claimedByPlayerId")] public long ClaimedByPlayerId { get; set; }
         [Key("isMissionComplete")] public bool IsMissionComplete { get; set; }
         [Key("grantedShortReward")] public MissionShortRewardInfo GrantedShortReward { get; set; } = new();
     }

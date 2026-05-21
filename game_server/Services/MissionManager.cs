@@ -18,6 +18,7 @@ public class MissionManager
     // matchingId → race 완주자 (최초 1명만 — 동시성 가드, #87 N12).
     // 동률 시각 시 PlayerId 낮은 쪽이 먼저 등록되도록 lock으로 직렬화한다.
     private readonly ConcurrentDictionary<long, RaceCompletionRecord> _raceWinners = new();
+    private readonly ConcurrentDictionary<long, ConcurrentDictionary<string, StoryletClaimRecord>> _storyletClaims = new();
     private readonly object _raceCompletionLock = new();
     private readonly ILogger _logger;
 
@@ -245,7 +246,7 @@ public class MissionManager
             return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
 
         var node = GameMissionGraphData.GetNode(nodeId);
-        if (node == null || node.JobTitle != (short)state.JobTitle)
+        if (node == null || (node.JobTitle != 0 && node.JobTitle != (short)state.JobTitle))
             return new MissionNodeExecuteResult { ErrorCode = ErrorCode.INVALID_PARAMETER };
         if (node.NodeKind == MissionGraphNodeKind.CollectPart)
             return new MissionNodeExecuteResult { ErrorCode = ErrorCode.INVALID_PARAMETER };
@@ -260,10 +261,28 @@ public class MissionManager
         if (isMissionComplete && !TryRegisterRaceCompletion(matchingId, playerId, clientStartUnixMs))
             return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
 
+        if (!TryClaimStorylet(matchingId, playerId, node, out var existingClaim))
+        {
+            if (!string.IsNullOrWhiteSpace(node.EffectiveStoryletId))
+                state.LostStoryletIds.Add(node.EffectiveStoryletId);
+
+            return new MissionNodeExecuteResult
+            {
+                ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED,
+                Node = node,
+                LostStoryletIds = string.IsNullOrWhiteSpace(node.EffectiveStoryletId)
+                    ? new List<string>()
+                    : new List<string> { node.EffectiveStoryletId },
+                ClaimedByPlayerId = existingClaim?.PlayerId ?? 0
+            };
+        }
+
         var completedBefore = state.CompletedMissionNodeIds.ToHashSet();
         var unlockedBefore = state.UnlockedMissionNodeIds.ToHashSet();
 
         state.CompletedMissionNodeIds.Add(node.NodeId);
+        if (node.HasStoryletMetadata && !string.IsNullOrWhiteSpace(node.EffectiveStoryletId))
+            state.ClaimedStoryletIds.Add(node.EffectiveStoryletId);
         if (node.OutputPartId > 0)
             state.CollectedParts.Add(node.OutputPartId);
 
@@ -286,9 +305,48 @@ public class MissionManager
             Node = node,
             CompletedMissionNodeIds = state.CompletedMissionNodeIds.Except(completedBefore).ToList(),
             UnlockedMissionNodeIds = state.UnlockedMissionNodeIds.Except(unlockedBefore).ToList(),
+            ClaimedStoryletIds = node.HasStoryletMetadata && !string.IsNullOrWhiteSpace(node.EffectiveStoryletId)
+                ? new List<string> { node.EffectiveStoryletId }
+                : new List<string>(),
+            VisibleTraceTextId = node.TraceTextId,
             GrantedShortReward = grantedReward,
             IsMissionComplete = isMissionComplete
         };
+    }
+
+    private bool TryClaimStorylet(
+        long matchingId,
+        long playerId,
+        MissionGraphNodeData node,
+        out StoryletClaimRecord? existingClaim)
+    {
+        existingClaim = null;
+
+        if (!node.HasStoryletMetadata ||
+            node.ClaimPolicy != MissionGraphClaimPolicy.Unique ||
+            string.IsNullOrWhiteSpace(node.EffectiveStoryletId))
+        {
+            return true;
+        }
+
+        var matchingClaims = _storyletClaims.GetOrAdd(
+            matchingId,
+            _ => new ConcurrentDictionary<string, StoryletClaimRecord>(StringComparer.OrdinalIgnoreCase));
+
+        var claim = new StoryletClaimRecord
+        {
+            StoryletId = node.EffectiveStoryletId,
+            NodeId = node.NodeId,
+            PlayerId = playerId,
+            ClaimedAt = DateTime.UtcNow,
+            VisibleTraceTextId = node.TraceTextId
+        };
+
+        if (matchingClaims.TryAdd(node.EffectiveStoryletId, claim))
+            return true;
+
+        matchingClaims.TryGetValue(node.EffectiveStoryletId, out existingClaim);
+        return existingClaim?.PlayerId == playerId;
     }
 
     public bool TryConsumeShortRewardUse(
@@ -850,6 +908,7 @@ public class MissionManager
     {
         _matchingStates.TryRemove(matchingId, out _);
         _raceWinners.TryRemove(matchingId, out _);
+        _storyletClaims.TryRemove(matchingId, out _);
     }
 }
 
@@ -861,6 +920,15 @@ public class RaceCompletionRecord
     public long PlayerId { get; set; }
     public DateTime ServerCompletedAt { get; set; }
     public long ClientStartUnixMs { get; set; }
+}
+
+public class StoryletClaimRecord
+{
+    public string StoryletId { get; set; } = "";
+    public int NodeId { get; set; }
+    public long PlayerId { get; set; }
+    public DateTime ClaimedAt { get; set; }
+    public int VisibleTraceTextId { get; set; }
 }
 
 public class PlayerPartState
@@ -875,6 +943,14 @@ public class PlayerPartState
     public HashSet<int> CompletedMissionNodeIds { get; set; } = new();
     public HashSet<int> CompletedMissionRecipeIds { get; set; } = new();
     public HashSet<int> UnlockedMissionNodeIds { get; set; } = new();
+    public HashSet<string> DiscoveredStoryletIds { get; set; } = new();
+    public HashSet<string> TrackedStoryletIds { get; set; } = new();
+    public HashSet<string> ActiveRouteIds { get; set; } = new();
+    public HashSet<string> ClaimedStoryletIds { get; set; } = new();
+    public HashSet<string> LostStoryletIds { get; set; } = new();
+    public HashSet<string> OwnedClueTags { get; set; } = new();
+    public HashSet<int> CraftedFunctionItems { get; set; } = new();
+    public HashSet<int> VisibleVictoryTraceIds { get; set; } = new();
     public bool HasLostTarget { get; set; }
     public long LostTargetPlayerId { get; set; }
     public EliminationReason TargetLossReason { get; set; } = EliminationReason.NONE;
@@ -936,6 +1012,11 @@ public class MissionNodeExecuteResult
     public MissionGraphNodeData? Node { get; set; }
     public List<int> CompletedMissionNodeIds { get; set; } = new();
     public List<int> UnlockedMissionNodeIds { get; set; } = new();
+    public List<string> ClaimedStoryletIds { get; set; } = new();
+    public List<string> LostStoryletIds { get; set; } = new();
+    public List<int> AlternateRouteNodeIds { get; set; } = new();
+    public int VisibleTraceTextId { get; set; }
+    public long ClaimedByPlayerId { get; set; }
     public MissionShortRewardState? GrantedShortReward { get; set; }
     public bool IsMissionComplete { get; set; }
 }

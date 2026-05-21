@@ -80,14 +80,22 @@ public partial class GameClientSession
 
     private void SendMissionNodeExecuteResult(int requestedNodeId, MissionNodeExecuteResult result)
     {
+        var node = result.Node;
         var msg = new G_TO_C_MISSION_NODE_EXECUTE_RESULT
         {
             ErrorCode = result.ErrorCode,
-            NodeId = result.Node?.NodeId ?? requestedNodeId,
-            NodeKey = result.Node?.NodeKey ?? "",
-            OutputPartId = result.Node?.OutputPartId ?? 0,
+            NodeId = node?.NodeId ?? requestedNodeId,
+            NodeKey = node?.NodeKey ?? "",
+            StoryletId = node?.EffectiveStoryletId ?? "",
+            RouteId = node != null && node.RouteType != MissionGraphRouteType.None ? node.EffectiveStoryletId : "",
+            OutputPartId = node?.OutputPartId ?? 0,
             CompletedNodeIds = result.CompletedMissionNodeIds,
             UnlockedNodeIds = result.UnlockedMissionNodeIds,
+            ClaimedStoryletIds = result.ClaimedStoryletIds,
+            LostStoryletIds = result.LostStoryletIds,
+            AlternateRouteNodeIds = result.AlternateRouteNodeIds,
+            VisibleTraceTextId = result.VisibleTraceTextId,
+            ClaimedByPlayerId = result.ClaimedByPlayerId,
             IsMissionComplete = result.IsMissionComplete,
             GrantedShortReward = ToShortRewardInfo(result.GrantedShortReward)
         };
