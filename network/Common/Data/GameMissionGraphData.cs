@@ -4,6 +4,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System;
 using network.common.data.helpers;
 using Newtonsoft.Json;
 
@@ -65,10 +66,10 @@ namespace network.common.data
             _recipesById.GetValueOrDefault(recipeId);
 
         public static List<MissionGraphNodeData> GetNodes(short jobTitle) =>
-            _nodesByJob.GetValueOrDefault(jobTitle) ?? new List<MissionGraphNodeData>();
+            MergeSharedAndJobLists(_nodesByJob, jobTitle);
 
         public static List<MissionGraphRecipeData> GetRecipes(short jobTitle) =>
-            _recipesByJob.GetValueOrDefault(jobTitle) ?? new List<MissionGraphRecipeData>();
+            MergeSharedAndJobLists(_recipesByJob, jobTitle);
 
         public static List<MissionGraphNodeData> GetAllNodes() =>
             _nodesById.Values.ToList();
@@ -115,6 +116,20 @@ namespace network.common.data
             graphRecipe = null;
             return false;
         }
+
+        private static List<T> MergeSharedAndJobLists<T>(Dictionary<short, List<T>> source, short jobTitle)
+        {
+            if (jobTitle == 0)
+                return source.TryGetValue(0, out var sharedOnlyList) ? sharedOnlyList.ToList() : new List<T>();
+
+            var merged = new List<T>();
+            if (source.TryGetValue(0, out var sharedList))
+                merged.AddRange(sharedList);
+            if (source.TryGetValue(jobTitle, out var jobList))
+                merged.AddRange(jobList);
+
+            return merged;
+        }
     }
 
     public enum MissionGraphNodeKind
@@ -123,6 +138,40 @@ namespace network.common.data
         UseFeature = 2,
         GiftSabotage = 3,
         RevengeClue = 4
+    }
+
+    public enum MissionGraphStoryletType
+    {
+        None = 0,
+        Discovery = 1,
+        Route = 2,
+        Victory = 3
+    }
+
+    public enum MissionGraphRouteType
+    {
+        None = 0,
+        Info = 1,
+        Safe = 2,
+        RiskHighReward = 3
+    }
+
+    public enum MissionGraphClaimPolicy
+    {
+        None = 0,
+        Unique = 1,
+        Shared = 2,
+        Repeatable = 3
+    }
+
+    public enum MissionGraphRewardKind
+    {
+        None = 0,
+        Stat = 1,
+        Consumable = 2,
+        ClueTag = 3,
+        OutputItem = 4,
+        Mixed = 5
     }
 
     public class MissionGraphNodeData
@@ -147,14 +196,49 @@ namespace network.common.data
         public LocalizedText AlibiClaim { get; private set; }
         public LocalizedText VisibleTrace { get; private set; }
         public LocalizedText SuccessText { get; private set; }
+        public string StoryletId { get; private set; }
+        public MissionGraphStoryletType StoryletType { get; private set; }
+        public MissionGraphRouteType RouteType { get; private set; }
+        public int TargetAreaType { get; private set; }
+        public int TargetObjectType { get; private set; }
+        public int RequiredOutputItemId { get; private set; }
+        public int RecipeId { get; private set; }
+        public List<string> ClueTags { get; private set; }
+        public List<string> FinalTags { get; private set; }
+        public string CaseGroup { get; private set; }
+        public string StatCheck { get; private set; }
+        public int StatThreshold { get; private set; }
+        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
+        public MissionGraphRewardKind RewardKind { get; private set; }
+        public int RiskLevel { get; private set; }
+        public int LocationHintTextId { get; private set; }
+        public int TraceTextId { get; private set; }
+        public int ContestedTextId { get; private set; }
+        public bool IsVictoryStorylet { get; private set; }
+        public string EffectiveStoryletId => !string.IsNullOrWhiteSpace(StoryletId) ? StoryletId : NodeKey;
+
+        public bool HasStoryletMetadata =>
+            !string.IsNullOrWhiteSpace(StoryletId) ||
+            StoryletType != MissionGraphStoryletType.None ||
+            RouteType != MissionGraphRouteType.None ||
+            ClaimPolicy != MissionGraphClaimPolicy.None ||
+            IsVictoryStorylet;
 
         public static MissionGraphNodeData CreateFromData(CsvRow row)
         {
+            var nodeKey = ParseString(row, "node_key");
+            var storyletType = ParseEnum(row, "storylet_type", MissionGraphStoryletType.None);
+            bool isVictoryStorylet = ParseBool(row, "is_victory_storylet") ||
+                                      storyletType == MissionGraphStoryletType.Victory;
+
+            if (isVictoryStorylet && storyletType == MissionGraphStoryletType.None)
+                storyletType = MissionGraphStoryletType.Victory;
+
             return new MissionGraphNodeData
             {
                 NodeId = ParseInt(row, "node_id"),
                 JobTitle = (short)ParseInt(row, "job_title"),
-                NodeKey = ParseString(row, "node_key"),
+                NodeKey = nodeKey,
                 NodeKind = (MissionGraphNodeKind)ParseInt(row, "node_kind"),
                 AreaType = ParseInt(row, "area_type"),
                 ObjectType = ParseInt(row, "object_type"),
@@ -171,7 +255,26 @@ namespace network.common.data
                 Title = LocalizedText.FromCsv(row, "title"),
                 AlibiClaim = LocalizedText.FromCsv(row, "alibi_claim"),
                 VisibleTrace = LocalizedText.FromCsv(row, "visible_trace"),
-                SuccessText = LocalizedText.FromCsv(row, "success_text")
+                SuccessText = LocalizedText.FromCsv(row, "success_text"),
+                StoryletId = ParseString(row, "storylet_id"),
+                StoryletType = storyletType,
+                RouteType = ParseEnum(row, "route_type", MissionGraphRouteType.None),
+                TargetAreaType = ParseInt(row, "target_area_type"),
+                TargetObjectType = ParseInt(row, "target_object_type"),
+                RequiredOutputItemId = ParseInt(row, "required_output_item_id"),
+                RecipeId = ParseInt(row, "recipe_id"),
+                ClueTags = ParseStringList(row, "clue_tags"),
+                FinalTags = ParseStringList(row, "final_tags"),
+                CaseGroup = ParseString(row, "case_group"),
+                StatCheck = ParseString(row, "stat_check"),
+                StatThreshold = ParseInt(row, "stat_threshold"),
+                ClaimPolicy = ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.None),
+                RewardKind = ParseEnum(row, "reward_kind", MissionGraphRewardKind.None),
+                RiskLevel = ParseInt(row, "risk_level"),
+                LocationHintTextId = ParseInt(row, "location_hint_text_id"),
+                TraceTextId = ParseInt(row, "trace_text_id"),
+                ContestedTextId = ParseInt(row, "contested_text_id"),
+                IsVictoryStorylet = isVictoryStorylet
             };
         }
 
@@ -223,6 +326,26 @@ namespace network.common.data
             return value == "1" || value.Equals("true", System.StringComparison.OrdinalIgnoreCase);
         }
 
+        private static TEnum ParseEnum<TEnum>(CsvRow row, string columnName, TEnum defaultValue)
+            where TEnum : struct, Enum
+        {
+            if (!row.ContainsKey(columnName) || string.IsNullOrWhiteSpace(row[columnName]))
+                return defaultValue;
+
+            var value = row[columnName].Trim();
+            if (int.TryParse(value, out int intValue) && Enum.IsDefined(typeof(TEnum), intValue))
+                return (TEnum)Enum.ToObject(typeof(TEnum), intValue);
+
+            var normalizedValue = NormalizeEnumToken(value);
+            foreach (var name in Enum.GetNames(typeof(TEnum)))
+            {
+                if (NormalizeEnumToken(name) == normalizedValue)
+                    return Enum.Parse<TEnum>(name);
+            }
+
+            return defaultValue;
+        }
+
         private static List<int> ParseIntList(CsvRow row, string columnName)
         {
             if (!row.ContainsKey(columnName) || string.IsNullOrWhiteSpace(row[columnName]))
@@ -233,6 +356,36 @@ namespace network.common.data
                 return new List<int>();
 
             return JsonConvert.DeserializeObject<List<int>>(value) ?? new List<int>();
+        }
+
+        private static List<string> ParseStringList(CsvRow row, string columnName)
+        {
+            if (!row.ContainsKey(columnName) || string.IsNullOrWhiteSpace(row[columnName]))
+                return new List<string>();
+
+            var value = row[columnName].Trim();
+            if (value == "[]")
+                return new List<string>();
+
+            if (value.StartsWith("["))
+                return JsonConvert.DeserializeObject<List<string>>(value) ?? new List<string>();
+
+            return value.Split('|')
+                .Select(item => item.Trim())
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .ToList();
+        }
+
+        private static string NormalizeEnumToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return "";
+
+            return value
+                .Replace("_", "")
+                .Replace("-", "")
+                .Replace(" ", "")
+                .ToLowerInvariant();
         }
     }
 

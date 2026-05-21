@@ -55,6 +55,16 @@ namespace network.common.data.models
         [Key("nodeId")] public int NodeId { get; set; }
         [Key("nodeKey")] public string NodeKey { get; set; } = "";
         [Key("nodeKind")] public int NodeKind { get; set; }
+        [Key("storyletId")] public string StoryletId { get; set; } = "";
+        [Key("storyletType")] public int StoryletType { get; set; }
+        [Key("routeType")] public int RouteType { get; set; }
+        [Key("targetAreaType")] public int TargetAreaType { get; set; }
+        [Key("targetObjectType")] public int TargetObjectType { get; set; }
+        [Key("claimPolicy")] public int ClaimPolicy { get; set; }
+        [Key("rewardKind")] public int RewardKind { get; set; }
+        [Key("riskLevel")] public int RiskLevel { get; set; }
+        [Key("caseGroup")] public string CaseGroup { get; set; } = "";
+        [Key("isVictoryStorylet")] public bool IsVictoryStorylet { get; set; }
         [Key("isCompleted")] public bool IsCompleted { get; set; }
         [Key("isUnlocked")] public bool IsUnlocked { get; set; }
         [Key("isAvailable")] public bool IsAvailable { get; set; }
