@@ -70,12 +70,12 @@ public partial class GameClientSession
         List<MissionShortRewardInfo> shortRewards)
     {
         var chunks = new List<G_TO_C_MISSION_INFO>();
-        var current = CreateMissionInfoChunk(state, totalSteps);
+        var current = CreateMissionInfoChunk(state, totalSteps, includeStoryletSnapshot: true);
 
         void CommitCurrent()
         {
             chunks.Add(current);
-            current = CreateMissionInfoChunk(state, totalSteps);
+            current = CreateMissionInfoChunk(state, totalSteps, includeStoryletSnapshot: false);
         }
 
         void AddItem<T>(
@@ -112,24 +112,53 @@ public partial class GameClientSession
         return chunks;
     }
 
-    private G_TO_C_MISSION_INFO CreateMissionInfoChunk(PlayerPartState state, int totalSteps) => new()
+    private G_TO_C_MISSION_INFO CreateMissionInfoChunk(PlayerPartState state, int totalSteps, bool includeStoryletSnapshot)
     {
-        JobTitle = MyJobTitle,
-        CurrentStep = state.CollectedParts.Count,
-        TotalSteps = totalSteps,
-        TargetArea = 0,
-        TargetInteractId = 0,
-        TargetActionId = 0,
-        Parts = [],
-        GraphNodes = [],
-        ShortRewards = []
-    };
+        var msg = new G_TO_C_MISSION_INFO
+        {
+            JobTitle = MyJobTitle,
+            CurrentStep = state.CollectedParts.Count,
+            TotalSteps = totalSteps,
+            TargetArea = 0,
+            TargetInteractId = 0,
+            TargetActionId = 0,
+            Parts = [],
+            GraphNodes = [],
+            ShortRewards = []
+        };
+
+        if (!includeStoryletSnapshot) return msg;
+
+        lock (state.SyncRoot)
+        {
+            msg.DiscoveredStoryletIds = state.DiscoveredStoryletIds.ToList();
+            msg.TrackedStoryletIds = state.TrackedStoryletIds.ToList();
+            msg.ActiveRouteIds = state.ActiveRouteIds.ToList();
+            msg.ClaimedStoryletIds = state.ClaimedStoryletIds.ToList();
+            msg.LostStoryletIds = state.LostStoryletIds.ToList();
+            msg.OwnedClueTags = state.OwnedClueTags.ToList();
+            msg.CraftedFunctionItemIds = state.CraftedFunctionItems.ToList();
+            msg.VisibleVictoryTraceIds = state.VisibleVictoryTraceIds.ToList();
+        }
+
+        return msg;
+    }
 
     private static int GetMissionInfoPayloadSize(G_TO_C_MISSION_INFO msg) =>
         MessagePackSerializer.Serialize(msg).Length;
 
     private static bool IsMissionInfoChunkEmpty(G_TO_C_MISSION_INFO msg) =>
-        msg.Parts.Count == 0 && msg.GraphNodes.Count == 0 && msg.ShortRewards.Count == 0;
+        msg.Parts.Count == 0 &&
+        msg.GraphNodes.Count == 0 &&
+        msg.ShortRewards.Count == 0 &&
+        msg.DiscoveredStoryletIds.Count == 0 &&
+        msg.TrackedStoryletIds.Count == 0 &&
+        msg.ActiveRouteIds.Count == 0 &&
+        msg.ClaimedStoryletIds.Count == 0 &&
+        msg.LostStoryletIds.Count == 0 &&
+        msg.OwnedClueTags.Count == 0 &&
+        msg.CraftedFunctionItemIds.Count == 0 &&
+        msg.VisibleVictoryTraceIds.Count == 0;
 
     private Task HandleRecallGift(C_TO_G_RECALL_GIFT msg)
     {

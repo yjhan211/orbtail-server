@@ -264,7 +264,11 @@ public class MissionManager
         if (!TryClaimStorylet(matchingId, playerId, node, out var existingClaim))
         {
             if (!string.IsNullOrWhiteSpace(node.EffectiveStoryletId))
+            {
+                state.DiscoveredStoryletIds.Add(node.EffectiveStoryletId);
+                state.TrackedStoryletIds.Add(node.EffectiveStoryletId);
                 state.LostStoryletIds.Add(node.EffectiveStoryletId);
+            }
 
             return new MissionNodeExecuteResult
             {
@@ -282,9 +286,24 @@ public class MissionManager
 
         state.CompletedMissionNodeIds.Add(node.NodeId);
         if (node.HasStoryletMetadata && !string.IsNullOrWhiteSpace(node.EffectiveStoryletId))
+        {
+            state.DiscoveredStoryletIds.Add(node.EffectiveStoryletId);
+            state.TrackedStoryletIds.Add(node.EffectiveStoryletId);
             state.ClaimedStoryletIds.Add(node.EffectiveStoryletId);
+            if (node.RouteType != MissionGraphRouteType.None)
+                state.ActiveRouteIds.Add(node.EffectiveStoryletId);
+        }
         if (node.OutputPartId > 0)
+        {
             state.CollectedParts.Add(node.OutputPartId);
+            if (node.HasStoryletMetadata)
+                state.CraftedFunctionItems.Add(node.OutputPartId);
+        }
+        foreach (string clueTag in node.ClueTags.Concat(node.FinalTags))
+            if (!string.IsNullOrWhiteSpace(clueTag))
+                state.OwnedClueTags.Add(clueTag);
+        if (isMissionComplete && node.TraceTextId > 0)
+            state.VisibleVictoryTraceIds.Add(node.TraceTextId);
 
         foreach (var unlockNodeId in node.UnlockNodeIds)
             state.UnlockedMissionNodeIds.Add(unlockNodeId);

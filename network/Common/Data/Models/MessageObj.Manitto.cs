@@ -29,6 +29,14 @@ namespace network.common.data.models
         [Key("graphNodes")] public List<MissionGraphNodeProgressInfo> GraphNodes { get; set; } = new();
         /// <summary>#143 — 현재 활성/대기 중인 단기 보상 상태.</summary>
         [Key("shortRewards")] public List<MissionShortRewardInfo> ShortRewards { get; set; } = new();
+        [Key("discoveredStoryletIds")] public List<string> DiscoveredStoryletIds { get; set; } = new();
+        [Key("trackedStoryletIds")] public List<string> TrackedStoryletIds { get; set; } = new();
+        [Key("activeRouteIds")] public List<string> ActiveRouteIds { get; set; } = new();
+        [Key("claimedStoryletIds")] public List<string> ClaimedStoryletIds { get; set; } = new();
+        [Key("lostStoryletIds")] public List<string> LostStoryletIds { get; set; } = new();
+        [Key("ownedClueTags")] public List<string> OwnedClueTags { get; set; } = new();
+        [Key("craftedFunctionItemIds")] public List<int> CraftedFunctionItemIds { get; set; } = new();
+        [Key("visibleVictoryTraceIds")] public List<int> VisibleVictoryTraceIds { get; set; } = new();
     }
 
     /// <summary>
@@ -68,6 +76,10 @@ namespace network.common.data.models
         [Key("isCompleted")] public bool IsCompleted { get; set; }
         [Key("isUnlocked")] public bool IsUnlocked { get; set; }
         [Key("isAvailable")] public bool IsAvailable { get; set; }
+        [Key("isDiscovered")] public bool IsDiscovered { get; set; }
+        [Key("isTracked")] public bool IsTracked { get; set; }
+        [Key("isClaimed")] public bool IsClaimed { get; set; }
+        [Key("isLost")] public bool IsLost { get; set; }
     }
 
     [MessagePackObject]

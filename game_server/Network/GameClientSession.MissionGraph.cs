@@ -151,7 +151,15 @@ public partial class GameClientSession
                     IsVictoryStorylet = node.IsVictoryStorylet,
                     IsCompleted = state.CompletedMissionNodeIds.Contains(node.NodeId),
                     IsUnlocked = state.UnlockedMissionNodeIds.Contains(node.NodeId),
-                    IsAvailable = availableNodeIds.Contains(node.NodeId)
+                    IsAvailable = availableNodeIds.Contains(node.NodeId),
+                    IsDiscovered = !string.IsNullOrWhiteSpace(node.EffectiveStoryletId) &&
+                                   state.DiscoveredStoryletIds.Contains(node.EffectiveStoryletId),
+                    IsTracked = !string.IsNullOrWhiteSpace(node.EffectiveStoryletId) &&
+                                state.TrackedStoryletIds.Contains(node.EffectiveStoryletId),
+                    IsClaimed = !string.IsNullOrWhiteSpace(node.EffectiveStoryletId) &&
+                                state.ClaimedStoryletIds.Contains(node.EffectiveStoryletId),
+                    IsLost = !string.IsNullOrWhiteSpace(node.EffectiveStoryletId) &&
+                             state.LostStoryletIds.Contains(node.EffectiveStoryletId)
                 })
                 .ToList();
         }
