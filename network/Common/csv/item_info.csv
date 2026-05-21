@@ -139,7 +139,7 @@ id,name_kr,name_en,name_jp,requirements,comment_kr,reusable
 700000302,필기용 노트,Writing Notebook,筆記用ノート,[],또 다른 노트 조각 회수하기,1
 800000303,보조 배터리,Power Bank,モバイルバッテリー,[],사라진 학생의 메모 찾기,1
 700000304,방전된 노트,Drained Notebook,放電したノート,[],방전된 노트 찾기,1
-900000305,과거와의 필담,Past Notes,過去との筆談,[],과거와 대화하기,1
+900000305,필담 페이지,Written Note Page,筆談ページ,[],과거와의 필담에 사용하는 기록 페이지,1
 900000306,우주의 노트,Cosmic Notebook,宇宙のノート,[],우주의 노트 복원하기,1
 700000401,등산용 로프 다발,Climbing Rope Bundle,登山用ロープの束,[],,1
 800000402,카라비너 세트,Carabiner Set,カラビナセット,[],,1

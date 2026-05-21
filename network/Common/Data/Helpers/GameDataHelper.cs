@@ -499,9 +499,13 @@ namespace network.common.data.helpers
                     }
                 }
 
-                if (node.RequiredOutputItemId > 0 && !itemIds.Contains(node.RequiredOutputItemId))
+                if (node.RequiredOutputItemId > 0 &&
+                    GameMissionData.GetPart(node.RequiredOutputItemId) == null &&
+                    !itemIds.Contains(node.RequiredOutputItemId))
+                {
                     errors.Add(
-                        $"mission_graph_node [{node.NodeId}]: required_output_item_id={node.RequiredOutputItemId} not found in item_info");
+                        $"mission_graph_node [{node.NodeId}]: required_output_item_id={node.RequiredOutputItemId} not found in mission_step or item_info");
+                }
 
                 if (node.RecipeId > 0 && GameMissionGraphData.GetRecipe(node.RecipeId) == null)
                     errors.Add($"mission_graph_node [{node.NodeId}]: recipe_id={node.RecipeId} not found");

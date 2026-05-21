@@ -17,7 +17,7 @@ job_title,part_id,part_name_kr,part_name_en,part_name_jp,part_tier,target_area,t
 3,302,필기용 노트,Writing Notebook,筆記用ノート,0,22,6,12,0,0,301000001,1,필기용 노트 회수하기,Recover writing notebook,筆記用ノートを回収する
 3,303,보조 배터리,Power Bank,モバイルバッテリー,0,20,5,12,0,0,301000002,2,보조 배터리 찾기,Find the power bank,モバイルバッテリーを探す
 3,304,방전된 노트,Drained Notebook,放電したノート,0,42,9,12,0,0,107000002,1,방전된 노트 찾기,Find drained notebook,放電したノートを探す
-3,305,과거와의 필담,Past Notes,過去との筆談,1,0,0,20,0,5,301000001,0,과거와 대화하기,Talk with the past,過去と対話する
+3,305,필담 페이지,Written Note Page,筆談ページ,1,0,0,20,0,5,301000001,0,필담 페이지 만들기,Create a written note page,筆談ページを作る
 3,306,우주의 노트,Cosmic Notebook,宇宙のノート,1,0,0,20,0,5,107000002,0,우주의 노트 복원하기,Restore cosmic notebook,宇宙のノートを復元する
 3,307,비밀 선물 전달,Secret Gift Delivery,秘密の贈り物を届ける,2,0,0,0,0,0,0,0,타겟에게 비밀 선물 전달하기,Deliver the secret gift to your target,ターゲットに秘密の贈り物を届ける
 4,401,등산용 로프 다발,Climbing Rope Bundle,登山用ロープの束,0,30,10,12,0,0,301000006,1,,,

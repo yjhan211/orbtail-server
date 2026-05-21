@@ -874,7 +874,7 @@ public class MissionManager
     }
 
     private static bool IsMissionCompleteNode(MissionGraphNodeData node) =>
-        node.NodeKey == "LIB-09" || node.SuspicionTag == "final_report";
+        node.IsVictoryStorylet || node.NodeKey == "LIB-09" || node.SuspicionTag == "final_report";
 
     private static MissionShortRewardState? GrantShortRewardForNode(PlayerPartState state, MissionGraphNodeData node)
     {

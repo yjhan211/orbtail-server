@@ -15,7 +15,7 @@ public class MissionGraphDataTests
         var nodes = GameMissionGraphData.GetNodes((short)JobTitle.LIBRARY_COMMITTEE);
         var recipes = GameMissionGraphData.GetRecipes((short)JobTitle.LIBRARY_COMMITTEE);
 
-        Assert.Equal(9, nodes.Count);
+        Assert.Equal(15, nodes.Count);
         Assert.Equal(5, recipes.Count);
         Assert.Contains(nodes, node => node.NodeId == 3009 && node.AreaType == (int)AreaType.Ground);
         Assert.DoesNotContain(nodes, node => node.NodeKind == MissionGraphNodeKind.GiftSabotage);
