@@ -55,8 +55,10 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        int staminaCost = ApplyDutyStaminaSaverToCost(RngCollectStaminaCost);
+
         // stamina 차감 (즉시) — 정신력 1:2 변환은 ModifyStats가 처리
-        ModifyStats(-RngCollectStaminaCost);
+        ModifyStats(-staminaCost);
 
         // 1단계 cooldown 30초 등록. FINISH 도착 시 RngCollectCore.Resolve가 동일하게 갱신.
         RngCollectCooldownStore.SetCooldown(CurrentMapSubId, msg.InteractId, RngCollectCooldownSeconds);
@@ -143,13 +145,17 @@ public partial class GameClientSession
 
             _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
                 $"RNG 부품 회수: {outcome.CollectedPart.PartNameKr} (체력+{outcome.StaminaReward})", isBot: false);
+
+            StoreTrace((AreaType)info.ZoneId, msg.InteractId,
+                GetMissionCollectTraceDescription(outcome.CompletedMissionNodeIds), true);
         }
 
         if (outcome.AddedInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedInventoryItem);
+        if (outcome.AddedBonusInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedBonusInventoryItem);
 
         Logger.LogInformation(
-            "RNG 채집 FINISH: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, ItemId={ItemId}",
-            PlayerId, msg.InteractId, outcome.ResultType, outcome.ItemId);
+            "RNG 채집 FINISH: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, ItemId={ItemId}, BonusItemId={BonusItemId}",
+            PlayerId, msg.InteractId, outcome.ResultType, outcome.ItemId, outcome.BonusItemId);
 
         SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId,
             outcome.StaminaReward, RngCollectCooldownSeconds);
@@ -164,6 +170,28 @@ public partial class GameClientSession
         // IDLE 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
         return Task.CompletedTask;
+    }
+
+    private int ApplyDutyStaminaSaverToCost(int baseCost)
+    {
+        if (!PlayerId.HasValue || baseCost <= 0) return baseCost;
+        if (!_missionManager.TryConsumeShortRewardUse(
+                CurrentMapSubId,
+                PlayerId.Value,
+                MissionShortRewardType.DutyStaminaSaver,
+                out var reward) || reward == null)
+        {
+            return baseCost;
+        }
+
+        int reduction = Math.Max(1, (int)Math.Ceiling(baseCost * reward.ValuePercent / 100.0));
+        int adjustedCost = Math.Max(0, baseCost - reduction);
+
+        Logger.LogInformation(
+            "업무 체력 보존 적용: PlayerId={PlayerId}, BaseCost={BaseCost}, AdjustedCost={AdjustedCost}, RemainingUses={RemainingUses}",
+            PlayerId, baseCost, adjustedCost, reward.RemainingUses);
+
+        return adjustedCost;
     }
 
     private bool TryForceDemoLibraryFinalGiftDiscovery(int interactId, InteractableInfoData info)

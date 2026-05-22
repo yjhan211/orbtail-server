@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 #if UNITY_5_3_OR_NEWER
 using UnityEngine;
@@ -51,6 +52,9 @@ namespace network.common.data.helpers
             for (var i = 1; i < validLines.Count; i++)
             {
                 var values = ParseCsvLine(validLines[i]);
+                if (values.Length < headers.Length)
+                    values = values.Concat(Enumerable.Repeat("", headers.Length - values.Length)).ToArray();
+
                 if (values.Length != headers.Length)
                     throw new InvalidDataException(
                         $"Line {i + 1}: Column count mismatch. Expected {headers.Length}, got {values.Length}");

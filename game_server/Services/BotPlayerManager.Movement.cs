@@ -519,7 +519,16 @@ public partial class BotPlayerManager
             .ToList();
 
         // 영역 단위 부품 매칭 (#135) — 같은 영역 내 사물은 동등. 단순 셔플.
-        var queue = available.OrderBy(_ => _rng.Next()).Select(c => c.Id).ToList();
+        var missionObjectTypes = GameMissionData.GetMaterials((short)bot.MyJobTitle)
+            .Where(part => part.TargetArea == (int)targetArea && part.TargetObjectType > 0)
+            .Select(part => part.TargetObjectType)
+            .ToHashSet();
+
+        var queue = available
+            .OrderBy(c => missionObjectTypes.Contains((int)c.ObjectType) ? 0 : 1)
+            .ThenBy(_ => _rng.Next())
+            .Select(c => c.Id)
+            .ToList();
         if (unmappedCount > 0 || cooldownCount > 0)
         {
             _logger.LogInformation(

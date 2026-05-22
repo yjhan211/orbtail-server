@@ -69,6 +69,9 @@ namespace network.common.data
         public static List<MissionPartData> GetParts(short jobTitle) =>
             _partsByJob.GetValueOrDefault(jobTitle) ?? new List<MissionPartData>();
 
+        public static List<MissionPartData> GetPartsIncludingShared(short jobTitle) =>
+            GetSharedAndJobParts(jobTitle);
+
         public static List<MissionPartData> GetAllParts() =>
             _partsById.Values.ToList();
 
@@ -76,7 +79,7 @@ namespace network.common.data
         ///     해당 직책의 소재(Tier 0)만 반환 — 회수 가능 부품
         /// </summary>
         public static List<MissionPartData> GetMaterials(short jobTitle) =>
-            GetParts(jobTitle).Where(p => p.PartTier == PartTier.Material).ToList();
+            GetSharedAndJobParts(jobTitle).Where(p => p.PartTier == PartTier.Material).ToList();
 
         /// <summary>
         ///     part_id로 부품 직접 조회
@@ -121,6 +124,23 @@ namespace network.common.data
         ///     해당 직책의 총 부품 수 (소재 4 + 중간재 2 + 전달 1 = 7)
         /// </summary>
         public static int GetTotalParts(short jobTitle) => GetParts(jobTitle).Count;
+
+        public static int GetTotalPartsIncludingShared(short jobTitle) =>
+            GetPartsIncludingShared(jobTitle).Count;
+
+        private static List<MissionPartData> GetSharedAndJobParts(short jobTitle)
+        {
+            if (jobTitle == 0)
+                return GetParts(0);
+
+            var parts = new List<MissionPartData>();
+            if (_partsByJob.TryGetValue(0, out var sharedParts))
+                parts.AddRange(sharedParts);
+            if (_partsByJob.TryGetValue(jobTitle, out var jobParts))
+                parts.AddRange(jobParts);
+
+            return parts;
+        }
 
         public static void Validate(managers.LogManager logger)
         {

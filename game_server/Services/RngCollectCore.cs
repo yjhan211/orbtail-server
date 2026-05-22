@@ -33,14 +33,19 @@ public static class RngCollectCore
 
         // 자기 풀 매칭은 영역(area) 단위 (#135) — object_type 무시. 한 영역에 자기 부품 1개씩 배치된다는 가정.
         var materials = GameMissionData.GetMaterials((short)jobTitle);
-        var matchedPart = materials.FirstOrDefault(p => p.TargetArea == info.ZoneId);
+        var matchedParts = materials.Where(p =>
+            p.TargetArea == info.ZoneId &&
+            (p.TargetObjectType == 0 || p.TargetObjectType == (int)info.ObjectType))
+            .ToList();
 
         // 자기 부품 이미 회수했으면 그 영역은 자기 풀 외 분기(영역 풀 소모품)로 처리 (#135).
-        if (matchedPart != null)
+        var matchedPart = matchedParts.FirstOrDefault();
+        if (matchedParts.Count > 0)
         {
             var state = missionManager.GetState(matchingId, playerId);
-            if (state != null && state.CollectedParts.Contains(matchedPart.PartId))
-                matchedPart = null;
+            matchedPart = state == null
+                ? matchedParts[0]
+                : matchedParts.FirstOrDefault(part => !state.CollectedParts.Contains(part.PartId));
         }
 
         if (matchedPart != null)
@@ -52,13 +57,14 @@ public static class RngCollectCore
             if (roll < 90)
             {
                 var collectResult = missionManager.TryCollectPart(matchingId, playerId,
-                    (AreaType)info.ZoneId, (int)info.ObjectType);
+                    (AreaType)info.ZoneId, (int)info.ObjectType, info.Id);
                 if (collectResult is { Success: true, Part: not null })
                 {
                     outcome.ResultType = 3;
                     outcome.ItemId = collectResult.Part.PartId;
                     outcome.StaminaReward = 0; // 부품 회수 stamina 보상 제거 (#135)
                     outcome.CollectedPart = collectResult.Part;
+                    outcome.CompletedMissionNodeIds = collectResult.CompletedMissionNodeIds;
 
                     // #135 — 부품을 인벤토리에 추가 (본체/충전재 ID 대역 분리)
                     int partItemId = GameMissionData.GetPartItemId(collectResult.Part.PartId);
@@ -110,10 +116,39 @@ public static class RngCollectCore
             }
         }
 
+        TryApplySharpObservationBonus(matchingId, playerId, info.ZoneId, missionManager, inventoryManager, outcome);
+
         RngCollectCooldownStore.SetCooldown(matchingId, info.Id, RngCollectCooldownSeconds);
         outcome.CooldownSeconds = RngCollectCooldownSeconds;
 
         return outcome;
+    }
+
+    private static void TryApplySharpObservationBonus(
+        long matchingId,
+        long playerId,
+        int areaType,
+        MissionManager missionManager,
+        InGameInventoryManager inventoryManager,
+        RngCollectOutcome outcome)
+    {
+        if (!missionManager.TryConsumeShortRewardUse(
+                matchingId,
+                playerId,
+                MissionShortRewardType.SharpObservation,
+                out var reward) ||
+            reward == null)
+            return;
+
+        if (_rng.Next(100) >= reward.ValuePercent)
+            return;
+
+        var areaPool = GameInteractableData.GetItemPoolByArea(areaType);
+        if (areaPool.Count == 0) return;
+
+        int bonusItemId = areaPool[_rng.Next(areaPool.Count)];
+        outcome.BonusItemId = bonusItemId;
+        outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
     }
 }
 
@@ -136,6 +171,15 @@ public class RngCollectOutcome
     /// <summary>부품 회수 성공 시 데이터 (호출자 G_TO_C_PART_COLLECTED 송신용)</summary>
     public MissionPartData? CollectedPart { get; set; }
 
+    /// <summary>부품 회수와 함께 완료된 미션 그래프 노드 id.</summary>
+    public List<int> CompletedMissionNodeIds { get; set; } = new();
+
     /// <summary>소모품 회수 시 인벤토리에 추가된 아이템 (호출자 G_TO_C_INGAME_INVENTORY_UPDATE 송신용)</summary>
     public InGameItemInfo? AddedInventoryItem { get; set; }
+
+    /// <summary>예리한 관찰 보너스로 추가 지급된 소모품 ID.</summary>
+    public int BonusItemId { get; set; }
+
+    /// <summary>예리한 관찰 보너스로 인벤토리에 추가된 아이템.</summary>
+    public InGameItemInfo? AddedBonusInventoryItem { get; set; }
 }

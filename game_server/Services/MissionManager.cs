@@ -18,6 +18,7 @@ public class MissionManager
     // matchingId → race 완주자 (최초 1명만 — 동시성 가드, #87 N12).
     // 동률 시각 시 PlayerId 낮은 쪽이 먼저 등록되도록 lock으로 직렬화한다.
     private readonly ConcurrentDictionary<long, RaceCompletionRecord> _raceWinners = new();
+    private readonly ConcurrentDictionary<long, ConcurrentDictionary<string, StoryletClaimRecord>> _storyletClaims = new();
     private readonly object _raceCompletionLock = new();
     private readonly ILogger _logger;
 
@@ -34,7 +35,7 @@ public class MissionManager
         var matchingDict = _matchingStates.GetOrAdd(matchingId,
             _ => new ConcurrentDictionary<long, PlayerPartState>());
 
-        int totalParts = GameMissionData.GetTotalParts((short)jobTitle);
+        int totalParts = GameMissionData.GetTotalPartsIncludingShared((short)jobTitle);
 
         // 방어: 부품 데이터 없는 직책 → 완료 상태로 초기화
         if (totalParts == 0)
@@ -57,6 +58,7 @@ public class MissionManager
             JobTitle = jobTitle,
             IsCompleted = false
         };
+        RefreshUnlockedMissionNodes(state);
 
         matchingDict[playerId] = state;
         _logger.LogInformation("부품 초기화: PlayerId={PlayerId}, 직책={JobTitle}, 총 {Total} 부품",
@@ -67,18 +69,23 @@ public class MissionManager
     ///     부품 회수 시도 (action 2/3 result_type=1 trigger).
     ///     자기 직책 발견 풀에서 (area, objectType) 매칭 부품을 찾아 인벤토리에 추가.
     /// </summary>
-    public PartCollectResult? TryCollectPart(long matchingId, long playerId, AreaType area, int objectType)
+    public PartCollectResult? TryCollectPart(long matchingId, long playerId, AreaType area, int objectType, int interactId = 0)
     {
         if (!_matchingStates.TryGetValue(matchingId, out var matching)) return null;
         if (!matching.TryGetValue(playerId, out var state)) return null;
         if (state.IsCompleted) return null;
 
-        // 직책 발견 풀에서 매칭 부품 찾기 — 영역(area) 단위 매칭 (#135). object_type 무시.
+        // 직책 발견 풀에서 매칭 부품 찾기 — #143부터 object_type까지 확인한다.
         var materials = GameMissionData.GetMaterials((short)state.JobTitle);
-        var matchingPart = materials.FirstOrDefault(p => p.TargetArea == (int)area);
+        var matchingParts = materials.Where(p =>
+            p.TargetArea == (int)area &&
+            (p.TargetObjectType == 0 || p.TargetObjectType == objectType))
+            .ToList();
 
-        if (matchingPart == null) return null;
-        if (state.CollectedParts.Contains(matchingPart.PartId))
+        if (matchingParts.Count == 0) return null;
+
+        var matchingPart = matchingParts.FirstOrDefault(p => !state.CollectedParts.Contains(p.PartId));
+        if (matchingPart == null)
             return new PartCollectResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
 
         // 선행 아이템 검증
@@ -93,6 +100,7 @@ public class MissionManager
         }
 
         state.CollectedParts.Add(matchingPart.PartId);
+        var graphProgress = ApplyGraphNodeProgressForPart(state, matchingPart.PartId, area, objectType, interactId);
         _logger.LogInformation("부품 회수: PlayerId={PlayerId}, PartId={PartId} ({Name})",
             playerId, matchingPart.PartId, matchingPart.PartNameKr);
 
@@ -100,7 +108,9 @@ public class MissionManager
         {
             Success = true,
             Part = matchingPart,
-            StaminaReward = matchingPart.StaminaReward
+            StaminaReward = matchingPart.StaminaReward,
+            CompletedMissionNodeIds = graphProgress.CompletedNodeIds,
+            UnlockedMissionNodeIds = graphProgress.UnlockedNodeIds
         };
     }
 
@@ -146,7 +156,7 @@ public class MissionManager
             return new PartCombineResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
 
         var recipe = PartRecipeData.TryCombine(partA, partB);
-        if (recipe == null || recipe.JobTitle != (short)state.JobTitle)
+        if (recipe == null || (recipe.JobTitle != 0 && recipe.JobTitle != (short)state.JobTitle))
             return new PartCombineResult { ErrorCode = ErrorCode.INVALID_PARAMETER };
 
         if (requireCollectedParts && (!state.CollectedParts.Contains(partA) || !state.CollectedParts.Contains(partB)))
@@ -174,6 +184,7 @@ public class MissionManager
 
                 // 결합 실행 + winner 등록 (atomic)
                 state.CollectedParts.Add(recipe.OutputPart);
+                var graphProgress = ApplyGraphRecipeProgress(state, recipe);
                 state.IsCompleted = true;
 
                 _raceWinners[matchingId] = new RaceCompletionRecord
@@ -193,13 +204,17 @@ public class MissionManager
                     Recipe = recipe,
                     OutputPart = outputPart,
                     IsRaceComplete = true,
-                    StaminaReward = outputPart?.StaminaReward ?? 0
+                    StaminaReward = outputPart?.StaminaReward ?? 0,
+                    CompletedMissionRecipeId = graphProgress.CompletedRecipeId,
+                    CompletedMissionNodeIds = graphProgress.CompletedNodeIds,
+                    UnlockedMissionNodeIds = graphProgress.UnlockedNodeIds
                 };
             }
         }
 
         // 중간재 결합 — 동시성 가드 불필요 (자기 인벤토리에만 영향)
         state.CollectedParts.Add(recipe.OutputPart);
+        var intermediateGraphProgress = ApplyGraphRecipeProgress(state, recipe);
 
         _logger.LogInformation("부품 결합: PlayerId={PlayerId}, {A}+{B} → {Out} (Final=false)",
             playerId, partA, partB, recipe.OutputPart);
@@ -210,8 +225,242 @@ public class MissionManager
             Recipe = recipe,
             OutputPart = outputPart,
             IsRaceComplete = false,
-            StaminaReward = outputPart?.StaminaReward ?? 0
+            StaminaReward = outputPart?.StaminaReward ?? 0,
+            CompletedMissionRecipeId = intermediateGraphProgress.CompletedRecipeId,
+            CompletedMissionNodeIds = intermediateGraphProgress.CompletedNodeIds,
+            UnlockedMissionNodeIds = intermediateGraphProgress.UnlockedNodeIds
         };
+    }
+
+    public MissionNodeExecuteResult TryExecuteMissionNode(
+        long matchingId,
+        long playerId,
+        int nodeId,
+        AreaType area,
+        int objectType,
+        int interactId = 0,
+        long clientStartUnixMs = 0)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
+        if (!matching.TryGetValue(playerId, out var state))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.SERVER_INTERNAL_ERROR };
+        if (state.IsCompleted)
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
+
+        var node = GameMissionGraphData.GetNode(nodeId);
+        if (node == null || (node.JobTitle != 0 && node.JobTitle != (short)state.JobTitle))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.INVALID_PARAMETER };
+        if (node.NodeKind == MissionGraphNodeKind.CollectPart)
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.INVALID_PARAMETER };
+        if (state.CompletedMissionNodeIds.Contains(node.NodeId))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
+        if (!node.MatchesInteractable((int)area, objectType, interactId))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.AREA_MISMATCH };
+        if (!node.AreRequirementsMet(
+                state.CollectedParts,
+                state.CompletedMissionNodeIds,
+                state.OwnedClueTags,
+                state.HasLostTarget))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_NOT_AVAILABLE };
+        if (IsNodeLost(state, node))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_NOT_AVAILABLE };
+
+        bool isMissionComplete = IsMissionCompleteNode(node);
+        if (isMissionComplete && !TryRegisterRaceCompletion(matchingId, playerId, clientStartUnixMs))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
+
+        if (!TryClaimStorylet(matchingId, playerId, node, out var existingClaim))
+        {
+            if (!string.IsNullOrWhiteSpace(node.EffectiveStoryletId))
+            {
+                state.DiscoveredStoryletIds.Add(node.EffectiveStoryletId);
+                state.TrackedStoryletIds.Add(node.EffectiveStoryletId);
+                state.LostStoryletIds.Add(node.EffectiveStoryletId);
+            }
+
+            return new MissionNodeExecuteResult
+            {
+                ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED,
+                Node = node,
+                LostStoryletIds = string.IsNullOrWhiteSpace(node.EffectiveStoryletId)
+                    ? new List<string>()
+                    : new List<string> { node.EffectiveStoryletId },
+                ClaimedByPlayerId = existingClaim?.PlayerId ?? 0
+            };
+        }
+
+        var completedBefore = state.CompletedMissionNodeIds.ToHashSet();
+        var unlockedBefore = state.UnlockedMissionNodeIds.ToHashSet();
+        state.CompletedMissionNodeIds.Add(node.NodeId);
+        if (node.HasStoryletMetadata && !string.IsNullOrWhiteSpace(node.EffectiveStoryletId))
+        {
+            state.DiscoveredStoryletIds.Add(node.EffectiveStoryletId);
+            state.TrackedStoryletIds.Add(node.EffectiveStoryletId);
+            state.ClaimedStoryletIds.Add(node.EffectiveStoryletId);
+            if (node.RouteType != MissionGraphRouteType.None)
+                state.ActiveRouteIds.Add(node.EffectiveStoryletId);
+        }
+        if (node.OutputPartId > 0)
+        {
+            state.CollectedParts.Add(node.OutputPartId);
+            if (node.HasStoryletMetadata)
+                state.CraftedFunctionItems.Add(node.OutputPartId);
+        }
+        foreach (string clueTag in node.ClueTags.Concat(node.FinalTags))
+            if (!string.IsNullOrWhiteSpace(clueTag))
+                state.OwnedClueTags.Add(clueTag);
+        if (isMissionComplete && node.TraceTextId > 0)
+            state.VisibleVictoryTraceIds.Add(node.TraceTextId);
+
+        foreach (var unlockNodeId in node.UnlockNodeIds)
+            AddUnlockedMissionNode(state, unlockNodeId);
+
+        var grantedReward = GrantShortRewardForNode(state, node);
+        RefreshUnlockedMissionNodes(state);
+
+        if (isMissionComplete)
+            state.IsCompleted = true;
+
+        _logger.LogInformation(
+            "미션 노드 실행: MatchingId={MatchingId}, PlayerId={PlayerId}, NodeId={NodeId}, Complete={Complete}",
+            matchingId, playerId, node.NodeId, isMissionComplete);
+
+        return new MissionNodeExecuteResult
+        {
+            Success = true,
+            Node = node,
+            CompletedMissionNodeIds = state.CompletedMissionNodeIds.Except(completedBefore).ToList(),
+            UnlockedMissionNodeIds = state.UnlockedMissionNodeIds.Except(unlockedBefore).ToList(),
+            ClaimedStoryletIds = node.HasStoryletMetadata && !string.IsNullOrWhiteSpace(node.EffectiveStoryletId)
+                ? new List<string> { node.EffectiveStoryletId }
+                : new List<string>(),
+            LostStoryletIds = new List<string>(),
+            AlternateRouteNodeIds = new List<int>(),
+            VisibleTraceTextId = node.TraceTextId,
+            GrantedShortReward = grantedReward,
+            IsMissionComplete = isMissionComplete
+        };
+    }
+
+    private static bool IsNodeLost(PlayerPartState state, MissionGraphNodeData node) =>
+        node.HasStoryletMetadata &&
+        !string.IsNullOrWhiteSpace(node.EffectiveStoryletId) &&
+        state.LostStoryletIds.Contains(node.EffectiveStoryletId);
+
+    private bool TryClaimStorylet(
+        long matchingId,
+        long playerId,
+        MissionGraphNodeData node,
+        out StoryletClaimRecord? existingClaim)
+    {
+        existingClaim = null;
+
+        if (!node.HasStoryletMetadata ||
+            node.ClaimPolicy != MissionGraphClaimPolicy.Unique ||
+            string.IsNullOrWhiteSpace(node.EffectiveStoryletId))
+        {
+            return true;
+        }
+
+        var matchingClaims = _storyletClaims.GetOrAdd(
+            matchingId,
+            _ => new ConcurrentDictionary<string, StoryletClaimRecord>(StringComparer.OrdinalIgnoreCase));
+
+        var claim = new StoryletClaimRecord
+        {
+            StoryletId = node.EffectiveStoryletId,
+            NodeId = node.NodeId,
+            PlayerId = playerId,
+            ClaimedAt = DateTime.UtcNow,
+            VisibleTraceTextId = node.TraceTextId
+        };
+
+        if (matchingClaims.TryAdd(node.EffectiveStoryletId, claim))
+            return true;
+
+        matchingClaims.TryGetValue(node.EffectiveStoryletId, out existingClaim);
+        return existingClaim?.PlayerId == playerId;
+    }
+
+    public bool TryConsumeShortRewardUse(
+        long matchingId,
+        long playerId,
+        MissionShortRewardType rewardType,
+        out MissionShortRewardState? reward)
+    {
+        reward = null;
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return false;
+        if (!matching.TryGetValue(playerId, out var state)) return false;
+
+        lock (state.SyncRoot)
+        {
+            RemoveExpiredShortRewards(state, DateTime.UtcNow);
+
+            reward = state.ShortRewards.FirstOrDefault(r =>
+                r.RewardType == rewardType &&
+                r.DurationSeconds <= 0 &&
+                r.RemainingUses > 0);
+            if (reward == null) return false;
+
+            reward.RemainingUses--;
+            if (reward.RemainingUses <= 0)
+                state.ShortRewards.Remove(reward);
+
+            return true;
+        }
+    }
+
+    public bool TryActivateTimedShortReward(
+        long matchingId,
+        long playerId,
+        MissionShortRewardType rewardType,
+        out MissionShortRewardState? reward)
+    {
+        reward = null;
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return false;
+        if (!matching.TryGetValue(playerId, out var state)) return false;
+
+        lock (state.SyncRoot)
+        {
+            var now = DateTime.UtcNow;
+            RemoveExpiredShortRewards(state, now);
+
+            reward = state.ShortRewards.FirstOrDefault(r =>
+                r.RewardType == rewardType &&
+                r.DurationSeconds > 0 &&
+                r.RemainingUses > 0 &&
+                !r.IsActive(now));
+            if (reward == null) return false;
+
+            reward.RemainingUses--;
+            reward.ActivatedAt = now;
+            reward.ExpiresAt = now.AddSeconds(reward.DurationSeconds);
+            return true;
+        }
+    }
+
+    public bool TryGetActiveShortReward(
+        long matchingId,
+        long playerId,
+        MissionShortRewardType rewardType,
+        out MissionShortRewardState? reward)
+    {
+        reward = null;
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return false;
+        if (!matching.TryGetValue(playerId, out var state)) return false;
+
+        lock (state.SyncRoot)
+        {
+            var now = DateTime.UtcNow;
+            RemoveExpiredShortRewards(state, now);
+
+            reward = state.ShortRewards.FirstOrDefault(r =>
+                r.RewardType == rewardType &&
+                r.DurationSeconds > 0 &&
+                r.IsActive(now));
+            return reward != null;
+        }
     }
 
     public PlaceGiftResult TryPlaceGift(long matchingId, long playerId, long targetPlayerId,
@@ -537,16 +786,178 @@ public class MissionManager
         return invalidated;
     }
 
+    public void NotifyTargetLost(
+        long matchingId,
+        long playerId,
+        long lostTargetPlayerId,
+        EliminationReason reason,
+        long? suspectedCausePlayerId = null)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return;
+        if (!matching.TryGetValue(playerId, out var state)) return;
+
+        state.HasLostTarget = true;
+        state.LostTargetPlayerId = lostTargetPlayerId;
+        state.TargetLossReason = reason;
+        state.TargetLostAt = DateTime.UtcNow;
+
+        if (suspectedCausePlayerId is > 0 && suspectedCausePlayerId != playerId)
+            state.RevengeCandidatePlayerIds.Add(suspectedCausePlayerId.Value);
+
+        RefreshUnlockedMissionNodes(state);
+
+        _logger.LogInformation(
+            "타겟 상실 기록: MatchingId={MatchingId}, PlayerId={PlayerId}, LostTarget={Target}, Reason={Reason}, Candidate={Candidate}",
+            matchingId, playerId, lostTargetPlayerId, reason, suspectedCausePlayerId);
+    }
+
     public PlayerPartState? GetState(long matchingId, long playerId)
     {
         if (!_matchingStates.TryGetValue(matchingId, out var matching)) return null;
         return matching.GetValueOrDefault(playerId);
     }
 
+    private MissionGraphProgressResult ApplyGraphNodeProgressForPart(
+        PlayerPartState state,
+        int partId,
+        AreaType area,
+        int objectType,
+        int interactId)
+    {
+        var result = new MissionGraphProgressResult();
+        var completedBefore = state.CompletedMissionNodeIds.ToHashSet();
+        var unlockedBefore = state.UnlockedMissionNodeIds.ToHashSet();
+
+        var node = GameMissionGraphData.GetNodes((short)state.JobTitle)
+            .FirstOrDefault(candidate =>
+                candidate.OutputPartId == partId &&
+                !state.CompletedMissionNodeIds.Contains(candidate.NodeId) &&
+                candidate.MatchesInteractable((int)area, objectType, interactId) &&
+                candidate.AreRequirementsMet(
+                    state.CollectedParts,
+                    state.CompletedMissionNodeIds,
+                    state.OwnedClueTags,
+                    state.HasLostTarget));
+
+        if (node != null)
+            state.CompletedMissionNodeIds.Add(node.NodeId);
+
+        RefreshUnlockedMissionNodes(state);
+
+        result.CompletedNodeIds = state.CompletedMissionNodeIds.Except(completedBefore).ToList();
+        result.UnlockedNodeIds = state.UnlockedMissionNodeIds.Except(unlockedBefore).ToList();
+        return result;
+    }
+
+    private MissionGraphProgressResult ApplyGraphRecipeProgress(PlayerPartState state, PartRecipe recipe)
+    {
+        var result = new MissionGraphProgressResult();
+        var unlockedBefore = state.UnlockedMissionNodeIds.ToHashSet();
+
+        if (GameMissionGraphData.TryFindRecipeByPartRecipe(
+                (short)state.JobTitle,
+                recipe.InputPartA,
+                recipe.InputPartB,
+                recipe.OutputPart,
+                out var graphRecipe))
+        {
+            if (state.CompletedMissionRecipeIds.Add(graphRecipe.RecipeId))
+                result.CompletedRecipeId = graphRecipe.RecipeId;
+
+            foreach (var unlockNodeId in graphRecipe.UnlockNodeIds)
+                state.UnlockedMissionNodeIds.Add(unlockNodeId);
+        }
+
+        RefreshUnlockedMissionNodes(state);
+
+        result.UnlockedNodeIds = state.UnlockedMissionNodeIds.Except(unlockedBefore).ToList();
+        return result;
+    }
+
+    private static void RefreshUnlockedMissionNodes(PlayerPartState state)
+    {
+        foreach (var node in GameMissionGraphData.GetInitiallyAvailableNodes((short)state.JobTitle))
+            AddUnlockedMissionNode(state, node);
+
+        foreach (var node in GameMissionGraphData.GetAvailableNodes(
+                      (short)state.JobTitle,
+                      state.CollectedParts,
+                      state.CompletedMissionNodeIds,
+                      state.OwnedClueTags,
+                      state.HasLostTarget))
+        {
+            AddUnlockedMissionNode(state, node);
+        }
+    }
+
+    private static void AddUnlockedMissionNode(PlayerPartState state, int nodeId)
+    {
+        var node = GameMissionGraphData.GetNode(nodeId);
+        if (node != null)
+            AddUnlockedMissionNode(state, node);
+    }
+
+    private static void AddUnlockedMissionNode(PlayerPartState state, MissionGraphNodeData node)
+    {
+        if (!IsNodeLost(state, node))
+            state.UnlockedMissionNodeIds.Add(node.NodeId);
+    }
+
+    private static bool IsMissionCompleteNode(MissionGraphNodeData node) =>
+        node.IsVictoryStorylet || node.NodeKey == "LIB-09" || node.SuspicionTag == "final_report";
+
+    private static MissionShortRewardState? GrantShortRewardForNode(PlayerPartState state, MissionGraphNodeData node)
+    {
+        return node.NodeKey switch
+        {
+            "LIB-05" => AddOrRefreshShortReward(state, MissionShortRewardType.SharpObservation, remainingUses: 2, valuePercent: 25),
+            "LIB-06" => AddOrRefreshShortReward(state, MissionShortRewardType.ClosedAreaResistance, remainingUses: 1, valuePercent: 30, durationSeconds: 8),
+            "LIB-07" => AddOrRefreshShortReward(state, MissionShortRewardType.DutyStaminaSaver, remainingUses: 3, valuePercent: 20),
+            "LIB-08" => AddOrRefreshShortReward(state, MissionShortRewardType.TargetEncounterStability, remainingUses: 1, valuePercent: 20),
+            _ => null
+        };
+    }
+
+    private static MissionShortRewardState AddOrRefreshShortReward(
+        PlayerPartState state,
+        MissionShortRewardType rewardType,
+        int remainingUses,
+        int valuePercent,
+        int durationSeconds = 0)
+    {
+        lock (state.SyncRoot)
+        {
+            var reward = state.ShortRewards.FirstOrDefault(r => r.RewardType == rewardType);
+            if (reward == null)
+            {
+                reward = new MissionShortRewardState { RewardType = rewardType };
+                state.ShortRewards.Add(reward);
+            }
+
+            reward.RemainingUses = remainingUses;
+            reward.ValuePercent = valuePercent;
+            reward.DurationSeconds = durationSeconds;
+            reward.GrantedAt = DateTime.UtcNow;
+            reward.ActivatedAt = null;
+            reward.ExpiresAt = null;
+            return reward;
+        }
+    }
+
+    private static void RemoveExpiredShortRewards(PlayerPartState state, DateTime now)
+    {
+        state.ShortRewards.RemoveAll(reward =>
+            reward.DurationSeconds > 0 &&
+            reward.ExpiresAt.HasValue &&
+            reward.ExpiresAt.Value <= now &&
+            reward.RemainingUses <= 0);
+    }
+
     public void CleanupMatching(long matchingId)
     {
         _matchingStates.TryRemove(matchingId, out _);
         _raceWinners.TryRemove(matchingId, out _);
+        _storyletClaims.TryRemove(matchingId, out _);
     }
 }
 
@@ -560,6 +971,15 @@ public class RaceCompletionRecord
     public long ClientStartUnixMs { get; set; }
 }
 
+public class StoryletClaimRecord
+{
+    public string StoryletId { get; set; } = "";
+    public int NodeId { get; set; }
+    public long PlayerId { get; set; }
+    public DateTime ClaimedAt { get; set; }
+    public int VisibleTraceTextId { get; set; }
+}
+
 public class PlayerPartState
 {
     public const int RequiredGiftDeliveries = 2;
@@ -569,7 +989,24 @@ public class PlayerPartState
     public JobTitle JobTitle { get; set; }
     public HashSet<int> CollectedParts { get; set; } = new();           // 회수+결합 결과 부품 ID
     public HashSet<int> CollectedPrereqGroups { get; set; } = new();    // 회수한 선행 아이템 share_group
+    public HashSet<int> CompletedMissionNodeIds { get; set; } = new();
+    public HashSet<int> CompletedMissionRecipeIds { get; set; } = new();
+    public HashSet<int> UnlockedMissionNodeIds { get; set; } = new();
+    public HashSet<string> DiscoveredStoryletIds { get; set; } = new();
+    public HashSet<string> TrackedStoryletIds { get; set; } = new();
+    public HashSet<string> ActiveRouteIds { get; set; } = new();
+    public HashSet<string> ClaimedStoryletIds { get; set; } = new();
+    public HashSet<string> LostStoryletIds { get; set; } = new();
+    public HashSet<string> OwnedClueTags { get; set; } = new();
+    public HashSet<int> CraftedFunctionItems { get; set; } = new();
+    public HashSet<int> VisibleVictoryTraceIds { get; set; } = new();
+    public bool HasLostTarget { get; set; }
+    public long LostTargetPlayerId { get; set; }
+    public EliminationReason TargetLossReason { get; set; } = EliminationReason.NONE;
+    public DateTime? TargetLostAt { get; set; }
+    public HashSet<long> RevengeCandidatePlayerIds { get; set; } = new();
     public List<PlacedGift> PlacedGifts { get; set; } = new();
+    public List<MissionShortRewardState> ShortRewards { get; set; } = new();
     public int DeliveredGiftCount { get; set; }
     public bool IsCompleted { get; set; }                               // 최종 결합 시 true (race 완주)
 }
@@ -593,6 +1030,8 @@ public class PartCollectResult
     public MissionPartData? Part { get; set; }
     public int StaminaReward { get; set; }
     public int MissingPrerequisiteGroup { get; set; }
+    public List<int> CompletedMissionNodeIds { get; set; } = new();
+    public List<int> UnlockedMissionNodeIds { get; set; } = new();
 }
 
 public class PartCombineResult
@@ -603,6 +1042,57 @@ public class PartCombineResult
     public MissionPartData? OutputPart { get; set; }
     public bool IsRaceComplete { get; set; }
     public int StaminaReward { get; set; }
+    public int CompletedMissionRecipeId { get; set; }
+    public List<int> CompletedMissionNodeIds { get; set; } = new();
+    public List<int> UnlockedMissionNodeIds { get; set; } = new();
+}
+
+public class MissionGraphProgressResult
+{
+    public int CompletedRecipeId { get; set; }
+    public List<int> CompletedNodeIds { get; set; } = new();
+    public List<int> UnlockedNodeIds { get; set; } = new();
+}
+
+public class MissionNodeExecuteResult
+{
+    public bool Success { get; set; }
+    public ErrorCode ErrorCode { get; set; } = ErrorCode.SUCCESS;
+    public MissionGraphNodeData? Node { get; set; }
+    public List<int> CompletedMissionNodeIds { get; set; } = new();
+    public List<int> UnlockedMissionNodeIds { get; set; } = new();
+    public List<string> ClaimedStoryletIds { get; set; } = new();
+    public List<string> LostStoryletIds { get; set; } = new();
+    public List<int> AlternateRouteNodeIds { get; set; } = new();
+    public int VisibleTraceTextId { get; set; }
+    public long ClaimedByPlayerId { get; set; }
+    public MissionShortRewardState? GrantedShortReward { get; set; }
+    public bool IsMissionComplete { get; set; }
+}
+
+public enum MissionShortRewardType
+{
+    None = 0,
+    SharpObservation = 1,
+    ClosedAreaResistance = 2,
+    DutyStaminaSaver = 3,
+    TargetEncounterStability = 4
+}
+
+public class MissionShortRewardState
+{
+    public MissionShortRewardType RewardType { get; set; }
+    public int RemainingUses { get; set; }
+    public int ValuePercent { get; set; }
+    public int DurationSeconds { get; set; }
+    public DateTime GrantedAt { get; set; }
+    public DateTime? ActivatedAt { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+
+    public bool IsActive(DateTime now) =>
+        ActivatedAt.HasValue &&
+        ExpiresAt.HasValue &&
+        ExpiresAt.Value > now;
 }
 
 public class PlaceGiftResult

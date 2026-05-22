@@ -21,8 +21,22 @@ namespace network.common.data.models
         [Key("targetArea")] public int TargetArea { get; set; }
         [Key("targetInteractId")] public int TargetInteractId { get; set; }
         [Key("targetActionId")] public int TargetActionId { get; set; }
+        [Key("chunkIndex")] public int ChunkIndex { get; set; }
+        [Key("isEnd")] public bool IsEnd { get; set; } = true;
         /// <summary>v0.2.0 — 직책별 모든 부품(소재 4 + 중간재 2 + 최종 1) 메타데이터</summary>
         [Key("parts")] public List<MissionPartInfo> Parts { get; set; }
+        /// <summary>#143 — 미션 그래프 노드 진행 상태. 구 클라이언트는 무시 가능.</summary>
+        [Key("graphNodes")] public List<MissionGraphNodeProgressInfo> GraphNodes { get; set; } = new();
+        /// <summary>#143 — 현재 활성/대기 중인 단기 보상 상태.</summary>
+        [Key("shortRewards")] public List<MissionShortRewardInfo> ShortRewards { get; set; } = new();
+        [Key("discoveredStoryletIds")] public List<string> DiscoveredStoryletIds { get; set; } = new();
+        [Key("trackedStoryletIds")] public List<string> TrackedStoryletIds { get; set; } = new();
+        [Key("activeRouteIds")] public List<string> ActiveRouteIds { get; set; } = new();
+        [Key("claimedStoryletIds")] public List<string> ClaimedStoryletIds { get; set; } = new();
+        [Key("lostStoryletIds")] public List<string> LostStoryletIds { get; set; } = new();
+        [Key("ownedClueTags")] public List<string> OwnedClueTags { get; set; } = new();
+        [Key("craftedFunctionItemIds")] public List<int> CraftedFunctionItemIds { get; set; } = new();
+        [Key("visibleVictoryTraceIds")] public List<int> VisibleVictoryTraceIds { get; set; } = new();
     }
 
     /// <summary>
@@ -41,6 +55,31 @@ namespace network.common.data.models
         [Key("narrativeKr")] public string NarrativeKr { get; set; }
         [Key("narrativeEn")] public string NarrativeEn { get; set; }
         [Key("narrativeJp")] public string NarrativeJp { get; set; }
+    }
+
+    [MessagePackObject]
+    public class MissionGraphNodeProgressInfo : IMessagePackObject
+    {
+        [Key("nodeId")] public int NodeId { get; set; }
+        [Key("nodeKey")] public string NodeKey { get; set; } = "";
+        [Key("nodeKind")] public int NodeKind { get; set; }
+        [Key("storyletId")] public string StoryletId { get; set; } = "";
+        [Key("storyletType")] public int StoryletType { get; set; }
+        [Key("routeType")] public int RouteType { get; set; }
+        [Key("targetAreaType")] public int TargetAreaType { get; set; }
+        [Key("targetObjectType")] public int TargetObjectType { get; set; }
+        [Key("claimPolicy")] public int ClaimPolicy { get; set; }
+        [Key("rewardKind")] public int RewardKind { get; set; }
+        [Key("riskLevel")] public int RiskLevel { get; set; }
+        [Key("caseGroup")] public string CaseGroup { get; set; } = "";
+        [Key("isVictoryStorylet")] public bool IsVictoryStorylet { get; set; }
+        [Key("isCompleted")] public bool IsCompleted { get; set; }
+        [Key("isUnlocked")] public bool IsUnlocked { get; set; }
+        [Key("isAvailable")] public bool IsAvailable { get; set; }
+        [Key("isDiscovered")] public bool IsDiscovered { get; set; }
+        [Key("isTracked")] public bool IsTracked { get; set; }
+        [Key("isClaimed")] public bool IsClaimed { get; set; }
+        [Key("isLost")] public bool IsLost { get; set; }
     }
 
     [MessagePackObject]
@@ -100,6 +139,54 @@ namespace network.common.data.models
         [Key("partB")] public int PartB { get; set; }
         /// <summary>클라이언트 결합 액션 시작 시각 (UTC Unix ms). #87 동시성 가드용. 미지원 클라는 0.</summary>
         [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
+    }
+
+    /// <summary>
+    ///     #143 — 기능 아이템으로 열린 업무 선택지 실행 요청.
+    ///     interactId가 있으면 서버가 interactable CSV에서 area/objectType을 재확인한다.
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_MISSION_NODE_EXECUTE : IMessagePackObject
+    {
+        [Key("nodeId")] public int NodeId { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("objectType")] public int ObjectType { get; set; }
+        /// <summary>클라이언트 선택지 실행 시작 시각 (UTC Unix ms). 최종 업무 동시성 가드용.</summary>
+        [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
+    }
+
+    [MessagePackObject]
+    public class MissionShortRewardInfo : IMessagePackObject
+    {
+        [Key("rewardType")] public int RewardType { get; set; }
+        [Key("remainingUses")] public int RemainingUses { get; set; }
+        [Key("valuePercent")] public int ValuePercent { get; set; }
+        [Key("durationSeconds")] public int DurationSeconds { get; set; }
+        [Key("expiresAtUnixMs")] public long ExpiresAtUnixMs { get; set; }
+    }
+
+    /// <summary>
+    ///     #143 — 업무 선택지 실행 결과. UI는 completed/unlocked node와 granted reward를 반영한다.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_MISSION_NODE_EXECUTE_RESULT : IMessagePackObject
+    {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("nodeId")] public int NodeId { get; set; }
+        [Key("nodeKey")] public string NodeKey { get; set; } = "";
+        [Key("storyletId")] public string StoryletId { get; set; } = "";
+        [Key("routeId")] public string RouteId { get; set; } = "";
+        [Key("outputPartId")] public int OutputPartId { get; set; }
+        [Key("completedNodeIds")] public List<int> CompletedNodeIds { get; set; } = new();
+        [Key("unlockedNodeIds")] public List<int> UnlockedNodeIds { get; set; } = new();
+        [Key("claimedStoryletIds")] public List<string> ClaimedStoryletIds { get; set; } = new();
+        [Key("lostStoryletIds")] public List<string> LostStoryletIds { get; set; } = new();
+        [Key("alternateRouteNodeIds")] public List<int> AlternateRouteNodeIds { get; set; } = new();
+        [Key("visibleTraceTextId")] public int VisibleTraceTextId { get; set; }
+        [Key("claimedByPlayerId")] public long ClaimedByPlayerId { get; set; }
+        [Key("isMissionComplete")] public bool IsMissionComplete { get; set; }
+        [Key("grantedShortReward")] public MissionShortRewardInfo GrantedShortReward { get; set; } = new();
     }
 
     /// <summary>

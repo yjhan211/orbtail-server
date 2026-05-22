@@ -15,6 +15,7 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int GiftRecallStaminaCost = 5;
+    private static readonly int MissionInfoPacketBudget = Config.BUFFER_SIZE - Config.HEADER_SIZE - 4 - 8 - 128;
 
     /// <summary>
     ///     v0.2.0 — 미션 정보 전송 (게임 접속 시). 직책별 7부품 메타데이터 전체 송신.
@@ -26,7 +27,7 @@ public partial class GameClientSession
         var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
         if (state == null) return;
 
-        var allParts = GameMissionData.GetParts((short)MyJobTitle);
+        var allParts = GameMissionData.GetPartsIncludingShared((short)MyJobTitle);
         var partInfos = allParts.Select(p => new MissionPartInfo
         {
             PartId = p.PartId,
@@ -41,20 +42,123 @@ public partial class GameClientSession
             NarrativeJp = p.NarrativeJp ?? ""
         }).ToList();
 
-        using var packet = Packet.Create((int)Protocol.G_TO_C_MISSION_INFO, PlayerId.Value);
+        var graphNodes = BuildMissionGraphNodeProgress(state);
+        var shortRewards = BuildMissionShortRewardInfoList(state);
+        var chunks = BuildMissionInfoChunks(state, allParts.Count, partInfos, graphNodes, shortRewards);
+
+        for (int i = 0; i < chunks.Count; i++)
+        {
+            var chunkMsg = chunks[i];
+            chunkMsg.ChunkIndex = i;
+            chunkMsg.IsEnd = i == chunks.Count - 1;
+
+            using var chunkPacket = Packet.Create((int)Protocol.G_TO_C_MISSION_INFO, PlayerId.Value);
+            chunkPacket.SetBody(MessagePackSerializer.Serialize(chunkMsg));
+            Send(chunkPacket);
+        }
+
+        Logger.LogDebug(
+            "Sent mission info to PlayerId={PlayerId} in {ChunkCount} packets: Parts={PartCount}, Nodes={NodeCount}, Rewards={RewardCount}",
+            PlayerId, chunks.Count, partInfos.Count, graphNodes.Count, shortRewards.Count);
+    }
+
+    private List<G_TO_C_MISSION_INFO> BuildMissionInfoChunks(
+        PlayerPartState state,
+        int totalSteps,
+        List<MissionPartInfo> parts,
+        List<MissionGraphNodeProgressInfo> graphNodes,
+        List<MissionShortRewardInfo> shortRewards)
+    {
+        var chunks = new List<G_TO_C_MISSION_INFO>();
+        var current = CreateMissionInfoChunk(state, totalSteps, includeStoryletSnapshot: true);
+
+        void CommitCurrent()
+        {
+            chunks.Add(current);
+            current = CreateMissionInfoChunk(state, totalSteps, includeStoryletSnapshot: false);
+        }
+
+        void AddItem<T>(
+            T item,
+            Action<G_TO_C_MISSION_INFO, T> add,
+            Action<G_TO_C_MISSION_INFO, T> remove)
+        {
+            add(current, item);
+            if (GetMissionInfoPayloadSize(current) <= MissionInfoPacketBudget) return;
+
+            remove(current, item);
+            if (!IsMissionInfoChunkEmpty(current)) CommitCurrent();
+
+            add(current, item);
+            int payloadSize = GetMissionInfoPayloadSize(current);
+            if (payloadSize > MissionInfoPacketBudget)
+            {
+                Logger.LogWarning(
+                    "Single mission info entry exceeds packet budget: PlayerId={PlayerId}, Size={Size}, Budget={Budget}",
+                    PlayerId, payloadSize, MissionInfoPacketBudget);
+            }
+        }
+
+        foreach (var part in parts)
+            AddItem(part, (msg, item) => msg.Parts.Add(item), (msg, item) => msg.Parts.Remove(item));
+
+        foreach (var node in graphNodes)
+            AddItem(node, (msg, item) => msg.GraphNodes.Add(item), (msg, item) => msg.GraphNodes.Remove(item));
+
+        foreach (var reward in shortRewards)
+            AddItem(reward, (msg, item) => msg.ShortRewards.Add(item), (msg, item) => msg.ShortRewards.Remove(item));
+
+        if (!IsMissionInfoChunkEmpty(current) || chunks.Count == 0) chunks.Add(current);
+        return chunks;
+    }
+
+    private G_TO_C_MISSION_INFO CreateMissionInfoChunk(PlayerPartState state, int totalSteps, bool includeStoryletSnapshot)
+    {
         var msg = new G_TO_C_MISSION_INFO
         {
             JobTitle = MyJobTitle,
             CurrentStep = state.CollectedParts.Count,
-            TotalSteps = allParts.Count,
-            TargetArea = 0,           // v0.2.0 — 단일 타겟 개념 폐기 (Parts 메타로 대체)
-            TargetInteractId = 0,     // v0.2.0 — 폐기
-            TargetActionId = 0,       // v0.2.0 — 폐기
-            Parts = partInfos
+            TotalSteps = totalSteps,
+            TargetArea = 0,
+            TargetInteractId = 0,
+            TargetActionId = 0,
+            Parts = [],
+            GraphNodes = [],
+            ShortRewards = []
         };
-        packet.SetBody(MessagePackSerializer.Serialize(msg));
-        Send(packet);
+
+        if (!includeStoryletSnapshot) return msg;
+
+        lock (state.SyncRoot)
+        {
+            msg.DiscoveredStoryletIds = state.DiscoveredStoryletIds.ToList();
+            msg.TrackedStoryletIds = state.TrackedStoryletIds.ToList();
+            msg.ActiveRouteIds = state.ActiveRouteIds.ToList();
+            msg.ClaimedStoryletIds = state.ClaimedStoryletIds.ToList();
+            msg.LostStoryletIds = state.LostStoryletIds.ToList();
+            msg.OwnedClueTags = state.OwnedClueTags.ToList();
+            msg.CraftedFunctionItemIds = state.CraftedFunctionItems.ToList();
+            msg.VisibleVictoryTraceIds = state.VisibleVictoryTraceIds.ToList();
+        }
+
+        return msg;
     }
+
+    private static int GetMissionInfoPayloadSize(G_TO_C_MISSION_INFO msg) =>
+        MessagePackSerializer.Serialize(msg).Length;
+
+    private static bool IsMissionInfoChunkEmpty(G_TO_C_MISSION_INFO msg) =>
+        msg.Parts.Count == 0 &&
+        msg.GraphNodes.Count == 0 &&
+        msg.ShortRewards.Count == 0 &&
+        msg.DiscoveredStoryletIds.Count == 0 &&
+        msg.TrackedStoryletIds.Count == 0 &&
+        msg.ActiveRouteIds.Count == 0 &&
+        msg.ClaimedStoryletIds.Count == 0 &&
+        msg.LostStoryletIds.Count == 0 &&
+        msg.OwnedClueTags.Count == 0 &&
+        msg.CraftedFunctionItemIds.Count == 0 &&
+        msg.VisibleVictoryTraceIds.Count == 0;
 
     private Task HandleRecallGift(C_TO_G_RECALL_GIFT msg)
     {
@@ -138,7 +242,7 @@ public partial class GameClientSession
             // 마니또의 모든 흔적 함정 무효화 (§2.5.1)
             _traceManager.InvalidateTracesByPlacer(CurrentMapSubId, msg.TargetPlayerId);
 
-            _ = ProcessElimination(msg.TargetPlayerId, EliminationReason.DETECTED);
+            _ = ProcessElimination(msg.TargetPlayerId, EliminationReason.DETECTED, PlayerId.Value);
         }
 
         return Task.CompletedTask;
@@ -188,7 +292,7 @@ public partial class GameClientSession
     /// <summary>
     ///     플레이어 탈락 처리 + 체인 단절 브로드캐스트
     /// </summary>
-    private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason)
+    private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null)
     {
         _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
         var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason);
@@ -239,6 +343,12 @@ public partial class GameClientSession
                     bot.ManittoStatus = newStatus;
                 }
             }
+        }
+
+        foreach (var (playerId, newStatus) in affected)
+        {
+            if (newStatus != ManittoStatus.TERMINAL) continue;
+            _missionManager.NotifyTargetLost(CurrentMapSubId, playerId, eliminatedPlayerId, reason, causePlayerId);
         }
 
         // 2. 영향받는 플레이어에게 개별 상태 변경 알림
@@ -548,7 +658,7 @@ public partial class GameClientSession
         int objectType = (int)interactable.ObjectType;
 
         // 1. 부품 회수 시도 (자기 직책 소재 풀 매칭)
-        var collectResult = _missionManager.TryCollectPart(CurrentMapSubId, PlayerId.Value, area, objectType);
+        var collectResult = _missionManager.TryCollectPart(CurrentMapSubId, PlayerId.Value, area, objectType, interactId);
         if (collectResult != null && collectResult.Success && collectResult.Part != null)
         {
             // 부품 회수 stamina 보상 제거 (#135)
@@ -581,7 +691,7 @@ public partial class GameClientSession
             Send(legacyPacket);
 
             // 미션 흔적 저장 (탐색 시 다른 플레이어가 발견 가능)
-            StoreTrace(area, interactId, $"여기서 무언가 회수된 흔적이 남아있다.", true);
+            StoreTrace(area, interactId, GetMissionCollectTraceDescription(collectResult.CompletedMissionNodeIds), true);
             return;
         }
 
@@ -591,6 +701,19 @@ public partial class GameClientSession
 
         // 3. 블러프 우회(off-pool) 비용 적용 (#87 N11)
         ApplyBluffBypassCost(area, objectType);
+    }
+
+    private string GetMissionCollectTraceDescription(IEnumerable<int> completedMissionNodeIds)
+    {
+        foreach (int nodeId in completedMissionNodeIds)
+        {
+            var node = GameMissionGraphData.GetNode(nodeId);
+            string trace = node?.VisibleTrace?.Kr ?? "";
+            if (!string.IsNullOrWhiteSpace(trace))
+                return trace;
+        }
+
+        return "여기서 무언가 회수된 흔적이 남아있다.";
     }
 
     /// <summary>
@@ -999,9 +1122,9 @@ public partial class GameClientSession
     /// <summary>
     ///     #26: 봇 색출 적중 시 마니또(피탈자) 탈락 처리. 임의 세션이 트리거 역할만 수행.
     /// </summary>
-    public void ProcessBotDetectedElimination(long manittoPlayerId)
+    public void ProcessBotDetectedElimination(long manittoPlayerId, long? detecterBotId = null)
     {
-        _ = ProcessElimination(manittoPlayerId, EliminationReason.DETECTED);
+        _ = ProcessElimination(manittoPlayerId, EliminationReason.DETECTED, detecterBotId);
     }
 
     /// <summary>

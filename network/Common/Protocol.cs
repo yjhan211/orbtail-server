@@ -182,6 +182,10 @@ namespace network.common
         C_TO_G_RECALL_GIFT,            // 배치한 선물 회수 요청
         G_TO_C_RECALL_GIFT_RESULT,     // 선물 회수 결과
 
+        // 미션 그래프 선택지 프로토콜 (#143)
+        C_TO_G_MISSION_NODE_EXECUTE,    // 기능 아이템/업무 선택지 실행 요청
+        G_TO_C_MISSION_NODE_EXECUTE_RESULT, // 기능 아이템/업무 선택지 실행 결과
+
         END
     }
 
