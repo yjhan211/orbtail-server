@@ -33,16 +33,19 @@ public static class RngCollectCore
 
         // 자기 풀 매칭은 영역(area) 단위 (#135) — object_type 무시. 한 영역에 자기 부품 1개씩 배치된다는 가정.
         var materials = GameMissionData.GetMaterials((short)jobTitle);
-        var matchedPart = materials.FirstOrDefault(p =>
+        var matchedParts = materials.Where(p =>
             p.TargetArea == info.ZoneId &&
-            (p.TargetObjectType == 0 || p.TargetObjectType == (int)info.ObjectType));
+            (p.TargetObjectType == 0 || p.TargetObjectType == (int)info.ObjectType))
+            .ToList();
 
         // 자기 부품 이미 회수했으면 그 영역은 자기 풀 외 분기(영역 풀 소모품)로 처리 (#135).
-        if (matchedPart != null)
+        var matchedPart = matchedParts.FirstOrDefault();
+        if (matchedParts.Count > 0)
         {
             var state = missionManager.GetState(matchingId, playerId);
-            if (state != null && state.CollectedParts.Contains(matchedPart.PartId))
-                matchedPart = null;
+            matchedPart = state == null
+                ? matchedParts[0]
+                : matchedParts.FirstOrDefault(part => !state.CollectedParts.Contains(part.PartId));
         }
 
         if (matchedPart != null)

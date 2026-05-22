@@ -77,12 +77,15 @@ public class MissionManager
 
         // 직책 발견 풀에서 매칭 부품 찾기 — #143부터 object_type까지 확인한다.
         var materials = GameMissionData.GetMaterials((short)state.JobTitle);
-        var matchingPart = materials.FirstOrDefault(p =>
+        var matchingParts = materials.Where(p =>
             p.TargetArea == (int)area &&
-            (p.TargetObjectType == 0 || p.TargetObjectType == objectType));
+            (p.TargetObjectType == 0 || p.TargetObjectType == objectType))
+            .ToList();
 
-        if (matchingPart == null) return null;
-        if (state.CollectedParts.Contains(matchingPart.PartId))
+        if (matchingParts.Count == 0) return null;
+
+        var matchingPart = matchingParts.FirstOrDefault(p => !state.CollectedParts.Contains(p.PartId));
+        if (matchingPart == null)
             return new PartCollectResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
 
         // 선행 아이템 검증
@@ -153,7 +156,7 @@ public class MissionManager
             return new PartCombineResult { ErrorCode = ErrorCode.MISSION_ALREADY_COMPLETED };
 
         var recipe = PartRecipeData.TryCombine(partA, partB);
-        if (recipe == null || recipe.JobTitle != (short)state.JobTitle)
+        if (recipe == null || (recipe.JobTitle != 0 && recipe.JobTitle != (short)state.JobTitle))
             return new PartCombineResult { ErrorCode = ErrorCode.INVALID_PARAMETER };
 
         if (requireCollectedParts && (!state.CollectedParts.Contains(partA) || !state.CollectedParts.Contains(partB)))

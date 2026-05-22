@@ -57,7 +57,7 @@ namespace network.common.data
         ///     해당 직책의 모든 레시피
         /// </summary>
         public static List<PartRecipe> GetRecipes(short jobTitle) =>
-            _recipesByJob.GetValueOrDefault(jobTitle) ?? new List<PartRecipe>();
+            GetSharedAndJobRecipes(jobTitle);
 
         public static List<PartRecipe> GetAllRecipes() =>
             _recipesByJob.Values.SelectMany(recipes => recipes).ToList();
@@ -69,6 +69,20 @@ namespace network.common.data
             _recipesByJob.Values.SelectMany(recipes => recipes)
                 .Where(recipe => recipe.InputPartA == partId || recipe.InputPartB == partId)
                 .ToList();
+
+        private static List<PartRecipe> GetSharedAndJobRecipes(short jobTitle)
+        {
+            if (jobTitle == 0)
+                return _recipesByJob.GetValueOrDefault((short)0) ?? new List<PartRecipe>();
+
+            var recipes = new List<PartRecipe>();
+            if (_recipesByJob.TryGetValue(0, out var sharedRecipes))
+                recipes.AddRange(sharedRecipes);
+            if (_recipesByJob.TryGetValue(jobTitle, out var jobRecipes))
+                recipes.AddRange(jobRecipes);
+
+            return recipes;
+        }
 
         public static void Validate(managers.LogManager logger)
         {

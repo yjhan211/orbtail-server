@@ -7,16 +7,19 @@ namespace demo_regression_tests;
 public class MissionGraphDataTests
 {
     [Fact]
-    public void LibraryMissionGraph_Loads_And_Validates()
+    public void RecordStoryletGraph_Loads_And_Validates()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
 
-        var nodes = GameMissionGraphData.GetNodes((short)JobTitle.LIBRARY_COMMITTEE);
-        var recipes = GameMissionGraphData.GetRecipes((short)JobTitle.LIBRARY_COMMITTEE);
+        var nodes = GameMissionGraphData.GetNodes(0);
+        var recipes = GameMissionGraphData.GetRecipes(0);
 
-        Assert.Equal(10, nodes.Count);
+        Assert.Equal(11, nodes.Count);
         Assert.Single(recipes);
+        Assert.Contains(nodes, node => node.NodeId == 3111);
+        Assert.Contains(nodes, node => node.NodeId == 3112);
+        Assert.Contains(nodes, node => node.NodeId == 3113);
         Assert.Contains(nodes, node => node.NodeId == 3106 && node.TargetAreaType == (int)AreaType.Ground);
         Assert.DoesNotContain(nodes, node => node.NodeId is >= 3005 and <= 3009);
         Assert.DoesNotContain(nodes, node => node.NodeKind == MissionGraphNodeKind.GiftSabotage);
@@ -26,7 +29,7 @@ public class MissionGraphDataTests
     }
 
     [Fact]
-    public void LibraryMissionGraph_Unlocks_FeatureNodes_From_CollectedParts()
+    public void RecordStoryletGraph_Unlocks_Sentences_Before_Routes()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
@@ -36,48 +39,47 @@ public class MissionGraphDataTests
             new[] { 305 },
             Array.Empty<int>());
 
-        var availableAfterDiscoveryOnly = GameMissionGraphData.GetAvailableNodes(
+        var availableAfterWritingStarts = GameMissionGraphData.GetAvailableNodes(
             (short)JobTitle.LIBRARY_COMMITTEE,
             new[] { 305 },
             new[] { 3101 });
 
-        var availableInfoRoute = GameMissionGraphData.GetAvailableNodes(
+        var availableAfterOneSentence = GameMissionGraphData.GetAvailableNodes(
             (short)JobTitle.LIBRARY_COMMITTEE,
-            new[] { 305, 303 },
-            new[] { 3101 });
+            new[] { 305 },
+            new[] { 3101, 3111 });
 
-        var availableSafeRoute = GameMissionGraphData.GetAvailableNodes(
+        var availableAfterAllSentences = GameMissionGraphData.GetAvailableNodes(
             (short)JobTitle.LIBRARY_COMMITTEE,
-            new[] { 305, 302 },
-            new[] { 3101 });
-
-        var availableRiskRoute = GameMissionGraphData.GetAvailableNodes(
-            (short)JobTitle.LIBRARY_COMMITTEE,
-            new[] { 305, 301 },
-            new[] { 3101 });
+            new[] { 305 },
+            new[] { 3101, 3111, 3112, 3113 });
 
         var availableAfterInfoSafeRoutes = GameMissionGraphData.GetAvailableNodes(
             (short)JobTitle.LIBRARY_COMMITTEE,
-            new[] { 305, 302, 303 },
+            new[] { 305 },
             new[] { 3101, 3102, 3103 });
 
         var availableAfterRecordMerge = GameMissionGraphData.GetAvailableNodes(
             (short)JobTitle.LIBRARY_COMMITTEE,
-            new[] { 305, 302, 303 },
+            new[] { 305 },
             new[] { 3101, 3102, 3103, 3105 });
 
         Assert.Contains(availableWithWrittenPage, node => node.NodeId == 3101);
         Assert.DoesNotContain(availableWithWrittenPage, node => node.NodeId == 3005);
-        Assert.DoesNotContain(availableAfterDiscoveryOnly, node => node.NodeId is 3102 or 3103 or 3104);
-        Assert.Contains(availableInfoRoute, node => node.NodeId == 3102);
-        Assert.Contains(availableSafeRoute, node => node.NodeId == 3103);
-        Assert.Contains(availableRiskRoute, node => node.NodeId == 3104);
+        Assert.Contains(availableAfterWritingStarts, node => node.NodeId == 3111);
+        Assert.Contains(availableAfterWritingStarts, node => node.NodeId == 3112);
+        Assert.Contains(availableAfterWritingStarts, node => node.NodeId == 3113);
+        Assert.DoesNotContain(availableAfterWritingStarts, node => node.NodeId is 3102 or 3103 or 3104);
+        Assert.DoesNotContain(availableAfterOneSentence, node => node.NodeId is 3102 or 3103 or 3104);
+        Assert.Contains(availableAfterAllSentences, node => node.NodeId == 3102);
+        Assert.Contains(availableAfterAllSentences, node => node.NodeId == 3103);
+        Assert.Contains(availableAfterAllSentences, node => node.NodeId == 3104);
         Assert.Contains(availableAfterInfoSafeRoutes, node => node.NodeId == 3105);
         Assert.Contains(availableAfterRecordMerge, node => node.NodeId == 3106);
     }
 
     [Fact]
-    public void LibraryMissionGraph_Matches_LegacyPartRecipes()
+    public void RecordStoryletGraph_Matches_CommonPartRecipes()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
