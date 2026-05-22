@@ -122,7 +122,7 @@ id,category,text_kr,text_en,text_jp
 11034,6,구역 폐쇄로 인해 지나가는 도중이었습니다.,I was passing through because of the area closure.,区域閉鎖のため通りかかっているところでした。
 11035,6,<color=#A8D4E0>{0}</color> 미션을 수행하는 도중이었습니다.,I was working on the <color=#A8D4E0>{0}</color> mission.,<color=#A8D4E0>{0}</color>のミッションを遂行しているところでした。
 11036,6,스태미나 회복 물품을 수집하는 중입니다.,I am collecting stamina recovery items.,スタミナ回復アイテムを集めています。
-11037,6,<color=#A8D4E0>도서위원</color> 미션을 수행하러 왔습니다.,I came to perform the <color=#A8D4E0>Library Committee</color> mission.,<color=#A8D4E0>図書委員</color>のミッションを遂行しに来ました。
+11037,6,<color=#A8D4E0>기록</color>을 확인하러 왔습니다.,I came to check the <color=#A8D4E0>records</color>.,<color=#A8D4E0>記録</color>を確認しに来ました。
 11040,6,저는 <color=#A8D4E0>{0}</color>입니다.,I am a <color=#A8D4E0>{0}</color>.,私は<color=#A8D4E0>{0}</color>です。
 11041,6,저는 그때 <color=#A8D4E0>{0}</color>에 있었습니다.,I was at the <color=#A8D4E0>{0}</color> at that time.,私はその時<color=#A8D4E0>{0}</color>にいました。
 11042,6,<color=#FF7E9A>{0}</color>을(를) 주장하는 사람이 여러 명 발견되었습니다!,Multiple people are claiming to be a <color=#FF7E9A>{0}</color>!,<color=#FF7E9A>{0}</color>を主張する人が複数発見されました!
@@ -139,7 +139,7 @@ id,category,text_kr,text_en,text_jp
 12008,7,마스터 볼륨,Master Volume,マスター音量
 12009,7,계정 설정,Account Settings,アカウント設定
 12010,7,플레이어 아이디를 입력하세요.,Enter a player ID.,プレイヤーIDを入力してください。
-12011,7,도서위원 미션 3회 완료,Library Committee Mission x3,図書委員ミッションを3回完了
+12011,7,기록 단서 3회 확인,Record Clues x3,記録の手がかりを3回確認
 12012,7,커스터마이징,Customization,カスタマイズ
 12013,7,급식 조리의 대가,School Lunch Master,給食調理の達人
 12014,7,[퇴교 절차],[Dismissal Procedure],[下校手順]

@@ -523,7 +523,7 @@ namespace network.common.data.models
     {
         ASK_JOB = 1,          // 직책 추궁: "너 무슨 직책이야?"
         ASK_LOCATION = 2,     // 동선 추궁: "[X구역]에서 방금 나왔지?"
-        CROSS_CHECK = 3,      // 교차 검증: "[Y]도 도서위원이라던데?"
+        CROSS_CHECK = 3,      // 교차 검증: "[Y]도 같은 직책이라던데?"
         ASK_TRACE = 4         // 흔적 추궁: "여기 누가 온 것 같던데?"
     }
 

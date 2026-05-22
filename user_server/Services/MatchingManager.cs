@@ -35,7 +35,7 @@ public class MatchingManager : IMatchingManager
     private const int DefaultPlayersPerMatch = 1; // 매칭 트리거 최소 인원 (#22 디버그 — 1인 트리거)
     private const int DefaultGamePlayersPerMatch = 5; // 실제 게임 인원 (#22 디버그 — 1인 + 봇 4명, 각 층별 1명)
 
-    /// <summary>매칭 트리거 최소 인원. DEMO_MODE=LB 시 1명만으로 트리거(즉시 봇 4명 채움).</summary>
+    /// <summary>매칭 트리거 최소 인원. DEMO_MODE 활성 시 1명만으로 트리거(즉시 봇 4명 채움).</summary>
     private static int PlayersPerMatch => IsTwoPlayerTestMatch ? 2 : DemoMode.IsActive ? 1 : DefaultPlayersPerMatch;
 
     /// <summary>실제 게임 인원. TEST_TWO_PLAYER_MATCH 시 실플레이어 2명 + 봇 3명.</summary>
@@ -354,7 +354,7 @@ public class MatchingManager : IMatchingManager
     /// <summary>
     ///     원형 체인 생성: 셔플 후 i번째 플레이어의 타겟 = (i+1)%N번째 플레이어
     ///     직책(JobTitle)도 무작위 배정. Redis 직책 풀 강제 지정이 있으면 우선 사용.
-    ///     DEMO_MODE=LB 시 시연자(LB)+봇4명(BR/DC/SC/HE) 체인 강제 — 셔플 없음.
+    ///     DEMO_MODE 활성 시 시연자+봇4명(BR/DC/SC/HE) 체인 강제 — 셔플 없음.
     /// </summary>
     private async Task<List<ManittoChainLink>> BuildManittoChain(byte[][] groupEntries)
     {
@@ -595,7 +595,7 @@ public class MatchingManager : IMatchingManager
         var players = ordered.Select(x => x.Data).ToList();
         var jobs = new[]
         {
-            JobTitle.LIBRARY_COMMITTEE,
+            DemoMode.PlayerJob,
             JobTitle.DISCIPLINE_MEMBER,
             JobTitle.BROADCAST_MEMBER,
             JobTitle.SCIENCE_MEMBER,
@@ -623,9 +623,9 @@ public class MatchingManager : IMatchingManager
     }
 
     /// <summary>
-    ///     시연 모드 체인 강제 생성. 시연자(실 PlayerId)는 인덱스 1(LB)에,
+    ///     시연 모드 체인 강제 생성. 시연자(실 PlayerId)는 인덱스 1에,
     ///     봇 4명은 인덱스 0/2/3/4에 BR/DC/SC/HE 순서로 고정 배치.
-    ///     체인: BR → LB(본인) → DC → SC → HE → BR.
+    ///     체인: BR → 시연자 → DC → SC → HE → BR.
     ///     셔플하지 않음 — 결정론 시드 + 영상 비트 정합성 보장.
     /// </summary>
     private List<ManittoChainLink> BuildDemoManittoChain(byte[][] groupEntries)

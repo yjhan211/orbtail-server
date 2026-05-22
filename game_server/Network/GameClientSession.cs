@@ -50,8 +50,6 @@ public partial class GameClientSession : SessionBase
 
     // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
     private readonly HashSet<(int RuleId, long TargetPlayerId)> _sharedRules = new();
-    private readonly HashSet<int> _forcedDemoGiftDiscoveryInteractIds = new();
-
     // 활성 대화 상대 PlayerId (수락 후 대화 중)
     private long? _activeConversationPlayerId;
 
