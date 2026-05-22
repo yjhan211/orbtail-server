@@ -595,9 +595,6 @@ namespace network.common.data
                 title.Kr,
                 title.En,
                 title.Jp,
-                "",
-                "",
-                "",
                 successText.Kr,
                 successText.En,
                 successText.Jp,
@@ -664,9 +661,6 @@ namespace network.common.data
             "title_kr",
             "title_en",
             "title_jp",
-            "alibi_claim_kr",
-            "alibi_claim_en",
-            "alibi_claim_jp",
             "visible_trace_kr",
             "visible_trace_en",
             "visible_trace_jp",
@@ -1090,7 +1084,6 @@ namespace network.common.data
         public List<int> UnlockNodeIds { get; private set; }
         public string SuspicionTag { get; private set; }
         public LocalizedText Title { get; private set; }
-        public LocalizedText AlibiClaim { get; private set; }
         public LocalizedText VisibleTrace { get; private set; }
         public LocalizedText SuccessText { get; private set; }
         public string StoryletId { get; private set; }
@@ -1158,7 +1151,6 @@ namespace network.common.data
                 UnlockNodeIds = ParseIntList(row, "unlock_node_ids"),
                 SuspicionTag = ParseString(row, "suspicion_tag"),
                 Title = LocalizedText.FromCsv(row, "title"),
-                AlibiClaim = LocalizedText.FromCsvMultiline(row, "alibi_claim"),
                 VisibleTrace = LocalizedText.FromCsvMultiline(row, "visible_trace"),
                 SuccessText = LocalizedText.FromCsvMultiline(row, "success_text"),
                 StoryletId = ParseString(row, "storylet_id"),
