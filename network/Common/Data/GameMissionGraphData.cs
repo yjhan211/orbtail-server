@@ -17,8 +17,6 @@ namespace network.common.data
         private static readonly Dictionary<int, MissionGraphRecipeData> _recipesById = new();
         private static readonly Dictionary<short, List<MissionGraphRecipeData>> _recipesByJob = new();
         private static readonly List<MissionStoryletStartData> _storyletStarts = new();
-        private static readonly List<MissionStoryletBranchData> _storyletBranches = new();
-        private static readonly List<MissionStoryletStageTemplateData> _storyletStageTemplates = new();
         private static readonly List<MissionStoryletPoolData> _storyletPoolItems = new();
 
         public static void Initialize(List<CsvRow> nodeData, List<CsvRow> recipeData) =>
@@ -26,91 +24,27 @@ namespace network.common.data
                 nodeData,
                 recipeData,
                 new List<CsvRow>(),
-                new List<CsvRow>(),
-                new List<CsvRow>(),
-                new List<CsvRow>(),
                 new List<CsvRow>());
 
         public static void Initialize(
             List<CsvRow> nodeData,
             List<CsvRow> recipeData,
             List<CsvRow> storyletStartData,
-            List<CsvRow> storyletPoolData) =>
-            Initialize(
-                nodeData,
-                recipeData,
-                storyletStartData,
-                storyletPoolData,
-                new List<CsvRow>());
-
-        public static void Initialize(
-            List<CsvRow> nodeData,
-            List<CsvRow> recipeData,
-            List<CsvRow> storyletStartData,
-            List<CsvRow> storyletPoolData,
-            List<CsvRow> storyletOverrideData) =>
-            Initialize(
-                nodeData,
-                recipeData,
-                storyletStartData,
-                new List<CsvRow>(),
-                new List<CsvRow>(),
-                storyletPoolData,
-                storyletOverrideData);
-
-        public static void Initialize(
-            List<CsvRow> nodeData,
-            List<CsvRow> recipeData,
-            List<CsvRow> storyletStartData,
-            List<CsvRow> storyletBranchData,
-            List<CsvRow> storyletStageTemplateData,
-            List<CsvRow> storyletOverrideData) =>
-            Initialize(
-                nodeData,
-                recipeData,
-                storyletStartData,
-                storyletBranchData,
-                storyletStageTemplateData,
-                new List<CsvRow>(),
-                storyletOverrideData);
-
-        public static void Initialize(
-            List<CsvRow> nodeData,
-            List<CsvRow> recipeData,
-            List<CsvRow> storyletStartData,
-            List<CsvRow> storyletBranchData,
-            List<CsvRow> storyletStageTemplateData,
-            List<CsvRow> storyletPoolData,
-            List<CsvRow> storyletOverrideData)
+            List<CsvRow> storyletPoolData)
         {
             _nodesById.Clear();
             _nodesByJob.Clear();
             _recipesById.Clear();
             _recipesByJob.Clear();
             _storyletStarts.Clear();
-            _storyletBranches.Clear();
-            _storyletStageTemplates.Clear();
             _storyletPoolItems.Clear();
 
             _storyletStarts.AddRange((storyletStartData ?? new List<CsvRow>())
                 .Select(MissionStoryletStartData.CreateFromData));
-            _storyletBranches.AddRange((storyletBranchData ?? new List<CsvRow>())
-                .Select(MissionStoryletBranchData.CreateFromData));
-            _storyletStageTemplates.AddRange((storyletStageTemplateData ?? new List<CsvRow>())
-                .Select(MissionStoryletStageTemplateData.CreateFromData));
             _storyletPoolItems.AddRange((storyletPoolData ?? new List<CsvRow>())
                 .Select(MissionStoryletPoolData.CreateFromData));
 
-            var storyletOverrides = (storyletOverrideData ?? new List<CsvRow>())
-                .Select(MissionStoryletOverrideData.CreateFromData)
-                .ToList();
-            var generatedStoryletNodes = _storyletPoolItems.Count > 0
-                ? GenerateStoryletPoolNodeRows(_storyletStarts, _storyletPoolItems)
-                : GenerateStoryletNodeRows(
-                    _storyletStarts,
-                    _storyletBranches,
-                    _storyletStageTemplates,
-                    storyletOverrides);
+            var generatedStoryletNodes = GenerateStoryletPoolNodeRows(_storyletStarts, _storyletPoolItems);
 
             foreach (var row in (nodeData ?? new List<CsvRow>()).Concat(generatedStoryletNodes))
             {
@@ -167,12 +101,6 @@ namespace network.common.data
 
         public static List<MissionStoryletStartData> GetStoryletStarts() =>
             _storyletStarts.ToList();
-
-        public static List<MissionStoryletBranchData> GetStoryletBranches() =>
-            _storyletBranches.ToList();
-
-        public static List<MissionStoryletStageTemplateData> GetStoryletStageTemplates() =>
-            _storyletStageTemplates.ToList();
 
         public static List<MissionStoryletPoolData> GetStoryletPoolItems() =>
             _storyletPoolItems.ToList();
@@ -275,7 +203,7 @@ namespace network.common.data
                     new List<int>(),
                     start.RequiredOutputItemId,
                     start.RecipeId,
-                    RenderClaimKey(start.ClaimKeyTemplate, start, null, 1),
+                    RenderStartClaimKey(start.ClaimKeyTemplate, start),
                     start.ClaimPolicy,
                     start.RewardKind,
                     start.RiskLevel,
@@ -287,7 +215,7 @@ namespace network.common.data
                         "record_case",
                         $"start_{NormalizeKey(start.StartKey)}",
                         "stage_1"),
-                    $"final_start_{NormalizeKey(start.StartKey)}",
+                    "",
                     "",
                     start.Title,
                     start.SuccessText,
@@ -329,197 +257,18 @@ namespace network.common.data
             return rows;
         }
 
-        private static List<CsvRow> GenerateStoryletNodeRows(
-            List<MissionStoryletStartData> starts,
-            List<MissionStoryletBranchData> branches,
-            List<MissionStoryletStageTemplateData> templates,
-            List<MissionStoryletOverrideData> overrides)
-        {
-            var rows = new List<CsvRow>();
-            if (starts.Count == 0 || branches.Count == 0 || templates.Count == 0)
-                return rows;
-
-            var overrideMap = overrides.ToDictionary(
-                data => $"{data.CaseGroup}|{data.StartKey}|{data.BranchKey}|{data.StageIndex}",
-                StringComparer.OrdinalIgnoreCase);
-
-            foreach (var start in starts.OrderBy(data => data.StartIndex))
-            {
-                var caseBranches = branches
-                    .Where(branch =>
-                        branch.CaseGroup == start.CaseGroup &&
-                        (string.IsNullOrWhiteSpace(branch.StartKey) ||
-                         branch.StartKey.Equals(start.StartKey, StringComparison.OrdinalIgnoreCase)))
-                    .OrderBy(branch => branch.BranchIndex)
-                    .ToList();
-
-                var stageTwoNodeIds = caseBranches
-                    .Select(branch => GetStoryletNodeId(2, start.StartIndex, branch.BranchIndex))
-                    .ToList();
-
-                rows.Add(CreateStoryletNodeRow(
-                    start.NodeId,
-                    $"START-{start.StartKey}",
-                    MissionGraphStoryletType.Discovery,
-                    MissionGraphRouteType.None,
-                    start.TargetAreaType,
-                    start.TargetObjectType,
-                    start.RequiredPartIds,
-                    new List<int>(),
-                    stageTwoNodeIds,
-                    start.RequiredOutputItemId,
-                    start.RecipeId,
-                    RenderClaimKey(start.ClaimKeyTemplate, start, null, 1),
-                    start.ClaimPolicy,
-                    start.RewardKind,
-                    start.RiskLevel,
-                    start.CaseGroup,
-                    "",
-                    "",
-                    "",
-                    JoinTags(
-                        "record_case",
-                        $"start_{NormalizeKey(start.StartKey)}",
-                        "stage_1"),
-                    $"final_start_{NormalizeKey(start.StartKey)}",
-                    "",
-                    start.Title,
-                    start.SuccessText,
-                    false));
-
-                foreach (var branch in caseBranches)
-                {
-                    var stageTwoNodeId = GetStoryletNodeId(2, start.StartIndex, branch.BranchIndex);
-                    rows.Add(CreateStoryletNodeRow(
-                        stageTwoNodeId,
-                        $"CLUE-{start.StartKey}-{branch.BranchKey}",
-                        MissionGraphStoryletType.Route,
-                        branch.RouteType,
-                        branch.TargetAreaType,
-                        branch.TargetObjectType,
-                        new List<int>(),
-                        new List<int> { start.NodeId },
-                        new List<int> { GetStoryletNodeId(3, start.StartIndex, branch.BranchIndex) },
-                        0,
-                        0,
-                        RenderClaimKey(branch.ClaimKeyTemplate, start, branch, 2),
-                        branch.ClaimPolicy,
-                        branch.RewardKind,
-                        branch.RiskLevel,
-                        start.CaseGroup,
-                        JoinTags(
-                            $"start_{NormalizeKey(start.StartKey)}",
-                            "stage_1"),
-                        "",
-                        "stage_2",
-                        JoinTags(
-                            $"choice_{NormalizeKey(branch.BranchKey)}",
-                            $"route_{NormalizeKey(branch.RouteType.ToString())}",
-                            "stage_2"),
-                        $"final_clue_{NormalizeKey(start.StartKey)}_{NormalizeKey(branch.BranchKey)}",
-                        "",
-                        branch.Title,
-                        branch.SuccessText,
-                        false));
-
-                    foreach (var template in templates
-                        .Where(template => template.CaseGroup == start.CaseGroup && template.BranchKey == branch.BranchKey)
-                        .OrderBy(template => template.StageIndex))
-                    {
-                        overrideMap.TryGetValue(
-                            $"{start.CaseGroup}|{start.StartKey}|{branch.BranchKey}|{template.StageIndex}",
-                            out var nodeOverride);
-
-                        var stageIndex = template.StageIndex;
-                        var nodeId = GetStoryletNodeId(stageIndex, start.StartIndex, branch.BranchIndex);
-                        var requiredNodeIds = stageIndex == 3
-                            ? new List<int> { start.NodeId, stageTwoNodeId }
-                            : new List<int> { GetStoryletNodeId(stageIndex - 1, start.StartIndex, branch.BranchIndex) };
-                        var unlockNodeIds = stageIndex < 7
-                            ? new List<int> { GetStoryletNodeId(stageIndex + 1, start.StartIndex, branch.BranchIndex) }
-                            : new List<int>();
-
-                        var title = nodeOverride?.Title ?? template.Title;
-                        var successText = nodeOverride?.SuccessText ?? template.SuccessText;
-                        var routeType = nodeOverride?.HasRouteType == true ? nodeOverride.RouteType : template.RouteType;
-                        var claimPolicy = nodeOverride?.HasClaimPolicy == true ? nodeOverride.ClaimPolicy : template.ClaimPolicy;
-                        var rewardKind = nodeOverride?.HasRewardKind == true ? nodeOverride.RewardKind : template.RewardKind;
-                        var riskLevel = nodeOverride?.HasRiskLevel == true ? nodeOverride.RiskLevel : template.RiskLevel;
-                        var targetAreaType = nodeOverride?.TargetAreaType > 0 ? nodeOverride.TargetAreaType : template.TargetAreaType;
-                        var targetObjectType = nodeOverride?.HasTargetObjectType == true ? nodeOverride.TargetObjectType : template.TargetObjectType;
-                        var claimKeyTemplate = !string.IsNullOrWhiteSpace(nodeOverride?.ClaimKeyTemplate)
-                            ? nodeOverride.ClaimKeyTemplate
-                            : template.ClaimKeyTemplate;
-                        var suspicionTag = !string.IsNullOrWhiteSpace(nodeOverride?.SuspicionTag)
-                            ? nodeOverride.SuspicionTag
-                            : template.SuspicionTag;
-                        var isVictory = nodeOverride?.HasVictoryOverride == true
-                            ? nodeOverride.IsVictoryStorylet
-                            : template.IsVictoryStorylet;
-                        var previousStageTraceTag = stageIndex == 3
-                            ? $"choice_{NormalizeKey(branch.BranchKey)}"
-                            : $"trace_{NormalizeKey(branch.BranchKey)}_{NormalizeKey(GetPreviousStageKey(stageIndex, templates))}";
-                        var currentStageTraceTag = $"trace_{NormalizeKey(branch.BranchKey)}_{NormalizeKey(template.StageKey)}";
-
-                        rows.Add(CreateStoryletNodeRow(
-                            nodeId,
-                            $"{template.StageKey}-{start.StartKey}-{branch.BranchKey}",
-                            isVictory ? MissionGraphStoryletType.Victory : MissionGraphStoryletType.Route,
-                            routeType,
-                            targetAreaType,
-                            targetObjectType,
-                            new List<int>(),
-                            requiredNodeIds,
-                            unlockNodeIds,
-                            0,
-                            0,
-                            RenderClaimKey(claimKeyTemplate, start, branch, stageIndex),
-                            claimPolicy,
-                            rewardKind,
-                            riskLevel,
-                            start.CaseGroup,
-                            JoinTags(
-                                $"start_{NormalizeKey(start.StartKey)}",
-                                $"stage_{stageIndex - 1}",
-                                previousStageTraceTag),
-                            "",
-                            $"stage_{stageIndex}",
-                            JoinTags(
-                                currentStageTraceTag,
-                                $"stage_{stageIndex}",
-                                isVictory ? "victory_ready" : ""),
-                            isVictory
-                                ? $"final_victory_{NormalizeKey(start.StartKey)}_{NormalizeKey(branch.BranchKey)}"
-                                : $"final_{NormalizeKey(template.StageKey)}_{NormalizeKey(start.StartKey)}_{NormalizeKey(branch.BranchKey)}",
-                            suspicionTag,
-                            title,
-                            successText,
-                            isVictory));
-                    }
-                }
-            }
-
-            return rows;
-        }
-
-        private static int GetStoryletNodeId(int stageIndex, int startIndex, int branchIndex) =>
-            stageIndex == 1 ? 4100 + startIndex : 4000 + stageIndex * 100 + (startIndex - 1) * 10 + branchIndex;
-
-        private static string RenderClaimKey(
+        private static string RenderStartClaimKey(
             string template,
-            MissionStoryletStartData start,
-            MissionStoryletBranchData branch,
-            int stageIndex)
+            MissionStoryletStartData start)
         {
             var result = string.IsNullOrWhiteSpace(template)
-                ? "record/route/{start_key}/{branch_key}/stage/{stage_index}"
+                ? "record/start/{start_key}"
                 : template;
 
             return result
                 .Replace("{case_group}", start.CaseGroup)
                 .Replace("{start_key}", start.StartKey)
-                .Replace("{branch_key}", branch?.BranchKey ?? "")
-                .Replace("{stage_index}", stageIndex.ToString());
+                .Replace("{stage_index}", "1");
         }
 
         private static string RenderPoolClaimKey(string template, MissionStoryletPoolData item)
@@ -537,12 +286,6 @@ namespace network.common.data
 
         private static string NormalizeKey(string value) =>
             string.IsNullOrWhiteSpace(value) ? "" : value.ToLowerInvariant();
-
-        private static string GetPreviousStageKey(int stageIndex, List<MissionStoryletStageTemplateData> templates) =>
-            templates
-                .Where(template => template.StageIndex == stageIndex - 1)
-                .Select(template => template.StageKey)
-                .FirstOrDefault() ?? "";
 
         private static string JoinTags(params string[] tags) =>
             string.Join("|", tags.Where(tag => !string.IsNullOrWhiteSpace(tag)));
@@ -776,84 +519,6 @@ namespace network.common.data
         }
     }
 
-    public class MissionStoryletBranchData
-    {
-        public string CaseGroup { get; private set; }
-        public string StartKey { get; private set; }
-        public string BranchKey { get; private set; }
-        public int BranchIndex { get; private set; }
-        public LocalizedText Title { get; private set; }
-        public int TargetAreaType { get; private set; }
-        public int TargetObjectType { get; private set; }
-        public MissionGraphRouteType RouteType { get; private set; }
-        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
-        public string ClaimKeyTemplate { get; private set; }
-        public MissionGraphRewardKind RewardKind { get; private set; }
-        public int RiskLevel { get; private set; }
-        public LocalizedText SuccessText { get; private set; }
-
-        public static MissionStoryletBranchData CreateFromData(CsvRow row)
-        {
-            return new MissionStoryletBranchData
-            {
-                CaseGroup = MissionStoryletCsv.ParseString(row, "case_group"),
-                StartKey = MissionStoryletCsv.ParseString(row, "start_key"),
-                BranchKey = MissionStoryletCsv.ParseString(row, "branch_key"),
-                BranchIndex = MissionStoryletCsv.ParseInt(row, "branch_index"),
-                Title = LocalizedText.FromCsv(row, "title"),
-                TargetAreaType = MissionStoryletCsv.ParseInt(row, "target_area_type"),
-                TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
-                RouteType = MissionStoryletCsv.ParseEnum(row, "route_type", MissionGraphRouteType.None),
-                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
-                ClaimKeyTemplate = MissionStoryletCsv.ParseString(row, "claim_key_template"),
-                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
-                RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
-                SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
-            };
-        }
-    }
-
-    public class MissionStoryletStageTemplateData
-    {
-        public string CaseGroup { get; private set; }
-        public int StageIndex { get; private set; }
-        public string StageKey { get; private set; }
-        public string BranchKey { get; private set; }
-        public LocalizedText Title { get; private set; }
-        public int TargetAreaType { get; private set; }
-        public int TargetObjectType { get; private set; }
-        public MissionGraphRouteType RouteType { get; private set; }
-        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
-        public string ClaimKeyTemplate { get; private set; }
-        public MissionGraphRewardKind RewardKind { get; private set; }
-        public int RiskLevel { get; private set; }
-        public string SuspicionTag { get; private set; }
-        public bool IsVictoryStorylet { get; private set; }
-        public LocalizedText SuccessText { get; private set; }
-
-        public static MissionStoryletStageTemplateData CreateFromData(CsvRow row)
-        {
-            return new MissionStoryletStageTemplateData
-            {
-                CaseGroup = MissionStoryletCsv.ParseString(row, "case_group"),
-                StageIndex = MissionStoryletCsv.ParseInt(row, "stage_index"),
-                StageKey = MissionStoryletCsv.ParseString(row, "stage_key"),
-                BranchKey = MissionStoryletCsv.ParseString(row, "branch_key"),
-                Title = LocalizedText.FromCsv(row, "title"),
-                TargetAreaType = MissionStoryletCsv.ParseInt(row, "target_area_type"),
-                TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
-                RouteType = MissionStoryletCsv.ParseEnum(row, "route_type", MissionGraphRouteType.None),
-                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
-                ClaimKeyTemplate = MissionStoryletCsv.ParseString(row, "claim_key_template"),
-                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
-                RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
-                SuspicionTag = MissionStoryletCsv.ParseString(row, "suspicion_tag"),
-                IsVictoryStorylet = MissionStoryletCsv.ParseBool(row, "is_victory_storylet"),
-                SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
-            };
-        }
-    }
-
     public class MissionStoryletPoolData
     {
         public string CaseGroup { get; private set; }
@@ -913,59 +578,6 @@ namespace network.common.data
                 BlockedTags = MissionStoryletCsv.ParseStringList(row, "blocked_tags"),
                 GrantTags = MissionStoryletCsv.ParseStringList(row, "grant_tags"),
                 FinalTags = MissionStoryletCsv.ParseStringList(row, "final_tags"),
-                SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
-            };
-        }
-    }
-
-    public class MissionStoryletOverrideData
-    {
-        public string CaseGroup { get; private set; }
-        public string StartKey { get; private set; }
-        public string BranchKey { get; private set; }
-        public int StageIndex { get; private set; }
-        public LocalizedText Title { get; private set; }
-        public int TargetAreaType { get; private set; }
-        public int TargetObjectType { get; private set; }
-        public bool HasTargetObjectType { get; private set; }
-        public MissionGraphRouteType RouteType { get; private set; }
-        public bool HasRouteType { get; private set; }
-        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
-        public bool HasClaimPolicy { get; private set; }
-        public string ClaimKeyTemplate { get; private set; }
-        public MissionGraphRewardKind RewardKind { get; private set; }
-        public bool HasRewardKind { get; private set; }
-        public int RiskLevel { get; private set; }
-        public bool HasRiskLevel { get; private set; }
-        public string SuspicionTag { get; private set; }
-        public bool IsVictoryStorylet { get; private set; }
-        public bool HasVictoryOverride { get; private set; }
-        public LocalizedText SuccessText { get; private set; }
-
-        public static MissionStoryletOverrideData CreateFromData(CsvRow row)
-        {
-            return new MissionStoryletOverrideData
-            {
-                CaseGroup = MissionStoryletCsv.ParseString(row, "case_group"),
-                StartKey = MissionStoryletCsv.ParseString(row, "start_key"),
-                BranchKey = MissionStoryletCsv.ParseString(row, "branch_key"),
-                StageIndex = MissionStoryletCsv.ParseInt(row, "stage_index"),
-                Title = LocalizedText.FromCsv(row, "title"),
-                TargetAreaType = MissionStoryletCsv.ParseInt(row, "target_area_type"),
-                TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
-                HasTargetObjectType = MissionStoryletCsv.HasValue(row, "target_object_type"),
-                RouteType = MissionStoryletCsv.ParseEnum(row, "route_type", MissionGraphRouteType.None),
-                HasRouteType = MissionStoryletCsv.HasValue(row, "route_type"),
-                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.None),
-                HasClaimPolicy = MissionStoryletCsv.HasValue(row, "claim_policy"),
-                ClaimKeyTemplate = MissionStoryletCsv.ParseString(row, "claim_key_template"),
-                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.None),
-                HasRewardKind = MissionStoryletCsv.HasValue(row, "reward_kind"),
-                RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
-                HasRiskLevel = MissionStoryletCsv.HasValue(row, "risk_level"),
-                SuspicionTag = MissionStoryletCsv.ParseString(row, "suspicion_tag"),
-                IsVictoryStorylet = MissionStoryletCsv.ParseBool(row, "is_victory_storylet"),
-                HasVictoryOverride = MissionStoryletCsv.HasValue(row, "is_victory_storylet"),
                 SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
             };
         }
@@ -1120,7 +732,7 @@ namespace network.common.data
         public bool IsRouteBranchChoice =>
             HasStoryletMetadata &&
             StoryletType == MissionGraphStoryletType.Route &&
-            NodeKey.Contains("CLUE-", StringComparison.OrdinalIgnoreCase);
+            ClueTags.Contains("stage_2", StringComparer.OrdinalIgnoreCase);
 
         public static MissionGraphNodeData CreateFromData(CsvRow row)
         {

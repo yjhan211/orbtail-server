@@ -23,8 +23,6 @@ public class MissionGraphDataTests
             .ToList();
 
         Assert.Equal(5, GameMissionGraphData.GetStoryletStarts().Count);
-        Assert.Empty(GameMissionGraphData.GetStoryletBranches());
-        Assert.Empty(GameMissionGraphData.GetStoryletStageTemplates());
         Assert.Equal(48, GameMissionGraphData.GetStoryletPoolItems().Count);
         Assert.Equal(53, storyletNodes.Count);
         Assert.Equal(5, recipes.Count);
@@ -96,7 +94,7 @@ public class MissionGraphDataTests
             0,
             new[] { 305 },
             new[] { 4101 },
-            new[] { "record_case", "start_writing", "stage_1", "final_start_writing" });
+            new[] { "record_case", "start_writing", "stage_1" });
 
         var availableAfterWritingClue = GameMissionGraphData.GetAvailableNodes(
             0,
@@ -104,7 +102,7 @@ public class MissionGraphDataTests
             new[] { 4101, 4201 },
             new[]
             {
-                "record_case", "start_writing", "stage_1", "final_start_writing",
+                "record_case", "start_writing", "stage_1",
                 "stage_2", "choice_writing_cart", "topic_paper", "place_library", "lead_page"
             });
 
