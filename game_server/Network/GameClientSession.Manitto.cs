@@ -27,7 +27,7 @@ public partial class GameClientSession
         var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
         if (state == null) return;
 
-        var allParts = GameMissionData.GetParts((short)MyJobTitle);
+        var allParts = GameMissionData.GetPartsIncludingShared((short)MyJobTitle);
         var partInfos = allParts.Select(p => new MissionPartInfo
         {
             PartId = p.PartId,

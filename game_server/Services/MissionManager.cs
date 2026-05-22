@@ -35,7 +35,7 @@ public class MissionManager
         var matchingDict = _matchingStates.GetOrAdd(matchingId,
             _ => new ConcurrentDictionary<long, PlayerPartState>());
 
-        int totalParts = GameMissionData.GetTotalParts((short)jobTitle);
+        int totalParts = GameMissionData.GetTotalPartsIncludingShared((short)jobTitle);
 
         // 방어: 부품 데이터 없는 직책 → 완료 상태로 초기화
         if (totalParts == 0)

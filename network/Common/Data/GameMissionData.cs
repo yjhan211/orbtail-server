@@ -69,6 +69,9 @@ namespace network.common.data
         public static List<MissionPartData> GetParts(short jobTitle) =>
             _partsByJob.GetValueOrDefault(jobTitle) ?? new List<MissionPartData>();
 
+        public static List<MissionPartData> GetPartsIncludingShared(short jobTitle) =>
+            GetSharedAndJobParts(jobTitle);
+
         public static List<MissionPartData> GetAllParts() =>
             _partsById.Values.ToList();
 
@@ -121,6 +124,9 @@ namespace network.common.data
         ///     해당 직책의 총 부품 수 (소재 4 + 중간재 2 + 전달 1 = 7)
         /// </summary>
         public static int GetTotalParts(short jobTitle) => GetParts(jobTitle).Count;
+
+        public static int GetTotalPartsIncludingShared(short jobTitle) =>
+            GetPartsIncludingShared(jobTitle).Count;
 
         private static List<MissionPartData> GetSharedAndJobParts(short jobTitle)
         {

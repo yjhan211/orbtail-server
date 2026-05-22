@@ -205,6 +205,35 @@ public class MissionGraphDataTests
     }
 
     [Fact]
+    public void RecordStoryletCommonParts_AreAvailableForLibraryCommittee()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
+        short libraryCommittee = (short)JobTitle.LIBRARY_COMMITTEE;
+        var materials = GameMissionData.GetMaterials(libraryCommittee);
+        var partsIncludingShared = GameMissionData.GetPartsIncludingShared(libraryCommittee);
+        var availableWithWrittenPage = GameMissionGraphData.GetAvailableNodes(
+            libraryCommittee,
+            new[] { 305 },
+            Array.Empty<int>());
+
+        Assert.Contains(materials, part => part.PartId == 301);
+        Assert.Contains(materials, part => part.PartId == 302);
+        Assert.Equal(301000008, GameMissionData.GetPart(301).SpriteItemId);
+        Assert.Contains(partsIncludingShared, part => part.PartId == 305);
+        Assert.True(GameMissionData.GetTotalPartsIncludingShared(libraryCommittee) > 0);
+        Assert.Contains(availableWithWrittenPage, node => node.NodeId == 4101);
+
+        foreach (var part in partsIncludingShared.Where(part => part.PartId is >= 301 and <= 317))
+        {
+            int itemId = GameMissionData.GetPartItemId(part.PartId);
+            Assert.NotEqual(0, itemId);
+            Assert.NotNull(GameItemData.Get(itemId));
+        }
+    }
+
+    [Fact]
     public void RecordStoryletGraph_Uses_SevenStoryletMilestones()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());

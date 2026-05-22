@@ -48,7 +48,7 @@ job_title,part_id,part_name_kr,part_name_en,part_name_jp,part_tier,target_area,t
 8,805,작성된 처방전,Filled Prescription,記入済み処方箋,1,0,0,20,0,5,301000001,0,,,
 8,806,통로 진입 도구,Passage Entry Tool,通路進入道具,1,0,0,20,0,5,301000021,0,,,
 8,807,비밀 선물 전달,Secret Gift Delivery,秘密の贈り物を届ける,2,0,0,0,0,0,0,0,타겟에게 비밀 선물 전달하기,Deliver the secret gift to your target,ターゲットに秘密の贈り物を届ける
-"0","301","포스트잇 뭉치","Sticky Notes","付箋の束","0","30","7","12","0","0","301000001","1","이름이 반복해서 적힌 포스트잇 묶음입니다.","A bundle of sticky notes with the same name repeated.","同じ名前が繰り返し書かれた付箋の束です。"
+"0","301","포스트잇 뭉치","Sticky Notes","付箋の束","0","30","7","12","0","0","301000008","1","이름이 반복해서 적힌 포스트잇 묶음입니다.","A bundle of sticky notes with the same name repeated.","同じ名前が繰り返し書かれた付箋の束です。"
 "0","302","필기용 노트","Writing Notebook","筆記ノート","0","22","6","12","0","0","301000001","2","빈 페이지 사이에 오래된 눌림 자국이 남아 있는 노트입니다.","A notebook with old pressure marks between blank pages.","空白のページに古い筆跡の跡が残るノートです。"
 "0","303","보조 배터리","Power Bank","モバイルバッテリー","0","20","5","12","0","0","301000008","2","아직 약간의 전력이 남아 있는 보조 배터리입니다.","A power bank with a little charge left.","まだ少し電力が残っているモバイルバッテリーです。"
 "0","304","방전된 기록 장치","Drained Recorder","放電した記録装置","0","42","9","12","0","0","301000008","1","마지막 방송 기록을 품은 채 꺼져 있는 장치입니다.","A recorder that shut down while holding the last broadcast log.","最後の放送記録を抱えたまま停止した装置です。"
@@ -60,6 +60,6 @@ job_title,part_id,part_name_kr,part_name_en,part_name_jp,part_tier,target_area,t
 "0","311","압수품 봉투","Confiscated Envelope","没収品封筒","0","10","12","12","0","0","301000001","1","돌려주지 못한 물건을 넣어 둔 봉투입니다.","An envelope that holds something never returned.","返せなかった物を入れた封筒です。"
 "0","312","조회 명단 조각","Roll Call Fragment","朝礼名簿の切れ端","0","2","0","12","0","0","301000001","1","한 줄이 찢겨 사라진 조회 명단 조각입니다.","A roll call fragment with one line torn away.","一行が破れた朝礼名簿の切れ端です。"
 "0","313","흐린 이름표","Faded Nametag","かすれた名札","0","13","0","12","0","0","301000001","2","이름의 일부가 번져 읽기 어려운 이름표입니다.","A nametag whose name has blurred.","名前の一部が滲んで読みにくい名札です。"
-"0","315","출석 표시지","Marked Attendance Page","印付き出席ページ","1","0","0","20","0","5","301000001","0","지워지지 않는 표시의 원래 위치를 따라갈 수 있는 기록입니다.","A record that traces where the persistent mark began.","消えない印の元の位置を辿れる記録です。"
+"0","315","표시된 출석부","Marked Attendance Book","印付き出席簿","1","0","0","20","0","5","301000001","0","지워지지 않는 표시의 원래 위치를 따라갈 수 있는 출석부입니다.","A roll book that traces where the persistent mark began.","消えない印の元の位置を辿れる出席簿です。"
 "0","316","압수품 보관 기록","Confiscated Log","没収品保管記録","1","0","0","20","0","5","301000001","0","돌려주지 못한 물건의 접수 순서를 보여주는 기록입니다.","A log showing the order of unreturned confiscated items.","返せなかった没収品の受付順を示す記録です。"
 "0","317","조회 명단","Roll Call Sheet","朝礼名簿","1","0","0","20","0","5","301000001","0","빈칸이 남은 조회 명단입니다.","A roll call sheet with a blank left behind.","空欄が残された朝礼名簿です。"
