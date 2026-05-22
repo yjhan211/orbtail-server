@@ -224,6 +224,11 @@ namespace network.common.data
             ClaimPolicy != MissionGraphClaimPolicy.None ||
             IsVictoryStorylet;
 
+        public bool IsRouteBranchChoice =>
+            HasStoryletMetadata &&
+            StoryletType == MissionGraphStoryletType.Route &&
+            NodeKey.Contains("CLUE-", StringComparison.OrdinalIgnoreCase);
+
         public static MissionGraphNodeData CreateFromData(CsvRow row)
         {
             var nodeKey = ParseString(row, "node_key");
@@ -253,9 +258,9 @@ namespace network.common.data
                 UnlockNodeIds = ParseIntList(row, "unlock_node_ids"),
                 SuspicionTag = ParseString(row, "suspicion_tag"),
                 Title = LocalizedText.FromCsv(row, "title"),
-                AlibiClaim = LocalizedText.FromCsv(row, "alibi_claim"),
-                VisibleTrace = LocalizedText.FromCsv(row, "visible_trace"),
-                SuccessText = LocalizedText.FromCsv(row, "success_text"),
+                AlibiClaim = LocalizedText.FromCsvMultiline(row, "alibi_claim"),
+                VisibleTrace = LocalizedText.FromCsvMultiline(row, "visible_trace"),
+                SuccessText = LocalizedText.FromCsvMultiline(row, "success_text"),
                 StoryletId = ParseString(row, "storylet_id"),
                 StoryletType = storyletType,
                 RouteType = ParseEnum(row, "route_type", MissionGraphRouteType.None),
@@ -372,7 +377,20 @@ namespace network.common.data
                 return new List<string>();
 
             if (value.StartsWith("["))
-                return JsonConvert.DeserializeObject<List<string>>(value) ?? new List<string>();
+            {
+                try
+                {
+                    return JsonConvert.DeserializeObject<List<string>>(value) ?? new List<string>();
+                }
+                catch (JsonException)
+                {
+                    value = value.Trim('[', ']');
+                    return value.Split(',', '|')
+                        .Select(item => item.Trim().Trim('"'))
+                        .Where(item => !string.IsNullOrWhiteSpace(item))
+                        .ToList();
+                }
+            }
 
             return value.Split('|')
                 .Select(item => item.Trim())
@@ -425,9 +443,9 @@ namespace network.common.data
                 StaminaCost = ParseInt(row, "stamina_cost"),
                 SuspicionTag = ParseString(row, "suspicion_tag"),
                 Title = LocalizedText.FromCsv(row, "title"),
-                AlibiClaim = LocalizedText.FromCsv(row, "alibi_claim"),
-                VisibleTrace = LocalizedText.FromCsv(row, "visible_trace"),
-                SuccessText = LocalizedText.FromCsv(row, "success_text")
+                AlibiClaim = LocalizedText.FromCsvMultiline(row, "alibi_claim"),
+                VisibleTrace = LocalizedText.FromCsvMultiline(row, "visible_trace"),
+                SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
             };
         }
 

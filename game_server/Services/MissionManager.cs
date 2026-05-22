@@ -259,6 +259,8 @@ public class MissionManager
             return new MissionNodeExecuteResult { ErrorCode = ErrorCode.AREA_MISMATCH };
         if (!node.AreRequirementsMet(state.CollectedParts, state.CompletedMissionNodeIds, state.HasLostTarget))
             return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_NOT_AVAILABLE };
+        if (IsNodeLost(state, node) || HasCompletedAlternateRouteChoice(state, node))
+            return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_NOT_AVAILABLE };
 
         bool isMissionComplete = IsMissionCompleteNode(node);
         if (isMissionComplete && !TryRegisterRaceCompletion(matchingId, playerId, clientStartUnixMs))
@@ -286,6 +288,8 @@ public class MissionManager
 
         var completedBefore = state.CompletedMissionNodeIds.ToHashSet();
         var unlockedBefore = state.UnlockedMissionNodeIds.ToHashSet();
+        var newlyLostStoryletIds = new List<string>();
+        var alternateRouteNodeIds = new List<int>();
 
         state.CompletedMissionNodeIds.Add(node.NodeId);
         if (node.HasStoryletMetadata && !string.IsNullOrWhiteSpace(node.EffectiveStoryletId))
@@ -309,7 +313,22 @@ public class MissionManager
             state.VisibleVictoryTraceIds.Add(node.TraceTextId);
 
         foreach (var unlockNodeId in node.UnlockNodeIds)
-            state.UnlockedMissionNodeIds.Add(unlockNodeId);
+            AddUnlockedMissionNode(state, unlockNodeId);
+
+        if (node.IsRouteBranchChoice)
+        {
+            foreach (var alternate in FindAlternateRouteChoiceNodes(state, node))
+            {
+                state.UnlockedMissionNodeIds.Remove(alternate.NodeId);
+                alternateRouteNodeIds.Add(alternate.NodeId);
+
+                if (string.IsNullOrWhiteSpace(alternate.EffectiveStoryletId) ||
+                    !state.LostStoryletIds.Add(alternate.EffectiveStoryletId))
+                    continue;
+
+                newlyLostStoryletIds.Add(alternate.EffectiveStoryletId);
+            }
+        }
 
         var grantedReward = GrantShortRewardForNode(state, node);
         RefreshUnlockedMissionNodes(state);
@@ -330,10 +349,40 @@ public class MissionManager
             ClaimedStoryletIds = node.HasStoryletMetadata && !string.IsNullOrWhiteSpace(node.EffectiveStoryletId)
                 ? new List<string> { node.EffectiveStoryletId }
                 : new List<string>(),
+            LostStoryletIds = newlyLostStoryletIds,
+            AlternateRouteNodeIds = alternateRouteNodeIds,
             VisibleTraceTextId = node.TraceTextId,
             GrantedShortReward = grantedReward,
             IsMissionComplete = isMissionComplete
         };
+    }
+
+    private static bool IsNodeLost(PlayerPartState state, MissionGraphNodeData node) =>
+        node.HasStoryletMetadata &&
+        !string.IsNullOrWhiteSpace(node.EffectiveStoryletId) &&
+        state.LostStoryletIds.Contains(node.EffectiveStoryletId);
+
+    private static bool HasCompletedAlternateRouteChoice(PlayerPartState state, MissionGraphNodeData node) =>
+        node.IsRouteBranchChoice &&
+        FindAlternateRouteChoiceNodes(state, node)
+            .Any(alternate => state.CompletedMissionNodeIds.Contains(alternate.NodeId));
+
+    private static List<MissionGraphNodeData> FindAlternateRouteChoiceNodes(
+        PlayerPartState state,
+        MissionGraphNodeData node)
+    {
+        if (!node.IsRouteBranchChoice)
+            return new List<MissionGraphNodeData>();
+
+        var requiredNodeIds = node.RequiredNodeIds.ToHashSet();
+        return GameMissionGraphData.GetNodes((short)state.JobTitle)
+            .Where(candidate => candidate.NodeId != node.NodeId)
+            .Where(candidate => candidate.IsRouteBranchChoice)
+            .Where(candidate => candidate.CaseGroup == node.CaseGroup)
+            .Where(candidate => candidate.RequiredNodeIds.Count == requiredNodeIds.Count)
+            .Where(candidate => candidate.RequiredNodeIds.All(requiredNodeIds.Contains))
+            .OrderBy(candidate => candidate.NodeId)
+            .ToList();
     }
 
     private bool TryClaimStorylet(
@@ -864,7 +913,7 @@ public class MissionManager
     private static void RefreshUnlockedMissionNodes(PlayerPartState state)
     {
         foreach (var node in GameMissionGraphData.GetInitiallyAvailableNodes((short)state.JobTitle))
-            state.UnlockedMissionNodeIds.Add(node.NodeId);
+            AddUnlockedMissionNode(state, node);
 
         foreach (var node in GameMissionGraphData.GetAvailableNodes(
                       (short)state.JobTitle,
@@ -872,8 +921,21 @@ public class MissionManager
                       state.CompletedMissionNodeIds,
                       state.HasLostTarget))
         {
-            state.UnlockedMissionNodeIds.Add(node.NodeId);
+            AddUnlockedMissionNode(state, node);
         }
+    }
+
+    private static void AddUnlockedMissionNode(PlayerPartState state, int nodeId)
+    {
+        var node = GameMissionGraphData.GetNode(nodeId);
+        if (node != null)
+            AddUnlockedMissionNode(state, node);
+    }
+
+    private static void AddUnlockedMissionNode(PlayerPartState state, MissionGraphNodeData node)
+    {
+        if (!IsNodeLost(state, node))
+            state.UnlockedMissionNodeIds.Add(node.NodeId);
     }
 
     private static bool IsMissionCompleteNode(MissionGraphNodeData node) =>
