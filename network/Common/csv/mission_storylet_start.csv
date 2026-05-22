@@ -1,0 +1,6 @@
+"case_group","start_key","start_index","node_id","title_kr","title_en","title_jp","required_part_ids","required_output_item_id","recipe_id","target_area_type","target_object_type","claim_policy","claim_key_template","reward_kind","risk_level","success_text_kr","success_text_en","success_text_jp"
+"record","WRITING","1","4101","과거와의 필담","","","[305]","305","3001","22","6","unique","record/start/{start_key}","clue_tag","0","필담 페이지 위에 오래된 답장이 떠오릅니다.","",""
+"record","BROADCAST","2","4102","마지막 방송 기록","","","[306]","306","3002","42","9","unique","record/start/{start_key}","clue_tag","0","기록 장치가 마지막 방송을 다시 틀기 시작합니다.","",""
+"record","ATTENDANCE","3","4103","지워지지 않는 출석 표시","","","[315]","315","3003","30","2","unique","record/start/{start_key}","clue_tag","0","출석부의 ▓▓ 이름 옆에 검은 표시가 떠오릅니다.","",""
+"record","CONFISCATED","4","4104","압수품 보관 기록","","","[316]","316","3004","10","12","unique","record/start/{start_key}","clue_tag","0","압수품 보관함 안에서 낡은 봉투가 나옵니다.","",""
+"record","ROLLCALL","5","4105","조회 명단의 빈칸","","","[317]","317","3005","2","0","unique","record/start/{start_key}","clue_tag","0","조회 명단의 빈칸에 희미한 선이 나타납니다.","",""

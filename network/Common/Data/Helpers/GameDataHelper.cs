@@ -239,7 +239,9 @@ namespace network.common.data.helpers
             PrerequisiteItemData.Initialize(loadedData[DataFiles.Mission.PrerequisiteItem]);
             GameMissionGraphData.Initialize(
                 loadedData[DataFiles.Mission.GraphNode],
-                loadedData[DataFiles.Mission.GraphRecipe]);
+                loadedData[DataFiles.Mission.GraphRecipe],
+                loadedData[DataFiles.Mission.StoryletStart],
+                loadedData[DataFiles.Mission.StoryletPool]);
 
             ValidateAllData();
             _initialized = true;
@@ -588,8 +590,19 @@ namespace network.common.data.helpers
                 public const string PrerequisiteItem = "prerequisite_item.csv";
                 public const string GraphNode = "mission_graph_node.csv";
                 public const string GraphRecipe = "mission_graph_recipe.csv";
+                public const string StoryletStart = "mission_storylet_start.csv";
+                public const string StoryletPool = "mission_storylet_pool.csv";
 
-                public static readonly string[] ALL = new[] { Step, PartRecipe, PrerequisiteItem, GraphNode, GraphRecipe };
+                public static readonly string[] ALL = new[]
+                {
+                    Step,
+                    PartRecipe,
+                    PrerequisiteItem,
+                    GraphNode,
+                    GraphRecipe,
+                    StoryletStart,
+                    StoryletPool
+                };
             }
 
             public static class Item

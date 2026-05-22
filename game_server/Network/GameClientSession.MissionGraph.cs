@@ -129,6 +129,7 @@ public partial class GameClientSession
                     (short)state.JobTitle,
                     state.CollectedParts,
                     state.CompletedMissionNodeIds,
+                    state.OwnedClueTags,
                     state.HasLostTarget)
                 .Select(node => node.NodeId)
                 .ToHashSet();

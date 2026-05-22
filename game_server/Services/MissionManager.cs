@@ -257,7 +257,11 @@ public class MissionManager
             return new MissionNodeExecuteResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
         if (!node.MatchesInteractable((int)area, objectType, interactId))
             return new MissionNodeExecuteResult { ErrorCode = ErrorCode.AREA_MISMATCH };
-        if (!node.AreRequirementsMet(state.CollectedParts, state.CompletedMissionNodeIds, state.HasLostTarget))
+        if (!node.AreRequirementsMet(
+                state.CollectedParts,
+                state.CompletedMissionNodeIds,
+                state.OwnedClueTags,
+                state.HasLostTarget))
             return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_NOT_AVAILABLE };
         if (IsNodeLost(state, node) || HasCompletedAlternateRouteChoice(state, node))
             return new MissionNodeExecuteResult { ErrorCode = ErrorCode.MISSION_NOT_AVAILABLE };
@@ -873,6 +877,7 @@ public class MissionManager
                 candidate.AreRequirementsMet(
                     state.CollectedParts,
                     state.CompletedMissionNodeIds,
+                    state.OwnedClueTags,
                     state.HasLostTarget));
 
         if (node != null)
@@ -919,6 +924,7 @@ public class MissionManager
                       (short)state.JobTitle,
                       state.CollectedParts,
                       state.CompletedMissionNodeIds,
+                      state.OwnedClueTags,
                       state.HasLostTarget))
         {
             AddUnlockedMissionNode(state, node);

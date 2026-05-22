@@ -22,16 +22,34 @@ public class MissionGraphDataTests
             .OrderBy(node => node.NodeId)
             .ToList();
 
-        Assert.Equal(95, storyletNodes.Count);
+        Assert.Equal(5, GameMissionGraphData.GetStoryletStarts().Count);
+        Assert.Empty(GameMissionGraphData.GetStoryletBranches());
+        Assert.Empty(GameMissionGraphData.GetStoryletStageTemplates());
+        Assert.Equal(48, GameMissionGraphData.GetStoryletPoolItems().Count);
+        Assert.Equal(53, storyletNodes.Count);
         Assert.Equal(5, recipes.Count);
         Assert.Equal(new[]
         {
-            "STORY-RECORD-START-WRITING",
-            "STORY-RECORD-START-BROADCAST",
-            "STORY-RECORD-START-ATTENDANCE",
-            "STORY-RECORD-START-CONFISCATED",
-            "STORY-RECORD-START-ROLLCALL"
+            "record/start/WRITING",
+            "record/start/BROADCAST",
+            "record/start/ATTENDANCE",
+            "record/start/CONFISCATED",
+            "record/start/ROLLCALL"
         }, startNodes.Select(node => node.EffectiveStoryletId));
+        var usedStoryletAreas = storyletNodes
+            .Select(node => node.TargetAreaType)
+            .Where(areaType => areaType > 0)
+            .ToHashSet();
+        Assert.All(new[] { 2, 10, 12, 13, 14, 20, 22, 30, 32, 40, 42 },
+            areaType => Assert.Contains(areaType, usedStoryletAreas));
+        Assert.Equal("record/pool/WRITING_CART", GameMissionGraphData.GetNode(4201).EffectiveStoryletId);
+        Assert.Equal("record/pool/BROADCAST_BOARD", GameMissionGraphData.GetNode(4211).EffectiveStoryletId);
+        Assert.NotEqual(
+            GameMissionGraphData.GetNode(4201).EffectiveStoryletId,
+            GameMissionGraphData.GetNode(4211).EffectiveStoryletId);
+        Assert.Equal(
+            "record/pool/PAPER_DESK",
+            GameMissionGraphData.GetNode(4301).EffectiveStoryletId);
         Assert.All(storyletNodes, node =>
         {
             Assert.Equal(0, node.JobTitle);
@@ -46,12 +64,16 @@ public class MissionGraphDataTests
             Assert.Equal(MissionGraphRewardKind.ClueTag, node.RewardKind);
             Assert.Single(node.RequiredPartIds);
         });
+        Assert.Contains("start_writing", GameMissionGraphData.GetNode(4201).RequiredAllTags);
+        Assert.Contains("stage_1", GameMissionGraphData.GetNode(4201).RequiredAllTags);
+        Assert.Contains("stage_2", GameMissionGraphData.GetNode(4201).BlockedTags);
+        Assert.Contains("topic_paper", GameMissionGraphData.GetNode(4201).ClueTags);
         Assert.Equal(15, storyletNodes.Count(node => node.NodeId is >= 4201 and < 4300));
-        Assert.Equal(15, storyletNodes.Count(node => node.NodeId is >= 4301 and < 4400));
-        Assert.Equal(15, storyletNodes.Count(node => node.NodeId is >= 4401 and < 4500));
-        Assert.Equal(15, storyletNodes.Count(node => node.NodeId is >= 4501 and < 4600));
-        Assert.Equal(15, storyletNodes.Count(node => node.NodeId is >= 4601 and < 4700));
-        Assert.Equal(15, storyletNodes.Count(node => node.NodeId is >= 4701 and < 4800));
+        Assert.Equal(21, storyletNodes.Count(node => node.NodeId is >= 4301 and < 4400));
+        Assert.Equal(3, storyletNodes.Count(node => node.NodeId is >= 4401 and < 4500));
+        Assert.Equal(3, storyletNodes.Count(node => node.NodeId is >= 4501 and < 4600));
+        Assert.Equal(3, storyletNodes.Count(node => node.NodeId is >= 4601 and < 4700));
+        Assert.Equal(3, storyletNodes.Count(node => node.NodeId is >= 4701 and < 4800));
         Assert.DoesNotContain(nodes, node => node.NodeId is >= 3100 and < 3200);
         Assert.DoesNotContain(nodes, node => node.NodeKey.StartsWith("LIB-", StringComparison.Ordinal));
         Assert.DoesNotContain(nodes, node => node.NodeKind == MissionGraphNodeKind.GiftSabotage);
@@ -73,32 +95,60 @@ public class MissionGraphDataTests
         var availableAfterWritingStarts = GameMissionGraphData.GetAvailableNodes(
             0,
             new[] { 305 },
-            new[] { 4101 });
+            new[] { 4101 },
+            new[] { "record_case", "start_writing", "stage_1", "final_start_writing" });
 
-        var availableAfterBroadcastClue = GameMissionGraphData.GetAvailableNodes(
+        var availableAfterWritingClue = GameMissionGraphData.GetAvailableNodes(
             0,
             new[] { 305 },
-            new[] { 4101, 4201 });
+            new[] { 4101, 4201 },
+            new[]
+            {
+                "record_case", "start_writing", "stage_1", "final_start_writing",
+                "stage_2", "choice_writing_cart", "topic_paper", "place_library", "lead_page"
+            });
 
-        var availableAfterWritingBroadcastCombo = GameMissionGraphData.GetAvailableNodes(
+        var availableAfterPaperDesk = GameMissionGraphData.GetAvailableNodes(
             0,
             new[] { 305 },
-            new[] { 4101, 4201, 4301 });
+            new[] { 4101, 4201, 4301 },
+            new[]
+            {
+                "record_case", "start_writing", "stage_1", "stage_2", "choice_writing_cart",
+                "topic_paper", "place_library", "lead_page", "stage_3", "evidence_note", "place_classroom"
+            });
 
-        var availableAfterWritingBroadcastContradiction = GameMissionGraphData.GetAvailableNodes(
+        var availableAfterContradiction = GameMissionGraphData.GetAvailableNodes(
             0,
             new[] { 305 },
-            new[] { 4101, 4201, 4301, 4401 });
+            new[] { 4101, 4201, 4301, 4401 },
+            new[]
+            {
+                "record_case", "start_writing", "stage_1", "stage_2", "choice_writing_cart",
+                "topic_paper", "stage_3", "evidence_note", "stage_4", "contradiction_name"
+            });
 
-        var availableAfterWritingBroadcastCrosscheck = GameMissionGraphData.GetAvailableNodes(
+        var availableAfterProof = GameMissionGraphData.GetAvailableNodes(
             0,
             new[] { 305 },
-            new[] { 4101, 4201, 4301, 4401, 4501 });
+            new[] { 4101, 4201, 4301, 4401, 4501 },
+            new[]
+            {
+                "record_case", "start_writing", "stage_1", "stage_2", "choice_writing_cart",
+                "topic_paper", "stage_3", "evidence_note", "stage_4", "contradiction_name",
+                "stage_5", "proof_order"
+            });
 
-        var availableAfterWritingBroadcastRestore = GameMissionGraphData.GetAvailableNodes(
+        var availableAfterRestore = GameMissionGraphData.GetAvailableNodes(
             0,
             new[] { 305 },
-            new[] { 4101, 4201, 4301, 4401, 4501, 4601 });
+            new[] { 4101, 4201, 4301, 4401, 4501, 4601 },
+            new[]
+            {
+                "record_case", "start_writing", "stage_1", "stage_2", "choice_writing_cart",
+                "topic_paper", "stage_3", "evidence_note", "stage_4", "contradiction_name",
+                "stage_5", "proof_order", "stage_6", "ending_report"
+            });
 
         Assert.Contains(availableWithWrittenPage, node => node.NodeId == 4101);
         Assert.DoesNotContain(availableWithWrittenPage, node => node.NodeId is >= 4201 and <= 4243);
@@ -110,12 +160,21 @@ public class MissionGraphDataTests
         Assert.DoesNotContain(availableAfterWritingStarts, node => node.NodeId is 4211 or 4212 or 4213);
         Assert.DoesNotContain(availableAfterWritingStarts, node => node.NodeId is >= 4301 and < 4400);
 
-        Assert.Contains(availableAfterBroadcastClue, node => node.NodeId == 4301);
-        Assert.DoesNotContain(availableAfterBroadcastClue, node => node.NodeId is 4302 or 4303 or 4311);
-        Assert.Contains(availableAfterWritingBroadcastCombo, node => node.NodeId == 4401);
-        Assert.Contains(availableAfterWritingBroadcastContradiction, node => node.NodeId == 4501);
-        Assert.Contains(availableAfterWritingBroadcastCrosscheck, node => node.NodeId == 4601);
-        Assert.Contains(availableAfterWritingBroadcastRestore, node => node.NodeId == 4701 && node.IsVictoryStorylet);
+        Assert.Contains(availableAfterWritingClue, node => node.NodeId == 4301);
+        Assert.Contains(availableAfterWritingClue, node => node.NodeId == 4302);
+        Assert.Contains(availableAfterWritingClue, node => node.NodeId == 4303);
+        Assert.DoesNotContain(availableAfterWritingClue, node => node.NodeId is 4202 or 4311);
+        Assert.Contains(availableAfterPaperDesk, node => node.NodeId == 4401);
+        Assert.Contains(availableAfterPaperDesk, node => node.NodeId == 4402);
+        Assert.Contains(availableAfterPaperDesk, node => node.NodeId == 4403);
+        Assert.Contains(availableAfterContradiction, node => node.NodeId == 4501);
+        Assert.Contains(availableAfterContradiction, node => node.NodeId == 4502);
+        Assert.Contains(availableAfterContradiction, node => node.NodeId == 4503);
+        Assert.Contains(availableAfterProof, node => node.NodeId == 4601);
+        Assert.Contains(availableAfterProof, node => node.NodeId == 4602);
+        Assert.Contains(availableAfterProof, node => node.NodeId == 4603);
+        Assert.Contains(availableAfterRestore, node => node.NodeId == 4701 && node.IsVictoryStorylet);
+        Assert.DoesNotContain(availableAfterRestore, node => node.NodeId is 4702 or 4703);
     }
 
     [Fact]
@@ -153,16 +212,19 @@ public class MissionGraphDataTests
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
 
-        var writingBroadcastRoute = new[] { 4101, 4201, 4301, 4401, 4501, 4601, 4701 };
-        var routeNodes = writingBroadcastRoute
+        var writingPaperRoute = new[] { 4101, 4201, 4301, 4401, 4501, 4601, 4701 };
+        var routeNodes = writingPaperRoute
             .Select(GameMissionGraphData.GetNode)
             .ToList();
 
         Assert.Equal(7, routeNodes.Count);
         Assert.All(routeNodes, node => Assert.True(node.HasStoryletMetadata));
-        Assert.Equal(new[] { 4101, 4201 }, GameMissionGraphData.GetNode(4301).RequiredNodeIds);
-        Assert.Equal(new[] { 4301 }, GameMissionGraphData.GetNode(4401).RequiredNodeIds);
-        Assert.Equal(new[] { 4601 }, GameMissionGraphData.GetNode(4701).RequiredNodeIds);
+        Assert.Contains("stage_2", GameMissionGraphData.GetNode(4301).RequiredAllTags);
+        Assert.Contains("topic_paper", GameMissionGraphData.GetNode(4301).RequiredAllTags);
+        Assert.Contains("stage_3", GameMissionGraphData.GetNode(4401).RequiredAllTags);
+        Assert.Contains("evidence_note", GameMissionGraphData.GetNode(4401).RequiredAnyTags);
+        Assert.Contains("stage_6", GameMissionGraphData.GetNode(4701).RequiredAllTags);
+        Assert.Contains("ending_report", GameMissionGraphData.GetNode(4701).RequiredAllTags);
         Assert.Equal(MissionGraphStoryletType.Victory, GameMissionGraphData.GetNode(4701).StoryletType);
         Assert.DoesNotContain(GameMissionGraphData.GetNodes(0), node => node.NodeId is >= 3111 and <= 3113);
     }

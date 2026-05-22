@@ -16,15 +16,103 @@ namespace network.common.data
         private static readonly Dictionary<short, List<MissionGraphNodeData>> _nodesByJob = new();
         private static readonly Dictionary<int, MissionGraphRecipeData> _recipesById = new();
         private static readonly Dictionary<short, List<MissionGraphRecipeData>> _recipesByJob = new();
+        private static readonly List<MissionStoryletStartData> _storyletStarts = new();
+        private static readonly List<MissionStoryletBranchData> _storyletBranches = new();
+        private static readonly List<MissionStoryletStageTemplateData> _storyletStageTemplates = new();
+        private static readonly List<MissionStoryletPoolData> _storyletPoolItems = new();
 
-        public static void Initialize(List<CsvRow> nodeData, List<CsvRow> recipeData)
+        public static void Initialize(List<CsvRow> nodeData, List<CsvRow> recipeData) =>
+            Initialize(
+                nodeData,
+                recipeData,
+                new List<CsvRow>(),
+                new List<CsvRow>(),
+                new List<CsvRow>(),
+                new List<CsvRow>(),
+                new List<CsvRow>());
+
+        public static void Initialize(
+            List<CsvRow> nodeData,
+            List<CsvRow> recipeData,
+            List<CsvRow> storyletStartData,
+            List<CsvRow> storyletPoolData) =>
+            Initialize(
+                nodeData,
+                recipeData,
+                storyletStartData,
+                storyletPoolData,
+                new List<CsvRow>());
+
+        public static void Initialize(
+            List<CsvRow> nodeData,
+            List<CsvRow> recipeData,
+            List<CsvRow> storyletStartData,
+            List<CsvRow> storyletPoolData,
+            List<CsvRow> storyletOverrideData) =>
+            Initialize(
+                nodeData,
+                recipeData,
+                storyletStartData,
+                new List<CsvRow>(),
+                new List<CsvRow>(),
+                storyletPoolData,
+                storyletOverrideData);
+
+        public static void Initialize(
+            List<CsvRow> nodeData,
+            List<CsvRow> recipeData,
+            List<CsvRow> storyletStartData,
+            List<CsvRow> storyletBranchData,
+            List<CsvRow> storyletStageTemplateData,
+            List<CsvRow> storyletOverrideData) =>
+            Initialize(
+                nodeData,
+                recipeData,
+                storyletStartData,
+                storyletBranchData,
+                storyletStageTemplateData,
+                new List<CsvRow>(),
+                storyletOverrideData);
+
+        public static void Initialize(
+            List<CsvRow> nodeData,
+            List<CsvRow> recipeData,
+            List<CsvRow> storyletStartData,
+            List<CsvRow> storyletBranchData,
+            List<CsvRow> storyletStageTemplateData,
+            List<CsvRow> storyletPoolData,
+            List<CsvRow> storyletOverrideData)
         {
             _nodesById.Clear();
             _nodesByJob.Clear();
             _recipesById.Clear();
             _recipesByJob.Clear();
+            _storyletStarts.Clear();
+            _storyletBranches.Clear();
+            _storyletStageTemplates.Clear();
+            _storyletPoolItems.Clear();
 
-            foreach (var row in nodeData)
+            _storyletStarts.AddRange((storyletStartData ?? new List<CsvRow>())
+                .Select(MissionStoryletStartData.CreateFromData));
+            _storyletBranches.AddRange((storyletBranchData ?? new List<CsvRow>())
+                .Select(MissionStoryletBranchData.CreateFromData));
+            _storyletStageTemplates.AddRange((storyletStageTemplateData ?? new List<CsvRow>())
+                .Select(MissionStoryletStageTemplateData.CreateFromData));
+            _storyletPoolItems.AddRange((storyletPoolData ?? new List<CsvRow>())
+                .Select(MissionStoryletPoolData.CreateFromData));
+
+            var storyletOverrides = (storyletOverrideData ?? new List<CsvRow>())
+                .Select(MissionStoryletOverrideData.CreateFromData)
+                .ToList();
+            var generatedStoryletNodes = _storyletPoolItems.Count > 0
+                ? GenerateStoryletPoolNodeRows(_storyletStarts, _storyletPoolItems)
+                : GenerateStoryletNodeRows(
+                    _storyletStarts,
+                    _storyletBranches,
+                    _storyletStageTemplates,
+                    storyletOverrides);
+
+            foreach (var row in (nodeData ?? new List<CsvRow>()).Concat(generatedStoryletNodes))
             {
                 var node = MissionGraphNodeData.CreateFromData(row);
                 _nodesById[node.NodeId] = node;
@@ -77,6 +165,18 @@ namespace network.common.data
         public static List<MissionGraphRecipeData> GetAllRecipes() =>
             _recipesById.Values.ToList();
 
+        public static List<MissionStoryletStartData> GetStoryletStarts() =>
+            _storyletStarts.ToList();
+
+        public static List<MissionStoryletBranchData> GetStoryletBranches() =>
+            _storyletBranches.ToList();
+
+        public static List<MissionStoryletStageTemplateData> GetStoryletStageTemplates() =>
+            _storyletStageTemplates.ToList();
+
+        public static List<MissionStoryletPoolData> GetStoryletPoolItems() =>
+            _storyletPoolItems.ToList();
+
         public static List<MissionGraphNodeData> GetInitiallyAvailableNodes(short jobTitle) =>
             GetNodes(jobTitle).Where(node => node.IsInitiallyAvailable()).ToList();
 
@@ -86,11 +186,33 @@ namespace network.common.data
             IEnumerable<int> completedNodeIds,
             bool hasLostTarget = false)
         {
+            return GetAvailableNodes(
+                jobTitle,
+                collectedPartIds,
+                completedNodeIds,
+                Enumerable.Empty<string>(),
+                hasLostTarget);
+        }
+
+        public static List<MissionGraphNodeData> GetAvailableNodes(
+            short jobTitle,
+            IEnumerable<int> collectedPartIds,
+            IEnumerable<int> completedNodeIds,
+            IEnumerable<string> ownedClueTags,
+            bool hasLostTarget = false)
+        {
             var collectedPartSet = new HashSet<int>(collectedPartIds ?? Enumerable.Empty<int>());
             var completedNodeSet = new HashSet<int>(completedNodeIds ?? Enumerable.Empty<int>());
+            var ownedClueTagSet = new HashSet<string>(
+                ownedClueTags ?? Enumerable.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
 
             return GetNodes(jobTitle)
-                .Where(node => node.AreRequirementsMet(collectedPartSet, completedNodeSet, hasLostTarget))
+                .Where(node => node.AreRequirementsMet(
+                    collectedPartSet,
+                    completedNodeSet,
+                    ownedClueTagSet,
+                    hasLostTarget))
                 .ToList();
         }
 
@@ -130,6 +252,450 @@ namespace network.common.data
 
             return merged;
         }
+
+        private static List<CsvRow> GenerateStoryletPoolNodeRows(
+            List<MissionStoryletStartData> starts,
+            List<MissionStoryletPoolData> poolItems)
+        {
+            var rows = new List<CsvRow>();
+            if (starts.Count == 0)
+                return rows;
+
+            foreach (var start in starts.OrderBy(data => data.StartIndex))
+            {
+                rows.Add(CreateStoryletNodeRow(
+                    start.NodeId,
+                    $"START-{start.StartKey}",
+                    MissionGraphStoryletType.Discovery,
+                    MissionGraphRouteType.None,
+                    start.TargetAreaType,
+                    start.TargetObjectType,
+                    start.RequiredPartIds,
+                    new List<int>(),
+                    new List<int>(),
+                    start.RequiredOutputItemId,
+                    start.RecipeId,
+                    RenderClaimKey(start.ClaimKeyTemplate, start, null, 1),
+                    start.ClaimPolicy,
+                    start.RewardKind,
+                    start.RiskLevel,
+                    start.CaseGroup,
+                    "",
+                    "",
+                    "",
+                    JoinTags(
+                        "record_case",
+                        $"start_{NormalizeKey(start.StartKey)}",
+                        "stage_1"),
+                    $"final_start_{NormalizeKey(start.StartKey)}",
+                    "",
+                    start.Title,
+                    start.SuccessText,
+                    false));
+            }
+
+            foreach (var item in poolItems.OrderBy(data => data.StageIndex).ThenBy(data => data.NodeId))
+            {
+                rows.Add(CreateStoryletNodeRow(
+                    item.NodeId,
+                    string.IsNullOrWhiteSpace(item.NodeKey)
+                        ? $"{item.StageKey}-{item.PoolKey}"
+                        : item.NodeKey,
+                    item.IsVictoryStorylet ? MissionGraphStoryletType.Victory : item.StoryletType,
+                    item.RouteType,
+                    item.TargetAreaType,
+                    item.TargetObjectType,
+                    new List<int>(),
+                    new List<int>(),
+                    new List<int>(),
+                    0,
+                    0,
+                    RenderPoolClaimKey(item.ClaimKeyTemplate, item),
+                    item.ClaimPolicy,
+                    item.RewardKind,
+                    item.RiskLevel,
+                    item.CaseGroup,
+                    JoinTags(item.RequiredAllTags.ToArray()),
+                    JoinTags(item.RequiredAnyTags.ToArray()),
+                    JoinTags(item.BlockedTags.ToArray()),
+                    JoinTags(item.GrantTags.ToArray()),
+                    JoinTags(item.FinalTags.ToArray()),
+                    item.SuspicionTag,
+                    item.Title,
+                    item.SuccessText,
+                    item.IsVictoryStorylet));
+            }
+
+            return rows;
+        }
+
+        private static List<CsvRow> GenerateStoryletNodeRows(
+            List<MissionStoryletStartData> starts,
+            List<MissionStoryletBranchData> branches,
+            List<MissionStoryletStageTemplateData> templates,
+            List<MissionStoryletOverrideData> overrides)
+        {
+            var rows = new List<CsvRow>();
+            if (starts.Count == 0 || branches.Count == 0 || templates.Count == 0)
+                return rows;
+
+            var overrideMap = overrides.ToDictionary(
+                data => $"{data.CaseGroup}|{data.StartKey}|{data.BranchKey}|{data.StageIndex}",
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var start in starts.OrderBy(data => data.StartIndex))
+            {
+                var caseBranches = branches
+                    .Where(branch =>
+                        branch.CaseGroup == start.CaseGroup &&
+                        (string.IsNullOrWhiteSpace(branch.StartKey) ||
+                         branch.StartKey.Equals(start.StartKey, StringComparison.OrdinalIgnoreCase)))
+                    .OrderBy(branch => branch.BranchIndex)
+                    .ToList();
+
+                var stageTwoNodeIds = caseBranches
+                    .Select(branch => GetStoryletNodeId(2, start.StartIndex, branch.BranchIndex))
+                    .ToList();
+
+                rows.Add(CreateStoryletNodeRow(
+                    start.NodeId,
+                    $"START-{start.StartKey}",
+                    MissionGraphStoryletType.Discovery,
+                    MissionGraphRouteType.None,
+                    start.TargetAreaType,
+                    start.TargetObjectType,
+                    start.RequiredPartIds,
+                    new List<int>(),
+                    stageTwoNodeIds,
+                    start.RequiredOutputItemId,
+                    start.RecipeId,
+                    RenderClaimKey(start.ClaimKeyTemplate, start, null, 1),
+                    start.ClaimPolicy,
+                    start.RewardKind,
+                    start.RiskLevel,
+                    start.CaseGroup,
+                    "",
+                    "",
+                    "",
+                    JoinTags(
+                        "record_case",
+                        $"start_{NormalizeKey(start.StartKey)}",
+                        "stage_1"),
+                    $"final_start_{NormalizeKey(start.StartKey)}",
+                    "",
+                    start.Title,
+                    start.SuccessText,
+                    false));
+
+                foreach (var branch in caseBranches)
+                {
+                    var stageTwoNodeId = GetStoryletNodeId(2, start.StartIndex, branch.BranchIndex);
+                    rows.Add(CreateStoryletNodeRow(
+                        stageTwoNodeId,
+                        $"CLUE-{start.StartKey}-{branch.BranchKey}",
+                        MissionGraphStoryletType.Route,
+                        branch.RouteType,
+                        branch.TargetAreaType,
+                        branch.TargetObjectType,
+                        new List<int>(),
+                        new List<int> { start.NodeId },
+                        new List<int> { GetStoryletNodeId(3, start.StartIndex, branch.BranchIndex) },
+                        0,
+                        0,
+                        RenderClaimKey(branch.ClaimKeyTemplate, start, branch, 2),
+                        branch.ClaimPolicy,
+                        branch.RewardKind,
+                        branch.RiskLevel,
+                        start.CaseGroup,
+                        JoinTags(
+                            $"start_{NormalizeKey(start.StartKey)}",
+                            "stage_1"),
+                        "",
+                        "stage_2",
+                        JoinTags(
+                            $"choice_{NormalizeKey(branch.BranchKey)}",
+                            $"route_{NormalizeKey(branch.RouteType.ToString())}",
+                            "stage_2"),
+                        $"final_clue_{NormalizeKey(start.StartKey)}_{NormalizeKey(branch.BranchKey)}",
+                        "",
+                        branch.Title,
+                        branch.SuccessText,
+                        false));
+
+                    foreach (var template in templates
+                        .Where(template => template.CaseGroup == start.CaseGroup && template.BranchKey == branch.BranchKey)
+                        .OrderBy(template => template.StageIndex))
+                    {
+                        overrideMap.TryGetValue(
+                            $"{start.CaseGroup}|{start.StartKey}|{branch.BranchKey}|{template.StageIndex}",
+                            out var nodeOverride);
+
+                        var stageIndex = template.StageIndex;
+                        var nodeId = GetStoryletNodeId(stageIndex, start.StartIndex, branch.BranchIndex);
+                        var requiredNodeIds = stageIndex == 3
+                            ? new List<int> { start.NodeId, stageTwoNodeId }
+                            : new List<int> { GetStoryletNodeId(stageIndex - 1, start.StartIndex, branch.BranchIndex) };
+                        var unlockNodeIds = stageIndex < 7
+                            ? new List<int> { GetStoryletNodeId(stageIndex + 1, start.StartIndex, branch.BranchIndex) }
+                            : new List<int>();
+
+                        var title = nodeOverride?.Title ?? template.Title;
+                        var successText = nodeOverride?.SuccessText ?? template.SuccessText;
+                        var routeType = nodeOverride?.HasRouteType == true ? nodeOverride.RouteType : template.RouteType;
+                        var claimPolicy = nodeOverride?.HasClaimPolicy == true ? nodeOverride.ClaimPolicy : template.ClaimPolicy;
+                        var rewardKind = nodeOverride?.HasRewardKind == true ? nodeOverride.RewardKind : template.RewardKind;
+                        var riskLevel = nodeOverride?.HasRiskLevel == true ? nodeOverride.RiskLevel : template.RiskLevel;
+                        var targetAreaType = nodeOverride?.TargetAreaType > 0 ? nodeOverride.TargetAreaType : template.TargetAreaType;
+                        var targetObjectType = nodeOverride?.HasTargetObjectType == true ? nodeOverride.TargetObjectType : template.TargetObjectType;
+                        var claimKeyTemplate = !string.IsNullOrWhiteSpace(nodeOverride?.ClaimKeyTemplate)
+                            ? nodeOverride.ClaimKeyTemplate
+                            : template.ClaimKeyTemplate;
+                        var suspicionTag = !string.IsNullOrWhiteSpace(nodeOverride?.SuspicionTag)
+                            ? nodeOverride.SuspicionTag
+                            : template.SuspicionTag;
+                        var isVictory = nodeOverride?.HasVictoryOverride == true
+                            ? nodeOverride.IsVictoryStorylet
+                            : template.IsVictoryStorylet;
+                        var previousStageTraceTag = stageIndex == 3
+                            ? $"choice_{NormalizeKey(branch.BranchKey)}"
+                            : $"trace_{NormalizeKey(branch.BranchKey)}_{NormalizeKey(GetPreviousStageKey(stageIndex, templates))}";
+                        var currentStageTraceTag = $"trace_{NormalizeKey(branch.BranchKey)}_{NormalizeKey(template.StageKey)}";
+
+                        rows.Add(CreateStoryletNodeRow(
+                            nodeId,
+                            $"{template.StageKey}-{start.StartKey}-{branch.BranchKey}",
+                            isVictory ? MissionGraphStoryletType.Victory : MissionGraphStoryletType.Route,
+                            routeType,
+                            targetAreaType,
+                            targetObjectType,
+                            new List<int>(),
+                            requiredNodeIds,
+                            unlockNodeIds,
+                            0,
+                            0,
+                            RenderClaimKey(claimKeyTemplate, start, branch, stageIndex),
+                            claimPolicy,
+                            rewardKind,
+                            riskLevel,
+                            start.CaseGroup,
+                            JoinTags(
+                                $"start_{NormalizeKey(start.StartKey)}",
+                                $"stage_{stageIndex - 1}",
+                                previousStageTraceTag),
+                            "",
+                            $"stage_{stageIndex}",
+                            JoinTags(
+                                currentStageTraceTag,
+                                $"stage_{stageIndex}",
+                                isVictory ? "victory_ready" : ""),
+                            isVictory
+                                ? $"final_victory_{NormalizeKey(start.StartKey)}_{NormalizeKey(branch.BranchKey)}"
+                                : $"final_{NormalizeKey(template.StageKey)}_{NormalizeKey(start.StartKey)}_{NormalizeKey(branch.BranchKey)}",
+                            suspicionTag,
+                            title,
+                            successText,
+                            isVictory));
+                    }
+                }
+            }
+
+            return rows;
+        }
+
+        private static int GetStoryletNodeId(int stageIndex, int startIndex, int branchIndex) =>
+            stageIndex == 1 ? 4100 + startIndex : 4000 + stageIndex * 100 + (startIndex - 1) * 10 + branchIndex;
+
+        private static string RenderClaimKey(
+            string template,
+            MissionStoryletStartData start,
+            MissionStoryletBranchData branch,
+            int stageIndex)
+        {
+            var result = string.IsNullOrWhiteSpace(template)
+                ? "record/route/{start_key}/{branch_key}/stage/{stage_index}"
+                : template;
+
+            return result
+                .Replace("{case_group}", start.CaseGroup)
+                .Replace("{start_key}", start.StartKey)
+                .Replace("{branch_key}", branch?.BranchKey ?? "")
+                .Replace("{stage_index}", stageIndex.ToString());
+        }
+
+        private static string RenderPoolClaimKey(string template, MissionStoryletPoolData item)
+        {
+            var result = string.IsNullOrWhiteSpace(template)
+                ? "record/pool/{pool_key}"
+                : template;
+
+            return result
+                .Replace("{case_group}", item.CaseGroup)
+                .Replace("{pool_key}", item.PoolKey)
+                .Replace("{stage_key}", item.StageKey)
+                .Replace("{stage_index}", item.StageIndex.ToString());
+        }
+
+        private static string NormalizeKey(string value) =>
+            string.IsNullOrWhiteSpace(value) ? "" : value.ToLowerInvariant();
+
+        private static string GetPreviousStageKey(int stageIndex, List<MissionStoryletStageTemplateData> templates) =>
+            templates
+                .Where(template => template.StageIndex == stageIndex - 1)
+                .Select(template => template.StageKey)
+                .FirstOrDefault() ?? "";
+
+        private static string JoinTags(params string[] tags) =>
+            string.Join("|", tags.Where(tag => !string.IsNullOrWhiteSpace(tag)));
+
+        private static CsvRow CreateStoryletNodeRow(
+            int nodeId,
+            string nodeKey,
+            MissionGraphStoryletType storyletType,
+            MissionGraphRouteType routeType,
+            int targetAreaType,
+            int targetObjectType,
+            List<int> requiredPartIds,
+            List<int> requiredNodeIds,
+            List<int> unlockNodeIds,
+            int requiredOutputItemId,
+            int recipeId,
+            string storyletId,
+            MissionGraphClaimPolicy claimPolicy,
+            MissionGraphRewardKind rewardKind,
+            int riskLevel,
+            string caseGroup,
+            string requiredAllTags,
+            string requiredAnyTags,
+            string blockedTags,
+            string clueTags,
+            string finalTags,
+            string suspicionTag,
+            LocalizedText title,
+            LocalizedText successText,
+            bool isVictoryStorylet)
+        {
+            string[] values =
+            {
+                nodeId.ToString(),
+                "0",
+                nodeKey,
+                ((int)MissionGraphNodeKind.UseFeature).ToString(),
+                targetAreaType.ToString(),
+                targetObjectType.ToString(),
+                "0",
+                ToJsonIntList(requiredPartIds),
+                "[]",
+                ToJsonIntList(requiredNodeIds),
+                "false",
+                "0",
+                "0",
+                "0",
+                ToJsonIntList(unlockNodeIds),
+                suspicionTag,
+                title.Kr,
+                title.En,
+                title.Jp,
+                "",
+                "",
+                "",
+                successText.Kr,
+                successText.En,
+                successText.Jp,
+                successText.Kr,
+                successText.En,
+                successText.Jp,
+                storyletId,
+                ToCsvToken(storyletType),
+                ToCsvToken(routeType),
+                targetAreaType.ToString(),
+                targetObjectType.ToString(),
+                requiredOutputItemId.ToString(),
+                recipeId.ToString(),
+                requiredAllTags,
+                requiredAnyTags,
+                blockedTags,
+                clueTags,
+                finalTags,
+                caseGroup,
+                "",
+                "0",
+                ToCsvToken(claimPolicy),
+                ToCsvToken(rewardKind),
+                riskLevel.ToString(),
+                "0",
+                "0",
+                "0",
+                isVictoryStorylet ? "true" : "false"
+            };
+
+            return new CsvRow(NodeCsvHeaders, values);
+        }
+
+        private static string ToJsonIntList(List<int> values) =>
+            values == null || values.Count == 0 ? "[]" : JsonConvert.SerializeObject(values);
+
+        private static string ToCsvToken<TEnum>(TEnum value)
+            where TEnum : struct, Enum
+        {
+            var name = value.ToString();
+            return string.Concat(name.Select((c, index) =>
+                    index > 0 && char.IsUpper(c) ? "_" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()))
+                .Replace("risk_high_reward", "risk_high_reward");
+        }
+
+        private static readonly string[] NodeCsvHeaders =
+        {
+            "node_id",
+            "job_title",
+            "node_key",
+            "node_kind",
+            "area_type",
+            "object_type",
+            "interact_id",
+            "required_part_ids",
+            "required_item_ids",
+            "required_node_ids",
+            "requires_target_lost",
+            "output_part_id",
+            "stamina_cost",
+            "corruption_delta",
+            "unlock_node_ids",
+            "suspicion_tag",
+            "title_kr",
+            "title_en",
+            "title_jp",
+            "alibi_claim_kr",
+            "alibi_claim_en",
+            "alibi_claim_jp",
+            "visible_trace_kr",
+            "visible_trace_en",
+            "visible_trace_jp",
+            "success_text_kr",
+            "success_text_en",
+            "success_text_jp",
+            "storylet_id",
+            "storylet_type",
+            "route_type",
+            "target_area_type",
+            "target_object_type",
+            "required_output_item_id",
+            "recipe_id",
+            "required_all_tags",
+            "required_any_tags",
+            "blocked_tags",
+            "clue_tags",
+            "final_tags",
+            "case_group",
+            "stat_check",
+            "stat_threshold",
+            "claim_policy",
+            "reward_kind",
+            "risk_level",
+            "location_hint_text_id",
+            "trace_text_id",
+            "contested_text_id",
+            "is_victory_storylet"
+        };
     }
 
     public enum MissionGraphNodeKind
@@ -174,6 +740,337 @@ namespace network.common.data
         Mixed = 5
     }
 
+    public class MissionStoryletStartData
+    {
+        public string CaseGroup { get; private set; }
+        public string StartKey { get; private set; }
+        public int StartIndex { get; private set; }
+        public int NodeId { get; private set; }
+        public LocalizedText Title { get; private set; }
+        public List<int> RequiredPartIds { get; private set; }
+        public int RequiredOutputItemId { get; private set; }
+        public int RecipeId { get; private set; }
+        public int TargetAreaType { get; private set; }
+        public int TargetObjectType { get; private set; }
+        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
+        public string ClaimKeyTemplate { get; private set; }
+        public MissionGraphRewardKind RewardKind { get; private set; }
+        public int RiskLevel { get; private set; }
+        public LocalizedText SuccessText { get; private set; }
+
+        public static MissionStoryletStartData CreateFromData(CsvRow row)
+        {
+            int startIndex = MissionStoryletCsv.ParseInt(row, "start_index");
+            return new MissionStoryletStartData
+            {
+                CaseGroup = MissionStoryletCsv.ParseString(row, "case_group"),
+                StartKey = MissionStoryletCsv.ParseString(row, "start_key"),
+                StartIndex = startIndex,
+                NodeId = MissionStoryletCsv.ParseInt(row, "node_id", 4100 + startIndex),
+                Title = LocalizedText.FromCsv(row, "title"),
+                RequiredPartIds = MissionStoryletCsv.ParseIntList(row, "required_part_ids"),
+                RequiredOutputItemId = MissionStoryletCsv.ParseInt(row, "required_output_item_id"),
+                RecipeId = MissionStoryletCsv.ParseInt(row, "recipe_id"),
+                TargetAreaType = MissionStoryletCsv.ParseInt(row, "target_area_type"),
+                TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
+                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
+                ClaimKeyTemplate = MissionStoryletCsv.ParseString(row, "claim_key_template"),
+                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
+                RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
+                SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
+            };
+        }
+    }
+
+    public class MissionStoryletBranchData
+    {
+        public string CaseGroup { get; private set; }
+        public string StartKey { get; private set; }
+        public string BranchKey { get; private set; }
+        public int BranchIndex { get; private set; }
+        public LocalizedText Title { get; private set; }
+        public int TargetAreaType { get; private set; }
+        public int TargetObjectType { get; private set; }
+        public MissionGraphRouteType RouteType { get; private set; }
+        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
+        public string ClaimKeyTemplate { get; private set; }
+        public MissionGraphRewardKind RewardKind { get; private set; }
+        public int RiskLevel { get; private set; }
+        public LocalizedText SuccessText { get; private set; }
+
+        public static MissionStoryletBranchData CreateFromData(CsvRow row)
+        {
+            return new MissionStoryletBranchData
+            {
+                CaseGroup = MissionStoryletCsv.ParseString(row, "case_group"),
+                StartKey = MissionStoryletCsv.ParseString(row, "start_key"),
+                BranchKey = MissionStoryletCsv.ParseString(row, "branch_key"),
+                BranchIndex = MissionStoryletCsv.ParseInt(row, "branch_index"),
+                Title = LocalizedText.FromCsv(row, "title"),
+                TargetAreaType = MissionStoryletCsv.ParseInt(row, "target_area_type"),
+                TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
+                RouteType = MissionStoryletCsv.ParseEnum(row, "route_type", MissionGraphRouteType.None),
+                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
+                ClaimKeyTemplate = MissionStoryletCsv.ParseString(row, "claim_key_template"),
+                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
+                RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
+                SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
+            };
+        }
+    }
+
+    public class MissionStoryletStageTemplateData
+    {
+        public string CaseGroup { get; private set; }
+        public int StageIndex { get; private set; }
+        public string StageKey { get; private set; }
+        public string BranchKey { get; private set; }
+        public LocalizedText Title { get; private set; }
+        public int TargetAreaType { get; private set; }
+        public int TargetObjectType { get; private set; }
+        public MissionGraphRouteType RouteType { get; private set; }
+        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
+        public string ClaimKeyTemplate { get; private set; }
+        public MissionGraphRewardKind RewardKind { get; private set; }
+        public int RiskLevel { get; private set; }
+        public string SuspicionTag { get; private set; }
+        public bool IsVictoryStorylet { get; private set; }
+        public LocalizedText SuccessText { get; private set; }
+
+        public static MissionStoryletStageTemplateData CreateFromData(CsvRow row)
+        {
+            return new MissionStoryletStageTemplateData
+            {
+                CaseGroup = MissionStoryletCsv.ParseString(row, "case_group"),
+                StageIndex = MissionStoryletCsv.ParseInt(row, "stage_index"),
+                StageKey = MissionStoryletCsv.ParseString(row, "stage_key"),
+                BranchKey = MissionStoryletCsv.ParseString(row, "branch_key"),
+                Title = LocalizedText.FromCsv(row, "title"),
+                TargetAreaType = MissionStoryletCsv.ParseInt(row, "target_area_type"),
+                TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
+                RouteType = MissionStoryletCsv.ParseEnum(row, "route_type", MissionGraphRouteType.None),
+                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
+                ClaimKeyTemplate = MissionStoryletCsv.ParseString(row, "claim_key_template"),
+                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
+                RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
+                SuspicionTag = MissionStoryletCsv.ParseString(row, "suspicion_tag"),
+                IsVictoryStorylet = MissionStoryletCsv.ParseBool(row, "is_victory_storylet"),
+                SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
+            };
+        }
+    }
+
+    public class MissionStoryletPoolData
+    {
+        public string CaseGroup { get; private set; }
+        public int NodeId { get; private set; }
+        public string PoolKey { get; private set; }
+        public string NodeKey { get; private set; }
+        public int StageIndex { get; private set; }
+        public string StageKey { get; private set; }
+        public LocalizedText Title { get; private set; }
+        public int TargetAreaType { get; private set; }
+        public int TargetObjectType { get; private set; }
+        public MissionGraphStoryletType StoryletType { get; private set; }
+        public MissionGraphRouteType RouteType { get; private set; }
+        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
+        public string ClaimKeyTemplate { get; private set; }
+        public MissionGraphRewardKind RewardKind { get; private set; }
+        public int RiskLevel { get; private set; }
+        public string SuspicionTag { get; private set; }
+        public bool IsVictoryStorylet { get; private set; }
+        public List<string> RequiredAllTags { get; private set; }
+        public List<string> RequiredAnyTags { get; private set; }
+        public List<string> BlockedTags { get; private set; }
+        public List<string> GrantTags { get; private set; }
+        public List<string> FinalTags { get; private set; }
+        public LocalizedText SuccessText { get; private set; }
+
+        public static MissionStoryletPoolData CreateFromData(CsvRow row)
+        {
+            var storyletType = MissionStoryletCsv.ParseEnum(row, "storylet_type", MissionGraphStoryletType.Route);
+            bool isVictoryStorylet = MissionStoryletCsv.ParseBool(row, "is_victory_storylet") ||
+                                      storyletType == MissionGraphStoryletType.Victory;
+
+            if (isVictoryStorylet && storyletType == MissionGraphStoryletType.None)
+                storyletType = MissionGraphStoryletType.Victory;
+
+            return new MissionStoryletPoolData
+            {
+                CaseGroup = MissionStoryletCsv.ParseString(row, "case_group"),
+                NodeId = MissionStoryletCsv.ParseInt(row, "node_id"),
+                PoolKey = MissionStoryletCsv.ParseString(row, "pool_key"),
+                NodeKey = MissionStoryletCsv.ParseString(row, "node_key"),
+                StageIndex = MissionStoryletCsv.ParseInt(row, "stage_index"),
+                StageKey = MissionStoryletCsv.ParseString(row, "stage_key"),
+                Title = LocalizedText.FromCsv(row, "title"),
+                TargetAreaType = MissionStoryletCsv.ParseInt(row, "target_area_type"),
+                TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
+                StoryletType = storyletType,
+                RouteType = MissionStoryletCsv.ParseEnum(row, "route_type", MissionGraphRouteType.None),
+                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
+                ClaimKeyTemplate = MissionStoryletCsv.ParseString(row, "claim_key_template"),
+                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
+                RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
+                SuspicionTag = MissionStoryletCsv.ParseString(row, "suspicion_tag"),
+                IsVictoryStorylet = isVictoryStorylet,
+                RequiredAllTags = MissionStoryletCsv.ParseStringList(row, "required_all_tags"),
+                RequiredAnyTags = MissionStoryletCsv.ParseStringList(row, "required_any_tags"),
+                BlockedTags = MissionStoryletCsv.ParseStringList(row, "blocked_tags"),
+                GrantTags = MissionStoryletCsv.ParseStringList(row, "grant_tags"),
+                FinalTags = MissionStoryletCsv.ParseStringList(row, "final_tags"),
+                SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
+            };
+        }
+    }
+
+    public class MissionStoryletOverrideData
+    {
+        public string CaseGroup { get; private set; }
+        public string StartKey { get; private set; }
+        public string BranchKey { get; private set; }
+        public int StageIndex { get; private set; }
+        public LocalizedText Title { get; private set; }
+        public int TargetAreaType { get; private set; }
+        public int TargetObjectType { get; private set; }
+        public bool HasTargetObjectType { get; private set; }
+        public MissionGraphRouteType RouteType { get; private set; }
+        public bool HasRouteType { get; private set; }
+        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
+        public bool HasClaimPolicy { get; private set; }
+        public string ClaimKeyTemplate { get; private set; }
+        public MissionGraphRewardKind RewardKind { get; private set; }
+        public bool HasRewardKind { get; private set; }
+        public int RiskLevel { get; private set; }
+        public bool HasRiskLevel { get; private set; }
+        public string SuspicionTag { get; private set; }
+        public bool IsVictoryStorylet { get; private set; }
+        public bool HasVictoryOverride { get; private set; }
+        public LocalizedText SuccessText { get; private set; }
+
+        public static MissionStoryletOverrideData CreateFromData(CsvRow row)
+        {
+            return new MissionStoryletOverrideData
+            {
+                CaseGroup = MissionStoryletCsv.ParseString(row, "case_group"),
+                StartKey = MissionStoryletCsv.ParseString(row, "start_key"),
+                BranchKey = MissionStoryletCsv.ParseString(row, "branch_key"),
+                StageIndex = MissionStoryletCsv.ParseInt(row, "stage_index"),
+                Title = LocalizedText.FromCsv(row, "title"),
+                TargetAreaType = MissionStoryletCsv.ParseInt(row, "target_area_type"),
+                TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
+                HasTargetObjectType = MissionStoryletCsv.HasValue(row, "target_object_type"),
+                RouteType = MissionStoryletCsv.ParseEnum(row, "route_type", MissionGraphRouteType.None),
+                HasRouteType = MissionStoryletCsv.HasValue(row, "route_type"),
+                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.None),
+                HasClaimPolicy = MissionStoryletCsv.HasValue(row, "claim_policy"),
+                ClaimKeyTemplate = MissionStoryletCsv.ParseString(row, "claim_key_template"),
+                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.None),
+                HasRewardKind = MissionStoryletCsv.HasValue(row, "reward_kind"),
+                RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
+                HasRiskLevel = MissionStoryletCsv.HasValue(row, "risk_level"),
+                SuspicionTag = MissionStoryletCsv.ParseString(row, "suspicion_tag"),
+                IsVictoryStorylet = MissionStoryletCsv.ParseBool(row, "is_victory_storylet"),
+                HasVictoryOverride = MissionStoryletCsv.HasValue(row, "is_victory_storylet"),
+                SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
+            };
+        }
+    }
+
+    internal static class MissionStoryletCsv
+    {
+        public static bool HasValue(CsvRow row, string columnName) =>
+            row.ContainsKey(columnName) && !string.IsNullOrWhiteSpace(row[columnName]);
+
+        public static int ParseInt(CsvRow row, string columnName, int defaultValue = 0)
+        {
+            if (!HasValue(row, columnName))
+                return defaultValue;
+
+            return int.Parse(row[columnName]);
+        }
+
+        public static string ParseString(CsvRow row, string columnName) =>
+            row.ContainsKey(columnName) ? row[columnName] : "";
+
+        public static bool ParseBool(CsvRow row, string columnName)
+        {
+            if (!HasValue(row, columnName))
+                return false;
+
+            var value = row[columnName].Trim();
+            return value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static List<int> ParseIntList(CsvRow row, string columnName)
+        {
+            if (!HasValue(row, columnName) || row[columnName] == "[]")
+                return new List<int>();
+
+            return JsonConvert.DeserializeObject<List<int>>(row[columnName]) ?? new List<int>();
+        }
+
+        public static List<string> ParseStringList(CsvRow row, string columnName)
+        {
+            if (!HasValue(row, columnName) || row[columnName] == "[]")
+                return new List<string>();
+
+            var value = row[columnName].Trim();
+            if (value.StartsWith("["))
+            {
+                try
+                {
+                    return JsonConvert.DeserializeObject<List<string>>(value) ?? new List<string>();
+                }
+                catch (JsonException)
+                {
+                    value = value.Trim('[', ']');
+                    return value.Split(',', '|')
+                        .Select(item => item.Trim().Trim('"'))
+                        .Where(item => !string.IsNullOrWhiteSpace(item))
+                        .ToList();
+                }
+            }
+
+            return value.Split('|')
+                .Select(item => item.Trim())
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .ToList();
+        }
+
+        public static TEnum ParseEnum<TEnum>(CsvRow row, string columnName, TEnum defaultValue)
+            where TEnum : struct, Enum
+        {
+            if (!HasValue(row, columnName))
+                return defaultValue;
+
+            var value = row[columnName].Trim();
+            if (int.TryParse(value, out int intValue) && Enum.IsDefined(typeof(TEnum), intValue))
+                return (TEnum)Enum.ToObject(typeof(TEnum), intValue);
+
+            var normalizedValue = NormalizeEnumToken(value);
+            foreach (var name in Enum.GetNames(typeof(TEnum)))
+            {
+                if (NormalizeEnumToken(name) == normalizedValue)
+                    return Enum.Parse<TEnum>(name);
+            }
+
+            return defaultValue;
+        }
+
+        private static string NormalizeEnumToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return "";
+
+            return value
+                .Replace("_", "")
+                .Replace("-", "")
+                .Replace(" ", "")
+                .ToLowerInvariant();
+        }
+    }
+
     public class MissionGraphNodeData
     {
         public int NodeId { get; private set; }
@@ -203,6 +1100,9 @@ namespace network.common.data
         public int TargetObjectType { get; private set; }
         public int RequiredOutputItemId { get; private set; }
         public int RecipeId { get; private set; }
+        public List<string> RequiredAllTags { get; private set; }
+        public List<string> RequiredAnyTags { get; private set; }
+        public List<string> BlockedTags { get; private set; }
         public List<string> ClueTags { get; private set; }
         public List<string> FinalTags { get; private set; }
         public string CaseGroup { get; private set; }
@@ -268,6 +1168,9 @@ namespace network.common.data
                 TargetObjectType = ParseInt(row, "target_object_type"),
                 RequiredOutputItemId = ParseInt(row, "required_output_item_id"),
                 RecipeId = ParseInt(row, "recipe_id"),
+                RequiredAllTags = ParseStringList(row, "required_all_tags"),
+                RequiredAnyTags = ParseStringList(row, "required_any_tags"),
+                BlockedTags = ParseStringList(row, "blocked_tags"),
                 ClueTags = ParseStringList(row, "clue_tags"),
                 FinalTags = ParseStringList(row, "final_tags"),
                 CaseGroup = ParseString(row, "case_group"),
@@ -287,15 +1190,31 @@ namespace network.common.data
             RequiredPartIds.Count == 0 &&
             RequiredItemIds.Count == 0 &&
             RequiredNodeIds.Count == 0 &&
+            RequiredAllTags.Count == 0 &&
+            RequiredAnyTags.Count == 0 &&
             !RequiresTargetLost;
 
         public bool AreRequirementsMet(
             HashSet<int> collectedPartIds,
             HashSet<int> completedNodeIds,
             bool hasLostTarget = false) =>
+            AreRequirementsMet(
+                collectedPartIds,
+                completedNodeIds,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                hasLostTarget);
+
+        public bool AreRequirementsMet(
+            HashSet<int> collectedPartIds,
+            HashSet<int> completedNodeIds,
+            HashSet<string> ownedClueTags,
+            bool hasLostTarget = false) =>
             RequiredPartIds.All(collectedPartIds.Contains) &&
             (RequiredOutputItemId <= 0 || collectedPartIds.Contains(RequiredOutputItemId)) &&
             RequiredNodeIds.All(completedNodeIds.Contains) &&
+            RequiredAllTags.All(ownedClueTags.Contains) &&
+            (RequiredAnyTags.Count == 0 || RequiredAnyTags.Any(ownedClueTags.Contains)) &&
+            !BlockedTags.Any(ownedClueTags.Contains) &&
             (!RequiresTargetLost || hasLostTarget);
 
         public bool MatchesInteractable(int areaType, int objectType, int interactId)
