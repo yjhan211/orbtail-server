@@ -108,14 +108,14 @@ public static class DemoMode
     public static readonly JobTitle[] ChainJobOrder =
     {
         JobTitle.BROADCAST_MEMBER,   // index 0: BR 봇 (본인의 마니또)
-        JobTitle.LIBRARY_COMMITTEE,  // index 1: 시연자. job_title=3 전용 mission_step 없이 공용 Storylet 부품만 사용.
+        JobTitle.NONE,  // index 1: 시연자. 공용 Storylet 부품만 사용.
         JobTitle.DISCIPLINE_MEMBER,  // index 2: DC 봇 (본인의 ▓▓)
         JobTitle.SCIENCE_MEMBER,     // index 3: SC 봇
         JobTitle.HEALTH_MEMBER       // index 4: HE 봇
     };
 
-    /// <summary>시연자(본인) 직책. 도서위원 값은 기존 체인/세이브 호환용이며, 미션 데이터는 공용 Storylet을 사용한다.</summary>
-    public const JobTitle PlayerJob = JobTitle.LIBRARY_COMMITTEE;
+    /// <summary>시연자(본인) 직책. 기록 Storylet 파일럿은 직책 전용 mission_step 없이 공용 Storylet 데이터를 사용한다.</summary>
+    public const JobTitle PlayerJob = JobTitle.NONE;
 
     /// <summary>
     ///     폐쇄 셔플 보호 (H2). 시연 초반 Storylet 접근 구역 보호.

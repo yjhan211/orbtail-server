@@ -29,6 +29,7 @@ public class DemoModeSeedTests
     [Fact]
     public void ChainJobOrder_PlayerSlot_Matches_DemoPlayerJob()
     {
+        Assert.Equal(JobTitle.NONE, DemoMode.PlayerJob);
         Assert.Equal(DemoMode.PlayerJob, DemoMode.ChainJobOrder[DemoMode.PlayerChainIndex]);
     }
 
