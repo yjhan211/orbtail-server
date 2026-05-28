@@ -65,8 +65,6 @@ public class AreaClosureManager
     ///     #87 추가 규칙 (jobsInMatching 제공 시):
     ///     - 1번째 슬롯(시작 5분)은 이번 매칭 직책들의 1단계(Material) 발견 구역 제외 강제 —
     ///       race 자동 패배 차단.
-    ///     - LB(도서위원, 3) 발견 구역은 후순위 (도서관/창고/교실3/교실2 중 최소 1개 폐쇄 면역,
-    ///       M4' 보정).
     ///     - CL(미화부원, 6) 강당 출구 후순위 (CL 과강화 보정).
     /// </summary>
     public MatchingClosureState InitializeMatching(long matchingId, List<JobTitle>? jobsInMatching = null)
@@ -121,7 +119,7 @@ public class AreaClosureManager
     }
 
     /// <summary>
-    ///     #87: 직책 풀 인지 셔플. 시작 5분 내 1단계 보장 + LB/CL 후순위 보정.
+    ///     #87: 직책 풀 인지 셔플. 시작 5분 내 1단계 보장 + 직책별 후순위 보정.
     /// </summary>
     private static List<AreaType> ApplyJobAwareShuffle(List<AreaType> baseSequence, List<JobTitle> jobs)
     {
@@ -149,13 +147,7 @@ public class AreaClosureManager
             }
         }
 
-        // 2) LB(도서위원=3) 발견 구역 후순위 — 도서관/창고/교실3/교실2 중 최소 1개 폐쇄 면역
-        // 창고는 폐쇄 불가이므로 사실상 도서관/교실3/교실2 중 1개를 가능한 한 뒤로 보낸다.
-        if (jobs.Contains(JobTitle.LIBRARY_COMMITTEE))
-            DemoteOneOfTheseAreasIfPossible(result,
-                new[] { AreaType.Library, AreaType.Classroom3, AreaType.Classroom2 });
-
-        // 3) CL(미화부원=6) 강당 출구(=강당) 후순위 — 강당은 폐쇄 불가지만,
+        // 2) CL(미화부원=6) 강당 출구(=강당) 후순위 — 강당은 폐쇄 불가지만,
         // 미화부원 발견 구역(교실2/2층복도 등)도 한 번 보정해 race 자동 패배를 더 차단한다.
         if (jobs.Contains(JobTitle.CLEANING_MEMBER))
             DemoteOneOfTheseAreasIfPossible(result,

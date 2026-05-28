@@ -27,9 +27,10 @@ public class DemoModeSeedTests
     }
 
     [Fact]
-    public void ChainJobOrder_PlayerSlot_LB()
+    public void ChainJobOrder_PlayerSlot_Matches_DemoPlayerJob()
     {
-        Assert.Equal(JobTitle.LIBRARY_COMMITTEE, DemoMode.ChainJobOrder[DemoMode.PlayerChainIndex]);
+        Assert.Equal(JobTitle.NONE, DemoMode.PlayerJob);
+        Assert.Equal(DemoMode.PlayerJob, DemoMode.ChainJobOrder[DemoMode.PlayerChainIndex]);
     }
 
     [Fact]

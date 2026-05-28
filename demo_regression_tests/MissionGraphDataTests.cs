@@ -205,16 +205,16 @@ public class MissionGraphDataTests
     }
 
     [Fact]
-    public void RecordStoryletCommonParts_AreAvailableForLibraryCommittee()
+    public void RecordStoryletCommonParts_AreAvailableForCommonStorylet()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
 
-        short libraryCommittee = (short)JobTitle.LIBRARY_COMMITTEE;
-        var materials = GameMissionData.GetMaterials(libraryCommittee);
-        var partsIncludingShared = GameMissionData.GetPartsIncludingShared(libraryCommittee);
+        const short commonStoryletJob = 0;
+        var materials = GameMissionData.GetMaterials(commonStoryletJob);
+        var partsIncludingShared = GameMissionData.GetPartsIncludingShared(commonStoryletJob);
         var availableWithWrittenPage = GameMissionGraphData.GetAvailableNodes(
-            libraryCommittee,
+            commonStoryletJob,
             new[] { 305 },
             Array.Empty<int>());
 
@@ -222,7 +222,11 @@ public class MissionGraphDataTests
         Assert.Contains(materials, part => part.PartId == 302);
         Assert.Equal(301000008, GameMissionData.GetPart(301).SpriteItemId);
         Assert.Contains(partsIncludingShared, part => part.PartId == 305);
-        Assert.True(GameMissionData.GetTotalPartsIncludingShared(libraryCommittee) > 0);
+        Assert.True(GameMissionData.GetTotalPartsIncludingShared(commonStoryletJob) > 0);
+        Assert.Empty(GameMissionData.GetParts((short)JobTitle.LIBRARY_COMMITTEE));
+        Assert.Equal(
+            GameMissionData.GetTotalPartsIncludingShared(commonStoryletJob),
+            GameMissionData.GetTotalPartsIncludingShared((short)JobTitle.LIBRARY_COMMITTEE));
         Assert.Contains(availableWithWrittenPage, node => node.NodeId == 4101);
 
         foreach (var part in partsIncludingShared.Where(part => part.PartId is >= 301 and <= 317))

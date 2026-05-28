@@ -1599,7 +1599,7 @@ public partial class GameClientSession
     private static (int TextId, List<TextArg> Args) CreateDemoBotAnswer(BotPlayerState bot, bool isPlayersManitto)
     {
         if (isPlayersManitto)
-            return (InteractionChoiceService.DemoManittoMissionAnswerTextId, new List<TextArg>());
+            return (InteractionChoiceService.DemoRecordAnswerTextId, new List<TextArg>());
 
         return Random.Shared.Next(3) switch
         {

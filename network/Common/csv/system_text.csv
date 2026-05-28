@@ -122,7 +122,7 @@ id,category,text_kr,text_en,text_jp
 11034,6,구역 폐쇄로 인해 지나가는 도중이었습니다.,I was passing through because of the area closure.,区域閉鎖のため通りかかっているところでした。
 11035,6,<color=#A8D4E0>{0}</color> 미션을 수행하는 도중이었습니다.,I was working on the <color=#A8D4E0>{0}</color> mission.,<color=#A8D4E0>{0}</color>のミッションを遂行しているところでした。
 11036,6,스태미나 회복 물품을 수집하는 중입니다.,I am collecting stamina recovery items.,スタミナ回復アイテムを集めています。
-11037,6,<color=#A8D4E0>도서위원</color> 미션을 수행하러 왔습니다.,I came to perform the <color=#A8D4E0>Library Committee</color> mission.,<color=#A8D4E0>図書委員</color>のミッションを遂行しに来ました。
+11037,6,<color=#A8D4E0>기록</color>을 확인하러 왔습니다.,I came to check the <color=#A8D4E0>records</color>.,<color=#A8D4E0>記録</color>を確認しに来ました。
 11040,6,저는 <color=#A8D4E0>{0}</color>입니다.,I am a <color=#A8D4E0>{0}</color>.,私は<color=#A8D4E0>{0}</color>です。
 11041,6,저는 그때 <color=#A8D4E0>{0}</color>에 있었습니다.,I was at the <color=#A8D4E0>{0}</color> at that time.,私はその時<color=#A8D4E0>{0}</color>にいました。
 11042,6,<color=#FF7E9A>{0}</color>을(를) 주장하는 사람이 여러 명 발견되었습니다!,Multiple people are claiming to be a <color=#FF7E9A>{0}</color>!,<color=#FF7E9A>{0}</color>を主張する人が複数発見されました!
@@ -139,7 +139,7 @@ id,category,text_kr,text_en,text_jp
 12008,7,마스터 볼륨,Master Volume,マスター音量
 12009,7,계정 설정,Account Settings,アカウント設定
 12010,7,플레이어 아이디를 입력하세요.,Enter a player ID.,プレイヤーIDを入力してください。
-12011,7,도서위원 미션 3회 완료,Library Committee Mission x3,図書委員ミッションを3回完了
+12011,7,기록 단서 3회 확인,Record Clues x3,記録の手がかりを3回確認
 12012,7,커스터마이징,Customization,カスタマイズ
 12013,7,급식 조리의 대가,School Lunch Master,給食調理の達人
 12014,7,[퇴교 절차],[Dismissal Procedure],[下校手順]
@@ -189,7 +189,7 @@ id,category,text_kr,text_en,text_jp
 12058,7,다음 목표 확인하기,Follow Objective,次の目標
 12059,7,임무 완료,Complete,完了
 12060,7,{0} 찾기,Find {0},{0}を探す
-12061,7,{0} 결합,Merge {0},{0}を結合
+12061,7,{0} 조합하기,Craft {0},{0}を組み合わせる
 12062,7,{0} 진행하기,Follow {0},{0}を進める
 "12063","7","<color=#A8D4E0>잠겨있는 선택지</color>입니다. 우선순위로 추적할까요?","This is a <color=#A8D4E0>locked option</color>. Track it as the priority?","<color=#A8D4E0>ロックされた選択肢</color>です。優先目標として追跡しますか？"
 "12064","7","<color=#A8D4E0>이미 우선순위인 선택지입니다.</color>","<color=#A8D4E0>This option is already the priority.</color>","<color=#A8D4E0>この選択肢はすでに優先目標です。</color>"
@@ -204,8 +204,8 @@ id,category,text_kr,text_en,text_jp
 "12073","7","아직 이 행동을 할 수 없습니다.","This action is not available yet.","まだこの行動はできません。"
 "12074","7","업무를 처리했습니다.","Task handled.","作業を処理しました。"
 "12075","7","탈출의 실마리 확보","Secure Escape Lead","脱出の糸口を確保"
-"12076","7","우선 순위 파악 중...","Assessing priority...","優先順位を確認中..."
-"12077","7","[전지역] 사물 탐색하기","[All Areas] Search objects","[全区域] オブジェクトを探索"
+"12076","7","미션 파악하기","Understand the mission","ミッションを把握する"
+"12077","7","[전지역] 새로운 선택지 발견하기","[All Areas] Discover a new option","[全区域] 新しい選択肢を発見する"
 "12078","7","전지역","All Areas","全区域"
 "12079","7","기록 경로 선택","Select Record Route","記録ルート選択"
 "12080","7","후속 기록 확보하기","Secure follow-up record","後続記録を確保"
@@ -224,3 +224,7 @@ id,category,text_kr,text_en,text_jp
 "12093","7","{0} {1} 완료","{0} Complete {1}","{0} {1}を完了"
 "12094","7","{0} {1} 진행","{0} Follow {1}","{0} {1}を進める"
 "12095","7","{0} 책장과 상호작용 하기","{0} Interact with the bookshelf","{0} 本棚とインタラクト"
+"12096","7","<color=#A8D4E0>새로운 선택지를 발견했습니다.</color>","<color=#A8D4E0>Discovered a new option.</color>","<color=#A8D4E0>新しい選択肢を発見しました。</color>"
+"12097","7","<color=#A8D4E0>아직 실행할 수 없습니다. 먼저 목표를 완료하세요.</color>","<color=#A8D4E0>You cannot do this yet. Complete the objective first.</color>","<color=#A8D4E0>まだ実行できません。先に目標を完了してください。</color>"
+"12098","7","다음 미션 중 하나를 수행하세요.","Complete one of the next missions.","次のミッションのいずれかを進めてください。"
+"12100","7","새로운 선택지 발견하기","Discover a new option","新しい選択肢を発見する"

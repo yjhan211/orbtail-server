@@ -16,7 +16,7 @@ public class InteractionChoiceService
     public const int DemoPassingAnswerTextId = 11034;
     public const int DemoMissionAnswerTextId = 11035;
     public const int DemoStaminaAnswerTextId = 11036;
-    public const int DemoManittoMissionAnswerTextId = 11037;
+    public const int DemoRecordAnswerTextId = 11037;
 
     private readonly InteractionLogManager _logManager;
     private readonly ManittoChainManager _chainManager;

@@ -4,12 +4,13 @@ namespace network.helpers;
 
 /// <summary>
 ///     5/11 영상 + 5/14 심사용 빌드 시연 모드.
-///     환경변수 <c>DEMO_MODE=LB</c> 활성화 시 LB 도서위원 시연 시나리오로 게임 진행.
+///     환경변수 <c>DEMO_MODE=LB</c> 활성화 시 기록 Storylet 파일럿 시연 시나리오로 게임 진행.
+///     <c>LB</c> 값은 기존 실행 환경 호환을 위해 유지한다.
 ///     - 결정론 시드 (H1) — 봇/색출/폐쇄 셔플 모두 동일 시드 사용
 ///     - 폐쇄 셔플 보호 (H2) — 도서관·교실2 면역
 ///     - 봇 race 페이스 캡 (H4) — 봇 7:00 이전 결합 차단
 ///     - 봇 4명 직책 + 6단계 동선 스크립트 (W7)
-///     - 매칭 직책 강제 (W7) — user_server에서 5인 매칭 시 LB+BR/DC/SC/HE 보장
+///     - 매칭 직책 강제 (W7) — user_server에서 5인 매칭 시 시연자+BR/DC/SC/HE 보장
 ///
 ///     설계 보고서: design/outputs/audit-reports/2026-05-03_시연시나리오-종합보고서.md
 /// </summary>
@@ -69,7 +70,7 @@ public static class DemoMode
             (0, AreaType.Corridor1F),     // 시작 (1F 복도)
             (60, AreaType.AdminOffice),   // 01:00 행정실 (DC 발견 구역)
             (180, AreaType.Corridor2F),   // 03:00 2F 진입
-            (270, AreaType.Library),      // 04:30 도서관 진입 (04:50 LB 조우 셋업)
+            (270, AreaType.Library),      // 04:30 도서관 진입 (04:50 시연자 조우 셋업)
             (360, AreaType.Corridor2F),   // 06:00 후퇴
             (480, AreaType.AdminOffice)   // 08:00 1F 회귀
         },
@@ -77,7 +78,7 @@ public static class DemoMode
         {
             (0, AreaType.ExamRoom),       // 시작 (3F 고사실)
             (120, AreaType.Corridor3F),   // 02:00 3F 복도 경유
-            (170, AreaType.Library),      // 02:50 도서관 (1:1 with LB)
+            (170, AreaType.Library),      // 02:50 도서관 (시연자 1:1)
             (240, AreaType.Corridor3F),   // 04:00 후퇴
             (300, AreaType.ExamRoom)      // 05:00 고사실 회귀 (06:40 색출 위치)
         }
@@ -88,10 +89,10 @@ public static class DemoMode
     /// <summary>시연 매칭 인원 — 시연자 1명 + 봇 4명.</summary>
     public const int MatchPlayerCount = 5;
 
-    /// <summary>시연 매칭 시 시연자(본인)가 배치될 체인 인덱스 (BR=0 → LB=1 → DC=2 → SC=3 → HE=4 → BR).</summary>
+    /// <summary>시연 매칭 시 시연자(본인)가 배치될 체인 인덱스 (BR=0 → 시연자=1 → DC=2 → SC=3 → HE=4 → BR).</summary>
     public const int PlayerChainIndex = 1;
 
-    /// <summary>시연 시나리오 봇 4명 직책 (체인: BR → LB(본인) → DC → SC → HE → BR).</summary>
+    /// <summary>시연 시나리오 봇 4명 직책 (체인: BR → 시연자 → DC → SC → HE → BR).</summary>
     public static readonly JobTitle[] BotJobOrder =
     {
         JobTitle.BROADCAST_MEMBER,   // BR — 본인의 마니또
@@ -102,28 +103,28 @@ public static class DemoMode
 
     /// <summary>
     ///     시연 매칭 체인 직책 순서. 인덱스 0~4가 그대로 ManittoChain 인덱스에 대응.
-    ///     PlayerChainIndex(=1) 위치만 시연자(LB), 나머지 4자리는 봇.
+    ///     PlayerChainIndex(=1) 위치만 시연자, 나머지 4자리는 봇.
     /// </summary>
     public static readonly JobTitle[] ChainJobOrder =
     {
         JobTitle.BROADCAST_MEMBER,   // index 0: BR 봇 (본인의 마니또)
-        JobTitle.LIBRARY_COMMITTEE,  // index 1: LB 본인
+        JobTitle.NONE,  // index 1: 시연자. 공용 Storylet 부품만 사용.
         JobTitle.DISCIPLINE_MEMBER,  // index 2: DC 봇 (본인의 ▓▓)
         JobTitle.SCIENCE_MEMBER,     // index 3: SC 봇
         JobTitle.HEALTH_MEMBER       // index 4: HE 봇
     };
 
-    /// <summary>시연자(본인) 직책: LB 도서위원.</summary>
-    public const JobTitle PlayerJob = JobTitle.LIBRARY_COMMITTEE;
+    /// <summary>시연자(본인) 직책. 기록 Storylet 파일럿은 직책 전용 mission_step 없이 공용 Storylet 데이터를 사용한다.</summary>
+    public const JobTitle PlayerJob = JobTitle.NONE;
 
     /// <summary>
-    ///     폐쇄 셔플 보호 (H2). LB 시연에서 출구(도서관) + LB_M2(교실2) 면역.
+    ///     폐쇄 셔플 보호 (H2). 시연 초반 Storylet 접근 구역 보호.
     ///     ApplyJobAwareShuffle보다 더 엄격 — 시퀀스에서 완전히 제외.
     /// </summary>
     public static readonly HashSet<AreaType> ProtectedAreas = new()
     {
-        AreaType.Library,    // LB 출구 (race cutscene 영역)
-        AreaType.Classroom2  // LB_M2 (봉인 인장)
+        AreaType.Library,    // 기록 Storylet 초반 접근 구역
+        AreaType.Classroom2  // 초반 보조 단서 구역
     };
 
     /// <summary>

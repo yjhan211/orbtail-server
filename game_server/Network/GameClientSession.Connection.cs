@@ -50,7 +50,7 @@ public partial class GameClientSession
             await LoadBotsIfNeeded(msg.MatchingId, CurrentMapId);
 
             // 구역 폐쇄 초기화 (매칭당 최초 1회)
-            // #87: 매칭의 직책 풀을 셔플 우선순위에 반영 (5분 1단계 보장 + LB/CL 후순위)
+            // #87: 매칭의 직책 풀을 셔플 우선순위에 반영 (5분 1단계 보장 + 직책별 후순위)
             var jobPool = _manittoChainManager.GetMatchingJobs(msg.MatchingId);
             _areaClosureManager.InitializeMatching(msg.MatchingId, jobPool);
 
