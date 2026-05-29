@@ -84,7 +84,7 @@ public class MissionManager
 
         if (matchingParts.Count == 0) return null;
 
-        var matchingPart = matchingParts.FirstOrDefault(p => !state.CollectedParts.Contains(p.PartId));
+        var matchingPart = MissionPartSelection.SelectNextCollectablePart(matchingParts, state);
         if (matchingPart == null)
             return new PartCollectResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
 
