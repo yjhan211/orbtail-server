@@ -29,7 +29,7 @@ id,area_type,object_type,short_name_kr,short_name_en,short_name_jp,description_k
 701000062,40,4,칠판,Blackboard,黒板,깨끗이 닦인 표면에 글자 자국이 남아 있습니다...,Faint traces of letters remain on the wiped surface...,綺麗に拭われた表面に、文字の痕跡が残っている...,7,149,101
 701000063,14,6,철제 캐비넷,Steel Cabinet,鉄製キャビネット,안쪽에서 무언가가 부딪치는 소리가 들립니다...,Something keeps knocking from inside...,内側から、何かがぶつかる音が聞こえる...,7,14,34
 701000064,32,7,고사실 책상,Exam Room Desk,考査室の机,책상 모서리에 손톱 자국이 길게 패여 있습니다...,Long fingernail marks line the desk's edge...,机の縁に、爪の跡が長く刻まれている...,7,166,4
-701000065,22,6,도서관 책장,Library Bookshelf,図書館の本棚,한 권만 빠져 있는 자리가 유난히 깨끗합니다...,The empty slot for one missing book is too clean...,一冊だけ抜けたその場所が、妙に綺麗だ...,7,117,76
+701000065,22,6,도서관 책장,Bookshelf,本棚,한 권만 빠져 있는 자리가 유난히 깨끗합니다...,The empty slot for one missing book is too clean...,一冊だけ抜けたその場所が、妙に綺麗だ...,7,117,76
 701000066,40,5,사물함,Locker,ロッカー,자물쇠 위에 누군가의 머리카락이 걸려 있습니다...,A strand of hair clings to the lock...,錠前に、誰かの髪の毛が絡んでいる...,7,156,93
 701000067,30,9,검정색 배낭,Black Backpack,黒いリュック,처음 보는 가방이 익숙한 자리에 놓여 있습니다...,An unfamiliar bag sits in a familiar spot...,見覚えのない鞄が、見覚えのある席に置かれている...,7,163,29
 701000068,10,4,행정실 책상,Administrative Office Desk,事務室の机,서류 더미가 누군가의 손길에 흩어져 있습니다...,Stacks of papers lie scattered by hands unknown...,書類の山が、誰かの手で乱されている...,7,91,-36
