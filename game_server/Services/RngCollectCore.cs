@@ -1,6 +1,7 @@
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.helpers;
 
 namespace game_server.services;
 
@@ -39,22 +40,20 @@ public static class RngCollectCore
             .ToList();
 
         // 자기 부품 이미 회수했으면 그 영역은 자기 풀 외 분기(영역 풀 소모품)로 처리 (#135).
-        var matchedPart = matchedParts.FirstOrDefault();
-        if (matchedParts.Count > 0)
-        {
-            var state = missionManager.GetState(matchingId, playerId);
-            matchedPart = state == null
-                ? matchedParts[0]
-                : matchedParts.FirstOrDefault(part => !state.CollectedParts.Contains(part.PartId));
-        }
+        var state = matchedParts.Count > 0 ? missionManager.GetState(matchingId, playerId) : null;
+        var matchedPart = MissionPartSelection.SelectNextCollectablePart(matchedParts, state);
 
         if (matchedPart != null)
         {
             int roll = _rng.Next(100);
             bool hasPrerequisite = matchedPart.PrerequisiteShareGroup > 0;
+            bool missingPrerequisite = hasPrerequisite &&
+                                       state != null &&
+                                       !state.CollectedPrereqGroups.Contains(matchedPart.PrerequisiteShareGroup);
+            int missionPartDropRate = DemoMode.IsActive && !missingPrerequisite ? 100 : 90;
 
             // 자기 풀: 90% 부품 / 7% 선행(있을 때) / 디코이/빈손 — 시연 시간 내 회수 가능하도록 상향 (#135)
-            if (roll < 90)
+            if (roll < missionPartDropRate)
             {
                 var collectResult = missionManager.TryCollectPart(matchingId, playerId,
                     (AreaType)info.ZoneId, (int)info.ObjectType, info.Id);
