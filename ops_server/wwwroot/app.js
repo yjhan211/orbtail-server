@@ -624,6 +624,46 @@ let _storyletRecipesById = new Map();
 let _storyletRecipesByOutputPart = new Map();
 let _storyletItemsByPart = new Map();
 let _storyletItemsById = new Map();
+let _storyletAutosaveTimer = null;
+let _storyletSaving = false;
+let _storyletImeComposing = false;
+let _storyletObjectTypeLabels = new Map();
+
+const STORYLET_AUTOSAVE_DELAY = 1200;
+
+// 디바운스 자동저장 예약 (입력 후 일정 시간 무동작이면 silent 저장)
+function scheduleStoryletAutosave() {
+    if (_storyletAutosaveTimer) clearTimeout(_storyletAutosaveTimer);
+    _storyletAutosaveTimer = setTimeout(() => {
+        _storyletAutosaveTimer = null;
+        if (_storyletDirty && !_storyletImeComposing && !_storyletSaving) {
+            saveSelectedStorylet({ silent: true });
+        }
+    }, STORYLET_AUTOSAVE_DELAY);
+}
+
+// 대기 중인 자동저장을 즉시 실행 (행 이동/수동 저장/언로드 직전)
+function flushStoryletAutosave() {
+    if (_storyletAutosaveTimer) { clearTimeout(_storyletAutosaveTimer); _storyletAutosaveTimer = null; }
+    if (_storyletDirty) return saveSelectedStorylet({ silent: false });
+    return Promise.resolve();
+}
+
+// 상단 저장 상태바 갱신 (saving/saved/dirty/error/idle)
+function updateStoryletSaveBar(state) {
+    const el = document.getElementById('storylet-savebar');
+    if (!el) return;
+    const map = {
+        saving: ['◐', '저장 중…', 'text-yellow-300'],
+        saved: ['●', '저장됨', 'text-green-400'],
+        dirty: ['○', '수정됨 · 곧 자동 저장', 'text-yellow-300'],
+        error: ['✕', '저장 실패', 'text-red-400'],
+        idle: ['', '', 'text-gray-600'],
+    };
+    const [icon, label, cls] = map[state] || map.idle;
+    el.className = `text-xs ${cls}`;
+    el.textContent = icon ? `${icon} ${label}` : '';
+}
 
 async function loadStorylets(forceToast = false) {
     try {
@@ -648,7 +688,15 @@ async function loadStorylets(forceToast = false) {
 
 function renderStoryletStarts() {
     const list = document.getElementById('storylet-start-list');
-    const starts = [...(_storyletData?.starts ?? [])].sort((a, b) => num(a.start_index) - num(b.start_index));
+    if (!list) return;
+    const query = (document.getElementById('storylet-start-search')?.value || '').trim().toLowerCase();
+    const starts = [...(_storyletData?.starts ?? [])]
+        .filter(row => {
+            if (!query) return true;
+            return [row.start_key, row.start_index, row.title_kr, row.success_text_kr, storyletSearchText(row)]
+                .join(' ').toLowerCase().includes(query);
+        })
+        .sort((a, b) => num(a.start_index) - num(b.start_index));
     list.innerHTML = starts.map(row => {
         const active = _storyletSelected?.type === 'start' && _storyletSelected.nodeId === row.node_id ? 'active' : '';
         const area = areaTypeLabel(num(row.target_area_type));
@@ -717,8 +765,9 @@ function renderStoryletPools() {
     }).join('');
 }
 
-function selectStorylet(type, nodeId) {
-    if (_storyletDirty && !confirm('저장하지 않은 수정이 있습니다. 다른 행으로 이동할까요?')) return;
+async function selectStorylet(type, nodeId) {
+    // 미저장 변경이 있으면 confirm 대신 조용히 자동 저장하고 이동 (변경 손실 없음).
+    if (_storyletDirty) await saveSelectedStorylet({ silent: true });
 
     const source = type === 'start' ? _storyletData.starts : _storyletData.pools;
     const row = source.find(item => item.node_id === nodeId);
@@ -732,37 +781,41 @@ function selectStorylet(type, nodeId) {
 }
 
 function renderStoryletEditor() {
-    const startEditor = document.getElementById('storylet-start-inline-editor');
-    const poolEditor = document.getElementById('storylet-pool-inline-editor');
-    if (!startEditor || !poolEditor) return;
+    const pane = document.getElementById('storylet-editor-pane');
+    if (!pane) return;
 
-    startEditor.innerHTML = _storyletSelected?.type === 'start'
-        ? buildStoryletFormHtml('start', _storyletSelected.row)
-        : '<div class="text-xs text-gray-600 border border-gray-800 rounded px-3 py-2">시작점을 선택하면 이 영역에서 바로 편집합니다.</div>';
+    pane.innerHTML = (_storyletSelected?.type === 'start' || _storyletSelected?.type === 'pool')
+        ? buildStoryletFormHtml(_storyletSelected.type, _storyletSelected.row)
+        : '<div class="text-xs text-gray-600 border border-gray-800 rounded px-3 py-10 text-center">좌측에서 시작점 또는 후보를 선택하면 여기서 편집합니다.</div>';
 
-    poolEditor.innerHTML = _storyletSelected?.type === 'pool'
-        ? buildStoryletFormHtml('pool', _storyletSelected.row)
-        : '<div class="text-xs text-gray-600 border border-gray-800 rounded px-3 py-2">후보 Storylet을 선택하면 이 영역에서 바로 편집합니다.</div>';
+    renderStoryletValidationBadges(pane.querySelector('[data-storylet-form]'));
 }
 
 function markStoryletDirty(event) {
     if (!_storyletSelected) return;
-    if (event?.target?.closest?.('[data-interactable-editor]')) return;
-    if (event?.target?.closest?.('[data-object-action-editor]')) return;
+    // 선택지 전 본문/클릭 선택지 편집도 통합 저장에 포함되므로 모두 dirty 처리 + 자동저장 예약.
     setStoryletDirty();
+    scheduleStoryletAutosave();
+    renderStoryletValidationBadges(document.querySelector('[data-storylet-form]'));
 }
 
 function setStoryletDirty() {
     if (!_storyletSelected) return;
     _storyletDirty = true;
     document.querySelector(`[data-storylet-dirty="${_storyletSelected.type}"]`)?.classList.remove('hidden');
+    updateStoryletSaveBar('dirty');
 }
 
-async function saveSelectedStorylet() {
+async function saveSelectedStorylet(opts = {}) {
+    const silent = opts.silent === true;
     if (!_storyletSelected) return;
+    if (_storyletSaving) return;
 
     const form = document.querySelector(`[data-storylet-form="${_storyletSelected.type}"]`);
     if (!form) return;
+
+    _storyletSaving = true;
+    updateStoryletSaveBar('saving');
 
     const updated = { ..._storyletSelected.row };
     for (const el of form.elements) {
@@ -810,23 +863,113 @@ async function saveSelectedStorylet() {
         _storyletData = latestData;
         buildStoryletLookupIndexes();
         _storyletDirty = false;
+        document.querySelector('[data-storylet-dirty]')?.classList.add('hidden');
         const source = _storyletSelected.type === 'start' ? _storyletData.starts : _storyletData.pools;
         const freshRow = source.find(row => row.node_id === _storyletSelected.nodeId);
         if (freshRow) _storyletSelected.row = { ...freshRow };
         renderStoryletStarts();
         renderStoryletPools();
-        renderStoryletEditor();
-        const savedParts = ['Storylet'];
-        if (interactableUpdates.length > 0) savedParts.push('선택 전 본문');
-        if (objectActionUpdates.length > 0) savedParts.push('클릭 선택지');
-        if (recipeUpdates.length > 0) savedParts.push('조합 재료');
-        if (itemUpdates.length > 0) savedParts.push('아이템 이름');
-        showToast(`${savedParts.join(' + ')} 저장 완료`);
-        return;
+        // silent(자동) 저장 시에는 폼 DOM을 다시 그리지 않아 입력 포커스를 유지한다.
+        if (!silent) renderStoryletEditor();
+        updateStoryletSaveBar('saved');
+        if (!silent) {
+            const savedParts = ['Storylet'];
+            if (interactableUpdates.length > 0) savedParts.push('선택 전 본문');
+            if (objectActionUpdates.length > 0) savedParts.push('클릭 선택지');
+            if (recipeUpdates.length > 0) savedParts.push('조합 재료');
+            if (itemUpdates.length > 0) savedParts.push('아이템 이름');
+            showToast(`${savedParts.join(' + ')} 저장 완료`);
+        }
     } catch (e) {
         console.error('[ops] saveSelectedStorylet 실패:', e);
+        updateStoryletSaveBar('error');
         showToast(`저장 실패: ${e.message}`, true);
+    } finally {
+        _storyletSaving = false;
     }
+}
+
+// ── 인라인 검증 / 매직넘버 라벨 (조용한 실패 방지) ──────────────────────────
+function storyletFieldValidation(name, value) {
+    const v = String(value ?? '').trim();
+    if (name === 'interact_id') {
+        if (!v || v === '0') return null;
+        return _storyletInteractablesById.has(num(v)) ? null : { level: 'warn', msg: '존재하지 않는 interact_id' };
+    }
+    if (name === 'action_group_key') {
+        if (!v) return null;
+        return _storyletActionsByGroup.has(v) ? null : { level: 'warn', msg: '매칭 object_action 없음' };
+    }
+    if (name === 'title_kr') {
+        return v ? null : { level: 'error', msg: '선택지 제목(필수) 비어있음' };
+    }
+    if (name === 'target_area_type') {
+        if (!v) return null;
+        const label = _areaLabelsFromCsv.get(num(v)) || AREA_LABEL_OVERRIDES[num(v)] || AREA_LABELS[num(v)];
+        return label ? { level: 'ok', msg: label } : { level: 'warn', msg: '미정의 area' };
+    }
+    if (name === 'target_object_type') {
+        if (!v) return null;
+        const label = _storyletObjectTypeLabels.get(num(v));
+        return label ? { level: 'ok', msg: label } : null;
+    }
+    return null;
+}
+
+function validationBadgeHtml(name) {
+    return `<span data-validate="${name}" class="block text-[11px] mt-0.5 min-h-[0.9rem]"></span>`;
+}
+
+function renderStoryletValidationBadges(form) {
+    if (!form) return;
+    for (const span of form.querySelectorAll('[data-validate]')) {
+        const name = span.getAttribute('data-validate');
+        const input = form.querySelector(`[name="${name}"]`);
+        const res = storyletFieldValidation(name, input?.value);
+        if (!res) { span.textContent = ''; span.className = 'block text-[11px] mt-0.5 min-h-[0.9rem]'; continue; }
+        const color = res.level === 'error' ? 'text-red-400' : res.level === 'warn' ? 'text-orange-400' : 'text-green-500';
+        const icon = res.level === 'error' ? '🔴' : res.level === 'warn' ? '🟠' : '🟢';
+        span.textContent = `${icon} ${res.msg}`;
+        span.className = `block text-[11px] mt-0.5 min-h-[0.9rem] ${color}`;
+    }
+}
+
+// area/object 매직넘버 datalist (값=정수, 설명=한글 라벨)
+function storyletAreaDatalistHtml() {
+    const seen = new Map();
+    for (const [k, v] of Object.entries(AREA_LABEL_OVERRIDES)) seen.set(num(k), v);
+    for (const [k, v] of _areaLabelsFromCsv) seen.set(num(k), v);
+    return [...seen.entries()].sort((a, b) => a[0] - b[0])
+        .map(([k, v]) => `<option value="${k}">${escapeHtml(v)}</option>`).join('');
+}
+function storyletObjectDatalistHtml() {
+    return [..._storyletObjectTypeLabels.entries()].sort((a, b) => a[0] - b[0])
+        .map(([k, v]) => `<option value="${k}">${escapeHtml(v)}</option>`).join('');
+}
+
+// 3언어 입력 보조: 선택지 제목/결과 본문의 KR값을 빈 EN/JP 칸에 복사 (번역 아님)
+function fillTriLangSection(form) {
+    if (!form) return;
+    let changed = false;
+    for (const base of ['title', 'success_text']) {
+        const kr = form.querySelector(`[name="${base}_kr"]`);
+        if (!kr || !kr.value.trim()) continue;
+        for (const lang of ['en', 'jp']) {
+            const f = form.querySelector(`[name="${base}_${lang}"]`);
+            if (f && !f.value.trim()) { f.value = kr.value; changed = true; }
+        }
+    }
+    if (changed) { setStoryletDirty(); scheduleStoryletAutosave(); }
+    showToast(changed ? 'KR값을 빈 EN/JP 칸에 복사했습니다.' : '복사할 빈 EN/JP 칸이 없습니다.');
+}
+
+// 접이식 섹션 (<details>는 닫혀도 DOM 유지 → form.elements 순회에 안전)
+function storyletSection(title, open, inner) {
+    return `
+        <details ${open ? 'open' : ''} class="border border-gray-800 rounded bg-gray-950">
+            <summary class="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-gray-300 marker:text-violet-400">${escapeHtml(title)}</summary>
+            <div class="px-3 pb-3 pt-1">${inner}</div>
+        </details>`;
 }
 
 function buildStoryletFormHtml(type, row) {
@@ -865,18 +1008,24 @@ function buildStoryletFormHtml(type, row) {
                     </label>
                 </div>
 
+                <datalist id="dl-storylet-area">${storyletAreaDatalistHtml()}</datalist>
+                <datalist id="dl-storylet-object">${storyletObjectDatalistHtml()}</datalist>
                 <div class="grid grid-cols-2 md:grid-cols-6 gap-2">
                     <label class="text-xs text-gray-500">area
-                        <input name="target_area_type" value="${escapeAttr(row.target_area_type ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
+                        <input name="target_area_type" list="dl-storylet-area" value="${escapeAttr(row.target_area_type ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
+                        ${validationBadgeHtml('target_area_type')}
                     </label>
                     <label class="text-xs text-gray-500">object
-                        <input name="target_object_type" value="${escapeAttr(row.target_object_type ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
+                        <input name="target_object_type" list="dl-storylet-object" value="${escapeAttr(row.target_object_type ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
+                        ${validationBadgeHtml('target_object_type')}
                     </label>
                     <label class="text-xs text-gray-500">interact_id
                         <input name="interact_id" value="${escapeAttr(row.interact_id ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
+                        ${validationBadgeHtml('interact_id')}
                     </label>
                     <label class="text-xs text-gray-500">action_group
                         <input name="action_group_key" value="${escapeAttr(row.action_group_key ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
+                        ${validationBadgeHtml('action_group_key')}
                     </label>
                     <label class="text-xs text-gray-500">reward
                         <input name="reward_kind" value="${escapeAttr(row.reward_kind ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
@@ -885,13 +1034,18 @@ function buildStoryletFormHtml(type, row) {
                         <input name="risk_level" value="${escapeAttr(row.risk_level ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
                     </label>
                 </div>
-                ${buildStoryletObjectContextHtml(row)}
-                ${buildStoryletUnlockItemHtml(type, row)}
+
+                ${storyletSection('선택지 전 본문 (interactable)', true, buildStoryletObjectContextHtml(row))}
 
                 <div class="border-t border-gray-800 pt-3">
-                    <h5 class="text-xs font-semibold text-gray-400 mb-2">클릭 후 Storylet 선택지/결과</h5>
+                    <div class="flex items-center justify-between mb-2">
+                        <h5 class="text-xs font-semibold text-gray-400">클릭 후 Storylet 선택지/결과</h5>
+                        <button type="button" onclick="fillTriLangSection(this.closest('form'))"
+                                class="text-[11px] bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 px-2 py-1 rounded">KR값 복사 ⮐</button>
+                    </div>
                     <label class="storylet-field block text-xs text-gray-500">선택지 제목 KR
                         <input name="title_kr" value="${escapeAttr(row.title_kr ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
+                        ${validationBadgeHtml('title_kr')}
                     </label>
                     <label class="storylet-field block text-xs text-gray-500 mt-2">성공/결과 본문 KR
                         <textarea name="success_text_kr" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100 leading-relaxed">${escapeEditorText(row.success_text_kr)}</textarea>
@@ -914,13 +1068,15 @@ function buildStoryletFormHtml(type, row) {
                         </label>
                     </div>
                 </div>
-                ${buildStoryletActionFlowHtml(type, row)}
 
-                ${buildStoryletTagEditorHtml(type, row)}
+                ${storyletSection('클릭 가능 선택지 (object_action)', false, buildStoryletActionFlowHtml(type, row))}
+                ${storyletSection('진행 조건 태그', false, buildStoryletTagEditorHtml(type, row))}
+                ${storyletSection('해금 아이템 / 조합 레시피', false, buildStoryletUnlockItemHtml(type, row))}
 
                 <div class="flex items-center justify-end gap-2 pt-1">
-                    <button type="button" onclick="saveSelectedStorylet()" class="bg-violet-700 hover:bg-violet-600 text-white text-xs px-3 py-1.5 rounded">
-                        이 ${type === 'start' ? '시작점' : '후보'} 저장
+                    <span class="text-[11px] text-gray-600">Ctrl+S 저장 · 입력 후 자동 저장</span>
+                    <button type="button" onclick="flushStoryletAutosave()" class="bg-violet-700 hover:bg-violet-600 text-white text-xs px-3 py-1.5 rounded">
+                        지금 저장
                     </button>
                 </div>
             </form>
@@ -1295,11 +1451,6 @@ function buildStoryletActionFlowHtml(type, row) {
                             <div class="text-xs text-gray-100">${escapeHtml(action.action_text_kr || `action ${currentActionId}`)}</div>
                             <div class="text-[11px] text-gray-600">object_action.csv · action_id ${escapeHtml(currentActionId)}</div>
                         </div>
-                        <button type="button"
-                                onclick="saveStoryletObjectAction(${escapeAttr(JSON.stringify(String(currentGroupKey)))}, ${escapeAttr(JSON.stringify(String(currentActionId)))})"
-                                class="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-[11px] px-2 py-1 rounded">
-                            선택지 저장
-                        </button>
                     </div>
                     <div class="grid grid-cols-2 md:grid-cols-6 gap-2">
                         <label class="text-[11px] text-gray-500">object
@@ -1558,7 +1709,7 @@ function buildStoryletItemPickerHtml(outputPartId, inputPartIds) {
                 <input data-item-filter oninput="filterStoryletItemList(this)" placeholder="아이템 이름 또는 ID 검색"
                        class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-100 w-full md:w-64" />
             </div>
-            <div data-item-picker class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 overflow-y-auto pr-1" style="max-height: 360px;">
+            <div data-item-picker class="grid grid-cols-1 md:grid-cols-2 gap-2 overflow-y-auto pr-1" style="max-height: 40vh;">
                 ${cards}
             </div>
         </div>
@@ -1697,10 +1848,6 @@ function buildStoryletObjectContextHtml(row) {
                         <span class="text-gray-600 ml-2">#${escapeHtml(item.id)}</span>
                         <span class="text-gray-600 ml-2">${escapeHtml(areaTypeLabel(num(item.area_type)))} · (${escapeHtml(item.cell_x)}, ${escapeHtml(item.cell_y)})</span>
                     </div>
-                    <button type="button" onclick="saveStoryletInteractable('${escapeAttr(item.id)}')"
-                            class="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-[11px] px-2 py-1 rounded">
-                        선택지 전 본문 저장
-                    </button>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
                     <label class="text-[11px] text-gray-500">오브젝트명 KR
@@ -1814,6 +1961,15 @@ function buildStoryletLookupIndexes() {
         const partId = partIdFromItemId(item.id);
         if (itemId > 0) _storyletItemsById.set(itemId, item);
         if (partId > 0) _storyletItemsByPart.set(partId, item);
+    }
+
+    // object_type → 대표 한글 라벨 (매직넘버 가시화용; interactable_info에서 처음 등장한 이름)
+    _storyletObjectTypeLabels = new Map();
+    for (const item of _storyletData?.interactables ?? []) {
+        const obj = num(item.object_type);
+        if (obj > 0 && !_storyletObjectTypeLabels.has(obj) && item.short_name_kr) {
+            _storyletObjectTypeLabels.set(obj, item.short_name_kr);
+        }
     }
 }
 
@@ -2006,3 +2162,20 @@ buildJobCheckboxes();
 loadMatchingConfig();
 loadStorylets();
 startPolling();
+
+// Storylet 에디터: Ctrl/Cmd+S 저장, IME 조합 가드, 언로드 직전 저장
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        if (!_storyletSelected) return;
+        e.preventDefault();
+        flushStoryletAutosave();
+    }
+});
+document.addEventListener('compositionstart', () => { _storyletImeComposing = true; });
+document.addEventListener('compositionend', () => {
+    _storyletImeComposing = false;
+    if (_storyletDirty) scheduleStoryletAutosave();
+});
+window.addEventListener('beforeunload', () => {
+    if (_storyletDirty) flushStoryletAutosave();
+});
