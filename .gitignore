@@ -51,6 +51,7 @@ publish/
 **/.claude/*
 !.claude/agents/
 !.claude/commands/
+!.claude/hooks/
 !.claude/settings.json
 manitto/*
 
