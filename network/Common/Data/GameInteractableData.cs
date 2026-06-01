@@ -20,6 +20,12 @@ namespace network.common.data
         private static readonly Dictionary<int, List<int>> _areaItemPools = new();
 
         /// <summary>
+        ///     action_group_key → 파싱된 액션 목록. 스토릿 단서 액션은 interactable.Actions에 섞지 않고
+        ///     그룹 키로 별도 인덱싱한다(같은 오브젝트가 단계마다 다른 그룹 노출 + action_id 충돌 회피).
+        /// </summary>
+        private static readonly Dictionary<string, List<InteractableActionData>> _actionGroups = new();
+
+        /// <summary>
         ///     #135 — 영역(AreaType) 단위 ItemPool. 자기 풀 외 사물 RNG 채집 시 영역 풀에서 추출.
         /// </summary>
         public static void InitializeAreaItemPool(List<CsvRow> areaItemPoolData)
@@ -66,21 +72,23 @@ namespace network.common.data
                     g => g.OrderBy(row => int.Parse(row["action_id"])).ToList()
                 );
 
-            // 전체 액션 그룹을 action_group_key로 인덱싱 (기본 + 스토릿 전용 그룹)
-            // 스토릿 시작점처럼 오브젝트별 전용 내러티브 선택지가 필요한 경우, object_type 기본 풀 대신
-            // interact_id → action_group_key 오버라이드로 비기본 그룹을 로드한다.
-            var actionsByGroupKey = actionData
-                .GroupBy(row => row.ContainsKey("action_group_key") ? row["action_group_key"]?.Trim() ?? "" : "")
-                .Where(g => !string.IsNullOrEmpty(g.Key))
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.OrderBy(row => int.Parse(row["action_id"])).ToList()
-                );
+            // action_group_key → 파싱된 액션 목록으로 인덱싱. 스토릿 단서 액션은 interactable.Actions에
+            // 섞지 않고 여기로 분리한다(같은 오브젝트가 단계마다 다른 그룹 노출 + action_id 충돌 회피).
+            _actionGroups.Clear();
+            foreach (var group in actionData
+                         .GroupBy(row => row.ContainsKey("action_group_key") ? row["action_group_key"]?.Trim() ?? "" : "")
+                         .Where(g => !string.IsNullOrEmpty(g.Key)))
+            {
+                _actionGroups[group.Key] = group
+                    .OrderBy(row => int.Parse(row["action_id"]))
+                    .Select(row => InteractableActionData.CreateFromData(0, row))
+                    .ToList();
+            }
 
-            // 인터랙터블 정보 생성 — 각 인터랙터블이 자기 action_group_key를 선언하면 그 그룹, 아니면 object_type 공통 풀
+            // 인터랙터블 정보 생성 — object_type 기본 공통 풀에서 액션 복제 (단서 그룹은 _actionGroups로 분리)
             foreach (var row in infoData)
             {
-                var info = InteractableInfoData.CreateFromData(row, actionsByObjectType, actionsByGroupKey);
+                var info = InteractableInfoData.CreateFromData(row, actionsByObjectType);
                 _infos[info.Id] = info;
 
                 if (!_infosByZone.TryGetValue(info.ZoneId, out var list))
@@ -136,6 +144,15 @@ namespace network.common.data
             return list;
         }
 
+        /// <summary>
+        ///     action_group_key에 해당하는 스토릿 단서 액션 목록 반환 (없으면 빈 목록).
+        ///     스토릿 노드가 node.ActionGroupKey로 단서 선택지를 조회할 때 사용.
+        /// </summary>
+        public static List<InteractableActionData> GetActionGroup(string actionGroupKey) =>
+            !string.IsNullOrEmpty(actionGroupKey) && _actionGroups.TryGetValue(actionGroupKey, out var list)
+                ? list
+                : new List<InteractableActionData>();
+
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameInteractableData Validation ===");
@@ -161,31 +178,16 @@ namespace network.common.data
 
         public static InteractableInfoData CreateFromData(
             CsvRow row,
-            Dictionary<int, List<CsvRow>> actionsByObjectType,
-            Dictionary<string, List<CsvRow>> actionsByGroupKey = null)
+            Dictionary<int, List<CsvRow>> actionsByObjectType)
         {
             var id = int.Parse(row["id"]);
             var objectType = row.ContainsKey("object_type") && !string.IsNullOrEmpty(row["object_type"])
                 ? (InteractableObjectType)int.Parse(row["object_type"])
                 : InteractableObjectType.None;
 
-            // 액션 풀 선택: interactable이 자기 action_group_key를 선언하면 그 전용 그룹을, 없으면 object_type 기본 풀을 쓴다.
-            var ownGroupKey = row.ContainsKey("action_group_key") ? row["action_group_key"]?.Trim() ?? "" : "";
-            List<CsvRow> poolRows = null;
-            if (!string.IsNullOrEmpty(ownGroupKey)
-                && actionsByGroupKey != null
-                && actionsByGroupKey.TryGetValue(ownGroupKey, out var customRows))
-            {
-                poolRows = customRows;
-            }
-            else
-            {
-                actionsByObjectType.TryGetValue((int)objectType, out poolRows);
-            }
-
-            // 선택된 풀에서 액션 데이터를 복제
+            // object_type 기본 공통 풀에서 액션 데이터를 복제 (스토릿 단서 그룹은 GameInteractableData._actionGroups로 분리)
             var actions = new List<InteractableActionData>();
-            if (poolRows != null)
+            if (actionsByObjectType.TryGetValue((int)objectType, out var poolRows))
             {
                 foreach (var poolRow in poolRows)
                 {
