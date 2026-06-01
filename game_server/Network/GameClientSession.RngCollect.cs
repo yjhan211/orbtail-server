@@ -54,6 +54,14 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        if (GameMissionGraphData.HasMissionActionTarget(info.ZoneId, (int)info.ObjectType, info.Id))
+        {
+            Logger.LogDebug("RNG START mission action target blocked: PlayerId={PlayerId}, InteractId={InteractId}",
+                PlayerId, msg.InteractId);
+            SendRngCollectAck(msg.InteractId, ErrorCode.INTERACTABLE_NOT_AVAILABLE, 0);
+            return Task.CompletedTask;
+        }
+
         int staminaCost = ApplyDutyStaminaSaverToCost(RngCollectStaminaCost);
 
         // stamina 차감 (즉시) — 정신력 1:2 변환은 ModifyStats가 처리

@@ -144,6 +144,13 @@ namespace network.common.data
                 .ToList();
         }
 
+        public static bool HasMissionActionTarget(int areaType, int objectType, int interactId)
+        {
+            return _nodesById.Values.Any(node =>
+                node.NodeKind != MissionGraphNodeKind.CollectPart &&
+                node.MatchesInteractable(areaType, objectType, interactId));
+        }
+
         public static bool TryFindRecipeByPartRecipe(
             short jobTitle,
             int inputPartA,

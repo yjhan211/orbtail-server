@@ -4,6 +4,7 @@ namespace game_server.services;
 
 internal static class MissionPartSelection
 {
+    private const int TornAttendancePagePartId = 308;
     private const int BlackedOutPaperPartId = 309;
 
     public static MissionPartData? SelectNextCollectablePart(
@@ -23,6 +24,9 @@ internal static class MissionPartSelection
     private static int GetCollectPriority(MissionPartData part)
     {
         // 책상은 여러 시작 Storylet 재료가 겹친다. 출석부 루트의 단서가 먼저 보이도록 우선한다.
-        return part.PartId == BlackedOutPaperPartId ? -100 : 0;
+        if (part.PartId == TornAttendancePagePartId) return -100;
+        if (part.PartId == BlackedOutPaperPartId) return -90;
+
+        return 0;
     }
 }
