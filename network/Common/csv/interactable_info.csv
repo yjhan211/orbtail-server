@@ -19,7 +19,7 @@ id,area_type,object_type,short_name_kr,short_name_en,short_name_jp,description_k
 701000051,20,6,청소 도구함,Cleaning Cabinet,清掃用具庫,빗자루가 누군가가 쓰던 방향으로 기울어져 있습니다...,The broom leans the way someone last held it...,箒が、誰かが使っていた向きに傾いている...,7,84,65
 701000052,40,12,빨간 배낭,Red Backpack,赤いバックパック,지퍼가 살짝 열려 안의 무언가를 가려 둡니다...,"The zipper is half open, hiding something within...",ジッパーが半開きで、中の何かを隠している...,7,152,93
 701000053,40,12,파란 배낭,Blue Backpack,青いバックパック,끈이 의자 등받이에 단단히 묶여 있습니다...,A strap is tightly tied to the chair's back...,紐が、椅子の背もたれにきつく結ばれている...,7,147,89
-701000054,30,2,교탁,Lectern,教卓,"교탁 위로 출석부가 펼쳐져 있습니다.\n낯선 이름들 중, 빨갛게 지워진 부분만이 익숙합니다.","On the teacher’s desk, the attendance book lies open.\nOnly the red-crossed parts feel familiar.",教卓の上に出席簿が開かれている。\n見知らぬ名前の中で、赤く消された部分だけが見覚えがある。,7,166,37
+701000054,30,2,교탁,Lectern,教卓,"교탁 위에 학급 자리 배치도가 펼쳐져 있습니다.\n낯선 이름들 사이로, 한 자리의 이름만 붉게 지워져 있습니다.","On the teacher’s desk, a class seating chart lies open.\nAmong the unfamiliar names, one seat's name is crossed out in red.",教卓の上に学級の座席表が広げられている。\n見知らぬ名前の中で、ある席の名前だけが赤く消されている。,7,166,37
 701000055,30,1,칠판,Blackboard,黒板,지워진 글씨 사이로 누군가의 이름이 비칩니다...,A name shows through the erased writing...,消された文字の間に、誰かの名前が透けて見える...,7,163,39
 701000056,13,12,농구공,Basketball,バスケットボール,가만히 있어야 할 공이 천천히 굴러갑니다...,A ball that should be still keeps slowly rolling...,静止しているはずのボールが、ゆっくり転がっている...,7,44,39
 701000044,22,12,하늘색 배낭,Light Blue Backpack,水色のバックパック,익숙한 모양의 가방이 주인 없이 놓여 있습니다...,A familiar-shaped bag rests without an owner...,見慣れた形の鞄が、持ち主のないまま置かれている...,7,108,63
