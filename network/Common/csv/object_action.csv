@@ -2,7 +2,7 @@ object_type,action_id,state,action_text_kr,action_text_en,action_text_jp,result_
 1,1,0,칠판을 닦는다.,Wipe the blackboard,黒板を拭く,분필 자국 사이에서 무언가를 발견합니다.,"Among the chalk traces, something is found.",チョークの跡の間から、何かを見つけます。,1,9,0,5,0,
 1,2,0,분필을 만져본다.,Touch the chalk,チョークに触れる,누군가의 흔적과 함께 무언가를 발견합니다.,"Along with someone's traces, something appears.",誰かの痕跡とともに、何かを見つけます。,1,10,0,5,0,
 1,3,0,글씨를 가까이 본다.,Look closely at the writing,文字をよく見る,▓▓의 글씨체와 닮은 무언가를 발견합니다.,Something resembling ▓▓'s handwriting is found.,▓▓の筆跡に似た何かを見つけます。,1,11,0,5,0,
-2,1,0,교탁 위를 정리한다.,Tidy the lectern,教卓を整える,가지런한 도구들 사이에서 무언가를 발견합니다.,"Among the neatly arranged tools, something appears.",整えられた道具の間から、何かを見つけます。,0,0,0,5,0,
+2,1,0,교탁 위를 정리한다.,Tidy the lectern,教卓を整える,교탁 위 출석부 사이에서 무언가를 발견합니다.,"Among the attendance books on the lectern, something appears.",教卓の上の出席簿の間から、何かを見つけます。,0,0,0,5,0,
 2,2,0,서랍을 연다.,Open the drawer,引き出しを開ける,서랍 안쪽 어둠 속에서 무언가를 발견합니다.,"In the darkness inside the drawer, something is found.",引き出しの奥の暗がりから、何かを見つけます。,1,2,0,5,0,
 2,3,0,밑을 살펴본다.,Look underneath,下を覗き込む,교탁 하단 틈에 끼워진 무언가를 발견합니다.,"Wedged in the gap beneath the lectern, something appears.",教卓の下の隙間に挟まった何かを見つけます。,1,1,0,5,0,
 3,1,0,책상 위를 살핀다.,Survey the desk,机の上を確かめる,책상 위 필기구 사이에서 무언가를 발견합니다.,"Among the writing tools on the desk, something is found.",机の上の筆記具の間から、何かを見つけます。,0,0,0,5,0,
