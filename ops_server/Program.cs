@@ -1,4 +1,5 @@
 using ops_server.services;
+using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +25,16 @@ var app = builder.Build();
 // 정적 파일 (wwwroot/index.html, app.js)
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+string? itemSpritesRoot = ResolveItemSpritesRoot();
+if (!string.IsNullOrWhiteSpace(itemSpritesRoot))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(itemSpritesRoot),
+        RequestPath = "/item-sprites",
+    });
+}
 
 // ─── API 라우트 ───────────────────────────────────────────────────────────
 
@@ -121,7 +132,25 @@ app.MapPut("/api/storylets/interactable/{id}", (string id, Dictionary<string, st
         : Results.NotFound(new { result.Message });
 });
 
-// ops_server 헬스
+// 아이템 이름 저장
+app.MapPut("/api/storylets/item/{id}", (string id, Dictionary<string, string?> body, StoryletCsvService service) =>
+{
+    var result = service.UpdateItem(id, body);
+    return result.Success
+        ? Results.Ok(new { result.Message, data = service.Load() })
+        : Results.NotFound(new { result.Message });
+});
+
+// 조합 레시피 저장
+app.MapPut("/api/storylets/recipe/{recipeId}",
+    (string recipeId, Dictionary<string, string?> body, StoryletCsvService service) =>
+    {
+        var result = service.UpdateRecipe(recipeId, body);
+        return result.Success
+            ? Results.Ok(new { result.Message, data = service.Load() })
+            : Results.NotFound(new { result.Message });
+    });
+
 app.MapPut("/api/storylets/object-action/{actionGroupKey}/{actionId}",
     (string actionGroupKey, string actionId, Dictionary<string, string?> body, StoryletCsvService service) =>
     {
@@ -131,6 +160,23 @@ app.MapPut("/api/storylets/object-action/{actionGroupKey}/{actionId}",
             : Results.NotFound(new { result.Message });
     });
 
+// ops_server 헬스
 app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
 
 app.Run();
+
+static string? ResolveItemSpritesRoot()
+{
+    foreach (string seed in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+    {
+        string? cursor = Path.GetFullPath(seed);
+        while (!string.IsNullOrEmpty(cursor))
+        {
+            string candidate = Path.Combine(cursor, "client", "Assets", "Resources", "ItemSprites");
+            if (Directory.Exists(candidate)) return candidate;
+            cursor = Directory.GetParent(cursor)?.FullName;
+        }
+    }
+
+    return null;
+}

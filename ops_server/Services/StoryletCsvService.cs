@@ -11,6 +11,7 @@ public sealed class StoryletCsvService
     private const string ObjectActionFile = "object_action.csv";
     private const string GraphNodeFile = "mission_graph_node.csv";
     private const string GraphRecipeFile = "mission_graph_recipe.csv";
+    private const string ItemInfoFile = "item_info.csv";
 
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     private readonly string _csvRoot;
@@ -32,6 +33,7 @@ public sealed class StoryletCsvService
         var objectActions = ReadTable(ObjectActionFile);
         var graphNodes = ReadTable(GraphNodeFile);
         var graphRecipes = ReadTable(GraphRecipeFile);
+        var items = ReadTable(ItemInfoFile);
 
         return new StoryletCsvBundle
         {
@@ -43,6 +45,7 @@ public sealed class StoryletCsvService
             ObjectActions = objectActions.Rows,
             GraphNodes = graphNodes.Rows,
             GraphRecipes = graphRecipes.Rows,
+            Items = items.Rows,
         };
     }
 
@@ -54,6 +57,12 @@ public sealed class StoryletCsvService
 
     public StoryletCsvUpdateResult UpdateInteractable(string id, Dictionary<string, string?> incoming)
         => UpdateRow(InteractableFile, "id", id, incoming);
+
+    public StoryletCsvUpdateResult UpdateItem(string id, Dictionary<string, string?> incoming)
+        => UpdateRow(ItemInfoFile, "id", id, incoming);
+
+    public StoryletCsvUpdateResult UpdateRecipe(string recipeId, Dictionary<string, string?> incoming)
+        => UpdateRow(GraphRecipeFile, "recipe_id", recipeId, incoming);
 
     public StoryletCsvUpdateResult UpdateObjectAction(string actionGroupKey, string actionId,
         Dictionary<string, string?> incoming)
@@ -259,6 +268,7 @@ public sealed class StoryletCsvBundle
     public List<Dictionary<string, string>> ObjectActions { get; init; } = [];
     public List<Dictionary<string, string>> GraphNodes { get; init; } = [];
     public List<Dictionary<string, string>> GraphRecipes { get; init; } = [];
+    public List<Dictionary<string, string>> Items { get; init; } = [];
 }
 
 public sealed record StoryletCsvUpdateResult(bool Success, string Message);

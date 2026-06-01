@@ -619,6 +619,11 @@ let _storyletInteractablesById = new Map();
 let _storyletInteractablesByObject = new Map();
 let _storyletActionsByObject = new Map();
 let _storyletActionsByGroup = new Map();
+let _storyletGraphNodesByPart = new Map();
+let _storyletRecipesById = new Map();
+let _storyletRecipesByOutputPart = new Map();
+let _storyletItemsByPart = new Map();
+let _storyletItemsById = new Map();
 
 async function loadStorylets(forceToast = false) {
     try {
@@ -744,6 +749,11 @@ function markStoryletDirty(event) {
     if (!_storyletSelected) return;
     if (event?.target?.closest?.('[data-interactable-editor]')) return;
     if (event?.target?.closest?.('[data-object-action-editor]')) return;
+    setStoryletDirty();
+}
+
+function setStoryletDirty() {
+    if (!_storyletSelected) return;
     _storyletDirty = true;
     document.querySelector(`[data-storylet-dirty="${_storyletSelected.type}"]`)?.classList.remove('hidden');
 }
@@ -759,10 +769,12 @@ async function saveSelectedStorylet() {
         if (!el.name) continue;
         if (_storyletSelected.type === 'start' && el.name === 'stage_index') updated.start_index = el.value;
         else if (_storyletSelected.type === 'start' && el.name === 'pool_key') updated.start_key = el.value;
-        else updated[el.name] = el.value;
+        else updated[el.name] = toCsvEditorText(el.name, el.value);
     }
     const interactableUpdates = collectInteractableUpdates(form);
     const objectActionUpdates = collectObjectActionUpdates(form);
+    const recipeUpdates = collectRecipeUpdates(form);
+    const itemUpdates = collectItemUpdates(form);
 
     const url = _storyletSelected.type === 'start'
         ? `/api/storylets/start/${encodeURIComponent(_storyletSelected.nodeId)}`
@@ -786,6 +798,14 @@ async function saveSelectedStorylet() {
             const actionPayload = await putStoryletObjectAction(update.groupKey, update.actionId, update.body);
             latestData = actionPayload.data ?? latestData;
         }
+        for (const update of recipeUpdates) {
+            const recipePayload = await putStoryletRecipe(update.id, update.body);
+            latestData = recipePayload.data ?? latestData;
+        }
+        for (const update of itemUpdates) {
+            const itemPayload = await putStoryletItem(update.id, update.body);
+            latestData = itemPayload.data ?? latestData;
+        }
 
         _storyletData = latestData;
         buildStoryletLookupIndexes();
@@ -799,11 +819,10 @@ async function saveSelectedStorylet() {
         const savedParts = ['Storylet'];
         if (interactableUpdates.length > 0) savedParts.push('선택 전 본문');
         if (objectActionUpdates.length > 0) savedParts.push('클릭 선택지');
+        if (recipeUpdates.length > 0) savedParts.push('조합 재료');
+        if (itemUpdates.length > 0) savedParts.push('아이템 이름');
         showToast(`${savedParts.join(' + ')} 저장 완료`);
         return;
-        showToast(interactableUpdates.length > 0
-            ? 'Storylet + 선택지 전 본문 저장 완료'
-            : (payload.message || 'Storylet 저장 완료'));
     } catch (e) {
         console.error('[ops] saveSelectedStorylet 실패:', e);
         showToast(`저장 실패: ${e.message}`, true);
@@ -867,6 +886,7 @@ function buildStoryletFormHtml(type, row) {
                     </label>
                 </div>
                 ${buildStoryletObjectContextHtml(row)}
+                ${buildStoryletUnlockItemHtml(type, row)}
 
                 <div class="border-t border-gray-800 pt-3">
                     <h5 class="text-xs font-semibold text-gray-400 mb-2">클릭 후 Storylet 선택지/결과</h5>
@@ -874,7 +894,7 @@ function buildStoryletFormHtml(type, row) {
                         <input name="title_kr" value="${escapeAttr(row.title_kr ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
                     </label>
                     <label class="storylet-field block text-xs text-gray-500 mt-2">성공/결과 본문 KR
-                        <textarea name="success_text_kr" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100 leading-relaxed">${escapeHtml(row.success_text_kr ?? '')}</textarea>
+                        <textarea name="success_text_kr" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100 leading-relaxed">${escapeEditorText(row.success_text_kr)}</textarea>
                     </label>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
@@ -887,10 +907,10 @@ function buildStoryletFormHtml(type, row) {
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                         <label class="storylet-field text-xs text-gray-500">결과 본문 EN
-                            <textarea name="success_text_en" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100">${escapeHtml(row.success_text_en ?? '')}</textarea>
+                            <textarea name="success_text_en" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100">${escapeEditorText(row.success_text_en)}</textarea>
                         </label>
                         <label class="storylet-field text-xs text-gray-500">결과 본문 JP
-                            <textarea name="success_text_jp" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100">${escapeHtml(row.success_text_jp ?? '')}</textarea>
+                            <textarea name="success_text_jp" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100">${escapeEditorText(row.success_text_jp)}</textarea>
                         </label>
                     </div>
                 </div>
@@ -1076,7 +1096,8 @@ function collectInteractableUpdates(root) {
 function collectInteractableUpdate(container) {
     const body = {};
     for (const el of container.querySelectorAll('[data-interactable-field]')) {
-        body[el.dataset.interactableField] = el.value;
+        const field = el.dataset.interactableField;
+        body[field] = toCsvEditorText(field, el.value);
     }
     return body;
 }
@@ -1132,13 +1153,76 @@ function collectObjectActionUpdates(root) {
 function collectObjectActionUpdate(container) {
     const body = {};
     for (const el of container.querySelectorAll('[data-object-action-field]')) {
-        body[el.dataset.objectActionField] = el.value;
+        const field = el.dataset.objectActionField;
+        body[field] = toCsvEditorText(field, el.value);
     }
     return body;
 }
 
 async function putStoryletObjectAction(actionGroupKey, actionId, body) {
     const res = await fetch(`/api/storylets/object-action/${encodeURIComponent(actionGroupKey)}/${encodeURIComponent(actionId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    const payload = await res.json();
+    if (!res.ok) throw new Error(payload.message || `HTTP ${res.status}`);
+    return payload;
+}
+
+function collectRecipeUpdates(root) {
+    return [...root.querySelectorAll('[data-recipe-editor]')]
+        .map(container => ({
+            id: container.dataset.recipeEditor,
+            body: collectRecipeUpdate(container),
+        }))
+        .filter(update => update.id);
+}
+
+function collectRecipeUpdate(container) {
+    const body = {};
+    for (const el of container.querySelectorAll('[data-recipe-field]')) {
+        const field = el.dataset.recipeField;
+        body[field] = toCsvEditorText(field, el.value);
+    }
+    return body;
+}
+
+async function putStoryletRecipe(recipeId, body) {
+    const res = await fetch(`/api/storylets/recipe/${encodeURIComponent(recipeId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    const payload = await res.json();
+    if (!res.ok) throw new Error(payload.message || `HTTP ${res.status}`);
+    return payload;
+}
+
+function collectItemUpdates(root) {
+    const updates = new Map();
+    for (const container of root.querySelectorAll('[data-item-editor]')) {
+        const id = container.dataset.itemEditor;
+        if (!id) continue;
+        updates.set(id, {
+            id,
+            body: collectItemUpdate(container),
+        });
+    }
+    return [...updates.values()];
+}
+
+function collectItemUpdate(container) {
+    const body = {};
+    for (const el of container.querySelectorAll('[data-item-field]')) {
+        const field = el.dataset.itemField;
+        body[field] = toCsvEditorText(field, el.value);
+    }
+    return body;
+}
+
+async function putStoryletItem(id, body) {
+    const res = await fetch(`/api/storylets/item/${encodeURIComponent(id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -1250,7 +1334,7 @@ function buildStoryletActionFlowHtml(type, row) {
                     <label class="block text-[11px] text-violet-300 mt-2">클릭 결과 본문 KR
                         <textarea data-object-action-field="result_text_kr"
                                   class="mt-1 w-full bg-gray-900 border border-violet-900 rounded px-2 py-1 text-gray-100 leading-relaxed"
-                                  style="min-height: 4.5rem;">${escapeHtml(action.result_text_kr ?? '')}</textarea>
+                                  style="min-height: 4.5rem;">${escapeEditorText(action.result_text_kr)}</textarea>
                     </label>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                         <label class="text-[11px] text-gray-500">선택지 EN
@@ -1264,12 +1348,12 @@ function buildStoryletActionFlowHtml(type, row) {
                         <label class="text-[11px] text-gray-500">결과 EN
                             <textarea data-object-action-field="result_text_en"
                                       class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-100"
-                                      style="min-height: 3.5rem;">${escapeHtml(action.result_text_en ?? '')}</textarea>
+                                      style="min-height: 3.5rem;">${escapeEditorText(action.result_text_en)}</textarea>
                         </label>
                         <label class="text-[11px] text-gray-500">결과 JP
                             <textarea data-object-action-field="result_text_jp"
                                       class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-100"
-                                      style="min-height: 3.5rem;">${escapeHtml(action.result_text_jp ?? '')}</textarea>
+                                      style="min-height: 3.5rem;">${escapeEditorText(action.result_text_jp)}</textarea>
                         </label>
                     </div>
                     <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mt-2">
@@ -1305,6 +1389,298 @@ function buildStoryletActionFlowHtml(type, row) {
             <div class="space-y-2">${actionHtml}</div>
         </div>
     `;
+}
+
+function buildStoryletUnlockItemHtml(type, row) {
+    if (type !== 'start') {
+        return `
+            <div class="bg-gray-950 border border-gray-800 rounded px-3 py-2 text-xs text-gray-500">
+                2~7단계 후보는 아이템 조합이 아니라 태그 조건으로 해금됩니다.
+            </div>
+        `;
+    }
+
+    const requiredPartIds = row.required_part_ids ?? '';
+    const requiredOutputItemId = row.required_output_item_id ?? '';
+    const recipeId = row.recipe_id ?? '';
+    const recipe = storyletRecipeForRow(row);
+    const outputPartId = num(requiredOutputItemId) || parseIdList(requiredPartIds)[0] || 0;
+    const recipeInputIds = parseIdList(recipe?.input_part_ids);
+
+    const recipeEditorHtml = recipe
+        ? `
+            <div data-recipe-editor="${escapeAttr(recipe.recipe_id)}" class="border-t border-gray-800 mt-3 pt-3">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <span class="text-xs font-semibold text-gray-300">조합 레시피</span>
+                    <span class="text-[11px] text-gray-600">mission_graph_recipe.csv #${escapeHtml(recipe.recipe_id)}</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <label class="text-[11px] text-gray-500">recipe_id
+                        <input data-recipe-field="recipe_id" value="${escapeAttr(recipe.recipe_id ?? '')}" readonly
+                               class="mt-1 w-full bg-gray-900 border border-gray-800 rounded px-2 py-1 text-gray-500" />
+                    </label>
+                    <label class="text-[11px] text-gray-500">레시피명 KR
+                        <input data-recipe-field="title_kr" value="${escapeAttr(recipe.title_kr ?? '')}"
+                               class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-100" />
+                    </label>
+                    <label class="text-[11px] text-gray-500">stamina
+                        <input data-recipe-field="stamina_cost" value="${escapeAttr(recipe.stamina_cost ?? '')}"
+                               class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-100" />
+                    </label>
+                </div>
+                <input type="hidden" data-recipe-field="input_part_ids" value="${escapeAttr(recipe.input_part_ids ?? '')}" />
+                <input type="hidden" data-recipe-field="output_part_id" value="${escapeAttr(recipe.output_part_id ?? '')}" />
+                <div class="mt-2">
+                    <div class="text-[11px] text-gray-600 mb-1">현재 조합 재료</div>
+                    <div data-recipe-input-summary class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        ${buildStoryletInputItemEditors(recipeInputIds)}
+                    </div>
+                </div>
+            </div>
+        `
+        : '<div class="border-t border-gray-800 mt-3 pt-3 text-[11px] text-gray-600">연결된 recipe_id를 찾을 수 없습니다.</div>';
+
+    return `
+        <div class="bg-gray-950 border border-gray-800 rounded px-3 py-2 text-xs text-gray-400">
+            <div class="flex items-center justify-between gap-2 mb-2">
+                <span class="font-semibold text-violet-300">선택지 해금 아이템</span>
+                <span data-unlock-output-label class="text-gray-600">${escapeHtml(outputPartId ? partLabel(outputPartId) : '아이템 없음')}</span>
+            </div>
+            <input type="hidden" name="required_part_ids" value="${escapeAttr(requiredPartIds)}" />
+            <input type="hidden" name="required_output_item_id" value="${escapeAttr(requiredOutputItemId)}" />
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div data-unlock-output-summary>
+                    ${buildStoryletSelectedItemEditor(outputPartId, '해금 아이템', '선택된 해금 아이템이 없습니다.', { removable: false })}
+                </div>
+                <label class="text-[11px] text-gray-500">recipe_id
+                    <input name="recipe_id" value="${escapeAttr(recipeId)}"
+                           class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-100" />
+                </label>
+            </div>
+            ${recipeEditorHtml}
+            ${buildStoryletItemPickerHtml(outputPartId, recipeInputIds)}
+        </div>
+    `;
+}
+
+function buildStoryletSelectedItemEditor(partId, label, emptyText, options = {}) {
+    const item = storyletItemByPartId(partId);
+    if (!item) {
+        return `
+            <div class="border border-dashed border-gray-800 rounded px-3 py-3 text-[11px] text-gray-600">
+                ${escapeHtml(emptyText)}
+            </div>
+        `;
+    }
+
+    const removeButton = options.removable
+        ? `<button type="button" onclick="removeStoryletRecipeInput(this, '${escapeAttr(partId)}')"
+                   class="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-[11px] px-2 py-1 rounded">재료 제거</button>`
+        : '';
+
+    return `
+        <div data-item-editor="${escapeAttr(item.id)}" class="border border-gray-800 rounded p-2 bg-gray-900">
+            <div class="flex items-start gap-2">
+                ${buildStoryletItemIconHtml(item, 'w-12 h-12')}
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center justify-between gap-2">
+                        <div>
+                            <div class="text-[11px] text-violet-300">${escapeHtml(label)}</div>
+                            <div class="text-xs text-gray-100 truncate">${escapeHtml(itemLabel(item))}</div>
+                            <div class="text-[10px] text-gray-600">item ${escapeHtml(item.id)} · part ${escapeHtml(partId)}</div>
+                        </div>
+                        ${removeButton}
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-1 mt-2">
+                        <input data-item-field="name_kr" value="${escapeAttr(item.name_kr ?? '')}" placeholder="KR"
+                               class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-100" />
+                        <input data-item-field="name_en" value="${escapeAttr(item.name_en ?? '')}" placeholder="EN"
+                               class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-100" />
+                        <input data-item-field="name_jp" value="${escapeAttr(item.name_jp ?? '')}" placeholder="JP"
+                               class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-100" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function buildStoryletInputItemEditors(partIds) {
+    const uniqueIds = [...new Set(partIds.map(num).filter(id => id > 0))];
+    if (uniqueIds.length === 0) {
+        return '<div class="text-[11px] text-gray-600 border border-dashed border-gray-800 rounded px-3 py-3">선택된 조합 재료가 없습니다.</div>';
+    }
+
+    return uniqueIds
+        .map(partId => buildStoryletSelectedItemEditor(partId, '조합 재료', '재료 없음', { removable: true }))
+        .join('');
+}
+
+function buildStoryletItemPickerHtml(outputPartId, inputPartIds) {
+    const selectedInputs = new Set(inputPartIds.map(num));
+    const items = storyletItemCandidates();
+    const cards = items.map(item => {
+        const partId = partIdFromItemId(item.id);
+        const canUseInRecipe = partId > 0;
+        const isOutput = partId === num(outputPartId);
+        const isInput = selectedInputs.has(partId);
+        return `
+            <div data-storylet-item-card
+                 data-item-id="${escapeAttr(item.id)}"
+                 data-part-id="${escapeAttr(partId)}"
+                 data-item-search="${escapeAttr([item.id, item.name_kr, item.name_en, item.name_jp, item.comment_kr].join(' ').toLowerCase())}"
+                 class="storylet-item-card border ${isOutput || isInput ? 'border-violet-700' : 'border-gray-800'} rounded p-2 bg-gray-900">
+                <div class="flex items-start gap-2">
+                    ${buildStoryletItemIconHtml(item, 'w-10 h-10')}
+                    <div class="min-w-0 flex-1">
+                        <div class="text-xs text-gray-100 truncate">${escapeHtml(itemLabel(item))}</div>
+                        <div class="text-[10px] text-gray-600">item ${escapeHtml(item.id)} · part ${escapeHtml(partId || '-')}</div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-1 mt-2">
+                    <button type="button" data-output-button ${canUseInRecipe ? `onclick="chooseStoryletUnlockItem(this, '${escapeAttr(item.id)}')"` : 'disabled'}
+                            class="${canUseInRecipe ? (isOutput ? 'bg-violet-700 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700') : 'bg-gray-950 text-gray-700 cursor-not-allowed'} text-[11px] px-2 py-1 rounded">
+                        해금
+                    </button>
+                    <button type="button" data-material-button ${canUseInRecipe ? `onclick="toggleStoryletRecipeInput(this, '${escapeAttr(item.id)}')"` : 'disabled'}
+                            class="${canUseInRecipe ? (isInput ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700') : 'bg-gray-950 text-gray-700 cursor-not-allowed'} text-[11px] px-2 py-1 rounded">
+                        ${canUseInRecipe ? (isInput ? '재료 해제' : '재료') : '선택 불가'}
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="border-t border-gray-800 mt-3 pt-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <span class="text-xs font-semibold text-gray-300">전체 아이템 리스트</span>
+                <input data-item-filter oninput="filterStoryletItemList(this)" placeholder="아이템 이름 또는 ID 검색"
+                       class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-100 w-full md:w-64" />
+            </div>
+            <div data-item-picker class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 overflow-y-auto pr-1" style="max-height: 360px;">
+                ${cards}
+            </div>
+        </div>
+    `;
+}
+
+function chooseStoryletUnlockItem(button, itemId) {
+    const root = button.closest('[data-storylet-form]');
+    if (!root) return;
+
+    applyStoryletItemEditorDrafts(root);
+    const partId = partIdFromItemId(itemId);
+    root.querySelector('input[name="required_output_item_id"]').value = partId ? String(partId) : '';
+    root.querySelector('input[name="required_part_ids"]').value = partId ? formatPartIdList([partId]) : '[]';
+
+    const recipeOutput = root.querySelector('[data-recipe-field="output_part_id"]');
+    if (recipeOutput) recipeOutput.value = partId ? String(partId) : '';
+
+    refreshStoryletUnlockItemDisplay(root);
+    setStoryletDirty();
+}
+
+function toggleStoryletRecipeInput(button, itemId) {
+    const root = button.closest('[data-storylet-form]');
+    if (!root) return;
+
+    applyStoryletItemEditorDrafts(root);
+    const partId = partIdFromItemId(itemId);
+    if (!partId) return;
+
+    const input = root.querySelector('[data-recipe-field="input_part_ids"]');
+    if (!input) return;
+
+    const ids = parseIdList(input.value);
+    const nextIds = ids.includes(partId)
+        ? ids.filter(id => id !== partId)
+        : [...ids, partId];
+    input.value = formatPartIdList(nextIds);
+
+    refreshStoryletUnlockItemDisplay(root);
+    setStoryletDirty();
+}
+
+function removeStoryletRecipeInput(button, partId) {
+    const root = button.closest('[data-storylet-form]');
+    if (!root) return;
+
+    applyStoryletItemEditorDrafts(root);
+    const input = root.querySelector('[data-recipe-field="input_part_ids"]');
+    if (!input) return;
+
+    const removeId = num(partId);
+    input.value = formatPartIdList(parseIdList(input.value).filter(id => id !== removeId));
+
+    refreshStoryletUnlockItemDisplay(root);
+    setStoryletDirty();
+}
+
+function refreshStoryletUnlockItemDisplay(root) {
+    const outputPartId = num(root.querySelector('input[name="required_output_item_id"]')?.value);
+    const inputPartIds = parseIdList(root.querySelector('[data-recipe-field="input_part_ids"]')?.value);
+    const outputSummary = root.querySelector('[data-unlock-output-summary]');
+    const inputSummary = root.querySelector('[data-recipe-input-summary]');
+    const outputLabel = root.querySelector('[data-unlock-output-label]');
+
+    if (outputSummary) {
+        outputSummary.innerHTML = buildStoryletSelectedItemEditor(outputPartId, '해금 아이템', '선택된 해금 아이템이 없습니다.', { removable: false });
+    }
+    if (inputSummary) {
+        inputSummary.innerHTML = buildStoryletInputItemEditors(inputPartIds);
+    }
+    if (outputLabel) {
+        outputLabel.textContent = outputPartId ? partLabel(outputPartId) : '아이템 없음';
+    }
+
+    syncStoryletItemPickerState(root);
+}
+
+function syncStoryletItemPickerState(root) {
+    const outputPartId = num(root.querySelector('input[name="required_output_item_id"]')?.value);
+    const inputPartIds = new Set(parseIdList(root.querySelector('[data-recipe-field="input_part_ids"]')?.value));
+
+    for (const card of root.querySelectorAll('[data-storylet-item-card]')) {
+        const partId = num(card.dataset.partId);
+        const canUseInRecipe = partId > 0;
+        const isOutput = partId === outputPartId;
+        const isInput = inputPartIds.has(partId);
+        card.classList.toggle('border-violet-700', isOutput || isInput);
+        card.classList.toggle('border-gray-800', !(isOutput || isInput));
+
+        const outputButton = card.querySelector('[data-output-button]');
+        if (outputButton) {
+            outputButton.className = `${canUseInRecipe ? (isOutput ? 'bg-violet-700 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700') : 'bg-gray-950 text-gray-700 cursor-not-allowed'} text-[11px] px-2 py-1 rounded`;
+        }
+
+        const materialButton = card.querySelector('[data-material-button]');
+        if (materialButton) {
+            materialButton.textContent = canUseInRecipe ? (isInput ? '재료 해제' : '재료') : '선택 불가';
+            materialButton.className = `${canUseInRecipe ? (isInput ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700') : 'bg-gray-950 text-gray-700 cursor-not-allowed'} text-[11px] px-2 py-1 rounded`;
+        }
+    }
+}
+
+function filterStoryletItemList(input) {
+    const query = input.value.trim().toLowerCase();
+    const root = input.closest('[data-storylet-form]');
+    if (!root) return;
+
+    for (const card of root.querySelectorAll('[data-storylet-item-card]')) {
+        const text = card.dataset.itemSearch || '';
+        card.classList.toggle('hidden', query.length > 0 && !text.includes(query));
+    }
+}
+
+function applyStoryletItemEditorDrafts(root) {
+    for (const container of root.querySelectorAll('[data-item-editor]')) {
+        const item = storyletItemById(container.dataset.itemEditor);
+        if (!item) continue;
+        for (const el of container.querySelectorAll('[data-item-field]')) {
+            item[el.dataset.itemField] = toCsvEditorText(el.dataset.itemField, el.value);
+        }
+    }
 }
 
 function buildStoryletObjectContextHtml(row) {
@@ -1343,18 +1719,18 @@ function buildStoryletObjectContextHtml(row) {
                 <label class="block text-[11px] text-violet-300">선택지 클릭 전 본문 KR
                     <textarea data-interactable-field="description_kr"
                               class="mt-1 w-full bg-gray-900 border border-violet-900 rounded px-2 py-1 text-gray-100 leading-relaxed"
-                              style="min-height: 5rem;">${escapeHtml(item.description_kr ?? '')}</textarea>
+                              style="min-height: 5rem;">${escapeEditorText(item.description_kr)}</textarea>
                 </label>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                     <label class="text-[11px] text-gray-500">본문 EN
                         <textarea data-interactable-field="description_en"
                                   class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-100"
-                                  style="min-height: 4rem;">${escapeHtml(item.description_en ?? '')}</textarea>
+                                  style="min-height: 4rem;">${escapeEditorText(item.description_en)}</textarea>
                     </label>
                     <label class="text-[11px] text-gray-500">본문 JP
                         <textarea data-interactable-field="description_jp"
                                   class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-100"
-                                  style="min-height: 4rem;">${escapeHtml(item.description_jp ?? '')}</textarea>
+                                  style="min-height: 4rem;">${escapeEditorText(item.description_jp)}</textarea>
                     </label>
                 </div>
             </div>
@@ -1387,6 +1763,11 @@ function buildStoryletLookupIndexes() {
     _storyletInteractablesByObject = new Map();
     _storyletActionsByObject = new Map();
     _storyletActionsByGroup = new Map();
+    _storyletGraphNodesByPart = new Map();
+    _storyletRecipesById = new Map();
+    _storyletRecipesByOutputPart = new Map();
+    _storyletItemsByPart = new Map();
+    _storyletItemsById = new Map();
     _areaLabelsFromCsv = new Map();
 
     for (const area of _storyletData?.areas ?? []) {
@@ -1415,6 +1796,25 @@ function buildStoryletLookupIndexes() {
         _storyletActionsByObject.get(object).push(action);
         if (groupKey) _storyletActionsByGroup.get(groupKey).push(action);
     }
+
+    for (const node of _storyletData?.graphNodes ?? []) {
+        const partId = num(node.output_part_id);
+        if (partId > 0) _storyletGraphNodesByPart.set(partId, node);
+    }
+
+    for (const recipe of _storyletData?.graphRecipes ?? []) {
+        const recipeId = num(recipe.recipe_id);
+        const outputPartId = num(recipe.output_part_id);
+        if (recipeId > 0) _storyletRecipesById.set(recipeId, recipe);
+        if (outputPartId > 0) _storyletRecipesByOutputPart.set(outputPartId, recipe);
+    }
+
+    for (const item of _storyletData?.items ?? []) {
+        const itemId = num(item.id);
+        const partId = partIdFromItemId(item.id);
+        if (itemId > 0) _storyletItemsById.set(itemId, item);
+        if (partId > 0) _storyletItemsByPart.set(partId, item);
+    }
 }
 
 function storyletMatchingInteractables(row) {
@@ -1433,6 +1833,77 @@ function storyletMatchingInteractables(row) {
 
 function storyletPrimaryInteractable(row) {
     return storyletMatchingInteractables(row)[0] ?? null;
+}
+
+function storyletRecipeForRow(row) {
+    const recipeId = num(row.recipe_id);
+    if (recipeId > 0) {
+        const recipe = _storyletRecipesById.get(recipeId);
+        if (recipe) return recipe;
+    }
+
+    const outputPartId = num(row.required_output_item_id);
+    if (outputPartId > 0) return _storyletRecipesByOutputPart.get(outputPartId) ?? null;
+    return null;
+}
+
+function storyletPartById(partId) {
+    const id = num(partId);
+    return id > 0 ? (_storyletGraphNodesByPart.get(id) ?? null) : null;
+}
+
+function storyletItemByPartId(partId) {
+    const id = num(partId);
+    return id > 0 ? (_storyletItemsByPart.get(id) ?? null) : null;
+}
+
+function storyletItemById(itemId) {
+    const id = num(itemId);
+    return id > 0 ? (_storyletItemsById.get(id) ?? null) : null;
+}
+
+function partLabel(partId) {
+    const id = num(partId);
+    const item = storyletItemByPartId(id);
+    if (item) return item.name_kr || item.name_en || item.name_jp || `Part ${id}`;
+    const part = storyletPartById(id);
+    if (!part) return id > 0 ? `Part ${id}` : '아이템 없음';
+    return part.title_kr || part.title_en || part.title_jp || `Part ${id}`;
+}
+
+function itemLabel(item) {
+    if (!item) return '아이템 없음';
+    return item.name_kr || item.name_en || item.name_jp || `Item ${item.id}`;
+}
+
+function storyletItemCandidates() {
+    return [...(_storyletData?.items ?? [])]
+        .filter(item => num(item.id) > 0)
+        .sort((a, b) => {
+            const aStorylet = isStoryletItem(a) ? 0 : 1;
+            const bStorylet = isStoryletItem(b) ? 0 : 1;
+            return aStorylet - bStorylet || num(a.id) - num(b.id);
+        });
+}
+
+function isStoryletItem(item) {
+    const id = num(item?.id);
+    return id >= 700000000 && id < 901000000;
+}
+
+function buildStoryletItemIconHtml(item, sizeClass) {
+    if (!item?.id) {
+        return `<div class="${sizeClass} shrink-0 rounded bg-gray-950 border border-gray-800"></div>`;
+    }
+
+    return `
+        <div class="${sizeClass} shrink-0 rounded bg-gray-950 border border-gray-800 flex items-center justify-center overflow-hidden">
+            <img src="/item-sprites/${escapeAttr(item.id)}.png"
+                 alt=""
+                 class="max-w-full max-h-full object-contain"
+                 onerror="this.style.display='none'; this.parentElement.textContent='${escapeAttr(item.id)}';" />
+        </div>
+    `;
 }
 
 function storyletPreviewText(row) {
@@ -1465,8 +1936,45 @@ function splitTags(value) {
     return (value || '').split('|').map(tag => tag.trim()).filter(Boolean);
 }
 
+function parseIdList(value) {
+    return String(value ?? '')
+        .match(/\d+/g)
+        ?.map(Number)
+        .filter(id => id > 0) ?? [];
+}
+
+function formatPartIdList(ids) {
+    const uniqueIds = [...new Set(ids.map(num).filter(id => id > 0))];
+    return `[${uniqueIds.join(',')}]`;
+}
+
+function partIdFromItemId(itemId) {
+    const id = num(itemId);
+    if (id >= 700000000 && id < 901000000) return id % 1000000;
+    return 0;
+}
+
 function flattenText(value) {
-    return (value || '').replace(/\s+/g, ' ').trim();
+    return fromCsvEditorText(value).replace(/\s+/g, ' ').trim();
+}
+
+function fromCsvEditorText(value) {
+    return String(value ?? '').replace(/\\n/g, '\n');
+}
+
+function toCsvEditorText(fieldName, value) {
+    const text = String(value ?? '');
+    return isNarrativeTextField(fieldName)
+        ? text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n/g, '\\n')
+        : text;
+}
+
+function escapeEditorText(value) {
+    return escapeHtml(fromCsvEditorText(value));
+}
+
+function isNarrativeTextField(fieldName) {
+    return /^(success_text|description|result_text)_(kr|en|jp)$/.test(fieldName ?? '');
 }
 
 function defaultActionGroupKey(objectType) {
