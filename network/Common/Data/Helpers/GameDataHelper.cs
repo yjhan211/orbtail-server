@@ -226,6 +226,7 @@ namespace network.common.data.helpers
             );
 
             // 상호작용 오브젝트 데이터 초기화
+            // interactable_info의 action_group_key가 비어 있지 않으면 해당 오브젝트는 그 전용 선택지 그룹을 쓴다.
             GameInteractableData.Initialize(
                 loadedData[DataFiles.Interactable.Info],
                 loadedData[DataFiles.Interactable.Action],
