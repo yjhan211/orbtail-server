@@ -50,6 +50,7 @@ publish/
 # Claude Code
 **/.claude/*
 !.claude/agents/
+!.claude/commands/
 !.claude/settings.json
 manitto/*
 
