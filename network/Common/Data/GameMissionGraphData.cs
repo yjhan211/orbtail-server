@@ -212,7 +212,7 @@ namespace network.common.data
                     new List<int>(),
                     start.RequiredOutputItemId,
                     start.RecipeId,
-                    RenderStartClaimKey(start.ClaimKeyTemplate, start),
+                    RenderStartClaimKey(start),
                     start.ClaimPolicy,
                     start.RewardKind,
                     start.RiskLevel,
@@ -249,7 +249,7 @@ namespace network.common.data
                     new List<int>(),
                     0,
                     0,
-                    RenderPoolClaimKey(item.ClaimKeyTemplate, item),
+                    RenderPoolClaimKey(item),
                     item.ClaimPolicy,
                     item.RewardKind,
                     item.RiskLevel,
@@ -268,27 +268,18 @@ namespace network.common.data
             return rows;
         }
 
-        private static string RenderStartClaimKey(
-            string template,
-            MissionStoryletStartData start)
+        // claim key는 case_group/key에서 완전 파생되므로 CSV의 claim_key_template 컬럼 없이 고정 패턴으로 생성한다.
+        private static string RenderStartClaimKey(MissionStoryletStartData start)
         {
-            var result = string.IsNullOrWhiteSpace(template)
-                ? "record/start/{start_key}"
-                : template;
-
-            return result
+            return "record/start/{start_key}"
                 .Replace("{case_group}", start.CaseGroup)
                 .Replace("{start_key}", start.StartKey)
                 .Replace("{stage_index}", "1");
         }
 
-        private static string RenderPoolClaimKey(string template, MissionStoryletPoolData item)
+        private static string RenderPoolClaimKey(MissionStoryletPoolData item)
         {
-            var result = string.IsNullOrWhiteSpace(template)
-                ? "record/pool/{pool_key}"
-                : template;
-
-            return result
+            return "record/pool/{pool_key}"
                 .Replace("{case_group}", item.CaseGroup)
                 .Replace("{pool_key}", item.PoolKey)
                 .Replace("{stage_key}", item.StageKey)
@@ -506,9 +497,7 @@ namespace network.common.data
         public int TargetObjectType { get; private set; }
         public int InteractId { get; private set; }
         public string ActionGroupKey { get; private set; }
-        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
-        public string ClaimKeyTemplate { get; private set; }
-        public MissionGraphRewardKind RewardKind { get; private set; }
+        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }        public MissionGraphRewardKind RewardKind { get; private set; }
         public int RiskLevel { get; private set; }
         public LocalizedText SuccessText { get; private set; }
 
@@ -529,9 +518,7 @@ namespace network.common.data
                 TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
                 InteractId = MissionStoryletCsv.ParseInt(row, "interact_id"),
                 ActionGroupKey = MissionStoryletCsv.ParseString(row, "action_group_key"),
-                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
-                ClaimKeyTemplate = MissionStoryletCsv.ParseString(row, "claim_key_template"),
-                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
+                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
                 RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
                 SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
             };
@@ -553,9 +540,7 @@ namespace network.common.data
         public string ActionGroupKey { get; private set; }
         public MissionGraphStoryletType StoryletType { get; private set; }
         public MissionGraphRouteType RouteType { get; private set; }
-        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
-        public string ClaimKeyTemplate { get; private set; }
-        public MissionGraphRewardKind RewardKind { get; private set; }
+        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }        public MissionGraphRewardKind RewardKind { get; private set; }
         public int RiskLevel { get; private set; }
         public string SuspicionTag { get; private set; }
         public bool IsVictoryStorylet { get; private set; }
@@ -590,9 +575,7 @@ namespace network.common.data
                 ActionGroupKey = MissionStoryletCsv.ParseString(row, "action_group_key"),
                 StoryletType = storyletType,
                 RouteType = MissionStoryletCsv.ParseEnum(row, "route_type", MissionGraphRouteType.None),
-                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
-                ClaimKeyTemplate = MissionStoryletCsv.ParseString(row, "claim_key_template"),
-                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
+                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
                 RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
                 SuspicionTag = MissionStoryletCsv.ParseString(row, "suspicion_tag"),
                 IsVictoryStorylet = isVictoryStorylet,
