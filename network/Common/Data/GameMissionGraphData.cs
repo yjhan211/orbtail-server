@@ -205,6 +205,8 @@ namespace network.common.data
                     MissionGraphRouteType.None,
                     start.TargetAreaType,
                     start.TargetObjectType,
+                    start.InteractId,
+                    start.ActionGroupKey,
                     start.RequiredPartIds,
                     new List<int>(),
                     new List<int>(),
@@ -240,6 +242,8 @@ namespace network.common.data
                     item.RouteType,
                     item.TargetAreaType,
                     item.TargetObjectType,
+                    item.InteractId,
+                    item.ActionGroupKey,
                     new List<int>(),
                     new List<int>(),
                     new List<int>(),
@@ -304,6 +308,8 @@ namespace network.common.data
             MissionGraphRouteType routeType,
             int targetAreaType,
             int targetObjectType,
+            int interactId,
+            string actionGroupKey,
             List<int> requiredPartIds,
             List<int> requiredNodeIds,
             List<int> unlockNodeIds,
@@ -332,7 +338,7 @@ namespace network.common.data
                 ((int)MissionGraphNodeKind.UseFeature).ToString(),
                 targetAreaType.ToString(),
                 targetObjectType.ToString(),
-                "0",
+                interactId.ToString(),
                 ToJsonIntList(requiredPartIds),
                 "[]",
                 ToJsonIntList(requiredNodeIds),
@@ -356,6 +362,7 @@ namespace network.common.data
                 ToCsvToken(routeType),
                 targetAreaType.ToString(),
                 targetObjectType.ToString(),
+                actionGroupKey,
                 requiredOutputItemId.ToString(),
                 recipeId.ToString(),
                 requiredAllTags,
@@ -422,6 +429,7 @@ namespace network.common.data
             "route_type",
             "target_area_type",
             "target_object_type",
+            "action_group_key",
             "required_output_item_id",
             "recipe_id",
             "required_all_tags",
@@ -496,6 +504,8 @@ namespace network.common.data
         public int RecipeId { get; private set; }
         public int TargetAreaType { get; private set; }
         public int TargetObjectType { get; private set; }
+        public int InteractId { get; private set; }
+        public string ActionGroupKey { get; private set; }
         public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
         public string ClaimKeyTemplate { get; private set; }
         public MissionGraphRewardKind RewardKind { get; private set; }
@@ -517,6 +527,8 @@ namespace network.common.data
                 RecipeId = MissionStoryletCsv.ParseInt(row, "recipe_id"),
                 TargetAreaType = MissionStoryletCsv.ParseInt(row, "target_area_type"),
                 TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
+                InteractId = MissionStoryletCsv.ParseInt(row, "interact_id"),
+                ActionGroupKey = MissionStoryletCsv.ParseString(row, "action_group_key"),
                 ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
                 ClaimKeyTemplate = MissionStoryletCsv.ParseString(row, "claim_key_template"),
                 RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
@@ -537,6 +549,8 @@ namespace network.common.data
         public LocalizedText Title { get; private set; }
         public int TargetAreaType { get; private set; }
         public int TargetObjectType { get; private set; }
+        public int InteractId { get; private set; }
+        public string ActionGroupKey { get; private set; }
         public MissionGraphStoryletType StoryletType { get; private set; }
         public MissionGraphRouteType RouteType { get; private set; }
         public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
@@ -572,6 +586,8 @@ namespace network.common.data
                 Title = LocalizedText.FromCsv(row, "title"),
                 TargetAreaType = MissionStoryletCsv.ParseInt(row, "target_area_type"),
                 TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
+                InteractId = MissionStoryletCsv.ParseInt(row, "interact_id"),
+                ActionGroupKey = MissionStoryletCsv.ParseString(row, "action_group_key"),
                 StoryletType = storyletType,
                 RouteType = MissionStoryletCsv.ParseEnum(row, "route_type", MissionGraphRouteType.None),
                 ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
@@ -710,6 +726,7 @@ namespace network.common.data
         public MissionGraphRouteType RouteType { get; private set; }
         public int TargetAreaType { get; private set; }
         public int TargetObjectType { get; private set; }
+        public string ActionGroupKey { get; private set; }
         public int RequiredOutputItemId { get; private set; }
         public int RecipeId { get; private set; }
         public List<string> RequiredAllTags { get; private set; }
@@ -777,6 +794,7 @@ namespace network.common.data
                 RouteType = ParseEnum(row, "route_type", MissionGraphRouteType.None),
                 TargetAreaType = ParseInt(row, "target_area_type"),
                 TargetObjectType = ParseInt(row, "target_object_type"),
+                ActionGroupKey = ParseString(row, "action_group_key"),
                 RequiredOutputItemId = ParseInt(row, "required_output_item_id"),
                 RecipeId = ParseInt(row, "recipe_id"),
                 RequiredAllTags = ParseStringList(row, "required_all_tags"),

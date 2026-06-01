@@ -59,6 +59,7 @@ namespace network.common.data
 
             // 공통 액션 풀 데이터를 object_type별로 그룹화 (GDD §2.4.2 — 통합 풀)
             var actionsByObjectType = actionData
+                .Where(IsDefaultObjectActionGroup)
                 .GroupBy(row => int.Parse(row["object_type"]))
                 .ToDictionary(
                     g => g.Key,
@@ -78,6 +79,17 @@ namespace network.common.data
                 }
                 list.Add(info);
             }
+        }
+
+        private static bool IsDefaultObjectActionGroup(CsvRow row)
+        {
+            int objectType = int.Parse(row["object_type"]);
+            if (!row.ContainsKey("action_group_key") || string.IsNullOrWhiteSpace(row["action_group_key"]))
+                return true;
+
+            return row["action_group_key"].Trim().Equals(
+                $"object_{objectType}",
+                StringComparison.OrdinalIgnoreCase);
         }
 
         public static List<int> GetItemPool(int poolId)
@@ -173,6 +185,7 @@ namespace network.common.data
     public class InteractableActionData
     {
         public int InteractId { get; private set; }
+        public string ActionGroupKey { get; private set; }
         public int ActionId { get; private set; }
         public int State { get; private set; }  // 0=기본, 1+=특수 상태
         public LocalizedText ActionText { get; private set; }
@@ -201,6 +214,7 @@ namespace network.common.data
             return new InteractableActionData
             {
                 InteractId = interactId,
+                ActionGroupKey = row.ContainsKey("action_group_key") ? row["action_group_key"]?.Trim() ?? "" : "",
                 ActionId = actionId,
                 State = row.ContainsKey("state") && !string.IsNullOrEmpty(row["state"]) ? int.Parse(row["state"]) : 0,
                 ActionText = LocalizedText.FromCsv(row, "action_text"),

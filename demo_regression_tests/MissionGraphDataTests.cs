@@ -48,6 +48,10 @@ public class MissionGraphDataTests
         Assert.Equal(
             "record/pool/PAPER_DESK",
             GameMissionGraphData.GetNode(4301).EffectiveStoryletId);
+        Assert.Equal(701000054, GameMissionGraphData.GetNode(4103).InteractId);
+        Assert.Equal("object_2", GameMissionGraphData.GetNode(4103).ActionGroupKey);
+        Assert.True(GameMissionGraphData.GetNode(4103).MatchesInteractable(30, 2, 701000054));
+        Assert.False(GameMissionGraphData.GetNode(4103).MatchesInteractable(30, 2, 701000999));
         Assert.All(storyletNodes, node =>
         {
             Assert.Equal(0, node.JobTitle);
@@ -275,6 +279,8 @@ public class MissionGraphDataTests
                 "route_type",
                 "target_area_type",
                 "target_object_type",
+                "interact_id",
+                "action_group_key",
                 "required_output_item_id",
                 "recipe_id",
                 "clue_tags",
@@ -301,6 +307,8 @@ public class MissionGraphDataTests
                 "risk_high_reward",
                 "41",
                 "9",
+                "701000076",
+                "object_9",
                 "9001",
                 "3001",
                 "record|public_trace",
@@ -325,6 +333,8 @@ public class MissionGraphDataTests
         Assert.Equal(MissionGraphRouteType.RiskHighReward, node.RouteType);
         Assert.Equal(41, node.TargetAreaType);
         Assert.Equal(9, node.TargetObjectType);
+        Assert.Equal(701000076, node.InteractId);
+        Assert.Equal("object_9", node.ActionGroupKey);
         Assert.Equal(9001, node.RequiredOutputItemId);
         Assert.Equal(3001, node.RecipeId);
         Assert.Equal(new[] { "record", "public_trace" }, node.ClueTags);

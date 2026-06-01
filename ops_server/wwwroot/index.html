@@ -38,6 +38,9 @@
         .ev-bot       { background: rgba(168, 85, 247, 0.08); }
         /* 직책 체크박스 */
         .job-cb:checked + label { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
+        .storylet-row.active { background: rgba(37, 99, 235, 0.22); border-color: #3b82f6; }
+        .storylet-field textarea { min-height: 5.5rem; }
+        .storylet-tag { background: #111827; border: 1px solid #374151; color: #cbd5e1; }
     </style>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
@@ -59,6 +62,58 @@
 
 <!-- 본문 -->
 <main class="p-6">
+
+    <!-- ══ 기록 Storylet 내러티브 편집 ═══════════════════════════════════════ -->
+    <section class="bg-gray-900 border border-violet-900 rounded-lg p-5 mb-6">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4">
+            <div>
+                <h2 class="text-base font-bold text-violet-300">기록 Storylet 내러티브 편집</h2>
+                <p class="text-xs text-gray-500 mt-0.5">시작점과 단계별 후보를 한 화면에서 확인하고 CSV에 저장합니다.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="storylet-csv-path" class="hidden lg:inline text-xs text-gray-600"></span>
+                <button onclick="loadStorylets(true)"
+                        class="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs px-3 py-1.5 rounded">
+                    CSV 다시 읽기
+                </button>
+            </div>
+        </div>
+
+        <div id="storylet-loading" class="text-xs text-gray-500 bg-gray-950 border border-gray-800 rounded px-3 py-2 mb-4">
+            기록 Storylet CSV를 불러오는 중...
+        </div>
+
+        <div id="storylet-editor-grid" class="hidden space-y-4">
+            <aside class="bg-gray-950 border border-gray-800 rounded p-3">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-sm font-semibold text-gray-300">1단계 시작점</h3>
+                    <span id="storylet-start-count" class="text-xs text-gray-600"></span>
+                </div>
+                <div id="storylet-start-list" class="space-y-1"></div>
+                <div id="storylet-start-inline-editor" class="mt-3"></div>
+            </aside>
+
+            <aside class="bg-gray-950 border border-gray-800 rounded p-3">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <h3 class="text-sm font-semibold text-gray-300">2~7단계 후보</h3>
+                    <select id="storylet-stage-filter" onchange="renderStoryletPools()"
+                            class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200">
+                        <option value="all">전체 단계</option>
+                        <option value="2">2단계 CLUE</option>
+                        <option value="3">3단계 FOLLOW</option>
+                        <option value="4">4단계 CONTRADICTION</option>
+                        <option value="5">5단계 PROOF</option>
+                        <option value="6">6단계 RESTORE</option>
+                        <option value="7">7단계 VICTORY</option>
+                    </select>
+                </div>
+                <input id="storylet-search" oninput="renderStoryletPools()" placeholder="제목, 태그, 본문 검색"
+                       class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100 mb-2" />
+                <div id="storylet-pool-list" class="space-y-1 overflow-y-auto pr-1" style="max-height: 420px;"></div>
+                <div id="storylet-pool-inline-editor" class="mt-3"></div>
+            </aside>
+        </div>
+    </section>
 
     <!-- ══ 글로벌 매칭 Config 패널 ══════════════════════════════════════════ -->
     <section class="bg-gray-900 border border-blue-900 rounded-lg p-5 mb-6">
@@ -241,6 +296,6 @@
     </section>
 </main>
 
-<script src="app.js"></script>
+<script src="app.js?v=storylet-tag-helper-20260601"></script>
 </body>
 </html>
