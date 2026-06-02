@@ -109,6 +109,11 @@ services:
     environment:
       - GameServerUrl=http://game_server:8080
       - ASPNETCORE_ENVIRONMENT=Development
+      # Storylet CSV 편집툴이 호스트 레포의 CSV를 직접 읽고/쓰도록 마운트 경로 지정
+      - CsvRoot=/app/csv
+    volumes:
+      # network/Common/csv를 컨테이너에 바인드 마운트(rw) → 에디터 저장이 레포 파일에 반영
+      - ./network/Common/csv:/app/csv
     depends_on:
       - game_server
       - user_server
