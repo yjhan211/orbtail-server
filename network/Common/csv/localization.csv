@@ -95,8 +95,8 @@ pool/4702/title,관계표 제출,Submit Relationship Chart,関係表を提出
 pool/4702/success,관계표를 제출합니다. 서로를 묶던 표시가 풀립니다.,You submit the relationship chart. The marks binding everyone together come undone.,関係表を提出します。互いを結んでいた印がほどけます。
 pool/4703/title,닫힌 문 앞에서 순서 말하기,Speak the Order at the Closed Door,閉ざされた扉の前で順番を言う
 pool/4703/success,닫힌 문 앞에서 마지막 순서를 말합니다. 문이 열립니다.,You speak the final order at the closed door. The door opens.,閉ざされた扉の前で最後の順番を言います。扉が開きます。
-start/4101/title,과거와 필담하기,Correspond with the Past,過去と筆談する
-start/4101/success,"필담 페이지 위로 오래된 답장이 떠오릅니다.\n누군가는 <color=#A8D4E0>곁</color>에 있으면서도 이름을 밝히지 못했고, 누군가는 그 곁을 끝내 알아채지 못했습니다.",An old reply rises\non the reply page.,筆談ページの上に、\n古い返事が浮かび上がります。
+start/4101/title,숨겨진 글자 확인하기,Check the hidden letters,隠された文字を確認する
+start/4101/success,"쪽지를 비스듬히 기울이자, 글씨 아래에 깊게 눌린 자국이 드러납니다.\n<color=#A8D4E0>“내 자물쇠를 열려고 하지 마.”</color>","When you tilt the note, deep impressions appear beneath the writing.\n<color=#A8D4E0>“Don’t try to open my lock.”</color>",メモを斜めに傾けると、文字の下に深く押しつけられた跡が浮かび上がる。\n<color=#A8D4E0>「私の錠を開けようとしないで。」</color>
 start/4102/title,마지막 방송 기록,Final Broadcast Log,最後の放送記録
 start/4102/success,"기록 장치가 마지막 방송을 다시 틀기 시작합니다.\n문이 잠겼다는 안내가 반복되다, 어느 순간부터는 <color=#A8D4E0>아무도</color> 대답하지 않습니다.",The recorder begins playing the final broadcast again.,記録装置が最後の放送を再び流し始めます。
 start/4103/title,지워진 자리 확인,Check the Erased Seat,消された席を確認
@@ -177,12 +177,12 @@ action/object_12_2/action,배낭 안을 살펴본다,Look inside the backpack,�
 action/object_12_2/result,배낭 안쪽 깊은 곳에서 무언가를 발견합니다.,"Deep inside the backpack, something is found.",バックパックの奥深くから、何かを見つけます。
 action/object_12_3/action,가방을 뒤집어 흔들어본다,Turn the bag upside down and shake it,鞄を逆さにして振ってみる
 action/object_12_3/result,한쪽 구석에 놓여 있던 무언가가 드러납니다.,"Tucked in the corner, something is revealed.",片隅に置かれていた何かが現れます。
-action/object_writing_1/action,<color=#A8D4E0>곁</color>에 대해 생각하기,,
-action/object_writing_1/result,이름 없는 글씨는 늘 같은 자리에서 쓰였습니다.\n그 자리가 어디였는지 <color=#A8D4E0>2-1 교실</color>에서 확인할 수 있을 것 같습니다.,,
-action/object_writing_2/action,<color=#A8D4E0>기다림</color>에 대해 생각하기,,
-action/object_writing_2/result,"답장은 매번 한 박자씩 늦게 도착했습니다.\n그 사람이 기다리던 곳, <color=#A8D4E0>방송실</color> 근처를 살펴야 할 것 같습니다.",,
-action/object_writing_3/action,<color=#A8D4E0>서명</color>에 대해 생각하기,,
-action/object_writing_3/result,글씨는 갈수록 작아지고 흐려집니다.\n남기지 못한 말이 <color=#A8D4E0>행정실</color> 어딘가에 보관됐을지도 모릅니다.,,
+action/object_writing_1/action,<color=#A8D4E0>지워진 문장</color>에 대해 생각하기,Think about the <color=#A8D4E0>erased sentence</color>,<color=#A8D4E0>消された文章</color>について考える
+action/object_writing_1/result,눌린 글자는 경고처럼 보입니다.\n<color=#A8D4E0>교무실의 상담 기록</color>을 확인해도 좋을 것 같습니다.,The pressed letters look like a warning.\nCheck the <color=#A8D4E0>counseling records in the faculty office</color>.,押しつけられた文字は警告のようだ。\n<color=#A8D4E0>職員室の相談記録</color>を確認しよう。
+action/object_writing_2/action,<color=#A8D4E0>사물함</color>에 대해 생각하기,Think about the <color=#A8D4E0>locker</color>,<color=#A8D4E0>ロッカー</color>について考える
+action/object_writing_2/result,<color=#A8D4E0>3학년 1반의 사물함 중 하나</color>는 잠겨 있었습니다.\n그 사물함 안에 이 경고의 이유가 남아 있을 것 같습니다.,One of the <color=#A8D4E0>lockers in Class 3-1</color> was locked.\nThe reason for this warning may remain inside.,<color=#A8D4E0>3年1組のロッカーのひとつ</color>には鍵がかかっていた。\nこの警告の理由が、その中に残っているかもしれない。
+action/object_writing_3/action,<color=#A8D4E0>그 밖의 것들</color>에 대해 생각하기,Think about <color=#A8D4E0>the other things</color>,<color=#A8D4E0>その他のこと</color>について考える
+action/object_writing_3/result,"문장은 이미 여러 번 열렸던 것을 마지막으로 막아 보려 하고 있습니다.\n<color=#A8D4E0>단서가 가리키는 곳과, 막으려는 것이 같지 않을 수 있습니다.</color>",It seems to be stopping something opened many times before.\n<color=#A8D4E0>The clue and the warning may point to different things.</color>,それは、何度も開かれてきたものを止めようとしているようだ。\n<color=#A8D4E0>手がかりと警告は、別のものを指しているのかもしれない。</color>
 action/object_broadcast_1/action,<color=#A8D4E0>안내</color>에 대해 생각하기,,
 action/object_broadcast_1/result,방송은 모두에게 나가라 말하고 있습니다.\n정작 방송실 문은 안에서 잠겨 있던 것 같습니다.\n<color=#A8D4E0>2-1 교실의 스피커</color>를 확인해야 할 것 같습니다.,,
 action/object_broadcast_2/action,<color=#A8D4E0>목소리</color>에 대해 생각하기,,
@@ -256,7 +256,7 @@ interactable/701000063/desc,안쪽에서 무언가가 부딪치는 소리가 들
 interactable/701000064/name,고사실 책상,Exam Room Desk,考査室の机
 interactable/701000064/desc,책상 모서리에 손톱 자국이 길게 패여 있습니다...,Long fingernail marks line the desk's edge...,机の縁に、爪の跡が長く刻まれている...
 interactable/701000065/name,책장,Bookshelf,本棚
-interactable/701000065/desc,"도서관 책장 깊숙이, 주고받은 쪽지들이 끼워져 있습니다.\n마지막 쪽지에는 끝내 답장이 없습니다.","Deep in the library shelves, notes passed back and forth lie tucked between the books.\nThe last one was never answered.",図書館の書架の奥に、やり取りされた紙片が挟まれている。\n最後の紙片には、ついに返事がない。
+interactable/701000065/desc,"도서관 책장 깊숙이, 누군가가 적어 둔 쪽지들이 끼워져 있습니다.\n필체가 이상하게 낯설지 않습니다.","Deep inside a library shelf, someone's notes are tucked away.\nThe handwriting feels strangely familiar.",図書館の本棚の奥深くに、誰かが書いたメモが挟まっている。\nその筆跡が、妙に見覚えがある。
 interactable/701000066/name,사물함,Locker,ロッカー
 interactable/701000066/desc,자물쇠 위에 누군가의 머리카락이 걸려 있습니다...,A strand of hair clings to the lock...,錠前に、誰かの髪の毛が絡んでいる...
 interactable/701000067/name,검정색 배낭,Black Backpack,黒いリュック
