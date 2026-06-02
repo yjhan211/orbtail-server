@@ -568,14 +568,15 @@ namespace network.common.data
                 NodeKey = MissionStoryletCsv.ParseString(row, "node_key"),
                 StageIndex = MissionStoryletCsv.ParseInt(row, "stage_index"),
                 StageKey = MissionStoryletCsv.ParseString(row, "stage_key"),
-                Title = LocalizedText.FromCsv(row, "title"),
+                Title = MissionStoryletCsv.ResolveText(row, "title", multiline: false),
                 TargetAreaType = MissionStoryletCsv.ParseInt(row, "target_area_type"),
                 TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
                 InteractId = MissionStoryletCsv.ParseInt(row, "interact_id"),
                 ActionGroupKey = MissionStoryletCsv.ParseString(row, "action_group_key"),
                 StoryletType = storyletType,
                 RouteType = MissionStoryletCsv.ParseEnum(row, "route_type", MissionGraphRouteType.None),
-                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
+                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
+                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
                 RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
                 SuspicionTag = MissionStoryletCsv.ParseString(row, "suspicion_tag"),
                 IsVictoryStorylet = isVictoryStorylet,
@@ -584,7 +585,7 @@ namespace network.common.data
                 BlockedTags = MissionStoryletCsv.ParseStringList(row, "blocked_tags"),
                 GrantTags = MissionStoryletCsv.ParseStringList(row, "grant_tags"),
                 FinalTags = MissionStoryletCsv.ParseStringList(row, "final_tags"),
-                SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
+                SuccessText = MissionStoryletCsv.ResolveText(row, "success_text", multiline: true)
             };
         }
     }
@@ -604,6 +605,21 @@ namespace network.common.data
 
         public static string ParseString(CsvRow row, string columnName) =>
             row.ContainsKey(columnName) ? row[columnName] : "";
+
+        /// <summary>
+        ///     텍스트 해석: {prefix}_key 컬럼이 있으면 중앙 localization 테이블에서, 없으면 인라인 {prefix}_kr/en/jp.
+        ///     (로컬라이징 분리 — 미마이그레이션 CSV는 인라인 폴백으로 그대로 동작)
+        /// </summary>
+        public static LocalizedText ResolveText(CsvRow row, string prefix, bool multiline)
+        {
+            var keyCol = $"{prefix}_key";
+            if (HasValue(row, keyCol))
+                return GameLocalizationData.Get(row[keyCol].Trim());
+
+            return multiline
+                ? LocalizedText.FromCsvMultiline(row, prefix)
+                : LocalizedText.FromCsv(row, prefix);
+        }
 
         public static bool ParseBool(CsvRow row, string columnName)
         {

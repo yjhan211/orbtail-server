@@ -1,0 +1,97 @@
+text_key,kr,en,jp
+pool/4201/title,도서관 카트 확인,Check Library Cart,図書館カートを確認
+pool/4201/success,카트 위 책들이 같은 페이지에 펼쳐져 있습니다.,The books on the cart are open to the same page.,カートの上の本が同じページで開かれています。
+pool/4202/title,도서관 휴지통 확인,Check Library Trash Bin,図書館のゴミ箱を確認
+pool/4202/success,휴지통 안에 한쪽 페이지만 모여 있습니다.,Only one side of the pages has gathered in the trash bin.,ゴミ箱の中に片側のページだけが集まっています。
+pool/4203/title,고사실 창틀 확인,Check Exam Room Window Frame,試験室の窓枠を確認
+pool/4203/success,창틀 안쪽에 손가락 자국이 남아 있습니다.,Finger marks remain on the inside of the window frame.,窓枠の内側に指の跡が残っています。
+pool/4211/title,3-1 칠판 확인,Check Class 3-1 Blackboard,3-1の黒板を確認
+pool/4211/success,3-1 칠판에 방송 시간이 남아 있습니다.,The broadcast time remains on the Class 3-1 blackboard.,3-1の黒板に放送時間が残っています。
+pool/4212/title,강당 무대 확인,Check Auditorium Stage,講堂の舞台を確認
+pool/4212/success,무대 조명 아래에 끊긴 안내 문구가 남아 있습니다.,A broken announcement remains under the stage lights.,舞台照明の下に途切れた案内文が残っています。
+pool/4213/title,1-1 배낭 확인,Check Class 1-1 Backpack,1-1のカバンを確認
+pool/4213/success,배낭 안에서 작은 호명 소리가 새어 나옵니다.,A small roll-call sound leaks from inside the backpack.,カバンの中から小さな呼名音が漏れています。
+pool/4221/title,1-1 책상 확인,Check Class 1-1 Desk,1-1の机を確認
+pool/4221/success,1-1 책상에 같은 붉은 표시가 남아 있습니다.,The same red mark remains on a Class 1-1 desk.,1-1の机に同じ赤い印が残っています。
+pool/4222/title,교무 회의록 확인,Check Faculty Meeting Minutes,職員会議録を確認
+pool/4222/success,교무 회의록의 이름 옆에도 같은 표시가 있습니다.,The same mark appears beside the name in the faculty meeting minutes.,職員会議録の名前の横にも同じ印があります。
+pool/4223/title,2-1 청소 도구함 확인,Check Class 2-1 Cleaning Cabinet,2-1の掃除用具入れを確認
+pool/4223/success,청소 도구함 안쪽에 닦아도 남은 검은 자국이 있습니다.,"Inside the cleaning cabinet, a black stain remains despite being wiped.",掃除用具入れの内側に、拭いても残る黒い跡があります。
+pool/4231/title,교무실 보관함 확인,Check Faculty Office Cabinet,職員室の保管庫を確認
+pool/4231/success,보관함 안에 돌려받지 못한 물건이 있습니다.,Inside the cabinet is an item that was never returned.,保管庫の中に返されなかった物があります。
+pool/4232/title,창고 공 바구니 확인,Check Storage Ball Basket,倉庫のボールかごを確認
+pool/4232/success,공 바구니 바닥에 작은 물건이 숨어 있습니다.,A small object is hidden at the bottom of the ball basket.,ボールかごの底に小さな物が隠れています。
+pool/4233/title,행정실 복합기 확인,Check Admin Office Copier,事務室の複合機を確認
+pool/4233/success,대형 복합기 출력함에 빈 압수 목록이 끼어 있습니다.,A blank confiscation list is caught in the large copier output tray.,大型複合機の排紙トレイに空白の押収リストが挟まっています。
+pool/4241/title,강당 무대 확인,Check Auditorium Stage,講堂の舞台を確認
+pool/4241/success,무대 바닥에 조회 순서가 희미하게 남아 있습니다.,The roll call order remains faintly on the stage floor.,舞台の床に朝礼の順番がかすかに残っています。
+pool/4242/title,창고 캐비넷 확인,Check Storage Cabinet,倉庫のキャビネットを確認
+pool/4242/success,철제 캐비넷 안에 접힌 조회 명단이 있습니다.,A folded roll call sheet is inside the metal cabinet.,金属キャビネットの中に折りたたまれた朝礼名簿があります。
+pool/4243/title,강당 공 바구니 확인,Check Auditorium Ball Basket,講堂のボールかごを確認
+pool/4243/success,공 바구니 안쪽에 이름표들이 모여 있습니다.,Nametags are gathered inside the ball basket.,ボールかごの内側に名札が集まっています。
+pool/4301/title,책상 서랍 확인,Check Desk Drawer,机の引き出しを確認
+pool/4301/success,책상 서랍에서 접힌 메모를 꺼냅니다.,You take a folded memo from the desk drawer.,机の引き出しから折りたたまれたメモを取り出します。
+pool/4302/title,교무 회의록 대조,Cross-check Faculty Meeting Minutes,職員会議録と照合
+pool/4302/success,회의록 사이에 같은 문장이 끼어 있습니다.,The same sentence is tucked between the meeting minutes.,会議録の間に同じ文が挟まっています。
+pool/4303/title,고사실 창문 확인,Check Exam Room Window,試験室の窓を確認
+pool/4303/success,창문 틈에 찢긴 종이가 붙어 있습니다.,A torn piece of paper is stuck in the window gap.,窓の隙間に破れた紙が貼り付いています。
+pool/4311/title,방송실 기록 장치 재생,Play Broadcast Room Recorder,放送室の記録装置を再生
+pool/4311/success,기록 장치에서 끊긴 이름이 다시 들립니다.,A broken name is heard again from the recorder.,記録装置から途切れた名前が再び聞こえます。
+pool/4312/title,강당 스피커 확인,Check Auditorium Speaker,講堂のスピーカーを確認
+pool/4312/success,무대 아래 스피커 선이 한 번 묶였다가 풀려 있습니다.,"The speaker cable beneath the stage was tied once, then loosened.",舞台下のスピーカー線が一度結ばれ、その後ほどかれています。
+pool/4313/title,3-1 칠판 시간표 확인,Check Class 3-1 Blackboard Timetable,3-1の黒板時間割を確認
+pool/4313/success,칠판 구석에 방송 시간이 다시 적혀 있습니다.,The broadcast time is written again in the corner of the blackboard.,黒板の隅に放送時間が再び書かれています。
+pool/4321/title,2-1 출석부 재확인,Recheck Class 2-1 Attendance Book,2-1の出席簿を再確認
+pool/4321/success,출석부의 표시가 다른 이름으로 번져 있습니다.,The mark in the attendance book spreads toward another name.,出席簿の印が別の名前へにじんでいます。
+pool/4322/title,청소 도구함 확인,Check Cleaning Cabinet,掃除用具入れを確認
+pool/4322/success,청소 도구함 안쪽에 같은 방향으로 번진 검은 줄이 남아 있습니다.,A black line smeared in the same direction remains inside the cleaning cabinet.,掃除用具入れの内側に、同じ方向へにじんだ黒い線が残っています。
+pool/4323/title,행정실 복합기 출력물 확인,Check Admin Office Copier Printout,事務室の複合機出力物を確認
+pool/4323/success,복합기 출력물에도 같은 붉은 표시가 찍혀 있습니다.,The same red mark is printed on the copier output.,複合機の出力物にも同じ赤い印が印刷されています。
+pool/4331/title,교무실 보관함 재확인,Recheck Faculty Office Cabinet,職員室の保管庫を再確認
+pool/4331/success,보관함 안쪽 라벨이 한 번 뜯겨 있습니다.,A label inside the cabinet has been torn off once.,保管庫の内側のラベルが一度はがされています。
+pool/4332/title,창고 캐비넷 확인,Check Storage Cabinet,倉庫のキャビネットを確認
+pool/4332/success,철제 캐비넷 안에 작은 봉투가 붙어 있습니다.,A small envelope is stuck inside the metal cabinet.,金属キャビネットの中に小さな封筒が貼り付いています。
+pool/4333/title,공 바구니 바닥 확인,Check Bottom of Ball Basket,ボールかごの底を確認
+pool/4333/success,공 바구니 바닥에서 낡은 이름표가 나옵니다.,An old nametag comes out from the bottom of the ball basket.,ボールかごの底から古い名札が出てきます。
+pool/4341/title,무대 조회 순서 확인,Check Stage Roll Call Order,舞台の朝礼順を確認
+pool/4341/success,무대 바닥에 남은 번호가 조회 순서와 맞습니다.,The numbers left on the stage floor match the roll call order.,舞台の床に残った番号が朝礼の順番と一致します。
+pool/4342/title,운동장 보고 지점 확인,Check Field Report Point,運動場の報告地点を確認
+pool/4342/success,보고 지점의 발자국이 한 줄 비어 있습니다.,A row of footprints at the report point is missing one place.,報告地点の足跡が一列分空いています。
+pool/4343/title,3-1 칠판 번호 확인,Check Class 3-1 Blackboard Number,3-1の黒板番号を確認
+pool/4343/success,칠판에 남은 번호가 조회 명단과 맞지 않습니다.,The number left on the blackboard does not match the roll call sheet.,黒板に残った番号が朝礼名簿と一致しません。
+pool/4351/title,청소 도구함 안쪽 확인,Check Inside Cleaning Cabinet,掃除用具入れの内側を確認
+pool/4351/success,도구함 안쪽에 젖은 종이가 붙어 있습니다.,A wet piece of paper is stuck inside the cabinet.,用具入れの内側に濡れた紙が貼り付いています。
+pool/4352/title,3-1 휴지통 확인,Check Class 3-1 Trash Bin,3-1のゴミ箱を確認
+pool/4352/success,휴지통 안에 닦아낸 종이가 모여 있습니다.,Wiped-off pieces of paper are gathered in the trash bin.,ゴミ箱の中に拭き取られた紙が集まっています。
+pool/4353/title,도서관 카트 아래 확인,Check Under Library Cart,図書館カートの下を確認
+pool/4353/success,카트 아래에서 젖은 종이가 밀려 나옵니다.,A wet piece of paper slides out from under the cart.,カートの下から濡れた紙が押し出されます。
+pool/4361/title,고사실 창틀 안쪽 확인,Check Inside Exam Room Window Frame,試験室の窓枠の内側を確認
+pool/4361/success,창틀 안쪽에 같은 손자국이 두 번 찍혀 있습니다.,The same handprint is stamped twice inside the window frame.,窓枠の内側に同じ手形が二度押されています。
+pool/4362/title,1-1 책상 위 먼지 확인,Check Dust on Class 1-1 Desk,1-1の机上のほこりを確認
+pool/4362/success,책상 위 먼지가 손바닥 모양으로 비어 있습니다.,The dust on the desk is missing in the shape of a palm.,机の上のほこりが手のひらの形に抜けています。
+pool/4363/title,행정실 창가 확인,Check Admin Office Window,事務室の窓際を確認
+pool/4363/success,창가 복합기 위에 같은 먼지 자국이 남아 있습니다.,The same dust mark remains on the copier by the window.,窓際の複合機の上に同じほこり跡が残っています。
+pool/4401/title,같은 이름 대조,Compare the Same Name,同じ名前を照合
+pool/4401/success,서로 다른 기록에서 같은 이름이 빠져 있습니다.,The same name is missing from different records.,異なる記録から同じ名前が抜けています。
+pool/4402/title,사라진 시간 대조,Compare the Missing Time,消えた時間を照合
+pool/4402/success,기록 장치의 시간이 한 칸 비어 있습니다.,One block of time is blank in the recorder.,記録装置の時間が一枠空白になっています。
+pool/4403/title,돌아오지 않은 물건 대조,Compare the Unreturned Item,戻らなかった物を照合
+pool/4403/success,압수품 보관함에 돌려준 기록만 없습니다.,Only the returned record is missing from the confiscated-item cabinet.,押収品保管庫には返却記録だけがありません。
+pool/4501/title,남은 순서 확인,Check the Remaining Order,残った順番を確認
+pool/4501/success,운동장 보고 지점에 남은 순서가 맞춰집니다.,The remaining order aligns at the field report point.,運動場の報告地点で残った順番がそろいます。
+pool/4502/title,닫힌 문 확인,Check the Closed Door,閉ざされた扉を確認
+pool/4502/success,창고 캐비넷 안에서 닫힌 문의 번호가 나옵니다.,The number of the closed door comes out from inside the storage cabinet.,倉庫のキャビネットの中から閉ざされた扉の番号が出てきます。
+pool/4503/title,선물의 주인 확인,Check the Gift Owner,贈り物の持ち主を確認
+pool/4503/success,공 바구니 안쪽 이름표가 선물의 주인을 가리킵니다.,The nametag inside the ball basket points to the owner of the gift.,ボールかごの内側の名札が贈り物の持ち主を指しています。
+pool/4601/title,마지막 빈칸 복원,Restore the Final Blank,最後の空欄を復元
+pool/4601/success,책장 사이의 기록에서 마지막 빈칸을 채웁니다.,You fill the final blank in the record between the bookshelves.,本棚の間の記録で最後の空欄を埋めます。
+pool/4602/title,마니또 관계 정리,Sort the Manitto Relationship,マニット関係を整理
+pool/4602/success,출석부의 표시를 따라 관계표를 정리합니다.,You follow the marks in the attendance book and sort the relationship chart.,出席簿の印をたどり、関係表を整理します。
+pool/4603/title,출구 조건 맞추기,Align the Exit Conditions,出口条件を合わせる
+pool/4603/success,방송실 기록 장치가 닫힌 문의 순서를 다시 말합니다.,The broadcast room recorder speaks the order of the closed doors again.,放送室の記録装置が閉ざされた扉の順番をもう一度告げます。
+pool/4701/title,최종 기록 제출,Submit Final Record,最終記録を提出
+pool/4701/success,마지막 기록을 제출합니다. 빠진 이름의 순서가 맞춰집니다.,You submit the final record. The order of the missing names aligns.,最後の記録を提出します。抜けた名前の順番がそろいます。
+pool/4702/title,관계표 제출,Submit Relationship Chart,関係表を提出
+pool/4702/success,관계표를 제출합니다. 서로를 묶던 표시가 풀립니다.,You submit the relationship chart. The marks binding everyone together come undone.,関係表を提出します。互いを結んでいた印がほどけます。
+pool/4703/title,닫힌 문 앞에서 순서 말하기,Speak the Order at the Closed Door,閉ざされた扉の前で順番を言う
+pool/4703/success,닫힌 문 앞에서 마지막 순서를 말합니다. 문이 열립니다.,You speak the final order at the closed door. The door opens.,閉ざされた扉の前で最後の順番を言います。扉が開きます。

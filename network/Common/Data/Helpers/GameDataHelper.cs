@@ -35,7 +35,8 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.AreaConnection, init: GameAreaConnectionData.Initialize, validate: null),
                 (fileName: DataFiles.CorruptionText, init: GameCorruptionTextData.Initialize,
                     validate: GameCorruptionTextData.Validate),
-                (fileName: DataFiles.ErrorMessage, init: GameErrorMessageData.Initialize, validate: null)
+                (fileName: DataFiles.ErrorMessage, init: GameErrorMessageData.Initialize, validate: null),
+                (fileName: DataFiles.LocalizationText, init: GameLocalizationData.Initialize, validate: null)
             };
 
         /// <summary>
@@ -571,6 +572,7 @@ namespace network.common.data.helpers
             public const string AreaConnection = "map_connections.csv";
             public const string CorruptionText = "corruption_text.csv";
             public const string ErrorMessage = "error_message.csv";
+            public const string LocalizationText = "localization.csv";
 
             public const string BuffInfo = "buff_info.csv";
 

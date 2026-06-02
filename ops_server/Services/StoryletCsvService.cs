@@ -12,6 +12,10 @@ public sealed class StoryletCsvService
     private const string GraphNodeFile = "mission_graph_node.csv";
     private const string GraphRecipeFile = "mission_graph_recipe.csv";
     private const string ItemInfoFile = "item_info.csv";
+    private const string LocalizationFile = "localization.csv";
+
+    // 로컬라이징 분리 대상: {prefix}_key 컬럼을 쓰는 텍스트. 에디터에는 투명하게 kr/en/jp로 노출.
+    private static readonly string[] LocalizedPrefixes = { "title", "success_text" };
 
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     private readonly string _csvRoot;
@@ -35,6 +39,11 @@ public sealed class StoryletCsvService
         var graphRecipes = ReadTable(GraphRecipeFile);
         var items = ReadTable(ItemInfoFile);
 
+        // pool의 {prefix}_key를 localization 텍스트로 해석해 에디터에 kr/en/jp로 투명 노출.
+        var localization = ReadLocalizationDict();
+        foreach (var row in pools.Rows)
+            InjectLocalizedText(row, localization);
+
         return new StoryletCsvBundle
         {
             CsvRoot = _csvRoot,
@@ -53,7 +62,11 @@ public sealed class StoryletCsvService
         => UpdateRow(StartFile, "node_id", nodeId, incoming);
 
     public StoryletCsvUpdateResult UpdatePool(string nodeId, Dictionary<string, string?> incoming)
-        => UpdateRow(PoolFile, "node_id", nodeId, incoming);
+    {
+        // 텍스트(kr/en/jp)는 {prefix}_key로 localization.csv에 저장. 나머지 구조 컬럼은 pool.csv에 저장.
+        SaveLocalizedFromIncoming(incoming);
+        return UpdateRow(PoolFile, "node_id", nodeId, incoming);
+    }
 
     public StoryletCsvUpdateResult UpdateInteractable(string id, Dictionary<string, string?> incoming)
         => UpdateRow(InteractableFile, "id", id, incoming);
@@ -160,6 +173,84 @@ public sealed class StoryletCsvService
         }
 
         File.WriteAllText(path, sb.ToString(), Utf8NoBom);
+    }
+
+    // ── 로컬라이징(localization.csv) 투명 처리 ─────────────────────────────────
+
+    private Dictionary<string, (string kr, string en, string jp)> ReadLocalizationDict()
+    {
+        var map = new Dictionary<string, (string, string, string)>(StringComparer.Ordinal);
+        string path = Path.Combine(_csvRoot, LocalizationFile);
+        if (!File.Exists(path)) return map;
+
+        var table = ReadTable(LocalizationFile);
+        foreach (var row in table.Rows)
+        {
+            string key = row.TryGetValue("text_key", out string? k) ? k.Trim() : "";
+            if (key.Length == 0) continue;
+            map[key] = (
+                row.TryGetValue("kr", out string? kr) ? kr : "",
+                row.TryGetValue("en", out string? en) ? en : "",
+                row.TryGetValue("jp", out string? jp) ? jp : "");
+        }
+
+        return map;
+    }
+
+    // pool 행에 {prefix}_key가 있으면 해석된 텍스트를 {prefix}_kr/en/jp로 주입(에디터 표시·편집용).
+    private static void InjectLocalizedText(
+        Dictionary<string, string> row,
+        Dictionary<string, (string kr, string en, string jp)> localization)
+    {
+        foreach (string prefix in LocalizedPrefixes)
+        {
+            if (!row.TryGetValue($"{prefix}_key", out string? key) || string.IsNullOrWhiteSpace(key))
+                continue;
+            if (!localization.TryGetValue(key.Trim(), out var text))
+                continue;
+
+            row[$"{prefix}_kr"] = text.kr;
+            row[$"{prefix}_en"] = text.en;
+            row[$"{prefix}_jp"] = text.jp;
+        }
+    }
+
+    // 저장 시 들어온 {prefix}_kr/en/jp를 {prefix}_key 기준으로 localization.csv에 upsert.
+    private void SaveLocalizedFromIncoming(Dictionary<string, string?> incoming)
+    {
+        var table = ReadTable(LocalizationFile);
+        if (table.Headers.Count == 0) return;
+
+        bool changed = false;
+        foreach (string prefix in LocalizedPrefixes)
+        {
+            if (!incoming.TryGetValue($"{prefix}_key", out string? key) || string.IsNullOrWhiteSpace(key))
+                continue;
+            key = key.Trim();
+
+            string kr = incoming.TryGetValue($"{prefix}_kr", out string? a) ? a ?? "" : "";
+            string en = incoming.TryGetValue($"{prefix}_en", out string? b) ? b ?? "" : "";
+            string jp = incoming.TryGetValue($"{prefix}_jp", out string? c) ? c ?? "" : "";
+
+            int idx = table.Rows.FindIndex(r => r.TryGetValue("text_key", out string? t) && t == key);
+            if (idx >= 0)
+            {
+                table.Rows[idx]["kr"] = kr;
+                table.Rows[idx]["en"] = en;
+                table.Rows[idx]["jp"] = jp;
+            }
+            else
+            {
+                table.Rows.Add(new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["text_key"] = key, ["kr"] = kr, ["en"] = en, ["jp"] = jp
+                });
+            }
+
+            changed = true;
+        }
+
+        if (changed) WriteTable(LocalizationFile, table);
     }
 
     private static string ResolveCsvRoot()
