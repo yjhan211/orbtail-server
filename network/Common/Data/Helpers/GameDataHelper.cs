@@ -23,6 +23,8 @@ namespace network.common.data.helpers
         private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
             _standardDataDefinitions =
             {
+                // 중앙 로컬라이징 테이블 — 다른 데이터가 {prefix}_key로 참조하므로 가장 먼저 초기화
+                (fileName: DataFiles.LocalizationText, init: GameLocalizationData.Initialize, validate: null),
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
                 (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize,
                     validate: GameLoadingTextData.Validate),
@@ -35,8 +37,7 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.AreaConnection, init: GameAreaConnectionData.Initialize, validate: null),
                 (fileName: DataFiles.CorruptionText, init: GameCorruptionTextData.Initialize,
                     validate: GameCorruptionTextData.Validate),
-                (fileName: DataFiles.ErrorMessage, init: GameErrorMessageData.Initialize, validate: null),
-                (fileName: DataFiles.LocalizationText, init: GameLocalizationData.Initialize, validate: null)
+                (fileName: DataFiles.ErrorMessage, init: GameErrorMessageData.Initialize, validate: null)
             };
 
         /// <summary>

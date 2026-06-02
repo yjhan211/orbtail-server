@@ -14,8 +14,12 @@ public sealed class StoryletCsvService
     private const string ItemInfoFile = "item_info.csv";
     private const string LocalizationFile = "localization.csv";
 
-    // 로컬라이징 분리 대상: {prefix}_key 컬럼을 쓰는 텍스트. 에디터에는 투명하게 kr/en/jp로 노출.
-    private static readonly string[] LocalizedPrefixes = { "title", "success_text" };
+    // 로컬라이징 분리 대상 prefix(전 파일 합집합). 행에 {prefix}_key가 없으면 자동 스킵되므로 단일 목록으로 처리.
+    private static readonly string[] LocalizedPrefixes =
+    {
+        "title", "success_text", "short_name", "description",
+        "action_text", "result_text", "alibi_claim", "visible_trace"
+    };
 
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     private readonly string _csvRoot;
@@ -39,10 +43,11 @@ public sealed class StoryletCsvService
         var graphRecipes = ReadTable(GraphRecipeFile);
         var items = ReadTable(ItemInfoFile);
 
-        // pool의 {prefix}_key를 localization 텍스트로 해석해 에디터에 kr/en/jp로 투명 노출.
+        // {prefix}_key를 localization 텍스트로 해석해 에디터에 kr/en/jp로 투명 노출.
         var localization = ReadLocalizationDict();
-        foreach (var row in pools.Rows)
-            InjectLocalizedText(row, localization);
+        foreach (var table in new[] { starts, pools, interactables, objectActions, graphNodes, graphRecipes })
+            foreach (var row in table.Rows)
+                InjectLocalizedText(row, localization);
 
         return new StoryletCsvBundle
         {
@@ -59,7 +64,10 @@ public sealed class StoryletCsvService
     }
 
     public StoryletCsvUpdateResult UpdateStart(string nodeId, Dictionary<string, string?> incoming)
-        => UpdateRow(StartFile, "node_id", nodeId, incoming);
+    {
+        SaveLocalizedFromIncoming(incoming);
+        return UpdateRow(StartFile, "node_id", nodeId, incoming);
+    }
 
     public StoryletCsvUpdateResult UpdatePool(string nodeId, Dictionary<string, string?> incoming)
     {
@@ -69,17 +77,24 @@ public sealed class StoryletCsvService
     }
 
     public StoryletCsvUpdateResult UpdateInteractable(string id, Dictionary<string, string?> incoming)
-        => UpdateRow(InteractableFile, "id", id, incoming);
+    {
+        SaveLocalizedFromIncoming(incoming);
+        return UpdateRow(InteractableFile, "id", id, incoming);
+    }
 
     public StoryletCsvUpdateResult UpdateItem(string id, Dictionary<string, string?> incoming)
         => UpdateRow(ItemInfoFile, "id", id, incoming);
 
     public StoryletCsvUpdateResult UpdateRecipe(string recipeId, Dictionary<string, string?> incoming)
-        => UpdateRow(GraphRecipeFile, "recipe_id", recipeId, incoming);
+    {
+        SaveLocalizedFromIncoming(incoming);
+        return UpdateRow(GraphRecipeFile, "recipe_id", recipeId, incoming);
+    }
 
     public StoryletCsvUpdateResult UpdateObjectAction(string actionGroupKey, string actionId,
         Dictionary<string, string?> incoming)
     {
+        SaveLocalizedFromIncoming(incoming);
         var table = ReadTable(ObjectActionFile);
         int rowIndex = table.Rows.FindIndex(row =>
         {

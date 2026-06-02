@@ -95,3 +95,238 @@ pool/4702/title,관계표 제출,Submit Relationship Chart,関係表を提出
 pool/4702/success,관계표를 제출합니다. 서로를 묶던 표시가 풀립니다.,You submit the relationship chart. The marks binding everyone together come undone.,関係表を提出します。互いを結んでいた印がほどけます。
 pool/4703/title,닫힌 문 앞에서 순서 말하기,Speak the Order at the Closed Door,閉ざされた扉の前で順番を言う
 pool/4703/success,닫힌 문 앞에서 마지막 순서를 말합니다. 문이 열립니다.,You speak the final order at the closed door. The door opens.,閉ざされた扉の前で最後の順番を言います。扉が開きます。
+start/4101/title,과거와 필담하기,Correspond with the Past,過去と筆談する
+start/4101/success,"필담 페이지 위로 오래된 답장이 떠오릅니다.\n누군가는 <color=#A8D4E0>곁</color>에 있으면서도 이름을 밝히지 못했고, 누군가는 그 곁을 끝내 알아채지 못했습니다.",An old reply rises\non the reply page.,筆談ページの上に、\n古い返事が浮かび上がります。
+start/4102/title,마지막 방송 기록,Final Broadcast Log,最後の放送記録
+start/4102/success,"기록 장치가 마지막 방송을 다시 틀기 시작합니다.\n문이 잠겼다는 안내가 반복되다, 어느 순간부터는 <color=#A8D4E0>아무도</color> 대답하지 않습니다.",The recorder begins playing the final broadcast again.,記録装置が最後の放送を再び流し始めます。
+start/4103/title,지워진 자리 확인,Check the Erased Seat,消された席を確認
+start/4103/success,맞춰본 명단을 교탁의 자리 배치도에 대어 봅니다.\n지워진 자리는 <color=#A8D4E0>14번</color>입니다. 그러나 <color=#A8D4E0>이름</color>은 알 수 없습니다.,The matched roster pins the red-erased seat to <color=#A8D4E0>No. 14</color>.\nThe <color=#A8D4E0>name</color> remains unknown.,照合した名簿を教卓の座席表に合わせる。\n赤く消された席は確かに<color=#A8D4E0>14番</color>だ。しかし<color=#A8D4E0>名前</color>は分からない。
+start/4104/title,압수품 보관 기록,Confiscated Storage Log,押収品保管記録
+start/4104/success,"압수품 보관함 안에서 낡은 봉투가 나옵니다.\n거둬간 목록은 길지만, <color=#A8D4E0>돌려준 흔적</color>은 어디에도 없습니다.",An old envelope comes out of the confiscated-item cabinet.,押収品保管庫の中から、古い封筒が出てきます。
+start/4105/title,조회 명단의 빈칸,Blank in the Roll Call Sheet,朝礼名簿の空欄
+start/4105/success,조회 명단의 빈칸에 희미한 선이 나타납니다.,A faint line appears in the blank on the roll call sheet.,朝礼名簿の空欄に、かすかな線が現れます。
+action/object_1_1/action,칠판을 닦는다.,Wipe the blackboard,黒板を拭く
+action/object_1_1/result,분필 자국 사이에서 무언가를 발견합니다.,"Among the chalk traces, something is found.",チョークの跡の間から、何かを見つけます。
+action/object_1_2/action,분필을 만져본다.,Touch the chalk,チョークに触れる
+action/object_1_2/result,누군가의 흔적과 함께 무언가를 발견합니다.,"Along with someone's traces, something appears.",誰かの痕跡とともに、何かを見つけます。
+action/object_1_3/action,글씨를 가까이 본다.,Look closely at the writing,文字をよく見る
+action/object_1_3/result,▓▓의 글씨체와 닮은 무언가를 발견합니다.,Something resembling ▓▓'s handwriting is found.,▓▓の筆跡に似た何かを見つけます。
+action/object_2_1/action,<color=#A8D4E0>번호</color>에 대해 생각하기,Think about <color=#A8D4E0>the number</color>,<color=#A8D4E0>番号</color>について考える
+action/object_2_1/result,<color=#A8D4E0>14번</color>은 교실 안의 한 자리를 가리킵니다.\n<color=#A8D4E0>2-1 교실의 사물함</color>에 무언가 남아 있을 것 같습니다.,<color=#A8D4E0>No. 14</color> points to a seat in the classroom.\nSomething may be left in the <color=#A8D4E0>lockers of Class 2-1</color>.,<color=#A8D4E0>14番</color>は、教室内のある席を指している。\n<color=#A8D4E0>2年1組のロッカー</color>に、何か残っていそうだ。
+action/object_2_2/action,<color=#A8D4E0>이름</color>에 대해 생각하기,Think about <color=#A8D4E0>the name</color>,<color=#A8D4E0>名前</color>について考える
+action/object_2_2/result,<color=#A8D4E0>14번</color>이 어떤 이름으로 불렸는지 확인해야 합니다.\n<color=#A8D4E0>방송실의 기록 장치</color>에 무언가 남아있을 것 같습니다.,You need to find out what name <color=#A8D4E0>No. 14</color> was called by.\nSomething may be left in the <color=#A8D4E0>broadcast room's recorder</color>.,<color=#A8D4E0>14番</color>がどんな名前で呼ばれていたのか、確かめる必要がある。\n<color=#A8D4E0>放送室の記録装置</color>に、何か残っていそうだ。
+action/object_2_3/action,<color=#A8D4E0>그 밖의 것들</color>에 대해 생각하기,Think about <color=#A8D4E0>the other things</color>,<color=#A8D4E0>その他のこと</color>について考える
+action/object_2_3/result,<color=#A8D4E0>14번</color>은 누군가에 의해 지워졌습니다.\n어쩌면 <color=#A8D4E0>지운 이</color>를 따라가는 편이 더 현명할 수 있습니다.,<color=#A8D4E0>No. 14</color> was erased by someone.\nPerhaps it's wiser to follow <color=#A8D4E0>whoever erased it</color>.,<color=#A8D4E0>14番</color>は誰かによって消された。\nもしかすると、<color=#A8D4E0>14番を消した者</color>を追うほうが賢明かもしれない。
+action/object_3_1/action,책상 위를 살핀다.,Survey the desk,机の上を確かめる
+action/object_3_1/result,책상 위 필기구 사이에서 무언가를 발견합니다.,"Among the writing tools on the desk, something is found.",机の上の筆記具の間から、何かを見つけます。
+action/object_3_2/action,서랍을 뒤진다.,Search the drawer,引き出しを探る
+action/object_3_2/result,서랍 안쪽을 더듬자 무언가를 발견합니다.,"Reaching into the drawer, something is found.",引き出しの奥を探ると、何かを見つけます。
+action/object_3_3/action,책상 안쪽을 더듬는다.,Feel inside the desk,机の中を探る
+action/object_3_3/result,책상 틈에 접혀 있던 무언가를 발견합니다.,"Folded in the gap of the desk, something appears.",机の隙間に折り畳まれた何かを見つけます。
+action/object_4_1/action,서류를 살핀다.,Examine the documents,書類を確かめる
+action/object_4_1/result,정돈된 서류 더미 안쪽에서 무언가를 발견합니다.,"Within the stacked papers, something is found.",整えられた書類の山の中から、何かを見つけます。
+action/object_4_2/action,서랍을 연다.,Open the drawer,引き出しを開ける
+action/object_4_2/result,서랍 가장 깊은 곳에서 무언가를 발견합니다.,"In the deepest part of the drawer, something is found.",引き出しの一番奥から、何かを見つけます。
+action/object_4_3/action,의자 밑을 살핀다.,Check under the chair,椅子の下を確かめる
+action/object_4_3/result,의자와 바닥 사이에 끼워진 무언가를 발견합니다.,"Wedged between the chair and the floor, something appears.",椅子と床の間に挟まった何かを見つけます。
+action/object_5_1/action,서랍을 두드려본다.,Knock on the drawer,引き出しを叩いてみる
+action/object_5_1/result,책상 서랍 안쪽 어딘가에서 무언가를 발견합니다.,"Somewhere inside the desk drawer, you find something.",机の引き出しのどこかで、何かを見つけます。
+action/object_5_2/action,서랍을 연다.,Open the drawer,引き出しを開ける
+action/object_5_2/result,책상 서랍 안쪽 깊은 곳에서 무언가를 발견합니다.,"Deep inside the desk drawer, you find something.",机の引き出しの奥深くから、何かを見つけます。
+action/object_5_3/action,서랍 깊숙이 손을 넣는다.,Reach deep into the drawer,引き出しの奥深くに手を入れる
+action/object_5_3/result,책상 서랍 안쪽에 붙어 있던 무언가를 발견합니다.,"Stuck inside the desk drawer, you find something.",机の引き出しの内側に貼り付いていた何かを見つけます。
+action/object_6_1/action,문을 살펴본다.,Examine the door,扉を確かめる
+action/object_6_1/result,빈 자리에 끼워진 무언가를 발견합니다.,You find something tucked into the empty slot.,空いた場所に挟まっていた何かを見つけます。
+action/object_6_2/action,문을 연다.,Open the door,扉を開ける
+action/object_6_2/result,철제 캐비닛 깊은 곳에서 무언가를 발견합니다.,"Deep inside the metal cabinet, something is found.",鉄製キャビネットの奥から、何かを見つけます。
+action/object_6_3/action,안의 물건을 뒤진다.,Search the contents,中の物を探る
+action/object_6_3/result,누군가의 흔적과 함께 무언가를 발견합니다.,"Along with someone's traces, something appears.",誰かの痕跡とともに、何かを見つけます。
+action/object_7_1/action,책 제목을 훑어본다.,Skim the book titles,本のタイトルを眺める
+action/object_7_1/result,흩어진 물건들 사이에서 무언가를 발견합니다.,"Among the scattered belongings, you find something.",散らばった物の中から、何かを見つけます。
+action/object_7_2/action,책을 한 권 꺼낸다.,Take out a book,本を一冊取り出す
+action/object_7_2/result,책 사이에 끼어 있던 무언가가 떨어집니다.,"Slipped between the books, something falls out.",本の間に挟まれていた何かが落ちます。
+action/object_7_3/action,책 뒤쪽을 더듬는다.,Feel behind the books,本の裏側を探る
+action/object_7_3/result,책장 뒷면에 붙어 있던 무언가를 발견합니다.,"Stuck to the back of the bookshelf, something appears.",本棚の裏に貼られた何かを見つけます。
+action/object_8_1/action,화면을 본다.,Look at the screen,画面を見る
+action/object_8_1/result,꺼진 화면 가장자리에서 무언가를 발견합니다.,"At the edge of the dark screen, something is found.",消えた画面の縁から、何かを見つけます。
+action/object_8_2/action,키보드를 눌러본다.,Press the keyboard,キーボードを押してみる
+action/object_8_2/result,키 사이 틈에서 무언가가 손에 잡힙니다.,"In the gap between keys, something comes into hand.",キーの隙間から、何かが手に触れます。
+action/object_8_3/action,본체 뒤를 살핀다.,Check behind the unit,本体の裏を確かめる
+action/object_8_3/result,케이블 사이에 붙어 있던 무언가를 발견합니다.,"Stuck among the cables, something appears.",ケーブルの間に貼られた何かを見つけます。
+action/object_9_1/action,출력 트레이를 살핀다.,Check the output tray,出力トレイを確かめる
+action/object_9_1/result,쌓인 백지 사이에서 무언가를 발견합니다.,"Among the stacked blank pages, something is found.",積まれた白紙の間から、何かを見つけます。
+action/object_9_2/action,종이함을 뒤진다.,Search the paper tray,用紙トレイを探る
+action/object_9_2/result,용지함 가장 깊은 곳에서 무언가를 발견합니다.,"In the deepest part of the paper tray, something is found.",用紙トレイの一番奥から、何かを見つけます。
+action/object_9_3/action,토너 투입구를 본다.,Check the toner slot,トナースロットを確かめる
+action/object_9_3/result,카트리지 슬롯 안쪽에서 무언가를 발견합니다.,"Inside the cartridge slot, something is found.",カートリッジスロットの内側から、何かを見つけます。
+action/object_10_1/action,표면을 만져본다.,Touch the surface,表面に触れてみる
+action/object_10_1/result,차가운 표면 자국 사이에서 무언가를 발견합니다.,"Among traces on the cold surface, something is found.",冷たい表面の痕跡の間から、何かを見つけます。
+action/object_10_2/action,흔들어본다.,Shake it,揺らしてみる
+action/object_10_2/result,진동에 위태롭게 걸려 있던 무언가가 떨어집니다.,A precariously balanced object falls from the vibration.,振動でかろうじて引っかかっていた何かが落ちます。
+action/object_10_3/action,발로 차본다.,Kick it,蹴ってみる
+action/object_10_3/result,충격으로 틈새에 끼어 있던 무언가가 빠져나옵니다.,"Loosened by the impact, something wedged in slips out.",衝撃で隙間に挟まっていた何かが抜け出します。
+action/object_11_1/action,무대 위를 걷는다.,Walk on the stage,舞台の上を歩く
+action/object_11_1/result,무대 위 어둠 속에서 무언가를 발견합니다.,"In the darkness on the stage, something is found.",舞台の上の暗がりから、何かを見つけます。
+action/object_11_2/action,무대 뒤로 돌아간다.,Go behind the stage,舞台の裏へ回る
+action/object_11_2/result,백스테이지에 두고 간 무언가를 발견합니다.,"Left in the backstage, something is found.",舞台裏に置き残された何かを見つけます。
+action/object_11_3/action,무대 밑을 살핀다.,Check beneath the stage,舞台の下を確かめる
+action/object_11_3/result,무대 밑 필담 흔적과 함께 무언가를 발견합니다.,"Beneath the stage, beside written exchanges, something appears.",舞台の下、筆談の痕跡とともに何かを見つけます。
+action/object_12_1/action,앞주머니를 살펴본다,Check the front pocket,前ポケットを覗く
+action/object_12_1/result,주머니 안쪽 깊은 곳에서 무언가를 발견합니다.,"Deep inside the inner pocket, something is found.",ポケットの奥深くから、何かを見つけます。
+action/object_12_2/action,배낭 안을 살펴본다,Look inside the backpack,バックパックの中を覗く
+action/object_12_2/result,배낭 안쪽 깊은 곳에서 무언가를 발견합니다.,"Deep inside the backpack, something is found.",バックパックの奥深くから、何かを見つけます。
+action/object_12_3/action,가방을 뒤집어 흔들어본다,Turn the bag upside down and shake it,鞄を逆さにして振ってみる
+action/object_12_3/result,한쪽 구석에 놓여 있던 무언가가 드러납니다.,"Tucked in the corner, something is revealed.",片隅に置かれていた何かが現れます。
+action/object_writing_1/action,<color=#A8D4E0>곁</color>에 대해 생각하기,,
+action/object_writing_1/result,이름 없는 글씨는 늘 같은 자리에서 쓰였습니다.\n그 자리가 어디였는지 <color=#A8D4E0>2-1 교실</color>에서 확인할 수 있을 것 같습니다.,,
+action/object_writing_2/action,<color=#A8D4E0>기다림</color>에 대해 생각하기,,
+action/object_writing_2/result,"답장은 매번 한 박자씩 늦게 도착했습니다.\n그 사람이 기다리던 곳, <color=#A8D4E0>방송실</color> 근처를 살펴야 할 것 같습니다.",,
+action/object_writing_3/action,<color=#A8D4E0>서명</color>에 대해 생각하기,,
+action/object_writing_3/result,글씨는 갈수록 작아지고 흐려집니다.\n남기지 못한 말이 <color=#A8D4E0>행정실</color> 어딘가에 보관됐을지도 모릅니다.,,
+action/object_broadcast_1/action,<color=#A8D4E0>안내</color>에 대해 생각하기,,
+action/object_broadcast_1/result,방송은 모두에게 나가라 말하고 있습니다.\n정작 방송실 문은 안에서 잠겨 있던 것 같습니다.\n<color=#A8D4E0>2-1 교실의 스피커</color>를 확인해야 할 것 같습니다.,,
+action/object_broadcast_2/action,<color=#A8D4E0>목소리</color>에 대해 생각하기,,
+action/object_broadcast_2/result,안내가 끝난 뒤에도 누군가 계속 방송을 틀었습니다.\n그 사람은 <color=#A8D4E0>강당</color> 어딘가에 남아 있었을 것 같습니다.,,
+action/object_broadcast_3/action,<color=#A8D4E0>바깥</color>에 대해 생각하기,,
+action/object_broadcast_3/result,방송은 끝내 바깥에 닿지 못했습니다.\n<color=#A8D4E0>운동장</color>은 이미 비어 있었던 것 같습니다.,,
+action/object_confiscated_1/action,<color=#A8D4E0>규칙</color>에 대해 생각하기,,
+action/object_confiscated_1/result,무엇이 금지였는지 목록이 남아 있습니다.\n<color=#A8D4E0>2-1 교실 게시판</color>과 대조해야 할 것 같습니다.,,
+action/object_confiscated_2/action,<color=#A8D4E0>거둔 손</color>에 대해 생각하기,,
+action/object_confiscated_2/result,거둔 사람의 서명만 또렷합니다.\n그 손은 늘 같은 시간에 <color=#A8D4E0>교무실</color>을 돌았던 것 같습니다.,,
+action/object_confiscated_3/action,<color=#A8D4E0>주인</color>에 대해 생각하기,,
+action/object_confiscated_3/result,끝내 주인에게 가지 못한 물건이 있습니다.\n그 주인은 <color=#A8D4E0>운동장 명단</color>에서도 빠져 있을 것 같습니다.,,
+interactable/701000001/name,무대,Stage,舞台
+interactable/701000001/desc,객석의 한 자리에 조명이 멈춰 있습니다...,A spotlight rests on a single audience seat...,観客席の一席に、照明が止まったままだ...
+interactable/701000002/name,공 바구니,Ball Basket,ボールかご
+interactable/701000002/desc,비어 있어야 할 바구니에 손길이 닿은 흔적입니다...,Traces of a hand on what should be empty...,空のはずの籠に、誰かの手の跡...
+interactable/701000003/name,농구 골대,Basketball Hoop,バスケットゴール
+interactable/701000003/desc,그림자가 누군가 서 있던 자리에서 굳어 있습니다...,A shadow stays where someone once stood...,誰かが立っていた場所で、影が止まっている...
+interactable/701000004/name,철봉,Pull-up Bar,鉄棒
+interactable/701000004/desc,손바닥 자국이 미지근하게 남아 있습니다...,"A handprint lingers, faintly warm...",手のひらの跡が、ほのかに温かい...
+interactable/701000005/name,철봉,Pull-up Bar,鉄棒
+interactable/701000005/desc,누가 매달려 있었던 듯 미세하게 흔들립니다...,"It sways, as if someone just hung from it...",誰かがぶら下がっていたかのように、微かに揺れている...
+interactable/701000006/name,제어 장치,Control Unit,制御装置
+interactable/701000006/desc,꺼져 있는 전원에서 작은 신호가 깜빡입니다...,A faint signal blinks though the power is off...,電源は切れているのに、小さな信号が点滅している...
+interactable/701000007/name,송출 장치,Transmitter,送出装置
+interactable/701000007/desc,빈 채널에서 누군가의 숨소리가 들립니다...,A breath drifts from an empty channel...,空のチャンネルから、誰かの息づかいが聞こえる...
+interactable/701000010/name,압수품 보관함,Confiscated Items Cabinet,押収品保管庫
+interactable/701000010/desc,"잠금쇠가 풀려 있고, 안쪽이 한 자리만 비어 있습니다...","The lock is open, with one slot suspiciously empty...",鍵は開いていて、中の一か所だけが空いている...
+interactable/701000011/name,교무 회의록,Faculty Meeting Minutes,教務会議録
+interactable/701000011/desc,같은 이름이 페이지마다 반복되어 적혀 있습니다...,The same name repeats on every page...,同じ名前が、ページごとに繰り返されている...
+interactable/701000022/name,행정실 책상,Administrative Office Desk,事務室の机
+interactable/701000022/desc,누군가의 자리였던 의자가 살짝 빠져 있습니다...,"A chair sits slightly pulled out, as if just left...",誰かの席だった椅子が、わずかに引かれている...
+interactable/701000023/name,압수품 보관함,Confiscated Items Cabinet,押収品保管庫
+interactable/701000023/desc,누군가의 이름이 적힌 봉투가 사라져 있습니다...,An envelope marked with a name is missing...,誰かの名前が書かれた封筒が、消えている...
+interactable/701000024/name,사무용 책상,Office Desk,事務机
+interactable/701000024/desc,잘 정리된 책상 위에 한 자리만 비어 있습니다...,One spot on the tidy desk is conspicuously empty...,整った机の上で、一か所だけが空いている...
+interactable/701000025/name,사무용 책상,Office Desk,事務机
+interactable/701000025/desc,펼쳐진 노트에 잉크가 채 마르지 않았습니다...,Ink on the open notebook has yet to dry...,開かれたノートの、インクがまだ乾いていない...
+interactable/701000026/name,소형 복합기,Compact Multifunction Printer,小型複合機
+interactable/701000026/desc,출력함에 누군가의 사진이 한 장 끼어 있습니다...,A single photo of someone is stuck in the tray...,排紙トレイに、誰かの写真が一枚挟まっている...
+interactable/701000027/name,사무용 책상,Office Desk,事務机
+interactable/701000027/desc,의자 등받이에 따스한 온기가 남아 있습니다...,The chair's backrest still holds warmth...,椅子の背もたれに、温もりが残っている...
+interactable/701000028/name,사무용 책상,Office Desk,事務机
+interactable/701000028/desc,서랍 한 칸이 살짝 열려 안을 보여 줍니다...,"A drawer hangs open, baring its insides...",引き出しの一段が、僅かに開いて中を覗かせている...
+interactable/701000050/name,학생용 책상,Student Desk,生徒用机
+interactable/701000050/desc,한 자리에만 같은 이름이 여러 번 새겨져 있습니다...,One desk bears the same name carved over and over...,一席だけ、同じ名前が幾度も刻まれている...
+interactable/701000051/name,청소 도구함,Cleaning Cabinet,清掃用具庫
+interactable/701000051/desc,빗자루가 누군가가 쓰던 방향으로 기울어져 있습니다...,The broom leans the way someone last held it...,箒が、誰かが使っていた向きに傾いている...
+interactable/701000052/name,빨간 배낭,Red Backpack,赤いバックパック
+interactable/701000052/desc,지퍼가 살짝 열려 안의 무언가를 가려 둡니다...,"The zipper is half open, hiding something within...",ジッパーが半開きで、中の何かを隠している...
+interactable/701000053/name,파란 배낭,Blue Backpack,青いバックパック
+interactable/701000053/desc,끈이 의자 등받이에 단단히 묶여 있습니다...,A strap is tightly tied to the chair's back...,紐が、椅子の背もたれにきつく結ばれている...
+interactable/701000054/name,교탁,Lectern,教卓
+interactable/701000054/desc,"교탁 위에 학급 자리 배치도가 펼쳐져 있습니다.\n<color=#A8D4E0>낯선 이름들 사이로, 한 자리의 이름만 붉게 지워져 있습니다.</color>","On the teacher’s desk, a class seating chart lies open.\n<color=#A8D4E0>Among the unfamiliar names, one seat's name is crossed out in red.</color>",教卓の上に学級の座席表が広げられている。\n<color=#A8D4E0>見知らぬ名前の中で、ある席の名前だけが赤く消されている。</color>
+interactable/701000055/name,칠판,Blackboard,黒板
+interactable/701000055/desc,지워진 글씨 사이로 누군가의 이름이 비칩니다...,A name shows through the erased writing...,消された文字の間に、誰かの名前が透けて見える...
+interactable/701000056/name,농구공,Basketball,バスケットボール
+interactable/701000056/desc,가만히 있어야 할 공이 천천히 굴러갑니다...,A ball that should be still keeps slowly rolling...,静止しているはずのボールが、ゆっくり転がっている...
+interactable/701000044/name,하늘색 배낭,Light Blue Backpack,水色のバックパック
+interactable/701000044/desc,익숙한 모양의 가방이 주인 없이 놓여 있습니다...,A familiar-shaped bag rests without an owner...,見慣れた形の鞄が、持ち主のないまま置かれている...
+interactable/701000018/name,버려진 시험지,Discarded Exam Paper,捨てられた答案用紙
+interactable/701000018/desc,답란이 모두 같은 답으로 채워져 있습니다...,Every answer slot is filled with the same response...,解答欄の全てが、同じ答えで埋められている...
+interactable/701000060/name,사물함,Locker,ロッカー
+interactable/701000060/desc,잠겨 있어야 할 사물함의 문이 살짝 열려 있습니다...,A locker meant to be locked sits slightly ajar...,施錠されているはずのロッカーが、わずかに開いている...
+interactable/701000061/name,파란색 배낭,Blue Backpack,青いリュック
+interactable/701000061/desc,가방 안에서 누군가의 호명 소리가 새어 나옵니다...,A faint voice calling a name leaks from inside...,鞄の中から、誰かの名を呼ぶ声が漏れている...
+interactable/701000062/name,칠판,Blackboard,黒板
+interactable/701000062/desc,깨끗이 닦인 표면에 글자 자국이 남아 있습니다...,Faint traces of letters remain on the wiped surface...,綺麗に拭われた表面に、文字の痕跡が残っている...
+interactable/701000063/name,철제 캐비넷,Steel Cabinet,鉄製キャビネット
+interactable/701000063/desc,안쪽에서 무언가가 부딪치는 소리가 들립니다...,Something keeps knocking from inside...,内側から、何かがぶつかる音が聞こえる...
+interactable/701000064/name,고사실 책상,Exam Room Desk,考査室の机
+interactable/701000064/desc,책상 모서리에 손톱 자국이 길게 패여 있습니다...,Long fingernail marks line the desk's edge...,机の縁に、爪の跡が長く刻まれている...
+interactable/701000065/name,책장,Bookshelf,本棚
+interactable/701000065/desc,"도서관 책장 깊숙이, 주고받은 쪽지들이 끼워져 있습니다.\n마지막 쪽지에는 끝내 답장이 없습니다.","Deep in the library shelves, notes passed back and forth lie tucked between the books.\nThe last one was never answered.",図書館の書架の奥に、やり取りされた紙片が挟まれている。\n最後の紙片には、ついに返事がない。
+interactable/701000066/name,사물함,Locker,ロッカー
+interactable/701000066/desc,자물쇠 위에 누군가의 머리카락이 걸려 있습니다...,A strand of hair clings to the lock...,錠前に、誰かの髪の毛が絡んでいる...
+interactable/701000067/name,검정색 배낭,Black Backpack,黒いリュック
+interactable/701000067/desc,처음 보는 가방이 익숙한 자리에 놓여 있습니다...,An unfamiliar bag sits in a familiar spot...,見覚えのない鞄が、見覚えのある席に置かれている...
+interactable/701000068/name,행정실 책상,Administrative Office Desk,事務室の机
+interactable/701000068/desc,서류 더미가 누군가의 손길에 흩어져 있습니다...,Stacks of papers lie scattered by hands unknown...,書類の山が、誰かの手で乱されている...
+interactable/701000069/name,청소 도구함,Cleaning Cabinet,掃除用具入れ
+interactable/701000069/desc,걸레에서 갓 쥐어진 듯한 물기가 떨어집니다...,Water still drips from a freshly wrung cloth...,雑巾から、絞ったばかりのような水滴が落ちる...
+interactable/701000070/name,고사실 책상,Exam Room Desk,考査室の机
+interactable/701000070/desc,답안지가 작은 글씨들로 빼곡히 채워져 있습니다...,The answer sheet is densely packed with tiny writing...,解答用紙が、小さな文字で隙間なく埋まっている...
+interactable/701000071/name,사무용 책상,Office Desk,事務机
+interactable/701000071/desc,학생 명단 위에 한 이름만 동그라미가 그려져 있습니다...,A single name is circled on the student list...,生徒名簿の中で、一つの名前だけが丸で囲まれている...
+interactable/701000072/name,잡동사니,Clutter,がらくた
+interactable/701000072/desc,누군가의 소지품이 익숙한 손길로 분류되어 있습니다...,Personal items are sorted with familiar care...,誰かの持ち物が、慣れた手つきで仕分けられている...
+interactable/701000073/name,도서관 카트,Library Cart,図書館のカート
+interactable/701000073/desc,카트 위 책들이 모두 같은 페이지에 펼쳐져 있습니다...,Every book on the cart is open to the same page...,カートの上の本は、全て同じページで開かれている...
+interactable/701000074/name,휴지통,Trash Bin,ゴミ箱
+interactable/701000074/desc,구겨진 종이마다 같은 이름이 적혀 있습니다...,Every crumpled paper bears the same name...,くしゃくしゃの紙には、同じ名前が書かれている...
+interactable/701000075/name,에어컨,Air Conditioner,エアコン
+interactable/701000075/desc,멈춰 있는데도 차가운 바람이 흘러나옵니다...,Cold air seeps out though it isn't running...,止まっているのに、冷たい風が漏れてくる...
+interactable/701000076/name,기록 장치,Recording Device,記録装置
+interactable/701000076/desc,방송실 기록 장치에 마지막 방송이 멈춘 채 걸려 있습니다.\n바깥은 이미 오래전에 잠긴 듯 조용합니다.,A halted device replays the same timestamp...,停止した機器に、同じ時刻が繰り返し表示される...
+interactable/701000077/name,휴지통,Trash Bin,ゴミ箱
+interactable/701000077/desc,사진 한 장이 반쯤 찢긴 채 놓여 있습니다...,A photo lies torn in half...,一枚の写真が、半分に破られた状態で置かれている...
+interactable/701000078/name,체육 매트,Gym Mat,体育マット
+interactable/701000078/desc,매트 위에 누군가가 누워 있던 자국이 선명합니다...,The shape of a body remains pressed into the mat...,マットの上に、誰かが横たわっていた跡が鮮明だ...
+interactable/701000079/name,회의록 보관함,Meeting Records Cabinet,議事録保管庫
+interactable/701000079/desc,"보관함 칸칸이 잠겨 있고, 돌려주겠다는 쪽지만 빛바랜 채 붙어 있습니다.\n끝내 주인에게 가지 못한 것들이 안에 남아 있습니다.",One ledger has been overwritten in another's hand...,一冊の書類が、別の筆跡で書き直されている...
+interactable/701000080/name,휴지통,Trash Bin,ゴミ箱
+interactable/701000080/desc,찢긴 책장들이 한쪽 페이지만 모아져 있습니다...,Torn-out pages are sorted by a single side...,破られた頁が、片面ずつ揃えて捨てられている...
+interactable/701000081/name,강당 캐비닛,Auditorium Cabinet,講堂のキャビネット
+interactable/701000081/desc,잠긴 문 너머에서 미세한 진동이 느껴집니다...,A faint vibration pulses past the locked door...,鍵のかかった扉の向こうから、微かな震えが伝わる...
+interactable/701000082/name,대형 복합기,Large Multifunction Printer,大型複合機
+interactable/701000082/desc,대기 모드인데도 롤러가 가만히 돌고 있습니다...,The rollers turn even in standby...,待機中のはずなのに、ローラーが静かに回り続けている...
+interactable/701000083/name,창틀,Window Frame,窓枠
+interactable/701000083/desc,창틀 안쪽에 손가락 자국이 진하게 찍혀 있습니다...,Fingerprints stain the inner edge of the frame...,窓枠の内側に、指の跡が濃く残されている...
+interactable/701000084/name,공 바구니,Ball Basket,ボールかご
+interactable/701000084/desc,바구니 안의 공들이 한쪽으로 몰려 있습니다...,The balls in the basket are gathered to one side...,籠の中のボールが、片側に寄せ集められている...
+recipe/3001/title,필담 페이지 만들기,Craft Reply Page,筆談ページを作る
+recipe/3001/trace,포스트잇 뭉치와 필기용 노트를 합쳐 과거와 필담할 페이지를 만듭니다.,Combine sticky notes and a notebook into a reply page.,付箋の束と筆記ノートを合わせて筆談ページを作ります。
+recipe/3001/success,필담 페이지를 완성합니다. 오래된 답장이 떠오를 준비를 마칩니다.,The reply page is ready.,筆談ページが完成しました。
+recipe/3002/title,기록 장치 복원,Restore Recorder,記録装置を復元する
+recipe/3002/trace,보조 배터리로 방전된 기록 장치를 깨워 마지막 방송 기록을 복원합니다.,Use the power bank to restore the drained recorder.,モバイルバッテリーで放電した記録装置を復元します。
+recipe/3002/success,복원된 기록 장치가 마지막 방송의 빈 시간을 되감기 시작합니다.,The restored recorder begins rewinding the last broadcast.,復元された記録装置が最後の放送を巻き戻し始めました。
+recipe/3003/title,명단 맞춰보기,Match the Roster,名簿を照合する
+recipe/3003/trace,"사물함 배정표와 학급 명단을 맞춰, 이름이 지워진 자리가 14번임을 짚어냅니다.",Match the locker assignment with the class roster to pin the erased seat to No. 14.,ロッカー割当表と学級名簿を突き合わせ、名前の消された席が14番だと特定します。
+recipe/3003/success,이름이 지워진 자리가 14번으로 좁혀집니다. 그러나 이름 칸은 비어 있습니다.,The erased seat narrows down to No. 14. The name is still blank.,名前の消された席が14番に絞られます。しかし名前欄は空白のままです。
+recipe/3004/title,압수품 보관 기록 열기,Open Confiscated Log,没収品記録を開く
+recipe/3004/trace,보관함 열쇠와 압수품 봉투를 맞춰 보관 기록을 엽니다.,Match the cabinet key with the confiscated envelope.,保管箱の鍵と没収品封筒を合わせます。
+recipe/3004/success,압수품 보관 기록을 엽니다. 돌려주지 못한 물건의 순서가 보입니다.,The confiscated log opens.,没収品保管記録が開きました。
+recipe/3005/title,조회 명단 복원,Restore Roll Call Sheet,朝礼名簿を復元する
+recipe/3005/trace,조회 명단 조각과 흐린 이름표를 맞춰 빈칸이 남은 명단을 복원합니다.,Restore the roll call sheet from the fragment and faded nametag.,朝礼名簿の切れ端とかすれた名札を合わせます。
+recipe/3005/success,조회 명단을 복원합니다. 빈칸 하나가 아직 이름을 기다립니다.,The roll call sheet is restored.,朝礼名簿が復元されました。
+node/3001/title,포스트잇 뭉치 확보,Secure Sticky Notes,付箋の束を確保
+node/3001/success,사물함 안쪽에서 이름이 반복해 적힌 포스트잇 뭉치를 꺼냅니다.,You pull out a bundle of sticky notes with the same name repeated inside the locker.,ロッカーの内側から、同じ名前が何度も書かれた付箋の束を取り出します。
+node/3002/title,필기용 노트 확보,Secure Writing Notebook,筆記用ノートを確保
+node/3002/success,도서관 책장 사이에 끼어 있는 필기용 노트를 찾습니다.,You find a writing notebook wedged between the library shelves.,図書館の本棚の隙間に挟まった筆記用ノートを見つけます。
+node/3003/title,보조 배터리 확보,Secure Power Bank,モバイルバッテリーを確保
+node/3003/success,학생용 책상 아래에서 아직 충전이 남은 보조 배터리를 줍습니다.,You pick up a power bank with a little charge left beneath a student desk.,生徒用の机の下から、まだ少し充電が残ったモバイルバッテリーを拾います。
+node/3004/title,방전된 기록 장치 확보,Secure Drained Recorder,電池切れの記録装置を確保
+node/3004/success,방송실 기록 장치 옆에서 전원이 꺼진 기록 장치를 챙깁니다.,You take the powered-off recorder beside the broadcast room equipment.,放送室の記録装置の横から、電源の切れた記録装置を持ち出します。
+node/3005/title,사물함 배정표 확보,Secure Locker Assignment,ロッカー割当表を確保
+node/3005/success,칠판 옆 게시판에서 자리별 사물함 배정표를 떼어 냅니다.,You take a seat-by-seat locker assignment from the board beside the blackboard.,黒板の横の掲示板から、席ごとのロッカー割当表を剥がし取ります。
+node/3006/title,학급 명단 확보,Secure Class Roster,学級名簿を確保
+node/3006/success,칠판 아래 분필받이에서 번호순으로 적힌 학급 명단을 발견합니다.,You find a class roster listed by number on the chalk tray beneath the blackboard.,黒板の下のチョーク受けで、番号順に並んだ学級名簿を見つけます。
+node/3007/title,보관함 열쇠 확보,Secure Cabinet Key,保管庫の鍵を確保
+node/3007/success,행정실 책상 아래에서 번호가 긁힌 보관함 열쇠를 찾습니다.,You find a cabinet key with its number scratched away under the admin office desk.,事務室の机の下で、番号が削られた保管庫の鍵を見つけます。
+node/3008/title,압수품 봉투 확보,Secure Confiscated Envelope,押収品の封筒を確保
+node/3008/success,회의록 보관함 뒤편에서 돌려주지 못한 압수품 봉투를 꺼냅니다.,You pull out an unreturned confiscated-item envelope from behind the meeting-record cabinet.,会議録の保管庫の裏から、返されなかった押収品の封筒を取り出します。
+node/3009/title,조회 명단 조각 확보,Secure Roll Call Fragment,朝礼名簿の切れ端を確保
+node/3009/success,운동장 보고 지점 근처에서 찢어진 조회 명단을 줍습니다.,You pick up a torn roll call sheet near the field report point.,運動場の報告地点の近くで、破れた朝礼名簿を拾います。
+node/3010/title,흐린 이름표 확보,Secure Faded Nametag,薄れた名札を確保
+node/3010/success,강당 바닥의 먼지 속에서 글자가 번진 이름표를 발견합니다.,You find a nametag with blurred letters in the dust on the auditorium floor.,講堂の床のほこりの中から、文字のにじんだ名札を見つけます。

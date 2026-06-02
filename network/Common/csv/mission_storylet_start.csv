@@ -1,6 +1,6 @@
-case_group,start_key,start_index,node_id,title_kr,title_en,title_jp,required_part_ids,required_output_item_id,recipe_id,target_area_type,target_object_type,interact_id,action_group_key,claim_policy,reward_kind,risk_level,success_text_kr,success_text_en,success_text_jp
-record,WRITING,1,4101,과거와 필담하기,Correspond with the Past,過去と筆談する,[305],305,3001,22,6,701000065,object_6,unique,clue_tag,0,필담 페이지 위에\n오래된 답장이 떠오릅니다.,An old reply rises\non the reply page.,筆談ページの上に、\n古い返事が浮かび上がります。
-record,BROADCAST,2,4102,마지막 방송 기록,Final Broadcast Log,最後の放送記録,[306],306,3002,42,9,701000076,object_9,unique,clue_tag,0,기록 장치가 마지막 방송을 다시 틀기 시작합니다.,The recorder begins playing the final broadcast again.,記録装置が最後の放送を再び流し始めます。
-record,ATTENDANCE,3,4103,지워진 자리 확인,Check the Erased Seat,消された席を確認,[315],315,3003,30,2,701000054,object_2,unique,clue_tag,0,맞춰본 명단을 교탁의 자리 배치도에 대어 봅니다.\n지워진 자리는 <color=#A8D4E0>14번</color>입니다. 그러나 <color=#A8D4E0>이름</color>은 알 수 없습니다.,The matched roster pins the red-erased seat to <color=#A8D4E0>No. 14</color>.\nThe <color=#A8D4E0>name</color> remains unknown.,照合した名簿を教卓の座席表に合わせる。\n赤く消された席は確かに<color=#A8D4E0>14番</color>だ。しかし<color=#A8D4E0>名前</color>は分からない。
-record,CONFISCATED,4,4104,압수품 보관 기록,Confiscated Storage Log,押収品保管記録,[316],316,3004,10,12,701000079,object_12,unique,clue_tag,0,압수품 보관함 안에서 낡은 봉투가 나옵니다.,An old envelope comes out of the confiscated-item cabinet.,押収品保管庫の中から、古い封筒が出てきます。
-record,ROLLCALL,5,4105,조회 명단의 빈칸,Blank in the Roll Call Sheet,朝礼名簿の空欄,[317],317,3005,2,0,0,,unique,clue_tag,0,조회 명단의 빈칸에 희미한 선이 나타납니다.,A faint line appears in the blank on the roll call sheet.,朝礼名簿の空欄に、かすかな線が現れます。
+case_group,start_key,start_index,node_id,title_key,required_part_ids,required_output_item_id,recipe_id,target_area_type,target_object_type,interact_id,action_group_key,claim_policy,reward_kind,risk_level,success_text_key
+record,WRITING,1,4101,start/4101/title,[305],305,3001,22,6,701000065,object_writing,unique,clue_tag,0,start/4101/success
+record,BROADCAST,2,4102,start/4102/title,[306],306,3002,42,9,701000076,object_broadcast,unique,clue_tag,0,start/4102/success
+record,ATTENDANCE,3,4103,start/4103/title,[315],315,3003,30,2,701000054,object_2,unique,clue_tag,0,start/4103/success
+record,CONFISCATED,4,4104,start/4104/title,[316],316,3004,10,12,701000079,object_confiscated,unique,clue_tag,0,start/4104/success
+record,ROLLCALL,5,4105,start/4105/title,[317],317,3005,2,0,0,,unique,clue_tag,0,start/4105/success

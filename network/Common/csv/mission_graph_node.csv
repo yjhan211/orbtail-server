@@ -1,11 +1,11 @@
-"node_id","job_title","node_key","node_kind","area_type","object_type","interact_id","output_part_id","title_kr","title_en","title_jp","success_text_kr","success_text_en","success_text_jp"
-"3001","0","RECORD-PREP-POSTIT","1","30","7","701000060","301","포스트잇 뭉치 확보","Secure Sticky Notes","付箋の束を確保","사물함 안쪽에서 이름이 반복해 적힌 포스트잇 뭉치를 꺼냅니다.","You pull out a bundle of sticky notes with the same name repeated inside the locker.","ロッカーの内側から、同じ名前が何度も書かれた付箋の束を取り出します。"
-"3002","0","RECORD-PREP-NOTE","1","22","6","701000065","302","필기용 노트 확보","Secure Writing Notebook","筆記用ノートを確保","도서관 책장 사이에 끼어 있는 필기용 노트를 찾습니다.","You find a writing notebook wedged between the library shelves.","図書館の本棚の隙間に挟まった筆記用ノートを見つけます。"
-"3003","0","RECORD-PREP-POWER","1","20","5","701000050","303","보조 배터리 확보","Secure Power Bank","モバイルバッテリーを確保","학생용 책상 아래에서 아직 충전이 남은 보조 배터리를 줍습니다.","You pick up a power bank with a little charge left beneath a student desk.","生徒用の机の下から、まだ少し充電が残ったモバイルバッテリーを拾います。"
-"3004","0","RECORD-PREP-DRAINED","1","42","9","701000076","304","방전된 기록 장치 확보","Secure Drained Recorder","電池切れの記録装置を確保","방송실 기록 장치 옆에서 전원이 꺼진 기록 장치를 챙깁니다.","You take the powered-off recorder beside the broadcast room equipment.","放送室の記録装置の横から、電源の切れた記録装置を持ち出します。"
-"3005","0","RECORD-PREP-ATTENDANCE-FRAGMENT","1","30","1","701000055","308","사물함 배정표 확보","Secure Locker Assignment","ロッカー割当表を確保","칠판 옆 게시판에서 자리별 사물함 배정표를 떼어 냅니다.","You take a seat-by-seat locker assignment from the board beside the blackboard.","黒板の横の掲示板から、席ごとのロッカー割当表を剥がし取ります。"
-"3006","0","RECORD-PREP-ATTENDANCE-MARK","1","30","1","701000055","309","학급 명단 확보","Secure Class Roster","学級名簿を確保","칠판 아래 분필받이에서 번호순으로 적힌 학급 명단을 발견합니다.","You find a class roster listed by number on the chalk tray beneath the blackboard.","黒板の下のチョーク受けで、番号順に並んだ学級名簿を見つけます。"
-"3007","0","RECORD-PREP-CABINET-KEY","1","10","4","701000068","310","보관함 열쇠 확보","Secure Cabinet Key","保管庫の鍵を確保","행정실 책상 아래에서 번호가 긁힌 보관함 열쇠를 찾습니다.","You find a cabinet key with its number scratched away under the admin office desk.","事務室の机の下で、番号が削られた保管庫の鍵を見つけます。"
-"3008","0","RECORD-PREP-CONFISCATED-ENVELOPE","1","10","12","701000079","311","압수품 봉투 확보","Secure Confiscated Envelope","押収品の封筒を確保","회의록 보관함 뒤편에서 돌려주지 못한 압수품 봉투를 꺼냅니다.","You pull out an unreturned confiscated-item envelope from behind the meeting-record cabinet.","会議録の保管庫の裏から、返されなかった押収品の封筒を取り出します。"
-"3009","0","RECORD-PREP-ROLLCALL-LIST","1","2","0","0","312","조회 명단 조각 확보","Secure Roll Call Fragment","朝礼名簿の切れ端を確保","운동장 보고 지점 근처에서 찢어진 조회 명단을 줍습니다.","You pick up a torn roll call sheet near the field report point.","運動場の報告地点の近くで、破れた朝礼名簿を拾います。"
-"3010","0","RECORD-PREP-ROLLCALL-NAME","1","13","0","0","313","흐린 이름표 확보","Secure Faded Nametag","薄れた名札を確保","강당 바닥의 먼지 속에서 글자가 번진 이름표를 발견합니다.","You find a nametag with blurred letters in the dust on the auditorium floor.","講堂の床のほこりの中から、文字のにじんだ名札を見つけます。"
+node_id,job_title,node_key,node_kind,area_type,object_type,interact_id,output_part_id,title_key,success_text_key
+3001,0,RECORD-PREP-POSTIT,1,30,7,701000060,301,node/3001/title,node/3001/success
+3002,0,RECORD-PREP-NOTE,1,22,6,701000065,302,node/3002/title,node/3002/success
+3003,0,RECORD-PREP-POWER,1,20,5,701000050,303,node/3003/title,node/3003/success
+3004,0,RECORD-PREP-DRAINED,1,42,9,701000076,304,node/3004/title,node/3004/success
+3005,0,RECORD-PREP-ATTENDANCE-FRAGMENT,1,30,1,701000055,308,node/3005/title,node/3005/success
+3006,0,RECORD-PREP-ATTENDANCE-MARK,1,30,1,701000055,309,node/3006/title,node/3006/success
+3007,0,RECORD-PREP-CABINET-KEY,1,10,4,701000068,310,node/3007/title,node/3007/success
+3008,0,RECORD-PREP-CONFISCATED-ENVELOPE,1,10,12,701000079,311,node/3008/title,node/3008/success
+3009,0,RECORD-PREP-ROLLCALL-LIST,1,2,0,0,312,node/3009/title,node/3009/success
+3010,0,RECORD-PREP-ROLLCALL-NAME,1,13,0,0,313,node/3010/title,node/3010/success
