@@ -326,8 +326,6 @@ public class MissionManager
             state.DiscoveredStoryletIds.Add(node.EffectiveStoryletId);
             state.TrackedStoryletIds.Add(node.EffectiveStoryletId);
             state.ClaimedStoryletIds.Add(node.EffectiveStoryletId);
-            if (node.RouteType != MissionGraphRouteType.None)
-                state.ActiveRouteIds.Add(node.EffectiveStoryletId);
         }
         if (node.OutputPartId > 0)
         {
@@ -1048,7 +1046,6 @@ public class PlayerPartState
     public HashSet<int> UnlockedMissionNodeIds { get; set; } = new();
     public HashSet<string> DiscoveredStoryletIds { get; set; } = new();
     public HashSet<string> TrackedStoryletIds { get; set; } = new();
-    public HashSet<string> ActiveRouteIds { get; set; } = new();
     public HashSet<string> ClaimedStoryletIds { get; set; } = new();
     public HashSet<string> LostStoryletIds { get; set; } = new();
     public HashSet<string> OwnedClueTags { get; set; } = new();

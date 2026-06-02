@@ -133,7 +133,6 @@ public partial class GameClientSession
         {
             msg.DiscoveredStoryletIds = state.DiscoveredStoryletIds.ToList();
             msg.TrackedStoryletIds = state.TrackedStoryletIds.ToList();
-            msg.ActiveRouteIds = state.ActiveRouteIds.ToList();
             msg.ClaimedStoryletIds = state.ClaimedStoryletIds.ToList();
             msg.LostStoryletIds = state.LostStoryletIds.ToList();
             msg.OwnedClueTags = state.OwnedClueTags.ToList();
@@ -153,7 +152,6 @@ public partial class GameClientSession
         msg.ShortRewards.Count == 0 &&
         msg.DiscoveredStoryletIds.Count == 0 &&
         msg.TrackedStoryletIds.Count == 0 &&
-        msg.ActiveRouteIds.Count == 0 &&
         msg.ClaimedStoryletIds.Count == 0 &&
         msg.LostStoryletIds.Count == 0 &&
         msg.OwnedClueTags.Count == 0 &&

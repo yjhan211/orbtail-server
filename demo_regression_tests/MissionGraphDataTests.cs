@@ -62,7 +62,6 @@ public class MissionGraphDataTests
         foreach (var node in startNodes)
         {
             Assert.Equal(MissionGraphStoryletType.Discovery, node.StoryletType);
-            Assert.Equal(MissionGraphRouteType.None, node.RouteType);
             Assert.Equal(MissionGraphRewardKind.ClueTag, node.RewardKind);
             if (node.NodeId == 4102)
             {
@@ -286,7 +285,6 @@ public class MissionGraphDataTests
                 "node_kind",
                 "storylet_id",
                 "storylet_type",
-                "route_type",
                 "target_area_type",
                 "target_object_type",
                 "interact_id",
@@ -300,7 +298,6 @@ public class MissionGraphDataTests
                 "stat_threshold",
                 "claim_policy",
                 "reward_kind",
-                "risk_level",
                 "location_hint_text_id",
                 "trace_text_id",
                 "contested_text_id",
@@ -314,7 +311,6 @@ public class MissionGraphDataTests
                 "2",
                 "ROUTE-RECORD-RISK",
                 "route",
-                "risk_high_reward",
                 "41",
                 "9",
                 "701000076",
@@ -328,7 +324,6 @@ public class MissionGraphDataTests
                 "2",
                 "unique",
                 "mixed",
-                "3",
                 "12001",
                 "12002",
                 "12003",
@@ -340,7 +335,6 @@ public class MissionGraphDataTests
         Assert.True(node.HasStoryletMetadata);
         Assert.Equal("ROUTE-RECORD-RISK", node.EffectiveStoryletId);
         Assert.Equal(MissionGraphStoryletType.Route, node.StoryletType);
-        Assert.Equal(MissionGraphRouteType.RiskHighReward, node.RouteType);
         Assert.Equal(41, node.TargetAreaType);
         Assert.Equal(9, node.TargetObjectType);
         Assert.Equal(701000076, node.InteractId);
@@ -354,7 +348,6 @@ public class MissionGraphDataTests
         Assert.Equal(2, node.StatThreshold);
         Assert.Equal(MissionGraphClaimPolicy.Unique, node.ClaimPolicy);
         Assert.Equal(MissionGraphRewardKind.Mixed, node.RewardKind);
-        Assert.Equal(3, node.RiskLevel);
         Assert.Equal(12001, node.LocationHintTextId);
         Assert.Equal(12002, node.TraceTextId);
         Assert.Equal(12003, node.ContestedTextId);

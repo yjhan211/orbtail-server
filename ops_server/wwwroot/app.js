@@ -736,11 +736,6 @@ function renderStoryletPools() {
 
     list.innerHTML = rows.map(row => {
         const active = _storyletSelected?.type === 'pool' && _storyletSelected.nodeId === row.node_id ? 'active' : '';
-        const routeClass = row.route_type === 'risk_high_reward'
-            ? 'text-red-300'
-            : row.route_type === 'safe'
-                ? 'text-green-300'
-                : 'text-blue-300';
         const area = areaTypeLabel(num(row.target_area_type));
         const object = storyletObjectLabel(row);
         const beforeText = storyletPreviewText(row);
@@ -749,7 +744,7 @@ function renderStoryletPools() {
                     onclick="selectStorylet('pool','${escapeAttr(row.node_id)}')">
                 <div class="flex items-center justify-between gap-2">
                     <span class="text-xs text-violet-300">S${escapeHtml(row.stage_index)} · ${escapeHtml(row.stage_key)}</span>
-                    <span class="text-[11px] ${routeClass}">${escapeHtml(row.route_type || row.storylet_type || 'route')}</span>
+                    <span class="text-[11px] text-blue-300">${escapeHtml(row.storylet_type || 'route')}</span>
                 </div>
                 <div class="flex items-center gap-1 mt-1 text-[11px] text-gray-500">
                     <span>${escapeHtml(row.pool_key)}</span>
@@ -1003,9 +998,6 @@ function buildStoryletFormHtml(type, row) {
                     <label class="text-xs text-gray-500">key
                         <input name="pool_key" value="${escapeAttr(keyValue ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
                     </label>
-                    <label class="text-xs text-gray-500">route/risk
-                        <input name="route_type" value="${escapeAttr(row.route_type ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
-                    </label>
                 </div>
 
                 <datalist id="dl-storylet-area">${storyletAreaDatalistHtml()}</datalist>
@@ -1029,9 +1021,6 @@ function buildStoryletFormHtml(type, row) {
                     </label>
                     <label class="text-xs text-gray-500">reward
                         <input name="reward_kind" value="${escapeAttr(row.reward_kind ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
-                    </label>
-                    <label class="text-xs text-gray-500">risk
-                        <input name="risk_level" value="${escapeAttr(row.risk_level ?? '')}" class="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-100" />
                     </label>
                 </div>
 

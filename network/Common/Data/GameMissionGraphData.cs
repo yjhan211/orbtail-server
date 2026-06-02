@@ -202,7 +202,6 @@ namespace network.common.data
                     start.NodeId,
                     $"START-{start.StartKey}",
                     MissionGraphStoryletType.Discovery,
-                    MissionGraphRouteType.None,
                     start.TargetAreaType,
                     start.TargetObjectType,
                     start.InteractId,
@@ -215,7 +214,6 @@ namespace network.common.data
                     RenderStartClaimKey(start),
                     start.ClaimPolicy,
                     start.RewardKind,
-                    start.RiskLevel,
                     start.CaseGroup,
                     "",
                     "",
@@ -239,7 +237,6 @@ namespace network.common.data
                         ? $"{item.StageKey}-{item.PoolKey}"
                         : item.NodeKey,
                     item.IsVictoryStorylet ? MissionGraphStoryletType.Victory : item.StoryletType,
-                    item.RouteType,
                     item.TargetAreaType,
                     item.TargetObjectType,
                     item.InteractId,
@@ -252,7 +249,6 @@ namespace network.common.data
                     RenderPoolClaimKey(item),
                     item.ClaimPolicy,
                     item.RewardKind,
-                    item.RiskLevel,
                     item.CaseGroup,
                     JoinTags(item.RequiredAllTags.ToArray()),
                     JoinTags(item.RequiredAnyTags.ToArray()),
@@ -296,7 +292,6 @@ namespace network.common.data
             int nodeId,
             string nodeKey,
             MissionGraphStoryletType storyletType,
-            MissionGraphRouteType routeType,
             int targetAreaType,
             int targetObjectType,
             int interactId,
@@ -309,7 +304,6 @@ namespace network.common.data
             string storyletId,
             MissionGraphClaimPolicy claimPolicy,
             MissionGraphRewardKind rewardKind,
-            int riskLevel,
             string caseGroup,
             string requiredAllTags,
             string requiredAnyTags,
@@ -350,7 +344,6 @@ namespace network.common.data
                 successText.Jp,
                 storyletId,
                 ToCsvToken(storyletType),
-                ToCsvToken(routeType),
                 targetAreaType.ToString(),
                 targetObjectType.ToString(),
                 actionGroupKey,
@@ -366,7 +359,6 @@ namespace network.common.data
                 "0",
                 ToCsvToken(claimPolicy),
                 ToCsvToken(rewardKind),
-                riskLevel.ToString(),
                 "0",
                 "0",
                 "0",
@@ -384,8 +376,7 @@ namespace network.common.data
         {
             var name = value.ToString();
             return string.Concat(name.Select((c, index) =>
-                    index > 0 && char.IsUpper(c) ? "_" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()))
-                .Replace("risk_high_reward", "risk_high_reward");
+                    index > 0 && char.IsUpper(c) ? "_" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()));
         }
 
         private static readonly string[] NodeCsvHeaders =
@@ -417,7 +408,6 @@ namespace network.common.data
             "success_text_jp",
             "storylet_id",
             "storylet_type",
-            "route_type",
             "target_area_type",
             "target_object_type",
             "action_group_key",
@@ -433,7 +423,6 @@ namespace network.common.data
             "stat_threshold",
             "claim_policy",
             "reward_kind",
-            "risk_level",
             "location_hint_text_id",
             "trace_text_id",
             "contested_text_id",
@@ -455,14 +444,6 @@ namespace network.common.data
         Discovery = 1,
         Route = 2,
         Victory = 3
-    }
-
-    public enum MissionGraphRouteType
-    {
-        None = 0,
-        Info = 1,
-        Safe = 2,
-        RiskHighReward = 3
     }
 
     public enum MissionGraphClaimPolicy
@@ -498,7 +479,6 @@ namespace network.common.data
         public int InteractId { get; private set; }
         public string ActionGroupKey { get; private set; }
         public MissionGraphClaimPolicy ClaimPolicy { get; private set; }        public MissionGraphRewardKind RewardKind { get; private set; }
-        public int RiskLevel { get; private set; }
         public LocalizedText SuccessText { get; private set; }
 
         public static MissionStoryletStartData CreateFromData(CsvRow row)
@@ -519,7 +499,6 @@ namespace network.common.data
                 InteractId = MissionStoryletCsv.ParseInt(row, "interact_id"),
                 ActionGroupKey = MissionStoryletCsv.ParseString(row, "action_group_key"),
                 ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
-                RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
                 SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
             };
         }
@@ -539,9 +518,7 @@ namespace network.common.data
         public int InteractId { get; private set; }
         public string ActionGroupKey { get; private set; }
         public MissionGraphStoryletType StoryletType { get; private set; }
-        public MissionGraphRouteType RouteType { get; private set; }
         public MissionGraphClaimPolicy ClaimPolicy { get; private set; }        public MissionGraphRewardKind RewardKind { get; private set; }
-        public int RiskLevel { get; private set; }
         public string SuspicionTag { get; private set; }
         public bool IsVictoryStorylet { get; private set; }
         public List<string> RequiredAllTags { get; private set; }
@@ -574,10 +551,8 @@ namespace network.common.data
                 InteractId = MissionStoryletCsv.ParseInt(row, "interact_id"),
                 ActionGroupKey = MissionStoryletCsv.ParseString(row, "action_group_key"),
                 StoryletType = storyletType,
-                RouteType = MissionStoryletCsv.ParseEnum(row, "route_type", MissionGraphRouteType.None),
                 ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
                 RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
-                RiskLevel = MissionStoryletCsv.ParseInt(row, "risk_level"),
                 SuspicionTag = MissionStoryletCsv.ParseString(row, "suspicion_tag"),
                 IsVictoryStorylet = isVictoryStorylet,
                 RequiredAllTags = MissionStoryletCsv.ParseStringList(row, "required_all_tags"),
@@ -707,7 +682,6 @@ namespace network.common.data
         public LocalizedText SuccessText { get; private set; }
         public string StoryletId { get; private set; }
         public MissionGraphStoryletType StoryletType { get; private set; }
-        public MissionGraphRouteType RouteType { get; private set; }
         public int TargetAreaType { get; private set; }
         public int TargetObjectType { get; private set; }
         public string ActionGroupKey { get; private set; }
@@ -723,7 +697,6 @@ namespace network.common.data
         public int StatThreshold { get; private set; }
         public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
         public MissionGraphRewardKind RewardKind { get; private set; }
-        public int RiskLevel { get; private set; }
         public int LocationHintTextId { get; private set; }
         public int TraceTextId { get; private set; }
         public int ContestedTextId { get; private set; }
@@ -733,14 +706,8 @@ namespace network.common.data
         public bool HasStoryletMetadata =>
             !string.IsNullOrWhiteSpace(StoryletId) ||
             StoryletType != MissionGraphStoryletType.None ||
-            RouteType != MissionGraphRouteType.None ||
             ClaimPolicy != MissionGraphClaimPolicy.None ||
             IsVictoryStorylet;
-
-        public bool IsRouteBranchChoice =>
-            HasStoryletMetadata &&
-            StoryletType == MissionGraphStoryletType.Route &&
-            ClueTags.Contains("stage_2", StringComparer.OrdinalIgnoreCase);
 
         public static MissionGraphNodeData CreateFromData(CsvRow row)
         {
@@ -775,7 +742,6 @@ namespace network.common.data
                 SuccessText = LocalizedText.FromCsvMultiline(row, "success_text"),
                 StoryletId = ParseString(row, "storylet_id"),
                 StoryletType = storyletType,
-                RouteType = ParseEnum(row, "route_type", MissionGraphRouteType.None),
                 TargetAreaType = ParseInt(row, "target_area_type"),
                 TargetObjectType = ParseInt(row, "target_object_type"),
                 ActionGroupKey = ParseString(row, "action_group_key"),
@@ -791,7 +757,6 @@ namespace network.common.data
                 StatThreshold = ParseInt(row, "stat_threshold"),
                 ClaimPolicy = ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.None),
                 RewardKind = ParseEnum(row, "reward_kind", MissionGraphRewardKind.None),
-                RiskLevel = ParseInt(row, "risk_level"),
                 LocationHintTextId = ParseInt(row, "location_hint_text_id"),
                 TraceTextId = ParseInt(row, "trace_text_id"),
                 ContestedTextId = ParseInt(row, "contested_text_id"),
