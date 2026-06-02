@@ -79,6 +79,24 @@ public class CsvIntegrityTests
             "어디서도 지급되지 않는 필수 태그(도달 불가 단계):\n  " + string.Join(", ", orphans));
     }
 
+    [Fact]
+    public void NodeId_GloballyUnique_AcrossSources()
+    {
+        Init();
+        // start/pool/graph_node(prep)는 별도 CSV지만 node_id 네임스페이스는 하나여야 한다.
+        // (3파일 통합 대신, 충돌만 린트로 방지 — 관례상 3xxx/41xx/42xx 분리)
+        var ids = GameMissionGraphData.GetStoryletStarts().Select(s => s.NodeId)
+            .Concat(GameMissionGraphData.GetStoryletPoolItems().Select(p => p.NodeId))
+            .Concat(GameMissionGraphData.GetAllNodes()
+                .Where(n => n.NodeKind == MissionGraphNodeKind.CollectPart)
+                .Select(n => n.NodeId))
+            .ToList();
+
+        var dups = ids.GroupBy(id => id).Where(g => g.Count() > 1).Select(g => g.Key).OrderBy(id => id).ToList();
+        Assert.True(dups.Count == 0,
+            "node_id 충돌(start/pool/prep 소스 간 중복): " + string.Join(", ", dups));
+    }
+
     private static string FindNetworkBasePath()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
