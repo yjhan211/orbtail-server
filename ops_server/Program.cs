@@ -26,7 +26,7 @@ var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-string? itemSpritesRoot = ResolveItemSpritesRoot();
+string? itemSpritesRoot = ResolveItemSpritesRoot(builder.Configuration["ItemSpritesRoot"]);
 if (!string.IsNullOrWhiteSpace(itemSpritesRoot))
 {
     app.UseStaticFiles(new StaticFileOptions
@@ -165,8 +165,16 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime
 
 app.Run();
 
-static string? ResolveItemSpritesRoot()
+static string? ResolveItemSpritesRoot(string? configuredRoot)
 {
+    // 설정(ItemSpritesRoot 환경변수)이 있고 실제로 존재하면 우선 사용 — Docker 마운트 경로 등.
+    // 컨테이너에는 client/ 에셋이 없어 walk-up이 실패하므로 이 경로가 스프라이트 서빙의 핵심이다.
+    if (!string.IsNullOrWhiteSpace(configuredRoot))
+    {
+        string full = Path.GetFullPath(configuredRoot);
+        if (Directory.Exists(full)) return full;
+    }
+
     foreach (string seed in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
     {
         string? cursor = Path.GetFullPath(seed);

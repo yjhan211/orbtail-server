@@ -1074,9 +1074,9 @@ function buildStoryletFormHtml(type, row) {
                 ${storyletSection('해금 아이템 / 조합 레시피', false, buildStoryletUnlockItemHtml(type, row))}
 
                 <div class="flex items-center justify-end gap-2 pt-1">
-                    <span class="text-[11px] text-gray-600">Ctrl+S 저장 · 입력 후 자동 저장</span>
+                    <span class="text-[11px] text-gray-600">입력하면 전체가 함께 자동 저장 · Ctrl+S</span>
                     <button type="button" onclick="flushStoryletAutosave()" class="bg-violet-700 hover:bg-violet-600 text-white text-xs px-3 py-1.5 rounded">
-                        지금 저장
+                        전체 저장
                     </button>
                 </div>
             </form>

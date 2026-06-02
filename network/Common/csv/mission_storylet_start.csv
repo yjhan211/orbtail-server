@@ -1,6 +1,6 @@
 case_group,start_key,start_index,node_id,title_key,required_part_ids,required_output_item_id,recipe_id,target_area_type,target_object_type,interact_id,action_group_key,claim_policy,reward_kind,risk_level,success_text_key
 record,WRITING,1,4101,start/4101/title,[305],305,3001,22,6,701000065,object_writing,unique,clue_tag,0,start/4101/success
-record,BROADCAST,2,4102,start/4102/title,[306],306,3002,42,9,701000076,object_broadcast,unique,clue_tag,0,start/4102/success
+record,BROADCAST,2,4102,start/4102/title,[],0,0,12,4,701000023,object_mailbox,unique,clue_tag,3,start/4102/success
 record,ATTENDANCE,3,4103,start/4103/title,[315],315,3003,30,2,701000054,object_2,unique,clue_tag,0,start/4103/success
 record,CONFISCATED,4,4104,start/4104/title,[316],316,3004,10,12,701000079,object_confiscated,unique,clue_tag,0,start/4104/success
 record,ROLLCALL,5,4105,start/4105/title,[317],317,3005,2,0,0,,unique,clue_tag,0,start/4105/success

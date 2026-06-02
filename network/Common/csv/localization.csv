@@ -97,8 +97,8 @@ pool/4703/title,닫힌 문 앞에서 순서 말하기,Speak the Order at the Clo
 pool/4703/success,닫힌 문 앞에서 마지막 순서를 말합니다. 문이 열립니다.,You speak the final order at the closed door. The door opens.,閉ざされた扉の前で最後の順番を言います。扉が開きます。
 start/4101/title,숨겨진 글자 확인하기,Check the hidden letters,隠された文字を確認する
 start/4101/success,"쪽지를 비스듬히 기울이자, 글씨 아래에 깊게 눌린 자국이 드러납니다.\n<color=#A8D4E0>“내 자물쇠를 열려고 하지 마.”</color>","When you tilt the note, deep impressions appear beneath the writing.\n<color=#A8D4E0>“Don’t try to open my lock.”</color>",メモを斜めに傾けると、文字の下に深く押しつけられた跡が浮かび上がる。\n<color=#A8D4E0>「私の錠を開けようとしないで。」</color>
-start/4102/title,마지막 방송 기록,Final Broadcast Log,最後の放送記録
-start/4102/success,"기록 장치가 마지막 방송을 다시 틀기 시작합니다.\n문이 잠겼다는 안내가 반복되다, 어느 순간부터는 <color=#A8D4E0>아무도</color> 대답하지 않습니다.",The recorder begins playing the final broadcast again.,記録装置が最後の放送を再び流し始めます。
+start/4102/title,검은 편지 봉투 열기,Open the Black Letter Envelope,黒い封筒を開ける
+start/4102/success,편지에는 짧은 질문이 적혀 있습니다.\n<color=#A8D4E0>“다음 중 당신을 쫓고 있는 것은 무엇입니까?”</color>,A short question is written in the letter.\n<color=#A8D4E0>“Which of the following is chasing you?”</color>,手紙には短い問いが書かれている。\n<color=#A8D4E0>「次のうち、あなたを追っているものはどれですか？」</color>
 start/4103/title,지워진 자리 확인,Check the Erased Seat,消された席を確認
 start/4103/success,맞춰본 명단을 교탁의 자리 배치도에 대어 봅니다.\n지워진 자리는 <color=#A8D4E0>14번</color>입니다. 그러나 <color=#A8D4E0>이름</color>은 알 수 없습니다.,The matched roster pins the red-erased seat to <color=#A8D4E0>No. 14</color>.\nThe <color=#A8D4E0>name</color> remains unknown.,照合した名簿を教卓の座席表に合わせる。\n赤く消された席は確かに<color=#A8D4E0>14番</color>だ。しかし<color=#A8D4E0>名前</color>は分からない。
 start/4104/title,압수품 보관 기록,Confiscated Storage Log,押収品保管記録
@@ -183,12 +183,12 @@ action/object_writing_2/action,<color=#A8D4E0>사물함</color>에 대해 생각
 action/object_writing_2/result,<color=#A8D4E0>3학년 1반의 사물함 중 하나</color>는 잠겨 있었습니다.\n그 사물함 안에 이 경고의 이유가 남아 있을 것 같습니다.,One of the <color=#A8D4E0>lockers in Class 3-1</color> was locked.\nThe reason for this warning may remain inside.,<color=#A8D4E0>3年1組のロッカーのひとつ</color>には鍵がかかっていた。\nこの警告の理由が、その中に残っているかもしれない。
 action/object_writing_3/action,<color=#A8D4E0>그 밖의 것들</color>에 대해 생각하기,Think about <color=#A8D4E0>the other things</color>,<color=#A8D4E0>その他のこと</color>について考える
 action/object_writing_3/result,"문장은 이미 여러 번 열렸던 것을 마지막으로 막아 보려 하고 있습니다.\n<color=#A8D4E0>단서가 가리키는 곳과, 막으려는 것이 같지 않을 수 있습니다.</color>",It seems to be stopping something opened many times before.\n<color=#A8D4E0>The clue and the warning may point to different things.</color>,それは、何度も開かれてきたものを止めようとしているようだ。\n<color=#A8D4E0>手がかりと警告は、別のものを指しているのかもしれない。</color>
-action/object_broadcast_1/action,<color=#A8D4E0>안내</color>에 대해 생각하기,,
-action/object_broadcast_1/result,방송은 모두에게 나가라 말하고 있습니다.\n정작 방송실 문은 안에서 잠겨 있던 것 같습니다.\n<color=#A8D4E0>2-1 교실의 스피커</color>를 확인해야 할 것 같습니다.,,
-action/object_broadcast_2/action,<color=#A8D4E0>목소리</color>에 대해 생각하기,,
-action/object_broadcast_2/result,안내가 끝난 뒤에도 누군가 계속 방송을 틀었습니다.\n그 사람은 <color=#A8D4E0>강당</color> 어딘가에 남아 있었을 것 같습니다.,,
-action/object_broadcast_3/action,<color=#A8D4E0>바깥</color>에 대해 생각하기,,
-action/object_broadcast_3/result,방송은 끝내 바깥에 닿지 못했습니다.\n<color=#A8D4E0>운동장</color>은 이미 비어 있었던 것 같습니다.,,
+action/object_mailbox_1/action,<color=#A8D4E0>도서관에서 숨겨진 글자를 확인한 사람</color>,<color=#A8D4E0>The person who checked the hidden letters in the library</color>,<color=#A8D4E0>図書館で隠された文字を確認した人</color>
+action/object_mailbox_1/result,편지의 종이가 손끝에서 차갑게 식습니다.\n이 추정은 <color=#A8D4E0>학생수첩</color>에 기록됩니다.,The paper goes cold under your fingertips.\nThis guess is recorded in the <color=#A8D4E0>student notebook</color>.,指先の下で手紙の紙が冷たくなる。\nこの推測は<color=#A8D4E0>生徒手帳</color>に記録される。
+action/object_mailbox_2/action,<color=#A8D4E0>교실 2-1에서 지워진 자리를 확인한 사람</color>,<color=#A8D4E0>The person who checked the erased seat in Class 2-1</color>,<color=#A8D4E0>2-1の教室で消された席を確認した人</color>
+action/object_mailbox_2/result,편지의 종이가 손끝에서 차갑게 식습니다.\n이 추정은 <color=#A8D4E0>학생수첩</color>에 기록됩니다.,The paper goes cold under your fingertips.\nThis guess is recorded in the <color=#A8D4E0>student notebook</color>.,指先の下で手紙の紙が冷たくなる。\nこの推測は<color=#A8D4E0>生徒手帳</color>に記録される。
+action/object_mailbox_3/action,<color=#A8D4E0>아직 아무것도 하지 못한 사람</color>,<color=#A8D4E0>The person who has done nothing yet</color>,<color=#A8D4E0>まだ何もできていない人</color>
+action/object_mailbox_3/result,편지의 종이가 손끝에서 차갑게 식습니다.\n이 추정은 <color=#A8D4E0>학생수첩</color>에 기록됩니다.,The paper goes cold under your fingertips.\nThis guess is recorded in the <color=#A8D4E0>student notebook</color>.,指先の下で手紙の紙が冷たくなる。\nこの推測は<color=#A8D4E0>生徒手帳</color>に記録される。
 action/object_confiscated_1/action,<color=#A8D4E0>규칙</color>에 대해 생각하기,,
 action/object_confiscated_1/result,무엇이 금지였는지 목록이 남아 있습니다.\n<color=#A8D4E0>2-1 교실 게시판</color>과 대조해야 할 것 같습니다.,,
 action/object_confiscated_2/action,<color=#A8D4E0>거둔 손</color>에 대해 생각하기,,
@@ -215,8 +215,8 @@ interactable/701000011/name,교무 회의록,Faculty Meeting Minutes,教務会�
 interactable/701000011/desc,같은 이름이 페이지마다 반복되어 적혀 있습니다...,The same name repeats on every page...,同じ名前が、ページごとに繰り返されている...
 interactable/701000022/name,행정실 책상,Administrative Office Desk,事務室の机
 interactable/701000022/desc,누군가의 자리였던 의자가 살짝 빠져 있습니다...,"A chair sits slightly pulled out, as if just left...",誰かの席だった椅子が、わずかに引かれている...
-interactable/701000023/name,압수품 보관함,Confiscated Items Cabinet,押収品保管庫
-interactable/701000023/desc,누군가의 이름이 적힌 봉투가 사라져 있습니다...,An envelope marked with a name is missing...,誰かの名前が書かれた封筒が、消えている...
+interactable/701000023/name,우편함,Mailbox,郵便受け
+interactable/701000023/desc,우편함에 편지 봉투들이 꽂혀 있습니다.\n보낸 사람과 받는 사람이 적혀 있지 않습니다.,Letter envelopes are tucked into the mailbox.\nNo sender or recipient is written on them.,郵便受けに封筒が差し込まれている。\n差出人も宛先も書かれていない。
 interactable/701000024/name,사무용 책상,Office Desk,事務机
 interactable/701000024/desc,잘 정리된 책상 위에 한 자리만 비어 있습니다...,One spot on the tidy desk is conspicuously empty...,整った机の上で、一か所だけが空いている...
 interactable/701000025/name,사무용 책상,Office Desk,事務机

@@ -59,13 +59,22 @@ public class MissionGraphDataTests
             Assert.Equal(MissionGraphClaimPolicy.Unique, node.ClaimPolicy);
             Assert.False(string.IsNullOrWhiteSpace(node.SuccessText.Kr));
         });
-        Assert.All(startNodes, node =>
+        foreach (var node in startNodes)
         {
             Assert.Equal(MissionGraphStoryletType.Discovery, node.StoryletType);
             Assert.Equal(MissionGraphRouteType.None, node.RouteType);
             Assert.Equal(MissionGraphRewardKind.ClueTag, node.RewardKind);
-            Assert.Single(node.RequiredPartIds);
-        });
+            if (node.NodeId == 4102)
+            {
+                Assert.Empty(node.RequiredPartIds);
+                Assert.Equal(0, node.RequiredOutputItemId);
+                Assert.Equal(0, node.RecipeId);
+            }
+            else
+            {
+                Assert.Single(node.RequiredPartIds);
+            }
+        }
         Assert.Contains("start_writing", GameMissionGraphData.GetNode(4201).RequiredAllTags);
         Assert.Contains("stage_1", GameMissionGraphData.GetNode(4201).RequiredAllTags);
         Assert.Contains("stage_2", GameMissionGraphData.GetNode(4201).BlockedTags);
@@ -154,7 +163,8 @@ public class MissionGraphDataTests
 
         Assert.Contains(availableWithWrittenPage, node => node.NodeId == 4101);
         Assert.DoesNotContain(availableWithWrittenPage, node => node.NodeId is >= 4201 and <= 4243);
-        Assert.DoesNotContain(availableWithWrittenPage, node => node.NodeId is 4102 or 4103 or 4104 or 4105);
+        Assert.Contains(availableWithWrittenPage, node => node.NodeId == 4102);
+        Assert.DoesNotContain(availableWithWrittenPage, node => node.NodeId is 4103 or 4104 or 4105);
 
         Assert.Contains(availableAfterWritingStarts, node => node.NodeId == 4201);
         Assert.Contains(availableAfterWritingStarts, node => node.NodeId == 4202);
