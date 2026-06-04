@@ -31,7 +31,6 @@ namespace network.common.data.models
         [Key("shortRewards")] public List<MissionShortRewardInfo> ShortRewards { get; set; } = new();
         [Key("discoveredStoryletIds")] public List<string> DiscoveredStoryletIds { get; set; } = new();
         [Key("trackedStoryletIds")] public List<string> TrackedStoryletIds { get; set; } = new();
-        [Key("activeRouteIds")] public List<string> ActiveRouteIds { get; set; } = new();
         [Key("claimedStoryletIds")] public List<string> ClaimedStoryletIds { get; set; } = new();
         [Key("lostStoryletIds")] public List<string> LostStoryletIds { get; set; } = new();
         [Key("ownedClueTags")] public List<string> OwnedClueTags { get; set; } = new();
@@ -65,12 +64,10 @@ namespace network.common.data.models
         [Key("nodeKind")] public int NodeKind { get; set; }
         [Key("storyletId")] public string StoryletId { get; set; } = "";
         [Key("storyletType")] public int StoryletType { get; set; }
-        [Key("routeType")] public int RouteType { get; set; }
         [Key("targetAreaType")] public int TargetAreaType { get; set; }
         [Key("targetObjectType")] public int TargetObjectType { get; set; }
         [Key("claimPolicy")] public int ClaimPolicy { get; set; }
         [Key("rewardKind")] public int RewardKind { get; set; }
-        [Key("riskLevel")] public int RiskLevel { get; set; }
         [Key("caseGroup")] public string CaseGroup { get; set; } = "";
         [Key("isVictoryStorylet")] public bool IsVictoryStorylet { get; set; }
         [Key("isCompleted")] public bool IsCompleted { get; set; }
@@ -176,7 +173,6 @@ namespace network.common.data.models
         [Key("nodeId")] public int NodeId { get; set; }
         [Key("nodeKey")] public string NodeKey { get; set; } = "";
         [Key("storyletId")] public string StoryletId { get; set; } = "";
-        [Key("routeId")] public string RouteId { get; set; } = "";
         [Key("outputPartId")] public int OutputPartId { get; set; }
         [Key("completedNodeIds")] public List<int> CompletedNodeIds { get; set; } = new();
         [Key("unlockedNodeIds")] public List<int> UnlockedNodeIds { get; set; } = new();

@@ -65,6 +65,8 @@ public class GameServer(
     private Timer? _botMissionTimer;          // #134 봇 미션 처리 (RNG 채집/결합 — 1초 주기)
 
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
+    private int _botMovementProcessing;
+
     private const int ResourceTickIntervalSeconds = 5;
     // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
     private const int MentalDecayPhase1 = 1;            // 0~5분: 5초당 오염도 +1 (GDD §3.1.1)
@@ -1011,6 +1013,9 @@ public class GameServer(
 
     private void ProcessBotMovement(object? state)
     {
+        if (System.Threading.Interlocked.Exchange(ref _botMovementProcessing, 1) == 1)
+            return;
+
         try
         {
             var activeSessions = _clientSessions.Values
@@ -1037,6 +1042,10 @@ public class GameServer(
         catch (Exception ex)
         {
             logger.LogError(ex, "봇 walking 틱 처리 중 오류");
+        }
+        finally
+        {
+            System.Threading.Volatile.Write(ref _botMovementProcessing, 0);
         }
     }
 

@@ -72,6 +72,11 @@ namespace network.common.data
         /// </summary>
         public static LocalizedText FromCsv(CsvRow row, string prefix)
         {
+            // 로컬라이징 분리: {prefix}_key가 있으면 중앙 테이블에서, 없으면 인라인 {prefix}_kr/en/jp (하위호환)
+            var keyCol = $"{prefix}_key";
+            if (row.ContainsKey(keyCol) && !string.IsNullOrWhiteSpace(row[keyCol]))
+                return GameLocalizationData.Get(row[keyCol].Trim());
+
             var texts = new Dictionary<string, string>();
             foreach (var lang in SupportedLanguages)
             {
@@ -89,6 +94,11 @@ namespace network.common.data
         /// </summary>
         public static LocalizedText FromCsvMultiline(CsvRow row, string prefix)
         {
+            // 로컬라이징 분리: {prefix}_key 우선. 중앙 테이블 텍스트는 Initialize에서 이미 \n 치환됨.
+            var keyCol = $"{prefix}_key";
+            if (row.ContainsKey(keyCol) && !string.IsNullOrWhiteSpace(row[keyCol]))
+                return GameLocalizationData.Get(row[keyCol].Trim());
+
             var texts = new Dictionary<string, string>();
             foreach (var lang in SupportedLanguages)
             {

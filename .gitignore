@@ -50,6 +50,8 @@ publish/
 # Claude Code
 **/.claude/*
 !.claude/agents/
+!.claude/commands/
+!.claude/hooks/
 !.claude/settings.json
 manitto/*
 
@@ -123,6 +125,10 @@ credentials/
 client_clone_*/
 trivy-results.sarif
 *.sarif
+
+# Ops Storylet 에디터가 생성하는 CSV 백업 (커밋 대상 아님)
+*.csv.bak
+*.csv.bak.meta
 
 # Unity 외부 플러그인 (에셋스토어에서 각자 임포트)
 client/Assets/Plugins/AllIn1SpriteShader/

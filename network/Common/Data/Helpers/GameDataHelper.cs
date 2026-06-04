@@ -23,6 +23,8 @@ namespace network.common.data.helpers
         private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
             _standardDataDefinitions =
             {
+                // 중앙 로컬라이징 테이블 — 다른 데이터가 {prefix}_key로 참조하므로 가장 먼저 초기화
+                (fileName: DataFiles.LocalizationText, init: GameLocalizationData.Initialize, validate: null),
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
                 (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize,
                     validate: GameLoadingTextData.Validate),
@@ -226,6 +228,7 @@ namespace network.common.data.helpers
             );
 
             // 상호작용 오브젝트 데이터 초기화
+            // interactable_info의 action_group_key가 비어 있지 않으면 해당 오브젝트는 그 전용 선택지 그룹을 쓴다.
             GameInteractableData.Initialize(
                 loadedData[DataFiles.Interactable.Info],
                 loadedData[DataFiles.Interactable.Action],
@@ -570,6 +573,7 @@ namespace network.common.data.helpers
             public const string AreaConnection = "map_connections.csv";
             public const string CorruptionText = "corruption_text.csv";
             public const string ErrorMessage = "error_message.csv";
+            public const string LocalizationText = "localization.csv";
 
             public const string BuffInfo = "buff_info.csv";
 

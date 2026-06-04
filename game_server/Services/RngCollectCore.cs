@@ -16,6 +16,9 @@ public static class RngCollectCore
 {
     private const int RngCollectCooldownSeconds = 30;
     private const int FailStaminaReward = 0;
+    private const int AttendanceBlackboardInteractId = 701000055;
+    private const int TornAttendancePagePartId = 308;
+    private const int BlackedOutPaperPartId = 309;
     // 소모품 회수 stamina 보상 제거 (#135) — 회복은 아이템 사용 시점에만.
     private const int ConsumableStaminaReward = 0;
     private static readonly Random _rng = new();
@@ -69,6 +72,16 @@ public static class RngCollectCore
                     int partItemId = GameMissionData.GetPartItemId(collectResult.Part.PartId);
                     if (partItemId > 0)
                         outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, partItemId, 1);
+
+                    TryGrantAttendanceBlackboardPair(
+                        matchingId,
+                        playerId,
+                        info,
+                        collectResult.Part.PartId,
+                        missionManager,
+                        inventoryManager,
+                        outcome,
+                        isBot);
                 }
                 else
                 {
@@ -123,6 +136,38 @@ public static class RngCollectCore
         return outcome;
     }
 
+    private static void TryGrantAttendanceBlackboardPair(
+        long matchingId,
+        long playerId,
+        InteractableInfoData info,
+        int collectedPartId,
+        MissionManager missionManager,
+        InGameInventoryManager inventoryManager,
+        RngCollectOutcome outcome,
+        bool isBot)
+    {
+        if (isBot ||
+            info.Id != AttendanceBlackboardInteractId ||
+            collectedPartId != TornAttendancePagePartId)
+        {
+            return;
+        }
+
+        var extraResult = missionManager.TryCollectPartById(matchingId, playerId, BlackedOutPaperPartId);
+        if (extraResult is not { Success: true, Part: not null }) return;
+
+        extraResult.StaminaReward = 0;
+        outcome.ExtraCollectedParts.Add(extraResult);
+
+        int extraItemId = GameMissionData.GetPartItemId(extraResult.Part.PartId);
+        if (extraItemId > 0)
+        {
+            var extraInventoryItem = inventoryManager.AddItem(matchingId, playerId, extraItemId, 1);
+            if (extraInventoryItem != null)
+                outcome.AddedExtraInventoryItems.Add(extraInventoryItem);
+        }
+    }
+
     private static void TryApplySharpObservationBonus(
         long matchingId,
         long playerId,
@@ -170,11 +215,17 @@ public class RngCollectOutcome
     /// <summary>부품 회수 성공 시 데이터 (호출자 G_TO_C_PART_COLLECTED 송신용)</summary>
     public MissionPartData? CollectedPart { get; set; }
 
+    /// <summary>특수 연출/테스트 흐름에서 같은 상호작용으로 추가 지급된 부품.</summary>
+    public List<PartCollectResult> ExtraCollectedParts { get; } = new();
+
     /// <summary>부품 회수와 함께 완료된 미션 그래프 노드 id.</summary>
     public List<int> CompletedMissionNodeIds { get; set; } = new();
 
     /// <summary>소모품 회수 시 인벤토리에 추가된 아이템 (호출자 G_TO_C_INGAME_INVENTORY_UPDATE 송신용)</summary>
     public InGameItemInfo? AddedInventoryItem { get; set; }
+
+    /// <summary>추가 지급 부품에 대응해 인벤토리에 추가된 아이템.</summary>
+    public List<InGameItemInfo> AddedExtraInventoryItems { get; } = new();
 
     /// <summary>예리한 관찰 보너스로 추가 지급된 소모품 ID.</summary>
     public int BonusItemId { get; set; }

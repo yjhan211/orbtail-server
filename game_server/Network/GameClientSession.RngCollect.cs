@@ -54,6 +54,14 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        if (GameMissionGraphData.HasMissionActionTarget(info.ZoneId, (int)info.ObjectType, info.Id))
+        {
+            Logger.LogDebug("RNG START mission action target blocked: PlayerId={PlayerId}, InteractId={InteractId}",
+                PlayerId, msg.InteractId);
+            SendRngCollectAck(msg.InteractId, ErrorCode.INTERACTABLE_NOT_AVAILABLE, 0);
+            return Task.CompletedTask;
+        }
+
         int staminaCost = ApplyDutyStaminaSaverToCost(RngCollectStaminaCost);
 
         // stamina 차감 (즉시) — 정신력 1:2 변환은 ModifyStats가 처리
@@ -146,7 +154,43 @@ public partial class GameClientSession
                 GetMissionCollectTraceDescription(outcome.CompletedMissionNodeIds), true);
         }
 
+        foreach (var extraCollectResult in outcome.ExtraCollectedParts)
+        {
+            if (extraCollectResult.Part == null) continue;
+
+            using var partPacket = Packet.Create((int)Protocol.G_TO_C_PART_COLLECTED, PlayerId.Value);
+            var partMsg = new G_TO_C_PART_COLLECTED
+            {
+                PartId = extraCollectResult.Part.PartId,
+                PartNameKr = extraCollectResult.Part.PartNameKr,
+                PartTier = (int)extraCollectResult.Part.PartTier,
+                StaminaReward = extraCollectResult.StaminaReward
+            };
+            partPacket.SetBody(MessagePackSerializer.Serialize(partMsg));
+            Send(partPacket);
+
+            using var stepPacket = Packet.Create((int)Protocol.G_TO_C_MISSION_STEP_COMPLETE, PlayerId.Value);
+            var stepMsg = new G_TO_C_MISSION_STEP_COMPLETE
+            {
+                CompletedStep = extraCollectResult.Part.PartId,
+                StaminaReward = extraCollectResult.StaminaReward,
+                NextTargetArea = 0,
+                NextTargetInteractId = 0,
+                NextTargetActionId = 0
+            };
+            stepPacket.SetBody(MessagePackSerializer.Serialize(stepMsg));
+            Send(stepPacket);
+
+            _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
+                $"RNG 추가 부품 회수: {extraCollectResult.Part.PartNameKr}", isBot: false);
+
+            StoreTrace((AreaType)info.ZoneId, msg.InteractId,
+                GetMissionCollectTraceDescription(extraCollectResult.CompletedMissionNodeIds), true);
+        }
+
         if (outcome.AddedInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedInventoryItem);
+        foreach (var extraInventoryItem in outcome.AddedExtraInventoryItems)
+            SendInGameInventoryUpdate(extraInventoryItem);
         if (outcome.AddedBonusInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedBonusInventoryItem);
 
         Logger.LogInformation(

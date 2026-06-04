@@ -251,8 +251,20 @@ public partial class BotPlayerManager
             newPosition = targetPos;
             bot.Cell = nextStep.Cell;
             bot.Position = newPosition;
-            velocity = new Vector3f(0f, 0f, 0f);
             bot.PathIndex++;
+            velocity = new Vector3f(0f, 0f, 0f);
+            if (bot.PathIndex < bot.Path.Count && !bot.Path[bot.PathIndex].IsAreaTransition)
+            {
+                var followingPos = CellToWorldPosition(bot.Path[bot.PathIndex].Cell);
+                float nextDx = followingPos.X - newPosition.X;
+                float nextDy = followingPos.Y - newPosition.Y;
+                float nextDist = (float)Math.Sqrt(nextDx * nextDx + nextDy * nextDy);
+                if (nextDist > 0.01f)
+                    velocity = new Vector3f(
+                        nextDx / nextDist * BotWalkSpeed,
+                        nextDy / nextDist * BotWalkSpeed,
+                        0f);
+            }
         }
         else
         {

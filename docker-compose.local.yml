@@ -89,7 +89,7 @@ services:
       - DOTNET_USE_POLLING_FILE_WATCHER=true
       - DEMO_MODE=${DEMO_MODE:-}
       - FORCE_PLAYER_JOB=${FORCE_PLAYER_JOB:-}
-      - FORCE_PLAYER_SPAWN_AREA=${FORCE_PLAYER_SPAWN_AREA:-}
+      - FORCE_PLAYER_SPAWN_AREA=${FORCE_PLAYER_SPAWN_AREA:-30}
       # #129 선물 수동 테스트 — 실플레이어 2명 + 봇 3명, 신청 순서대로 1번→2번 타겟 고정
       - TEST_TWO_PLAYER_MATCH=0
     depends_on:
@@ -109,6 +109,17 @@ services:
     environment:
       - GameServerUrl=http://game_server:8080
       - ASPNETCORE_ENVIRONMENT=Development
+      # Storylet CSV 편집툴이 호스트 레포의 CSV를 직접 읽고/쓰도록 마운트 경로 지정
+      - CsvRoot=/app/csv
+      # 아이템 스프라이트 서빙 경로(컨테이너엔 client/ 에셋이 없으므로 마운트한 경로를 직접 지정)
+      - ItemSpritesRoot=/app/item-sprites
+    volumes:
+      # network/Common/csv를 컨테이너에 바인드 마운트(rw) → 에디터 저장이 레포 파일에 반영
+      - ./network/Common/csv:/app/csv
+      # 아이템 스프라이트(읽기 전용) → /item-sprites 정적 서빙 (스프라이트 미표시 버그 수정)
+      - ./client/Assets/Resources/ItemSprites:/app/item-sprites:ro
+      # 대시보드 정적 파일(읽기 전용) → 호스트 수정이 재빌드 없이 새로고침으로 반영 (UI 반복 개발용)
+      - ./ops_server/wwwroot:/app/wwwroot:ro
     depends_on:
       - game_server
       - user_server

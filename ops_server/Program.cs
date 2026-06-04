@@ -1,3 +1,4 @@
+using Microsoft.Extensions.FileProviders;
 using ops_server.services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,6 +16,7 @@ builder.Services.AddHttpClient<GameServerClient>(client =>
     client.BaseAddress = new Uri(gameServerBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(5);
 });
+builder.Services.AddSingleton<StoryletCsvService>();
 
 // ─── 앱 빌드 ──────────────────────────────────────────────────────────────
 
@@ -23,6 +25,16 @@ var app = builder.Build();
 // 정적 파일 (wwwroot/index.html, app.js)
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+string? itemSpritesRoot = ResolveItemSpritesRoot(builder.Configuration["ItemSpritesRoot"]);
+if (!string.IsNullOrWhiteSpace(itemSpritesRoot))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(itemSpritesRoot),
+        RequestPath = "/item-sprites",
+    });
+}
 
 // ─── API 라우트 ───────────────────────────────────────────────────────────
 
@@ -90,7 +102,89 @@ app.MapPost("/api/matching-config/job-pool", async (System.Text.Json.JsonElement
         : Results.Ok(result);
 });
 
+// 기록 Storylet CSV 조회
+app.MapGet("/api/storylets", (StoryletCsvService service) => Results.Ok(service.Load()));
+
+// 기록 Storylet 시작점 저장
+app.MapPut("/api/storylets/start/{nodeId}", (string nodeId, Dictionary<string, string?> body, StoryletCsvService service) =>
+{
+    var result = service.UpdateStart(nodeId, body);
+    return result.Success
+        ? Results.Ok(new { result.Message, data = service.Load() })
+        : Results.NotFound(new { result.Message });
+});
+
+// 기록 Storylet 후보 풀 저장
+app.MapPut("/api/storylets/pool/{nodeId}", (string nodeId, Dictionary<string, string?> body, StoryletCsvService service) =>
+{
+    var result = service.UpdatePool(nodeId, body);
+    return result.Success
+        ? Results.Ok(new { result.Message, data = service.Load() })
+        : Results.NotFound(new { result.Message });
+});
+
+// 상호작용 오브젝트 기본 본문 저장
+app.MapPut("/api/storylets/interactable/{id}", (string id, Dictionary<string, string?> body, StoryletCsvService service) =>
+{
+    var result = service.UpdateInteractable(id, body);
+    return result.Success
+        ? Results.Ok(new { result.Message, data = service.Load() })
+        : Results.NotFound(new { result.Message });
+});
+
+// 아이템 이름 저장
+app.MapPut("/api/storylets/item/{id}", (string id, Dictionary<string, string?> body, StoryletCsvService service) =>
+{
+    var result = service.UpdateItem(id, body);
+    return result.Success
+        ? Results.Ok(new { result.Message, data = service.Load() })
+        : Results.NotFound(new { result.Message });
+});
+
+// 조합 레시피 저장
+app.MapPut("/api/storylets/recipe/{recipeId}",
+    (string recipeId, Dictionary<string, string?> body, StoryletCsvService service) =>
+    {
+        var result = service.UpdateRecipe(recipeId, body);
+        return result.Success
+            ? Results.Ok(new { result.Message, data = service.Load() })
+            : Results.NotFound(new { result.Message });
+    });
+
+app.MapPut("/api/storylets/object-action/{actionGroupKey}/{actionId}",
+    (string actionGroupKey, string actionId, Dictionary<string, string?> body, StoryletCsvService service) =>
+    {
+        var result = service.UpdateObjectAction(actionGroupKey, actionId, body);
+        return result.Success
+            ? Results.Ok(new { result.Message, data = service.Load() })
+            : Results.NotFound(new { result.Message });
+    });
+
 // ops_server 헬스
 app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
 
 app.Run();
+
+static string? ResolveItemSpritesRoot(string? configuredRoot)
+{
+    // 설정(ItemSpritesRoot 환경변수)이 있고 실제로 존재하면 우선 사용 — Docker 마운트 경로 등.
+    // 컨테이너에는 client/ 에셋이 없어 walk-up이 실패하므로 이 경로가 스프라이트 서빙의 핵심이다.
+    if (!string.IsNullOrWhiteSpace(configuredRoot))
+    {
+        string full = Path.GetFullPath(configuredRoot);
+        if (Directory.Exists(full)) return full;
+    }
+
+    foreach (string seed in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+    {
+        string? cursor = Path.GetFullPath(seed);
+        while (!string.IsNullOrEmpty(cursor))
+        {
+            string candidate = Path.Combine(cursor, "client", "Assets", "Resources", "ItemSprites");
+            if (Directory.Exists(candidate)) return candidate;
+            cursor = Directory.GetParent(cursor)?.FullName;
+        }
+    }
+
+    return null;
+}

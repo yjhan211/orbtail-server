@@ -48,6 +48,10 @@ public class MissionGraphDataTests
         Assert.Equal(
             "record/pool/PAPER_DESK",
             GameMissionGraphData.GetNode(4301).EffectiveStoryletId);
+        Assert.Equal(701000054, GameMissionGraphData.GetNode(4103).InteractId);
+        Assert.Equal("object_2", GameMissionGraphData.GetNode(4103).ActionGroupKey);
+        Assert.True(GameMissionGraphData.GetNode(4103).MatchesInteractable(30, 2, 701000054));
+        Assert.False(GameMissionGraphData.GetNode(4103).MatchesInteractable(30, 2, 701000999));
         Assert.All(storyletNodes, node =>
         {
             Assert.Equal(0, node.JobTitle);
@@ -55,13 +59,21 @@ public class MissionGraphDataTests
             Assert.Equal(MissionGraphClaimPolicy.Unique, node.ClaimPolicy);
             Assert.False(string.IsNullOrWhiteSpace(node.SuccessText.Kr));
         });
-        Assert.All(startNodes, node =>
+        foreach (var node in startNodes)
         {
             Assert.Equal(MissionGraphStoryletType.Discovery, node.StoryletType);
-            Assert.Equal(MissionGraphRouteType.None, node.RouteType);
             Assert.Equal(MissionGraphRewardKind.ClueTag, node.RewardKind);
-            Assert.Single(node.RequiredPartIds);
-        });
+            if (node.NodeId == 4102)
+            {
+                Assert.Empty(node.RequiredPartIds);
+                Assert.Equal(0, node.RequiredOutputItemId);
+                Assert.Equal(0, node.RecipeId);
+            }
+            else
+            {
+                Assert.Single(node.RequiredPartIds);
+            }
+        }
         Assert.Contains("start_writing", GameMissionGraphData.GetNode(4201).RequiredAllTags);
         Assert.Contains("stage_1", GameMissionGraphData.GetNode(4201).RequiredAllTags);
         Assert.Contains("stage_2", GameMissionGraphData.GetNode(4201).BlockedTags);
@@ -150,7 +162,8 @@ public class MissionGraphDataTests
 
         Assert.Contains(availableWithWrittenPage, node => node.NodeId == 4101);
         Assert.DoesNotContain(availableWithWrittenPage, node => node.NodeId is >= 4201 and <= 4243);
-        Assert.DoesNotContain(availableWithWrittenPage, node => node.NodeId is 4102 or 4103 or 4104 or 4105);
+        Assert.Contains(availableWithWrittenPage, node => node.NodeId == 4102);
+        Assert.DoesNotContain(availableWithWrittenPage, node => node.NodeId is 4103 or 4104 or 4105);
 
         Assert.Contains(availableAfterWritingStarts, node => node.NodeId == 4201);
         Assert.Contains(availableAfterWritingStarts, node => node.NodeId == 4202);
@@ -272,9 +285,10 @@ public class MissionGraphDataTests
                 "node_kind",
                 "storylet_id",
                 "storylet_type",
-                "route_type",
                 "target_area_type",
                 "target_object_type",
+                "interact_id",
+                "action_group_key",
                 "required_output_item_id",
                 "recipe_id",
                 "clue_tags",
@@ -284,7 +298,6 @@ public class MissionGraphDataTests
                 "stat_threshold",
                 "claim_policy",
                 "reward_kind",
-                "risk_level",
                 "location_hint_text_id",
                 "trace_text_id",
                 "contested_text_id",
@@ -298,9 +311,10 @@ public class MissionGraphDataTests
                 "2",
                 "ROUTE-RECORD-RISK",
                 "route",
-                "risk_high_reward",
                 "41",
                 "9",
+                "701000076",
+                "object_9",
                 "9001",
                 "3001",
                 "record|public_trace",
@@ -310,7 +324,6 @@ public class MissionGraphDataTests
                 "2",
                 "unique",
                 "mixed",
-                "3",
                 "12001",
                 "12002",
                 "12003",
@@ -322,9 +335,10 @@ public class MissionGraphDataTests
         Assert.True(node.HasStoryletMetadata);
         Assert.Equal("ROUTE-RECORD-RISK", node.EffectiveStoryletId);
         Assert.Equal(MissionGraphStoryletType.Route, node.StoryletType);
-        Assert.Equal(MissionGraphRouteType.RiskHighReward, node.RouteType);
         Assert.Equal(41, node.TargetAreaType);
         Assert.Equal(9, node.TargetObjectType);
+        Assert.Equal(701000076, node.InteractId);
+        Assert.Equal("object_9", node.ActionGroupKey);
         Assert.Equal(9001, node.RequiredOutputItemId);
         Assert.Equal(3001, node.RecipeId);
         Assert.Equal(new[] { "record", "public_trace" }, node.ClueTags);
@@ -334,7 +348,6 @@ public class MissionGraphDataTests
         Assert.Equal(2, node.StatThreshold);
         Assert.Equal(MissionGraphClaimPolicy.Unique, node.ClaimPolicy);
         Assert.Equal(MissionGraphRewardKind.Mixed, node.RewardKind);
-        Assert.Equal(3, node.RiskLevel);
         Assert.Equal(12001, node.LocationHintTextId);
         Assert.Equal(12002, node.TraceTextId);
         Assert.Equal(12003, node.ContestedTextId);

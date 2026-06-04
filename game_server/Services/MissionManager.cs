@@ -114,6 +114,34 @@ public class MissionManager
         };
     }
 
+    public PartCollectResult? TryCollectPartById(long matchingId, long playerId, int partId)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return null;
+        if (!matching.TryGetValue(playerId, out var state)) return null;
+        if (state.IsCompleted) return null;
+
+        if (state.CollectedParts.Contains(partId))
+            return new PartCollectResult { ErrorCode = ErrorCode.ACTION_ALREADY_EXPLORED };
+
+        var part = GameMissionData.GetMaterials((short)state.JobTitle)
+            .FirstOrDefault(candidate => candidate.PartId == partId);
+        if (part == null) return null;
+
+        state.CollectedParts.Add(part.PartId);
+        var graphProgress = ApplyGraphNodeProgressForPartId(state, part.PartId);
+        _logger.LogInformation("부품 직접 회수: PlayerId={PlayerId}, PartId={PartId} ({Name})",
+            playerId, part.PartId, part.PartNameKr);
+
+        return new PartCollectResult
+        {
+            Success = true,
+            Part = part,
+            StaminaReward = part.StaminaReward,
+            CompletedMissionNodeIds = graphProgress.CompletedNodeIds,
+            UnlockedMissionNodeIds = graphProgress.UnlockedNodeIds
+        };
+    }
+
     /// <summary>
     ///     선행 아이템 회수 시도. (area, objectType)이 PrerequisiteItemData에 매칭되면 share_group 등록.
     /// </summary>
@@ -298,8 +326,6 @@ public class MissionManager
             state.DiscoveredStoryletIds.Add(node.EffectiveStoryletId);
             state.TrackedStoryletIds.Add(node.EffectiveStoryletId);
             state.ClaimedStoryletIds.Add(node.EffectiveStoryletId);
-            if (node.RouteType != MissionGraphRouteType.None)
-                state.ActiveRouteIds.Add(node.EffectiveStoryletId);
         }
         if (node.OutputPartId > 0)
         {
@@ -849,6 +875,32 @@ public class MissionManager
         return result;
     }
 
+    private MissionGraphProgressResult ApplyGraphNodeProgressForPartId(PlayerPartState state, int partId)
+    {
+        var result = new MissionGraphProgressResult();
+        var completedBefore = state.CompletedMissionNodeIds.ToHashSet();
+        var unlockedBefore = state.UnlockedMissionNodeIds.ToHashSet();
+
+        foreach (var node in GameMissionGraphData.GetNodes((short)state.JobTitle)
+                     .Where(candidate =>
+                         candidate.OutputPartId == partId &&
+                         !state.CompletedMissionNodeIds.Contains(candidate.NodeId) &&
+                         candidate.AreRequirementsMet(
+                             state.CollectedParts,
+                             state.CompletedMissionNodeIds,
+                             state.OwnedClueTags,
+                             state.HasLostTarget)))
+        {
+            state.CompletedMissionNodeIds.Add(node.NodeId);
+        }
+
+        RefreshUnlockedMissionNodes(state);
+
+        result.CompletedNodeIds = state.CompletedMissionNodeIds.Except(completedBefore).ToList();
+        result.UnlockedNodeIds = state.UnlockedMissionNodeIds.Except(unlockedBefore).ToList();
+        return result;
+    }
+
     private MissionGraphProgressResult ApplyGraphRecipeProgress(PlayerPartState state, PartRecipe recipe)
     {
         var result = new MissionGraphProgressResult();
@@ -994,7 +1046,6 @@ public class PlayerPartState
     public HashSet<int> UnlockedMissionNodeIds { get; set; } = new();
     public HashSet<string> DiscoveredStoryletIds { get; set; } = new();
     public HashSet<string> TrackedStoryletIds { get; set; } = new();
-    public HashSet<string> ActiveRouteIds { get; set; } = new();
     public HashSet<string> ClaimedStoryletIds { get; set; } = new();
     public HashSet<string> LostStoryletIds { get; set; } = new();
     public HashSet<string> OwnedClueTags { get; set; } = new();
