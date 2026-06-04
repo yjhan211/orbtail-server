@@ -135,24 +135,25 @@ public partial class BotPlayerManager
     };
 
     /// <summary>
-    ///     봇 직책별 액세서리 (시연 시각 식별용).
+    ///     봇 커스터마이징 아이템 — 리본 헤어밴드 / 프리뮬라 / 뽀송 귀마개 / 베레모.
+    ///     봇마다 playerId로 서로 다른 1종을 배정한다(4종 → 봇 4명 1:1).
     /// </summary>
-    private static readonly Dictionary<JobTitle, int> BotAccessoryByJob = new()
+    private static readonly int[] BotCustomizationItems =
     {
-        { JobTitle.BROADCAST_MEMBER, 103000001 },  // 리본 헤어밴드
-        { JobTitle.DISCIPLINE_MEMBER, 103000004 }, // 프리뮬라
-        { JobTitle.SCIENCE_MEMBER, 103000005 },    // 뽀송 귀마개
-        { JobTitle.HEALTH_MEMBER, 103000006 }      // 베레모
+        103000001, // 리본 헤어밴드
+        103000004, // 프리뮬라
+        103000005, // 뽀송 귀마개
+        103000006  // 베레모
     };
 
     /// <summary>
-    ///     봇 기본 의상 + 직책별 액세서리 조합 wear list 생성.
+    ///     봇 기본 의상 + 봇별 커스터마이징 아이템 1종 조합 wear list 생성.
     /// </summary>
-    private static List<int> BuildBotWearItems(JobTitle jobTitle)
+    private static List<int> BuildBotWearItems(long playerId)
     {
         var list = new List<int>(BotDefaultWearItemIds);
-        if (BotAccessoryByJob.TryGetValue(jobTitle, out var accessoryId))
-            list.Add(accessoryId);
+        int idx = (int)(Math.Abs(playerId) % BotCustomizationItems.Length);
+        list.Add(BotCustomizationItems[idx]);
         return list;
     }
 
@@ -182,7 +183,7 @@ public partial class BotPlayerManager
             LastCell = bot.Cell,
             Hp = 5000,
             Stamina = bot.Stamina,
-            WearItemIdList = BuildBotWearItems(bot.MyJobTitle)
+            WearItemIdList = BuildBotWearItems(bot.PlayerId)
         };
         info.ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, mapId, matchingId, bot.Cell)
         {
