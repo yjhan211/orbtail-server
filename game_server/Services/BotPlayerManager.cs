@@ -221,6 +221,13 @@ public partial class BotPlayerManager
         return bots.FirstOrDefault(b => b.PlayerId == playerId);
     }
 
+    /// <summary>프로토 0: 특정 영역의 생존 봇 수 (정신력 회복 2/N 인원 계산용).</summary>
+    public int CountBotsInArea(long matchingId, AreaType area)
+    {
+        if (!_botStates.TryGetValue(matchingId, out var bots)) return 0;
+        return bots.Count(b => !b.IsEliminated && b.CurrentArea == area);
+    }
+
     /// <summary>
     ///     해당 매칭에 봇이 있는지 확인
     /// </summary>

@@ -251,6 +251,9 @@ public class GameServer(
 
                 if (!isTerminal && session.CurrentArea != AreaType.None)
                 {
+                    // 프로토 0: 회복은 "방"에서만(복도=transit, 회복 없음) + 타겟 동석 시.
+                    //   혼잡할수록 느림 — 회복량 = 기본 × (2 / 구역 총인원).
+                    bool inRoom = !session.CurrentArea.IsCorridor();
                     var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
                     bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
                     if (!targetInSameArea)
@@ -259,8 +262,12 @@ public class GameServer(
                         targetInSameArea = targetBot is { IsEliminated: false } && targetBot.CurrentArea == session.CurrentArea;
                     }
 
-                    if (targetInSameArea)
-                        corruptionDelta = ApplyTargetEncounterStability(session, -TargetProximityRecovery);
+                    if (inRoom && targetInSameArea)
+                    {
+                        int pop = CountAreaPopulation(activeSessions, session.CurrentMapSubId, session.CurrentArea);
+                        int recovery = Math.Max(1, (int)Math.Round(TargetProximityRecovery * (2.0 / Math.Max(2, pop))));
+                        corruptionDelta = ApplyTargetEncounterStability(session, -recovery);
+                    }
                 }
 
                 // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
@@ -329,6 +336,13 @@ public class GameServer(
         {
             logger.LogError(ex, "자원 틱 처리 중 오류");
         }
+    }
+
+    /// <summary>프로토 0: 특정 영역의 총 인원(인간 + 봇). 회복 2/N 스케일링용.</summary>
+    private int CountAreaPopulation(List<GameClientSession> sessions, long matchingId, AreaType area)
+    {
+        int humans = sessions.Count(s => s.CurrentMapSubId == matchingId && s.CurrentArea == area);
+        return humans + _botPlayerManager.CountBotsInArea(matchingId, area);
     }
 
     private int ApplyTargetEncounterStability(GameClientSession session, int baseRecoveryDelta)
