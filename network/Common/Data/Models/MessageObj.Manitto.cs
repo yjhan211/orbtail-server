@@ -350,6 +350,11 @@ namespace network.common.data.models
 
         // 최근 25초 조우 강도 0~5 (정수부=완료 슬롯, 소수부=진행 슬롯). 표시 양자화는 클라가 담당.
         [Key("presence")] public float Presence { get; set; }
+
+        // 정체성 — 후보가 현재 같은 구역에 없어도 카드를 채울 수 있도록 서버가 함께 전송.
+        // 봇은 서버 메모리값, 인간은 비어 올 수 있고 그땐 클라가 FindPlayerByPlayerId로 폴백.
+        [Key("name")] public string Name { get; set; }
+        [Key("wearItemIds")] public List<int> WearItemIds { get; set; }
     }
 
     [MessagePackObject]

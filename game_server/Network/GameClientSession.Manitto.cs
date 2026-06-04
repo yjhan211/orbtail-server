@@ -635,7 +635,7 @@ public partial class GameClientSession
     /// <summary>
     ///     프로토 0 기척 갱신 (#159) — 타겟 제외 후보별 최근 25초 조우 강도(0~5) 전송
     /// </summary>
-    public void SendPresenceUpdate(List<(long candidateId, float presence)> candidates)
+    public void SendPresenceUpdate(List<(long playerId, float presence, string name, List<int> wear)> candidates)
     {
         if (!PlayerId.HasValue) return;
 
@@ -643,7 +643,13 @@ public partial class GameClientSession
         var msg = new G_TO_C_PRESENCE_UPDATE
         {
             Candidates = candidates
-                .Select(c => new PresenceCandidate { PlayerId = c.candidateId, Presence = c.presence })
+                .Select(c => new PresenceCandidate
+                {
+                    PlayerId = c.playerId,
+                    Presence = c.presence,
+                    Name = c.name,
+                    WearItemIds = c.wear
+                })
                 .ToList()
         };
         packet.SetBody(MessagePackSerializer.Serialize(msg));

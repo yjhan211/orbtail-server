@@ -53,19 +53,26 @@ public sealed class Proto0PresenceTracker
         state.Head = (slot + 1) % WindowTicks;
     }
 
-    /// <summary>observer 관점의 후보 presence(0~5). 자기 자신/타겟은 제외한다.</summary>
-    public List<(long candidateId, float presence)> GetCandidates(long matchingId, long observerId, long targetId)
+    /// <summary>
+    ///     observer 관점의 후보 목록. roster(현재 살아있는 전체 플레이어)에서 자기 자신/타겟만 제외하고
+    ///     전원을 반환한다 — 조우가 아직 없어도 presence 0으로 항상 포함(카드가 사라지지 않도록).
+    /// </summary>
+    public List<(long candidateId, float presence)> GetCandidates(
+        long matchingId, long observerId, long targetId, IEnumerable<long> roster)
     {
         var result = new List<(long, float)>();
-        if (!_matches.TryGetValue(matchingId, out var state)) return result;
-        if (!state.Observers.TryGetValue(observerId, out var candidateBuckets)) return result;
+        _matches.TryGetValue(matchingId, out var state);
+        Dictionary<long, float[]> candidateBuckets = null;
+        state?.Observers.TryGetValue(observerId, out candidateBuckets);
 
-        foreach (var (candidateId, buckets) in candidateBuckets)
+        foreach (long candidateId in roster)
         {
             if (candidateId == observerId || candidateId == targetId) continue;
 
             float score = 0f;
-            foreach (float w in buckets) score += w;
+            if (candidateBuckets != null && candidateBuckets.TryGetValue(candidateId, out var buckets))
+                foreach (float w in buckets) score += w;
+
             result.Add((candidateId, Math.Min(MaxPresence, score)));
         }
 

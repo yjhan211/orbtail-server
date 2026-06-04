@@ -344,8 +344,25 @@ public class GameServer(
                 {
                     if (session.CurrentMapSubId != matchingId || !session.PlayerId.HasValue) continue;
 
-                    var candidates = _presenceTracker.GetCandidates(
-                        matchingId, session.PlayerId.Value, session.TargetPlayerId);
+                    // roster = 현재 살아있는 전체 플레이어 → 타겟 제외 후보 전원(presence 0 포함)
+                    var scored = _presenceTracker.GetCandidates(
+                        matchingId, session.PlayerId.Value, session.TargetPlayerId, playerAreas.Keys);
+
+                    var candidates = new List<(long playerId, float presence, string name, List<int> wear)>();
+                    foreach (var (candidateId, presence) in scored)
+                    {
+                        string name = "";
+                        List<int> wear = null;
+                        // 봇은 서버 메모리에 정체성 보유 → 후보가 멀리 있어도 카드 채움. 인간은 빈값(클라가 폴백).
+                        if (BotPlayerManager.IsBotPlayerId(candidateId))
+                        {
+                            var info = _botPlayerManager.SynthesizePlayerInfo(matchingId, candidateId);
+                            if (info != null) { name = info.Name; wear = info.WearItemIdList; }
+                        }
+
+                        candidates.Add((candidateId, presence, name, wear));
+                    }
+
                     session.SendPresenceUpdate(candidates);
                 }
             }
