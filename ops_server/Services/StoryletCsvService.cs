@@ -258,7 +258,10 @@ public sealed class StoryletCsvService
             {
                 table.Rows.Add(new Dictionary<string, string>(StringComparer.Ordinal)
                 {
-                    ["text_key"] = key, ["kr"] = kr, ["en"] = en, ["jp"] = jp
+                    ["text_key"] = key,
+                    ["kr"] = kr,
+                    ["en"] = en,
+                    ["jp"] = jp
                 });
             }
 

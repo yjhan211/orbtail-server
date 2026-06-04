@@ -478,7 +478,8 @@ namespace network.common.data
         public int TargetObjectType { get; private set; }
         public int InteractId { get; private set; }
         public string ActionGroupKey { get; private set; }
-        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }        public MissionGraphRewardKind RewardKind { get; private set; }
+        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
+        public MissionGraphRewardKind RewardKind { get; private set; }
         public LocalizedText SuccessText { get; private set; }
 
         public static MissionStoryletStartData CreateFromData(CsvRow row)
@@ -498,7 +499,8 @@ namespace network.common.data
                 TargetObjectType = MissionStoryletCsv.ParseInt(row, "target_object_type"),
                 InteractId = MissionStoryletCsv.ParseInt(row, "interact_id"),
                 ActionGroupKey = MissionStoryletCsv.ParseString(row, "action_group_key"),
-                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
+                ClaimPolicy = MissionStoryletCsv.ParseEnum(row, "claim_policy", MissionGraphClaimPolicy.Unique),
+                RewardKind = MissionStoryletCsv.ParseEnum(row, "reward_kind", MissionGraphRewardKind.ClueTag),
                 SuccessText = LocalizedText.FromCsvMultiline(row, "success_text")
             };
         }
@@ -518,7 +520,8 @@ namespace network.common.data
         public int InteractId { get; private set; }
         public string ActionGroupKey { get; private set; }
         public MissionGraphStoryletType StoryletType { get; private set; }
-        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }        public MissionGraphRewardKind RewardKind { get; private set; }
+        public MissionGraphClaimPolicy ClaimPolicy { get; private set; }
+        public MissionGraphRewardKind RewardKind { get; private set; }
         public string SuspicionTag { get; private set; }
         public bool IsVictoryStorylet { get; private set; }
         public List<string> RequiredAllTags { get; private set; }
