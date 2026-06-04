@@ -328,7 +328,14 @@ public partial class BotPlayerManager
         bot.PendingExploreEndBroadcast = true;
 
         var destination = ChooseProto0Destination(bot, matchingId, playerAreas, closureManager);
-        if (destination == AreaType.None || destination == bot.CurrentArea) return;
+        if (destination == AreaType.None) return;
+        if (destination == bot.CurrentArea)
+        {
+            // 이미 원하는 방(타겟 방 등)에 있음 → 잠시 머물며 회복/기척.
+            // (즉시 재결정 시 떠보기 확률이 매 틱 굴러 곧바로 나가버리는 문제 방지)
+            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(Proto0RoomDwellSeconds);
+            return;
+        }
 
         var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, destination)
             ?? GameMapData.GetAreaSpawnCell(mapId, destination);

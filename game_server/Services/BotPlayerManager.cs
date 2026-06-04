@@ -39,6 +39,11 @@ public partial class BotPlayerManager
     // 프로토 0: 봇이 회복(타겟 추적) 대신 떠보기(최저 인원 방)로 가는 확률. 튜닝 노브.
     private const double Proto0TestProbability = 0.3;
 
+    // 프로토 0: 원하는 방(타겟 방/떠보기 방)에 도착해 머무는 시간(초).
+    // 이 동안 회복·기척이 쌓이고, 만료 후에야 다음 결정(머물기/떠보기)을 한다.
+    // (없으면 머물기 결정이 매 틱(250ms) 재굴림되어 떠보기 확률이 곧바로 터져 나가버린다.)
+    private const double Proto0RoomDwellSeconds = 8;
+
     // 봇 행동 시정수
     private const int BotMoveIntervalSeconds = 12;        // 봇 이동 주기 (자기 직책 발견 구역 순회)
     private const int BotMissionTickIntervalSeconds = 1;  // 봇 미션 행동 (회수/결합) 주기 — 도착 후 RNG 빠른 트리거
