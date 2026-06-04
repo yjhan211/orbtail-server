@@ -17,32 +17,27 @@ namespace game_server.services;
 /// </summary>
 public partial class BotPlayerManager
 {
-    // 폐쇄 불가 6구역 + 폐쇄 대상 9구역 + 외부 1구역(강당) 등 봇이 이동 가능한 전체 16구역.
-    // 직책별 발견 구역(Material TargetArea)은 이 안에 포함되어 있다.
-    private static readonly AreaType[] MovableAreas =
+    // 프로토 0: 활성 공간 = 3·4층 6구역(1·2층/운동장 차단, 3↔4만 이동).
+    //   방(정신력 회복 가능): Classroom3(2-1)/ExamRoom(고사실)/Classroom4(3-1)/BroadcastRoom(방송실)
+    //   복도(transit, 회복 없음 + 장기 체류 시 인접 방 강제 유도): Corridor3F/Corridor4F
+    // 회복이 일어나는 "방"(복도 제외). 타겟 추적/떠보기/기척의 기준 구역.
+    private static readonly AreaType[] Proto0Rooms =
     {
-        // 0층
-        AreaType.Junkyard,
-        AreaType.Ground,
-        // 1층
-        AreaType.AdminOffice,
-        AreaType.Corridor1F,
-        AreaType.StaffRoom,
-        AreaType.Gym,
-        AreaType.Storage,
-        // 2층
-        AreaType.Classroom2,
-        AreaType.Corridor2F,
-        AreaType.Library,
-        // 3층
         AreaType.Classroom3,
-        AreaType.Corridor3F,
         AreaType.ExamRoom,
-        // 4층
         AreaType.Classroom4,
-        AreaType.Corridor4F,
         AreaType.BroadcastRoom,
     };
+
+    // 프로토 0: 전원 4층에서 시작. 복도는 체류 불가라 4층 방에서 스폰.
+    private static readonly AreaType[] Proto0SpawnAreas =
+    {
+        AreaType.Classroom4,
+        AreaType.BroadcastRoom,
+    };
+
+    // 프로토 0: 봇이 회복(타겟 추적) 대신 떠보기(최저 인원 방)로 가는 확률. 튜닝 노브.
+    private const double Proto0TestProbability = 0.3;
 
     // 봇 행동 시정수
     private const int BotMoveIntervalSeconds = 12;        // 봇 이동 주기 (자기 직책 발견 구역 순회)
@@ -77,12 +72,8 @@ public partial class BotPlayerManager
 
         var bots = botInfoList.Select(info =>
         {
-            var visitQueue = BuildJobAreaQueue(info.MyJobTitle);
-
-            // 봇 시작 영역 = 직책 미션 큐의 첫 영역 (없으면 무작위 fallback).
-            var startArea = visitQueue.Count > 0
-                ? visitQueue[0]
-                : MovableAreas[_rng.Next(MovableAreas.Length)];
+            // 프로토 0: 전원 4층 방에서 시작 (직책 미션 큐 동선 폐기).
+            var startArea = Proto0SpawnAreas[_rng.Next(Proto0SpawnAreas.Length)];
 
             var startCell = GameMapData.GetAreaSpawnCell(mapId, startArea);
             var startPosition = CellToWorldPosition(startCell);
@@ -105,7 +96,7 @@ public partial class BotPlayerManager
                 LastMissionTickTime = DateTime.UtcNow,
                 LastCellWanderTime = DateTime.UtcNow,
                 GameStartTime = DateTime.UtcNow,
-                JobAreaQueue = visitQueue,
+                JobAreaQueue = new List<AreaType>(),
                 JobAreaQueueIndex = 0
             };
         }).ToList();

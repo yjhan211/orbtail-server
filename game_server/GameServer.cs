@@ -1031,7 +1031,11 @@ public class GameServer(
             foreach (long matchingId in matchingIds)
             {
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
-                var movementResult = _botPlayerManager.ProcessBotMovementTick(matchingId, _areaClosureManager);
+                // 프로토 0: 봇 타겟 추적/떠보기를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
+                var humanAreas = activeSessions
+                    .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
+                    .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
+                var movementResult = _botPlayerManager.ProcessBotMovementTick(matchingId, _areaClosureManager, humanAreas);
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
