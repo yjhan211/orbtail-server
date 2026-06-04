@@ -186,6 +186,9 @@ namespace network.common
         C_TO_G_MISSION_NODE_EXECUTE,    // 기능 아이템/업무 선택지 실행 요청
         G_TO_C_MISSION_NODE_EXECUTE_RESULT, // 기능 아이템/업무 선택지 실행 결과
 
+        // 기척 프로토콜 (프로토 0, #159)
+        G_TO_C_PRESENCE_UPDATE,         // 타겟 제외 후보별 최근 25초 조우 강도(0~5) 주기 전송
+
         END
     }
 

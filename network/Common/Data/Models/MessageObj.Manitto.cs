@@ -341,6 +341,23 @@ namespace network.common.data.models
         [Key("areaType")] public AreaType AreaType { get; set; }
     }
 
+    // ===== 기척 (프로토 0, #159) =====
+
+    [MessagePackObject]
+    public class PresenceCandidate : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+
+        // 최근 25초 조우 강도 0~5 (정수부=완료 슬롯, 소수부=진행 슬롯). 표시 양자화는 클라가 담당.
+        [Key("presence")] public float Presence { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_PRESENCE_UPDATE : IMessagePackObject
+    {
+        [Key("candidates")] public List<PresenceCandidate> Candidates { get; set; }
+    }
+
     // ===== 흔적 =====
 
     [MessagePackObject]

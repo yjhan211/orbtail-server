@@ -633,6 +633,24 @@ public partial class GameClientSession
     }
 
     /// <summary>
+    ///     프로토 0 기척 갱신 (#159) — 타겟 제외 후보별 최근 25초 조우 강도(0~5) 전송
+    /// </summary>
+    public void SendPresenceUpdate(List<(long candidateId, float presence)> candidates)
+    {
+        if (!PlayerId.HasValue) return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_PRESENCE_UPDATE, PlayerId.Value);
+        var msg = new G_TO_C_PRESENCE_UPDATE
+        {
+            Candidates = candidates
+                .Select(c => new PresenceCandidate { PlayerId = c.candidateId, Presence = c.presence })
+                .ToList()
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
+    }
+
+    /// <summary>
     ///     #87: 블러프 우회(off-pool 오브젝트 사용) 시 추가 스태미나 비용. 기본 액션 비용에 더한다.
     ///     기존 -3 또는 0 → 총 -8이 되도록 추가량을 산정.
     /// </summary>

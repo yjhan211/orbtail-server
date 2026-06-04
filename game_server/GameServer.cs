@@ -54,6 +54,7 @@ public class GameServer(
     private readonly TraceManager _traceManager = new();
     private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly GameEventLogManager _gameEventLogManager = new();
+    private readonly Proto0PresenceTracker _presenceTracker = new();
 
     private Timer? _corridorStopCheckTimer;
     private CancellationTokenSource _cts = new();
@@ -332,11 +333,43 @@ public class GameServer(
                 if (tracePlaced.HasValue)
                     BroadcastTracePlacedAnnounce(matchingId, activeSessions, tracePlaced.Value);
             }
+
+            // 7. 프로토 0 기척 틱 (#159) — 5초 조우 강도 계산 후 인간 세션에 전송
+            foreach (long matchingId in matchingIds)
+            {
+                var playerAreas = BuildPlayerAreas(matchingId, activeSessions);
+                _presenceTracker.Tick(matchingId, playerAreas);
+
+                foreach (var session in activeSessions)
+                {
+                    if (session.CurrentMapSubId != matchingId || !session.PlayerId.HasValue) continue;
+
+                    var candidates = _presenceTracker.GetCandidates(
+                        matchingId, session.PlayerId.Value, session.TargetPlayerId);
+                    session.SendPresenceUpdate(candidates);
+                }
+            }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "자원 틱 처리 중 오류");
         }
+    }
+
+    /// <summary>프로토 0 기척: 인스턴스의 모든 플레이어(인간 + 생존 봇) 영역 맵.</summary>
+    private Dictionary<long, AreaType> BuildPlayerAreas(long matchingId, List<GameClientSession> activeSessions)
+    {
+        var areas = new Dictionary<long, AreaType>();
+        foreach (var session in activeSessions)
+            if (session.CurrentMapSubId == matchingId && session.PlayerId.HasValue)
+                areas[session.PlayerId.Value] = session.CurrentArea;
+
+        if (_botPlayerManager.HasBots(matchingId))
+            foreach (var bot in _botPlayerManager.GetBots(matchingId))
+                if (!bot.IsEliminated)
+                    areas[bot.PlayerId] = bot.CurrentArea;
+
+        return areas;
     }
 
     /// <summary>프로토 0: 특정 영역의 총 인원(인간 + 봇). 회복 2/N 스케일링용.</summary>
