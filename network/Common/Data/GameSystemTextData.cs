@@ -39,6 +39,12 @@ namespace network.common.data
             return data?.TextKo ?? "";
         }
 
+        public static string GetText(int id, string lang)
+        {
+            var data = Get(id);
+            return data?.Text?.Get(lang) ?? "";
+        }
+
         public static List<SystemTextData> GetByCategory(SystemTextCategory category)
         {
             return _textsByCategory.GetValueOrDefault(category) ?? new List<SystemTextData>();

@@ -229,3 +229,7 @@ id,category,text_kr,text_en,text_jp
 "12098","7","다음 미션 중 하나를 수행하세요.","Complete one of the next missions.","次のミッションのいずれかを進めてください。"
 "12100","7","새로운 선택지 발견하기","Find a new option","新しい選択肢を発見する"
 "12101","7","기척","Presence","気配"
+"12110","7","<color=#FF7E9A>{0}초</color> 후 현재 구역이 <color=#FF7E9A>폐쇄</color>됩니다.","The current zone will <color=#FF7E9A>close</color> in <color=#FF7E9A>{0}s</color>.","<color=#FF7E9A>{0}秒</color>後に現在の区域が<color=#FF7E9A>閉鎖</color>されます。"
+"12111","7","<color=#FF7E9A>{0}</color> 구역이 <color=#FF7E9A>{1}초</color> 후 폐쇄됩니다.","<color=#FF7E9A>{0}</color> will close in <color=#FF7E9A>{1}s</color>.","<color=#FF7E9A>{0}</color>は<color=#FF7E9A>{1}秒</color>後に閉鎖されます。"
+"12112","7","<color=#FF7E9A>{0}</color> 구역이 폐쇄되었습니다.","<color=#FF7E9A>{0}</color> has been closed.","<color=#FF7E9A>{0}</color>が閉鎖されました。"
+"12113","7","<color=#F1325A>이미 폐쇄된 구역입니다. 다시 시도하면 강제로 진입합니다.</color>","<color=#F1325A>This zone is already closed. Try again to force entry.</color>","<color=#F1325A>すでに閉鎖された区域です。もう一度試すと強制的に入ります。</color>"

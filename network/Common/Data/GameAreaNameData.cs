@@ -79,6 +79,16 @@ namespace network.common.data
         /// <summary>
         /// 영역 타입에 해당하는 LocalizedText를 가져옵니다
         /// </summary>
+        public static string Get(AreaType areaType, string lang)
+        {
+            if (_areaNames.TryGetValue(areaType, out var name))
+            {
+                return name.Get(lang);
+            }
+
+            return Get(areaType);
+        }
+
         public static LocalizedText GetLocalizedText(AreaType areaType)
         {
             if (_areaNames.TryGetValue(areaType, out var name))
