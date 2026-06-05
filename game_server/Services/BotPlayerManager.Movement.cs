@@ -354,8 +354,9 @@ public partial class BotPlayerManager
         bot.PathIndex = 0;
         bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotArrivalWaitSeconds);
         _logger.LogInformation(
-            "프로토0 봇 이동: BotId={Bot}, Target={Target}, {From} → {To}, 단계={Steps}",
-            bot.PlayerId, bot.TargetPlayerId, bot.CurrentArea, destination, path.Count);
+            "Proto0 bot move: BotId={Bot}, Target={Target}, Policy={Policy}, Profile={Profile}, {From}->{To}, Steps={Steps}",
+            bot.PlayerId, bot.TargetPlayerId, ActiveProto0BotPolicy, bot.Proto0Profile,
+            bot.CurrentArea, destination, path.Count);
     }
 
     /// <summary>
@@ -363,6 +364,16 @@ public partial class BotPlayerManager
     ///     타겟 위치를 모르면 현재와 다른 임의 방.
     /// </summary>
     private AreaType ChooseProto0Destination(BotPlayerState bot, long matchingId,
+        IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
+    {
+        return ActiveProto0BotPolicy switch
+        {
+            Proto0BotPolicy.DisguiseMvp => ChooseDisguiseProto0Destination(bot, matchingId, playerAreas, closureManager),
+            _ => ChooseSimpleProto0Destination(bot, matchingId, playerAreas, closureManager)
+        };
+    }
+
+    private AreaType ChooseSimpleProto0Destination(BotPlayerState bot, long matchingId,
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
     {
         var rooms = Proto0Rooms
@@ -390,6 +401,230 @@ public partial class BotPlayerManager
         // 타겟 위치 불명 → 현재와 다른 임의 방
         var others = rooms.Where(a => a != bot.CurrentArea).ToList();
         return others.Count > 0 ? others[_rng.Next(others.Count)] : AreaType.None;
+    }
+
+    /// <summary>프로토 0 위장 정책: 즉시 추적 대신 지연, 미끼 이동, 떠보기 이동을 섞는다.</summary>
+    private AreaType ChooseDisguiseProto0Destination(BotPlayerState bot, long matchingId,
+        IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
+    {
+        var rooms = Proto0Rooms
+            .Where(a => !closureManager.IsAreaClosed(matchingId, a))
+            .ToList();
+        if (rooms.Count == 0) return AreaType.None;
+
+        var now = DateTime.UtcNow;
+        var pop = CountRoomPopulations(rooms, playerAreas);
+        var config = GetProto0ProfileConfig(bot.Proto0Profile);
+        var targetRoom = ResolveTargetRoom(rooms, playerAreas, bot.TargetPlayerId);
+
+        if (targetRoom != AreaType.None && targetRoom != bot.LastSeenTargetArea)
+        {
+            bot.LastSeenTargetArea = targetRoom;
+            var delaySeconds = RandomRange(Proto0FollowDelayMinSeconds, Proto0FollowDelayMaxSeconds)
+                * config.FollowDelayMultiplier;
+            bot.NextTargetFollowAllowedAt = now.AddSeconds(delaySeconds);
+        }
+        else if (targetRoom == AreaType.None)
+        {
+            bot.LastSeenTargetArea = AreaType.None;
+            bot.NextTargetFollowAllowedAt = DateTime.MinValue;
+        }
+
+        var canFakeMove = bot.Stamina >= config.FakeMoveMinStamina
+            && (now - bot.LastFakeMoveTime).TotalSeconds >= Proto0FakeMoveCooldownSeconds;
+        var canProbe = (now - bot.LastProbeMoveTime).TotalSeconds >= Proto0ProbeCooldownSeconds;
+
+        if (canFakeMove && targetRoom != AreaType.None && now < bot.NextTargetFollowAllowedAt
+            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var delayedRoom))
+        {
+            bot.LastFakeMoveTime = now;
+            return delayedRoom;
+        }
+
+        var currentIsCrowded = rooms.Contains(bot.CurrentArea)
+            && pop[bot.CurrentArea] >= Proto0CrowdedRoomThreshold;
+        if (canFakeMove && currentIsCrowded && !config.PrefersCrowd
+            && _rng.NextDouble() < config.FakeMoveChance
+            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var crowdExitRoom))
+        {
+            bot.LastFakeMoveTime = now;
+            return crowdExitRoom;
+        }
+
+        var targetIsPrivate = targetRoom != AreaType.None && pop[targetRoom] <= 1 && targetRoom != bot.CurrentArea;
+        if (canFakeMove && targetIsPrivate && config.AvoidsPrivateTarget
+            && _rng.NextDouble() < config.FakeMoveChance
+            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var decoyRoom))
+        {
+            bot.LastFakeMoveTime = now;
+            return decoyRoom;
+        }
+
+        if (canProbe && _rng.NextDouble() < config.ProbeChance
+            && TryChooseProbeRoom(bot, rooms, pop, out var probeRoom))
+        {
+            bot.LastProbeMoveTime = now;
+            return probeRoom;
+        }
+
+        if (canFakeMove && _rng.NextDouble() < config.FakeMoveChance
+            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var fakeRoom))
+        {
+            bot.LastFakeMoveTime = now;
+            return fakeRoom;
+        }
+
+        if (targetRoom != AreaType.None) return targetRoom;
+        return ChooseProfileFallbackRoom(bot, rooms, pop, config);
+    }
+
+    private AreaType ResolveTargetRoom(List<AreaType> rooms, IReadOnlyDictionary<long, AreaType> playerAreas,
+        long targetPlayerId)
+    {
+        if (!playerAreas.TryGetValue(targetPlayerId, out var targetArea) || targetArea == AreaType.None)
+            return AreaType.None;
+
+        if (!targetArea.IsCorridor() && rooms.Contains(targetArea)) return targetArea;
+
+        var floor = targetArea.GetFloor();
+        var floorRooms = rooms.Where(a => a.GetFloor() == floor).ToList();
+        return floorRooms.Count > 0 ? floorRooms[_rng.Next(floorRooms.Count)] : AreaType.None;
+    }
+
+    private bool TryChooseFakeRoom(BotPlayerState bot, List<AreaType> rooms, Dictionary<AreaType, int> pop,
+        AreaType targetRoom, Proto0ProfileConfig config, out AreaType room)
+    {
+        var candidates = rooms
+            .Where(a => a != targetRoom && a != bot.CurrentArea)
+            .ToList();
+
+        if (candidates.Count == 0)
+            candidates = rooms.Where(a => a != targetRoom).ToList();
+
+        if (candidates.Count == 0)
+        {
+            room = AreaType.None;
+            return false;
+        }
+
+        room = ChooseProfileRoom(candidates, pop, config);
+        return true;
+    }
+
+    private bool TryChooseProbeRoom(BotPlayerState bot, List<AreaType> rooms, Dictionary<AreaType, int> pop,
+        out AreaType room)
+    {
+        var candidates = rooms.Where(a => a != bot.CurrentArea).ToList();
+        if (candidates.Count == 0)
+        {
+            room = AreaType.None;
+            return false;
+        }
+
+        room = candidates
+            .OrderBy(a => pop[a])
+            .ThenBy(_ => _rng.Next())
+            .First();
+        return true;
+    }
+
+    private AreaType ChooseProfileFallbackRoom(BotPlayerState bot, List<AreaType> rooms,
+        Dictionary<AreaType, int> pop, Proto0ProfileConfig config)
+    {
+        var candidates = rooms.Where(a => a != bot.CurrentArea).ToList();
+        return candidates.Count > 0
+            ? ChooseProfileRoom(candidates, pop, config)
+            : rooms[_rng.Next(rooms.Count)];
+    }
+
+    private AreaType ChooseProfileRoom(List<AreaType> rooms, Dictionary<AreaType, int> pop,
+        Proto0ProfileConfig config)
+    {
+        if (config.PrefersCrowd)
+            return rooms.OrderByDescending(a => pop[a]).ThenBy(_ => _rng.Next()).First();
+
+        if (config.PrefersQuiet)
+            return rooms.OrderBy(a => pop[a]).ThenBy(_ => _rng.Next()).First();
+
+        return rooms
+            .OrderBy(a => Math.Abs(pop[a] - 2))
+            .ThenBy(_ => _rng.Next())
+            .First();
+    }
+
+    private double RandomRange(double min, double max)
+    {
+        return min + _rng.NextDouble() * (max - min);
+    }
+
+    private static Proto0ProfileConfig GetProto0ProfileConfig(BotProto0Profile profile)
+    {
+        return profile switch
+        {
+            BotProto0Profile.StealthFirst => new Proto0ProfileConfig(
+                probeChance: 0.16,
+                fakeMoveChance: 0.45,
+                followDelayMultiplier: 1.35,
+                fakeMoveMinStamina: 55,
+                prefersCrowd: false,
+                prefersQuiet: false,
+                avoidsPrivateTarget: true),
+            BotProto0Profile.AggressiveProbe => new Proto0ProfileConfig(
+                probeChance: 0.42,
+                fakeMoveChance: 0.24,
+                followDelayMultiplier: 0.95,
+                fakeMoveMinStamina: 60,
+                prefersCrowd: false,
+                prefersQuiet: true,
+                avoidsPrivateTarget: false),
+            BotProto0Profile.CrowdSeeking => new Proto0ProfileConfig(
+                probeChance: 0.12,
+                fakeMoveChance: 0.26,
+                followDelayMultiplier: 1.1,
+                fakeMoveMinStamina: 60,
+                prefersCrowd: true,
+                prefersQuiet: false,
+                avoidsPrivateTarget: false),
+            BotProto0Profile.QuietRoomSeeking => new Proto0ProfileConfig(
+                probeChance: 0.30,
+                fakeMoveChance: 0.30,
+                followDelayMultiplier: 1.15,
+                fakeMoveMinStamina: 65,
+                prefersCrowd: false,
+                prefersQuiet: true,
+                avoidsPrivateTarget: true),
+            _ => new Proto0ProfileConfig(
+                probeChance: 0.10,
+                fakeMoveChance: 0.12,
+                followDelayMultiplier: 0.7,
+                fakeMoveMinStamina: 75,
+                prefersCrowd: false,
+                prefersQuiet: false,
+                avoidsPrivateTarget: false)
+        };
+    }
+
+    private readonly struct Proto0ProfileConfig
+    {
+        public Proto0ProfileConfig(double probeChance, double fakeMoveChance, double followDelayMultiplier,
+            int fakeMoveMinStamina, bool prefersCrowd, bool prefersQuiet, bool avoidsPrivateTarget)
+        {
+            ProbeChance = probeChance;
+            FakeMoveChance = fakeMoveChance;
+            FollowDelayMultiplier = followDelayMultiplier;
+            FakeMoveMinStamina = fakeMoveMinStamina;
+            PrefersCrowd = prefersCrowd;
+            PrefersQuiet = prefersQuiet;
+            AvoidsPrivateTarget = avoidsPrivateTarget;
+        }
+
+        public double ProbeChance { get; }
+        public double FakeMoveChance { get; }
+        public double FollowDelayMultiplier { get; }
+        public int FakeMoveMinStamina { get; }
+        public bool PrefersCrowd { get; }
+        public bool PrefersQuiet { get; }
+        public bool AvoidsPrivateTarget { get; }
     }
 
     /// <summary>프로토 0: 각 방의 현재 인원수(봇+인간) 집계. 떠보기 목적지 선택용.</summary>

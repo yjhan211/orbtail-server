@@ -44,6 +44,28 @@ public partial class BotPlayerManager
     // (없으면 머물기 결정이 매 틱(250ms) 재굴림되어 떠보기 확률이 곧바로 터져 나가버린다.)
     private const double Proto0RoomDwellSeconds = 8;
 
+    private enum Proto0BotPolicy
+    {
+        SimpleTracker,
+        DisguiseMvp
+    }
+
+    private static readonly BotProto0Profile[] Proto0Profiles =
+    {
+        BotProto0Profile.SurvivalFirst,
+        BotProto0Profile.StealthFirst,
+        BotProto0Profile.AggressiveProbe,
+        BotProto0Profile.CrowdSeeking,
+        BotProto0Profile.QuietRoomSeeking,
+    };
+
+    private const Proto0BotPolicy ActiveProto0BotPolicy = Proto0BotPolicy.DisguiseMvp;
+    private const double Proto0FollowDelayMinSeconds = 3;
+    private const double Proto0FollowDelayMaxSeconds = 8;
+    private const double Proto0FakeMoveCooldownSeconds = 12;
+    private const double Proto0ProbeCooldownSeconds = 15;
+    private const int Proto0CrowdedRoomThreshold = 3;
+
     // 봇 행동 시정수
     private const int BotMoveIntervalSeconds = 12;        // 봇 이동 주기 (자기 직책 발견 구역 순회)
     private const int BotMissionTickIntervalSeconds = 1;  // 봇 미션 행동 (회수/결합) 주기 — 도착 후 RNG 빠른 트리거
@@ -75,7 +97,7 @@ public partial class BotPlayerManager
     {
         _botMapIds[matchingId] = mapId;
 
-        var bots = botInfoList.Select(info =>
+        var bots = botInfoList.Select((info, index) =>
         {
             // 프로토 0: 전원 4층 방에서 시작 (직책 미션 큐 동선 폐기).
             var startArea = Proto0SpawnAreas[_rng.Next(Proto0SpawnAreas.Length)];
@@ -94,6 +116,7 @@ public partial class BotPlayerManager
                 Cell = startCell,
                 Position = startPosition,
                 Rotation = 0f,
+                Proto0Profile = Proto0Profiles[index % Proto0Profiles.Length],
                 Stamina = 100,   // 실제 플레이어와 동일
                 Corruption = 0, // 게임 시작 시 정신력 100%
                 ManittoStatus = ManittoStatus.ACTIVE,
@@ -269,6 +292,15 @@ public partial class BotPlayerManager
 /// <summary>
 ///     봇 플레이어 인게임 상태. v0.2.0 부품 시뮬을 위한 상태 누적.
 /// </summary>
+public enum BotProto0Profile
+{
+    SurvivalFirst,
+    StealthFirst,
+    AggressiveProbe,
+    CrowdSeeking,
+    QuietRoomSeeking
+}
+
 public class BotPlayerState
 {
     public long PlayerId { get; set; }
@@ -281,6 +313,11 @@ public class BotPlayerState
     public bool IsEliminated { get; set; }
     public ManittoStatus ManittoStatus { get; set; } = ManittoStatus.ACTIVE;
     public DateTime LastMoveTime { get; set; } = DateTime.UtcNow;
+    public BotProto0Profile Proto0Profile { get; set; } = BotProto0Profile.SurvivalFirst;
+    public AreaType LastSeenTargetArea { get; set; } = AreaType.None;
+    public DateTime NextTargetFollowAllowedAt { get; set; } = DateTime.MinValue;
+    public DateTime LastFakeMoveTime { get; set; } = DateTime.MinValue;
+    public DateTime LastProbeMoveTime { get; set; } = DateTime.MinValue;
 
     /// <summary>봇 표시 이름 (PlayerInfo.Name 동등) — 매칭 시 직책+ID로 합성.</summary>
     public string Name { get; set; } = "";
