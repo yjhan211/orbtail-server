@@ -412,7 +412,9 @@ public partial class GameClientSession : SessionBase
     private class PeriodicBuffEntry
     {
         public float ElapsedSeconds;
+        public int DurationSeconds;
         public int IntervalSeconds;
+        public int RemainingSeconds;
         public BuffSubType SubType;
         public int Value;
     }

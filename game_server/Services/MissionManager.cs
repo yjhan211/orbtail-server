@@ -12,6 +12,9 @@ namespace game_server.services;
 /// </summary>
 public class MissionManager
 {
+    private const int GuaranteedBroadcastGiftInteractId = 701000007;
+    private const AreaType GuaranteedBroadcastGiftArea = AreaType.BroadcastRoom;
+
     // matchingId → (playerId → PlayerPartState)
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerPartState>> _matchingStates = new();
 
@@ -566,6 +569,61 @@ public class MissionManager
         }
     }
 
+    public bool EnsureBroadcastTransmitterGift(long matchingId, long ownerPlayerId, long targetPlayerId)
+    {
+        if (targetPlayerId == 0 || targetPlayerId == ownerPlayerId) return false;
+        if (!_matchingStates.TryGetValue(matchingId, out var matching)) return false;
+        if (!matching.TryGetValue(ownerPlayerId, out var ownerState)) return false;
+
+        var interactable = GameInteractableData.Get(GuaranteedBroadcastGiftInteractId);
+        if (interactable == null || interactable.ZoneId != (int)GuaranteedBroadcastGiftArea)
+            return false;
+
+        lock (ownerState.SyncRoot)
+        {
+            if (ownerState.IsCompleted) return false;
+            if (ownerState.PlacedGifts.Any(g =>
+                    g.TargetPlayerId == targetPlayerId &&
+                    g.InteractId == GuaranteedBroadcastGiftInteractId))
+                return false;
+            if (ownerState.PlacedGifts.Count >= PlayerPartState.RequiredGiftDeliveries)
+                return false;
+
+            var giftPart = GameMissionData.GetParts((short)ownerState.JobTitle)
+                .Where(p => p.PartTier == PartTier.Intermediate)
+                .OrderBy(p => p.PartId)
+                .FirstOrDefault(p =>
+                {
+                    int candidateItemId = GameMissionData.GetPartItemId(p.PartId);
+                    return candidateItemId > 0 &&
+                           ownerState.PlacedGifts.All(g =>
+                               g.PartId != p.PartId &&
+                               g.ItemId != candidateItemId);
+                });
+            if (giftPart == null) return false;
+
+            int itemId = GameMissionData.GetPartItemId(giftPart.PartId);
+            if (itemId <= 0) return false;
+
+            ownerState.PlacedGifts.Add(new PlacedGift
+            {
+                ItemUid = CreateSystemGiftUid(ownerPlayerId, GuaranteedBroadcastGiftInteractId),
+                ItemId = itemId,
+                PartId = giftPart.PartId,
+                OwnerPlayerId = ownerPlayerId,
+                TargetPlayerId = targetPlayerId,
+                AreaType = GuaranteedBroadcastGiftArea,
+                InteractId = GuaranteedBroadcastGiftInteractId
+            });
+        }
+
+        _logger.LogInformation(
+            "보장 선물 배정: MatchingId={MatchingId}, Owner={Owner}, Target={Target}, InteractId={InteractId}",
+            matchingId, ownerPlayerId, targetPlayerId, GuaranteedBroadcastGiftInteractId);
+
+        return true;
+    }
+
     public bool TryForceGiftDiscovery(long matchingId, long ownerPlayerId, long targetPlayerId,
         int interactId, AreaType area, out GiftDiscoveryResult result)
     {
@@ -609,6 +667,12 @@ public class MissionManager
         return TryDiscoverGift(matchingId, targetPlayerId, interactId, out result)
                && result.DiscoveryType == GiftDiscoveryType.Target
                && result.OwnerPlayerId == ownerPlayerId;
+    }
+
+    private static long CreateSystemGiftUid(long ownerPlayerId, int interactId)
+    {
+        long ownerSeed = ownerPlayerId == long.MinValue ? long.MaxValue : Math.Abs(ownerPlayerId);
+        return -((ownerSeed % 9_000_000_000L) * 1_000_000L + interactId);
     }
 
     public RecallGiftResult TryRecallGift(long matchingId, long playerId, int interactId)
