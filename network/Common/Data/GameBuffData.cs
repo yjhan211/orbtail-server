@@ -30,6 +30,11 @@ namespace network.common.data
             return buff;
         }
 
+        public static IReadOnlyCollection<BuffInfoData> GetAll()
+        {
+            return _buffs.Values;
+        }
+
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameBuffData Validation ===");

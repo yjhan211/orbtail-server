@@ -33,6 +33,7 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize,
                     validate: GameAreaRuleData.Validate),
                 (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
+                (fileName: DataFiles.StatusEffectInfo, init: GameStatusEffectData.Initialize, validate: null),
                 (fileName: DataFiles.DoorInfo, init: GameDoorData.Initialize, validate: null),
                 (fileName: DataFiles.AreaConnection, init: GameAreaConnectionData.Initialize, validate: null),
                 (fileName: DataFiles.CorruptionText, init: GameCorruptionTextData.Initialize,
@@ -265,7 +266,14 @@ namespace network.common.data.helpers
 
             var errors = new List<string>();
             var itemIds = new HashSet<int>(GameItemData.GetAllList().Select(i => i.Id));
+            var buffIds = new HashSet<int>(GameBuffData.GetAll().Select(buff => buff.Id));
             var poolIds = GameInteractableData.GetAllItemPoolIds();
+
+            foreach (var effect in GameStatusEffectData.GetAll())
+            {
+                if (effect.BuffId != 0 && !buffIds.Contains(effect.BuffId))
+                    errors.Add($"status_effect_info [{effect.Id}]: buff_id={effect.BuffId} not found in buff_info");
+            }
 
             // 1. interactable_action result_type=1(REWARD_POOL) → interactable_item_pool id 존재
             foreach (var info in GameInteractableData.GetAll())
@@ -569,6 +577,7 @@ namespace network.common.data.helpers
             public const string AreaName = "area_name.csv";
             public const string AreaRule = "area_rule.csv";
             public const string SystemText = "system_text.csv";
+            public const string StatusEffectInfo = "status_effect_info.csv";
             public const string DoorInfo = "door_info.csv";
             public const string AreaConnection = "map_connections.csv";
             public const string CorruptionText = "corruption_text.csv";

@@ -107,6 +107,8 @@ namespace network.common
         NONE = 0,
         CONDITION_ADD,
         CORRUPTION_DOWN,
+        DURABILITY_ADD,
+        CORRUPTION_ADD,
     }
 
     public enum ItemType

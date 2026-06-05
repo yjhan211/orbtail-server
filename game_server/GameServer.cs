@@ -77,6 +77,8 @@ public class GameServer(
     private const int Phase2StartSeconds = 300;          // 5분
     private const int Phase3StartSeconds = 600;          // 10분
     private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
+    private const int UnstableStatusEffectId = 1001;    // status_effect_info: 불안정
+    private const int NearbyStatusEffectId = 1002;      // status_effect_info: 곁에 있음
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
     internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모 (인접 구역 진입)
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
@@ -249,26 +251,39 @@ public class GameServer(
             {
                 bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
 
-                int corruptionDelta = GetMentalDecayAmount(session.CurrentMapSubId);
+                int corruptionDelta = 0;
 
                 if (!isTerminal && session.CurrentArea != AreaType.None)
                 {
-                    // 프로토 0: 회복은 "방"에서만(복도=transit, 회복 없음) + 타겟 동석 시.
-                    //   혼잡할수록 느림 — 회복량 = 기본 × (2 / 구역 총인원).
                     bool inRoom = !session.CurrentArea.IsCorridor();
-                    var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                    bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
-                    if (!targetInSameArea)
-                    {
-                        var targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
-                        targetInSameArea = targetBot is { IsEliminated: false } && targetBot.CurrentArea == session.CurrentArea;
-                    }
 
-                    if (inRoom && targetInSameArea)
+                    if (!inRoom)
                     {
-                        int pop = CountAreaPopulation(activeSessions, session.CurrentMapSubId, session.CurrentArea);
-                        int recovery = Math.Max(1, (int)Math.Round(TargetProximityRecovery * (2.0 / Math.Max(2, pop))));
-                        corruptionDelta = ApplyTargetEncounterStability(session, -recovery);
+                        corruptionDelta += ResolveStatusEffectCorruptionDelta(
+                            UnstableStatusEffectId,
+                            GetMentalDecayAmount(session.CurrentMapSubId));
+                    }
+                    else
+                    {
+                        // 프로토 0: 회복은 "방"에서만(복도=transit, 회복 없음) + 타겟 동석 시.
+                        //   혼잡할수록 느림 — 회복량 = 기본 × (2 / 구역 총인원).
+                        var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
+                        bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
+                        if (!targetInSameArea)
+                        {
+                            var targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
+                            targetInSameArea = targetBot is { IsEliminated: false } &&
+                                               targetBot.CurrentArea == session.CurrentArea;
+                        }
+
+                        if (targetInSameArea)
+                        {
+                            int pop = CountAreaPopulation(activeSessions, session.CurrentMapSubId, session.CurrentArea);
+                            int recovery = Math.Max(1,
+                                (int)Math.Round(TargetProximityRecovery * (2.0 / Math.Max(2, pop))));
+                            int recoveryDelta = ResolveStatusEffectCorruptionDelta(NearbyStatusEffectId, recovery);
+                            corruptionDelta += ApplyTargetEncounterStability(session, recoveryDelta);
+                        }
                     }
                 }
 
@@ -394,6 +409,23 @@ public class GameServer(
     {
         int humans = sessions.Count(s => s.CurrentMapSubId == matchingId && s.CurrentArea == area);
         return humans + _botPlayerManager.CountBotsInArea(matchingId, area);
+    }
+
+    private static int ResolveStatusEffectCorruptionDelta(int statusEffectId, int value)
+    {
+        if (value == 0) return 0;
+        if (!GameStatusEffectData.TryGet(statusEffectId, out var statusEffect) || statusEffect.BuffId <= 0)
+            return 0;
+
+        var buff = GameBuffData.Get(statusEffect.BuffId);
+        int magnitude = Math.Abs(value);
+
+        return buff.SubType switch
+        {
+            BuffSubType.CORRUPTION_ADD => magnitude,
+            BuffSubType.CORRUPTION_DOWN => -magnitude,
+            _ => 0
+        };
     }
 
     private int ApplyTargetEncounterStability(GameClientSession session, int baseRecoveryDelta)

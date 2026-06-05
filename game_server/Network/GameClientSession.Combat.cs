@@ -107,6 +107,15 @@ public partial class GameClientSession
 
                         ModifyStats(corruptionDelta: -buff.Value);
                         break;
+                    case BuffSubType.CORRUPTION_ADD:
+                        if (Corruption >= MaxCorruption)
+                        {
+                            _activePeriodicBuffs.Remove(buff);
+                            continue;
+                        }
+
+                        ModifyStats(corruptionDelta: buff.Value);
+                        break;
                 }
             }
 
@@ -322,6 +331,10 @@ public partial class GameClientSession
 
                 case BuffSubType.CORRUPTION_DOWN:
                     corruptionDelta -= value;
+                    break;
+
+                case BuffSubType.CORRUPTION_ADD:
+                    corruptionDelta += value;
                     break;
             }
         }
