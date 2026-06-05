@@ -79,6 +79,7 @@ public class GameServer(
     private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
     private const int UnstableStatusEffectId = 1001;    // status_effect_info: 불안정
     private const int NearbyStatusEffectId = 1002;      // status_effect_info: 곁에 있음
+    private const int ClosedAreaStatusEffectId = 1003;  // status_effect_info: 폐쇄 구역
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
     internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모 (인접 구역 진입)
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
@@ -304,7 +305,10 @@ public class GameServer(
                 if (session.CurrentArea != AreaType.None &&
                     _areaClosureManager.IsAreaClosed(session.CurrentMapSubId, session.CurrentArea))
                 {
-                    int closedAreaPenalty = ApplyClosedAreaResistance(session, Config.CLOSED_AREA_CORRUPTION_TICK);
+                    int closedAreaBasePenalty = ResolveStatusEffectCorruptionDelta(
+                        ClosedAreaStatusEffectId,
+                        Config.CLOSED_AREA_CORRUPTION_TICK);
+                    int closedAreaPenalty = ApplyClosedAreaResistance(session, closedAreaBasePenalty);
                     corruptionDelta += closedAreaPenalty;
                 }
 

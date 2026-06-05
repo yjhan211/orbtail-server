@@ -246,3 +246,5 @@ id,category,text_kr,text_en,text_jp
 "12130","7","이미 지목 기회를 사용했습니다.","You have already used your accusation.","すでに指名の機会を使いました。"
 "12131","7","| 이로운 효과","| Beneficial Effect","| 良い効果"
 "12132","7","| 해로운 효과","| Harmful Effect","| 悪い効果"
+"12133","7","폐쇄 구역","Closed Zone","閉鎖区域"
+"12134","7","폐쇄된 구역에 머무르는 동안 정신력이 감소합니다.\n즉시 이탈하세요.","Mental strength decreases while you remain in a closed zone.\nLeave immediately.","閉鎖区域に留まっている間、精神力が低下します。\nすぐに離脱してください。"
