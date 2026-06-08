@@ -363,6 +363,24 @@ namespace network.common.data.models
         [Key("candidates")] public List<PresenceCandidate> Candidates { get; set; }
     }
 
+    [MessagePackObject]
+    public class C_TO_G_BOOKMARK_PRESENCE : IMessagePackObject
+    {
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_BOOKMARK_PRESENCE_RESULT : IMessagePackObject
+    {
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_SHARP_GAZE_MARK_UPDATE : IMessagePackObject
+    {
+        [Key("isActive")] public bool IsActive { get; set; }
+    }
+
     // ===== 흔적 =====
 
     [MessagePackObject]

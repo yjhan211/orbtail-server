@@ -77,9 +77,10 @@ public class GameServer(
     private const int Phase2StartSeconds = 300;          // 5분
     private const int Phase3StartSeconds = 600;          // 10분
     private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
-    private const int UnstableStatusEffectId = 1001;    // status_effect_info: 불안정
-    private const int NearbyStatusEffectId = 1002;      // status_effect_info: 곁에 있음
+    private const int IsolationStatusEffectId = 1001;   // status_effect_info: 고립
+    private const int NearbyStatusEffectId = 1002;      // status_effect_info: 의존
     private const int ClosedAreaStatusEffectId = 1003;  // status_effect_info: 폐쇄 구역
+    private const double SharpGazeRecoveryMultiplier = 0.5;
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
     internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모 (인접 구역 진입)
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
@@ -257,34 +258,38 @@ public class GameServer(
                 if (!isTerminal && session.CurrentArea != AreaType.None)
                 {
                     bool inRoom = !session.CurrentArea.IsCorridor();
+                    GameClientSession? targetSession = null;
+                    BotPlayerState? targetBot = null;
+                    bool targetInSameArea = false;
 
-                    if (!inRoom)
-                    {
-                        corruptionDelta += ResolveStatusEffectCorruptionDelta(
-                            UnstableStatusEffectId,
-                            GetMentalDecayAmount(session.CurrentMapSubId));
-                    }
-                    else
+                    if (inRoom)
                     {
                         // 프로토 0: 회복은 "방"에서만(복도=transit, 회복 없음) + 타겟 동석 시.
                         //   혼잡할수록 느림 — 회복량 = 기본 × (2 / 구역 총인원).
-                        var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                        bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
+                        targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
+                        targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
                         if (!targetInSameArea)
                         {
-                            var targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
+                            targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
                             targetInSameArea = targetBot is { IsEliminated: false } &&
                                                targetBot.CurrentArea == session.CurrentArea;
                         }
+                    }
 
-                        if (targetInSameArea)
-                        {
-                            int pop = CountAreaPopulation(activeSessions, session.CurrentMapSubId, session.CurrentArea);
-                            int recovery = Math.Max(1,
-                                (int)Math.Round(TargetProximityRecovery * (2.0 / Math.Max(2, pop))));
-                            int recoveryDelta = ResolveStatusEffectCorruptionDelta(NearbyStatusEffectId, recovery);
-                            corruptionDelta += ApplyTargetEncounterStability(session, recoveryDelta);
-                        }
+                    if (!targetInSameArea)
+                        corruptionDelta += ResolveStatusEffectCorruptionDelta(
+                            IsolationStatusEffectId,
+                            GetMentalDecayAmount(session.CurrentMapSubId));
+
+                    if (targetInSameArea)
+                    {
+                        int pop = CountAreaPopulation(activeSessions, session.CurrentMapSubId, session.CurrentArea);
+                        int recovery = Math.Max(1,
+                            (int)Math.Round(TargetProximityRecovery * (2.0 / Math.Max(2, pop))));
+                        int recoveryDelta = ResolveStatusEffectCorruptionDelta(NearbyStatusEffectId, recovery);
+                        recoveryDelta = ApplyTargetEncounterStability(session, recoveryDelta);
+                        recoveryDelta = ApplySharpGazeRecoveryPenalty(session, targetSession, targetBot, recoveryDelta);
+                        corruptionDelta += recoveryDelta;
                     }
                 }
 
@@ -452,6 +457,32 @@ public class GameServer(
             session.PlayerId, baseRecoveryDelta, adjustedDelta, reward.RemainingUses);
 
         return adjustedDelta;
+    }
+
+    private int ApplySharpGazeRecoveryPenalty(
+        GameClientSession session,
+        GameClientSession? targetSession,
+        BotPlayerState? targetBot,
+        int baseRecoveryDelta)
+    {
+        long? playerIdValue = session.PlayerId;
+        long? targetPlayerIdValue = targetSession?.PlayerId;
+        if (!targetPlayerIdValue.HasValue && targetBot != null) targetPlayerIdValue = targetBot.PlayerId;
+        long targetBookmarkPlayerId = targetSession?.PresenceBookmarkPlayerId ?? targetBot?.PresenceBookmarkPlayerId ?? 0;
+        if (!playerIdValue.HasValue || baseRecoveryDelta >= 0) return baseRecoveryDelta;
+        if (!targetPlayerIdValue.HasValue) return baseRecoveryDelta;
+
+        long playerId = playerIdValue.Value;
+        long targetPlayerId = targetPlayerIdValue.Value;
+        if (session.TargetPlayerId != targetPlayerId) return baseRecoveryDelta;
+        if (targetBookmarkPlayerId != playerId) return baseRecoveryDelta;
+
+        var targetManitto = _manittoChainManager.FindManittoOf(session.CurrentMapSubId, targetPlayerId);
+        if (targetManitto?.PlayerId != playerId) return baseRecoveryDelta;
+
+        int recovery = Math.Abs(baseRecoveryDelta);
+        int adjustedRecovery = Math.Max(1, (int)Math.Ceiling(recovery * SharpGazeRecoveryMultiplier));
+        return -adjustedRecovery;
     }
 
     private int ApplyClosedAreaResistance(GameClientSession session, int basePenalty)

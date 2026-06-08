@@ -1,3 +1,4 @@
+using System;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -249,6 +250,52 @@ public partial class GameClientSession
     /// <summary>
     ///     v0.2.0 — 색출 적중 시 부품 전이 처리. 양쪽 세션에 G_TO_C_PART_STOLEN 송신.
     /// </summary>
+    private Task HandleBookmarkPresence(C_TO_G_BOOKMARK_PRESENCE msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
+        long previousBookmarkPlayerId = PresenceBookmarkPlayerId;
+        var myManitto = _manittoChainManager.FindManittoOf(CurrentMapSubId, PlayerId.Value);
+        if (previousBookmarkPlayerId != 0 && previousBookmarkPlayerId != Math.Max(0, msg.TargetPlayerId) &&
+            myManitto?.PlayerId == previousBookmarkPlayerId)
+        {
+            SendSharpGazeMarkUpdate(previousBookmarkPlayerId, false);
+        }
+
+        PresenceBookmarkPlayerId = Math.Max(0, msg.TargetPlayerId);
+        bool isManitto = PresenceBookmarkPlayerId != 0 && myManitto?.PlayerId == PresenceBookmarkPlayerId;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_BOOKMARK_PRESENCE_RESULT, PlayerId.Value);
+        var result = new G_TO_C_BOOKMARK_PRESENCE_RESULT
+        {
+            TargetPlayerId = PresenceBookmarkPlayerId
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(result));
+        Send(packet);
+
+        if (isManitto) SendSharpGazeMarkUpdate(PresenceBookmarkPlayerId, true);
+
+        Logger.LogInformation(
+            "Presence bookmark updated: PlayerId={PlayerId}, Bookmark={Bookmark}, IsManitto={IsManitto}",
+            PlayerId, PresenceBookmarkPlayerId, isManitto);
+
+        return Task.CompletedTask;
+    }
+
+    private void SendSharpGazeMarkUpdate(long targetPlayerId, bool isActive)
+    {
+        if (targetPlayerId == 0) return;
+
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == targetPlayerId);
+        if (targetSession == null) return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SHARP_GAZE_MARK_UPDATE, targetPlayerId);
+        var msg = new G_TO_C_SHARP_GAZE_MARK_UPDATE { IsActive = isActive };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        targetSession.Send(packet);
+    }
+
     private void ProcessPartStealOnDetection(long manittoId, long detectorId)
     {
         int? stolenPartId = _missionManager.StealHighestPart(CurrentMapSubId, manittoId, detectorId);

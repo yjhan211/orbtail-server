@@ -188,6 +188,9 @@ namespace network.common
 
         // 기척 프로토콜 (프로토 0, #159)
         G_TO_C_PRESENCE_UPDATE,         // 타겟 제외 후보별 최근 25초 조우 강도(0~5) 주기 전송
+        C_TO_G_BOOKMARK_PRESENCE,       // 기척 HUD 수동 북마크 상태 전송
+        G_TO_C_BOOKMARK_PRESENCE_RESULT, // 기척 HUD 수동 북마크 결과
+        G_TO_C_SHARP_GAZE_MARK_UPDATE,  // 내 타겟이 나를 마니또로 북마크했는지 여부
 
         END
     }
