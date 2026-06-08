@@ -16,6 +16,10 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int GiftRecallStaminaCost = 5;
+
+    // #159/#158: 핀(경계)을 켤 때 1회 소모하는 스태미나. 켤 때마다 큰 비용이라 같은 방 무료 스팸을 차단한다.
+    // 따라가기와 공유 자원이라 의심에 쓸수록 따라갈 여력이 준다. 끄기는 무료, 재진입이 비싸 마이크로 토글도 막힌다. 튜닝 노브.
+    private const int BookmarkActivationStaminaCost = 15;
     private static readonly int MissionInfoPacketBudget = Config.BUFFER_SIZE - Config.HEADER_SIZE - 4 - 8 - 128;
 
     /// <summary>
@@ -263,6 +267,7 @@ public partial class GameClientSession
             SendSharpGazeMarkUpdate(previousBookmarkPlayerId, false);
         }
 
+        bool isActivating = newBookmarkPlayerId != 0 && newBookmarkPlayerId != previousBookmarkPlayerId;
         PresenceBookmarkPlayerId = newBookmarkPlayerId;
         bool isManitto = PresenceBookmarkPlayerId != 0 && myManitto?.PlayerId == PresenceBookmarkPlayerId;
 
@@ -273,6 +278,10 @@ public partial class GameClientSession
         };
         packet.SetBody(MessagePackSerializer.Serialize(result));
         Send(packet);
+
+        // 켤 때(새로 켜거나 대상 변경) 1회 스태미나 소모. 끄기는 무료지만 재진입이 비싸 스팸/마이크로 토글을 막는다.
+        // 맞든 틀리든 동일 소모라 정답을 누설하지 않고, 스태미나 고갈 시 ModifyStats가 정신력으로 1:2 전환한다.
+        if (isActivating) ModifyStats(staminaDelta: -BookmarkActivationStaminaCost);
 
         if (isManitto) SendSharpGazeMarkUpdate(PresenceBookmarkPlayerId, true);
 
