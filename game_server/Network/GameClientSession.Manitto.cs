@@ -256,13 +256,14 @@ public partial class GameClientSession
 
         long previousBookmarkPlayerId = PresenceBookmarkPlayerId;
         var myManitto = _manittoChainManager.FindManittoOf(CurrentMapSubId, PlayerId.Value);
-        if (previousBookmarkPlayerId != 0 && previousBookmarkPlayerId != Math.Max(0, msg.TargetPlayerId) &&
+        long newBookmarkPlayerId = msg.TargetPlayerId;
+        if (previousBookmarkPlayerId != 0 && previousBookmarkPlayerId != newBookmarkPlayerId &&
             myManitto?.PlayerId == previousBookmarkPlayerId)
         {
             SendSharpGazeMarkUpdate(previousBookmarkPlayerId, false);
         }
 
-        PresenceBookmarkPlayerId = Math.Max(0, msg.TargetPlayerId);
+        PresenceBookmarkPlayerId = newBookmarkPlayerId;
         bool isManitto = PresenceBookmarkPlayerId != 0 && myManitto?.PlayerId == PresenceBookmarkPlayerId;
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_BOOKMARK_PRESENCE_RESULT, PlayerId.Value);
