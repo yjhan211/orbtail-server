@@ -21,10 +21,6 @@ public partial class GameClientSession
     // 따라가기와 공유 자원이라 의심에 쓸수록 따라갈 여력이 준다. 끄기는 무료, 재진입이 비싸 마이크로 토글도 막힌다. 튜닝 노브.
     private const int BookmarkActivationStaminaCost = 15;
 
-    // #159: 색출 오발 시 색출자 정신력(Corruption) 증가폭. 1회뿐인 지목을 빗나간 대가.
-    // 적중하면 추격자를 즉시 제거하는 강한 보상이라, 남발을 막도록 오발 대가도 크게 잡는다. 튜닝 노브.
-    private const int DetectMissCorruptionPenalty = 30;
-
     private static readonly int MissionInfoPacketBudget = Config.BUFFER_SIZE - Config.HEADER_SIZE - 4 - 8 - 128;
 
     /// <summary>
@@ -254,14 +250,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        // 오발 — 1회뿐인 사적 베팅을 빗나갔으므로 색출자 정신력을 크게 잃는다.
-        ModifyStats(corruptionDelta: DetectMissCorruptionPenalty);
-        Logger.LogInformation(
-            "색출 오발 페널티: DetecterId={PlayerId}, Target={Target}, CorruptionPenalty={Penalty}",
-            PlayerId, msg.TargetPlayerId, DetectMissCorruptionPenalty);
-
-        // 오발로 정신력이 바닥나면 그 자리에서 무너지도록 즉시 탈락 체크 (정신력 차감 직후 체크하는 기존 패턴)
-        CheckResourceElimination();
+        Logger.LogInformation("색출 오발: DetecterId={PlayerId}, Target={Target}", PlayerId, msg.TargetPlayerId);
 
         return Task.CompletedTask;
     }
