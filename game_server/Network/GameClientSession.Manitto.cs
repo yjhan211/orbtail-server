@@ -1,3 +1,4 @@
+using System;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -15,6 +16,11 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int GiftRecallStaminaCost = 5;
+
+    // #159/#158: 핀(경계)을 켤 때 1회 소모하는 스태미나. 켤 때마다 큰 비용이라 같은 방 무료 스팸을 차단한다.
+    // 따라가기와 공유 자원이라 의심에 쓸수록 따라갈 여력이 준다. 끄기는 무료, 재진입이 비싸 마이크로 토글도 막힌다. 튜닝 노브.
+    private const int BookmarkActivationStaminaCost = 15;
+
     private static readonly int MissionInfoPacketBudget = Config.BUFFER_SIZE - Config.HEADER_SIZE - 4 - 8 - 128;
 
     /// <summary>
@@ -231,60 +237,90 @@ public partial class GameClientSession
         packet.SetBody(MessagePackSerializer.Serialize(result));
         Send(packet);
 
-        // 적중 시 마니또 탈락 처리
-        if (isCorrect && errorCode == ErrorCode.SUCCESS)
-        {
-            // v0.2.0: 마니또(피탈자)의 가장 가치 높은 부품 1개 → 색출자(본인)에게 전이
-            ProcessPartStealOnDetection(msg.TargetPlayerId, PlayerId.Value);
+        // 지목을 실제로 소비한 경우만 결과를 판정한다(SUCCESS). ALREADY_USED/NOT_AVAILABLE 등은 막기만 하고 페널티 없음.
+        if (errorCode != ErrorCode.SUCCESS) return Task.CompletedTask;
 
+        // 적중 — 내 마니또(스토커)를 즉시 탈락시킨다. 프로토 0은 정신력 모델이라 v0.2.0 부품 전이는 적용하지 않는다.
+        if (isCorrect)
+        {
             // 마니또의 모든 흔적 함정 무효화 (§2.5.1)
             _traceManager.InvalidateTracesByPlacer(CurrentMapSubId, msg.TargetPlayerId);
 
             _ = ProcessElimination(msg.TargetPlayerId, EliminationReason.DETECTED, PlayerId.Value);
+            return Task.CompletedTask;
         }
+
+        Logger.LogInformation("색출 오발: DetecterId={PlayerId}, Target={Target}", PlayerId, msg.TargetPlayerId);
 
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    ///     v0.2.0 — 색출 적중 시 부품 전이 처리. 양쪽 세션에 G_TO_C_PART_STOLEN 송신.
-    /// </summary>
-    private void ProcessPartStealOnDetection(long manittoId, long detectorId)
+    private Task HandleBookmarkPresence(C_TO_G_BOOKMARK_PRESENCE msg)
     {
-        int? stolenPartId = _missionManager.StealHighestPart(CurrentMapSubId, manittoId, detectorId);
-        if (!stolenPartId.HasValue) return;
+        if (!PlayerId.HasValue) return Task.CompletedTask;
 
-        var part = GameMissionData.GetPart(stolenPartId.Value);
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-
-        var stolenMsg = new G_TO_C_PART_STOLEN
+        long previousBookmarkPlayerId = PresenceBookmarkPlayerId;
+        var myManitto = _manittoChainManager.FindManittoOf(CurrentMapSubId, PlayerId.Value);
+        long newBookmarkPlayerId = msg.TargetPlayerId;
+        if (previousBookmarkPlayerId != 0 && previousBookmarkPlayerId != newBookmarkPlayerId &&
+            myManitto?.PlayerId == previousBookmarkPlayerId)
         {
-            PartId = stolenPartId.Value,
-            PartNameKr = part?.PartNameKr ?? "",
-            PartTier = part != null ? (int)part.PartTier : 0,
-            FromPlayerId = manittoId,
-            ToPlayerId = detectorId
+            SendSharpGazeMarkUpdate(previousBookmarkPlayerId, false);
+        }
+
+        bool shouldConsumeActivationCost =
+            ShouldConsumePresenceBookmarkActivationCost(previousBookmarkPlayerId, newBookmarkPlayerId);
+        PresenceBookmarkPlayerId = newBookmarkPlayerId;
+        bool isManitto = PresenceBookmarkPlayerId != 0 && myManitto?.PlayerId == PresenceBookmarkPlayerId;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_BOOKMARK_PRESENCE_RESULT, PlayerId.Value);
+        var result = new G_TO_C_BOOKMARK_PRESENCE_RESULT
+        {
+            TargetPlayerId = PresenceBookmarkPlayerId
         };
-        var stolenBytes = MessagePackSerializer.Serialize(stolenMsg);
+        packet.SetBody(MessagePackSerializer.Serialize(result));
+        Send(packet);
 
-        // 색출자(본인)에게 송신
-        using (var detectorPacket = Packet.Create((int)Protocol.G_TO_C_PART_STOLEN, detectorId))
-        {
-            detectorPacket.SetBody(stolenBytes);
-            Send(detectorPacket);
-        }
+        // 켤 때(새로 켜거나 대상 변경) 1회 스태미나 소모. 끄기는 무료지만 재진입이 비싸 스팸/마이크로 토글을 막는다.
+        // 맞든 틀리든 동일 소모라 정답을 누설하지 않고, 스태미나 고갈 시 ModifyStats가 정신력으로 1:2 전환한다.
+        if (shouldConsumeActivationCost) ConsumePresenceBookmarkActivationCost(PresenceBookmarkPlayerId);
 
-        // 마니또(피탈자)에게도 송신
-        var manittoSession = allSessions.FirstOrDefault(s => s.PlayerId == manittoId);
-        if (manittoSession != null)
-        {
-            using var manittoPacket = Packet.Create((int)Protocol.G_TO_C_PART_STOLEN, manittoId);
-            manittoPacket.SetBody(stolenBytes);
-            manittoSession.Send(manittoPacket);
-        }
+        if (isManitto) SendSharpGazeMarkUpdate(PresenceBookmarkPlayerId, true);
 
-        Logger.LogInformation("색출 부품 전이: PartId={PartId} from {Manitto} to {Detector}",
-            stolenPartId.Value, manittoId, detectorId);
+        Logger.LogInformation(
+            "Presence bookmark updated: PlayerId={PlayerId}, Bookmark={Bookmark}, IsManitto={IsManitto}",
+            PlayerId, PresenceBookmarkPlayerId, isManitto);
+
+        return Task.CompletedTask;
+    }
+
+    private static bool ShouldConsumePresenceBookmarkActivationCost(long previousBookmarkPlayerId,
+        long newBookmarkPlayerId)
+    {
+        if (newBookmarkPlayerId == 0) return false;
+        return newBookmarkPlayerId != previousBookmarkPlayerId;
+    }
+
+    private void ConsumePresenceBookmarkActivationCost(long bookmarkPlayerId)
+    {
+        ModifyStats(staminaDelta: -BookmarkActivationStaminaCost);
+        Logger.LogInformation(
+            "Presence bookmark activation cost consumed: PlayerId={PlayerId}, Bookmark={Bookmark}, StaminaCost={Cost}",
+            PlayerId, bookmarkPlayerId, BookmarkActivationStaminaCost);
+    }
+
+    private void SendSharpGazeMarkUpdate(long targetPlayerId, bool isActive)
+    {
+        if (targetPlayerId == 0) return;
+
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == targetPlayerId);
+        if (targetSession == null) return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SHARP_GAZE_MARK_UPDATE, targetPlayerId);
+        var msg = new G_TO_C_SHARP_GAZE_MARK_UPDATE { IsActive = isActive };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        targetSession.Send(packet);
     }
 
     /// <summary>
@@ -627,6 +663,30 @@ public partial class GameClientSession
         {
             TargetPlayerId = TargetPlayerId,
             AreaType = targetArea
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
+    }
+
+    /// <summary>
+    ///     프로토 0 기척 갱신 (#159) — 타겟 제외 후보별 최근 25초 조우 강도(0~5) 전송
+    /// </summary>
+    public void SendPresenceUpdate(List<(long playerId, float presence, string name, List<int> wear)> candidates)
+    {
+        if (!PlayerId.HasValue) return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_PRESENCE_UPDATE, PlayerId.Value);
+        var msg = new G_TO_C_PRESENCE_UPDATE
+        {
+            Candidates = candidates
+                .Select(c => new PresenceCandidate
+                {
+                    PlayerId = c.playerId,
+                    Presence = c.presence,
+                    Name = c.name,
+                    WearItemIds = c.wear
+                })
+                .ToList()
         };
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);

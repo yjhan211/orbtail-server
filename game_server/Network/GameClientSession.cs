@@ -133,6 +133,7 @@ public partial class GameClientSession : SessionBase
 
     // 마니또 체인 정보
     public long TargetPlayerId { get; private set; }
+    public long PresenceBookmarkPlayerId { get; private set; }
     private JobTitle MyJobTitle { get; set; }
     private JobTitle TargetJobTitle { get; set; }
     public ManittoStatus ManittoStatus { get; private set; } = ManittoStatus.ACTIVE;
@@ -193,6 +194,8 @@ public partial class GameClientSession : SessionBase
         // 마니또 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DETECT_MANITTO,
             async bytes => await HandleMessage<C_TO_G_DETECT_MANITTO>(bytes, HandleDetectManitto));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_BOOKMARK_PRESENCE,
+            async bytes => await HandleMessage<C_TO_G_BOOKMARK_PRESENCE>(bytes, HandleBookmarkPresence));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_TRACE,
             async bytes => await HandleMessage<C_TO_G_PLACE_TRACE>(bytes, HandlePlaceTrace));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_GIFT,
@@ -412,7 +415,9 @@ public partial class GameClientSession : SessionBase
     private class PeriodicBuffEntry
     {
         public float ElapsedSeconds;
+        public int DurationSeconds;
         public int IntervalSeconds;
+        public int RemainingSeconds;
         public BuffSubType SubType;
         public int Value;
     }

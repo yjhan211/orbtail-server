@@ -232,6 +232,7 @@ public partial class BotPlayerManager
     /// <summary>
     ///     #134 — 봇 자동 소모품 사용. Stamina < 임계값일 때 인벤토리 회복 아이템 소비.
     ///     CONDITION_ADD(stamina up) 또는 CORRUPTION_DOWN buff를 즉시 적용.
+    ///     CORRUPTION_ADD는 회복 후보에서 제외하되, 실제 아이템 처리 경로가 추가되면 오염 증가 효과로 해석한다.
     /// </summary>
     private void TryAutoUseConsumable(BotPlayerState bot, long matchingId, InGameInventoryManager inventoryManager)
     {

@@ -54,6 +54,7 @@ public class GameServer(
     private readonly TraceManager _traceManager = new();
     private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly GameEventLogManager _gameEventLogManager = new();
+    private readonly Proto0PresenceTracker _presenceTracker = new();
 
     private Timer? _corridorStopCheckTimer;
     private CancellationTokenSource _cts = new();
@@ -69,12 +70,17 @@ public class GameServer(
 
     private const int ResourceTickIntervalSeconds = 5;
     // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
-    private const int MentalDecayPhase1 = 1;            // 0~5분: 5초당 오염도 +1 (GDD §3.1.1)
-    private const int MentalDecayPhase2 = 2;            // 5~10분: 5초당 오염도 +2 (GDD §3.1.1)
-    private const int MentalDecayPhase3 = 3;            // 10분+: 5초당 오염도 +3 (GDD §3.1.1)
+    // 프로토 0: 타겟에서 떨어지면(복도/빈방) 압박이 실질적이도록 기본 감소를 회복(-3)과 균형 맞춰 상향. 튜닝 노브.
+    private const int MentalDecayPhase1 = 3;            // 0~5분: 5초당 오염도 +3
+    private const int MentalDecayPhase2 = 4;            // 5~10분: 5초당 오염도 +4
+    private const int MentalDecayPhase3 = 5;            // 10분+: 5초당 오염도 +5
     private const int Phase2StartSeconds = 300;          // 5분
     private const int Phase3StartSeconds = 600;          // 10분
     private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
+    private const int IsolationStatusEffectId = 1001;   // status_effect_info: 고립
+    private const int NearbyStatusEffectId = 1002;      // status_effect_info: 의존
+    private const int ClosedAreaStatusEffectId = 1003;  // status_effect_info: 폐쇄 구역
+    private const double SharpGazeRecoveryMultiplier = 0.5;
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
     internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모 (인접 구역 진입)
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
@@ -247,20 +253,40 @@ public class GameServer(
             {
                 bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
 
-                int corruptionDelta = GetMentalDecayAmount(session.CurrentMapSubId);
+                int corruptionDelta = 0;
 
                 if (!isTerminal && session.CurrentArea != AreaType.None)
                 {
-                    var targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                    bool targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
+                    GameClientSession? targetSession = null;
+                    BotPlayerState? targetBot = null;
+                    bool targetInSameArea = false;
+
+                    targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
+                    targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
                     if (!targetInSameArea)
                     {
-                        var targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
-                        targetInSameArea = targetBot is { IsEliminated: false } && targetBot.CurrentArea == session.CurrentArea;
+                        // 프로토 0: 회복은 타겟과 같은 영역에 있을 때 적용한다.
+                        //   혼잡할수록 느림 — 회복량 = 기본 × (2 / 영역 총인원).
+                        targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
+                        targetInSameArea = targetBot is { IsEliminated: false } &&
+                                           targetBot.CurrentArea == session.CurrentArea;
                     }
 
+                    if (!targetInSameArea)
+                        corruptionDelta += ResolveStatusEffectCorruptionDelta(
+                            IsolationStatusEffectId,
+                            GetMentalDecayAmount(session.CurrentMapSubId));
+
                     if (targetInSameArea)
-                        corruptionDelta = ApplyTargetEncounterStability(session, -TargetProximityRecovery);
+                    {
+                        int pop = CountAreaPopulation(activeSessions, session.CurrentMapSubId, session.CurrentArea);
+                        int recovery = Math.Max(1,
+                            (int)Math.Round(TargetProximityRecovery * (2.0 / Math.Max(2, pop))));
+                        int recoveryDelta = ResolveStatusEffectCorruptionDelta(NearbyStatusEffectId, recovery);
+                        recoveryDelta = ApplyTargetEncounterStability(session, recoveryDelta);
+                        recoveryDelta = ApplySharpGazeRecoveryPenalty(session, targetSession, targetBot, recoveryDelta);
+                        corruptionDelta += recoveryDelta;
+                    }
                 }
 
                 // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
@@ -280,7 +306,10 @@ public class GameServer(
                 if (session.CurrentArea != AreaType.None &&
                     _areaClosureManager.IsAreaClosed(session.CurrentMapSubId, session.CurrentArea))
                 {
-                    int closedAreaPenalty = ApplyClosedAreaResistance(session, Config.CLOSED_AREA_CORRUPTION_TICK);
+                    int closedAreaBasePenalty = ResolveStatusEffectCorruptionDelta(
+                        ClosedAreaStatusEffectId,
+                        Config.CLOSED_AREA_CORRUPTION_TICK);
+                    int closedAreaPenalty = ApplyClosedAreaResistance(session, closedAreaBasePenalty);
                     corruptionDelta += closedAreaPenalty;
                 }
 
@@ -324,11 +353,84 @@ public class GameServer(
                 if (tracePlaced.HasValue)
                     BroadcastTracePlacedAnnounce(matchingId, activeSessions, tracePlaced.Value);
             }
+
+            // 7. 프로토 0 기척 틱 (#159) — 5초 조우 강도 계산 후 인간 세션에 전송
+            foreach (long matchingId in matchingIds)
+            {
+                var playerAreas = BuildPlayerAreas(matchingId, activeSessions);
+                _presenceTracker.Tick(matchingId, playerAreas);
+
+                foreach (var session in activeSessions)
+                {
+                    if (session.CurrentMapSubId != matchingId || !session.PlayerId.HasValue) continue;
+
+                    // roster = 현재 살아있는 전체 플레이어 → 타겟 제외 후보 전원(presence 0 포함)
+                    var scored = _presenceTracker.GetCandidates(
+                        matchingId, session.PlayerId.Value, session.TargetPlayerId, playerAreas.Keys);
+
+                    var candidates = new List<(long playerId, float presence, string name, List<int> wear)>();
+                    foreach (var (candidateId, presence) in scored)
+                    {
+                        string name = "";
+                        List<int> wear = null;
+                        // 봇은 서버 메모리에 정체성 보유 → 후보가 멀리 있어도 카드 채움. 인간은 빈값(클라가 폴백).
+                        if (BotPlayerManager.IsBotPlayerId(candidateId))
+                        {
+                            var info = _botPlayerManager.SynthesizePlayerInfo(matchingId, candidateId);
+                            if (info != null) { name = info.Name; wear = info.WearItemIdList; }
+                        }
+
+                        candidates.Add((candidateId, presence, name, wear));
+                    }
+
+                    session.SendPresenceUpdate(candidates);
+                }
+            }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "자원 틱 처리 중 오류");
         }
+    }
+
+    /// <summary>프로토 0 기척: 인스턴스의 모든 플레이어(인간 + 생존 봇) 영역 맵.</summary>
+    private Dictionary<long, AreaType> BuildPlayerAreas(long matchingId, List<GameClientSession> activeSessions)
+    {
+        var areas = new Dictionary<long, AreaType>();
+        foreach (var session in activeSessions)
+            if (session.CurrentMapSubId == matchingId && session.PlayerId.HasValue)
+                areas[session.PlayerId.Value] = session.CurrentArea;
+
+        if (_botPlayerManager.HasBots(matchingId))
+            foreach (var bot in _botPlayerManager.GetBots(matchingId))
+                if (!bot.IsEliminated)
+                    areas[bot.PlayerId] = bot.CurrentArea;
+
+        return areas;
+    }
+
+    /// <summary>프로토 0: 특정 영역의 총 인원(인간 + 봇). 회복 2/N 스케일링용.</summary>
+    private int CountAreaPopulation(List<GameClientSession> sessions, long matchingId, AreaType area)
+    {
+        int humans = sessions.Count(s => s.CurrentMapSubId == matchingId && s.CurrentArea == area);
+        return humans + _botPlayerManager.CountBotsInArea(matchingId, area);
+    }
+
+    private static int ResolveStatusEffectCorruptionDelta(int statusEffectId, int value)
+    {
+        if (value == 0) return 0;
+        if (!GameStatusEffectData.TryGet(statusEffectId, out var statusEffect) || statusEffect.BuffId <= 0)
+            return 0;
+
+        var buff = GameBuffData.Get(statusEffect.BuffId);
+        int magnitude = Math.Abs(value);
+
+        return buff.SubType switch
+        {
+            BuffSubType.CORRUPTION_ADD => magnitude,
+            BuffSubType.CORRUPTION_DOWN => -magnitude,
+            _ => 0
+        };
     }
 
     private int ApplyTargetEncounterStability(GameClientSession session, int baseRecoveryDelta)
@@ -351,6 +453,32 @@ public class GameServer(
             session.PlayerId, baseRecoveryDelta, adjustedDelta, reward.RemainingUses);
 
         return adjustedDelta;
+    }
+
+    private int ApplySharpGazeRecoveryPenalty(
+        GameClientSession session,
+        GameClientSession? targetSession,
+        BotPlayerState? targetBot,
+        int baseRecoveryDelta)
+    {
+        long? playerIdValue = session.PlayerId;
+        long? targetPlayerIdValue = targetSession?.PlayerId;
+        if (!targetPlayerIdValue.HasValue && targetBot != null) targetPlayerIdValue = targetBot.PlayerId;
+        long targetBookmarkPlayerId = targetSession?.PresenceBookmarkPlayerId ?? targetBot?.PresenceBookmarkPlayerId ?? 0;
+        if (!playerIdValue.HasValue || baseRecoveryDelta >= 0) return baseRecoveryDelta;
+        if (!targetPlayerIdValue.HasValue) return baseRecoveryDelta;
+
+        long playerId = playerIdValue.Value;
+        long targetPlayerId = targetPlayerIdValue.Value;
+        if (session.TargetPlayerId != targetPlayerId) return baseRecoveryDelta;
+        if (targetBookmarkPlayerId != playerId) return baseRecoveryDelta;
+
+        var targetManitto = _manittoChainManager.FindManittoOf(session.CurrentMapSubId, targetPlayerId);
+        if (targetManitto?.PlayerId != playerId) return baseRecoveryDelta;
+
+        int recovery = Math.Abs(baseRecoveryDelta);
+        int adjustedRecovery = Math.Max(1, (int)Math.Ceiling(recovery * SharpGazeRecoveryMultiplier));
+        return -adjustedRecovery;
     }
 
     private int ApplyClosedAreaResistance(GameClientSession session, int basePenalty)
@@ -1031,7 +1159,11 @@ public class GameServer(
             foreach (long matchingId in matchingIds)
             {
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
-                var movementResult = _botPlayerManager.ProcessBotMovementTick(matchingId, _areaClosureManager);
+                // 프로토 0: 봇 타겟 추적/떠보기를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
+                var humanAreas = activeSessions
+                    .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
+                    .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
+                var movementResult = _botPlayerManager.ProcessBotMovementTick(matchingId, _areaClosureManager, humanAreas);
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)

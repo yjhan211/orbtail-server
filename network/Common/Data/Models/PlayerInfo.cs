@@ -41,7 +41,10 @@ namespace network.common.data.models
 
             // TODO 공통맵 추가 이후 활성화
             // var initCell = isDummy ? CommonMapData.GetRandomCell() : GameRuleData.StartPosition;
-            var initCell = GameRuleData.StartPosition;
+            // 신규 유저는 Camp(로비)에서 시작하므로 Camp 맵의 스폰 셀을 사용한다.
+            // GameRuleData.StartPosition은 Camp 유효 영역 밖이라 그대로 쓰면 로비에서 영역 밖/공중 스폰된다.
+            var campMapInfo = GameMapData.GetMapInfo(MapId.Camp);
+            var initCell = campMapInfo != null ? campMapInfo.GetInitialPosition().position : GameRuleData.StartPosition;
             PlayerId = playerId;
             Name = name;
             WearItemIdList = new();

@@ -8,6 +8,9 @@ namespace game_server.network;
 
 public partial class GameClientSession
 {
+    private const int CatPillowItemId = 401000003;
+    private const int CatPillowRestDurationSeconds = 15;
+
     private Task HandleAttack(C_TO_G_ATTACK msg)
     {
         // 미구현 — 클라이언트에 에러 응답
@@ -64,13 +67,16 @@ public partial class GameClientSession
         if (!_isSleeping) StopAllPeriodicBuffs();
     }
 
-    private void AddPeriodicBuff(BuffSubType subType, int value, int intervalSeconds)
+    private void AddPeriodicBuff(BuffSubType subType, int value, int intervalSeconds, int durationSeconds = 0)
     {
+        _activePeriodicBuffs.RemoveAll(buff => buff.SubType == subType);
         _activePeriodicBuffs.Add(new PeriodicBuffEntry
         {
             SubType = subType,
             Value = value,
-            IntervalSeconds = intervalSeconds
+            IntervalSeconds = intervalSeconds,
+            DurationSeconds = durationSeconds,
+            RemainingSeconds = durationSeconds
         });
 
         // 마스터 타이머가 없으면 시작 (1초 틱)
@@ -84,33 +90,46 @@ public partial class GameClientSession
             foreach (var buff in _activePeriodicBuffs.ToList())
             {
                 buff.ElapsedSeconds += 1;
-                if (buff.ElapsedSeconds < buff.IntervalSeconds) continue;
+                if (buff.DurationSeconds > 0 && buff.RemainingSeconds > 0)
+                    buff.RemainingSeconds -= 1;
 
-                buff.ElapsedSeconds = 0;
-                switch (buff.SubType)
+                if (buff.ElapsedSeconds >= buff.IntervalSeconds)
                 {
-                    case BuffSubType.CONDITION_ADD:
-                        if (Stamina >= MaxStamina)
-                        {
-                            _activePeriodicBuffs.Remove(buff);
-                            continue;
-                        }
-
-                        ModifyStats(buff.Value);
-                        break;
-                    case BuffSubType.CORRUPTION_DOWN:
-                        if (Corruption <= 0)
-                        {
-                            _activePeriodicBuffs.Remove(buff);
-                            continue;
-                        }
-
-                        ModifyStats(corruptionDelta: -buff.Value);
-                        break;
+                    buff.ElapsedSeconds = 0;
+                    switch (buff.SubType)
+                    {
+                        case BuffSubType.CONDITION_ADD:
+                            if (Stamina < MaxStamina)
+                                ModifyStats(buff.Value);
+                            else if (buff.DurationSeconds <= 0)
+                                _activePeriodicBuffs.Remove(buff);
+                            break;
+                        case BuffSubType.CORRUPTION_DOWN:
+                            if (Corruption > 0)
+                                ModifyStats(corruptionDelta: -buff.Value);
+                            else if (buff.DurationSeconds <= 0)
+                                _activePeriodicBuffs.Remove(buff);
+                            break;
+                        case BuffSubType.CORRUPTION_ADD:
+                            if (Corruption < MaxCorruption)
+                                ModifyStats(corruptionDelta: buff.Value);
+                            else if (buff.DurationSeconds <= 0)
+                                _activePeriodicBuffs.Remove(buff);
+                            break;
+                    }
                 }
+
+                if (buff.DurationSeconds > 0 && buff.RemainingSeconds <= 0)
+                    _activePeriodicBuffs.Remove(buff);
             }
 
-            if (_activePeriodicBuffs.Count == 0) StopAllPeriodicBuffs();
+            if (_activePeriodicBuffs.Count == 0)
+            {
+                if (_isSleeping)
+                    _ = BroadcastSleepState(false);
+                else
+                    StopAllPeriodicBuffs();
+            }
         }
         catch (Exception ex)
         {
@@ -134,6 +153,8 @@ public partial class GameClientSession
         if (!PlayerId.HasValue) return;
 
         _isSleeping = sleep;
+        if (!sleep) StopAllPeriodicBuffs();
+
         var state = sleep ? global::network.common.PlayerState.SLEEP : global::network.common.PlayerState.IDLE;
 
         // 서버 측 상태 저장
@@ -308,7 +329,8 @@ public partial class GameClientSession
             // 주기적 버프 → 마스터 타이머에 등록
             if (buffData.Type == BuffType.PERIODIC && interval > 0)
             {
-                AddPeriodicBuff(buffData.SubType, value, interval);
+                int durationSeconds = itemId == CatPillowItemId ? CatPillowRestDurationSeconds : 0;
+                AddPeriodicBuff(buffData.SubType, value, interval, durationSeconds);
                 hasPeriodicBuff = true;
                 continue;
             }
@@ -322,6 +344,10 @@ public partial class GameClientSession
 
                 case BuffSubType.CORRUPTION_DOWN:
                     corruptionDelta -= value;
+                    break;
+
+                case BuffSubType.CORRUPTION_ADD:
+                    corruptionDelta += value;
                     break;
             }
         }

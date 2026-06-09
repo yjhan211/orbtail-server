@@ -98,15 +98,21 @@ public partial class BotPlayerManager
     ///     실제 플레이어와 동일한 walkSpeed=3.0 적용. 매 틱 G_TO_C_MOVE 동등 이벤트 발행.
     ///     #134: 추가로 ChooseNewWanderTarget 시 PendingExploreEndBroadcast가 set된 봇은 ExploreEnds list에 수집 — walking 시작 안전망.
     /// </summary>
-    public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager)
+    public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager,
+        IReadOnlyDictionary<long, AreaType> humanAreas)
     {
         var result = new BotWalkingTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
 
+        // 전체 플레이어(인간 + 봇) 현재 영역 맵 — 봇 타겟 추적/떠보기 인원수 계산용.
+        var playerAreas = new Dictionary<long, AreaType>(humanAreas);
+        foreach (var b in bots)
+            if (!b.IsEliminated) playerAreas[b.PlayerId] = b.CurrentArea;
+
         foreach (var bot in bots)
         {
             if (bot.IsEliminated) continue;
-            var ev = WalkStep(bot, matchingId, closureManager);
+            var ev = WalkStep(bot, matchingId, closureManager, playerAreas);
             if (ev != null) result.Movements.Add(ev);
             if (bot.PendingExploreEndBroadcast)
             {
@@ -122,7 +128,8 @@ public partial class BotPlayerManager
     ///     영역 전환 단계는 텔레포트(LEAVE+ENTER+MOVE) 이벤트 반환,
     ///     일반 셀 walk는 진행 방향 + 속도 포함 MOVE 이벤트 반환.
     /// </summary>
-    private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
+    private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
+        IReadOnlyDictionary<long, AreaType> playerAreas)
     {
         var now = DateTime.UtcNow;
         float deltaSec = (float)(now - bot.LastWalkStepTime).TotalSeconds;
@@ -176,7 +183,7 @@ public partial class BotPlayerManager
             // #134 — 도착 후 RNG 채집이 아직 안 됐으면 walking 보류 (ProcessBotMissionTick이 PendingRngInteractId 처리 후 0으로 클리어할 때까지 대기).
             if (bot.PendingRngInteractId != 0) return null;
 
-            ChooseNewWanderTarget(bot, matchingId, closureManager);
+            ChooseNewWanderTarget(bot, matchingId, closureManager, playerAreas);
             if (bot.Path.Count == 0) return null;
             // ChooseNewWanderTarget이 LoopWaitUntil(+3초)을 설정하므로 새 path는 다음 틱부터 진행.
             // 같은 틱에서 walking 시작 시 영역 도착 후 3초 휴식이 무력화되어 발소리/walk 애니가 끊기지 않음.
@@ -304,12 +311,13 @@ public partial class BotPlayerManager
     private const int BotArrivalWaitSeconds = 3;
 
     /// <summary>
-    ///     봇이 도착했거나 경로가 비었을 때 새 목적지 선택 + 경로 계산.
-    ///     #134 — 두 모드:
-    ///       1) 영역 내 다음 InteractObject로 셀 walking (InteractQueueInArea에 남은 게 있을 때)
-    ///       2) 다음 영역으로 walking + 진입 시 그 영역의 모든 후보로 큐 채움
+    ///     프로토 0: 봇이 도착했거나 경로가 비었을 때 다음 목적지(3·4층 방) 선택 + 경로 계산.
+    ///     - 따라가기: 타겟(TargetPlayerId)이 있는 방으로 이동(회복).
+    ///     - 떠보기: 일정 확률로 최저 인원 방으로 이동(추적자 유인).
+    ///     복도는 목적지가 아니라 통과만(transit). 미션 수집 동선(직책 큐/RNG 채집)은 폐기.
     /// </summary>
-    private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
+    private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
+        IReadOnlyDictionary<long, AreaType> playerAreas)
     {
         var mapId = GetMatchingMapId(matchingId);
         bot.Path.Clear();
@@ -319,122 +327,314 @@ public partial class BotPlayerManager
         // walking 시작 시 EXPLORE_END broadcast 안전망 — 다음 ProcessBotMovementTick에서 수집.
         bot.PendingExploreEndBroadcast = true;
 
-        // 1) 현재 영역에 아직 탐색하지 않은 InteractObject가 남아있으면 같은 영역 내 다음 셀로 walking
-        if (TryWalkToNextInteractInQueue(bot, matchingId, mapId, closureManager)) return;
-
-        // 2) 직책 큐의 다음 영역으로 이동
-        if (bot.JobAreaQueue.Count == 0) return;
-
-        AreaType targetArea = AreaType.None;
-        for (int i = 0; i < bot.JobAreaQueue.Count; i++)
+        var destination = ChooseProto0Destination(bot, matchingId, playerAreas, closureManager);
+        if (destination == AreaType.None) return;
+        if (destination == bot.CurrentArea)
         {
-            int idx = (bot.JobAreaQueueIndex + i) % bot.JobAreaQueue.Count;
-            var candidate = bot.JobAreaQueue[idx];
-            if (closureManager.IsAreaClosed(matchingId, candidate)) continue;
-            if (candidate == bot.CurrentArea) continue;
-            targetArea = candidate;
-            bot.JobAreaQueueIndex = (idx + 1) % bot.JobAreaQueue.Count;
-            break;
+            // 이미 원하는 방(타겟 방 등)에 있음 → 잠시 머물며 회복/기척.
+            // (즉시 재결정 시 떠보기 확률이 매 틱 굴러 곧바로 나가버리는 문제 방지)
+            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(Proto0RoomDwellSeconds);
+            return;
         }
 
-        if (targetArea == AreaType.None) return;
-
-        // 새 영역의 모든 후보 InteractObject로 큐 채움 (쿨타임 없는 + 셀 좌표 매핑된 것만)
-        var queue = BuildInteractQueueForArea(matchingId, bot, targetArea);
-        bot.InteractQueueInArea = queue;
-
-        // 도착 후 잠시 대기 (자연스러운 휴식 + ProcessBotMissionTick이 RNG 채집 트리거할 시간)
-        bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotArrivalWaitSeconds);
-
-        // 첫 InteractObject 셀로 path 계산. 큐 비었으면 영역 spawn cell로 폴백.
-        // 큐에서 쿨타임 발생한 항목은 건너뛰고 다음 후보 선택 (walking path 설정 직전 한 번 더 검증).
-        Cell targetCell;
-        int firstId = 0;
-        while (queue.Count > 0)
-        {
-            int candidateId = queue[0];
-            queue.RemoveAt(0);
-            if (RngCollectCooldownStore.IsInCooldown(matchingId, candidateId, out _)) continue;
-            firstId = candidateId;
-            break;
-        }
-        if (firstId > 0)
-        {
-            var info = GameInteractableData.Get(firstId);
-            if (info != null)
-            {
-                targetCell = new Cell(info.CellX, info.CellY);
-                bot.PendingRngInteractId = firstId;
-            }
-            else
-            {
-                targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, targetArea)
-                    ?? GameMapData.GetAreaSpawnCell(mapId, targetArea);
-            }
-        }
-        else
-        {
-            targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, targetArea)
-                ?? GameMapData.GetAreaSpawnCell(mapId, targetArea);
-        }
+        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, destination)
+            ?? GameMapData.GetAreaSpawnCell(mapId, destination);
 
         var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
-            targetArea, targetCell,
+            destination, targetCell,
             a => closureManager.IsAreaClosed(matchingId, a));
         if (path == null || path.Count == 0)
         {
-            _logger.LogDebug("봇 경로 계산 실패: BotId={Bot}, {From} → {To}",
-                bot.PlayerId, bot.CurrentArea, targetArea);
-            bot.PendingRngInteractId = 0;
+            _logger.LogDebug("프로토0 봇 경로 실패: BotId={Bot}, {From} → {To}",
+                bot.PlayerId, bot.CurrentArea, destination);
             return;
         }
 
         bot.Path = path;
         bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotArrivalWaitSeconds);
         _logger.LogInformation(
-            "봇 새 경로(직책 큐): BotId={Bot}, Job={Job}, {From}@{Cell} → {To}@{TargetCell}, InteractId={Iid}, 영역내큐={QSize}, 단계={Steps}",
-            bot.PlayerId, bot.MyJobTitle, bot.CurrentArea, bot.Cell, targetArea, targetCell,
-            bot.PendingRngInteractId, queue.Count, path.Count);
+            "Proto0 bot move: BotId={Bot}, Target={Target}, Policy={Policy}, Profile={Profile}, {From}->{To}, Steps={Steps}",
+            bot.PlayerId, bot.TargetPlayerId, ActiveProto0BotPolicy, bot.Proto0Profile,
+            bot.CurrentArea, destination, path.Count);
     }
 
     /// <summary>
-    ///     #134 — 같은 영역 내에 아직 탐색하지 않은 InteractObject가 큐에 남아있으면 그 셀까지 walking.
-    ///     큐에서 첫 번째 ID를 꺼내 PendingRngInteractId로 설정. 쿨타임 발생한 항목은 건너뛰고 다음.
-    ///     반환 true면 같은 영역 walking path가 설정됨. false면 큐 소진 — 호출자가 다음 영역으로 진행.
+    ///     프로토 0 목적지(방) 선택. 떠보기 확률이면 최저 인원 방, 아니면 타겟이 있는 방(회복).
+    ///     타겟 위치를 모르면 현재와 다른 임의 방.
     /// </summary>
-    private bool TryWalkToNextInteractInQueue(BotPlayerState bot, long matchingId, MapId mapId,
-        AreaClosureManager closureManager)
+    private AreaType ChooseProto0Destination(BotPlayerState bot, long matchingId,
+        IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
     {
-        while (bot.InteractQueueInArea.Count > 0)
+        return ActiveProto0BotPolicy switch
         {
-            int nextId = bot.InteractQueueInArea[0];
-            bot.InteractQueueInArea.RemoveAt(0);
+            Proto0BotPolicy.DisguiseMvp => ChooseDisguiseProto0Destination(bot, matchingId, playerAreas, closureManager),
+            _ => ChooseSimpleProto0Destination(bot, matchingId, playerAreas, closureManager)
+        };
+    }
 
-            var info = GameInteractableData.Get(nextId);
-            if (info == null) continue;
-            if (info.ZoneId != (int)bot.CurrentArea) continue;
-            if (info.CellX == 0 && info.CellY == 0) continue;
-            if (RngCollectCooldownStore.IsInCooldown(matchingId, nextId, out _)) continue;
+    private AreaType ChooseSimpleProto0Destination(BotPlayerState bot, long matchingId,
+        IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
+    {
+        var rooms = Proto0Rooms
+            .Where(a => !closureManager.IsAreaClosed(matchingId, a))
+            .ToList();
+        if (rooms.Count == 0) return AreaType.None;
 
-            var targetCell = new Cell(info.CellX, info.CellY);
-            var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
-                bot.CurrentArea, targetCell,
-                a => closureManager.IsAreaClosed(matchingId, a));
-            if (path == null || path.Count == 0) continue;
-
-            bot.Path = path;
-            bot.PathIndex = 0;
-            bot.PendingRngInteractId = nextId;
-            // walking 시작 시 EXPLORE_END broadcast 안전망 — 봇이 RNG progress 끝나고 같은 영역 내 다음 셀로 이동 시 EXPLORE_1 잔존 회피.
-            bot.PendingExploreEndBroadcast = true;
-            // 짧은 대기 — 클라가 walking 시작 직전 잠시 멈춤
-            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(5);
-            _logger.LogInformation(
-                "봇 영역내 다음 InteractObject: BotId={Bot}, Area={Area}, InteractId={Iid}@{Cell}, 큐잔량={Q}",
-                bot.PlayerId, bot.CurrentArea, nextId, targetCell, bot.InteractQueueInArea.Count);
-            return true;
+        // 떠보기: 최저 인원 방으로 (추적자 유인 — 회복 포기 비용)
+        if (_rng.NextDouble() < Proto0TestProbability)
+        {
+            var pop = CountRoomPopulations(rooms, playerAreas);
+            return rooms.OrderBy(a => pop[a]).ThenBy(_ => _rng.Next()).First();
         }
-        return false;
+
+        // 따라가기: 타겟이 있는 방으로 (회복)
+        if (playerAreas.TryGetValue(bot.TargetPlayerId, out var targetArea) && targetArea != AreaType.None)
+        {
+            if (!targetArea.IsCorridor() && rooms.Contains(targetArea)) return targetArea;
+            // 타겟이 복도면 같은 층 방으로
+            int floor = targetArea.GetFloor();
+            var floorRooms = rooms.Where(a => a.GetFloor() == floor).ToList();
+            if (floorRooms.Count > 0) return floorRooms[_rng.Next(floorRooms.Count)];
+        }
+
+        // 타겟 위치 불명 → 현재와 다른 임의 방
+        var others = rooms.Where(a => a != bot.CurrentArea).ToList();
+        return others.Count > 0 ? others[_rng.Next(others.Count)] : AreaType.None;
+    }
+
+    /// <summary>프로토 0 위장 정책: 즉시 추적 대신 지연, 미끼 이동, 떠보기 이동을 섞는다.</summary>
+    private AreaType ChooseDisguiseProto0Destination(BotPlayerState bot, long matchingId,
+        IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
+    {
+        var rooms = Proto0Rooms
+            .Where(a => !closureManager.IsAreaClosed(matchingId, a))
+            .ToList();
+        if (rooms.Count == 0) return AreaType.None;
+
+        var now = DateTime.UtcNow;
+        var pop = CountRoomPopulations(rooms, playerAreas);
+        var config = GetProto0ProfileConfig(bot.Proto0Profile);
+        var targetRoom = ResolveTargetRoom(rooms, playerAreas, bot.TargetPlayerId);
+
+        if (targetRoom != AreaType.None && targetRoom != bot.LastSeenTargetArea)
+        {
+            bot.LastSeenTargetArea = targetRoom;
+            var delaySeconds = RandomRange(Proto0FollowDelayMinSeconds, Proto0FollowDelayMaxSeconds)
+                * config.FollowDelayMultiplier;
+            bot.NextTargetFollowAllowedAt = now.AddSeconds(delaySeconds);
+        }
+        else if (targetRoom == AreaType.None)
+        {
+            bot.LastSeenTargetArea = AreaType.None;
+            bot.NextTargetFollowAllowedAt = DateTime.MinValue;
+        }
+
+        var canFakeMove = bot.Stamina >= config.FakeMoveMinStamina
+            && (now - bot.LastFakeMoveTime).TotalSeconds >= Proto0FakeMoveCooldownSeconds;
+        var canProbe = (now - bot.LastProbeMoveTime).TotalSeconds >= Proto0ProbeCooldownSeconds;
+
+        if (canFakeMove && targetRoom != AreaType.None && now < bot.NextTargetFollowAllowedAt
+            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var delayedRoom))
+        {
+            bot.LastFakeMoveTime = now;
+            return delayedRoom;
+        }
+
+        var currentIsCrowded = rooms.Contains(bot.CurrentArea)
+            && pop[bot.CurrentArea] >= Proto0CrowdedRoomThreshold;
+        if (canFakeMove && currentIsCrowded && !config.PrefersCrowd
+            && _rng.NextDouble() < config.FakeMoveChance
+            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var crowdExitRoom))
+        {
+            bot.LastFakeMoveTime = now;
+            return crowdExitRoom;
+        }
+
+        var targetIsPrivate = targetRoom != AreaType.None && pop[targetRoom] <= 1 && targetRoom != bot.CurrentArea;
+        if (canFakeMove && targetIsPrivate && config.AvoidsPrivateTarget
+            && _rng.NextDouble() < config.FakeMoveChance
+            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var decoyRoom))
+        {
+            bot.LastFakeMoveTime = now;
+            return decoyRoom;
+        }
+
+        if (canProbe && _rng.NextDouble() < config.ProbeChance
+            && TryChooseProbeRoom(bot, rooms, pop, out var probeRoom))
+        {
+            bot.LastProbeMoveTime = now;
+            return probeRoom;
+        }
+
+        if (canFakeMove && _rng.NextDouble() < config.FakeMoveChance
+            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var fakeRoom))
+        {
+            bot.LastFakeMoveTime = now;
+            return fakeRoom;
+        }
+
+        if (targetRoom != AreaType.None) return targetRoom;
+        return ChooseProfileFallbackRoom(bot, rooms, pop, config);
+    }
+
+    private AreaType ResolveTargetRoom(List<AreaType> rooms, IReadOnlyDictionary<long, AreaType> playerAreas,
+        long targetPlayerId)
+    {
+        if (!playerAreas.TryGetValue(targetPlayerId, out var targetArea) || targetArea == AreaType.None)
+            return AreaType.None;
+
+        if (!targetArea.IsCorridor() && rooms.Contains(targetArea)) return targetArea;
+
+        var floor = targetArea.GetFloor();
+        var floorRooms = rooms.Where(a => a.GetFloor() == floor).ToList();
+        return floorRooms.Count > 0 ? floorRooms[_rng.Next(floorRooms.Count)] : AreaType.None;
+    }
+
+    private bool TryChooseFakeRoom(BotPlayerState bot, List<AreaType> rooms, Dictionary<AreaType, int> pop,
+        AreaType targetRoom, Proto0ProfileConfig config, out AreaType room)
+    {
+        var candidates = rooms
+            .Where(a => a != targetRoom && a != bot.CurrentArea)
+            .ToList();
+
+        if (candidates.Count == 0)
+            candidates = rooms.Where(a => a != targetRoom).ToList();
+
+        if (candidates.Count == 0)
+        {
+            room = AreaType.None;
+            return false;
+        }
+
+        room = ChooseProfileRoom(candidates, pop, config);
+        return true;
+    }
+
+    private bool TryChooseProbeRoom(BotPlayerState bot, List<AreaType> rooms, Dictionary<AreaType, int> pop,
+        out AreaType room)
+    {
+        var candidates = rooms.Where(a => a != bot.CurrentArea).ToList();
+        if (candidates.Count == 0)
+        {
+            room = AreaType.None;
+            return false;
+        }
+
+        room = candidates
+            .OrderBy(a => pop[a])
+            .ThenBy(_ => _rng.Next())
+            .First();
+        return true;
+    }
+
+    private AreaType ChooseProfileFallbackRoom(BotPlayerState bot, List<AreaType> rooms,
+        Dictionary<AreaType, int> pop, Proto0ProfileConfig config)
+    {
+        var candidates = rooms.Where(a => a != bot.CurrentArea).ToList();
+        return candidates.Count > 0
+            ? ChooseProfileRoom(candidates, pop, config)
+            : rooms[_rng.Next(rooms.Count)];
+    }
+
+    private AreaType ChooseProfileRoom(List<AreaType> rooms, Dictionary<AreaType, int> pop,
+        Proto0ProfileConfig config)
+    {
+        if (config.PrefersCrowd)
+            return rooms.OrderByDescending(a => pop[a]).ThenBy(_ => _rng.Next()).First();
+
+        if (config.PrefersQuiet)
+            return rooms.OrderBy(a => pop[a]).ThenBy(_ => _rng.Next()).First();
+
+        return rooms
+            .OrderBy(a => Math.Abs(pop[a] - 2))
+            .ThenBy(_ => _rng.Next())
+            .First();
+    }
+
+    private double RandomRange(double min, double max)
+    {
+        return min + _rng.NextDouble() * (max - min);
+    }
+
+    private static Proto0ProfileConfig GetProto0ProfileConfig(BotProto0Profile profile)
+    {
+        return profile switch
+        {
+            BotProto0Profile.StealthFirst => new Proto0ProfileConfig(
+                probeChance: 0.16,
+                fakeMoveChance: 0.45,
+                followDelayMultiplier: 1.35,
+                fakeMoveMinStamina: 55,
+                prefersCrowd: false,
+                prefersQuiet: false,
+                avoidsPrivateTarget: true),
+            BotProto0Profile.AggressiveProbe => new Proto0ProfileConfig(
+                probeChance: 0.42,
+                fakeMoveChance: 0.24,
+                followDelayMultiplier: 0.95,
+                fakeMoveMinStamina: 60,
+                prefersCrowd: false,
+                prefersQuiet: true,
+                avoidsPrivateTarget: false),
+            BotProto0Profile.CrowdSeeking => new Proto0ProfileConfig(
+                probeChance: 0.12,
+                fakeMoveChance: 0.26,
+                followDelayMultiplier: 1.1,
+                fakeMoveMinStamina: 60,
+                prefersCrowd: true,
+                prefersQuiet: false,
+                avoidsPrivateTarget: false),
+            BotProto0Profile.QuietRoomSeeking => new Proto0ProfileConfig(
+                probeChance: 0.30,
+                fakeMoveChance: 0.30,
+                followDelayMultiplier: 1.15,
+                fakeMoveMinStamina: 65,
+                prefersCrowd: false,
+                prefersQuiet: true,
+                avoidsPrivateTarget: true),
+            _ => new Proto0ProfileConfig(
+                probeChance: 0.10,
+                fakeMoveChance: 0.12,
+                followDelayMultiplier: 0.7,
+                fakeMoveMinStamina: 75,
+                prefersCrowd: false,
+                prefersQuiet: false,
+                avoidsPrivateTarget: false)
+        };
+    }
+
+    private readonly struct Proto0ProfileConfig
+    {
+        public Proto0ProfileConfig(double probeChance, double fakeMoveChance, double followDelayMultiplier,
+            int fakeMoveMinStamina, bool prefersCrowd, bool prefersQuiet, bool avoidsPrivateTarget)
+        {
+            ProbeChance = probeChance;
+            FakeMoveChance = fakeMoveChance;
+            FollowDelayMultiplier = followDelayMultiplier;
+            FakeMoveMinStamina = fakeMoveMinStamina;
+            PrefersCrowd = prefersCrowd;
+            PrefersQuiet = prefersQuiet;
+            AvoidsPrivateTarget = avoidsPrivateTarget;
+        }
+
+        public double ProbeChance { get; }
+        public double FakeMoveChance { get; }
+        public double FollowDelayMultiplier { get; }
+        public int FakeMoveMinStamina { get; }
+        public bool PrefersCrowd { get; }
+        public bool PrefersQuiet { get; }
+        public bool AvoidsPrivateTarget { get; }
+    }
+
+    /// <summary>프로토 0: 각 방의 현재 인원수(봇+인간) 집계. 떠보기 목적지 선택용.</summary>
+    private static Dictionary<AreaType, int> CountRoomPopulations(List<AreaType> rooms,
+        IReadOnlyDictionary<long, AreaType> playerAreas)
+    {
+        var pop = rooms.ToDictionary(a => a, _ => 0);
+        foreach (var area in playerAreas.Values)
+            if (pop.ContainsKey(area)) pop[area]++;
+        return pop;
     }
 
     public bool TrySendBotToInteract(long matchingId, long botPlayerId, AreaType area, int interactId,
@@ -512,45 +712,6 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     #134 — 새 영역 진입 시 그 영역의 모든 InteractObject 후보를 큐로 빌드.
-    ///     자기 직책 부품 발견 풀 InteractObject가 큐 앞쪽 (탐색 동기 부여), 그 외는 뒤쪽.
-    ///     쿨타임 없는 것 + 셀 좌표 매핑된 것만 후보.
-    /// </summary>
-    private List<int> BuildInteractQueueForArea(long matchingId, BotPlayerState bot, AreaType targetArea)
-    {
-        var candidates = GameInteractableData.GetByZone((int)targetArea);
-        if (candidates.Count == 0) return new List<int>();
-
-        int unmappedCount = candidates.Count(c => c.CellX == 0 && c.CellY == 0);
-        int cooldownCount = candidates.Count(c =>
-            (c.CellX != 0 || c.CellY != 0) && RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _));
-
-        var available = candidates
-            .Where(c => c.CellX != 0 || c.CellY != 0)
-            .Where(c => !RngCollectCooldownStore.IsInCooldown(matchingId, c.Id, out _))
-            .ToList();
-
-        // 영역 단위 부품 매칭 (#135) — 같은 영역 내 사물은 동등. 단순 셔플.
-        var missionObjectTypes = GameMissionData.GetMaterials((short)bot.MyJobTitle)
-            .Where(part => part.TargetArea == (int)targetArea && part.TargetObjectType > 0)
-            .Select(part => part.TargetObjectType)
-            .ToHashSet();
-
-        var queue = available
-            .OrderBy(c => missionObjectTypes.Contains((int)c.ObjectType) ? 0 : 1)
-            .ThenBy(_ => _rng.Next())
-            .Select(c => c.Id)
-            .ToList();
-        if (unmappedCount > 0 || cooldownCount > 0)
-        {
-            _logger.LogInformation(
-                "봇 영역 큐 빌드: BotId={Bot}, Area={Area}, 전체={Total}, 큐에추가={Q}, 좌표미매핑={Unmapped}, 쿨타임={Cd}",
-                bot.PlayerId, targetArea, candidates.Count, queue.Count, unmappedCount, cooldownCount);
-        }
-        return queue;
-    }
-
-    /// <summary>
     ///     W3 시연 모드 — 봇 위치를 BotMovementScript에 따라 강제. 매 틱(5초)마다 평가.
     ///     큐 순회 로직 우회. 폐쇄된 위치는 도착 보류(다음 웨이포인트로 진행되면 자연 해소).
     /// </summary>
@@ -614,27 +775,6 @@ public partial class BotPlayerManager
         };
     }
 
-    /// <summary>
-    ///     직책별 발견 구역 + 선행 아이템 위치 큐 생성.
-    ///     mission_step.csv의 자기 직책 Material 4개 TargetArea + prerequisite_item 위치를
-    ///     중복 제거 후 셔플하여 봇 동선이 직책 단서로 작동하도록 한다(블러프 메카닉 정합).
-    /// </summary>
-    private List<AreaType> BuildJobAreaQueue(JobTitle job)
-    {
-        var areas = new HashSet<AreaType>();
-
-        var materials = GameMissionData.GetMaterials((short)job);
-        foreach (var part in materials)
-        {
-            if (part.TargetArea > 0) areas.Add((AreaType)part.TargetArea);
-            if (part.PrerequisiteShareGroup <= 0) continue;
-            var prereq = PrerequisiteItemData.GetForPart(part.PartId);
-            if (prereq == null) continue;
-            if (prereq.LocationArea > 0) areas.Add((AreaType)prereq.LocationArea);
-        }
-
-        return areas.OrderBy(_ => _rng.Next()).ToList();
-    }
 }
 
 /// <summary>

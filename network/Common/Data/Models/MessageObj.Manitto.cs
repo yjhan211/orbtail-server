@@ -341,6 +341,46 @@ namespace network.common.data.models
         [Key("areaType")] public AreaType AreaType { get; set; }
     }
 
+    // ===== 기척 (프로토 0, #159) =====
+
+    [MessagePackObject]
+    public class PresenceCandidate : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+
+        // 최근 25초 조우 강도 0~5 (정수부=완료 슬롯, 소수부=진행 슬롯). 표시 양자화는 클라가 담당.
+        [Key("presence")] public float Presence { get; set; }
+
+        // 정체성 — 후보가 현재 같은 구역에 없어도 카드를 채울 수 있도록 서버가 함께 전송.
+        // 봇은 서버 메모리값, 인간은 비어 올 수 있고 그땐 클라가 FindPlayerByPlayerId로 폴백.
+        [Key("name")] public string Name { get; set; }
+        [Key("wearItemIds")] public List<int> WearItemIds { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_PRESENCE_UPDATE : IMessagePackObject
+    {
+        [Key("candidates")] public List<PresenceCandidate> Candidates { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_G_BOOKMARK_PRESENCE : IMessagePackObject
+    {
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_BOOKMARK_PRESENCE_RESULT : IMessagePackObject
+    {
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_SHARP_GAZE_MARK_UPDATE : IMessagePackObject
+    {
+        [Key("isActive")] public bool IsActive { get; set; }
+    }
+
     // ===== 흔적 =====
 
     [MessagePackObject]

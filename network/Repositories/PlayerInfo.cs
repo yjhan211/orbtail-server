@@ -52,6 +52,17 @@ public partial class PlayerInfo
             playerInfo.ObjectInfo.Position = CellToWorldPosition(playerInfo.LastCell);
             playerInfo.ObjectInfo.MapId = playerInfo.LastMapId;
             playerInfo.ObjectInfo.MapSubId = playerInfo.LastMapSubId;
+
+            // 저장된 셀이 해당 맵의 유효 영역 밖이면 맵 스폰 셀로 보정한다.
+            // (과거 신규 유저가 Camp 영역 밖 StartPosition으로 굳은 경우 로비 복귀 시 영역 밖 스폰되던 문제 교정)
+            var mapInfo = GameMapData.GetMapInfo(playerInfo.LastMapId);
+            if (mapInfo != null && !GameMapData.IsMoveablePosition(playerInfo.LastMapId, playerInfo.ObjectInfo.Cell))
+            {
+                var spawnCell = mapInfo.GetInitialPosition().position;
+                playerInfo.ObjectInfo.Cell = spawnCell;
+                playerInfo.ObjectInfo.Position = CellToWorldPosition(spawnCell);
+                playerInfo.LastCell = spawnCell;
+            }
         }
 
         return playerInfo;

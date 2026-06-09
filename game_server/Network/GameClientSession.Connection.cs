@@ -45,6 +45,7 @@ public partial class GameClientSession
 
             // 미션 초기화
             _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
+            _missionManager.EnsureBroadcastTransmitterGift(msg.MatchingId, msg.PlayerId, msg.TargetPlayerId);
 
             // 봇 로드 (매칭당 최초 1회) — 폐쇄 초기화 전에 로드해 직책 풀을 확정 (#87)
             await LoadBotsIfNeeded(msg.MatchingId, CurrentMapId);
@@ -273,6 +274,7 @@ public partial class GameClientSession
 
                 // 봇 부품 상태 초기화 — 자기 직책 발견 풀 기준
                 _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
+                _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
             }
         }
         catch (Exception ex)
