@@ -267,7 +267,8 @@ public partial class GameClientSession
             SendSharpGazeMarkUpdate(previousBookmarkPlayerId, false);
         }
 
-        bool isActivating = newBookmarkPlayerId != 0 && newBookmarkPlayerId != previousBookmarkPlayerId;
+        bool shouldConsumeActivationCost =
+            ShouldConsumePresenceBookmarkActivationCost(previousBookmarkPlayerId, newBookmarkPlayerId);
         PresenceBookmarkPlayerId = newBookmarkPlayerId;
         bool isManitto = PresenceBookmarkPlayerId != 0 && myManitto?.PlayerId == PresenceBookmarkPlayerId;
 
@@ -281,7 +282,7 @@ public partial class GameClientSession
 
         // 켤 때(새로 켜거나 대상 변경) 1회 스태미나 소모. 끄기는 무료지만 재진입이 비싸 스팸/마이크로 토글을 막는다.
         // 맞든 틀리든 동일 소모라 정답을 누설하지 않고, 스태미나 고갈 시 ModifyStats가 정신력으로 1:2 전환한다.
-        if (isActivating) ModifyStats(staminaDelta: -BookmarkActivationStaminaCost);
+        if (shouldConsumeActivationCost) ConsumePresenceBookmarkActivationCost(PresenceBookmarkPlayerId);
 
         if (isManitto) SendSharpGazeMarkUpdate(PresenceBookmarkPlayerId, true);
 
@@ -290,6 +291,21 @@ public partial class GameClientSession
             PlayerId, PresenceBookmarkPlayerId, isManitto);
 
         return Task.CompletedTask;
+    }
+
+    private static bool ShouldConsumePresenceBookmarkActivationCost(long previousBookmarkPlayerId,
+        long newBookmarkPlayerId)
+    {
+        if (newBookmarkPlayerId == 0) return false;
+        return newBookmarkPlayerId != previousBookmarkPlayerId;
+    }
+
+    private void ConsumePresenceBookmarkActivationCost(long bookmarkPlayerId)
+    {
+        ModifyStats(staminaDelta: -BookmarkActivationStaminaCost);
+        Logger.LogInformation(
+            "Presence bookmark activation cost consumed: PlayerId={PlayerId}, Bookmark={Bookmark}, StaminaCost={Cost}",
+            PlayerId, bookmarkPlayerId, BookmarkActivationStaminaCost);
     }
 
     private void SendSharpGazeMarkUpdate(long targetPlayerId, bool isActive)

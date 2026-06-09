@@ -257,23 +257,19 @@ public class GameServer(
 
                 if (!isTerminal && session.CurrentArea != AreaType.None)
                 {
-                    bool inRoom = !session.CurrentArea.IsCorridor();
                     GameClientSession? targetSession = null;
                     BotPlayerState? targetBot = null;
                     bool targetInSameArea = false;
 
-                    if (inRoom)
+                    targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
+                    targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
+                    if (!targetInSameArea)
                     {
-                        // 프로토 0: 회복은 "방"에서만(복도=transit, 회복 없음) + 타겟 동석 시.
-                        //   혼잡할수록 느림 — 회복량 = 기본 × (2 / 구역 총인원).
-                        targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                        targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
-                        if (!targetInSameArea)
-                        {
-                            targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
-                            targetInSameArea = targetBot is { IsEliminated: false } &&
-                                               targetBot.CurrentArea == session.CurrentArea;
-                        }
+                        // 프로토 0: 회복은 타겟과 같은 영역에 있을 때 적용한다.
+                        //   혼잡할수록 느림 — 회복량 = 기본 × (2 / 영역 총인원).
+                        targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
+                        targetInSameArea = targetBot is { IsEliminated: false } &&
+                                           targetBot.CurrentArea == session.CurrentArea;
                     }
 
                     if (!targetInSameArea)
