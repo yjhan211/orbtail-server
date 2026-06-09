@@ -6,3 +6,5 @@ id,buff_id,kind,name_text_id,desc_text_id
 1005,5,debuff,12137,12138
 1006,5,debuff,12140,12141
 1007,5,debuff,12142,12143
+1008,0,buff,12144,12145
+1009,0,debuff,12146,12147
