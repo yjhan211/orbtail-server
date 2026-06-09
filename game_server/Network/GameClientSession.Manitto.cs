@@ -20,6 +20,11 @@ public partial class GameClientSession
     // #159/#158: 핀(경계)을 켤 때 1회 소모하는 스태미나. 켤 때마다 큰 비용이라 같은 방 무료 스팸을 차단한다.
     // 따라가기와 공유 자원이라 의심에 쓸수록 따라갈 여력이 준다. 끄기는 무료, 재진입이 비싸 마이크로 토글도 막힌다. 튜닝 노브.
     private const int BookmarkActivationStaminaCost = 15;
+
+    // #159: 색출 오발 시 색출자 정신력(Corruption) 증가폭. 1회뿐인 지목을 빗나간 대가.
+    // 적중하면 추격자를 즉시 제거하는 강한 보상이라, 남발을 막도록 오발 대가도 크게 잡는다. 튜닝 노브.
+    private const int DetectMissCorruptionPenalty = 30;
+
     private static readonly int MissionInfoPacketBudget = Config.BUFFER_SIZE - Config.HEADER_SIZE - 4 - 8 - 128;
 
     /// <summary>
@@ -236,24 +241,31 @@ public partial class GameClientSession
         packet.SetBody(MessagePackSerializer.Serialize(result));
         Send(packet);
 
-        // 적중 시 마니또 탈락 처리
-        if (isCorrect && errorCode == ErrorCode.SUCCESS)
-        {
-            // v0.2.0: 마니또(피탈자)의 가장 가치 높은 부품 1개 → 색출자(본인)에게 전이
-            ProcessPartStealOnDetection(msg.TargetPlayerId, PlayerId.Value);
+        // 지목을 실제로 소비한 경우만 결과를 판정한다(SUCCESS). ALREADY_USED/NOT_AVAILABLE 등은 막기만 하고 페널티 없음.
+        if (errorCode != ErrorCode.SUCCESS) return Task.CompletedTask;
 
+        // 적중 — 내 마니또(스토커)를 즉시 탈락시킨다. 프로토 0은 정신력 모델이라 v0.2.0 부품 전이는 적용하지 않는다.
+        if (isCorrect)
+        {
             // 마니또의 모든 흔적 함정 무효화 (§2.5.1)
             _traceManager.InvalidateTracesByPlacer(CurrentMapSubId, msg.TargetPlayerId);
 
             _ = ProcessElimination(msg.TargetPlayerId, EliminationReason.DETECTED, PlayerId.Value);
+            return Task.CompletedTask;
         }
+
+        // 오발 — 1회뿐인 사적 베팅을 빗나갔으므로 색출자 정신력을 크게 잃는다.
+        ModifyStats(corruptionDelta: DetectMissCorruptionPenalty);
+        Logger.LogInformation(
+            "색출 오발 페널티: DetecterId={PlayerId}, Target={Target}, CorruptionPenalty={Penalty}",
+            PlayerId, msg.TargetPlayerId, DetectMissCorruptionPenalty);
+
+        // 오발로 정신력이 바닥나면 그 자리에서 무너지도록 즉시 탈락 체크 (정신력 차감 직후 체크하는 기존 패턴)
+        CheckResourceElimination();
 
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    ///     v0.2.0 — 색출 적중 시 부품 전이 처리. 양쪽 세션에 G_TO_C_PART_STOLEN 송신.
-    /// </summary>
     private Task HandleBookmarkPresence(C_TO_G_BOOKMARK_PRESENCE msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
@@ -320,44 +332,6 @@ public partial class GameClientSession
         var msg = new G_TO_C_SHARP_GAZE_MARK_UPDATE { IsActive = isActive };
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         targetSession.Send(packet);
-    }
-
-    private void ProcessPartStealOnDetection(long manittoId, long detectorId)
-    {
-        int? stolenPartId = _missionManager.StealHighestPart(CurrentMapSubId, manittoId, detectorId);
-        if (!stolenPartId.HasValue) return;
-
-        var part = GameMissionData.GetPart(stolenPartId.Value);
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-
-        var stolenMsg = new G_TO_C_PART_STOLEN
-        {
-            PartId = stolenPartId.Value,
-            PartNameKr = part?.PartNameKr ?? "",
-            PartTier = part != null ? (int)part.PartTier : 0,
-            FromPlayerId = manittoId,
-            ToPlayerId = detectorId
-        };
-        var stolenBytes = MessagePackSerializer.Serialize(stolenMsg);
-
-        // 색출자(본인)에게 송신
-        using (var detectorPacket = Packet.Create((int)Protocol.G_TO_C_PART_STOLEN, detectorId))
-        {
-            detectorPacket.SetBody(stolenBytes);
-            Send(detectorPacket);
-        }
-
-        // 마니또(피탈자)에게도 송신
-        var manittoSession = allSessions.FirstOrDefault(s => s.PlayerId == manittoId);
-        if (manittoSession != null)
-        {
-            using var manittoPacket = Packet.Create((int)Protocol.G_TO_C_PART_STOLEN, manittoId);
-            manittoPacket.SetBody(stolenBytes);
-            manittoSession.Send(manittoPacket);
-        }
-
-        Logger.LogInformation("색출 부품 전이: PartId={PartId} from {Manitto} to {Detector}",
-            stolenPartId.Value, manittoId, detectorId);
     }
 
     /// <summary>
