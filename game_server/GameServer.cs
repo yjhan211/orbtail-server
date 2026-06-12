@@ -79,6 +79,7 @@ public class GameServer(
     private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
     private const int IsolationStatusEffectId = 1001;   // status_effect_info: 고립
     private const int NearbyStatusEffectId = 1002;      // status_effect_info: 의존
+    private const int ProximityStatusEffectId = 1010;   // status_effect_info: 교감 (#161)
     private const int ClosedAreaStatusEffectId = 1003;  // status_effect_info: 폐쇄 구역
     private const double SharpGazeRecoveryMultiplier = 0.5;
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
@@ -286,6 +287,12 @@ public class GameServer(
                         recoveryDelta = ApplyTargetEncounterStability(session, recoveryDelta);
                         recoveryDelta = ApplySharpGazeRecoveryPenalty(session, targetSession, targetBot, recoveryDelta);
                         corruptionDelta += recoveryDelta;
+
+                        // 교감(#161): 같은 영역에서 거리까지 좁히면 추가 회복.
+                        // 1:1로 붙어 있는 상황 자체가 보상 조건이라 혼잡 보정은 없다.
+                        if (IsTargetWithinProximity(session, targetSession, targetBot))
+                            corruptionDelta += ResolveStatusEffectCorruptionDelta(
+                                ProximityStatusEffectId, Config.TARGET_PROXIMITY_RECOVERY_BONUS);
                     }
                 }
 
@@ -414,6 +421,22 @@ public class GameServer(
     {
         int humans = sessions.Count(s => s.CurrentMapSubId == matchingId && s.CurrentArea == area);
         return humans + _botPlayerManager.CountBotsInArea(matchingId, area);
+    }
+
+    /// <summary>교감(#161) 판정 — 타겟(사람/봇)과의 평면 거리가 TARGET_PROXIMITY_DISTANCE 이내인지.</summary>
+    private static bool IsTargetWithinProximity(
+        GameClientSession session, GameClientSession? targetSession, BotPlayerState? targetBot)
+    {
+        var myPosition = session.LastValidatedPosition;
+        if (myPosition == null) return false;
+
+        var targetPosition = targetSession?.LastValidatedPosition ?? targetBot?.Position;
+        if (targetPosition == null) return false;
+
+        float dx = myPosition.X - targetPosition.X;
+        float dy = myPosition.Y - targetPosition.Y;
+        return dx * dx + dy * dy <=
+               Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
     }
 
     private static int ResolveStatusEffectCorruptionDelta(int statusEffectId, int value)

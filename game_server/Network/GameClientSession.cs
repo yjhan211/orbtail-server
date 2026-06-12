@@ -131,6 +131,9 @@ public partial class GameClientSession : SessionBase
     public AreaType CurrentArea { get; private set; } = AreaType.None;
     private PlayerState CurrentState { get; set; } = PlayerState.Idle;
 
+    /// <summary>마지막 검증된 월드 좌표 — 교감(근접 회복) 등 거리 판정용 (#161)</summary>
+    public Vector3f? LastValidatedPosition => _lastValidatedPosition;
+
     // 마니또 체인 정보
     public long TargetPlayerId { get; private set; }
     public long PresenceBookmarkPlayerId { get; private set; }

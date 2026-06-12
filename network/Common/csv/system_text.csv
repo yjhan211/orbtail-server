@@ -262,6 +262,8 @@ id,category,text_kr,text_en,text_jp
 "12145","7","당신의 마니또가 색출되어 사라졌습니다.\n아무도 당신을 쫓지 않습니다.","Your Manitto was identified and disappeared.\nNo one is chasing you now.","あなたのマニットは見破られ、姿を消しました。\nもう誰もあなたを追っていません。"
 "12146","7","오판","Misjudgment","誤認"
 "12147","7","마니또 색출에 실패했습니다.\n당신의 마니또는 아직 당신을 쫓고 있습니다.","You failed to identify your Manitto.\nYour Manitto is still chasing you.","マニットの特定に失敗しました。\nあなたのマニットはまだあなたを追っています。"
+"12148","7","교감","Rapport","交感"
+"12149","7","사랑하는 {Player1}의 곁에 바짝 붙어 있습니다.\n정신력이 빠르게 회복됩니다.","You are right beside your beloved {Player1}.\nSanity recovers quickly.","愛する{Player1}にぴったり寄り添っています。\n精神力が早く回復します。"
 "12150","7","마니또를 색출하였습니다.","You have exposed your Manitto.","マニットを暴き出しました。"
 "12151","7","마니또를 색출하지 못했습니다.","You failed to expose your Manitto.","マニットを暴き出せませんでした。"
 "12152","7","{0}은 당신의 마니또가 아닙니다.","{0} is not your Manitto.","{0}はあなたのマニットではありません。"

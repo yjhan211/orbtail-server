@@ -80,5 +80,12 @@ namespace network.common
         ///     자연증가와 합산됨 (후반 10분+ 기준 총 +7/5초).
         ///     수치는 플레이테스트 후 최종 확정 예정 (미확정 #67). v0.1.10에서 2 → 4 → 5로 상향.</summary>
         public const int CLOSED_AREA_CORRUPTION_TICK = 5;
+
+        /// <summary>교감(1010) 판정 거리. 타겟과 같은 영역 + 이 거리 안이면 추가 회복 (#161).
+        ///     서버 판정과 클라 HUD/Dock 점 표시가 같은 값을 쓴다.</summary>
+        public const float TARGET_PROXIMITY_DISTANCE = 3f;
+
+        /// <summary>교감(1010) 추가 회복량 (5초당 오염도 감소). 의존(1002) 회복에 합산. (#161)</summary>
+        public const int TARGET_PROXIMITY_RECOVERY_BONUS = 3;
     }
 }
