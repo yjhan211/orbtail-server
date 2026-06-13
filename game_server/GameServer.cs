@@ -304,8 +304,8 @@ public class GameServer(
                 if (!isTerminal && session.CurrentArea == (AreaType)Config.AUDITORIUM_AREA_TYPE)
                 {
                     var targetSession2 = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                    bool targetInAuditorium = targetSession2 != null && targetSession2.CurrentArea == session.CurrentArea;
-                    if (!targetInAuditorium)
+                    bool targetInGym = targetSession2 != null && targetSession2.CurrentArea == session.CurrentArea;
+                    if (!targetInGym)
                         corruptionDelta += Config.AUDITORIUM_STAY_CORRUPTION_BONUS;
                 }
 

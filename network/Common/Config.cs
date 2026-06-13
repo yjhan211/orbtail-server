@@ -65,7 +65,7 @@ namespace network.common
         /// <summary>강당 체류 시 자연증가에 추가되는 오염도 (5초당). GDD §3.1.1, 패키지 Y 3A.</summary>
         public const int AUDITORIUM_STAY_CORRUPTION_BONUS = 1;
 
-        /// <summary>강당 체류 페널티 적용 구역 (AreaType enum 값: 13 = Auditorium)</summary>
+        /// <summary>강당 체류 페널티 적용 구역 (AreaType enum 값: 13 = Gym)</summary>
         public const int AUDITORIUM_AREA_TYPE = 13;
 
         /// <summary>흔적 배치 스태미나 비용. GDD §3.1.2, 패키지 Y 2A: -10 → -5.</summary>

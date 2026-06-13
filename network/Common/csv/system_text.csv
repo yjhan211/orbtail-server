@@ -1,5 +1,5 @@
 id,category,text_kr,text_en,text_jp
-1,1,강당 문이 열렸습니다,The Auditorium door has been opened.,講堂の扉が開かれました。
+1,1,강당 문이 열렸습니다,The Gym door has been opened.,講堂の扉が開かれました。
 2,1,교실2 문이 열렸습니다,The Classroom 2 door has been opened.,教室2の扉が開かれました。
 3,1,교무실 문이 열렸습니다,The Staff Room door has been opened.,職員室の扉が開かれました。
 4,1,방송실 문이 열렸습니다,The Broadcast Room door has been opened.,放送室の扉が開かれました。
@@ -9,13 +9,13 @@ id,category,text_kr,text_en,text_jp
 12,2,규칙 쪽지를 획득했습니다,Rule note acquired.,規則のメモを獲得しました。
 13,2,정신오염도가 상승했습니다,Mental corruption increased.,精神汚染度が上昇しました。
 14,2,스태미나가 소모되었습니다,Stamina was consumed.,スタミナが消費されました。
-20,3,강당 열쇠를 확보하십시오,Secure the Auditorium key.,講堂の鍵を確保してください。
+20,3,강당 열쇠를 확보하십시오,Secure the Gym key.,講堂の鍵を確保してください。
 21,3,A의 이름과 목소리를 파악해야 합니다,You must identify A's name and voice.,Aの名前と声を突き止めなければなりません。
 22,3,교무실에서 학생증을 획득하십시오,Acquire the student ID from the Staff Room.,職員室で学生証を獲得してください。
 23,3,방송실로 이동하십시오,Move to the Broadcast Room.,放送室へ移動してください。
 30,4,손톱으로 긁어야 합니다. 괜찮으시겠습니까?,You will have to scratch with your fingernails. Are you sure?,爪で引っ掻かなければなりません。よろしいですか?
 31,4,무시합니다,Ignore,無視する
-40,5,<color=#A8D4E0>강당 열쇠</color>를 획득해야 합니다.,You must acquire the <color=#A8D4E0>Auditorium key</color>.,<color=#A8D4E0>講堂の鍵</color>を獲得しなければなりません。
+40,5,<color=#A8D4E0>강당 열쇠</color>를 획득해야 합니다.,You must acquire the <color=#A8D4E0>Gym key</color>.,<color=#A8D4E0>講堂の鍵</color>を獲得しなければなりません。
 100,3,<color=#A8D4E0>{Item.SpawnArea}</color>에서 <color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>회수</color>하십시오. <color=#A8D4E0>{Debuff.Warning}</color>,<color=#A8D4E0>Retrieve</color> the <color=#A8D4E0>{Item.Name}</color> from the <color=#A8D4E0>{Item.SpawnArea}</color>. <color=#A8D4E0>{Debuff.Warning}</color>,<color=#A8D4E0>{Item.SpawnArea}</color>から<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>回収</color>してください。<color=#A8D4E0>{Debuff.Warning}</color>
 101,3,저들이 <color=#FF7E9A>{Item.Name}</color>을 절대로 찾게 해서는 안 돼. <color=#FF7E9A>{Item.SpawnArea}</color>에 숨겨둔 건 나만 알아야 해.,They must never find <color=#FF7E9A>{Item.Name}</color>. Only I should know that I hid it in the <color=#FF7E9A>{Item.SpawnArea}</color>.,あいつらに<color=#FF7E9A>{Item.Name}</color>を絶対に見つけさせてはいけない。<color=#FF7E9A>{Item.SpawnArea}</color>に隠したことは私だけが知っているべきだ。
 102,3,<color=#A8D4E0>{Item.Name}</color> <color=#A8D4E0>회수</color>하기,<color=#A8D4E0>Retrieve</color> the <color=#A8D4E0>{Item.Name}</color>,<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>回収</color>する
@@ -151,7 +151,7 @@ id,category,text_kr,text_en,text_jp
 12020,7,방송실,Broadcast Room,放送室
 12021,7,[시스템 로그],[System Log],[システムログ]
 12022,7,퇴교 절차 매뉴얼,Dismissal Procedure Manual,下校手順マニュアル
-12023,7,강당,Auditorium,講堂
+12023,7,강당,Gym,講堂
 12024,7,교무실,Staff Room,職員室
 12025,7,고사실,Exam Room,試験室
 12026,7,그룹 현황,Group Status,グループ状況
