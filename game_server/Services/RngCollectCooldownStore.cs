@@ -23,6 +23,12 @@ public static class RngCollectCooldownStore
 
     public static void SetCooldown(long matchingId, int interactId, int seconds)
     {
+        if (seconds <= 0)
+        {
+            ClearCooldown(matchingId, interactId);
+            return;
+        }
+
         _cooldowns[(matchingId, interactId)] = DateTime.UtcNow.AddSeconds(seconds);
     }
 

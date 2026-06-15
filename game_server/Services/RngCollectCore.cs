@@ -14,7 +14,6 @@ namespace game_server.services;
 /// </summary>
 public static class RngCollectCore
 {
-    private const int RngCollectCooldownSeconds = 30;
     private const int FailStaminaReward = 0;
     private const int AttendanceBlackboardInteractId = 701000055;
     private const int TornAttendancePagePartId = 308;
@@ -130,8 +129,8 @@ public static class RngCollectCore
 
         TryApplySharpObservationBonus(matchingId, playerId, info.ZoneId, missionManager, inventoryManager, outcome);
 
-        RngCollectCooldownStore.SetCooldown(matchingId, info.Id, RngCollectCooldownSeconds);
-        outcome.CooldownSeconds = RngCollectCooldownSeconds;
+        RngCollectCooldownStore.ClearCooldown(matchingId, info.Id);
+        outcome.CooldownSeconds = 0;
 
         return outcome;
     }
