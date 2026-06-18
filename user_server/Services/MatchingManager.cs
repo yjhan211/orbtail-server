@@ -218,6 +218,7 @@ public class MatchingManager : IMatchingManager
                 // 원형 체인 생성: 셔플 후 A→B→C→D→E→A (화살표 = 마니또 관계)
                 var chain = await BuildManittoChain(allGroupEntries.ToArray());
                 await ApplyTwoPlayerTestTargetOutfitAsync(chain);
+                var playerRoster = await BuildPlayerRosterAsync(chain);
 
                 // 봇 정보 Redis 저장 (game_server에서 로드). 5인 원형 체인 정합 — 봇 타겟은 체인 다음 노드.
                 var botInfoList = new List<BotMatchingInfo>();
@@ -249,7 +250,7 @@ public class MatchingManager : IMatchingManager
                     try
                     {
                         await ProcessMatchedEntry(link.Entry, matchingId, link.TargetPlayerId,
-                            link.TargetJobTitle, link.MyJobTitle);
+                            link.TargetJobTitle, link.MyJobTitle, playerRoster);
                     }
                     catch (Exception ex)
                     {
@@ -307,6 +308,7 @@ public class MatchingManager : IMatchingManager
             matchingId, longWaitEntries.Length, botsNeeded);
 
         var chain = await BuildManittoChain(allEntries.ToArray());
+        var playerRoster = await BuildPlayerRosterAsync(chain);
 
         // 봇 정보를 Redis에 저장 (game_server에서 로드). 원형 체인 정합 — 봇 타겟은 체인 다음 노드.
         var botInfoList = new List<BotMatchingInfo>();
@@ -338,7 +340,7 @@ public class MatchingManager : IMatchingManager
             try
             {
                 await ProcessMatchedEntry(link.Entry, matchingId, link.TargetPlayerId,
-                    link.TargetJobTitle, link.MyJobTitle);
+                    link.TargetJobTitle, link.MyJobTitle, playerRoster);
             }
             catch (Exception ex)
             {
@@ -713,8 +715,80 @@ public class MatchingManager : IMatchingManager
         return chain;
     }
 
+    private async Task<List<PlayerInfo>> BuildPlayerRosterAsync(List<ManittoChainLink> chain)
+    {
+        var roster = new List<PlayerInfo>();
+
+        foreach (var link in chain)
+        {
+            var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
+            if (data.PlayerId < 0)
+            {
+                roster.Add(CreateBotRosterInfo(data.PlayerId));
+                continue;
+            }
+
+            var playerInfo = await PlayerInfo.Load(_cacheHelper, data.PlayerId);
+            if (playerInfo == null)
+            {
+                _logger.LogWarning("매칭 roster 생성 실패: PlayerInfo 로드 실패 ({PlayerId})", data.PlayerId);
+                roster.Add(new PlayerInfo
+                {
+                    PlayerId = data.PlayerId,
+                    Name = $"Player{data.PlayerId}",
+                    WearItemIdList = new List<int>()
+                });
+                continue;
+            }
+
+            roster.Add(new PlayerInfo
+            {
+                PlayerId = playerInfo.PlayerId,
+                Name = playerInfo.Name,
+                WearItemIdList = playerInfo.WearItemIdList != null
+                    ? new List<int>(playerInfo.WearItemIdList)
+                    : new List<int>()
+            });
+        }
+
+        return roster;
+    }
+
+    private static PlayerInfo CreateBotRosterInfo(long playerId)
+    {
+        return new PlayerInfo
+        {
+            PlayerId = playerId,
+            Name = $"Bot{Math.Abs(playerId)}",
+            WearItemIdList = BuildBotRosterWearItems(playerId)
+        };
+    }
+
+    private static List<int> BuildBotRosterWearItems(long playerId)
+    {
+        var list = new List<int>
+        {
+            101000003,
+            102000003,
+            104000005,
+            105000005,
+            106000003
+        };
+
+        int accessoryId = (Math.Abs((int)playerId) % 4) switch
+        {
+            0 => 103000001,
+            1 => 103000004,
+            2 => 103000005,
+            _ => 103000006
+        };
+
+        list.Add(accessoryId);
+        return list;
+    }
+
     private async Task ProcessMatchedEntry(byte[] entry, long matchingId,
-        long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle)
+        long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle, List<PlayerInfo> playerRoster)
     {
         var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
         _logger.LogInformation("플레이어 {DataPlayerId} 처리 중... (타겟: {TargetPlayerId})", data.PlayerId, targetPlayerId);
@@ -762,7 +836,7 @@ public class MatchingManager : IMatchingManager
         using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
             matchingId, mapId, matchingId, spawnPosition,
             gameServerIp, gameServerPort, gameEndTimestamp,
-            targetPlayerId, targetJobTitle, myJobTitle
+            targetPlayerId, targetJobTitle, myJobTitle, playerRoster
         );
 
         session.Send(packet);

@@ -44,6 +44,7 @@ namespace network.common.data.models
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
         [Key("targetJobTitle")] public JobTitle TargetJobTitle { get; set; }
         [Key("myJobTitle")] public JobTitle MyJobTitle { get; set; }
+        [Key("playerRoster")] public List<PlayerInfo> PlayerRoster { get; set; } = new();
     }
 
     [MessagePackObject]
