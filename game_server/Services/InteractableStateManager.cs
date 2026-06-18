@@ -72,8 +72,7 @@ public class MatchingInteractableState
                 Actions = new List<InteractableActionState>()
             };
 
-            // InteractionType >= 3 (WRITING, RECEIVE_CALL, VENT 등)은 항상 선택 가능
-            bool isRepeatable = (int)interactable.InteractionType >= 3;
+            bool isRepeatable = IsRepeatableInteraction(interactable.InteractionType);
 
             bool hasUnexploredAction = false;
             foreach (var action in interactable.Actions)
@@ -112,9 +111,8 @@ public class MatchingInteractableState
 
         if (!_actionStates.TryGetValue(key, out var currentState)) return false;
 
-        // InteractionType >= 3 (WRITING, RECEIVE_CALL, VENT 등)은 재선택 가능
         var interactable = GameInteractableData.Get(interactId);
-        bool isRepeatable = (int)interactable.InteractionType >= 3;
+        bool isRepeatable = IsRepeatableInteraction(interactable.InteractionType);
 
         if (currentState.IsExplored && !isRepeatable)
         {
@@ -165,6 +163,15 @@ public class MatchingInteractableState
     public void SetInteractableState(int interactId, int state)
     {
         _interactableStates[interactId] = state;
+    }
+
+    private static bool IsRepeatableInteraction(InteractionType interactionType)
+    {
+        return interactionType is InteractionType.WRITING
+            or InteractionType.SABOTAGE
+            or InteractionType.VENT
+            or InteractionType.MEETING
+            or InteractionType.RNG_COLLECT;
     }
 }
 

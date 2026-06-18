@@ -1,5 +1,5 @@
 id,category,text_kr,text_en,text_jp
-1,1,강당 문이 열렸습니다,The Auditorium door has been opened.,講堂の扉が開かれました。
+1,1,강당 문이 열렸습니다,The Gym door has been opened.,講堂の扉が開かれました。
 2,1,교실2 문이 열렸습니다,The Classroom 2 door has been opened.,教室2の扉が開かれました。
 3,1,교무실 문이 열렸습니다,The Staff Room door has been opened.,職員室の扉が開かれました。
 4,1,방송실 문이 열렸습니다,The Broadcast Room door has been opened.,放送室の扉が開かれました。
@@ -9,13 +9,13 @@ id,category,text_kr,text_en,text_jp
 12,2,규칙 쪽지를 획득했습니다,Rule note acquired.,規則のメモを獲得しました。
 13,2,정신오염도가 상승했습니다,Mental corruption increased.,精神汚染度が上昇しました。
 14,2,스태미나가 소모되었습니다,Stamina was consumed.,スタミナが消費されました。
-20,3,강당 열쇠를 확보하십시오,Secure the Auditorium key.,講堂の鍵を確保してください。
+20,3,강당 열쇠를 확보하십시오,Secure the Gym key.,講堂の鍵を確保してください。
 21,3,A의 이름과 목소리를 파악해야 합니다,You must identify A's name and voice.,Aの名前と声を突き止めなければなりません。
 22,3,교무실에서 학생증을 획득하십시오,Acquire the student ID from the Staff Room.,職員室で学生証を獲得してください。
 23,3,방송실로 이동하십시오,Move to the Broadcast Room.,放送室へ移動してください。
 30,4,손톱으로 긁어야 합니다. 괜찮으시겠습니까?,You will have to scratch with your fingernails. Are you sure?,爪で引っ掻かなければなりません。よろしいですか?
 31,4,무시합니다,Ignore,無視する
-40,5,<color=#A8D4E0>강당 열쇠</color>를 획득해야 합니다.,You must acquire the <color=#A8D4E0>Auditorium key</color>.,<color=#A8D4E0>講堂の鍵</color>を獲得しなければなりません。
+40,5,<color=#A8D4E0>강당 열쇠</color>를 획득해야 합니다.,You must acquire the <color=#A8D4E0>Gym key</color>.,<color=#A8D4E0>講堂の鍵</color>を獲得しなければなりません。
 100,3,<color=#A8D4E0>{Item.SpawnArea}</color>에서 <color=#A8D4E0>{Item.Name}</color>을 <color=#A8D4E0>회수</color>하십시오. <color=#A8D4E0>{Debuff.Warning}</color>,<color=#A8D4E0>Retrieve</color> the <color=#A8D4E0>{Item.Name}</color> from the <color=#A8D4E0>{Item.SpawnArea}</color>. <color=#A8D4E0>{Debuff.Warning}</color>,<color=#A8D4E0>{Item.SpawnArea}</color>から<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>回収</color>してください。<color=#A8D4E0>{Debuff.Warning}</color>
 101,3,저들이 <color=#FF7E9A>{Item.Name}</color>을 절대로 찾게 해서는 안 돼. <color=#FF7E9A>{Item.SpawnArea}</color>에 숨겨둔 건 나만 알아야 해.,They must never find <color=#FF7E9A>{Item.Name}</color>. Only I should know that I hid it in the <color=#FF7E9A>{Item.SpawnArea}</color>.,あいつらに<color=#FF7E9A>{Item.Name}</color>を絶対に見つけさせてはいけない。<color=#FF7E9A>{Item.SpawnArea}</color>に隠したことは私だけが知っているべきだ。
 102,3,<color=#A8D4E0>{Item.Name}</color> <color=#A8D4E0>회수</color>하기,<color=#A8D4E0>Retrieve</color> the <color=#A8D4E0>{Item.Name}</color>,<color=#A8D4E0>{Item.Name}</color>を<color=#A8D4E0>回収</color>する
@@ -151,7 +151,7 @@ id,category,text_kr,text_en,text_jp
 12020,7,방송실,Broadcast Room,放送室
 12021,7,[시스템 로그],[System Log],[システムログ]
 12022,7,퇴교 절차 매뉴얼,Dismissal Procedure Manual,下校手順マニュアル
-12023,7,강당,Auditorium,講堂
+12023,7,강당,Gym,講堂
 12024,7,교무실,Staff Room,職員室
 12025,7,고사실,Exam Room,試験室
 12026,7,그룹 현황,Group Status,グループ状況
@@ -229,10 +229,11 @@ id,category,text_kr,text_en,text_jp
 "12098","7","다음 미션 중 하나를 수행하세요.","Complete one of the next missions.","次のミッションのいずれかを進めてください。"
 "12100","7","새로운 선택지 발견하기","Find a new option","新しい選択肢を発見する"
 "12101","7","기척","Presence","気配"
+12102,7,지도,Map,マップ
 "12110","7","<color=#FF7E9A>{0}초</color> 후 현재 구역이 <color=#FF7E9A>폐쇄</color>됩니다.","The current zone will <color=#FF7E9A>close</color> in <color=#FF7E9A>{0}s</color>.","<color=#FF7E9A>{0}秒</color>後に現在の区域が<color=#FF7E9A>閉鎖</color>されます。"
 "12111","7","<color=#FF7E9A>{0}</color> 구역이 <color=#FF7E9A>{1}초</color> 후 폐쇄됩니다.","<color=#FF7E9A>{0}</color> will close in <color=#FF7E9A>{1}s</color>.","<color=#FF7E9A>{0}</color>は<color=#FF7E9A>{1}秒</color>後に閉鎖されます。"
 "12112","7","<color=#FF7E9A>{0}</color> 구역이 폐쇄되었습니다.","<color=#FF7E9A>{0}</color> has been closed.","<color=#FF7E9A>{0}</color>が閉鎖されました。"
-"12113","7","<color=#F1325A>이미 폐쇄된 구역입니다. 다시 시도하면 강제로 진입합니다.</color>","<color=#F1325A>This zone is already closed. Try again to force entry.</color>","<color=#F1325A>すでに閉鎖された区域です。もう一度試すと強制的に入ります。</color>"
+"12113","7","<color=#F1325A>이미 폐쇄된 구역입니다. 재시도시 강제로 진입합니다.</color>","<color=#F1325A>This zone is already closed. Retry to force entry.</color>","<color=#F1325A>すでに閉鎖された区域です。再試行すると強制的に入ります。</color>"
 "12120","7","고립","Isolation","孤立"
 "12121","7","알 수 없는 이유로 학교에 고립되었습니다.\n절망 속에서 정신력이 서서히 감소합니다.","You're trapped here for reasons unknown.\nIn despair, your sanity slowly drains.","理由もわからないまま学校に閉じ込められました。\n絶望の中で精神力がゆっくり低下します。"
 "12122","7","의존","Attachment","依存"
@@ -261,6 +262,8 @@ id,category,text_kr,text_en,text_jp
 "12145","7","당신의 마니또가 색출되어 사라졌습니다.\n아무도 당신을 쫓지 않습니다.","Your Manitto was identified and disappeared.\nNo one is chasing you now.","あなたのマニットは見破られ、姿を消しました。\nもう誰もあなたを追っていません。"
 "12146","7","오판","Misjudgment","誤認"
 "12147","7","마니또 색출에 실패했습니다.\n당신의 마니또는 아직 당신을 쫓고 있습니다.","You failed to identify your Manitto.\nYour Manitto is still chasing you.","マニットの特定に失敗しました。\nあなたのマニットはまだあなたを追っています。"
+"12148","7","밀착","Close Contact","密着"
+"12149","7","사랑하는 {Player1}가 바로 곁에 있습니다.\n정신력이 빠르게 회복됩니다.","Your beloved {Player1} is right beside you.\nSanity recovers quickly.","愛する{Player1}がすぐそばにいます。\n精神力が早く回復します。"
 "12150","7","마니또를 색출하였습니다.","You have exposed your Manitto.","マニットを暴き出しました。"
 "12151","7","마니또를 색출하지 못했습니다.","You failed to expose your Manitto.","マニットを暴き出せませんでした。"
 "12152","7","{0}은 당신의 마니또가 아닙니다.","{0} is not your Manitto.","{0}はあなたのマニットではありません。"

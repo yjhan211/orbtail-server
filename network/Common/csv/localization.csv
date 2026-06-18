@@ -7,7 +7,7 @@ pool/4203/title,고사실 창틀 확인,Check Exam Room Window Frame,試験室�
 pool/4203/success,창틀 안쪽에 손가락 자국이 남아 있습니다.,Finger marks remain on the inside of the window frame.,窓枠の内側に指の跡が残っています。
 pool/4211/title,3-1 칠판 확인,Check Class 3-1 Blackboard,3-1の黒板を確認
 pool/4211/success,3-1 칠판에 방송 시간이 남아 있습니다.,The broadcast time remains on the Class 3-1 blackboard.,3-1の黒板に放送時間が残っています。
-pool/4212/title,강당 무대 확인,Check Auditorium Stage,講堂の舞台を確認
+pool/4212/title,강당 무대 확인,Check Gym Stage,講堂の舞台を確認
 pool/4212/success,무대 조명 아래에 끊긴 안내 문구가 남아 있습니다.,A broken announcement remains under the stage lights.,舞台照明の下に途切れた案内文が残っています。
 pool/4213/title,1-1 배낭 확인,Check Class 1-1 Backpack,1-1のカバンを確認
 pool/4213/success,배낭 안에서 작은 호명 소리가 새어 나옵니다.,A small roll-call sound leaks from inside the backpack.,カバンの中から小さな呼名音が漏れています。
@@ -23,11 +23,11 @@ pool/4232/title,창고 공 바구니 확인,Check Storage Ball Basket,倉庫の�
 pool/4232/success,공 바구니 바닥에 작은 물건이 숨어 있습니다.,A small object is hidden at the bottom of the ball basket.,ボールかごの底に小さな物が隠れています。
 pool/4233/title,행정실 복합기 확인,Check Admin Office Copier,事務室の複合機を確認
 pool/4233/success,대형 복합기 출력함에 빈 압수 목록이 끼어 있습니다.,A blank confiscation list is caught in the large copier output tray.,大型複合機の排紙トレイに空白の押収リストが挟まっています。
-pool/4241/title,강당 무대 확인,Check Auditorium Stage,講堂の舞台を確認
+pool/4241/title,강당 무대 확인,Check Gym Stage,講堂の舞台を確認
 pool/4241/success,무대 바닥에 조회 순서가 희미하게 남아 있습니다.,The roll call order remains faintly on the stage floor.,舞台の床に朝礼の順番がかすかに残っています。
 pool/4242/title,창고 캐비넷 확인,Check Storage Cabinet,倉庫のキャビネットを確認
 pool/4242/success,철제 캐비넷 안에 접힌 조회 명단이 있습니다.,A folded roll call sheet is inside the metal cabinet.,金属キャビネットの中に折りたたまれた朝礼名簿があります。
-pool/4243/title,강당 공 바구니 확인,Check Auditorium Ball Basket,講堂のボールかごを確認
+pool/4243/title,강당 공 바구니 확인,Check Gym Ball Basket,講堂のボールかごを確認
 pool/4243/success,공 바구니 안쪽에 이름표들이 모여 있습니다.,Nametags are gathered inside the ball basket.,ボールかごの内側に名札が集まっています。
 pool/4301/title,책상 서랍 확인,Check Desk Drawer,机の引き出しを確認
 pool/4301/success,책상 서랍에서 접힌 메모를 꺼냅니다.,You take a folded memo from the desk drawer.,机の引き出しから折りたたまれたメモを取り出します。
@@ -37,7 +37,7 @@ pool/4303/title,고사실 창문 확인,Check Exam Room Window,試験室の窓�
 pool/4303/success,창문 틈에 찢긴 종이가 붙어 있습니다.,A torn piece of paper is stuck in the window gap.,窓の隙間に破れた紙が貼り付いています。
 pool/4311/title,방송실 기록 장치 재생,Play Broadcast Room Recorder,放送室の記録装置を再生
 pool/4311/success,기록 장치에서 끊긴 이름이 다시 들립니다.,A broken name is heard again from the recorder.,記録装置から途切れた名前が再び聞こえます。
-pool/4312/title,강당 스피커 확인,Check Auditorium Speaker,講堂のスピーカーを確認
+pool/4312/title,강당 스피커 확인,Check Gym Speaker,講堂のスピーカーを確認
 pool/4312/success,무대 아래 스피커 선이 한 번 묶였다가 풀려 있습니다.,"The speaker cable beneath the stage was tied once, then loosened.",舞台下のスピーカー線が一度結ばれ、その後ほどかれています。
 pool/4313/title,3-1 칠판 시간표 확인,Check Class 3-1 Blackboard Timetable,3-1の黒板時間割を確認
 pool/4313/success,칠판 구석에 방송 시간이 다시 적혀 있습니다.,The broadcast time is written again in the corner of the blackboard.,黒板の隅に放送時間が再び書かれています。
@@ -287,7 +287,7 @@ interactable/701000079/name,회의록 보관함,Meeting Records Cabinet,議事�
 interactable/701000079/desc,"보관함 칸칸이 잠겨 있고, 돌려주겠다는 쪽지만 빛바랜 채 붙어 있습니다.\n끝내 주인에게 가지 못한 것들이 안에 남아 있습니다.",One ledger has been overwritten in another's hand...,一冊の書類が、別の筆跡で書き直されている...
 interactable/701000080/name,휴지통,Trash Bin,ゴミ箱
 interactable/701000080/desc,찢긴 책장들이 한쪽 페이지만 모아져 있습니다...,Torn-out pages are sorted by a single side...,破られた頁が、片面ずつ揃えて捨てられている...
-interactable/701000081/name,강당 캐비닛,Auditorium Cabinet,講堂のキャビネット
+interactable/701000081/name,강당 캐비닛,Gym Cabinet,講堂のキャビネット
 interactable/701000081/desc,잠긴 문 너머에서 미세한 진동이 느껴집니다...,A faint vibration pulses past the locked door...,鍵のかかった扉の向こうから、微かな震えが伝わる...
 interactable/701000082/name,대형 복합기,Large Multifunction Printer,大型複合機
 interactable/701000082/desc,대기 모드인데도 롤러가 가만히 돌고 있습니다...,The rollers turn even in standby...,待機中のはずなのに、ローラーが静かに回り続けている...
@@ -329,4 +329,4 @@ node/3008/success,회의록 보관함 뒤편에서 돌려주지 못한 압수품
 node/3009/title,조회 명단 조각 확보,Secure Roll Call Fragment,朝礼名簿の切れ端を確保
 node/3009/success,운동장 보고 지점 근처에서 찢어진 조회 명단을 줍습니다.,You pick up a torn roll call sheet near the field report point.,運動場の報告地点の近くで、破れた朝礼名簿を拾います。
 node/3010/title,흐린 이름표 확보,Secure Faded Nametag,薄れた名札を確保
-node/3010/success,강당 바닥의 먼지 속에서 글자가 번진 이름표를 발견합니다.,You find a nametag with blurred letters in the dust on the auditorium floor.,講堂の床のほこりの中から、文字のにじんだ名札を見つけます。
+node/3010/success,강당 바닥의 먼지 속에서 글자가 번진 이름표를 발견합니다.,You find a nametag with blurred letters in the dust on the gym floor.,講堂の床のほこりの中から、文字のにじんだ名札を見つけます。

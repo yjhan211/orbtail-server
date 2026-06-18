@@ -20,7 +20,6 @@ namespace game_server.network;
 /// </summary>
 public partial class GameClientSession
 {
-    private const int RngCollectCooldownSeconds = 30;
     private const int RngCollectGiftResultType = 5;
     private const int RngCollectStaminaCost = 5;
 
@@ -37,15 +36,6 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        // 쿨타임 체크 (인스턴스 단위)
-        if (RngCollectCooldownStore.IsInCooldown(CurrentMapSubId, msg.InteractId, out int remaining))
-        {
-            Logger.LogDebug("RNG START 쿨타임 거부: PlayerId={PlayerId}, InteractId={InteractId}, 남은={Sec}s",
-                PlayerId, msg.InteractId, remaining);
-            SendRngCollectAck(msg.InteractId, ErrorCode.ACTION_ALREADY_EXPLORED, remaining);
-            return Task.CompletedTask;
-        }
-
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {
@@ -54,7 +44,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        if (GameMissionGraphData.HasMissionActionTarget(info.ZoneId, (int)info.ObjectType, info.Id))
+        if (HasAvailableMissionActionTarget(info))
         {
             Logger.LogDebug("RNG START mission action target blocked: PlayerId={PlayerId}, InteractId={InteractId}",
                 PlayerId, msg.InteractId);
@@ -67,9 +57,6 @@ public partial class GameClientSession
         // stamina 차감 (즉시) — 정신력 1:2 변환은 ModifyStats가 처리
         ModifyStats(-staminaCost);
 
-        // 1단계 cooldown 30초 등록. FINISH 도착 시 RngCollectCore.Resolve가 동일하게 갱신.
-        RngCollectCooldownStore.SetCooldown(CurrentMapSubId, msg.InteractId, RngCollectCooldownSeconds);
-
         // 사보타주 상태 자동 복구
         var currentState = _interactableStateManager.GetInteractableState(CurrentMapSubId, msg.InteractId);
         if (currentState == (int)InteractableStateType.SABOTAGE)
@@ -81,7 +68,6 @@ public partial class GameClientSession
             PlayerId, msg.InteractId);
 
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
-        BroadcastRngCollectCooldown(msg.InteractId, RngCollectCooldownSeconds);
         // EXPLORE_1 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
         BroadcastPlayerState(global::network.common.PlayerState.EXPLORE_1);
         return Task.CompletedTask;
@@ -198,7 +184,7 @@ public partial class GameClientSession
             PlayerId, msg.InteractId, outcome.ResultType, outcome.ItemId, outcome.BonusItemId);
 
         SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId,
-            outcome.StaminaReward, RngCollectCooldownSeconds);
+            outcome.StaminaReward, outcome.CooldownSeconds);
 
         if (otherGiftDiscovery != null)
             SendGiftDiscovered(otherGiftDiscovery, 0);
@@ -206,7 +192,7 @@ public partial class GameClientSession
             CheckGiftDiscovery(msg.InteractId);
 
         // FINISH 시점에 30초 cooldown 갱신 broadcast (RngCollectCore.Resolve 내부에서 SetCooldown 30 호출됨)
-        BroadcastRngCollectCooldown(msg.InteractId, RngCollectCooldownSeconds);
+        BroadcastRngCollectCooldown(msg.InteractId, outcome.CooldownSeconds);
         // IDLE 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
         return Task.CompletedTask;
@@ -233,6 +219,34 @@ public partial class GameClientSession
 
         return adjustedCost;
     }
+
+    private bool HasAvailableMissionActionTarget(InteractableInfoData info)
+    {
+        if (!PlayerId.HasValue) return false;
+
+        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
+        if (state == null || state.IsCompleted) return false;
+
+        lock (state.SyncRoot)
+        {
+            return GameMissionGraphData.GetAvailableNodes(
+                    (short)state.JobTitle,
+                    state.CollectedParts,
+                    state.CompletedMissionNodeIds,
+                    state.OwnedClueTags,
+                    state.HasLostTarget)
+                .Any(node =>
+                    node.NodeKind != MissionGraphNodeKind.CollectPart &&
+                    !state.CompletedMissionNodeIds.Contains(node.NodeId) &&
+                    !IsStoryletLost(state, node) &&
+                    node.MatchesInteractable(info.ZoneId, (int)info.ObjectType, info.Id));
+        }
+    }
+
+    private static bool IsStoryletLost(PlayerPartState state, MissionGraphNodeData node) =>
+        node.HasStoryletMetadata &&
+        !string.IsNullOrWhiteSpace(node.EffectiveStoryletId) &&
+        state.LostStoryletIds.Contains(node.EffectiveStoryletId);
 
     private bool TryHandleGiftDiscoveryBeforeCollect(int interactId, out GiftDiscoveryResult? otherGiftDiscovery)
     {

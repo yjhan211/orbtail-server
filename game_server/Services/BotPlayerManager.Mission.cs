@@ -64,9 +64,9 @@ public partial class BotPlayerManager
     /// <summary>봇 RNG 채집 progress 지속 시간 (플레이어 클라 2초 progress와 동등).</summary>
     private const double BotRngCollectProgressSeconds = 2.0;
 
-    /// <summary>봇 RNG 인스턴스 쿨타임 — RngCollectCore의 동등 상수 (BotPlayerManager 내부 노출용).</summary>
-    private const int RngCollectCooldownSeconds = 30;
+    private static readonly int RngCollectCooldownSeconds = 0;
 
+    /// <summary>봇 RNG 인스턴스 쿨타임 — RngCollectCore의 동등 상수 (BotPlayerManager 내부 노출용).</summary>
     private const int GiftFoundCorruptionDelta = 30;
 
     /// <summary>
@@ -98,7 +98,8 @@ public partial class BotPlayerManager
 
         // 쿨타임 체크 — walking 도중 다른 누군가가 회수한 경우 progress 시작 X. 즉시 다음 InteractObject로 진행.
         // 봇 본인이 1단계 진입 후 cooldown 등록한 경우는 우회 (자기 cooldown).
-        if (bot.RngCollectProgressStartTime == DateTime.MinValue
+        if (RngCollectCooldownSeconds > 0 &&
+            bot.RngCollectProgressStartTime == DateTime.MinValue
             && RngCollectCooldownStore.IsInCooldown(matchingId, info.Id, out _))
         {
             _logger.LogInformation(
@@ -120,10 +121,12 @@ public partial class BotPlayerManager
             ApplyBotStaminaCost(bot, BotRngCollectStaminaCost);
 
             // 1단계 cooldown 30초 등록 — 정상 완료 시 동일하게 갱신, 폐기 시 SkipPendingInteract가 clear broadcast로 해제.
-            RngCollectCooldownStore.SetCooldown(matchingId, info.Id, RngCollectCooldownSeconds);
-
             result.BotExploreStarts.Add((bot.PlayerId, info.Id, bot.CurrentArea));
-            result.RngCooldownBroadcasts.Add((info.Id, RngCollectCooldownSeconds));
+            if (RngCollectCooldownSeconds > 0)
+            {
+                RngCollectCooldownStore.SetCooldown(matchingId, info.Id, RngCollectCooldownSeconds);
+                result.RngCooldownBroadcasts.Add((info.Id, RngCollectCooldownSeconds));
+            }
 
             _logger.LogInformation(
                 "봇 RNG progress 시작: BotId={BotId}, InteractId={Iid}, Area={Area}",
