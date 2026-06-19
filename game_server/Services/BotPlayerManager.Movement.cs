@@ -308,7 +308,8 @@ public partial class BotPlayerManager
     }
 
     /// <summary>봇 도착 후 다음 영역으로 출발 전 대기 시간 (자연스러운 휴식).</summary>
-    private const int BotArrivalWaitSeconds = 3;
+    private const double BotArrivalWaitMinSeconds = 2.0;
+    private const double BotArrivalWaitMaxSeconds = 5.5;
 
     /// <summary>
     ///     프로토 0: 봇이 도착했거나 경로가 비었을 때 다음 목적지(3·4층 방) 선택 + 경로 계산.
@@ -327,13 +328,13 @@ public partial class BotPlayerManager
         // walking 시작 시 EXPLORE_END broadcast 안전망 — 다음 ProcessBotMovementTick에서 수집.
         bot.PendingExploreEndBroadcast = true;
 
-        var destination = ChooseProto0Destination(bot, matchingId, playerAreas, closureManager);
+        var destination = ChooseBehaviorDestination(bot, matchingId, mapId, playerAreas, closureManager);
         if (destination == AreaType.None) return;
         if (destination == bot.CurrentArea)
         {
             // 이미 원하는 방(타겟 방 등)에 있음 → 잠시 머물며 회복/기척.
             // (즉시 재결정 시 떠보기 확률이 매 틱 굴러 곧바로 나가버리는 문제 방지)
-            bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(Proto0RoomDwellSeconds);
+            bot.LoopWaitUntil = RandomizedDelayFromNow(Proto0RoomDwellMinSeconds, Proto0RoomDwellMaxSeconds);
             return;
         }
 
@@ -352,7 +353,7 @@ public partial class BotPlayerManager
 
         bot.Path = path;
         bot.PathIndex = 0;
-        bot.LoopWaitUntil = DateTime.UtcNow.AddSeconds(BotArrivalWaitSeconds);
+        bot.LoopWaitUntil = RandomizedDelayFromNow(BotArrivalWaitMinSeconds, BotArrivalWaitMaxSeconds);
         _logger.LogInformation(
             "Proto0 bot move: BotId={Bot}, Target={Target}, Policy={Policy}, Profile={Profile}, {From}->{To}, Steps={Steps}",
             bot.PlayerId, bot.TargetPlayerId, ActiveProto0BotPolicy, bot.Proto0Profile,
@@ -371,6 +372,33 @@ public partial class BotPlayerManager
             Proto0BotPolicy.DisguiseMvp => ChooseDisguiseProto0Destination(bot, matchingId, playerAreas, closureManager),
             _ => ChooseSimpleProto0Destination(bot, matchingId, playerAreas, closureManager)
         };
+    }
+
+    private AreaType ChooseBehaviorDestination(BotPlayerState bot, long matchingId, MapId mapId,
+        IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
+    {
+        var players = playerAreas
+            .Select(p => new BotBehaviorPlayerSnapshot
+            {
+                PlayerId = p.Key,
+                CurrentArea = p.Value,
+                TargetPlayerId = 0,
+                IsEliminated = false
+            })
+            .ToList();
+
+        var decision = BotBehaviorDecisionService.Decide(
+            bot,
+            mapId,
+            players,
+            area => closureManager.IsAreaClosed(matchingId, area));
+
+        if (decision.Kind == BotBehaviorActionKind.FollowTarget
+            && decision.TargetArea != AreaType.None
+            && decision.TargetArea != bot.CurrentArea)
+            return decision.TargetArea;
+
+        return ChooseProto0Destination(bot, matchingId, playerAreas, closureManager);
     }
 
     private AreaType ChooseSimpleProto0Destination(BotPlayerState bot, long matchingId,
@@ -555,6 +583,11 @@ public partial class BotPlayerManager
     private double RandomRange(double min, double max)
     {
         return min + _rng.NextDouble() * (max - min);
+    }
+
+    private DateTime RandomizedDelayFromNow(double minSeconds, double maxSeconds)
+    {
+        return DateTime.UtcNow.AddSeconds(RandomRange(minSeconds, maxSeconds));
     }
 
     private static Proto0ProfileConfig GetProto0ProfileConfig(BotProto0Profile profile)

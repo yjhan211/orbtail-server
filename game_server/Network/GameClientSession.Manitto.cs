@@ -915,8 +915,18 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
+        var questions = _interactionChoiceService.GenerateQuestions(
+            CurrentMapSubId,
+            bot.PlayerId,
+            PlayerId.Value,
+            bot.CurrentArea,
+            _previousArea);
+        var question = questions.FirstOrDefault(q => q.QuestionType == InteractionQuestionType.ASK_LOCATION)
+                       ?? questions.FirstOrDefault();
+        if (question == null) return;
+
         _activeConversationPlayerId = bot.PlayerId;
-        _lastAskedQuestion = InteractionQuestionType.ASK_LOCATION;
+        _lastAskedQuestion = question.QuestionType;
         _pendingQuestions = null;
         _pendingAnswers = _interactionChoiceService.GenerateAnswers(
             CurrentMapSubId,
@@ -930,11 +940,8 @@ public partial class GameClientSession
         var answerChoices = new G_TO_C_INTERACTION_ANSWER_CHOICES
         {
             QuestionType = _lastAskedQuestion,
-            QuestionTextId = InteractionChoiceService.DemoQuestionTextId,
-            QuestionArgs = new List<TextArg>
-            {
-                new() { Type = TextArgType.AREA_TYPE, IntValue = (int)bot.CurrentArea }
-            },
+            QuestionTextId = question.TextId,
+            QuestionArgs = question.Args,
             Answers = _pendingAnswers
         };
         answerChoicesPacket.SetBody(MessagePackSerializer.Serialize(answerChoices));
@@ -1520,7 +1527,12 @@ public partial class GameClientSession
 
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
         var area = bot?.CurrentArea ?? CurrentArea;
-        var questions = _interactionChoiceService.GenerateDemoQuestions(area);
+        var questions = _interactionChoiceService.GenerateQuestions(
+            CurrentMapSubId,
+            PlayerId.Value,
+            botPlayerId,
+            area,
+            null);
         _pendingQuestions = questions;
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_CHOICES, PlayerId.Value);
@@ -1536,7 +1548,7 @@ public partial class GameClientSession
 
     public bool TryStartTargetBotInterrogation(BotPlayerState bot)
     {
-        if (!DemoMode.IsActive || !PlayerId.HasValue) return false;
+        if (!PlayerId.HasValue) return false;
         if (IsEliminated
             || _activeConversationPlayerId.HasValue
             || _pendingInteractPlayerId.HasValue
@@ -1577,11 +1589,8 @@ public partial class GameClientSession
 
         if (BotPlayerManager.IsBotPlayerId(partnerPlayerId))
         {
-            if (DemoMode.IsActive)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2));
-                SendDemoBotInteractionResult(partnerPlayerId);
-            }
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            SendBotInteractionResult(partnerPlayerId);
             return;
         }
 
@@ -1618,7 +1627,7 @@ public partial class GameClientSession
         return;
     }
 
-    private void SendDemoBotInteractionResult(long botPlayerId)
+    private void SendBotInteractionResult(long botPlayerId)
     {
         if (!PlayerId.HasValue) return;
         if (_activeConversationPlayerId != botPlayerId) return;
@@ -1628,13 +1637,16 @@ public partial class GameClientSession
 
         var manitto = _manittoChainManager.FindManittoOf(CurrentMapSubId, PlayerId.Value);
         bool isPlayersManitto = manitto?.PlayerId == botPlayerId;
-        var (answerTextId, answerArgs) = CreateDemoBotAnswer(bot, isPlayersManitto);
+        var selectedAnswer = ResolveBotInteractionAnswer(bot);
+        var (fallbackTextId, fallbackArgs) = CreateDemoBotAnswer(bot, isPlayersManitto);
+        int answerTextId = selectedAnswer?.TextId ?? fallbackTextId;
+        var answerArgs = selectedAnswer?.Args ?? fallbackArgs;
 
         var result = new G_TO_C_INTERACTION_RESULT
         {
             PartnerPlayerId = botPlayerId,
             QuestionType = _lastAskedQuestion,
-            ClaimedJob = bot.MyJobTitle,
+            ClaimedJob = selectedAnswer?.ClaimedJob ?? bot.MyJobTitle,
             ClaimedArea = bot.CurrentArea,
             IsFakeDetected = false,
             ConflictTextId = 0,
@@ -1652,6 +1664,18 @@ public partial class GameClientSession
         Logger.LogInformation(
             "DEMO_MODE 봇 심문 응답: BotId={Bot}, Asker={Asker}, AnswerTextId={AnswerTextId}",
             botPlayerId, PlayerId.Value, answerTextId);
+    }
+
+    private InteractionAnswer? ResolveBotInteractionAnswer(BotPlayerState bot)
+    {
+        var answers = _interactionChoiceService.GenerateAnswers(
+            CurrentMapSubId,
+            bot.PlayerId,
+            _lastAskedQuestion);
+        if (answers.Count == 0) return null;
+
+        int answerIndex = _botPlayerManager.PickAnswerIndex(answers.Count);
+        return answers[Math.Clamp(answerIndex, 0, answers.Count - 1)];
     }
 
     private static (int TextId, List<TextArg> Args) CreateDemoBotAnswer(BotPlayerState bot, bool isPlayersManitto)

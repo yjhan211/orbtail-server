@@ -40,6 +40,9 @@ public class InteractionChoiceService
     {
         if (DemoMode.IsActive) return GenerateDemoQuestions(currentArea);
 
+        var p0Questions = BuildLocationQuestionList(currentArea);
+        if (p0Questions.Count > 0) return p0Questions;
+
         var questions = new List<InteractionQuestion>();
 
         // 1. 만남 장소 추궁 (항상 포함)
@@ -106,12 +109,17 @@ public class InteractionChoiceService
 
     public List<InteractionQuestion> GenerateDemoQuestions(AreaType currentArea)
     {
+        return BuildLocationQuestionList(currentArea, DemoQuestionTextId);
+    }
+
+    private static List<InteractionQuestion> BuildLocationQuestionList(AreaType currentArea, int textId = 11020)
+    {
         return new List<InteractionQuestion>
         {
             new()
             {
                 QuestionType = InteractionQuestionType.ASK_LOCATION,
-                TextId = DemoQuestionTextId,
+                TextId = textId,
                 Args = new List<TextArg> { new() { Type = TextArgType.AREA_TYPE, IntValue = (int)currentArea } },
                 ReferenceArea = currentArea
             }

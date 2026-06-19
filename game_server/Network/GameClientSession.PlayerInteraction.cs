@@ -460,7 +460,7 @@ public partial class GameClientSession
             ModifyStats(-InteractStaminaCost);
 
             _activeConversationPlayerId = botPlayerId;
-            if (DemoMode.IsActive) SendBotInteractionChoices(botPlayerId);
+            SendBotInteractionChoices(botPlayerId);
         }
         else
         {

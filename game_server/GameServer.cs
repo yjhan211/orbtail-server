@@ -1208,32 +1208,42 @@ public class GameServer(
 
     private void StartTargetBotInterrogations(long matchingId, List<GameClientSession> activeSessions)
     {
-        if (!DemoMode.IsActive) return;
-
         var now = DateTime.UtcNow;
         var matchingSessions = activeSessions
             .Where(s => s.CurrentMapSubId == matchingId)
             .ToList();
 
-        foreach (var session in matchingSessions)
-        {
-            if (!session.PlayerId.HasValue || session.IsEliminated) continue;
-            if (!BotPlayerManager.IsBotPlayerId(session.TargetPlayerId)) continue;
+        var playerSnapshots = matchingSessions
+            .Where(s => s.PlayerId.HasValue)
+            .Select(s => new BotBehaviorPlayerSnapshot
+            {
+                PlayerId = s.PlayerId!.Value,
+                TargetPlayerId = s.TargetPlayerId,
+                CurrentArea = s.CurrentArea,
+                IsEliminated = s.IsEliminated
+            })
+            .ToList();
 
-            var bot = _botPlayerManager.GetBot(matchingId, session.TargetPlayerId);
-            if (bot == null || bot.IsEliminated) continue;
+        var mapId = _botPlayerManager.GetMatchingMapId(matchingId);
+        var bots = _botPlayerManager.GetBots(matchingId)
+            .Where(b => !b.IsEliminated)
+            .ToList();
+
+        foreach (var bot in bots)
+        {
+            PruneEndedBotEncounters(bot, playerSnapshots);
+
+            var decision = BotBehaviorDecisionService.Decide(
+                bot,
+                mapId,
+                playerSnapshots,
+                area => _areaClosureManager.IsAreaClosed(matchingId, area));
+
+            if (decision.Kind != BotBehaviorActionKind.Chat) continue;
+            var session = matchingSessions.FirstOrDefault(s => s.PlayerId == decision.TargetPlayerId);
+            if (session == null || session.IsEliminated || !session.PlayerId.HasValue) continue;
 
             long playerId = session.PlayerId.Value;
-            bool isSameEncounter = bot.CurrentArea != AreaType.None
-                                   && bot.CurrentArea == session.CurrentArea
-                                   && !session.CurrentArea.IsCorridor();
-            if (!isSameEncounter)
-            {
-                bot.TargetEncounterStartedAtByPlayerId.Remove(playerId);
-                bot.TargetInterrogationRequestedInEncounterPlayerIds.Remove(playerId);
-                continue;
-            }
-
             if (bot.TargetInterrogationRequestedInEncounterPlayerIds.Contains(playerId)) continue;
 
             if (!bot.TargetEncounterStartedAtByPlayerId.TryGetValue(playerId, out var encounterStartedAt))
@@ -1249,6 +1259,25 @@ public class GameServer(
             bot.TargetEncounterStartedAtByPlayerId[playerId] = now;
             bot.TargetInterrogationRequestedInEncounterPlayerIds.Add(playerId);
         }
+    }
+
+    private static void PruneEndedBotEncounters(BotPlayerState bot, IReadOnlyList<BotBehaviorPlayerSnapshot> players)
+    {
+        var activeEncounterPlayerIds = players
+            .Where(p => !p.IsEliminated
+                        && p.CurrentArea == bot.CurrentArea
+                        && bot.CurrentArea != AreaType.None
+                        && !bot.CurrentArea.IsCorridor())
+            .Select(p => p.PlayerId)
+            .ToHashSet();
+
+        foreach (long playerId in bot.TargetEncounterStartedAtByPlayerId.Keys.ToList())
+            if (!activeEncounterPlayerIds.Contains(playerId))
+                bot.TargetEncounterStartedAtByPlayerId.Remove(playerId);
+
+        foreach (long playerId in bot.TargetInterrogationRequestedInEncounterPlayerIds.ToList())
+            if (!activeEncounterPlayerIds.Contains(playerId))
+                bot.TargetInterrogationRequestedInEncounterPlayerIds.Remove(playerId);
     }
 
     private void StartCorridorStopCheckTimer()
