@@ -20,12 +20,19 @@ public partial class GameClientSession
 
         // 권고안 B 2026-05-05: Stamina 부족해도 ModifyStats가 Cor 1:2 변환 — 사전 차단 제거.
 
+        if (_activeConversationPlayerId.HasValue)
+        {
+            SendPlayerInteractRequestError(msg.PlayerId, ErrorCode.INVALID_GAME_STATE);
+            Logger.LogInformation(
+                "PlayerInteractRequest blocked: requester already in conversation. requester={RequesterId}, target={TargetId}, partner={PartnerId}",
+                PlayerId, msg.PlayerId, _activeConversationPlayerId);
+            return Task.CompletedTask;
+        }
+
         // 쿨다운 체크 (거절/타임아웃 후 5초)
         if (DateTime.UtcNow - _lastInteractRejectTime < InteractCooldown)
         {
-            using var cooldownPacket =
-                PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(msg.PlayerId, ErrorCode.ACTION_COOLDOWN);
-            Send(cooldownPacket);
+            SendPlayerInteractRequestError(msg.PlayerId, ErrorCode.ACTION_COOLDOWN);
             Logger.LogInformation("PlayerInteractRequest blocked by cooldown: requester={RequesterId}", PlayerId);
             return Task.CompletedTask;
         }
@@ -43,74 +50,73 @@ public partial class GameClientSession
         // 대상 없으면 에러
         if (targetSession == null)
         {
-            using var errorPacket =
-                PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(targetPlayerId, ErrorCode.PLAYER_NOT_FOUND);
-            Send(errorPacket);
+            SendPlayerInteractRequestError(targetPlayerId, ErrorCode.PLAYER_NOT_FOUND);
             Logger.LogWarning(
                 "PlayerInteractRequest failed: target PlayerId={TargetId} not found (requester={RequesterId})",
                 targetPlayerId, PlayerId);
             return Task.CompletedTask;
         }
 
-        // pending 저장 (요청자 세션에)
-        _pendingInteractPlayerId = targetPlayerId;
-
-        // 양쪽에 전송
-        using (var requesterPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(targetPlayerId, ErrorCode.SUCCESS))
+        if (targetSession._activeConversationPlayerId.HasValue)
         {
-            Send(requesterPacket); // 요청자(A)에게: 대기 시작
+            SendPlayerInteractRequestError(targetPlayerId, ErrorCode.INVALID_GAME_STATE);
+            Logger.LogInformation(
+                "PlayerInteractRequest blocked: target already in conversation. requester={RequesterId}, target={TargetId}, partner={PartnerId}",
+                PlayerId, targetPlayerId, targetSession._activeConversationPlayerId);
+            return Task.CompletedTask;
         }
 
-        using (var targetPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(PlayerId.Value, ErrorCode.SUCCESS))
-        {
-            targetSession.Send(targetPacket); // 대상(B)에게: 수락 UI 표시
-        }
+        return AcceptPlayerInteractionImmediately(targetSession, targetPlayerId);
+    }
 
-        Logger.LogInformation("PlayerInteractRequest: requester={RequesterId} → target={TargetId}", PlayerId,
-            targetPlayerId);
+    private void SendPlayerInteractRequestError(long targetPlayerId, ErrorCode errorCode)
+    {
+        using var packet = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(targetPlayerId, errorCode);
+        Send(packet);
+    }
 
-        // 10초 타이머 시작
-        _interactTimeoutCts?.Cancel();
-        _interactTimeoutCts?.Dispose();
-        _interactTimeoutCts = new CancellationTokenSource();
-        var cts = _interactTimeoutCts;
+    private Task AcceptPlayerInteractionImmediately(GameClientSession targetSession, long targetPlayerId)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+
         long requesterPlayerId = PlayerId.Value;
 
-        _ = Task.Run(async () =>
+        using (var requesterPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(targetPlayerId, ErrorCode.SUCCESS))
         {
-            try
-            {
-                await Task.Delay(10000, cts.Token);
+            Send(requesterPacket);
+        }
 
-                // 타임아웃: 양쪽에 RESULT(accepted=false) 전송
-                Logger.LogInformation("PlayerInteract timeout: requester={RequesterId}, target={TargetId}",
-                    requesterPlayerId, targetPlayerId);
+        using (var targetPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(requesterPlayerId, ErrorCode.SUCCESS))
+        {
+            targetSession.Send(targetPacket);
+        }
 
-                using var requesterResult =
-                    PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(false, targetPlayerId, ErrorCode.TIMEOUT);
-                Send(requesterResult);
+        _interactTimeoutCts?.Cancel();
+        _interactTimeoutCts?.Dispose();
+        _interactTimeoutCts = null;
 
-                if (targetSession.PlayerId.HasValue)
-                {
-                    using var targetResult =
-                        PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(false, requesterPlayerId, ErrorCode.TIMEOUT);
-                    targetSession.Send(targetResult);
-                }
+        using (var requesterResult =
+               PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(true, targetPlayerId, ErrorCode.SUCCESS))
+        {
+            Send(requesterResult);
+        }
 
-                _pendingInteractPlayerId = null;
-                _interactTimeoutCts = null;
-                _lastInteractRejectTime = DateTime.UtcNow;
-            }
-            catch (TaskCanceledException)
-            {
-                // 타이머 취소됨 (수락/거절로 인해)
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "PlayerInteract timeout error: requester={RequesterId}, target={TargetId}",
-                    requesterPlayerId, targetPlayerId);
-            }
-        }, cts.Token);
+        using (var targetResult =
+               PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(true, requesterPlayerId, ErrorCode.SUCCESS))
+        {
+            targetSession.Send(targetResult);
+        }
+
+        ModifyStats(-InteractStaminaCost);
+        _activeConversationPlayerId = targetPlayerId;
+        targetSession._activeConversationPlayerId = requesterPlayerId;
+        _pendingInteractPlayerId = null;
+
+        SendInteractionChoices(this, targetSession);
+
+        Logger.LogInformation(
+            "PlayerInteractRequest auto-accepted: requester={RequesterId}, target={TargetId}",
+            requesterPlayerId, targetPlayerId);
 
         return Task.CompletedTask;
     }
@@ -388,16 +394,12 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     #26: 봇이 대상일 때 1:1 상호작용 자동 응답.
-    ///     - DecideAcceptInteraction으로 수락/거절 결정 (DemoMode 시)
-    ///     - issue22 디버그(DemoMode 비활성): 무조건 수락 + 3초 지연 (실제 플레이어 응답 시뮬)
-    ///     - 수락 시: 양쪽에 RESULT(accepted=true) 송신 → 즉시 종료(대화는 게임 진행상 0.x초 단위로 빈번)
-    ///     - 거절 시: 양쪽에 RESULT(accepted=false) 송신
-    ///     클라이언트 측 봇 대화 UX는 단순화 — 수락/거절 결과만 전달.
+    ///     봇이 대상일 때 1:1 상호작용을 즉시 대화로 전환한다.
+    ///     별도 수락/거절 판단이나 지연 없이 질문 선택지를 요청자에게 전달한다.
     /// </summary>
-    private async Task HandleBotInteractRequest(long botPlayerId)
+    private Task HandleBotInteractRequest(long botPlayerId)
     {
-        if (!PlayerId.HasValue) return;
+        if (!PlayerId.HasValue) return Task.CompletedTask;
         long requesterPlayerId = PlayerId.Value;
 
         // 상호작용 응답 대기/대화 중 봇 정지 — 실제 플레이어 정지 동작과 동등.
@@ -411,14 +413,12 @@ public partial class GameClientSession
             Logger.LogInformation(
                 "봇 1:1 요청 실패: BotId={Bot}, Requester={Requester}, BotArea={BotArea}, RequesterArea={RequesterArea}",
                 botPlayerId, requesterPlayerId, bot?.CurrentArea, CurrentArea);
-            return;
+            return Task.CompletedTask;
         }
 
         bot.HoldForInteraction(TimeSpan.FromMinutes(5)); // 안전 fallback
 
         // pending 저장 — HandleAreaMove에서 영역 이동 차단 + 클라 InteractAlert UX와 정합.
-        _pendingInteractPlayerId = botPlayerId;
-
         // 요청자에게 ack(REQUEST) 송신 → 클라이언트 InteractAlert(대기 UI) 표시.
         // 실제 플레이어 대상일 때 HandlePlayerInteractRequest 본 흐름에서 보내는 것과 동등.
         using (var requesterAck = PacketMaker.G_TO_C_PLAYER_INTERACT_REQUEST(botPlayerId, ErrorCode.SUCCESS))
@@ -426,54 +426,28 @@ public partial class GameClientSession
             Send(requesterAck);
         }
 
-        bool accepted;
-        if (DemoMode.IsActive)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(2));
-            accepted = bot is { IsEliminated: false };
-        }
-        else
-        {
-            // issue22 디버그: 봇 응답 3초 지연 후 무조건 수락
-            await Task.Delay(TimeSpan.FromSeconds(3));
-            accepted = true;
-        }
-
         // 봇은 응답 기록만 갱신 (직책 밝히기는 클라이언트 UX 미구현 — 추후 확장 지점)
         _botPlayerManager.NoteRespondedTo(CurrentMapSubId, botPlayerId, requesterPlayerId);
 
-        // 요청자에게 봇이 결정한 결과 전송 (대화 UI 없이 결과만)
+        // 봇은 별도 수락/거절 없이 즉시 대화를 시작한다.
         using (var requesterResult =
-               PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(accepted, botPlayerId, ErrorCode.SUCCESS))
+               PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(true, botPlayerId, ErrorCode.SUCCESS))
         {
             Send(requesterResult);
         }
 
         Logger.LogInformation(
-            "봇 1:1 자동 응답: BotId={Bot}, Requester={Requester}, Accepted={Acc}",
-            botPlayerId, requesterPlayerId, accepted);
+            "봇 1:1 대화 즉시 시작: BotId={Bot}, Requester={Requester}",
+            botPlayerId, requesterPlayerId);
 
-        // pending 해제 + 수락 시 active conversation으로 전환.
-        _pendingInteractPlayerId = null;
-        if (accepted)
-        {
-            ModifyStats(-InteractStaminaCost);
+        ModifyStats(-InteractStaminaCost);
 
-            _activeConversationPlayerId = botPlayerId;
-            SendBotInteractionChoices(botPlayerId);
-        }
-        else
-        {
-            _lastInteractRejectTime = DateTime.UtcNow;
-            // 거절 시 즉시 정지 해제
-            if (bot != null)
-            {
-                bot.IsInInteraction = false;
-                bot.InteractionStayUntil = DateTime.MinValue;
-            }
-        }
+        _activeConversationPlayerId = botPlayerId;
+        SendBotInteractionChoices(botPlayerId);
+
         // 수락 시: IsInInteraction는 InteractionStayUntil(5분)까지 유지 → 봇 정지.
         // 사용자가 INTERACT_END 보내면 HandlePlayerInteractEnd가 +5초로 단축.
+        return Task.CompletedTask;
     }
 
     /// <summary>

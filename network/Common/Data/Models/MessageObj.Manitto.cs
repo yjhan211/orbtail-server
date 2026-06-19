@@ -571,7 +571,8 @@ namespace network.common.data.models
         RAW_STRING = 0,
         INT_NUMBER = 1,
         AREA_TYPE = 2,    // IntValue를 AreaType으로 캐스팅 → GameAreaNameData 룩업
-        JOB_TITLE = 3     // IntValue를 JobTitle로 캐스팅 → 직책 textId(11000~)로 룩업
+        JOB_TITLE = 3,
+        ITEM_NAME = 4
     }
 
     /// <summary>

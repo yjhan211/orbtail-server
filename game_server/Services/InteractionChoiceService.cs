@@ -133,7 +133,8 @@ public class InteractionChoiceService
     public List<InteractionAnswer> GenerateAnswers(
         long matchingId,
         long answererPlayerId,
-        InteractionQuestionType questionType)
+        InteractionQuestionType questionType,
+        AreaType currentArea)
     {
         var answers = new List<InteractionAnswer>();
         var link = _chainManager.GetLink(matchingId, answererPlayerId);
@@ -154,7 +155,7 @@ public class InteractionChoiceService
             IsTrue = tellTruth,
             ClaimedJob = claimedJob,
             TextId = 11030,
-            Args = new List<TextArg> { new() { Type = TextArgType.JOB_TITLE, IntValue = (int)claimedJob } }
+            Args = new List<TextArg> { CreateAreaLootItemArg(currentArea) }
         });
 
         // 2. 알리바이
@@ -178,6 +179,16 @@ public class InteractionChoiceService
         return answers;
     }
 
+    private static TextArg CreateAreaLootItemArg(AreaType currentArea)
+    {
+        var areaLootItemId = GameInteractableData.GetItemPoolByArea((int)currentArea)
+            .FirstOrDefault(itemId => GameItemData.Get(itemId) != null);
+
+        return areaLootItemId > 0
+            ? new TextArg { Type = TextArgType.ITEM_NAME, IntValue = areaLootItemId }
+            : new TextArg { Type = TextArgType.RAW_STRING, StringValue = "단서" };
+    }
+
     /// <summary>
     ///     답변 처리: 로그 기록 + 사칭 발각 체크
     ///     반환: (사칭 발각 여부, 충돌 정보 textId — 0이면 없음, 충돌 args)
@@ -193,6 +204,9 @@ public class InteractionChoiceService
         // 로그 기록 (질문자 관점: 상대가 이 직책을 주장했다)
         _logManager.AddLog(matchingId, askerPlayerId, answererPlayerId, claimedJob, area);
 
+        if (claimedJob == JobTitle.NONE)
+            return (false, 0, new List<TextArg>());
+
         // 사칭 발각 체크: 같은 직책을 주장하는 다른 플레이어가 있는지
         var duplicates = _logManager.DetectDuplicateClaims(matchingId);
         var conflict = duplicates.FirstOrDefault(d => d.job == claimedJob && d.claimers.Count > 1);
@@ -202,6 +216,6 @@ public class InteractionChoiceService
             return (true, 11042, args);
         }
 
-        return (false, 0, null);
+        return (false, 0, new List<TextArg>());
     }
 }

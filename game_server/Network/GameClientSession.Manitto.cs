@@ -16,6 +16,8 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int GiftRecallStaminaCost = 5;
+    private const int ManittoTargetAnswerIndexOffset = 100000;
+    private const int ManittoTargetAnswerTextId = 11044;
 
     // #159/#158: 핀(경계)을 켤 때 1회 소모하는 스태미나. 켤 때마다 큰 비용이라 같은 방 무료 스팸을 차단한다.
     // 따라가기와 공유 자원이라 의심에 쓸수록 따라갈 여력이 준다. 끄기는 무료, 재진입이 비싸 마이크로 토글도 막힌다. 튜닝 노브.
@@ -931,7 +933,8 @@ public partial class GameClientSession
         _pendingAnswers = _interactionChoiceService.GenerateAnswers(
             CurrentMapSubId,
             PlayerId.Value,
-            _lastAskedQuestion);
+            _lastAskedQuestion,
+            CurrentArea);
 
         bot.HoldForInteraction(TimeSpan.FromMinutes(5));
         bot.LoopWaitUntil = DateTime.MinValue;
@@ -996,6 +999,46 @@ public partial class GameClientSession
         _botInteractTimeoutCts?.Cancel();
         _botInteractTimeoutCts?.Dispose();
         _botInteractTimeoutCts = null;
+    }
+
+    private void StartTargetBotInterrogationChoiceDelay(long botPlayerId)
+    {
+        CancelTargetBotInterrogationTimeout();
+
+        _botInteractTimeoutCts = new CancellationTokenSource();
+        var cts = _botInteractTimeoutCts;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1.2), cts.Token);
+                if (_activeConversationPlayerId != botPlayerId) return;
+
+                var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
+                if (bot == null || bot.IsEliminated || bot.CurrentArea != CurrentArea)
+                {
+                    if (_activeConversationPlayerId == botPlayerId) _activeConversationPlayerId = null;
+                    ReleaseTargetBotInterrogation(botPlayerId, resetEncounterDelay: true);
+                    using var errorPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(
+                        false,
+                        botPlayerId,
+                        bot == null || bot.IsEliminated ? ErrorCode.PLAYER_NOT_FOUND : ErrorCode.AREA_MISMATCH);
+                    Send(errorPacket);
+                    return;
+                }
+
+                SendTargetBotInterrogationAnswerChoices(bot);
+            }
+            catch (TaskCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex,
+                    "Target bot interrogation choice delay failed: BotId={Bot}, PlayerId={Player}",
+                    botPlayerId, PlayerId);
+            }
+        }, cts.Token);
     }
 
     private void ReleaseTargetBotInterrogation(long botPlayerId, bool resetEncounterDelay = false)
@@ -1559,7 +1602,7 @@ public partial class GameClientSession
         if (bot.CurrentArea == AreaType.None || bot.CurrentArea != CurrentArea) return false;
         if (CurrentArea.IsCorridor()) return false;
 
-        _pendingBotRequesterPlayerId = bot.PlayerId;
+        _activeConversationPlayerId = bot.PlayerId;
         bot.HoldForInteraction(TimeSpan.FromSeconds(13));
         bot.LoopWaitUntil = DateTime.MinValue;
 
@@ -1568,7 +1611,12 @@ public partial class GameClientSession
             Send(requestPacket);
         }
 
-        StartTargetBotInterrogationTimeout(bot.PlayerId);
+        using (var resultPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(true, bot.PlayerId, ErrorCode.SUCCESS))
+        {
+            Send(resultPacket);
+        }
+
+        StartTargetBotInterrogationChoiceDelay(bot.PlayerId);
 
         Logger.LogInformation(
             "DEMO_MODE 타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
@@ -1602,7 +1650,8 @@ public partial class GameClientSession
         var answers = _interactionChoiceService.GenerateAnswers(
             CurrentMapSubId,
             partnerPlayerId,
-            msg.QuestionType);
+            msg.QuestionType,
+            partnerSession.CurrentArea);
 
         partnerSession._pendingAnswers = answers;
 
@@ -1671,7 +1720,8 @@ public partial class GameClientSession
         var answers = _interactionChoiceService.GenerateAnswers(
             CurrentMapSubId,
             bot.PlayerId,
-            _lastAskedQuestion);
+            _lastAskedQuestion,
+            bot.CurrentArea);
         if (answers.Count == 0) return null;
 
         int answerIndex = _botPlayerManager.PickAnswerIndex(answers.Count);
@@ -1699,9 +1749,80 @@ public partial class GameClientSession
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, playerId);
         if (bot != null && !string.IsNullOrEmpty(bot.Name)) return bot.Name;
 
+        if (!BotPlayerManager.IsBotPlayerId(playerId))
+        {
+            try
+            {
+                var playerInfo = PlayerInfo.Load(CacheHelper, playerId).GetAwaiter().GetResult();
+                if (!string.IsNullOrWhiteSpace(playerInfo?.Name)) return playerInfo.Name;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Interaction player name lookup failed: PlayerId={PlayerId}", playerId);
+            }
+        }
+
         return BotPlayerManager.IsBotPlayerId(playerId)
             ? $"Bot{Math.Abs(playerId)}"
             : $"Player{playerId}";
+    }
+
+    private bool TryCreateManittoTargetAnswer(int encodedAnswerIndex, out InteractionAnswer? selectedAnswer)
+    {
+        selectedAnswer = null;
+        if (!PlayerId.HasValue) return false;
+
+        int targetIndex = encodedAnswerIndex - ManittoTargetAnswerIndexOffset;
+        if (targetIndex < 0) return false;
+
+        var candidates = GetInteractionPlayerCandidates();
+        if (targetIndex >= candidates.Count) return false;
+
+        var candidate = candidates[targetIndex];
+        var link = _manittoChainManager.GetLink(CurrentMapSubId, PlayerId.Value);
+        bool isTrue = link?.TargetPlayerId == candidate.playerId;
+
+        selectedAnswer = new InteractionAnswer
+        {
+            IsTrue = isTrue,
+            ClaimedJob = JobTitle.NONE,
+            TextId = ManittoTargetAnswerTextId,
+            Args = new List<TextArg>
+            {
+                new() { Type = TextArgType.RAW_STRING, StringValue = candidate.name }
+            }
+        };
+        return true;
+    }
+
+    private List<(long playerId, string name)> GetInteractionPlayerCandidates()
+    {
+        var candidates = new Dictionary<long, string>();
+
+        void AddCandidate(long playerId, string name)
+        {
+            if (playerId == 0) return;
+            if (PlayerId.HasValue && playerId == PlayerId.Value) return;
+            if (candidates.ContainsKey(playerId)) return;
+
+            candidates[playerId] = !string.IsNullOrWhiteSpace(name)
+                ? name
+                : ResolveDemoInteractionPlayerName(playerId);
+        }
+
+        foreach (var session in _getSessionsByInstance(CurrentMapId, CurrentMapSubId))
+        {
+            if (!session.PlayerId.HasValue) continue;
+            AddCandidate(session.PlayerId.Value, ResolveDemoInteractionPlayerName(session.PlayerId.Value));
+        }
+
+        foreach (var bot in _botPlayerManager.GetBots(CurrentMapSubId).Where(b => !b.IsEliminated))
+            AddCandidate(bot.PlayerId, bot.Name);
+
+        return candidates
+            .OrderBy(candidate => candidate.Key)
+            .Select(candidate => (candidate.Key, candidate.Value))
+            .ToList();
     }
 
     /// <summary>
@@ -1710,11 +1831,24 @@ public partial class GameClientSession
     private Task HandleInteractionAnswer(C_TO_G_INTERACTION_ANSWER msg)
     {
         if (!PlayerId.HasValue || !_activeConversationPlayerId.HasValue) return Task.CompletedTask;
-        if (_pendingAnswers == null || msg.AnswerIndex < 0 || msg.AnswerIndex >= _pendingAnswers.Count)
+        if (_pendingAnswers == null || msg.AnswerIndex < 0)
             return Task.CompletedTask;
 
         long askerPlayerId = _activeConversationPlayerId.Value;
-        var selectedAnswer = _pendingAnswers[msg.AnswerIndex];
+        InteractionAnswer selectedAnswer;
+        if (msg.AnswerIndex >= ManittoTargetAnswerIndexOffset)
+        {
+            if (!TryCreateManittoTargetAnswer(msg.AnswerIndex, out var manittoTargetAnswer) || manittoTargetAnswer == null)
+                return Task.CompletedTask;
+            selectedAnswer = manittoTargetAnswer;
+        }
+        else
+        {
+            if (msg.AnswerIndex >= _pendingAnswers.Count)
+                return Task.CompletedTask;
+            selectedAnswer = _pendingAnswers[msg.AnswerIndex];
+        }
+
         if (BotPlayerManager.IsBotPlayerId(askerPlayerId))
         {
             _interactionChoiceService.ProcessAnswer(
