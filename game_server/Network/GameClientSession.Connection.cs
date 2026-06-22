@@ -351,11 +351,7 @@ public partial class GameClientSession
             if (DateTime.UtcNow >= state.PhaseEndsAtUtc)
             {
                 if (state.Phase == RoundPhase.Action)
-                {
                     EnterSettlementPhase(matchingId, state);
-                    if (!state.IsSessionEnded)
-                        AdvanceRoundOrEnd(matchingId, state);
-                }
                 else if (state.Phase == RoundPhase.Settlement)
                     AdvanceRoundOrEnd(matchingId, state);
             }
