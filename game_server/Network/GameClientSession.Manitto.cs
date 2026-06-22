@@ -328,7 +328,8 @@ public partial class GameClientSession
     /// <summary>
     ///     플레이어 탈락 처리 + 체인 단절 브로드캐스트
     /// </summary>
-    private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null)
+    private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
+        bool deferGameOver = false)
     {
         _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
         var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason);
@@ -407,7 +408,7 @@ public partial class GameClientSession
 
         // 3. 게임 종료 판정
         var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(CurrentMapSubId);
-        if (isGameOver)
+        if (!deferGameOver && isGameOver)
         {
             Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);
             SendGameResult(allSessions, winnerId ?? 0, false, CurrentMapSubId);
@@ -447,6 +448,7 @@ public partial class GameClientSession
         // 게임 타이머 정리 — race 완주/색출로 종료되었을 때 타임아웃이 후행 발사되지 않도록 (#87)
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
+        GameRoundStates.TryRemove(matchingId, out _);
 
         // #26: 봇 상태 + Redis matching_bots Hash 엔트리 정리 (TTL/누수 방지)
         _botPlayerManager.CleanupMatching(matchingId);

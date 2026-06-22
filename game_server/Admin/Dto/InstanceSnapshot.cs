@@ -10,6 +10,12 @@ public class InstanceSnapshot
     public int PlayerCount { get; set; }
     public int AliveCount { get; set; }
     public double ElapsedSeconds { get; set; }
+    public int RoundNumber { get; set; }
+    public int TotalRounds { get; set; }
+    public string RoundPhase { get; set; } = "";
+    public int RoundRemainingSeconds { get; set; }
+    public int RoundPhaseDurationSeconds { get; set; }
+    public bool RoundSessionEnded { get; set; }
     public List<string> ClosedAreas { get; set; } = [];
     public List<PlayerSnapshot> Players { get; set; } = [];
 
@@ -94,5 +100,11 @@ public class InstanceSummary
     public int PlayerCount { get; set; }
     public int AliveCount { get; set; }
     public double ElapsedSeconds { get; set; }
+    public int RoundNumber { get; set; }
+    public int TotalRounds { get; set; }
+    public string RoundPhase { get; set; } = "";
+    public int RoundRemainingSeconds { get; set; }
+    public int RoundPhaseDurationSeconds { get; set; }
+    public bool RoundSessionEnded { get; set; }
     public List<string> ClosedAreas { get; set; } = [];
 }

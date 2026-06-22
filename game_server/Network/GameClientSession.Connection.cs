@@ -122,6 +122,7 @@ public partial class GameClientSession
 
             // 미션 정보 전송
             SendMissionInfo();
+            SendRoundStateSnapshot(msg.MatchingId);
 
             // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
             await BroadcastPlayerJoin();
@@ -306,21 +307,275 @@ public partial class GameClientSession
     {
         if (GameTimers.ContainsKey(matchingId))
         {
-            Logger.LogDebug("Game timer already exists for MatchingId={MatchingId}", matchingId);
+            Logger.LogDebug("Round timer already exists for MatchingId={MatchingId}", matchingId);
             return;
         }
 
-        Logger.LogInformation("게임 타이머 시작: MatchingId={MatchingId} ({Minutes}분)", matchingId, GameDurationMinutes);
+        var state = new RoundRuntimeState
+        {
+            RoundNumber = 1,
+            Phase = RoundPhase.Action,
+            PhaseDurationSeconds = Config.ROUND_ACTION_SECONDS,
+            PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_ACTION_SECONDS),
+            SettlementEliminationApplied = false,
+            IsSessionEnded = false
+        };
+        GameRoundStates.TryAdd(matchingId, state);
 
-        var timer = new Timer(_ => { EndGameByTimeout(matchingId); }, null,
-            TimeSpan.FromSeconds(GameDurationSeconds), Timeout.InfiniteTimeSpan);
+        Logger.LogInformation(
+            "Round session started: MatchingId={MatchingId}, Rounds={Rounds}, Action={ActionSeconds}s, Settlement={SettlementSeconds}s",
+            matchingId, Config.ROUND_TOTAL_COUNT, Config.ROUND_ACTION_SECONDS, Config.ROUND_SETTLEMENT_SECONDS);
 
-        GameTimers.TryAdd(matchingId, timer);
+        var timer = new Timer(_ => ProcessRoundTimerTick(matchingId), null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+
+        if (!GameTimers.TryAdd(matchingId, timer))
+        {
+            timer.Dispose();
+            GameRoundStates.TryRemove(matchingId, out _);
+        }
     }
 
     /// <summary>
     ///     시간 초과로 게임 종료. 생존자 중 자원 총합 최대인 플레이어가 승리.
     /// </summary>
+    private void ProcessRoundTimerTick(long matchingId)
+    {
+        if (!GameRoundStates.TryGetValue(matchingId, out var state))
+            return;
+
+        lock (state.SyncRoot)
+        {
+            if (state.IsSessionEnded)
+                return;
+
+            if (DateTime.UtcNow >= state.PhaseEndsAtUtc)
+            {
+                if (state.Phase == RoundPhase.Action)
+                {
+                    EnterSettlementPhase(matchingId, state);
+                    if (!state.IsSessionEnded)
+                        AdvanceRoundOrEnd(matchingId, state);
+                }
+                else if (state.Phase == RoundPhase.Settlement)
+                    AdvanceRoundOrEnd(matchingId, state);
+            }
+
+            BroadcastRoundState(matchingId, state);
+        }
+    }
+
+    private void EnterSettlementPhase(long matchingId, RoundRuntimeState state)
+    {
+        state.Phase = RoundPhase.Settlement;
+        state.PhaseDurationSeconds = Config.ROUND_SETTLEMENT_SECONDS;
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_SETTLEMENT_SECONDS);
+
+        if (state.SettlementEliminationApplied)
+            return;
+
+        state.SettlementEliminationApplied = true;
+        long? eliminatedPlayerId = SelectRoundEliminationCandidate(matchingId);
+        if (eliminatedPlayerId.HasValue)
+        {
+            Logger.LogInformation(
+                "Round settlement elimination: MatchingId={MatchingId}, Round={Round}, PlayerId={PlayerId}",
+                matchingId, state.RoundNumber, eliminatedPlayerId.Value);
+            ProcessRoundElimination(matchingId, eliminatedPlayerId.Value, EliminationReason.MENTAL_ZERO);
+            return;
+        }
+
+        Logger.LogWarning("Round settlement entered with no elimination candidate: MatchingId={MatchingId}, Round={Round}",
+            matchingId, state.RoundNumber);
+    }
+
+    private void AdvanceRoundOrEnd(long matchingId, RoundRuntimeState state)
+    {
+        var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(matchingId);
+        if (state.RoundNumber >= Config.ROUND_TOTAL_COUNT || isGameOver)
+        {
+            state.Phase = RoundPhase.Ended;
+            state.PhaseDurationSeconds = 0;
+            state.PhaseEndsAtUtc = DateTime.UtcNow;
+            state.IsSessionEnded = true;
+            BroadcastRoundState(matchingId, state);
+
+            if (DevFlags.DisableGameEnd)
+            {
+                Logger.LogWarning("[DEV] Game end blocked (DISABLE_GAME_END=1): Round completion matchingId={MatchingId}",
+                    matchingId);
+                CleanupRoundTimer(matchingId);
+                return;
+            }
+
+            EndGameByRoundCompletion(matchingId, winnerId);
+            return;
+        }
+
+        state.RoundNumber++;
+        state.Phase = RoundPhase.Action;
+        state.PhaseDurationSeconds = Config.ROUND_ACTION_SECONDS;
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_ACTION_SECONDS);
+        state.SettlementEliminationApplied = false;
+
+        Logger.LogInformation("Round advanced: MatchingId={MatchingId}, Round={Round}", matchingId, state.RoundNumber);
+    }
+
+    private long? SelectRoundEliminationCandidate(long matchingId)
+    {
+        var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
+        var botCandidates = new List<(long PlayerId, int Score)>();
+        var playerCandidates = new List<(long PlayerId, int Score)>();
+
+        foreach (var session in sessions)
+        {
+            if (!session.PlayerId.HasValue || session.IsEliminated)
+                continue;
+            if (session.ManittoStatus == ManittoStatus.SPECTATING)
+                continue;
+
+            playerCandidates.Add((session.PlayerId.Value, session.Stamina + (MaxCorruption - session.Corruption)));
+        }
+
+        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        {
+            if (bot.IsEliminated || bot.ManittoStatus == ManittoStatus.SPECTATING)
+                continue;
+
+            botCandidates.Add((bot.PlayerId, bot.Stamina + (MaxCorruption - bot.Corruption)));
+        }
+
+        var candidates = botCandidates.Count > 0 ? botCandidates : playerCandidates;
+        return candidates
+            .OrderBy(c => c.Score)
+            .ThenBy(c => c.PlayerId)
+            .Select(c => (long?)c.PlayerId)
+            .FirstOrDefault();
+    }
+
+    private void ProcessRoundElimination(long matchingId, long eliminatedPlayerId, EliminationReason reason)
+    {
+        if (_botPlayerManager.GetBot(matchingId, eliminatedPlayerId) != null)
+        {
+            ProcessBotRoundElimination(matchingId, eliminatedPlayerId, reason);
+            return;
+        }
+
+        _ = ProcessElimination(eliminatedPlayerId, reason, deferGameOver: true);
+    }
+
+    private void ProcessBotRoundElimination(long matchingId, long botId, EliminationReason reason)
+    {
+        _gameEventLogManager.LogElimination(matchingId, botId, reason.ToString(), isBot: true);
+        var affected = _manittoChainManager.EliminatePlayer(matchingId, botId, reason);
+        var matchingSessions = _getSessionsByInstance(CurrentMapId, matchingId);
+
+        using (var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED))
+        {
+            var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED { PlayerId = botId, Reason = reason };
+            eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
+            foreach (var session in matchingSessions) session.Send(eliminatedPacket);
+        }
+
+        foreach (var (affectedId, newStatus) in affected)
+        {
+            var session = matchingSessions.FirstOrDefault(s => s.PlayerId == affectedId);
+            if (session != null)
+            {
+                session.ApplyChainBreakStatus(newStatus, botId);
+                continue;
+            }
+
+            var bot = _botPlayerManager.GetBot(matchingId, affectedId);
+            if (bot == null) continue;
+            if (newStatus == ManittoStatus.ELIMINATED)
+            {
+                bot.IsEliminated = true;
+                bot.ManittoStatus = ManittoStatus.SPECTATING;
+            }
+            else
+            {
+                bot.ManittoStatus = newStatus;
+            }
+        }
+
+        foreach (var (affectedId, newStatus) in affected)
+        {
+            if (newStatus != ManittoStatus.TERMINAL) continue;
+            _missionManager.NotifyTargetLost(matchingId, affectedId, botId, reason);
+        }
+    }
+
+    private void EndGameByRoundCompletion(long matchingId, long? knownWinnerId = null)
+    {
+        var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
+        long? winnerId = knownWinnerId;
+
+        if (!winnerId.HasValue)
+        {
+            winnerId = _manittoChainManager.DetermineWinnerByResources(matchingId, playerId =>
+            {
+                var session = sessions.FirstOrDefault(s => s.PlayerId == playerId);
+                if (session != null) return (session.Stamina, session.Corruption, MaxCorruption);
+
+                var bot = _botPlayerManager.GetBot(matchingId, playerId);
+                return bot != null ? (bot.Stamina, bot.Corruption, MaxCorruption) : (0, MaxCorruption, MaxCorruption);
+            });
+        }
+
+        Logger.LogInformation("Round session completed: MatchingId={MatchingId}, WinnerId={WinnerId}",
+            matchingId, winnerId);
+
+        SendGameResult(sessions, winnerId ?? 0, false, matchingId);
+    }
+
+    private void BroadcastRoundState(long matchingId, RoundRuntimeState state)
+    {
+        var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
+        if (sessions.Count == 0) return;
+
+        using var packet = CreateRoundStatePacket(matchingId, state);
+        foreach (var session in sessions) session.Send(packet);
+    }
+
+    private void SendRoundStateSnapshot(long matchingId)
+    {
+        if (!GameRoundStates.TryGetValue(matchingId, out var state))
+            return;
+
+        lock (state.SyncRoot)
+        {
+            using var packet = CreateRoundStatePacket(matchingId, state);
+            Send(packet);
+        }
+    }
+
+    private Packet CreateRoundStatePacket(long matchingId, RoundRuntimeState state)
+    {
+        return PacketMaker.G_TO_C_ROUND_STATE(
+            matchingId,
+            state.RoundNumber,
+            Config.ROUND_TOTAL_COUNT,
+            state.Phase,
+            GetRoundRemainingSeconds(state),
+            state.PhaseDurationSeconds,
+            state.IsSessionEnded);
+    }
+
+    private static int GetRoundRemainingSeconds(RoundRuntimeState state)
+    {
+        if (state.IsSessionEnded || state.Phase == RoundPhase.Ended)
+            return 0;
+
+        return Math.Max(0, (int)Math.Ceiling((state.PhaseEndsAtUtc - DateTime.UtcNow).TotalSeconds));
+    }
+
+    private static void CleanupRoundTimer(long matchingId)
+    {
+        GameRoundStates.TryRemove(matchingId, out _);
+        if (GameTimers.TryRemove(matchingId, out var timer))
+            timer.Dispose();
+    }
+
     private void EndGameByTimeout(long matchingId)
     {
         if (DevFlags.DisableGameEnd)

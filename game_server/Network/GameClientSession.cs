@@ -26,6 +26,7 @@ public partial class GameClientSession : SessionBase
     private const int HeartbeatTimeoutSeconds = 30;
     private static readonly TimeSpan InteractCooldown = TimeSpan.FromSeconds(5);
     private static readonly ConcurrentDictionary<long, Timer> GameTimers = new();
+    private static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly AreaRuleManager _areaRuleManager;
     private readonly CorridorRuleManager _corridorRuleManager;
@@ -123,6 +124,35 @@ public partial class GameClientSession : SessionBase
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
         Logger.LogInformation("GameClientSession created");
+    }
+
+    private sealed class RoundRuntimeState
+    {
+        public object SyncRoot { get; } = new();
+        public int RoundNumber { get; set; } = 1;
+        public RoundPhase Phase { get; set; } = RoundPhase.Action;
+        public DateTime PhaseEndsAtUtc { get; set; }
+        public int PhaseDurationSeconds { get; set; } = Config.ROUND_ACTION_SECONDS;
+        public bool SettlementEliminationApplied { get; set; }
+        public bool IsSessionEnded { get; set; }
+    }
+
+    internal static (int RoundNumber, int TotalRounds, string Phase, int RemainingSeconds, int PhaseDurationSeconds,
+        bool IsSessionEnded)? GetRoundSnapshot(long matchingId)
+    {
+        if (!GameRoundStates.TryGetValue(matchingId, out var state))
+            return null;
+
+        lock (state.SyncRoot)
+        {
+            return (
+                state.RoundNumber,
+                Config.ROUND_TOTAL_COUNT,
+                state.Phase.ToString(),
+                GetRoundRemainingSeconds(state),
+                state.PhaseDurationSeconds,
+                state.IsSessionEnded);
+        }
     }
 
     public new long? PlayerId { get; private set; }

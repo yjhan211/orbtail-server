@@ -61,6 +61,15 @@ namespace network.common
         /// <summary>게임 세션 지속 시간 (초)</summary>
         public static readonly int GAME_DURATION_SECONDS = GAME_DURATION_MINUTES * 60;
 
+        /// <summary>Round system: total round count (#168).</summary>
+        public const int ROUND_TOTAL_COUNT = 4;
+
+        /// <summary>Round system: action phase duration in seconds (#168).</summary>
+        public const int ROUND_ACTION_SECONDS = 180;
+
+        /// <summary>Round system: settlement phase duration in seconds (#168).</summary>
+        public const int ROUND_SETTLEMENT_SECONDS = 45;
+
         // 패키지 Y 추가 상수 (#24)
         /// <summary>강당 체류 시 자연증가에 추가되는 오염도 (5초당). GDD §3.1.1, 패키지 Y 3A.</summary>
         public const int AUDITORIUM_STAY_CORRUPTION_BONUS = 1;

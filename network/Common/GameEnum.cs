@@ -315,6 +315,14 @@ namespace network.common
     /// <summary>
     ///     마니또 체인 내 플레이어 상태
     /// </summary>
+    public enum RoundPhase : short
+    {
+        None = 0,
+        Action = 1,
+        Settlement = 2,
+        Ended = 3,
+    }
+
     public enum ManittoStatus : short
     {
         ACTIVE = 0,             // 정상 활동

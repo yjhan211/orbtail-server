@@ -1523,6 +1523,7 @@ public class GameServer(
         int aliveCount = sessions.Count(s => !s.IsEliminated) + bots.Count(b => !b.IsEliminated);
         string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString()
                        ?? _botPlayerManager.GetMatchingMapId(matchingId).ToString();
+        var round = GameClientSession.GetRoundSnapshot(matchingId);
 
         return new InstanceSummary
         {
@@ -1531,6 +1532,12 @@ public class GameServer(
             PlayerCount = sessions.Count + bots.Count,
             AliveCount = aliveCount,
             ElapsedSeconds = Math.Round(elapsed, 1),
+            RoundNumber = round?.RoundNumber ?? 0,
+            TotalRounds = round?.TotalRounds ?? 0,
+            RoundPhase = round?.Phase ?? "",
+            RoundRemainingSeconds = round?.RemainingSeconds ?? 0,
+            RoundPhaseDurationSeconds = round?.PhaseDurationSeconds ?? 0,
+            RoundSessionEnded = round?.IsSessionEnded ?? false,
             ClosedAreas = closedAreas
         };
     }
@@ -1694,6 +1701,7 @@ public class GameServer(
         int aliveCount = sessions.Count(s => !s.IsEliminated) + bots.Count(b => !b.IsEliminated);
         string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString()
                        ?? _botPlayerManager.GetMatchingMapId(matchingId).ToString();
+        var round = GameClientSession.GetRoundSnapshot(matchingId);
 
         return new InstanceSnapshot
         {
@@ -1702,6 +1710,12 @@ public class GameServer(
             PlayerCount = sessions.Count + bots.Count,
             AliveCount = aliveCount,
             ElapsedSeconds = Math.Round(elapsed, 1),
+            RoundNumber = round?.RoundNumber ?? 0,
+            TotalRounds = round?.TotalRounds ?? 0,
+            RoundPhase = round?.Phase ?? "",
+            RoundRemainingSeconds = round?.RemainingSeconds ?? 0,
+            RoundPhaseDurationSeconds = round?.PhaseDurationSeconds ?? 0,
+            RoundSessionEnded = round?.IsSessionEnded ?? false,
             ClosedAreas = closedAreas,
             Players = playerSnapshots
         };
