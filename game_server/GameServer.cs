@@ -1191,7 +1191,8 @@ public class GameServer(
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
                     BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
-                StartTargetBotInterrogations(matchingId, activeSessions);
+                if (EnableBotInitiatedInteractions)
+                    StartTargetBotInterrogations(matchingId, activeSessions);
             }
         }
         catch (Exception ex)
@@ -1204,6 +1205,7 @@ public class GameServer(
         }
     }
 
+    private static readonly bool EnableBotInitiatedInteractions = false;
     private static readonly TimeSpan TargetBotInterrogationDelay = TimeSpan.FromSeconds(3);
 
     private void StartTargetBotInterrogations(long matchingId, List<GameClientSession> activeSessions)
