@@ -65,7 +65,7 @@ namespace network.common
         public const int ROUND_TOTAL_COUNT = 4;
 
         /// <summary>Round system: action phase duration in seconds (#168).</summary>
-        public const int ROUND_ACTION_SECONDS = 60;
+        public const int ROUND_ACTION_SECONDS = 10;
 
         /// <summary>Round system: settlement phase duration in seconds (#168).</summary>
         public const int ROUND_SETTLEMENT_SECONDS = 45;
