@@ -20,6 +20,12 @@ public partial class GameClientSession
 
     private Task HandleInteract(C_TO_G_INTERACT msg)
     {
+        if (IsRoundActionLocked(out _))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            return Task.CompletedTask;
+        }
+
         // 스태미나 0 이하이면 상호작용 차단
         if (Stamina <= 0)
         {
@@ -38,6 +44,11 @@ public partial class GameClientSession
     private async Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
     {
         if (!PlayerId.HasValue) return;
+        if (IsRoundActionLocked(out _))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            return;
+        }
 
         Logger.LogInformation("Player {PlayerId} state change request: {State}", PlayerId, msg.State);
 
@@ -228,6 +239,13 @@ public partial class GameClientSession
     private async Task HandleUseInGameItem(C_TO_G_USE_INGAME_ITEM msg)
     {
         if (!PlayerId.HasValue) return;
+        if (IsRoundActionLocked(out _))
+        {
+            using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid,
+                ErrorCode.INVALID_GAME_STATE);
+            Send(failPacket);
+            return;
+        }
 
         // 아이템 정보 먼저 조회 (제거 전에 ItemId 확인 필요)
         var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);

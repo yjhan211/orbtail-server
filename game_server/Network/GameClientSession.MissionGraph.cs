@@ -13,6 +13,11 @@ public partial class GameClientSession
     private Task HandleMissionNodeExecute(C_TO_G_MISSION_NODE_EXECUTE msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendMissionNodeExecuteResult(msg.NodeId, ErrorCode.INVALID_GAME_STATE);
+            return Task.CompletedTask;
+        }
 
         if (IsEliminated)
         {

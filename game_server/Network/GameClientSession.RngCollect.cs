@@ -35,6 +35,11 @@ public partial class GameClientSession
             SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
             return Task.CompletedTask;
         }
+        if (IsRoundActionLocked(out _))
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
+        }
 
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)

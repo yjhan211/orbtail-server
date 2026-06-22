@@ -169,6 +169,14 @@ public partial class GameClientSession
     private Task HandleRecallGift(C_TO_G_RECALL_GIFT msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendRecallGiftResult(ErrorCode.INVALID_GAME_STATE, new RecallGiftResult
+            {
+                InteractId = msg.InteractId
+            });
+            return Task.CompletedTask;
+        }
 
         var result = _missionManager.TryRecallGift(CurrentMapSubId, PlayerId.Value, msg.InteractId);
         if (!result.Success)
@@ -225,6 +233,19 @@ public partial class GameClientSession
     private Task HandleDetectManitto(C_TO_G_DETECT_MANITTO msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            using var lockedPacket = Packet.Create((int)Protocol.G_TO_C_DETECT_RESULT, PlayerId.Value);
+            var lockedResult = new G_TO_C_DETECT_RESULT
+            {
+                ErrorCode = ErrorCode.INVALID_GAME_STATE,
+                IsCorrect = false,
+                TargetPlayerId = msg.TargetPlayerId
+            };
+            lockedPacket.SetBody(MessagePackSerializer.Serialize(lockedResult));
+            Send(lockedPacket);
+            return Task.CompletedTask;
+        }
 
         var (isCorrect, errorCode) = _manittoChainManager.TryDetect(CurrentMapSubId, PlayerId.Value, msg.TargetPlayerId);
 
@@ -260,6 +281,11 @@ public partial class GameClientSession
     private Task HandleBookmarkPresence(C_TO_G_BOOKMARK_PRESENCE msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            return Task.CompletedTask;
+        }
 
         long previousBookmarkPlayerId = PresenceBookmarkPlayerId;
         var myManitto = _manittoChainManager.FindManittoOf(CurrentMapSubId, PlayerId.Value);
@@ -528,6 +554,18 @@ public partial class GameClientSession
     private Task HandlePlaceTrace(C_TO_G_PLACE_TRACE msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            using var lockedPacket = Packet.Create((int)Protocol.G_TO_C_PLACE_TRACE_RESULT, PlayerId.Value);
+            var lockedResult = new G_TO_C_PLACE_TRACE_RESULT
+            {
+                ErrorCode = ErrorCode.INVALID_GAME_STATE,
+                StaminaCost = 0
+            };
+            lockedPacket.SetBody(MessagePackSerializer.Serialize(lockedResult));
+            Send(lockedPacket);
+            return Task.CompletedTask;
+        }
 
         const int placeTraceCost = 5; // 스태미나 소모 (패키지 Y: -10 → -5, #24)
 
@@ -553,6 +591,11 @@ public partial class GameClientSession
     private Task HandlePlaceGift(C_TO_G_PLACE_GIFT msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendPlaceGiftResult(ErrorCode.INVALID_GAME_STATE, msg, CurrentArea, TargetPlayerId);
+            return Task.CompletedTask;
+        }
 
         var inventoryItem = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
             .GetItem(msg.ItemUid);
@@ -1112,6 +1155,11 @@ public partial class GameClientSession
     private Task HandleCombineParts(C_TO_G_COMBINE_PARTS msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INVALID_GAME_STATE);
+            return Task.CompletedTask;
+        }
         if (!HasInGamePartItem(msg.PartA) || !HasInGamePartItem(msg.PartB))
         {
             SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INSUFFICIENT_ITEM);
@@ -1423,6 +1471,11 @@ public partial class GameClientSession
     private Task HandleSabotageMission(C_TO_G_SABOTAGE_MISSION msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendSabotageResult(ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
+        }
 
         // 시한부만 사보타주 가능
         if (ManittoStatus != ManittoStatus.TERMINAL)
@@ -1633,6 +1686,11 @@ public partial class GameClientSession
     private async Task HandleInteractionAsk(C_TO_G_INTERACTION_ASK msg)
     {
         if (!PlayerId.HasValue || !_activeConversationPlayerId.HasValue) return;
+        if (IsRoundActionLocked(out _))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            return;
+        }
 
         long partnerPlayerId = _activeConversationPlayerId.Value;
         _lastAskedQuestion = msg.QuestionType;
@@ -1833,6 +1891,11 @@ public partial class GameClientSession
     private Task HandleInteractionAnswer(C_TO_G_INTERACTION_ANSWER msg)
     {
         if (!PlayerId.HasValue || !_activeConversationPlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            return Task.CompletedTask;
+        }
         if (_pendingAnswers == null || msg.AnswerIndex < 0)
             return Task.CompletedTask;
 

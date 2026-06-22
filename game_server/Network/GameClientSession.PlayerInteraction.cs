@@ -17,6 +17,11 @@ public partial class GameClientSession
     private Task HandlePlayerInteractRequest(C_TO_G_PLAYER_INTERACT_REQUEST msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendPlayerInteractRequestError(msg.PlayerId, ErrorCode.INVALID_GAME_STATE);
+            return Task.CompletedTask;
+        }
 
         // 권고안 B 2026-05-05: Stamina 부족해도 ModifyStats가 Cor 1:2 변환 — 사전 차단 제거.
 
@@ -124,6 +129,13 @@ public partial class GameClientSession
     private Task HandlePlayerInteractResponse(C_TO_G_PLAYER_INTERACT_RESPONSE msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            using var lockedPacket =
+                PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(false, msg.PlayerId, ErrorCode.INVALID_GAME_STATE);
+            Send(lockedPacket);
+            return Task.CompletedTask;
+        }
 
         long requesterPlayerId = msg.PlayerId;
         if (BotPlayerManager.IsBotPlayerId(requesterPlayerId))
@@ -246,6 +258,13 @@ public partial class GameClientSession
     private Task HandlePlayerInteractUseItem(C_TO_G_PLAYER_INTERACT_USE_ITEM msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            using var lockedPacket =
+                PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(false, ErrorCode.INVALID_GAME_STATE, 0);
+            Send(lockedPacket);
+            return Task.CompletedTask;
+        }
 
         // 활성 대화 검증
         if (!_activeConversationPlayerId.HasValue || _activeConversationPlayerId.Value != msg.PlayerId)
@@ -325,6 +344,13 @@ public partial class GameClientSession
     private Task HandlePlayerInteractShareRule(C_TO_G_PLAYER_INTERACT_SHARE_RULE msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            using var lockedPacket =
+                PacketMaker.G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT(false, ErrorCode.INVALID_GAME_STATE, 0);
+            Send(lockedPacket);
+            return Task.CompletedTask;
+        }
 
         // 활성 대화 검증
         if (!_activeConversationPlayerId.HasValue || _activeConversationPlayerId.Value != msg.PlayerId)
@@ -482,6 +508,13 @@ public partial class GameClientSession
         if (!PlayerId.HasValue)
         {
             Logger.LogWarning("HandleDoorOpenRequest: PlayerId not set");
+            return Task.CompletedTask;
+        }
+        if (IsRoundActionLocked(out _))
+        {
+            using var lockedPacket =
+                PacketMaker.G_TO_C_DOOR_STATE_UPDATE(msg.DoorId, false, ErrorCode.INVALID_GAME_STATE);
+            Send(lockedPacket);
             return Task.CompletedTask;
         }
 

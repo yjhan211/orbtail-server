@@ -366,21 +366,9 @@ public partial class GameClientSession
         state.PhaseDurationSeconds = Config.ROUND_SETTLEMENT_SECONDS;
         state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_SETTLEMENT_SECONDS);
 
-        if (state.SettlementEliminationApplied)
-            return;
-
         state.SettlementEliminationApplied = true;
-        long? eliminatedPlayerId = SelectRoundEliminationCandidate(matchingId);
-        if (eliminatedPlayerId.HasValue)
-        {
-            Logger.LogInformation(
-                "Round settlement elimination: MatchingId={MatchingId}, Round={Round}, PlayerId={PlayerId}",
-                matchingId, state.RoundNumber, eliminatedPlayerId.Value);
-            ProcessRoundElimination(matchingId, eliminatedPlayerId.Value, EliminationReason.MENTAL_ZERO);
-            return;
-        }
-
-        Logger.LogWarning("Round settlement entered with no elimination candidate: MatchingId={MatchingId}, Round={Round}",
+        Logger.LogInformation(
+            "[DEV] Round settlement elimination skipped: MatchingId={MatchingId}, Round={Round}",
             matchingId, state.RoundNumber);
     }
 

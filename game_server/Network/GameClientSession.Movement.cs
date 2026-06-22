@@ -12,6 +12,7 @@ public partial class GameClientSession
     {
         if (PlayerId == null) return;
         if (IsEliminated) return;
+        if (IsRoundActionLocked(out _)) return;
 
         // 탐색 중에는 이동 불가
         if (CurrentState == PlayerState.Exploring)

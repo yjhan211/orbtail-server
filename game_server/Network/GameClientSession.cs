@@ -155,6 +155,30 @@ public partial class GameClientSession : SessionBase
         }
     }
 
+    internal static bool IsRoundActionPhase(long matchingId)
+    {
+        if (!GameRoundStates.TryGetValue(matchingId, out var state))
+            return true;
+
+        lock (state.SyncRoot)
+        {
+            return !state.IsSessionEnded && state.Phase == RoundPhase.Action;
+        }
+    }
+
+    private bool IsRoundActionLocked(out RoundPhase phase)
+    {
+        phase = RoundPhase.Action;
+        if (CurrentMapSubId <= 0 || !GameRoundStates.TryGetValue(CurrentMapSubId, out var state))
+            return false;
+
+        lock (state.SyncRoot)
+        {
+            phase = state.Phase;
+            return state.IsSessionEnded || state.Phase != RoundPhase.Action;
+        }
+    }
+
     public new long? PlayerId { get; private set; }
     public MapId CurrentMapId { get; private set; }
     public long CurrentMapSubId { get; private set; }
@@ -270,6 +294,8 @@ public partial class GameClientSession : SessionBase
     private Task HandleSocialAction(C_TO_G_SOCIAL_ACTION msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+            return Task.CompletedTask;
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);

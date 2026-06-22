@@ -252,6 +252,9 @@ public class GameServer(
 
             foreach (var session in activeSessions)
             {
+                if (!GameClientSession.IsRoundActionPhase(session.CurrentMapSubId))
+                    continue;
+
                 bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
 
                 int corruptionDelta = 0;
@@ -334,6 +337,7 @@ public class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 // 봇 자연 정신오염 증가 제거 (#135) — 시연 시간 내 봇 조기 탈락 방지
                 const int botDecay = 0;
@@ -364,6 +368,7 @@ public class GameServer(
             // 7. 프로토 0 기척 틱 (#159) — 5초 조우 강도 계산 후 인간 세션에 전송
             foreach (long matchingId in matchingIds)
             {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 var playerAreas = BuildPlayerAreas(matchingId, activeSessions);
                 _presenceTracker.Tick(matchingId, playerAreas);
 
@@ -1049,6 +1054,8 @@ public class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
+
                 var (warningArea, warningSeconds, closureAtUnixMs, closingArea) =
                     _areaClosureManager.CheckClosureSchedule(matchingId);
 
@@ -1152,6 +1159,7 @@ public class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 ProcessBotMissionForMatching(matchingId, activeSessions);
             }
@@ -1181,6 +1189,7 @@ public class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 // 프로토 0: 봇 타겟 추적/떠보기를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
                 var humanAreas = activeSessions
