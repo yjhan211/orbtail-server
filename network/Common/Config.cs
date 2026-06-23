@@ -70,10 +70,10 @@ namespace network.common
         /// <summary>Round system: settlement phase duration in seconds (#168).</summary>
         public const int ROUND_SETTLEMENT_SECONDS = 45;
         public const int ROUND_SETTLEMENT_NOMINATION_SECONDS = 10;
-        public const int ROUND_SETTLEMENT_RESULT_SECONDS = 5;
-        public const int ROUND_SETTLEMENT_CONTRIBUTION_SECONDS = 9;
-        public const int ROUND_SETTLEMENT_DETECTION_RESULT_SECONDS = 9;
-        public const int ROUND_SETTLEMENT_ELIMINATION_SECONDS = 9;
+        public const int ROUND_SETTLEMENT_RESULT_SECONDS = 3;
+        public const int ROUND_SETTLEMENT_CONTRIBUTION_SECONDS = 3;
+        public const int ROUND_SETTLEMENT_DETECTION_RESULT_SECONDS = 3;
+        public const int ROUND_SETTLEMENT_ELIMINATION_SECONDS = 3;
 
         // 패키지 Y 추가 상수 (#24)
         /// <summary>강당 체류 시 자연증가에 추가되는 오염도 (5초당). GDD §3.1.1, 패키지 Y 3A.</summary>
