@@ -56,7 +56,7 @@ namespace network.common
 
         // Game Session Settings
         /// <summary>게임 세션 지속 시간 (분)</summary>
-        public static readonly int GAME_DURATION_MINUTES = 20;
+        public static readonly int GAME_DURATION_MINUTES = 15;
 
         /// <summary>게임 세션 지속 시간 (초)</summary>
         public static readonly int GAME_DURATION_SECONDS = GAME_DURATION_MINUTES * 60;
@@ -65,7 +65,7 @@ namespace network.common
         public const int ROUND_TOTAL_COUNT = 4;
 
         /// <summary>Round system: action phase duration in seconds (#168).</summary>
-        public const int ROUND_ACTION_SECONDS = 10;
+        public const int ROUND_ACTION_SECONDS = 3 * 60;
 
         /// <summary>Round system: settlement phase duration in seconds (#168).</summary>
         public const int ROUND_SETTLEMENT_SECONDS = 45;
