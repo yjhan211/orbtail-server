@@ -349,12 +349,7 @@ public partial class GameClientSession
                 return;
 
             if (DateTime.UtcNow >= state.PhaseEndsAtUtc)
-            {
-                if (state.Phase == RoundPhase.Action)
-                    EnterSettlementPhase(matchingId, state);
-                else if (state.Phase == RoundPhase.Settlement)
-                    AdvanceRoundOrEnd(matchingId, state);
-            }
+                AdvanceRoundPhase(matchingId, state);
 
             BroadcastRoundState(matchingId, state);
         }
@@ -362,14 +357,138 @@ public partial class GameClientSession
 
     private void EnterSettlementPhase(long matchingId, RoundRuntimeState state)
     {
-        state.Phase = RoundPhase.Settlement;
-        state.PhaseDurationSeconds = Config.ROUND_SETTLEMENT_SECONDS;
-        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_SETTLEMENT_SECONDS);
+        state.Phase = RoundPhase.SettlementNomination;
+        state.PhaseDurationSeconds = Config.ROUND_SETTLEMENT_NOMINATION_SECONDS;
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_SETTLEMENT_NOMINATION_SECONDS);
+        state.SettlementNominations.Clear();
+        state.TestBotNominationsInjected = false;
 
         state.SettlementEliminationApplied = true;
         Logger.LogInformation(
             "[DEV] Round settlement elimination skipped: MatchingId={MatchingId}, Round={Round}",
             matchingId, state.RoundNumber);
+    }
+
+    private void AdvanceRoundPhase(long matchingId, RoundRuntimeState state)
+    {
+        switch (state.Phase)
+        {
+            case RoundPhase.Action:
+                EnterSettlementPhase(matchingId, state);
+                break;
+            case RoundPhase.SettlementNomination:
+                EnterSettlementResultPhase(matchingId, state);
+                break;
+            case RoundPhase.SettlementResult:
+                EnterSettlementSubPhase(state, RoundPhase.SettlementContributionReveal,
+                    Config.ROUND_SETTLEMENT_CONTRIBUTION_SECONDS);
+                break;
+            case RoundPhase.SettlementContributionReveal:
+                EnterSettlementSubPhase(state, RoundPhase.SettlementDetectionResultReveal,
+                    Config.ROUND_SETTLEMENT_DETECTION_RESULT_SECONDS);
+                break;
+            case RoundPhase.SettlementDetectionResultReveal:
+                EnterSettlementSubPhase(state, RoundPhase.SettlementEliminationReveal,
+                    Config.ROUND_SETTLEMENT_ELIMINATION_SECONDS);
+                break;
+            case RoundPhase.SettlementEliminationReveal:
+                AdvanceRoundOrEnd(matchingId, state);
+                break;
+        }
+    }
+
+    private void EnterSettlementResultPhase(long matchingId, RoundRuntimeState state)
+    {
+        InjectTestSettlementBotNominations(matchingId, state);
+        state.Phase = RoundPhase.SettlementResult;
+        state.PhaseDurationSeconds = Config.ROUND_SETTLEMENT_RESULT_SECONDS;
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_SETTLEMENT_RESULT_SECONDS);
+        BroadcastSettlementNominationResults(matchingId, state);
+    }
+
+    private static void EnterSettlementSubPhase(RoundRuntimeState state, RoundPhase phase, int durationSeconds)
+    {
+        state.Phase = phase;
+        state.PhaseDurationSeconds = Math.Max(1, durationSeconds);
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(state.PhaseDurationSeconds);
+    }
+
+    private void InjectTestSettlementBotNominations(long matchingId, RoundRuntimeState state)
+    {
+        if (state.TestBotNominationsInjected)
+            return;
+
+        state.TestBotNominationsInjected = true;
+        var sessions = _getSessionsByInstance(CurrentMapId, matchingId)
+            .Where(session => session.PlayerId.HasValue &&
+                              !session.IsEliminated &&
+                              session.ManittoStatus != ManittoStatus.SPECTATING)
+            .ToList();
+        if (sessions.Count == 0)
+            return;
+
+        var availableBots = _botPlayerManager.GetBots(matchingId)
+            .Where(bot => !bot.IsEliminated && bot.ManittoStatus != ManittoStatus.SPECTATING)
+            .OrderBy(_ => Guid.NewGuid())
+            .ToList();
+        if (availableBots.Count == 0)
+            return;
+
+        foreach (var session in sessions)
+        {
+            long targetPlayerId = session.PlayerId!.Value;
+            int injectedCount = 0;
+
+            foreach (var bot in availableBots)
+            {
+                if (state.SettlementNominations.ContainsKey(bot.PlayerId))
+                    continue;
+
+                state.SettlementNominations[bot.PlayerId] = targetPlayerId;
+                injectedCount++;
+                if (injectedCount >= 2)
+                    break;
+            }
+        }
+    }
+
+    private void BroadcastSettlementNominationResults(long matchingId, RoundRuntimeState state)
+    {
+        var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
+        if (sessions.Count == 0) return;
+
+        var nominations = state.SettlementNominations
+            .Select(pair => new SettlementNominationEntry
+            {
+                NominatorPlayerId = pair.Key,
+                TargetPlayerId = pair.Value
+            })
+            .ToList();
+
+        foreach (var session in sessions)
+        {
+            if (!session.PlayerId.HasValue)
+                continue;
+
+            long targetPlayerId = session.PlayerId.Value;
+            var nominators = nominations
+                .Where(entry => entry.TargetPlayerId == targetPlayerId)
+                .Select(entry => entry.NominatorPlayerId)
+                .ToList();
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_SETTLEMENT_NOMINATION_RESULT, targetPlayerId);
+            var msg = new G_TO_C_SETTLEMENT_NOMINATION_RESULT
+            {
+                MatchingId = matchingId,
+                RoundNumber = state.RoundNumber,
+                TargetPlayerId = targetPlayerId,
+                NominatorPlayerIds = nominators,
+                NominatedByCount = nominators.Count,
+                Nominations = nominations
+            };
+            packet.SetBody(MessagePackSerializer.Serialize(msg));
+            session.Send(packet);
+        }
     }
 
     private void AdvanceRoundOrEnd(long matchingId, RoundRuntimeState state)
@@ -400,6 +519,8 @@ public partial class GameClientSession
         state.PhaseDurationSeconds = Config.ROUND_ACTION_SECONDS;
         state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_ACTION_SECONDS);
         state.SettlementEliminationApplied = false;
+        state.SettlementNominations.Clear();
+        state.TestBotNominationsInjected = false;
 
         Logger.LogInformation("Round advanced: MatchingId={MatchingId}, Round={Round}", matchingId, state.RoundNumber);
     }

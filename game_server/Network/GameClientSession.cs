@@ -135,6 +135,8 @@ public partial class GameClientSession : SessionBase
         public int PhaseDurationSeconds { get; set; } = Config.ROUND_ACTION_SECONDS;
         public bool SettlementEliminationApplied { get; set; }
         public bool IsSessionEnded { get; set; }
+        public Dictionary<long, long> SettlementNominations { get; } = new();
+        public bool TestBotNominationsInjected { get; set; }
     }
 
     internal static (int RoundNumber, int TotalRounds, string Phase, int RemainingSeconds, int PhaseDurationSeconds,
@@ -251,6 +253,8 @@ public partial class GameClientSession : SessionBase
         // 마니또 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DETECT_MANITTO,
             async bytes => await HandleMessage<C_TO_G_DETECT_MANITTO>(bytes, HandleDetectManitto));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SETTLEMENT_NOMINATE,
+            async bytes => await HandleMessage<C_TO_G_SETTLEMENT_NOMINATE>(bytes, HandleSettlementNominate));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_BOOKMARK_PRESENCE,
             async bytes => await HandleMessage<C_TO_G_BOOKMARK_PRESENCE>(bytes, HandleBookmarkPresence));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_TRACE,

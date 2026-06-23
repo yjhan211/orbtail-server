@@ -319,8 +319,13 @@ namespace network.common
     {
         None = 0,
         Action = 1,
-        Settlement = 2,
-        Ended = 3,
+        SettlementNomination = 2,
+        Settlement = SettlementNomination,
+        SettlementResult = 3,
+        SettlementContributionReveal = 4,
+        SettlementDetectionResultReveal = 5,
+        SettlementEliminationReveal = 6,
+        Ended = 7,
     }
 
     public enum ManittoStatus : short

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -276,6 +277,51 @@ public partial class GameClientSession
         Logger.LogInformation("색출 오발: DetecterId={PlayerId}, Target={Target}", PlayerId, msg.TargetPlayerId);
 
         return Task.CompletedTask;
+    }
+
+    private Task HandleSettlementNominate(C_TO_G_SETTLEMENT_NOMINATE msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (CurrentMapSubId <= 0 || !GameRoundStates.TryGetValue(CurrentMapSubId, out var state))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement is not active");
+            return Task.CompletedTask;
+        }
+
+        lock (state.SyncRoot)
+        {
+            if (state.IsSessionEnded || state.Phase != RoundPhase.SettlementNomination)
+            {
+                SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round nomination phase is not active");
+                return Task.CompletedTask;
+            }
+
+            if (!IsSettlementNominationTargetAvailable(CurrentMapSubId, msg.TargetPlayerId))
+            {
+                SendErrorResponse(ErrorCode.DETECT_TARGET_NOT_FOUND, "Settlement nomination target not found");
+                return Task.CompletedTask;
+            }
+
+            state.SettlementNominations[PlayerId.Value] = msg.TargetPlayerId;
+        }
+
+        Logger.LogInformation("Settlement nomination saved: MatchingId={MatchingId}, Nominator={Nominator}, Target={Target}",
+            CurrentMapSubId, PlayerId.Value, msg.TargetPlayerId);
+        return Task.CompletedTask;
+    }
+
+    private bool IsSettlementNominationTargetAvailable(long matchingId, long targetPlayerId)
+    {
+        if (!PlayerId.HasValue || targetPlayerId == 0 || targetPlayerId == PlayerId.Value)
+            return false;
+
+        var targetSession = _getSessionsByInstance(CurrentMapId, matchingId)
+            .FirstOrDefault(session => session.PlayerId == targetPlayerId);
+        if (targetSession != null)
+            return !targetSession.IsEliminated && targetSession.ManittoStatus != ManittoStatus.SPECTATING;
+
+        var bot = _botPlayerManager.GetBot(matchingId, targetPlayerId);
+        return bot != null && !bot.IsEliminated && bot.ManittoStatus != ManittoStatus.SPECTATING;
     }
 
     private Task HandleBookmarkPresence(C_TO_G_BOOKMARK_PRESENCE msg)
