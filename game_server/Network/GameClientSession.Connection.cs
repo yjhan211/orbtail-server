@@ -508,12 +508,19 @@ public partial class GameClientSession
         if (playerIds.Count == 0)
             return;
 
-        foreach (long playerId in playerIds)
+        var contributionPool = new List<int> { 9, 21, 27, 21, 15 };
+        ShuffleSettlementContributionPool(contributionPool);
+
+        for (int i = 0; i < playerIds.Count; i++)
         {
+            if (i > 0 && i % contributionPool.Count == 0)
+                ShuffleSettlementContributionPool(contributionPool);
+
+            long playerId = playerIds[i];
             state.SettlementContributionEntries.Add(new SettlementContributionEntry
             {
                 PlayerId = playerId,
-                Contribution = Random.Shared.Next(0, 31)
+                Contribution = contributionPool[i % contributionPool.Count]
             });
         }
 
@@ -546,6 +553,15 @@ public partial class GameClientSession
             matchingId, state.RoundNumber, state.SettlementContributionTopPlayerId,
             state.SettlementContributionTopValue, state.SettlementContributionLowestPlayerId,
             state.SettlementContributionLowestValue, success, state.SettlementContributionEliminatedPlayerId);
+    }
+
+    private static void ShuffleSettlementContributionPool(List<int> values)
+    {
+        for (int i = values.Count - 1; i > 0; i--)
+        {
+            int swapIndex = Random.Shared.Next(i + 1);
+            (values[i], values[swapIndex]) = (values[swapIndex], values[i]);
+        }
     }
 
     private List<long> GetSettlementActivePlayerIds(long matchingId)
