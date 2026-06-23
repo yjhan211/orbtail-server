@@ -362,6 +362,7 @@ public partial class GameClientSession
         state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_SETTLEMENT_NOMINATION_SECONDS);
         state.SettlementNominations.Clear();
         state.TestBotNominationsInjected = false;
+        ClearSettlementContributionResult(state);
 
         state.SettlementEliminationApplied = true;
         Logger.LogInformation(
@@ -380,8 +381,7 @@ public partial class GameClientSession
                 EnterSettlementResultPhase(matchingId, state);
                 break;
             case RoundPhase.SettlementResult:
-                EnterSettlementSubPhase(state, RoundPhase.SettlementContributionReveal,
-                    Config.ROUND_SETTLEMENT_CONTRIBUTION_SECONDS);
+                EnterSettlementContributionPhase(matchingId, state);
                 break;
             case RoundPhase.SettlementContributionReveal:
                 EnterSettlementSubPhase(state, RoundPhase.SettlementDetectionResultReveal,
@@ -411,6 +411,15 @@ public partial class GameClientSession
         state.Phase = phase;
         state.PhaseDurationSeconds = Math.Max(1, durationSeconds);
         state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(state.PhaseDurationSeconds);
+    }
+
+    private void EnterSettlementContributionPhase(long matchingId, RoundRuntimeState state)
+    {
+        EnterSettlementSubPhase(state, RoundPhase.SettlementContributionReveal,
+            Config.ROUND_SETTLEMENT_CONTRIBUTION_SECONDS);
+        BuildSettlementContributionResult(matchingId, state);
+        BroadcastRoundState(matchingId, state);
+        BroadcastSettlementContributionResults(matchingId, state);
     }
 
     private void InjectTestSettlementBotNominations(long matchingId, RoundRuntimeState state)
@@ -491,6 +500,130 @@ public partial class GameClientSession
         }
     }
 
+    private void BuildSettlementContributionResult(long matchingId, RoundRuntimeState state)
+    {
+        ClearSettlementContributionResult(state);
+
+        var playerIds = GetSettlementActivePlayerIds(matchingId);
+        if (playerIds.Count == 0)
+            return;
+
+        foreach (long playerId in playerIds)
+        {
+            state.SettlementContributionEntries.Add(new SettlementContributionEntry
+            {
+                PlayerId = playerId,
+                Contribution = Random.Shared.Next(0, 31)
+            });
+        }
+
+        var top = state.SettlementContributionEntries
+            .OrderByDescending(entry => entry.Contribution)
+            .ThenBy(entry => entry.PlayerId)
+            .First();
+        var lowest = state.SettlementContributionEntries
+            .OrderBy(entry => entry.Contribution)
+            .ThenBy(entry => entry.PlayerId)
+            .First();
+
+        state.SettlementContributionTopPlayerId = top.PlayerId;
+        state.SettlementContributionLowestPlayerId = lowest.PlayerId;
+        state.SettlementContributionTopValue = top.Contribution;
+        state.SettlementContributionLowestValue = lowest.Contribution;
+
+        long decisiveTargetPlayerId = state.SettlementNominations.TryGetValue(top.PlayerId, out long nominatedTarget)
+            ? nominatedTarget
+            : 0;
+        var topPlayersManitto = _manittoChainManager.FindManittoOf(matchingId, top.PlayerId);
+        bool success = decisiveTargetPlayerId != 0 && topPlayersManitto?.PlayerId == decisiveTargetPlayerId;
+
+        state.SettlementContributionDecisiveTargetPlayerId = decisiveTargetPlayerId;
+        state.SettlementContributionNominationSuccess = success;
+        state.SettlementContributionEliminatedPlayerId = success ? decisiveTargetPlayerId : lowest.PlayerId;
+
+        Logger.LogInformation(
+            "Settlement contribution result: MatchingId={MatchingId}, Round={Round}, Top={TopPlayerId}:{TopValue}, Lowest={LowestPlayerId}:{LowestValue}, Success={Success}, Eliminated={EliminatedPlayerId}",
+            matchingId, state.RoundNumber, state.SettlementContributionTopPlayerId,
+            state.SettlementContributionTopValue, state.SettlementContributionLowestPlayerId,
+            state.SettlementContributionLowestValue, success, state.SettlementContributionEliminatedPlayerId);
+    }
+
+    private List<long> GetSettlementActivePlayerIds(long matchingId)
+    {
+        var result = new List<long>();
+
+        foreach (var session in _getSessionsByInstance(CurrentMapId, matchingId))
+        {
+            if (!session.PlayerId.HasValue || session.IsEliminated ||
+                session.ManittoStatus == ManittoStatus.SPECTATING)
+                continue;
+
+            result.Add(session.PlayerId.Value);
+        }
+
+        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        {
+            if (bot.IsEliminated || bot.ManittoStatus == ManittoStatus.SPECTATING)
+                continue;
+
+            result.Add(bot.PlayerId);
+        }
+
+        return result
+            .Distinct()
+            .OrderBy(playerId => playerId)
+            .ToList();
+    }
+
+    private void BroadcastSettlementContributionResults(long matchingId, RoundRuntimeState state)
+    {
+        var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
+        if (sessions.Count == 0 || state.SettlementContributionEntries.Count == 0) return;
+
+        foreach (var session in sessions)
+        {
+            if (!session.PlayerId.HasValue)
+                continue;
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_SETTLEMENT_CONTRIBUTION_RESULT,
+                session.PlayerId.Value);
+            var msg = new G_TO_C_SETTLEMENT_CONTRIBUTION_RESULT
+            {
+                MatchingId = matchingId,
+                RoundNumber = state.RoundNumber,
+                Entries = state.SettlementContributionEntries
+                    .Select(entry => new SettlementContributionEntry
+                    {
+                        PlayerId = entry.PlayerId,
+                        Contribution = entry.Contribution
+                    })
+                    .ToList(),
+                TopPlayerId = state.SettlementContributionTopPlayerId,
+                LowestPlayerId = state.SettlementContributionLowestPlayerId,
+                TopContribution = state.SettlementContributionTopValue,
+                LowestContribution = state.SettlementContributionLowestValue,
+                DecisivePlayerId = state.SettlementContributionTopPlayerId,
+                DecisiveTargetPlayerId = state.SettlementContributionDecisiveTargetPlayerId,
+                IsNominationSuccess = state.SettlementContributionNominationSuccess,
+                EliminatedPlayerId = state.SettlementContributionEliminatedPlayerId
+            };
+            packet.SetBody(MessagePackSerializer.Serialize(msg));
+            session.Send(packet);
+        }
+    }
+
+    private static void ClearSettlementContributionResult(RoundRuntimeState state)
+    {
+        state.SettlementContributionEntries.Clear();
+        state.SettlementContributionTopPlayerId = 0;
+        state.SettlementContributionLowestPlayerId = 0;
+        state.SettlementContributionTopValue = 0;
+        state.SettlementContributionLowestValue = 0;
+        state.SettlementContributionDecisiveTargetPlayerId = 0;
+        state.SettlementContributionNominationSuccess = false;
+        state.SettlementContributionEliminatedPlayerId = 0;
+    }
+
     private void AdvanceRoundOrEnd(long matchingId, RoundRuntimeState state)
     {
         var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(matchingId);
@@ -521,6 +654,7 @@ public partial class GameClientSession
         state.SettlementEliminationApplied = false;
         state.SettlementNominations.Clear();
         state.TestBotNominationsInjected = false;
+        ClearSettlementContributionResult(state);
 
         Logger.LogInformation("Round advanced: MatchingId={MatchingId}, Round={Round}", matchingId, state.RoundNumber);
     }

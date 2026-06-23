@@ -137,6 +137,14 @@ public partial class GameClientSession : SessionBase
         public bool IsSessionEnded { get; set; }
         public Dictionary<long, long> SettlementNominations { get; } = new();
         public bool TestBotNominationsInjected { get; set; }
+        public List<SettlementContributionEntry> SettlementContributionEntries { get; } = new();
+        public long SettlementContributionTopPlayerId { get; set; }
+        public long SettlementContributionLowestPlayerId { get; set; }
+        public int SettlementContributionTopValue { get; set; }
+        public int SettlementContributionLowestValue { get; set; }
+        public long SettlementContributionDecisiveTargetPlayerId { get; set; }
+        public bool SettlementContributionNominationSuccess { get; set; }
+        public long SettlementContributionEliminatedPlayerId { get; set; }
     }
 
     internal static (int RoundNumber, int TotalRounds, string Phase, int RemainingSeconds, int PhaseDurationSeconds,

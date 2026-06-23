@@ -125,6 +125,7 @@ namespace network.common
         G_TO_C_DETECTION_ANNOUNCE,    // 색출 시도 전체 브로드캐스트 (영상 cut 시각화 — DEMO_MODE 06:40 SC→DC)
         C_TO_G_SETTLEMENT_NOMINATE,   // 정산 지목 요청
         G_TO_C_SETTLEMENT_NOMINATION_RESULT, // 정산 지목 결과
+        G_TO_C_SETTLEMENT_CONTRIBUTION_RESULT, // 정산 기여도 공개 결과
 
         // 탈락 & 체인 프로토콜
         G_TO_C_PLAYER_ELIMINATED,     // 플레이어 탈락 알림 (전체 브로드캐스트)

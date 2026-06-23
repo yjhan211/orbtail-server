@@ -549,6 +549,29 @@ namespace network.common.data.models
         [Key("nominations")] public List<SettlementNominationEntry> Nominations { get; set; } = new();
     }
 
+    [MessagePackObject]
+    public class SettlementContributionEntry : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("contribution")] public int Contribution { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_SETTLEMENT_CONTRIBUTION_RESULT : IMessagePackObject
+    {
+        [Key("matchingId")] public long MatchingId { get; set; }
+        [Key("roundNumber")] public int RoundNumber { get; set; }
+        [Key("entries")] public List<SettlementContributionEntry> Entries { get; set; } = new();
+        [Key("topPlayerId")] public long TopPlayerId { get; set; }
+        [Key("lowestPlayerId")] public long LowestPlayerId { get; set; }
+        [Key("topContribution")] public int TopContribution { get; set; }
+        [Key("lowestContribution")] public int LowestContribution { get; set; }
+        [Key("decisivePlayerId")] public long DecisivePlayerId { get; set; }
+        [Key("decisiveTargetPlayerId")] public long DecisiveTargetPlayerId { get; set; }
+        [Key("isNominationSuccess")] public bool IsNominationSuccess { get; set; }
+        [Key("eliminatedPlayerId")] public long EliminatedPlayerId { get; set; }
+    }
+
     // ===== 탈락 & 체인 =====
 
     [MessagePackObject]
