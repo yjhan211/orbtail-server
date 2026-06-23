@@ -1,0 +1,5 @@
+chain_state,target_alive,manitto_alive,round_start_active_general_job_count,round_start_manitto_role_count,can_accuse,notes_kr
+normal,true,true,1,1~2,true,기본 상태. 일반 잡일 연쇄 + 마니또 역할 수행.
+target_lost,false,true,1,0,true,타겟이 사라져 마니또 역할 없음. 일반 잡일만 수행하며 살아 있는 내 마니또가 있으면 고발 적격.
+manitto_lost,true,false,1,1~2,true,타겟은 살아 있어 마니또 역할은 가능. 마니또 생존 여부와 별개로 지목 입력은 가능하지만 성공 판정은 살아 있는 실제 마니또에게만 적용.
+both_lost,false,false,1,0,true,타겟/마니또 모두 상실. 일반 잡일만 수행하며 지목 입력은 가능하지만 성공 판정은 발생하지 않음.
