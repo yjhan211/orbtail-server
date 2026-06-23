@@ -252,6 +252,9 @@ public class GameServer(
 
             foreach (var session in activeSessions)
             {
+                if (!GameClientSession.IsRoundActionPhase(session.CurrentMapSubId))
+                    continue;
+
                 bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
 
                 int corruptionDelta = 0;
@@ -334,6 +337,7 @@ public class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 // 봇 자연 정신오염 증가 제거 (#135) — 시연 시간 내 봇 조기 탈락 방지
                 const int botDecay = 0;
@@ -364,6 +368,7 @@ public class GameServer(
             // 7. 프로토 0 기척 틱 (#159) — 5초 조우 강도 계산 후 인간 세션에 전송
             foreach (long matchingId in matchingIds)
             {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 var playerAreas = BuildPlayerAreas(matchingId, activeSessions);
                 _presenceTracker.Tick(matchingId, playerAreas);
 
@@ -1049,6 +1054,8 @@ public class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
+
                 var (warningArea, warningSeconds, closureAtUnixMs, closingArea) =
                     _areaClosureManager.CheckClosureSchedule(matchingId);
 
@@ -1152,6 +1159,7 @@ public class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 ProcessBotMissionForMatching(matchingId, activeSessions);
             }
@@ -1181,6 +1189,7 @@ public class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 // 프로토 0: 봇 타겟 추적/떠보기를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
                 var humanAreas = activeSessions
@@ -1191,7 +1200,8 @@ public class GameServer(
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
                     BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
-                StartTargetBotInterrogations(matchingId, activeSessions);
+                if (EnableBotInitiatedInteractions)
+                    StartTargetBotInterrogations(matchingId, activeSessions);
             }
         }
         catch (Exception ex)
@@ -1204,36 +1214,47 @@ public class GameServer(
         }
     }
 
+    private static readonly bool EnableBotInitiatedInteractions = false;
     private static readonly TimeSpan TargetBotInterrogationDelay = TimeSpan.FromSeconds(3);
 
     private void StartTargetBotInterrogations(long matchingId, List<GameClientSession> activeSessions)
     {
-        if (!DemoMode.IsActive) return;
-
         var now = DateTime.UtcNow;
         var matchingSessions = activeSessions
             .Where(s => s.CurrentMapSubId == matchingId)
             .ToList();
 
-        foreach (var session in matchingSessions)
-        {
-            if (!session.PlayerId.HasValue || session.IsEliminated) continue;
-            if (!BotPlayerManager.IsBotPlayerId(session.TargetPlayerId)) continue;
+        var playerSnapshots = matchingSessions
+            .Where(s => s.PlayerId.HasValue)
+            .Select(s => new BotBehaviorPlayerSnapshot
+            {
+                PlayerId = s.PlayerId!.Value,
+                TargetPlayerId = s.TargetPlayerId,
+                CurrentArea = s.CurrentArea,
+                IsEliminated = s.IsEliminated
+            })
+            .ToList();
 
-            var bot = _botPlayerManager.GetBot(matchingId, session.TargetPlayerId);
-            if (bot == null || bot.IsEliminated) continue;
+        var mapId = _botPlayerManager.GetMatchingMapId(matchingId);
+        var bots = _botPlayerManager.GetBots(matchingId)
+            .Where(b => !b.IsEliminated)
+            .ToList();
+
+        foreach (var bot in bots)
+        {
+            PruneEndedBotEncounters(bot, playerSnapshots);
+
+            var decision = BotBehaviorDecisionService.Decide(
+                bot,
+                mapId,
+                playerSnapshots,
+                area => _areaClosureManager.IsAreaClosed(matchingId, area));
+
+            if (decision.Kind != BotBehaviorActionKind.Chat) continue;
+            var session = matchingSessions.FirstOrDefault(s => s.PlayerId == decision.TargetPlayerId);
+            if (session == null || session.IsEliminated || !session.PlayerId.HasValue) continue;
 
             long playerId = session.PlayerId.Value;
-            bool isSameEncounter = bot.CurrentArea != AreaType.None
-                                   && bot.CurrentArea == session.CurrentArea
-                                   && !session.CurrentArea.IsCorridor();
-            if (!isSameEncounter)
-            {
-                bot.TargetEncounterStartedAtByPlayerId.Remove(playerId);
-                bot.TargetInterrogationRequestedInEncounterPlayerIds.Remove(playerId);
-                continue;
-            }
-
             if (bot.TargetInterrogationRequestedInEncounterPlayerIds.Contains(playerId)) continue;
 
             if (!bot.TargetEncounterStartedAtByPlayerId.TryGetValue(playerId, out var encounterStartedAt))
@@ -1249,6 +1270,25 @@ public class GameServer(
             bot.TargetEncounterStartedAtByPlayerId[playerId] = now;
             bot.TargetInterrogationRequestedInEncounterPlayerIds.Add(playerId);
         }
+    }
+
+    private static void PruneEndedBotEncounters(BotPlayerState bot, IReadOnlyList<BotBehaviorPlayerSnapshot> players)
+    {
+        var activeEncounterPlayerIds = players
+            .Where(p => !p.IsEliminated
+                        && p.CurrentArea == bot.CurrentArea
+                        && bot.CurrentArea != AreaType.None
+                        && !bot.CurrentArea.IsCorridor())
+            .Select(p => p.PlayerId)
+            .ToHashSet();
+
+        foreach (long playerId in bot.TargetEncounterStartedAtByPlayerId.Keys.ToList())
+            if (!activeEncounterPlayerIds.Contains(playerId))
+                bot.TargetEncounterStartedAtByPlayerId.Remove(playerId);
+
+        foreach (long playerId in bot.TargetInterrogationRequestedInEncounterPlayerIds.ToList())
+            if (!activeEncounterPlayerIds.Contains(playerId))
+                bot.TargetInterrogationRequestedInEncounterPlayerIds.Remove(playerId);
     }
 
     private void StartCorridorStopCheckTimer()
@@ -1494,6 +1534,7 @@ public class GameServer(
         int aliveCount = sessions.Count(s => !s.IsEliminated) + bots.Count(b => !b.IsEliminated);
         string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString()
                        ?? _botPlayerManager.GetMatchingMapId(matchingId).ToString();
+        var round = GameClientSession.GetRoundSnapshot(matchingId);
 
         return new InstanceSummary
         {
@@ -1502,6 +1543,12 @@ public class GameServer(
             PlayerCount = sessions.Count + bots.Count,
             AliveCount = aliveCount,
             ElapsedSeconds = Math.Round(elapsed, 1),
+            RoundNumber = round?.RoundNumber ?? 0,
+            TotalRounds = round?.TotalRounds ?? 0,
+            RoundPhase = round?.Phase ?? "",
+            RoundRemainingSeconds = round?.RemainingSeconds ?? 0,
+            RoundPhaseDurationSeconds = round?.PhaseDurationSeconds ?? 0,
+            RoundSessionEnded = round?.IsSessionEnded ?? false,
             ClosedAreas = closedAreas
         };
     }
@@ -1665,6 +1712,7 @@ public class GameServer(
         int aliveCount = sessions.Count(s => !s.IsEliminated) + bots.Count(b => !b.IsEliminated);
         string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString()
                        ?? _botPlayerManager.GetMatchingMapId(matchingId).ToString();
+        var round = GameClientSession.GetRoundSnapshot(matchingId);
 
         return new InstanceSnapshot
         {
@@ -1673,6 +1721,12 @@ public class GameServer(
             PlayerCount = sessions.Count + bots.Count,
             AliveCount = aliveCount,
             ElapsedSeconds = Math.Round(elapsed, 1),
+            RoundNumber = round?.RoundNumber ?? 0,
+            TotalRounds = round?.TotalRounds ?? 0,
+            RoundPhase = round?.Phase ?? "",
+            RoundRemainingSeconds = round?.RemainingSeconds ?? 0,
+            RoundPhaseDurationSeconds = round?.PhaseDurationSeconds ?? 0,
+            RoundSessionEnded = round?.IsSessionEnded ?? false,
             ClosedAreas = closedAreas,
             Players = playerSnapshots
         };

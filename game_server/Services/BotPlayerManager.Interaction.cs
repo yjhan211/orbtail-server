@@ -8,38 +8,12 @@ namespace game_server.services;
 /// <summary>
 ///     봇 1:1 동기턴 자동 응답 AI.
 ///     #26 Part 3:
-///     - 상호작용 요청 자동 수락/거절 (자기 race 진행 vs 정보 가치)
 ///     - 선택지 자동 선택 (질문 4 카테고리 무작위)
 ///     - 답변 자동 선택 (진실 1 / 거짓 2 비율)
 ///     - 직책 밝히기 자동 (가끔 블러프)
 /// </summary>
 public partial class BotPlayerManager
 {
-    /// <summary>
-    ///     봇이 1:1 상호작용 요청을 수락할지 결정.
-    ///     - 스태미나 부족(< 8) → 거절
-    ///     - 자기 부품 회수 진행도가 80% 이상 → 거절(자기 race 우선)
-    ///     - 그 외 70% 확률로 수락 (정보 가치)
-    /// </summary>
-    public bool DecideAcceptInteraction(long matchingId, long botPlayerId, MissionManager missionManager)
-    {
-        var bot = GetBot(matchingId, botPlayerId);
-        if (bot == null) return false;
-        if (bot.IsEliminated) return false;
-        if (bot.Stamina < 8) return false;
-
-        var state = missionManager.GetState(matchingId, botPlayerId);
-        if (state != null && state.IsCompleted) return false;
-
-        // race 진행 80% 초과 시 거절 — 자기 완주 우선
-        int totalParts = state != null ? GameProgressTotal((short)bot.MyJobTitle) : 7;
-        int collected = state?.CollectedParts.Count ?? 0;
-        if (totalParts > 0 && collected * 100 / totalParts >= 80) return false;
-
-        // 응답 빈도 70%
-        return _rng.Next(100) < 70;
-    }
-
     /// <summary>
     ///     직책별 총 부품 수 (소재 4 + 중간재 2 + 최종 1 = 7).
     /// </summary>
@@ -119,4 +93,3 @@ public enum BotJobReveal
     Truth,   // 진실 (실제 직책)
     Bluff    // 블러프 (다른 직책 사칭)
 }
-

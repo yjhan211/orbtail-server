@@ -26,6 +26,7 @@ public partial class GameClientSession : SessionBase
     private const int HeartbeatTimeoutSeconds = 30;
     private static readonly TimeSpan InteractCooldown = TimeSpan.FromSeconds(5);
     private static readonly ConcurrentDictionary<long, Timer> GameTimers = new();
+    private static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly AreaRuleManager _areaRuleManager;
     private readonly CorridorRuleManager _corridorRuleManager;
@@ -125,6 +126,69 @@ public partial class GameClientSession : SessionBase
         Logger.LogInformation("GameClientSession created");
     }
 
+    private sealed class RoundRuntimeState
+    {
+        public object SyncRoot { get; } = new();
+        public int RoundNumber { get; set; } = 1;
+        public RoundPhase Phase { get; set; } = RoundPhase.Action;
+        public DateTime PhaseEndsAtUtc { get; set; }
+        public int PhaseDurationSeconds { get; set; } = Config.ROUND_ACTION_SECONDS;
+        public bool SettlementEliminationApplied { get; set; }
+        public bool IsSessionEnded { get; set; }
+        public Dictionary<long, long> SettlementNominations { get; } = new();
+        public bool TestBotNominationsInjected { get; set; }
+        public List<SettlementContributionEntry> SettlementContributionEntries { get; } = new();
+        public long SettlementContributionTopPlayerId { get; set; }
+        public long SettlementContributionLowestPlayerId { get; set; }
+        public int SettlementContributionTopValue { get; set; }
+        public int SettlementContributionLowestValue { get; set; }
+        public long SettlementContributionDecisiveTargetPlayerId { get; set; }
+        public bool SettlementContributionNominationSuccess { get; set; }
+        public long SettlementContributionEliminatedPlayerId { get; set; }
+    }
+
+    internal static (int RoundNumber, int TotalRounds, string Phase, int RemainingSeconds, int PhaseDurationSeconds,
+        bool IsSessionEnded)? GetRoundSnapshot(long matchingId)
+    {
+        if (!GameRoundStates.TryGetValue(matchingId, out var state))
+            return null;
+
+        lock (state.SyncRoot)
+        {
+            return (
+                state.RoundNumber,
+                Config.ROUND_TOTAL_COUNT,
+                state.Phase.ToString(),
+                GetRoundRemainingSeconds(state),
+                state.PhaseDurationSeconds,
+                state.IsSessionEnded);
+        }
+    }
+
+    internal static bool IsRoundActionPhase(long matchingId)
+    {
+        if (!GameRoundStates.TryGetValue(matchingId, out var state))
+            return true;
+
+        lock (state.SyncRoot)
+        {
+            return !state.IsSessionEnded && state.Phase == RoundPhase.Action;
+        }
+    }
+
+    private bool IsRoundActionLocked(out RoundPhase phase)
+    {
+        phase = RoundPhase.Action;
+        if (CurrentMapSubId <= 0 || !GameRoundStates.TryGetValue(CurrentMapSubId, out var state))
+            return false;
+
+        lock (state.SyncRoot)
+        {
+            phase = state.Phase;
+            return state.IsSessionEnded || state.Phase != RoundPhase.Action;
+        }
+    }
+
     public new long? PlayerId { get; private set; }
     public MapId CurrentMapId { get; private set; }
     public long CurrentMapSubId { get; private set; }
@@ -197,6 +261,8 @@ public partial class GameClientSession : SessionBase
         // 마니또 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DETECT_MANITTO,
             async bytes => await HandleMessage<C_TO_G_DETECT_MANITTO>(bytes, HandleDetectManitto));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SETTLEMENT_NOMINATE,
+            async bytes => await HandleMessage<C_TO_G_SETTLEMENT_NOMINATE>(bytes, HandleSettlementNominate));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_BOOKMARK_PRESENCE,
             async bytes => await HandleMessage<C_TO_G_BOOKMARK_PRESENCE>(bytes, HandleBookmarkPresence));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_TRACE,
@@ -240,6 +306,8 @@ public partial class GameClientSession : SessionBase
     private Task HandleSocialAction(C_TO_G_SOCIAL_ACTION msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+            return Task.CompletedTask;
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);

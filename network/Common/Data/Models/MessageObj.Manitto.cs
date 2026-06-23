@@ -525,6 +525,53 @@ namespace network.common.data.models
         [Key("isCorrect")] public bool IsCorrect { get; set; }
     }
 
+    [MessagePackObject]
+    public class C_TO_G_SETTLEMENT_NOMINATE : IMessagePackObject
+    {
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class SettlementNominationEntry : IMessagePackObject
+    {
+        [Key("nominatorPlayerId")] public long NominatorPlayerId { get; set; }
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_SETTLEMENT_NOMINATION_RESULT : IMessagePackObject
+    {
+        [Key("matchingId")] public long MatchingId { get; set; }
+        [Key("roundNumber")] public int RoundNumber { get; set; }
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+        [Key("nominatorPlayerIds")] public List<long> NominatorPlayerIds { get; set; } = new();
+        [Key("nominatedByCount")] public int NominatedByCount { get; set; }
+        [Key("nominations")] public List<SettlementNominationEntry> Nominations { get; set; } = new();
+    }
+
+    [MessagePackObject]
+    public class SettlementContributionEntry : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("contribution")] public int Contribution { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_SETTLEMENT_CONTRIBUTION_RESULT : IMessagePackObject
+    {
+        [Key("matchingId")] public long MatchingId { get; set; }
+        [Key("roundNumber")] public int RoundNumber { get; set; }
+        [Key("entries")] public List<SettlementContributionEntry> Entries { get; set; } = new();
+        [Key("topPlayerId")] public long TopPlayerId { get; set; }
+        [Key("lowestPlayerId")] public long LowestPlayerId { get; set; }
+        [Key("topContribution")] public int TopContribution { get; set; }
+        [Key("lowestContribution")] public int LowestContribution { get; set; }
+        [Key("decisivePlayerId")] public long DecisivePlayerId { get; set; }
+        [Key("decisiveTargetPlayerId")] public long DecisiveTargetPlayerId { get; set; }
+        [Key("isNominationSuccess")] public bool IsNominationSuccess { get; set; }
+        [Key("eliminatedPlayerId")] public long EliminatedPlayerId { get; set; }
+    }
+
     // ===== 탈락 & 체인 =====
 
     [MessagePackObject]
@@ -571,7 +618,8 @@ namespace network.common.data.models
         RAW_STRING = 0,
         INT_NUMBER = 1,
         AREA_TYPE = 2,    // IntValue를 AreaType으로 캐스팅 → GameAreaNameData 룩업
-        JOB_TITLE = 3     // IntValue를 JobTitle로 캐스팅 → 직책 textId(11000~)로 룩업
+        JOB_TITLE = 3,
+        ITEM_NAME = 4
     }
 
     /// <summary>

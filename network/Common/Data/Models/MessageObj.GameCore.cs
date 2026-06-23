@@ -150,6 +150,19 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class G_TO_C_ROUND_STATE : IMessagePackObject
+    {
+        [Key("matchingId")] public long MatchingId { get; set; }
+        [Key("roundNumber")] public int RoundNumber { get; set; }
+        [Key("totalRounds")] public int TotalRounds { get; set; }
+        [Key("phase")] public RoundPhase Phase { get; set; }
+        [Key("remainingSeconds")] public int RemainingSeconds { get; set; }
+        [Key("phaseDurationSeconds")] public int PhaseDurationSeconds { get; set; }
+        [Key("serverUnixMs")] public long ServerUnixMs { get; set; }
+        [Key("isSessionEnded")] public bool IsSessionEnded { get; set; }
+    }
+
+    [MessagePackObject]
     public class G_TO_C_GAME_END : IMessagePackObject
     {
         [Key("matchingId")] public long MatchingId { get; set; }

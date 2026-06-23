@@ -123,6 +123,9 @@ namespace network.common
         C_TO_G_DETECT_MANITTO,        // 마니또 지목 요청
         G_TO_C_DETECT_RESULT,         // 지목 결과 (성공/실패)
         G_TO_C_DETECTION_ANNOUNCE,    // 색출 시도 전체 브로드캐스트 (영상 cut 시각화 — DEMO_MODE 06:40 SC→DC)
+        C_TO_G_SETTLEMENT_NOMINATE,   // 정산 지목 요청
+        G_TO_C_SETTLEMENT_NOMINATION_RESULT, // 정산 지목 결과
+        G_TO_C_SETTLEMENT_CONTRIBUTION_RESULT, // 정산 기여도 공개 결과
 
         // 탈락 & 체인 프로토콜
         G_TO_C_PLAYER_ELIMINATED,     // 플레이어 탈락 알림 (전체 브로드캐스트)
@@ -191,6 +194,8 @@ namespace network.common
         C_TO_G_BOOKMARK_PRESENCE,       // 기척 HUD 수동 북마크 상태 전송
         G_TO_C_BOOKMARK_PRESENCE_RESULT, // 기척 HUD 수동 북마크 결과
         G_TO_C_SHARP_GAZE_MARK_UPDATE,  // 내 타겟이 나를 마니또로 북마크했는지 여부
+
+        G_TO_C_ROUND_STATE,
 
         END
     }

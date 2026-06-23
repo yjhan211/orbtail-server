@@ -97,6 +97,7 @@ id,category,text_kr,text_en,text_jp
 10050,4,<color=#FF7E9A>마니또의 선물</color>을 발견했습니다.,You found a <color=#FF7E9A>secret gift from your manitto</color>.,<color=#FF7E9A>マニットの秘密の贈り物</color>を見つけました。
 10051,4,<color=#A8D4E0>전달</color> 비밀 선물이 전해졌습니다. ({0}/{1}),<color=#A8D4E0>Delivery</color> Secret gift delivered. ({0}/{1}),<color=#A8D4E0>届け物</color> 秘密の贈り物が届きました。({0}/{1})
 10057,4,<color=#A8D4E0>{0}</color>이 비밀 선물을 발견했습니다.,<color=#A8D4E0>{0}</color> found the secret gift.,<color=#A8D4E0>{0}</color>が秘密の贈り物を見つけました。
+10058,4,상대방이 말을 기다리는 중입니다...,Waiting for the other player to speak...,相手が話すのを待っています...
 10052,4,당신이 선물을 배치한 곳입니다. 재시도시 <color=#FF7E9A>회수</color>합니다.,This is where you placed your gift. Try again to <color=#FF7E9A>retrieve</color> it.,あなたが贈り物を置いた場所です。もう一度試すと<color=#FF7E9A>回収</color>します。
 10053,4,선물을 <color=#FF7E9A>회수</color>했습니다.,You <color=#FF7E9A>retrieved</color> the gift.,贈り物を<color=#FF7E9A>回収</color>しました。
 10054,4,선물 <color=#FF7E9A>회수</color>에 실패했습니다.,Failed to <color=#FF7E9A>retrieve</color> the gift.,贈り物の<color=#FF7E9A>回収</color>に失敗しました。
@@ -115,17 +116,19 @@ id,category,text_kr,text_en,text_jp
 11022,6,"다른 분도 <color=#A8D4E0>{0}</color>이라고 주장하시던데, 사실인가요?",Someone else also claimed to be a <color=#A8D4E0>{0}</color>. Is that true?,他の方も<color=#A8D4E0>{0}</color>だと主張していましたが、本当ですか?
 11023,6,"저번에 <color=#A8D4E0>{0}</color>이라고 하셨는데, 정말 그러신가요?",You said last time that you were a <color=#A8D4E0>{0}</color>. Is that true?,前回は<color=#A8D4E0>{0}</color>だと仰っていましたが、本当にそうなんですか?
 11024,6,여기서 무엇을 보셨는지 궁금합니다.,What did you see here?,ここで何を見たのか気になります。
-11030,6,<color=#A8D4E0>{0}</color> 미션을 수행하러 왔습니다.,I came to perform the <color=#A8D4E0>{0}</color> mission.,<color=#A8D4E0>{0}</color>のミッションを遂行しに来ました。
-11031,6,구역 폐쇄로 인해 지나가던 도중입니다.,I was passing through because of the area closure.,区域閉鎖のため通りかかったところです。
-11032,6,저는 당신의 마니또입니다.,I am your manitto.,私はあなたのマニットです。
+11030,6,<color=#A8D4E0>{0}</color>을 찾으러 왔습니다.,I came to look for <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>を探しに来ました。
+11031,6,구역 폐쇄로 인해 지나가던 도중입니다.,Passing through due to closure.,区域閉鎖のため通りかかったところです。
+11032,6,저는 다른 사람의 마니또입니다.,I am someone else's manitto.,私は他の人のマニットです。
 11033,6,{0}에 온 이유가 무엇입니까?,Why did you come to {0}?,{0}に来た理由は何ですか?
-11034,6,구역 폐쇄로 인해 지나가는 도중이었습니다.,I was passing through because of the area closure.,区域閉鎖のため通りかかっているところでした。
+11034,6,구역 폐쇄로 인해 지나가는 도중이었습니다.,Passing through due to closure.,区域閉鎖のため通りかかっているところでした。
 11035,6,<color=#A8D4E0>{0}</color> 미션을 수행하는 도중이었습니다.,I was working on the <color=#A8D4E0>{0}</color> mission.,<color=#A8D4E0>{0}</color>のミッションを遂行しているところでした。
 11036,6,스태미나 회복 물품을 수집하는 중입니다.,I am collecting stamina recovery items.,スタミナ回復アイテムを集めています。
 11037,6,<color=#A8D4E0>기록</color>을 확인하러 왔습니다.,I came to check the <color=#A8D4E0>records</color>.,<color=#A8D4E0>記録</color>を確認しに来ました。
 11040,6,저는 <color=#A8D4E0>{0}</color>입니다.,I am a <color=#A8D4E0>{0}</color>.,私は<color=#A8D4E0>{0}</color>です。
 11041,6,저는 그때 <color=#A8D4E0>{0}</color>에 있었습니다.,I was at the <color=#A8D4E0>{0}</color> at that time.,私はその時<color=#A8D4E0>{0}</color>にいました。
 11042,6,<color=#FF7E9A>{0}</color>을(를) 주장하는 사람이 여러 명 발견되었습니다!,Multiple people are claiming to be a <color=#FF7E9A>{0}</color>!,<color=#FF7E9A>{0}</color>を主張する人が複数発見されました!
+11043,6,당신은 누구의 마니또입니까?,Whose manitto are you?,あなたは誰のマニットですか?
+11044,6,저는 <color=#A8D4E0>{0}</color>의 마니또입니다.,I am <color=#A8D4E0>{0}</color>'s manitto.,私は<color=#A8D4E0>{0}</color>のマニットです。
 11050,4,<color=#A8D4E0>수락</color>,<color=#A8D4E0>Accept</color>,<color=#A8D4E0>承諾</color>
 11051,4,거절,Decline,拒否
 12000,7,사운드 설정,Sound Settings,サウンド設定

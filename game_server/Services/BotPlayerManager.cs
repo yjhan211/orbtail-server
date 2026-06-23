@@ -42,7 +42,10 @@ public partial class BotPlayerManager
     // 프로토 0: 원하는 방(타겟 방/떠보기 방)에 도착해 머무는 시간(초).
     // 이 동안 회복·기척이 쌓이고, 만료 후에야 다음 결정(머물기/떠보기)을 한다.
     // (없으면 머물기 결정이 매 틱(250ms) 재굴림되어 떠보기 확률이 곧바로 터져 나가버린다.)
-    private const double Proto0RoomDwellSeconds = 8;
+    private const double Proto0InitialDecisionDelayMinSeconds = 0.4;
+    private const double Proto0InitialDecisionDelayMaxSeconds = 4.5;
+    private const double Proto0RoomDwellMinSeconds = 6.0;
+    private const double Proto0RoomDwellMaxSeconds = 12.0;
 
     private enum Proto0BotPolicy
     {
@@ -104,6 +107,7 @@ public partial class BotPlayerManager
 
             var startCell = GameMapData.GetAreaSpawnCell(mapId, startArea);
             var startPosition = CellToWorldPosition(startCell);
+            var now = DateTime.UtcNow;
 
             return new BotPlayerState
             {
@@ -120,10 +124,13 @@ public partial class BotPlayerManager
                 Stamina = 100,   // 실제 플레이어와 동일
                 Corruption = 0, // 게임 시작 시 정신력 100%
                 ManittoStatus = ManittoStatus.ACTIVE,
-                LastMoveTime = DateTime.UtcNow,
-                LastMissionTickTime = DateTime.UtcNow,
-                LastCellWanderTime = DateTime.UtcNow,
-                GameStartTime = DateTime.UtcNow,
+                LastMoveTime = now,
+                LastMissionTickTime = now.AddMilliseconds(-_rng.Next(BotMissionTickIntervalSeconds * 1000)),
+                LastCellWanderTime = now,
+                GameStartTime = now,
+                LoopWaitUntil = now.AddSeconds(RandomRange(
+                    Proto0InitialDecisionDelayMinSeconds,
+                    Proto0InitialDecisionDelayMaxSeconds)),
                 JobAreaQueue = new List<AreaType>(),
                 JobAreaQueueIndex = 0
             };

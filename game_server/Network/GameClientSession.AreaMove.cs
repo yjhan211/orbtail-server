@@ -23,6 +23,13 @@ public partial class GameClientSession
             return;
         }
 
+        if (IsRoundActionLocked(out _))
+        {
+            LogAreaMoveError(ErrorCode.INVALID_GAME_STATE, msg.TargetArea);
+            SendAreaMoveError(ErrorCode.INVALID_GAME_STATE, msg.TargetArea);
+            return;
+        }
+
         if (CurrentState == PlayerState.Exploring)
         {
             LogAreaMoveError(ErrorCode.INVALID_GAME_STATE, msg.TargetArea);

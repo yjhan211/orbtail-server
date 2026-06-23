@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -16,6 +17,8 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int GiftRecallStaminaCost = 5;
+    private const int ManittoTargetAnswerIndexOffset = 100000;
+    private const int ManittoTargetAnswerTextId = 11044;
 
     // #159/#158: 핀(경계)을 켤 때 1회 소모하는 스태미나. 켤 때마다 큰 비용이라 같은 방 무료 스팸을 차단한다.
     // 따라가기와 공유 자원이라 의심에 쓸수록 따라갈 여력이 준다. 끄기는 무료, 재진입이 비싸 마이크로 토글도 막힌다. 튜닝 노브.
@@ -167,6 +170,14 @@ public partial class GameClientSession
     private Task HandleRecallGift(C_TO_G_RECALL_GIFT msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendRecallGiftResult(ErrorCode.INVALID_GAME_STATE, new RecallGiftResult
+            {
+                InteractId = msg.InteractId
+            });
+            return Task.CompletedTask;
+        }
 
         var result = _missionManager.TryRecallGift(CurrentMapSubId, PlayerId.Value, msg.InteractId);
         if (!result.Success)
@@ -223,6 +234,19 @@ public partial class GameClientSession
     private Task HandleDetectManitto(C_TO_G_DETECT_MANITTO msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            using var lockedPacket = Packet.Create((int)Protocol.G_TO_C_DETECT_RESULT, PlayerId.Value);
+            var lockedResult = new G_TO_C_DETECT_RESULT
+            {
+                ErrorCode = ErrorCode.INVALID_GAME_STATE,
+                IsCorrect = false,
+                TargetPlayerId = msg.TargetPlayerId
+            };
+            lockedPacket.SetBody(MessagePackSerializer.Serialize(lockedResult));
+            Send(lockedPacket);
+            return Task.CompletedTask;
+        }
 
         var (isCorrect, errorCode) = _manittoChainManager.TryDetect(CurrentMapSubId, PlayerId.Value, msg.TargetPlayerId);
 
@@ -255,9 +279,59 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
+    private Task HandleSettlementNominate(C_TO_G_SETTLEMENT_NOMINATE msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (CurrentMapSubId <= 0 || !GameRoundStates.TryGetValue(CurrentMapSubId, out var state))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement is not active");
+            return Task.CompletedTask;
+        }
+
+        lock (state.SyncRoot)
+        {
+            if (state.IsSessionEnded || state.Phase != RoundPhase.SettlementNomination)
+            {
+                SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round nomination phase is not active");
+                return Task.CompletedTask;
+            }
+
+            if (!IsSettlementNominationTargetAvailable(CurrentMapSubId, msg.TargetPlayerId))
+            {
+                SendErrorResponse(ErrorCode.DETECT_TARGET_NOT_FOUND, "Settlement nomination target not found");
+                return Task.CompletedTask;
+            }
+
+            state.SettlementNominations[PlayerId.Value] = msg.TargetPlayerId;
+        }
+
+        Logger.LogInformation("Settlement nomination saved: MatchingId={MatchingId}, Nominator={Nominator}, Target={Target}",
+            CurrentMapSubId, PlayerId.Value, msg.TargetPlayerId);
+        return Task.CompletedTask;
+    }
+
+    private bool IsSettlementNominationTargetAvailable(long matchingId, long targetPlayerId)
+    {
+        if (!PlayerId.HasValue || targetPlayerId == 0 || targetPlayerId == PlayerId.Value)
+            return false;
+
+        var targetSession = _getSessionsByInstance(CurrentMapId, matchingId)
+            .FirstOrDefault(session => session.PlayerId == targetPlayerId);
+        if (targetSession != null)
+            return !targetSession.IsEliminated && targetSession.ManittoStatus != ManittoStatus.SPECTATING;
+
+        var bot = _botPlayerManager.GetBot(matchingId, targetPlayerId);
+        return bot != null && !bot.IsEliminated && bot.ManittoStatus != ManittoStatus.SPECTATING;
+    }
+
     private Task HandleBookmarkPresence(C_TO_G_BOOKMARK_PRESENCE msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            return Task.CompletedTask;
+        }
 
         long previousBookmarkPlayerId = PresenceBookmarkPlayerId;
         var myManitto = _manittoChainManager.FindManittoOf(CurrentMapSubId, PlayerId.Value);
@@ -326,7 +400,8 @@ public partial class GameClientSession
     /// <summary>
     ///     플레이어 탈락 처리 + 체인 단절 브로드캐스트
     /// </summary>
-    private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null)
+    private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
+        bool deferGameOver = false)
     {
         _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
         var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason);
@@ -405,7 +480,7 @@ public partial class GameClientSession
 
         // 3. 게임 종료 판정
         var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(CurrentMapSubId);
-        if (isGameOver)
+        if (!deferGameOver && isGameOver)
         {
             Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);
             SendGameResult(allSessions, winnerId ?? 0, false, CurrentMapSubId);
@@ -445,6 +520,7 @@ public partial class GameClientSession
         // 게임 타이머 정리 — race 완주/색출로 종료되었을 때 타임아웃이 후행 발사되지 않도록 (#87)
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
+        GameRoundStates.TryRemove(matchingId, out _);
 
         // #26: 봇 상태 + Redis matching_bots Hash 엔트리 정리 (TTL/누수 방지)
         _botPlayerManager.CleanupMatching(matchingId);
@@ -524,6 +600,18 @@ public partial class GameClientSession
     private Task HandlePlaceTrace(C_TO_G_PLACE_TRACE msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            using var lockedPacket = Packet.Create((int)Protocol.G_TO_C_PLACE_TRACE_RESULT, PlayerId.Value);
+            var lockedResult = new G_TO_C_PLACE_TRACE_RESULT
+            {
+                ErrorCode = ErrorCode.INVALID_GAME_STATE,
+                StaminaCost = 0
+            };
+            lockedPacket.SetBody(MessagePackSerializer.Serialize(lockedResult));
+            Send(lockedPacket);
+            return Task.CompletedTask;
+        }
 
         const int placeTraceCost = 5; // 스태미나 소모 (패키지 Y: -10 → -5, #24)
 
@@ -549,6 +637,11 @@ public partial class GameClientSession
     private Task HandlePlaceGift(C_TO_G_PLACE_GIFT msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendPlaceGiftResult(ErrorCode.INVALID_GAME_STATE, msg, CurrentArea, TargetPlayerId);
+            return Task.CompletedTask;
+        }
 
         var inventoryItem = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
             .GetItem(msg.ItemUid);
@@ -915,13 +1008,24 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
+        var questions = _interactionChoiceService.GenerateQuestions(
+            CurrentMapSubId,
+            bot.PlayerId,
+            PlayerId.Value,
+            bot.CurrentArea,
+            _previousArea);
+        var question = questions.FirstOrDefault(q => q.QuestionType == InteractionQuestionType.ASK_LOCATION)
+                       ?? questions.FirstOrDefault();
+        if (question == null) return;
+
         _activeConversationPlayerId = bot.PlayerId;
-        _lastAskedQuestion = InteractionQuestionType.ASK_LOCATION;
+        _lastAskedQuestion = question.QuestionType;
         _pendingQuestions = null;
         _pendingAnswers = _interactionChoiceService.GenerateAnswers(
             CurrentMapSubId,
             PlayerId.Value,
-            _lastAskedQuestion);
+            _lastAskedQuestion,
+            CurrentArea);
 
         bot.HoldForInteraction(TimeSpan.FromMinutes(5));
         bot.LoopWaitUntil = DateTime.MinValue;
@@ -930,11 +1034,8 @@ public partial class GameClientSession
         var answerChoices = new G_TO_C_INTERACTION_ANSWER_CHOICES
         {
             QuestionType = _lastAskedQuestion,
-            QuestionTextId = InteractionChoiceService.DemoQuestionTextId,
-            QuestionArgs = new List<TextArg>
-            {
-                new() { Type = TextArgType.AREA_TYPE, IntValue = (int)bot.CurrentArea }
-            },
+            QuestionTextId = question.TextId,
+            QuestionArgs = question.Args,
             Answers = _pendingAnswers
         };
         answerChoicesPacket.SetBody(MessagePackSerializer.Serialize(answerChoices));
@@ -989,6 +1090,46 @@ public partial class GameClientSession
         _botInteractTimeoutCts?.Cancel();
         _botInteractTimeoutCts?.Dispose();
         _botInteractTimeoutCts = null;
+    }
+
+    private void StartTargetBotInterrogationChoiceDelay(long botPlayerId)
+    {
+        CancelTargetBotInterrogationTimeout();
+
+        _botInteractTimeoutCts = new CancellationTokenSource();
+        var cts = _botInteractTimeoutCts;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1.2), cts.Token);
+                if (_activeConversationPlayerId != botPlayerId) return;
+
+                var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
+                if (bot == null || bot.IsEliminated || bot.CurrentArea != CurrentArea)
+                {
+                    if (_activeConversationPlayerId == botPlayerId) _activeConversationPlayerId = null;
+                    ReleaseTargetBotInterrogation(botPlayerId, resetEncounterDelay: true);
+                    using var errorPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(
+                        false,
+                        botPlayerId,
+                        bot == null || bot.IsEliminated ? ErrorCode.PLAYER_NOT_FOUND : ErrorCode.AREA_MISMATCH);
+                    Send(errorPacket);
+                    return;
+                }
+
+                SendTargetBotInterrogationAnswerChoices(bot);
+            }
+            catch (TaskCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex,
+                    "Target bot interrogation choice delay failed: BotId={Bot}, PlayerId={Player}",
+                    botPlayerId, PlayerId);
+            }
+        }, cts.Token);
     }
 
     private void ReleaseTargetBotInterrogation(long botPlayerId, bool resetEncounterDelay = false)
@@ -1060,6 +1201,11 @@ public partial class GameClientSession
     private Task HandleCombineParts(C_TO_G_COMBINE_PARTS msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INVALID_GAME_STATE);
+            return Task.CompletedTask;
+        }
         if (!HasInGamePartItem(msg.PartA) || !HasInGamePartItem(msg.PartB))
         {
             SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INSUFFICIENT_ITEM);
@@ -1371,6 +1517,11 @@ public partial class GameClientSession
     private Task HandleSabotageMission(C_TO_G_SABOTAGE_MISSION msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsRoundActionLocked(out _))
+        {
+            SendSabotageResult(ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
+        }
 
         // 시한부만 사보타주 가능
         if (ManittoStatus != ManittoStatus.TERMINAL)
@@ -1520,7 +1671,12 @@ public partial class GameClientSession
 
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
         var area = bot?.CurrentArea ?? CurrentArea;
-        var questions = _interactionChoiceService.GenerateDemoQuestions(area);
+        var questions = _interactionChoiceService.GenerateQuestions(
+            CurrentMapSubId,
+            PlayerId.Value,
+            botPlayerId,
+            area,
+            null);
         _pendingQuestions = questions;
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_CHOICES, PlayerId.Value);
@@ -1536,7 +1692,7 @@ public partial class GameClientSession
 
     public bool TryStartTargetBotInterrogation(BotPlayerState bot)
     {
-        if (!DemoMode.IsActive || !PlayerId.HasValue) return false;
+        if (!PlayerId.HasValue) return false;
         if (IsEliminated
             || _activeConversationPlayerId.HasValue
             || _pendingInteractPlayerId.HasValue
@@ -1547,7 +1703,7 @@ public partial class GameClientSession
         if (bot.CurrentArea == AreaType.None || bot.CurrentArea != CurrentArea) return false;
         if (CurrentArea.IsCorridor()) return false;
 
-        _pendingBotRequesterPlayerId = bot.PlayerId;
+        _activeConversationPlayerId = bot.PlayerId;
         bot.HoldForInteraction(TimeSpan.FromSeconds(13));
         bot.LoopWaitUntil = DateTime.MinValue;
 
@@ -1556,7 +1712,12 @@ public partial class GameClientSession
             Send(requestPacket);
         }
 
-        StartTargetBotInterrogationTimeout(bot.PlayerId);
+        using (var resultPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(true, bot.PlayerId, ErrorCode.SUCCESS))
+        {
+            Send(resultPacket);
+        }
+
+        StartTargetBotInterrogationChoiceDelay(bot.PlayerId);
 
         Logger.LogInformation(
             "DEMO_MODE 타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
@@ -1571,17 +1732,19 @@ public partial class GameClientSession
     private async Task HandleInteractionAsk(C_TO_G_INTERACTION_ASK msg)
     {
         if (!PlayerId.HasValue || !_activeConversationPlayerId.HasValue) return;
+        if (IsRoundActionLocked(out _))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            return;
+        }
 
         long partnerPlayerId = _activeConversationPlayerId.Value;
         _lastAskedQuestion = msg.QuestionType;
 
         if (BotPlayerManager.IsBotPlayerId(partnerPlayerId))
         {
-            if (DemoMode.IsActive)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2));
-                SendDemoBotInteractionResult(partnerPlayerId);
-            }
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            SendBotInteractionResult(partnerPlayerId);
             return;
         }
 
@@ -1593,7 +1756,8 @@ public partial class GameClientSession
         var answers = _interactionChoiceService.GenerateAnswers(
             CurrentMapSubId,
             partnerPlayerId,
-            msg.QuestionType);
+            msg.QuestionType,
+            partnerSession.CurrentArea);
 
         partnerSession._pendingAnswers = answers;
 
@@ -1618,7 +1782,7 @@ public partial class GameClientSession
         return;
     }
 
-    private void SendDemoBotInteractionResult(long botPlayerId)
+    private void SendBotInteractionResult(long botPlayerId)
     {
         if (!PlayerId.HasValue) return;
         if (_activeConversationPlayerId != botPlayerId) return;
@@ -1628,13 +1792,16 @@ public partial class GameClientSession
 
         var manitto = _manittoChainManager.FindManittoOf(CurrentMapSubId, PlayerId.Value);
         bool isPlayersManitto = manitto?.PlayerId == botPlayerId;
-        var (answerTextId, answerArgs) = CreateDemoBotAnswer(bot, isPlayersManitto);
+        var selectedAnswer = ResolveBotInteractionAnswer(bot);
+        var (fallbackTextId, fallbackArgs) = CreateDemoBotAnswer(bot, isPlayersManitto);
+        int answerTextId = selectedAnswer?.TextId ?? fallbackTextId;
+        var answerArgs = selectedAnswer?.Args ?? fallbackArgs;
 
         var result = new G_TO_C_INTERACTION_RESULT
         {
             PartnerPlayerId = botPlayerId,
             QuestionType = _lastAskedQuestion,
-            ClaimedJob = bot.MyJobTitle,
+            ClaimedJob = selectedAnswer?.ClaimedJob ?? bot.MyJobTitle,
             ClaimedArea = bot.CurrentArea,
             IsFakeDetected = false,
             ConflictTextId = 0,
@@ -1652,6 +1819,19 @@ public partial class GameClientSession
         Logger.LogInformation(
             "DEMO_MODE 봇 심문 응답: BotId={Bot}, Asker={Asker}, AnswerTextId={AnswerTextId}",
             botPlayerId, PlayerId.Value, answerTextId);
+    }
+
+    private InteractionAnswer? ResolveBotInteractionAnswer(BotPlayerState bot)
+    {
+        var answers = _interactionChoiceService.GenerateAnswers(
+            CurrentMapSubId,
+            bot.PlayerId,
+            _lastAskedQuestion,
+            bot.CurrentArea);
+        if (answers.Count == 0) return null;
+
+        int answerIndex = _botPlayerManager.PickAnswerIndex(answers.Count);
+        return answers[Math.Clamp(answerIndex, 0, answers.Count - 1)];
     }
 
     private static (int TextId, List<TextArg> Args) CreateDemoBotAnswer(BotPlayerState bot, bool isPlayersManitto)
@@ -1675,9 +1855,80 @@ public partial class GameClientSession
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, playerId);
         if (bot != null && !string.IsNullOrEmpty(bot.Name)) return bot.Name;
 
+        if (!BotPlayerManager.IsBotPlayerId(playerId))
+        {
+            try
+            {
+                var playerInfo = PlayerInfo.Load(CacheHelper, playerId).GetAwaiter().GetResult();
+                if (!string.IsNullOrWhiteSpace(playerInfo?.Name)) return playerInfo.Name;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Interaction player name lookup failed: PlayerId={PlayerId}", playerId);
+            }
+        }
+
         return BotPlayerManager.IsBotPlayerId(playerId)
             ? $"Bot{Math.Abs(playerId)}"
             : $"Player{playerId}";
+    }
+
+    private bool TryCreateManittoTargetAnswer(int encodedAnswerIndex, out InteractionAnswer? selectedAnswer)
+    {
+        selectedAnswer = null;
+        if (!PlayerId.HasValue) return false;
+
+        int targetIndex = encodedAnswerIndex - ManittoTargetAnswerIndexOffset;
+        if (targetIndex < 0) return false;
+
+        var candidates = GetInteractionPlayerCandidates();
+        if (targetIndex >= candidates.Count) return false;
+
+        var candidate = candidates[targetIndex];
+        var link = _manittoChainManager.GetLink(CurrentMapSubId, PlayerId.Value);
+        bool isTrue = link?.TargetPlayerId == candidate.playerId;
+
+        selectedAnswer = new InteractionAnswer
+        {
+            IsTrue = isTrue,
+            ClaimedJob = JobTitle.NONE,
+            TextId = ManittoTargetAnswerTextId,
+            Args = new List<TextArg>
+            {
+                new() { Type = TextArgType.RAW_STRING, StringValue = candidate.name }
+            }
+        };
+        return true;
+    }
+
+    private List<(long playerId, string name)> GetInteractionPlayerCandidates()
+    {
+        var candidates = new Dictionary<long, string>();
+
+        void AddCandidate(long playerId, string name)
+        {
+            if (playerId == 0) return;
+            if (PlayerId.HasValue && playerId == PlayerId.Value) return;
+            if (candidates.ContainsKey(playerId)) return;
+
+            candidates[playerId] = !string.IsNullOrWhiteSpace(name)
+                ? name
+                : ResolveDemoInteractionPlayerName(playerId);
+        }
+
+        foreach (var session in _getSessionsByInstance(CurrentMapId, CurrentMapSubId))
+        {
+            if (!session.PlayerId.HasValue) continue;
+            AddCandidate(session.PlayerId.Value, ResolveDemoInteractionPlayerName(session.PlayerId.Value));
+        }
+
+        foreach (var bot in _botPlayerManager.GetBots(CurrentMapSubId).Where(b => !b.IsEliminated))
+            AddCandidate(bot.PlayerId, bot.Name);
+
+        return candidates
+            .OrderBy(candidate => candidate.Key)
+            .Select(candidate => (candidate.Key, candidate.Value))
+            .ToList();
     }
 
     /// <summary>
@@ -1686,11 +1937,29 @@ public partial class GameClientSession
     private Task HandleInteractionAnswer(C_TO_G_INTERACTION_ANSWER msg)
     {
         if (!PlayerId.HasValue || !_activeConversationPlayerId.HasValue) return Task.CompletedTask;
-        if (_pendingAnswers == null || msg.AnswerIndex < 0 || msg.AnswerIndex >= _pendingAnswers.Count)
+        if (IsRoundActionLocked(out _))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            return Task.CompletedTask;
+        }
+        if (_pendingAnswers == null || msg.AnswerIndex < 0)
             return Task.CompletedTask;
 
         long askerPlayerId = _activeConversationPlayerId.Value;
-        var selectedAnswer = _pendingAnswers[msg.AnswerIndex];
+        InteractionAnswer selectedAnswer;
+        if (msg.AnswerIndex >= ManittoTargetAnswerIndexOffset)
+        {
+            if (!TryCreateManittoTargetAnswer(msg.AnswerIndex, out var manittoTargetAnswer) || manittoTargetAnswer == null)
+                return Task.CompletedTask;
+            selectedAnswer = manittoTargetAnswer;
+        }
+        else
+        {
+            if (msg.AnswerIndex >= _pendingAnswers.Count)
+                return Task.CompletedTask;
+            selectedAnswer = _pendingAnswers[msg.AnswerIndex];
+        }
+
         if (BotPlayerManager.IsBotPlayerId(askerPlayerId))
         {
             _interactionChoiceService.ProcessAnswer(
