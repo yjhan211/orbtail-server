@@ -541,8 +541,8 @@ public partial class GameClientSession
         long decisiveTargetPlayerId = state.SettlementNominations.TryGetValue(top.PlayerId, out long nominatedTarget)
             ? nominatedTarget
             : 0;
-        var topPlayersManitto = _manittoChainManager.FindManittoOf(matchingId, top.PlayerId);
-        bool success = decisiveTargetPlayerId != 0 && topPlayersManitto?.PlayerId == decisiveTargetPlayerId;
+        bool success = decisiveTargetPlayerId != 0
+                       && _manittoChainManager.IsAliveManittoOf(matchingId, top.PlayerId, decisiveTargetPlayerId);
 
         state.SettlementContributionDecisiveTargetPlayerId = decisiveTargetPlayerId;
         state.SettlementContributionNominationSuccess = success;
