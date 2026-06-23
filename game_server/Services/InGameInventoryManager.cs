@@ -192,6 +192,21 @@ public class InGameInventoryManager
     /// <summary>
     ///     ItemId로 아이템 제거 (탈출 아이템 전달용)
     /// </summary>
+    public bool TryRemoveOneByItemId(long matchingId, long playerId, int itemId, out InGameItemInfo? updatedItem)
+    {
+        updatedItem = null;
+
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        var item = inventory.GetAllItems().FirstOrDefault(i => i.ItemId == itemId && i.Count > 0);
+        if (item == null) return false;
+
+        bool result = inventory.TryRemoveItem(item.ItemUid, 1, out updatedItem);
+        if (result)
+            _logAction?.Invoke(
+                $"InGameInventoryManager: Removed one item by ItemId (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={item.ItemUid})");
+        return result;
+    }
+
     public InGameItemInfo? RemoveItemByItemId(long matchingId, long playerId, int itemId)
     {
         var inventory = GetPlayerInventory(matchingId, playerId);

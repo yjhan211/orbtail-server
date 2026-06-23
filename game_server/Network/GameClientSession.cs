@@ -43,6 +43,7 @@ public partial class GameClientSession : SessionBase
     private readonly SabotageManager _sabotageManager;
     private readonly ManittoChainManager _manittoChainManager;
     private readonly MissionManager _missionManager;
+    private readonly ChecklistManager _checklistManager;
     private readonly AreaClosureManager _areaClosureManager;
     private readonly TraceManager _traceManager;
     private readonly InteractionChoiceService _interactionChoiceService;
@@ -96,6 +97,7 @@ public partial class GameClientSession : SessionBase
         SabotageManager sabotageManager,
         ManittoChainManager manittoChainManager,
         MissionManager missionManager,
+        ChecklistManager checklistManager,
         AreaClosureManager areaClosureManager,
         TraceManager traceManager,
         InteractionChoiceService interactionChoiceService,
@@ -115,6 +117,7 @@ public partial class GameClientSession : SessionBase
         _sabotageManager = sabotageManager;
         _manittoChainManager = manittoChainManager;
         _missionManager = missionManager;
+        _checklistManager = checklistManager;
         _areaClosureManager = areaClosureManager;
         _traceManager = traceManager;
         _interactionChoiceService = interactionChoiceService;

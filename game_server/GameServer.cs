@@ -48,6 +48,7 @@ public class GameServer(
     private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
     private readonly MissionManager _missionManager = new(logger);
+    private readonly ChecklistManager _checklistManager = new(logger);
     private readonly MatchingConfigService _matchingConfigService = new(cacheHelper, logger);
     // _areaClosureManager은 InitializeServices()에서 _matchingConfigService 생성 후 초기화
     private AreaClosureManager _areaClosureManager = null!;
@@ -181,6 +182,7 @@ public class GameServer(
             _corridorRuleManager.Initialize(log, OnCorridorStopViolation);
             _areaRuleManager.Initialize(log);
             _itemPoolManager.Initialize(log);
+            _checklistManager.Initialize(log);
             _sabotageManager.Initialize(log);
             _sabotageManager.SetStateChangeCallback(OnSabotageStateChange);
             _sabotageManager.SetTimeoutCallback(OnSabotageTimeout);
@@ -1379,6 +1381,7 @@ public class GameServer(
                 _sabotageManager,
                 _manittoChainManager,
                 _missionManager,
+                _checklistManager,
                 _areaClosureManager,
                 _traceManager,
                 new InteractionChoiceService(_interactionLogManager, _manittoChainManager),
