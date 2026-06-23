@@ -70,7 +70,7 @@ namespace network.common
         /// <summary>Round system: settlement phase duration in seconds (#168).</summary>
         public const int ROUND_SETTLEMENT_SECONDS = 45;
         public const int ROUND_SETTLEMENT_NOMINATION_SECONDS = 10;
-        public const int ROUND_SETTLEMENT_RESULT_SECONDS = 8;
+        public const int ROUND_SETTLEMENT_RESULT_SECONDS = 5;
         public const int ROUND_SETTLEMENT_CONTRIBUTION_SECONDS = 9;
         public const int ROUND_SETTLEMENT_DETECTION_RESULT_SECONDS = 9;
         public const int ROUND_SETTLEMENT_ELIMINATION_SECONDS = 9;
