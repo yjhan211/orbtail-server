@@ -76,6 +76,14 @@ public class ManittoChainManager
         return state.Links.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
     }
 
+    public bool IsAliveManittoOf(long matchingId, long playerId, long candidatePlayerId)
+    {
+        var myManitto = FindManittoOf(matchingId, playerId);
+        return myManitto != null
+               && myManitto.PlayerId == candidatePlayerId
+               && IsAliveLink(myManitto);
+    }
+
     /// <summary>
     ///     해당 매칭에 등록된 모든 플레이어/봇의 직책 목록 (#87 — 폐쇄 셔플 우선순위 결정용).
     /// </summary>
@@ -105,8 +113,8 @@ public class ManittoChainManager
         if (state.AliveCount <= 2)
             return (false, ErrorCode.DETECT_NOT_AVAILABLE);
 
-        // 탈락자/시한부 등은 색출 불가
-        if (detecterLink.Status != ManittoStatus.ACTIVE && detecterLink.Status != ManittoStatus.FREED)
+        // 생존 플레이어는 마니또 생존 여부를 모르므로 색출 시도 자체는 허용한다.
+        if (!IsAliveLink(detecterLink))
             return (false, ErrorCode.DETECT_NOT_AVAILABLE);
 
         detecterLink.HasUsedDetection = true;
@@ -114,7 +122,9 @@ public class ManittoChainManager
         // 지목한 대상이 실제로 내 마니또(스토커)인지 확인
         // 내 마니또 = 나를 타겟으로 가진 플레이어
         var myManitto = state.Links.Values.FirstOrDefault(l => l.TargetPlayerId == detecterId);
-        bool isCorrect = myManitto?.PlayerId == targetPlayerId;
+        bool isCorrect = myManitto != null
+                         && myManitto.PlayerId == targetPlayerId
+                         && IsAliveLink(myManitto);
 
         // H3 시연 모드 — SC가 DC를 지목하는 케이스는 narrative상 강제 빗나감 ("단 한 번의 무게" cut)
         if (DemoMode.IsActive
@@ -131,6 +141,13 @@ public class ManittoChainManager
             detecterId, targetPlayerId, myManitto?.PlayerId, isCorrect ? "적중" : "실패");
 
         return (isCorrect, ErrorCode.SUCCESS);
+    }
+
+    private static bool IsAliveLink(ChainLink? link)
+    {
+        return link != null
+               && link.Status != ManittoStatus.ELIMINATED
+               && link.Status != ManittoStatus.SPECTATING;
     }
 
     /// <summary>
