@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using game_server.services;
 using MessagePack;
@@ -25,6 +26,7 @@ public partial class GameClientSession
     private const int BookmarkActivationStaminaCost = 15;
 
     private static readonly int MissionInfoPacketBudget = Config.BUFFER_SIZE - Config.HEADER_SIZE - 4 - 8 - 128;
+    private readonly HashSet<int> _pendingChecklistActivityFinish = new();
 
     /// <summary>
     ///     v0.2.0 — 미션 정보 전송 (게임 접속 시). 직책별 7부품 메타데이터 전체 송신.
@@ -144,19 +146,32 @@ public partial class GameClientSession
         return true;
     }
 
-    private bool TryCompleteInteractObjectChecklist(InteractableInfoData info)
+    private bool TryGetActiveInteractObjectChecklistTask(InteractableInfoData info, out ChecklistTaskData? task)
     {
+        task = null;
         if (!PlayerId.HasValue || info == null) return false;
 
-        var task = _checklistManager.GetActiveTasks(CurrentMapSubId, PlayerId.Value)
+        task = _checklistManager.GetActiveTasks(CurrentMapSubId, PlayerId.Value)
             .FirstOrDefault(activeTask =>
                 activeTask.Category == ChecklistTaskCategory.GeneralJob &&
                 activeTask.CompletionEvent.Equals("interact_object", StringComparison.OrdinalIgnoreCase) &&
                 (activeTask.AreaType <= 0 || activeTask.AreaType == info.ZoneId) &&
                 (activeTask.ObjectType <= 0 || activeTask.ObjectType == (int)info.ObjectType) &&
                 (activeTask.InteractId <= 0 || activeTask.InteractId == info.Id));
-        if (task == null)
-            return false;
+        return task != null;
+    }
+
+    private bool TryCompleteInteractObjectChecklist(InteractableInfoData info)
+    {
+        return TryCompleteInteractObjectChecklist(info, out _) == ErrorCode.SUCCESS;
+    }
+
+    private ErrorCode TryCompleteInteractObjectChecklist(InteractableInfoData info, out ChecklistTaskData? completedTask)
+    {
+        completedTask = null;
+        if (!PlayerId.HasValue) return ErrorCode.INVALID_GAME_STATE;
+        if (!TryGetActiveInteractObjectChecklistTask(info, out var task) || task == null)
+            return ErrorCode.INTERACTABLE_NOT_AVAILABLE;
 
         var result = _checklistManager.TryCompleteTask(
             CurrentMapSubId,
@@ -165,12 +180,13 @@ public partial class GameClientSession
             (AreaType)info.ZoneId,
             info.Id,
             _inGameInventoryManager);
+        completedTask = result.CompletedTask;
         if (result.ErrorCode != ErrorCode.SUCCESS)
         {
             Logger.LogInformation(
                 "Checklist interact_object completion skipped: MatchingId={MatchingId}, PlayerId={PlayerId}, TaskId={TaskId}, InteractId={InteractId}, Error={ErrorCode}",
                 CurrentMapSubId, PlayerId.Value, task.TaskId, info.Id, result.ErrorCode);
-            return false;
+            return result.ErrorCode;
         }
 
         if (result.ConsumedItemUpdate != null)
@@ -180,7 +196,123 @@ public partial class GameClientSession
         Logger.LogInformation(
             "Checklist interact_object completed: MatchingId={MatchingId}, PlayerId={PlayerId}, TaskId={TaskId}, InteractId={InteractId}",
             CurrentMapSubId, PlayerId.Value, task.TaskId, info.Id);
-        return true;
+        return ErrorCode.SUCCESS;
+    }
+
+    private Task HandleChecklistActivityStart(C_TO_G_CHECKLIST_ACTIVITY_START msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsEliminated)
+        {
+            SendChecklistActivityAck(msg.InteractId, ErrorCode.FATAL, 0);
+            return Task.CompletedTask;
+        }
+
+        if (IsRoundActionLocked(out _))
+        {
+            SendChecklistActivityAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
+        }
+
+        var info = GameInteractableData.Get(msg.InteractId);
+        if (info == null)
+        {
+            Logger.LogWarning("Checklist activity START unknown InteractId: {InteractId}", msg.InteractId);
+            SendChecklistActivityAck(msg.InteractId, ErrorCode.FATAL, 0);
+            return Task.CompletedTask;
+        }
+
+        if (!TryGetActiveInteractObjectChecklistTask(info, out var task) || task == null)
+        {
+            Logger.LogDebug(
+                "Checklist activity START unavailable: PlayerId={PlayerId}, InteractId={InteractId}",
+                PlayerId, msg.InteractId);
+            SendChecklistActivityAck(msg.InteractId, ErrorCode.INTERACTABLE_NOT_AVAILABLE, 0);
+            return Task.CompletedTask;
+        }
+
+        int staminaCost = ApplyDutyStaminaSaverToCost(Math.Max(0, task.StaminaCost));
+        if (staminaCost > 0)
+            ModifyStats(-staminaCost);
+
+        var currentState = _interactableStateManager.GetInteractableState(CurrentMapSubId, msg.InteractId);
+        if (currentState == (int)InteractableStateType.SABOTAGE)
+            _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, 0);
+
+        _pendingChecklistActivityFinish.Add(msg.InteractId);
+
+        Logger.LogInformation(
+            "Checklist activity START: PlayerId={PlayerId}, TaskId={TaskId}, InteractId={InteractId}, StaminaCost={StaminaCost}",
+            PlayerId, task.TaskId, msg.InteractId, staminaCost);
+
+        SendChecklistActivityAck(msg.InteractId, ErrorCode.SUCCESS, 0);
+        BroadcastPlayerState(global::network.common.PlayerState.EXPLORE_1);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleChecklistActivityFinish(C_TO_G_CHECKLIST_ACTIVITY_FINISH msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (IsEliminated) return Task.CompletedTask;
+
+        if (!_pendingChecklistActivityFinish.Remove(msg.InteractId))
+        {
+            Logger.LogWarning(
+                "Checklist activity FINISH without START or duplicated: PlayerId={PlayerId}, InteractId={InteractId}",
+                PlayerId, msg.InteractId);
+            return Task.CompletedTask;
+        }
+
+        var info = GameInteractableData.Get(msg.InteractId);
+        ErrorCode errorCode = ErrorCode.SUCCESS;
+        if (info == null)
+        {
+            Logger.LogWarning("Checklist activity FINISH unknown InteractId: {InteractId}", msg.InteractId);
+            errorCode = ErrorCode.FATAL;
+        }
+        else
+        {
+            errorCode = TryCompleteInteractObjectChecklist(info, out _);
+        }
+
+        Logger.LogInformation(
+            "Checklist activity FINISH: PlayerId={PlayerId}, InteractId={InteractId}, ErrorCode={ErrorCode}",
+            PlayerId, msg.InteractId, errorCode);
+
+        SendChecklistActivityResult(msg.InteractId, errorCode);
+        BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        return Task.CompletedTask;
+    }
+
+    private void SendChecklistActivityAck(int interactId, ErrorCode errorCode, int cooldownRemain)
+    {
+        if (!PlayerId.HasValue) return;
+
+        var msg = new G_TO_C_CHECKLIST_ACTIVITY_ACK
+        {
+            InteractId = interactId,
+            ErrorCode = errorCode,
+            CooldownRemainSeconds = cooldownRemain
+        };
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_CHECKLIST_ACTIVITY_ACK, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
+    }
+
+    private void SendChecklistActivityResult(int interactId, ErrorCode errorCode)
+    {
+        if (!PlayerId.HasValue) return;
+
+        var msg = new G_TO_C_CHECKLIST_ACTIVITY_RESULT
+        {
+            InteractId = interactId,
+            ErrorCode = errorCode
+        };
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_CHECKLIST_ACTIVITY_RESULT, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
     }
 
     private List<G_TO_C_MISSION_INFO> BuildMissionInfoChunks(

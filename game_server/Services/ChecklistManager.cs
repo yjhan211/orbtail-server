@@ -37,6 +37,7 @@ public sealed class ChecklistPlayerContribution
 public sealed class ChecklistManager(ILogger logger)
 {
     internal const int ContributionScale = 10;
+    private const bool EnableRequiredItemChecks = false;
 
     private readonly ConcurrentDictionary<long, MatchingChecklistState> _states = new();
     private Action<string>? _logAction;
@@ -182,12 +183,14 @@ public sealed class ChecklistManager(ILogger logger)
             if (task.InteractId > 0 && interactId > 0 && task.InteractId != interactId)
                 return new ChecklistCompletionResult { ErrorCode = ErrorCode.INVALID_SELECTION };
 
-            if (task.RequiredItemId > 0 && !HasRequiredItem(matchingId, playerId, task.RequiredItemId, inventoryManager))
+            if (EnableRequiredItemChecks &&
+                task.RequiredItemId > 0 &&
+                !HasRequiredItem(matchingId, playerId, task.RequiredItemId, inventoryManager))
                 return new ChecklistCompletionResult { ErrorCode = ErrorCode.INSUFFICIENT_ITEM };
 
             bool consumed = false;
             InGameItemInfo? consumedItemUpdate = null;
-            if (ShouldConsumeRequiredItem(task))
+            if (EnableRequiredItemChecks && ShouldConsumeRequiredItem(task))
             {
                 var removed = inventoryManager.TryRemoveOneByItemId(matchingId, playerId, task.RequiredItemId,
                     out consumedItemUpdate);

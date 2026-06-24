@@ -280,6 +280,10 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_COMBINE_PARTS>(bytes, HandleCombineParts));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_MISSION_NODE_EXECUTE,
             async bytes => await HandleMessage<C_TO_G_MISSION_NODE_EXECUTE>(bytes, HandleMissionNodeExecute));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_START,
+            async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_START>(bytes, HandleChecklistActivityStart));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_FINISH,
+            async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_FINISH>(bytes, HandleChecklistActivityFinish));
 
         // RNG 채집 프로토콜 (v0.2.1, #79)
         // RNG 채집 2단계 프로토콜 (#134)

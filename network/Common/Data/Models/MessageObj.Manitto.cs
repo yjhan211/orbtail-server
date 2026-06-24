@@ -81,6 +81,34 @@ namespace network.common.data.models
         [Key("contribution")] public int Contribution { get; set; }
     }
 
+    [MessagePackObject]
+    public class C_TO_G_CHECKLIST_ACTIVITY_START : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_CHECKLIST_ACTIVITY_ACK : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("cooldownRemainSeconds")] public int CooldownRemainSeconds { get; set; }
+    }
+
+    [MessagePackObject]
+    public class C_TO_G_CHECKLIST_ACTIVITY_FINISH : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_CHECKLIST_ACTIVITY_RESULT : IMessagePackObject
+    {
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+    }
+
     /// <summary>
     ///     v0.2.0 — 부품 메타 정보 (클라 UI 표시용)
     /// </summary>
