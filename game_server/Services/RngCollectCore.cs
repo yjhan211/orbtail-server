@@ -18,6 +18,8 @@ public static class RngCollectCore
     private const int AttendanceBlackboardInteractId = 701000055;
     private const int TornAttendancePagePartId = 308;
     private const int BlackedOutPaperPartId = 309;
+    private const int MinRngDropItemId = 201000001;
+    private const int MaxRngDropItemId = 301000011;
     // 소모품 회수 stamina 보상 제거 (#135) — 회복은 아이템 사용 시점에만.
     private const int ConsumableStaminaReward = 0;
     private static readonly Random _rng = new();
@@ -107,7 +109,7 @@ public static class RngCollectCore
             // 자기 풀 외: 75% 소모품 / 25% 빈손. 풀은 영역(AreaType) 단위 — area_item_pool.csv (#135)
             if (roll < 75)
             {
-                var areaPool = GameInteractableData.GetItemPoolByArea(info.ZoneId);
+                var areaPool = GetAllowedRngItemPool(info.ZoneId);
                 if (areaPool.Count > 0)
                 {
                     int itemId = areaPool[_rng.Next(areaPool.Count)];
@@ -186,12 +188,32 @@ public static class RngCollectCore
         if (_rng.Next(100) >= reward.ValuePercent)
             return;
 
-        var areaPool = GameInteractableData.GetItemPoolByArea(areaType);
+        var areaPool = GetAllowedRngItemPool(areaType);
         if (areaPool.Count == 0) return;
 
         int bonusItemId = areaPool[_rng.Next(areaPool.Count)];
         outcome.BonusItemId = bonusItemId;
         outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
+    }
+
+    private static List<int> GetAllowedRngItemPool(int areaType)
+    {
+        var areaPool = GameInteractableData.GetItemPoolByArea(areaType)
+            .Where(IsAllowedRngDropItem)
+            .ToList();
+
+        if (areaPool.Count > 0)
+            return areaPool;
+
+        return GameInteractableData.GetAllAreaItemPoolItems()
+            .Where(IsAllowedRngDropItem)
+            .Distinct()
+            .ToList();
+    }
+
+    private static bool IsAllowedRngDropItem(int itemId)
+    {
+        return itemId >= MinRngDropItemId && itemId <= MaxRngDropItemId;
     }
 }
 
