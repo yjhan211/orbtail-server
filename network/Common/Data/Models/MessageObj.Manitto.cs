@@ -2,6 +2,7 @@
 // ReSharper disable All
 using System.Collections.Generic;
 using MessagePack;
+using network.common.data;
 
 namespace network.common.data.models
 {
@@ -36,6 +37,39 @@ namespace network.common.data.models
         [Key("ownedClueTags")] public List<string> OwnedClueTags { get; set; } = new();
         [Key("craftedFunctionItemIds")] public List<int> CraftedFunctionItemIds { get; set; } = new();
         [Key("visibleVictoryTraceIds")] public List<int> VisibleVictoryTraceIds { get; set; } = new();
+    }
+
+    [MessagePackObject]
+    public class ChecklistTaskInfo : IMessagePackObject
+    {
+        [Key("taskId")] public int TaskId { get; set; }
+        [Key("category")] public ChecklistTaskCategory Category { get; set; }
+        [Key("taskKey")] public string TaskKey { get; set; } = "";
+        [Key("titleKr")] public string TitleKr { get; set; } = "";
+        [Key("descriptionKr")] public string DescriptionKr { get; set; } = "";
+        [Key("score")] public float Score { get; set; }
+        [Key("areaType")] public int AreaType { get; set; }
+        [Key("areaNameKr")] public string AreaNameKr { get; set; } = "";
+        [Key("objectType")] public int ObjectType { get; set; }
+        [Key("interactId")] public int InteractId { get; set; }
+        [Key("staminaCost")] public int StaminaCost { get; set; }
+        [Key("durationSeconds")] public int DurationSeconds { get; set; }
+        [Key("requiredItemId")] public int RequiredItemId { get; set; }
+        [Key("requiredItemNameKr")] public string RequiredItemNameKr { get; set; } = "";
+        [Key("requiredItemPolicy")] public ChecklistRequiredItemPolicy RequiredItemPolicy { get; set; }
+        [Key("successLogKr")] public string SuccessLogKr { get; set; } = "";
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_CHECKLIST_INFO : IMessagePackObject
+    {
+        [Key("matchingId")] public long MatchingId { get; set; }
+        [Key("roundNumber")] public int RoundNumber { get; set; }
+        [Key("activeTaskIds")] public List<int> ActiveTaskIds { get; set; } = new();
+        [Key("generalJobScore")] public float GeneralJobScore { get; set; }
+        [Key("manittoRoleScore")] public float ManittoRoleScore { get; set; }
+        [Key("bonusScore")] public float BonusScore { get; set; }
+        [Key("contribution")] public int Contribution { get; set; }
     }
 
     /// <summary>

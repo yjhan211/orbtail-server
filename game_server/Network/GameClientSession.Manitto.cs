@@ -71,6 +71,33 @@ public partial class GameClientSession
             PlayerId, chunks.Count, partInfos.Count, graphNodes.Count, shortRewards.Count);
     }
 
+    private void SendChecklistInfo()
+    {
+        if (!PlayerId.HasValue) return;
+
+        int roundNumber = GameRoundStates.TryGetValue(CurrentMapSubId, out var roundState)
+            ? roundState.RoundNumber
+            : 0;
+        var contribution = _checklistManager.GetPlayerContributions(CurrentMapSubId, new[] { PlayerId.Value })
+            .FirstOrDefault();
+        var msg = new G_TO_C_CHECKLIST_INFO
+        {
+            MatchingId = CurrentMapSubId,
+            RoundNumber = roundNumber,
+            ActiveTaskIds = _checklistManager.GetActiveTasks(CurrentMapSubId, PlayerId.Value)
+                .Select(task => task.TaskId)
+                .ToList(),
+            GeneralJobScore = contribution?.GeneralJobScore ?? 0f,
+            ManittoRoleScore = contribution?.ManittoRoleScore ?? 0f,
+            BonusScore = contribution?.BonusScore ?? 0f,
+            Contribution = contribution?.Contribution ?? 0
+        };
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_CHECKLIST_INFO, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
+    }
+
     private List<G_TO_C_MISSION_INFO> BuildMissionInfoChunks(
         PlayerPartState state,
         int totalSteps,

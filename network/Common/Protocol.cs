@@ -126,6 +126,7 @@ namespace network.common
         C_TO_G_SETTLEMENT_NOMINATE,   // 정산 지목 요청
         G_TO_C_SETTLEMENT_NOMINATION_RESULT, // 정산 지목 결과
         G_TO_C_SETTLEMENT_CONTRIBUTION_RESULT, // 정산 기여도 공개 결과
+        G_TO_C_CHECKLIST_INFO,        // 라운드 체크리스트 과제 목록
 
         // 탈락 & 체인 프로토콜
         G_TO_C_PLAYER_ELIMINATED,     // 플레이어 탈락 알림 (전체 브로드캐스트)

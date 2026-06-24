@@ -123,6 +123,7 @@ public partial class GameClientSession
             // 미션 정보 전송
             SendMissionInfo();
             SendRoundStateSnapshot(msg.MatchingId);
+            SendChecklistInfo();
 
             // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
             await BroadcastPlayerJoin();
@@ -321,7 +322,7 @@ public partial class GameClientSession
             IsSessionEnded = false
         };
         GameRoundStates.TryAdd(matchingId, state);
-        StartChecklistRound(matchingId, state);
+        StartChecklistRound(matchingId, state, broadcast: false);
 
         Logger.LogInformation(
             "Round session started: MatchingId={MatchingId}, Rounds={Rounds}, Action={ActionSeconds}s, Settlement={SettlementSeconds}s",
@@ -696,7 +697,7 @@ public partial class GameClientSession
         Logger.LogInformation("Round advanced: MatchingId={MatchingId}, Round={Round}", matchingId, state.RoundNumber);
     }
 
-    private void StartChecklistRound(long matchingId, RoundRuntimeState state)
+    private void StartChecklistRound(long matchingId, RoundRuntimeState state, bool broadcast = true)
     {
         var playerIds = GetChecklistActivePlayerIds(matchingId);
         if (playerIds.Count == 0)
@@ -704,6 +705,20 @@ public partial class GameClientSession
 
         _checklistManager.StartRound(matchingId, state.RoundNumber, playerIds,
             playerId => ResolveChecklistChainContext(matchingId, playerId));
+        if (broadcast)
+            BroadcastChecklistInfo(matchingId);
+    }
+
+    private void BroadcastChecklistInfo(long matchingId)
+    {
+        foreach (var session in _getSessionsByInstance(CurrentMapId, matchingId))
+        {
+            if (session.PlayerId.HasValue)
+                session.SendChecklistInfo();
+        }
+
+        if (CurrentMapSubId == matchingId && PlayerId.HasValue)
+            SendChecklistInfo();
     }
 
     private List<long> GetChecklistActivePlayerIds(long matchingId)
