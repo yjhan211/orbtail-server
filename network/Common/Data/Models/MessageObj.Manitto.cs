@@ -74,6 +74,7 @@ namespace network.common.data.models
         [Key("matchingId")] public long MatchingId { get; set; }
         [Key("roundNumber")] public int RoundNumber { get; set; }
         [Key("activeTaskIds")] public List<int> ActiveTaskIds { get; set; } = new();
+        [Key("completedTaskIds")] public List<int> CompletedTaskIds { get; set; } = new();
         [Key("activeTaskProgresses")] public List<ChecklistTaskProgressInfo> ActiveTaskProgresses { get; set; } = new();
         [Key("generalJobScore")] public float GeneralJobScore { get; set; }
         [Key("manittoRoleScore")] public float ManittoRoleScore { get; set; }
@@ -107,6 +108,8 @@ namespace network.common.data.models
     {
         [Key("interactId")] public int InteractId { get; set; }
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("awardedScore")] public float AwardedScore { get; set; }
+        [Key("awardedContribution")] public int AwardedContribution { get; set; }
     }
 
     /// <summary>

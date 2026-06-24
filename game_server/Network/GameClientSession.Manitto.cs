@@ -89,6 +89,7 @@ public partial class GameClientSession
             ActiveTaskIds = _checklistManager.GetActiveTasks(CurrentMapSubId, PlayerId.Value)
                 .Select(task => task.TaskId)
                 .ToList(),
+            CompletedTaskIds = _checklistManager.GetCompletedTaskIds(CurrentMapSubId, PlayerId.Value),
             ActiveTaskProgresses = _checklistManager.GetActiveTaskProgresses(CurrentMapSubId, PlayerId.Value),
             GeneralJobScore = contribution?.GeneralJobScore ?? 0f,
             ManittoRoleScore = contribution?.ManittoRoleScore ?? 0f,
@@ -163,12 +164,18 @@ public partial class GameClientSession
 
     private bool TryCompleteInteractObjectChecklist(InteractableInfoData info)
     {
-        return TryCompleteInteractObjectChecklist(info, out _) == ErrorCode.SUCCESS;
+        return TryCompleteInteractObjectChecklist(info, out _, out _, out _) == ErrorCode.SUCCESS;
     }
 
-    private ErrorCode TryCompleteInteractObjectChecklist(InteractableInfoData info, out ChecklistTaskData? completedTask)
+    private ErrorCode TryCompleteInteractObjectChecklist(
+        InteractableInfoData info,
+        out ChecklistTaskData? completedTask,
+        out float awardedScore,
+        out int awardedContribution)
     {
         completedTask = null;
+        awardedScore = 0f;
+        awardedContribution = 0;
         if (!PlayerId.HasValue) return ErrorCode.INVALID_GAME_STATE;
         if (!TryGetActiveInteractObjectChecklistTask(info, out var task) || task == null)
             return ErrorCode.INTERACTABLE_NOT_AVAILABLE;
@@ -189,6 +196,8 @@ public partial class GameClientSession
             return result.ErrorCode;
         }
 
+        awardedScore = result.AwardedScore;
+        awardedContribution = result.AwardedContribution;
         if (result.ConsumedItemUpdate != null)
             SendInGameInventoryUpdate(result.ConsumedItemUpdate);
 
@@ -265,6 +274,8 @@ public partial class GameClientSession
 
         var info = GameInteractableData.Get(msg.InteractId);
         ErrorCode errorCode = ErrorCode.SUCCESS;
+        float awardedScore = 0f;
+        int awardedContribution = 0;
         if (info == null)
         {
             Logger.LogWarning("Checklist activity FINISH unknown InteractId: {InteractId}", msg.InteractId);
@@ -272,14 +283,14 @@ public partial class GameClientSession
         }
         else
         {
-            errorCode = TryCompleteInteractObjectChecklist(info, out _);
+            errorCode = TryCompleteInteractObjectChecklist(info, out _, out awardedScore, out awardedContribution);
         }
 
         Logger.LogInformation(
             "Checklist activity FINISH: PlayerId={PlayerId}, InteractId={InteractId}, ErrorCode={ErrorCode}",
             PlayerId, msg.InteractId, errorCode);
 
-        SendChecklistActivityResult(msg.InteractId, errorCode);
+        SendChecklistActivityResult(msg.InteractId, errorCode, awardedScore, awardedContribution);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
         return Task.CompletedTask;
     }
@@ -300,14 +311,20 @@ public partial class GameClientSession
         Send(packet);
     }
 
-    private void SendChecklistActivityResult(int interactId, ErrorCode errorCode)
+    private void SendChecklistActivityResult(
+        int interactId,
+        ErrorCode errorCode,
+        float awardedScore,
+        int awardedContribution)
     {
         if (!PlayerId.HasValue) return;
 
         var msg = new G_TO_C_CHECKLIST_ACTIVITY_RESULT
         {
             InteractId = interactId,
-            ErrorCode = errorCode
+            ErrorCode = errorCode,
+            AwardedScore = errorCode == ErrorCode.SUCCESS ? awardedScore : 0f,
+            AwardedContribution = errorCode == ErrorCode.SUCCESS ? Math.Max(0, awardedContribution) : 0
         };
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_CHECKLIST_ACTIVITY_RESULT, PlayerId.Value);

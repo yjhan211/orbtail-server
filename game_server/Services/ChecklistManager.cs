@@ -14,6 +14,7 @@ public sealed class ChecklistCompletionResult
     public ChecklistTaskData? CompletedTask { get; init; }
     public ChecklistTaskData? NextGeneralJob { get; init; }
     public float AwardedScore { get; init; }
+    public int AwardedContribution { get; init; }
     public bool ConsumedRequiredItem { get; init; }
     public InGameItemInfo? ConsumedItemUpdate { get; init; }
 }
@@ -120,6 +121,19 @@ public sealed class ChecklistManager(ILogger logger)
         }
     }
 
+    public List<int> GetCompletedTaskIds(long matchingId, long playerId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state)) return new List<int>();
+
+        lock (state.SyncRoot)
+        {
+            return state.GetOrCreatePlayerState(playerId)
+                .CompletedTaskIds
+                .OrderBy(id => id)
+                .ToList();
+        }
+    }
+
     public ChecklistProgressAdvanceResult AdvanceActiveTaskProgress(
         long matchingId,
         long playerId,
@@ -218,8 +232,10 @@ public sealed class ChecklistManager(ILogger logger)
         InGameItemInfo? consumedItemUpdate)
     {
         var task = activeTask.Task;
+        int beforeContribution = CalculateContribution(playerState);
         playerState.ActiveTasks.Remove(activeTask);
         float awardedScore = AwardTaskScore(playerState, task);
+        int afterContribution = CalculateContribution(playerState);
         playerState.CompletedTaskIds.Add(task.TaskId);
         RememberAntiFarmTags(playerState, task);
 
@@ -237,9 +253,18 @@ public sealed class ChecklistManager(ILogger logger)
             CompletedTask = task,
             NextGeneralJob = nextGeneralJob,
             AwardedScore = awardedScore,
+            AwardedContribution = Math.Max(0, afterContribution - beforeContribution),
             ConsumedRequiredItem = consumedRequiredItem,
             ConsumedItemUpdate = consumedItemUpdate
         };
+    }
+
+    private static int CalculateContribution(PlayerChecklistState playerState)
+    {
+        if (playerState == null) return 0;
+
+        float totalScore = playerState.GeneralJobScore + playerState.ManittoRoleScore + playerState.BonusScore;
+        return Math.Max(0, (int)MathF.Round(totalScore * ContributionScale, MidpointRounding.AwayFromZero));
     }
 
     public List<ChecklistPlayerContribution> GetPlayerContributions(long matchingId, IEnumerable<long> playerIds)
