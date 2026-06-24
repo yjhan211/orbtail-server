@@ -22,17 +22,21 @@ namespace network.common.data
             new(StringComparer.OrdinalIgnoreCase);
 
         private static readonly Dictionary<ChecklistTaskCategory, List<ChecklistTaskData>> _tasksByCategory = new();
+        private static readonly Dictionary<string, ChecklistActivityInteractionData> _activityInteractionsByTaskKey =
+            new(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<ChecklistChainState, ChecklistStateRuleData> _stateRules = new();
 
         public static void Initialize(
             List<CsvRow> ruleData,
             List<CsvRow> taskPoolData,
-            List<CsvRow> stateRuleData)
+            List<CsvRow> stateRuleData,
+            List<CsvRow> activityInteractionData)
         {
             _rules.Clear();
             _tasksById.Clear();
             _tasksByKey.Clear();
             _tasksByCategory.Clear();
+            _activityInteractionsByTaskKey.Clear();
             _stateRules.Clear();
 
             foreach (var row in ruleData)
@@ -64,6 +68,13 @@ namespace network.common.data
                 var stateRule = ChecklistStateRuleData.CreateFromData(row);
                 _stateRules[stateRule.ChainState] = stateRule;
             }
+
+            foreach (var row in activityInteractionData)
+            {
+                var interaction = ChecklistActivityInteractionData.CreateFromData(row);
+                if (!string.IsNullOrWhiteSpace(interaction.TaskKey))
+                    _activityInteractionsByTaskKey[interaction.TaskKey] = interaction;
+            }
         }
 
         public static ChecklistRuleData GetRule(string key) =>
@@ -91,6 +102,12 @@ namespace network.common.data
 
         public static ChecklistTaskData GetTask(string taskKey) =>
             _tasksByKey.TryGetValue(taskKey, out var task) ? task : null;
+
+        public static ChecklistActivityInteractionData GetActivityInteraction(string taskKey) =>
+            !string.IsNullOrWhiteSpace(taskKey) &&
+            _activityInteractionsByTaskKey.TryGetValue(taskKey, out var interaction)
+                ? interaction
+                : null;
 
         public static List<ChecklistTaskData> GetAllTasks() =>
             _tasksById.Values.OrderBy(task => task.TaskId).ToList();
@@ -150,6 +167,12 @@ namespace network.common.data
                     if (task.RequiredItemId <= 0)
                         errors.Add($"checklist_task_pool [{task.TaskId}]: general_job requires required_item_id");
                 }
+            }
+
+            foreach (var taskKey in _activityInteractionsByTaskKey.Keys)
+            {
+                if (!_tasksByKey.ContainsKey(taskKey))
+                    errors.Add($"checklist_activity_interaction [{taskKey}]: task_key not found in checklist_task_pool");
             }
 
             if (errors.Count > 0)
@@ -316,6 +339,29 @@ namespace network.common.data
                 ManittoRoleMaxCount = max,
                 CanAccuse = ChecklistCsvParser.ParseBool(row["can_accuse"]),
                 NotesKr = row["notes_kr"]
+            };
+        }
+    }
+
+    public class ChecklistActivityInteractionData
+    {
+        public string TaskKey { get; private set; }
+        public string PanelTitleKr { get; private set; }
+        public string DetailKr { get; private set; }
+        public string Choice1Kr { get; private set; }
+        public string Choice2Kr { get; private set; }
+        public string RequiredChoiceKr { get; private set; }
+
+        public static ChecklistActivityInteractionData CreateFromData(CsvRow row)
+        {
+            return new ChecklistActivityInteractionData
+            {
+                TaskKey = row["task_key"],
+                PanelTitleKr = row["panel_title_kr"],
+                DetailKr = row["detail_kr"],
+                Choice1Kr = row["choice_1_kr"],
+                Choice2Kr = row["choice_2_kr"],
+                RequiredChoiceKr = row["required_choice_kr"]
             };
         }
     }

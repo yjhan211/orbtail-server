@@ -258,7 +258,8 @@ namespace network.common.data.helpers
             GameChecklistData.Initialize(
                 loadedData[DataFiles.Checklist.Rule],
                 loadedData[DataFiles.Checklist.TaskPool],
-                loadedData[DataFiles.Checklist.StateRules]);
+                loadedData[DataFiles.Checklist.StateRules],
+                loadedData[DataFiles.Checklist.ActivityInteraction]);
 
             ValidateAllData();
             _initialized = true;
@@ -638,8 +639,9 @@ namespace network.common.data.helpers
                 public const string Rule = "checklist_rule.csv";
                 public const string TaskPool = "checklist_task_pool.csv";
                 public const string StateRules = "checklist_state_rules.csv";
+                public const string ActivityInteraction = "checklist_activity_interaction.csv";
 
-                public static readonly string[] ALL = new[] { Rule, TaskPool, StateRules };
+                public static readonly string[] ALL = new[] { Rule, TaskPool, StateRules, ActivityInteraction };
             }
 
             public static class Item

@@ -18,8 +18,6 @@ public static class RngCollectCore
     private const int AttendanceBlackboardInteractId = 701000055;
     private const int TornAttendancePagePartId = 308;
     private const int BlackedOutPaperPartId = 309;
-    private const int MinRngDropItemId = 201000001;
-    private const int MaxRngDropItemId = 301000011;
     // 소모품 회수 stamina 보상 제거 (#135) — 회복은 아이템 사용 시점에만.
     private const int ConsumableStaminaReward = 0;
     private static readonly Random _rng = new();
@@ -199,21 +197,33 @@ public static class RngCollectCore
     private static List<int> GetAllowedRngItemPool(int areaType)
     {
         var areaPool = GameInteractableData.GetItemPoolByArea(areaType)
-            .Where(IsAllowedRngDropItem)
+            .Where(IsStaminaOnlyConsumableDropItem)
             .ToList();
 
         if (areaPool.Count > 0)
             return areaPool;
 
         return GameInteractableData.GetAllAreaItemPoolItems()
-            .Where(IsAllowedRngDropItem)
+            .Where(IsStaminaOnlyConsumableDropItem)
             .Distinct()
             .ToList();
     }
 
-    private static bool IsAllowedRngDropItem(int itemId)
+    private static bool IsStaminaOnlyConsumableDropItem(int itemId)
     {
-        return itemId >= MinRngDropItemId && itemId <= MaxRngDropItemId;
+        var item = GameItemData.Get(itemId);
+        if (item == null ||
+            item.Type != ItemType.CONSUMABLE ||
+            item.ConsumableBuffList.Count == 0)
+        {
+            return false;
+        }
+
+        return item.ConsumableBuffList.All(buff =>
+        {
+            var buffData = GameBuffData.Get(buff.id);
+            return buffData != null && buffData.SubType == BuffSubType.CONDITION_ADD;
+        });
     }
 }
 
