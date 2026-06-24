@@ -144,6 +144,45 @@ public partial class GameClientSession
         return true;
     }
 
+    private bool TryCompleteInteractObjectChecklist(InteractableInfoData info)
+    {
+        if (!PlayerId.HasValue || info == null) return false;
+
+        var task = _checklistManager.GetActiveTasks(CurrentMapSubId, PlayerId.Value)
+            .FirstOrDefault(activeTask =>
+                activeTask.Category == ChecklistTaskCategory.GeneralJob &&
+                activeTask.CompletionEvent.Equals("interact_object", StringComparison.OrdinalIgnoreCase) &&
+                (activeTask.AreaType <= 0 || activeTask.AreaType == info.ZoneId) &&
+                (activeTask.ObjectType <= 0 || activeTask.ObjectType == (int)info.ObjectType) &&
+                (activeTask.InteractId <= 0 || activeTask.InteractId == info.Id));
+        if (task == null)
+            return false;
+
+        var result = _checklistManager.TryCompleteTask(
+            CurrentMapSubId,
+            PlayerId.Value,
+            task.TaskId,
+            (AreaType)info.ZoneId,
+            info.Id,
+            _inGameInventoryManager);
+        if (result.ErrorCode != ErrorCode.SUCCESS)
+        {
+            Logger.LogInformation(
+                "Checklist interact_object completion skipped: MatchingId={MatchingId}, PlayerId={PlayerId}, TaskId={TaskId}, InteractId={InteractId}, Error={ErrorCode}",
+                CurrentMapSubId, PlayerId.Value, task.TaskId, info.Id, result.ErrorCode);
+            return false;
+        }
+
+        if (result.ConsumedItemUpdate != null)
+            SendInGameInventoryUpdate(result.ConsumedItemUpdate);
+
+        SendChecklistInfo();
+        Logger.LogInformation(
+            "Checklist interact_object completed: MatchingId={MatchingId}, PlayerId={PlayerId}, TaskId={TaskId}, InteractId={InteractId}",
+            CurrentMapSubId, PlayerId.Value, task.TaskId, info.Id);
+        return true;
+    }
+
     private List<G_TO_C_MISSION_INFO> BuildMissionInfoChunks(
         PlayerPartState state,
         int totalSteps,

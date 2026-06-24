@@ -183,6 +183,7 @@ public partial class GameClientSession
         foreach (var extraInventoryItem in outcome.AddedExtraInventoryItems)
             SendInGameInventoryUpdate(extraInventoryItem);
         if (outcome.AddedBonusInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedBonusInventoryItem);
+        TryCompleteInteractObjectChecklist(info);
 
         Logger.LogInformation(
             "RNG 채집 FINISH: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, ItemId={ItemId}, BonusItemId={BonusItemId}",

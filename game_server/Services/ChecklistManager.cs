@@ -15,6 +15,7 @@ public sealed class ChecklistCompletionResult
     public ChecklistTaskData? NextGeneralJob { get; init; }
     public float AwardedScore { get; init; }
     public bool ConsumedRequiredItem { get; init; }
+    public InGameItemInfo? ConsumedItemUpdate { get; init; }
 }
 
 public sealed class ChecklistProgressAdvanceResult
@@ -150,7 +151,8 @@ public sealed class ChecklistManager(ILogger logger)
             return new ChecklistProgressAdvanceResult
             {
                 Changed = true,
-                Completion = CompleteActiveTask(playerState, activeTask, consumedRequiredItem: false)
+                Completion = CompleteActiveTask(playerState, activeTask, consumedRequiredItem: false,
+                    consumedItemUpdate: null)
             };
         }
     }
@@ -184,16 +186,19 @@ public sealed class ChecklistManager(ILogger logger)
                 return new ChecklistCompletionResult { ErrorCode = ErrorCode.INSUFFICIENT_ITEM };
 
             bool consumed = false;
+            InGameItemInfo? consumedItemUpdate = null;
             if (ShouldConsumeRequiredItem(task))
             {
-                var removed = inventoryManager.TryRemoveOneByItemId(matchingId, playerId, task.RequiredItemId, out _);
+                var removed = inventoryManager.TryRemoveOneByItemId(matchingId, playerId, task.RequiredItemId,
+                    out consumedItemUpdate);
                 if (!removed)
                     return new ChecklistCompletionResult { ErrorCode = ErrorCode.INSUFFICIENT_ITEM };
 
                 consumed = true;
             }
 
-            ChecklistCompletionResult result = CompleteActiveTask(playerState, activeTask, consumed);
+            ChecklistCompletionResult result = CompleteActiveTask(playerState, activeTask, consumed,
+                consumedItemUpdate);
 
             logger.LogInformation(
                 "Checklist task completed: MatchingId={MatchingId}, PlayerId={PlayerId}, TaskId={TaskId}, Score={Score}, Consumed={Consumed}, NextTaskId={NextTaskId}",
@@ -206,7 +211,8 @@ public sealed class ChecklistManager(ILogger logger)
     private ChecklistCompletionResult CompleteActiveTask(
         PlayerChecklistState playerState,
         ChecklistActiveTask activeTask,
-        bool consumedRequiredItem)
+        bool consumedRequiredItem,
+        InGameItemInfo? consumedItemUpdate)
     {
         var task = activeTask.Task;
         playerState.ActiveTasks.Remove(activeTask);
@@ -228,7 +234,8 @@ public sealed class ChecklistManager(ILogger logger)
             CompletedTask = task,
             NextGeneralJob = nextGeneralJob,
             AwardedScore = awardedScore,
-            ConsumedRequiredItem = consumedRequiredItem
+            ConsumedRequiredItem = consumedRequiredItem,
+            ConsumedItemUpdate = consumedItemUpdate
         };
     }
 
