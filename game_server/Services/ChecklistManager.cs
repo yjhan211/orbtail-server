@@ -386,6 +386,7 @@ public sealed class ChecklistManager(ILogger logger)
     }
 
     private static bool IsChainNext(ChecklistTaskData task) =>
+        task.ChainPolicy.Equals("chain_on_complete", StringComparison.OrdinalIgnoreCase) ||
         task.ChainPolicy.Equals("next_on_complete", StringComparison.OrdinalIgnoreCase);
 
     private static void RememberAntiFarmTags(PlayerChecklistState playerState, ChecklistTaskData task)
