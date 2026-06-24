@@ -87,6 +87,7 @@ public partial class GameClientSession
             ActiveTaskIds = _checklistManager.GetActiveTasks(CurrentMapSubId, PlayerId.Value)
                 .Select(task => task.TaskId)
                 .ToList(),
+            ActiveTaskProgresses = _checklistManager.GetActiveTaskProgresses(CurrentMapSubId, PlayerId.Value),
             GeneralJobScore = contribution?.GeneralJobScore ?? 0f,
             ManittoRoleScore = contribution?.ManittoRoleScore ?? 0f,
             BonusScore = contribution?.BonusScore ?? 0f,
@@ -96,6 +97,51 @@ public partial class GameClientSession
         using var packet = Packet.Create((int)Protocol.G_TO_C_CHECKLIST_INFO, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);
+    }
+
+    public bool AdvanceTargetProximityChecklistProgress(float deltaSeconds)
+    {
+        if (!PlayerId.HasValue) return false;
+
+        var result = _checklistManager.AdvanceActiveTaskProgress(
+            CurrentMapSubId,
+            PlayerId.Value,
+            "MANITTO_STAY_NEAR_TARGET_20",
+            deltaSeconds);
+        if (!result.Changed)
+            return false;
+
+        if (result.Completion?.CompletedTask != null)
+            Logger.LogInformation(
+                "Checklist proximity task completed: MatchingId={MatchingId}, PlayerId={PlayerId}, TaskId={TaskId}",
+                CurrentMapSubId, PlayerId.Value, result.Completion.CompletedTask.TaskId);
+
+        SendChecklistInfo();
+        return true;
+    }
+
+    public bool CompleteTargetGiftChecklist()
+    {
+        if (!PlayerId.HasValue) return false;
+
+        var task = _checklistManager.GetActiveTasks(CurrentMapSubId, PlayerId.Value)
+            .FirstOrDefault(activeTask =>
+                activeTask.TaskKey.Equals("MANITTO_TARGET_DISCOVERS_GIFT", StringComparison.OrdinalIgnoreCase));
+        if (task == null)
+            return false;
+
+        var result = _checklistManager.TryCompleteTask(
+            CurrentMapSubId,
+            PlayerId.Value,
+            task.TaskId,
+            CurrentArea,
+            interactId: 0,
+            _inGameInventoryManager);
+        if (result.ErrorCode != ErrorCode.SUCCESS)
+            return false;
+
+        SendChecklistInfo();
+        return true;
     }
 
     private List<G_TO_C_MISSION_INFO> BuildMissionInfoChunks(
@@ -1502,6 +1548,8 @@ public partial class GameClientSession
         var sessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var ownerSession = sessions.FirstOrDefault(s => s.PlayerId == result.OwnerPlayerId);
         if (ownerSession == null) return;
+
+        ownerSession.CompleteTargetGiftChecklist();
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_GIFT_PROGRESS, result.OwnerPlayerId);
         var msg = new G_TO_C_GIFT_PROGRESS

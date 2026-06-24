@@ -17,6 +17,12 @@ public sealed class ChecklistCompletionResult
     public bool ConsumedRequiredItem { get; init; }
 }
 
+public sealed class ChecklistProgressAdvanceResult
+{
+    public bool Changed { get; init; }
+    public ChecklistCompletionResult? Completion { get; init; }
+}
+
 public sealed class ChecklistPlayerContribution
 {
     public long PlayerId { get; init; }
@@ -95,6 +101,60 @@ public sealed class ChecklistManager(ILogger logger)
         }
     }
 
+    public List<ChecklistTaskProgressInfo> GetActiveTaskProgresses(long matchingId, long playerId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state)) return new List<ChecklistTaskProgressInfo>();
+
+        lock (state.SyncRoot)
+        {
+            return state.GetOrCreatePlayerState(playerId)
+                .ActiveTasks
+                .Select(task => new ChecklistTaskProgressInfo
+                {
+                    TaskId = task.Task.TaskId,
+                    Progress = task.Progress01
+                })
+                .ToList();
+        }
+    }
+
+    public ChecklistProgressAdvanceResult AdvanceActiveTaskProgress(
+        long matchingId,
+        long playerId,
+        string taskKey,
+        float deltaSeconds)
+    {
+        if (string.IsNullOrWhiteSpace(taskKey) || deltaSeconds <= 0f)
+            return new ChecklistProgressAdvanceResult();
+
+        if (!_states.TryGetValue(matchingId, out var state))
+            return new ChecklistProgressAdvanceResult();
+
+        lock (state.SyncRoot)
+        {
+            var playerState = state.GetOrCreatePlayerState(playerId);
+            var activeTask = playerState.ActiveTasks.FirstOrDefault(task =>
+                task.Task.TaskKey.Equals(taskKey, StringComparison.OrdinalIgnoreCase));
+            if (activeTask == null || activeTask.Task.DurationSeconds <= 0)
+                return new ChecklistProgressAdvanceResult();
+
+            float before = activeTask.ProgressSeconds;
+            activeTask.ProgressSeconds = Math.Min(activeTask.Task.DurationSeconds, before + deltaSeconds);
+            bool changed = Math.Abs(before - activeTask.ProgressSeconds) > 0.0001f;
+            if (!changed)
+                return new ChecklistProgressAdvanceResult();
+
+            if (activeTask.ProgressSeconds < activeTask.Task.DurationSeconds)
+                return new ChecklistProgressAdvanceResult { Changed = true };
+
+            return new ChecklistProgressAdvanceResult
+            {
+                Changed = true,
+                Completion = CompleteActiveTask(playerState, activeTask, consumedRequiredItem: false)
+            };
+        }
+    }
+
     public ChecklistCompletionResult TryCompleteTask(
         long matchingId,
         long playerId,
@@ -133,32 +193,43 @@ public sealed class ChecklistManager(ILogger logger)
                 consumed = true;
             }
 
-            playerState.ActiveTasks.Remove(activeTask);
-            float awardedScore = AwardTaskScore(playerState, task);
-            playerState.CompletedTaskIds.Add(task.TaskId);
-            RememberAntiFarmTags(playerState, task);
-
-            ChecklistTaskData? nextGeneralJob = null;
-            if (task.Category == ChecklistTaskCategory.GeneralJob && IsChainNext(task))
-            {
-                nextGeneralJob = PickGeneralJob(playerState);
-                if (nextGeneralJob != null)
-                    playerState.ActiveTasks.Add(new ChecklistActiveTask(nextGeneralJob));
-            }
+            ChecklistCompletionResult result = CompleteActiveTask(playerState, activeTask, consumed);
 
             logger.LogInformation(
                 "Checklist task completed: MatchingId={MatchingId}, PlayerId={PlayerId}, TaskId={TaskId}, Score={Score}, Consumed={Consumed}, NextTaskId={NextTaskId}",
-                matchingId, playerId, task.TaskId, awardedScore, consumed, nextGeneralJob?.TaskId ?? 0);
+                matchingId, playerId, task.TaskId, result.AwardedScore, consumed, result.NextGeneralJob?.TaskId ?? 0);
 
-            return new ChecklistCompletionResult
-            {
-                ErrorCode = ErrorCode.SUCCESS,
-                CompletedTask = task,
-                NextGeneralJob = nextGeneralJob,
-                AwardedScore = awardedScore,
-                ConsumedRequiredItem = consumed
-            };
+            return result;
         }
+    }
+
+    private ChecklistCompletionResult CompleteActiveTask(
+        PlayerChecklistState playerState,
+        ChecklistActiveTask activeTask,
+        bool consumedRequiredItem)
+    {
+        var task = activeTask.Task;
+        playerState.ActiveTasks.Remove(activeTask);
+        float awardedScore = AwardTaskScore(playerState, task);
+        playerState.CompletedTaskIds.Add(task.TaskId);
+        RememberAntiFarmTags(playerState, task);
+
+        ChecklistTaskData? nextGeneralJob = null;
+        if (task.Category == ChecklistTaskCategory.GeneralJob && IsChainNext(task))
+        {
+            nextGeneralJob = PickGeneralJob(playerState);
+            if (nextGeneralJob != null)
+                playerState.ActiveTasks.Add(new ChecklistActiveTask(nextGeneralJob));
+        }
+
+        return new ChecklistCompletionResult
+        {
+            ErrorCode = ErrorCode.SUCCESS,
+            CompletedTask = task,
+            NextGeneralJob = nextGeneralJob,
+            AwardedScore = awardedScore,
+            ConsumedRequiredItem = consumedRequiredItem
+        };
     }
 
     public List<ChecklistPlayerContribution> GetPlayerContributions(long matchingId, IEnumerable<long> playerIds)
@@ -385,4 +456,8 @@ internal sealed class PlayerChecklistState(long playerId)
 internal sealed class ChecklistActiveTask(ChecklistTaskData task)
 {
     public ChecklistTaskData Task { get; } = task;
+    public float ProgressSeconds { get; set; }
+    public float Progress01 => Task.DurationSeconds > 0
+        ? Math.Clamp(ProgressSeconds / Task.DurationSeconds, 0f, 1f)
+        : 0f;
 }

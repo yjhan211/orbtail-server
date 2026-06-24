@@ -58,6 +58,14 @@ namespace network.common.data.models
         [Key("requiredItemNameKr")] public string RequiredItemNameKr { get; set; } = "";
         [Key("requiredItemPolicy")] public ChecklistRequiredItemPolicy RequiredItemPolicy { get; set; }
         [Key("successLogKr")] public string SuccessLogKr { get; set; } = "";
+        [Key("progress")] public float Progress { get; set; }
+    }
+
+    [MessagePackObject]
+    public class ChecklistTaskProgressInfo : IMessagePackObject
+    {
+        [Key("taskId")] public int TaskId { get; set; }
+        [Key("progress")] public float Progress { get; set; }
     }
 
     [MessagePackObject]
@@ -66,6 +74,7 @@ namespace network.common.data.models
         [Key("matchingId")] public long MatchingId { get; set; }
         [Key("roundNumber")] public int RoundNumber { get; set; }
         [Key("activeTaskIds")] public List<int> ActiveTaskIds { get; set; } = new();
+        [Key("activeTaskProgresses")] public List<ChecklistTaskProgressInfo> ActiveTaskProgresses { get; set; } = new();
         [Key("generalJobScore")] public float GeneralJobScore { get; set; }
         [Key("manittoRoleScore")] public float ManittoRoleScore { get; set; }
         [Key("bonusScore")] public float BonusScore { get; set; }

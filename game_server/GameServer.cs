@@ -295,9 +295,13 @@ public class GameServer(
 
                         // 교감(#161): 같은 영역에서 거리까지 좁히면 추가 회복.
                         // 1:1로 붙어 있는 상황 자체가 보상 조건이라 혼잡 보정은 없다.
-                        if (IsTargetWithinProximity(session, targetSession, targetBot))
+                        bool targetWithinProximity = IsTargetWithinProximity(session, targetSession, targetBot);
+                        if (targetWithinProximity)
+                        {
                             corruptionDelta += ResolveStatusEffectCorruptionDelta(
                                 ProximityStatusEffectId, Config.TARGET_PROXIMITY_RECOVERY_BONUS);
+                            session.AdvanceTargetProximityChecklistProgress(ResourceTickIntervalSeconds);
+                        }
                     }
                 }
 
