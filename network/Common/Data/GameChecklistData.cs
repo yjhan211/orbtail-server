@@ -259,7 +259,11 @@ namespace network.common.data
         public ChecklistTaskCategory Category { get; private set; }
         public string TaskKey { get; private set; }
         public string TitleKr { get; private set; }
+        public string TitleEn { get; private set; }
+        public string TitleJp { get; private set; }
         public string DescriptionKr { get; private set; }
+        public string DescriptionEn { get; private set; }
+        public string DescriptionJp { get; private set; }
         public float Score { get; private set; }
         public int AreaType { get; private set; }
         public string AreaNameKr { get; private set; }
@@ -289,7 +293,11 @@ namespace network.common.data
                 Category = ChecklistCsvParser.ParseCategory(row["category"]),
                 TaskKey = row["task_key"],
                 TitleKr = row["title_kr"],
+                TitleEn = ChecklistCsvParser.GetOptional(row, "title_en"),
+                TitleJp = ChecklistCsvParser.GetOptional(row, "title_jp"),
                 DescriptionKr = row["description_kr"],
+                DescriptionEn = ChecklistCsvParser.GetOptional(row, "description_en"),
+                DescriptionJp = ChecklistCsvParser.GetOptional(row, "description_jp"),
                 Score = float.Parse(row["score"], CultureInfo.InvariantCulture),
                 AreaType = ChecklistCsvParser.ParseInt(row, "area_type"),
                 AreaNameKr = row["area_name_kr"],
@@ -347,10 +355,20 @@ namespace network.common.data
     {
         public string TaskKey { get; private set; }
         public string PanelTitleKr { get; private set; }
+        public string PanelTitleEn { get; private set; }
+        public string PanelTitleJp { get; private set; }
         public string DetailKr { get; private set; }
+        public string DetailEn { get; private set; }
+        public string DetailJp { get; private set; }
         public string Choice1Kr { get; private set; }
+        public string Choice1En { get; private set; }
+        public string Choice1Jp { get; private set; }
         public string Choice2Kr { get; private set; }
+        public string Choice2En { get; private set; }
+        public string Choice2Jp { get; private set; }
         public string RequiredChoiceKr { get; private set; }
+        public string RequiredChoiceEn { get; private set; }
+        public string RequiredChoiceJp { get; private set; }
 
         public static ChecklistActivityInteractionData CreateFromData(CsvRow row)
         {
@@ -358,16 +376,29 @@ namespace network.common.data
             {
                 TaskKey = row["task_key"],
                 PanelTitleKr = row["panel_title_kr"],
+                PanelTitleEn = ChecklistCsvParser.GetOptional(row, "panel_title_en"),
+                PanelTitleJp = ChecklistCsvParser.GetOptional(row, "panel_title_jp"),
                 DetailKr = row["detail_kr"],
+                DetailEn = ChecklistCsvParser.GetOptional(row, "detail_en"),
+                DetailJp = ChecklistCsvParser.GetOptional(row, "detail_jp"),
                 Choice1Kr = row["choice_1_kr"],
+                Choice1En = ChecklistCsvParser.GetOptional(row, "choice_1_en"),
+                Choice1Jp = ChecklistCsvParser.GetOptional(row, "choice_1_jp"),
                 Choice2Kr = row["choice_2_kr"],
-                RequiredChoiceKr = row["required_choice_kr"]
+                Choice2En = ChecklistCsvParser.GetOptional(row, "choice_2_en"),
+                Choice2Jp = ChecklistCsvParser.GetOptional(row, "choice_2_jp"),
+                RequiredChoiceKr = row["required_choice_kr"],
+                RequiredChoiceEn = ChecklistCsvParser.GetOptional(row, "required_choice_en"),
+                RequiredChoiceJp = ChecklistCsvParser.GetOptional(row, "required_choice_jp")
             };
         }
     }
 
     internal static class ChecklistCsvParser
     {
+        public static string GetOptional(CsvRow row, string columnName) =>
+            row.ContainsKey(columnName) ? row[columnName] : "";
+
         public static int ParseInt(CsvRow row, string columnName) =>
             row.ContainsKey(columnName) && int.TryParse(row[columnName], out var value) ? value : 0;
 
