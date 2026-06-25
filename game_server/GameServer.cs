@@ -68,11 +68,13 @@ public class GameServer(
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
     private Timer? _botMovementTimer;         // #127 봇 walking step (250ms)
     private Timer? _botMissionTimer;          // #134 봇 미션 처리 (RNG 채집/결합 — 1초 주기)
+    private Timer? _checklistProgressTickTimer;
 
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private int _botMovementProcessing;
 
     private const int ResourceTickIntervalSeconds = 5;
+    private const int ChecklistProgressTickIntervalSeconds = 1;
     // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
     // 프로토 0: 타겟에서 떨어지면(복도/빈방) 압박이 실질적이도록 기본 감소를 회복(-3)과 균형 맞춰 상향. 튜닝 노브.
     private const int MentalDecayPhase1 = 3;            // 0~5분: 5초당 오염도 +3
@@ -113,6 +115,7 @@ public class GameServer(
             StartTargetLocationTimer();
             StartBotMovementTimer();
             StartBotMissionTimer();
+            StartChecklistProgressTickTimer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -153,6 +156,7 @@ public class GameServer(
         if (_targetLocationTimer != null) { await _targetLocationTimer.DisposeAsync(); _targetLocationTimer = null; }
         if (_botMovementTimer != null) { await _botMovementTimer.DisposeAsync(); _botMovementTimer = null; }
         if (_botMissionTimer != null) { await _botMissionTimer.DisposeAsync(); _botMissionTimer = null; }
+        if (_checklistProgressTickTimer != null) { await _checklistProgressTickTimer.DisposeAsync(); _checklistProgressTickTimer = null; }
         foreach (var timer in _headlessRoundTimers.Values)
             await timer.DisposeAsync();
         _headlessRoundTimers.Clear();
@@ -237,6 +241,61 @@ public class GameServer(
         logger.LogInformation("자원 틱 타이머 시작 ({Interval}초)", ResourceTickIntervalSeconds);
     }
 
+    private void StartChecklistProgressTickTimer()
+    {
+        _checklistProgressTickTimer = new Timer(ProcessChecklistProgressTick, null,
+            TimeSpan.FromSeconds(ChecklistProgressTickIntervalSeconds),
+            TimeSpan.FromSeconds(ChecklistProgressTickIntervalSeconds));
+        logger.LogInformation("체크리스트 진행 틱 타이머 시작 ({Interval}초)", ChecklistProgressTickIntervalSeconds);
+    }
+
+    private void ProcessChecklistProgressTick(object? state)
+    {
+        try
+        {
+            var activeSessions = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue && !s.IsEliminated)
+                .ToList();
+
+            foreach (var session in activeSessions)
+            {
+                if (!GameClientSession.IsRoundActionPhase(session.CurrentMapSubId))
+                    continue;
+                if (session.CurrentArea == AreaType.None || session.TargetPlayerId == 0)
+                    continue;
+
+                GameClientSession? targetSession = activeSessions.FirstOrDefault(s =>
+                    s.PlayerId == session.TargetPlayerId &&
+                    s.CurrentMapSubId == session.CurrentMapSubId &&
+                    !s.IsEliminated);
+                BotPlayerState? targetBot = targetSession == null
+                    ? _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId)
+                    : null;
+                if (targetSession == null && targetBot is not { IsEliminated: false })
+                    continue;
+
+                if (IsTargetWithinProximity(session, targetSession, targetBot))
+                    session.AdvanceTargetProximityChecklistProgress(ChecklistProgressTickIntervalSeconds);
+            }
+
+            var matchingIds = GetActiveMatchingIds();
+            foreach (long matchingId in matchingIds)
+            {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
+                if (!_botPlayerManager.HasBots(matchingId)) continue;
+
+                ProcessBotTargetProximityChecklistProgress(
+                    matchingId,
+                    activeSessions,
+                    ChecklistProgressTickIntervalSeconds);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "체크리스트 진행 틱 처리 중 오류");
+        }
+    }
+
     /// <summary>
     ///     경과 시간에 따른 오염도 자연증가량 결정 (GDD v0.0.5 점진적 가속)
     /// </summary>
@@ -311,8 +370,6 @@ public class GameServer(
                         }
                     }
 
-                    if (targetWithinProximity)
-                        session.AdvanceTargetProximityChecklistProgress(ResourceTickIntervalSeconds);
                 }
 
                 // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
@@ -352,7 +409,6 @@ public class GameServer(
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
-                ProcessBotTargetProximityChecklistProgress(matchingId, activeSessions);
                 // 봇 자연 정신오염 증가 제거 (#135) — 시연 시간 내 봇 조기 탈락 방지
                 const int botDecay = 0;
                 var tickResult = _botPlayerManager.ProcessBotTick(matchingId, botDecay, _areaClosureManager);
@@ -442,7 +498,10 @@ public class GameServer(
         return humans + _botPlayerManager.CountBotsInArea(matchingId, area);
     }
 
-    private void ProcessBotTargetProximityChecklistProgress(long matchingId, List<GameClientSession> activeSessions)
+    private void ProcessBotTargetProximityChecklistProgress(
+        long matchingId,
+        List<GameClientSession> activeSessions,
+        float deltaSeconds)
     {
         foreach (var bot in _botPlayerManager.GetBots(matchingId))
         {
@@ -467,7 +526,7 @@ public class GameServer(
                 matchingId,
                 bot.PlayerId,
                 "MANITTO_STAY_NEAR_TARGET_20",
-                ResourceTickIntervalSeconds);
+                deltaSeconds);
             if (progress.Completion?.CompletedTask != null)
             {
                 logger.LogInformation(
