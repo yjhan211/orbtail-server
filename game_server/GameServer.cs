@@ -56,6 +56,7 @@ public class GameServer(
     private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly GameEventLogManager _gameEventLogManager = new();
     private readonly Proto0PresenceTracker _presenceTracker = new();
+    private readonly ConcurrentDictionary<long, Timer> _headlessRoundTimers = new();
     private long _adminBotOnlyMatchingIdSeed = 9_000_000;
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
 
@@ -152,6 +153,9 @@ public class GameServer(
         if (_targetLocationTimer != null) { await _targetLocationTimer.DisposeAsync(); _targetLocationTimer = null; }
         if (_botMovementTimer != null) { await _botMovementTimer.DisposeAsync(); _botMovementTimer = null; }
         if (_botMissionTimer != null) { await _botMissionTimer.DisposeAsync(); _botMissionTimer = null; }
+        foreach (var timer in _headlessRoundTimers.Values)
+            await timer.DisposeAsync();
+        _headlessRoundTimers.Clear();
 
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
@@ -1680,6 +1684,7 @@ public class GameServer(
         _checklistManager.StartRound(matchingId, 1, playerIds,
             playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
         GameClientSession.TryStartHeadlessActionRound(matchingId);
+        StartHeadlessRoundTimer(matchingId);
 
         _gameEventLogManager.LogSystem(matchingId,
             $"Bot-only instance created: botCount={botCount}, ids=[{string.Join(",", playerIds)}]");
@@ -1721,6 +1726,312 @@ public class GameServer(
         return link != null
                && link.Status != ManittoStatus.ELIMINATED
                && link.Status != ManittoStatus.SPECTATING;
+    }
+
+    private void StartHeadlessRoundTimer(long matchingId)
+    {
+        var timer = new Timer(_ => ProcessHeadlessRoundTimerTick(matchingId), null,
+            TimeSpan.Zero, TimeSpan.FromSeconds(1));
+        if (!_headlessRoundTimers.TryAdd(matchingId, timer))
+            timer.Dispose();
+    }
+
+    private void StopHeadlessRoundTimer(long matchingId)
+    {
+        if (_headlessRoundTimers.TryRemove(matchingId, out var timer))
+            timer.Dispose();
+    }
+
+    private void ProcessHeadlessRoundTimerTick(long matchingId)
+    {
+        if (!GameClientSession.GameRoundStates.TryGetValue(matchingId, out var state))
+        {
+            StopHeadlessRoundTimer(matchingId);
+            return;
+        }
+
+        lock (state.SyncRoot)
+        {
+            if (state.IsSessionEnded)
+            {
+                StopHeadlessRoundTimer(matchingId);
+                return;
+            }
+
+            if (DateTime.UtcNow < state.PhaseEndsAtUtc)
+                return;
+
+            AdvanceHeadlessRoundPhase(matchingId, state);
+        }
+    }
+
+    private void AdvanceHeadlessRoundPhase(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        switch (state.Phase)
+        {
+            case RoundPhase.Action:
+                EnterHeadlessSettlementNomination(matchingId, state);
+                break;
+            case RoundPhase.SettlementNomination:
+                EnterHeadlessSettlementResult(matchingId, state);
+                break;
+            case RoundPhase.SettlementResult:
+                EnterHeadlessSettlementContribution(matchingId, state);
+                break;
+            case RoundPhase.SettlementContributionReveal:
+                EnterHeadlessSettlementSubPhase(matchingId, state, RoundPhase.SettlementDetectionResultReveal,
+                    Config.ROUND_SETTLEMENT_DETECTION_RESULT_SECONDS);
+                break;
+            case RoundPhase.SettlementDetectionResultReveal:
+                EnterHeadlessSettlementSubPhase(matchingId, state, RoundPhase.SettlementEliminationReveal,
+                    Config.ROUND_SETTLEMENT_ELIMINATION_SECONDS);
+                break;
+            case RoundPhase.SettlementEliminationReveal:
+                ApplyHeadlessSettlementElimination(matchingId, state);
+                AdvanceHeadlessRoundOrEnd(matchingId, state);
+                break;
+        }
+    }
+
+    private void EnterHeadlessSettlementNomination(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        state.Phase = RoundPhase.SettlementNomination;
+        state.PhaseDurationSeconds = Config.ROUND_SETTLEMENT_NOMINATION_SECONDS;
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_SETTLEMENT_NOMINATION_SECONDS);
+        state.SettlementNominations.Clear();
+        state.BotNominationsInjected = false;
+        ClearHeadlessSettlementContributionResult(state);
+        state.SettlementEliminationApplied = false;
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless settlement nomination started: Round={state.RoundNumber}");
+    }
+
+    private void EnterHeadlessSettlementResult(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        InjectHeadlessBotPresenceSettlementNominations(matchingId, state);
+        state.Phase = RoundPhase.SettlementResult;
+        state.PhaseDurationSeconds = Config.ROUND_SETTLEMENT_RESULT_SECONDS;
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_SETTLEMENT_RESULT_SECONDS);
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless settlement result: Round={state.RoundNumber}, Nominations={state.SettlementNominations.Count}");
+    }
+
+    private void EnterHeadlessSettlementContribution(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        EnterHeadlessSettlementSubPhase(matchingId, state, RoundPhase.SettlementContributionReveal,
+            Config.ROUND_SETTLEMENT_CONTRIBUTION_SECONDS);
+        BuildHeadlessSettlementContributionResult(matchingId, state);
+    }
+
+    private void EnterHeadlessSettlementSubPhase(long matchingId, GameClientSession.RoundRuntimeState state,
+        RoundPhase phase, int durationSeconds)
+    {
+        state.Phase = phase;
+        state.PhaseDurationSeconds = Math.Max(1, durationSeconds);
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(state.PhaseDurationSeconds);
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless settlement phase: Round={state.RoundNumber}, Phase={phase}");
+    }
+
+    private void InjectHeadlessBotPresenceSettlementNominations(long matchingId,
+        GameClientSession.RoundRuntimeState state)
+    {
+        if (state.BotNominationsInjected)
+            return;
+
+        state.BotNominationsInjected = true;
+        var roster = GetHeadlessActivePlayerIds(matchingId);
+        if (roster.Count <= 1)
+            return;
+
+        foreach (var bot in _botPlayerManager.GetBots(matchingId)
+                     .Where(bot => !bot.IsEliminated && bot.ManittoStatus != ManittoStatus.SPECTATING)
+                     .OrderBy(bot => bot.PlayerId))
+        {
+            if (state.SettlementNominations.ContainsKey(bot.PlayerId))
+                continue;
+
+            var presenceCandidate = _presenceTracker
+                .GetPresenceScores(matchingId, bot.PlayerId, roster)
+                .Where(candidate => candidate.candidateId != bot.PlayerId && candidate.presence > 0f)
+                .OrderByDescending(candidate => candidate.presence)
+                .ThenBy(candidate => candidate.candidateId)
+                .FirstOrDefault();
+
+            long targetPlayerId = presenceCandidate.candidateId;
+            if (targetPlayerId == 0)
+            {
+                targetPlayerId = IsBotOnlyChainPlayerActive(matchingId, bot.TargetPlayerId)
+                    ? bot.TargetPlayerId
+                    : roster.FirstOrDefault(playerId => playerId != bot.PlayerId);
+            }
+
+            if (targetPlayerId == 0)
+                continue;
+
+            state.SettlementNominations[bot.PlayerId] = targetPlayerId;
+            _gameEventLogManager.LogSystem(matchingId,
+                $"Headless bot nomination: Bot={bot.PlayerId}, Target={targetPlayerId}, Presence={presenceCandidate.presence:0.##}");
+        }
+    }
+
+    private void BuildHeadlessSettlementContributionResult(long matchingId,
+        GameClientSession.RoundRuntimeState state)
+    {
+        ClearHeadlessSettlementContributionResult(state);
+
+        var playerIds = GetHeadlessActivePlayerIds(matchingId);
+        if (playerIds.Count == 0)
+            return;
+
+        var checklistEntries = _checklistManager.BuildSettlementContributionEntries(matchingId, playerIds);
+        if (checklistEntries.Any(entry => entry.Contribution > 0))
+        {
+            state.SettlementContributionEntries.AddRange(checklistEntries);
+        }
+        else
+        {
+            foreach (var entry in BuildHeadlessFallbackSettlementContributionEntries(playerIds))
+                state.SettlementContributionEntries.Add(entry);
+        }
+
+        var top = state.SettlementContributionEntries
+            .OrderByDescending(entry => entry.Contribution)
+            .ThenBy(entry => entry.PlayerId)
+            .First();
+        var lowest = state.SettlementContributionEntries
+            .OrderBy(entry => entry.Contribution)
+            .ThenBy(entry => entry.PlayerId)
+            .First();
+
+        state.SettlementContributionTopPlayerId = top.PlayerId;
+        state.SettlementContributionLowestPlayerId = lowest.PlayerId;
+        state.SettlementContributionTopValue = top.Contribution;
+        state.SettlementContributionLowestValue = lowest.Contribution;
+
+        long decisiveTargetPlayerId = state.SettlementNominations.TryGetValue(top.PlayerId, out long nominatedTarget)
+            ? nominatedTarget
+            : 0;
+        bool success = decisiveTargetPlayerId != 0
+                       && _manittoChainManager.IsAliveManittoOf(matchingId, top.PlayerId, decisiveTargetPlayerId);
+
+        state.SettlementContributionDecisiveTargetPlayerId = decisiveTargetPlayerId;
+        state.SettlementContributionNominationSuccess = success;
+        state.SettlementContributionEliminatedPlayerId = success ? decisiveTargetPlayerId : lowest.PlayerId;
+
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless contribution result: Round={state.RoundNumber}, Top={top.PlayerId}:{top.Contribution}, Lowest={lowest.PlayerId}:{lowest.Contribution}, Success={success}, Eliminated={state.SettlementContributionEliminatedPlayerId}");
+    }
+
+    private static List<SettlementContributionEntry> BuildHeadlessFallbackSettlementContributionEntries(List<long> playerIds)
+    {
+        var values = new List<int> { 9, 21, 27, 21, 15 };
+        var entries = new List<SettlementContributionEntry>();
+        for (int i = 0; i < playerIds.Count; i++)
+        {
+            entries.Add(new SettlementContributionEntry
+            {
+                PlayerId = playerIds[i],
+                Contribution = values[i % values.Count]
+            });
+        }
+
+        return entries;
+    }
+
+    private void ApplyHeadlessSettlementElimination(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        if (state.SettlementEliminationApplied)
+            return;
+
+        long eliminatedPlayerId = state.SettlementContributionEliminatedPlayerId;
+        if (eliminatedPlayerId == 0 || !IsBotOnlyChainPlayerActive(matchingId, eliminatedPlayerId))
+        {
+            state.SettlementEliminationApplied = true;
+            _gameEventLogManager.LogSystem(matchingId,
+                $"Headless elimination skipped: Round={state.RoundNumber}, Candidate={eliminatedPlayerId}");
+            return;
+        }
+
+        state.SettlementEliminationApplied = true;
+        var reason = state.SettlementContributionNominationSuccess
+            ? EliminationReason.DETECTED
+            : EliminationReason.RACE_LOST;
+
+        _gameEventLogManager.LogElimination(matchingId, eliminatedPlayerId, reason.ToString(), isBot: true);
+        ProcessBotElimination(matchingId, eliminatedPlayerId, reason, []);
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless elimination applied: Round={state.RoundNumber}, Player={eliminatedPlayerId}, Reason={reason}");
+    }
+
+    private void AdvanceHeadlessRoundOrEnd(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(matchingId);
+        if (state.RoundNumber >= Config.ROUND_TOTAL_COUNT || isGameOver)
+        {
+            state.Phase = RoundPhase.Ended;
+            state.PhaseDurationSeconds = 0;
+            state.PhaseEndsAtUtc = DateTime.UtcNow;
+            state.IsSessionEnded = true;
+
+            winnerId ??= _manittoChainManager.DetermineWinnerByResources(matchingId, playerId =>
+            {
+                var session = _clientSessions.Values.FirstOrDefault(s => s.PlayerId == playerId);
+                if (session != null) return (session.AdminStamina, session.AdminCorruption, 100);
+
+                var bot = _botPlayerManager.GetBot(matchingId, playerId);
+                return bot != null ? (bot.Stamina, bot.Corruption, 100) : (0, 100, 100);
+            });
+
+            _gameEventLogManager.LogSystem(matchingId,
+                $"Headless game ended: Round={state.RoundNumber}, Winner={winnerId ?? 0}");
+            StopHeadlessRoundTimer(matchingId);
+            return;
+        }
+
+        state.RoundNumber++;
+        state.Phase = RoundPhase.Action;
+        state.PhaseDurationSeconds = Config.ROUND_ACTION_SECONDS;
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_ACTION_SECONDS);
+        state.SettlementEliminationApplied = false;
+        state.SettlementNominations.Clear();
+        state.BotNominationsInjected = false;
+        ClearHeadlessSettlementContributionResult(state);
+
+        var playerIds = GetHeadlessActivePlayerIds(matchingId);
+        _checklistManager.StartRound(matchingId, state.RoundNumber, playerIds,
+            playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless round advanced: Round={state.RoundNumber}, Players={string.Join(",", playerIds)}");
+    }
+
+    private List<long> GetHeadlessActivePlayerIds(long matchingId)
+    {
+        var ids = _clientSessions.Values
+            .Where(session => session.PlayerId.HasValue
+                              && session.CurrentMapSubId == matchingId
+                              && !session.IsEliminated
+                              && session.ManittoStatus != ManittoStatus.SPECTATING)
+            .Select(session => session.PlayerId!.Value)
+            .ToList();
+
+        ids.AddRange(_botPlayerManager.GetBots(matchingId)
+            .Where(bot => !bot.IsEliminated && bot.ManittoStatus != ManittoStatus.SPECTATING)
+            .Select(bot => bot.PlayerId));
+
+        return ids.Distinct().OrderBy(id => id).ToList();
+    }
+
+    private static void ClearHeadlessSettlementContributionResult(GameClientSession.RoundRuntimeState state)
+    {
+        state.SettlementContributionEntries.Clear();
+        state.SettlementContributionTopPlayerId = 0;
+        state.SettlementContributionLowestPlayerId = 0;
+        state.SettlementContributionTopValue = 0;
+        state.SettlementContributionLowestValue = 0;
+        state.SettlementContributionDecisiveTargetPlayerId = 0;
+        state.SettlementContributionNominationSuccess = false;
+        state.SettlementContributionEliminatedPlayerId = 0;
     }
 
     /// <summary>

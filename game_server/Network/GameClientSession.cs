@@ -26,7 +26,7 @@ public partial class GameClientSession : SessionBase
     private const int HeartbeatTimeoutSeconds = 30;
     private static readonly TimeSpan InteractCooldown = TimeSpan.FromSeconds(5);
     private static readonly ConcurrentDictionary<long, Timer> GameTimers = new();
-    private static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
+    internal static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
     private static Proto0PresenceTracker? PresenceTracker;
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly AreaRuleManager _areaRuleManager;
@@ -130,7 +130,7 @@ public partial class GameClientSession : SessionBase
         Logger.LogInformation("GameClientSession created");
     }
 
-    private sealed class RoundRuntimeState
+    internal sealed class RoundRuntimeState
     {
         public object SyncRoot { get; } = new();
         public int RoundNumber { get; set; } = 1;
