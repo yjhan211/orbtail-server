@@ -20,6 +20,8 @@ public static class RngCollectCore
     private const int BlackedOutPaperPartId = 309;
     // 소모품 회수 stamina 보상 제거 (#135) — 회복은 아이템 사용 시점에만.
     private const int ConsumableStaminaReward = 0;
+    // Regular explore should only grant consumables. Mission parts are collected through explicit mission actions.
+    private const bool AllowMissionPartDropsFromExplore = false;
     private static readonly Random _rng = new();
 
     public static RngCollectOutcome Resolve(
@@ -42,8 +44,12 @@ public static class RngCollectCore
             .ToList();
 
         // 자기 부품 이미 회수했으면 그 영역은 자기 풀 외 분기(영역 풀 소모품)로 처리 (#135).
-        var state = matchedParts.Count > 0 ? missionManager.GetState(matchingId, playerId) : null;
-        var matchedPart = MissionPartSelection.SelectNextCollectablePart(matchedParts, state);
+        var state = AllowMissionPartDropsFromExplore && matchedParts.Count > 0
+            ? missionManager.GetState(matchingId, playerId)
+            : null;
+        var matchedPart = AllowMissionPartDropsFromExplore
+            ? MissionPartSelection.SelectNextCollectablePart(matchedParts, state)
+            : null;
 
         if (matchedPart != null)
         {

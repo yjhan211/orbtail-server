@@ -144,6 +144,7 @@ public partial class GameClientSession
             return false;
 
         SendChecklistInfo();
+        SendChecklistActivityResult(0, ErrorCode.SUCCESS, result.AwardedScore, result.AwardedContribution);
         return true;
     }
 
@@ -906,8 +907,11 @@ public partial class GameClientSession
 
         var inventoryItem = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
             .GetItem(msg.ItemUid);
+        bool canPlaceGiftItem = inventoryItem != null &&
+                                (inventoryItem.GiftState == GiftState.Prepared ||
+                                 GameItemData.GetItemType(inventoryItem.ItemId) == ItemType.CONSUMABLE);
         if (inventoryItem == null || inventoryItem.ItemId != msg.ItemId || inventoryItem.Count <= 0 ||
-            inventoryItem.GiftState != GiftState.Prepared)
+            !canPlaceGiftItem)
         {
             SendPlaceGiftResult(ErrorCode.ITEM_NOT_FOUND, msg, CurrentArea, TargetPlayerId);
             return Task.CompletedTask;

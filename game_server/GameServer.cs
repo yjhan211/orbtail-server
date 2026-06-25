@@ -94,6 +94,7 @@ public class GameServer(
         try
         {
             logger.LogInformation("Game server starting...");
+            GameClientSession.SetPresenceTracker(_presenceTracker);
 
             InitializeServices();
             InitializeControllers();
@@ -883,6 +884,8 @@ public class GameServer(
             var ownerSession = activeSessions.FirstOrDefault(s =>
                 s.PlayerId == discovery.OwnerPlayerId && s.CurrentMapSubId == matchingId && !s.IsEliminated);
             if (ownerSession == null) continue;
+
+            ownerSession.CompleteTargetGiftChecklist();
 
             var msg = new G_TO_C_GIFT_PROGRESS
             {
