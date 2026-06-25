@@ -56,6 +56,8 @@ public class GameServer(
     private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly GameEventLogManager _gameEventLogManager = new();
     private readonly Proto0PresenceTracker _presenceTracker = new();
+    private long _adminBotOnlyMatchingIdSeed = 9_000_000;
+    private long _adminBotOnlyPlayerIdSeed = -900_000_000;
 
     private Timer? _corridorStopCheckTimer;
     private CancellationTokenSource _cts = new();
@@ -340,15 +342,13 @@ public class GameServer(
             }
 
             // 6. 봇 플레이어 자원 틱
-            var matchingIds = activeSessions
-                .Select(s => s.CurrentMapSubId)
-                .Distinct()
-                .ToList();
+            var matchingIds = GetActiveMatchingIds();
 
             foreach (long matchingId in matchingIds)
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
+                ProcessBotTargetProximityChecklistProgress(matchingId, activeSessions);
                 // 봇 자연 정신오염 증가 제거 (#135) — 시연 시간 내 봇 조기 탈락 방지
                 const int botDecay = 0;
                 var tickResult = _botPlayerManager.ProcessBotTick(matchingId, botDecay, _areaClosureManager);
@@ -438,6 +438,89 @@ public class GameServer(
         return humans + _botPlayerManager.CountBotsInArea(matchingId, area);
     }
 
+    private void ProcessBotTargetProximityChecklistProgress(long matchingId, List<GameClientSession> activeSessions)
+    {
+        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        {
+            if (bot.IsEliminated || bot.TargetPlayerId == 0 || bot.CurrentArea == AreaType.None)
+                continue;
+
+            var targetSession = activeSessions.FirstOrDefault(s =>
+                s.PlayerId == bot.TargetPlayerId &&
+                s.CurrentMapSubId == matchingId &&
+                !s.IsEliminated);
+            var targetBot = targetSession == null
+                ? _botPlayerManager.GetBot(matchingId, bot.TargetPlayerId)
+                : null;
+            if (targetSession == null && targetBot is not { IsEliminated: false })
+                continue;
+
+            bool sameArea = targetSession?.CurrentArea == bot.CurrentArea || targetBot?.CurrentArea == bot.CurrentArea;
+            if (!sameArea || !IsBotTargetWithinProximity(bot, targetSession, targetBot))
+                continue;
+
+            var progress = _checklistManager.AdvanceActiveTaskProgress(
+                matchingId,
+                bot.PlayerId,
+                "MANITTO_STAY_NEAR_TARGET_20",
+                ResourceTickIntervalSeconds);
+            if (progress.Completion?.CompletedTask != null)
+            {
+                logger.LogInformation(
+                    "Bot proximity checklist completed: MatchingId={MatchingId}, BotId={BotId}, TaskId={TaskId}",
+                    matchingId, bot.PlayerId, progress.Completion.CompletedTask.TaskId);
+            }
+
+            TryPlaceBotGiftNearTarget(matchingId, bot);
+        }
+    }
+
+    private bool TryPlaceBotGiftNearTarget(long matchingId, BotPlayerState bot)
+    {
+        bool hasGiftTask = _checklistManager.GetActiveTasks(matchingId, bot.PlayerId)
+            .Any(task => task.TaskKey.Equals("MANITTO_TARGET_DISCOVERS_GIFT", StringComparison.OrdinalIgnoreCase));
+        if (!hasGiftTask) return false;
+        if (_missionManager.TryGetNextPlacedGift(matchingId, bot.PlayerId, bot.TargetPlayerId, out _))
+            return false;
+
+        var giftItem = _inGameInventoryManager.GetAllItems(matchingId, bot.PlayerId)
+            .Where(item => item.Count > 0 &&
+                           item.ItemId != 401000003 &&
+                           GameItemData.GetItemType(item.ItemId) == ItemType.CONSUMABLE)
+            .OrderBy(_ => Random.Shared.Next())
+            .FirstOrDefault();
+        if (giftItem == null) return false;
+
+        var interact = GameInteractableData.GetByZone((int)bot.CurrentArea)
+            .Where(info => info.CellX != 0 || info.CellY != 0)
+            .OrderBy(_ => Random.Shared.Next())
+            .FirstOrDefault();
+        if (interact == null) return false;
+
+        var placeResult = _missionManager.TryPlaceGift(
+            matchingId,
+            bot.PlayerId,
+            bot.TargetPlayerId,
+            giftItem.ItemUid,
+            giftItem.ItemId,
+            bot.CurrentArea,
+            interact.Id);
+        if (!placeResult.Success) return false;
+
+        if (!_inGameInventoryManager.TryRemoveItem(matchingId, bot.PlayerId, giftItem.ItemUid, 1, out _))
+        {
+            _missionManager.RollbackPlacedGift(matchingId, bot.PlayerId, giftItem.ItemUid);
+            return false;
+        }
+
+        RngCollectCooldownStore.ClearCooldown(matchingId, interact.Id);
+        BroadcastBotRngCooldowns(matchingId, [(interact.Id, 0)]);
+        logger.LogInformation(
+            "Bot gift placed: MatchingId={MatchingId}, BotId={BotId}, Target={Target}, ItemId={ItemId}, InteractId={InteractId}",
+            matchingId, bot.PlayerId, bot.TargetPlayerId, giftItem.ItemId, interact.Id);
+        return true;
+    }
+
     /// <summary>교감(#161) 판정 — 타겟(사람/봇)과의 평면 거리가 TARGET_PROXIMITY_DISTANCE 이내인지.</summary>
     private static bool IsTargetWithinProximity(
         GameClientSession session, GameClientSession? targetSession, BotPlayerState? targetBot)
@@ -450,6 +533,18 @@ public class GameServer(
 
         float dx = myPosition.X - targetPosition.X;
         float dy = myPosition.Y - targetPosition.Y;
+        return dx * dx + dy * dy <=
+               Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
+    }
+
+    private static bool IsBotTargetWithinProximity(
+        BotPlayerState bot, GameClientSession? targetSession, BotPlayerState? targetBot)
+    {
+        var targetPosition = targetSession?.LastValidatedPosition ?? targetBot?.Position;
+        if (targetPosition == null) return false;
+
+        float dx = bot.Position.X - targetPosition.X;
+        float dy = bot.Position.Y - targetPosition.Y;
         return dx * dx + dy * dy <=
                Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
     }
@@ -628,7 +723,7 @@ public class GameServer(
         try
         {
             var missionResult = _botPlayerManager.ProcessBotMissionTick(
-                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager);
+                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _checklistManager);
 
             // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
             foreach (var (botId, partId) in missionResult.CollectedParts)
@@ -651,6 +746,11 @@ public class GameServer(
             }
 
             // #134 — 봇 RNG progress 시작/종료 → 같은 영역 인간 세션에 EXPLORE_START/END (봇 EXPLORE_1 애니 동기화)
+            foreach (var (botId, taskId, awardedScore, awardedContribution) in missionResult.CompletedChecklistActivities)
+                _gameEventLogManager.LogMission(matchingId, botId,
+                    $"Checklist task completed: TaskId={taskId}, Score+{awardedScore:0.##}, Contribution+{awardedContribution}",
+                    isBot: true);
+
             if (missionResult.BotExploreStarts.Count > 0)
                 BroadcastBotExploreStarts(matchingId, missionResult.BotExploreStarts, activeSessions);
             if (missionResult.BotExploreEnds.Count > 0)
@@ -883,7 +983,19 @@ public class GameServer(
         {
             var ownerSession = activeSessions.FirstOrDefault(s =>
                 s.PlayerId == discovery.OwnerPlayerId && s.CurrentMapSubId == matchingId && !s.IsEliminated);
-            if (ownerSession == null) continue;
+            if (ownerSession == null)
+            {
+                if (BotPlayerManager.IsBotPlayerId(discovery.OwnerPlayerId) &&
+                    _checklistManager.TryCompleteTargetGiftTask(matchingId, discovery.OwnerPlayerId))
+                {
+                    logger.LogInformation(
+                        "Bot target gift checklist completed: MatchingId={MatchingId}, BotId={BotId}, Discoverer={Discoverer}",
+                        matchingId, discovery.OwnerPlayerId, discovery.DiscovererPlayerId);
+                }
+
+                SendBotToNextPlacedGift(matchingId, discovery);
+                continue;
+            }
 
             ownerSession.CompleteTargetGiftChecklist();
 
@@ -1058,11 +1170,7 @@ public class GameServer(
         try
         {
             // 매칭별로 폐쇄 스케줄 체크
-            var matchingIds = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue)
-                .Select(s => s.CurrentMapSubId)
-                .Distinct()
-                .ToList();
+            var matchingIds = GetActiveMatchingIds();
 
             foreach (long matchingId in matchingIds)
             {
@@ -1162,12 +1270,7 @@ public class GameServer(
             var activeSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue)
                 .ToList();
-            if (activeSessions.Count == 0) return;
-
-            var matchingIds = activeSessions
-                .Select(s => s.CurrentMapSubId)
-                .Distinct()
-                .ToList();
+            var matchingIds = GetActiveMatchingIds();
 
             foreach (long matchingId in matchingIds)
             {
@@ -1192,12 +1295,7 @@ public class GameServer(
             var activeSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue)
                 .ToList();
-            if (activeSessions.Count == 0) return;
-
-            var matchingIds = activeSessions
-                .Select(s => s.CurrentMapSubId)
-                .Distinct()
-                .ToList();
+            var matchingIds = GetActiveMatchingIds();
 
             foreach (long matchingId in matchingIds)
             {
@@ -1207,7 +1305,8 @@ public class GameServer(
                 var humanAreas = activeSessions
                     .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
                     .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
-                var movementResult = _botPlayerManager.ProcessBotMovementTick(matchingId, _areaClosureManager, humanAreas);
+                var movementResult = _botPlayerManager.ProcessBotMovementTick(
+                    matchingId, _areaClosureManager, humanAreas, _checklistManager);
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
@@ -1516,11 +1615,112 @@ public class GameServer(
     /// </summary>
     public IReadOnlyList<long> GetActiveInstanceIds()
     {
-        return _clientSessions.Values
+        return GetActiveMatchingIds();
+    }
+
+    private List<long> GetActiveMatchingIds()
+    {
+        var ids = _clientSessions.Values
             .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId > 0)
             .Select(s => s.CurrentMapSubId)
-            .Distinct()
+            .ToHashSet();
+
+        foreach (long matchingId in _botPlayerManager.GetActiveMatchingIds())
+        {
+            if (matchingId > 0)
+                ids.Add(matchingId);
+        }
+
+        return ids.OrderBy(id => id).ToList();
+    }
+
+    public InstanceSnapshot? CreateBotOnlyInstance(int botCount = 5)
+    {
+        botCount = Math.Clamp(botCount, 2, 5);
+        long matchingId = System.Threading.Interlocked.Increment(ref _adminBotOnlyMatchingIdSeed);
+        var jobs = BuildBotOnlyJobPool(botCount);
+        var playerIds = Enumerable.Range(0, botCount)
+            .Select(_ => System.Threading.Interlocked.Decrement(ref _adminBotOnlyPlayerIdSeed))
             .ToList();
+
+        var botInfoList = new List<BotMatchingInfo>();
+        for (int i = 0; i < botCount; i++)
+        {
+            int targetIndex = (i + 1) % botCount;
+            botInfoList.Add(new BotMatchingInfo
+            {
+                PlayerId = playerIds[i],
+                TargetPlayerId = playerIds[targetIndex],
+                MyJobTitle = jobs[i],
+                TargetJobTitle = jobs[targetIndex]
+            });
+        }
+
+        _botPlayerManager.RegisterBots(matchingId, MapId.School, botInfoList);
+
+        foreach (var bot in botInfoList)
+        {
+            _manittoChainManager.RegisterLink(matchingId, new ChainLink
+            {
+                PlayerId = bot.PlayerId,
+                TargetPlayerId = bot.TargetPlayerId,
+                MyJobTitle = bot.MyJobTitle,
+                TargetJobTitle = bot.TargetJobTitle
+            });
+
+            _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
+            _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
+
+            foreach ((int itemId, int count) in GameRuleData.InGameItemList)
+                _inGameInventoryManager.AddItem(matchingId, bot.PlayerId, itemId, count);
+        }
+
+        _areaClosureManager.InitializeMatching(matchingId, jobs);
+        _doorStateManager.InitializeMatching(matchingId);
+        _checklistManager.StartRound(matchingId, 1, playerIds,
+            playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
+        GameClientSession.TryStartHeadlessActionRound(matchingId);
+
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Bot-only instance created: botCount={botCount}, ids=[{string.Join(",", playerIds)}]");
+        logger.LogInformation(
+            "Bot-only instance created: MatchingId={MatchingId}, BotCount={BotCount}, Ids=[{Ids}]",
+            matchingId, botCount, string.Join(",", playerIds));
+
+        return GetInstanceSnapshot(matchingId);
+    }
+
+    private static List<JobTitle> BuildBotOnlyJobPool(int botCount)
+    {
+        var jobs = new List<JobTitle>
+        {
+            JobTitle.BROADCAST_MEMBER,
+            JobTitle.DISCIPLINE_MEMBER,
+            JobTitle.LIBRARY_COMMITTEE,
+            JobTitle.SPORTS_CAPTAIN,
+            JobTitle.CLEANING_MEMBER
+        };
+
+        return jobs.Take(botCount).ToList();
+    }
+
+    private ChecklistChainContext ResolveBotOnlyChecklistChainContext(long matchingId, long playerId)
+    {
+        var myLink = _manittoChainManager.GetLink(matchingId, playerId);
+        bool targetAlive = myLink != null && IsBotOnlyChainPlayerActive(matchingId, myLink.TargetPlayerId);
+        var manittoLink = _manittoChainManager.FindManittoOf(matchingId, playerId);
+        bool manittoAlive = manittoLink != null
+                            && manittoLink.Status != ManittoStatus.ELIMINATED
+                            && manittoLink.Status != ManittoStatus.SPECTATING;
+        return new ChecklistChainContext(targetAlive, manittoAlive);
+    }
+
+    private bool IsBotOnlyChainPlayerActive(long matchingId, long playerId)
+    {
+        var link = _manittoChainManager.GetLink(matchingId, playerId);
+        return link != null
+               && link.Status != ManittoStatus.ELIMINATED
+               && link.Status != ManittoStatus.SPECTATING;
     }
 
     /// <summary>

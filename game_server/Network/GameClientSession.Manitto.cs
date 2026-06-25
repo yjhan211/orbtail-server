@@ -1739,7 +1739,12 @@ public partial class GameClientSession
     {
         var sessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var ownerSession = sessions.FirstOrDefault(s => s.PlayerId == result.OwnerPlayerId);
-        if (ownerSession == null) return;
+        if (ownerSession == null)
+        {
+            if (BotPlayerManager.IsBotPlayerId(result.OwnerPlayerId))
+                _checklistManager.TryCompleteTargetGiftTask(CurrentMapSubId, result.OwnerPlayerId);
+            return;
+        }
 
         ownerSession.CompleteTargetGiftChecklist();
 

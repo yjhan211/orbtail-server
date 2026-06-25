@@ -104,6 +104,39 @@ public sealed class ChecklistManager(ILogger logger)
         }
     }
 
+    public ChecklistTaskData? GetNextActiveGeneralInteractTask(long matchingId, long playerId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state)) return null;
+
+        lock (state.SyncRoot)
+        {
+            return state.GetOrCreatePlayerState(playerId)
+                .ActiveTasks
+                .Select(task => task.Task)
+                .FirstOrDefault(task =>
+                    task.Category == ChecklistTaskCategory.GeneralJob &&
+                    task.CompletionEvent.Equals("interact_object", StringComparison.OrdinalIgnoreCase) &&
+                    task.InteractId > 0 &&
+                    task.AreaType > 0);
+        }
+    }
+
+    public bool TryCompleteTargetGiftTask(long matchingId, long playerId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state)) return false;
+
+        lock (state.SyncRoot)
+        {
+            var playerState = state.GetOrCreatePlayerState(playerId);
+            var activeTask = playerState.ActiveTasks.FirstOrDefault(task =>
+                task.Task.TaskKey.Equals("MANITTO_TARGET_DISCOVERS_GIFT", StringComparison.OrdinalIgnoreCase));
+            if (activeTask == null) return false;
+
+            CompleteActiveTask(playerState, activeTask, consumedRequiredItem: false, consumedItemUpdate: null);
+            return true;
+        }
+    }
+
     public List<ChecklistTaskProgressInfo> GetActiveTaskProgresses(long matchingId, long playerId)
     {
         if (!_states.TryGetValue(matchingId, out var state)) return new List<ChecklistTaskProgressInfo>();

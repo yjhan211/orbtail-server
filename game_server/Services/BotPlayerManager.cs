@@ -243,6 +243,11 @@ public partial class BotPlayerManager
         return _botStates.TryGetValue(matchingId, out var bots) ? bots : [];
     }
 
+    public IReadOnlyList<long> GetActiveMatchingIds()
+    {
+        return _botStates.Keys.ToList();
+    }
+
     /// <summary>
     ///     특정 봇 조회
     /// </summary>
@@ -369,6 +374,16 @@ public class BotPlayerState
     public AreaType PendingForcedInteractArea { get; set; } = AreaType.None;
 
     public int PendingForcedInteractId { get; set; }
+
+    public int PendingChecklistTaskId { get; set; }
+
+    public int PendingChecklistInteractId { get; set; }
+
+    public DateTime ChecklistActivityProgressStartTime { get; set; } = DateTime.MinValue;
+
+    public DateTime RestUntil { get; set; } = DateTime.MinValue;
+
+    public DateTime NextRestTickAt { get; set; } = DateTime.MinValue;
 
     /// <summary>매칭 시작 시각. DemoMode H4 봇 race 페이스 캡 계산용.</summary>
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;

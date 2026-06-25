@@ -71,6 +71,12 @@ public static class AdminEndpoints
             });
 
         // GET /admin/matching-config — 현재 글로벌 매칭 config 조회
+        app.MapPost("/admin/bot-only-instance", (int? botCount) =>
+        {
+            var snapshot = gameServer.CreateBotOnlyInstance(botCount ?? 5);
+            return Results.Ok(snapshot);
+        });
+
         app.MapGet("/admin/matching-config", async () =>
         {
             var snapshot = await matchingConfig.GetSnapshotAsync();

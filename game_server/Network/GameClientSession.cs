@@ -185,6 +185,21 @@ public partial class GameClientSession : SessionBase
         }
     }
 
+    internal static bool TryStartHeadlessActionRound(long matchingId)
+    {
+        var state = new RoundRuntimeState
+        {
+            RoundNumber = 1,
+            Phase = RoundPhase.Action,
+            PhaseDurationSeconds = Config.ROUND_ACTION_SECONDS,
+            PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_ACTION_SECONDS),
+            SettlementEliminationApplied = false,
+            IsSessionEnded = false
+        };
+
+        return GameRoundStates.TryAdd(matchingId, state);
+    }
+
     private bool IsRoundActionLocked(out RoundPhase phase)
     {
         phase = RoundPhase.Action;
