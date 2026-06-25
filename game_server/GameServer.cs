@@ -48,6 +48,7 @@ public class GameServer(
     private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
     private readonly MissionManager _missionManager = new(logger);
+    private readonly ChecklistManager _checklistManager = new(logger);
     private readonly MatchingConfigService _matchingConfigService = new(cacheHelper, logger);
     // _areaClosureManager은 InitializeServices()에서 _matchingConfigService 생성 후 초기화
     private AreaClosureManager _areaClosureManager = null!;
@@ -55,6 +56,9 @@ public class GameServer(
     private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly GameEventLogManager _gameEventLogManager = new();
     private readonly Proto0PresenceTracker _presenceTracker = new();
+    private readonly ConcurrentDictionary<long, Timer> _headlessRoundTimers = new();
+    private long _adminBotOnlyMatchingIdSeed = 9_000_000;
+    private long _adminBotOnlyPlayerIdSeed = -900_000_000;
 
     private Timer? _corridorStopCheckTimer;
     private CancellationTokenSource _cts = new();
@@ -64,11 +68,13 @@ public class GameServer(
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
     private Timer? _botMovementTimer;         // #127 봇 walking step (250ms)
     private Timer? _botMissionTimer;          // #134 봇 미션 처리 (RNG 채집/결합 — 1초 주기)
+    private Timer? _checklistProgressTickTimer;
 
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private int _botMovementProcessing;
 
     private const int ResourceTickIntervalSeconds = 5;
+    private const int ChecklistProgressTickIntervalSeconds = 1;
     // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
     // 프로토 0: 타겟에서 떨어지면(복도/빈방) 압박이 실질적이도록 기본 감소를 회복(-3)과 균형 맞춰 상향. 튜닝 노브.
     private const int MentalDecayPhase1 = 3;            // 0~5분: 5초당 오염도 +3
@@ -93,6 +99,7 @@ public class GameServer(
         try
         {
             logger.LogInformation("Game server starting...");
+            GameClientSession.SetPresenceTracker(_presenceTracker);
 
             InitializeServices();
             InitializeControllers();
@@ -108,6 +115,7 @@ public class GameServer(
             StartTargetLocationTimer();
             StartBotMovementTimer();
             StartBotMissionTimer();
+            StartChecklistProgressTickTimer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -148,6 +156,10 @@ public class GameServer(
         if (_targetLocationTimer != null) { await _targetLocationTimer.DisposeAsync(); _targetLocationTimer = null; }
         if (_botMovementTimer != null) { await _botMovementTimer.DisposeAsync(); _botMovementTimer = null; }
         if (_botMissionTimer != null) { await _botMissionTimer.DisposeAsync(); _botMissionTimer = null; }
+        if (_checklistProgressTickTimer != null) { await _checklistProgressTickTimer.DisposeAsync(); _checklistProgressTickTimer = null; }
+        foreach (var timer in _headlessRoundTimers.Values)
+            await timer.DisposeAsync();
+        _headlessRoundTimers.Clear();
 
         await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
 
@@ -181,6 +193,7 @@ public class GameServer(
             _corridorRuleManager.Initialize(log, OnCorridorStopViolation);
             _areaRuleManager.Initialize(log);
             _itemPoolManager.Initialize(log);
+            _checklistManager.Initialize(log);
             _sabotageManager.Initialize(log);
             _sabotageManager.SetStateChangeCallback(OnSabotageStateChange);
             _sabotageManager.SetTimeoutCallback(OnSabotageTimeout);
@@ -226,6 +239,61 @@ public class GameServer(
             TimeSpan.FromSeconds(ResourceTickIntervalSeconds),
             TimeSpan.FromSeconds(ResourceTickIntervalSeconds));
         logger.LogInformation("자원 틱 타이머 시작 ({Interval}초)", ResourceTickIntervalSeconds);
+    }
+
+    private void StartChecklistProgressTickTimer()
+    {
+        _checklistProgressTickTimer = new Timer(ProcessChecklistProgressTick, null,
+            TimeSpan.FromSeconds(ChecklistProgressTickIntervalSeconds),
+            TimeSpan.FromSeconds(ChecklistProgressTickIntervalSeconds));
+        logger.LogInformation("체크리스트 진행 틱 타이머 시작 ({Interval}초)", ChecklistProgressTickIntervalSeconds);
+    }
+
+    private void ProcessChecklistProgressTick(object? state)
+    {
+        try
+        {
+            var activeSessions = _clientSessions.Values
+                .Where(s => s.PlayerId.HasValue && !s.IsEliminated)
+                .ToList();
+
+            foreach (var session in activeSessions)
+            {
+                if (!GameClientSession.IsRoundActionPhase(session.CurrentMapSubId))
+                    continue;
+                if (session.CurrentArea == AreaType.None || session.TargetPlayerId == 0)
+                    continue;
+
+                GameClientSession? targetSession = activeSessions.FirstOrDefault(s =>
+                    s.PlayerId == session.TargetPlayerId &&
+                    s.CurrentMapSubId == session.CurrentMapSubId &&
+                    !s.IsEliminated);
+                BotPlayerState? targetBot = targetSession == null
+                    ? _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId)
+                    : null;
+                if (targetSession == null && targetBot is not { IsEliminated: false })
+                    continue;
+
+                if (IsTargetWithinProximity(session, targetSession, targetBot))
+                    session.AdvanceTargetProximityChecklistProgress(ChecklistProgressTickIntervalSeconds);
+            }
+
+            var matchingIds = GetActiveMatchingIds();
+            foreach (long matchingId in matchingIds)
+            {
+                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
+                if (!_botPlayerManager.HasBots(matchingId)) continue;
+
+                ProcessBotTargetProximityChecklistProgress(
+                    matchingId,
+                    activeSessions,
+                    ChecklistProgressTickIntervalSeconds);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "체크리스트 진행 틱 처리 중 오류");
+        }
     }
 
     /// <summary>
@@ -276,6 +344,8 @@ public class GameServer(
                                            targetBot.CurrentArea == session.CurrentArea;
                     }
 
+                    bool targetWithinProximity = IsTargetWithinProximity(session, targetSession, targetBot);
+
                     if (!targetInSameArea)
                         corruptionDelta += ResolveStatusEffectCorruptionDelta(
                             IsolationStatusEffectId,
@@ -293,10 +363,13 @@ public class GameServer(
 
                         // 교감(#161): 같은 영역에서 거리까지 좁히면 추가 회복.
                         // 1:1로 붙어 있는 상황 자체가 보상 조건이라 혼잡 보정은 없다.
-                        if (IsTargetWithinProximity(session, targetSession, targetBot))
+                        if (targetWithinProximity)
+                        {
                             corruptionDelta += ResolveStatusEffectCorruptionDelta(
                                 ProximityStatusEffectId, Config.TARGET_PROXIMITY_RECOVERY_BONUS);
+                        }
                     }
+
                 }
 
                 // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
@@ -330,10 +403,7 @@ public class GameServer(
             }
 
             // 6. 봇 플레이어 자원 틱
-            var matchingIds = activeSessions
-                .Select(s => s.CurrentMapSubId)
-                .Distinct()
-                .ToList();
+            var matchingIds = GetActiveMatchingIds();
 
             foreach (long matchingId in matchingIds)
             {
@@ -428,6 +498,92 @@ public class GameServer(
         return humans + _botPlayerManager.CountBotsInArea(matchingId, area);
     }
 
+    private void ProcessBotTargetProximityChecklistProgress(
+        long matchingId,
+        List<GameClientSession> activeSessions,
+        float deltaSeconds)
+    {
+        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        {
+            if (bot.IsEliminated || bot.TargetPlayerId == 0 || bot.CurrentArea == AreaType.None)
+                continue;
+
+            var targetSession = activeSessions.FirstOrDefault(s =>
+                s.PlayerId == bot.TargetPlayerId &&
+                s.CurrentMapSubId == matchingId &&
+                !s.IsEliminated);
+            var targetBot = targetSession == null
+                ? _botPlayerManager.GetBot(matchingId, bot.TargetPlayerId)
+                : null;
+            if (targetSession == null && targetBot is not { IsEliminated: false })
+                continue;
+
+            bool sameArea = targetSession?.CurrentArea == bot.CurrentArea || targetBot?.CurrentArea == bot.CurrentArea;
+            if (!sameArea || !IsBotTargetWithinProximity(bot, targetSession, targetBot))
+                continue;
+
+            var progress = _checklistManager.AdvanceActiveTaskProgress(
+                matchingId,
+                bot.PlayerId,
+                "MANITTO_STAY_NEAR_TARGET_20",
+                deltaSeconds);
+            if (progress.Completion?.CompletedTask != null)
+            {
+                logger.LogInformation(
+                    "Bot proximity checklist completed: MatchingId={MatchingId}, BotId={BotId}, TaskId={TaskId}",
+                    matchingId, bot.PlayerId, progress.Completion.CompletedTask.TaskId);
+            }
+
+            TryPlaceBotGiftNearTarget(matchingId, bot);
+        }
+    }
+
+    private bool TryPlaceBotGiftNearTarget(long matchingId, BotPlayerState bot)
+    {
+        bool hasGiftTask = _checklistManager.GetActiveTasks(matchingId, bot.PlayerId)
+            .Any(task => task.TaskKey.Equals("MANITTO_TARGET_DISCOVERS_GIFT", StringComparison.OrdinalIgnoreCase));
+        if (!hasGiftTask) return false;
+        if (_missionManager.TryGetNextPlacedGift(matchingId, bot.PlayerId, bot.TargetPlayerId, out _))
+            return false;
+
+        var giftItem = _inGameInventoryManager.GetAllItems(matchingId, bot.PlayerId)
+            .Where(item => item.Count > 0 &&
+                           item.ItemId != 401000003 &&
+                           GameItemData.GetItemType(item.ItemId) == ItemType.CONSUMABLE)
+            .OrderBy(_ => Random.Shared.Next())
+            .FirstOrDefault();
+        if (giftItem == null) return false;
+
+        var interact = GameInteractableData.GetByZone((int)bot.CurrentArea)
+            .Where(info => info.CellX != 0 || info.CellY != 0)
+            .OrderBy(_ => Random.Shared.Next())
+            .FirstOrDefault();
+        if (interact == null) return false;
+
+        var placeResult = _missionManager.TryPlaceGift(
+            matchingId,
+            bot.PlayerId,
+            bot.TargetPlayerId,
+            giftItem.ItemUid,
+            giftItem.ItemId,
+            bot.CurrentArea,
+            interact.Id);
+        if (!placeResult.Success) return false;
+
+        if (!_inGameInventoryManager.TryRemoveItem(matchingId, bot.PlayerId, giftItem.ItemUid, 1, out _))
+        {
+            _missionManager.RollbackPlacedGift(matchingId, bot.PlayerId, giftItem.ItemUid);
+            return false;
+        }
+
+        RngCollectCooldownStore.ClearCooldown(matchingId, interact.Id);
+        BroadcastBotRngCooldowns(matchingId, [(interact.Id, 0)]);
+        logger.LogInformation(
+            "Bot gift placed: MatchingId={MatchingId}, BotId={BotId}, Target={Target}, ItemId={ItemId}, InteractId={InteractId}",
+            matchingId, bot.PlayerId, bot.TargetPlayerId, giftItem.ItemId, interact.Id);
+        return true;
+    }
+
     /// <summary>교감(#161) 판정 — 타겟(사람/봇)과의 평면 거리가 TARGET_PROXIMITY_DISTANCE 이내인지.</summary>
     private static bool IsTargetWithinProximity(
         GameClientSession session, GameClientSession? targetSession, BotPlayerState? targetBot)
@@ -440,6 +596,18 @@ public class GameServer(
 
         float dx = myPosition.X - targetPosition.X;
         float dy = myPosition.Y - targetPosition.Y;
+        return dx * dx + dy * dy <=
+               Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
+    }
+
+    private static bool IsBotTargetWithinProximity(
+        BotPlayerState bot, GameClientSession? targetSession, BotPlayerState? targetBot)
+    {
+        var targetPosition = targetSession?.LastValidatedPosition ?? targetBot?.Position;
+        if (targetPosition == null) return false;
+
+        float dx = bot.Position.X - targetPosition.X;
+        float dy = bot.Position.Y - targetPosition.Y;
         return dx * dx + dy * dy <=
                Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
     }
@@ -618,7 +786,7 @@ public class GameServer(
         try
         {
             var missionResult = _botPlayerManager.ProcessBotMissionTick(
-                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager);
+                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _checklistManager);
 
             // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
             foreach (var (botId, partId) in missionResult.CollectedParts)
@@ -641,6 +809,11 @@ public class GameServer(
             }
 
             // #134 — 봇 RNG progress 시작/종료 → 같은 영역 인간 세션에 EXPLORE_START/END (봇 EXPLORE_1 애니 동기화)
+            foreach (var (botId, taskId, awardedScore, awardedContribution) in missionResult.CompletedChecklistActivities)
+                _gameEventLogManager.LogMission(matchingId, botId,
+                    $"Checklist task completed: TaskId={taskId}, Score+{awardedScore:0.##}, Contribution+{awardedContribution}",
+                    isBot: true);
+
             if (missionResult.BotExploreStarts.Count > 0)
                 BroadcastBotExploreStarts(matchingId, missionResult.BotExploreStarts, activeSessions);
             if (missionResult.BotExploreEnds.Count > 0)
@@ -873,7 +1046,21 @@ public class GameServer(
         {
             var ownerSession = activeSessions.FirstOrDefault(s =>
                 s.PlayerId == discovery.OwnerPlayerId && s.CurrentMapSubId == matchingId && !s.IsEliminated);
-            if (ownerSession == null) continue;
+            if (ownerSession == null)
+            {
+                if (BotPlayerManager.IsBotPlayerId(discovery.OwnerPlayerId) &&
+                    _checklistManager.TryCompleteTargetGiftTask(matchingId, discovery.OwnerPlayerId))
+                {
+                    logger.LogInformation(
+                        "Bot target gift checklist completed: MatchingId={MatchingId}, BotId={BotId}, Discoverer={Discoverer}",
+                        matchingId, discovery.OwnerPlayerId, discovery.DiscovererPlayerId);
+                }
+
+                SendBotToNextPlacedGift(matchingId, discovery);
+                continue;
+            }
+
+            ownerSession.CompleteTargetGiftChecklist();
 
             var msg = new G_TO_C_GIFT_PROGRESS
             {
@@ -1046,11 +1233,7 @@ public class GameServer(
         try
         {
             // 매칭별로 폐쇄 스케줄 체크
-            var matchingIds = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue)
-                .Select(s => s.CurrentMapSubId)
-                .Distinct()
-                .ToList();
+            var matchingIds = GetActiveMatchingIds();
 
             foreach (long matchingId in matchingIds)
             {
@@ -1150,12 +1333,7 @@ public class GameServer(
             var activeSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue)
                 .ToList();
-            if (activeSessions.Count == 0) return;
-
-            var matchingIds = activeSessions
-                .Select(s => s.CurrentMapSubId)
-                .Distinct()
-                .ToList();
+            var matchingIds = GetActiveMatchingIds();
 
             foreach (long matchingId in matchingIds)
             {
@@ -1180,12 +1358,7 @@ public class GameServer(
             var activeSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue)
                 .ToList();
-            if (activeSessions.Count == 0) return;
-
-            var matchingIds = activeSessions
-                .Select(s => s.CurrentMapSubId)
-                .Distinct()
-                .ToList();
+            var matchingIds = GetActiveMatchingIds();
 
             foreach (long matchingId in matchingIds)
             {
@@ -1195,7 +1368,8 @@ public class GameServer(
                 var humanAreas = activeSessions
                     .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
                     .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
-                var movementResult = _botPlayerManager.ProcessBotMovementTick(matchingId, _areaClosureManager, humanAreas);
+                var movementResult = _botPlayerManager.ProcessBotMovementTick(
+                    matchingId, _areaClosureManager, humanAreas, _checklistManager);
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
@@ -1379,6 +1553,7 @@ public class GameServer(
                 _sabotageManager,
                 _manittoChainManager,
                 _missionManager,
+                _checklistManager,
                 _areaClosureManager,
                 _traceManager,
                 new InteractionChoiceService(_interactionLogManager, _manittoChainManager),
@@ -1503,11 +1678,419 @@ public class GameServer(
     /// </summary>
     public IReadOnlyList<long> GetActiveInstanceIds()
     {
-        return _clientSessions.Values
+        return GetActiveMatchingIds();
+    }
+
+    private List<long> GetActiveMatchingIds()
+    {
+        var ids = _clientSessions.Values
             .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId > 0)
             .Select(s => s.CurrentMapSubId)
-            .Distinct()
+            .ToHashSet();
+
+        foreach (long matchingId in _botPlayerManager.GetActiveMatchingIds())
+        {
+            if (matchingId > 0)
+                ids.Add(matchingId);
+        }
+
+        return ids.OrderBy(id => id).ToList();
+    }
+
+    public InstanceSnapshot? CreateBotOnlyInstance(int botCount = 5)
+    {
+        botCount = Math.Clamp(botCount, 2, 5);
+        long matchingId = System.Threading.Interlocked.Increment(ref _adminBotOnlyMatchingIdSeed);
+        var jobs = BuildBotOnlyJobPool(botCount);
+        var playerIds = Enumerable.Range(0, botCount)
+            .Select(_ => System.Threading.Interlocked.Decrement(ref _adminBotOnlyPlayerIdSeed))
             .ToList();
+
+        var botInfoList = new List<BotMatchingInfo>();
+        for (int i = 0; i < botCount; i++)
+        {
+            int targetIndex = (i + 1) % botCount;
+            botInfoList.Add(new BotMatchingInfo
+            {
+                PlayerId = playerIds[i],
+                TargetPlayerId = playerIds[targetIndex],
+                MyJobTitle = jobs[i],
+                TargetJobTitle = jobs[targetIndex]
+            });
+        }
+
+        _botPlayerManager.RegisterBots(matchingId, MapId.School, botInfoList);
+
+        foreach (var bot in botInfoList)
+        {
+            _manittoChainManager.RegisterLink(matchingId, new ChainLink
+            {
+                PlayerId = bot.PlayerId,
+                TargetPlayerId = bot.TargetPlayerId,
+                MyJobTitle = bot.MyJobTitle,
+                TargetJobTitle = bot.TargetJobTitle
+            });
+
+            _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
+            _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
+
+            foreach ((int itemId, int count) in GameRuleData.InGameItemList)
+                _inGameInventoryManager.AddItem(matchingId, bot.PlayerId, itemId, count);
+        }
+
+        _areaClosureManager.InitializeMatching(matchingId, jobs);
+        _doorStateManager.InitializeMatching(matchingId);
+        _checklistManager.StartRound(matchingId, 1, playerIds,
+            playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
+        GameClientSession.TryStartHeadlessActionRound(matchingId);
+        StartHeadlessRoundTimer(matchingId);
+
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Bot-only instance created: botCount={botCount}, ids=[{string.Join(",", playerIds)}]");
+        logger.LogInformation(
+            "Bot-only instance created: MatchingId={MatchingId}, BotCount={BotCount}, Ids=[{Ids}]",
+            matchingId, botCount, string.Join(",", playerIds));
+
+        return GetInstanceSnapshot(matchingId);
+    }
+
+    private static List<JobTitle> BuildBotOnlyJobPool(int botCount)
+    {
+        var jobs = new List<JobTitle>
+        {
+            JobTitle.BROADCAST_MEMBER,
+            JobTitle.DISCIPLINE_MEMBER,
+            JobTitle.LIBRARY_COMMITTEE,
+            JobTitle.SPORTS_CAPTAIN,
+            JobTitle.CLEANING_MEMBER
+        };
+
+        return jobs.Take(botCount).ToList();
+    }
+
+    private ChecklistChainContext ResolveBotOnlyChecklistChainContext(long matchingId, long playerId)
+    {
+        var myLink = _manittoChainManager.GetLink(matchingId, playerId);
+        bool targetAlive = myLink != null && IsBotOnlyChainPlayerActive(matchingId, myLink.TargetPlayerId);
+        var manittoLink = _manittoChainManager.FindManittoOf(matchingId, playerId);
+        bool manittoAlive = manittoLink != null
+                            && manittoLink.Status != ManittoStatus.ELIMINATED
+                            && manittoLink.Status != ManittoStatus.SPECTATING;
+        return new ChecklistChainContext(targetAlive, manittoAlive);
+    }
+
+    private bool IsBotOnlyChainPlayerActive(long matchingId, long playerId)
+    {
+        var link = _manittoChainManager.GetLink(matchingId, playerId);
+        return link != null
+               && link.Status != ManittoStatus.ELIMINATED
+               && link.Status != ManittoStatus.SPECTATING;
+    }
+
+    private void StartHeadlessRoundTimer(long matchingId)
+    {
+        var timer = new Timer(_ => ProcessHeadlessRoundTimerTick(matchingId), null,
+            TimeSpan.Zero, TimeSpan.FromSeconds(1));
+        if (!_headlessRoundTimers.TryAdd(matchingId, timer))
+            timer.Dispose();
+    }
+
+    private void StopHeadlessRoundTimer(long matchingId)
+    {
+        if (_headlessRoundTimers.TryRemove(matchingId, out var timer))
+            timer.Dispose();
+    }
+
+    private void ProcessHeadlessRoundTimerTick(long matchingId)
+    {
+        if (!GameClientSession.GameRoundStates.TryGetValue(matchingId, out var state))
+        {
+            StopHeadlessRoundTimer(matchingId);
+            return;
+        }
+
+        lock (state.SyncRoot)
+        {
+            if (state.IsSessionEnded)
+            {
+                StopHeadlessRoundTimer(matchingId);
+                return;
+            }
+
+            if (DateTime.UtcNow < state.PhaseEndsAtUtc)
+                return;
+
+            AdvanceHeadlessRoundPhase(matchingId, state);
+        }
+    }
+
+    private void AdvanceHeadlessRoundPhase(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        switch (state.Phase)
+        {
+            case RoundPhase.Action:
+                EnterHeadlessSettlementNomination(matchingId, state);
+                break;
+            case RoundPhase.SettlementNomination:
+                EnterHeadlessSettlementResult(matchingId, state);
+                break;
+            case RoundPhase.SettlementResult:
+                EnterHeadlessSettlementContribution(matchingId, state);
+                break;
+            case RoundPhase.SettlementContributionReveal:
+                EnterHeadlessSettlementSubPhase(matchingId, state, RoundPhase.SettlementDetectionResultReveal,
+                    Config.ROUND_SETTLEMENT_DETECTION_RESULT_SECONDS);
+                break;
+            case RoundPhase.SettlementDetectionResultReveal:
+                EnterHeadlessSettlementSubPhase(matchingId, state, RoundPhase.SettlementEliminationReveal,
+                    Config.ROUND_SETTLEMENT_ELIMINATION_SECONDS);
+                break;
+            case RoundPhase.SettlementEliminationReveal:
+                ApplyHeadlessSettlementElimination(matchingId, state);
+                AdvanceHeadlessRoundOrEnd(matchingId, state);
+                break;
+        }
+    }
+
+    private void EnterHeadlessSettlementNomination(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        state.Phase = RoundPhase.SettlementNomination;
+        state.PhaseDurationSeconds = Config.ROUND_SETTLEMENT_NOMINATION_SECONDS;
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_SETTLEMENT_NOMINATION_SECONDS);
+        state.SettlementNominations.Clear();
+        state.BotNominationsInjected = false;
+        ClearHeadlessSettlementContributionResult(state);
+        state.SettlementEliminationApplied = false;
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless settlement nomination started: Round={state.RoundNumber}");
+    }
+
+    private void EnterHeadlessSettlementResult(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        InjectHeadlessBotPresenceSettlementNominations(matchingId, state);
+        state.Phase = RoundPhase.SettlementResult;
+        state.PhaseDurationSeconds = Config.ROUND_SETTLEMENT_RESULT_SECONDS;
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_SETTLEMENT_RESULT_SECONDS);
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless settlement result: Round={state.RoundNumber}, Nominations={state.SettlementNominations.Count}");
+    }
+
+    private void EnterHeadlessSettlementContribution(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        EnterHeadlessSettlementSubPhase(matchingId, state, RoundPhase.SettlementContributionReveal,
+            Config.ROUND_SETTLEMENT_CONTRIBUTION_SECONDS);
+        BuildHeadlessSettlementContributionResult(matchingId, state);
+    }
+
+    private void EnterHeadlessSettlementSubPhase(long matchingId, GameClientSession.RoundRuntimeState state,
+        RoundPhase phase, int durationSeconds)
+    {
+        state.Phase = phase;
+        state.PhaseDurationSeconds = Math.Max(1, durationSeconds);
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(state.PhaseDurationSeconds);
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless settlement phase: Round={state.RoundNumber}, Phase={phase}");
+    }
+
+    private void InjectHeadlessBotPresenceSettlementNominations(long matchingId,
+        GameClientSession.RoundRuntimeState state)
+    {
+        if (state.BotNominationsInjected)
+            return;
+
+        state.BotNominationsInjected = true;
+        var roster = GetHeadlessActivePlayerIds(matchingId);
+        if (roster.Count <= 1)
+            return;
+
+        foreach (var bot in _botPlayerManager.GetBots(matchingId)
+                     .Where(bot => !bot.IsEliminated && bot.ManittoStatus != ManittoStatus.SPECTATING)
+                     .OrderBy(bot => bot.PlayerId))
+        {
+            if (state.SettlementNominations.ContainsKey(bot.PlayerId))
+                continue;
+
+            var presenceCandidate = _presenceTracker
+                .GetPresenceScores(matchingId, bot.PlayerId, roster)
+                .Where(candidate => candidate.candidateId != bot.PlayerId && candidate.presence > 0f)
+                .OrderByDescending(candidate => candidate.presence)
+                .ThenBy(candidate => candidate.candidateId)
+                .FirstOrDefault();
+
+            long targetPlayerId = presenceCandidate.candidateId;
+            if (targetPlayerId == 0)
+            {
+                targetPlayerId = IsBotOnlyChainPlayerActive(matchingId, bot.TargetPlayerId)
+                    ? bot.TargetPlayerId
+                    : roster.FirstOrDefault(playerId => playerId != bot.PlayerId);
+            }
+
+            if (targetPlayerId == 0)
+                continue;
+
+            state.SettlementNominations[bot.PlayerId] = targetPlayerId;
+            _gameEventLogManager.LogSystem(matchingId,
+                $"Headless bot nomination: Bot={bot.PlayerId}, Target={targetPlayerId}, Presence={presenceCandidate.presence:0.##}");
+        }
+    }
+
+    private void BuildHeadlessSettlementContributionResult(long matchingId,
+        GameClientSession.RoundRuntimeState state)
+    {
+        ClearHeadlessSettlementContributionResult(state);
+
+        var playerIds = GetHeadlessActivePlayerIds(matchingId);
+        if (playerIds.Count == 0)
+            return;
+
+        var checklistEntries = _checklistManager.BuildSettlementContributionEntries(matchingId, playerIds);
+        if (checklistEntries.Any(entry => entry.Contribution > 0))
+        {
+            state.SettlementContributionEntries.AddRange(checklistEntries);
+        }
+        else
+        {
+            foreach (var entry in BuildHeadlessFallbackSettlementContributionEntries(playerIds))
+                state.SettlementContributionEntries.Add(entry);
+        }
+
+        var top = state.SettlementContributionEntries
+            .OrderByDescending(entry => entry.Contribution)
+            .ThenBy(entry => entry.PlayerId)
+            .First();
+        var lowest = state.SettlementContributionEntries
+            .OrderBy(entry => entry.Contribution)
+            .ThenBy(entry => entry.PlayerId)
+            .First();
+
+        state.SettlementContributionTopPlayerId = top.PlayerId;
+        state.SettlementContributionLowestPlayerId = lowest.PlayerId;
+        state.SettlementContributionTopValue = top.Contribution;
+        state.SettlementContributionLowestValue = lowest.Contribution;
+
+        long decisiveTargetPlayerId = state.SettlementNominations.TryGetValue(top.PlayerId, out long nominatedTarget)
+            ? nominatedTarget
+            : 0;
+        bool success = decisiveTargetPlayerId != 0
+                       && _manittoChainManager.IsAliveManittoOf(matchingId, top.PlayerId, decisiveTargetPlayerId);
+
+        state.SettlementContributionDecisiveTargetPlayerId = decisiveTargetPlayerId;
+        state.SettlementContributionNominationSuccess = success;
+        state.SettlementContributionEliminatedPlayerId = success ? decisiveTargetPlayerId : lowest.PlayerId;
+
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless contribution result: Round={state.RoundNumber}, Top={top.PlayerId}:{top.Contribution}, Lowest={lowest.PlayerId}:{lowest.Contribution}, Success={success}, Eliminated={state.SettlementContributionEliminatedPlayerId}");
+    }
+
+    private static List<SettlementContributionEntry> BuildHeadlessFallbackSettlementContributionEntries(List<long> playerIds)
+    {
+        var values = new List<int> { 9, 21, 27, 21, 15 };
+        var entries = new List<SettlementContributionEntry>();
+        for (int i = 0; i < playerIds.Count; i++)
+        {
+            entries.Add(new SettlementContributionEntry
+            {
+                PlayerId = playerIds[i],
+                Contribution = values[i % values.Count]
+            });
+        }
+
+        return entries;
+    }
+
+    private void ApplyHeadlessSettlementElimination(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        if (state.SettlementEliminationApplied)
+            return;
+
+        long eliminatedPlayerId = state.SettlementContributionEliminatedPlayerId;
+        if (eliminatedPlayerId == 0 || !IsBotOnlyChainPlayerActive(matchingId, eliminatedPlayerId))
+        {
+            state.SettlementEliminationApplied = true;
+            _gameEventLogManager.LogSystem(matchingId,
+                $"Headless elimination skipped: Round={state.RoundNumber}, Candidate={eliminatedPlayerId}");
+            return;
+        }
+
+        state.SettlementEliminationApplied = true;
+        var reason = state.SettlementContributionNominationSuccess
+            ? EliminationReason.DETECTED
+            : EliminationReason.RACE_LOST;
+
+        _gameEventLogManager.LogElimination(matchingId, eliminatedPlayerId, reason.ToString(), isBot: true);
+        ProcessBotElimination(matchingId, eliminatedPlayerId, reason, []);
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless elimination applied: Round={state.RoundNumber}, Player={eliminatedPlayerId}, Reason={reason}");
+    }
+
+    private void AdvanceHeadlessRoundOrEnd(long matchingId, GameClientSession.RoundRuntimeState state)
+    {
+        var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(matchingId);
+        if (state.RoundNumber >= Config.ROUND_TOTAL_COUNT || isGameOver)
+        {
+            state.Phase = RoundPhase.Ended;
+            state.PhaseDurationSeconds = 0;
+            state.PhaseEndsAtUtc = DateTime.UtcNow;
+            state.IsSessionEnded = true;
+
+            winnerId ??= _manittoChainManager.DetermineWinnerByResources(matchingId, playerId =>
+            {
+                var session = _clientSessions.Values.FirstOrDefault(s => s.PlayerId == playerId);
+                if (session != null) return (session.AdminStamina, session.AdminCorruption, 100);
+
+                var bot = _botPlayerManager.GetBot(matchingId, playerId);
+                return bot != null ? (bot.Stamina, bot.Corruption, 100) : (0, 100, 100);
+            });
+
+            _gameEventLogManager.LogSystem(matchingId,
+                $"Headless game ended: Round={state.RoundNumber}, Winner={winnerId ?? 0}");
+            StopHeadlessRoundTimer(matchingId);
+            return;
+        }
+
+        state.RoundNumber++;
+        state.Phase = RoundPhase.Action;
+        state.PhaseDurationSeconds = Config.ROUND_ACTION_SECONDS;
+        state.PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_ACTION_SECONDS);
+        state.SettlementEliminationApplied = false;
+        state.SettlementNominations.Clear();
+        state.BotNominationsInjected = false;
+        ClearHeadlessSettlementContributionResult(state);
+
+        var playerIds = GetHeadlessActivePlayerIds(matchingId);
+        _checklistManager.StartRound(matchingId, state.RoundNumber, playerIds,
+            playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
+        _gameEventLogManager.LogSystem(matchingId,
+            $"Headless round advanced: Round={state.RoundNumber}, Players={string.Join(",", playerIds)}");
+    }
+
+    private List<long> GetHeadlessActivePlayerIds(long matchingId)
+    {
+        var ids = _clientSessions.Values
+            .Where(session => session.PlayerId.HasValue
+                              && session.CurrentMapSubId == matchingId
+                              && !session.IsEliminated
+                              && session.ManittoStatus != ManittoStatus.SPECTATING)
+            .Select(session => session.PlayerId!.Value)
+            .ToList();
+
+        ids.AddRange(_botPlayerManager.GetBots(matchingId)
+            .Where(bot => !bot.IsEliminated && bot.ManittoStatus != ManittoStatus.SPECTATING)
+            .Select(bot => bot.PlayerId));
+
+        return ids.Distinct().OrderBy(id => id).ToList();
+    }
+
+    private static void ClearHeadlessSettlementContributionResult(GameClientSession.RoundRuntimeState state)
+    {
+        state.SettlementContributionEntries.Clear();
+        state.SettlementContributionTopPlayerId = 0;
+        state.SettlementContributionLowestPlayerId = 0;
+        state.SettlementContributionTopValue = 0;
+        state.SettlementContributionLowestValue = 0;
+        state.SettlementContributionDecisiveTargetPlayerId = 0;
+        state.SettlementContributionNominationSuccess = false;
+        state.SettlementContributionEliminatedPlayerId = 0;
     }
 
     /// <summary>

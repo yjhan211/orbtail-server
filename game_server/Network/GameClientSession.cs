@@ -26,7 +26,8 @@ public partial class GameClientSession : SessionBase
     private const int HeartbeatTimeoutSeconds = 30;
     private static readonly TimeSpan InteractCooldown = TimeSpan.FromSeconds(5);
     private static readonly ConcurrentDictionary<long, Timer> GameTimers = new();
-    private static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
+    internal static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
+    private static Proto0PresenceTracker? _presenceTracker;
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly AreaRuleManager _areaRuleManager;
     private readonly CorridorRuleManager _corridorRuleManager;
@@ -43,6 +44,7 @@ public partial class GameClientSession : SessionBase
     private readonly SabotageManager _sabotageManager;
     private readonly ManittoChainManager _manittoChainManager;
     private readonly MissionManager _missionManager;
+    private readonly ChecklistManager _checklistManager;
     private readonly AreaClosureManager _areaClosureManager;
     private readonly TraceManager _traceManager;
     private readonly InteractionChoiceService _interactionChoiceService;
@@ -96,6 +98,7 @@ public partial class GameClientSession : SessionBase
         SabotageManager sabotageManager,
         ManittoChainManager manittoChainManager,
         MissionManager missionManager,
+        ChecklistManager checklistManager,
         AreaClosureManager areaClosureManager,
         TraceManager traceManager,
         InteractionChoiceService interactionChoiceService,
@@ -115,6 +118,7 @@ public partial class GameClientSession : SessionBase
         _sabotageManager = sabotageManager;
         _manittoChainManager = manittoChainManager;
         _missionManager = missionManager;
+        _checklistManager = checklistManager;
         _areaClosureManager = areaClosureManager;
         _traceManager = traceManager;
         _interactionChoiceService = interactionChoiceService;
@@ -126,7 +130,7 @@ public partial class GameClientSession : SessionBase
         Logger.LogInformation("GameClientSession created");
     }
 
-    private sealed class RoundRuntimeState
+    internal sealed class RoundRuntimeState
     {
         public object SyncRoot { get; } = new();
         public int RoundNumber { get; set; } = 1;
@@ -136,7 +140,7 @@ public partial class GameClientSession : SessionBase
         public bool SettlementEliminationApplied { get; set; }
         public bool IsSessionEnded { get; set; }
         public Dictionary<long, long> SettlementNominations { get; } = new();
-        public bool TestBotNominationsInjected { get; set; }
+        public bool BotNominationsInjected { get; set; }
         public List<SettlementContributionEntry> SettlementContributionEntries { get; } = new();
         public long SettlementContributionTopPlayerId { get; set; }
         public long SettlementContributionLowestPlayerId { get; set; }
@@ -145,6 +149,11 @@ public partial class GameClientSession : SessionBase
         public long SettlementContributionDecisiveTargetPlayerId { get; set; }
         public bool SettlementContributionNominationSuccess { get; set; }
         public long SettlementContributionEliminatedPlayerId { get; set; }
+    }
+
+    internal static void SetPresenceTracker(Proto0PresenceTracker presenceTracker)
+    {
+        _presenceTracker = presenceTracker;
     }
 
     internal static (int RoundNumber, int TotalRounds, string Phase, int RemainingSeconds, int PhaseDurationSeconds,
@@ -174,6 +183,21 @@ public partial class GameClientSession : SessionBase
         {
             return !state.IsSessionEnded && state.Phase == RoundPhase.Action;
         }
+    }
+
+    internal static bool TryStartHeadlessActionRound(long matchingId)
+    {
+        var state = new RoundRuntimeState
+        {
+            RoundNumber = 1,
+            Phase = RoundPhase.Action,
+            PhaseDurationSeconds = Config.ROUND_ACTION_SECONDS,
+            PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_ACTION_SECONDS),
+            SettlementEliminationApplied = false,
+            IsSessionEnded = false
+        };
+
+        return GameRoundStates.TryAdd(matchingId, state);
     }
 
     private bool IsRoundActionLocked(out RoundPhase phase)
@@ -277,6 +301,10 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_COMBINE_PARTS>(bytes, HandleCombineParts));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_MISSION_NODE_EXECUTE,
             async bytes => await HandleMessage<C_TO_G_MISSION_NODE_EXECUTE>(bytes, HandleMissionNodeExecute));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_START,
+            async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_START>(bytes, HandleChecklistActivityStart));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_FINISH,
+            async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_FINISH>(bytes, HandleChecklistActivityFinish));
 
         // RNG 채집 프로토콜 (v0.2.1, #79)
         // RNG 채집 2단계 프로토콜 (#134)

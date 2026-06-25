@@ -20,6 +20,8 @@ public static class RngCollectCore
     private const int BlackedOutPaperPartId = 309;
     // 소모품 회수 stamina 보상 제거 (#135) — 회복은 아이템 사용 시점에만.
     private const int ConsumableStaminaReward = 0;
+    // Regular explore should only grant consumables. Mission parts are collected through explicit mission actions.
+    private const bool AllowMissionPartDropsFromExplore = false;
     private static readonly Random _rng = new();
 
     public static RngCollectOutcome Resolve(
@@ -42,8 +44,12 @@ public static class RngCollectCore
             .ToList();
 
         // 자기 부품 이미 회수했으면 그 영역은 자기 풀 외 분기(영역 풀 소모품)로 처리 (#135).
-        var state = matchedParts.Count > 0 ? missionManager.GetState(matchingId, playerId) : null;
-        var matchedPart = MissionPartSelection.SelectNextCollectablePart(matchedParts, state);
+        var state = AllowMissionPartDropsFromExplore && matchedParts.Count > 0
+            ? missionManager.GetState(matchingId, playerId)
+            : null;
+        var matchedPart = AllowMissionPartDropsFromExplore
+            ? MissionPartSelection.SelectNextCollectablePart(matchedParts, state)
+            : null;
 
         if (matchedPart != null)
         {
@@ -107,7 +113,7 @@ public static class RngCollectCore
             // 자기 풀 외: 75% 소모품 / 25% 빈손. 풀은 영역(AreaType) 단위 — area_item_pool.csv (#135)
             if (roll < 75)
             {
-                var areaPool = GameInteractableData.GetItemPoolByArea(info.ZoneId);
+                var areaPool = GetAllowedRngItemPool(info.ZoneId);
                 if (areaPool.Count > 0)
                 {
                     int itemId = areaPool[_rng.Next(areaPool.Count)];
@@ -186,12 +192,44 @@ public static class RngCollectCore
         if (_rng.Next(100) >= reward.ValuePercent)
             return;
 
-        var areaPool = GameInteractableData.GetItemPoolByArea(areaType);
+        var areaPool = GetAllowedRngItemPool(areaType);
         if (areaPool.Count == 0) return;
 
         int bonusItemId = areaPool[_rng.Next(areaPool.Count)];
         outcome.BonusItemId = bonusItemId;
         outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
+    }
+
+    private static List<int> GetAllowedRngItemPool(int areaType)
+    {
+        var areaPool = GameInteractableData.GetItemPoolByArea(areaType)
+            .Where(IsStaminaOnlyConsumableDropItem)
+            .ToList();
+
+        if (areaPool.Count > 0)
+            return areaPool;
+
+        return GameInteractableData.GetAllAreaItemPoolItems()
+            .Where(IsStaminaOnlyConsumableDropItem)
+            .Distinct()
+            .ToList();
+    }
+
+    private static bool IsStaminaOnlyConsumableDropItem(int itemId)
+    {
+        var item = GameItemData.Get(itemId);
+        if (item == null ||
+            item.Type != ItemType.CONSUMABLE ||
+            item.ConsumableBuffList.Count == 0)
+        {
+            return false;
+        }
+
+        return item.ConsumableBuffList.All(buff =>
+        {
+            var buffData = GameBuffData.Get(buff.id);
+            return buffData != null && buffData.SubType == BuffSubType.CONDITION_ADD;
+        });
     }
 }
 

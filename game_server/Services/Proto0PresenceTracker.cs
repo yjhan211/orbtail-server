@@ -79,6 +79,28 @@ public sealed class Proto0PresenceTracker
         return result;
     }
 
+    public List<(long candidateId, float presence)> GetPresenceScores(
+        long matchingId, long observerId, IEnumerable<long> roster)
+    {
+        var result = new List<(long, float)>();
+        _matches.TryGetValue(matchingId, out var state);
+        Dictionary<long, float[]> candidateBuckets = null;
+        state?.Observers.TryGetValue(observerId, out candidateBuckets);
+
+        foreach (long candidateId in roster)
+        {
+            if (candidateId == observerId) continue;
+
+            float score = 0f;
+            if (candidateBuckets != null && candidateBuckets.TryGetValue(candidateId, out var buckets))
+                foreach (float w in buckets) score += w;
+
+            result.Add((candidateId, Math.Min(MaxPresence, score)));
+        }
+
+        return result;
+    }
+
     public void Remove(long matchingId) => _matches.Remove(matchingId);
 
     private MatchState GetOrCreate(long matchingId)

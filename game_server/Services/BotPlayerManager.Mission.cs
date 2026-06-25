@@ -22,7 +22,7 @@ public partial class BotPlayerManager
     ///     - 스태미나 부족 시 자동 소모품 사용
     /// </summary>
     public BotMissionTickResult ProcessBotMissionTick(long matchingId, MissionManager missionManager,
-        InGameInventoryManager inventoryManager, ItemPoolManager itemPoolManager)
+        InGameInventoryManager inventoryManager, ItemPoolManager itemPoolManager, ChecklistManager checklistManager)
     {
         var result = new BotMissionTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
@@ -33,8 +33,15 @@ public partial class BotPlayerManager
                 continue;
             bot.LastMissionTickTime = DateTime.UtcNow;
 
+            if (TryAdvanceBotRest(bot)) continue;
+            if (bot.Stamina <= 0 && TryUseCatPillowForRest(bot, matchingId, inventoryManager)) continue;
+            TryAutoUseConsumable(bot, matchingId, inventoryManager);
+
             // 플레이어와 대화 중일 때는 탐색/선물 회수를 잠시 멈춘다.
             if (bot.IsInInteraction) continue;
+
+            TryChecklistActivityIfArrived(bot, matchingId, checklistManager, inventoryManager, result);
+            if (bot.PendingChecklistTaskId > 0) continue;
 
             var state = missionManager.GetState(matchingId, bot.PlayerId);
             if (state == null || state.IsCompleted) continue;
@@ -68,6 +75,120 @@ public partial class BotPlayerManager
 
     /// <summary>봇 RNG 인스턴스 쿨타임 — RngCollectCore의 동등 상수 (BotPlayerManager 내부 노출용).</summary>
     private const int GiftFoundCorruptionDelta = 30;
+
+    private const int BotCatPillowItemId = 401000003;
+    private const int BotCatPillowRestDurationSeconds = 15;
+    private const int BotCatPillowRestTickSeconds = 3;
+    private const int BotCatPillowStaminaPerTick = 5;
+
+    private void TryChecklistActivityIfArrived(BotPlayerState bot, long matchingId,
+        ChecklistManager checklistManager, InGameInventoryManager inventoryManager, BotMissionTickResult result)
+    {
+        if (bot.PendingChecklistTaskId <= 0 || bot.PendingChecklistInteractId <= 0) return;
+        if (bot.Path.Count > 0 && bot.PathIndex < bot.Path.Count) return;
+
+        var task = checklistManager.GetActiveTasks(matchingId, bot.PlayerId)
+            .FirstOrDefault(activeTask => activeTask.TaskId == bot.PendingChecklistTaskId);
+        var info = GameInteractableData.Get(bot.PendingChecklistInteractId);
+        if (task == null || info == null || info.ZoneId != (int)bot.CurrentArea)
+        {
+            ClearPendingChecklistActivity(bot);
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (bot.ChecklistActivityProgressStartTime == DateTime.MinValue)
+        {
+            bot.ChecklistActivityProgressStartTime = now;
+            ApplyBotStaminaCost(bot, Math.Max(0, task.StaminaCost));
+            result.BotExploreStarts.Add((bot.PlayerId, info.Id, bot.CurrentArea));
+            _logger.LogInformation(
+                "Bot checklist activity started: BotId={Bot}, TaskId={TaskId}, InteractId={InteractId}, Area={Area}",
+                bot.PlayerId, task.TaskId, info.Id, bot.CurrentArea);
+            return;
+        }
+
+        if ((now - bot.ChecklistActivityProgressStartTime).TotalSeconds < BotRngCollectProgressSeconds) return;
+
+        var completion = checklistManager.TryCompleteTask(
+            matchingId,
+            bot.PlayerId,
+            task.TaskId,
+            bot.CurrentArea,
+            info.Id,
+            inventoryManager);
+
+        result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
+        if (completion.ErrorCode == ErrorCode.SUCCESS)
+        {
+            result.CompletedChecklistActivities.Add((
+                bot.PlayerId,
+                task.TaskId,
+                completion.AwardedScore,
+                completion.AwardedContribution));
+            _logger.LogInformation(
+                "Bot checklist activity completed: BotId={Bot}, TaskId={TaskId}, Contribution+{Contribution}",
+                bot.PlayerId, task.TaskId, completion.AwardedContribution);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "Bot checklist activity skipped: BotId={Bot}, TaskId={TaskId}, Error={Error}",
+                bot.PlayerId, task.TaskId, completion.ErrorCode);
+        }
+
+        ClearPendingChecklistActivity(bot);
+    }
+
+    private static void ClearPendingChecklistActivity(BotPlayerState bot)
+    {
+        bot.PendingChecklistTaskId = 0;
+        bot.PendingChecklistInteractId = 0;
+        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
+        bot.LoopWaitUntil = DateTime.MinValue;
+    }
+
+    private bool TryUseCatPillowForRest(BotPlayerState bot, long matchingId, InGameInventoryManager inventoryManager)
+    {
+        if (bot.Stamina > 0) return false;
+
+        var pillow = inventoryManager.GetAllItems(matchingId, bot.PlayerId)
+            .FirstOrDefault(item => item.ItemId == BotCatPillowItemId && item.Count > 0);
+        if (pillow == null) return false;
+
+        if (!inventoryManager.TryRemoveItem(matchingId, bot.PlayerId, pillow.ItemUid, 1, out _)) return false;
+
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.PendingRngInteractId = 0;
+        bot.RngCollectProgressStartTime = DateTime.MinValue;
+        ClearPendingChecklistActivity(bot);
+        bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+        bot.RestUntil = DateTime.UtcNow.AddSeconds(BotCatPillowRestDurationSeconds);
+        bot.NextRestTickAt = DateTime.UtcNow;
+
+        _logger.LogInformation("Bot cat pillow rest started: BotId={Bot}", bot.PlayerId);
+        return TryAdvanceBotRest(bot);
+    }
+
+    private static bool TryAdvanceBotRest(BotPlayerState bot)
+    {
+        var now = DateTime.UtcNow;
+        if (bot.RestUntil == DateTime.MinValue || now >= bot.RestUntil)
+        {
+            bot.RestUntil = DateTime.MinValue;
+            bot.NextRestTickAt = DateTime.MinValue;
+            return false;
+        }
+
+        if (bot.NextRestTickAt == DateTime.MinValue || now >= bot.NextRestTickAt)
+        {
+            bot.Stamina = Math.Min(100, bot.Stamina + BotCatPillowStaminaPerTick);
+            bot.NextRestTickAt = now.AddSeconds(BotCatPillowRestTickSeconds);
+        }
+
+        return true;
+    }
 
     /// <summary>
     ///     #134 — 봇이 walking으로 InteractObject 셀에 도착했을 때 RNG 채집 트리거.
@@ -254,6 +375,7 @@ public partial class BotPlayerManager
         foreach (var item in items)
         {
             if (item.Count <= 0) continue;
+            if (item.ItemId == BotCatPillowItemId) continue;
             var data = GameItemData.Get(item.ItemId);
             if (data == null) continue;
             if (data.ConsumableBuffList.Count == 0) continue;
@@ -512,6 +634,9 @@ public class BotMissionTickResult
     public List<(long botPlayerId, int partId)> CollectedParts { get; } = new();
     public List<(long botPlayerId, int shareGroup)> CollectedPrereqs { get; } = new();
     public List<(long botPlayerId, int outputPartId, bool isRaceComplete)> Combined { get; } = new();
+    public List<(long botPlayerId, int taskId, float awardedScore, int awardedContribution)>
+        CompletedChecklistActivities
+    { get; } = new();
 
     /// <summary>#134 — 봇이 RNG 채집한 InteractObject 인스턴스 쿨타임 broadcast 정보.</summary>
     public List<(int interactId, int cooldownSeconds)> RngCooldownBroadcasts { get; } = new();

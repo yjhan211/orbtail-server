@@ -504,16 +504,24 @@ public class MissionManager
         if (targetPlayerId == 0 || !matching.ContainsKey(targetPlayerId))
             return new PlaceGiftResult { ErrorCode = ErrorCode.PLAYER_NOT_FOUND };
 
-        if (GameItemData.GetItemType(itemId) != ItemType.PART_GIFT ||
-            !GameMissionData.TryGetPartIdFromItemId(itemId, out int partId))
+        int partId = 0;
+        var itemType = GameItemData.GetItemType(itemId);
+        if (itemType == ItemType.PART_GIFT)
+        {
+            if (!GameMissionData.TryGetPartIdFromItemId(itemId, out partId))
+                return new PlaceGiftResult { ErrorCode = ErrorCode.INVALID_ITEM_TYPE };
+
+            var part = GameMissionData.GetPart(partId);
+            if (part == null || part.PartTier != PartTier.Intermediate || part.JobTitle != (short)state.JobTitle)
+                return new PlaceGiftResult { ErrorCode = ErrorCode.INVALID_ITEM };
+
+            if (!state.CollectedParts.Contains(partId))
+                return new PlaceGiftResult { ErrorCode = ErrorCode.INSUFFICIENT_ITEM };
+        }
+        else if (itemType != ItemType.CONSUMABLE)
+        {
             return new PlaceGiftResult { ErrorCode = ErrorCode.INVALID_ITEM_TYPE };
-
-        var part = GameMissionData.GetPart(partId);
-        if (part == null || part.PartTier != PartTier.Intermediate || part.JobTitle != (short)state.JobTitle)
-            return new PlaceGiftResult { ErrorCode = ErrorCode.INVALID_ITEM };
-
-        if (!state.CollectedParts.Contains(partId))
-            return new PlaceGiftResult { ErrorCode = ErrorCode.INSUFFICIENT_ITEM };
+        }
 
         var interactable = GameInteractableData.Get(interactId);
         if (interactable == null)

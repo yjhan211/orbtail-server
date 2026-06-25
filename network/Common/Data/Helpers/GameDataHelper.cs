@@ -199,37 +199,45 @@ namespace network.common.data.helpers
                     throw;
                 }
             }
-
-            // 일반 데이터 초기화
-            foreach (var (fileName, init, _) in _standardDataDefinitions)
+            // Checklist data files
+            foreach (var fileName in DataFiles.Checklist.ALL)
+            {
+                var filePath = GetCsvFilePath(fileName);
                 try
                 {
-                    init(loadedData[fileName]);
+                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
                     throw;
                 }
+            }
 
-            // 버프 데이터 초기화
+            foreach (var (fileName, init, _) in _standardDataDefinitions)
+            {
+                init(loadedData[fileName]);
+            }
+
+            // Buff data
             GameBuffData.Initialize(loadedData[DataFiles.BuffInfo]);
 
-            // 아이템 데이터 초기화
+            // Item data
             GameItemData.Initialize(
                 loadedData[DataFiles.Item.Base],
                 loadedData[DataFiles.Item.Equipment],
                 loadedData[DataFiles.Item.Consumable],
-                new List<CsvRow>() // Put (미사용)
+                new List<CsvRow>() // Put (unused)
             );
 
-            // 맵 데이터 초기화
+            // Map data
             GameMapData.Initialize(
                 loadedData[DataFiles.Map.MapInfo],
                 loadedData[DataFiles.Map.MapRegion]
             );
 
-            // 상호작용 오브젝트 데이터 초기화
-            // interactable_info의 action_group_key가 비어 있지 않으면 해당 오브젝트는 그 전용 선택지 그룹을 쓴다.
+            // Interactable object data
             GameInteractableData.Initialize(
                 loadedData[DataFiles.Interactable.Info],
                 loadedData[DataFiles.Interactable.Action],
@@ -247,6 +255,12 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Mission.StoryletStart],
                 loadedData[DataFiles.Mission.StoryletPool]);
 
+            GameChecklistData.Initialize(
+                loadedData[DataFiles.Checklist.Rule],
+                loadedData[DataFiles.Checklist.TaskPool],
+                loadedData[DataFiles.Checklist.StateRules],
+                loadedData[DataFiles.Checklist.ActivityInteraction]);
+
             ValidateAllData();
             _initialized = true;
         }
@@ -254,6 +268,7 @@ namespace network.common.data.helpers
         private static void ValidateAllData()
         {
             GameMapData.Validate();
+            GameChecklistData.Validate();
             ValidateReferentialIntegrity();
         }
 
@@ -305,6 +320,7 @@ namespace network.common.data.helpers
             }
 
             ValidateMissionReferentialIntegrity(errors, itemIds);
+            GameChecklistData.ValidateReferentialIntegrity(errors, itemIds);
 
             if (errors.Count > 0)
             {
@@ -616,6 +632,16 @@ namespace network.common.data.helpers
                     StoryletStart,
                     StoryletPool
                 };
+            }
+
+            public static class Checklist
+            {
+                public const string Rule = "checklist_rule.csv";
+                public const string TaskPool = "checklist_task_pool.csv";
+                public const string StateRules = "checklist_state_rules.csv";
+                public const string ActivityInteraction = "checklist_activity_interaction.csv";
+
+                public static readonly string[] ALL = new[] { Rule, TaskPool, StateRules, ActivityInteraction };
             }
 
             public static class Item
