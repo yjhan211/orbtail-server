@@ -444,7 +444,7 @@ public partial class GameClientSession
             if (state.SettlementNominations.ContainsKey(bot.PlayerId))
                 continue;
 
-            var candidates = PresenceTracker?
+            var candidates = _presenceTracker?
                 .GetPresenceScores(matchingId, bot.PlayerId, roster)
                 .Where(candidate => candidate.candidateId != bot.PlayerId && candidate.presence > 0f)
                 .OrderByDescending(candidate => candidate.presence)

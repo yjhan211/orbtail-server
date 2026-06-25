@@ -27,7 +27,7 @@ public partial class GameClientSession : SessionBase
     private static readonly TimeSpan InteractCooldown = TimeSpan.FromSeconds(5);
     private static readonly ConcurrentDictionary<long, Timer> GameTimers = new();
     internal static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
-    private static Proto0PresenceTracker? PresenceTracker;
+    private static Proto0PresenceTracker? _presenceTracker;
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly AreaRuleManager _areaRuleManager;
     private readonly CorridorRuleManager _corridorRuleManager;
@@ -153,7 +153,7 @@ public partial class GameClientSession : SessionBase
 
     internal static void SetPresenceTracker(Proto0PresenceTracker presenceTracker)
     {
-        PresenceTracker = presenceTracker;
+        _presenceTracker = presenceTracker;
     }
 
     internal static (int RoundNumber, int TotalRounds, string Phase, int RemainingSeconds, int PhaseDurationSeconds,

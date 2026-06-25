@@ -635,7 +635,8 @@ public class BotMissionTickResult
     public List<(long botPlayerId, int shareGroup)> CollectedPrereqs { get; } = new();
     public List<(long botPlayerId, int outputPartId, bool isRaceComplete)> Combined { get; } = new();
     public List<(long botPlayerId, int taskId, float awardedScore, int awardedContribution)>
-        CompletedChecklistActivities { get; } = new();
+        CompletedChecklistActivities
+    { get; } = new();
 
     /// <summary>#134 — 봇이 RNG 채집한 InteractObject 인스턴스 쿨타임 broadcast 정보.</summary>
     public List<(int interactId, int cooldownSeconds)> RngCooldownBroadcasts { get; } = new();
