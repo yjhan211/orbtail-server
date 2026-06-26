@@ -276,3 +276,5 @@ id,category,text_kr,text_en,text_jp
 "12156","7","<color=#A8D4E0>색출</color>","<color=#A8D4E0>Expose</color>","<color=#A8D4E0>暴く</color>"
 "12157","7","상대","Someone","相手"
 "12158","7","<color=#FF7E9A>{0}</color>이(가) <color=#FF7E9A>탈락</color>했습니다.","<color=#FF7E9A>{0}</color> has been <color=#FF7E9A>eliminated</color>.","<color=#FF7E9A>{0}</color>が<color=#FF7E9A>脱落</color>しました。"
+"12159","7","폐쇄 경고","Closure Warning","閉鎖警告"
+"12160","7","현재 구역이 곧 <color=#F1325A>폐쇄</color>됩니다.\n폐쇄되기 전에 이탈하세요.","This zone will <color=#F1325A>close</color> soon.\nLeave before it closes.","この区域はまもなく<color=#F1325A>閉鎖</color>されます。\n閉鎖前に離脱してください。"
