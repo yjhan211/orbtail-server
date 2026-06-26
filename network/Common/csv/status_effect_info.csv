@@ -10,3 +10,4 @@ id,buff_id,kind,name_text_id,desc_text_id
 1009,0,debuff,12146,12147
 1010,3,buff,12148,12149
 1011,5,debuff,12159,12160
+1012,5,debuff,12162,12163
