@@ -1773,7 +1773,10 @@ public partial class GameClientSession
         if (!PlayerId.HasValue) return;
 
         if (Corruption >= MaxCorruption)
-            _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO);
+        {
+            Console.WriteLine(
+                $"[Resource] Mental max reached: player={PlayerId.Value}, corruption={Corruption}/{MaxCorruption}. Forced follow is handled by client.");
+        }
     }
 
     // ===== 시한부 사보타주 (GDD 2.5.4, 패키지 Y 4B, #24) =====

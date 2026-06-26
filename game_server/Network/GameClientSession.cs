@@ -26,6 +26,7 @@ public partial class GameClientSession : SessionBase
     private const int HeartbeatTimeoutSeconds = 30;
     private static readonly TimeSpan InteractCooldown = TimeSpan.FromSeconds(5);
     private static readonly ConcurrentDictionary<long, Timer> GameTimers = new();
+    private static readonly object _roundSessionStartLock = new();
     internal static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
     private static Proto0PresenceTracker? _presenceTracker;
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
