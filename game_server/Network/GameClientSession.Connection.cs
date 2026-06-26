@@ -58,11 +58,10 @@ public partial class GameClientSession
             // 인게임 스탯 초기화
             ResetInGameStats();
 
-            // 게임 타이머 시작 (해당 매칭에 대해 최초 1회만)
-            StartGameTimerIfNeeded(msg.MatchingId);
-
-            // 세션 등록
+            // 세션 등록 후 게임 타이머 시작 (해당 매칭에 대해 최초 1회만)
             _registerSessionCallback(PlayerId.Value, this);
+
+            StartGameTimerIfNeeded(msg.MatchingId);
 
             // 초기 위치 로드
             await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
@@ -306,36 +305,71 @@ public partial class GameClientSession
     /// </summary>
     private void StartGameTimerIfNeeded(long matchingId)
     {
-        if (GameTimers.ContainsKey(matchingId))
+        lock (_roundSessionStartLock)
         {
-            Logger.LogDebug("Round timer already exists for MatchingId={MatchingId}", matchingId);
-            return;
-        }
+            bool hasOtherActiveSession = HasOtherActiveHumanSession(matchingId);
+            if (GameTimers.TryGetValue(matchingId, out var existingTimer))
+            {
+                if (hasOtherActiveSession)
+                {
+                    Logger.LogDebug("Round timer already exists for MatchingId={MatchingId}", matchingId);
+                    return;
+                }
 
-        var state = new RoundRuntimeState
-        {
-            RoundNumber = 1,
-            Phase = RoundPhase.Action,
-            PhaseDurationSeconds = Config.ROUND_ACTION_SECONDS,
-            PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_ACTION_SECONDS),
-            SettlementEliminationApplied = false,
-            IsSessionEnded = false
-        };
-        GameRoundStates.TryAdd(matchingId, state);
-        StartChecklistRound(matchingId, state, broadcast: false);
+                Logger.LogWarning(
+                    "Resetting stale round timer before starting new session: MatchingId={MatchingId}",
+                    matchingId);
+                if (GameTimers.TryRemove(matchingId, out var staleTimer))
+                    staleTimer.Dispose();
+                else
+                    existingTimer.Dispose();
+            }
 
-        Logger.LogInformation(
-            "Round session started: MatchingId={MatchingId}, Rounds={Rounds}, Action={ActionSeconds}s, Settlement={SettlementSeconds}s",
-            matchingId, Config.ROUND_TOTAL_COUNT, Config.ROUND_ACTION_SECONDS, Config.ROUND_SETTLEMENT_SECONDS);
+            if (GameRoundStates.TryRemove(matchingId, out var staleState))
+            {
+                Logger.LogWarning(
+                    "Resetting stale round state before starting new session: MatchingId={MatchingId}, OldRound={Round}, OldPhase={Phase}",
+                    matchingId, staleState.RoundNumber, staleState.Phase);
+            }
 
-        var timer = new Timer(_ => ProcessRoundTimerTick(matchingId), null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
-
-        if (!GameTimers.TryAdd(matchingId, timer))
-        {
-            timer.Dispose();
-            GameRoundStates.TryRemove(matchingId, out _);
             _checklistManager.RemoveMatchingState(matchingId);
+
+            var state = new RoundRuntimeState
+            {
+                RoundNumber = 1,
+                Phase = RoundPhase.Action,
+                PhaseDurationSeconds = Config.ROUND_ACTION_SECONDS,
+                PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_ACTION_SECONDS),
+                SettlementEliminationApplied = false,
+                IsSessionEnded = false
+            };
+            GameRoundStates[matchingId] = state;
+            StartChecklistRound(matchingId, state, broadcast: false);
+
+            Logger.LogInformation(
+                "Round session started: MatchingId={MatchingId}, Rounds={Rounds}, Action={ActionSeconds}s, Settlement={SettlementSeconds}s",
+                matchingId, Config.ROUND_TOTAL_COUNT, Config.ROUND_ACTION_SECONDS, Config.ROUND_SETTLEMENT_SECONDS);
+
+            var timer = new Timer(_ => ProcessRoundTimerTick(matchingId), null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+
+            if (!GameTimers.TryAdd(matchingId, timer))
+            {
+                timer.Dispose();
+                GameRoundStates.TryRemove(matchingId, out _);
+                _checklistManager.RemoveMatchingState(matchingId);
+            }
         }
+    }
+
+    private bool HasOtherActiveHumanSession(long matchingId)
+    {
+        return _getSessionsByInstance(CurrentMapId, matchingId)
+            .Any(session =>
+                !ReferenceEquals(session, this)
+                && session.PlayerId.HasValue
+                && !session.IsEliminated
+                && !session._isGameEnded
+                && !session._isServerInitiatedDisconnect);
     }
 
     /// <summary>
@@ -956,9 +990,7 @@ public partial class GameClientSession
         {
             Logger.LogWarning("[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): EndGameByTimeout matchingId={MatchingId}",
                 matchingId);
-            // 타이머는 정리 (재발화 방지)
-            if (GameTimers.TryRemove(matchingId, out var t)) t.Dispose();
-            _checklistManager.RemoveMatchingState(matchingId);
+            CleanupRoundTimer(matchingId);
             return;
         }
 
