@@ -322,6 +322,7 @@ public class BotPlayerState
     public AreaType CurrentArea { get; set; }
     public int Stamina { get; set; } = 100;
     public int Corruption { get; set; }
+    public bool IsForcedFollowActive { get; set; }
     public bool IsEliminated { get; set; }
     public ManittoStatus ManittoStatus { get; set; } = ManittoStatus.ACTIVE;
     public DateTime LastMoveTime { get; set; } = DateTime.UtcNow;

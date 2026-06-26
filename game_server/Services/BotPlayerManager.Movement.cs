@@ -75,14 +75,32 @@ public partial class BotPlayerManager
                 if (areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
                     bot.Corruption = Math.Min(100, bot.Corruption + 4);
 
-                // 3) 탈락 체크 — Corruption 100만 트리거 (권고안 B). Stamina 0은 비탈락.
+                // 3) Corruption 100: 탈락 대신 강제 미행 상태로 전환. Stamina 0은 비탈락.
                 if (bot.Corruption >= 100)
                 {
-                    bot.IsEliminated = true;
-                    _logger.LogInformation("봇 탈락: MatchingId={MatchingId}, BotId={BotId}, 사유=MENTAL_ZERO",
-                        matchingId, bot.PlayerId);
-                    result.Eliminated.Add((bot.PlayerId, EliminationReason.MENTAL_ZERO));
-                    continue;
+                    if (!bot.IsForcedFollowActive)
+                    {
+                        bot.IsForcedFollowActive = true;
+                        bot.Path.Clear();
+                        bot.PathIndex = 0;
+                        bot.PendingRngInteractId = 0;
+                        bot.PendingChecklistTaskId = 0;
+                        bot.PendingChecklistInteractId = 0;
+                        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
+                        bot.RngCollectProgressStartTime = DateTime.MinValue;
+                        bot.InteractQueueInArea.Clear();
+                        bot.LoopWaitUntil = DateTime.MinValue;
+                        _logger.LogInformation(
+                            "Bot forced follow started: MatchingId={MatchingId}, BotId={BotId}, Target={Target}",
+                            matchingId, bot.PlayerId, bot.TargetPlayerId);
+                    }
+                }
+                else if (bot.IsForcedFollowActive)
+                {
+                    bot.IsForcedFollowActive = false;
+                    _logger.LogInformation(
+                        "Bot forced follow ended: MatchingId={MatchingId}, BotId={BotId}, Corruption={Corruption}",
+                        matchingId, bot.PlayerId, bot.Corruption);
                 }
 
                 // 4) DemoMode 스크립트 텔레포트 폐기 — 봇은 직책 큐(JobAreaQueue) 따라 walking으로만 이동.
@@ -353,6 +371,12 @@ public partial class BotPlayerManager
         // walking 시작 시 EXPLORE_END broadcast 안전망 — 다음 ProcessBotMovementTick에서 수집.
         bot.PendingExploreEndBroadcast = true;
 
+        if (bot.IsForcedFollowActive &&
+            TryStartBotForcedFollowPath(bot, matchingId, mapId, playerAreas))
+        {
+            return;
+        }
+
         var activeSchoolTask = checklistManager.GetNextActiveGeneralInteractTask(matchingId, bot.PlayerId);
         int schoolTaskCost = activeSchoolTask != null ? Math.Max(0, activeSchoolTask.StaminaCost) : 0;
         if (activeSchoolTask != null &&
@@ -398,6 +422,46 @@ public partial class BotPlayerManager
             "Proto0 bot move: BotId={Bot}, Target={Target}, Policy={Policy}, Profile={Profile}, {From}->{To}, Steps={Steps}",
             bot.PlayerId, bot.TargetPlayerId, ActiveProto0BotPolicy, bot.Proto0Profile,
             bot.CurrentArea, destination, path.Count);
+    }
+
+    private bool TryStartBotForcedFollowPath(BotPlayerState bot, long matchingId, MapId mapId,
+        IReadOnlyDictionary<long, AreaType> playerAreas)
+    {
+        if (!playerAreas.TryGetValue(bot.TargetPlayerId, out var targetArea) || targetArea == AreaType.None)
+        {
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 0.9);
+            return true;
+        }
+
+        if (targetArea == bot.CurrentArea)
+        {
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.5);
+            return true;
+        }
+
+        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, targetArea)
+            ?? GameMapData.GetAreaSpawnCell(mapId, targetArea);
+
+        var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
+            targetArea, targetCell,
+            _ => false);
+        if (path == null || path.Count == 0)
+        {
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 0.9);
+            _logger.LogWarning(
+                "Bot forced follow path failed: MatchingId={MatchingId}, BotId={Bot}, Target={Target}, {From}->{To}",
+                matchingId, bot.PlayerId, bot.TargetPlayerId, bot.CurrentArea, targetArea);
+            return true;
+        }
+
+        bot.Path = path;
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = RandomizedDelayFromNow(0.3, 0.8);
+        bot.PendingExploreEndBroadcast = true;
+        _logger.LogInformation(
+            "Bot forced follow move: MatchingId={MatchingId}, BotId={Bot}, Target={Target}, {From}->{To}, Steps={Steps}",
+            matchingId, bot.PlayerId, bot.TargetPlayerId, bot.CurrentArea, targetArea, path.Count);
+        return true;
     }
 
     private bool TryStartBotChecklistTaskPath(BotPlayerState bot, long matchingId, ChecklistTaskData task,
