@@ -2015,7 +2015,7 @@ public class GameServer(
         state.SettlementEliminationApplied = true;
         var reason = state.SettlementContributionNominationSuccess
             ? EliminationReason.DETECTED
-            : EliminationReason.RACE_LOST;
+            : EliminationReason.SETTLEMENT_LOW_CONTRIBUTION;
 
         _gameEventLogManager.LogElimination(matchingId, eliminatedPlayerId, reason.ToString(), isBot: true);
         ProcessBotElimination(matchingId, eliminatedPlayerId, reason, []);

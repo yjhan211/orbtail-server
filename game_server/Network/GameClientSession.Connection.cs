@@ -862,7 +862,7 @@ public partial class GameClientSession
         state.SettlementEliminationApplied = true;
         var reason = state.SettlementContributionNominationSuccess
             ? EliminationReason.DETECTED
-            : EliminationReason.RACE_LOST;
+            : EliminationReason.SETTLEMENT_LOW_CONTRIBUTION;
 
         Logger.LogInformation(
             "Settlement elimination applied: MatchingId={MatchingId}, Round={Round}, PlayerId={PlayerId}, Reason={Reason}",

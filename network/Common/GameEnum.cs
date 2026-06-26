@@ -310,6 +310,7 @@ namespace network.common
         MENTAL_ZERO = 2,        // 정신력 0
         STAMINA_ZERO = 3,       // 스태미나 0
         RACE_LOST = 4,          // 다른 직책의 race 완주로 패배 (#87)
+        SETTLEMENT_LOW_CONTRIBUTION = 5, // 정산 기여도 최하위로 탈락
     }
 
     /// <summary>
