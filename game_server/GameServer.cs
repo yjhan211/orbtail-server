@@ -77,12 +77,12 @@ public class GameServer(
     private const int ChecklistProgressTickIntervalSeconds = 1;
     // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
     // 프로토 0: 타겟에서 떨어지면(복도/빈방) 압박이 실질적이도록 기본 감소를 회복(-3)과 균형 맞춰 상향. 튜닝 노브.
-    private const int MentalDecayPhase1 = 3;            // 0~5분: 5초당 오염도 +3
-    private const int MentalDecayPhase2 = 4;            // 5~10분: 5초당 오염도 +4
-    private const int MentalDecayPhase3 = 5;            // 10분+: 5초당 오염도 +5
+    private const int MentalDecayPhase1 = 6;            // 0~5분: 5초당 오염도 +6
+    private const int MentalDecayPhase2 = 8;            // 5~10분: 5초당 오염도 +8
+    private const int MentalDecayPhase3 = 10;           // 10분+: 5초당 오염도 +10
     private const int Phase2StartSeconds = 300;          // 5분
     private const int Phase3StartSeconds = 600;          // 10분
-    private const int TargetProximityRecovery = 3;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -3)
+    private const int TargetProximityRecovery = 4;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -4)
     private const int IsolationStatusEffectId = 1001;   // status_effect_info: 고립
     private const int NearbyStatusEffectId = 1002;      // status_effect_info: 의존
     private const int ProximityStatusEffectId = 1010;   // status_effect_info: 교감 (#161)
