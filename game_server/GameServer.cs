@@ -82,7 +82,7 @@ public class GameServer(
     private const int MentalDecayPhase3 = 10;           // 10분+: 5초당 오염도 +10
     private const int Phase2StartSeconds = 300;          // 5분
     private const int Phase3StartSeconds = 600;          // 10분
-    private const int TargetProximityRecovery = 4;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -4)
+    private const int TargetProximityRecovery = 8;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -8)
     private const int IsolationStatusEffectId = 1001;   // status_effect_info: 고립
     private const int NearbyStatusEffectId = 1002;      // status_effect_info: 의존
     private const int ProximityStatusEffectId = 1010;   // status_effect_info: 교감 (#161)

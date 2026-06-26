@@ -100,6 +100,6 @@ namespace network.common
         public const float TARGET_PROXIMITY_DISTANCE = 3f;
 
         /// <summary>교감(1010) 추가 회복량 (5초당 오염도 감소). 의존(1002) 회복에 합산. (#161)</summary>
-        public const int TARGET_PROXIMITY_RECOVERY_BONUS = 5;
+        public const int TARGET_PROXIMITY_RECOVERY_BONUS = 10;
     }
 }
