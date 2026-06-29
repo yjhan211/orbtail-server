@@ -50,6 +50,8 @@ public sealed class Proto0PresenceTracker
             }
         }
 
+        ReconcileNotebookOverlaps(state, playerAreas, DateTime.UtcNow);
+
         state.Head = (slot + 1) % WindowTicks;
     }
 
@@ -62,7 +64,7 @@ public sealed class Proto0PresenceTracker
     {
         var result = new List<(long, float)>();
         _matches.TryGetValue(matchingId, out var state);
-        Dictionary<long, float[]> candidateBuckets = null;
+        Dictionary<long, float[]>? candidateBuckets = null;
         state?.Observers.TryGetValue(observerId, out candidateBuckets);
 
         foreach (long candidateId in roster)
@@ -84,7 +86,7 @@ public sealed class Proto0PresenceTracker
     {
         var result = new List<(long, float)>();
         _matches.TryGetValue(matchingId, out var state);
-        Dictionary<long, float[]> candidateBuckets = null;
+        Dictionary<long, float[]>? candidateBuckets = null;
         state?.Observers.TryGetValue(observerId, out candidateBuckets);
 
         foreach (long candidateId in roster)
@@ -101,7 +103,57 @@ public sealed class Proto0PresenceTracker
         return result;
     }
 
+    public List<PresenceNotebookRecord> GetNotebookRecords(
+        long matchingId, long observerId, IEnumerable<long> roster, bool includeEmpty = false)
+    {
+        var result = new List<PresenceNotebookRecord>();
+        var now = DateTime.UtcNow;
+        _matches.TryGetValue(matchingId, out var state);
+        Dictionary<long, PresenceNotebookRecord>? observerRecords = null;
+        state?.NotebookRecords.TryGetValue(observerId, out observerRecords);
+
+        foreach (long candidateId in roster)
+        {
+            if (candidateId == observerId) continue;
+
+            if (observerRecords != null && observerRecords.TryGetValue(candidateId, out var record))
+            {
+                result.Add(record.Clone(now));
+                continue;
+            }
+
+            if (includeEmpty)
+                result.Add(new PresenceNotebookRecord { PlayerId = candidateId });
+        }
+
+        return result
+            .OrderByDescending(record => record.TotalOverlapSeconds)
+            .ThenByDescending(record => record.EnterAfterObserverCount)
+            .ThenBy(record => record.PlayerId)
+            .ToList();
+    }
+
     public void Remove(long matchingId) => _matches.Remove(matchingId);
+
+    public void SetPlayerArea(long matchingId, long playerId, AreaType area, bool countAsEntry)
+    {
+        var state = GetOrCreate(matchingId);
+        var now = DateTime.UtcNow;
+        if (state.CurrentAreas.TryGetValue(playerId, out var currentArea) && currentArea == area)
+            return;
+
+        if (state.CurrentAreas.TryGetValue(playerId, out var oldArea) &&
+            oldArea != AreaType.None &&
+            !oldArea.IsCorridor())
+        {
+            CloseOverlapsForAreaExit(state, playerId, oldArea, now);
+        }
+
+        state.CurrentAreas[playerId] = area;
+
+        if (countAsEntry && area != AreaType.None && !area.IsCorridor())
+            RecordAreaEntry(state, playerId, area, now);
+    }
 
     private MatchState GetOrCreate(long matchingId)
     {
@@ -114,10 +166,149 @@ public sealed class Proto0PresenceTracker
         return state;
     }
 
+    private static void ReconcileNotebookOverlaps(
+        MatchState state, IReadOnlyDictionary<long, AreaType> playerAreas, DateTime now)
+    {
+        var activePairs = new HashSet<(long observerId, long candidateId)>();
+
+        foreach (var (observerId, observerArea) in playerAreas)
+        {
+            if (observerArea == AreaType.None || observerArea.IsCorridor())
+                continue;
+
+            foreach (var (otherId, otherArea) in playerAreas)
+            {
+                if (otherId == observerId || otherArea != observerArea)
+                    continue;
+
+                activePairs.Add((observerId, otherId));
+
+                var record = state.GetNotebookRecord(observerId, otherId);
+                record.PlayerId = otherId;
+                record.LastSeenArea = observerArea;
+
+                if (!record.IsCurrentlyOverlapping)
+                {
+                    StartOverlap(
+                        record,
+                        observerArea,
+                        now,
+                        classify: overlap =>
+                        {
+                            overlap.OverlapStartCount++;
+                            overlap.UnclassifiedOverlapStartCount++;
+                        });
+                }
+
+                RefreshCurrentOverlap(record, now);
+            }
+        }
+
+        foreach (var (observerId, records) in state.NotebookRecords)
+            foreach (var (candidateId, record) in records)
+                if (!activePairs.Contains((observerId, candidateId)))
+                    CloseOverlap(record, now);
+
+        state.CurrentAreas.Clear();
+        foreach (var (playerId, area) in playerAreas)
+            state.CurrentAreas[playerId] = area;
+    }
+
+    private static void CloseOverlapsForAreaExit(MatchState state, long playerId, AreaType oldArea, DateTime now)
+    {
+        foreach (var (otherId, otherArea) in state.CurrentAreas)
+        {
+            if (otherId == playerId || otherArea != oldArea)
+                continue;
+
+            if (state.NotebookRecords.TryGetValue(playerId, out var playerRecords) &&
+                playerRecords.TryGetValue(otherId, out var playerRecord))
+                CloseOverlap(playerRecord, now);
+
+            if (state.NotebookRecords.TryGetValue(otherId, out var otherRecords) &&
+                otherRecords.TryGetValue(playerId, out var otherRecord))
+                CloseOverlap(otherRecord, now);
+        }
+    }
+
+    private static void RecordAreaEntry(MatchState state, long entrantId, AreaType newArea, DateTime now)
+    {
+        foreach (var (otherId, otherArea) in state.CurrentAreas)
+        {
+            if (otherId == entrantId || otherArea != newArea)
+                continue;
+
+            var observerRecord = state.GetNotebookRecord(otherId, entrantId);
+            observerRecord.PlayerId = entrantId;
+            StartOverlap(
+                observerRecord,
+                newArea,
+                now,
+                classify: record =>
+                {
+                    record.OverlapStartCount++;
+                    record.EnterAfterObserverCount++;
+                });
+
+            var entrantRecord = state.GetNotebookRecord(entrantId, otherId);
+            entrantRecord.PlayerId = otherId;
+            StartOverlap(
+                entrantRecord,
+                newArea,
+                now,
+                classify: record =>
+                {
+                    record.OverlapStartCount++;
+                    record.AlreadyThereWhenObserverArrivedCount++;
+                });
+        }
+    }
+
+    private static void StartOverlap(
+        PresenceNotebookRecord record,
+        AreaType area,
+        DateTime now,
+        Action<PresenceNotebookRecord> classify)
+    {
+        if (record.IsCurrentlyOverlapping)
+            CloseOverlap(record, now);
+
+        record.LastSeenArea = area;
+        record.CurrentOverlapSeconds = 0;
+        record.ActiveOverlapStartedAtUtc = now;
+        record.IsCurrentlyOverlapping = true;
+        classify(record);
+    }
+
+    private static void RefreshCurrentOverlap(PresenceNotebookRecord record, DateTime now)
+    {
+        if (!record.IsCurrentlyOverlapping || !record.ActiveOverlapStartedAtUtc.HasValue)
+            return;
+
+        record.CurrentOverlapSeconds = Math.Max(
+            0,
+            (int)Math.Round((now - record.ActiveOverlapStartedAtUtc.Value).TotalSeconds));
+        record.LongestOverlapSeconds = Math.Max(record.LongestOverlapSeconds, record.CurrentOverlapSeconds);
+    }
+
+    private static void CloseOverlap(PresenceNotebookRecord record, DateTime now)
+    {
+        if (!record.IsCurrentlyOverlapping)
+            return;
+
+        RefreshCurrentOverlap(record, now);
+        record.TotalOverlapSeconds += record.CurrentOverlapSeconds;
+        record.CurrentOverlapSeconds = 0;
+        record.IsCurrentlyOverlapping = false;
+        record.ActiveOverlapStartedAtUtc = null;
+    }
+
     private sealed class MatchState
     {
         public int Head;
         public readonly Dictionary<long, Dictionary<long, float[]>> Observers = new();
+        public readonly Dictionary<long, AreaType> CurrentAreas = new();
+        public readonly Dictionary<long, Dictionary<long, PresenceNotebookRecord>> NotebookRecords = new();
 
         public Dictionary<long, float[]> GetObserver(long observerId)
         {
@@ -140,5 +331,62 @@ public sealed class Proto0PresenceTracker
 
             return buckets;
         }
+
+        public PresenceNotebookRecord GetNotebookRecord(long observerId, long candidateId)
+        {
+            if (!NotebookRecords.TryGetValue(observerId, out var candidates))
+            {
+                candidates = new Dictionary<long, PresenceNotebookRecord>();
+                NotebookRecords[observerId] = candidates;
+            }
+
+            if (!candidates.TryGetValue(candidateId, out var record))
+            {
+                record = new PresenceNotebookRecord { PlayerId = candidateId };
+                candidates[candidateId] = record;
+            }
+
+            return record;
+        }
+    }
+}
+
+public sealed class PresenceNotebookRecord
+{
+    public long PlayerId { get; set; }
+    public int TotalOverlapSeconds { get; set; }
+    public int LongestOverlapSeconds { get; set; }
+    public int CurrentOverlapSeconds { get; set; }
+    public bool IsCurrentlyOverlapping { get; set; }
+    public int OverlapStartCount { get; set; }
+    public int EnterAfterObserverCount { get; set; }
+    public int AlreadyThereWhenObserverArrivedCount { get; set; }
+    public int UnclassifiedOverlapStartCount { get; set; }
+    public AreaType LastSeenArea { get; set; }
+    internal DateTime? ActiveOverlapStartedAtUtc { get; set; }
+
+    public PresenceNotebookRecord Clone(DateTime now)
+    {
+        int currentOverlapSeconds = CurrentOverlapSeconds;
+        if (IsCurrentlyOverlapping && ActiveOverlapStartedAtUtc.HasValue)
+        {
+            currentOverlapSeconds = Math.Max(
+                0,
+                (int)Math.Round((now - ActiveOverlapStartedAtUtc.Value).TotalSeconds));
+        }
+
+        return new PresenceNotebookRecord
+        {
+            PlayerId = PlayerId,
+            TotalOverlapSeconds = TotalOverlapSeconds + currentOverlapSeconds,
+            LongestOverlapSeconds = Math.Max(LongestOverlapSeconds, currentOverlapSeconds),
+            CurrentOverlapSeconds = currentOverlapSeconds,
+            IsCurrentlyOverlapping = IsCurrentlyOverlapping,
+            OverlapStartCount = OverlapStartCount,
+            EnterAfterObserverCount = EnterAfterObserverCount,
+            AlreadyThereWhenObserverArrivedCount = AlreadyThereWhenObserverArrivedCount,
+            UnclassifiedOverlapStartCount = UnclassifiedOverlapStartCount,
+            LastSeenArea = LastSeenArea
+        };
     }
 }

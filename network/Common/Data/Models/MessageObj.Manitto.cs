@@ -438,6 +438,29 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class PresenceNotebookEntry : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("lastSeenArea")] public AreaType LastSeenArea { get; set; }
+        [Key("totalOverlapSeconds")] public int TotalOverlapSeconds { get; set; }
+        [Key("longestOverlapSeconds")] public int LongestOverlapSeconds { get; set; }
+        [Key("currentOverlapSeconds")] public int CurrentOverlapSeconds { get; set; }
+        [Key("overlapStartCount")] public int OverlapStartCount { get; set; }
+        [Key("enterAfterObserverCount")] public int EnterAfterObserverCount { get; set; }
+        [Key("alreadyThereWhenObserverArrivedCount")] public int AlreadyThereWhenObserverArrivedCount { get; set; }
+        [Key("unclassifiedOverlapStartCount")] public int UnclassifiedOverlapStartCount { get; set; }
+        [Key("isCurrentlyOverlapping")] public bool IsCurrentlyOverlapping { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_PRESENCE_NOTEBOOK_UPDATE : IMessagePackObject
+    {
+        [Key("matchingId")] public long MatchingId { get; set; }
+        [Key("roundNumber")] public int RoundNumber { get; set; }
+        [Key("entries")] public List<PresenceNotebookEntry> Entries { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_G_BOOKMARK_PRESENCE : IMessagePackObject
     {
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }

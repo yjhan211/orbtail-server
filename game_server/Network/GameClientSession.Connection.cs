@@ -49,6 +49,10 @@ public partial class GameClientSession
 
             // 봇 로드 (매칭당 최초 1회) — 폐쇄 초기화 전에 로드해 직책 풀을 확정 (#87)
             await LoadBotsIfNeeded(msg.MatchingId, CurrentMapId);
+            foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
+                if (!bot.IsEliminated)
+                    _presenceTracker?.SetPlayerArea(msg.MatchingId, bot.PlayerId, bot.CurrentArea,
+                        countAsEntry: false);
 
             // 구역 폐쇄 초기화 (매칭당 최초 1회)
             // #87: 매칭의 직책 풀을 셔플 우선순위에 반영 (5분 1단계 보장 + 직책별 후순위)
@@ -78,6 +82,8 @@ public partial class GameClientSession
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
                     PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
                     _lastValidCell?.Y);
+                _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea,
+                    countAsEntry: false);
 
                 // 초기 Area의 Interactable 목록 전송
                 if (CurrentArea != AreaType.None)
@@ -333,6 +339,7 @@ public partial class GameClientSession
             }
 
             _checklistManager.RemoveMatchingState(matchingId);
+            _presenceTracker?.Remove(matchingId);
 
             var state = new RoundRuntimeState
             {
@@ -401,6 +408,7 @@ public partial class GameClientSession
         state.BotNominationsInjected = false;
         ClearSettlementContributionResult(state);
         state.SettlementEliminationApplied = false;
+        BroadcastPresenceNotebookUpdates(matchingId, state.RoundNumber);
     }
 
     private void AdvanceRoundPhase(long matchingId, RoundRuntimeState state)
@@ -944,6 +952,30 @@ public partial class GameClientSession
         foreach (var session in sessions) session.Send(packet);
     }
 
+    private void BroadcastPresenceNotebookUpdates(long matchingId, int roundNumber)
+    {
+        if (_presenceTracker == null) return;
+
+        var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
+        if (sessions.Count == 0) return;
+
+        var roster = GetSettlementActivePlayerIds(matchingId);
+        if (roster.Count == 0) return;
+
+        foreach (var session in sessions)
+        {
+            if (!session.PlayerId.HasValue)
+                continue;
+
+            var records = _presenceTracker.GetNotebookRecords(
+                matchingId,
+                session.PlayerId.Value,
+                roster,
+                includeEmpty: true);
+            session.SendPresenceNotebookUpdate(matchingId, roundNumber, records);
+        }
+    }
+
     private void SendRoundStateSnapshot(long matchingId)
     {
         if (!GameRoundStates.TryGetValue(matchingId, out var state))
@@ -980,6 +1012,7 @@ public partial class GameClientSession
     {
         GameRoundStates.TryRemove(matchingId, out _);
         _checklistManager.RemoveMatchingState(matchingId);
+        _presenceTracker?.Remove(matchingId);
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
     }
@@ -1000,6 +1033,7 @@ public partial class GameClientSession
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
         _checklistManager.RemoveMatchingState(matchingId);
+        _presenceTracker?.Remove(matchingId);
 
         var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
 

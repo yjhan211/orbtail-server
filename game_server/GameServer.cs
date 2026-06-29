@@ -441,6 +441,7 @@ public class GameServer(
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 var playerAreas = BuildPlayerAreas(matchingId, activeSessions);
                 _presenceTracker.Tick(matchingId, playerAreas);
+                int roundNumber = GameClientSession.GetRoundSnapshot(matchingId)?.RoundNumber ?? 0;
 
                 foreach (var session in activeSessions)
                 {
@@ -466,6 +467,13 @@ public class GameServer(
                     }
 
                     session.SendPresenceUpdate(candidates);
+
+                    var notebookRecords = _presenceTracker.GetNotebookRecords(
+                        matchingId,
+                        session.PlayerId.Value,
+                        playerAreas.Keys,
+                        includeEmpty: true);
+                    session.SendPresenceNotebookUpdate(matchingId, roundNumber, notebookRecords);
                 }
             }
         }
@@ -1158,6 +1166,8 @@ public class GameServer(
 
         if (ev.IsAreaTransition)
         {
+            _presenceTracker.SetPlayerArea(matchingId, ev.BotPlayerId, ev.ToArea, countAsEntry: true);
+
             _gameEventLogManager.LogMove(matchingId, ev.BotPlayerId,
                 ev.FromArea.ToString(), ev.ToArea.ToString(), isBot: true);
 

@@ -783,6 +783,7 @@ public partial class GameClientSession
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
         GameRoundStates.TryRemove(matchingId, out _);
+        _presenceTracker?.Remove(matchingId);
 
         // #26: 봇 상태 + Redis matching_bots Hash 엔트리 정리 (TTL/누수 방지)
         _botPlayerManager.CleanupMatching(matchingId);
@@ -1043,6 +1044,36 @@ public partial class GameClientSession
                     Presence = c.presence,
                     Name = c.name,
                     WearItemIds = c.wear
+                })
+                .ToList()
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        Send(packet);
+    }
+
+    /// <summary>Send accumulated presence records for the student notebook.</summary>
+    public void SendPresenceNotebookUpdate(long matchingId, int roundNumber, List<PresenceNotebookRecord> records)
+    {
+        if (!PlayerId.HasValue) return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_PRESENCE_NOTEBOOK_UPDATE, PlayerId.Value);
+        var msg = new G_TO_C_PRESENCE_NOTEBOOK_UPDATE
+        {
+            MatchingId = matchingId,
+            RoundNumber = roundNumber,
+            Entries = records
+                .Select(r => new PresenceNotebookEntry
+                {
+                    PlayerId = r.PlayerId,
+                    LastSeenArea = r.LastSeenArea,
+                    TotalOverlapSeconds = r.TotalOverlapSeconds,
+                    LongestOverlapSeconds = r.LongestOverlapSeconds,
+                    CurrentOverlapSeconds = r.CurrentOverlapSeconds,
+                    OverlapStartCount = r.OverlapStartCount,
+                    EnterAfterObserverCount = r.EnterAfterObserverCount,
+                    AlreadyThereWhenObserverArrivedCount = r.AlreadyThereWhenObserverArrivedCount,
+                    UnclassifiedOverlapStartCount = r.UnclassifiedOverlapStartCount,
+                    IsCurrentlyOverlapping = r.IsCurrentlyOverlapping
                 })
                 .ToList()
         };

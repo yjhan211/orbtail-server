@@ -123,6 +123,8 @@ public partial class GameClientSession
         var oldArea = CurrentArea;
         _previousArea = oldArea;
         CurrentArea = msg.TargetArea;
+        _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, msg.TargetArea,
+            countAsEntry: true);
         _lastValidatedPosition = spawnPos;
         _lastValidCell = spawnCell;
 

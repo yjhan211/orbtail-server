@@ -134,6 +134,8 @@ public partial class GameClientSession
                 var oldArea = CurrentArea;
                 _previousArea = oldArea; // 이전 구역 기록 (상호작용 동선추궁용)
                 CurrentArea = newArea; // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
+                _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, newArea,
+                    countAsEntry: true);
                 _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
                     oldArea.ToString(), newArea.ToString(), isBot: false);
                 await HandleAreaChange(oldArea, newArea);
