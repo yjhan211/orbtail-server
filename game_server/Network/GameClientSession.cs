@@ -21,6 +21,8 @@ public partial class GameClientSession : SessionBase
 {
     private const int MaxStamina = 100;
     private const int MaxCorruption = 100;
+    private const int InitialStamina = MaxStamina / 2;
+    private const int InitialCorruption = MaxCorruption / 2;
 
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
@@ -243,8 +245,8 @@ public partial class GameClientSession : SessionBase
     private int? CurrentExploringInteractId { get; set; }
 
     // 인게임 스탯 (게임 종료 시 초기화)
-    private int Stamina { get; set; } = 100;
-    private int Corruption { get; set; }
+    private int Stamina { get; set; } = InitialStamina;
+    private int Corruption { get; set; } = InitialCorruption;
 
     // 게임 타이머 설정 (Config에서 참조)
     private static int GameDurationMinutes => Config.GAME_DURATION_MINUTES;
