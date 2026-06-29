@@ -34,7 +34,7 @@ public partial class BotPlayerManager
             bot.LastMissionTickTime = DateTime.UtcNow;
 
             if (TryAdvanceBotRest(bot)) continue;
-            if (bot.Stamina <= 0 && TryUseCatPillowForRest(bot, matchingId, inventoryManager)) continue;
+            if (bot.Stamina <= 0 && TryStartBotRest(bot)) continue;
             TryAutoUseConsumable(bot, matchingId, inventoryManager);
 
             // 플레이어와 대화 중일 때는 탐색/선물 회수를 잠시 멈춘다.
@@ -79,7 +79,7 @@ public partial class BotPlayerManager
     private const int BotCatPillowItemId = 401000003;
     private const int BotCatPillowRestDurationSeconds = 15;
     private const int BotCatPillowRestTickSeconds = 3;
-    private const int BotCatPillowStaminaPerTick = 5;
+    private const int BotCatPillowStaminaPerTick = 10;
 
     private void TryChecklistActivityIfArrived(BotPlayerState bot, long matchingId,
         ChecklistManager checklistManager, InGameInventoryManager inventoryManager, BotMissionTickResult result)
@@ -148,15 +148,9 @@ public partial class BotPlayerManager
         bot.LoopWaitUntil = DateTime.MinValue;
     }
 
-    private bool TryUseCatPillowForRest(BotPlayerState bot, long matchingId, InGameInventoryManager inventoryManager)
+    private bool TryStartBotRest(BotPlayerState bot)
     {
         if (bot.Stamina > 0) return false;
-
-        var pillow = inventoryManager.GetAllItems(matchingId, bot.PlayerId)
-            .FirstOrDefault(item => item.ItemId == BotCatPillowItemId && item.Count > 0);
-        if (pillow == null) return false;
-
-        if (!inventoryManager.TryRemoveItem(matchingId, bot.PlayerId, pillow.ItemUid, 1, out _)) return false;
 
         bot.Path.Clear();
         bot.PathIndex = 0;
@@ -167,7 +161,7 @@ public partial class BotPlayerManager
         bot.RestUntil = DateTime.UtcNow.AddSeconds(BotCatPillowRestDurationSeconds);
         bot.NextRestTickAt = DateTime.UtcNow;
 
-        _logger.LogInformation("Bot cat pillow rest started: BotId={Bot}", bot.PlayerId);
+        _logger.LogInformation("Bot zero-stamina rest started: BotId={Bot}", bot.PlayerId);
         return TryAdvanceBotRest(bot);
     }
 
