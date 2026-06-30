@@ -74,6 +74,8 @@ public partial class BotPlayerManager
     private const int BotMissionTickIntervalSeconds = 1;  // 봇 미션 행동 (회수/결합) 주기 — 도착 후 RNG 빠른 트리거
     private const int BotMoveStaminaCost = 3;             // 이동 시 스태미나 소모
     private const int DetectScoreThreshold = 18;          // 색출 휴리스틱 임계값 — 함정 흔적 발견 누적 점수
+    private const int InitialStamina = 50;
+    private const int InitialCorruption = 50;
 
     // matchingId → 봇 목록
     private readonly ConcurrentDictionary<long, List<BotPlayerState>> _botStates = new();
@@ -121,8 +123,8 @@ public partial class BotPlayerManager
                 Position = startPosition,
                 Rotation = 0f,
                 Proto0Profile = Proto0Profiles[index % Proto0Profiles.Length],
-                Stamina = 100,   // 실제 플레이어와 동일
-                Corruption = 0, // 게임 시작 시 정신력 100%
+                Stamina = InitialStamina,
+                Corruption = InitialCorruption,
                 ManittoStatus = ManittoStatus.ACTIVE,
                 LastMoveTime = now,
                 LastMissionTickTime = now.AddMilliseconds(-_rng.Next(BotMissionTickIntervalSeconds * 1000)),
@@ -200,9 +202,12 @@ public partial class BotPlayerManager
 
         var mapId = GetMatchingMapId(matchingId);
         // 봇이 RNG progress 중이면 EXPLORE_1로 합성 → 영역 진입 시 클라가 봇 캐릭터 탐색 애니 즉시 표시.
-        var state = bot.RngCollectProgressStartTime != DateTime.MinValue
-            ? PlayerState.EXPLORE_1
-            : PlayerState.IDLE;
+        var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
+            ? PlayerState.SLEEP
+            : bot.RngCollectProgressStartTime != DateTime.MinValue
+              || bot.ChecklistActivityProgressStartTime != DateTime.MinValue
+                ? PlayerState.EXPLORE_1
+                : PlayerState.IDLE;
         var info = new PlayerInfo
         {
             PlayerId = bot.PlayerId,
@@ -320,8 +325,8 @@ public class BotPlayerState
     public JobTitle MyJobTitle { get; set; }
     public JobTitle TargetJobTitle { get; set; }
     public AreaType CurrentArea { get; set; }
-    public int Stamina { get; set; } = 100;
-    public int Corruption { get; set; }
+    public int Stamina { get; set; } = 50;
+    public int Corruption { get; set; } = 50;
     public bool IsForcedFollowActive { get; set; }
     public bool IsEliminated { get; set; }
     public ManittoStatus ManittoStatus { get; set; } = ManittoStatus.ACTIVE;

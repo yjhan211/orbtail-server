@@ -49,6 +49,10 @@ public partial class GameClientSession
 
             // 봇 로드 (매칭당 최초 1회) — 폐쇄 초기화 전에 로드해 직책 풀을 확정 (#87)
             await LoadBotsIfNeeded(msg.MatchingId, CurrentMapId);
+            foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
+                if (!bot.IsEliminated)
+                    _presenceTracker?.SetPlayerArea(msg.MatchingId, bot.PlayerId, bot.CurrentArea,
+                        countAsEntry: false);
 
             // 구역 폐쇄 초기화 (매칭당 최초 1회)
             // #87: 매칭의 직책 풀을 셔플 우선순위에 반영 (5분 1단계 보장 + 직책별 후순위)
@@ -78,6 +82,8 @@ public partial class GameClientSession
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
                     PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
                     _lastValidCell?.Y);
+                _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea,
+                    countAsEntry: false);
 
                 // 초기 Area의 Interactable 목록 전송
                 if (CurrentArea != AreaType.None)
@@ -333,6 +339,7 @@ public partial class GameClientSession
             }
 
             _checklistManager.RemoveMatchingState(matchingId);
+            _presenceTracker?.Remove(matchingId);
 
             var state = new RoundRuntimeState
             {
@@ -401,6 +408,8 @@ public partial class GameClientSession
         state.BotNominationsInjected = false;
         ClearSettlementContributionResult(state);
         state.SettlementEliminationApplied = false;
+        _presenceTracker?.FreezeNotebookOverlaps(matchingId);
+        BroadcastPresenceNotebookUpdates(matchingId, state.RoundNumber);
     }
 
     private void AdvanceRoundPhase(long matchingId, RoundRuntimeState state)
@@ -479,25 +488,44 @@ public partial class GameClientSession
                 continue;
 
             var candidates = _presenceTracker?
-                .GetPresenceScores(matchingId, bot.PlayerId, roster)
-                .Where(candidate => candidate.candidateId != bot.PlayerId && candidate.presence > 0f)
-                .OrderByDescending(candidate => candidate.presence)
-                .ThenBy(candidate => candidate.candidateId)
+                .GetNominationCandidates(matchingId, bot.PlayerId, roster, bot.TargetPlayerId)
                 .ToList();
 
             if (candidates is not { Count: > 0 })
             {
-                Logger.LogDebug(
-                    "Settlement bot nomination skipped: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, no presence candidate",
-                    matchingId, state.RoundNumber, bot.PlayerId);
+                long fallbackTargetPlayerId = ResolveFallbackBotNominationTarget(roster, bot.PlayerId, bot.TargetPlayerId);
+                if (fallbackTargetPlayerId == 0)
+                {
+                    Logger.LogDebug(
+                        "Settlement bot nomination skipped: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, no nomination candidate",
+                        matchingId, state.RoundNumber, bot.PlayerId);
+                    continue;
+                }
+
+                state.SettlementNominations[bot.PlayerId] = fallbackTargetPlayerId;
+                Logger.LogInformation(
+                    "Settlement bot nomination by fallback: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, Target={TargetId}",
+                    matchingId, state.RoundNumber, bot.PlayerId, fallbackTargetPlayerId);
                 continue;
             }
 
-            state.SettlementNominations[bot.PlayerId] = candidates[0].candidateId;
+            var selected = candidates[0];
+            state.SettlementNominations[bot.PlayerId] = selected.CandidateId;
             Logger.LogInformation(
-                "Settlement bot nomination by presence: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, Target={TargetId}, Presence={Presence}",
-                matchingId, state.RoundNumber, bot.PlayerId, candidates[0].candidateId, candidates[0].presence);
+                "Settlement bot nomination by suspicion: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, Target={TargetId}, Score={Score}, Presence={Presence}, TotalOverlap={TotalOverlap}, LongestOverlap={LongestOverlap}, FollowEntries={FollowEntries}, OverlapStarts={OverlapStarts}, LastSeenArea={LastSeenArea}",
+                matchingId, state.RoundNumber, bot.PlayerId, selected.CandidateId, selected.Score, selected.Presence,
+                selected.TotalOverlapSeconds, selected.LongestOverlapSeconds, selected.EnterAfterObserverCount,
+                selected.OverlapStartCount, selected.LastSeenArea);
         }
+    }
+
+    private static long ResolveFallbackBotNominationTarget(
+        IEnumerable<long> roster, long botPlayerId, long botTargetPlayerId)
+    {
+        return roster
+            .Where(playerId => playerId != botPlayerId && playerId != botTargetPlayerId)
+            .OrderBy(playerId => playerId)
+            .FirstOrDefault();
     }
 
     private void BroadcastSettlementNominationResults(long matchingId, RoundRuntimeState state)
@@ -944,6 +972,30 @@ public partial class GameClientSession
         foreach (var session in sessions) session.Send(packet);
     }
 
+    private void BroadcastPresenceNotebookUpdates(long matchingId, int roundNumber)
+    {
+        if (_presenceTracker == null) return;
+
+        var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
+        if (sessions.Count == 0) return;
+
+        var roster = GetSettlementActivePlayerIds(matchingId);
+        if (roster.Count == 0) return;
+
+        foreach (var session in sessions)
+        {
+            if (!session.PlayerId.HasValue)
+                continue;
+
+            var records = _presenceTracker.GetNotebookRecords(
+                matchingId,
+                session.PlayerId.Value,
+                roster,
+                includeEmpty: true);
+            session.SendPresenceNotebookUpdate(matchingId, roundNumber, records);
+        }
+    }
+
     private void SendRoundStateSnapshot(long matchingId)
     {
         if (!GameRoundStates.TryGetValue(matchingId, out var state))
@@ -980,6 +1032,7 @@ public partial class GameClientSession
     {
         GameRoundStates.TryRemove(matchingId, out _);
         _checklistManager.RemoveMatchingState(matchingId);
+        _presenceTracker?.Remove(matchingId);
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
     }
@@ -1000,6 +1053,7 @@ public partial class GameClientSession
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
         _checklistManager.RemoveMatchingState(matchingId);
+        _presenceTracker?.Remove(matchingId);
 
         var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
 

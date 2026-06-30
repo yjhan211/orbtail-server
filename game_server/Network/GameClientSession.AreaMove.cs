@@ -76,7 +76,9 @@ public partial class GameClientSession
         }
 
         // 3. 이동 비용 산정 (모든 area 이동은 Door — 계단 개념 폐지)
-        int staminaCost = GameServer.MoveStaminaCost;
+        // 강제 미행은 정신오염도 한계치로 제어권을 잃은 상태이므로 구역 이동 비용을 면제한다.
+        bool forcedFollowActive = Corruption >= MaxCorruption;
+        int staminaCost = forcedFollowActive ? 0 : GameServer.MoveStaminaCost;
 
         // 4. 스태미나 부족 시 ModifyStats가 Cor 1:2 변환 (권고안 B 2026-05-05) — 사전 차단 제거.
 
@@ -121,6 +123,8 @@ public partial class GameClientSession
         var oldArea = CurrentArea;
         _previousArea = oldArea;
         CurrentArea = msg.TargetArea;
+        _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, msg.TargetArea,
+            countAsEntry: true);
         _lastValidatedPosition = spawnPos;
         _lastValidCell = spawnCell;
 
@@ -128,8 +132,8 @@ public partial class GameClientSession
         ModifyStats(staminaDelta: -staminaCost);
 
         Logger.LogInformation(
-            "Player {PlayerId} AreaMove: {From} → {To} (cost {Cost}, type {Type})",
-            PlayerId, oldArea, msg.TargetArea, staminaCost, actualType);
+            "Player {PlayerId} AreaMove: {From} → {To} (cost {Cost}, type {Type}, forcedFollow={ForcedFollow})",
+            PlayerId, oldArea, msg.TargetArea, staminaCost, actualType, forcedFollowActive);
 
         // HandleAreaChange는 Movement에 정의됨 — 폐쇄 알림, 동선 추적 등 공통 처리
         await HandleAreaChange(oldArea, msg.TargetArea);

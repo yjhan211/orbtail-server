@@ -52,6 +52,12 @@ public partial class GameClientSession
 
         Logger.LogInformation("Player {PlayerId} state change request: {State}", PlayerId, msg.State);
 
+        if (msg.State == global::network.common.PlayerState.SLEEP)
+        {
+            await HandleRestStateRequest();
+            return;
+        }
+
         // 서버 측 상태 저장
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
         var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
@@ -76,6 +82,27 @@ public partial class GameClientSession
 
         // SLEEP 해제 시 주기적 버프 타이머 정리
         if (!_isSleeping) StopAllPeriodicBuffs();
+    }
+
+    private async Task HandleRestStateRequest()
+    {
+        if (_isSleeping) return;
+        if (Stamina > 0)
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Rest is only available at zero stamina");
+            return;
+        }
+
+        bool hasPeriodicBuff = ApplyItemBuffs(CatPillowItemId);
+        if (!hasPeriodicBuff)
+        {
+            SendErrorResponse(ErrorCode.FATAL, "Rest buff data is missing");
+            Logger.LogWarning("Player {PlayerId} failed to rest: rest buff data missing", PlayerId);
+            return;
+        }
+
+        await BroadcastSleepState(true);
+        Logger.LogInformation("Player {PlayerId} started zero-stamina rest", PlayerId);
     }
 
     private void AddPeriodicBuff(BuffSubType subType, int value, int intervalSeconds, int durationSeconds = 0)
@@ -465,8 +492,8 @@ public partial class GameClientSession
     {
         StopAllPeriodicBuffs();
         _isSleeping = false;
-        Stamina = 100;
-        Corruption = 0; // 게임 시작 시 정신력 100%
+        Stamina = InitialStamina;
+        Corruption = InitialCorruption;
         CurrentState = PlayerState.Idle;
         CurrentExploringInteractId = null;
         Logger.LogInformation("Player {PlayerId} in-game stats reset: Stamina={Stamina}, Corruption={Corruption}",

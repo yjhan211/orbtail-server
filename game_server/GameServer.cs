@@ -73,7 +73,7 @@ public class GameServer(
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private int _botMovementProcessing;
 
-    private const int ResourceTickIntervalSeconds = 5;
+    internal const int ResourceTickIntervalSeconds = 5;
     private const int ChecklistProgressTickIntervalSeconds = 1;
     // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
     // 프로토 0: 타겟에서 떨어지면(복도/빈방) 압박이 실질적이도록 기본 감소를 회복(-3)과 균형 맞춰 상향. 튜닝 노브.
@@ -82,10 +82,10 @@ public class GameServer(
     private const int MentalDecayPhase3 = 10;           // 10분+: 5초당 오염도 +10
     private const int Phase2StartSeconds = 300;          // 5분
     private const int Phase3StartSeconds = 600;          // 10분
-    private const int TargetProximityRecovery = 8;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -8)
+    internal const int TargetProximityRecovery = 8;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -8)
     private const int IsolationStatusEffectId = 1001;   // status_effect_info: 고립
-    private const int NearbyStatusEffectId = 1002;      // status_effect_info: 의존
-    private const int ProximityStatusEffectId = 1010;   // status_effect_info: 교감 (#161)
+    internal const int NearbyStatusEffectId = 1002;      // status_effect_info: 의존
+    internal const int ProximityStatusEffectId = 1010;   // status_effect_info: 교감 (#161)
     private const int ClosedAreaStatusEffectId = 1003;  // status_effect_info: 폐쇄 구역
     private const double SharpGazeRecoveryMultiplier = 0.5;
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
@@ -351,7 +351,8 @@ public class GameServer(
                             IsolationStatusEffectId,
                             GetMentalDecayAmount(session.CurrentMapSubId));
 
-                    if (targetInSameArea)
+                    if (targetInSameArea &&
+                        !session.ShouldSkipTargetEncounterRecoveryTick(DateTime.UtcNow, ResourceTickIntervalSeconds))
                     {
                         int pop = CountAreaPopulation(activeSessions, session.CurrentMapSubId, session.CurrentArea);
                         int recovery = Math.Max(1,
@@ -368,6 +369,8 @@ public class GameServer(
                             corruptionDelta += ResolveStatusEffectCorruptionDelta(
                                 ProximityStatusEffectId, Config.TARGET_PROXIMITY_RECOVERY_BONUS);
                         }
+
+                        session.MarkTargetEncounterRecoveryApplied(DateTime.UtcNow);
                     }
 
                 }
@@ -409,9 +412,26 @@ public class GameServer(
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
-                // 봇 자연 정신오염 증가 제거 (#135) — 시연 시간 내 봇 조기 탈락 방지
-                const int botDecay = 0;
-                var tickResult = _botPlayerManager.ProcessBotTick(matchingId, botDecay, _areaClosureManager);
+                // 봇도 사람과 같은 타겟 부재/의존/밀착/폐쇄구역 자원 변동을 적용한다.
+                var botResourceSnapshots = activeSessions
+                    .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
+                    .Select(s => new BotBehaviorPlayerSnapshot
+                    {
+                        PlayerId = s.PlayerId!.Value,
+                        TargetPlayerId = s.TargetPlayerId,
+                        CurrentArea = s.CurrentArea,
+                        Position = s.LastValidatedPosition,
+                        IsEliminated = s.IsEliminated
+                    })
+                    .ToList();
+                var tickResult = _botPlayerManager.ProcessBotTick(
+                    matchingId,
+                    ResolveStatusEffectCorruptionDelta(IsolationStatusEffectId, GetMentalDecayAmount(matchingId)),
+                    ResolveStatusEffectCorruptionDelta(NearbyStatusEffectId, TargetProximityRecovery),
+                    ResolveStatusEffectCorruptionDelta(ProximityStatusEffectId, Config.TARGET_PROXIMITY_RECOVERY_BONUS),
+                    ResolveStatusEffectCorruptionDelta(ClosedAreaStatusEffectId, Config.CLOSED_AREA_CORRUPTION_TICK),
+                    _areaClosureManager,
+                    botResourceSnapshots);
 
                 // #125: 봇 위치 이동 이벤트 → 같은 영역 인간 세션에 패킷 브로드캐스트
                 foreach (var ev in tickResult.Movements)
@@ -441,6 +461,7 @@ public class GameServer(
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 var playerAreas = BuildPlayerAreas(matchingId, activeSessions);
                 _presenceTracker.Tick(matchingId, playerAreas);
+                int roundNumber = GameClientSession.GetRoundSnapshot(matchingId)?.RoundNumber ?? 0;
 
                 foreach (var session in activeSessions)
                 {
@@ -466,6 +487,13 @@ public class GameServer(
                     }
 
                     session.SendPresenceUpdate(candidates);
+
+                    var notebookRecords = _presenceTracker.GetNotebookRecords(
+                        matchingId,
+                        session.PlayerId.Value,
+                        playerAreas.Keys,
+                        includeEmpty: true);
+                    session.SendPresenceNotebookUpdate(matchingId, roundNumber, notebookRecords);
                 }
             }
         }
@@ -612,7 +640,7 @@ public class GameServer(
                Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
     }
 
-    private static int ResolveStatusEffectCorruptionDelta(int statusEffectId, int value)
+    internal static int ResolveStatusEffectCorruptionDelta(int statusEffectId, int value)
     {
         if (value == 0) return 0;
         if (!GameStatusEffectData.TryGet(statusEffectId, out var statusEffect) || statusEffect.BuffId <= 0)
@@ -818,6 +846,12 @@ public class GameServer(
                 BroadcastBotExploreStarts(matchingId, missionResult.BotExploreStarts, activeSessions);
             if (missionResult.BotExploreEnds.Count > 0)
                 BroadcastBotExploreEnds(matchingId, missionResult.BotExploreEnds, activeSessions);
+            if (missionResult.BotRestStarts.Count > 0)
+                BroadcastBotPlayerStates(matchingId, missionResult.BotRestStarts,
+                    global::network.common.PlayerState.SLEEP, activeSessions);
+            if (missionResult.BotRestEnds.Count > 0)
+                BroadcastBotPlayerStates(matchingId, missionResult.BotRestEnds,
+                    global::network.common.PlayerState.IDLE, activeSessions);
 
             // #134 — 봇 RNG 채집으로 발생한 인스턴스 쿨타임 broadcast
             if (missionResult.RngCooldownBroadcasts.Count > 0)
@@ -1039,6 +1073,23 @@ public class GameServer(
         }
     }
 
+    private void BroadcastBotPlayerStates(long matchingId,
+        List<(long botId, AreaType area)> states, global::network.common.PlayerState playerState,
+        List<GameClientSession> activeSessions)
+    {
+        foreach (var (botId, area) in states)
+        {
+            var sameAreaSessions = activeSessions
+                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId && s.CurrentArea == area)
+                .ToList();
+            if (sameAreaSessions.Count == 0) continue;
+
+            using var packet = PacketMaker.G_TO_C_PLAYER_STATE(botId, playerState);
+            foreach (var session in sameAreaSessions)
+                session.Send(packet);
+        }
+    }
+
     private void SendBotGiftProgress(long matchingId, List<GiftDiscoveryResult> discoveries,
         List<GameClientSession> activeSessions)
     {
@@ -1158,6 +1209,8 @@ public class GameServer(
 
         if (ev.IsAreaTransition)
         {
+            _presenceTracker.SetPlayerArea(matchingId, ev.BotPlayerId, ev.ToArea, countAsEntry: true);
+
             _gameEventLogManager.LogMove(matchingId, ev.BotPlayerId,
                 ev.FromArea.ToString(), ev.ToArea.ToString(), isBot: true);
 
@@ -1195,6 +1248,12 @@ public class GameServer(
         {
             if (session.CurrentArea != ev.ToArea) continue;
             session.Send(movePacket);
+        }
+
+        foreach (var session in matchingSessions)
+        {
+            if (session.CurrentArea != ev.ToArea || session.TargetPlayerId != ev.BotPlayerId) continue;
+            session.TryApplyImmediateTargetEncounterRecovery(matchingSessions);
         }
     }
 
@@ -1861,6 +1920,7 @@ public class GameServer(
         state.BotNominationsInjected = false;
         ClearHeadlessSettlementContributionResult(state);
         state.SettlementEliminationApplied = false;
+        _presenceTracker.FreezeNotebookOverlaps(matchingId);
         _gameEventLogManager.LogSystem(matchingId,
             $"Headless settlement nomination started: Round={state.RoundNumber}");
     }
@@ -1910,28 +1970,40 @@ public class GameServer(
             if (state.SettlementNominations.ContainsKey(bot.PlayerId))
                 continue;
 
-            var presenceCandidate = _presenceTracker
-                .GetPresenceScores(matchingId, bot.PlayerId, roster)
-                .Where(candidate => candidate.candidateId != bot.PlayerId && candidate.presence > 0f)
-                .OrderByDescending(candidate => candidate.presence)
-                .ThenBy(candidate => candidate.candidateId)
+            var candidate = _presenceTracker
+                .GetNominationCandidates(matchingId, bot.PlayerId, roster, bot.TargetPlayerId)
                 .FirstOrDefault();
 
-            long targetPlayerId = presenceCandidate.candidateId;
+            long targetPlayerId = candidate?.CandidateId ?? 0;
             if (targetPlayerId == 0)
             {
-                targetPlayerId = IsBotOnlyChainPlayerActive(matchingId, bot.TargetPlayerId)
-                    ? bot.TargetPlayerId
-                    : roster.FirstOrDefault(playerId => playerId != bot.PlayerId);
+                targetPlayerId = ResolveFallbackBotNominationTarget(roster, bot.PlayerId, bot.TargetPlayerId);
             }
 
             if (targetPlayerId == 0)
                 continue;
 
             state.SettlementNominations[bot.PlayerId] = targetPlayerId;
-            _gameEventLogManager.LogSystem(matchingId,
-                $"Headless bot nomination: Bot={bot.PlayerId}, Target={targetPlayerId}, Presence={presenceCandidate.presence:0.##}");
+            if (candidate != null)
+            {
+                _gameEventLogManager.LogSystem(matchingId,
+                    $"Headless bot nomination: Bot={bot.PlayerId}, Target={targetPlayerId}, Score={candidate.Score:0.##}, Presence={candidate.Presence:0.##}, TotalOverlap={candidate.TotalOverlapSeconds}, FollowEntries={candidate.EnterAfterObserverCount}");
+            }
+            else
+            {
+                _gameEventLogManager.LogSystem(matchingId,
+                    $"Headless bot nomination fallback: Bot={bot.PlayerId}, Target={targetPlayerId}");
+            }
         }
+    }
+
+    private static long ResolveFallbackBotNominationTarget(
+        IEnumerable<long> roster, long botPlayerId, long botTargetPlayerId)
+    {
+        return roster
+            .Where(playerId => playerId != botPlayerId && playerId != botTargetPlayerId)
+            .OrderBy(playerId => playerId)
+            .FirstOrDefault();
     }
 
     private void BuildHeadlessSettlementContributionResult(long matchingId,

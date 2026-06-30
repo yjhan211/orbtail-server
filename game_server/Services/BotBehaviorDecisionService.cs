@@ -18,6 +18,7 @@ public sealed class BotBehaviorPlayerSnapshot
     public long PlayerId { get; init; }
     public long TargetPlayerId { get; init; }
     public AreaType CurrentArea { get; init; }
+    public Vector3f? Position { get; init; }
     public bool IsEliminated { get; init; }
 }
 
