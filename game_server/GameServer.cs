@@ -73,7 +73,7 @@ public class GameServer(
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private int _botMovementProcessing;
 
-    private const int ResourceTickIntervalSeconds = 5;
+    internal const int ResourceTickIntervalSeconds = 5;
     private const int ChecklistProgressTickIntervalSeconds = 1;
     // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
     // 프로토 0: 타겟에서 떨어지면(복도/빈방) 압박이 실질적이도록 기본 감소를 회복(-3)과 균형 맞춰 상향. 튜닝 노브.
@@ -82,10 +82,10 @@ public class GameServer(
     private const int MentalDecayPhase3 = 10;           // 10분+: 5초당 오염도 +10
     private const int Phase2StartSeconds = 300;          // 5분
     private const int Phase3StartSeconds = 600;          // 10분
-    private const int TargetProximityRecovery = 8;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -8)
+    internal const int TargetProximityRecovery = 8;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -8)
     private const int IsolationStatusEffectId = 1001;   // status_effect_info: 고립
-    private const int NearbyStatusEffectId = 1002;      // status_effect_info: 의존
-    private const int ProximityStatusEffectId = 1010;   // status_effect_info: 교감 (#161)
+    internal const int NearbyStatusEffectId = 1002;      // status_effect_info: 의존
+    internal const int ProximityStatusEffectId = 1010;   // status_effect_info: 교감 (#161)
     private const int ClosedAreaStatusEffectId = 1003;  // status_effect_info: 폐쇄 구역
     private const double SharpGazeRecoveryMultiplier = 0.5;
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
@@ -351,7 +351,8 @@ public class GameServer(
                             IsolationStatusEffectId,
                             GetMentalDecayAmount(session.CurrentMapSubId));
 
-                    if (targetInSameArea)
+                    if (targetInSameArea &&
+                        !session.ShouldSkipTargetEncounterRecoveryTick(DateTime.UtcNow, ResourceTickIntervalSeconds))
                     {
                         int pop = CountAreaPopulation(activeSessions, session.CurrentMapSubId, session.CurrentArea);
                         int recovery = Math.Max(1,
@@ -368,6 +369,8 @@ public class GameServer(
                             corruptionDelta += ResolveStatusEffectCorruptionDelta(
                                 ProximityStatusEffectId, Config.TARGET_PROXIMITY_RECOVERY_BONUS);
                         }
+
+                        session.MarkTargetEncounterRecoveryApplied(DateTime.UtcNow);
                     }
 
                 }
@@ -637,7 +640,7 @@ public class GameServer(
                Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
     }
 
-    private static int ResolveStatusEffectCorruptionDelta(int statusEffectId, int value)
+    internal static int ResolveStatusEffectCorruptionDelta(int statusEffectId, int value)
     {
         if (value == 0) return 0;
         if (!GameStatusEffectData.TryGet(statusEffectId, out var statusEffect) || statusEffect.BuffId <= 0)
@@ -1245,6 +1248,12 @@ public class GameServer(
         {
             if (session.CurrentArea != ev.ToArea) continue;
             session.Send(movePacket);
+        }
+
+        foreach (var session in matchingSessions)
+        {
+            if (session.CurrentArea != ev.ToArea || session.TargetPlayerId != ev.BotPlayerId) continue;
+            session.TryApplyImmediateTargetEncounterRecovery(matchingSessions);
         }
     }
 

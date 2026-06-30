@@ -71,6 +71,7 @@ public partial class GameClientSession : SessionBase
     private DateTime _lastInteractRejectTime = DateTime.MinValue;
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
+    private DateTime _lastTargetEncounterRecoveryAt = DateTime.MinValue;
 
     private Vector3f? _lastValidatedPosition;
     private Cell? _lastValidCell;
@@ -247,6 +248,17 @@ public partial class GameClientSession : SessionBase
     // 인게임 스탯 (게임 종료 시 초기화)
     private int Stamina { get; set; } = InitialStamina;
     private int Corruption { get; set; } = InitialCorruption;
+
+    internal bool ShouldSkipTargetEncounterRecoveryTick(DateTime now, int intervalSeconds)
+    {
+        return _lastTargetEncounterRecoveryAt != DateTime.MinValue &&
+               now - _lastTargetEncounterRecoveryAt < TimeSpan.FromSeconds(intervalSeconds);
+    }
+
+    internal void MarkTargetEncounterRecoveryApplied(DateTime now)
+    {
+        _lastTargetEncounterRecoveryAt = now;
+    }
 
     // 게임 타이머 설정 (Config에서 참조)
     private static int GameDurationMinutes => Config.GAME_DURATION_MINUTES;

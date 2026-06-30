@@ -1,3 +1,4 @@
+using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -408,6 +409,7 @@ public partial class GameClientSession
 
                 // 6. 사보타주 이벤트 트리거 (해당 Area 최초 진입 시)
                 _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, newArea);
+                ApplyImmediateTargetEncounterRecoveryForArea(allSessions, newArea);
             }
         }
         catch (Exception ex)
@@ -419,6 +421,87 @@ public partial class GameClientSession
     /// <summary>
     ///     Area 도착 시 탈출 조건 체크
     /// </summary>
+    private void ApplyImmediateTargetEncounterRecoveryForArea(
+        IReadOnlyCollection<GameClientSession> allSessions,
+        AreaType area)
+    {
+        if (area == AreaType.None) return;
+        if (!IsRoundActionPhase(CurrentMapSubId)) return;
+
+        foreach (var session in allSessions)
+        {
+            if (session.CurrentMapSubId != CurrentMapSubId || session.CurrentArea != area)
+                continue;
+
+            session.TryApplyImmediateTargetEncounterRecovery(allSessions);
+        }
+    }
+
+    internal void TryApplyImmediateTargetEncounterRecovery(IReadOnlyCollection<GameClientSession> allSessions)
+    {
+        if (!PlayerId.HasValue || IsEliminated || ManittoStatus == ManittoStatus.TERMINAL)
+            return;
+        if (TargetPlayerId == 0 || CurrentArea == AreaType.None)
+            return;
+        if (!IsRoundActionPhase(CurrentMapSubId))
+            return;
+
+        var now = DateTime.UtcNow;
+        if (ShouldSkipTargetEncounterRecoveryTick(now, GameServer.ResourceTickIntervalSeconds))
+            return;
+
+        var targetSession = allSessions.FirstOrDefault(s =>
+            s.PlayerId == TargetPlayerId &&
+            s.CurrentMapSubId == CurrentMapSubId &&
+            !s.IsEliminated);
+        var targetBot = targetSession == null
+            ? _botPlayerManager.GetBot(CurrentMapSubId, TargetPlayerId)
+            : null;
+
+        bool targetInSameArea =
+            targetSession?.CurrentArea == CurrentArea ||
+            targetBot is { IsEliminated: false } && targetBot.CurrentArea == CurrentArea;
+        if (!targetInSameArea)
+            return;
+
+        int population = allSessions.Count(s =>
+                             s.CurrentMapSubId == CurrentMapSubId &&
+                             s.CurrentArea == CurrentArea &&
+                             s.PlayerId.HasValue &&
+                             !s.IsEliminated)
+                         + _botPlayerManager.CountBotsInArea(CurrentMapSubId, CurrentArea);
+        int recovery = Math.Max(1,
+            (int)Math.Round(GameServer.TargetProximityRecovery * (2.0 / Math.Max(2, population))));
+        int recoveryDelta = GameServer.ResolveStatusEffectCorruptionDelta(GameServer.NearbyStatusEffectId, recovery);
+
+        if (IsTargetWithinImmediateProximity(targetSession, targetBot))
+            recoveryDelta += GameServer.ResolveStatusEffectCorruptionDelta(
+                GameServer.ProximityStatusEffectId,
+                Config.TARGET_PROXIMITY_RECOVERY_BONUS);
+
+        if (recoveryDelta == 0)
+            return;
+
+        MarkTargetEncounterRecoveryApplied(now);
+        ModifyStats(corruptionDelta: recoveryDelta);
+        Logger.LogInformation(
+            "Immediate target encounter recovery: PlayerId={PlayerId}, Target={TargetPlayerId}, Area={Area}, Delta={Delta}",
+            PlayerId, TargetPlayerId, CurrentArea, recoveryDelta);
+    }
+
+    private bool IsTargetWithinImmediateProximity(GameClientSession? targetSession, BotPlayerState? targetBot)
+    {
+        if (_lastValidatedPosition == null) return false;
+
+        var targetPosition = targetSession?.LastValidatedPosition ?? targetBot?.Position;
+        if (targetPosition == null) return false;
+
+        float dx = _lastValidatedPosition.X - targetPosition.X;
+        float dy = _lastValidatedPosition.Y - targetPosition.Y;
+        return dx * dx + dy * dy <=
+               Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
+    }
+
     private void SendInteractableList(AreaType areaType)
     {
         var objects = _interactableStateManager.GetAreaObjectStates(CurrentMapSubId, areaType);
