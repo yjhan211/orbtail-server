@@ -838,7 +838,7 @@ public partial class GameClientSession
     {
         if (!string.IsNullOrEmpty(playerInfo?.Name)) return playerInfo.Name;
         if (!string.IsNullOrEmpty(bot?.Name)) return bot.Name;
-        return BotPlayerManager.IsBotPlayerId(playerId) ? $"Bot{Math.Abs(playerId)}" : $"Player{playerId}";
+        return BotPlayerManager.IsBotPlayerId(playerId) ? $"Player{Math.Abs(playerId)}" : $"Player{playerId}";
     }
 
     /// <summary>
@@ -2175,7 +2175,7 @@ public partial class GameClientSession
         }
 
         return BotPlayerManager.IsBotPlayerId(playerId)
-            ? $"Bot{Math.Abs(playerId)}"
+            ? $"Player{Math.Abs(playerId)}"
             : $"Player{playerId}";
     }
 

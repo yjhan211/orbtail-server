@@ -117,7 +117,7 @@ public partial class BotPlayerManager
                 TargetPlayerId = info.TargetPlayerId,
                 MyJobTitle = info.MyJobTitle,
                 TargetJobTitle = info.TargetJobTitle,
-                Name = $"Bot{Math.Abs(info.PlayerId)}",
+                Name = $"Player{Math.Abs(info.PlayerId)}",
                 CurrentArea = startArea,
                 Cell = startCell,
                 Position = startPosition,
