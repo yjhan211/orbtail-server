@@ -39,24 +39,76 @@ public partial class BotPlayerManager
     ///     일반 walking은 ProcessBotMovementTick(250ms)에서 별도 처리.
     /// </summary>
     public BotTickResult ProcessBotTick(
-        long matchingId, int corruptionDelta, AreaClosureManager areaClosureManager)
+        long matchingId,
+        int isolationCorruptionDelta,
+        int nearbyRecoveryDelta,
+        int proximityRecoveryDelta,
+        int closedAreaCorruptionDelta,
+        AreaClosureManager areaClosureManager,
+        IReadOnlyList<BotBehaviorPlayerSnapshot> humanSnapshots)
     {
         var result = new BotTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
+
+        var allPlayerSnapshots = new List<BotBehaviorPlayerSnapshot>(humanSnapshots);
+        foreach (var b in bots)
+        {
+            if (b.IsEliminated) continue;
+            allPlayerSnapshots.Add(new BotBehaviorPlayerSnapshot
+            {
+                PlayerId = b.PlayerId,
+                TargetPlayerId = b.TargetPlayerId,
+                CurrentArea = b.CurrentArea,
+                Position = b.Position,
+                IsEliminated = false
+            });
+        }
 
         foreach (var bot in bots)
         {
             if (bot.IsEliminated) continue;
 
+            bool isTerminal = bot.ManittoStatus == ManittoStatus.TERMINAL;
+            int totalCorruptionDelta = 0;
+
+            if (!isTerminal && bot.CurrentArea != AreaType.None)
+            {
+                var target = allPlayerSnapshots.FirstOrDefault(p =>
+                    p.PlayerId == bot.TargetPlayerId && !p.IsEliminated);
+                bool targetInSameArea = target != null && target.CurrentArea == bot.CurrentArea;
+
+                if (!targetInSameArea)
+                {
+                    totalCorruptionDelta += isolationCorruptionDelta;
+                }
+                else
+                {
+                    int population = CountPlayerSnapshotsInArea(allPlayerSnapshots, bot.CurrentArea);
+                    int recoveryMagnitude = Math.Max(1,
+                        (int)Math.Round(Math.Abs(nearbyRecoveryDelta) * (2.0 / Math.Max(2, population))));
+                    totalCorruptionDelta += nearbyRecoveryDelta < 0 ? -recoveryMagnitude : recoveryMagnitude;
+
+                    if (IsBotTargetWithinProximity(bot, target))
+                        totalCorruptionDelta += proximityRecoveryDelta;
+                }
+
+                if (areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
+                    totalCorruptionDelta += closedAreaCorruptionDelta;
+            }
+
             // issue22 디버그: walking 시각 검증을 위해 자원 자연 감소 + 탈락 비활성.
             // DemoMode일 때만 기존 자원/탈락 로직 유지(영상 시나리오 정합).
+            if (totalCorruptionDelta != 0)
+                bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
+
+            SyncBotForcedFollowState(bot, matchingId);
+
             if (DemoMode.IsActive)
             {
                 // 1) 오염도 적용 (시한부 추가)
-                int totalCorruptionDelta = corruptionDelta;
+                // General resource deltas are accumulated outside DemoMode.
                 if (bot.ManittoStatus == ManittoStatus.TERMINAL)
-                    totalCorruptionDelta += 5;
-                bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
+                    bot.Corruption = Math.Clamp(bot.Corruption + 5, 0, 100);
 
                 // H8 — DemoMode HE 봇 12:00 강제 탈락 (오염도 100으로 가속)
                 if (bot.MyJobTitle == JobTitle.HEALTH_MEMBER && bot.Corruption < 100)
@@ -72,43 +124,67 @@ public partial class BotPlayerManager
 
                 // 2) 폐쇄 구역 체류 시 오염도 가속 (권고안 B 2026-05-05 — 변별력 보강 +4/틱).
                 //    이전엔 stamina -20이었으나 자원 통합 후 stamina 0이어도 탈락 안 되므로 cor로 변경.
-                if (areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
-                    bot.Corruption = Math.Min(100, bot.Corruption + 4);
-
                 // 3) Corruption 100: 탈락 대신 강제 미행 상태로 전환. Stamina 0은 비탈락.
-                if (bot.Corruption >= 100)
-                {
-                    if (!bot.IsForcedFollowActive)
-                    {
-                        bot.IsForcedFollowActive = true;
-                        bot.Path.Clear();
-                        bot.PathIndex = 0;
-                        bot.PendingRngInteractId = 0;
-                        bot.PendingChecklistTaskId = 0;
-                        bot.PendingChecklistInteractId = 0;
-                        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-                        bot.RngCollectProgressStartTime = DateTime.MinValue;
-                        bot.InteractQueueInArea.Clear();
-                        bot.LoopWaitUntil = DateTime.MinValue;
-                        _logger.LogInformation(
-                            "Bot forced follow started: MatchingId={MatchingId}, BotId={BotId}, Target={Target}",
-                            matchingId, bot.PlayerId, bot.TargetPlayerId);
-                    }
-                }
-                else if (bot.IsForcedFollowActive)
-                {
-                    bot.IsForcedFollowActive = false;
-                    _logger.LogInformation(
-                        "Bot forced follow ended: MatchingId={MatchingId}, BotId={BotId}, Corruption={Corruption}",
-                        matchingId, bot.PlayerId, bot.Corruption);
-                }
-
                 // 4) DemoMode 스크립트 텔레포트 폐기 — 봇은 직책 큐(JobAreaQueue) 따라 walking으로만 이동.
                 //    H3/H6/H8 narrative 트리거(색출/흔적/탈락)는 BotPlayerManager.Mission.cs에서 별도 시간 기반 처리.
             }
-            // 디버그 모드(DemoMode 비활성): 자원 변동/탈락 모두 스킵 → 봇이 무한 walking
+            // DemoMode 비활성: 탈락은 스킵하되, 일반 자원/상태 변동은 위에서 적용한다.
         }
+        foreach (var bot in bots)
+        {
+            if (bot.IsEliminated) continue;
+            SyncBotForcedFollowState(bot, matchingId);
+        }
+
         return result;
+    }
+
+    private static int CountPlayerSnapshotsInArea(
+        IReadOnlyList<BotBehaviorPlayerSnapshot> players,
+        AreaType area)
+    {
+        return players.Count(p => !p.IsEliminated && p.CurrentArea == area);
+    }
+
+    private static bool IsBotTargetWithinProximity(BotPlayerState bot, BotBehaviorPlayerSnapshot? target)
+    {
+        var targetPosition = target?.Position;
+        if (targetPosition == null) return false;
+
+        float dx = bot.Position.X - targetPosition.X;
+        float dy = bot.Position.Y - targetPosition.Y;
+        return dx * dx + dy * dy <=
+               Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
+    }
+
+    private void SyncBotForcedFollowState(BotPlayerState bot, long matchingId)
+    {
+        if (bot.Corruption >= 100)
+        {
+            if (bot.IsForcedFollowActive) return;
+
+            bot.IsForcedFollowActive = true;
+            bot.Path.Clear();
+            bot.PathIndex = 0;
+            bot.PendingRngInteractId = 0;
+            bot.PendingChecklistTaskId = 0;
+            bot.PendingChecklistInteractId = 0;
+            bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
+            bot.RngCollectProgressStartTime = DateTime.MinValue;
+            bot.InteractQueueInArea.Clear();
+            bot.LoopWaitUntil = DateTime.MinValue;
+            _logger.LogInformation(
+                "Bot forced follow started: MatchingId={MatchingId}, BotId={BotId}, Target={Target}",
+                matchingId, bot.PlayerId, bot.TargetPlayerId);
+            return;
+        }
+
+        if (!bot.IsForcedFollowActive) return;
+
+        bot.IsForcedFollowActive = false;
+        _logger.LogInformation(
+            "Bot forced follow ended: MatchingId={MatchingId}, BotId={BotId}, Corruption={Corruption}",
+            matchingId, bot.PlayerId, bot.Corruption);
     }
 
     /// <summary>

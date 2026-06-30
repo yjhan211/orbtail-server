@@ -409,9 +409,26 @@ public class GameServer(
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
-                // 봇 자연 정신오염 증가 제거 (#135) — 시연 시간 내 봇 조기 탈락 방지
-                const int botDecay = 0;
-                var tickResult = _botPlayerManager.ProcessBotTick(matchingId, botDecay, _areaClosureManager);
+                // 봇도 사람과 같은 타겟 부재/의존/밀착/폐쇄구역 자원 변동을 적용한다.
+                var botResourceSnapshots = activeSessions
+                    .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
+                    .Select(s => new BotBehaviorPlayerSnapshot
+                    {
+                        PlayerId = s.PlayerId!.Value,
+                        TargetPlayerId = s.TargetPlayerId,
+                        CurrentArea = s.CurrentArea,
+                        Position = s.LastValidatedPosition,
+                        IsEliminated = s.IsEliminated
+                    })
+                    .ToList();
+                var tickResult = _botPlayerManager.ProcessBotTick(
+                    matchingId,
+                    ResolveStatusEffectCorruptionDelta(IsolationStatusEffectId, GetMentalDecayAmount(matchingId)),
+                    ResolveStatusEffectCorruptionDelta(NearbyStatusEffectId, TargetProximityRecovery),
+                    ResolveStatusEffectCorruptionDelta(ProximityStatusEffectId, Config.TARGET_PROXIMITY_RECOVERY_BONUS),
+                    ResolveStatusEffectCorruptionDelta(ClosedAreaStatusEffectId, Config.CLOSED_AREA_CORRUPTION_TICK),
+                    _areaClosureManager,
+                    botResourceSnapshots);
 
                 // #125: 봇 위치 이동 이벤트 → 같은 영역 인간 세션에 패킷 브로드캐스트
                 foreach (var ev in tickResult.Movements)
@@ -826,6 +843,12 @@ public class GameServer(
                 BroadcastBotExploreStarts(matchingId, missionResult.BotExploreStarts, activeSessions);
             if (missionResult.BotExploreEnds.Count > 0)
                 BroadcastBotExploreEnds(matchingId, missionResult.BotExploreEnds, activeSessions);
+            if (missionResult.BotRestStarts.Count > 0)
+                BroadcastBotPlayerStates(matchingId, missionResult.BotRestStarts,
+                    global::network.common.PlayerState.SLEEP, activeSessions);
+            if (missionResult.BotRestEnds.Count > 0)
+                BroadcastBotPlayerStates(matchingId, missionResult.BotRestEnds,
+                    global::network.common.PlayerState.IDLE, activeSessions);
 
             // #134 — 봇 RNG 채집으로 발생한 인스턴스 쿨타임 broadcast
             if (missionResult.RngCooldownBroadcasts.Count > 0)
@@ -1044,6 +1067,23 @@ public class GameServer(
                 packet.SetBody(body);
                 session.Send(packet);
             }
+        }
+    }
+
+    private void BroadcastBotPlayerStates(long matchingId,
+        List<(long botId, AreaType area)> states, global::network.common.PlayerState playerState,
+        List<GameClientSession> activeSessions)
+    {
+        foreach (var (botId, area) in states)
+        {
+            var sameAreaSessions = activeSessions
+                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId && s.CurrentArea == area)
+                .ToList();
+            if (sameAreaSessions.Count == 0) continue;
+
+            using var packet = PacketMaker.G_TO_C_PLAYER_STATE(botId, playerState);
+            foreach (var session in sameAreaSessions)
+                session.Send(packet);
         }
     }
 

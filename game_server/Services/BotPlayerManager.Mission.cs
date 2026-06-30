@@ -33,8 +33,8 @@ public partial class BotPlayerManager
                 continue;
             bot.LastMissionTickTime = DateTime.UtcNow;
 
-            if (TryAdvanceBotRest(bot)) continue;
-            if (bot.Stamina <= 0 && TryStartBotRest(bot)) continue;
+            if (TryAdvanceBotRest(bot, result)) continue;
+            if (bot.Stamina <= 0 && TryStartBotRest(bot, result)) continue;
             TryAutoUseConsumable(bot, matchingId, inventoryManager);
 
             // 플레이어와 대화 중일 때는 탐색/선물 회수를 잠시 멈춘다.
@@ -148,7 +148,7 @@ public partial class BotPlayerManager
         bot.LoopWaitUntil = DateTime.MinValue;
     }
 
-    private bool TryStartBotRest(BotPlayerState bot)
+    private bool TryStartBotRest(BotPlayerState bot, BotMissionTickResult result)
     {
         if (bot.Stamina > 0) return false;
 
@@ -160,18 +160,22 @@ public partial class BotPlayerManager
         bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
         bot.RestUntil = DateTime.UtcNow.AddSeconds(BotCatPillowRestDurationSeconds);
         bot.NextRestTickAt = DateTime.UtcNow;
+        result.BotRestStarts.Add((bot.PlayerId, bot.CurrentArea));
 
         _logger.LogInformation("Bot zero-stamina rest started: BotId={Bot}", bot.PlayerId);
-        return TryAdvanceBotRest(bot);
+        return TryAdvanceBotRest(bot, result);
     }
 
-    private static bool TryAdvanceBotRest(BotPlayerState bot)
+    private static bool TryAdvanceBotRest(BotPlayerState bot, BotMissionTickResult result)
     {
         var now = DateTime.UtcNow;
         if (bot.RestUntil == DateTime.MinValue || now >= bot.RestUntil)
         {
+            bool wasResting = bot.RestUntil != DateTime.MinValue;
             bot.RestUntil = DateTime.MinValue;
             bot.NextRestTickAt = DateTime.MinValue;
+            if (wasResting)
+                result.BotRestEnds.Add((bot.PlayerId, bot.CurrentArea));
             return false;
         }
 
@@ -640,6 +644,9 @@ public class BotMissionTickResult
 
     /// <summary>#134 — 봇이 RNG progress 종료했음을 같은 영역 인간 세션에 알림 (G_TO_C_EXPLORE_END).</summary>
     public List<(long botId, AreaType area)> BotExploreEnds { get; } = new();
+
+    public List<(long botId, AreaType area)> BotRestStarts { get; } = new();
+    public List<(long botId, AreaType area)> BotRestEnds { get; } = new();
 
     /// <summary>봇이 발견한 선물 진행도 — 설치자에게 G_TO_C_GIFT_PROGRESS로 전달.</summary>
     public List<GiftDiscoveryResult> GiftDiscoveries { get; } = new();
