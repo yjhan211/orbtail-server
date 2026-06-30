@@ -21,8 +21,8 @@ public partial class GameClientSession : SessionBase
 {
     private const int MaxStamina = 100;
     private const int MaxCorruption = 100;
-    private const int InitialStamina = MaxStamina / 2;
-    private const int InitialCorruption = MaxCorruption / 2;
+    private const int InitialStamina = MaxStamina;
+    private const int InitialCorruption = 0;
 
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
