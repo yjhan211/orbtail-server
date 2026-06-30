@@ -135,6 +135,19 @@ public sealed class Proto0PresenceTracker
 
     public void Remove(long matchingId) => _matches.Remove(matchingId);
 
+    public void FreezeNotebookOverlaps(long matchingId)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return;
+
+        var now = DateTime.UtcNow;
+        foreach (var records in state.NotebookRecords.Values)
+        {
+            foreach (var record in records.Values)
+                CloseOverlap(record, now);
+        }
+    }
+
     public void SetPlayerArea(long matchingId, long playerId, AreaType area, bool countAsEntry)
     {
         var state = GetOrCreate(matchingId);
@@ -143,15 +156,14 @@ public sealed class Proto0PresenceTracker
             return;
 
         if (state.CurrentAreas.TryGetValue(playerId, out var oldArea) &&
-            oldArea != AreaType.None &&
-            !oldArea.IsCorridor())
+            IsNotebookTrackableArea(oldArea))
         {
             CloseOverlapsForAreaExit(state, playerId, oldArea, now);
         }
 
         state.CurrentAreas[playerId] = area;
 
-        if (countAsEntry && area != AreaType.None && !area.IsCorridor())
+        if (countAsEntry && IsNotebookTrackableArea(area))
             RecordAreaEntry(state, playerId, area, now);
     }
 
@@ -173,7 +185,7 @@ public sealed class Proto0PresenceTracker
 
         foreach (var (observerId, observerArea) in playerAreas)
         {
-            if (observerArea == AreaType.None || observerArea.IsCorridor())
+            if (!IsNotebookTrackableArea(observerArea))
                 continue;
 
             foreach (var (otherId, otherArea) in playerAreas)
@@ -229,6 +241,11 @@ public sealed class Proto0PresenceTracker
                 otherRecords.TryGetValue(playerId, out var otherRecord))
                 CloseOverlap(otherRecord, now);
         }
+    }
+
+    private static bool IsNotebookTrackableArea(AreaType area)
+    {
+        return area != AreaType.None;
     }
 
     private static void RecordAreaEntry(MatchState state, long entrantId, AreaType newArea, DateTime now)

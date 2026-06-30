@@ -1871,6 +1871,7 @@ public class GameServer(
         state.BotNominationsInjected = false;
         ClearHeadlessSettlementContributionResult(state);
         state.SettlementEliminationApplied = false;
+        _presenceTracker.FreezeNotebookOverlaps(matchingId);
         _gameEventLogManager.LogSystem(matchingId,
             $"Headless settlement nomination started: Round={state.RoundNumber}");
     }

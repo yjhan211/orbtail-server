@@ -408,6 +408,7 @@ public partial class GameClientSession
         state.BotNominationsInjected = false;
         ClearSettlementContributionResult(state);
         state.SettlementEliminationApplied = false;
+        _presenceTracker?.FreezeNotebookOverlaps(matchingId);
         BroadcastPresenceNotebookUpdates(matchingId, state.RoundNumber);
     }
 
