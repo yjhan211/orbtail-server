@@ -281,3 +281,4 @@ id,category,text_kr,text_en,text_jp
 "12160","7","잠시 후 해당 구역이 폐쇄됩니다.","This zone will close shortly.","この区域はまもなく閉鎖されます。"
 "12162","7","집착","Obsession","執着"
 "12163","7","정신력이 모두 소모되었습니다.\n이성을 잃고 {PlayerName}을 쫓습니다.","Your sanity is depleted.\nYou lose your reason and chase {PlayerName}.","精神力をすべて失いました。\n理性を失い、{PlayerName}を追います。"
+"12164","7","학생수첩","Notebook","生徒手帳"
