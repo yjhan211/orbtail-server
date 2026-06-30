@@ -103,6 +103,66 @@ public sealed class Proto0PresenceTracker
         return result;
     }
 
+    public List<PresenceNominationCandidate> GetNominationCandidates(
+        long matchingId, long observerId, IEnumerable<long> roster, long excludedTargetId = 0,
+        bool includeZeroEvidence = false)
+    {
+        var result = new List<PresenceNominationCandidate>();
+        var now = DateTime.UtcNow;
+        _matches.TryGetValue(matchingId, out var state);
+
+        Dictionary<long, float[]>? candidateBuckets = null;
+        Dictionary<long, PresenceNotebookRecord>? observerRecords = null;
+        state?.Observers.TryGetValue(observerId, out candidateBuckets);
+        state?.NotebookRecords.TryGetValue(observerId, out observerRecords);
+
+        foreach (long candidateId in roster.Distinct())
+        {
+            if (candidateId == observerId || candidateId == excludedTargetId)
+                continue;
+
+            float presence = 0f;
+            if (candidateBuckets != null && candidateBuckets.TryGetValue(candidateId, out var buckets))
+                foreach (float w in buckets)
+                    presence += w;
+
+            presence = Math.Min(MaxPresence, presence);
+
+            PresenceNotebookRecord? record = null;
+            if (observerRecords != null && observerRecords.TryGetValue(candidateId, out var notebookRecord))
+                record = notebookRecord.Clone(now);
+
+            float notebookScore = CalculateNotebookNominationScore(record);
+            float score = presence * 20f + notebookScore;
+            if (!includeZeroEvidence && score <= 0f)
+                continue;
+
+            result.Add(new PresenceNominationCandidate
+            {
+                CandidateId = candidateId,
+                Presence = presence,
+                NotebookScore = notebookScore,
+                Score = score,
+                TotalOverlapSeconds = record?.TotalOverlapSeconds ?? 0,
+                LongestOverlapSeconds = record?.LongestOverlapSeconds ?? 0,
+                OverlapStartCount = record?.OverlapStartCount ?? 0,
+                EnterAfterObserverCount = record?.EnterAfterObserverCount ?? 0,
+                AlreadyThereWhenObserverArrivedCount = record?.AlreadyThereWhenObserverArrivedCount ?? 0,
+                UnclassifiedOverlapStartCount = record?.UnclassifiedOverlapStartCount ?? 0,
+                IsCurrentlyOverlapping = record?.IsCurrentlyOverlapping ?? false,
+                LastSeenArea = record?.LastSeenArea ?? AreaType.None
+            });
+        }
+
+        return result
+            .OrderByDescending(candidate => candidate.Score)
+            .ThenByDescending(candidate => candidate.EnterAfterObserverCount)
+            .ThenByDescending(candidate => candidate.TotalOverlapSeconds)
+            .ThenByDescending(candidate => candidate.LongestOverlapSeconds)
+            .ThenBy(candidate => candidate.CandidateId)
+            .ToList();
+    }
+
     public List<PresenceNotebookRecord> GetNotebookRecords(
         long matchingId, long observerId, IEnumerable<long> roster, bool includeEmpty = false)
     {
@@ -320,6 +380,20 @@ public sealed class Proto0PresenceTracker
         record.ActiveOverlapStartedAtUtc = null;
     }
 
+    private static float CalculateNotebookNominationScore(PresenceNotebookRecord? record)
+    {
+        if (record == null)
+            return 0f;
+
+        return record.EnterAfterObserverCount * 30f
+               + record.TotalOverlapSeconds * 1f
+               + record.LongestOverlapSeconds * 1.5f
+               + record.OverlapStartCount * 6f
+               + record.UnclassifiedOverlapStartCount * 4f
+               + record.AlreadyThereWhenObserverArrivedCount * 1.5f
+               + (record.IsCurrentlyOverlapping ? 8f : 0f);
+    }
+
     private sealed class MatchState
     {
         public int Head;
@@ -406,4 +480,20 @@ public sealed class PresenceNotebookRecord
             LastSeenArea = LastSeenArea
         };
     }
+}
+
+public sealed class PresenceNominationCandidate
+{
+    public long CandidateId { get; set; }
+    public float Presence { get; set; }
+    public float NotebookScore { get; set; }
+    public float Score { get; set; }
+    public int TotalOverlapSeconds { get; set; }
+    public int LongestOverlapSeconds { get; set; }
+    public int OverlapStartCount { get; set; }
+    public int EnterAfterObserverCount { get; set; }
+    public int AlreadyThereWhenObserverArrivedCount { get; set; }
+    public int UnclassifiedOverlapStartCount { get; set; }
+    public bool IsCurrentlyOverlapping { get; set; }
+    public AreaType LastSeenArea { get; set; }
 }

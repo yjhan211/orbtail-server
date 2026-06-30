@@ -488,25 +488,44 @@ public partial class GameClientSession
                 continue;
 
             var candidates = _presenceTracker?
-                .GetPresenceScores(matchingId, bot.PlayerId, roster)
-                .Where(candidate => candidate.candidateId != bot.PlayerId && candidate.presence > 0f)
-                .OrderByDescending(candidate => candidate.presence)
-                .ThenBy(candidate => candidate.candidateId)
+                .GetNominationCandidates(matchingId, bot.PlayerId, roster, bot.TargetPlayerId)
                 .ToList();
 
             if (candidates is not { Count: > 0 })
             {
-                Logger.LogDebug(
-                    "Settlement bot nomination skipped: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, no presence candidate",
-                    matchingId, state.RoundNumber, bot.PlayerId);
+                long fallbackTargetPlayerId = ResolveFallbackBotNominationTarget(roster, bot.PlayerId, bot.TargetPlayerId);
+                if (fallbackTargetPlayerId == 0)
+                {
+                    Logger.LogDebug(
+                        "Settlement bot nomination skipped: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, no nomination candidate",
+                        matchingId, state.RoundNumber, bot.PlayerId);
+                    continue;
+                }
+
+                state.SettlementNominations[bot.PlayerId] = fallbackTargetPlayerId;
+                Logger.LogInformation(
+                    "Settlement bot nomination by fallback: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, Target={TargetId}",
+                    matchingId, state.RoundNumber, bot.PlayerId, fallbackTargetPlayerId);
                 continue;
             }
 
-            state.SettlementNominations[bot.PlayerId] = candidates[0].candidateId;
+            var selected = candidates[0];
+            state.SettlementNominations[bot.PlayerId] = selected.CandidateId;
             Logger.LogInformation(
-                "Settlement bot nomination by presence: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, Target={TargetId}, Presence={Presence}",
-                matchingId, state.RoundNumber, bot.PlayerId, candidates[0].candidateId, candidates[0].presence);
+                "Settlement bot nomination by suspicion: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, Target={TargetId}, Score={Score}, Presence={Presence}, TotalOverlap={TotalOverlap}, LongestOverlap={LongestOverlap}, FollowEntries={FollowEntries}, OverlapStarts={OverlapStarts}, LastSeenArea={LastSeenArea}",
+                matchingId, state.RoundNumber, bot.PlayerId, selected.CandidateId, selected.Score, selected.Presence,
+                selected.TotalOverlapSeconds, selected.LongestOverlapSeconds, selected.EnterAfterObserverCount,
+                selected.OverlapStartCount, selected.LastSeenArea);
         }
+    }
+
+    private static long ResolveFallbackBotNominationTarget(
+        IEnumerable<long> roster, long botPlayerId, long botTargetPlayerId)
+    {
+        return roster
+            .Where(playerId => playerId != botPlayerId && playerId != botTargetPlayerId)
+            .OrderBy(playerId => playerId)
+            .FirstOrDefault();
     }
 
     private void BroadcastSettlementNominationResults(long matchingId, RoundRuntimeState state)

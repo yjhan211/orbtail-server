@@ -1970,28 +1970,40 @@ public class GameServer(
             if (state.SettlementNominations.ContainsKey(bot.PlayerId))
                 continue;
 
-            var presenceCandidate = _presenceTracker
-                .GetPresenceScores(matchingId, bot.PlayerId, roster)
-                .Where(candidate => candidate.candidateId != bot.PlayerId && candidate.presence > 0f)
-                .OrderByDescending(candidate => candidate.presence)
-                .ThenBy(candidate => candidate.candidateId)
+            var candidate = _presenceTracker
+                .GetNominationCandidates(matchingId, bot.PlayerId, roster, bot.TargetPlayerId)
                 .FirstOrDefault();
 
-            long targetPlayerId = presenceCandidate.candidateId;
+            long targetPlayerId = candidate?.CandidateId ?? 0;
             if (targetPlayerId == 0)
             {
-                targetPlayerId = IsBotOnlyChainPlayerActive(matchingId, bot.TargetPlayerId)
-                    ? bot.TargetPlayerId
-                    : roster.FirstOrDefault(playerId => playerId != bot.PlayerId);
+                targetPlayerId = ResolveFallbackBotNominationTarget(roster, bot.PlayerId, bot.TargetPlayerId);
             }
 
             if (targetPlayerId == 0)
                 continue;
 
             state.SettlementNominations[bot.PlayerId] = targetPlayerId;
-            _gameEventLogManager.LogSystem(matchingId,
-                $"Headless bot nomination: Bot={bot.PlayerId}, Target={targetPlayerId}, Presence={presenceCandidate.presence:0.##}");
+            if (candidate != null)
+            {
+                _gameEventLogManager.LogSystem(matchingId,
+                    $"Headless bot nomination: Bot={bot.PlayerId}, Target={targetPlayerId}, Score={candidate.Score:0.##}, Presence={candidate.Presence:0.##}, TotalOverlap={candidate.TotalOverlapSeconds}, FollowEntries={candidate.EnterAfterObserverCount}");
+            }
+            else
+            {
+                _gameEventLogManager.LogSystem(matchingId,
+                    $"Headless bot nomination fallback: Bot={bot.PlayerId}, Target={targetPlayerId}");
+            }
         }
+    }
+
+    private static long ResolveFallbackBotNominationTarget(
+        IEnumerable<long> roster, long botPlayerId, long botTargetPlayerId)
+    {
+        return roster
+            .Where(playerId => playerId != botPlayerId && playerId != botTargetPlayerId)
+            .OrderBy(playerId => playerId)
+            .FirstOrDefault();
     }
 
     private void BuildHeadlessSettlementContributionResult(long matchingId,
