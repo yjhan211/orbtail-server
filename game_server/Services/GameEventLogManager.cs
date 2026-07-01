@@ -96,6 +96,20 @@ public class GameEventLogManager
         Append(matchingId, "INTERACT", playerId, isBot, description);
     }
 
+    public GameEventEntry LogRoomEncounterReveal(long matchingId, long actorPlayerId, long targetPlayerId,
+        string area, int interactId, bool isBot)
+    {
+        return Append(matchingId, "ROOM_ENCOUNTER_REVEAL", actorPlayerId, isBot,
+            $"{FormatPlayer(actorPlayerId)} encountered {FormatPlayer(targetPlayerId)} while exploring {area}.",
+            entry =>
+            {
+                entry.Area = area;
+                entry.ActivityId = interactId;
+                entry.EncounteredPlayerIds = new List<long> { targetPlayerId };
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
     public GameEventEntry LogStatement(
         long matchingId,
         int roundId,

@@ -449,10 +449,10 @@ public class InteractionChoiceService
         var relevantLogs = recentAreaLogs
             .Where(entry =>
                 (entry.ActorPlayerId == answererPlayerId &&
-                 ((entry.Type == "ENCOUNTER" && entry.EncounteredPlayerIds?.Contains(askerPlayerId) == true)
+                 ((IsEncounterEvidenceLog(entry) && entry.EncounteredPlayerIds?.Contains(askerPlayerId) == true)
                   || (entry.Type == "FOLLOW_IN_CANDIDATE" && entry.RecentPlayerIds?.Contains(askerPlayerId) == true)))
                 || (entry.ActorPlayerId == askerPlayerId &&
-                    ((entry.Type == "ENCOUNTER" && entry.EncounteredPlayerIds?.Contains(answererPlayerId) == true)
+                    ((IsEncounterEvidenceLog(entry) && entry.EncounteredPlayerIds?.Contains(answererPlayerId) == true)
                      || (entry.Type == "FOLLOW_IN_CANDIDATE" &&
                          entry.RecentPlayerIds?.Contains(answererPlayerId) == true))))
             .OrderBy(entry => entry.TimestampUnixMs)
@@ -477,6 +477,9 @@ public class InteractionChoiceService
             LinkedLogIds = linkedLogIds.Distinct().ToList()
         };
     }
+
+    private static bool IsEncounterEvidenceLog(GameEventEntry entry) =>
+        entry.Type == "ENCOUNTER" || entry.Type == "ROOM_ENCOUNTER_REVEAL";
 
     private static TextArg CreateAreaLootItemArg(AreaType currentArea)
     {

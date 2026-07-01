@@ -68,6 +68,14 @@ public partial class GameClientSession
         if (currentState == (int)InteractableStateType.SABOTAGE)
             _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, 0);
 
+        if (TryHandleRoomEncounterBeforeCollect(msg.InteractId, info))
+        {
+            Logger.LogInformation(
+                "RNG START room encounter resolved before explore animation: PlayerId={PlayerId}, InteractId={InteractId}",
+                PlayerId, msg.InteractId);
+            return Task.CompletedTask;
+        }
+
         _pendingFinish.Add(msg.InteractId);
 
         Logger.LogInformation("RNG 채집 START: PlayerId={PlayerId}, InteractId={InteractId}",
@@ -99,9 +107,6 @@ public partial class GameClientSession
         }
 
         if (TryHandleGiftDiscoveryBeforeCollect(msg.InteractId, out var otherGiftDiscovery))
-            return Task.CompletedTask;
-
-        if (TryHandleRoomEncounterBeforeCollect(msg.InteractId, info))
             return Task.CompletedTask;
 
         var outcome = RngCollectCore.Resolve(

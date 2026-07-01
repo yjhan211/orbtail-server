@@ -152,6 +152,9 @@ public partial class GameClientSession
             SendEncounterEvent(targetPlayerId, CurrentArea, EncounterRevealManager.RoomRevealEventType,
                 EncounterRevealManager.PairCooldownSeconds);
 
+        _gameEventLogManager.LogRoomEncounterReveal(CurrentMapSubId, PlayerId.Value, targetPlayerId,
+            CurrentArea.ToString(), interactId, isBot: false);
+
         _gameEventLogManager.LogInteraction(CurrentMapSubId, PlayerId.Value,
             $"Room encounter reveal: Target={targetPlayerId}, Area={CurrentArea}, InteractId={interactId}",
             isBot: false);
