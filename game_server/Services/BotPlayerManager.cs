@@ -427,6 +427,15 @@ public class BotPlayerState
     public Dictionary<long, DateTime> TargetEncounterStartedAtByPlayerId { get; } = new();
     public HashSet<long> TargetInterrogationRequestedInEncounterPlayerIds { get; } = new();
 
+    public void SetPresenceBookmark(long targetPlayerId)
+    {
+        if (PresenceBookmarkPlayerId == targetPlayerId) return;
+
+        PresenceBookmarkPlayerId = targetPlayerId;
+        TargetEncounterStartedAtByPlayerId.Clear();
+        TargetInterrogationRequestedInEncounterPlayerIds.Clear();
+    }
+
     public void HoldForInteraction(TimeSpan fallbackDuration)
     {
         IsInInteraction = true;

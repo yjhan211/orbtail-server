@@ -507,6 +507,8 @@ public partial class GameClientSession
                 }
 
                 state.SettlementNominations[bot.PlayerId] = fallbackTargetPlayerId;
+                ApplyBotSettlementBookmark(matchingId, state.RoundNumber, bot, fallbackTargetPlayerId,
+                    "fallback", null);
                 Logger.LogInformation(
                     "Settlement bot nomination by fallback: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, Target={TargetId}",
                     matchingId, state.RoundNumber, bot.PlayerId, fallbackTargetPlayerId);
@@ -515,12 +517,26 @@ public partial class GameClientSession
 
             var selected = candidates[0];
             state.SettlementNominations[bot.PlayerId] = selected.CandidateId;
+            ApplyBotSettlementBookmark(matchingId, state.RoundNumber, bot, selected.CandidateId,
+                "suspicion", selected);
             Logger.LogInformation(
                 "Settlement bot nomination by suspicion: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, Target={TargetId}, Score={Score}, Presence={Presence}, TotalOverlap={TotalOverlap}, LongestOverlap={LongestOverlap}, FollowEntries={FollowEntries}, OverlapStarts={OverlapStarts}, LastSeenArea={LastSeenArea}",
                 matchingId, state.RoundNumber, bot.PlayerId, selected.CandidateId, selected.Score, selected.Presence,
                 selected.TotalOverlapSeconds, selected.LongestOverlapSeconds, selected.EnterAfterObserverCount,
                 selected.OverlapStartCount, selected.LastSeenArea);
         }
+    }
+
+    private void ApplyBotSettlementBookmark(long matchingId, int roundNumber, BotPlayerState bot,
+        long targetPlayerId, string reason, PresenceNominationCandidate? candidate)
+    {
+        if (targetPlayerId == 0 || targetPlayerId == bot.PlayerId) return;
+
+        bot.SetPresenceBookmark(targetPlayerId);
+        _gameEventLogManager.LogSystem(matchingId,
+            candidate != null
+                ? $"Bot guard target set: Round={roundNumber}, Bot={bot.PlayerId}, Target={targetPlayerId}, Reason={reason}, Score={candidate.Score:0.##}, Presence={candidate.Presence:0.##}, TotalOverlap={candidate.TotalOverlapSeconds}, FollowEntries={candidate.EnterAfterObserverCount}"
+                : $"Bot guard target set: Round={roundNumber}, Bot={bot.PlayerId}, Target={targetPlayerId}, Reason={reason}");
     }
 
     private static long ResolveFallbackBotNominationTarget(
