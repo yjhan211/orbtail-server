@@ -53,6 +53,7 @@ public partial class GameClientSession : SessionBase
     private readonly InteractionChoiceService _interactionChoiceService;
     private readonly BotPlayerManager _botPlayerManager;
     private readonly GameEventLogManager _gameEventLogManager;
+    private readonly EncounterRevealManager _encounterRevealManager;
 
     // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
     private readonly HashSet<(int RuleId, long TargetPlayerId)> _sharedRules = new();
@@ -109,7 +110,8 @@ public partial class GameClientSession : SessionBase
         TraceManager traceManager,
         InteractionChoiceService interactionChoiceService,
         BotPlayerManager botPlayerManager,
-        GameEventLogManager gameEventLogManager)
+        GameEventLogManager gameEventLogManager,
+        EncounterRevealManager encounterRevealManager)
         : base(token, logger, cacheHelper, redLock)
     {
         _onLeaveCallback = onLeaveCallback;
@@ -130,6 +132,7 @@ public partial class GameClientSession : SessionBase
         _interactionChoiceService = interactionChoiceService;
         _botPlayerManager = botPlayerManager;
         _gameEventLogManager = gameEventLogManager;
+        _encounterRevealManager = encounterRevealManager;
 
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();

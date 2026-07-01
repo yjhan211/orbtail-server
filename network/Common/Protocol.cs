@@ -202,6 +202,7 @@ namespace network.common
         G_TO_C_SHARP_GAZE_MARK_UPDATE,  // 내 타겟이 나를 마니또로 북마크했는지 여부
 
         G_TO_C_ROUND_STATE,
+        G_TO_C_ENCOUNTER_REVEAL,
 
         END
     }

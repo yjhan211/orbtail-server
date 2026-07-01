@@ -55,6 +55,7 @@ public class GameServer(
     private readonly TraceManager _traceManager = new();
     private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly GameEventLogManager _gameEventLogManager = new();
+    private readonly EncounterRevealManager _encounterRevealManager = new();
     private readonly Proto0PresenceTracker _presenceTracker = new();
     private readonly ConcurrentDictionary<long, Timer> _headlessRoundTimers = new();
     private long _adminBotOnlyMatchingIdSeed = 9_000_000;
@@ -1270,6 +1271,57 @@ public class GameServer(
             if (session.CurrentArea != ev.ToArea || session.TargetPlayerId != ev.BotPlayerId) continue;
             session.TryApplyImmediateTargetEncounterRecovery(matchingSessions);
         }
+
+        TrySendBotCorridorEncounterEvent(matchingId, ev, matchingSessions);
+    }
+
+    private void TrySendBotCorridorEncounterEvent(
+        long matchingId,
+        BotMovementEvent ev,
+        List<GameClientSession> matchingSessions)
+    {
+        if (!ev.ToArea.IsCorridor())
+            return;
+
+        var candidates = matchingSessions
+            .Where(session =>
+                session.PlayerId.HasValue &&
+                !session.IsEliminated &&
+                session.CurrentMapSubId == matchingId &&
+                session.CurrentArea == ev.ToArea &&
+                session.LastValidatedPosition != null)
+            .Select(session => (session.PlayerId!.Value, session.LastValidatedPosition!))
+            .ToList();
+        if (candidates.Count == 0)
+            return;
+
+        var decision = _encounterRevealManager.ResolveCorridorEncounter(
+            matchingId,
+            ev.BotPlayerId,
+            ev.Position,
+            candidates.Select(entry => (entry.Item1, entry.Item2!)));
+        if (!decision.HasEvent)
+            return;
+
+        var targetSession = matchingSessions.FirstOrDefault(session => session.PlayerId == decision.TargetPlayerId);
+        if (targetSession == null)
+            return;
+
+        using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
+            ev.BotPlayerId,
+            ev.ToArea,
+            decision.EventType,
+            decision.CooldownSeconds,
+            decision.RevealDelayMs);
+        targetSession.Send(packet);
+
+        logger.LogInformation(
+            "Bot corridor encounter event: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}, EventType={EventType}",
+            matchingId,
+            ev.BotPlayerId,
+            decision.TargetPlayerId,
+            ev.ToArea,
+            decision.EventType);
     }
 
     /// <summary>
@@ -1708,7 +1760,8 @@ public class GameServer(
                 _traceManager,
                 new InteractionChoiceService(_interactionLogManager, _manittoChainManager, _gameEventLogManager),
                 _botPlayerManager,
-                _gameEventLogManager);
+                _gameEventLogManager,
+                _encounterRevealManager);
 
             logger.LogInformation("Game client session created");
         }

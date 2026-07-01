@@ -69,6 +69,18 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class G_TO_C_ENCOUNTER_REVEAL : IMessagePackObject
+    {
+        /// <summary>수신자 기준으로 감지/드러낼 상대 PlayerId.</summary>
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        /// <summary>1=복도 인기척, 2=복도 조우, 3=방 탐색 조우.</summary>
+        [Key("eventType")] public int EventType { get; set; }
+        [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
+        [Key("revealDelayMs")] public int RevealDelayMs { get; set; }
+    }
+
+    [MessagePackObject]
     public class G_TO_C_AREA_EXIT_BLOCKED : IMessagePackObject
     {
         [Key("areaType")] public AreaType AreaType { get; set; } // 나가려던 Area

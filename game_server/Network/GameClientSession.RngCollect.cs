@@ -21,6 +21,7 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int RngCollectGiftResultType = 5;
+    private const int RngCollectEncounterResultType = 6;
     private const int RngCollectStaminaCost = 5;
 
     /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
@@ -98,6 +99,9 @@ public partial class GameClientSession
         }
 
         if (TryHandleGiftDiscoveryBeforeCollect(msg.InteractId, out var otherGiftDiscovery))
+            return Task.CompletedTask;
+
+        if (TryHandleRoomEncounterBeforeCollect(msg.InteractId, info))
             return Task.CompletedTask;
 
         var outcome = RngCollectCore.Resolve(
