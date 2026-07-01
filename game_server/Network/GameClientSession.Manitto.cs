@@ -1338,6 +1338,7 @@ public partial class GameClientSession
         _lastAskedQuestion = question.QuestionType;
         _pendingQuestions = null;
         _pendingQuestionContexts = questionSet.Contexts;
+        var answerTask = ResolveInteractionAnswerTask(PlayerId.Value);
         var answerSet = _interactionChoiceService.GenerateAnswerSet(
             CurrentMapSubId,
             PlayerId.Value,
@@ -1345,7 +1346,8 @@ public partial class GameClientSession
             _lastAskedQuestion,
             CurrentArea,
             questionSet.Contexts.FirstOrDefault(c => c.QuestionType == _lastAskedQuestion),
-            ResolveInteractionAnswerDestination(PlayerId.Value));
+            ResolveTaskArea(answerTask),
+            answerTask?.TaskId ?? 0);
         _pendingAnswers = answerSet.Answers;
         _pendingAnswerContexts = answerSet.Contexts;
 
@@ -2090,6 +2092,7 @@ public partial class GameClientSession
             .FirstOrDefault(context => context.QuestionType == msg.QuestionType);
 
         // 답변 선택지 생성
+        var answerTask = ResolveInteractionAnswerTask(partnerPlayerId);
         var answerSet = _interactionChoiceService.GenerateAnswerSet(
             CurrentMapSubId,
             partnerPlayerId,
@@ -2097,7 +2100,8 @@ public partial class GameClientSession
             msg.QuestionType,
             partnerSession.CurrentArea,
             questionContext,
-            ResolveInteractionAnswerDestination(partnerPlayerId));
+            ResolveTaskArea(answerTask),
+            answerTask?.TaskId ?? 0);
         var answers = answerSet.Answers;
 
         partnerSession._pendingAnswers = answers;
@@ -2167,6 +2171,7 @@ public partial class GameClientSession
     {
         var questionContext = _pendingQuestionContexts?
             .FirstOrDefault(context => context.QuestionType == _lastAskedQuestion);
+        var answerTask = ResolveBotAnswerTask(bot);
         var answerSet = _interactionChoiceService.GenerateAnswerSet(
             CurrentMapSubId,
             bot.PlayerId,
@@ -2174,7 +2179,8 @@ public partial class GameClientSession
             _lastAskedQuestion,
             bot.CurrentArea,
             questionContext,
-            ResolveBotAnswerDestination(bot));
+            ResolveTaskArea(answerTask),
+            answerTask?.TaskId ?? 0);
         var answers = answerSet.Answers;
         if (answers.Count == 0) return (null, null);
 
@@ -2183,25 +2189,29 @@ public partial class GameClientSession
         return (answers[answerIndex], answerSet.Contexts.ElementAtOrDefault(answerIndex));
     }
 
-    private AreaType? ResolveInteractionAnswerDestination(long playerId)
+    private ChecklistTaskData? ResolveInteractionAnswerTask(long playerId)
     {
-        var activeTask = _checklistManager.GetNextActiveGeneralInteractTask(CurrentMapSubId, playerId);
-        if (activeTask?.AreaType > 0 && Enum.IsDefined(typeof(AreaType), activeTask.AreaType))
-            return (AreaType)activeTask.AreaType;
-
-        return null;
+        return _checklistManager.GetNextActiveGeneralInteractTask(CurrentMapSubId, playerId);
     }
 
-    private AreaType? ResolveBotAnswerDestination(BotPlayerState bot)
+    private ChecklistTaskData? ResolveBotAnswerTask(BotPlayerState bot)
     {
         if (bot.PendingChecklistTaskId > 0)
         {
             var pendingTask = GameChecklistData.GetTask(bot.PendingChecklistTaskId);
-            if (pendingTask?.AreaType > 0 && Enum.IsDefined(typeof(AreaType), pendingTask.AreaType))
-                return (AreaType)pendingTask.AreaType;
+            if (pendingTask != null)
+                return pendingTask;
         }
 
-        return ResolveInteractionAnswerDestination(bot.PlayerId);
+        return ResolveInteractionAnswerTask(bot.PlayerId);
+    }
+
+    private static AreaType? ResolveTaskArea(ChecklistTaskData? task)
+    {
+        if (task?.AreaType > 0 && Enum.IsDefined(typeof(AreaType), task.AreaType))
+            return (AreaType)task.AreaType;
+
+        return null;
     }
 
     private void LogStatementIfNeeded(

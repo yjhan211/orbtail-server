@@ -205,7 +205,8 @@ public class InteractionChoiceService
         InteractionQuestionType questionType,
         AreaType currentArea,
         InteractionQuestionContext? questionContext,
-        AreaType? answererDestinationArea = null)
+        AreaType? answererDestinationArea = null,
+        int answererDestinationTaskId = 0)
     {
         if (questionType == InteractionQuestionType.ASK_NEARBY_REASON)
         {
@@ -225,6 +226,11 @@ public class InteractionChoiceService
             var evidenceAnswer = TryBuildActivityAnswer(
                                      matchingId,
                                      answererPlayerId,
+                                     currentArea,
+                                     context)
+                                 ?? TryBuildCurrentAreaDestinationActivityAnswer(
+                                     answererDestinationArea,
+                                     answererDestinationTaskId,
                                      currentArea,
                                      context)
                                  ?? TryBuildDestinationAnswer(
@@ -318,6 +324,43 @@ public class InteractionChoiceService
         };
     }
 
+    private static EvidenceAnswer? TryBuildCurrentAreaDestinationActivityAnswer(
+        AreaType? answererDestinationArea,
+        int answererDestinationTaskId,
+        AreaType currentArea,
+        InteractionQuestionContext context)
+    {
+        if (!answererDestinationArea.HasValue || answererDestinationArea.Value != currentArea)
+            return null;
+        if (answererDestinationTaskId <= 0)
+            return null;
+
+        var task = GameChecklistData.GetTask(answererDestinationTaskId);
+        if (task == null)
+            return null;
+
+        string activityName = ResolveActivityName(task);
+        return new EvidenceAnswer
+        {
+            Answer = new InteractionAnswer
+            {
+                IsTrue = false,
+                ClaimedJob = JobTitle.NONE,
+                TextId = ActivityInAreaAnswerTextId,
+                Args = new List<TextArg> { new() { Type = TextArgType.RAW_STRING, StringValue = activityName } }
+            },
+            Context = new InteractionAnswerContext
+            {
+                QuestionId = NearbyReasonQuestionId,
+                QuestionText = context.QuestionText,
+                AnswerType = ActivityInAreaAnswerType,
+                AnswerText = $"{activityName} 중이었습니다.",
+                Area = context.Area,
+                LinkedLogIds = context.LinkedLogIds.ToList()
+            }
+        };
+    }
+
     private static EvidenceAnswer? TryBuildDestinationAnswer(
         AreaType? answererDestinationArea,
         AreaType currentArea,
@@ -361,6 +404,14 @@ public class InteractionChoiceService
             if (!string.IsNullOrWhiteSpace(task?.TitleKr))
                 return task.TitleKr.Trim();
         }
+
+        return "교내 활동";
+    }
+
+    private static string ResolveActivityName(ChecklistTaskData task)
+    {
+        if (!string.IsNullOrWhiteSpace(task.TitleKr))
+            return task.TitleKr.Trim();
 
         return "교내 활동";
     }

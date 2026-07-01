@@ -1555,6 +1555,7 @@ public class GameServer(
                        ?? questionSet.Questions.FirstOrDefault();
         if (question == null) return false;
 
+        var answerTask = ResolveBotAnswerTask(matchingId, answererBot);
         var answerSet = interactionChoiceService.GenerateAnswerSet(
             matchingId,
             answererBot.PlayerId,
@@ -1562,7 +1563,8 @@ public class GameServer(
             question.QuestionType,
             answererBot.CurrentArea,
             questionSet.Contexts.FirstOrDefault(c => c.QuestionType == question.QuestionType),
-            ResolveBotAnswerDestination(matchingId, answererBot));
+            ResolveTaskArea(answerTask),
+            answerTask?.TaskId ?? 0);
         if (answerSet.Answers.Count == 0) return false;
 
         int answerIndex = _botPlayerManager.PickAnswerIndex(answerSet.Answers.Count);
@@ -1593,18 +1595,22 @@ public class GameServer(
         return true;
     }
 
-    private AreaType? ResolveBotAnswerDestination(long matchingId, BotPlayerState bot)
+    private ChecklistTaskData? ResolveBotAnswerTask(long matchingId, BotPlayerState bot)
     {
         if (bot.PendingChecklistTaskId > 0)
         {
             var pendingTask = GameChecklistData.GetTask(bot.PendingChecklistTaskId);
-            if (pendingTask?.AreaType > 0 && Enum.IsDefined(typeof(AreaType), pendingTask.AreaType))
-                return (AreaType)pendingTask.AreaType;
+            if (pendingTask != null)
+                return pendingTask;
         }
 
-        var activeTask = _checklistManager.GetNextActiveGeneralInteractTask(matchingId, bot.PlayerId);
-        if (activeTask?.AreaType > 0 && Enum.IsDefined(typeof(AreaType), activeTask.AreaType))
-            return (AreaType)activeTask.AreaType;
+        return _checklistManager.GetNextActiveGeneralInteractTask(matchingId, bot.PlayerId);
+    }
+
+    private static AreaType? ResolveTaskArea(ChecklistTaskData? task)
+    {
+        if (task?.AreaType > 0 && Enum.IsDefined(typeof(AreaType), task.AreaType))
+            return (AreaType)task.AreaType;
 
         return null;
     }
