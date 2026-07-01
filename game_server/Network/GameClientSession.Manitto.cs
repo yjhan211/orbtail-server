@@ -1344,7 +1344,8 @@ public partial class GameClientSession
             bot.PlayerId,
             _lastAskedQuestion,
             CurrentArea,
-            questionSet.Contexts.FirstOrDefault(c => c.QuestionType == _lastAskedQuestion));
+            questionSet.Contexts.FirstOrDefault(c => c.QuestionType == _lastAskedQuestion),
+            ResolveInteractionAnswerDestination(PlayerId.Value));
         _pendingAnswers = answerSet.Answers;
         _pendingAnswerContexts = answerSet.Contexts;
 
@@ -2095,7 +2096,8 @@ public partial class GameClientSession
             PlayerId.Value,
             msg.QuestionType,
             partnerSession.CurrentArea,
-            questionContext);
+            questionContext,
+            ResolveInteractionAnswerDestination(partnerPlayerId));
         var answers = answerSet.Answers;
 
         partnerSession._pendingAnswers = answers;
@@ -2131,7 +2133,7 @@ public partial class GameClientSession
         if (bot == null) return;
 
         var (selectedAnswer, selectedAnswerContext) = ResolveBotInteractionAnswer(bot);
-        int answerTextId = selectedAnswer?.TextId ?? InteractionChoiceService.EnRouteAnswerTextId;
+        int answerTextId = selectedAnswer?.TextId ?? InteractionChoiceService.CoincidenceAnswerTextId;
         var answerArgs = selectedAnswer?.Args ?? new List<TextArg>();
 
         var result = new G_TO_C_INTERACTION_RESULT
@@ -2171,13 +2173,35 @@ public partial class GameClientSession
             PlayerId ?? 0,
             _lastAskedQuestion,
             bot.CurrentArea,
-            questionContext);
+            questionContext,
+            ResolveBotAnswerDestination(bot));
         var answers = answerSet.Answers;
         if (answers.Count == 0) return (null, null);
 
         int answerIndex = _botPlayerManager.PickAnswerIndex(answers.Count);
         answerIndex = Math.Clamp(answerIndex, 0, answers.Count - 1);
         return (answers[answerIndex], answerSet.Contexts.ElementAtOrDefault(answerIndex));
+    }
+
+    private AreaType? ResolveInteractionAnswerDestination(long playerId)
+    {
+        var activeTask = _checklistManager.GetNextActiveGeneralInteractTask(CurrentMapSubId, playerId);
+        if (activeTask?.AreaType > 0 && Enum.IsDefined(typeof(AreaType), activeTask.AreaType))
+            return (AreaType)activeTask.AreaType;
+
+        return null;
+    }
+
+    private AreaType? ResolveBotAnswerDestination(BotPlayerState bot)
+    {
+        if (bot.PendingChecklistTaskId > 0)
+        {
+            var pendingTask = GameChecklistData.GetTask(bot.PendingChecklistTaskId);
+            if (pendingTask?.AreaType > 0 && Enum.IsDefined(typeof(AreaType), pendingTask.AreaType))
+                return (AreaType)pendingTask.AreaType;
+        }
+
+        return ResolveInteractionAnswerDestination(bot.PlayerId);
     }
 
     private void LogStatementIfNeeded(
@@ -2201,6 +2225,7 @@ public partial class GameClientSession
             listenerPlayerId,
             answerContext.Area.ToString(),
             answerContext.QuestionId,
+            answerContext.QuestionText,
             answerContext.AnswerType,
             answerContext.AnswerText,
             answerContext.LinkedLogIds,

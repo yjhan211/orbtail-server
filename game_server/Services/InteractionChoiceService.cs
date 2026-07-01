@@ -15,6 +15,7 @@ public sealed class InteractionQuestionContext
 {
     public InteractionQuestionType QuestionType { get; init; }
     public string QuestionId { get; init; } = "";
+    public string QuestionText { get; init; } = "";
     public AreaType Area { get; init; }
     public List<long> LinkedLogIds { get; init; } = new();
 }
@@ -28,6 +29,7 @@ public sealed class InteractionAnswerSet
 public sealed class InteractionAnswerContext
 {
     public string QuestionId { get; init; } = "";
+    public string QuestionText { get; init; } = "";
     public string AnswerType { get; init; } = "";
     public string AnswerText { get; init; } = "";
     public AreaType Area { get; init; }
@@ -47,14 +49,20 @@ public class InteractionChoiceService
 
     public const string NearbyReasonQuestionId = "ASK_NEARBY_REASON";
     public const string EnRouteAnswerType = "EN_ROUTE";
+    public const string ActivityInAreaAnswerType = "ACTIVITY_IN_AREA";
+    public const string EnRouteToAreaAnswerType = "EN_ROUTE_TO_AREA";
     public const string CoincidenceAnswerType = "COINCIDENCE";
     public const int NearbyReasonQuestionTextId = 11045;
     public const int EnRouteAnswerTextId = 11046;
     public const int CoincidenceAnswerTextId = 11047;
+    public const int ActivityInAreaAnswerTextId = 11048;
+    public const int EnRouteToAreaAnswerTextId = 11049;
+    public const string NearbyReasonQuestionText = "여기엔 무슨 일로 왔나요?";
     public const string EnRouteAnswerText = "이동 중이었습니다.";
     public const string CoincidenceAnswerText = "우연입니다.";
 
     private const int NearbyReasonRecentWindowSeconds = 20;
+    private const int ActivityEvidenceRecentWindowSeconds = 60;
 
     private readonly InteractionLogManager _logManager;
     private readonly ManittoChainManager _chainManager;
@@ -196,7 +204,8 @@ public class InteractionChoiceService
         long askerPlayerId,
         InteractionQuestionType questionType,
         AreaType currentArea,
-        InteractionQuestionContext? questionContext)
+        InteractionQuestionContext? questionContext,
+        AreaType? answererDestinationArea = null)
     {
         if (questionType == InteractionQuestionType.ASK_NEARBY_REASON)
         {
@@ -206,51 +215,163 @@ public class InteractionChoiceService
                           {
                               QuestionType = InteractionQuestionType.ASK_NEARBY_REASON,
                               QuestionId = NearbyReasonQuestionId,
+                              QuestionText = NearbyReasonQuestionText,
                               Area = currentArea
                           };
 
-            var nearbyAnswers = new List<InteractionAnswer>
+            var nearbyAnswers = new List<InteractionAnswer>();
+            var answerContexts = new List<InteractionAnswerContext>();
+
+            var evidenceAnswer = TryBuildActivityAnswer(
+                                     matchingId,
+                                     answererPlayerId,
+                                     currentArea,
+                                     context)
+                                 ?? TryBuildDestinationAnswer(
+                                     answererDestinationArea,
+                                     currentArea,
+                                     context);
+
+            if (evidenceAnswer != null)
             {
-                new()
-                {
-                    IsTrue = false,
-                    ClaimedJob = JobTitle.NONE,
-                    TextId = EnRouteAnswerTextId
-                },
-                new()
-                {
-                    IsTrue = false,
-                    ClaimedJob = JobTitle.NONE,
-                    TextId = CoincidenceAnswerTextId
-                }
-            };
+                nearbyAnswers.Add(evidenceAnswer.Answer);
+                answerContexts.Add(evidenceAnswer.Context);
+            }
+
+            nearbyAnswers.Add(new InteractionAnswer
+            {
+                IsTrue = false,
+                ClaimedJob = JobTitle.NONE,
+                TextId = CoincidenceAnswerTextId
+            });
+            answerContexts.Add(new InteractionAnswerContext
+            {
+                QuestionId = NearbyReasonQuestionId,
+                QuestionText = context.QuestionText,
+                AnswerType = CoincidenceAnswerType,
+                AnswerText = CoincidenceAnswerText,
+                Area = context.Area,
+                LinkedLogIds = context.LinkedLogIds.ToList()
+            });
 
             return new InteractionAnswerSet
             {
                 Answers = nearbyAnswers,
-                Contexts = new List<InteractionAnswerContext>
-                {
-                    new()
-                    {
-                        QuestionId = NearbyReasonQuestionId,
-                        AnswerType = EnRouteAnswerType,
-                        AnswerText = "이동 중이었습니다.",
-                        Area = context.Area,
-                        LinkedLogIds = context.LinkedLogIds.ToList()
-                    },
-                    new()
-                    {
-                        QuestionId = NearbyReasonQuestionId,
-                        AnswerType = CoincidenceAnswerType,
-                        AnswerText = "우연입니다.",
-                        Area = context.Area,
-                        LinkedLogIds = context.LinkedLogIds.ToList()
-                    }
-                }
+                Contexts = answerContexts
             };
         }
 
         return new InteractionAnswerSet();
+    }
+
+    private sealed class EvidenceAnswer
+    {
+        public InteractionAnswer Answer { get; init; } = new();
+        public InteractionAnswerContext Context { get; init; } = new();
+    }
+
+    private EvidenceAnswer? TryBuildActivityAnswer(
+        long matchingId,
+        long answererPlayerId,
+        AreaType currentArea,
+        InteractionQuestionContext context)
+    {
+        if (_eventLogManager == null) return null;
+
+        string areaName = currentArea.ToString();
+        long cutoffUnixMs = DateTimeOffset.UtcNow
+            .AddSeconds(-ActivityEvidenceRecentWindowSeconds)
+            .ToUnixTimeMilliseconds();
+
+        var activityLog = _eventLogManager.GetRecent(matchingId, 200)
+            .Where(entry => entry.TimestampUnixMs >= cutoffUnixMs)
+            .Where(entry => entry.ActorPlayerId == answererPlayerId)
+            .Where(entry => string.Equals(entry.Area, areaName, StringComparison.Ordinal))
+            .Where(entry => entry.Type == "SCHOOL_ACTIVITY_START" ||
+                            entry.Type == "SCHOOL_ACTIVITY_COMPLETE")
+            .OrderByDescending(entry => entry.TimestampUnixMs)
+            .FirstOrDefault();
+
+        if (activityLog == null) return null;
+
+        string activityName = ResolveActivityName(activityLog);
+        var linkedLogIds = MergeLinkedLogIds(context.LinkedLogIds, activityLog);
+
+        return new EvidenceAnswer
+        {
+            Answer = new InteractionAnswer
+            {
+                IsTrue = false,
+                ClaimedJob = JobTitle.NONE,
+                TextId = ActivityInAreaAnswerTextId,
+                Args = new List<TextArg> { new() { Type = TextArgType.RAW_STRING, StringValue = activityName } }
+            },
+            Context = new InteractionAnswerContext
+            {
+                QuestionId = NearbyReasonQuestionId,
+                QuestionText = context.QuestionText,
+                AnswerType = ActivityInAreaAnswerType,
+                AnswerText = $"{activityName} 중이었습니다.",
+                Area = context.Area,
+                LinkedLogIds = linkedLogIds
+            }
+        };
+    }
+
+    private static EvidenceAnswer? TryBuildDestinationAnswer(
+        AreaType? answererDestinationArea,
+        AreaType currentArea,
+        InteractionQuestionContext context)
+    {
+        if (!answererDestinationArea.HasValue || answererDestinationArea.Value == AreaType.None)
+            return null;
+
+        AreaType destination = answererDestinationArea.Value;
+        string destinationName = GameAreaNameData.Get(destination);
+
+        return new EvidenceAnswer
+        {
+            Answer = new InteractionAnswer
+            {
+                IsTrue = false,
+                ClaimedJob = JobTitle.NONE,
+                TextId = EnRouteToAreaAnswerTextId,
+                Args = new List<TextArg> { new() { Type = TextArgType.AREA_TYPE, IntValue = (int)destination } }
+            },
+            Context = new InteractionAnswerContext
+            {
+                QuestionId = NearbyReasonQuestionId,
+                QuestionText = context.QuestionText,
+                AnswerType = EnRouteToAreaAnswerType,
+                AnswerText = $"{destinationName}(으)로 이동 중이었습니다.",
+                Area = context.Area,
+                LinkedLogIds = context.LinkedLogIds.ToList()
+            }
+        };
+    }
+
+    private static string ResolveActivityName(GameEventEntry activityLog)
+    {
+        if (!string.IsNullOrWhiteSpace(activityLog.ActivityReason))
+            return activityLog.ActivityReason.Trim();
+
+        if (activityLog.TaskId.HasValue)
+        {
+            var task = GameChecklistData.GetTask(activityLog.TaskId.Value);
+            if (!string.IsNullOrWhiteSpace(task?.TitleKr))
+                return task.TitleKr.Trim();
+        }
+
+        return "교내 활동";
+    }
+
+    private static List<long> MergeLinkedLogIds(IEnumerable<long> baseLogIds, GameEventEntry extraLog)
+    {
+        var linkedLogIds = new List<long>();
+        linkedLogIds.AddRange(baseLogIds);
+        if (extraLog.SourceEventSeq.HasValue) linkedLogIds.Add(extraLog.SourceEventSeq.Value);
+        linkedLogIds.Add(extraLog.Seq);
+        return linkedLogIds.Distinct().ToList();
     }
 
     private InteractionQuestionContext? TryBuildNearbyReasonContext(
@@ -262,12 +383,7 @@ public class InteractionChoiceService
         if (askerPlayerId == 0 || answererPlayerId == 0 || askerPlayerId == answererPlayerId) return null;
         if (currentArea == AreaType.None) return null;
         if (_eventLogManager == null)
-            return new InteractionQuestionContext
-            {
-                QuestionType = InteractionQuestionType.ASK_NEARBY_REASON,
-                QuestionId = NearbyReasonQuestionId,
-                Area = currentArea
-            };
+            return null;
 
         string areaName = currentArea.ToString();
         long cutoffUnixMs = DateTimeOffset.UtcNow
@@ -292,14 +408,7 @@ public class InteractionChoiceService
             .ToList();
 
         if (relevantLogs.Count == 0)
-        {
-            relevantLogs = recentAreaLogs
-                .Where(entry => entry.Type == "AREA_ENTER"
-                                && (entry.ActorPlayerId == answererPlayerId ||
-                                    entry.ActorPlayerId == askerPlayerId))
-                .OrderBy(entry => entry.TimestampUnixMs)
-                .ToList();
-        }
+            return null;
 
         var linkedLogIds = new List<long>();
         foreach (var log in relevantLogs)
@@ -312,6 +421,7 @@ public class InteractionChoiceService
         {
             QuestionType = InteractionQuestionType.ASK_NEARBY_REASON,
             QuestionId = NearbyReasonQuestionId,
+            QuestionText = NearbyReasonQuestionText,
             Area = currentArea,
             LinkedLogIds = linkedLogIds.Distinct().ToList()
         };

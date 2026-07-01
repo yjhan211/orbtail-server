@@ -103,6 +103,7 @@ public class GameEventLogManager
         long listenerPlayerId,
         string area,
         string questionId,
+        string questionText,
         string answerType,
         string answerText,
         IReadOnlyCollection<long> linkedLogIds,
@@ -122,6 +123,7 @@ public class GameEventLogManager
             entry.Area = area;
             entry.AreaId = area;
             entry.QuestionId = questionId;
+            entry.QuestionText = questionText;
             entry.AnswerType = answerType;
             entry.AnswerText = answerText;
             entry.LinkedLogIds = linked;
@@ -507,6 +509,7 @@ public class GameEventEntry
     public long? ListenerPlayerId { get; set; }
     public string? AreaId { get; set; }
     public string? QuestionId { get; set; }
+    public string? QuestionText { get; set; }
     public string? AnswerType { get; set; }
     public string? AnswerText { get; set; }
     public List<long>? LinkedLogIds { get; set; }
