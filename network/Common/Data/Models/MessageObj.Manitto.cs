@@ -705,7 +705,8 @@ namespace network.common.data.models
         ASK_LOCATION = 2,     // 동선 추궁: "[X구역]에서 방금 나왔지?"
         CROSS_CHECK = 3,      // 교차 검증: "[Y]도 같은 직책이라던데?"
         ASK_TRACE = 4,         // 흔적 추궁: "여기 누가 온 것 같던데?"
-        ASK_NEARBY_REASON = 5
+        ASK_NEARBY_REASON = 5,
+        ENCOUNTER_ACTION = 6
     }
 
     /// <summary>

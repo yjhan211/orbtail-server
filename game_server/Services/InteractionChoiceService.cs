@@ -48,21 +48,43 @@ public class InteractionChoiceService
     public const int DemoRecordAnswerTextId = 11037;
 
     public const string NearbyReasonQuestionId = "ASK_NEARBY_REASON";
+    public const string EncounterActionQuestionId = "ENCOUNTER_ACTION";
     public const string EnRouteAnswerType = "EN_ROUTE";
     public const string ActivityInAreaAnswerType = "ACTIVITY_IN_AREA";
     public const string EnRouteToAreaAnswerType = "EN_ROUTE_TO_AREA";
     public const string CoincidenceAnswerType = "COINCIDENCE";
+    public const string EncounterUseItemAnswerType = "USE_ITEM";
+    public const string EncounterKeepDistanceAnswerType = "KEEP_DISTANCE";
+    public const string EncounterObserveAnswerType = "OBSERVE";
+    public const string EncounterLeaveAreaAnswerType = "LEAVE_AREA";
     public const int NearbyReasonQuestionTextId = 11045;
     public const int EnRouteAnswerTextId = 11046;
     public const int CoincidenceAnswerTextId = 11047;
     public const int ActivityInAreaAnswerTextId = 11048;
     public const int EnRouteToAreaAnswerTextId = 11049;
+    public const int EncounterActionQuestionTextId = 11060;
+    public const int EncounterUseItemAnswerTextId = 11061;
+    public const int EncounterKeepDistanceAnswerTextId = 11062;
+    public const int EncounterObserveAnswerTextId = 11063;
+    public const int EncounterLeaveAreaAnswerTextId = 11064;
+    public const string EncounterActionQuestionText = "어떻게 대응할까요?";
+    public const string EncounterKeepDistanceAnswerText = "거리를 벌린다";
+    public const string EncounterObserveAnswerText = "상대를 유심히 살펴본다";
+    public const string EncounterLeaveAreaAnswerText = "장소를 이탈한다";
     public const string NearbyReasonQuestionText = "여기엔 무슨 일로 왔나요?";
     public const string EnRouteAnswerText = "이동 중이었습니다.";
     public const string CoincidenceAnswerText = "우연입니다.";
 
     private const int NearbyReasonRecentWindowSeconds = 20;
     private const int ActivityEvidenceRecentWindowSeconds = 60;
+    private static readonly HashSet<int> P0EncounterItemIds = new()
+    {
+        401000004,
+        401000005,
+        401000006,
+        401000007,
+        401000008
+    };
 
     private readonly InteractionLogManager _logManager;
     private readonly ManittoChainManager _chainManager;
@@ -197,6 +219,76 @@ public class InteractionChoiceService
         InteractionQuestionType questionType,
         AreaType currentArea) =>
         GenerateAnswerSet(matchingId, answererPlayerId, 0, questionType, currentArea, null).Answers;
+
+    public InteractionQuestion CreateEncounterActionQuestion(AreaType currentArea) =>
+        new()
+        {
+            QuestionType = InteractionQuestionType.ENCOUNTER_ACTION,
+            TextId = EncounterActionQuestionTextId,
+            ReferenceArea = currentArea
+        };
+
+    public InteractionAnswerSet GenerateEncounterActionAnswerSet(
+        AreaType currentArea,
+        IEnumerable<InGameItemInfo>? inventoryItems = null,
+        IEnumerable<long>? linkedLogIds = null)
+    {
+        var answers = new List<InteractionAnswer>();
+        var contexts = new List<InteractionAnswerContext>();
+        var linked = linkedLogIds?.Distinct().ToList() ?? new List<long>();
+
+        void AddAnswer(int textId, List<TextArg>? args, string answerType, string answerText)
+        {
+            answers.Add(new InteractionAnswer
+            {
+                IsTrue = false,
+                ClaimedJob = JobTitle.NONE,
+                TextId = textId,
+                Args = args ?? new List<TextArg>()
+            });
+
+            contexts.Add(new InteractionAnswerContext
+            {
+                QuestionId = EncounterActionQuestionId,
+                QuestionText = EncounterActionQuestionText,
+                AnswerType = answerType,
+                AnswerText = answerText,
+                Area = currentArea,
+                LinkedLogIds = linked.ToList()
+            });
+        }
+
+        var usableItems = (inventoryItems ?? Enumerable.Empty<InGameItemInfo>())
+            .Where(item => item.Count > 0 && P0EncounterItemIds.Contains(item.ItemId))
+            .GroupBy(item => item.ItemId)
+            .Select(group => group.First())
+            .OrderBy(item => item.ItemId)
+            .Take(2)
+            .ToList();
+
+        foreach (var item in usableItems)
+        {
+            string itemName = ResolveItemNameKr(item.ItemId);
+            AddAnswer(
+                EncounterUseItemAnswerTextId,
+                new List<TextArg> { new() { Type = TextArgType.ITEM_NAME, IntValue = item.ItemId } },
+                $"{EncounterUseItemAnswerType}:{item.ItemId}",
+                $"{itemName}을 사용한다");
+        }
+
+        AddAnswer(EncounterKeepDistanceAnswerTextId, null, EncounterKeepDistanceAnswerType,
+            EncounterKeepDistanceAnswerText);
+        AddAnswer(EncounterObserveAnswerTextId, null, EncounterObserveAnswerType,
+            EncounterObserveAnswerText);
+        AddAnswer(EncounterLeaveAreaAnswerTextId, null, EncounterLeaveAreaAnswerType,
+            EncounterLeaveAreaAnswerText);
+
+        return new InteractionAnswerSet
+        {
+            Answers = answers,
+            Contexts = contexts
+        };
+    }
 
     public InteractionAnswerSet GenerateAnswerSet(
         long matchingId,
@@ -414,6 +506,13 @@ public class InteractionChoiceService
             return task.TitleKr.Trim();
 
         return "교내 활동";
+    }
+
+    private static string ResolveItemNameKr(int itemId)
+    {
+        var item = GameItemData.Get(itemId);
+        string name = item?.Name?.Kr ?? "";
+        return !string.IsNullOrWhiteSpace(name) ? name.Trim() : $"Item{itemId}";
     }
 
     private static List<long> MergeLinkedLogIds(IEnumerable<long> baseLogIds, GameEventEntry extraLog)
