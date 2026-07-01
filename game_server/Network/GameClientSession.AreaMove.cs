@@ -136,6 +136,9 @@ public partial class GameClientSession
             PlayerId, oldArea, msg.TargetArea, staminaCost, actualType, forcedFollowActive);
 
         // HandleAreaChange는 Movement에 정의됨 — 폐쇄 알림, 동선 추적 등 공통 처리
+        _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
+            oldArea.ToString(), msg.TargetArea.ToString(), isBot: false);
+
         await HandleAreaChange(oldArea, msg.TargetArea);
 
         // 9. 응답 (요청자에게만 — 다른 플레이어는 G_TO_C_MOVE 브로드캐스트로 위치 동기화)

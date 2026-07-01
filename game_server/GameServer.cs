@@ -837,10 +837,20 @@ public class GameServer(
             }
 
             // #134 — 봇 RNG progress 시작/종료 → 같은 영역 인간 세션에 EXPLORE_START/END (봇 EXPLORE_1 애니 동기화)
-            foreach (var (botId, taskId, awardedScore, awardedContribution) in missionResult.CompletedChecklistActivities)
-                _gameEventLogManager.LogMission(matchingId, botId,
-                    $"Checklist task completed: TaskId={taskId}, Score+{awardedScore:0.##}, Contribution+{awardedContribution}",
-                    isBot: true);
+            foreach (var (botId, taskId, interactId, area) in missionResult.StartedChecklistActivities)
+            {
+                var task = GameChecklistData.GetTask(taskId);
+                _gameEventLogManager.LogSchoolActivityStart(matchingId, botId, taskId,
+                    area.ToString(), interactId, task?.TitleKr ?? "", isBot: true);
+            }
+
+            foreach (var (botId, taskId, interactId, area, awardedScore, awardedContribution) in missionResult.CompletedChecklistActivities)
+            {
+                var task = GameChecklistData.GetTask(taskId);
+                _gameEventLogManager.LogSchoolActivityComplete(matchingId, botId, taskId,
+                    area.ToString(), interactId, awardedScore, awardedContribution,
+                    task?.TitleKr ?? "", isBot: true);
+            }
 
             if (missionResult.BotExploreStarts.Count > 0)
                 BroadcastBotExploreStarts(matchingId, missionResult.BotExploreStarts, activeSessions);

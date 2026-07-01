@@ -199,6 +199,17 @@ public partial class GameClientSession
 
         awardedScore = result.AwardedScore;
         awardedContribution = result.AwardedContribution;
+        _gameEventLogManager.LogSchoolActivityComplete(
+            CurrentMapSubId,
+            PlayerId.Value,
+            task.TaskId,
+            ((AreaType)info.ZoneId).ToString(),
+            info.Id,
+            result.AwardedScore,
+            result.AwardedContribution,
+            task.TitleKr,
+            isBot: false);
+
         if (result.ConsumedItemUpdate != null)
             SendInGameInventoryUpdate(result.ConsumedItemUpdate);
 
@@ -250,6 +261,14 @@ public partial class GameClientSession
             _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, 0);
 
         _pendingChecklistActivityFinish.Add(msg.InteractId);
+        _gameEventLogManager.LogSchoolActivityStart(
+            CurrentMapSubId,
+            PlayerId.Value,
+            task.TaskId,
+            ((AreaType)info.ZoneId).ToString(),
+            msg.InteractId,
+            task.TitleKr,
+            isBot: false);
 
         Logger.LogInformation(
             "Checklist activity START: PlayerId={PlayerId}, TaskId={TaskId}, InteractId={InteractId}, StaminaCost={StaminaCost}",
