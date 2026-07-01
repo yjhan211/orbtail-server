@@ -283,7 +283,7 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     v0.2.1 (#79) — RNG 채집 결과 통합 패킷. 5종 결과(부품/선행/디코이/빈손/소모품) 단일 응답.
+    ///     v0.2.1 (#79) — RNG 채집 결과 통합 패킷. 5종 결과(부품/선행/디코이/빈손/지역 아이템) 단일 응답.
     ///     - 부품/선행 회수 시 추가로 G_TO_C_PART_COLLECTED / G_TO_C_PREREQUISITE_COLLECTED 송신 (인벤토리 갱신용)
     ///     - 본 패킷은 ItemAlert / 시각 이펙트 / 쿨타임 갱신 트리거 전용 (회수자 한정)
     /// </summary>
@@ -291,9 +291,9 @@ namespace network.common.data.models
     public class G_TO_C_RNG_COLLECT_RESULT : IMessagePackObject
     {
         [Key("interactId")] public int InteractId { get; set; }
-        /// <summary>0=빈손, 1=디코이, 2=소모품, 3=부품, 4=선행</summary>
+        /// <summary>0=빈손, 1=디코이, 2=지역 아이템, 3=부품, 4=선행</summary>
         [Key("resultType")] public int ResultType { get; set; }
-        /// <summary>부품/선행/소모품의 식별자 (resultType 0/1은 0). 클라가 csv로 텍스트 조회.</summary>
+        /// <summary>부품/선행/지역 아이템의 식별자 (resultType 0/1은 0). 클라가 csv로 텍스트 조회.</summary>
         [Key("itemId")] public int ItemId { get; set; }
         [Key("staminaReward")] public int StaminaReward { get; set; }
         /// <summary>다음 채집 가능까지 쿨타임 (초). 30초 표준, 0이면 클라 기본값 사용</summary>

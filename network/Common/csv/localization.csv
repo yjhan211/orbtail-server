@@ -9,10 +9,10 @@ pool/4211/title,3-1 칠판 확인,Check Class 3-1 Blackboard,3-1の黒板を確�
 pool/4211/success,3-1 칠판에 방송 시간이 남아 있습니다.,The broadcast time remains on the Class 3-1 blackboard.,3-1の黒板に放送時間が残っています。
 pool/4212/title,강당 무대 확인,Check Gym Stage,講堂の舞台を確認
 pool/4212/success,무대 조명 아래에 끊긴 안내 문구가 남아 있습니다.,A broken announcement remains under the stage lights.,舞台照明の下に途切れた案内文が残っています。
-pool/4213/title,1-1 배낭 확인,Check Class 1-1 Backpack,1-1のカバンを確認
+pool/4213/title,보건실 배낭 확인,Check Infirmary Backpack,保健室のカバンを確認
 pool/4213/success,배낭 안에서 작은 호명 소리가 새어 나옵니다.,A small roll-call sound leaks from inside the backpack.,カバンの中から小さな呼名音が漏れています。
-pool/4221/title,1-1 책상 확인,Check Class 1-1 Desk,1-1の机を確認
-pool/4221/success,1-1 책상에 같은 붉은 표시가 남아 있습니다.,The same red mark remains on a Class 1-1 desk.,1-1の机に同じ赤い印が残っています。
+pool/4221/title,보건실 책상 확인,Check Infirmary Desk,保健室の机を確認
+pool/4221/success,보건실 책상에 같은 붉은 표시가 남아 있습니다.,The same red mark remains on an infirmary desk.,保健室の机に同じ赤い印が残っています。
 pool/4222/title,교무 회의록 확인,Check Faculty Meeting Minutes,職員会議録を確認
 pool/4222/success,교무 회의록의 이름 옆에도 같은 표시가 있습니다.,The same mark appears beside the name in the faculty meeting minutes.,職員会議録の名前の横にも同じ印があります。
 pool/4223/title,2-1 청소 도구함 확인,Check Class 2-1 Cleaning Cabinet,2-1の掃除用具入れを確認
@@ -67,7 +67,7 @@ pool/4353/title,도서관 카트 아래 확인,Check Under Library Cart,図書�
 pool/4353/success,카트 아래에서 젖은 종이가 밀려 나옵니다.,A wet piece of paper slides out from under the cart.,カートの下から濡れた紙が押し出されます。
 pool/4361/title,고사실 창틀 안쪽 확인,Check Inside Exam Room Window Frame,試験室の窓枠の内側を確認
 pool/4361/success,창틀 안쪽에 같은 손자국이 두 번 찍혀 있습니다.,The same handprint is stamped twice inside the window frame.,窓枠の内側に同じ手形が二度押されています。
-pool/4362/title,1-1 책상 위 먼지 확인,Check Dust on Class 1-1 Desk,1-1の机上のほこりを確認
+pool/4362/title,보건실 책상 위 먼지 확인,Check Dust on Infirmary Desk,保健室の机上のほこりを確認
 pool/4362/success,책상 위 먼지가 손바닥 모양으로 비어 있습니다.,The dust on the desk is missing in the shape of a palm.,机の上のほこりが手のひらの形に抜けています。
 pool/4363/title,행정실 창가 확인,Check Admin Office Window,事務室の窓際を確認
 pool/4363/success,창가 복합기 위에 같은 먼지 자국이 남아 있습니다.,The same dust mark remains on the copier by the window.,窓際の複合機の上に同じほこり跡が残っています。
