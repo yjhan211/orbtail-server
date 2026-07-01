@@ -1323,12 +1323,13 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        var questions = _interactionChoiceService.GenerateQuestions(
+        var questionSet = _interactionChoiceService.GenerateQuestionSet(
             CurrentMapSubId,
             bot.PlayerId,
             PlayerId.Value,
             bot.CurrentArea,
             _previousArea);
+        var questions = questionSet.Questions;
         var question = questions.FirstOrDefault(q => q.QuestionType == InteractionQuestionType.ASK_LOCATION)
                        ?? questions.FirstOrDefault();
         if (question == null) return;
@@ -1336,11 +1337,16 @@ public partial class GameClientSession
         _activeConversationPlayerId = bot.PlayerId;
         _lastAskedQuestion = question.QuestionType;
         _pendingQuestions = null;
-        _pendingAnswers = _interactionChoiceService.GenerateAnswers(
+        _pendingQuestionContexts = questionSet.Contexts;
+        var answerSet = _interactionChoiceService.GenerateAnswerSet(
             CurrentMapSubId,
             PlayerId.Value,
+            bot.PlayerId,
             _lastAskedQuestion,
-            CurrentArea);
+            CurrentArea,
+            questionSet.Contexts.FirstOrDefault(c => c.QuestionType == _lastAskedQuestion));
+        _pendingAnswers = answerSet.Answers;
+        _pendingAnswerContexts = answerSet.Contexts;
 
         bot.HoldForInteraction(TimeSpan.FromMinutes(5));
         bot.LoopWaitUntil = DateTime.MinValue;
@@ -1958,14 +1964,16 @@ public partial class GameClientSession
         if (!askerSession.PlayerId.HasValue || !answererSession.PlayerId.HasValue) return;
 
         // 질문 선택지 생성
-        var questions = _interactionChoiceService.GenerateQuestions(
+        var questionSet = _interactionChoiceService.GenerateQuestionSet(
             CurrentMapSubId,
             askerSession.PlayerId.Value,
             answererSession.PlayerId.Value,
             CurrentArea,
             answererSession._previousArea);
+        var questions = questionSet.Questions;
 
         askerSession._pendingQuestions = questions;
+        askerSession._pendingQuestionContexts = questionSet.Contexts;
 
         // 질문자에게 선택지 전송
         using var askerPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_CHOICES, askerSession.PlayerId.Value);
@@ -1996,13 +2004,15 @@ public partial class GameClientSession
 
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
         var area = bot?.CurrentArea ?? CurrentArea;
-        var questions = _interactionChoiceService.GenerateQuestions(
+        var questionSet = _interactionChoiceService.GenerateQuestionSet(
             CurrentMapSubId,
             PlayerId.Value,
             botPlayerId,
             area,
             null);
+        var questions = questionSet.Questions;
         _pendingQuestions = questions;
+        _pendingQuestionContexts = questionSet.Contexts;
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_CHOICES, PlayerId.Value);
         var msg = new G_TO_C_INTERACTION_CHOICES
@@ -2026,7 +2036,6 @@ public partial class GameClientSession
         if (CurrentState != PlayerState.Idle || _isSleeping) return false;
         if (bot.IsEliminated || bot.IsInInteraction) return false;
         if (bot.CurrentArea == AreaType.None || bot.CurrentArea != CurrentArea) return false;
-        if (CurrentArea.IsCorridor()) return false;
 
         _activeConversationPlayerId = bot.PlayerId;
         bot.HoldForInteraction(TimeSpan.FromSeconds(13));
@@ -2076,15 +2085,21 @@ public partial class GameClientSession
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var partnerSession = allSessions.FirstOrDefault(s => s.PlayerId == partnerPlayerId);
         if (partnerSession == null) return;
+        var questionContext = _pendingQuestionContexts?
+            .FirstOrDefault(context => context.QuestionType == msg.QuestionType);
 
         // 답변 선택지 생성
-        var answers = _interactionChoiceService.GenerateAnswers(
+        var answerSet = _interactionChoiceService.GenerateAnswerSet(
             CurrentMapSubId,
             partnerPlayerId,
+            PlayerId.Value,
             msg.QuestionType,
-            partnerSession.CurrentArea);
+            partnerSession.CurrentArea,
+            questionContext);
+        var answers = answerSet.Answers;
 
         partnerSession._pendingAnswers = answers;
+        partnerSession._pendingAnswerContexts = answerSet.Contexts;
 
         // 질문 textId/args 찾기 — 양쪽 화면에 같은 질문 표시
         var pendingQuestion = _pendingQuestions?.FirstOrDefault(q => q.QuestionType == msg.QuestionType);
@@ -2115,18 +2130,15 @@ public partial class GameClientSession
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
         if (bot == null) return;
 
-        var manitto = _manittoChainManager.FindManittoOf(CurrentMapSubId, PlayerId.Value);
-        bool isPlayersManitto = manitto?.PlayerId == botPlayerId;
-        var selectedAnswer = ResolveBotInteractionAnswer(bot);
-        var (fallbackTextId, fallbackArgs) = CreateDemoBotAnswer(bot, isPlayersManitto);
-        int answerTextId = selectedAnswer?.TextId ?? fallbackTextId;
-        var answerArgs = selectedAnswer?.Args ?? fallbackArgs;
+        var (selectedAnswer, selectedAnswerContext) = ResolveBotInteractionAnswer(bot);
+        int answerTextId = selectedAnswer?.TextId ?? InteractionChoiceService.EnRouteAnswerTextId;
+        var answerArgs = selectedAnswer?.Args ?? new List<TextArg>();
 
         var result = new G_TO_C_INTERACTION_RESULT
         {
             PartnerPlayerId = botPlayerId,
             QuestionType = _lastAskedQuestion,
-            ClaimedJob = selectedAnswer?.ClaimedJob ?? bot.MyJobTitle,
+            ClaimedJob = selectedAnswer?.ClaimedJob ?? JobTitle.NONE,
             ClaimedArea = bot.CurrentArea,
             IsFakeDetected = false,
             ConflictTextId = 0,
@@ -2139,24 +2151,62 @@ public partial class GameClientSession
         packet.SetBody(MessagePackSerializer.Serialize(result));
         Send(packet);
 
+        LogStatementIfNeeded(botPlayerId, PlayerId.Value, selectedAnswerContext, isBot: true);
+
         _pendingQuestions = null;
+        _pendingQuestionContexts = null;
 
         Logger.LogInformation(
             "DEMO_MODE 봇 심문 응답: BotId={Bot}, Asker={Asker}, AnswerTextId={AnswerTextId}",
             botPlayerId, PlayerId.Value, answerTextId);
     }
 
-    private InteractionAnswer? ResolveBotInteractionAnswer(BotPlayerState bot)
+    private (InteractionAnswer? Answer, InteractionAnswerContext? Context) ResolveBotInteractionAnswer(BotPlayerState bot)
     {
-        var answers = _interactionChoiceService.GenerateAnswers(
+        var questionContext = _pendingQuestionContexts?
+            .FirstOrDefault(context => context.QuestionType == _lastAskedQuestion);
+        var answerSet = _interactionChoiceService.GenerateAnswerSet(
             CurrentMapSubId,
             bot.PlayerId,
+            PlayerId ?? 0,
             _lastAskedQuestion,
-            bot.CurrentArea);
-        if (answers.Count == 0) return null;
+            bot.CurrentArea,
+            questionContext);
+        var answers = answerSet.Answers;
+        if (answers.Count == 0) return (null, null);
 
         int answerIndex = _botPlayerManager.PickAnswerIndex(answers.Count);
-        return answers[Math.Clamp(answerIndex, 0, answers.Count - 1)];
+        answerIndex = Math.Clamp(answerIndex, 0, answers.Count - 1);
+        return (answers[answerIndex], answerSet.Contexts.ElementAtOrDefault(answerIndex));
+    }
+
+    private void LogStatementIfNeeded(
+        long speakerPlayerId,
+        long listenerPlayerId,
+        InteractionAnswerContext? answerContext,
+        bool isBot)
+    {
+        if (answerContext == null) return;
+        if (!string.Equals(answerContext.QuestionId, InteractionChoiceService.NearbyReasonQuestionId,
+                StringComparison.Ordinal))
+            return;
+
+        int roundId = GameRoundStates.TryGetValue(CurrentMapSubId, out var roundState)
+            ? roundState.RoundNumber
+            : 0;
+        var statement = _gameEventLogManager.LogStatement(
+            CurrentMapSubId,
+            roundId,
+            speakerPlayerId,
+            listenerPlayerId,
+            answerContext.Area.ToString(),
+            answerContext.QuestionId,
+            answerContext.AnswerType,
+            answerContext.AnswerText,
+            answerContext.LinkedLogIds,
+            isBot);
+
+        Logger.LogInformation("[STATEMENT] {Description}", statement.Description);
     }
 
     private static (int TextId, List<TextArg> Args) CreateDemoBotAnswer(BotPlayerState bot, bool isPlayersManitto)
@@ -2272,6 +2322,7 @@ public partial class GameClientSession
 
         long askerPlayerId = _activeConversationPlayerId.Value;
         InteractionAnswer selectedAnswer;
+        InteractionAnswerContext? selectedAnswerContext = null;
         if (msg.AnswerIndex >= ManittoTargetAnswerIndexOffset)
         {
             if (!TryCreateManittoTargetAnswer(msg.AnswerIndex, out var manittoTargetAnswer) || manittoTargetAnswer == null)
@@ -2283,6 +2334,7 @@ public partial class GameClientSession
             if (msg.AnswerIndex >= _pendingAnswers.Count)
                 return Task.CompletedTask;
             selectedAnswer = _pendingAnswers[msg.AnswerIndex];
+            selectedAnswerContext = _pendingAnswerContexts?.ElementAtOrDefault(msg.AnswerIndex);
         }
 
         if (BotPlayerManager.IsBotPlayerId(askerPlayerId))
@@ -2299,7 +2351,11 @@ public partial class GameClientSession
                 "DEMO_MODE 타겟 봇 선심문 응답: BotId={Bot}, Answerer={Answerer}, TextId={TextId}",
                 askerPlayerId, PlayerId.Value, selectedAnswer.TextId);
 
+            LogStatementIfNeeded(PlayerId.Value, askerPlayerId, selectedAnswerContext, isBot: false);
+
             _pendingAnswers = null;
+            _pendingAnswerContexts = null;
+            _pendingQuestionContexts = null;
             return Task.CompletedTask;
         }
 
@@ -2358,9 +2414,13 @@ public partial class GameClientSession
         Logger.LogInformation("상호작용 답변: Answerer={Answerer}, Asker={Asker}, ClaimedJob={Job}, Fake={Fake}",
             PlayerId, askerPlayerId, selectedAnswer.ClaimedJob, isFakeDetected);
 
+        LogStatementIfNeeded(PlayerId.Value, askerPlayerId, selectedAnswerContext, isBot: false);
+
         // 선택지 상태 클리어
         _pendingAnswers = null;
+        _pendingAnswerContexts = null;
         askerSession._pendingQuestions = null;
+        askerSession._pendingQuestionContexts = null;
 
         return Task.CompletedTask;
     }

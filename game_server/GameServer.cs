@@ -1520,8 +1520,7 @@ public class GameServer(
         var activeEncounterPlayerIds = players
             .Where(p => !p.IsEliminated
                         && p.CurrentArea == bot.CurrentArea
-                        && bot.CurrentArea != AreaType.None
-                        && !bot.CurrentArea.IsCorridor())
+                        && bot.CurrentArea != AreaType.None)
             .Select(p => p.PlayerId)
             .ToHashSet();
 
@@ -1625,7 +1624,7 @@ public class GameServer(
                 _checklistManager,
                 _areaClosureManager,
                 _traceManager,
-                new InteractionChoiceService(_interactionLogManager, _manittoChainManager),
+                new InteractionChoiceService(_interactionLogManager, _manittoChainManager, _gameEventLogManager),
                 _botPlayerManager,
                 _gameEventLogManager);
 

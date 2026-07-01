@@ -282,3 +282,6 @@ id,category,text_kr,text_en,text_jp
 "12162","7","집착","Obsession","執着"
 "12163","7","정신력이 모두 소모되었습니다.\n이성을 잃고 {PlayerName}을 쫓습니다.","Your sanity is depleted.\nYou lose your reason and chase {PlayerName}.","精神力をすべて失いました。\n理性を失い、{PlayerName}を追います。"
 "12164","7","학생수첩","Notebook","生徒手帳"
+"11045","6","왜 제 근처로 왔나요?","Why did you come near me?","どうして私の近くに来たのですか？"
+"11046","6","이동 중이었습니다.","I was on my way.","移動中でした。"
+"11047","6","우연입니다.","It was a coincidence.","偶然です。"

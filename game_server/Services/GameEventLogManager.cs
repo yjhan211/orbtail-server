@@ -96,6 +96,39 @@ public class GameEventLogManager
         Append(matchingId, "INTERACT", playerId, isBot, description);
     }
 
+    public GameEventEntry LogStatement(
+        long matchingId,
+        int roundId,
+        long speakerPlayerId,
+        long listenerPlayerId,
+        string area,
+        string questionId,
+        string answerType,
+        string answerText,
+        IReadOnlyCollection<long> linkedLogIds,
+        bool isBot)
+    {
+        var linked = linkedLogIds.Distinct().ToList();
+        var linkedText = linked.Count == 0 ? "-" : string.Join(",", linked);
+        var description =
+            $"{FormatPlayer(speakerPlayerId)} -> {FormatPlayer(listenerPlayerId)} {questionId} {answerType} \"{answerText}\" linkedLogs={linkedText}";
+
+        return Append(matchingId, "STATEMENT", speakerPlayerId, isBot, description, entry =>
+        {
+            entry.StatementId = entry.Seq;
+            entry.RoundId = roundId;
+            entry.SpeakerPlayerId = speakerPlayerId;
+            entry.ListenerPlayerId = listenerPlayerId;
+            entry.Area = area;
+            entry.AreaId = area;
+            entry.QuestionId = questionId;
+            entry.AnswerType = answerType;
+            entry.AnswerText = answerText;
+            entry.LinkedLogIds = linked;
+            entry.SaidAtUnixMs = entry.TimestampUnixMs;
+        });
+    }
+
     public void LogClosure(long matchingId, string area)
     {
         Append(matchingId, "CLOSURE", 0, false, $"구역 폐쇄: {area}");
@@ -143,6 +176,8 @@ public class GameEventLogManager
         configure?.Invoke(entry);
         return entry;
     }
+
+    private static string FormatPlayer(long playerId) => $"Player{playerId}";
 
     private sealed class MatchingEventLog
     {
@@ -465,4 +500,15 @@ public class GameEventEntry
     public float? ScoreDelta { get; set; }
     public int? ContributionDelta { get; set; }
     public string? ActivityReason { get; set; }
+
+    public long? StatementId { get; set; }
+    public int? RoundId { get; set; }
+    public long? SpeakerPlayerId { get; set; }
+    public long? ListenerPlayerId { get; set; }
+    public string? AreaId { get; set; }
+    public string? QuestionId { get; set; }
+    public string? AnswerType { get; set; }
+    public string? AnswerText { get; set; }
+    public List<long>? LinkedLogIds { get; set; }
+    public long? SaidAtUnixMs { get; set; }
 }
