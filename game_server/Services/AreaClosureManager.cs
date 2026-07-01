@@ -46,6 +46,14 @@ public class AreaClosureManager
     };
 
     // matchingId → ClosureState
+    // #185 P0 opening compression. Issue wording maps Auditorium -> Gym, Playground -> Ground/Schoolyard.
+    private static readonly AreaType[] InitialClosedAreas =
+    {
+        AreaType.Gym,
+        AreaType.Storage,
+        AreaType.Ground
+    };
+
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();
     private readonly ILogger _logger;
     private readonly MatchingConfigService _matchingConfig;
@@ -98,11 +106,15 @@ public class AreaClosureManager
                 sequence = ApplyJobAwareShuffle(sequence, jobsInMatching);
         }
 
+        sequence = sequence
+            .Where(area => !InitialClosedAreas.Contains(area))
+            .ToList();
+
         var state = new MatchingClosureState
         {
             MatchingId = matchingId,
             ClosureOrder = sequence,
-            ClosedAreas = new HashSet<AreaType>(),
+            ClosedAreas = InitialClosedAreas.ToHashSet(),
             NextClosureIndex = 0,
             GameStartTime = DateTime.UtcNow,
             StartDelaySec = config.StartDelaySec,
