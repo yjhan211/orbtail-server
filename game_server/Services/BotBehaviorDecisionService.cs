@@ -55,32 +55,29 @@ public static class BotBehaviorDecisionService
         if (bot.IsInInteraction) return BotBehaviorDecision.None("bot-in-interaction");
         if (bot.CurrentArea == AreaType.None) return BotBehaviorDecision.None("area-none");
 
-        if (!bot.CurrentArea.IsCorridor())
-        {
-            var sameAreaPlayers = players
-                .Where(p => !p.IsEliminated && p.CurrentArea == bot.CurrentArea)
-                .ToList();
+        var sameAreaPlayers = players
+            .Where(p => !p.IsEliminated && p.CurrentArea == bot.CurrentArea)
+            .ToList();
 
-            var targetPlayer = sameAreaPlayers.FirstOrDefault(p => p.PlayerId == bot.TargetPlayerId);
-            if (targetPlayer != null)
-                return new BotBehaviorDecision
-                {
-                    Kind = BotBehaviorActionKind.Chat,
-                    TargetPlayerId = targetPlayer.PlayerId,
-                    TargetArea = bot.CurrentArea,
-                    Reason = "bot-target-in-area"
-                };
+        var targetPlayer = sameAreaPlayers.FirstOrDefault(p => p.PlayerId == bot.TargetPlayerId);
+        if (targetPlayer != null)
+            return new BotBehaviorDecision
+            {
+                Kind = BotBehaviorActionKind.Chat,
+                TargetPlayerId = targetPlayer.PlayerId,
+                TargetArea = bot.CurrentArea,
+                Reason = "bot-target-in-area"
+            };
 
-            var playerTargetingBot = sameAreaPlayers.FirstOrDefault(p => p.TargetPlayerId == bot.PlayerId);
-            if (playerTargetingBot != null)
-                return new BotBehaviorDecision
-                {
-                    Kind = BotBehaviorActionKind.Chat,
-                    TargetPlayerId = playerTargetingBot.PlayerId,
-                    TargetArea = bot.CurrentArea,
-                    Reason = "player-targets-bot-in-area"
-                };
-        }
+        var playerTargetingBot = sameAreaPlayers.FirstOrDefault(p => p.TargetPlayerId == bot.PlayerId);
+        if (playerTargetingBot != null)
+            return new BotBehaviorDecision
+            {
+                Kind = BotBehaviorActionKind.Chat,
+                TargetPlayerId = playerTargetingBot.PlayerId,
+                TargetArea = bot.CurrentArea,
+                Reason = "player-targets-bot-in-area"
+            };
 
         var knownTarget = players.FirstOrDefault(p => p.PlayerId == bot.TargetPlayerId && !p.IsEliminated);
         if (knownTarget != null

@@ -5,10 +5,39 @@ using network.helpers;
 
 namespace game_server.services;
 
+public sealed class InteractionQuestionSet
+{
+    public List<InteractionQuestion> Questions { get; init; } = new();
+    public List<InteractionQuestionContext> Contexts { get; init; } = new();
+}
+
+public sealed class InteractionQuestionContext
+{
+    public InteractionQuestionType QuestionType { get; init; }
+    public string QuestionId { get; init; } = "";
+    public string QuestionText { get; init; } = "";
+    public AreaType Area { get; init; }
+    public List<long> LinkedLogIds { get; init; } = new();
+}
+
+public sealed class InteractionAnswerSet
+{
+    public List<InteractionAnswer> Answers { get; init; } = new();
+    public List<InteractionAnswerContext> Contexts { get; init; } = new();
+}
+
+public sealed class InteractionAnswerContext
+{
+    public string QuestionId { get; init; } = "";
+    public string QuestionText { get; init; } = "";
+    public string AnswerType { get; init; } = "";
+    public string AnswerText { get; init; } = "";
+    public AreaType Area { get; init; }
+    public List<long> LinkedLogIds { get; init; } = new();
+}
+
 /// <summary>
-///     1:1 상호작용 시 질문/답변 선택지 동적 생성.
-///     GDD 2.4 기반: 활동 로그 기반 동적 생성, 교차 검증, 사칭 발각.
-///     모든 텍스트는 textId + TextArg 스킴으로 직렬화 — 클라가 현재 언어로 변환.
+///     Generates one-on-one interaction questions and answers.
 /// </summary>
 public class InteractionChoiceService
 {
@@ -18,50 +47,100 @@ public class InteractionChoiceService
     public const int DemoStaminaAnswerTextId = 11036;
     public const int DemoRecordAnswerTextId = 11037;
 
+    public const string NearbyReasonQuestionId = "ASK_NEARBY_REASON";
+    public const string EnRouteAnswerType = "EN_ROUTE";
+    public const string ActivityInAreaAnswerType = "ACTIVITY_IN_AREA";
+    public const string EnRouteToAreaAnswerType = "EN_ROUTE_TO_AREA";
+    public const string CoincidenceAnswerType = "COINCIDENCE";
+    public const int NearbyReasonQuestionTextId = 11045;
+    public const int EnRouteAnswerTextId = 11046;
+    public const int CoincidenceAnswerTextId = 11047;
+    public const int ActivityInAreaAnswerTextId = 11048;
+    public const int EnRouteToAreaAnswerTextId = 11049;
+    public const string NearbyReasonQuestionText = "여기엔 무슨 일로 왔나요?";
+    public const string EnRouteAnswerText = "이동 중이었습니다.";
+    public const string CoincidenceAnswerText = "우연입니다.";
+
+    private const int NearbyReasonRecentWindowSeconds = 20;
+    private const int ActivityEvidenceRecentWindowSeconds = 60;
+
     private readonly InteractionLogManager _logManager;
     private readonly ManittoChainManager _chainManager;
+    private readonly GameEventLogManager? _eventLogManager;
 
-    public InteractionChoiceService(InteractionLogManager logManager, ManittoChainManager chainManager)
+    public InteractionChoiceService(
+        InteractionLogManager logManager,
+        ManittoChainManager chainManager,
+        GameEventLogManager? eventLogManager = null)
     {
         _logManager = logManager;
         _chainManager = chainManager;
+        _eventLogManager = eventLogManager;
     }
 
-    /// <summary>
-    ///     질문 선택지 생성 (질문자 기준)
-    ///     카테고리: 직책추궁(항상), 동선추궁(상대 로그 기반), 교차검증(이전 로그), 흔적추궁(구역 흔적)
-    /// </summary>
     public List<InteractionQuestion> GenerateQuestions(
+        long matchingId,
+        long askerPlayerId,
+        long answererPlayerId,
+        AreaType currentArea,
+        AreaType? answererPreviousArea) =>
+        GenerateQuestionSet(matchingId, askerPlayerId, answererPlayerId, currentArea, answererPreviousArea).Questions;
+
+    public InteractionQuestionSet GenerateQuestionSet(
         long matchingId,
         long askerPlayerId,
         long answererPlayerId,
         AreaType currentArea,
         AreaType? answererPreviousArea)
     {
-        if (DemoMode.IsActive) return GenerateDemoQuestions(currentArea);
-
-        var p0Questions = BuildLocationQuestionList(currentArea);
-        if (p0Questions.Count > 0) return p0Questions;
-
-        var questions = new List<InteractionQuestion>();
-
-        // 1. 만남 장소 추궁 (항상 포함)
-        questions.Add(new InteractionQuestion
+        var nearbyReason = TryBuildNearbyReasonContext(matchingId, askerPlayerId, answererPlayerId, currentArea);
+        if (nearbyReason != null)
         {
-            QuestionType = InteractionQuestionType.ASK_LOCATION,
-            TextId = 11020,
-            Args = new List<TextArg> { new() { Type = TextArgType.AREA_TYPE, IntValue = (int)currentArea } },
-            ReferenceArea = currentArea
-        });
+            return new InteractionQuestionSet
+            {
+                Questions = new List<InteractionQuestion>
+                {
+                    new()
+                    {
+                        QuestionType = InteractionQuestionType.ASK_NEARBY_REASON,
+                        TextId = NearbyReasonQuestionTextId,
+                        ReferenceArea = currentArea
+                    }
+                },
+                Contexts = new List<InteractionQuestionContext> { nearbyReason }
+            };
+        }
 
-        // 2. 직책 추궁 (항상 포함)
-        questions.Add(new InteractionQuestion
+        return new InteractionQuestionSet();
+    }
+
+    public List<InteractionQuestion> GenerateDemoQuestions(AreaType currentArea)
+    {
+        return BuildLocationQuestionList(currentArea, DemoQuestionTextId);
+    }
+
+    private List<InteractionQuestion> BuildStandardQuestionList(
+        long matchingId,
+        long askerPlayerId,
+        long answererPlayerId,
+        AreaType currentArea)
+    {
+        var questions = new List<InteractionQuestion>
         {
-            QuestionType = InteractionQuestionType.ASK_JOB,
-            TextId = 11021
-        });
+            new()
+            {
+                QuestionType = InteractionQuestionType.ASK_LOCATION,
+                TextId = 11020,
+                Args = new List<TextArg> { new() { Type = TextArgType.AREA_TYPE, IntValue = (int)currentArea } },
+                ReferenceArea = currentArea
+            },
+            new()
+            {
+                QuestionType = InteractionQuestionType.ASK_JOB,
+                TextId = 11021
+            }
+        };
 
-        // 3. 교차 검증 (이전 조우에서 상대가 주장한 직책과 충돌 가능성)
         var askerLogs = _logManager.GetLogs(matchingId, askerPlayerId);
         var answererPreviousClaim = askerLogs
             .Where(l => l.OtherPlayerId == answererPlayerId)
@@ -71,33 +150,24 @@ public class InteractionChoiceService
         if (answererPreviousClaim != null)
         {
             var sameClaim = askerLogs
-                .Where(l => l.OtherPlayerId != answererPlayerId &&
-                            l.ClaimedJobTitle == answererPreviousClaim.ClaimedJobTitle)
-                .FirstOrDefault();
+                .FirstOrDefault(l => l.OtherPlayerId != answererPlayerId &&
+                                     l.ClaimedJobTitle == answererPreviousClaim.ClaimedJobTitle);
 
-            var jobArg = new TextArg { Type = TextArgType.JOB_TITLE, IntValue = (int)answererPreviousClaim.ClaimedJobTitle };
-            if (sameClaim != null)
+            var jobArg = new TextArg
             {
-                questions.Add(new InteractionQuestion
-                {
-                    QuestionType = InteractionQuestionType.CROSS_CHECK,
-                    TextId = 11022,
-                    Args = new List<TextArg> { jobArg },
-                    ReferencePlayerId = sameClaim.OtherPlayerId
-                });
-            }
-            else
+                Type = TextArgType.JOB_TITLE,
+                IntValue = (int)answererPreviousClaim.ClaimedJobTitle
+            };
+
+            questions.Add(new InteractionQuestion
             {
-                questions.Add(new InteractionQuestion
-                {
-                    QuestionType = InteractionQuestionType.CROSS_CHECK,
-                    TextId = 11023,
-                    Args = new List<TextArg> { jobArg }
-                });
-            }
+                QuestionType = InteractionQuestionType.CROSS_CHECK,
+                TextId = sameClaim != null ? 11022 : 11023,
+                Args = new List<TextArg> { jobArg },
+                ReferencePlayerId = sameClaim?.OtherPlayerId ?? 0
+            });
         }
 
-        // 4. 흔적 추궁
         questions.Add(new InteractionQuestion
         {
             QuestionType = InteractionQuestionType.ASK_TRACE,
@@ -105,11 +175,6 @@ public class InteractionChoiceService
         });
 
         return questions;
-    }
-
-    public List<InteractionQuestion> GenerateDemoQuestions(AreaType currentArea)
-    {
-        return BuildLocationQuestionList(currentArea, DemoQuestionTextId);
     }
 
     private static List<InteractionQuestion> BuildLocationQuestionList(AreaType currentArea, int textId = 11020)
@@ -126,57 +191,291 @@ public class InteractionChoiceService
         };
     }
 
-    /// <summary>
-    ///     답변 선택지 생성 (답변자 기준)
-    ///     진실: 실제 직책 / 거짓: 시스템이 제안하는 가짜 직책
-    /// </summary>
     public List<InteractionAnswer> GenerateAnswers(
         long matchingId,
         long answererPlayerId,
         InteractionQuestionType questionType,
+        AreaType currentArea) =>
+        GenerateAnswerSet(matchingId, answererPlayerId, 0, questionType, currentArea, null).Answers;
+
+    public InteractionAnswerSet GenerateAnswerSet(
+        long matchingId,
+        long answererPlayerId,
+        long askerPlayerId,
+        InteractionQuestionType questionType,
+        AreaType currentArea,
+        InteractionQuestionContext? questionContext,
+        AreaType? answererDestinationArea = null,
+        int answererDestinationTaskId = 0)
+    {
+        if (questionType == InteractionQuestionType.ASK_NEARBY_REASON)
+        {
+            var context = questionContext
+                          ?? TryBuildNearbyReasonContext(matchingId, askerPlayerId, answererPlayerId, currentArea)
+                          ?? new InteractionQuestionContext
+                          {
+                              QuestionType = InteractionQuestionType.ASK_NEARBY_REASON,
+                              QuestionId = NearbyReasonQuestionId,
+                              QuestionText = NearbyReasonQuestionText,
+                              Area = currentArea
+                          };
+
+            var nearbyAnswers = new List<InteractionAnswer>();
+            var answerContexts = new List<InteractionAnswerContext>();
+
+            var evidenceAnswer = TryBuildActivityAnswer(
+                                     matchingId,
+                                     answererPlayerId,
+                                     currentArea,
+                                     context)
+                                 ?? TryBuildCurrentAreaDestinationActivityAnswer(
+                                     answererDestinationArea,
+                                     answererDestinationTaskId,
+                                     currentArea,
+                                     context)
+                                 ?? TryBuildDestinationAnswer(
+                                     answererDestinationArea,
+                                     currentArea,
+                                     context);
+
+            if (evidenceAnswer != null)
+            {
+                nearbyAnswers.Add(evidenceAnswer.Answer);
+                answerContexts.Add(evidenceAnswer.Context);
+            }
+
+            nearbyAnswers.Add(new InteractionAnswer
+            {
+                IsTrue = false,
+                ClaimedJob = JobTitle.NONE,
+                TextId = CoincidenceAnswerTextId
+            });
+            answerContexts.Add(new InteractionAnswerContext
+            {
+                QuestionId = NearbyReasonQuestionId,
+                QuestionText = context.QuestionText,
+                AnswerType = CoincidenceAnswerType,
+                AnswerText = CoincidenceAnswerText,
+                Area = context.Area,
+                LinkedLogIds = context.LinkedLogIds.ToList()
+            });
+
+            return new InteractionAnswerSet
+            {
+                Answers = nearbyAnswers,
+                Contexts = answerContexts
+            };
+        }
+
+        return new InteractionAnswerSet();
+    }
+
+    private sealed class EvidenceAnswer
+    {
+        public InteractionAnswer Answer { get; init; } = new();
+        public InteractionAnswerContext Context { get; init; } = new();
+    }
+
+    private EvidenceAnswer? TryBuildActivityAnswer(
+        long matchingId,
+        long answererPlayerId,
+        AreaType currentArea,
+        InteractionQuestionContext context)
+    {
+        if (_eventLogManager == null) return null;
+
+        string areaName = currentArea.ToString();
+        long cutoffUnixMs = DateTimeOffset.UtcNow
+            .AddSeconds(-ActivityEvidenceRecentWindowSeconds)
+            .ToUnixTimeMilliseconds();
+
+        var activityLog = _eventLogManager.GetRecent(matchingId, 200)
+            .Where(entry => entry.TimestampUnixMs >= cutoffUnixMs)
+            .Where(entry => entry.ActorPlayerId == answererPlayerId)
+            .Where(entry => string.Equals(entry.Area, areaName, StringComparison.Ordinal))
+            .Where(entry => entry.Type == "SCHOOL_ACTIVITY_START" ||
+                            entry.Type == "SCHOOL_ACTIVITY_COMPLETE")
+            .OrderByDescending(entry => entry.TimestampUnixMs)
+            .FirstOrDefault();
+
+        if (activityLog == null) return null;
+
+        string activityName = ResolveActivityName(activityLog);
+        var linkedLogIds = MergeLinkedLogIds(context.LinkedLogIds, activityLog);
+
+        return new EvidenceAnswer
+        {
+            Answer = new InteractionAnswer
+            {
+                IsTrue = false,
+                ClaimedJob = JobTitle.NONE,
+                TextId = ActivityInAreaAnswerTextId,
+                Args = new List<TextArg> { new() { Type = TextArgType.RAW_STRING, StringValue = activityName } }
+            },
+            Context = new InteractionAnswerContext
+            {
+                QuestionId = NearbyReasonQuestionId,
+                QuestionText = context.QuestionText,
+                AnswerType = ActivityInAreaAnswerType,
+                AnswerText = $"{activityName} 중이었습니다.",
+                Area = context.Area,
+                LinkedLogIds = linkedLogIds
+            }
+        };
+    }
+
+    private static EvidenceAnswer? TryBuildCurrentAreaDestinationActivityAnswer(
+        AreaType? answererDestinationArea,
+        int answererDestinationTaskId,
+        AreaType currentArea,
+        InteractionQuestionContext context)
+    {
+        if (!answererDestinationArea.HasValue || answererDestinationArea.Value != currentArea)
+            return null;
+        if (answererDestinationTaskId <= 0)
+            return null;
+
+        var task = GameChecklistData.GetTask(answererDestinationTaskId);
+        if (task == null)
+            return null;
+
+        string activityName = ResolveActivityName(task);
+        return new EvidenceAnswer
+        {
+            Answer = new InteractionAnswer
+            {
+                IsTrue = false,
+                ClaimedJob = JobTitle.NONE,
+                TextId = ActivityInAreaAnswerTextId,
+                Args = new List<TextArg> { new() { Type = TextArgType.RAW_STRING, StringValue = activityName } }
+            },
+            Context = new InteractionAnswerContext
+            {
+                QuestionId = NearbyReasonQuestionId,
+                QuestionText = context.QuestionText,
+                AnswerType = ActivityInAreaAnswerType,
+                AnswerText = $"{activityName} 중이었습니다.",
+                Area = context.Area,
+                LinkedLogIds = context.LinkedLogIds.ToList()
+            }
+        };
+    }
+
+    private static EvidenceAnswer? TryBuildDestinationAnswer(
+        AreaType? answererDestinationArea,
+        AreaType currentArea,
+        InteractionQuestionContext context)
+    {
+        if (!answererDestinationArea.HasValue || answererDestinationArea.Value == AreaType.None)
+            return null;
+
+        AreaType destination = answererDestinationArea.Value;
+        string destinationName = GameAreaNameData.Get(destination);
+
+        return new EvidenceAnswer
+        {
+            Answer = new InteractionAnswer
+            {
+                IsTrue = false,
+                ClaimedJob = JobTitle.NONE,
+                TextId = EnRouteToAreaAnswerTextId,
+                Args = new List<TextArg> { new() { Type = TextArgType.AREA_TYPE, IntValue = (int)destination } }
+            },
+            Context = new InteractionAnswerContext
+            {
+                QuestionId = NearbyReasonQuestionId,
+                QuestionText = context.QuestionText,
+                AnswerType = EnRouteToAreaAnswerType,
+                AnswerText = $"{destinationName}(으)로 이동 중이었습니다.",
+                Area = context.Area,
+                LinkedLogIds = context.LinkedLogIds.ToList()
+            }
+        };
+    }
+
+    private static string ResolveActivityName(GameEventEntry activityLog)
+    {
+        if (!string.IsNullOrWhiteSpace(activityLog.ActivityReason))
+            return activityLog.ActivityReason.Trim();
+
+        if (activityLog.TaskId.HasValue)
+        {
+            var task = GameChecklistData.GetTask(activityLog.TaskId.Value);
+            if (!string.IsNullOrWhiteSpace(task?.TitleKr))
+                return task.TitleKr.Trim();
+        }
+
+        return "교내 활동";
+    }
+
+    private static string ResolveActivityName(ChecklistTaskData task)
+    {
+        if (!string.IsNullOrWhiteSpace(task.TitleKr))
+            return task.TitleKr.Trim();
+
+        return "교내 활동";
+    }
+
+    private static List<long> MergeLinkedLogIds(IEnumerable<long> baseLogIds, GameEventEntry extraLog)
+    {
+        var linkedLogIds = new List<long>();
+        linkedLogIds.AddRange(baseLogIds);
+        if (extraLog.SourceEventSeq.HasValue) linkedLogIds.Add(extraLog.SourceEventSeq.Value);
+        linkedLogIds.Add(extraLog.Seq);
+        return linkedLogIds.Distinct().ToList();
+    }
+
+    private InteractionQuestionContext? TryBuildNearbyReasonContext(
+        long matchingId,
+        long askerPlayerId,
+        long answererPlayerId,
         AreaType currentArea)
     {
-        var answers = new List<InteractionAnswer>();
-        var link = _chainManager.GetLink(matchingId, answererPlayerId);
-        if (link == null) return answers;
+        if (askerPlayerId == 0 || answererPlayerId == 0 || askerPlayerId == answererPlayerId) return null;
+        if (currentArea == AreaType.None) return null;
+        if (_eventLogManager == null)
+            return null;
 
-        JobTitle realJob = link.MyJobTitle;
+        string areaName = currentArea.ToString();
+        long cutoffUnixMs = DateTimeOffset.UtcNow
+            .AddSeconds(-NearbyReasonRecentWindowSeconds)
+            .ToUnixTimeMilliseconds();
 
-        // 1. 직책 응답 (50% 확률로 진실 또는 사칭)
-        bool tellTruth = Random.Shared.Next(2) == 0;
-        JobTitle claimedJob = tellTruth
-            ? realJob
-            : Enum.GetValues<JobTitle>()
-                .Where(j => j != JobTitle.NONE && j != realJob)
-                .OrderBy(_ => Random.Shared.Next())
-                .First();
-        answers.Add(new InteractionAnswer
+        var recentAreaLogs = _eventLogManager.GetRecent(matchingId, 200)
+            .Where(entry => entry.TimestampUnixMs >= cutoffUnixMs)
+            .Where(entry => string.Equals(entry.Area, areaName, StringComparison.Ordinal))
+            .ToList();
+
+        var relevantLogs = recentAreaLogs
+            .Where(entry =>
+                (entry.ActorPlayerId == answererPlayerId &&
+                 ((entry.Type == "ENCOUNTER" && entry.EncounteredPlayerIds?.Contains(askerPlayerId) == true)
+                  || (entry.Type == "FOLLOW_IN_CANDIDATE" && entry.RecentPlayerIds?.Contains(askerPlayerId) == true)))
+                || (entry.ActorPlayerId == askerPlayerId &&
+                    ((entry.Type == "ENCOUNTER" && entry.EncounteredPlayerIds?.Contains(answererPlayerId) == true)
+                     || (entry.Type == "FOLLOW_IN_CANDIDATE" &&
+                         entry.RecentPlayerIds?.Contains(answererPlayerId) == true))))
+            .OrderBy(entry => entry.TimestampUnixMs)
+            .ToList();
+
+        if (relevantLogs.Count == 0)
+            return null;
+
+        var linkedLogIds = new List<long>();
+        foreach (var log in relevantLogs)
         {
-            IsTrue = tellTruth,
-            ClaimedJob = claimedJob,
-            TextId = 11030,
-            Args = new List<TextArg> { CreateAreaLootItemArg(currentArea) }
-        });
+            if (log.SourceEventSeq.HasValue) linkedLogIds.Add(log.SourceEventSeq.Value);
+            linkedLogIds.Add(log.Seq);
+        }
 
-        // 2. 알리바이
-        answers.Add(new InteractionAnswer
+        return new InteractionQuestionContext
         {
-            IsTrue = false,
-            ClaimedJob = JobTitle.NONE,
-            TextId = 11031
-        });
-
-        if (DemoMode.IsActive) return answers;
-
-        // 3. 자백
-        answers.Add(new InteractionAnswer
-        {
-            IsTrue = false,
-            ClaimedJob = JobTitle.NONE,
-            TextId = 11032
-        });
-
-        return answers;
+            QuestionType = InteractionQuestionType.ASK_NEARBY_REASON,
+            QuestionId = NearbyReasonQuestionId,
+            QuestionText = NearbyReasonQuestionText,
+            Area = currentArea,
+            LinkedLogIds = linkedLogIds.Distinct().ToList()
+        };
     }
 
     private static TextArg CreateAreaLootItemArg(AreaType currentArea)
@@ -189,10 +488,6 @@ public class InteractionChoiceService
             : new TextArg { Type = TextArgType.RAW_STRING, StringValue = "단서" };
     }
 
-    /// <summary>
-    ///     답변 처리: 로그 기록 + 사칭 발각 체크
-    ///     반환: (사칭 발각 여부, 충돌 정보 textId — 0이면 없음, 충돌 args)
-    /// </summary>
     public (bool isFakeDetected, int conflictTextId, List<TextArg> conflictArgs) ProcessAnswer(
         long matchingId,
         long askerPlayerId,
@@ -201,13 +496,11 @@ public class InteractionChoiceService
         AreaType area,
         bool isTruthful)
     {
-        // 로그 기록 (질문자 관점: 상대가 이 직책을 주장했다)
         _logManager.AddLog(matchingId, askerPlayerId, answererPlayerId, claimedJob, area);
 
         if (claimedJob == JobTitle.NONE)
             return (false, 0, new List<TextArg>());
 
-        // 사칭 발각 체크: 같은 직책을 주장하는 다른 플레이어가 있는지
         var duplicates = _logManager.DetectDuplicateClaims(matchingId);
         var conflict = duplicates.FirstOrDefault(d => d.job == claimedJob && d.claimers.Count > 1);
         if (conflict.claimers != null && conflict.claimers.Contains(answererPlayerId))

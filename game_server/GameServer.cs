@@ -837,10 +837,20 @@ public class GameServer(
             }
 
             // #134 — 봇 RNG progress 시작/종료 → 같은 영역 인간 세션에 EXPLORE_START/END (봇 EXPLORE_1 애니 동기화)
-            foreach (var (botId, taskId, awardedScore, awardedContribution) in missionResult.CompletedChecklistActivities)
-                _gameEventLogManager.LogMission(matchingId, botId,
-                    $"Checklist task completed: TaskId={taskId}, Score+{awardedScore:0.##}, Contribution+{awardedContribution}",
-                    isBot: true);
+            foreach (var (botId, taskId, interactId, area) in missionResult.StartedChecklistActivities)
+            {
+                var task = GameChecklistData.GetTask(taskId);
+                _gameEventLogManager.LogSchoolActivityStart(matchingId, botId, taskId,
+                    area.ToString(), interactId, task?.TitleKr ?? "", isBot: true);
+            }
+
+            foreach (var (botId, taskId, interactId, area, awardedScore, awardedContribution) in missionResult.CompletedChecklistActivities)
+            {
+                var task = GameChecklistData.GetTask(taskId);
+                _gameEventLogManager.LogSchoolActivityComplete(matchingId, botId, taskId,
+                    area.ToString(), interactId, awardedScore, awardedContribution,
+                    task?.TitleKr ?? "", isBot: true);
+            }
 
             if (missionResult.BotExploreStarts.Count > 0)
                 BroadcastBotExploreStarts(matchingId, missionResult.BotExploreStarts, activeSessions);
@@ -1203,7 +1213,6 @@ public class GameServer(
         var matchingSessions = activeSessions
             .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
             .ToList();
-        if (matchingSessions.Count == 0) return;
 
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
@@ -1213,6 +1222,8 @@ public class GameServer(
 
             _gameEventLogManager.LogMove(matchingId, ev.BotPlayerId,
                 ev.FromArea.ToString(), ev.ToArea.ToString(), isBot: true);
+
+            if (matchingSessions.Count == 0) return;
 
             // 1) 이전 영역의 인간들에게 LEAVE
             using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(ev.BotPlayerId);
@@ -1233,6 +1244,10 @@ public class GameServer(
                     session.Send(enterPacket);
                 }
             }
+        }
+        else if (matchingSessions.Count == 0)
+        {
+            return;
         }
 
         // 3) 새 영역의 인간들에게 MOVE (텔레포트 또는 wander)
@@ -1433,8 +1448,7 @@ public class GameServer(
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
                     BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
-                if (EnableBotInitiatedInteractions)
-                    StartTargetBotInterrogations(matchingId, activeSessions);
+                StartTargetBotInterrogations(matchingId, activeSessions);
             }
         }
         catch (Exception ex)
@@ -1447,8 +1461,8 @@ public class GameServer(
         }
     }
 
-    private static readonly bool EnableBotInitiatedInteractions = false;
     private static readonly TimeSpan TargetBotInterrogationDelay = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan BotToBotStatementHold = TimeSpan.FromSeconds(2);
 
     private void StartTargetBotInterrogations(long matchingId, List<GameClientSession> activeSessions)
     {
@@ -1457,71 +1471,148 @@ public class GameServer(
             .Where(s => s.CurrentMapSubId == matchingId)
             .ToList();
 
-        var playerSnapshots = matchingSessions
-            .Where(s => s.PlayerId.HasValue)
-            .Select(s => new BotBehaviorPlayerSnapshot
-            {
-                PlayerId = s.PlayerId!.Value,
-                TargetPlayerId = s.TargetPlayerId,
-                CurrentArea = s.CurrentArea,
-                IsEliminated = s.IsEliminated
-            })
-            .ToList();
-
-        var mapId = _botPlayerManager.GetMatchingMapId(matchingId);
         var bots = _botPlayerManager.GetBots(matchingId)
             .Where(b => !b.IsEliminated)
             .ToList();
 
         foreach (var bot in bots)
         {
-            PruneEndedBotEncounters(bot, playerSnapshots);
-
-            var decision = BotBehaviorDecisionService.Decide(
-                bot,
-                mapId,
-                playerSnapshots,
-                area => _areaClosureManager.IsAreaClosed(matchingId, area));
-
-            if (decision.Kind != BotBehaviorActionKind.Chat) continue;
-            var session = matchingSessions.FirstOrDefault(s => s.PlayerId == decision.TargetPlayerId);
-            if (session == null || session.IsEliminated || !session.PlayerId.HasValue) continue;
-
-            long playerId = session.PlayerId.Value;
-            if (bot.TargetInterrogationRequestedInEncounterPlayerIds.Contains(playerId)) continue;
-
-            if (!bot.TargetEncounterStartedAtByPlayerId.TryGetValue(playerId, out var encounterStartedAt))
+            long guardedPlayerId = bot.PresenceBookmarkPlayerId;
+            if (guardedPlayerId == 0 || guardedPlayerId == bot.PlayerId)
             {
-                bot.TargetEncounterStartedAtByPlayerId[playerId] = now;
+                PruneGuardedBotEncounter(bot, guardedPlayerId, false);
+                continue;
+            }
+
+            if (bot.IsInInteraction || bot.CurrentArea == AreaType.None)
+                continue;
+
+            var targetSession = matchingSessions.FirstOrDefault(s => s.PlayerId == guardedPlayerId);
+            var targetBot = targetSession == null
+                ? bots.FirstOrDefault(b => b.PlayerId == guardedPlayerId)
+                : null;
+
+            bool targetSameArea =
+                targetSession != null &&
+                !targetSession.IsEliminated &&
+                targetSession.CurrentArea == bot.CurrentArea;
+            if (!targetSameArea)
+                targetSameArea =
+                    targetBot is { IsEliminated: false } &&
+                    !targetBot.IsInInteraction &&
+                    targetBot.CurrentArea == bot.CurrentArea;
+
+            PruneGuardedBotEncounter(bot, guardedPlayerId, targetSameArea);
+            if (!targetSameArea) continue;
+            if (bot.TargetInterrogationRequestedInEncounterPlayerIds.Contains(guardedPlayerId)) continue;
+
+            if (!bot.TargetEncounterStartedAtByPlayerId.TryGetValue(guardedPlayerId, out var encounterStartedAt))
+            {
+                bot.TargetEncounterStartedAtByPlayerId[guardedPlayerId] = now;
                 continue;
             }
 
             if (now - encounterStartedAt < TargetBotInterrogationDelay) continue;
-            if (bot.IsInInteraction) continue;
 
-            if (!session.TryStartTargetBotInterrogation(bot)) continue;
-            bot.TargetEncounterStartedAtByPlayerId[playerId] = now;
-            bot.TargetInterrogationRequestedInEncounterPlayerIds.Add(playerId);
+            bool started = targetSession != null
+                ? targetSession.TryStartTargetBotInterrogation(bot)
+                : targetBot != null && TryCreateBotToBotStatement(matchingId, bot, targetBot);
+            if (!started) continue;
+
+            bot.TargetEncounterStartedAtByPlayerId[guardedPlayerId] = now;
+            bot.TargetInterrogationRequestedInEncounterPlayerIds.Add(guardedPlayerId);
         }
     }
 
-    private static void PruneEndedBotEncounters(BotPlayerState bot, IReadOnlyList<BotBehaviorPlayerSnapshot> players)
+    private static void PruneGuardedBotEncounter(BotPlayerState bot, long guardedPlayerId, bool targetSameArea)
     {
-        var activeEncounterPlayerIds = players
-            .Where(p => !p.IsEliminated
-                        && p.CurrentArea == bot.CurrentArea
-                        && bot.CurrentArea != AreaType.None
-                        && !bot.CurrentArea.IsCorridor())
-            .Select(p => p.PlayerId)
-            .ToHashSet();
-
         foreach (long playerId in bot.TargetEncounterStartedAtByPlayerId.Keys.ToList())
-            if (!activeEncounterPlayerIds.Contains(playerId))
+            if (playerId != guardedPlayerId || !targetSameArea)
                 bot.TargetEncounterStartedAtByPlayerId.Remove(playerId);
 
         foreach (long playerId in bot.TargetInterrogationRequestedInEncounterPlayerIds.ToList())
-            if (!activeEncounterPlayerIds.Contains(playerId))
+            if (playerId != guardedPlayerId || !targetSameArea)
                 bot.TargetInterrogationRequestedInEncounterPlayerIds.Remove(playerId);
+    }
+
+    private bool TryCreateBotToBotStatement(long matchingId, BotPlayerState askerBot, BotPlayerState answererBot)
+    {
+        if (askerBot.PlayerId == answererBot.PlayerId) return false;
+        if (askerBot.CurrentArea == AreaType.None || askerBot.CurrentArea != answererBot.CurrentArea) return false;
+
+        var interactionChoiceService = new InteractionChoiceService(
+            _interactionLogManager,
+            _manittoChainManager,
+            _gameEventLogManager);
+
+        var questionSet = interactionChoiceService.GenerateQuestionSet(
+            matchingId,
+            askerBot.PlayerId,
+            answererBot.PlayerId,
+            askerBot.CurrentArea,
+            null);
+        var question = questionSet.Questions.FirstOrDefault(q => q.QuestionType == InteractionQuestionType.ASK_NEARBY_REASON)
+                       ?? questionSet.Questions.FirstOrDefault();
+        if (question == null) return false;
+
+        var answerTask = ResolveBotAnswerTask(matchingId, answererBot);
+        var answerSet = interactionChoiceService.GenerateAnswerSet(
+            matchingId,
+            answererBot.PlayerId,
+            askerBot.PlayerId,
+            question.QuestionType,
+            answererBot.CurrentArea,
+            questionSet.Contexts.FirstOrDefault(c => c.QuestionType == question.QuestionType),
+            ResolveTaskArea(answerTask),
+            answerTask?.TaskId ?? 0);
+        if (answerSet.Answers.Count == 0) return false;
+
+        int answerIndex = _botPlayerManager.PickAnswerIndex(answerSet.Answers.Count);
+        answerIndex = Math.Clamp(answerIndex, 0, answerSet.Answers.Count - 1);
+        var answerContext = answerSet.Contexts.ElementAtOrDefault(answerIndex);
+        if (answerContext == null) return false;
+
+        int roundId = GameClientSession.GetRoundSnapshot(matchingId)?.RoundNumber ?? 0;
+        var statement = _gameEventLogManager.LogStatement(
+            matchingId,
+            roundId,
+            answererBot.PlayerId,
+            askerBot.PlayerId,
+            answerContext.Area.ToString(),
+            answerContext.QuestionId,
+            answerContext.QuestionText,
+            answerContext.AnswerType,
+            answerContext.AnswerText,
+            answerContext.LinkedLogIds,
+            isBot: true);
+
+        askerBot.HoldForInteraction(BotToBotStatementHold);
+        answererBot.HoldForInteraction(BotToBotStatementHold);
+
+        logger.LogInformation(
+            "[BOT_STATEMENT] MatchingId={MatchingId}, Asker={Asker}, Answerer={Answerer}, AnswerType={AnswerType}, Description={Description}",
+            matchingId, askerBot.PlayerId, answererBot.PlayerId, answerContext.AnswerType, statement.Description);
+        return true;
+    }
+
+    private ChecklistTaskData? ResolveBotAnswerTask(long matchingId, BotPlayerState bot)
+    {
+        if (bot.PendingChecklistTaskId > 0)
+        {
+            var pendingTask = GameChecklistData.GetTask(bot.PendingChecklistTaskId);
+            if (pendingTask != null)
+                return pendingTask;
+        }
+
+        return _checklistManager.GetNextActiveGeneralInteractTask(matchingId, bot.PlayerId);
+    }
+
+    private static AreaType? ResolveTaskArea(ChecklistTaskData? task)
+    {
+        if (task?.AreaType > 0 && Enum.IsDefined(typeof(AreaType), task.AreaType))
+            return (AreaType)task.AreaType;
+
+        return null;
     }
 
     private void StartCorridorStopCheckTimer()
@@ -1615,7 +1706,7 @@ public class GameServer(
                 _checklistManager,
                 _areaClosureManager,
                 _traceManager,
-                new InteractionChoiceService(_interactionLogManager, _manittoChainManager),
+                new InteractionChoiceService(_interactionLogManager, _manittoChainManager, _gameEventLogManager),
                 _botPlayerManager,
                 _gameEventLogManager);
 
@@ -1984,6 +2075,8 @@ public class GameServer(
                 continue;
 
             state.SettlementNominations[bot.PlayerId] = targetPlayerId;
+            ApplyHeadlessBotSettlementBookmark(matchingId, state.RoundNumber, bot, targetPlayerId,
+                candidate != null ? "suspicion" : "fallback", candidate);
             if (candidate != null)
             {
                 _gameEventLogManager.LogSystem(matchingId,
@@ -1995,6 +2088,18 @@ public class GameServer(
                     $"Headless bot nomination fallback: Bot={bot.PlayerId}, Target={targetPlayerId}");
             }
         }
+    }
+
+    private void ApplyHeadlessBotSettlementBookmark(long matchingId, int roundNumber, BotPlayerState bot,
+        long targetPlayerId, string reason, PresenceNominationCandidate? candidate)
+    {
+        if (targetPlayerId == 0 || targetPlayerId == bot.PlayerId) return;
+
+        bot.SetPresenceBookmark(targetPlayerId);
+        _gameEventLogManager.LogSystem(matchingId,
+            candidate != null
+                ? $"Headless bot guard target set: Round={roundNumber}, Bot={bot.PlayerId}, Target={targetPlayerId}, Reason={reason}, Score={candidate.Score:0.##}, Presence={candidate.Presence:0.##}, TotalOverlap={candidate.TotalOverlapSeconds}, FollowEntries={candidate.EnterAfterObserverCount}"
+                : $"Headless bot guard target set: Round={roundNumber}, Bot={bot.PlayerId}, Target={targetPlayerId}, Reason={reason}");
     }
 
     private static long ResolveFallbackBotNominationTarget(

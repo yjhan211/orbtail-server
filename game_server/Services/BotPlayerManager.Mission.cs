@@ -102,6 +102,7 @@ public partial class BotPlayerManager
             bot.ChecklistActivityProgressStartTime = now;
             ApplyBotStaminaCost(bot, Math.Max(0, task.StaminaCost));
             result.BotExploreStarts.Add((bot.PlayerId, info.Id, bot.CurrentArea));
+            result.StartedChecklistActivities.Add((bot.PlayerId, task.TaskId, info.Id, bot.CurrentArea));
             _logger.LogInformation(
                 "Bot checklist activity started: BotId={Bot}, TaskId={TaskId}, InteractId={InteractId}, Area={Area}",
                 bot.PlayerId, task.TaskId, info.Id, bot.CurrentArea);
@@ -124,6 +125,8 @@ public partial class BotPlayerManager
             result.CompletedChecklistActivities.Add((
                 bot.PlayerId,
                 task.TaskId,
+                info.Id,
+                bot.CurrentArea,
                 completion.AwardedScore,
                 completion.AwardedContribution));
             _logger.LogInformation(
@@ -632,7 +635,11 @@ public class BotMissionTickResult
     public List<(long botPlayerId, int partId)> CollectedParts { get; } = new();
     public List<(long botPlayerId, int shareGroup)> CollectedPrereqs { get; } = new();
     public List<(long botPlayerId, int outputPartId, bool isRaceComplete)> Combined { get; } = new();
-    public List<(long botPlayerId, int taskId, float awardedScore, int awardedContribution)>
+    public List<(long botPlayerId, int taskId, int interactId, AreaType area)>
+        StartedChecklistActivities
+    { get; } = new();
+
+    public List<(long botPlayerId, int taskId, int interactId, AreaType area, float awardedScore, int awardedContribution)>
         CompletedChecklistActivities
     { get; } = new();
 

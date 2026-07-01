@@ -759,7 +759,7 @@ public class MatchingManager : IMatchingManager
         return new PlayerInfo
         {
             PlayerId = playerId,
-            Name = $"Bot{Math.Abs(playerId)}",
+            Name = $"Player{Math.Abs(playerId)}",
             WearItemIdList = BuildBotRosterWearItems(playerId)
         };
     }

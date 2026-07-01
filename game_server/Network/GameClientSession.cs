@@ -21,8 +21,8 @@ public partial class GameClientSession : SessionBase
 {
     private const int MaxStamina = 100;
     private const int MaxCorruption = 100;
-    private const int InitialStamina = MaxStamina / 2;
-    private const int InitialCorruption = MaxCorruption / 2;
+    private const int InitialStamina = MaxStamina;
+    private const int InitialCorruption = 0;
 
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
@@ -61,7 +61,9 @@ public partial class GameClientSession : SessionBase
 
     // 마니또 상호작용 선택지 상태
     private List<InteractionQuestion>? _pendingQuestions;     // 질문자의 선택지
+    private List<InteractionQuestionContext>? _pendingQuestionContexts;
     private List<InteractionAnswer>? _pendingAnswers;         // 답변자의 선택지
+    private List<InteractionAnswerContext>? _pendingAnswerContexts;
     private InteractionQuestionType _lastAskedQuestion;       // 마지막 질문 유형
     private AreaType _previousArea = AreaType.None;           // 이전 구역 (동선추궁용)
     private CancellationTokenSource? _interactTimeoutCts;

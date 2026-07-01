@@ -51,8 +51,11 @@ public partial class GameClientSession
             await LoadBotsIfNeeded(msg.MatchingId, CurrentMapId);
             foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
                 if (!bot.IsEliminated)
+                {
                     _presenceTracker?.SetPlayerArea(msg.MatchingId, bot.PlayerId, bot.CurrentArea,
                         countAsEntry: false);
+                    _gameEventLogManager.SetPlayerArea(msg.MatchingId, bot.PlayerId, bot.CurrentArea.ToString());
+                }
 
             // 구역 폐쇄 초기화 (매칭당 최초 1회)
             // #87: 매칭의 직책 풀을 셔플 우선순위에 반영 (5분 1단계 보장 + 직책별 후순위)
@@ -84,6 +87,7 @@ public partial class GameClientSession
                     _lastValidCell?.Y);
                 _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea,
                     countAsEntry: false);
+                _gameEventLogManager.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea.ToString());
 
                 // 초기 Area의 Interactable 목록 전송
                 if (CurrentArea != AreaType.None)
@@ -503,6 +507,8 @@ public partial class GameClientSession
                 }
 
                 state.SettlementNominations[bot.PlayerId] = fallbackTargetPlayerId;
+                ApplyBotSettlementBookmark(matchingId, state.RoundNumber, bot, fallbackTargetPlayerId,
+                    "fallback", null);
                 Logger.LogInformation(
                     "Settlement bot nomination by fallback: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, Target={TargetId}",
                     matchingId, state.RoundNumber, bot.PlayerId, fallbackTargetPlayerId);
@@ -511,12 +517,26 @@ public partial class GameClientSession
 
             var selected = candidates[0];
             state.SettlementNominations[bot.PlayerId] = selected.CandidateId;
+            ApplyBotSettlementBookmark(matchingId, state.RoundNumber, bot, selected.CandidateId,
+                "suspicion", selected);
             Logger.LogInformation(
                 "Settlement bot nomination by suspicion: MatchingId={MatchingId}, Round={Round}, Bot={BotId}, Target={TargetId}, Score={Score}, Presence={Presence}, TotalOverlap={TotalOverlap}, LongestOverlap={LongestOverlap}, FollowEntries={FollowEntries}, OverlapStarts={OverlapStarts}, LastSeenArea={LastSeenArea}",
                 matchingId, state.RoundNumber, bot.PlayerId, selected.CandidateId, selected.Score, selected.Presence,
                 selected.TotalOverlapSeconds, selected.LongestOverlapSeconds, selected.EnterAfterObserverCount,
                 selected.OverlapStartCount, selected.LastSeenArea);
         }
+    }
+
+    private void ApplyBotSettlementBookmark(long matchingId, int roundNumber, BotPlayerState bot,
+        long targetPlayerId, string reason, PresenceNominationCandidate? candidate)
+    {
+        if (targetPlayerId == 0 || targetPlayerId == bot.PlayerId) return;
+
+        bot.SetPresenceBookmark(targetPlayerId);
+        _gameEventLogManager.LogSystem(matchingId,
+            candidate != null
+                ? $"Bot guard target set: Round={roundNumber}, Bot={bot.PlayerId}, Target={targetPlayerId}, Reason={reason}, Score={candidate.Score:0.##}, Presence={candidate.Presence:0.##}, TotalOverlap={candidate.TotalOverlapSeconds}, FollowEntries={candidate.EnterAfterObserverCount}"
+                : $"Bot guard target set: Round={roundNumber}, Bot={bot.PlayerId}, Target={targetPlayerId}, Reason={reason}");
     }
 
     private static long ResolveFallbackBotNominationTarget(

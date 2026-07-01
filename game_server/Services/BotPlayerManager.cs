@@ -74,8 +74,8 @@ public partial class BotPlayerManager
     private const int BotMissionTickIntervalSeconds = 1;  // 봇 미션 행동 (회수/결합) 주기 — 도착 후 RNG 빠른 트리거
     private const int BotMoveStaminaCost = 3;             // 이동 시 스태미나 소모
     private const int DetectScoreThreshold = 18;          // 색출 휴리스틱 임계값 — 함정 흔적 발견 누적 점수
-    private const int InitialStamina = 50;
-    private const int InitialCorruption = 50;
+    private const int InitialStamina = 100;
+    private const int InitialCorruption = 0;
 
     // matchingId → 봇 목록
     private readonly ConcurrentDictionary<long, List<BotPlayerState>> _botStates = new();
@@ -117,7 +117,7 @@ public partial class BotPlayerManager
                 TargetPlayerId = info.TargetPlayerId,
                 MyJobTitle = info.MyJobTitle,
                 TargetJobTitle = info.TargetJobTitle,
-                Name = $"Bot{Math.Abs(info.PlayerId)}",
+                Name = $"Player{Math.Abs(info.PlayerId)}",
                 CurrentArea = startArea,
                 Cell = startCell,
                 Position = startPosition,
@@ -325,8 +325,8 @@ public class BotPlayerState
     public JobTitle MyJobTitle { get; set; }
     public JobTitle TargetJobTitle { get; set; }
     public AreaType CurrentArea { get; set; }
-    public int Stamina { get; set; } = 50;
-    public int Corruption { get; set; } = 50;
+    public int Stamina { get; set; } = 100;
+    public int Corruption { get; set; } = 0;
     public bool IsForcedFollowActive { get; set; }
     public bool IsEliminated { get; set; }
     public ManittoStatus ManittoStatus { get; set; } = ManittoStatus.ACTIVE;
@@ -426,6 +426,15 @@ public class BotPlayerState
 
     public Dictionary<long, DateTime> TargetEncounterStartedAtByPlayerId { get; } = new();
     public HashSet<long> TargetInterrogationRequestedInEncounterPlayerIds { get; } = new();
+
+    public void SetPresenceBookmark(long targetPlayerId)
+    {
+        if (PresenceBookmarkPlayerId == targetPlayerId) return;
+
+        PresenceBookmarkPlayerId = targetPlayerId;
+        TargetEncounterStartedAtByPlayerId.Clear();
+        TargetInterrogationRequestedInEncounterPlayerIds.Clear();
+    }
 
     public void HoldForInteraction(TimeSpan fallbackDuration)
     {

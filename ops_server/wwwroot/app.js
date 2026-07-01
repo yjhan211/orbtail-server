@@ -2149,22 +2149,4 @@ function escapeAttr(value) {
 
 buildJobCheckboxes();
 loadMatchingConfig();
-loadStorylets();
 startPolling();
-
-// Storylet 에디터: Ctrl/Cmd+S 저장, IME 조합 가드, 언로드 직전 저장
-document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
-        if (!_storyletSelected) return;
-        e.preventDefault();
-        flushStoryletAutosave();
-    }
-});
-document.addEventListener('compositionstart', () => { _storyletImeComposing = true; });
-document.addEventListener('compositionend', () => {
-    _storyletImeComposing = false;
-    if (_storyletDirty) scheduleStoryletAutosave();
-});
-window.addEventListener('beforeunload', () => {
-    if (_storyletDirty) flushStoryletAutosave();
-});
