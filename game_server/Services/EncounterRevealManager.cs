@@ -27,7 +27,9 @@ public sealed class EncounterRevealManager
         long actorPlayerId,
         AreaType area,
         IEnumerable<long> candidatePlayerIds,
-        out long targetPlayerId)
+        out long targetPlayerId,
+        int riskEventChanceDownPercent = 0,
+        int escapeChanceAddPercent = 0)
     {
         targetPlayerId = 0;
         if (area == AreaType.None || area.IsCorridor())
@@ -45,6 +47,9 @@ public sealed class EncounterRevealManager
             if (RoomEncounterRollPercent < 100 && _rng.Next(100) >= RoomEncounterRollPercent)
                 return false;
 
+            if (ShouldSuppressReveal(riskEventChanceDownPercent, escapeChanceAddPercent))
+                return false;
+
             targetPlayerId = candidates[_rng.Next(candidates.Count)];
         }
 
@@ -55,7 +60,9 @@ public sealed class EncounterRevealManager
         long matchingId,
         long actorPlayerId,
         Vector3f actorPosition,
-        IEnumerable<(long PlayerId, Vector3f Position)> candidates)
+        IEnumerable<(long PlayerId, Vector3f Position)> candidates,
+        int riskEventChanceDownPercent = 0,
+        int escapeChanceAddPercent = 0)
     {
         var now = DateTime.UtcNow;
         CorridorEncounterDecision bestHint = CorridorEncounterDecision.None;
@@ -69,6 +76,9 @@ public sealed class EncounterRevealManager
             if (sqrDistance <= CorridorRevealDistance * CorridorRevealDistance &&
                 !IsPairCoolingDown(matchingId, actorPlayerId, candidate.PlayerId, now))
             {
+                if (ShouldSuppressReveal(riskEventChanceDownPercent, escapeChanceAddPercent))
+                    continue;
+
                 SetPairCooldown(matchingId, actorPlayerId, candidate.PlayerId, now);
                 return new CorridorEncounterDecision(
                     CorridorRevealEventType,
@@ -94,6 +104,23 @@ public sealed class EncounterRevealManager
         }
 
         return bestHint;
+    }
+
+    private bool ShouldSuppressReveal(int riskEventChanceDownPercent, int escapeChanceAddPercent)
+    {
+        int riskReduction = Math.Clamp(riskEventChanceDownPercent, 0, 95);
+        int escapeChance = Math.Clamp(escapeChanceAddPercent, 0, 95);
+
+        if (riskReduction <= 0 && escapeChance <= 0)
+            return false;
+
+        lock (_rng)
+        {
+            if (riskReduction > 0 && _rng.Next(100) < riskReduction)
+                return true;
+
+            return escapeChance > 0 && _rng.Next(100) < escapeChance;
+        }
     }
 
     public void ClearMatching(long matchingId)

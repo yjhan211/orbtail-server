@@ -32,6 +32,7 @@ public partial class GameClientSession : SessionBase
     internal static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
     private static Proto0PresenceTracker? _presenceTracker;
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
+    private readonly List<int> _activeBuffIds = new();
     private readonly AreaRuleManager _areaRuleManager;
     private readonly CorridorRuleManager _corridorRuleManager;
 
@@ -87,6 +88,20 @@ public partial class GameClientSession : SessionBase
     private long? _pendingBotRequesterPlayerId;
 
     private Timer? _periodicBuffTimer;
+
+    public IReadOnlyCollection<int> ActiveBuffIds => _activeBuffIds;
+
+    private void SetActiveBuffIds(IEnumerable<int>? activeBuffIds)
+    {
+        _activeBuffIds.Clear();
+        if (activeBuffIds == null) return;
+
+        foreach (int buffId in activeBuffIds)
+        {
+            if (buffId > 0 && !_activeBuffIds.Contains(buffId))
+                _activeBuffIds.Add(buffId);
+        }
+    }
 
     public GameClientSession(
         UserToken token,

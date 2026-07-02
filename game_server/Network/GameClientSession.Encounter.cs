@@ -62,7 +62,9 @@ public partial class GameClientSession
             CurrentMapSubId,
             PlayerId.Value,
             actorPosition,
-            candidatePositions.Select(entry => (entry.Item1, entry.Item2!)));
+            candidatePositions.Select(entry => (entry.Item1, entry.Item2!)),
+            PassiveBuffUtility.GetValuePercent(ActiveBuffIds, BuffSubType.RISK_EVENT_CHANCE_DOWN),
+            PassiveBuffUtility.GetValuePercent(ActiveBuffIds, BuffSubType.ENCOUNTER_ESCAPE_CHANCE_ADD));
         if (!decision.HasEvent) return;
 
         var targetSession = allSessions.FirstOrDefault(session => session.PlayerId == decision.TargetPlayerId);
@@ -139,7 +141,9 @@ public partial class GameClientSession
                 PlayerId.Value,
                 CurrentArea,
                 candidateIds,
-                out long targetPlayerId))
+                out long targetPlayerId,
+                PassiveBuffUtility.GetValuePercent(ActiveBuffIds, BuffSubType.RISK_EVENT_CHANCE_DOWN),
+                PassiveBuffUtility.GetValuePercent(ActiveBuffIds, BuffSubType.ENCOUNTER_ESCAPE_CHANCE_ADD)))
         {
             return false;
         }

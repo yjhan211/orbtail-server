@@ -40,11 +40,12 @@ namespace network.common.data.models
         [Key("gameServerPort")] public int GameServerPort { get; set; }
         [Key("gameEndTimestamp")] public long GameEndTimestamp { get; set; }
 
-        // 마니또 체인 정보
+        // 마니??체인 ?�보
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
         [Key("targetJobTitle")] public JobTitle TargetJobTitle { get; set; }
         [Key("myJobTitle")] public JobTitle MyJobTitle { get; set; }
         [Key("playerRoster")] public List<PlayerInfo> PlayerRoster { get; set; } = new();
+        [Key("activeBuffIds")] public List<int> ActiveBuffIds { get; set; } = new();
     }
 
     [MessagePackObject]
@@ -54,7 +55,7 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     봇 채움 매칭 시 Redis에 저장되는 봇 정보
+    ///     �?채�? 매칭 ??Redis???�?�되??�??�보
     /// </summary>
     [MessagePackObject]
     public class BotMatchingInfo
@@ -63,5 +64,8 @@ namespace network.common.data.models
         [Key(1)] public long TargetPlayerId { get; set; }
         [Key(2)] public JobTitle MyJobTitle { get; set; }
         [Key(3)] public JobTitle TargetJobTitle { get; set; }
+        [Key(4)] public PersonaType Persona { get; set; }
+        [Key(5)] public AreaType StartArea { get; set; }
+        [Key(6)] public List<int> ActiveBuffIds { get; set; } = new();
     }
 }

@@ -117,7 +117,10 @@ public partial class GameClientSession
             missionManager: _missionManager,
             inventoryManager: _inGameInventoryManager,
             itemPoolManager: _itemPoolManager,
-            isBot: false);
+            isBot: false,
+            bonusItemChancePercent: PassiveBuffUtility.GetValuePercent(
+                ActiveBuffIds,
+                BuffSubType.ITEM_GAIN_CHANCE_ADD));
 
         // 부품 회수 시 패킷 송신
         if (outcome is { ResultType: 3, CollectedPart: not null })

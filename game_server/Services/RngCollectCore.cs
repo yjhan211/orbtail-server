@@ -32,7 +32,8 @@ public static class RngCollectCore
         MissionManager missionManager,
         InGameInventoryManager inventoryManager,
         ItemPoolManager itemPoolManager,
-        bool isBot)
+        bool isBot,
+        int bonusItemChancePercent = 0)
     {
         var outcome = new RngCollectOutcome();
 
@@ -134,11 +135,48 @@ public static class RngCollectCore
         }
 
         TryApplySharpObservationBonus(matchingId, playerId, info.ZoneId, missionManager, inventoryManager, outcome);
+        TryApplyPassiveItemGainBonus(
+            matchingId,
+            playerId,
+            info.ZoneId,
+            inventoryManager,
+            outcome,
+            bonusItemChancePercent);
 
         RngCollectCooldownStore.ClearCooldown(matchingId, info.Id);
         outcome.CooldownSeconds = 0;
 
         return outcome;
+    }
+
+    private static void TryApplyPassiveItemGainBonus(
+        long matchingId,
+        long playerId,
+        int areaType,
+        InGameInventoryManager inventoryManager,
+        RngCollectOutcome outcome,
+        int bonusItemChancePercent)
+    {
+        if (bonusItemChancePercent <= 0 || outcome.BonusItemId != 0)
+            return;
+
+        lock (_rng)
+        {
+            if (!PassiveBuffUtility.RollPercent(bonusItemChancePercent, _rng))
+                return;
+        }
+
+        var areaPool = GetAllowedRngItemPool(areaType);
+        if (areaPool.Count == 0) return;
+
+        int bonusItemId;
+        lock (_rng)
+        {
+            bonusItemId = areaPool[_rng.Next(areaPool.Count)];
+        }
+
+        outcome.BonusItemId = bonusItemId;
+        outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
     }
 
     private static void TryGrantAttendanceBlackboardPair(

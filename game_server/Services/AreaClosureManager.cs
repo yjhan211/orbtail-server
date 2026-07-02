@@ -54,6 +54,35 @@ public class AreaClosureManager
         AreaType.Ground
     };
 
+    // #185 route-aware default closure groups.
+    // Defaults target a 15-minute item-farming match: first closure at 02:30,
+    // then every 90s. Areas are grouped so one item route does not lose two
+    // required stops in a row.
+    private static readonly AreaType[] StarterClassroomAreas =
+    {
+        AreaType.Classroom3, // 2-1
+        AreaType.Classroom4  // 3-1
+    };
+
+    private static readonly AreaType[] RouteForkAreas =
+    {
+        AreaType.AdminOffice,
+        AreaType.ExamRoom
+    };
+
+    private static readonly AreaType[] CoreHubAreas =
+    {
+        AreaType.Classroom2, // Infirmary
+        AreaType.Library,
+        AreaType.StaffRoom
+    };
+
+    private static readonly AreaType[] LateCorridorAreas =
+    {
+        AreaType.Corridor3F,
+        AreaType.Corridor2F
+    };
+
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();
     private readonly ILogger _logger;
     private readonly MatchingConfigService _matchingConfig;
@@ -96,10 +125,8 @@ public class AreaClosureManager
         }
         else
         {
-            // 기존 무작위 로직 — 복도 hard 후순위 규칙
-            var shuffledLeaves = LeafClosableAreas.OrderBy(_ => rng.Next()).ToList();
-            var shuffledCorridors = CorridorClosableAreas.OrderBy(_ => rng.Next()).ToList();
-            sequence = shuffledLeaves.Concat(shuffledCorridors).ToList();
+            // #185: item-route-aware default sequence for the 15-minute battle loop.
+            sequence = BuildRouteAwareClosureSequence(rng);
 
             // #87: 직책 풀에 따른 셔플 우선순위 보정
             if (jobsInMatching != null && jobsInMatching.Count > 0)
@@ -128,6 +155,54 @@ public class AreaClosureManager
             matchingId, config.StartDelaySec, config.IntervalSec, string.Join("→", sequence));
 
         return state;
+    }
+
+    private static List<AreaType> BuildRouteAwareClosureSequence(Random rng)
+    {
+        var starters = ShuffleAreas(rng, StarterClassroomAreas);
+        var routeForks = ShuffleAreas(rng, RouteForkAreas);
+        var coreHubs = ShuffleAreas(rng, CoreHubAreas);
+
+        var sequence = new List<AreaType>();
+
+        // 02:30 - remove one early material room while leaving the other route alive.
+        AddNext(sequence, starters);
+        // 04:00 - pressure either information/control utility, not the same route twice.
+        AddNext(sequence, routeForks);
+        // 05:30 - close the remaining early material room.
+        AddNext(sequence, starters);
+        // 07:00 - start compressing the upper information/install route.
+        sequence.Add(AreaType.BroadcastRoom);
+        // 08:30 - remove one recovery/protect/info hub, leaving alternatives open.
+        AddNext(sequence, coreHubs);
+        // 10:00 - close the remaining utility fork.
+        AddNext(sequence, routeForks);
+        // 11:30 - 4F becomes dangerous after BroadcastRoom had a fair window.
+        sequence.Add(AreaType.Corridor4F);
+        // 13:00+ - collapse remaining hubs, then late corridors.
+        AddRemaining(sequence, coreHubs);
+        sequence.AddRange(ShuffleAreas(rng, LateCorridorAreas));
+
+        return sequence;
+    }
+
+    private static List<AreaType> ShuffleAreas(Random rng, IEnumerable<AreaType> areas)
+    {
+        return areas.OrderBy(_ => rng.Next()).ToList();
+    }
+
+    private static void AddNext(List<AreaType> sequence, List<AreaType> group)
+    {
+        if (group.Count == 0) return;
+
+        sequence.Add(group[0]);
+        group.RemoveAt(0);
+    }
+
+    private static void AddRemaining(List<AreaType> sequence, List<AreaType> group)
+    {
+        sequence.AddRange(group);
+        group.Clear();
     }
 
     /// <summary>

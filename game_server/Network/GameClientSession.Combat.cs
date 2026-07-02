@@ -1,3 +1,4 @@
+using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -384,11 +385,17 @@ public partial class GameClientSession
             switch (buffData.SubType)
             {
                 case BuffSubType.CONDITION_ADD:
-                    staminaDelta += value;
+                    staminaDelta += PassiveBuffUtility.ApplyIncrease(
+                        value,
+                        ActiveBuffIds,
+                        BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
                     break;
 
                 case BuffSubType.CORRUPTION_DOWN:
-                    corruptionDelta -= value;
+                    corruptionDelta -= PassiveBuffUtility.ApplyIncrease(
+                        value,
+                        ActiveBuffIds,
+                        BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
                     break;
 
                 case BuffSubType.CORRUPTION_ADD:

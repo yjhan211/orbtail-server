@@ -348,9 +348,16 @@ public class GameServer(
                     bool targetWithinProximity = IsTargetWithinProximity(session, targetSession, targetBot);
 
                     if (!targetInSameArea)
-                        corruptionDelta += ResolveStatusEffectCorruptionDelta(
+                    {
+                        int isolationDelta = ResolveStatusEffectCorruptionDelta(
                             IsolationStatusEffectId,
                             GetMentalDecayAmount(session.CurrentMapSubId));
+                        isolationDelta = PassiveBuffUtility.ApplyReduction(
+                            isolationDelta,
+                            session.ActiveBuffIds,
+                            BuffSubType.ISOLATION_CORRUPTION_GAIN_DOWN);
+                        corruptionDelta += isolationDelta;
+                    }
 
                     if (targetInSameArea &&
                         !session.ShouldSkipTargetEncounterRecoveryTick(DateTime.UtcNow, ResourceTickIntervalSeconds))
@@ -1299,7 +1306,13 @@ public class GameServer(
             matchingId,
             ev.BotPlayerId,
             ev.Position,
-            candidates.Select(entry => (entry.Item1, entry.Item2!)));
+            candidates.Select(entry => (entry.Item1, entry.Item2!)),
+            PassiveBuffUtility.GetValuePercent(
+                _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.ActiveBuffIds ?? [],
+                BuffSubType.RISK_EVENT_CHANCE_DOWN),
+            PassiveBuffUtility.GetValuePercent(
+                _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.ActiveBuffIds ?? [],
+                BuffSubType.ENCOUNTER_ESCAPE_CHANCE_ADD));
         if (!decision.HasEvent)
             return;
 

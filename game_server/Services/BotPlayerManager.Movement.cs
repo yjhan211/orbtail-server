@@ -79,7 +79,10 @@ public partial class BotPlayerManager
 
                 if (!targetInSameArea)
                 {
-                    totalCorruptionDelta += isolationCorruptionDelta;
+                    totalCorruptionDelta += PassiveBuffUtility.ApplyReduction(
+                        isolationCorruptionDelta,
+                        bot.ActiveBuffIds,
+                        BuffSubType.ISOLATION_CORRUPTION_GAIN_DOWN);
                 }
                 else
                 {

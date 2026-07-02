@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using game_server.services;
 using MessagePack;
@@ -13,6 +13,8 @@ namespace game_server.network;
 
 public partial class GameClientSession
 {
+    private const string PlayerBuffInfoKey = "matching_player_buffs";
+
     private async Task HandleConnect(C_TO_G_CONNECT msg)
     {
         try
@@ -20,21 +22,20 @@ public partial class GameClientSession
             Logger.LogInformation("Client connection request: PlayerId={MsgPlayerId}, MatchingId={MsgMatchingId}",
                 msg.PlayerId, msg.MatchingId);
 
-            // TODO: MatchingId 검증 (Redis에서 매칭 정보 확인)
-            // 지금은 간단하게 PlayerId만 설정
+            // TODO: MatchingId 寃利?(Redis?먯꽌 留ㅼ묶 ?뺣낫 ?뺤씤)
+            // 吏湲덉? 媛꾨떒?섍쾶 PlayerId留??ㅼ젙
 
             PlayerId = msg.PlayerId;
-            CurrentMapId = MapId.School; // TODO: 매칭 정보에서 가져오기
-            CurrentMapSubId = msg.MatchingId;
+            CurrentMapId = MapId.School; // TODO: 留ㅼ묶 ?뺣낫?먯꽌 媛?몄삤湲?            CurrentMapSubId = msg.MatchingId;
 
-            // 마니또 체인 정보 저장
-            TargetPlayerId = msg.TargetPlayerId;
+            // 留덈땲??泥댁씤 ?뺣낫 ???            TargetPlayerId = msg.TargetPlayerId;
             MyJobTitle = msg.MyJobTitle;
             TargetJobTitle = msg.TargetJobTitle;
-            Logger.LogInformation("마니또 체인: PlayerId={PlayerId}, 타겟={Target}, 내 직책={MyJob}, 타겟 직책={TargetJob}",
+            await LoadActiveBuffIds(msg.MatchingId, msg.PlayerId);
+            Logger.LogInformation("留덈땲??泥댁씤: PlayerId={PlayerId}, ?寃?{Target}, ??吏곸콉={MyJob}, ?寃?吏곸콉={TargetJob}",
                 PlayerId, TargetPlayerId, MyJobTitle, TargetJobTitle);
 
-            // 체인 매니저에 링크 등록 (각 플레이어가 접속할 때마다 누적)
+            // 泥댁씤 留ㅻ땲???留곹겕 ?깅줉 (媛??뚮젅?댁뼱媛 ?묒냽???뚮쭏???꾩쟻)
             _manittoChainManager.RegisterLink(msg.MatchingId, new ChainLink
             {
                 PlayerId = msg.PlayerId,
@@ -43,11 +44,10 @@ public partial class GameClientSession
                 TargetJobTitle = msg.TargetJobTitle
             });
 
-            // 미션 초기화
-            _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
+            // 誘몄뀡 珥덇린??            _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
             _missionManager.EnsureBroadcastTransmitterGift(msg.MatchingId, msg.PlayerId, msg.TargetPlayerId);
 
-            // 봇 로드 (매칭당 최초 1회) — 폐쇄 초기화 전에 로드해 직책 풀을 확정 (#87)
+            // 遊?濡쒕뱶 (留ㅼ묶??理쒖큹 1?? ???먯뇙 珥덇린???꾩뿉 濡쒕뱶??吏곸콉 ????뺤젙 (#87)
             await LoadBotsIfNeeded(msg.MatchingId, CurrentMapId);
             foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
                 if (!bot.IsEliminated)
@@ -57,20 +57,19 @@ public partial class GameClientSession
                     _gameEventLogManager.SetPlayerArea(msg.MatchingId, bot.PlayerId, bot.CurrentArea.ToString());
                 }
 
-            // 구역 폐쇄 초기화 (매칭당 최초 1회)
-            // #87: 매칭의 직책 풀을 셔플 우선순위에 반영 (5분 1단계 보장 + 직책별 후순위)
+            // 援ъ뿭 ?먯뇙 珥덇린??(留ㅼ묶??理쒖큹 1??
+            // #87: 留ㅼ묶??吏곸콉 ????뷀뵆 ?곗꽑?쒖쐞??諛섏쁺 (5遺?1?④퀎 蹂댁옣 + 吏곸콉蹂??꾩닚??
             var jobPool = _manittoChainManager.GetMatchingJobs(msg.MatchingId);
             _areaClosureManager.InitializeMatching(msg.MatchingId, jobPool);
 
-            // 인게임 스탯 초기화
-            ResetInGameStats();
+            // ?멸쾶???ㅽ꺈 珥덇린??            ResetInGameStats();
 
-            // 세션 등록 후 게임 타이머 시작 (해당 매칭에 대해 최초 1회만)
+            // ?몄뀡 ?깅줉 ??寃뚯엫 ??대㉧ ?쒖옉 (?대떦 留ㅼ묶?????理쒖큹 1?뚮쭔)
             _registerSessionCallback(PlayerId.Value, this);
 
             StartGameTimerIfNeeded(msg.MatchingId);
 
-            // 초기 위치 로드
+            // 珥덇린 ?꾩튂 濡쒕뱶
             await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
             var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
@@ -79,7 +78,7 @@ public partial class GameClientSession
                 _lastValidatedPosition = playerInfo.ObjectInfo.Position;
                 _lastValidCell = playerInfo.ObjectInfo.Cell;
                 _lastValidatedRotation = playerInfo.ObjectInfo.Rotation;
-                // 초기 Area 설정
+                // 珥덇린 Area ?ㅼ젙
                 CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
                 Logger.LogInformation(
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
@@ -89,18 +88,17 @@ public partial class GameClientSession
                     countAsEntry: false);
                 _gameEventLogManager.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea.ToString());
 
-                // 초기 Area의 Interactable 목록 전송
+                // 珥덇린 Area??Interactable 紐⑸줉 ?꾩넚
                 if (CurrentArea != AreaType.None)
                 {
                     SendInteractableList(CurrentArea);
                     SendInteractCooldownSnapshot();
 
-                    // 초기 Area에서도 사보타주 이벤트 트리거
-                    _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, CurrentArea);
+                    // 珥덇린 Area?먯꽌???щ낫?二??대깽???몃━嫄?                    _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, CurrentArea);
                 }
             }
 
-            // 연결 성공 응답
+            // ?곌껐 ?깃났 ?묐떟
             using var connectResultPacket = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId.Value);
             var response = new G_TO_C_CONNECT_RESULT
             {
@@ -113,7 +111,7 @@ public partial class GameClientSession
 
             Logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
 
-            // 인게임 기본 아이템 지급
+            // Grant default in-game items.
             foreach ((int itemId, int count) in GameRuleData.InGameItemList)
             {
                 _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, count);
@@ -122,38 +120,63 @@ public partial class GameClientSession
                     itemId, count);
             }
 
-            // 인게임 인벤토리 목록 전송
+            // ?멸쾶???몃깽?좊━ 紐⑸줉 ?꾩넚
             SendInGameInventoryList();
 
-            // 문 초기 상태 설정 및 열린 문 목록 전송
+            // 臾?珥덇린 ?곹깭 ?ㅼ젙 諛??대┛ 臾?紐⑸줉 ?꾩넚
             _doorStateManager.InitializeMatching(CurrentMapSubId);
             SendDoorStateList();
 
-            // 미션 정보 전송
+            // 誘몄뀡 ?뺣낫 ?꾩넚
             SendMissionInfo();
             SendRoundStateSnapshot(msg.MatchingId);
             SendChecklistInfo();
 
-            // 다른 플레이어들 정보 전송 & 내 정보 브로드캐스트
+            // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃
             await BroadcastPlayerJoin();
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to handle connect");
 
-            // 연결 실패 응답
+            // ?곌껐 ?ㅽ뙣 ?묐떟
             using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT);
             var response = new G_TO_C_CONNECT_RESULT
             {
                 Success = false,
                 ErrorCode = ErrorCode.FATAL,
-                Message = "연결 처리 중 오류가 발생했습니다"
+                Message = "?곌껐 泥섎━ 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎"
             };
             packet.SetBody(MessagePackSerializer.Serialize(response));
             Send(packet);
         }
     }
 
+    private async Task LoadActiveBuffIds(long matchingId, long playerId)
+    {
+        try
+        {
+            var raw = await CacheHelper.HashGetAsync(PlayerBuffInfoKey, MakePlayerBuffField(matchingId, playerId));
+            if (raw.IsNullOrEmpty)
+            {
+                SetActiveBuffIds([]);
+                Logger.LogInformation("Active buffs empty: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId, playerId);
+                return;
+            }
+
+            var activeBuffIds = MessagePackSerializer.Deserialize<List<int>>((byte[])raw!);
+            SetActiveBuffIds(activeBuffIds);
+            Logger.LogInformation("Active buffs loaded: MatchingId={MatchingId}, PlayerId={PlayerId}, Buffs=[{Buffs}]",
+                matchingId, playerId, string.Join(",", activeBuffIds));
+        }
+        catch (Exception ex)
+        {
+            SetActiveBuffIds([]);
+            Logger.LogWarning(ex, "Active buffs load failed: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId, playerId);
+        }
+    }
+
+    private static string MakePlayerBuffField(long matchingId, long playerId) => $"{matchingId}:{playerId}";
     private async Task BroadcastPlayerJoin()
     {
         if (!PlayerId.HasValue) return;
@@ -161,11 +184,11 @@ public partial class GameClientSession
         try
         {
             var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-            // 같은 Area의 플레이어만 필터링
+            // Same-area players only
             var sameAreaSessions = allSessions
                 .Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea && s.PlayerId.HasValue).ToList();
 
-            // 1. 나에게 같은 Area의 다른 플레이어들 정보 전송
+            // 1. ?섏뿉寃?媛숈? Area???ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚
             if (sameAreaSessions.Count > 0)
             {
                 var playerInfoList = new List<PlayerInfo>();
@@ -185,20 +208,20 @@ public partial class GameClientSession
                 }
             }
 
-            // 2. 내 정보 로드
+            // 2. ???뺣낫 濡쒕뱶
             await using var myPlayerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
             var myPlayerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
             if (myPlayerInfo != null)
             {
-                // 3. 같은 Area의 다른 플레이어들에게 내 정보 브로드캐스트
+                // 3. 媛숈? Area???ㅻⅨ ?뚮젅?댁뼱?ㅼ뿉寃????뺣낫 釉뚮줈?쒖틦?ㅽ듃
                 using var myPacket = PacketMaker.G_TO_C_PLAYER_INFO([myPlayerInfo]);
                 foreach (var session in sameAreaSessions) session.Send(myPacket);
                 Logger.LogInformation("Broadcasted my PlayerInfo (PlayerId={L}) to {Count} players in Area {Area}",
                     PlayerId, sameAreaSessions.Count, CurrentArea);
             }
 
-            // 4. #125: 같은 Area의 봇들 정보를 나에게 전송 (실제 플레이어 동등 시각화)
+            // 4. #125: 媛숈? Area??遊뉖뱾 ?뺣낫瑜??섏뿉寃??꾩넚 (?ㅼ젣 ?뚮젅?댁뼱 ?숇벑 ?쒓컖??
             var sameAreaBots = _botPlayerManager.GetBots(CurrentMapSubId)
                 .Where(b => !b.IsEliminated && b.CurrentArea == CurrentArea)
                 .ToList();
@@ -229,7 +252,7 @@ public partial class GameClientSession
     {
         _lastHeartbeatTime = DateTime.UtcNow;
 
-        // 하트비트 응답 전송
+        // ?섑듃鍮꾪듃 ?묐떟 ?꾩넚
         using var packet = PacketMaker.G_TO_C_HEART_BEAT(DateTime.UtcNow);
         Send(packet);
 
@@ -237,7 +260,7 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     하트비트 타임아웃 체크. 타임아웃되면 true 반환
+    ///     ?섑듃鍮꾪듃 ??꾩븘??泥댄겕. ??꾩븘?껊릺硫?true 諛섑솚
     /// </summary>
     public bool IsHeartbeatTimedOut()
     {
@@ -246,7 +269,7 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     강제 연결 해제
+    ///     媛뺤젣 ?곌껐 ?댁젣
     /// </summary>
     public void ForceDisconnect()
     {
@@ -255,8 +278,8 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     Redis에서 봇 정보 로드 (매칭당 최초 1회).
-    ///     #125: 봇 위치 초기화에 MapId가 필요하므로 인자로 전달.
+    ///     Redis?먯꽌 遊??뺣낫 濡쒕뱶 (留ㅼ묶??理쒖큹 1??.
+    ///     #125: 遊??꾩튂 珥덇린?붿뿉 MapId媛 ?꾩슂?섎?濡??몄옄濡??꾨떖.
     /// </summary>
     private async Task LoadBotsIfNeeded(long matchingId, MapId mapId)
     {
@@ -272,7 +295,7 @@ public partial class GameClientSession
 
             _botPlayerManager.RegisterBots(matchingId, mapId, botInfoList);
 
-            // 봇도 체인 매니저 + 미션 매니저에 등록 (#26: 봇 부품 회수/결합 시뮬용)
+            // 遊뉖룄 泥댁씤 留ㅻ땲? + 誘몄뀡 留ㅻ땲????깅줉 (#26: 遊?遺???뚯닔/寃고빀 ?쒕???
             foreach (var bot in botInfoList)
             {
                 _manittoChainManager.RegisterLink(matchingId, new ChainLink
@@ -283,14 +306,14 @@ public partial class GameClientSession
                     TargetJobTitle = bot.TargetJobTitle
                 });
 
-                // 봇 부품 상태 초기화 — 자기 직책 발견 풀 기준
+                // 遊?遺???곹깭 珥덇린?????먭린 吏곸콉 諛쒓껄 ? 湲곗?
                 _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
                 _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
             }
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "봇 정보 로드 실패: MatchingId={MatchingId}", matchingId);
+            Logger.LogWarning(ex, "遊??뺣낫 濡쒕뱶 ?ㅽ뙣: MatchingId={MatchingId}", matchingId);
         }
     }
 
@@ -311,7 +334,7 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     게임 타이머 시작 (매칭당 최초 1회만)
+    ///     寃뚯엫 ??대㉧ ?쒖옉 (留ㅼ묶??理쒖큹 1?뚮쭔)
     /// </summary>
     private void StartGameTimerIfNeeded(long matchingId)
     {
@@ -384,7 +407,7 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     시간 초과로 게임 종료. 생존자 중 자원 총합 최대인 플레이어가 승리.
+    ///     ?쒓컙 珥덇낵濡?寃뚯엫 醫낅즺. ?앹〈??以??먯썝 珥앺빀 理쒕????뚮젅?댁뼱媛 ?밸━.
     /// </summary>
     private void ProcessRoundTimerTick(long matchingId)
     {
@@ -1061,15 +1084,15 @@ public partial class GameClientSession
     {
         if (DevFlags.DisableGameEnd)
         {
-            Logger.LogWarning("[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): EndGameByTimeout matchingId={MatchingId}",
+            Logger.LogWarning("[DEV] 寃뚯엫 醫낅즺 李⑤떒??(DISABLE_GAME_END=1): EndGameByTimeout matchingId={MatchingId}",
                 matchingId);
             CleanupRoundTimer(matchingId);
             return;
         }
 
-        Logger.LogInformation("게임 시간 초과: MatchingId={MatchingId}", matchingId);
+        Logger.LogInformation("寃뚯엫 ?쒓컙 珥덇낵: MatchingId={MatchingId}", matchingId);
 
-        // 타이머 정리
+        // ??대㉧ ?뺣━
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
         _checklistManager.RemoveMatchingState(matchingId);
@@ -1077,7 +1100,7 @@ public partial class GameClientSession
 
         var sessions = _getSessionsByInstance(CurrentMapId, matchingId);
 
-        // 승자 판정: 자원 총합 최대 (봇 포함)
+        // ?뱀옄 ?먯젙: ?먯썝 珥앺빀 理쒕? (遊??ы븿)
         long? winnerId = _manittoChainManager.DetermineWinnerByResources(matchingId, playerId =>
         {
             var s = sessions.FirstOrDefault(s => s.PlayerId == playerId);
@@ -1087,9 +1110,9 @@ public partial class GameClientSession
             return bot != null ? (bot.Stamina, bot.Corruption, 100) : (0, 100, 100);
         });
 
-        Logger.LogInformation("시간 초과 승자: MatchingId={MatchingId}, WinnerId={WinnerId}", matchingId, winnerId);
+        Logger.LogInformation("?쒓컙 珥덇낵 ?뱀옄: MatchingId={MatchingId}, WinnerId={WinnerId}", matchingId, winnerId);
 
-        // 결과 패킷 전송
+        // 寃곌낵 ?⑦궥 ?꾩넚
         SendGameResult(sessions, winnerId ?? 0, true, matchingId);
     }
 
