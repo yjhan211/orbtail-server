@@ -489,6 +489,7 @@ public partial class BotPlayerManager
             a => closureManager.IsAreaClosed(matchingId, a));
         if (path == null || path.Count == 0)
         {
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
             _logger.LogDebug("프로토0 봇 경로 실패: BotId={Bot}, {From} → {To}",
                 bot.PlayerId, bot.CurrentArea, destination);
             return;
