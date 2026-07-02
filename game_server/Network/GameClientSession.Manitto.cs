@@ -1044,6 +1044,8 @@ public partial class GameClientSession
         };
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);
+        Logger.LogDebug("Target location sent: MatchingId={MatchingId}, PlayerId={PlayerId}, Target={TargetPlayerId}, Area={Area}",
+            CurrentMapSubId, PlayerId, TargetPlayerId, targetArea);
     }
 
     /// <summary>
