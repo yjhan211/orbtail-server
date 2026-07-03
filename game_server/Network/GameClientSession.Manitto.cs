@@ -312,6 +312,7 @@ public partial class GameClientSession
 
         SendChecklistActivityResult(msg.InteractId, errorCode, awardedScore, awardedContribution);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        ResolvePendingRoomDiscoveriesAfterExploreFinished(info != null ? (AreaType)info.ZoneId : CurrentArea);
         return Task.CompletedTask;
     }
 

@@ -863,7 +863,11 @@ public class GameServer(
             if (missionResult.BotExploreStarts.Count > 0)
                 BroadcastBotExploreStarts(matchingId, missionResult.BotExploreStarts, activeSessions);
             if (missionResult.BotExploreEnds.Count > 0)
+            {
                 BroadcastBotExploreEnds(matchingId, missionResult.BotExploreEnds, activeSessions);
+                ResolvePendingRoomDiscoveriesForBotExploreEnds(matchingId, missionResult.BotExploreEnds,
+                    activeSessions);
+            }
             if (missionResult.BotRestStarts.Count > 0)
                 BroadcastBotPlayerStates(matchingId, missionResult.BotRestStarts,
                     global::network.common.PlayerState.SLEEP, activeSessions);
@@ -1087,6 +1091,51 @@ public class GameServer(
                 using var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_END, session.PlayerId!.Value);
                 packet.SetBody(body);
                 session.Send(packet);
+            }
+        }
+    }
+
+    private void ResolvePendingRoomDiscoveriesForBotExploreEnds(long matchingId,
+        List<(long botId, AreaType area)> ends,
+        List<GameClientSession> activeSessions)
+    {
+        foreach (var (botId, area) in ends)
+        {
+            var discovererIds = _encounterRevealManager.ConsumePendingRoomDiscoverers(matchingId, botId, area);
+            if (discovererIds.Count == 0)
+                continue;
+
+            var targetBot = _botPlayerManager.GetBot(matchingId, botId);
+            if (targetBot != null)
+            {
+                targetBot.HoldForInteraction(TimeSpan.FromSeconds(13));
+                targetBot.LoopWaitUntil = DateTime.MinValue;
+                targetBot.WalkVelocity = new global::network.common.data.models.Vector3f(0f, 0f, 0f);
+            }
+
+            foreach (long discovererId in discovererIds)
+            {
+                var discovererSession = activeSessions.FirstOrDefault(session =>
+                    session.PlayerId == discovererId &&
+                    !session.IsEliminated &&
+                    session.CurrentMapSubId == matchingId &&
+                    session.CurrentArea == area);
+                if (discovererSession == null)
+                    continue;
+
+                using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
+                    botId,
+                    area,
+                    EncounterRevealManager.RoomEncounterEventType,
+                    EncounterRevealManager.PairCooldownSeconds);
+                discovererSession.Send(packet);
+
+                logger.LogInformation(
+                    "Bot room discovery resolved after explore finish: Matching={MatchingId}, Discoverer={Discoverer}, Bot={Bot}, Area={Area}",
+                    matchingId,
+                    discovererId,
+                    botId,
+                    area);
             }
         }
     }
@@ -1512,7 +1561,11 @@ public class GameServer(
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
+                {
                     BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
+                    ResolvePendingRoomDiscoveriesForBotExploreEnds(matchingId, movementResult.ExploreEnds,
+                        activeSessions);
+                }
                 StartTargetBotInterrogations(matchingId, activeSessions);
             }
         }

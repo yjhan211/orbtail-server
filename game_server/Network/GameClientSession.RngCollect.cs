@@ -213,6 +213,7 @@ public partial class GameClientSession
         BroadcastRngCollectCooldown(msg.InteractId, outcome.CooldownSeconds);
         // IDLE 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        ResolvePendingRoomDiscoveriesAfterExploreFinished((AreaType)info.ZoneId);
         return Task.CompletedTask;
     }
 
@@ -290,6 +291,7 @@ public partial class GameClientSession
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
         BroadcastRngCollectCooldown(interactId, 0);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        ResolvePendingRoomDiscoveriesAfterExploreFinished(CurrentArea);
 
         CheckResourceElimination();
         return true;

@@ -9,6 +9,8 @@ public sealed class EncounterRevealManager
     public const int CorridorHintEventType = 1;
     public const int CorridorRevealEventType = 2;
     public const int RoomRevealEventType = 3;
+    public const int RoomDiscoveryEventType = 4;
+    public const int RoomEncounterEventType = 5;
 
     public const int PairCooldownSeconds = 10;
     public const int CorridorRevealDelayMs = 900;
@@ -20,6 +22,7 @@ public sealed class EncounterRevealManager
 
     private readonly ConcurrentDictionary<PairKey, DateTime> _pairCooldownUntil = new();
     private readonly ConcurrentDictionary<PairKey, DateTime> _corridorHintCooldownUntil = new();
+    private readonly ConcurrentDictionary<RoomDiscoveryKey, RoomDiscoveryPending> _pendingRoomDiscoveries = new();
     private readonly Random _rng = new();
 
     public bool TryResolveRoomEncounter(
@@ -54,6 +57,37 @@ public sealed class EncounterRevealManager
         }
 
         return true;
+    }
+
+    public void RegisterPendingRoomDiscovery(long matchingId, long discovererPlayerId, long targetPlayerId,
+        AreaType area)
+    {
+        if (matchingId <= 0 || discovererPlayerId == 0 || targetPlayerId == 0 ||
+            discovererPlayerId == targetPlayerId || area == AreaType.None)
+            return;
+
+        var key = RoomDiscoveryKey.Create(matchingId, discovererPlayerId, targetPlayerId);
+        _pendingRoomDiscoveries[key] = new RoomDiscoveryPending(matchingId, discovererPlayerId, targetPlayerId, area,
+            DateTime.UtcNow);
+    }
+
+    public List<long> ConsumePendingRoomDiscoverers(long matchingId, long targetPlayerId, AreaType area)
+    {
+        var result = new List<long>();
+        if (matchingId <= 0 || targetPlayerId == 0 || area == AreaType.None)
+            return result;
+
+        foreach (var entry in _pendingRoomDiscoveries)
+        {
+            var pending = entry.Value;
+            if (pending.MatchingId != matchingId || pending.TargetPlayerId != targetPlayerId || pending.Area != area)
+                continue;
+
+            if (_pendingRoomDiscoveries.TryRemove(entry.Key, out _))
+                result.Add(pending.DiscovererPlayerId);
+        }
+
+        return result;
     }
 
     public CorridorEncounterDecision ResolveCorridorEncounter(
@@ -132,6 +166,10 @@ public sealed class EncounterRevealManager
         foreach (var key in _corridorHintCooldownUntil.Keys)
             if (key.MatchingId == matchingId)
                 _corridorHintCooldownUntil.TryRemove(key, out _);
+
+        foreach (var key in _pendingRoomDiscoveries.Keys)
+            if (key.MatchingId == matchingId)
+                _pendingRoomDiscoveries.TryRemove(key, out _);
     }
 
     private bool IsPairCoolingDown(long matchingId, long a, long b, DateTime now)
@@ -169,6 +207,21 @@ public sealed class EncounterRevealManager
                 : new PairKey(matchingId, b, a);
         }
     }
+
+    private readonly record struct RoomDiscoveryKey(long MatchingId, long DiscovererPlayerId, long TargetPlayerId)
+    {
+        public static RoomDiscoveryKey Create(long matchingId, long discovererPlayerId, long targetPlayerId)
+        {
+            return new RoomDiscoveryKey(matchingId, discovererPlayerId, targetPlayerId);
+        }
+    }
+
+    private readonly record struct RoomDiscoveryPending(
+        long MatchingId,
+        long DiscovererPlayerId,
+        long TargetPlayerId,
+        AreaType Area,
+        DateTime CreatedAtUtc);
 }
 
 public readonly record struct CorridorEncounterDecision(
