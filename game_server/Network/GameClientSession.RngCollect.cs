@@ -42,6 +42,8 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        CancelPendingRoomEncounterTurnsForCurrentPlayer("RngCollectStart");
+
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {
@@ -76,8 +78,6 @@ public partial class GameClientSession
             PlayerId, msg.InteractId);
 
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
-        // EXPLORE_1 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
-        BroadcastPlayerState(global::network.common.PlayerState.EXPLORE_1);
         return Task.CompletedTask;
     }
 
@@ -306,6 +306,10 @@ public partial class GameClientSession
     private void BroadcastPlayerState(global::network.common.PlayerState state)
     {
         if (!PlayerId.HasValue) return;
+        CurrentState = state == global::network.common.PlayerState.EXPLORE_1
+            ? PlayerState.Exploring
+            : PlayerState.Idle;
+
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);

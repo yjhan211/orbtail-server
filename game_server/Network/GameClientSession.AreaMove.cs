@@ -30,6 +30,8 @@ public partial class GameClientSession
             return;
         }
 
+        CancelPendingRoomEncounterTurnsForCurrentPlayer("AreaMove");
+
         if (CurrentState == PlayerState.Exploring)
         {
             LogAreaMoveError(ErrorCode.INVALID_GAME_STATE, msg.TargetArea);

@@ -235,6 +235,8 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        CancelPendingRoomEncounterTurnsForCurrentPlayer("ChecklistActivityStart");
+
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {

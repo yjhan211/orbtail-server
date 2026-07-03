@@ -13,7 +13,9 @@ public partial class GameClientSession
 {
     private static readonly TimeSpan RoomEncounterHoldDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan RoomEncounterActionSuppressDuration = TimeSpan.FromSeconds(2);
-    private const float RoomEncounterVisionDistance = 2.4f;
+    // Client visibility uses a light radius plus sprite/body overlap, so use a small server margin
+    // to avoid edge cases where a player is visibly inside the mask but the center-point check misses.
+    private const float RoomEncounterVisionDistance = 2.75f;
     private readonly Dictionary<int, List<long>> _roomEncounterStartCandidateIdsByInteractId = new();
     private DateTime _suppressRoomEncounterUntilUtc = DateTime.MinValue;
 
@@ -94,7 +96,7 @@ public partial class GameClientSession
 
     internal void TrySendRoomEncounterEventsFromCurrentVision()
     {
-        if (_lastValidatedPosition == null || IsRoomEncounterProcessingBlocked())
+        if (_lastValidatedPosition == null || IsRoomEncounterActorBlocked())
             return;
 
         TrySendRoomEncounterEventsFromVision(_lastValidatedPosition);
@@ -108,7 +110,7 @@ public partial class GameClientSession
             IsEliminated ||
             CurrentArea == AreaType.None ||
             CurrentArea.IsCorridor() ||
-            IsRoomEncounterProcessingBlocked() ||
+            IsRoomEncounterActorBlocked() ||
             _lastValidatedPosition == null ||
             !IsWithinRoomEncounterVision(_lastValidatedPosition, observedPosition))
         {
@@ -143,7 +145,7 @@ public partial class GameClientSession
     {
         var now = DateTime.UtcNow;
         if (!PlayerId.HasValue || CurrentArea == AreaType.None || CurrentArea.IsCorridor() ||
-            IsRoomEncounterProcessingBlocked(now))
+            IsRoomEncounterActorBlocked(now))
             return;
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
@@ -217,7 +219,7 @@ public partial class GameClientSession
             return false;
 
         var now = DateTime.UtcNow;
-        if (IsRoomEncounterProcessingBlocked(now))
+        if (IsRoomEncounterActorBlocked(now))
             return false;
 
         if (CurrentArea == AreaType.None || CurrentArea.IsCorridor())
@@ -344,7 +346,7 @@ public partial class GameClientSession
             ? _botPlayerManager.GetBot(CurrentMapSubId, targetPlayerId)
             : null;
 
-        bool targetUnaware = !forceEncounterEvent && IsRoomEncounterTargetUnaware(targetSession, targetBot);
+        bool targetUnaware = IsRoomEncounterTargetUnaware(targetSession, targetBot);
         int eventType = targetUnaware
             ? EncounterRevealManager.RoomDiscoveryEventType
             : EncounterRevealManager.RoomEncounterEventType;
@@ -481,7 +483,8 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        SuppressRoomEncounterBriefly();
+        if (msg.ActionType != EncounterRevealManager.RoomDiscoveryActionHidePresence)
+            SuppressRoomEncounterBriefly();
 
         bool consumedDiscovery = _encounterRevealManager.TryConsumePendingRoomDiscovery(
             CurrentMapSubId,
@@ -557,13 +560,49 @@ public partial class GameClientSession
                 _encounterRevealManager.HasPendingRoomEncounterTurn(CurrentMapSubId, PlayerId.Value));
     }
 
+    private bool IsRoomEncounterActorBlocked()
+    {
+        return IsRoomEncounterActorBlocked(DateTime.UtcNow);
+    }
+
+    private bool IsRoomEncounterActorBlocked(DateTime now)
+    {
+        return IsRoomEncounterProcessingBlocked(now) || IsRoomEncounterActionInProgress();
+    }
+
+    private bool IsRoomEncounterActionInProgress()
+    {
+        return CurrentState == PlayerState.Exploring;
+    }
+
+    private void CancelPendingRoomEncounterTurnsForCurrentPlayer(string reason)
+    {
+        if (!PlayerId.HasValue || CurrentMapSubId <= 0)
+            return;
+
+        var resolutions = _encounterRevealManager.ConsumePendingRoomEncounterTurnsForPlayer(
+            CurrentMapSubId,
+            PlayerId.Value);
+        foreach (var resolution in resolutions)
+        {
+            long otherPlayerId = resolution.GetOtherPlayer(PlayerId.Value);
+            ReleaseRoomEncounterBotTarget(_botPlayerManager.GetBot(resolution.MatchingId, otherPlayerId));
+            Logger.LogInformation(
+                "Room encounter turn cancelled by player action: Matching={MatchingId}, Player={Player}, Other={Other}, Area={Area}, Reason={Reason}",
+                resolution.MatchingId,
+                PlayerId.Value,
+                otherPlayerId,
+                resolution.Area,
+                reason);
+        }
+    }
+
     private bool HandleRoomDiscoveryAction(RoomDiscoveryResolution resolution, int actionType)
     {
         bool shouldStartEncounter = actionType switch
         {
             EncounterRevealManager.RoomDiscoveryActionFace => true,
-            EncounterRevealManager.RoomDiscoveryActionHidePresence =>
-                _encounterRevealManager.ShouldDiscoveryHideTriggerEncounter(),
+            EncounterRevealManager.RoomDiscoveryActionHidePresence => false,
             EncounterRevealManager.RoomDiscoveryActionLeave => false,
             EncounterRevealManager.RoomEncounterActionLeave => false,
             _ => true
@@ -711,9 +750,7 @@ public partial class GameClientSession
     private bool IsRoomEncounterTargetUnaware(GameClientSession? targetSession, BotPlayerState? targetBot)
     {
         if (targetSession != null)
-            return targetSession.CurrentState == PlayerState.Exploring ||
-                   targetSession._pendingFinish.Count > 0 ||
-                   targetSession._pendingChecklistActivityFinish.Count > 0;
+            return targetSession.IsRoomEncounterActionInProgress();
 
         if (targetBot == null)
             return false;
@@ -724,7 +761,61 @@ public partial class GameClientSession
 
     private void ResolvePendingRoomDiscoveriesAfterExploreFinished(AreaType area)
     {
-        // Room discovery now resolves through the server-side decision timer or an explicit avoid request.
+        if (!PlayerId.HasValue || CurrentMapSubId <= 0 || area == AreaType.None || CurrentArea != area ||
+            IsEliminated)
+        {
+            return;
+        }
+
+        var discovererPlayerIds = _encounterRevealManager.ConsumePendingRoomDiscoverers(
+            CurrentMapSubId,
+            PlayerId.Value,
+            area);
+        if (discovererPlayerIds.Count == 0)
+            return;
+
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        foreach (long discovererPlayerId in discovererPlayerIds)
+        {
+            if (discovererPlayerId == 0 || discovererPlayerId == PlayerId.Value)
+                continue;
+
+            if (_encounterRevealManager.HasPendingRoomEncounterTurn(CurrentMapSubId, PlayerId.Value) ||
+                _encounterRevealManager.HasPendingRoomEncounterTurn(CurrentMapSubId, discovererPlayerId))
+            {
+                continue;
+            }
+
+            var discovererSession = allSessions.FirstOrDefault(session =>
+                session.PlayerId == discovererPlayerId &&
+                !session.IsEliminated &&
+                session.CurrentMapSubId == CurrentMapSubId &&
+                session.CurrentArea == area);
+            if (discovererSession == null)
+                continue;
+
+            var discovererPosition = discovererSession.LastValidatedPosition;
+            if (discovererPosition == null ||
+                !IsWithinRoomEncounterVision(discovererPosition, LastValidatedPosition))
+            {
+                Logger.LogInformation(
+                    "Pending room discovery expired after target explore finish: Matching={MatchingId}, Discoverer={Discoverer}, Target={Target}, Area={Area}",
+                    CurrentMapSubId,
+                    discovererPlayerId,
+                    PlayerId.Value,
+                    area);
+                continue;
+            }
+
+            discovererSession.StartRoomEncounterTurn(discovererPlayerId, PlayerId.Value, area, this);
+            Logger.LogInformation(
+                "Pending room discovery promoted after target explore finish: Matching={MatchingId}, Discoverer={Discoverer}, Target={Target}, Area={Area}",
+                CurrentMapSubId,
+                discovererPlayerId,
+                PlayerId.Value,
+                area);
+            break;
+        }
     }
 
     private static void HoldRoomEncounterBotTarget(BotPlayerState? bot)

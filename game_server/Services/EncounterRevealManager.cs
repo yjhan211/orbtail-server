@@ -187,6 +187,28 @@ public sealed class EncounterRevealManager
         return true;
     }
 
+    public List<RoomEncounterTurnResolution> ConsumePendingRoomEncounterTurnsForPlayer(long matchingId, long playerId)
+    {
+        var result = new List<RoomEncounterTurnResolution>();
+        if (matchingId <= 0 || playerId == 0)
+            return result;
+
+        foreach (var entry in _pendingRoomEncounterTurns)
+        {
+            var pending = entry.Value;
+            if (pending.MatchingId != matchingId ||
+                pending.PlayerA != playerId && pending.PlayerB != playerId)
+            {
+                continue;
+            }
+
+            if (_pendingRoomEncounterTurns.TryRemove(entry.Key, out pending))
+                result.Add(pending.ToResolution());
+        }
+
+        return result;
+    }
+
     public bool HasPendingRoomEncounterTurn(long matchingId, long playerId)
     {
         if (matchingId <= 0 || playerId == 0)

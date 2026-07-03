@@ -61,6 +61,10 @@ public partial class GameClientSession
 
         // 서버 측 상태 저장
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+        CurrentState = msg.State == global::network.common.PlayerState.EXPLORE_1
+            ? PlayerState.Exploring
+            : PlayerState.Idle;
+
         var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
         if (playerInfo != null)
         {
