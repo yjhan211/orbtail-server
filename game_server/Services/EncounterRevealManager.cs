@@ -187,6 +187,23 @@ public sealed class EncounterRevealManager
         return true;
     }
 
+    public bool HasPendingRoomEncounterTurn(long matchingId, long playerId)
+    {
+        if (matchingId <= 0 || playerId == 0)
+            return false;
+
+        foreach (var pending in _pendingRoomEncounterTurns.Values)
+        {
+            if (pending.MatchingId == matchingId &&
+                (pending.PlayerA == playerId || pending.PlayerB == playerId))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public List<long> ConsumePendingRoomDiscoverers(long matchingId, long targetPlayerId, AreaType area)
     {
         var result = new List<long>();
