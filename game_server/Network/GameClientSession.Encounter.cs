@@ -289,7 +289,7 @@ public partial class GameClientSession
         }
 
         if (_roomEncounterStartCandidateIdsByInteractId.Remove(interactId, out var startCandidateIds))
-            AddRoomEncounterStartCandidatesStillInArea(candidateIds, startCandidateIds, allSessions);
+            AddRoomEncounterStartCandidatesStillInVision(candidateIds, startCandidateIds, allSessions);
 
         long actorPlayerId = PlayerId.GetValueOrDefault();
         Logger.LogDebug(
@@ -393,34 +393,46 @@ public partial class GameClientSession
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
     }
 
-    private void AddRoomEncounterStartCandidatesStillInArea(
+    private void AddRoomEncounterStartCandidatesStillInVision(
         List<long> candidateIds,
         IReadOnlyCollection<long> startCandidateIds,
         IReadOnlyCollection<GameClientSession> allSessions)
     {
+        var actorPosition = _lastValidatedPosition;
+        if (actorPosition == null)
+            return;
+
         foreach (long candidateId in startCandidateIds)
         {
             if (candidateId == 0 || candidateId == PlayerId || candidateIds.Contains(candidateId))
                 continue;
 
-            if (IsRoomEncounterCandidateStillInArea(candidateId, allSessions))
+            if (IsRoomEncounterCandidateStillInVision(candidateId, allSessions, actorPosition))
                 candidateIds.Add(candidateId);
         }
     }
 
-    private bool IsRoomEncounterCandidateStillInArea(
+    private bool IsRoomEncounterCandidateStillInVision(
         long candidateId,
-        IReadOnlyCollection<GameClientSession> allSessions)
+        IReadOnlyCollection<GameClientSession> allSessions,
+        Vector3f actorPosition)
     {
-        if (allSessions.Any(session =>
-                session.PlayerId == candidateId &&
-                !session.IsEliminated &&
-                session.CurrentMapSubId == CurrentMapSubId &&
-                session.CurrentArea == CurrentArea))
-            return true;
+        var session = allSessions.FirstOrDefault(session =>
+            session.PlayerId == candidateId &&
+            !session.IsEliminated &&
+            session.CurrentMapSubId == CurrentMapSubId &&
+            session.CurrentArea == CurrentArea);
+        if (session != null)
+        {
+            return !session.IsRoomEncounterProcessingBlocked() &&
+                   IsWithinRoomEncounterVision(actorPosition, session.LastValidatedPosition);
+        }
 
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, candidateId);
-        return bot is { IsEliminated: false } && bot.CurrentArea == CurrentArea;
+        return bot is { IsEliminated: false, IsInInteraction: false } &&
+               bot.CurrentArea == CurrentArea &&
+               !_encounterRevealManager.HasPendingRoomEncounterTurn(CurrentMapSubId, bot.PlayerId) &&
+               IsWithinRoomEncounterVision(actorPosition, bot.Position);
     }
 
     private void StartRoomEncounterTurn(long discovererPlayerId, long targetPlayerId, AreaType area,
