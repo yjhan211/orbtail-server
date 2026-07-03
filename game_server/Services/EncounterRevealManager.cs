@@ -38,9 +38,11 @@ public sealed class EncounterRevealManager
         if (area == AreaType.None || area.IsCorridor())
             return false;
 
+        var now = DateTime.UtcNow;
         var candidates = candidatePlayerIds
             .Where(id => id != 0 && id != actorPlayerId)
             .Distinct()
+            .Where(id => !IsPairCoolingDown(matchingId, actorPlayerId, id, now))
             .ToList();
         if (candidates.Count == 0)
             return false;
@@ -54,6 +56,7 @@ public sealed class EncounterRevealManager
                 return false;
 
             targetPlayerId = candidates[_rng.Next(candidates.Count)];
+            SetPairCooldown(matchingId, actorPlayerId, targetPlayerId, now);
         }
 
         return true;
