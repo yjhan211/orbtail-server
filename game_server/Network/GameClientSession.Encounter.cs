@@ -200,7 +200,7 @@ public partial class GameClientSession
                 targetPlayerId,
                 discovererPlayerId,
                 area,
-                EncounterRevealManager.RoomEncounterActionInspect,
+                ResolveBotRoomEncounterAction(),
                 out _);
         }
 
@@ -382,17 +382,35 @@ public partial class GameClientSession
         if (otherPlayerId == 0)
             return;
 
-        int eventType = ResolveRoomEncounterResultEventType(resolution.GetActionFor(playerId));
+        int eventType = ResolveRoomEncounterResultEventType(
+            resolution.GetActionFor(playerId),
+            resolution.GetOtherActionFor(playerId));
         session.SendEncounterEvent(otherPlayerId, resolution.Area, eventType,
             EncounterRevealManager.PairCooldownSeconds);
     }
 
-    private static int ResolveRoomEncounterResultEventType(int actionType)
+    private static int ResolveRoomEncounterResultEventType(int ownActionType, int otherActionType)
     {
-        return EncounterRevealManager.NormalizeRoomEncounterAction(actionType) ==
-               EncounterRevealManager.RoomEncounterActionLeave
-            ? EncounterRevealManager.RoomEncounterLeaveResultEventType
-            : EncounterRevealManager.RoomEncounterInspectResultEventType;
+        int ownAction = EncounterRevealManager.NormalizeRoomEncounterAction(ownActionType);
+        int otherAction = EncounterRevealManager.NormalizeRoomEncounterAction(otherActionType);
+        if (ownAction == EncounterRevealManager.RoomEncounterActionLeave)
+            return EncounterRevealManager.RoomEncounterLeaveResultEventType;
+
+        if (ownAction == EncounterRevealManager.RoomEncounterActionHidePresence ||
+            otherAction == EncounterRevealManager.RoomEncounterActionHidePresence)
+            return EncounterRevealManager.RoomEncounterHidePresenceResultEventType;
+
+        return EncounterRevealManager.RoomEncounterInspectResultEventType;
+    }
+
+    private static int ResolveBotRoomEncounterAction()
+    {
+        return Random.Shared.Next(3) switch
+        {
+            0 => EncounterRevealManager.RoomEncounterActionHidePresence,
+            1 => EncounterRevealManager.RoomEncounterActionLeave,
+            _ => EncounterRevealManager.RoomEncounterActionInspect
+        };
     }
 
     private bool IsRoomEncounterTargetUnaware(GameClientSession? targetSession, BotPlayerState? targetBot)
