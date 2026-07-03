@@ -2000,8 +2000,11 @@ public class GameServer(
         _doorStateManager.InitializeMatching(matchingId);
         _checklistManager.StartRound(matchingId, 1, playerIds,
             playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
-        GameClientSession.TryStartHeadlessActionRound(matchingId);
-        StartHeadlessRoundTimer(matchingId);
+        if (Config.ROUND_SYSTEM_ENABLED)
+        {
+            GameClientSession.TryStartHeadlessActionRound(matchingId);
+            StartHeadlessRoundTimer(matchingId);
+        }
 
         _gameEventLogManager.LogSystem(matchingId,
             $"Bot-only instance created: botCount={botCount}, ids=[{string.Join(",", playerIds)}]");
@@ -2047,6 +2050,9 @@ public class GameServer(
 
     private void StartHeadlessRoundTimer(long matchingId)
     {
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return;
+
         var timer = new Timer(_ => ProcessHeadlessRoundTimerTick(matchingId), null,
             TimeSpan.Zero, TimeSpan.FromSeconds(1));
         if (!_headlessRoundTimers.TryAdd(matchingId, timer))

@@ -183,6 +183,9 @@ public partial class GameClientSession : SessionBase
     internal static (int RoundNumber, int TotalRounds, string Phase, int RemainingSeconds, int PhaseDurationSeconds,
         bool IsSessionEnded)? GetRoundSnapshot(long matchingId)
     {
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return null;
+
         if (!GameRoundStates.TryGetValue(matchingId, out var state))
             return null;
 
@@ -200,6 +203,9 @@ public partial class GameClientSession : SessionBase
 
     internal static bool IsRoundActionPhase(long matchingId)
     {
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return true;
+
         if (!GameRoundStates.TryGetValue(matchingId, out var state))
             return true;
 
@@ -211,6 +217,9 @@ public partial class GameClientSession : SessionBase
 
     internal static bool TryStartHeadlessActionRound(long matchingId)
     {
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return false;
+
         var state = new RoundRuntimeState
         {
             RoundNumber = 1,
@@ -227,6 +236,9 @@ public partial class GameClientSession : SessionBase
     private bool IsRoundActionLocked(out RoundPhase phase)
     {
         phase = RoundPhase.Action;
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return false;
+
         if (CurrentMapSubId <= 0 || !GameRoundStates.TryGetValue(CurrentMapSubId, out var state))
             return false;
 

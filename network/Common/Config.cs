@@ -61,6 +61,9 @@ namespace network.common
         /// <summary>게임 세션 지속 시간 (초)</summary>
         public static readonly int GAME_DURATION_SECONDS = GAME_DURATION_MINUTES * 60;
 
+        /// <summary>Round/settlement loop toggle. Disabled for the current continuous-session prototype.</summary>
+        public static readonly bool ROUND_SYSTEM_ENABLED = false;
+
         /// <summary>Round system: total round count (#168).</summary>
         public const int ROUND_TOTAL_COUNT = 4;
 

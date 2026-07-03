@@ -77,7 +77,9 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        int roundNumber = GameRoundStates.TryGetValue(CurrentMapSubId, out var roundState)
+        int roundNumber = !Config.ROUND_SYSTEM_ENABLED
+            ? 1
+            : GameRoundStates.TryGetValue(CurrentMapSubId, out var roundState)
             ? roundState.RoundNumber
             : 0;
         var contribution = _checklistManager.GetPlayerContributions(CurrentMapSubId, new[] { PlayerId.Value })

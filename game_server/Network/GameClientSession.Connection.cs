@@ -426,6 +426,16 @@ public partial class GameClientSession
             _checklistManager.RemoveMatchingState(matchingId);
             _presenceTracker?.Remove(matchingId);
 
+            if (!Config.ROUND_SYSTEM_ENABLED)
+            {
+                var checklistState = new RoundRuntimeState { RoundNumber = 1 };
+                StartChecklistRound(matchingId, checklistState, broadcast: false);
+                Logger.LogInformation(
+                    "Round system disabled; continuous session started: MatchingId={MatchingId}",
+                    matchingId);
+                return;
+            }
+
             var state = new RoundRuntimeState
             {
                 RoundNumber = 1,
@@ -469,6 +479,9 @@ public partial class GameClientSession
     /// </summary>
     private void ProcessRoundTimerTick(long matchingId)
     {
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return;
+
         if (!GameRoundStates.TryGetValue(matchingId, out var state))
             return;
 
@@ -1099,6 +1112,9 @@ public partial class GameClientSession
 
     private void SendRoundStateSnapshot(long matchingId)
     {
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return;
+
         if (!GameRoundStates.TryGetValue(matchingId, out var state))
             return;
 
