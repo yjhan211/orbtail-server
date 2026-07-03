@@ -203,6 +203,7 @@ namespace network.common
 
         G_TO_C_ROUND_STATE,
         G_TO_C_ENCOUNTER_REVEAL,
+        C_TO_G_ROOM_ENCOUNTER_AVOID,
 
         END
     }

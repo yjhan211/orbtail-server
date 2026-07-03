@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -11,6 +12,8 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private static readonly TimeSpan RoomEncounterHoldDuration = TimeSpan.FromSeconds(13);
+    private static readonly TimeSpan RoomDiscoveryDecisionDuration =
+        TimeSpan.FromSeconds(EncounterRevealManager.RoomDiscoveryDecisionSeconds);
 
     private void SendEncounterEvent(long targetPlayerId, AreaType area, int eventType, int cooldownSeconds,
         int revealDelayMs = 0)
@@ -155,32 +158,15 @@ public partial class GameClientSession
         var targetBot = targetSession == null
             ? _botPlayerManager.GetBot(CurrentMapSubId, targetPlayerId)
             : null;
-        bool targetUnaware = IsRoomEncounterTargetUnaware(targetSession, targetBot);
-        int eventType = targetUnaware
-            ? EncounterRevealManager.RoomDiscoveryEventType
-            : EncounterRevealManager.RoomEncounterEventType;
+        _encounterRevealManager.RegisterPendingRoomDiscovery(
+            CurrentMapSubId,
+            PlayerId.Value,
+            targetPlayerId,
+            CurrentArea);
+        _ = ResolveRoomDiscoveryAfterDecisionDelay(PlayerId.Value, targetPlayerId, CurrentArea);
 
-        if (targetUnaware)
-            _encounterRevealManager.RegisterPendingRoomDiscovery(
-                CurrentMapSubId,
-                PlayerId.Value,
-                targetPlayerId,
-                CurrentArea);
-        else
-            HoldRoomEncounterBotTarget(targetBot);
-
-        if (targetSession != null && !targetUnaware)
-        {
-            SendEncounterEvent(targetSession.PlayerId!.Value, CurrentArea, eventType,
-                EncounterRevealManager.PairCooldownSeconds);
-            targetSession.SendEncounterEvent(PlayerId.Value, CurrentArea, EncounterRevealManager.RoomRevealEventType,
-                EncounterRevealManager.PairCooldownSeconds);
-        }
-        else
-        {
-            SendEncounterEvent(targetPlayerId, CurrentArea, eventType,
-                EncounterRevealManager.PairCooldownSeconds);
-        }
+        SendEncounterEvent(targetPlayerId, CurrentArea, EncounterRevealManager.RoomDiscoveryEventType,
+            EncounterRevealManager.PairCooldownSeconds);
 
         _gameEventLogManager.LogRoomEncounterReveal(CurrentMapSubId, PlayerId.Value, targetPlayerId,
             CurrentArea.ToString(), interactId, isBot: false);
@@ -190,20 +176,122 @@ public partial class GameClientSession
             isBot: false);
 
         Logger.LogInformation(
-            "Room encounter reveal: Matching={MatchingId}, Actor={Actor}, Target={Target}, Area={Area}, InteractId={InteractId}, EventType={EventType}, TargetUnaware={TargetUnaware}",
+            "Room discovery started: Matching={MatchingId}, Actor={Actor}, Target={Target}, Area={Area}, InteractId={InteractId}, EventType={EventType}",
             CurrentMapSubId,
             PlayerId.Value,
             targetPlayerId,
             CurrentArea,
             interactId,
-            eventType,
-            targetUnaware);
+            EncounterRevealManager.RoomDiscoveryEventType);
 
         SendRngCollectResult(interactId, RngCollectEncounterResultType, 0, 0, 0);
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
         BroadcastRngCollectCooldown(interactId, 0);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
         return true;
+    }
+
+    private async Task ResolveRoomDiscoveryAfterDecisionDelay(long discovererPlayerId, long targetPlayerId,
+        AreaType area)
+    {
+        try
+        {
+            await Task.Delay(RoomDiscoveryDecisionDuration);
+
+            if (!PlayerId.HasValue || PlayerId.Value != discovererPlayerId || IsEliminated)
+                return;
+
+            if (!_encounterRevealManager.TryConsumePendingRoomDiscovery(
+                    CurrentMapSubId,
+                    discovererPlayerId,
+                    targetPlayerId,
+                    area,
+                    out _))
+            {
+                return;
+            }
+
+            if (CurrentArea != area || CurrentMapSubId <= 0)
+            {
+                Logger.LogInformation(
+                    "Room discovery expired but discoverer left: Matching={MatchingId}, Discoverer={Discoverer}, Target={Target}, Area={Area}, CurrentArea={CurrentArea}",
+                    CurrentMapSubId,
+                    discovererPlayerId,
+                    targetPlayerId,
+                    area,
+                    CurrentArea);
+                return;
+            }
+
+            var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            var targetSession = allSessions.FirstOrDefault(session =>
+                session.PlayerId == targetPlayerId &&
+                !session.IsEliminated &&
+                session.CurrentMapSubId == CurrentMapSubId &&
+                session.CurrentArea == area);
+            var targetBot = targetSession == null
+                ? _botPlayerManager.GetBot(CurrentMapSubId, targetPlayerId)
+                : null;
+
+            if (targetSession == null &&
+                (targetBot is not { IsEliminated: false } || targetBot.CurrentArea != area))
+            {
+                Logger.LogInformation(
+                    "Room discovery expired but target left: Matching={MatchingId}, Discoverer={Discoverer}, Target={Target}, Area={Area}",
+                    CurrentMapSubId,
+                    discovererPlayerId,
+                    targetPlayerId,
+                    area);
+                return;
+            }
+
+            HoldRoomEncounterBotTarget(targetBot);
+
+            SendEncounterEvent(targetPlayerId, area, EncounterRevealManager.RoomEncounterEventType,
+                EncounterRevealManager.PairCooldownSeconds);
+            targetSession?.SendEncounterEvent(discovererPlayerId, area, EncounterRevealManager.RoomRevealEventType,
+                EncounterRevealManager.PairCooldownSeconds);
+
+            Logger.LogInformation(
+                "Room discovery resolved by server timer: Matching={MatchingId}, Discoverer={Discoverer}, Target={Target}, Area={Area}",
+                CurrentMapSubId,
+                discovererPlayerId,
+                targetPlayerId,
+                area);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex,
+                "Room discovery decision timer failed: Matching={MatchingId}, Discoverer={Discoverer}, Target={Target}, Area={Area}",
+                CurrentMapSubId,
+                discovererPlayerId,
+                targetPlayerId,
+                area);
+        }
+    }
+
+    private Task HandleRoomEncounterAvoid(C_TO_G_ROOM_ENCOUNTER_AVOID msg)
+    {
+        if (!PlayerId.HasValue || msg == null || msg.TargetPlayerId == 0)
+            return Task.CompletedTask;
+
+        var area = msg.AreaType == AreaType.None ? CurrentArea : msg.AreaType;
+        bool consumed = _encounterRevealManager.TryConsumePendingRoomDiscovery(
+            CurrentMapSubId,
+            PlayerId.Value,
+            msg.TargetPlayerId,
+            area,
+            out _);
+
+        Logger.LogInformation(
+            "Room discovery avoid: Matching={MatchingId}, Actor={Actor}, Target={Target}, Area={Area}, ActionType={ActionType}, Consumed={Consumed}",
+            CurrentMapSubId,
+            PlayerId.Value,
+            msg.TargetPlayerId,
+            area,
+            msg.ActionType,
+            consumed);
+        return Task.CompletedTask;
     }
 
     private bool IsRoomEncounterTargetUnaware(GameClientSession? targetSession, BotPlayerState? targetBot)
@@ -222,45 +310,7 @@ public partial class GameClientSession
 
     private void ResolvePendingRoomDiscoveriesAfterExploreFinished(AreaType area)
     {
-        if (!PlayerId.HasValue || area == AreaType.None)
-            return;
-
-        var discovererIds = _encounterRevealManager.ConsumePendingRoomDiscoverers(
-            CurrentMapSubId,
-            PlayerId.Value,
-            area);
-        if (discovererIds.Count == 0)
-            return;
-
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        foreach (long discovererId in discovererIds)
-        {
-            var discovererSession = allSessions.FirstOrDefault(session =>
-                session.PlayerId == discovererId &&
-                !session.IsEliminated &&
-                session.CurrentMapSubId == CurrentMapSubId &&
-                session.CurrentArea == area);
-            if (discovererSession == null)
-                continue;
-
-            discovererSession.SendEncounterEvent(
-                PlayerId.Value,
-                area,
-                EncounterRevealManager.RoomEncounterEventType,
-                EncounterRevealManager.PairCooldownSeconds);
-            SendEncounterEvent(
-                discovererId,
-                area,
-                EncounterRevealManager.RoomRevealEventType,
-                EncounterRevealManager.PairCooldownSeconds);
-
-            Logger.LogInformation(
-                "Room discovery resolved after target explore finish: Matching={MatchingId}, Discoverer={Discoverer}, Target={Target}, Area={Area}",
-                CurrentMapSubId,
-                discovererId,
-                PlayerId.Value,
-                area);
-        }
+        // Room discovery now resolves through the server-side decision timer or an explicit avoid request.
     }
 
     private static void HoldRoomEncounterBotTarget(BotPlayerState? bot)

@@ -349,6 +349,9 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_RNG_COLLECT_FINISH>(bytes, HandleRngCollectFinish));
 
         // 상호작용 선택지 프로토콜
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ROOM_ENCOUNTER_AVOID,
+            async bytes => await HandleMessage<C_TO_G_ROOM_ENCOUNTER_AVOID>(bytes, HandleRoomEncounterAvoid));
+
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ASK,
             async bytes => await HandleMessage<C_TO_G_INTERACTION_ASK>(bytes, HandleInteractionAsk));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ANSWER,

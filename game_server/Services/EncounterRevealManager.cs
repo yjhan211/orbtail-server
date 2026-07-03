@@ -14,6 +14,7 @@ public sealed class EncounterRevealManager
 
     public const int PairCooldownSeconds = 10;
     public const int CorridorRevealDelayMs = 900;
+    public const int RoomDiscoveryDecisionSeconds = 3;
 
     private const int RoomEncounterRollPercent = 100;
     private const float CorridorHintDistance = 3.2f;
@@ -72,6 +73,32 @@ public sealed class EncounterRevealManager
         var key = RoomDiscoveryKey.Create(matchingId, discovererPlayerId, targetPlayerId);
         _pendingRoomDiscoveries[key] = new RoomDiscoveryPending(matchingId, discovererPlayerId, targetPlayerId, area,
             DateTime.UtcNow);
+    }
+
+    public bool TryConsumePendingRoomDiscovery(long matchingId, long discovererPlayerId, long targetPlayerId,
+        AreaType area, out RoomDiscoveryResolution resolution)
+    {
+        resolution = default;
+        if (matchingId <= 0 || discovererPlayerId == 0 || targetPlayerId == 0 || area == AreaType.None)
+            return false;
+
+        var key = RoomDiscoveryKey.Create(matchingId, discovererPlayerId, targetPlayerId);
+        if (!_pendingRoomDiscoveries.TryGetValue(key, out var pending))
+            return false;
+
+        if (pending.Area != area)
+            return false;
+
+        if (!_pendingRoomDiscoveries.TryRemove(key, out pending))
+            return false;
+
+        resolution = new RoomDiscoveryResolution(
+            pending.MatchingId,
+            pending.DiscovererPlayerId,
+            pending.TargetPlayerId,
+            pending.Area,
+            pending.CreatedAtUtc);
+        return true;
     }
 
     public List<long> ConsumePendingRoomDiscoverers(long matchingId, long targetPlayerId, AreaType area)
@@ -236,3 +263,10 @@ public readonly record struct CorridorEncounterDecision(
     public static CorridorEncounterDecision None => new(0, 0, 0, 0);
     public bool HasEvent => EventType != 0 && TargetPlayerId != 0;
 }
+
+public readonly record struct RoomDiscoveryResolution(
+    long MatchingId,
+    long DiscovererPlayerId,
+    long TargetPlayerId,
+    AreaType Area,
+    DateTime CreatedAtUtc);

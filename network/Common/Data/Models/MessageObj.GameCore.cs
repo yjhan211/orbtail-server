@@ -81,6 +81,14 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class C_TO_G_ROOM_ENCOUNTER_AVOID : IMessagePackObject
+    {
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("actionType")] public int ActionType { get; set; }
+    }
+
+    [MessagePackObject]
     public class G_TO_C_AREA_EXIT_BLOCKED : IMessagePackObject
     {
         [Key("areaType")] public AreaType AreaType { get; set; } // 나가려던 Area
