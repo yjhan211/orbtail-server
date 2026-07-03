@@ -11,7 +11,7 @@ namespace game_server.network;
 
 public partial class GameClientSession
 {
-    private static readonly TimeSpan RoomEncounterHoldDuration = TimeSpan.FromSeconds(13);
+    private static readonly TimeSpan RoomEncounterHoldDuration = TimeSpan.FromMinutes(5);
 
     private void SendEncounterEvent(long targetPlayerId, AreaType area, int eventType, int cooldownSeconds,
         int revealDelayMs = 0)
@@ -358,6 +358,8 @@ public partial class GameClientSession
         var allSessions = _getSessionsByInstance(CurrentMapId, resolution.MatchingId);
         SendRoomEncounterTurnResultToPlayer(allSessions, resolution, resolution.PlayerA);
         SendRoomEncounterTurnResultToPlayer(allSessions, resolution, resolution.PlayerB);
+        ReleaseRoomEncounterBotTarget(_botPlayerManager.GetBot(resolution.MatchingId, resolution.PlayerA));
+        ReleaseRoomEncounterBotTarget(_botPlayerManager.GetBot(resolution.MatchingId, resolution.PlayerB));
 
         Logger.LogInformation(
             "Room encounter turn resolved: Matching={MatchingId}, PlayerA={PlayerA}, ActionA={ActionA}, PlayerB={PlayerB}, ActionB={ActionB}, Area={Area}",
@@ -420,5 +422,14 @@ public partial class GameClientSession
         bot.HoldForInteraction(RoomEncounterHoldDuration);
         bot.LoopWaitUntil = DateTime.MinValue;
         bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+    }
+
+    private static void ReleaseRoomEncounterBotTarget(BotPlayerState? bot)
+    {
+        if (bot == null)
+            return;
+
+        bot.IsInInteraction = false;
+        bot.InteractionStayUntil = DateTime.MinValue;
     }
 }
