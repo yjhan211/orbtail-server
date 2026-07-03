@@ -997,6 +997,12 @@ if (botInfoList.Count > 0)
         playerInfo.LastMapId = mapId;
         playerInfo.LastMapSubId = matchingId;
         playerInfo.LastCell = spawnPosition;
+        playerInfo.ObjectInfo.MapId = mapId;
+        playerInfo.ObjectInfo.MapSubId = matchingId;
+        playerInfo.ObjectInfo.Cell = Cell.Clone(spawnPosition);
+        playerInfo.ObjectInfo.Position = CellToWorldPosition(spawnPosition);
+        playerInfo.ObjectInfo.Velocity = new Vector3f(0f, 0f, 0f);
+        playerInfo.ObjectInfo.MoveTimestamp = DateTime.UtcNow;
         await playerInfo.Save(_cacheHelper);
 
         // 寃뚯엫?쒕쾭 ?뺣낫
@@ -1016,6 +1022,13 @@ if (botInfoList.Count > 0)
         session.Send(packet);
         _logger.LogInformation("?뚮젅?댁뼱 {DataPlayerId} 留ㅼ묶 ?깃났 ?⑦궥 ?꾩넚 (?寃? {TargetPlayerId}, ??吏곸콉: {MyJob}, ?寃?吏곸콉: {TargetJob})",
             data.PlayerId, targetPlayerId, myJobTitle, targetJobTitle);
+    }
+
+    private static Vector3f CellToWorldPosition(Cell cell)
+    {
+        float wX = (cell.X - cell.Y) / 2f;
+        float wY = (cell.X + cell.Y) / 4f;
+        return new Vector3f(wX, wY, 0f);
     }
 
     /// <summary>

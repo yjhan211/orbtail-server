@@ -145,6 +145,7 @@ public partial class GameClientSession
             // 5. 복도 규칙 체크
             CheckCorridorRuleViolation(validatedPosition, msg.Velocity, newArea);
             TrySendCorridorEncounterEvents(validatedPosition);
+            TrySendRoomEncounterEventsFromVision(validatedPosition);
 
             // 6. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
             using var packet = PacketMaker.G_TO_C_MOVE(

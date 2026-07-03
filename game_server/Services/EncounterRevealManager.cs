@@ -14,6 +14,8 @@ public sealed class EncounterRevealManager
     public const int RoomEncounterInspectResultEventType = 6;
     public const int RoomEncounterLeaveResultEventType = 7;
     public const int RoomEncounterHidePresenceResultEventType = 8;
+    public const int RoomEncounterOwnHidePresenceResultEventType = 9;
+    public const int RoomEncounterBothHidePresenceResultEventType = 10;
 
     public const int PairCooldownSeconds = 10;
     public const int CorridorRevealDelayMs = 900;

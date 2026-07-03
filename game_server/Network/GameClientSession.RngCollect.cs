@@ -45,6 +45,7 @@ public partial class GameClientSession
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {
+            ClearRoomEncounterStartCandidates(msg.InteractId);
             Logger.LogWarning("RNG START InteractId 미존재: {InteractId}", msg.InteractId);
             SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
             return Task.CompletedTask;
@@ -68,14 +69,7 @@ public partial class GameClientSession
         if (currentState == (int)InteractableStateType.SABOTAGE)
             _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, 0);
 
-        if (TryHandleRoomEncounterBeforeCollect(msg.InteractId, info))
-        {
-            Logger.LogInformation(
-                "RNG START room encounter resolved before explore animation: PlayerId={PlayerId}, InteractId={InteractId}",
-                PlayerId, msg.InteractId);
-            return Task.CompletedTask;
-        }
-
+        SnapshotRoomEncounterStartCandidates(msg.InteractId, info);
         _pendingFinish.Add(msg.InteractId);
 
         Logger.LogInformation("RNG 채집 START: PlayerId={PlayerId}, InteractId={InteractId}",
@@ -94,6 +88,7 @@ public partial class GameClientSession
 
         if (!_pendingFinish.Remove(msg.InteractId))
         {
+            ClearRoomEncounterStartCandidates(msg.InteractId);
             Logger.LogWarning("RNG FINISH — START 미수신 또는 중복: PlayerId={PlayerId}, InteractId={InteractId}",
                 PlayerId, msg.InteractId);
             return Task.CompletedTask;
@@ -103,6 +98,14 @@ public partial class GameClientSession
         if (info == null)
         {
             Logger.LogWarning("RNG FINISH InteractId 미존재: {InteractId}", msg.InteractId);
+            return Task.CompletedTask;
+        }
+
+        if (TryHandleRoomEncounterFromExploreSpot(msg.InteractId, info))
+        {
+            Logger.LogInformation(
+                "RNG FINISH room encounter resolved from explore spot: PlayerId={PlayerId}, InteractId={InteractId}",
+                PlayerId, msg.InteractId);
             return Task.CompletedTask;
         }
 

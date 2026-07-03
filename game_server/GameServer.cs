@@ -1291,6 +1291,7 @@ public class GameServer(
         }
 
         TrySendBotCorridorEncounterEvent(matchingId, ev, matchingSessions);
+        TrySendBotRoomEncounterEvent(matchingId, ev, matchingSessions);
     }
 
     private void TrySendBotCorridorEncounterEvent(
@@ -1346,6 +1347,29 @@ public class GameServer(
             decision.TargetPlayerId,
             ev.ToArea,
             decision.EventType);
+    }
+
+    private void TrySendBotRoomEncounterEvent(
+        long matchingId,
+        BotMovementEvent ev,
+        List<GameClientSession> matchingSessions)
+    {
+        if (ev.ToArea == AreaType.None || ev.ToArea.IsCorridor())
+            return;
+
+        foreach (var session in matchingSessions)
+        {
+            if (!session.PlayerId.HasValue ||
+                session.IsEliminated ||
+                session.CurrentMapSubId != matchingId ||
+                session.CurrentArea != ev.ToArea ||
+                session.PlayerId.Value == ev.BotPlayerId)
+            {
+                continue;
+            }
+
+            session.TrySendRoomEncounterEventForObservedPlayer(ev.BotPlayerId, ev.Position);
+        }
     }
 
     /// <summary>
@@ -1446,7 +1470,10 @@ public class GameServer(
                 .ToList();
 
             foreach (var session in activeSessions)
+            {
                 session.SendTargetLocation();
+                session.TrySendRoomEncounterEventsFromCurrentVision();
+            }
         }
         catch (Exception ex)
         {
