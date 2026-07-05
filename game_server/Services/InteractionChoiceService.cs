@@ -79,6 +79,7 @@ public class InteractionChoiceService
     private const int ActivityEvidenceRecentWindowSeconds = 60;
     private static readonly HashSet<int> P0EncounterItemIds = new()
     {
+        201000015,
         401000004,
         401000005,
         401000006,

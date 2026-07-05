@@ -92,6 +92,7 @@ id,category,text_kr,text_en,text_jp
 10040,4,<color=#A8D4E0>체력이 {0} 증가합니다.</color>,<color=#A8D4E0>HP increases by {0}.</color>,<color=#A8D4E0>体力が{0}増加します。</color>
 10041,4,<color=#A8D4E0>정신오염도가 {0} 감소합니다.</color>,<color=#A8D4E0>Corruption decreases by {0}.</color>,<color=#A8D4E0>精神汚染度が{0}減少します。</color>
 10042,4,<color=#A8D4E0>상대방이 당신에게 {0} 아이템을 사용했습니다.</color>,<color=#A8D4E0>The other player used {0} on you.</color>,<color=#A8D4E0>相手があなたに{0}を使用しました。</color>
+10065,4,<color=#FF7E9A>정신오염도가 {0} 증가합니다.</color>,<color=#FF7E9A>Corruption increases by {0}.</color>,<color=#FF7E9A>精神汚染度が{0}増加します。</color>
 10043,4,상대방이 행동 수칙을 공유합니다.,The other player shares a conduct rule.,相手が行動規則を共有します。
 10044,4,학생 수첩에 증언으로 기록합니다.,Recorded as testimony in the student notebook.,学生手帳に証言として記録します。
 10045,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#A8D4E0>accepted</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>さんが<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。

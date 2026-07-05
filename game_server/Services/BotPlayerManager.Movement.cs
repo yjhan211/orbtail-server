@@ -174,7 +174,7 @@ public partial class BotPlayerManager
             bot.PendingChecklistInteractId = 0;
             bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
             bot.RngCollectProgressStartTime = DateTime.MinValue;
-            bot.InteractQueueInArea.Clear();
+            ClearBotRoomExplorePlan(bot);
             bot.LoopWaitUntil = DateTime.MinValue;
             _logger.LogInformation(
                 "Bot forced follow started: MatchingId={MatchingId}, BotId={BotId}, Target={Target}",
@@ -347,6 +347,7 @@ public partial class BotPlayerManager
             bot.Position = CellToWorldPosition(nextStep.Cell);
             bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
             bot.PathIndex++;
+            ClearBotRoomExplorePlan(bot);
             return new BotMovementEvent
             {
                 BotPlayerId = bot.PlayerId,
@@ -471,6 +472,11 @@ public partial class BotPlayerManager
             return;
         }
 
+        if (TryStartQueuedRoomExplore(bot, matchingId, closureManager))
+        {
+            return;
+        }
+
         var destination = ChooseBehaviorDestination(bot, matchingId, mapId, playerAreas, closureManager);
         if (destination == AreaType.None) return;
         if (destination == bot.CurrentArea)
@@ -555,6 +561,86 @@ public partial class BotPlayerManager
         if (info.CellX == 0 && info.CellY == 0) return false;
 
         return TryStartBotChecklistPath(bot, matchingId, area, task.InteractId, task.TaskId, closureManager);
+    }
+
+    private bool TryStartQueuedRoomExplore(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
+    {
+        if (bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor() ||
+            closureManager.IsAreaClosed(matchingId, bot.CurrentArea))
+        {
+            ClearBotRoomExplorePlan(bot);
+            return false;
+        }
+
+        if (bot.CompletedRoomExploreArea == bot.CurrentArea)
+            return false;
+
+        if (bot.RoomExploreQueueArea != AreaType.None && bot.RoomExploreQueueArea != bot.CurrentArea)
+        {
+            bot.InteractQueueInArea.Clear();
+            bot.RoomExploreQueueArea = AreaType.None;
+        }
+
+        if (bot.InteractQueueInArea.Count == 0 && !RefillRoomExploreQueue(bot))
+            return false;
+
+        while (bot.InteractQueueInArea.Count > 0)
+        {
+            int interactId = bot.InteractQueueInArea[0];
+            bot.InteractQueueInArea.RemoveAt(0);
+
+            var info = GameInteractableData.Get(interactId);
+            if (!IsBotRoomExploreCandidate(info, bot.CurrentArea))
+                continue;
+
+            if (!TryStartBotInteractPath(bot, matchingId, bot.CurrentArea, interactId, closureManager,
+                    clearInteractQueue: false))
+                continue;
+
+            _logger.LogInformation(
+                "Bot room explore queued: BotId={Bot}, Area={Area}, InteractId={InteractId}, Remaining={Remaining}",
+                bot.PlayerId, bot.CurrentArea, interactId, bot.InteractQueueInArea.Count);
+            return true;
+        }
+
+        bot.CompletedRoomExploreArea = bot.CurrentArea;
+        bot.RoomExploreQueueArea = AreaType.None;
+        return false;
+    }
+
+    private bool RefillRoomExploreQueue(BotPlayerState bot)
+    {
+        var candidates = GameInteractableData.GetByZone((int)bot.CurrentArea)
+            .Where(info => IsBotRoomExploreCandidate(info, bot.CurrentArea))
+            .OrderBy(_ => _rng.Next())
+            .Select(info => info.Id)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            bot.CompletedRoomExploreArea = bot.CurrentArea;
+            return false;
+        }
+
+        bot.InteractQueueInArea.Clear();
+        bot.InteractQueueInArea.AddRange(candidates);
+        bot.RoomExploreQueueArea = bot.CurrentArea;
+        return true;
+    }
+
+    private static bool IsBotRoomExploreCandidate(InteractableInfoData? info, AreaType area)
+    {
+        return info != null &&
+               info.ZoneId == (int)area &&
+               info.InteractionType == InteractionType.RNG_COLLECT &&
+               (info.CellX != 0 || info.CellY != 0);
+    }
+
+    private static void ClearBotRoomExplorePlan(BotPlayerState bot)
+    {
+        bot.InteractQueueInArea.Clear();
+        bot.RoomExploreQueueArea = AreaType.None;
+        bot.CompletedRoomExploreArea = AreaType.None;
     }
 
     private bool TryStartRecoveryRngPath(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
@@ -917,7 +1003,7 @@ public partial class BotPlayerManager
     }
 
     private bool TryStartBotInteractPath(BotPlayerState bot, long matchingId, AreaType area, int interactId,
-        AreaClosureManager closureManager)
+        AreaClosureManager closureManager, bool clearInteractQueue = true)
     {
         if (bot.IsEliminated) return false;
         if (closureManager.IsAreaClosed(matchingId, area)) return false;
@@ -936,7 +1022,7 @@ public partial class BotPlayerManager
             bot.PendingChecklistTaskId = 0;
             bot.PendingChecklistInteractId = 0;
             bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-            bot.InteractQueueInArea.Clear();
+            if (clearInteractQueue) ClearBotRoomExplorePlan(bot);
             bot.RngCollectProgressStartTime = DateTime.MinValue;
             bot.IsInInteraction = false;
             bot.InteractionStayUntil = DateTime.MinValue;
@@ -963,7 +1049,7 @@ public partial class BotPlayerManager
         bot.PendingChecklistTaskId = 0;
         bot.PendingChecklistInteractId = 0;
         bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-        bot.InteractQueueInArea.Clear();
+        if (clearInteractQueue) ClearBotRoomExplorePlan(bot);
         bot.RngCollectProgressStartTime = DateTime.MinValue;
         bot.IsInInteraction = false;
         bot.InteractionStayUntil = DateTime.MinValue;
@@ -1012,7 +1098,7 @@ public partial class BotPlayerManager
         bot.PendingChecklistTaskId = taskId;
         bot.PendingChecklistInteractId = interactId;
         bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-        bot.InteractQueueInArea.Clear();
+        ClearBotRoomExplorePlan(bot);
         bot.IsInInteraction = false;
         bot.InteractionStayUntil = DateTime.MinValue;
         bot.PendingForcedInteractArea = AreaType.None;
@@ -1076,6 +1162,7 @@ public partial class BotPlayerManager
         bot.Position = newPosition;
         bot.Path.Clear();
         bot.PathIndex = 0;
+        ClearBotRoomExplorePlan(bot);
 
         return new BotMovementEvent
         {

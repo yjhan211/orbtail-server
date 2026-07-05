@@ -1955,9 +1955,9 @@ public class GameServer(
         return ids.OrderBy(id => id).ToList();
     }
 
-    public InstanceSnapshot? CreateBotOnlyInstance(int botCount = 5)
+    public InstanceSnapshot? CreateBotOnlyInstance(int botCount = 8)
     {
-        botCount = Math.Clamp(botCount, 2, 5);
+        botCount = Math.Clamp(botCount, 2, 8);
         long matchingId = System.Threading.Interlocked.Increment(ref _adminBotOnlyMatchingIdSeed);
         var jobs = BuildBotOnlyJobPool(botCount);
         var playerIds = Enumerable.Range(0, botCount)
@@ -2023,7 +2023,10 @@ public class GameServer(
             JobTitle.DISCIPLINE_MEMBER,
             JobTitle.LIBRARY_COMMITTEE,
             JobTitle.SPORTS_CAPTAIN,
-            JobTitle.CLEANING_MEMBER
+            JobTitle.SCIENCE_MEMBER,
+            JobTitle.CLEANING_MEMBER,
+            JobTitle.STUDENT_PRESIDENT,
+            JobTitle.HEALTH_MEMBER
         };
 
         return jobs.Take(botCount).ToList();

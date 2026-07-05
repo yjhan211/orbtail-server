@@ -10,12 +10,93 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int CatPillowItemId = 401000003;
+    private const int ChalkPowderItemId = 201000015;
     private const int CatPillowRestDurationSeconds = 15;
 
     private Task HandleAttack(C_TO_G_ATTACK msg)
     {
-        // 미구현 — 클라이언트에 에러 응답
-        SendErrorResponse(ErrorCode.NOT_IMPLEMENTED, "공격 기능 미구현");
+        if (!PlayerId.HasValue || msg == null)
+            return Task.CompletedTask;
+
+        if (IsRoundActionLocked(out _))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            return Task.CompletedTask;
+        }
+
+        if (!long.TryParse(msg.TargetId, out long targetPlayerId) ||
+            targetPlayerId == 0 ||
+            targetPlayerId == PlayerId.Value)
+        {
+            SendErrorResponse(ErrorCode.INVALID_REQUEST, "Invalid attack target");
+            return Task.CompletedTask;
+        }
+
+        var area = CurrentArea;
+        if (area == AreaType.None)
+        {
+            SendErrorResponse(ErrorCode.INVALID_AREA, "Invalid encounter area");
+            return Task.CompletedTask;
+        }
+
+        InGameItemInfo? updatedItem = null;
+        bool attemptedChalkConsume = false;
+        bool consumedChalkPowder = false;
+
+        bool submitted = _encounterRevealManager.TrySubmitRoomEncounterChoice(
+            CurrentMapSubId,
+            PlayerId.Value,
+            targetPlayerId,
+            area,
+            EncounterRevealManager.RoomEncounterActionInspect,
+            out var resolution,
+            beforeSubmit: () =>
+            {
+                attemptedChalkConsume = true;
+                consumedChalkPowder = _inGameInventoryManager.TryRemoveOneByItemId(
+                    CurrentMapSubId,
+                    PlayerId.Value,
+                    ChalkPowderItemId,
+                    out updatedItem);
+                return consumedChalkPowder;
+            });
+
+        if (!submitted)
+        {
+            var errorCode = attemptedChalkConsume ? ErrorCode.INSUFFICIENT_ITEM : ErrorCode.INVALID_GAME_STATE;
+            string message = attemptedChalkConsume ? "Chalk powder is required" : "No pending room encounter";
+            SendErrorResponse(errorCode, message);
+            Logger.LogWarning(
+                "Player {PlayerId} failed room encounter attack: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}, AttemptedChalkConsume={AttemptedChalkConsume}",
+                PlayerId,
+                targetPlayerId,
+                CurrentMapSubId,
+                area,
+                errorCode,
+                attemptedChalkConsume);
+            return Task.CompletedTask;
+        }
+
+        if (consumedChalkPowder && updatedItem != null)
+        {
+            SendInGameInventoryUpdate(updatedItem);
+            ApplyItemBuffs(ChalkPowderItemId);
+        }
+
+        SuppressRoomEncounterBriefly();
+
+        if (resolution.PlayerA != 0)
+            SendRoomEncounterTurnResult(resolution);
+
+        Logger.LogInformation(
+            "Player {PlayerId} attacked in room encounter: Target={Target}, Matching={MatchingId}, Area={Area}, ConsumedChalk={ConsumedChalk}, Resolved={Resolved}",
+            PlayerId,
+            targetPlayerId,
+            CurrentMapSubId,
+            area,
+            consumedChalkPowder,
+            resolution.PlayerA != 0);
+
         return Task.CompletedTask;
     }
 
@@ -292,6 +373,15 @@ public partial class GameClientSession
 
         int itemId = itemInfo.ItemId;
         var itemData = GameItemData.Get(itemId);
+        if (itemId == ChalkPowderItemId)
+        {
+            using var failPacket =
+                PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.ITEM_NOT_USABLE);
+            Send(failPacket);
+            Logger.LogWarning("Player {PlayerId} tried to use attack-only item outside encounter: ItemUid={ItemUid}, ItemId={ItemId}",
+                PlayerId, msg.ItemUid, itemId);
+            return;
+        }
 
         // Reusable 아이템은 소모하지 않음
         if (itemData.Reusable)

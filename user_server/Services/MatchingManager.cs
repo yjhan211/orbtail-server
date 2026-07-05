@@ -34,7 +34,7 @@ public class MatchingManager : IMatchingManager
     private const int MaxLeavePenaltySeconds = 300; // 理쒕? ?섎꼸???湲??쒓컙 (5遺?
     private const int PenaltyDecayIntervalHours = 24; // 24?쒓컙 寃쎄낵 ???댄깉 ?잛닔 1 媛먯냼
     private const int DefaultPlayersPerMatch = 1; // 留ㅼ묶 ?몃━嫄?理쒖냼 ?몄썝 (#22 ?붾쾭洹???1???몃━嫄?
-    private const int DefaultGamePlayersPerMatch = 5; // ?ㅼ젣 寃뚯엫 ?몄썝 (#22 ?붾쾭洹???1??+ 遊?4紐? 媛?痢듬퀎 1紐?
+    private const int DefaultGamePlayersPerMatch = 8; // ?ㅼ젣 寃뚯엫 ?몄썝 (#22 ?붾쾭洹???1??+ 遊?4紐? 媛?痢듬퀎 1紐?
 
     /// <summary>留ㅼ묶 ?몃━嫄?理쒖냼 ?몄썝. DEMO_MODE ?쒖꽦 ??1紐낅쭔?쇰줈 ?몃━嫄?利됱떆 遊?4紐?梨꾩?).</summary>
     private static int PlayersPerMatch => IsTwoPlayerTestMatch ? 2 : DemoMode.IsActive ? 1 : DefaultPlayersPerMatch;
@@ -730,7 +730,9 @@ if (botInfoList.Count > 0)
             .ToList();
         var bots = entries.Where(x => x.Data.PlayerId < 0).ToList();
 
-        if (realPlayers.Count != 2 || bots.Count != 3)
+        const int expectedRealPlayerCount = 2;
+        int expectedBotCount = DefaultGamePlayersPerMatch - expectedRealPlayerCount;
+        if (realPlayers.Count != expectedRealPlayerCount || bots.Count != expectedBotCount)
         {
             _logger.LogWarning(
                 "TEST_TWO_PLAYER_MATCH 留ㅼ묶 援ъ꽦 鍮꾩젙??(??{Real}紐?/ 遊?{Bot}紐? ???쇰컲 泥댁씤 ?대갚",
@@ -746,7 +748,10 @@ if (botInfoList.Count > 0)
             JobTitle.DISCIPLINE_MEMBER,
             JobTitle.BROADCAST_MEMBER,
             JobTitle.SCIENCE_MEMBER,
-            JobTitle.HEALTH_MEMBER
+            JobTitle.HEALTH_MEMBER,
+            JobTitle.LIBRARY_COMMITTEE,
+            JobTitle.SPORTS_CAPTAIN,
+            JobTitle.CLEANING_MEMBER
         };
 
         var chain = new List<ManittoChainLink>();

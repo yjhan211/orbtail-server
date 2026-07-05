@@ -96,17 +96,17 @@ public partial class GameClientSession
 
     internal void TrySendRoomEncounterEventsFromCurrentVision()
     {
-        // Room encounters are resolved only from the selected explore spot, not passive vision.
+        // Room encounters are resolved from an explicit room exploration action, not passive vision.
     }
 
     internal void TrySendRoomEncounterEventForObservedPlayer(long observedPlayerId, Vector3f observedPosition)
     {
-        // Room encounters are resolved only from the selected explore spot, not passive vision.
+        // Room encounters are resolved from an explicit room exploration action, not passive vision.
     }
 
     private void TrySendRoomEncounterEventsFromVision(Vector3f actorPosition)
     {
-        // Room encounters are resolved only from the selected explore spot, not passive vision.
+        // Room encounters are resolved from an explicit room exploration action, not passive vision.
     }
 
     private void SnapshotRoomEncounterStartCandidates(int interactId, InteractableInfoData info)
@@ -204,6 +204,7 @@ public partial class GameClientSession
                     bot.CurrentArea == CurrentArea &&
                     IsAtRoomExploreSpot(exploreSpotPosition, bot.Position))
                 .Select(bot => bot.PlayerId))
+            .Distinct()
             .ToList();
 
         return true;
@@ -222,7 +223,7 @@ public partial class GameClientSession
 
         long actorPlayerId = PlayerId.GetValueOrDefault();
         Logger.LogDebug(
-            "Room encounter candidates: Matching={MatchingId}, Actor={Actor}, Area={Area}, InteractId={InteractId}, CandidateCount={CandidateCount}, Candidates={Candidates}",
+            "Room encounter candidates: Matching={MatchingId}, Actor={Actor}, Area={Area}, InteractId={InteractId}, CandidateCount={CandidateCount}, Candidates={Candidates}, Source=ExploreSpot",
             CurrentMapSubId,
             actorPlayerId,
             CurrentArea,
@@ -243,7 +244,7 @@ public partial class GameClientSession
         }
 
         StartRoomEncounterReveal(actorPlayerId, targetPlayerId, allSessions, interactId,
-            sendCollectResult: true, forceEncounterEvent: true);
+            sendCollectResult: true, forceDirectEncounter: true);
         return true;
     }
 
@@ -253,7 +254,7 @@ public partial class GameClientSession
         IReadOnlyCollection<GameClientSession> allSessions,
         int interactId,
         bool sendCollectResult,
-        bool forceEncounterEvent = false)
+        bool forceDirectEncounter = false)
     {
         if (_encounterRevealManager.HasPendingRoomEncounterTurn(CurrentMapSubId, actorPlayerId) ||
             _encounterRevealManager.HasPendingRoomEncounterTurn(CurrentMapSubId, targetPlayerId))
@@ -274,11 +275,12 @@ public partial class GameClientSession
             : null;
 
         bool targetUnaware = IsRoomEncounterTargetUnaware(targetSession, targetBot);
-        int eventType = targetUnaware
+        bool startWithDiscovery = !forceDirectEncounter && targetUnaware;
+        int eventType = startWithDiscovery
             ? EncounterRevealManager.RoomDiscoveryEventType
             : EncounterRevealManager.RoomEncounterEventType;
 
-        if (targetUnaware)
+        if (startWithDiscovery)
         {
             _encounterRevealManager.RegisterPendingRoomDiscovery(
                 CurrentMapSubId,
@@ -303,15 +305,17 @@ public partial class GameClientSession
             isBot: false);
 
         Logger.LogInformation(
-            "Room encounter reveal started: Matching={MatchingId}, Actor={Actor}, Target={Target}, Area={Area}, InteractId={InteractId}, TargetUnaware={TargetUnaware}, EventType={EventType}, Source={Source}",
+            "Room encounter reveal started: Matching={MatchingId}, Actor={Actor}, Target={Target}, Area={Area}, InteractId={InteractId}, TargetUnaware={TargetUnaware}, ForceDirectEncounter={ForceDirectEncounter}, StartWithDiscovery={StartWithDiscovery}, EventType={EventType}, Source={Source}",
             CurrentMapSubId,
             actorPlayerId,
             targetPlayerId,
             CurrentArea,
             interactId,
             targetUnaware,
+            forceDirectEncounter,
+            startWithDiscovery,
             eventType,
-            sendCollectResult ? "ExploreSpot" : "Vision");
+            sendCollectResult ? "Explore" : "Vision");
 
         if (!sendCollectResult)
             return;
@@ -557,6 +561,7 @@ public partial class GameClientSession
 
         if (!shouldStartEncounter)
         {
+            ReleaseRoomEncounterBotTarget(_botPlayerManager.GetBot(resolution.MatchingId, resolution.TargetPlayerId));
             Logger.LogInformation(
                 "Room discovery avoided: Matching={MatchingId}, Discoverer={Discoverer}, Target={Target}, Area={Area}, ActionType={ActionType}",
                 resolution.MatchingId,
@@ -593,6 +598,11 @@ public partial class GameClientSession
         if (targetSession == null &&
             (targetBot is not { IsEliminated: false } || targetBot.CurrentArea != resolution.Area))
         {
+            ReleaseRoomEncounterBotTarget(targetBot);
+            SendEncounterEvent(resolution.TargetPlayerId, resolution.Area,
+                EncounterRevealManager.RoomDiscoveryTargetLeftEventType,
+                EncounterRevealManager.PairCooldownSeconds);
+
             Logger.LogInformation(
                 "Room discovery action ignored because target left: Matching={MatchingId}, Discoverer={Discoverer}, Target={Target}, Area={Area}, ActionType={ActionType}",
                 resolution.MatchingId,

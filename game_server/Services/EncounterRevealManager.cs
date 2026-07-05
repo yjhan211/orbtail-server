@@ -16,6 +16,7 @@ public sealed class EncounterRevealManager
     public const int RoomEncounterHidePresenceResultEventType = 8;
     public const int RoomEncounterOwnHidePresenceResultEventType = 9;
     public const int RoomEncounterBothHidePresenceResultEventType = 10;
+    public const int RoomDiscoveryTargetLeftEventType = 11;
 
     public const int PairCooldownSeconds = 10;
     public const int CorridorRevealDelayMs = 900;
@@ -148,7 +149,7 @@ public sealed class EncounterRevealManager
     }
 
     public bool TrySubmitRoomEncounterChoice(long matchingId, long actorPlayerId, long otherPlayerId,
-        AreaType area, int actionType, out RoomEncounterTurnResolution resolution)
+        AreaType area, int actionType, out RoomEncounterTurnResolution resolution, Func<bool>? beforeSubmit = null)
     {
         resolution = default;
         if (matchingId <= 0 || actorPlayerId == 0 || otherPlayerId == 0 || area == AreaType.None)
@@ -158,15 +159,31 @@ public sealed class EncounterRevealManager
         if (!_pendingRoomEncounterTurns.TryGetValue(key, out var pending) || pending.Area != area)
             return false;
 
-        pending.Choices[actorPlayerId] = NormalizeRoomEncounterAction(actionType);
-        if (!pending.Choices.ContainsKey(pending.PlayerA) || !pending.Choices.ContainsKey(pending.PlayerB))
+        lock (pending)
+        {
+            if (!_pendingRoomEncounterTurns.TryGetValue(key, out var current) ||
+                !ReferenceEquals(current, pending) ||
+                current.Area != area)
+            {
+                return false;
+            }
+
+            if (current.Choices.ContainsKey(actorPlayerId))
+                return true;
+
+            if (beforeSubmit != null && !beforeSubmit())
+                return false;
+
+            current.Choices[actorPlayerId] = NormalizeRoomEncounterAction(actionType);
+            if (!current.Choices.ContainsKey(current.PlayerA) || !current.Choices.ContainsKey(current.PlayerB))
+                return true;
+
+            if (!_pendingRoomEncounterTurns.TryRemove(key, out var removed) || !ReferenceEquals(removed, current))
+                return false;
+
+            resolution = removed.ToResolution();
             return true;
-
-        if (!_pendingRoomEncounterTurns.TryRemove(key, out pending))
-            return false;
-
-        resolution = pending.ToResolution();
-        return true;
+        }
     }
 
     public bool TryConsumePendingRoomEncounterTurn(long matchingId, long playerA, long playerB, AreaType area,
@@ -225,6 +242,7 @@ public sealed class EncounterRevealManager
 
         return false;
     }
+
 
     public List<long> ConsumePendingRoomDiscoverers(long matchingId, long targetPlayerId, AreaType area)
     {

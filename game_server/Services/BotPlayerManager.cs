@@ -472,6 +472,10 @@ public class BotPlayerState
     /// 鍮꾨㈃ ChooseNewWanderTarget???ㅼ쓬 ?곸뿭 寃곗젙.</summary>
     public List<int> InteractQueueInArea { get; set; } = new();
 
+    public AreaType RoomExploreQueueArea { get; set; } = AreaType.None;
+
+    public AreaType CompletedRoomExploreArea { get; set; } = AreaType.None;
+
     /// <summary>留덉?留됱쑝濡??먮룞 ?뚮え?덉쓣 ?ъ슜???쒓컖 (?ъ궗??荑⑤떎??.</summary>
     public DateTime LastAutoConsumableUseTime { get; set; } = DateTime.MinValue;
 
