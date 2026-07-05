@@ -59,7 +59,7 @@ public partial class GameClientSession
             targetPlayerId,
             area,
             EncounterRevealManager.RoomEncounterActionUseItem,
-            out var resolution);
+            out _);
 
         if (!submitted)
         {
@@ -76,16 +76,13 @@ public partial class GameClientSession
 
         SuppressRoomEncounterBriefly();
 
-        if (resolution.PlayerA != 0)
-            SendRoomEncounterTurnResult(resolution);
-
         Logger.LogInformation(
             "Player {PlayerId} submitted room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Resolved={Resolved}",
             PlayerId,
             targetPlayerId,
             CurrentMapSubId,
             area,
-            resolution.PlayerA != 0);
+            false);
 
         return Task.CompletedTask;
     }

@@ -13,6 +13,7 @@ public partial class GameClientSession
 {
     private static readonly TimeSpan RoomEncounterHoldDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan RoomEncounterActionSuppressDuration = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan RoomEncounterTurnResolutionDelay = TimeSpan.FromMilliseconds(3200);
     // Used only for resolving already-pending discovery transitions after the target finishes exploring.
     private const float RoomEncounterVisionDistance = 2.75f;
     private const float RoomExploreSpotOccupancyDistance = 2.75f;
@@ -391,12 +392,14 @@ public partial class GameClientSession
     private void StartRoomEncounterTurn(long discovererPlayerId, long targetPlayerId, AreaType area,
         GameClientSession? targetSession)
     {
-        _encounterRevealManager.RegisterPendingRoomEncounterTurn(CurrentMapSubId, discovererPlayerId, targetPlayerId,
+        var mapId = CurrentMapId;
+        long matchingId = CurrentMapSubId;
+        _encounterRevealManager.RegisterPendingRoomEncounterTurn(matchingId, discovererPlayerId, targetPlayerId,
             area);
         if (targetSession == null)
         {
             _encounterRevealManager.TrySubmitRoomEncounterChoice(
-                CurrentMapSubId,
+                matchingId,
                 targetPlayerId,
                 discovererPlayerId,
                 area,
@@ -408,6 +411,33 @@ public partial class GameClientSession
             EncounterRevealManager.PairCooldownSeconds);
         targetSession?.SendEncounterEvent(discovererPlayerId, area, EncounterRevealManager.RoomEncounterEventType,
             EncounterRevealManager.PairCooldownSeconds);
+
+        _ = ResolveRoomEncounterTurnAfterDelay(mapId, matchingId, discovererPlayerId, targetPlayerId, area);
+    }
+
+    private async Task ResolveRoomEncounterTurnAfterDelay(MapId mapId, long matchingId, long playerA, long playerB,
+        AreaType area)
+    {
+        try
+        {
+            await Task.Delay(RoomEncounterTurnResolutionDelay);
+            if (!_encounterRevealManager.TryConsumePendingRoomEncounterTurn(matchingId, playerA, playerB, area,
+                    out var resolution))
+            {
+                return;
+            }
+
+            SendRoomEncounterTurnResult(mapId, resolution);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex,
+                "Room encounter delayed resolution failed: Matching={MatchingId}, PlayerA={PlayerA}, PlayerB={PlayerB}, Area={Area}",
+                matchingId,
+                playerA,
+                playerB,
+                area);
+        }
     }
 
     private Task HandleRoomEncounterAvoid(C_TO_G_ROOM_ENCOUNTER_AVOID msg)
@@ -460,12 +490,7 @@ public partial class GameClientSession
                 msg.TargetPlayerId,
                 area,
                 msg.ActionType,
-                out var resolution);
-            if (resolution.PlayerA != 0)
-            {
-                resolvedEncounterChoice = true;
-                SendRoomEncounterTurnResult(resolution);
-            }
+                out _);
         }
 
         Logger.LogInformation(
@@ -627,9 +652,9 @@ public partial class GameClientSession
         return true;
     }
 
-    private void SendRoomEncounterTurnResult(RoomEncounterTurnResolution resolution)
+    private void SendRoomEncounterTurnResult(MapId mapId, RoomEncounterTurnResolution resolution)
     {
-        var allSessions = _getSessionsByInstance(CurrentMapId, resolution.MatchingId);
+        var allSessions = _getSessionsByInstance(mapId, resolution.MatchingId);
         ApplyRoomEncounterTurnEffects(allSessions, resolution);
         SendRoomEncounterTurnResultToPlayer(allSessions, resolution, resolution.PlayerA);
         SendRoomEncounterTurnResultToPlayer(allSessions, resolution, resolution.PlayerB);

@@ -176,13 +176,6 @@ public sealed class EncounterRevealManager
                 return false;
 
             current.Choices[actorPlayerId] = NormalizeRoomEncounterAction(actionType);
-            if (!current.Choices.ContainsKey(current.PlayerA) || !current.Choices.ContainsKey(current.PlayerB))
-                return true;
-
-            if (!_pendingRoomEncounterTurns.TryRemove(key, out var removed) || !ReferenceEquals(removed, current))
-                return false;
-
-            resolution = removed.ToResolution();
             return true;
         }
     }
@@ -198,11 +191,21 @@ public sealed class EncounterRevealManager
         if (!_pendingRoomEncounterTurns.TryGetValue(key, out var pending) || pending.Area != area)
             return false;
 
-        if (!_pendingRoomEncounterTurns.TryRemove(key, out pending))
-            return false;
+        lock (pending)
+        {
+            if (!_pendingRoomEncounterTurns.TryGetValue(key, out var current) ||
+                !ReferenceEquals(current, pending) ||
+                current.Area != area)
+            {
+                return false;
+            }
 
-        resolution = pending.ToResolution();
-        return true;
+            if (!_pendingRoomEncounterTurns.TryRemove(key, out var removed) || !ReferenceEquals(removed, current))
+                return false;
+
+            resolution = removed.ToResolution();
+            return true;
+        }
     }
 
     public List<RoomEncounterTurnResolution> ConsumePendingRoomEncounterTurnsForPlayer(long matchingId, long playerId)
