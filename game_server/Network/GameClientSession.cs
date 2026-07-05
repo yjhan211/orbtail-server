@@ -23,6 +23,7 @@ public partial class GameClientSession : SessionBase
     private const int MaxCorruption = 100;
     private const int InitialStamina = MaxStamina;
     private const int InitialCorruption = 0;
+    private static readonly TimeSpan ExploreMoveGracePeriod = TimeSpan.FromMilliseconds(750);
 
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
@@ -76,6 +77,7 @@ public partial class GameClientSession : SessionBase
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
     private DateTime _lastTargetEncounterRecoveryAt = DateTime.MinValue;
+    private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
 
     private Vector3f? _lastValidatedPosition;
     private Cell? _lastValidCell;

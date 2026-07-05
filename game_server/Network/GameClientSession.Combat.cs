@@ -132,6 +132,9 @@ public partial class GameClientSession
         CurrentState = msg.State == global::network.common.PlayerState.EXPLORE_1
             ? PlayerState.Exploring
             : PlayerState.Idle;
+        _exploreMoveGraceUntil = CurrentState == PlayerState.Exploring
+            ? DateTime.UtcNow + ExploreMoveGracePeriod
+            : DateTime.MinValue;
 
         var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
         if (playerInfo != null)
@@ -583,6 +586,7 @@ public partial class GameClientSession
         Stamina = InitialStamina;
         Corruption = InitialCorruption;
         CurrentState = PlayerState.Idle;
+        _exploreMoveGraceUntil = DateTime.MinValue;
         CurrentExploringInteractId = null;
         Logger.LogInformation("Player {PlayerId} in-game stats reset: Stamina={Stamina}, Corruption={Corruption}",
             PlayerId, Stamina, Corruption);

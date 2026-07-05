@@ -317,6 +317,9 @@ public partial class GameClientSession
         CurrentState = state == global::network.common.PlayerState.EXPLORE_1
             ? PlayerState.Exploring
             : PlayerState.Idle;
+        _exploreMoveGraceUntil = CurrentState == PlayerState.Exploring
+            ? DateTime.UtcNow + ExploreMoveGracePeriod
+            : DateTime.MinValue;
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);

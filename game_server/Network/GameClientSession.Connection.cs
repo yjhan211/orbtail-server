@@ -147,10 +147,13 @@ public partial class GameClientSession
             // Grant default in-game items.
             foreach ((int itemId, int count) in GameRuleData.InGameItemList)
             {
-                _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, count);
+                int addedCount = _inGameInventoryManager.EnsureItemCount(CurrentMapSubId, PlayerId.Value, itemId, count);
                 Logger.LogInformation(
-                    "InGame default item added: PlayerId={PlayerId}, ItemId={ItemId}, Count={Count}", PlayerId,
-                    itemId, count);
+                    "InGame default item ensured: PlayerId={PlayerId}, ItemId={ItemId}, TargetCount={TargetCount}, AddedCount={AddedCount}",
+                    PlayerId,
+                    itemId,
+                    count,
+                    addedCount);
             }
 
             // ?멸쾶???몃깽?좊━ 紐⑸줉 ?꾩넚

@@ -15,8 +15,10 @@ public partial class GameClientSession
         if (IsEliminated) return;
         if (IsRoundActionLocked(out _)) return;
 
-        // 탐색 중에는 이동 불가
-        if (CurrentState == PlayerState.Exploring)
+        var now = DateTime.UtcNow;
+
+        // 탐색 진입 직후에는 도착 정산용 in-flight 이동 패킷이 늦게 도착할 수 있다.
+        if (CurrentState == PlayerState.Exploring && now > _exploreMoveGraceUntil)
         {
             Logger.LogDebug("Player {PlayerId} tried to move while exploring, ignoring", PlayerId);
             SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "탐색 중에는 이동할 수 없습니다");
@@ -33,8 +35,6 @@ public partial class GameClientSession
 
         try
         {
-            var now = DateTime.UtcNow;
-
             // 클라이언트 측 timestamp로 deltaTime 산출 — 서버 도착 클러스터링/지연 영향 제거.
             // 첫 패킷이거나 시계가 뒤로 갔으면 0으로 처리 (ValidatePosition이 deltaTime>0 조건으로 검증 스킵).
             float deltaTime;

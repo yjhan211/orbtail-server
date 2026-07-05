@@ -1993,7 +1993,7 @@ public class GameServer(
             _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
             foreach ((int itemId, int count) in GameRuleData.InGameItemList)
-                _inGameInventoryManager.AddItem(matchingId, bot.PlayerId, itemId, count);
+                _inGameInventoryManager.EnsureItemCount(matchingId, bot.PlayerId, itemId, count);
         }
 
         _areaClosureManager.InitializeMatching(matchingId, jobs);
