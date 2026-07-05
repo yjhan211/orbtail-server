@@ -13,9 +13,9 @@ public partial class GameClientSession
 {
     private static readonly TimeSpan RoomEncounterHoldDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan RoomEncounterActionSuppressDuration = TimeSpan.FromSeconds(2);
-    // Client visibility uses a light radius plus sprite/body overlap, so use a small server margin
-    // to avoid edge cases where a player is visibly inside the mask but the center-point check misses.
+    // Used only for resolving already-pending discovery transitions after the target finishes exploring.
     private const float RoomEncounterVisionDistance = 2.75f;
+    private const float RoomExploreSpotOccupancyDistance = 2.75f;
     private readonly Dictionary<int, List<long>> _roomEncounterStartCandidateIdsByInteractId = new();
     private DateTime _suppressRoomEncounterUntilUtc = DateTime.MinValue;
 
@@ -96,97 +96,17 @@ public partial class GameClientSession
 
     internal void TrySendRoomEncounterEventsFromCurrentVision()
     {
-        if (_lastValidatedPosition == null || IsRoomEncounterActorBlocked())
-            return;
-
-        TrySendRoomEncounterEventsFromVision(_lastValidatedPosition);
+        // Room encounters are resolved only from the selected explore spot, not passive vision.
     }
 
     internal void TrySendRoomEncounterEventForObservedPlayer(long observedPlayerId, Vector3f observedPosition)
     {
-        if (!PlayerId.HasValue ||
-            observedPlayerId == 0 ||
-            observedPlayerId == PlayerId.Value ||
-            IsEliminated ||
-            CurrentArea == AreaType.None ||
-            CurrentArea.IsCorridor() ||
-            IsRoomEncounterActorBlocked() ||
-            _lastValidatedPosition == null ||
-            !IsWithinRoomEncounterVision(_lastValidatedPosition, observedPosition))
-        {
-            return;
-        }
-
-        var observedBot = _botPlayerManager.GetBot(CurrentMapSubId, observedPlayerId);
-        if (observedBot is { IsInInteraction: true } ||
-            _encounterRevealManager.HasPendingRoomEncounterTurn(CurrentMapSubId, observedPlayerId))
-        {
-            return;
-        }
-
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        if (!_encounterRevealManager.TryResolveRoomEncounter(
-                CurrentMapSubId,
-                PlayerId.Value,
-                CurrentArea,
-                [observedPlayerId],
-                out long targetPlayerId,
-                riskEventChanceDownPercent: 0,
-                escapeChanceAddPercent: 0))
-        {
-            return;
-        }
-
-        StartRoomEncounterReveal(PlayerId.Value, targetPlayerId, allSessions, interactId: 0,
-            sendCollectResult: false, forceEncounterEvent: true);
+        // Room encounters are resolved only from the selected explore spot, not passive vision.
     }
 
     private void TrySendRoomEncounterEventsFromVision(Vector3f actorPosition)
     {
-        var now = DateTime.UtcNow;
-        if (!PlayerId.HasValue || CurrentArea == AreaType.None || CurrentArea.IsCorridor() ||
-            IsRoomEncounterActorBlocked(now))
-            return;
-
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        var candidateIds = allSessions
-            .Where(session =>
-                session.PlayerId.HasValue &&
-                session.PlayerId != PlayerId &&
-                !session.IsEliminated &&
-                !session.IsRoomEncounterProcessingBlocked(now) &&
-                session.CurrentMapSubId == CurrentMapSubId &&
-                session.CurrentArea == CurrentArea &&
-                IsWithinRoomEncounterVision(actorPosition, session.LastValidatedPosition))
-            .Select(session => session.PlayerId!.Value)
-            .Concat(_botPlayerManager.GetBots(CurrentMapSubId)
-                .Where(bot =>
-                    !bot.IsEliminated &&
-                    !bot.IsInInteraction &&
-                    !_encounterRevealManager.HasPendingRoomEncounterTurn(CurrentMapSubId, bot.PlayerId) &&
-                    bot.CurrentArea == CurrentArea &&
-                    IsWithinRoomEncounterVision(actorPosition, bot.Position))
-                .Select(bot => bot.PlayerId))
-            .ToList();
-
-        if (candidateIds.Count == 0)
-            return;
-
-        long actorPlayerId = PlayerId.Value;
-        if (!_encounterRevealManager.TryResolveRoomEncounter(
-                CurrentMapSubId,
-                actorPlayerId,
-                CurrentArea,
-                candidateIds,
-                out long targetPlayerId,
-                riskEventChanceDownPercent: 0,
-                escapeChanceAddPercent: 0))
-        {
-            return;
-        }
-
-        StartRoomEncounterReveal(actorPlayerId, targetPlayerId, allSessions, interactId: 0,
-            sendCollectResult: false, forceEncounterEvent: true);
+        // Room encounters are resolved only from the selected explore spot, not passive vision.
     }
 
     private void SnapshotRoomEncounterStartCandidates(int interactId, InteractableInfoData info)
@@ -219,8 +139,16 @@ public partial class GameClientSession
             return false;
 
         var now = DateTime.UtcNow;
-        if (IsRoomEncounterActorBlocked(now))
+        if (IsRoomEncounterProcessingBlocked(now))
+        {
+            Logger.LogDebug(
+                "Room encounter skipped: actor processing blocked. Matching={MatchingId}, Actor={Actor}, Area={Area}, InteractId={InteractId}",
+                CurrentMapSubId,
+                PlayerId.Value,
+                CurrentArea,
+                interactId);
             return false;
+        }
 
         if (CurrentArea == AreaType.None || CurrentArea.IsCorridor())
         {
@@ -247,11 +175,10 @@ public partial class GameClientSession
         }
 
         allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        var actorPosition = _lastValidatedPosition;
-        if (actorPosition == null)
+        if (!TryGetExploreSpotPosition(info, out var exploreSpotPosition))
         {
             Logger.LogDebug(
-                "Room encounter skipped: actor position unavailable. Matching={MatchingId}, Actor={Actor}, Area={Area}, InteractId={InteractId}",
+                "Room encounter skipped: explore spot position unavailable. Matching={MatchingId}, Actor={Actor}, Area={Area}, InteractId={InteractId}",
                 CurrentMapSubId,
                 PlayerId.Value,
                 CurrentArea,
@@ -267,7 +194,7 @@ public partial class GameClientSession
                 !session.IsRoomEncounterProcessingBlocked(now) &&
                 session.CurrentMapSubId == CurrentMapSubId &&
                 session.CurrentArea == CurrentArea &&
-                IsWithinRoomEncounterVision(actorPosition, session.LastValidatedPosition))
+                IsAtRoomExploreSpot(exploreSpotPosition, session.LastValidatedPosition))
             .Select(session => session.PlayerId!.Value)
             .Concat(_botPlayerManager.GetBots(CurrentMapSubId)
                 .Where(bot =>
@@ -275,7 +202,7 @@ public partial class GameClientSession
                     !bot.IsInInteraction &&
                     !_encounterRevealManager.HasPendingRoomEncounterTurn(CurrentMapSubId, bot.PlayerId) &&
                     bot.CurrentArea == CurrentArea &&
-                    IsWithinRoomEncounterVision(actorPosition, bot.Position))
+                    IsAtRoomExploreSpot(exploreSpotPosition, bot.Position))
                 .Select(bot => bot.PlayerId))
             .ToList();
 
@@ -291,7 +218,7 @@ public partial class GameClientSession
         }
 
         if (_roomEncounterStartCandidateIdsByInteractId.Remove(interactId, out var startCandidateIds))
-            AddRoomEncounterStartCandidatesStillInVision(candidateIds, startCandidateIds, allSessions);
+            AddRoomEncounterStartCandidatesStillAtExploreSpot(candidateIds, startCandidateIds, allSessions, info);
 
         long actorPlayerId = PlayerId.GetValueOrDefault();
         Logger.LogDebug(
@@ -395,13 +322,13 @@ public partial class GameClientSession
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
     }
 
-    private void AddRoomEncounterStartCandidatesStillInVision(
+    private void AddRoomEncounterStartCandidatesStillAtExploreSpot(
         List<long> candidateIds,
         IReadOnlyCollection<long> startCandidateIds,
-        IReadOnlyCollection<GameClientSession> allSessions)
+        IReadOnlyCollection<GameClientSession> allSessions,
+        InteractableInfoData info)
     {
-        var actorPosition = _lastValidatedPosition;
-        if (actorPosition == null)
+        if (!TryGetExploreSpotPosition(info, out var exploreSpotPosition))
             return;
 
         foreach (long candidateId in startCandidateIds)
@@ -409,15 +336,15 @@ public partial class GameClientSession
             if (candidateId == 0 || candidateId == PlayerId || candidateIds.Contains(candidateId))
                 continue;
 
-            if (IsRoomEncounterCandidateStillInVision(candidateId, allSessions, actorPosition))
+            if (IsRoomEncounterCandidateAtExploreSpot(candidateId, allSessions, exploreSpotPosition))
                 candidateIds.Add(candidateId);
         }
     }
 
-    private bool IsRoomEncounterCandidateStillInVision(
+    private bool IsRoomEncounterCandidateAtExploreSpot(
         long candidateId,
         IReadOnlyCollection<GameClientSession> allSessions,
-        Vector3f actorPosition)
+        Vector3f exploreSpotPosition)
     {
         var session = allSessions.FirstOrDefault(session =>
             session.PlayerId == candidateId &&
@@ -427,14 +354,34 @@ public partial class GameClientSession
         if (session != null)
         {
             return !session.IsRoomEncounterProcessingBlocked() &&
-                   IsWithinRoomEncounterVision(actorPosition, session.LastValidatedPosition);
+                   IsAtRoomExploreSpot(exploreSpotPosition, session.LastValidatedPosition);
         }
 
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, candidateId);
         return bot is { IsEliminated: false, IsInInteraction: false } &&
                bot.CurrentArea == CurrentArea &&
                !_encounterRevealManager.HasPendingRoomEncounterTurn(CurrentMapSubId, bot.PlayerId) &&
-               IsWithinRoomEncounterVision(actorPosition, bot.Position);
+               IsAtRoomExploreSpot(exploreSpotPosition, bot.Position);
+    }
+
+    private static bool TryGetExploreSpotPosition(InteractableInfoData info, out Vector3f exploreSpotPosition)
+    {
+        exploreSpotPosition = new Vector3f(0f, 0f, 0f);
+        if (info.CellX == 0 && info.CellY == 0)
+            return false;
+
+        exploreSpotPosition = CellToWorldPosition(new Cell(info.CellX, info.CellY));
+        return true;
+    }
+
+    private static bool IsAtRoomExploreSpot(Vector3f exploreSpotPosition, Vector3f? position)
+    {
+        if (position == null)
+            return false;
+
+        float dx = exploreSpotPosition.X - position.X;
+        float dy = exploreSpotPosition.Y - position.Y;
+        return dx * dx + dy * dy <= RoomExploreSpotOccupancyDistance * RoomExploreSpotOccupancyDistance;
     }
 
     private void StartRoomEncounterTurn(long discovererPlayerId, long targetPlayerId, AreaType area,
