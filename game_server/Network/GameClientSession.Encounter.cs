@@ -630,6 +630,7 @@ public partial class GameClientSession
     private void SendRoomEncounterTurnResult(RoomEncounterTurnResolution resolution)
     {
         var allSessions = _getSessionsByInstance(CurrentMapId, resolution.MatchingId);
+        ApplyRoomEncounterTurnEffects(allSessions, resolution);
         SendRoomEncounterTurnResultToPlayer(allSessions, resolution, resolution.PlayerA);
         SendRoomEncounterTurnResultToPlayer(allSessions, resolution, resolution.PlayerB);
         ReleaseRoomEncounterBotTarget(_botPlayerManager.GetBot(resolution.MatchingId, resolution.PlayerA));
@@ -643,6 +644,92 @@ public partial class GameClientSession
             resolution.PlayerB,
             resolution.PlayerBAction,
             resolution.Area);
+    }
+
+    private void ApplyRoomEncounterTurnEffects(IReadOnlyCollection<GameClientSession> allSessions,
+        RoomEncounterTurnResolution resolution)
+    {
+        ApplyRoomEncounterUseItemEffect(allSessions, resolution, resolution.PlayerA, resolution.PlayerB,
+            resolution.PlayerAAction);
+        ApplyRoomEncounterUseItemEffect(allSessions, resolution, resolution.PlayerB, resolution.PlayerA,
+            resolution.PlayerBAction);
+    }
+
+    private void ApplyRoomEncounterUseItemEffect(IReadOnlyCollection<GameClientSession> allSessions,
+        RoomEncounterTurnResolution resolution, long actorPlayerId, long targetPlayerId, int actionType)
+    {
+        if (EncounterRevealManager.NormalizeRoomEncounterAction(actionType) !=
+            EncounterRevealManager.RoomEncounterActionUseItem)
+        {
+            return;
+        }
+
+        if (!_inGameInventoryManager.TryRemoveOneByItemId(resolution.MatchingId, actorPlayerId,
+                ChalkPowderItemId, out var updatedItem))
+        {
+            Logger.LogWarning(
+                "Room encounter item use skipped because chalk powder was missing: Matching={MatchingId}, Actor={Actor}, Target={Target}",
+                resolution.MatchingId,
+                actorPlayerId,
+                targetPlayerId);
+            return;
+        }
+
+        var actorSession = allSessions.FirstOrDefault(s => s.PlayerId == actorPlayerId);
+        if (actorSession != null && updatedItem != null)
+            actorSession.SendInGameInventoryUpdate(updatedItem);
+
+        ApplyRoomEncounterChalkDamage(allSessions, resolution.MatchingId, targetPlayerId);
+    }
+
+    private void ApplyRoomEncounterChalkDamage(IReadOnlyCollection<GameClientSession> allSessions,
+        long matchingId, long targetPlayerId)
+    {
+        var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == targetPlayerId);
+        if (targetSession != null)
+        {
+            targetSession.ApplyItemBuffs(ChalkPowderItemId);
+            return;
+        }
+
+        var targetBot = _botPlayerManager.GetBot(matchingId, targetPlayerId);
+        if (targetBot == null || targetBot.IsEliminated)
+            return;
+
+        ApplyItemBuffsToRoomEncounterBot(targetBot, ChalkPowderItemId);
+    }
+
+    private static void ApplyItemBuffsToRoomEncounterBot(BotPlayerState bot, int itemId)
+    {
+        if (bot == null)
+            return;
+
+        int staminaDelta = 0;
+        int corruptionDelta = 0;
+        foreach ((int buffId, int value, int interval) in GameItemData.Get(itemId).ConsumableBuffList)
+        {
+            var buffData = GameBuffData.Get(buffId);
+            if (buffData.Type == BuffType.PERIODIC && interval > 0)
+                continue;
+
+            switch (buffData.SubType)
+            {
+                case BuffSubType.CONDITION_ADD:
+                    staminaDelta += value;
+                    break;
+                case BuffSubType.CORRUPTION_DOWN:
+                    corruptionDelta -= value;
+                    break;
+                case BuffSubType.CORRUPTION_ADD:
+                    corruptionDelta += value;
+                    break;
+            }
+        }
+
+        if (staminaDelta != 0)
+            bot.Stamina = Math.Clamp(bot.Stamina + staminaDelta, 0, 100);
+        if (corruptionDelta != 0)
+            bot.Corruption = Math.Clamp(bot.Corruption + corruptionDelta, 0, 100);
     }
 
     private void SendRoomEncounterTurnResultToPlayer(IReadOnlyCollection<GameClientSession> allSessions,
@@ -667,8 +754,14 @@ public partial class GameClientSession
     {
         int ownAction = EncounterRevealManager.NormalizeRoomEncounterAction(ownActionType);
         int otherAction = EncounterRevealManager.NormalizeRoomEncounterAction(otherActionType);
-        if (ownAction == EncounterRevealManager.RoomEncounterActionLeave)
+        if (ownAction == EncounterRevealManager.RoomEncounterActionLeave ||
+            otherAction == EncounterRevealManager.RoomEncounterActionLeave)
             return EncounterRevealManager.RoomEncounterLeaveResultEventType;
+
+        bool ownUsedItem = ownAction == EncounterRevealManager.RoomEncounterActionUseItem;
+        bool otherUsedItem = otherAction == EncounterRevealManager.RoomEncounterActionUseItem;
+        if (ownUsedItem || otherUsedItem)
+            return EncounterRevealManager.RoomEncounterInspectResultEventType;
 
         bool ownHid = ownAction == EncounterRevealManager.RoomEncounterActionHidePresence;
         bool otherHid = otherAction == EncounterRevealManager.RoomEncounterActionHidePresence;
@@ -686,12 +779,9 @@ public partial class GameClientSession
 
     private static int ResolveBotRoomEncounterAction()
     {
-        return Random.Shared.Next(3) switch
-        {
-            0 => EncounterRevealManager.RoomEncounterActionHidePresence,
-            1 => EncounterRevealManager.RoomEncounterActionLeave,
-            _ => EncounterRevealManager.RoomEncounterActionInspect
-        };
+        return Random.Shared.Next(2) == 0
+            ? EncounterRevealManager.RoomEncounterActionHidePresence
+            : EncounterRevealManager.RoomEncounterActionLeave;
     }
 
     private static bool IsWithinRoomEncounterVision(Vector3f actorPosition, Vector3f? targetPosition)

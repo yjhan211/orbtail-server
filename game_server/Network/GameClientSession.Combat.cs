@@ -39,48 +39,39 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        InGameItemInfo? updatedItem = null;
-        bool attemptedChalkConsume = false;
-        bool consumedChalkPowder = false;
+        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+        if (inventory.GetItemCount(ChalkPowderItemId) <= 0)
+        {
+            SendErrorResponse(ErrorCode.INSUFFICIENT_ITEM, "Chalk powder is required");
+            Logger.LogWarning(
+                "Player {PlayerId} failed room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}",
+                PlayerId,
+                targetPlayerId,
+                CurrentMapSubId,
+                area,
+                ErrorCode.INSUFFICIENT_ITEM);
+            return Task.CompletedTask;
+        }
 
         bool submitted = _encounterRevealManager.TrySubmitRoomEncounterChoice(
             CurrentMapSubId,
             PlayerId.Value,
             targetPlayerId,
             area,
-            EncounterRevealManager.RoomEncounterActionInspect,
-            out var resolution,
-            beforeSubmit: () =>
-            {
-                attemptedChalkConsume = true;
-                consumedChalkPowder = _inGameInventoryManager.TryRemoveOneByItemId(
-                    CurrentMapSubId,
-                    PlayerId.Value,
-                    ChalkPowderItemId,
-                    out updatedItem);
-                return consumedChalkPowder;
-            });
+            EncounterRevealManager.RoomEncounterActionUseItem,
+            out var resolution);
 
         if (!submitted)
         {
-            var errorCode = attemptedChalkConsume ? ErrorCode.INSUFFICIENT_ITEM : ErrorCode.INVALID_GAME_STATE;
-            string message = attemptedChalkConsume ? "Chalk powder is required" : "No pending room encounter";
-            SendErrorResponse(errorCode, message);
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "No pending room encounter");
             Logger.LogWarning(
-                "Player {PlayerId} failed room encounter attack: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}, AttemptedChalkConsume={AttemptedChalkConsume}",
+                "Player {PlayerId} failed room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}",
                 PlayerId,
                 targetPlayerId,
                 CurrentMapSubId,
                 area,
-                errorCode,
-                attemptedChalkConsume);
+                ErrorCode.INVALID_GAME_STATE);
             return Task.CompletedTask;
-        }
-
-        if (consumedChalkPowder && updatedItem != null)
-        {
-            SendInGameInventoryUpdate(updatedItem);
-            ApplyItemBuffs(ChalkPowderItemId);
         }
 
         SuppressRoomEncounterBriefly();
@@ -89,12 +80,11 @@ public partial class GameClientSession
             SendRoomEncounterTurnResult(resolution);
 
         Logger.LogInformation(
-            "Player {PlayerId} attacked in room encounter: Target={Target}, Matching={MatchingId}, Area={Area}, ConsumedChalk={ConsumedChalk}, Resolved={Resolved}",
+            "Player {PlayerId} submitted room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Resolved={Resolved}",
             PlayerId,
             targetPlayerId,
             CurrentMapSubId,
             area,
-            consumedChalkPowder,
             resolution.PlayerA != 0);
 
         return Task.CompletedTask;

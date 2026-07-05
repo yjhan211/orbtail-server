@@ -23,7 +23,8 @@ public sealed class EncounterRevealManager
 
     private const int RoomEncounterRollPercent = 100;
     public const int RoomDiscoveryReadyAction = 0;
-    public const int RoomEncounterActionInspect = 1;
+    public const int RoomEncounterActionUseItem = 1;
+    public const int RoomEncounterActionInspect = RoomEncounterActionUseItem;
     public const int RoomEncounterActionLeave = 2;
     public const int RoomEncounterActionHidePresence = 3;
     public const int RoomDiscoveryActionHidePresence = 3;
