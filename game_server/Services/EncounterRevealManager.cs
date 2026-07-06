@@ -17,6 +17,11 @@ public sealed class EncounterRevealManager
     public const int RoomEncounterOwnHidePresenceResultEventType = 9;
     public const int RoomEncounterBothHidePresenceResultEventType = 10;
     public const int RoomDiscoveryTargetLeftEventType = 11;
+    public const int RoomEncounterObserveUseItemResultEventType = 12;
+    public const int RoomEncounterObserveLeaveResultEventType = 13;
+    public const int RoomEncounterObserveHidePresenceResultEventType = 14;
+    public const int RoomEncounterObserveObserveResultEventType = 15;
+    public const int RoomEncounterChalkHitEventType = 16;
 
     public const int PairCooldownSeconds = 10;
     public const int CorridorRevealDelayMs = 900;
@@ -28,6 +33,7 @@ public sealed class EncounterRevealManager
     public const int RoomEncounterActionLeave = 2;
     public const int RoomEncounterActionHidePresence = 3;
     public const int RoomDiscoveryActionHidePresence = 3;
+    public const int RoomEncounterActionObserve = 6;
     public const int RoomDiscoveryActionFace = 4;
     public const int RoomDiscoveryActionLeave = 5;
     public const int RoomDiscoveryHideEncounterChancePercent = 50;
@@ -359,7 +365,9 @@ public sealed class EncounterRevealManager
         {
             RoomEncounterActionLeave => RoomEncounterActionLeave,
             RoomEncounterActionHidePresence => RoomEncounterActionHidePresence,
-            _ => RoomEncounterActionInspect
+            RoomEncounterActionObserve => RoomEncounterActionObserve,
+            RoomEncounterActionUseItem => RoomEncounterActionUseItem,
+            _ => RoomEncounterActionObserve
         };
     }
 
@@ -450,8 +458,8 @@ public sealed class EncounterRevealManager
                 PlayerA,
                 PlayerB,
                 Area,
-                Choices.TryGetValue(PlayerA, out int actionA) ? actionA : RoomEncounterActionHidePresence,
-                Choices.TryGetValue(PlayerB, out int actionB) ? actionB : RoomEncounterActionHidePresence,
+                Choices.TryGetValue(PlayerA, out int actionA) ? actionA : RoomEncounterActionObserve,
+                Choices.TryGetValue(PlayerB, out int actionB) ? actionB : RoomEncounterActionObserve,
                 CreatedAtUtc,
                 DateTime.UtcNow);
         }
@@ -489,14 +497,14 @@ public readonly record struct RoomEncounterTurnResolution(
     {
         if (playerId == PlayerA) return PlayerAAction;
         if (playerId == PlayerB) return PlayerBAction;
-        return EncounterRevealManager.RoomEncounterActionHidePresence;
+        return EncounterRevealManager.RoomEncounterActionObserve;
     }
 
     public int GetOtherActionFor(long playerId)
     {
         if (playerId == PlayerA) return PlayerBAction;
         if (playerId == PlayerB) return PlayerAAction;
-        return EncounterRevealManager.RoomEncounterActionHidePresence;
+        return EncounterRevealManager.RoomEncounterActionObserve;
     }
 
     public long GetOtherPlayer(long playerId)

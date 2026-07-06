@@ -21,6 +21,7 @@ public partial class GameClientSession
         if (IsRoundActionLocked(out _))
         {
             SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            SendRoomEncounterItemUseResult(false, ErrorCode.INVALID_GAME_STATE, ChalkPowderItemId, 0);
             return Task.CompletedTask;
         }
 
@@ -29,6 +30,7 @@ public partial class GameClientSession
             targetPlayerId == PlayerId.Value)
         {
             SendErrorResponse(ErrorCode.INVALID_REQUEST, "Invalid attack target");
+            SendRoomEncounterItemUseResult(false, ErrorCode.INVALID_REQUEST, ChalkPowderItemId, 0);
             return Task.CompletedTask;
         }
 
@@ -36,6 +38,7 @@ public partial class GameClientSession
         if (area == AreaType.None)
         {
             SendErrorResponse(ErrorCode.INVALID_AREA, "Invalid encounter area");
+            SendRoomEncounterItemUseResult(false, ErrorCode.INVALID_AREA, ChalkPowderItemId, targetPlayerId);
             return Task.CompletedTask;
         }
 
@@ -43,6 +46,7 @@ public partial class GameClientSession
         if (inventory.GetItemCount(ChalkPowderItemId) <= 0)
         {
             SendErrorResponse(ErrorCode.INSUFFICIENT_ITEM, "Chalk powder is required");
+            SendRoomEncounterItemUseResult(false, ErrorCode.INSUFFICIENT_ITEM, ChalkPowderItemId, targetPlayerId);
             Logger.LogWarning(
                 "Player {PlayerId} failed room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}",
                 PlayerId,
@@ -53,38 +57,90 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        bool submitted = _encounterRevealManager.TrySubmitRoomEncounterChoice(
-            CurrentMapSubId,
-            PlayerId.Value,
-            targetPlayerId,
-            area,
-            EncounterRevealManager.RoomEncounterActionUseItem,
-            out _);
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var targetSession = allSessions.FirstOrDefault(session =>
+            session.PlayerId == targetPlayerId &&
+            !session.IsEliminated &&
+            session.CurrentMapSubId == CurrentMapSubId &&
+            session.CurrentArea == area);
+        var targetBot = targetSession == null
+            ? _botPlayerManager.GetBot(CurrentMapSubId, targetPlayerId)
+            : null;
 
-        if (!submitted)
+        if (targetSession == null &&
+            (targetBot is not { IsEliminated: false } || targetBot.CurrentArea != area))
         {
-            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "No pending room encounter");
+            SendErrorResponse(ErrorCode.AREA_MISMATCH, "Room encounter target is not in the same area");
+            SendRoomEncounterItemUseResult(false, ErrorCode.AREA_MISMATCH, ChalkPowderItemId, targetPlayerId);
             Logger.LogWarning(
                 "Player {PlayerId} failed room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}",
                 PlayerId,
                 targetPlayerId,
                 CurrentMapSubId,
                 area,
-                ErrorCode.INVALID_GAME_STATE);
+                ErrorCode.AREA_MISMATCH);
             return Task.CompletedTask;
         }
+
+        if (!_inGameInventoryManager.TryRemoveOneByItemId(CurrentMapSubId, PlayerId.Value,
+                ChalkPowderItemId, out var updatedItem))
+        {
+            SendErrorResponse(ErrorCode.INSUFFICIENT_ITEM, "Chalk powder is required");
+            SendRoomEncounterItemUseResult(false, ErrorCode.INSUFFICIENT_ITEM, ChalkPowderItemId, targetPlayerId);
+            Logger.LogWarning(
+                "Player {PlayerId} failed room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}",
+                PlayerId,
+                targetPlayerId,
+                CurrentMapSubId,
+                area,
+                ErrorCode.INSUFFICIENT_ITEM);
+            return Task.CompletedTask;
+        }
+
+        if (updatedItem != null)
+            SendInGameInventoryUpdate(updatedItem);
+
+        if (targetSession != null)
+        {
+            targetSession.ApplyItemBuffs(ChalkPowderItemId);
+            targetSession.SendEncounterEvent(PlayerId.Value, area, EncounterRevealManager.RoomEncounterChalkHitEventType,
+                EncounterRevealManager.PairCooldownSeconds);
+        }
+        else
+        {
+            ApplyItemBuffsToRoomEncounterBot(targetBot, ChalkPowderItemId);
+        }
+
+        SendRoomEncounterItemUseResult(true, ErrorCode.SUCCESS, ChalkPowderItemId, targetPlayerId);
 
         SuppressRoomEncounterBriefly();
 
         Logger.LogInformation(
-            "Player {PlayerId} submitted room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Resolved={Resolved}",
+            "Player {PlayerId} used room encounter item immediately: Target={Target}, Matching={MatchingId}, Area={Area}, ItemId={ItemId}",
             PlayerId,
             targetPlayerId,
             CurrentMapSubId,
             area,
-            false);
+            ChalkPowderItemId);
 
         return Task.CompletedTask;
+    }
+
+    private void SendRoomEncounterItemUseResult(bool success, ErrorCode errorCode, int itemId, long targetPlayerId)
+    {
+        using var resultPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(
+            success, errorCode, itemId, targetPlayerId);
+        Send(resultPacket);
+    }
+
+    internal void ApplyRoomEncounterChalkHitFrom(long sourcePlayerId, AreaType area, int itemId)
+    {
+        if (!PlayerId.HasValue || IsEliminated)
+            return;
+
+        ApplyItemBuffs(itemId);
+        SendEncounterEvent(sourcePlayerId, area, EncounterRevealManager.RoomEncounterChalkHitEventType,
+            EncounterRevealManager.PairCooldownSeconds);
     }
 
     private Task HandleInteract(C_TO_G_INTERACT msg)

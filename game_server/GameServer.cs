@@ -32,6 +32,8 @@ public class GameServer(
 {
     // 하트비트 체크 간격 (10초마다 체크)
     private const int HeartbeatCheckIntervalSeconds = 10;
+    private const int ChalkPowderItemId = 201000015;
+    private const float RoomExploreSpotOccupancyDistance = 2.75f;
 
     // 복도 정지 체크 간격
     private const int CorridorStopCheckIntervalMs = 500;
@@ -1099,7 +1101,110 @@ public class GameServer(
         List<(long botId, AreaType area)> ends,
         List<GameClientSession> activeSessions)
     {
-        // Room discovery now resolves through the discoverer's server-side decision timer.
+        foreach (var (botId, area) in ends)
+            TryResolveBotRoomEncounterAfterExplore(matchingId, botId, area, activeSessions);
+    }
+
+    private void TryResolveBotRoomEncounterAfterExplore(long matchingId, long botId, AreaType area,
+        List<GameClientSession> activeSessions)
+    {
+        if (area == AreaType.None || area.IsCorridor())
+            return;
+
+        var bot = _botPlayerManager.GetBot(matchingId, botId);
+        if (bot is not { IsEliminated: false } || bot.CurrentArea != area)
+            return;
+
+        var candidateSessions = activeSessions
+            .Where(session =>
+                session.PlayerId.HasValue &&
+                !session.IsEliminated &&
+                session.CurrentMapSubId == matchingId &&
+                session.CurrentArea == area &&
+                session.LastValidatedPosition != null &&
+                IsAtSameRoomExploreSpot(bot.Position, session.LastValidatedPosition))
+            .ToList();
+        if (candidateSessions.Count == 0)
+            return;
+
+        if (!_encounterRevealManager.TryResolveRoomEncounter(
+                matchingId,
+                bot.PlayerId,
+                area,
+                candidateSessions.Select(session => session.PlayerId!.Value),
+                out long targetPlayerId,
+                riskEventChanceDownPercent: 0,
+                escapeChanceAddPercent: 0))
+        {
+            return;
+        }
+
+        var targetSession = candidateSessions.FirstOrDefault(session => session.PlayerId == targetPlayerId);
+        if (targetSession == null)
+            return;
+
+        _gameEventLogManager.LogRoomEncounterReveal(matchingId, bot.PlayerId, targetPlayerId,
+            area.ToString(), 0, isBot: true);
+        _gameEventLogManager.LogInteraction(matchingId, bot.PlayerId,
+            $"Bot room encounter reveal: Target={targetPlayerId}, Area={area}", isBot: true);
+
+        int actionType = ResolveBotAsyncRoomEncounterAction(matchingId, bot);
+        if (actionType == EncounterRevealManager.RoomEncounterActionUseItem)
+        {
+            TryUseBotRoomEncounterItem(matchingId, bot, targetSession, area);
+            return;
+        }
+
+        logger.LogInformation(
+            "Bot room encounter resolved without item use: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}, ActionType={ActionType}",
+            matchingId,
+            bot.PlayerId,
+            targetPlayerId,
+            area,
+            actionType);
+    }
+
+    private int ResolveBotAsyncRoomEncounterAction(long matchingId, BotPlayerState bot)
+    {
+        return _inGameInventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
+            .GetItemCount(ChalkPowderItemId) > 0
+            ? EncounterRevealManager.RoomEncounterActionUseItem
+            : EncounterRevealManager.RoomEncounterActionLeave;
+    }
+
+    private void TryUseBotRoomEncounterItem(long matchingId, BotPlayerState bot,
+        GameClientSession targetSession, AreaType area)
+    {
+        if (!_inGameInventoryManager.TryRemoveOneByItemId(matchingId, bot.PlayerId,
+                ChalkPowderItemId, out _))
+        {
+            logger.LogWarning(
+                "Bot failed room encounter item use because chalk powder was missing: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}",
+                matchingId,
+                bot.PlayerId,
+                targetSession.PlayerId,
+                area);
+            return;
+        }
+
+        targetSession.ApplyRoomEncounterChalkHitFrom(bot.PlayerId, area, ChalkPowderItemId);
+        logger.LogInformation(
+            "Bot used room encounter item immediately: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}, ItemId={ItemId}",
+            matchingId,
+            bot.PlayerId,
+            targetSession.PlayerId,
+            area,
+            ChalkPowderItemId);
+    }
+
+    private static bool IsAtSameRoomExploreSpot(Vector3f botPosition, Vector3f? playerPosition)
+    {
+        if (playerPosition == null)
+            return false;
+
+        float dx = botPosition.X - playerPosition.X;
+        float dy = botPosition.Y - playerPosition.Y;
+        return dx * dx + dy * dy <= RoomExploreSpotOccupancyDistance * RoomExploreSpotOccupancyDistance;
     }
 
     private void BroadcastBotPlayerStates(long matchingId,

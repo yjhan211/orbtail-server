@@ -297,7 +297,6 @@ public partial class GameClientSession
         }
         else
         {
-            HoldRoomEncounterBotTarget(targetBot);
             StartRoomEncounterTurn(actorPlayerId, targetPlayerId, CurrentArea, targetSession);
         }
 
@@ -395,27 +394,8 @@ public partial class GameClientSession
     private void StartRoomEncounterTurn(long discovererPlayerId, long targetPlayerId, AreaType area,
         GameClientSession? targetSession)
     {
-        var mapId = CurrentMapId;
-        long matchingId = CurrentMapSubId;
-        _encounterRevealManager.RegisterPendingRoomEncounterTurn(matchingId, discovererPlayerId, targetPlayerId,
-            area);
-        if (targetSession == null)
-        {
-            _encounterRevealManager.TrySubmitRoomEncounterChoice(
-                matchingId,
-                targetPlayerId,
-                discovererPlayerId,
-                area,
-                ResolveBotRoomEncounterAction(),
-                out _);
-        }
-
         SendEncounterEvent(targetPlayerId, area, EncounterRevealManager.RoomEncounterEventType,
             EncounterRevealManager.PairCooldownSeconds);
-        targetSession?.SendEncounterEvent(discovererPlayerId, area, EncounterRevealManager.RoomEncounterEventType,
-            EncounterRevealManager.PairCooldownSeconds);
-
-        _ = ResolveRoomEncounterTurnAfterDelay(mapId, matchingId, discovererPlayerId, targetPlayerId, area);
     }
 
     private async Task ResolveRoomEncounterTurnAfterDelay(MapId mapId, long matchingId, long playerA, long playerB,
@@ -489,24 +469,21 @@ public partial class GameClientSession
         int normalizedAction = EncounterRevealManager.NormalizeRoomEncounterAction(msg.ActionType);
         if (!consumedDiscovery)
         {
-            Func<bool>? beforeSubmit = null;
             if (normalizedAction == EncounterRevealManager.RoomEncounterActionLeave)
             {
-                beforeSubmit = () =>
-                {
-                    applyRoomEncounterLeaveCost = true;
-                    return true;
-                };
+                applyRoomEncounterLeaveCost = true;
+                submittedEncounterChoice = true;
             }
-
-            submittedEncounterChoice = _encounterRevealManager.TrySubmitRoomEncounterChoice(
-                CurrentMapSubId,
-                PlayerId.Value,
-                msg.TargetPlayerId,
-                area,
-                msg.ActionType,
-                out _,
-                beforeSubmit);
+            else
+            {
+                submittedEncounterChoice = _encounterRevealManager.TrySubmitRoomEncounterChoice(
+                    CurrentMapSubId,
+                    PlayerId.Value,
+                    msg.TargetPlayerId,
+                    area,
+                    msg.ActionType,
+                    out _);
+            }
         }
 
         if (applyRoomEncounterLeaveCost)
@@ -661,7 +638,6 @@ public partial class GameClientSession
             return false;
         }
 
-        HoldRoomEncounterBotTarget(targetBot);
         StartRoomEncounterTurn(resolution.DiscovererPlayerId, resolution.TargetPlayerId, resolution.Area,
             targetSession);
 
@@ -747,7 +723,7 @@ public partial class GameClientSession
         ApplyItemBuffsToRoomEncounterBot(targetBot, ChalkPowderItemId);
     }
 
-    private static void ApplyItemBuffsToRoomEncounterBot(BotPlayerState bot, int itemId)
+    private static void ApplyItemBuffsToRoomEncounterBot(BotPlayerState? bot, int itemId)
     {
         if (bot == null)
             return;
@@ -802,6 +778,9 @@ public partial class GameClientSession
     {
         int ownAction = EncounterRevealManager.NormalizeRoomEncounterAction(ownActionType);
         int otherAction = EncounterRevealManager.NormalizeRoomEncounterAction(otherActionType);
+        if (ownAction == EncounterRevealManager.RoomEncounterActionObserve)
+            return ResolveRoomEncounterObserveResultEventType(otherAction);
+
         if (ownAction == EncounterRevealManager.RoomEncounterActionLeave ||
             otherAction == EncounterRevealManager.RoomEncounterActionLeave)
             return EncounterRevealManager.RoomEncounterLeaveResultEventType;
@@ -825,11 +804,33 @@ public partial class GameClientSession
         return EncounterRevealManager.RoomEncounterInspectResultEventType;
     }
 
-    private static int ResolveBotRoomEncounterAction()
+    private static int ResolveRoomEncounterObserveResultEventType(int otherActionType)
     {
-        return Random.Shared.Next(2) == 0
-            ? EncounterRevealManager.RoomEncounterActionHidePresence
-            : EncounterRevealManager.RoomEncounterActionLeave;
+        int otherAction = EncounterRevealManager.NormalizeRoomEncounterAction(otherActionType);
+        return otherAction switch
+        {
+            EncounterRevealManager.RoomEncounterActionUseItem => EncounterRevealManager.RoomEncounterObserveUseItemResultEventType,
+            EncounterRevealManager.RoomEncounterActionLeave => EncounterRevealManager.RoomEncounterObserveLeaveResultEventType,
+            EncounterRevealManager.RoomEncounterActionHidePresence => EncounterRevealManager.RoomEncounterObserveHidePresenceResultEventType,
+            _ => EncounterRevealManager.RoomEncounterObserveObserveResultEventType
+        };
+    }
+
+    private int ResolveBotRoomEncounterAction(long matchingId, long botPlayerId)
+    {
+        var actions = new List<int>
+        {
+            EncounterRevealManager.RoomEncounterActionObserve,
+            EncounterRevealManager.RoomEncounterActionLeave
+        };
+
+        if (_inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId)
+            .GetItemCount(ChalkPowderItemId) > 0)
+        {
+            actions.Insert(0, EncounterRevealManager.RoomEncounterActionUseItem);
+        }
+
+        return actions[Random.Shared.Next(actions.Count)];
     }
 
     private static bool IsWithinRoomEncounterVision(Vector3f actorPosition, Vector3f? targetPosition)

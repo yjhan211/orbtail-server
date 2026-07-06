@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using game_server.services;
 using MessagePack;
@@ -345,6 +345,9 @@ public partial class GameClientSession
                 // 遊?遺???곹깭 珥덇린?????먭린 吏곸콉 諛쒓껄 ? 湲곗?
                 _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
                 _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
+
+                foreach ((int itemId, int count) in GameRuleData.InGameItemList)
+                    _inGameInventoryManager.EnsureItemCount(matchingId, bot.PlayerId, itemId, count);
             }
         }
         catch (Exception ex)
