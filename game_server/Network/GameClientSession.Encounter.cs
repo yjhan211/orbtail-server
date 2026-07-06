@@ -14,6 +14,9 @@ public partial class GameClientSession
     private static readonly TimeSpan RoomEncounterHoldDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan RoomEncounterActionSuppressDuration = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan RoomEncounterTurnResolutionDelay = TimeSpan.FromMilliseconds(3200);
+    private static readonly TimeSpan RoomEncounterLeaveAreaMoveCostExemptionDuration = TimeSpan.FromSeconds(8);
+    private const int RoomEncounterLeaveStaminaCost = 5;
+    private DateTime _roomEncounterLeaveAreaMoveCostExemptUntilUtc = DateTime.MinValue;
     // Used only for resolving already-pending discovery transitions after the target finishes exploring.
     private const float RoomEncounterVisionDistance = 2.75f;
     private const float RoomExploreSpotOccupancyDistance = 2.75f;
@@ -482,15 +485,35 @@ public partial class GameClientSession
 
         bool submittedEncounterChoice = false;
         bool resolvedEncounterChoice = false;
+        bool applyRoomEncounterLeaveCost = false;
+        int normalizedAction = EncounterRevealManager.NormalizeRoomEncounterAction(msg.ActionType);
         if (!consumedDiscovery)
         {
+            Func<bool>? beforeSubmit = null;
+            if (normalizedAction == EncounterRevealManager.RoomEncounterActionLeave)
+            {
+                beforeSubmit = () =>
+                {
+                    applyRoomEncounterLeaveCost = true;
+                    return true;
+                };
+            }
+
             submittedEncounterChoice = _encounterRevealManager.TrySubmitRoomEncounterChoice(
                 CurrentMapSubId,
                 PlayerId.Value,
                 msg.TargetPlayerId,
                 area,
                 msg.ActionType,
-                out _);
+                out _,
+                beforeSubmit);
+        }
+
+        if (applyRoomEncounterLeaveCost)
+        {
+            ModifyStats(staminaDelta: -RoomEncounterLeaveStaminaCost);
+            _roomEncounterLeaveAreaMoveCostExemptUntilUtc = DateTime.UtcNow.Add(
+                RoomEncounterLeaveAreaMoveCostExemptionDuration);
         }
 
         Logger.LogInformation(
