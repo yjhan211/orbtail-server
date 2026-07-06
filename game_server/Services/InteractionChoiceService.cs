@@ -68,24 +68,16 @@ public class InteractionChoiceService
     public const int EncounterObserveAnswerTextId = 11063;
     public const int EncounterLeaveAreaAnswerTextId = 11064;
     public const string EncounterActionQuestionText = "어떻게 대응할까요?";
-    public const string EncounterKeepDistanceAnswerText = "거리를 벌린다";
+    public const string EncounterKeepDistanceAnswerText = "\uC0C1\uB300\uBC29\uC758 \uD589\uB3D9\uC5D0 \uB300\uBE44\uD558\uAE30";
     public const string EncounterObserveAnswerText = "상대를 유심히 살펴본다";
-    public const string EncounterLeaveAreaAnswerText = "장소를 이탈한다";
+    public const string EncounterLeaveAreaAnswerText = "\uC7A5\uC18C \uC774\uD0C8\uD558\uAE30 (\uC2A4\uD0DC\uBBF8\uB098 -5)";
     public const string NearbyReasonQuestionText = "여기엔 무슨 일로 왔나요?";
     public const string EnRouteAnswerText = "이동 중이었습니다.";
     public const string CoincidenceAnswerText = "우연입니다.";
 
     private const int NearbyReasonRecentWindowSeconds = 20;
     private const int ActivityEvidenceRecentWindowSeconds = 60;
-    private static readonly HashSet<int> P0EncounterItemIds = new()
-    {
-        201000015,
-        401000004,
-        401000005,
-        401000006,
-        401000007,
-        401000008
-    };
+    private const int EncounterChalkPowderItemId = 201000015;
 
     private readonly InteractionLogManager _logManager;
     private readonly ManittoChainManager _chainManager;
@@ -260,11 +252,10 @@ public class InteractionChoiceService
         }
 
         var usableItems = (inventoryItems ?? Enumerable.Empty<InGameItemInfo>())
-            .Where(item => item.Count > 0 && P0EncounterItemIds.Contains(item.ItemId))
+            .Where(item => item.Count > 0 && item.ItemId == EncounterChalkPowderItemId)
             .GroupBy(item => item.ItemId)
             .Select(group => group.First())
-            .OrderBy(item => item.ItemId)
-            .Take(2)
+            .Take(1)
             .ToList();
 
         foreach (var item in usableItems)
@@ -274,13 +265,11 @@ public class InteractionChoiceService
                 EncounterUseItemAnswerTextId,
                 new List<TextArg> { new() { Type = TextArgType.ITEM_NAME, IntValue = item.ItemId } },
                 $"{EncounterUseItemAnswerType}:{item.ItemId}",
-                $"{itemName}을 사용한다");
+                $"\uC544\uC774\uD15C \uC0AC\uC6A9 [- {itemName}]");
         }
 
         AddAnswer(EncounterKeepDistanceAnswerTextId, null, EncounterKeepDistanceAnswerType,
             EncounterKeepDistanceAnswerText);
-        AddAnswer(EncounterObserveAnswerTextId, null, EncounterObserveAnswerType,
-            EncounterObserveAnswerText);
         AddAnswer(EncounterLeaveAreaAnswerTextId, null, EncounterLeaveAreaAnswerType,
             EncounterLeaveAreaAnswerText);
 
