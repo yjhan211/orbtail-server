@@ -75,7 +75,7 @@ public partial class GameClientSession
         SnapshotRoomEncounterStartCandidates(msg.InteractId, info);
         _pendingFinish.Add(msg.InteractId);
 
-        Logger.LogInformation("RNG 채집 START: PlayerId={PlayerId}, InteractId={InteractId}",
+        Logger.LogInformation("RNG collect START: PlayerId={PlayerId}, InteractId={InteractId}",
             PlayerId, msg.InteractId);
 
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
@@ -87,10 +87,46 @@ public partial class GameClientSession
         if (!PlayerId.HasValue) return Task.CompletedTask;
         if (IsEliminated) return Task.CompletedTask;
 
+        if (msg.EncounterCheckOnly)
+        {
+            if (!_pendingFinish.Contains(msg.InteractId))
+            {
+                ClearRoomEncounterStartCandidates(msg.InteractId);
+                Logger.LogWarning(
+                    "RNG encounter check without START or duplicated: PlayerId={PlayerId}, InteractId={InteractId}",
+                    PlayerId, msg.InteractId);
+                SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+                return Task.CompletedTask;
+            }
+
+            var checkInfo = GameInteractableData.Get(msg.InteractId);
+            if (checkInfo == null)
+            {
+                _pendingFinish.Remove(msg.InteractId);
+                ClearRoomEncounterStartCandidates(msg.InteractId);
+                Logger.LogWarning("RNG encounter check InteractId missing: {InteractId}", msg.InteractId);
+                SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
+                return Task.CompletedTask;
+            }
+
+            if (TryHandleRoomEncounterFromExploreSpot(msg.InteractId, checkInfo))
+            {
+                _pendingFinish.Remove(msg.InteractId);
+                Logger.LogInformation(
+                    "RNG arrival room encounter resolved at explore spot: PlayerId={PlayerId}, InteractId={InteractId}",
+                    PlayerId, msg.InteractId);
+                return Task.CompletedTask;
+            }
+
+            SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
+            return Task.CompletedTask;
+        }
+
         if (!_pendingFinish.Remove(msg.InteractId))
         {
             ClearRoomEncounterStartCandidates(msg.InteractId);
-            Logger.LogWarning("RNG FINISH — START 미수신 또는 중복: PlayerId={PlayerId}, InteractId={InteractId}",
+            Logger.LogWarning(
+                "RNG FINISH without START or duplicated: PlayerId={PlayerId}, InteractId={InteractId}",
                 PlayerId, msg.InteractId);
             return Task.CompletedTask;
         }
@@ -98,17 +134,12 @@ public partial class GameClientSession
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {
-            Logger.LogWarning("RNG FINISH InteractId 미존재: {InteractId}", msg.InteractId);
+            ClearRoomEncounterStartCandidates(msg.InteractId);
+            Logger.LogWarning("RNG FINISH InteractId missing: {InteractId}", msg.InteractId);
             return Task.CompletedTask;
         }
 
-        if (TryHandleRoomEncounterFromExploreSpot(msg.InteractId, info))
-        {
-            Logger.LogInformation(
-                "RNG FINISH room encounter resolved at explore spot: PlayerId={PlayerId}, InteractId={InteractId}",
-                PlayerId, msg.InteractId);
-            return Task.CompletedTask;
-        }
+        ClearRoomEncounterStartCandidates(msg.InteractId);
 
         if (TryHandleGiftDiscoveryBeforeCollect(msg.InteractId, out var otherGiftDiscovery))
             return Task.CompletedTask;

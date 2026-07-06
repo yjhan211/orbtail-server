@@ -358,6 +358,7 @@ namespace network.common.data.models
     public class C_TO_G_RNG_COLLECT_FINISH : IMessagePackObject
     {
         [Key("interactId")] public int InteractId { get; set; }
+        [Key("encounterCheckOnly")] public bool EncounterCheckOnly { get; set; }
     }
 
     /// <summary>
