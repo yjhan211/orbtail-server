@@ -13,12 +13,8 @@ pool/4213/title,보건실 배낭 확인,Check Infirmary Backpack,保健室のカ
 pool/4213/success,배낭 안에서 작은 호명 소리가 새어 나옵니다.,A small roll-call sound leaks from inside the backpack.,カバンの中から小さな呼名音が漏れています。
 pool/4221/title,보건실 책상 확인,Check Infirmary Desk,保健室の机を確認
 pool/4221/success,보건실 책상에 같은 붉은 표시가 남아 있습니다.,The same red mark remains on an infirmary desk.,保健室の机に同じ赤い印が残っています。
-pool/4222/title,교무 회의록 확인,Check Faculty Meeting Minutes,職員会議録を確認
-pool/4222/success,교무 회의록의 이름 옆에도 같은 표시가 있습니다.,The same mark appears beside the name in the faculty meeting minutes.,職員会議録の名前の横にも同じ印があります。
 pool/4223/title,2-1 청소 도구함 확인,Check Class 2-1 Cleaning Cabinet,2-1の掃除用具入れを確認
 pool/4223/success,청소 도구함 안쪽에 닦아도 남은 검은 자국이 있습니다.,"Inside the cleaning cabinet, a black stain remains despite being wiped.",掃除用具入れの内側に、拭いても残る黒い跡があります。
-pool/4231/title,교무실 보관함 확인,Check Faculty Office Cabinet,職員室の保管庫を確認
-pool/4231/success,보관함 안에 돌려받지 못한 물건이 있습니다.,Inside the cabinet is an item that was never returned.,保管庫の中に返されなかった物があります。
 pool/4232/title,창고 공 바구니 확인,Check Storage Ball Basket,倉庫のボールかごを確認
 pool/4232/success,공 바구니 바닥에 작은 물건이 숨어 있습니다.,A small object is hidden at the bottom of the ball basket.,ボールかごの底に小さな物が隠れています。
 pool/4233/title,행정실 복합기 확인,Check Admin Office Copier,事務室の複合機を確認
@@ -31,8 +27,6 @@ pool/4243/title,강당 공 바구니 확인,Check Gym Ball Basket,講堂のボ�
 pool/4243/success,공 바구니 안쪽에 이름표들이 모여 있습니다.,Nametags are gathered inside the ball basket.,ボールかごの内側に名札が集まっています。
 pool/4301/title,책상 서랍 확인,Check Desk Drawer,机の引き出しを確認
 pool/4301/success,책상 서랍에서 접힌 메모를 꺼냅니다.,You take a folded memo from the desk drawer.,机の引き出しから折りたたまれたメモを取り出します。
-pool/4302/title,교무 회의록 대조,Cross-check Faculty Meeting Minutes,職員会議録と照合
-pool/4302/success,회의록 사이에 같은 문장이 끼어 있습니다.,The same sentence is tucked between the meeting minutes.,会議録の間に同じ文が挟まっています。
 pool/4303/title,고사실 창문 확인,Check Exam Room Window,試験室の窓を確認
 pool/4303/success,창문 틈에 찢긴 종이가 붙어 있습니다.,A torn piece of paper is stuck in the window gap.,窓の隙間に破れた紙が貼り付いています。
 pool/4311/title,방송실 기록 장치 재생,Play Broadcast Room Recorder,放送室の記録装置を再生
@@ -47,8 +41,6 @@ pool/4322/title,청소 도구함 확인,Check Cleaning Cabinet,掃除用具入�
 pool/4322/success,청소 도구함 안쪽에 같은 방향으로 번진 검은 줄이 남아 있습니다.,A black line smeared in the same direction remains inside the cleaning cabinet.,掃除用具入れの内側に、同じ方向へにじんだ黒い線が残っています。
 pool/4323/title,행정실 복합기 출력물 확인,Check Admin Office Copier Printout,事務室の複合機出力物を確認
 pool/4323/success,복합기 출력물에도 같은 붉은 표시가 찍혀 있습니다.,The same red mark is printed on the copier output.,複合機の出力物にも同じ赤い印が印刷されています。
-pool/4331/title,교무실 보관함 재확인,Recheck Faculty Office Cabinet,職員室の保管庫を再確認
-pool/4331/success,보관함 안쪽 라벨이 한 번 뜯겨 있습니다.,A label inside the cabinet has been torn off once.,保管庫の内側のラベルが一度はがされています。
 pool/4332/title,창고 캐비넷 확인,Check Storage Cabinet,倉庫のキャビネットを確認
 pool/4332/success,철제 캐비넷 안에 작은 봉투가 붙어 있습니다.,A small envelope is stuck inside the metal cabinet.,金属キャビネットの中に小さな封筒が貼り付いています。
 pool/4333/title,공 바구니 바닥 확인,Check Bottom of Ball Basket,ボールかごの底を確認
@@ -71,8 +63,6 @@ pool/4362/title,보건실 책상 위 먼지 확인,Check Dust on Infirmary Desk,
 pool/4362/success,책상 위 먼지가 손바닥 모양으로 비어 있습니다.,The dust on the desk is missing in the shape of a palm.,机の上のほこりが手のひらの形に抜けています。
 pool/4363/title,행정실 창가 확인,Check Admin Office Window,事務室の窓際を確認
 pool/4363/success,창가 복합기 위에 같은 먼지 자국이 남아 있습니다.,The same dust mark remains on the copier by the window.,窓際の複合機の上に同じほこり跡が残っています。
-pool/4401/title,같은 이름 대조,Compare the Same Name,同じ名前を照合
-pool/4401/success,서로 다른 기록에서 같은 이름이 빠져 있습니다.,The same name is missing from different records.,異なる記録から同じ名前が抜けています。
 pool/4402/title,사라진 시간 대조,Compare the Missing Time,消えた時間を照合
 pool/4402/success,기록 장치의 시간이 한 칸 비어 있습니다.,One block of time is blank in the recorder.,記録装置の時間が一枠空白になっています。
 pool/4403/title,돌아오지 않은 물건 대조,Compare the Unreturned Item,戻らなかった物を照合
@@ -209,10 +199,6 @@ interactable/701000006/name,제어 장치,Control Unit,制御装置
 interactable/701000006/desc,꺼져 있는 전원에서 작은 신호가 깜빡입니다...,A faint signal blinks though the power is off...,電源は切れているのに、小さな信号が点滅している...
 interactable/701000007/name,송출 장치,Transmitter,送出装置
 interactable/701000007/desc,빈 채널에서 누군가의 숨소리가 들립니다...,A breath drifts from an empty channel...,空のチャンネルから、誰かの息づかいが聞こえる...
-interactable/701000010/name,압수품 보관함,Confiscated Items Cabinet,押収品保管庫
-interactable/701000010/desc,"잠금쇠가 풀려 있고, 안쪽이 한 자리만 비어 있습니다...","The lock is open, with one slot suspiciously empty...",鍵は開いていて、中の一か所だけが空いている...
-interactable/701000011/name,교무 회의록,Faculty Meeting Minutes,教務会議録
-interactable/701000011/desc,같은 이름이 페이지마다 반복되어 적혀 있습니다...,The same name repeats on every page...,同じ名前が、ページごとに繰り返されている...
 interactable/701000022/name,행정실 책상,Administrative Office Desk,事務室の机
 interactable/701000022/desc,누군가의 자리였던 의자가 살짝 빠져 있습니다...,"A chair sits slightly pulled out, as if just left...",誰かの席だった椅子が、わずかに引かれている...
 interactable/701000023/name,우편함,Mailbox,郵便受け
@@ -269,8 +255,6 @@ interactable/701000070/name,고사실 책상,Exam Room Desk,考査室の机
 interactable/701000070/desc,답안지가 작은 글씨들로 빼곡히 채워져 있습니다...,The answer sheet is densely packed with tiny writing...,解答用紙が、小さな文字で隙間なく埋まっている...
 interactable/701000071/name,사무용 책상,Office Desk,事務机
 interactable/701000071/desc,학생 명단 위에 한 이름만 동그라미가 그려져 있습니다...,A single name is circled on the student list...,生徒名簿の中で、一つの名前だけが丸で囲まれている...
-interactable/701000072/name,잡동사니,Clutter,がらくた
-interactable/701000072/desc,누군가의 소지품이 익숙한 손길로 분류되어 있습니다...,Personal items are sorted with familiar care...,誰かの持ち物が、慣れた手つきで仕分けられている...
 interactable/701000073/name,도서관 카트,Library Cart,図書館のカート
 interactable/701000073/desc,카트 위 책들이 모두 같은 페이지에 펼쳐져 있습니다...,Every book on the cart is open to the same page...,カートの上の本は、全て同じページで開かれている...
 interactable/701000074/name,휴지통,Trash Bin,ゴミ箱
@@ -287,8 +271,6 @@ interactable/701000079/name,회의록 보관함,Meeting Records Cabinet,議事�
 interactable/701000079/desc,"보관함 칸칸이 잠겨 있고, 돌려주겠다는 쪽지만 빛바랜 채 붙어 있습니다.\n끝내 주인에게 가지 못한 것들이 안에 남아 있습니다.",One ledger has been overwritten in another's hand...,一冊の書類が、別の筆跡で書き直されている...
 interactable/701000080/name,휴지통,Trash Bin,ゴミ箱
 interactable/701000080/desc,찢긴 책장들이 한쪽 페이지만 모아져 있습니다...,Torn-out pages are sorted by a single side...,破られた頁が、片面ずつ揃えて捨てられている...
-interactable/701000081/name,강당 캐비닛,Gym Cabinet,講堂のキャビネット
-interactable/701000081/desc,잠긴 문 너머에서 미세한 진동이 느껴집니다...,A faint vibration pulses past the locked door...,鍵のかかった扉の向こうから、微かな震えが伝わる...
 interactable/701000082/name,대형 복합기,Large Multifunction Printer,大型複合機
 interactable/701000082/desc,대기 모드인데도 롤러가 가만히 돌고 있습니다...,The rollers turn even in standby...,待機中のはずなのに、ローラーが静かに回り続けている...
 interactable/701000083/name,창틀,Window Frame,窓枠
