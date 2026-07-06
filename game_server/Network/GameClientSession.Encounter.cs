@@ -473,6 +473,25 @@ public partial class GameClientSession
             {
                 applyRoomEncounterLeaveCost = true;
                 submittedEncounterChoice = true;
+                resolvedEncounterChoice = true;
+                ReleaseRoomEncounterBotTarget(_botPlayerManager.GetBot(CurrentMapSubId, msg.TargetPlayerId));
+            }
+            else if (normalizedAction == EncounterRevealManager.RoomEncounterActionHidePresence)
+            {
+                submittedEncounterChoice = true;
+                resolvedEncounterChoice = true;
+                ReleaseRoomEncounterBotTarget(_botPlayerManager.GetBot(CurrentMapSubId, msg.TargetPlayerId));
+                SendEncounterEvent(msg.TargetPlayerId, area,
+                    EncounterRevealManager.RoomEncounterOwnHidePresenceResultEventType,
+                    EncounterRevealManager.PairCooldownSeconds);
+            }
+            else if (normalizedAction == EncounterRevealManager.RoomEncounterActionObserve)
+            {
+                submittedEncounterChoice = true;
+                resolvedEncounterChoice = true;
+                SendEncounterEvent(msg.TargetPlayerId, area,
+                    EncounterRevealManager.RoomEncounterObserveObserveResultEventType,
+                    EncounterRevealManager.PairCooldownSeconds);
             }
             else
             {
