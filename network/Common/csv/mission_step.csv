@@ -15,19 +15,19 @@ job_title,part_id,part_name_kr,part_name_en,part_name_jp,part_tier,target_area,t
 2,207,비밀 선물 전달,Secret Gift Delivery,秘密の贈り物を届ける,2,0,0,0,0,0,0,0,타겟에게 비밀 선물 전달하기,Deliver the secret gift to your target,ターゲットに秘密の贈り物を届ける
 4,401,등산용 로프 다발,Climbing Rope Bundle,登山用ロープの束,0,30,10,12,0,0,301000006,1,,,
 4,402,카라비너 세트,Carabiner Set,カラビナセット,0,14,6,12,3,0,301000021,2,,,
-4,403,체육 일지,P.E. Log,体育日誌,0,12,7,12,0,0,202000002,1,,,
+4,403,체육 일지,P.E. Log,体育日誌,0,12,4,12,0,0,202000002,1,,,
 4,404,매트 보호대,Mat Padding,マット保護パッド,0,20,12,12,0,0,501000001,2,,,
 4,405,등반 장비 세트,Climbing Gear Set,登攀装備セット,1,0,0,20,0,5,301000017,0,,,
 4,406,외벽 강하용 보호장구,External Descent Harness,外壁降下用保護具,1,0,0,20,0,5,301000018,0,,,
 4,407,비밀 선물 전달,Secret Gift Delivery,秘密の贈り物を届ける,2,0,0,0,0,0,0,0,타겟에게 비밀 선물 전달하기,Deliver the secret gift to your target,ターゲットに秘密の贈り物を届ける
 5,501,시약 A (산성),Reagent A (Acidic),試薬A(酸性),0,32,6,12,1,0,201000003,1,,,
 5,502,시약 B (촉매),Reagent B (Catalyst),試薬B(触媒),0,12,3,12,0,0,201000003,2,,,
-5,503,실험 노트,Lab Notebook,実験ノート,0,30,12,12,0,0,107000002,1,,,
+5,503,실험 노트,Lab Notebook,実験ノート,0,30,9,12,0,0,107000002,1,,,
 5,504,비상구 자물쇠 견본,Emergency Lock Sample,非常口錠の見本,0,22,5,12,0,0,601000004,2,,,
 5,505,합성 시약 베이스,Synthesized Reagent Base,合成試薬ベース,1,0,0,20,0,5,201000003,0,,,
 5,506,부식 시험 샘플,Corrosion Test Sample,腐食試験サンプル,1,0,0,20,0,5,201000003,0,,,
 5,507,비밀 선물 전달,Secret Gift Delivery,秘密の贈り物を届ける,2,0,0,0,0,0,0,0,타겟에게 비밀 선물 전달하기,Deliver the secret gift to your target,ターゲットに秘密の贈り物を届ける
-6,601,마스터 키 본,Master Key Mold,マスターキー型,0,12,6,12,4,0,601000005,1,,,
+6,601,마스터 키 본,Master Key Mold,マスターキー型,0,12,4,12,4,0,601000005,1,,,
 6,602,왁스 블록,Wax Block,ワックスブロック,0,20,12,12,0,0,301000020,2,,,
 6,603,청소 일지,Cleaning Log,清掃日誌,0,40,7,12,0,0,202000002,1,,,
 6,604,빈 키 블랭크,Key Blank,キーブランク,0,13,5,12,0,0,601000004,2,,,
@@ -44,7 +44,7 @@ job_title,part_id,part_name_kr,part_name_en,part_name_jp,part_tier,target_area,t
 8,801,응급 처방 양식,Emergency Prescription Form,救急処方フォーム,0,10,9,12,1,0,301000001,1,,,
 8,802,약물 식별 카드,Drug Identification Card,薬物識別カード,0,32,7,12,0,0,601000006,2,,,
 8,803,보건실 통로 도면,Health Office Passage Map,保健室通路図,0,22,1,12,0,0,301000001,1,,,
-8,804,응급 키트,Emergency Kit,救急キット,0,13,6,12,0,0,301000017,2,,,
+8,804,응급 키트,Emergency Kit,救急キット,0,13,5,12,0,0,301000017,2,,,
 8,805,작성된 처방전,Filled Prescription,記入済み処方箋,1,0,0,20,0,5,301000001,0,,,
 8,806,통로 진입 도구,Passage Entry Tool,通路進入道具,1,0,0,20,0,5,301000021,0,,,
 8,807,비밀 선물 전달,Secret Gift Delivery,秘密の贈り物を届ける,2,0,0,0,0,0,0,0,타겟에게 비밀 선물 전달하기,Deliver the secret gift to your target,ターゲットに秘密の贈り物を届ける
