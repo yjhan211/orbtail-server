@@ -571,7 +571,8 @@ public partial class GameClientSession
 
     private bool IsRoomEncounterActionInProgress()
     {
-        return CurrentState == PlayerState.Exploring;
+        return CurrentState == PlayerState.Exploring ||
+               HasPendingRngCollectEncounterBlock(DateTime.UtcNow);
     }
 
     private void CancelPendingRoomEncounterTurnsForCurrentPlayer(string reason)

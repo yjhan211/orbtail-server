@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using game_server.services;
@@ -27,7 +28,9 @@ public partial class GameClientSession
 
     /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
     /// FINISH 도착 시 이 set에 있어야 결과 산출 진행.</summary>
+    private static readonly TimeSpan RngCollectPendingEncounterBlockDuration = TimeSpan.FromSeconds(10);
     private readonly HashSet<int> _pendingFinish = new();
+    private DateTime _rngCollectPendingEncounterBlockUntilUtc = DateTime.MinValue;
 
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
@@ -74,6 +77,7 @@ public partial class GameClientSession
 
         SnapshotRoomEncounterStartCandidates(msg.InteractId, info);
         _pendingFinish.Add(msg.InteractId);
+        MarkRngCollectPendingEncounterBlock();
 
         Logger.LogInformation("RNG collect START: PlayerId={PlayerId}, InteractId={InteractId}",
             PlayerId, msg.InteractId);
@@ -103,6 +107,7 @@ public partial class GameClientSession
             if (checkInfo == null)
             {
                 _pendingFinish.Remove(msg.InteractId);
+                ClearRngCollectPendingEncounterBlockIfIdle();
                 ClearRoomEncounterStartCandidates(msg.InteractId);
                 Logger.LogWarning("RNG encounter check InteractId missing: {InteractId}", msg.InteractId);
                 SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
@@ -112,6 +117,7 @@ public partial class GameClientSession
             if (TryHandleRoomEncounterFromExploreSpot(msg.InteractId, checkInfo))
             {
                 _pendingFinish.Remove(msg.InteractId);
+                ClearRngCollectPendingEncounterBlockIfIdle();
                 Logger.LogInformation(
                     "RNG arrival room encounter resolved at explore spot: PlayerId={PlayerId}, InteractId={InteractId}",
                     PlayerId, msg.InteractId);
@@ -130,6 +136,8 @@ public partial class GameClientSession
                 PlayerId, msg.InteractId);
             return Task.CompletedTask;
         }
+
+        ClearRngCollectPendingEncounterBlockIfIdle();
 
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
@@ -374,6 +382,21 @@ public partial class GameClientSession
         Send(packet);
     }
 
+    private void MarkRngCollectPendingEncounterBlock()
+    {
+        _rngCollectPendingEncounterBlockUntilUtc = DateTime.UtcNow + RngCollectPendingEncounterBlockDuration;
+    }
+
+    private void ClearRngCollectPendingEncounterBlockIfIdle()
+    {
+        if (_pendingFinish.Count == 0)
+            _rngCollectPendingEncounterBlockUntilUtc = DateTime.MinValue;
+    }
+
+    private bool HasPendingRngCollectEncounterBlock(DateTime now)
+    {
+        return _pendingFinish.Count > 0 && now <= _rngCollectPendingEncounterBlockUntilUtc;
+    }
     /// <summary>
     ///     같은 매칭 인스턴스의 모든 플레이어 클라에게 InteractId + cooldown broadcast.
     /// </summary>
