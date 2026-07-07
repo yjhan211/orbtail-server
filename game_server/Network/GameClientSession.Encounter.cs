@@ -493,15 +493,19 @@ public partial class GameClientSession
                     EncounterRevealManager.RoomEncounterObserveObserveResultEventType,
                     EncounterRevealManager.PairCooldownSeconds);
             }
+            else if (normalizedAction == EncounterRevealManager.RoomEncounterActionUseItem)
+            {
+                submittedEncounterChoice = true;
+                resolvedEncounterChoice = true;
+                return HandleAttack(new C_TO_G_ATTACK { TargetId = msg.TargetPlayerId.ToString() });
+            }
             else
             {
-                submittedEncounterChoice = _encounterRevealManager.TrySubmitRoomEncounterChoice(
-                    CurrentMapSubId,
-                    PlayerId.Value,
-                    msg.TargetPlayerId,
-                    area,
-                    msg.ActionType,
-                    out _);
+                submittedEncounterChoice = true;
+                resolvedEncounterChoice = true;
+                SendEncounterEvent(msg.TargetPlayerId, area,
+                    EncounterRevealManager.RoomEncounterObserveObserveResultEventType,
+                    EncounterRevealManager.PairCooldownSeconds);
             }
         }
 
