@@ -104,7 +104,6 @@ public partial class BotPlayerManager
             if (totalCorruptionDelta != 0)
                 bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
 
-            SyncBotForcedFollowState(bot, matchingId);
 
             if (DemoMode.IsActive)
             {
@@ -127,11 +126,15 @@ public partial class BotPlayerManager
 
                 // 2) 폐쇄 구역 체류 시 오염도 가속 (권고안 B 2026-05-05 — 변별력 보강 +4/틱).
                 //    이전엔 stamina -20이었으나 자원 통합 후 stamina 0이어도 탈락 안 되므로 cor로 변경.
-                // 3) Corruption 100: 탈락 대신 강제 미행 상태로 전환. Stamina 0은 비탈락.
+                // 3) Corruption 100: 정신력 소모로 탈락. Stamina 0은 비탈락.
                 // 4) DemoMode 스크립트 텔레포트 폐기 — 봇은 직책 큐(JobAreaQueue) 따라 walking으로만 이동.
                 //    H3/H6/H8 narrative 트리거(색출/흔적/탈락)는 BotPlayerManager.Mission.cs에서 별도 시간 기반 처리.
             }
-            // DemoMode 비활성: 탈락은 스킵하되, 일반 자원/상태 변동은 위에서 적용한다.
+
+            if (TryQueueBotMentalElimination(bot, matchingId, result))
+                continue;
+
+            // DemoMode 비활성에서도 일반 자원/상태 변동 후 오염도 100이면 탈락 처리한다.
         }
         foreach (var bot in bots)
         {
@@ -140,6 +143,29 @@ public partial class BotPlayerManager
         }
 
         return result;
+    }
+
+    private bool TryQueueBotMentalElimination(BotPlayerState bot, long matchingId, BotTickResult result)
+    {
+        if (bot.Corruption < 100) return false;
+
+        bot.IsEliminated = true;
+        bot.IsForcedFollowActive = false;
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.PendingRngInteractId = 0;
+        bot.PendingChecklistTaskId = 0;
+        bot.PendingChecklistInteractId = 0;
+        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
+        bot.RngCollectProgressStartTime = DateTime.MinValue;
+        ClearBotRoomExplorePlan(bot);
+        bot.LoopWaitUntil = DateTime.MinValue;
+        result.Eliminated.Add((bot.PlayerId, EliminationReason.MENTAL_ZERO));
+
+        _logger.LogInformation(
+            "Bot mental depleted: MatchingId={MatchingId}, BotId={BotId}, Corruption={Corruption}. Eliminating bot.",
+            matchingId, bot.PlayerId, bot.Corruption);
+        return true;
     }
 
     private static int CountPlayerSnapshotsInArea(
@@ -162,26 +188,6 @@ public partial class BotPlayerManager
 
     private void SyncBotForcedFollowState(BotPlayerState bot, long matchingId)
     {
-        if (bot.Corruption >= 100)
-        {
-            if (bot.IsForcedFollowActive) return;
-
-            bot.IsForcedFollowActive = true;
-            bot.Path.Clear();
-            bot.PathIndex = 0;
-            bot.PendingRngInteractId = 0;
-            bot.PendingChecklistTaskId = 0;
-            bot.PendingChecklistInteractId = 0;
-            bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-            bot.RngCollectProgressStartTime = DateTime.MinValue;
-            ClearBotRoomExplorePlan(bot);
-            bot.LoopWaitUntil = DateTime.MinValue;
-            _logger.LogInformation(
-                "Bot forced follow started: MatchingId={MatchingId}, BotId={BotId}, Target={Target}",
-                matchingId, bot.PlayerId, bot.TargetPlayerId);
-            return;
-        }
-
         if (!bot.IsForcedFollowActive) return;
 
         bot.IsForcedFollowActive = false;

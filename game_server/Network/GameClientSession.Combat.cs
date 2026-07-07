@@ -606,6 +606,8 @@ public partial class GameClientSession
                 staminaDelta, totalCorDelta, Stamina, Corruption,
                 conversionCor > 0, reason: "", isBot: false);
         }
+
+        CheckResourceElimination();
     }
 
     /// <summary>
