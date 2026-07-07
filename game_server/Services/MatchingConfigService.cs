@@ -30,8 +30,8 @@ public class MatchingConfigService
     private int _intervalSec = DefaultIntervalSec;
     private List<AreaType>? _forcedSequence; // null = 무작위
 
-    public const int DefaultStartDelaySec = 300;
-    public const int DefaultIntervalSec = 180;
+    public const int DefaultStartDelaySec = 150;
+    public const int DefaultIntervalSec = 90;
 
     public MatchingConfigService(ICacheHelper cacheHelper, ILogger logger)
     {

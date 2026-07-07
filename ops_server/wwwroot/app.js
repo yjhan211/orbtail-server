@@ -317,7 +317,7 @@ function areaTypeLabel(t) { return AREA_LABELS[t] ?? `Area${t}`; }
 let _areaLabelsFromCsv = new Map();
 const AREA_LABEL_OVERRIDES = {
     10:'행정실', 11:'1F', 12:'교무실', 13:'강당', 14:'창고',
-    20:'1-1', 21:'2F', 22:'도서관',
+    20:'보건실', 21:'2F', 22:'도서관',
     30:'2-1', 31:'3F', 32:'고사실',
     40:'3-1', 41:'4F', 42:'방송실',
     1:'쓰레기장', 2:'운동장', 100:'캠프'

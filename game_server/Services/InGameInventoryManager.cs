@@ -176,6 +176,24 @@ public class InGameInventoryManager
         return item;
     }
 
+    public int EnsureItemCount(long matchingId, long playerId, int itemId, int minCount,
+        GiftState giftState = GiftState.None)
+    {
+        if (minCount <= 0)
+            return 0;
+
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        int currentCount = inventory.GetItemCount(itemId);
+        int addCount = minCount - currentCount;
+        if (addCount <= 0)
+            return 0;
+
+        var item = inventory.AddItem(itemId, addCount, giftState);
+        _logAction?.Invoke(
+            $"InGameInventoryManager: Ensured item count (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, MinCount={minCount}, AddedCount={addCount}, GiftState={giftState}, ItemUid={item.ItemUid})");
+        return addCount;
+    }
+
     /// <summary>
     ///     아이템 사용/제거
     /// </summary>

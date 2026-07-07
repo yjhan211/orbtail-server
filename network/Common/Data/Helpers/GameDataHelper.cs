@@ -230,6 +230,7 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Item.Consumable],
                 new List<CsvRow>() // Put (unused)
             );
+            BattleItemRecipeData.Initialize(loadedData[DataFiles.Item.BattleRecipe]);
 
             // Map data
             GameMapData.Initialize(
@@ -320,6 +321,7 @@ namespace network.common.data.helpers
             }
 
             ValidateMissionReferentialIntegrity(errors, itemIds);
+            BattleItemRecipeData.ValidateReferentialIntegrity(errors, itemIds);
             GameChecklistData.ValidateReferentialIntegrity(errors, itemIds);
 
             if (errors.Count > 0)
@@ -649,8 +651,9 @@ namespace network.common.data.helpers
                 public const string Base = "item_info.csv";
                 public const string Equipment = "item_info_equipment.csv";
                 public const string Consumable = "item_info_consumable.csv";
+                public const string BattleRecipe = "battle_item_recipe.csv";
 
-                public static readonly string[] ALL = new[] { Base, Equipment, Consumable };
+                public static readonly string[] ALL = new[] { Base, Equipment, Consumable, BattleRecipe };
             }
 
             public static class Map

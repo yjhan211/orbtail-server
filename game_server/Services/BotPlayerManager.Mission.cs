@@ -272,7 +272,10 @@ public partial class BotPlayerManager
         }
 
         var outcome = RngCollectCore.Resolve(matchingId, bot.PlayerId, bot.MyJobTitle,
-            info, missionManager, inventoryManager, itemPoolManager, isBot: true);
+            info, missionManager, inventoryManager, itemPoolManager, isBot: true,
+            bonusItemChancePercent: PassiveBuffUtility.GetValuePercent(
+                bot.ActiveBuffIds,
+                BuffSubType.ITEM_GAIN_CHANCE_ADD));
 
         if (outcome is { ResultType: 3, CollectedPart: not null })
         {
@@ -387,8 +390,16 @@ public partial class BotPlayerManager
             {
                 var buff = GameBuffData.Get(buffId);
                 if (buff == null) continue;
-                if (buff.SubType == BuffSubType.CONDITION_ADD) staminaGain += value;
-                else if (buff.SubType == BuffSubType.CORRUPTION_DOWN) corruptionDown += value;
+                if (buff.SubType == BuffSubType.CONDITION_ADD)
+                    staminaGain += PassiveBuffUtility.ApplyIncrease(
+                        value,
+                        bot.ActiveBuffIds,
+                        BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
+                else if (buff.SubType == BuffSubType.CORRUPTION_DOWN)
+                    corruptionDown += PassiveBuffUtility.ApplyIncrease(
+                        value,
+                        bot.ActiveBuffIds,
+                        BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
             }
 
             if (staminaGain <= 0 && corruptionDown <= 0) continue;

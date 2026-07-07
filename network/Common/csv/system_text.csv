@@ -1,4 +1,9 @@
 id,category,text_kr,text_en,text_jp
+"11060","6","어떻게 대응할까요?","How will you respond?","どう対応しますか？"
+"11061","6","아이템 사용 [- {0}]","Use item [- {0}]","アイテム使用 [- {0}]"
+"11062","6","상대방의 행동에 대비하기","Prepare for the other person's action","相手の行動に備える"
+"11063","6","상대를 유심히 살펴본다","Watch closely","相手をよく観察する"
+"11064","6","장소 이탈하기 (스태미나 -5)","Leave the area (Stamina -5)","場所を離れる（スタミナ -5）"
 1,1,강당 문이 열렸습니다,The Gym door has been opened.,講堂の扉が開かれました。
 2,1,교실2 문이 열렸습니다,The Classroom 2 door has been opened.,教室2の扉が開かれました。
 3,1,교무실 문이 열렸습니다,The Staff Room door has been opened.,職員室の扉が開かれました。
@@ -87,6 +92,7 @@ id,category,text_kr,text_en,text_jp
 10040,4,<color=#A8D4E0>체력이 {0} 증가합니다.</color>,<color=#A8D4E0>HP increases by {0}.</color>,<color=#A8D4E0>体力が{0}増加します。</color>
 10041,4,<color=#A8D4E0>정신오염도가 {0} 감소합니다.</color>,<color=#A8D4E0>Corruption decreases by {0}.</color>,<color=#A8D4E0>精神汚染度が{0}減少します。</color>
 10042,4,<color=#A8D4E0>상대방이 당신에게 {0} 아이템을 사용했습니다.</color>,<color=#A8D4E0>The other player used {0} on you.</color>,<color=#A8D4E0>相手があなたに{0}を使用しました。</color>
+10065,4,<color=#FF7E9A>정신오염도가 {0} 증가합니다.</color>,<color=#FF7E9A>Corruption increases by {0}.</color>,<color=#FF7E9A>精神汚染度が{0}増加します。</color>
 10043,4,상대방이 행동 수칙을 공유합니다.,The other player shares a conduct rule.,相手が行動規則を共有します。
 10044,4,학생 수첩에 증언으로 기록합니다.,Recorded as testimony in the student notebook.,学生手帳に証言として記録します。
 10045,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#A8D4E0>accepted</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>さんが<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。
@@ -282,6 +288,17 @@ id,category,text_kr,text_en,text_jp
 "12162","7","집착","Obsession","執着"
 "12163","7","정신력이 모두 소모되었습니다.\n이성을 잃고 {PlayerName}을 쫓습니다.","Your sanity is depleted.\nYou lose your reason and chase {PlayerName}.","精神力をすべて失いました。\n理性を失い、{PlayerName}を追います。"
 "12164","7","학생수첩","Notebook","生徒手帳"
+"12165","7","비밀 수집가","Secret Collector","秘密収集家"
+"12166","7","당신은 흩어진 물자도 놓치지 않고 챙깁니다.\n탐색 성공 시 추가 아이템을 발견할 확률이 증가합니다.","You collect even the smallest supplies others overlook.\nChance to find an extra item on successful search is increased.","あなたは散らばった物資も見逃さず集めます。\n探索成功時、追加アイテムを発見する確率が上昇します。"
+"12167","7","겁쟁이","Coward","臆病者"
+"12168","7","당신은 불길한 기척에 누구보다 빨리 움츠립니다.\n위험 사건 발생 확률이 감소합니다.","You flinch faster than anyone at the first sign of danger.\nRisk event chance is reduced.","あなたは不吉な気配に誰よりも早く身をすくめます。\n危険な出来事の発生確率が低下します。"
+"12169","7","약손","Healing Touch","癒やしの手"
+"12170","7","당신은 다친 곳을 익숙한 손길로 돌봅니다.\n회복 아이템 효과가 증가합니다.","You tend to wounds with a familiar, careful touch.\nRecovery item effects are increased.","あなたは傷ついたところを慣れた手つきで手当てします。\n回復アイテムの効果が上昇します。"
+"12171","7","가벼운 몸짓","Light Footwork","軽い身のこなし"
+"12172","7","당신의 기척은 날렵합니다.\n조우 시 저항과 도주 판정 확률이 증가합니다.","Your presence is nimble and hard to catch.\nResist and escape checks during encounters are increased.","あなたの気配は素早く、捕らえにくいです。\n遭遇時の抵抗と逃走判定の確率が上昇します。"
+"12173","7","야행성","Nocturnal","夜行性"
+"12174","7","당신은 혼자서도 쉽게 흐트러지지 않습니다.\n고립 시 정신오염도 증가량이 완화됩니다.","You do not fall apart easily, even when alone.\nSanity pollution gain while isolated is reduced.","あなたはひとりでも簡単には乱れません。\n孤立時の精神汚染度の増加量が緩和されます。"
+"12175","7","| 성향","| Trait","| 傾向"
 "11045","6","여기엔 무슨 일로 왔나요?","What brings you here?","ここには何の用で来たのですか？"
 "11046","6","이동 중이었습니다.","I was on my way.","移動中でした。"
 "11047","6","우연입니다.","It was a coincidence.","偶然です。"

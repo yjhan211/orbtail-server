@@ -1,7 +1,7 @@
 // ReSharper disable All
-#pragma warning disable CS8618 // 생성자를 종료할 때 null을 허용하지 않는 필드에 null이 아닌 값을 포함해야 합니다. null 허용으로 선언해 보세요.
-#pragma warning disable CS8625 // Null 리터럴을 null을 허용하지 않는 참조 형식으로 변환할 수 없습니다.
-#pragma warning disable CS8603 // 가능한 null 참조 반환입니다.
+#pragma warning disable CS8618 // ?앹꽦?먮? 醫낅즺????null???덉슜?섏? ?딅뒗 ?꾨뱶??null???꾨땶 媛믪쓣 ?ы븿?댁빞 ?⑸땲?? null ?덉슜?쇰줈 ?좎뼵??蹂댁꽭??
+#pragma warning disable CS8625 // Null 由ы꽣?댁쓣 null???덉슜?섏? ?딅뒗 李몄“ ?뺤떇?쇰줈 蹂?섑븷 ???놁뒿?덈떎.
+#pragma warning disable CS8603 // 媛?ν븳 null 李몄“ 諛섑솚?낅땲??
 
 using System;
 using System.Collections.Generic;
@@ -16,7 +16,31 @@ namespace network.common.data
 {
     public static class GameBuffData
     {
+        public const int PersonaSecretCollectorBuffId = 6;
+        public const int PersonaCowardBuffId = 7;
+        public const int PersonaGuardianAngelBuffId = 8;
+        public const int PersonaPhysicalSolverBuffId = 9;
+        public const int PersonaNocturnalBuffId = 10;
+        public const int PersonaBuffValuePercent = 20;
+
         private static readonly Dictionary<int, BuffInfoData> _buffs = new();
+
+        public static int GetPersonaBuffId(PersonaType persona) => persona switch
+        {
+            PersonaType.SecretCollector => PersonaSecretCollectorBuffId,
+            PersonaType.Coward => PersonaCowardBuffId,
+            PersonaType.GuardianAngel => PersonaGuardianAngelBuffId,
+            PersonaType.PhysicalSolver => PersonaPhysicalSolverBuffId,
+            PersonaType.Nocturnal => PersonaNocturnalBuffId,
+            _ => 0
+        };
+
+        public static int GetDefaultPassiveBuffValuePercent(int buffId)
+        {
+            return buffId is >= PersonaSecretCollectorBuffId and <= PersonaNocturnalBuffId
+                ? PersonaBuffValuePercent
+                : 0;
+        }
 
         public static void Initialize(List<CsvRow> csvData)
         {
@@ -48,7 +72,6 @@ namespace network.common.data
             LogManager.WriteDebugLog($"Total {_buffs.Count} buffs validated successfully!");
         }
 
-        // 유틸리티 메서드
         public static bool IsPeriodicBuff(int buffId)
         {
             return Get(buffId).Type == BuffType.PERIODIC;

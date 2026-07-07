@@ -8,19 +8,19 @@ using network.helpers;
 namespace game_server.services;
 
 /// <summary>
-///     봇 플레이어 상태 관리. v0.2.0 부품 결합 시스템 정합 (#26).
-///     - 매칭 봇 채움 시 생성된 봇의 인게임 상태 추적 + 행동 AI 제공.
-///     - 핵심 동작은 partial 파일로 분리:
-///         - BotPlayerManager.Movement.cs : 목적성 이동 / 폐쇄 회피
-///         - BotPlayerManager.Mission.cs  : 부품 회수 / 결합 / 사보타주 / 색출
-///         - BotPlayerManager.Interaction.cs : 1:1 동기턴 자동 응답
+///     遊??뚮젅?댁뼱 ?곹깭 愿由? v0.2.0 遺??寃고빀 ?쒖뒪???뺥빀 (#26).
+///     - 留ㅼ묶 遊?梨꾩? ???앹꽦??遊뉗쓽 ?멸쾶???곹깭 異붿쟻 + ?됰룞 AI ?쒓났.
+///     - ?듭떖 ?숈옉? partial ?뚯씪濡?遺꾨━:
+///         - BotPlayerManager.Movement.cs : 紐⑹쟻???대룞 / ?먯뇙 ?뚰뵾
+///         - BotPlayerManager.Mission.cs  : 遺???뚯닔 / 寃고빀 / ?щ낫?二?/ ?됱텧
+///         - BotPlayerManager.Interaction.cs : 1:1 ?숆린???먮룞 ?묐떟
 /// </summary>
 public partial class BotPlayerManager
 {
-    // 프로토 0: 활성 공간 = 3·4층 6구역(1·2층/운동장 차단, 3↔4만 이동).
-    //   방(정신력 회복 가능): Classroom3(2-1)/ExamRoom(고사실)/Classroom4(3-1)/BroadcastRoom(방송실)
-    //   복도(transit, 회복 없음 + 장기 체류 시 인접 방 강제 유도): Corridor3F/Corridor4F
-    // 회복이 일어나는 "방"(복도 제외). 타겟 추적/떠보기/기척의 기준 구역.
+    // ?꾨줈??0: ?쒖꽦 怨듦컙 = 3쨌4痢?6援ъ뿭(1쨌2痢??대룞??李⑤떒, 3??留??대룞).
+    //   諛??뺤떊???뚮났 媛??: Classroom3(2-1)/ExamRoom(怨좎궗??/Classroom4(3-1)/BroadcastRoom(諛⑹넚??
+    //   蹂듬룄(transit, ?뚮났 ?놁쓬 + ?κ린 泥대쪟 ???몄젒 諛?媛뺤젣 ?좊룄): Corridor3F/Corridor4F
+    // ?뚮났???쇱뼱?섎뒗 "諛?(蹂듬룄 ?쒖쇅). ?寃?異붿쟻/?좊낫湲?湲곗쿃??湲곗? 援ъ뿭.
     private static readonly AreaType[] Proto0Rooms =
     {
         AreaType.Classroom3,
@@ -29,19 +29,19 @@ public partial class BotPlayerManager
         AreaType.BroadcastRoom,
     };
 
-    // 프로토 0: 전원 4층에서 시작. 복도는 체류 불가라 4층 방에서 스폰.
+    // ?꾨줈??0: ?꾩썝 4痢듭뿉???쒖옉. 蹂듬룄??泥대쪟 遺덇???4痢?諛⑹뿉???ㅽ룿.
     private static readonly AreaType[] Proto0SpawnAreas =
     {
         AreaType.Classroom4,
         AreaType.BroadcastRoom,
     };
 
-    // 프로토 0: 봇이 회복(타겟 추적) 대신 떠보기(최저 인원 방)로 가는 확률. 튜닝 노브.
+    // ?꾨줈??0: 遊뉗씠 ?뚮났(?寃?異붿쟻) ????좊낫湲?理쒖? ?몄썝 諛?濡?媛???뺣쪧. ?쒕떇 ?몃툕.
     private const double Proto0TestProbability = 0.3;
 
-    // 프로토 0: 원하는 방(타겟 방/떠보기 방)에 도착해 머무는 시간(초).
-    // 이 동안 회복·기척이 쌓이고, 만료 후에야 다음 결정(머물기/떠보기)을 한다.
-    // (없으면 머물기 결정이 매 틱(250ms) 재굴림되어 떠보기 확률이 곧바로 터져 나가버린다.)
+    // ?꾨줈??0: ?먰븯??諛??寃?諛??좊낫湲?諛????꾩갑??癒몃Т???쒓컙(珥?.
+    // ???숈븞 ?뚮났쨌湲곗쿃???볦씠怨? 留뚮즺 ?꾩뿉???ㅼ쓬 寃곗젙(癒몃Ъ湲??좊낫湲????쒕떎.
+    // (?놁쑝硫?癒몃Ъ湲?寃곗젙??留???250ms) ?ш뎬由쇰릺???좊낫湲??뺣쪧??怨㏓컮濡??곗졇 ?섍?踰꾨┛??)
     private const double Proto0InitialDecisionDelayMinSeconds = 0.4;
     private const double Proto0InitialDecisionDelayMaxSeconds = 4.5;
     private const double Proto0RoomDwellMinSeconds = 6.0;
@@ -69,24 +69,23 @@ public partial class BotPlayerManager
     private const double Proto0ProbeCooldownSeconds = 15;
     private const int Proto0CrowdedRoomThreshold = 3;
 
-    // 봇 행동 시정수
-    private const int BotMoveIntervalSeconds = 12;        // 봇 이동 주기 (자기 직책 발견 구역 순회)
-    private const int BotMissionTickIntervalSeconds = 1;  // 봇 미션 행동 (회수/결합) 주기 — 도착 후 RNG 빠른 트리거
-    private const int BotMoveStaminaCost = 3;             // 이동 시 스태미나 소모
-    private const int DetectScoreThreshold = 18;          // 색출 휴리스틱 임계값 — 함정 흔적 발견 누적 점수
+    private const int BotMoveIntervalSeconds = 12;
+    private const int BotMissionTickIntervalSeconds = 1;
+    private const int BotMoveStaminaCost = 3;
+    private const int DetectScoreThreshold = 18;          // ?됱텧 ?대━?ㅽ떛 ?꾧퀎媛????⑥젙 ?붿쟻 諛쒓껄 ?꾩쟻 ?먯닔
     private const int InitialStamina = 100;
     private const int InitialCorruption = 0;
 
-    // matchingId → 봇 목록
+    // matchingId ??遊?紐⑸줉
     private readonly ConcurrentDictionary<long, List<BotPlayerState>> _botStates = new();
 
-    // matchingId → 인스턴스가 사용하는 MapId. 봇 ENTER/MOVE 패킷의 LastMapId/Position 변환에 필요.
+    // matchingId ???몄뒪?댁뒪媛 ?ъ슜?섎뒗 MapId. 遊?ENTER/MOVE ?⑦궥??LastMapId/Position 蹂?섏뿉 ?꾩슂.
     private readonly ConcurrentDictionary<long, MapId> _botMapIds = new();
 
     private readonly ILogger _logger;
 
-    // H1 결정론 시드 — DemoMode 활성화 시 시드 기반 RNG, 아니면 Random.Shared 위임.
-    // 모든 봇 의사결정(이동/색출/응답/사보타주)이 본 인스턴스 사용.
+    // H1 寃곗젙濡??쒕뱶 ??DemoMode ?쒖꽦?????쒕뱶 湲곕컲 RNG, ?꾨땲硫?Random.Shared ?꾩엫.
+    // 紐⑤뱺 遊??섏궗寃곗젙(?대룞/?됱텧/?묐떟/?щ낫?二???蹂??몄뒪?댁뒪 ?ъ슜.
     private readonly Random _rng = DemoMode.IsActive ? new Random(DemoMode.Seed) : Random.Shared;
 
     public BotPlayerManager(ILogger logger)
@@ -95,8 +94,8 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     매칭에 봇 등록. 직책별 발견 구역 큐를 미리 셔플해 동선에 목적성을 부여한다.
-    ///     #125: 봇 위치(Cell/Position) 초기화 — 영역별 스폰 셀에서 시작. 클라 AREA_PLAYER_ENTER 동등.
+    ///     留ㅼ묶??遊??깅줉. 吏곸콉蹂?諛쒓껄 援ъ뿭 ?먮? 誘몃━ ?뷀뵆???숈꽑??紐⑹쟻?깆쓣 遺?ы븳??
+    ///     #125: 遊??꾩튂(Cell/Position) 珥덇린?????곸뿭蹂??ㅽ룿 ??먯꽌 ?쒖옉. ?대씪 AREA_PLAYER_ENTER ?숇벑.
     /// </summary>
     public void RegisterBots(long matchingId, MapId mapId, List<BotMatchingInfo> botInfoList)
     {
@@ -104,8 +103,10 @@ public partial class BotPlayerManager
 
         var bots = botInfoList.Select((info, index) =>
         {
-            // 프로토 0: 전원 4층 방에서 시작 (직책 미션 큐 동선 폐기).
-            var startArea = Proto0SpawnAreas[_rng.Next(Proto0SpawnAreas.Length)];
+            // ?꾨줈??0: ?꾩썝 4痢?諛⑹뿉???쒖옉 (吏곸콉 誘몄뀡 ???숈꽑 ?먭린).
+            var startArea = IsAllowedAssignedStartArea(info.StartArea)
+                ? info.StartArea
+                : Proto0SpawnAreas[_rng.Next(Proto0SpawnAreas.Length)];
 
             var startCell = GameMapData.GetAreaSpawnCell(mapId, startArea);
             var startPosition = CellToWorldPosition(startCell);
@@ -122,6 +123,10 @@ public partial class BotPlayerManager
                 Cell = startCell,
                 Position = startPosition,
                 Rotation = 0f,
+                Persona = info.Persona,
+                ActiveBuffIds = info.ActiveBuffIds is { Count: > 0 }
+                    ? new List<int>(info.ActiveBuffIds)
+                    : BuildPersonaBuffIds(info.Persona),
                 Proto0Profile = Proto0Profiles[index % Proto0Profiles.Length],
                 Stamina = InitialStamina,
                 Corruption = InitialCorruption,
@@ -141,13 +146,27 @@ public partial class BotPlayerManager
         _botStates[matchingId] = bots;
 
         _logger.LogInformation(
-            "봇 {Count}명 등록(목적성 동선): MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
+            "遊?{Count}紐??깅줉(紐⑹쟻???숈꽑): MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
             bots.Count, matchingId, mapId,
-            string.Join(",", bots.Select(b => $"{b.PlayerId}({b.MyJobTitle}@{b.CurrentArea})")));
+            string.Join(",", bots.Select(b => $"{b.PlayerId}({b.MyJobTitle}/{b.Persona}@{b.CurrentArea})")));
+    }
+
+    private static bool IsAllowedAssignedStartArea(AreaType area)
+    {
+        if (area == AreaType.None || area.IsCorridor())
+            return false;
+
+        return area is not (AreaType.Ground or AreaType.Gym or AreaType.Storage);
+    }
+
+    private static List<int> BuildPersonaBuffIds(PersonaType persona)
+    {
+        int buffId = GameBuffData.GetPersonaBuffId(persona);
+        return buffId > 0 ? new List<int> { buffId } : new List<int>();
     }
 
     /// <summary>
-    ///     매칭에서 사용 중인 MapId 조회. 등록되지 않은 매칭이면 MapId.School 폴백.
+    ///     留ㅼ묶?먯꽌 ?ъ슜 以묒씤 MapId 議고쉶. ?깅줉?섏? ?딆? 留ㅼ묶?대㈃ MapId.School ?대갚.
     /// </summary>
     public MapId GetMatchingMapId(long matchingId)
     {
@@ -155,7 +174,7 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     봇 기본 의상 (user_server SetupNewPlayer 5종, 액세서리는 직책별로 차등).
+    ///     遊?湲곕낯 ?섏긽 (user_server SetupNewPlayer 5醫? ?≪꽭?쒕━??吏곸콉蹂꾨줈 李⑤벑).
     /// </summary>
     private static readonly int[] BotDefaultWearItemIds =
     {
@@ -167,19 +186,19 @@ public partial class BotPlayerManager
     };
 
     /// <summary>
-    ///     봇 커스터마이징 아이템 — 리본 헤어밴드 / 프리뮬라 / 뽀송 귀마개 / 베레모.
-    ///     봇마다 playerId로 서로 다른 1종을 배정한다(4종 → 봇 4명 1:1).
+    ///     遊?而ㅼ뒪?곕쭏?댁쭠 ?꾩씠????由щ낯 ?ㅼ뼱諛대뱶 / ?꾨━裕щ씪 / 戮??洹留덇컻 / 踰좊젅紐?
+    ///     遊뉖쭏??playerId濡??쒕줈 ?ㅻⅨ 1醫낆쓣 諛곗젙?쒕떎(4醫???遊?4紐?1:1).
     /// </summary>
     private static readonly int[] BotCustomizationItems =
     {
-        103000001, // 리본 헤어밴드
-        103000004, // 프리뮬라
-        103000005, // 뽀송 귀마개
-        103000006  // 베레모
+        103000001, // 由щ낯 ?ㅼ뼱諛대뱶
+        103000004, // ?꾨━裕щ씪
+        103000005, // 戮??洹留덇컻
+        103000006
     };
 
     /// <summary>
-    ///     봇 기본 의상 + 봇별 커스터마이징 아이템 1종 조합 wear list 생성.
+    ///     遊?湲곕낯 ?섏긽 + 遊뉖퀎 而ㅼ뒪?곕쭏?댁쭠 ?꾩씠??1醫?議고빀 wear list ?앹꽦.
     /// </summary>
     private static List<int> BuildBotWearItems(long playerId)
     {
@@ -190,10 +209,9 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     봇의 PlayerInfo를 합성해서 반환 — G_TO_C_AREA_PLAYER_ENTER / G_TO_C_PLAYER_INFO 등
-    ///     실제 플레이어 패킷 동등 시각화에 사용.
-    ///     #125: 봇은 Redis에 저장되지 않으므로 매 호출 시 BotPlayerState로부터 합성.
-    ///     #127: 기본 의상 5종 + 직책별 액세서리(시연 식별).
+    ///     遊뉗쓽 PlayerInfo瑜??⑹꽦?댁꽌 諛섑솚 ??G_TO_C_AREA_PLAYER_ENTER / G_TO_C_PLAYER_INFO ??    ///     ?ㅼ젣 ?뚮젅?댁뼱 ?⑦궥 ?숇벑 ?쒓컖?붿뿉 ?ъ슜.
+    ///     #125: 遊뉗? Redis????λ릺吏 ?딆쑝誘濡?留??몄텧 ??BotPlayerState濡쒕????⑹꽦.
+    ///     #127: 湲곕낯 ?섏긽 5醫?+ 吏곸콉蹂??≪꽭?쒕━(?쒖뿰 ?앸퀎).
     /// </summary>
     public PlayerInfo? SynthesizePlayerInfo(long matchingId, long botPlayerId)
     {
@@ -201,7 +219,7 @@ public partial class BotPlayerManager
         if (bot == null) return null;
 
         var mapId = GetMatchingMapId(matchingId);
-        // 봇이 RNG progress 중이면 EXPLORE_1로 합성 → 영역 진입 시 클라가 봇 캐릭터 탐색 애니 즉시 표시.
+        // 遊뉗씠 RNG progress 以묒씠硫?EXPLORE_1濡??⑹꽦 ???곸뿭 吏꾩엯 ???대씪媛 遊?罹먮┃???먯깋 ?좊땲 利됱떆 ?쒖떆.
         var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
             ? PlayerState.SLEEP
             : bot.RngCollectProgressStartTime != DateTime.MinValue
@@ -230,8 +248,7 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     Cell → World 변환. GameClientSession의 동일 함수와 동일 공식이지만
-    ///     BotPlayerManager가 game_server.network에 의존하지 않도록 본 클래스 내부에 두었다.
+    ///     Cell ??World 蹂?? GameClientSession???숈씪 ?⑥닔? ?숈씪 怨듭떇?댁?留?    ///     BotPlayerManager媛 game_server.network???섏〈?섏? ?딅룄濡?蹂??대옒???대????먯뿀??
     /// </summary>
     internal static Vector3f CellToWorldPosition(Cell cell)
     {
@@ -241,7 +258,7 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     매칭의 봇 목록 조회 (탈락 포함)
+    ///     留ㅼ묶??遊?紐⑸줉 議고쉶 (?덈씫 ?ы븿)
     /// </summary>
     public List<BotPlayerState> GetBots(long matchingId)
     {
@@ -254,7 +271,7 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     특정 봇 조회
+    ///     ?뱀젙 遊?議고쉶
     /// </summary>
     public BotPlayerState? GetBot(long matchingId, long playerId)
     {
@@ -262,7 +279,7 @@ public partial class BotPlayerManager
         return bots.FirstOrDefault(b => b.PlayerId == playerId);
     }
 
-    /// <summary>프로토 0: 특정 영역의 생존 봇 수 (정신력 회복 2/N 인원 계산용).</summary>
+    /// <summary>?꾨줈??0: ?뱀젙 ?곸뿭???앹〈 遊???(?뺤떊???뚮났 2/N ?몄썝 怨꾩궛??.</summary>
     public int CountBotsInArea(long matchingId, AreaType area)
     {
         if (!_botStates.TryGetValue(matchingId, out var bots)) return 0;
@@ -270,23 +287,23 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     해당 매칭에 봇이 있는지 확인
+    ///     ?대떦 留ㅼ묶??遊뉗씠 ?덈뒗吏 ?뺤씤
     /// </summary>
     public bool HasBots(long matchingId) => _botStates.ContainsKey(matchingId);
 
     /// <summary>
-    ///     봇의 마니또 상태 변경 (체인 단절 / 시한부 진입 등)
+    ///     遊뉗쓽 留덈땲???곹깭 蹂寃?(泥댁씤 ?⑥젅 / ?쒗븳遺 吏꾩엯 ??
     /// </summary>
     public void SetBotManittoStatus(long matchingId, long botPlayerId, ManittoStatus status)
     {
         var bot = GetBot(matchingId, botPlayerId);
         if (bot == null) return;
         bot.ManittoStatus = status;
-        _logger.LogInformation("봇 마니또 상태 변경: BotId={BotId}, Status={Status}", botPlayerId, status);
+        _logger.LogInformation("遊?留덈땲???곹깭 蹂寃? BotId={BotId}, Status={Status}", botPlayerId, status);
     }
 
     /// <summary>
-    ///     매칭 정리 (게임 종료 시 호출)
+    ///     留ㅼ묶 ?뺣━ (寃뚯엫 醫낅즺 ???몄텧)
     /// </summary>
     public void CleanupMatching(long matchingId)
     {
@@ -295,19 +312,19 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     PlayerId가 봇인지 확인 (음수 ID — UserServer 매칭 시 -1, -2, ... 부여)
+    ///     PlayerId媛 遊뉗씤吏 ?뺤씤 (?뚯닔 ID ??UserServer 留ㅼ묶 ??-1, -2, ... 遺??
     /// </summary>
     public static bool IsBotPlayerId(long playerId) => playerId < 0;
 
     /// <summary>
-    ///     탈락하지 않은 봇만 반환
+    ///     ?덈씫?섏? ?딆? 遊뉖쭔 諛섑솚
     /// </summary>
     private static IEnumerable<BotPlayerState> GetActiveBots(IEnumerable<BotPlayerState> bots)
         => bots.Where(b => !b.IsEliminated);
 }
 
 /// <summary>
-///     봇 플레이어 인게임 상태. v0.2.0 부품 시뮬을 위한 상태 누적.
+///     遊??뚮젅?댁뼱 ?멸쾶???곹깭. v0.2.0 遺???쒕????꾪븳 ?곹깭 ?꾩쟻.
 /// </summary>
 public enum BotProto0Profile
 {
@@ -331,50 +348,52 @@ public class BotPlayerState
     public bool IsEliminated { get; set; }
     public ManittoStatus ManittoStatus { get; set; } = ManittoStatus.ACTIVE;
     public DateTime LastMoveTime { get; set; } = DateTime.UtcNow;
+    public PersonaType Persona { get; set; } = PersonaType.None;
+    public List<int> ActiveBuffIds { get; set; } = new();
     public BotProto0Profile Proto0Profile { get; set; } = BotProto0Profile.SurvivalFirst;
     public AreaType LastSeenTargetArea { get; set; } = AreaType.None;
     public DateTime NextTargetFollowAllowedAt { get; set; } = DateTime.MinValue;
     public DateTime LastFakeMoveTime { get; set; } = DateTime.MinValue;
     public DateTime LastProbeMoveTime { get; set; } = DateTime.MinValue;
 
-    /// <summary>봇 표시 이름 (PlayerInfo.Name 동등) — 매칭 시 직책+ID로 합성.</summary>
+    /// <summary>遊??쒖떆 ?대쫫 (PlayerInfo.Name ?숇벑) ??留ㅼ묶 ??吏곸콉+ID濡??⑹꽦.</summary>
     public string Name { get; set; } = "";
 
-    /// <summary>봇 현재 셀 (실제 플레이어 ObjectInfo.Cell 동등). 영역 전환/셀 wander 시 갱신.</summary>
+    /// <summary>遊??꾩옱 ? (?ㅼ젣 ?뚮젅?댁뼱 ObjectInfo.Cell ?숇벑). ?곸뿭 ?꾪솚/? wander ??媛깆떊.</summary>
     public Cell Cell { get; set; } = new(0, 0);
 
-    /// <summary>봇 월드 좌표 (실제 플레이어 ObjectInfo.Position 동등).</summary>
+    /// <summary>遊??붾뱶 醫뚰몴 (?ㅼ젣 ?뚮젅?댁뼱 ObjectInfo.Position ?숇벑).</summary>
     public Vector3f Position { get; set; } = new(0f, 0f, 0f);
 
-    /// <summary>봇 로테이션 (실제 플레이어 ObjectInfo.Rotation 동등).</summary>
+    /// <summary>遊?濡쒗뀒?댁뀡 (?ㅼ젣 ?뚮젅?댁뼱 ObjectInfo.Rotation ?숇벑).</summary>
     public float Rotation { get; set; }
 
-    /// <summary>마지막 셀 wander(영역 내 이동) 시각. Phase 2 — 영역 내 자연 이동.</summary>
+    /// <summary>留덉?留?? wander(?곸뿭 ???대룞) ?쒓컖. Phase 2 ???곸뿭 ???먯뿰 ?대룞.</summary>
     public DateTime LastCellWanderTime { get; set; } = DateTime.UtcNow;
 
     // === #127 walking pathfinding ===
-    /// <summary>현재 따라가는 경로. 비어있으면 다음 틱에 새 타겟 결정.</summary>
+    /// <summary>?꾩옱 ?곕씪媛??寃쎈줈. 鍮꾩뼱?덉쑝硫??ㅼ쓬 ?깆뿉 ???寃?寃곗젙.</summary>
     public List<BotPathfinder.Step> Path { get; set; } = new();
 
-    /// <summary>Path에서 다음으로 도달할 인덱스. Path 길이와 같으면 도착 완료.</summary>
+    /// <summary>Path?먯꽌 ?ㅼ쓬?쇰줈 ?꾨떖???몃뜳?? Path 湲몄씠? 媛숈쑝硫??꾩갑 ?꾨즺.</summary>
     public int PathIndex { get; set; }
 
-    /// <summary>현재 진행 방향(월드 좌표) × walkSpeed. 클라 애니메이션용.</summary>
+    /// <summary>?꾩옱 吏꾪뻾 諛⑺뼢(?붾뱶 醫뚰몴) 횞 walkSpeed. ?대씪 ?좊땲硫붿씠?섏슜.</summary>
     public Vector3f WalkVelocity { get; set; } = new(0f, 0f, 0f);
 
-    /// <summary>마지막 walk 틱 처리 시각. 250ms 간격 봇 이동 타이머가 사용.</summary>
+    /// <summary>留덉?留?walk ??泥섎━ ?쒓컖. 250ms 媛꾧꺽 遊??대룞 ??대㉧媛 ?ъ슜.</summary>
     public DateTime LastWalkStepTime { get; set; } = DateTime.UtcNow;
 
-    /// <summary>도착 후 walking step 스킵 종료 시각 (자연스러운 휴식).</summary>
+    /// <summary>?꾩갑 ??walking step ?ㅽ궢 醫낅즺 ?쒓컖 (?먯뿰?ㅻ윭???댁떇).</summary>
     public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;
 
-    /// <summary>영역 전환 직전 도어 앞에서 잠시 멈춤 종료 시각 (포탈 들어가는 시각적 단서).</summary>
+    /// <summary>?곸뿭 ?꾪솚 吏곸쟾 ?꾩뼱 ?욎뿉???좎떆 硫덉땄 醫낅즺 ?쒓컖 (?ы깉 ?ㅼ뼱媛???쒓컖???⑥꽌).</summary>
     public DateTime TransitionPauseUntil { get; set; } = DateTime.MinValue;
 
-    /// <summary>1:1 상호작용 응답/대화 진행 중. true면 봇 walking/액션 모두 정지 (실제 플레이어와 동등).</summary>
+    /// <summary>1:1 ?곹샇?묒슜 ?묐떟/???吏꾪뻾 以? true硫?遊?walking/?≪뀡 紐⑤몢 ?뺤? (?ㅼ젣 ?뚮젅?댁뼱? ?숇벑).</summary>
     public bool IsInInteraction { get; set; }
 
-    /// <summary>상호작용 수락 후 봇 정지 유지 종료 시각. WalkStep이 이 시각 이후 IsInInteraction을 자동 해제.</summary>
+    /// <summary>?곹샇?묒슜 ?섎씫 ??遊??뺤? ?좎? 醫낅즺 ?쒓컖. WalkStep?????쒓컖 ?댄썑 IsInInteraction???먮룞 ?댁젣.</summary>
     public DateTime InteractionStayUntil { get; set; } = DateTime.MinValue;
 
     public AreaType PendingForcedInteractArea { get; set; } = AreaType.None;
@@ -391,35 +410,35 @@ public class BotPlayerState
 
     public DateTime NextRestTickAt { get; set; } = DateTime.MinValue;
 
-    /// <summary>매칭 시작 시각. DemoMode H4 봇 race 페이스 캡 계산용.</summary>
+    /// <summary>留ㅼ묶 ?쒖옉 ?쒓컖. DemoMode H4 遊?race ?섏씠??罹?怨꾩궛??</summary>
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
 
-    // === v0.2.0 부품 시뮬 상태 ===
-    /// <summary>마지막 미션 행동(회수/결합) 시각</summary>
+    // === v0.2.0 遺???쒕? ?곹깭 ===
+    /// <summary>留덉?留?誘몄뀡 ?됰룞(?뚯닔/寃고빀) ?쒓컖</summary>
     public DateTime LastMissionTickTime { get; set; } = DateTime.UtcNow;
 
-    /// <summary>자기 직책 발견 구역 순회 큐 (셔플된 4개 + 선행 아이템 위치)</summary>
+    /// <summary>?먭린 吏곸콉 諛쒓껄 援ъ뿭 ?쒗쉶 ??(?뷀뵆??4媛?+ ?좏뻾 ?꾩씠???꾩튂)</summary>
     public List<AreaType> JobAreaQueue { get; set; } = new();
 
-    /// <summary>다음 방문할 큐 인덱스</summary>
+    /// <summary>?ㅼ쓬 諛⑸Ц?????몃뜳??/summary>
     public int JobAreaQueueIndex { get; set; }
 
-    /// <summary>봇이 이미 색출 시도했는지 (1회 한정)</summary>
+    /// <summary>遊뉗씠 ?대? ?됱텧 ?쒕룄?덈뒗吏 (1???쒖젙)</summary>
     public bool HasUsedDetection { get; set; }
 
-    /// <summary>봇이 마지막으로 흔적 함정을 배치한 시각 — 너무 자주 안 깔도록 쿨다운</summary>
+    /// <summary>遊뉗씠 留덉?留됱쑝濡??붿쟻 ?⑥젙??諛곗튂???쒓컖 ???덈Т ?먯＜ ??源붾룄濡?荑⑤떎??/summary>
     public DateTime LastTracePlaceTime { get; set; } = DateTime.MinValue;
 
-    /// <summary>H6 — 시연 모드 BR 봇이 도서관 함정 흔적을 1회 배치했는지 (캡 강제용).</summary>
+    /// <summary>H6 ???쒖뿰 紐⑤뱶 BR 遊뉗씠 ?꾩꽌愿 ?⑥젙 ?붿쟻??1??諛곗튂?덈뒗吏 (罹?媛뺤젣??.</summary>
     public bool HasPlacedDemoTrapTrace { get; set; }
 
-    /// <summary>봇이 마지막으로 사보타주를 시도한 시각 — 시한부 진입 후 쿨다운</summary>
+    /// <summary>遊뉗씠 留덉?留됱쑝濡??щ낫?二쇰? ?쒕룄???쒓컖 ???쒗븳遺 吏꾩엯 ??荑⑤떎??/summary>
     public DateTime LastSabotageTryTime { get; set; } = DateTime.MinValue;
 
-    /// <summary>색출 휴리스틱 누적 점수 — 마니또 후보 추리용 (자기 race 진행 방해 흔적 등)</summary>
+    /// <summary>?됱텧 ?대━?ㅽ떛 ?꾩쟻 ?먯닔 ??留덈땲???꾨낫 異붾━??(?먭린 race 吏꾪뻾 諛⑺빐 ?붿쟻 ??</summary>
     public int DetectionUrgency { get; set; }
 
-    /// <summary>봇이 마지막으로 1:1 응답한 상대 (자기 자신과 동일 PlayerId면 응답 X)</summary>
+    /// <summary>遊뉗씠 留덉?留됱쑝濡?1:1 ?묐떟???곷? (?먭린 ?먯떊怨??숈씪 PlayerId硫??묐떟 X)</summary>
     public long LastInteractRespondedTo { get; set; }
 
     public long PresenceBookmarkPlayerId { get; set; }
@@ -443,22 +462,26 @@ public class BotPlayerState
         TransitionPauseUntil = DateTime.MinValue;
     }
 
-    // === #134 RNG 채집 통합 ===
-    /// <summary>봇이 walking으로 접근 중인 InteractObject Id. 0이면 없음.
-    /// ChooseNewWanderTarget에서 영역 + 셀 선택 시 설정, 도착 후 RNG 채집 시 0으로 clear.</summary>
+    // === #134 RNG 梨꾩쭛 ?듯빀 ===
+    /// <summary>遊뉗씠 walking?쇰줈 ?묎렐 以묒씤 InteractObject Id. 0?대㈃ ?놁쓬.
+    /// ChooseNewWanderTarget?먯꽌 ?곸뿭 + ? ?좏깮 ???ㅼ젙, ?꾩갑 ??RNG 梨꾩쭛 ??0?쇰줈 clear.</summary>
     public int PendingRngInteractId { get; set; }
 
-    /// <summary>현재 영역 내에서 아직 탐색하지 않은 InteractObject Id 큐.
-    /// 영역 진입 시 그 영역의 모든 후보로 채움. RNG 채집 후 첫 번째를 꺼내 다음 셀로 walking.
-    /// 비면 ChooseNewWanderTarget이 다음 영역 결정.</summary>
+    /// <summary>?꾩옱 ?곸뿭 ?댁뿉???꾩쭅 ?먯깋?섏? ?딆? InteractObject Id ??
+    /// ?곸뿭 吏꾩엯 ??洹??곸뿭??紐⑤뱺 ?꾨낫濡?梨꾩?. RNG 梨꾩쭛 ??泥?踰덉㎏瑜?爰쇰궡 ?ㅼ쓬 ?濡?walking.
+    /// 鍮꾨㈃ ChooseNewWanderTarget???ㅼ쓬 ?곸뿭 寃곗젙.</summary>
     public List<int> InteractQueueInArea { get; set; } = new();
 
-    /// <summary>마지막으로 자동 소모품을 사용한 시각 (재사용 쿨다운).</summary>
+    public AreaType RoomExploreQueueArea { get; set; } = AreaType.None;
+
+    public AreaType CompletedRoomExploreArea { get; set; } = AreaType.None;
+
+    /// <summary>留덉?留됱쑝濡??먮룞 ?뚮え?덉쓣 ?ъ슜???쒓컖 (?ъ궗??荑⑤떎??.</summary>
     public DateTime LastAutoConsumableUseTime { get; set; } = DateTime.MinValue;
 
-    /// <summary>RNG 채집 progress 시작 시각. 0이면 아직 시작 안 함. 시작 후 1.5초 경과 시 결과 산출.</summary>
+    /// <summary>RNG 梨꾩쭛 progress ?쒖옉 ?쒓컖. 0?대㈃ ?꾩쭅 ?쒖옉 ???? ?쒖옉 ??1.5珥?寃쎄낵 ??寃곌낵 ?곗텧.</summary>
     public DateTime RngCollectProgressStartTime { get; set; } = DateTime.MinValue;
 
-    /// <summary>walking 시작 시 G_TO_C_EXPLORE_END broadcast가 필요한지 — ChooseNewWanderTarget이 set, 다음 ProcessBotMovementTick에서 수집 + reset.</summary>
+    /// <summary>walking ?쒖옉 ??G_TO_C_EXPLORE_END broadcast媛 ?꾩슂?쒖? ??ChooseNewWanderTarget??set, ?ㅼ쓬 ProcessBotMovementTick?먯꽌 ?섏쭛 + reset.</summary>
     public bool PendingExploreEndBroadcast { get; set; }
 }

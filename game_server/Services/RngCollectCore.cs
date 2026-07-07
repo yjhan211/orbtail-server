@@ -32,7 +32,8 @@ public static class RngCollectCore
         MissionManager missionManager,
         InGameInventoryManager inventoryManager,
         ItemPoolManager itemPoolManager,
-        bool isBot)
+        bool isBot,
+        int bonusItemChancePercent = 0)
     {
         var outcome = new RngCollectOutcome();
 
@@ -110,7 +111,7 @@ public static class RngCollectCore
         else
         {
             int roll = _rng.Next(100);
-            // 자기 풀 외: 75% 소모품 / 25% 빈손. 풀은 영역(AreaType) 단위 — area_item_pool.csv (#135)
+            // 자기 풀 외: 75% 지역 아이템 / 25% 빈손. 풀은 영역(AreaType) 단위 — area_item_pool.csv (#185)
             if (roll < 75)
             {
                 var areaPool = GetAllowedRngItemPool(info.ZoneId);
@@ -134,11 +135,48 @@ public static class RngCollectCore
         }
 
         TryApplySharpObservationBonus(matchingId, playerId, info.ZoneId, missionManager, inventoryManager, outcome);
+        TryApplyPassiveItemGainBonus(
+            matchingId,
+            playerId,
+            info.ZoneId,
+            inventoryManager,
+            outcome,
+            bonusItemChancePercent);
 
         RngCollectCooldownStore.ClearCooldown(matchingId, info.Id);
         outcome.CooldownSeconds = 0;
 
         return outcome;
+    }
+
+    private static void TryApplyPassiveItemGainBonus(
+        long matchingId,
+        long playerId,
+        int areaType,
+        InGameInventoryManager inventoryManager,
+        RngCollectOutcome outcome,
+        int bonusItemChancePercent)
+    {
+        if (bonusItemChancePercent <= 0 || outcome.BonusItemId != 0)
+            return;
+
+        lock (_rng)
+        {
+            if (!PassiveBuffUtility.RollPercent(bonusItemChancePercent, _rng))
+                return;
+        }
+
+        var areaPool = GetAllowedRngItemPool(areaType);
+        if (areaPool.Count == 0) return;
+
+        int bonusItemId;
+        lock (_rng)
+        {
+            bonusItemId = areaPool[_rng.Next(areaPool.Count)];
+        }
+
+        outcome.BonusItemId = bonusItemId;
+        outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
     }
 
     private static void TryGrantAttendanceBlackboardPair(
@@ -203,33 +241,16 @@ public static class RngCollectCore
     private static List<int> GetAllowedRngItemPool(int areaType)
     {
         var areaPool = GameInteractableData.GetItemPoolByArea(areaType)
-            .Where(IsStaminaOnlyConsumableDropItem)
+            .Where(IsBattleLootDropItem)
             .ToList();
 
-        if (areaPool.Count > 0)
-            return areaPool;
-
-        return GameInteractableData.GetAllAreaItemPoolItems()
-            .Where(IsStaminaOnlyConsumableDropItem)
-            .Distinct()
-            .ToList();
+        return areaPool;
     }
 
-    private static bool IsStaminaOnlyConsumableDropItem(int itemId)
+    private static bool IsBattleLootDropItem(int itemId)
     {
         var item = GameItemData.Get(itemId);
-        if (item == null ||
-            item.Type != ItemType.CONSUMABLE ||
-            item.ConsumableBuffList.Count == 0)
-        {
-            return false;
-        }
-
-        return item.ConsumableBuffList.All(buff =>
-        {
-            var buffData = GameBuffData.Get(buff.id);
-            return buffData != null && buffData.SubType == BuffSubType.CONDITION_ADD;
-        });
+        return item != null && (item.Type == ItemType.CONSUMABLE || item.Type == ItemType.MATERIAL);
     }
 }
 
@@ -238,10 +259,10 @@ public static class RngCollectCore
 /// </summary>
 public class RngCollectOutcome
 {
-    /// <summary>0=빈손, 1=디코이, 2=소모품, 3=부품, 4=선행</summary>
+    /// <summary>0=빈손, 1=디코이, 2=지역 아이템, 3=부품, 4=선행</summary>
     public int ResultType { get; set; }
 
-    /// <summary>부품 ID / 소모품 ID / 선행 share_group (빈손/디코이는 0)</summary>
+    /// <summary>부품 ID / 지역 아이템 ID / 선행 share_group (빈손/디코이는 0)</summary>
     public int ItemId { get; set; }
 
     /// <summary>부품/선행 회수 시 보상 stamina</summary>

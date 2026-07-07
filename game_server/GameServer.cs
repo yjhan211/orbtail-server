@@ -32,6 +32,8 @@ public class GameServer(
 {
     // 하트비트 체크 간격 (10초마다 체크)
     private const int HeartbeatCheckIntervalSeconds = 10;
+    private const int ChalkPowderItemId = 201000015;
+    private const float RoomExploreSpotOccupancyDistance = 2.75f;
 
     // 복도 정지 체크 간격
     private const int CorridorStopCheckIntervalMs = 500;
@@ -55,6 +57,7 @@ public class GameServer(
     private readonly TraceManager _traceManager = new();
     private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly GameEventLogManager _gameEventLogManager = new();
+    private readonly EncounterRevealManager _encounterRevealManager = new();
     private readonly Proto0PresenceTracker _presenceTracker = new();
     private readonly ConcurrentDictionary<long, Timer> _headlessRoundTimers = new();
     private long _adminBotOnlyMatchingIdSeed = 9_000_000;
@@ -77,9 +80,9 @@ public class GameServer(
     private const int ChecklistProgressTickIntervalSeconds = 1;
     // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
     // 프로토 0: 타겟에서 떨어지면(복도/빈방) 압박이 실질적이도록 기본 감소를 회복(-3)과 균형 맞춰 상향. 튜닝 노브.
-    private const int MentalDecayPhase1 = 6;            // 0~5분: 5초당 오염도 +6
-    private const int MentalDecayPhase2 = 8;            // 5~10분: 5초당 오염도 +8
-    private const int MentalDecayPhase3 = 10;           // 10분+: 5초당 오염도 +10
+    private const int MentalDecayPhase1 = 3;            // 0~5분: 5초당 오염도 +3
+    private const int MentalDecayPhase2 = 4;            // 5~10분: 5초당 오염도 +4
+    private const int MentalDecayPhase3 = 5;            // 10분+: 5초당 오염도 +5
     private const int Phase2StartSeconds = 300;          // 5분
     private const int Phase3StartSeconds = 600;          // 10분
     internal const int TargetProximityRecovery = 8;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -8)
@@ -347,9 +350,16 @@ public class GameServer(
                     bool targetWithinProximity = IsTargetWithinProximity(session, targetSession, targetBot);
 
                     if (!targetInSameArea)
-                        corruptionDelta += ResolveStatusEffectCorruptionDelta(
+                    {
+                        int isolationDelta = ResolveStatusEffectCorruptionDelta(
                             IsolationStatusEffectId,
                             GetMentalDecayAmount(session.CurrentMapSubId));
+                        isolationDelta = PassiveBuffUtility.ApplyReduction(
+                            isolationDelta,
+                            session.ActiveBuffIds,
+                            BuffSubType.ISOLATION_CORRUPTION_GAIN_DOWN);
+                        corruptionDelta += isolationDelta;
+                    }
 
                     if (targetInSameArea &&
                         !session.ShouldSkipTargetEncounterRecoveryTick(DateTime.UtcNow, ResourceTickIntervalSeconds))
@@ -855,7 +865,11 @@ public class GameServer(
             if (missionResult.BotExploreStarts.Count > 0)
                 BroadcastBotExploreStarts(matchingId, missionResult.BotExploreStarts, activeSessions);
             if (missionResult.BotExploreEnds.Count > 0)
+            {
                 BroadcastBotExploreEnds(matchingId, missionResult.BotExploreEnds, activeSessions);
+                ResolvePendingRoomDiscoveriesForBotExploreEnds(matchingId, missionResult.BotExploreEnds,
+                    activeSessions);
+            }
             if (missionResult.BotRestStarts.Count > 0)
                 BroadcastBotPlayerStates(matchingId, missionResult.BotRestStarts,
                     global::network.common.PlayerState.SLEEP, activeSessions);
@@ -1083,6 +1097,116 @@ public class GameServer(
         }
     }
 
+    private void ResolvePendingRoomDiscoveriesForBotExploreEnds(long matchingId,
+        List<(long botId, AreaType area)> ends,
+        List<GameClientSession> activeSessions)
+    {
+        foreach (var (botId, area) in ends)
+            TryResolveBotRoomEncounterAfterExplore(matchingId, botId, area, activeSessions);
+    }
+
+    private void TryResolveBotRoomEncounterAfterExplore(long matchingId, long botId, AreaType area,
+        List<GameClientSession> activeSessions)
+    {
+        if (area == AreaType.None || area.IsCorridor())
+            return;
+
+        var bot = _botPlayerManager.GetBot(matchingId, botId);
+        if (bot is not { IsEliminated: false } || bot.CurrentArea != area)
+            return;
+
+        var candidateSessions = activeSessions
+            .Where(session =>
+                session.PlayerId.HasValue &&
+                !session.IsEliminated &&
+                session.CurrentMapSubId == matchingId &&
+                session.CurrentArea == area &&
+                session.LastValidatedPosition != null &&
+                IsAtSameRoomExploreSpot(bot.Position, session.LastValidatedPosition))
+            .ToList();
+        if (candidateSessions.Count == 0)
+            return;
+
+        if (!_encounterRevealManager.TryResolveRoomEncounter(
+                matchingId,
+                bot.PlayerId,
+                area,
+                candidateSessions.Select(session => session.PlayerId!.Value),
+                out long targetPlayerId,
+                riskEventChanceDownPercent: 0,
+                escapeChanceAddPercent: 0))
+        {
+            return;
+        }
+
+        var targetSession = candidateSessions.FirstOrDefault(session => session.PlayerId == targetPlayerId);
+        if (targetSession == null)
+            return;
+
+        _gameEventLogManager.LogRoomEncounterReveal(matchingId, bot.PlayerId, targetPlayerId,
+            area.ToString(), 0, isBot: true);
+        _gameEventLogManager.LogInteraction(matchingId, bot.PlayerId,
+            $"Bot room encounter reveal: Target={targetPlayerId}, Area={area}", isBot: true);
+
+        int actionType = ResolveBotAsyncRoomEncounterAction(matchingId, bot);
+        if (actionType == EncounterRevealManager.RoomEncounterActionUseItem)
+        {
+            TryUseBotRoomEncounterItem(matchingId, bot, targetSession, area);
+            return;
+        }
+
+        logger.LogInformation(
+            "Bot room encounter resolved without item use: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}, ActionType={ActionType}",
+            matchingId,
+            bot.PlayerId,
+            targetPlayerId,
+            area,
+            actionType);
+    }
+
+    private int ResolveBotAsyncRoomEncounterAction(long matchingId, BotPlayerState bot)
+    {
+        return _inGameInventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
+            .GetItemCount(ChalkPowderItemId) > 0
+            ? EncounterRevealManager.RoomEncounterActionUseItem
+            : EncounterRevealManager.RoomEncounterActionLeave;
+    }
+
+    private void TryUseBotRoomEncounterItem(long matchingId, BotPlayerState bot,
+        GameClientSession targetSession, AreaType area)
+    {
+        if (!_inGameInventoryManager.TryRemoveOneByItemId(matchingId, bot.PlayerId,
+                ChalkPowderItemId, out _))
+        {
+            logger.LogWarning(
+                "Bot failed room encounter item use because chalk powder was missing: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}",
+                matchingId,
+                bot.PlayerId,
+                targetSession.PlayerId,
+                area);
+            return;
+        }
+
+        targetSession.ApplyRoomEncounterChalkHitFrom(bot.PlayerId, area, ChalkPowderItemId);
+        logger.LogInformation(
+            "Bot used room encounter item immediately: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}, ItemId={ItemId}",
+            matchingId,
+            bot.PlayerId,
+            targetSession.PlayerId,
+            area,
+            ChalkPowderItemId);
+    }
+
+    private static bool IsAtSameRoomExploreSpot(Vector3f botPosition, Vector3f? playerPosition)
+    {
+        if (playerPosition == null)
+            return false;
+
+        float dx = botPosition.X - playerPosition.X;
+        float dy = botPosition.Y - playerPosition.Y;
+        return dx * dx + dy * dy <= RoomExploreSpotOccupancyDistance * RoomExploreSpotOccupancyDistance;
+    }
+
     private void BroadcastBotPlayerStates(long matchingId,
         List<(long botId, AreaType area)> states, global::network.common.PlayerState playerState,
         List<GameClientSession> activeSessions)
@@ -1270,6 +1394,87 @@ public class GameServer(
             if (session.CurrentArea != ev.ToArea || session.TargetPlayerId != ev.BotPlayerId) continue;
             session.TryApplyImmediateTargetEncounterRecovery(matchingSessions);
         }
+
+        TrySendBotCorridorEncounterEvent(matchingId, ev, matchingSessions);
+        TrySendBotRoomEncounterEvent(matchingId, ev, matchingSessions);
+    }
+
+    private void TrySendBotCorridorEncounterEvent(
+        long matchingId,
+        BotMovementEvent ev,
+        List<GameClientSession> matchingSessions)
+    {
+        if (!ev.ToArea.IsCorridor())
+            return;
+
+        var candidates = matchingSessions
+            .Where(session =>
+                session.PlayerId.HasValue &&
+                !session.IsEliminated &&
+                session.CurrentMapSubId == matchingId &&
+                session.CurrentArea == ev.ToArea &&
+                session.LastValidatedPosition != null)
+            .Select(session => (session.PlayerId!.Value, session.LastValidatedPosition!))
+            .ToList();
+        if (candidates.Count == 0)
+            return;
+
+        var decision = _encounterRevealManager.ResolveCorridorEncounter(
+            matchingId,
+            ev.BotPlayerId,
+            ev.Position,
+            candidates.Select(entry => (entry.Item1, entry.Item2!)),
+            PassiveBuffUtility.GetValuePercent(
+                _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.ActiveBuffIds ?? [],
+                BuffSubType.RISK_EVENT_CHANCE_DOWN),
+            PassiveBuffUtility.GetValuePercent(
+                _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.ActiveBuffIds ?? [],
+                BuffSubType.ENCOUNTER_ESCAPE_CHANCE_ADD));
+        if (!decision.HasEvent)
+            return;
+
+        var targetSession = matchingSessions.FirstOrDefault(session => session.PlayerId == decision.TargetPlayerId);
+        if (targetSession == null)
+            return;
+
+        using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
+            ev.BotPlayerId,
+            ev.ToArea,
+            decision.EventType,
+            decision.CooldownSeconds,
+            decision.RevealDelayMs);
+        targetSession.Send(packet);
+
+        logger.LogInformation(
+            "Bot corridor encounter event: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}, EventType={EventType}",
+            matchingId,
+            ev.BotPlayerId,
+            decision.TargetPlayerId,
+            ev.ToArea,
+            decision.EventType);
+    }
+
+    private void TrySendBotRoomEncounterEvent(
+        long matchingId,
+        BotMovementEvent ev,
+        List<GameClientSession> matchingSessions)
+    {
+        if (ev.ToArea == AreaType.None || ev.ToArea.IsCorridor())
+            return;
+
+        foreach (var session in matchingSessions)
+        {
+            if (!session.PlayerId.HasValue ||
+                session.IsEliminated ||
+                session.CurrentMapSubId != matchingId ||
+                session.CurrentArea != ev.ToArea ||
+                session.PlayerId.Value == ev.BotPlayerId)
+            {
+                continue;
+            }
+
+            session.TrySendRoomEncounterEventForObservedPlayer(ev.BotPlayerId, ev.Position);
+        }
     }
 
     /// <summary>
@@ -1370,7 +1575,10 @@ public class GameServer(
                 .ToList();
 
             foreach (var session in activeSessions)
+            {
                 session.SendTargetLocation();
+                session.TrySendRoomEncounterEventsFromCurrentVision();
+            }
         }
         catch (Exception ex)
         {
@@ -1447,7 +1655,11 @@ public class GameServer(
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
+                {
                     BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
+                    ResolvePendingRoomDiscoveriesForBotExploreEnds(matchingId, movementResult.ExploreEnds,
+                        activeSessions);
+                }
                 StartTargetBotInterrogations(matchingId, activeSessions);
             }
         }
@@ -1708,7 +1920,8 @@ public class GameServer(
                 _traceManager,
                 new InteractionChoiceService(_interactionLogManager, _manittoChainManager, _gameEventLogManager),
                 _botPlayerManager,
-                _gameEventLogManager);
+                _gameEventLogManager,
+                _encounterRevealManager);
 
             logger.LogInformation("Game client session created");
         }
@@ -1847,9 +2060,9 @@ public class GameServer(
         return ids.OrderBy(id => id).ToList();
     }
 
-    public InstanceSnapshot? CreateBotOnlyInstance(int botCount = 5)
+    public InstanceSnapshot? CreateBotOnlyInstance(int botCount = 8)
     {
-        botCount = Math.Clamp(botCount, 2, 5);
+        botCount = Math.Clamp(botCount, 2, 8);
         long matchingId = System.Threading.Interlocked.Increment(ref _adminBotOnlyMatchingIdSeed);
         var jobs = BuildBotOnlyJobPool(botCount);
         var playerIds = Enumerable.Range(0, botCount)
@@ -1885,15 +2098,18 @@ public class GameServer(
             _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
             foreach ((int itemId, int count) in GameRuleData.InGameItemList)
-                _inGameInventoryManager.AddItem(matchingId, bot.PlayerId, itemId, count);
+                _inGameInventoryManager.EnsureItemCount(matchingId, bot.PlayerId, itemId, count);
         }
 
         _areaClosureManager.InitializeMatching(matchingId, jobs);
         _doorStateManager.InitializeMatching(matchingId);
         _checklistManager.StartRound(matchingId, 1, playerIds,
             playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
-        GameClientSession.TryStartHeadlessActionRound(matchingId);
-        StartHeadlessRoundTimer(matchingId);
+        if (Config.ROUND_SYSTEM_ENABLED)
+        {
+            GameClientSession.TryStartHeadlessActionRound(matchingId);
+            StartHeadlessRoundTimer(matchingId);
+        }
 
         _gameEventLogManager.LogSystem(matchingId,
             $"Bot-only instance created: botCount={botCount}, ids=[{string.Join(",", playerIds)}]");
@@ -1912,7 +2128,10 @@ public class GameServer(
             JobTitle.DISCIPLINE_MEMBER,
             JobTitle.LIBRARY_COMMITTEE,
             JobTitle.SPORTS_CAPTAIN,
-            JobTitle.CLEANING_MEMBER
+            JobTitle.SCIENCE_MEMBER,
+            JobTitle.CLEANING_MEMBER,
+            JobTitle.STUDENT_PRESIDENT,
+            JobTitle.HEALTH_MEMBER
         };
 
         return jobs.Take(botCount).ToList();
@@ -1939,6 +2158,9 @@ public class GameServer(
 
     private void StartHeadlessRoundTimer(long matchingId)
     {
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return;
+
         var timer = new Timer(_ => ProcessHeadlessRoundTimerTick(matchingId), null,
             TimeSpan.Zero, TimeSpan.FromSeconds(1));
         if (!_headlessRoundTimers.TryAdd(matchingId, timer))

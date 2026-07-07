@@ -11,8 +11,8 @@ using user_server.network;
 namespace user_server.services;
 
 /// <summary>
-///     game_server MatchingConfigService와 공유하는 Redis 키 상수.
-///     값 변경 시 양쪽 동시 수정 필요.
+///     game_server MatchingConfigService? 怨듭쑀?섎뒗 Redis ???곸닔.
+///     媛?蹂寃????묒そ ?숈떆 ?섏젙 ?꾩슂.
 /// </summary>
 internal static class MatchingConfigRedisKeys
 {
@@ -25,27 +25,59 @@ public class MatchingManager : IMatchingManager
     private const string MatchingQueueKey = "matching_queue";
     private const string MatchingIdKey = "matching_id";
     private const string BotInfoKeyPrefix = "matching_bots"; // Redis Hash: field=matchingId
+    private const string PlayerBuffInfoKey = "matching_player_buffs"; // Redis Hash: field={matchingId}:{playerId}, value=List<int>
     private const string LeavePenaltyKey = "leave_penalties"; // Redis Hash: field=playerId, value=int64 count
     private const string LeavePenaltyDecayAtKey = "leave_penalty_decay_at"; // Redis Hash: field=playerId, value=int64 unix timestamp
     private const int MatchingTimeoutSeconds = 3;
-    private const int BotFillTimeoutSeconds = 30; // 봇 채움 대기 시간
-    private const int LeavePenaltySeconds = 30; // 이탈 1회당 추가 대기 시간
-    private const int MaxLeavePenaltySeconds = 300; // 최대 페널티 대기 시간 (5분)
-    private const int PenaltyDecayIntervalHours = 24; // 24시간 경과 시 이탈 횟수 1 감소
-    private const int DefaultPlayersPerMatch = 1; // 매칭 트리거 최소 인원 (#22 디버그 — 1인 트리거)
-    private const int DefaultGamePlayersPerMatch = 5; // 실제 게임 인원 (#22 디버그 — 1인 + 봇 4명, 각 층별 1명)
+    private const int BotFillTimeoutSeconds = 30; // 遊?梨꾩? ?湲??쒓컙
+    private const int LeavePenaltySeconds = 30; // ?댄깉 1?뚮떦 異붽? ?湲??쒓컙
+    private const int MaxLeavePenaltySeconds = 300; // 理쒕? ?섎꼸???湲??쒓컙 (5遺?
+    private const int PenaltyDecayIntervalHours = 24; // 24?쒓컙 寃쎄낵 ???댄깉 ?잛닔 1 媛먯냼
+    private const int DefaultPlayersPerMatch = 1; // 留ㅼ묶 ?몃━嫄?理쒖냼 ?몄썝 (#22 ?붾쾭洹???1???몃━嫄?
+    private const int DefaultGamePlayersPerMatch = 8; // ?ㅼ젣 寃뚯엫 ?몄썝 (#22 ?붾쾭洹???1??+ 遊?4紐? 媛?痢듬퀎 1紐?
 
-    /// <summary>매칭 트리거 최소 인원. DEMO_MODE 활성 시 1명만으로 트리거(즉시 봇 4명 채움).</summary>
+    /// <summary>留ㅼ묶 ?몃━嫄?理쒖냼 ?몄썝. DEMO_MODE ?쒖꽦 ??1紐낅쭔?쇰줈 ?몃━嫄?利됱떆 遊?4紐?梨꾩?).</summary>
     private static int PlayersPerMatch => IsTwoPlayerTestMatch ? 2 : DemoMode.IsActive ? 1 : DefaultPlayersPerMatch;
 
-    /// <summary>실제 게임 인원. TEST_TWO_PLAYER_MATCH 시 실플레이어 2명 + 봇 3명.</summary>
+    /// <summary>?ㅼ젣 寃뚯엫 ?몄썝. TEST_TWO_PLAYER_MATCH ???ㅽ뵆?덉씠??2紐?+ 遊?3紐?</summary>
     private static int GamePlayersPerMatch =>
         IsTwoPlayerTestMatch ? DefaultGamePlayersPerMatch : DemoMode.IsActive ? DemoMode.MatchPlayerCount : DefaultGamePlayersPerMatch;
 
     private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
     private static JobTitle? ForcedPlayerJob => ParseForcedPlayerJob();
     private static AreaType? ForcedPlayerSpawnArea => ParseForcedPlayerSpawnArea();
-    private static long _botIdCounter; // 봇 PlayerId (음수)
+    private static readonly PersonaType[] Personas =
+    {
+        PersonaType.SecretCollector,
+        PersonaType.Coward,
+        PersonaType.GuardianAngel,
+        PersonaType.PhysicalSolver,
+        PersonaType.Nocturnal
+    };
+
+    private static readonly AreaType[] PersonaStartFallbackAreas =
+    {
+        AreaType.AdminOffice,
+        AreaType.StaffRoom,
+        AreaType.Classroom2,
+        AreaType.Library,
+        AreaType.Classroom3,
+        AreaType.ExamRoom,
+        AreaType.Classroom4,
+        AreaType.BroadcastRoom
+    };
+
+    private static readonly HashSet<AreaType> PersonaStartExcludedAreas = new()
+    {
+        AreaType.Ground,
+        AreaType.Gym,
+        AreaType.Storage,
+        AreaType.Corridor1F,
+        AreaType.Corridor2F,
+        AreaType.Corridor3F,
+        AreaType.Corridor4F
+    };
+    private static long _botIdCounter; // 遊?PlayerId (?뚯닔)
     private readonly ICacheHelper _cacheHelper;
     private readonly Func<long, GameSession?> _getSession;
     private readonly ILogger _logger;
@@ -61,9 +93,9 @@ public class MatchingManager : IMatchingManager
         _redLock = redLock;
         _getSession = getSession;
 
-        // 매칭 타이머: 1초마다 큐 체크
+        // 留ㅼ묶 ??대㉧: 1珥덈쭏????泥댄겕
         _matchingTimer = new Timer(OnMatchingTimerTick, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
-        _logger.LogInformation("MatchingManager 초기화 완료");
+        _logger.LogInformation("MatchingManager 珥덇린???꾨즺");
     }
 
     public async Task<ErrorCode> AddToQueue(long playerId, GameSession user)
@@ -72,7 +104,7 @@ public class MatchingManager : IMatchingManager
         {
             int removedCount = await RemovePlayerEntriesFromQueueAsync(playerId);
             if (removedCount > 0)
-                _logger.LogInformation("플레이어 {PlayerId} 기존 매칭 큐 엔트리 {Count}개 정리", playerId, removedCount);
+                _logger.LogInformation("?뚮젅?댁뼱 {PlayerId} 湲곗〈 留ㅼ묶 ???뷀듃由?{Count}媛??뺣━", playerId, removedCount);
 
             var queueData = new MatchingQueueData
             {
@@ -83,22 +115,22 @@ public class MatchingManager : IMatchingManager
 
             byte[] serialized = MessagePackSerializer.Serialize(queueData);
 
-            // 이탈 페널티: 이탈 횟수에 비례한 추가 대기 시간
+            // ?댄깉 ?섎꼸?? ?댄깉 ?잛닔??鍮꾨???異붽? ?湲??쒓컙
             long penaltyDelay = await GetLeavePenaltyDelayAsync(playerId);
             long score = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + penaltyDelay;
 
             await _cacheHelper.SortedSetAddAsync(MatchingQueueKey, serialized, score);
 
             if (penaltyDelay > 0)
-                _logger.LogInformation("플레이어 {PlayerId} 매칭 큐 추가 (이탈 페널티 {Penalty}초)", playerId, penaltyDelay);
+                _logger.LogInformation("?뚮젅?댁뼱 {PlayerId} 留ㅼ묶 ??異붽? (?댄깉 ?섎꼸??{Penalty}珥?", playerId, penaltyDelay);
             else
-                _logger.LogInformation("플레이어 {PlayerId} 매칭 큐 추가", playerId);
+                _logger.LogInformation("?뚮젅?댁뼱 {PlayerId} 留ㅼ묶 ??異붽?", playerId);
 
             return ErrorCode.SUCCESS;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "매칭 큐 추가 실패: {PlayerId}", playerId);
+            _logger.LogError(ex, "留ㅼ묶 ??異붽? ?ㅽ뙣: {PlayerId}", playerId);
             return ErrorCode.SERVER_INTERNAL_ERROR;
         }
     }
@@ -116,12 +148,12 @@ public class MatchingManager : IMatchingManager
                     var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
                     if (data.PlayerId != playerId) continue;
                     await _cacheHelper.SortedSetRemoveAsync(MatchingQueueKey, entry);
-                    _logger.LogInformation("플레이어 {PlayerId} 매칭 취소", playerId);
+                    _logger.LogInformation("?뚮젅?댁뼱 {PlayerId} 留ㅼ묶 痍⑥냼", playerId);
                     return ErrorCode.SUCCESS;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "매칭 entry 역직렬화 실패, 스킵");
+                    _logger.LogError(ex, "留ㅼ묶 entry ??쭅?ы솕 ?ㅽ뙣, ?ㅽ궢");
                     await _cacheHelper.SortedSetRemoveAsync(MatchingQueueKey, entry);
                 }
             }
@@ -130,7 +162,7 @@ public class MatchingManager : IMatchingManager
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "매칭 취소 실패: {PlayerId}", playerId);
+            _logger.LogError(ex, "留ㅼ묶 痍⑥냼 ?ㅽ뙣: {PlayerId}", playerId);
             return ErrorCode.SERVER_INTERNAL_ERROR;
         }
     }
@@ -152,7 +184,7 @@ public class MatchingManager : IMatchingManager
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "매칭 entry 역직렬화 실패, 큐에서 제거");
+                _logger.LogError(ex, "留ㅼ묶 entry ??쭅?ы솕 ?ㅽ뙣, ?먯뿉???쒓굅");
                 if (await _cacheHelper.SortedSetRemoveAsync(MatchingQueueKey, entry))
                     removedCount++;
             }
@@ -162,7 +194,7 @@ public class MatchingManager : IMatchingManager
     }
 
     /// <summary>
-    ///     타이머 콜백 — 재진입 방지 후 비동기 처리 위임
+    ///     ??대㉧ 肄쒕갚 ???ъ쭊??諛⑹? ??鍮꾨룞湲?泥섎━ ?꾩엫
     /// </summary>
     private void OnMatchingTimerTick(object? state)
     {
@@ -197,7 +229,7 @@ public class MatchingManager : IMatchingManager
                 byte[][] groupEntries = entriesToMatch.Skip(i).Take(PlayersPerMatch).ToArray();
                 long matchingId = await _cacheHelper.StringIncrementAsync(MatchingIdKey);
 
-                // 부족한 인원은 봇으로 즉시 채움 — 1인 즉시 매칭에서 자기자신 타겟 방지
+                // 遺議깊븳 ?몄썝? 遊뉗쑝濡?利됱떆 梨꾩? ??1??利됱떆 留ㅼ묶?먯꽌 ?먭린?먯떊 ?寃?諛⑹?
                 int botsNeeded = Math.Max(0, GamePlayersPerMatch - groupEntries.Length);
                 var allGroupEntries = new List<byte[]>(groupEntries);
                 for (int b = 0; b < botsNeeded; b++)
@@ -212,15 +244,16 @@ public class MatchingManager : IMatchingManager
                     allGroupEntries.Add(MessagePackSerializer.Serialize(botData));
                 }
 
-                _logger.LogInformation("매칭 성공! matching_id: {MatchingId}, 실제 {Real}명 + 봇 {Bot}명",
-                    matchingId, groupEntries.Length, botsNeeded);
+                _logger.LogInformation("Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}",
+                            matchingId, groupEntries.Length, botsNeeded);
 
-                // 원형 체인 생성: 셔플 후 A→B→C→D→E→A (화살표 = 마니또 관계)
+                // ?먰삎 泥댁씤 ?앹꽦: ?뷀뵆 ??A?묪?묬?묭?묮?묨 (?붿궡??= 留덈땲??愿怨?
                 var chain = await BuildManittoChain(allGroupEntries.ToArray());
+                ApplyPersonaMatchStartAssignments(matchingId, chain);
                 await ApplyTwoPlayerTestTargetOutfitAsync(chain);
                 var playerRoster = await BuildPlayerRosterAsync(chain);
 
-                // 봇 정보 Redis 저장 (game_server에서 로드). 5인 원형 체인 정합 — 봇 타겟은 체인 다음 노드.
+                // 遊??뺣낫 Redis ???(game_server?먯꽌 濡쒕뱶). 5???먰삎 泥댁씤 ?뺥빀 ??遊??寃잛? 泥댁씤 ?ㅼ쓬 ?몃뱶.
                 var botInfoList = new List<BotMatchingInfo>();
                 foreach (var link in chain)
                 {
@@ -231,9 +264,13 @@ public class MatchingManager : IMatchingManager
                         PlayerId = data.PlayerId,
                         TargetPlayerId = link.TargetPlayerId,
                         MyJobTitle = link.MyJobTitle,
-                        TargetJobTitle = link.TargetJobTitle
+                        TargetJobTitle = link.TargetJobTitle,
+                        Persona = link.Persona,
+                        StartArea = link.StartArea,
+                        ActiveBuffIds = BuildActiveBuffIds(link.Persona)
                     });
                 }
+                await SavePlayerBuffAssignmentsAsync(matchingId, chain);
 
                 if (botInfoList.Count > 0)
                 {
@@ -241,20 +278,20 @@ public class MatchingManager : IMatchingManager
                     await _cacheHelper.HashSetAsync(BotInfoKeyPrefix, matchingId, serialized);
                 }
 
-                // 실제 플레이어만 매칭 성공 패킷 전송 + 큐 제거
+                // ?ㅼ젣 ?뚮젅?댁뼱留?留ㅼ묶 ?깃났 ?⑦궥 ?꾩넚 + ???쒓굅
                 foreach (var link in chain)
                 {
                     var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
-                    if (data.PlayerId < 0) continue; // 봇은 스킵
+                    if (data.PlayerId < 0) continue; // 遊뉗? ?ㅽ궢
 
                     try
                     {
                         await ProcessMatchedEntry(link.Entry, matchingId, link.TargetPlayerId,
-                            link.TargetJobTitle, link.MyJobTitle, playerRoster);
+                            link.TargetJobTitle, link.MyJobTitle, playerRoster, link.Persona, link.StartArea);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "매칭 entry 처리 실패, 스킵");
+                        _logger.LogError(ex, "留ㅼ묶 entry 泥섎━ ?ㅽ뙣, ?ㅽ궢");
                     }
                     finally
                     {
@@ -263,17 +300,17 @@ public class MatchingManager : IMatchingManager
                 }
             }
 
-            // 봇 채움: 30초 이상 대기 중인 플레이어가 있으면 봇으로 채움
+            // 遊?梨꾩?: 30珥??댁긽 ?湲?以묒씤 ?뚮젅?댁뼱媛 ?덉쑝硫?遊뉗쑝濡?梨꾩?
             await CheckBotFillAsync();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "매칭 큐 처리 중 오류 발생");
+            _logger.LogError(ex, "留ㅼ묶 ??泥섎━ 以??ㅻ쪟 諛쒖깮");
         }
     }
 
     /// <summary>
-    ///     30초 이상 대기 중인 플레이어가 5명 미만이면 봇으로 채워서 매칭
+    ///     30珥??댁긽 ?湲?以묒씤 ?뚮젅?댁뼱媛 5紐?誘몃쭔?대㈃ 遊뉗쑝濡?梨꾩썙??留ㅼ묶
     /// </summary>
     private async Task CheckBotFillAsync()
     {
@@ -290,7 +327,7 @@ public class MatchingManager : IMatchingManager
         int botsNeeded = GamePlayersPerMatch - longWaitEntries.Length;
         var allEntries = new List<byte[]>(longWaitEntries);
 
-        // 봇 데이터 생성
+        // 遊??곗씠???앹꽦
         for (int i = 0; i < botsNeeded; i++)
         {
             long botId = Interlocked.Decrement(ref _botIdCounter); // -1, -2, ...
@@ -304,13 +341,14 @@ public class MatchingManager : IMatchingManager
         }
 
         long matchingId = await _cacheHelper.StringIncrementAsync(MatchingIdKey);
-        _logger.LogInformation("봇 채움 매칭: MatchingId={MatchingId}, 실제 {Real}명 + 봇 {Bot}명",
+        _logger.LogInformation("Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}",
             matchingId, longWaitEntries.Length, botsNeeded);
 
         var chain = await BuildManittoChain(allEntries.ToArray());
+        ApplyPersonaMatchStartAssignments(matchingId, chain);
         var playerRoster = await BuildPlayerRosterAsync(chain);
 
-        // 봇 정보를 Redis에 저장 (game_server에서 로드). 원형 체인 정합 — 봇 타겟은 체인 다음 노드.
+        // 遊??뺣낫瑜?Redis?????(game_server?먯꽌 濡쒕뱶). ?먰삎 泥댁씤 ?뺥빀 ??遊??寃잛? 泥댁씤 ?ㅼ쓬 ?몃뱶.
         var botInfoList = new List<BotMatchingInfo>();
         foreach (var link in chain)
         {
@@ -321,9 +359,13 @@ public class MatchingManager : IMatchingManager
                 PlayerId = data.PlayerId,
                 TargetPlayerId = link.TargetPlayerId,
                 MyJobTitle = link.MyJobTitle,
-                TargetJobTitle = link.TargetJobTitle
+                TargetJobTitle = link.TargetJobTitle,
+                Persona = link.Persona,
+                StartArea = link.StartArea,
+                ActiveBuffIds = BuildActiveBuffIds(link.Persona)
             });
         }
+        await SavePlayerBuffAssignmentsAsync(matchingId, chain);
 
         if (botInfoList.Count > 0)
         {
@@ -331,20 +373,20 @@ public class MatchingManager : IMatchingManager
             await _cacheHelper.HashSetAsync(BotInfoKeyPrefix, matchingId, serialized);
         }
 
-        // 실제 플레이어만 매칭 성공 패킷 전송
+        // ?ㅼ젣 ?뚮젅?댁뼱留?留ㅼ묶 ?깃났 ?⑦궥 ?꾩넚
         foreach (var link in chain)
         {
             var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
-            if (data.PlayerId < 0) continue; // 봇은 스킵
+            if (data.PlayerId < 0) continue; // 遊뉗? ?ㅽ궢
 
             try
             {
                 await ProcessMatchedEntry(link.Entry, matchingId, link.TargetPlayerId,
-                    link.TargetJobTitle, link.MyJobTitle, playerRoster);
+                    link.TargetJobTitle, link.MyJobTitle, playerRoster, link.Persona, link.StartArea);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "봇 채움 매칭 entry 처리 실패: {PlayerId}", data.PlayerId);
+                _logger.LogError(ex, "遊?梨꾩? 留ㅼ묶 entry 泥섎━ ?ㅽ뙣: {PlayerId}", data.PlayerId);
             }
             finally
             {
@@ -354,9 +396,9 @@ public class MatchingManager : IMatchingManager
     }
 
     /// <summary>
-    ///     원형 체인 생성: 셔플 후 i번째 플레이어의 타겟 = (i+1)%N번째 플레이어
-    ///     직책(JobTitle)도 무작위 배정. Redis 직책 풀 강제 지정이 있으면 우선 사용.
-    ///     DEMO_MODE 활성 시 시연자+봇4명(BR/DC/SC/HE) 체인 강제 — 셔플 없음.
+    ///     ?먰삎 泥댁씤 ?앹꽦: ?뷀뵆 ??i踰덉㎏ ?뚮젅?댁뼱???寃?= (i+1)%N踰덉㎏ ?뚮젅?댁뼱
+    ///     吏곸콉(JobTitle)??臾댁옉??諛곗젙. Redis 吏곸콉 ? 媛뺤젣 吏?뺤씠 ?덉쑝硫??곗꽑 ?ъ슜.
+    ///     DEMO_MODE ?쒖꽦 ???쒖뿰??遊?紐?BR/DC/SC/HE) 泥댁씤 媛뺤젣 ???뷀뵆 ?놁쓬.
     /// </summary>
     private async Task<List<ManittoChainLink>> BuildManittoChain(byte[][] groupEntries)
     {
@@ -366,7 +408,7 @@ public class MatchingManager : IMatchingManager
         if (DemoMode.IsActive && groupEntries.Length == DemoMode.MatchPlayerCount)
             return BuildDemoManittoChain(groupEntries);
 
-        // 셔플
+        // ?뷀뵆
         var entries = groupEntries.ToList();
         var rng = Random.Shared;
         for (int i = entries.Count - 1; i > 0; i--)
@@ -375,7 +417,7 @@ public class MatchingManager : IMatchingManager
             (entries[i], entries[j]) = (entries[j], entries[i]);
         }
 
-        // 직책 풀 결정 — Redis 강제 지정 우선, 없으면 무작위
+        // Resolve job pool.
         List<JobTitle> jobs;
         try
         {
@@ -389,7 +431,7 @@ public class MatchingManager : IMatchingManager
                 if (ints != null && ints.Count > 0)
                 {
                     jobs = ints.Select(v => (JobTitle)v).ToList();
-                    _logger.LogInformation("직책 풀 강제 지정 적용: {Jobs}", string.Join(",", jobs));
+                    _logger.LogInformation("吏곸콉 ? 媛뺤젣 吏???곸슜: {Jobs}", string.Join(",", jobs));
                 }
                 else
                 {
@@ -403,18 +445,18 @@ public class MatchingManager : IMatchingManager
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Redis 직책 풀 config 읽기 실패, 무작위 사용");
+            _logger.LogWarning(ex, "Redis 吏곸콉 ? config ?쎄린 ?ㅽ뙣, 臾댁옉???ъ슜");
             jobs = Enum.GetValues<JobTitle>().Where(j => j != JobTitle.NONE).ToList();
         }
 
-        // 직책 셔플 배정
+        // 吏곸콉 ?뷀뵆 諛곗젙
         for (int i = jobs.Count - 1; i > 0; i--)
         {
             int j = rng.Next(i + 1);
             (jobs[i], jobs[j]) = (jobs[j], jobs[i]);
         }
 
-        // 강제 풀이 인원보다 적으면 무작위 직책으로 부족분 보충 (NONE 제외, 풀 직책 우선 유지)
+        // 媛뺤젣 ????몄썝蹂대떎 ?곸쑝硫?臾댁옉??吏곸콉?쇰줈 遺議깅텇 蹂댁땐 (NONE ?쒖쇅, ? 吏곸콉 ?곗꽑 ?좎?)
         if (jobs.Count < entries.Count)
         {
             var fillPool = Enum.GetValues<JobTitle>()
@@ -423,10 +465,10 @@ public class MatchingManager : IMatchingManager
                 .ToList();
             int needed = entries.Count - jobs.Count;
             jobs.AddRange(fillPool.Take(needed));
-            _logger.LogInformation("직책 풀 부족 — 무작위로 {Needed}개 보충", needed);
+            _logger.LogInformation("吏곸콉 ? 遺議???臾댁옉?꾨줈 {Needed}媛?蹂댁땐", needed);
         }
 
-        // PlayerId 역직렬화
+        // PlayerId ??쭅?ы솕
         var players = entries.Select(e => MessagePackSerializer.Deserialize<MatchingQueueData>(e)).ToList();
         ApplyForcedPlayerJob(players, jobs);
 
@@ -443,8 +485,8 @@ public class MatchingManager : IMatchingManager
             });
         }
 
-        _logger.LogInformation("마니또 체인 생성: {Chain}",
-            string.Join(" → ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" → {players[0].PlayerId}");
+        _logger.LogInformation("留덈땲??泥댁씤 ?앹꽦: {Chain}",
+            string.Join(" ??", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" ??{players[0].PlayerId}");
 
         return chain;
     }
@@ -475,6 +517,109 @@ public class MatchingManager : IMatchingManager
             : null;
     }
 
+    private void ApplyPersonaMatchStartAssignments(long matchingId, List<ManittoChainLink> chain)
+    {
+        if (chain.Count == 0) return;
+
+        var rng = Random.Shared;
+        var assignedAreas = new HashSet<AreaType>();
+        var assignmentOrder = chain
+            .Select(link => new
+            {
+                Link = link,
+                PlayerId = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry).PlayerId
+            })
+            .OrderBy(_ => rng.Next())
+            .ToList();
+
+        foreach (var entry in assignmentOrder)
+        {
+            var persona = Personas[rng.Next(Personas.Length)];
+            var startArea = ResolvePersonaStartArea(persona, assignedAreas, rng);
+
+            entry.Link.Persona = persona;
+            entry.Link.StartArea = startArea;
+            if (startArea != AreaType.None)
+                assignedAreas.Add(startArea);
+
+            _logger.LogInformation(
+                "Persona match start assigned: MatchingId={MatchingId}, PlayerId={PlayerId}, Persona={Persona}, StartArea={Area}",
+                matchingId, entry.PlayerId, persona, startArea);
+        }
+    }
+
+    private static AreaType ResolvePersonaStartArea(PersonaType persona, HashSet<AreaType> assignedAreas, Random rng)
+    {
+        foreach (var area in Shuffle(GetPersonaStartCandidates(persona), rng))
+        {
+            if (IsAllowedPersonaStartArea(area) && !assignedAreas.Contains(area))
+                return area;
+        }
+
+        foreach (var area in Shuffle(PersonaStartFallbackAreas, rng))
+        {
+            if (IsAllowedPersonaStartArea(area) && !assignedAreas.Contains(area))
+                return area;
+        }
+
+        return PersonaStartFallbackAreas.FirstOrDefault(IsAllowedPersonaStartArea);
+    }
+
+    private static AreaType[] GetPersonaStartCandidates(PersonaType persona) => persona switch
+    {
+        PersonaType.SecretCollector => new[]
+        {
+            AreaType.Library,
+            AreaType.AdminOffice,
+            AreaType.BroadcastRoom
+        },
+        PersonaType.Coward => new[]
+        {
+            AreaType.Classroom2,
+            AreaType.Library,
+            AreaType.StaffRoom
+        },
+        PersonaType.GuardianAngel => new[]
+        {
+            AreaType.Classroom2,
+            AreaType.StaffRoom,
+            AreaType.Classroom3
+        },
+        PersonaType.PhysicalSolver => new[]
+        {
+            AreaType.ExamRoom,
+            AreaType.Classroom4,
+            AreaType.Corridor3F
+        },
+        PersonaType.Nocturnal => new[]
+        {
+            AreaType.BroadcastRoom,
+            AreaType.AdminOffice,
+            AreaType.ExamRoom
+        },
+        _ => PersonaStartFallbackAreas
+    };
+
+    private static List<AreaType> Shuffle(IEnumerable<AreaType> areas, Random rng)
+    {
+        var result = areas.ToList();
+        for (int i = result.Count - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            (result[i], result[j]) = (result[j], result[i]);
+        }
+
+        return result;
+    }
+
+    private static bool IsAllowedPersonaStartArea(AreaType area)
+    {
+        if (area == AreaType.None || PersonaStartExcludedAreas.Contains(area))
+            return false;
+
+        return !area.IsCorridor();
+    }
+
     private void ApplyForcedPlayerJob(List<MatchingQueueData> players, List<JobTitle> jobs)
     {
         var forcedJob = ForcedPlayerJob;
@@ -489,7 +634,7 @@ public class MatchingManager : IMatchingManager
         else
             jobs[playerIndex] = forcedJob.Value;
 
-        _logger.LogInformation("플레이어 직책 강제 지정 적용: PlayerId={PlayerId}, Job={Job}",
+        _logger.LogInformation("?뚮젅?댁뼱 吏곸콉 媛뺤젣 吏???곸슜: PlayerId={PlayerId}, Job={Job}",
             players[playerIndex].PlayerId, forcedJob.Value);
     }
 
@@ -499,12 +644,12 @@ public class MatchingManager : IMatchingManager
 
         var targetOutfitItemIds = new[]
         {
-            101000005, // 하늘 바람머리
-            102000005, // 조용한 친구 얼굴
-            103000003, // 동그란 뿔테 안경
-            104000007, // 넥타이 하복 상의
-            105000007, // 하복 바지
-            106000004  // 로퍼
+            101000005, // ?섎뒛 諛붾엺癒몃━
+            102000005, // 議곗슜??移쒓뎄 ?쇨뎬
+            103000003, // ?숆렇? 肉뷀뀒 ?덇꼍
+            104000007, // ?ν????섎났 ?곸쓽
+            105000007, // ?섎났 諛붿?
+            106000004  // 濡쒗띁
         };
 
         var realPlayers = chain
@@ -523,7 +668,7 @@ public class MatchingManager : IMatchingManager
             var targetPlayer = await PlayerInfo.Load(_cacheHelper, targetPlayerId);
             if (targetPlayer == null)
             {
-                _logger.LogWarning("2인 매칭 외형 복사 실패: 두 번째 플레이어 로드 실패 ({PlayerId})", targetPlayerId);
+                _logger.LogWarning("2??留ㅼ묶 ?명삎 蹂듭궗 ?ㅽ뙣: ??踰덉㎏ ?뚮젅?댁뼱 濡쒕뱶 ?ㅽ뙣 ({PlayerId})", targetPlayerId);
                 return;
             }
 
@@ -547,12 +692,12 @@ public class MatchingManager : IMatchingManager
             await targetPlayer.Save(_cacheHelper);
         }
 
-        _logger.LogInformation("2인 매칭 타겟 외형 고정: Player2={TargetPlayerId}, Items={Items}",
+        _logger.LogInformation("2??留ㅼ묶 ?寃??명삎 怨좎젙: Player2={TargetPlayerId}, Items={Items}",
             targetPlayerId, string.Join(", ", targetOutfitItemIds));
     }
 
     /// <summary>
-    ///     매칭 신청 순서를 보존하기 위해 큐 엔트리를 RequestTime 기준으로 정렬한다.
+    ///     留ㅼ묶 ?좎껌 ?쒖꽌瑜?蹂댁〈?섍린 ?꾪빐 ???뷀듃由щ? RequestTime 湲곗??쇰줈 ?뺣젹?쒕떎.
     /// </summary>
     private static byte[][] SortEntriesByRequestTime(byte[][] entries)
     {
@@ -585,10 +730,12 @@ public class MatchingManager : IMatchingManager
             .ToList();
         var bots = entries.Where(x => x.Data.PlayerId < 0).ToList();
 
-        if (realPlayers.Count != 2 || bots.Count != 3)
+        const int expectedRealPlayerCount = 2;
+        int expectedBotCount = DefaultGamePlayersPerMatch - expectedRealPlayerCount;
+        if (realPlayers.Count != expectedRealPlayerCount || bots.Count != expectedBotCount)
         {
             _logger.LogWarning(
-                "TEST_TWO_PLAYER_MATCH 매칭 구성 비정상 (실 {Real}명 / 봇 {Bot}명) — 일반 체인 폴백",
+                "TEST_TWO_PLAYER_MATCH 留ㅼ묶 援ъ꽦 鍮꾩젙??(??{Real}紐?/ 遊?{Bot}紐? ???쇰컲 泥댁씤 ?대갚",
                 realPlayers.Count, bots.Count);
             return BuildDemoFallback(groupEntries);
         }
@@ -601,7 +748,10 @@ public class MatchingManager : IMatchingManager
             JobTitle.DISCIPLINE_MEMBER,
             JobTitle.BROADCAST_MEMBER,
             JobTitle.SCIENCE_MEMBER,
-            JobTitle.HEALTH_MEMBER
+            JobTitle.HEALTH_MEMBER,
+            JobTitle.LIBRARY_COMMITTEE,
+            JobTitle.SPORTS_CAPTAIN,
+            JobTitle.CLEANING_MEMBER
         };
 
         var chain = new List<ManittoChainLink>();
@@ -618,17 +768,17 @@ public class MatchingManager : IMatchingManager
         }
 
         _logger.LogInformation(
-            "TEST_TWO_PLAYER_MATCH 체인 강제: {Chain}",
+            "TEST_TWO_PLAYER_MATCH 泥댁씤 媛뺤젣: {Chain}",
             string.Join(" -> ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" -> {players[0].PlayerId}");
 
         return chain;
     }
 
     /// <summary>
-    ///     시연 모드 체인 강제 생성. 시연자(실 PlayerId)는 인덱스 1에,
-    ///     봇 4명은 인덱스 0/2/3/4에 BR/DC/SC/HE 순서로 고정 배치.
-    ///     체인: BR → 시연자 → DC → SC → HE → BR.
-    ///     셔플하지 않음 — 결정론 시드 + 영상 비트 정합성 보장.
+    ///     ?쒖뿰 紐⑤뱶 泥댁씤 媛뺤젣 ?앹꽦. ?쒖뿰????PlayerId)???몃뜳??1??
+    ///     遊?4紐낆? ?몃뜳??0/2/3/4??BR/DC/SC/HE ?쒖꽌濡?怨좎젙 諛곗튂.
+    ///     泥댁씤: BR ???쒖뿰????DC ??SC ??HE ??BR.
+    ///     ?뷀뵆?섏? ?딆쓬 ??寃곗젙濡??쒕뱶 + ?곸긽 鍮꾪듃 ?뺥빀??蹂댁옣.
     /// </summary>
     private List<ManittoChainLink> BuildDemoManittoChain(byte[][] groupEntries)
     {
@@ -645,12 +795,12 @@ public class MatchingManager : IMatchingManager
         if (realEntries.Count != 1 || botEntries.Count != 4)
         {
             _logger.LogWarning(
-                "DEMO_MODE 매칭 구성 비정상 (실 {Real}명 / 봇 {Bot}명) — 일반 체인 폴백",
+                "DEMO_MODE 留ㅼ묶 援ъ꽦 鍮꾩젙??(??{Real}紐?/ 遊?{Bot}紐? ???쇰컲 泥댁씤 ?대갚",
                 realEntries.Count, botEntries.Count);
             return BuildDemoFallback(groupEntries);
         }
 
-        // 인덱스 0/2/3/4 = 봇, 인덱스 1 = 시연자
+        // Index 0/2/3/4 are bots, index 1 is the player.
         var ordered = new byte[DemoMode.MatchPlayerCount][];
         ordered[DemoMode.PlayerChainIndex] = realEntries[0];
         int botCursor = 0;
@@ -677,14 +827,14 @@ public class MatchingManager : IMatchingManager
         }
 
         _logger.LogInformation(
-            "DEMO_MODE 체인 강제: {Chain}",
-            string.Join(" → ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" → {players[0].PlayerId}");
+            "DEMO_MODE 泥댁씤 媛뺤젣: {Chain}",
+            string.Join(" ??", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" ??{players[0].PlayerId}");
 
         return chain;
     }
 
     /// <summary>
-    ///     DEMO_MODE 매칭 구성이 비정상일 때 (실 0명 등) 일반 체인 알고리즘으로 폴백.
+    ///     DEMO_MODE 留ㅼ묶 援ъ꽦??鍮꾩젙?곸씪 ??(??0紐??? ?쇰컲 泥댁씤 ?뚭퀬由ъ쬁?쇰줈 ?대갚.
     /// </summary>
     private List<ManittoChainLink> BuildDemoFallback(byte[][] groupEntries)
     {
@@ -731,7 +881,7 @@ public class MatchingManager : IMatchingManager
             var playerInfo = await PlayerInfo.Load(_cacheHelper, data.PlayerId);
             if (playerInfo == null)
             {
-                _logger.LogWarning("매칭 roster 생성 실패: PlayerInfo 로드 실패 ({PlayerId})", data.PlayerId);
+                _logger.LogWarning("留ㅼ묶 roster ?앹꽦 ?ㅽ뙣: PlayerInfo 濡쒕뱶 ?ㅽ뙣 ({PlayerId})", data.PlayerId);
                 roster.Add(new PlayerInfo
                 {
                     PlayerId = data.PlayerId,
@@ -787,45 +937,80 @@ public class MatchingManager : IMatchingManager
         return list;
     }
 
+    private static string MakePlayerBuffField(long matchingId, long playerId) => $"{matchingId}:{playerId}";
+
+    private static List<int> BuildActiveBuffIds(PersonaType persona)
+    {
+        int buffId = GameBuffData.GetPersonaBuffId(persona);
+        return buffId > 0 ? new List<int> { buffId } : new List<int>();
+    }
+
+    private async Task SavePlayerBuffAssignmentsAsync(long matchingId, IReadOnlyCollection<ManittoChainLink> chain)
+    {
+        foreach (var link in chain)
+        {
+            var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
+            var activeBuffIds = BuildActiveBuffIds(link.Persona);
+            await _cacheHelper.HashSetAsync(
+                PlayerBuffInfoKey,
+                MakePlayerBuffField(matchingId, data.PlayerId),
+                MessagePackSerializer.Serialize(activeBuffIds));
+        }
+    }
     private async Task ProcessMatchedEntry(byte[] entry, long matchingId,
-        long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle, List<PlayerInfo> playerRoster)
+        long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle, List<PlayerInfo> playerRoster,
+        PersonaType persona, AreaType startArea)
     {
         var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
-        _logger.LogInformation("플레이어 {DataPlayerId} 처리 중... (타겟: {TargetPlayerId})", data.PlayerId, targetPlayerId);
+        _logger.LogInformation("?뚮젅?댁뼱 {DataPlayerId} 泥섎━ 以?.. (?寃? {TargetPlayerId})", data.PlayerId, targetPlayerId);
 
         var session = _getSession(data.PlayerId);
         if (session?.PlayerInfo == null)
         {
-            _logger.LogWarning("플레이어 {DataPlayerId} 세션 또는 PlayerInfo가 null", data.PlayerId);
+            _logger.LogWarning("?뚮젅?댁뼱 {DataPlayerId} ?몄뀡 ?먮뒗 PlayerInfo媛 null", data.PlayerId);
             return;
         }
 
         const MapId mapId = MapId.School;
         var mapInfo = GameMapData.GetMapInfo(mapId);
         var (spawnPosition, _) = mapInfo.GetInitialPosition();
+        if (IsAllowedPersonaStartArea(startArea))
+        {
+            spawnPosition = GameMapData.GetAreaSpawnCell(mapId, startArea);
+            _logger.LogInformation(
+                "Persona start assignment: PlayerId={PlayerId}, Persona={Persona}, Area={Area}, Cell=({X},{Y})",
+                data.PlayerId, persona, startArea, spawnPosition.X, spawnPosition.Y);
+        }
+
         var forcedSpawnArea = ForcedPlayerSpawnArea;
         if (forcedSpawnArea.HasValue)
         {
             spawnPosition = GameMapData.GetAreaSpawnCell(mapId, forcedSpawnArea.Value);
-            _logger.LogInformation("플레이어 시작 위치 강제 지정 적용: PlayerId={PlayerId}, Area={Area}, Cell=({X},{Y})",
+            _logger.LogInformation("?뚮젅?댁뼱 ?쒖옉 ?꾩튂 媛뺤젣 吏???곸슜: PlayerId={PlayerId}, Area={Area}, Cell=({X},{Y})",
                 data.PlayerId, forcedSpawnArea.Value, spawnPosition.X, spawnPosition.Y);
         }
 
-        // RedLock으로 PlayerInfo 수정 보호
+        // RedLock?쇰줈 PlayerInfo ?섏젙 蹂댄샇
         await using var playerLock = await PlayerInfo.Lock(_redLock, data.PlayerId);
         var playerInfo = await PlayerInfo.Load(_cacheHelper, data.PlayerId);
         if (playerInfo == null)
         {
-            _logger.LogError("플레이어 {DataPlayerId} PlayerInfo 로드 실패!", data.PlayerId);
+            _logger.LogError("?뚮젅?댁뼱 {DataPlayerId} PlayerInfo 濡쒕뱶 ?ㅽ뙣!", data.PlayerId);
             return;
         }
 
         playerInfo.LastMapId = mapId;
         playerInfo.LastMapSubId = matchingId;
         playerInfo.LastCell = spawnPosition;
+        playerInfo.ObjectInfo.MapId = mapId;
+        playerInfo.ObjectInfo.MapSubId = matchingId;
+        playerInfo.ObjectInfo.Cell = Cell.Clone(spawnPosition);
+        playerInfo.ObjectInfo.Position = CellToWorldPosition(spawnPosition);
+        playerInfo.ObjectInfo.Velocity = new Vector3f(0f, 0f, 0f);
+        playerInfo.ObjectInfo.MoveTimestamp = DateTime.UtcNow;
         await playerInfo.Save(_cacheHelper);
 
-        // 게임서버 정보
+        // 寃뚯엫?쒕쾭 ?뺣낫
         string gameServerIp = Environment.GetEnvironmentVariable("GAME_SERVER_IP") ?? "127.0.0.1";
         int gameServerPort =
             int.TryParse(Environment.GetEnvironmentVariable("GAME_SERVER_PORT"), out int port) ? port : 9001;
@@ -836,17 +1021,24 @@ public class MatchingManager : IMatchingManager
         using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
             matchingId, mapId, matchingId, spawnPosition,
             gameServerIp, gameServerPort, gameEndTimestamp,
-            targetPlayerId, targetJobTitle, myJobTitle, playerRoster
+            targetPlayerId, targetJobTitle, myJobTitle, playerRoster, BuildActiveBuffIds(persona)
         );
 
         session.Send(packet);
-        _logger.LogInformation("플레이어 {DataPlayerId} 매칭 성공 패킷 전송 (타겟: {TargetPlayerId}, 내 직책: {MyJob}, 타겟 직책: {TargetJob})",
+        _logger.LogInformation("?뚮젅?댁뼱 {DataPlayerId} 留ㅼ묶 ?깃났 ?⑦궥 ?꾩넚 (?寃? {TargetPlayerId}, ??吏곸콉: {MyJob}, ?寃?吏곸콉: {TargetJob})",
             data.PlayerId, targetPlayerId, myJobTitle, targetJobTitle);
     }
 
+    private static Vector3f CellToWorldPosition(Cell cell)
+    {
+        float wX = (cell.X - cell.Y) / 2f;
+        float wY = (cell.X + cell.Y) / 4f;
+        return new Vector3f(wX, wY, 0f);
+    }
+
     /// <summary>
-    ///     이탈 페널티 대기 시간 조회: 이탈 횟수 × 30초 (최대 300초).
-    ///     24시간 경과 시 이탈 횟수 1 감소 (시간 경과 감쇠).
+    ///     ?댄깉 ?섎꼸???湲??쒓컙 議고쉶: ?댄깉 ?잛닔 횞 30珥?(理쒕? 300珥?.
+    ///     24?쒓컙 寃쎄낵 ???댄깉 ?잛닔 1 媛먯냼 (?쒓컙 寃쎄낵 媛먯뇿).
     /// </summary>
     private async Task<long> GetLeavePenaltyDelayAsync(long playerId)
     {
@@ -860,7 +1052,7 @@ public class MatchingManager : IMatchingManager
             long leaveCount = BitConverter.ToInt64((byte[])value!);
             if (leaveCount <= 0) return 0;
 
-            // 24시간 경과 감쇠: decayAt 이후 24h가 지났으면 leaveCount 1 감소
+            // 24?쒓컙 寃쎄낵 媛먯뇿: decayAt ?댄썑 24h媛 吏?ъ쑝硫?leaveCount 1 媛먯냼
             leaveCount = await ApplyTimeDecayAsync(playerId, leaveCount);
             if (leaveCount <= 0) return 0;
 
@@ -874,8 +1066,8 @@ public class MatchingManager : IMatchingManager
     }
 
     /// <summary>
-    ///     24시간 경과마다 이탈 횟수 1 감소 (반복 적용).
-    ///     decayAt 기록이 없으면 첫 조회 시점으로 초기화.
+    ///     24?쒓컙 寃쎄낵留덈떎 ?댄깉 ?잛닔 1 媛먯냼 (諛섎났 ?곸슜).
+    ///     decayAt 湲곕줉???놁쑝硫?泥?議고쉶 ?쒖젏?쇰줈 珥덇린??
     /// </summary>
     private async Task<long> ApplyTimeDecayAsync(long playerId, long leaveCount)
     {
@@ -886,7 +1078,7 @@ public class MatchingManager : IMatchingManager
 
             if (decayAtValue.IsNullOrEmpty)
             {
-                // 최초 조회 시 기준 시각 설정 (현재 시각)
+                // 理쒖큹 議고쉶 ??湲곗? ?쒓컖 ?ㅼ젙 (?꾩옱 ?쒓컖)
                 await _cacheHelper.HashSetAsync(LeavePenaltyDecayAtKey, playerId, BitConverter.GetBytes(now));
                 return leaveCount;
             }
@@ -897,38 +1089,38 @@ public class MatchingManager : IMatchingManager
 
             if (elapsedSeconds < decayIntervalSeconds) return leaveCount;
 
-            // 경과된 24h 단위 횟수만큼 감소
+            // 寃쎄낵??24h ?⑥쐞 ?잛닔留뚰겮 媛먯냼
             long decayCount = elapsedSeconds / decayIntervalSeconds;
             leaveCount = Math.Max(0, leaveCount - decayCount);
 
-            // 다음 decayAt 갱신 (경과분 제외)
+            // ?ㅼ쓬 decayAt 媛깆떊 (寃쎄낵遺??쒖쇅)
             long newDecayAt = decayAt + decayCount * decayIntervalSeconds;
 
             if (leaveCount <= 0)
             {
-                // 페널티 완전 소멸 → 두 키 모두 삭제
+                // ?섎꼸???꾩쟾 ?뚮㈇ ??????紐⑤몢 ??젣
                 await _cacheHelper.HashDeleteAsync(LeavePenaltyKey, playerId);
                 await _cacheHelper.HashDeleteAsync(LeavePenaltyDecayAtKey, playerId);
-                _logger.LogInformation("이탈 페널티 감쇠 소멸: PlayerId={PlayerId}", playerId);
+                _logger.LogInformation("?댄깉 ?섎꼸??媛먯뇿 ?뚮㈇: PlayerId={PlayerId}", playerId);
             }
             else
             {
                 await _cacheHelper.HashSetAsync(LeavePenaltyKey, playerId, BitConverter.GetBytes(leaveCount));
                 await _cacheHelper.HashSetAsync(LeavePenaltyDecayAtKey, playerId, BitConverter.GetBytes(newDecayAt));
-                _logger.LogInformation("이탈 페널티 감쇠: PlayerId={PlayerId}, 남은횟수={Count}", playerId, leaveCount);
+                _logger.LogInformation("?댄깉 ?섎꼸??媛먯뇿: PlayerId={PlayerId}, ?⑥??잛닔={Count}", playerId, leaveCount);
             }
 
             return leaveCount;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "이탈 페널티 감쇠 처리 실패: PlayerId={PlayerId}", playerId);
+            _logger.LogError(ex, "?댄깉 ?섎꼸??媛먯뇿 泥섎━ ?ㅽ뙣: PlayerId={PlayerId}", playerId);
             return leaveCount;
         }
     }
 
     /// <summary>
-    ///     정상 게임 완료 시 이탈 횟수 1 감소. game_server에서 NATS로 호출.
+    ///     ?뺤긽 寃뚯엫 ?꾨즺 ???댄깉 ?잛닔 1 媛먯냼. game_server?먯꽌 NATS濡??몄텧.
     /// </summary>
     public async Task RecordGameCompletionAsync(long playerId)
     {
@@ -952,18 +1144,18 @@ public class MatchingManager : IMatchingManager
                 await _cacheHelper.HashSetAsync(LeavePenaltyKey, playerId, BitConverter.GetBytes(leaveCount));
             }
 
-            _logger.LogInformation("정상 완료 페널티 감소: PlayerId={PlayerId}, 남은횟수={Count}", playerId, leaveCount);
+            _logger.LogInformation("?뺤긽 ?꾨즺 ?섎꼸??媛먯냼: PlayerId={PlayerId}, ?⑥??잛닔={Count}", playerId, leaveCount);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "정상 완료 페널티 감소 실패: PlayerId={PlayerId}", playerId);
+            _logger.LogError(ex, "?뺤긽 ?꾨즺 ?섎꼸??媛먯냼 ?ㅽ뙣: PlayerId={PlayerId}", playerId);
         }
     }
 
     public void Dispose()
     {
         _matchingTimer.Dispose();
-        _logger.LogInformation("MatchingManager 종료");
+        _logger.LogInformation("MatchingManager 醫낅즺");
     }
 }
 
@@ -981,7 +1173,7 @@ public class MatchingQueueData
 }
 
 /// <summary>
-///     원형 체인의 한 링크: 플레이어 → 타겟 관계 + 직책
+///     ?먰삎 泥댁씤????留곹겕: ?뚮젅?댁뼱 ???寃?愿怨?+ 吏곸콉
 /// </summary>
 public class ManittoChainLink
 {
@@ -989,4 +1181,6 @@ public class ManittoChainLink
     public long TargetPlayerId { get; set; }
     public JobTitle MyJobTitle { get; set; }
     public JobTitle TargetJobTitle { get; set; }
+    public PersonaType Persona { get; set; } = PersonaType.None;
+    public AreaType StartArea { get; set; } = AreaType.None;
 }

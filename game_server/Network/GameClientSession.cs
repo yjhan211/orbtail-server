@@ -23,6 +23,7 @@ public partial class GameClientSession : SessionBase
     private const int MaxCorruption = 100;
     private const int InitialStamina = MaxStamina;
     private const int InitialCorruption = 0;
+    private static readonly TimeSpan ExploreMoveGracePeriod = TimeSpan.FromMilliseconds(750);
 
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
@@ -32,6 +33,7 @@ public partial class GameClientSession : SessionBase
     internal static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
     private static Proto0PresenceTracker? _presenceTracker;
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
+    private readonly List<int> _activeBuffIds = new();
     private readonly AreaRuleManager _areaRuleManager;
     private readonly CorridorRuleManager _corridorRuleManager;
 
@@ -53,6 +55,7 @@ public partial class GameClientSession : SessionBase
     private readonly InteractionChoiceService _interactionChoiceService;
     private readonly BotPlayerManager _botPlayerManager;
     private readonly GameEventLogManager _gameEventLogManager;
+    private readonly EncounterRevealManager _encounterRevealManager;
 
     // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
     private readonly HashSet<(int RuleId, long TargetPlayerId)> _sharedRules = new();
@@ -74,6 +77,7 @@ public partial class GameClientSession : SessionBase
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
     private DateTime _lastTargetEncounterRecoveryAt = DateTime.MinValue;
+    private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
 
     private Vector3f? _lastValidatedPosition;
     private Cell? _lastValidCell;
@@ -86,6 +90,20 @@ public partial class GameClientSession : SessionBase
     private long? _pendingBotRequesterPlayerId;
 
     private Timer? _periodicBuffTimer;
+
+    public IReadOnlyCollection<int> ActiveBuffIds => _activeBuffIds;
+
+    private void SetActiveBuffIds(IEnumerable<int>? activeBuffIds)
+    {
+        _activeBuffIds.Clear();
+        if (activeBuffIds == null) return;
+
+        foreach (int buffId in activeBuffIds)
+        {
+            if (buffId > 0 && !_activeBuffIds.Contains(buffId))
+                _activeBuffIds.Add(buffId);
+        }
+    }
 
     public GameClientSession(
         UserToken token,
@@ -109,7 +127,8 @@ public partial class GameClientSession : SessionBase
         TraceManager traceManager,
         InteractionChoiceService interactionChoiceService,
         BotPlayerManager botPlayerManager,
-        GameEventLogManager gameEventLogManager)
+        GameEventLogManager gameEventLogManager,
+        EncounterRevealManager encounterRevealManager)
         : base(token, logger, cacheHelper, redLock)
     {
         _onLeaveCallback = onLeaveCallback;
@@ -130,6 +149,7 @@ public partial class GameClientSession : SessionBase
         _interactionChoiceService = interactionChoiceService;
         _botPlayerManager = botPlayerManager;
         _gameEventLogManager = gameEventLogManager;
+        _encounterRevealManager = encounterRevealManager;
 
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
@@ -165,6 +185,9 @@ public partial class GameClientSession : SessionBase
     internal static (int RoundNumber, int TotalRounds, string Phase, int RemainingSeconds, int PhaseDurationSeconds,
         bool IsSessionEnded)? GetRoundSnapshot(long matchingId)
     {
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return null;
+
         if (!GameRoundStates.TryGetValue(matchingId, out var state))
             return null;
 
@@ -182,6 +205,9 @@ public partial class GameClientSession : SessionBase
 
     internal static bool IsRoundActionPhase(long matchingId)
     {
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return true;
+
         if (!GameRoundStates.TryGetValue(matchingId, out var state))
             return true;
 
@@ -193,6 +219,9 @@ public partial class GameClientSession : SessionBase
 
     internal static bool TryStartHeadlessActionRound(long matchingId)
     {
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return false;
+
         var state = new RoundRuntimeState
         {
             RoundNumber = 1,
@@ -209,6 +238,9 @@ public partial class GameClientSession : SessionBase
     private bool IsRoundActionLocked(out RoundPhase phase)
     {
         phase = RoundPhase.Action;
+        if (!Config.ROUND_SYSTEM_ENABLED)
+            return false;
+
         if (CurrentMapSubId <= 0 || !GameRoundStates.TryGetValue(CurrentMapSubId, out var state))
             return false;
 
@@ -331,6 +363,9 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_RNG_COLLECT_FINISH>(bytes, HandleRngCollectFinish));
 
         // 상호작용 선택지 프로토콜
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ROOM_ENCOUNTER_AVOID,
+            async bytes => await HandleMessage<C_TO_G_ROOM_ENCOUNTER_AVOID>(bytes, HandleRoomEncounterAvoid));
+
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ASK,
             async bytes => await HandleMessage<C_TO_G_INTERACTION_ASK>(bytes, HandleInteractionAsk));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ANSWER,

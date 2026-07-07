@@ -77,7 +77,9 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        int roundNumber = GameRoundStates.TryGetValue(CurrentMapSubId, out var roundState)
+        int roundNumber = !Config.ROUND_SYSTEM_ENABLED
+            ? 1
+            : GameRoundStates.TryGetValue(CurrentMapSubId, out var roundState)
             ? roundState.RoundNumber
             : 0;
         var contribution = _checklistManager.GetPlayerContributions(CurrentMapSubId, new[] { PlayerId.Value })
@@ -235,6 +237,8 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        CancelPendingRoomEncounterTurnsForCurrentPlayer("ChecklistActivityStart");
+
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {
@@ -312,6 +316,7 @@ public partial class GameClientSession
 
         SendChecklistActivityResult(msg.InteractId, errorCode, awardedScore, awardedContribution);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        ResolvePendingRoomDiscoveriesAfterExploreFinished(info != null ? (AreaType)info.ZoneId : CurrentArea);
         return Task.CompletedTask;
     }
 
@@ -1044,6 +1049,8 @@ public partial class GameClientSession
         };
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);
+        Logger.LogDebug("Target location sent: MatchingId={MatchingId}, PlayerId={PlayerId}, Target={TargetPlayerId}, Area={Area}",
+            CurrentMapSubId, PlayerId, TargetPlayerId, targetArea);
     }
 
     /// <summary>
@@ -1966,6 +1973,9 @@ public partial class GameClientSession
     {
         if (!askerSession.PlayerId.HasValue || !answererSession.PlayerId.HasValue) return;
 
+        if (TrySendRoomEncounterActionChoices(askerSession, answererSession))
+            return;
+
         // 질문 선택지 생성
         var questionSet = _interactionChoiceService.GenerateQuestionSet(
             CurrentMapSubId,
@@ -2007,6 +2017,13 @@ public partial class GameClientSession
 
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
         var area = bot?.CurrentArea ?? CurrentArea;
+        var roomEncounterLogIds = GetRecentRoomEncounterLogIds(PlayerId.Value, botPlayerId, area);
+        if (roomEncounterLogIds.Count > 0)
+        {
+            SendEncounterActionChoices(this, botPlayerId, area, roomEncounterLogIds);
+            return;
+        }
+
         var questionSet = _interactionChoiceService.GenerateQuestionSet(
             CurrentMapSubId,
             PlayerId.Value,
@@ -2026,6 +2043,92 @@ public partial class GameClientSession
         };
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);
+    }
+
+    private bool TrySendRoomEncounterActionChoices(GameClientSession askerSession, GameClientSession answererSession)
+    {
+        if (!askerSession.PlayerId.HasValue || !answererSession.PlayerId.HasValue)
+            return false;
+
+        var roomEncounterLogIds = GetRecentRoomEncounterLogIds(
+            askerSession.PlayerId.Value,
+            answererSession.PlayerId.Value,
+            askerSession.CurrentArea);
+        if (roomEncounterLogIds.Count == 0)
+            return false;
+
+        SendEncounterActionChoices(
+            askerSession,
+            answererSession.PlayerId.Value,
+            askerSession.CurrentArea,
+            roomEncounterLogIds);
+        SendEncounterActionChoices(
+            answererSession,
+            askerSession.PlayerId.Value,
+            askerSession.CurrentArea,
+            roomEncounterLogIds);
+
+        Logger.LogInformation(
+            "Room encounter action choices sent: PlayerA={PlayerA}, PlayerB={PlayerB}, Area={Area}, LinkedLogs={Logs}",
+            askerSession.PlayerId.Value,
+            answererSession.PlayerId.Value,
+            askerSession.CurrentArea,
+            string.Join(",", roomEncounterLogIds));
+
+        return true;
+    }
+
+    private List<long> GetRecentRoomEncounterLogIds(long playerA, long playerB, AreaType area)
+    {
+        if (playerA == 0 || playerB == 0 || playerA == playerB || area == AreaType.None)
+            return new List<long>();
+
+        string areaName = area.ToString();
+        long cutoffUnixMs = DateTimeOffset.UtcNow.AddSeconds(-15).ToUnixTimeMilliseconds();
+
+        return _gameEventLogManager.GetRecent(CurrentMapSubId, 100)
+            .Where(entry => entry.TimestampUnixMs >= cutoffUnixMs)
+            .Where(entry => entry.Type == "ROOM_ENCOUNTER_REVEAL")
+            .Where(entry => string.Equals(entry.Area, areaName, StringComparison.Ordinal))
+            .Where(entry =>
+                (entry.ActorPlayerId == playerA && entry.EncounteredPlayerIds?.Contains(playerB) == true)
+                || (entry.ActorPlayerId == playerB && entry.EncounteredPlayerIds?.Contains(playerA) == true))
+            .Select(entry => entry.Seq)
+            .Distinct()
+            .ToList();
+    }
+
+    private void SendEncounterActionChoices(
+        GameClientSession session,
+        long partnerPlayerId,
+        AreaType area,
+        IReadOnlyCollection<long> linkedLogIds)
+    {
+        if (!session.PlayerId.HasValue)
+            return;
+
+        var inventoryItems = _inGameInventoryManager.GetAllItems(CurrentMapSubId, session.PlayerId.Value);
+        var answerSet = _interactionChoiceService.GenerateEncounterActionAnswerSet(
+            area,
+            inventoryItems,
+            linkedLogIds);
+
+        session._lastAskedQuestion = InteractionQuestionType.ENCOUNTER_ACTION;
+        session._pendingQuestions = null;
+        session._pendingQuestionContexts = null;
+        session._pendingAnswers = answerSet.Answers;
+        session._pendingAnswerContexts = answerSet.Contexts;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTION_ANSWER_CHOICES, session.PlayerId.Value);
+        var msg = new G_TO_C_INTERACTION_ANSWER_CHOICES
+        {
+            QuestionType = InteractionQuestionType.ENCOUNTER_ACTION,
+            QuestionTextId = InteractionChoiceService.EncounterActionQuestionTextId,
+            QuestionArgs = new List<TextArg>(),
+            Answers = answerSet.Answers
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(msg));
+        session.Send(packet);
     }
 
     public bool TryStartTargetBotInterrogation(BotPlayerState bot)
@@ -2222,6 +2325,8 @@ public partial class GameClientSession
     {
         if (answerContext == null) return;
         if (!string.Equals(answerContext.QuestionId, InteractionChoiceService.NearbyReasonQuestionId,
+                StringComparison.Ordinal)
+            && !string.Equals(answerContext.QuestionId, InteractionChoiceService.EncounterActionQuestionId,
                 StringComparison.Ordinal))
             return;
 
@@ -2388,6 +2493,27 @@ public partial class GameClientSession
 
             LogStatementIfNeeded(PlayerId.Value, askerPlayerId, selectedAnswerContext, isBot: false);
 
+            if (string.Equals(selectedAnswerContext?.QuestionId, InteractionChoiceService.EncounterActionQuestionId,
+                    StringComparison.Ordinal))
+            {
+                var result = new G_TO_C_INTERACTION_RESULT
+                {
+                    PartnerPlayerId = askerPlayerId,
+                    QuestionType = _lastAskedQuestion,
+                    ClaimedJob = selectedAnswer.ClaimedJob,
+                    ClaimedArea = CurrentArea,
+                    IsFakeDetected = false,
+                    ConflictTextId = 0,
+                    ConflictArgs = new List<TextArg>(),
+                    AnswerTextId = selectedAnswer.TextId,
+                    AnswerArgs = selectedAnswer.Args
+                };
+
+                using var resultPacket = Packet.Create((int)Protocol.G_TO_C_INTERACTION_RESULT, PlayerId.Value);
+                resultPacket.SetBody(MessagePackSerializer.Serialize(result));
+                Send(resultPacket);
+            }
+
             _pendingAnswers = null;
             _pendingAnswerContexts = null;
             _pendingQuestionContexts = null;
@@ -2453,6 +2579,13 @@ public partial class GameClientSession
 
         // 선택지 상태 클리어
         _pendingAnswers = null;
+        if (string.Equals(selectedAnswerContext?.QuestionId, InteractionChoiceService.EncounterActionQuestionId,
+                StringComparison.Ordinal))
+        {
+            askerSession._pendingAnswers = null;
+            askerSession._pendingAnswerContexts = null;
+        }
+
         _pendingAnswerContexts = null;
         askerSession._pendingQuestions = null;
         askerSession._pendingQuestionContexts = null;

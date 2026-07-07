@@ -1,3 +1,4 @@
+using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -9,13 +10,137 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int CatPillowItemId = 401000003;
+    private const int ChalkPowderItemId = 201000015;
     private const int CatPillowRestDurationSeconds = 15;
 
     private Task HandleAttack(C_TO_G_ATTACK msg)
     {
-        // 미구현 — 클라이언트에 에러 응답
-        SendErrorResponse(ErrorCode.NOT_IMPLEMENTED, "공격 기능 미구현");
+        if (!PlayerId.HasValue || msg == null)
+            return Task.CompletedTask;
+
+        if (IsRoundActionLocked(out _))
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            SendRoomEncounterItemUseResult(false, ErrorCode.INVALID_GAME_STATE, ChalkPowderItemId, 0);
+            return Task.CompletedTask;
+        }
+
+        if (!long.TryParse(msg.TargetId, out long targetPlayerId) ||
+            targetPlayerId == 0 ||
+            targetPlayerId == PlayerId.Value)
+        {
+            SendErrorResponse(ErrorCode.INVALID_REQUEST, "Invalid attack target");
+            SendRoomEncounterItemUseResult(false, ErrorCode.INVALID_REQUEST, ChalkPowderItemId, 0);
+            return Task.CompletedTask;
+        }
+
+        var area = CurrentArea;
+        if (area == AreaType.None)
+        {
+            SendErrorResponse(ErrorCode.INVALID_AREA, "Invalid encounter area");
+            SendRoomEncounterItemUseResult(false, ErrorCode.INVALID_AREA, ChalkPowderItemId, targetPlayerId);
+            return Task.CompletedTask;
+        }
+
+        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+        if (inventory.GetItemCount(ChalkPowderItemId) <= 0)
+        {
+            SendErrorResponse(ErrorCode.INSUFFICIENT_ITEM, "Chalk powder is required");
+            SendRoomEncounterItemUseResult(false, ErrorCode.INSUFFICIENT_ITEM, ChalkPowderItemId, targetPlayerId);
+            Logger.LogWarning(
+                "Player {PlayerId} failed room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}",
+                PlayerId,
+                targetPlayerId,
+                CurrentMapSubId,
+                area,
+                ErrorCode.INSUFFICIENT_ITEM);
+            return Task.CompletedTask;
+        }
+
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var targetSession = allSessions.FirstOrDefault(session =>
+            session.PlayerId == targetPlayerId &&
+            !session.IsEliminated &&
+            session.CurrentMapSubId == CurrentMapSubId &&
+            session.CurrentArea == area);
+        var targetBot = targetSession == null
+            ? _botPlayerManager.GetBot(CurrentMapSubId, targetPlayerId)
+            : null;
+
+        if (targetSession == null &&
+            (targetBot is not { IsEliminated: false } || targetBot.CurrentArea != area))
+        {
+            SendErrorResponse(ErrorCode.AREA_MISMATCH, "Room encounter target is not in the same area");
+            SendRoomEncounterItemUseResult(false, ErrorCode.AREA_MISMATCH, ChalkPowderItemId, targetPlayerId);
+            Logger.LogWarning(
+                "Player {PlayerId} failed room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}",
+                PlayerId,
+                targetPlayerId,
+                CurrentMapSubId,
+                area,
+                ErrorCode.AREA_MISMATCH);
+            return Task.CompletedTask;
+        }
+
+        if (!_inGameInventoryManager.TryRemoveOneByItemId(CurrentMapSubId, PlayerId.Value,
+                ChalkPowderItemId, out var updatedItem))
+        {
+            SendErrorResponse(ErrorCode.INSUFFICIENT_ITEM, "Chalk powder is required");
+            SendRoomEncounterItemUseResult(false, ErrorCode.INSUFFICIENT_ITEM, ChalkPowderItemId, targetPlayerId);
+            Logger.LogWarning(
+                "Player {PlayerId} failed room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}",
+                PlayerId,
+                targetPlayerId,
+                CurrentMapSubId,
+                area,
+                ErrorCode.INSUFFICIENT_ITEM);
+            return Task.CompletedTask;
+        }
+
+        if (updatedItem != null)
+            SendInGameInventoryUpdate(updatedItem);
+
+        if (targetSession != null)
+        {
+            targetSession.ApplyItemBuffs(ChalkPowderItemId);
+            targetSession.SendEncounterEvent(PlayerId.Value, area, EncounterRevealManager.RoomEncounterChalkHitEventType,
+                EncounterRevealManager.PairCooldownSeconds);
+        }
+        else
+        {
+            ApplyItemBuffsToRoomEncounterBot(targetBot, ChalkPowderItemId);
+        }
+
+        SendRoomEncounterItemUseResult(true, ErrorCode.SUCCESS, ChalkPowderItemId, targetPlayerId);
+
+        SuppressRoomEncounterBriefly();
+
+        Logger.LogInformation(
+            "Player {PlayerId} used room encounter item immediately: Target={Target}, Matching={MatchingId}, Area={Area}, ItemId={ItemId}",
+            PlayerId,
+            targetPlayerId,
+            CurrentMapSubId,
+            area,
+            ChalkPowderItemId);
+
         return Task.CompletedTask;
+    }
+
+    private void SendRoomEncounterItemUseResult(bool success, ErrorCode errorCode, int itemId, long targetPlayerId)
+    {
+        using var resultPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(
+            success, errorCode, itemId, targetPlayerId);
+        Send(resultPacket);
+    }
+
+    internal void ApplyRoomEncounterChalkHitFrom(long sourcePlayerId, AreaType area, int itemId)
+    {
+        if (!PlayerId.HasValue || IsEliminated)
+            return;
+
+        ApplyItemBuffs(itemId);
+        SendEncounterEvent(sourcePlayerId, area, EncounterRevealManager.RoomEncounterChalkHitEventType,
+            EncounterRevealManager.PairCooldownSeconds);
     }
 
     private Task HandleInteract(C_TO_G_INTERACT msg)
@@ -60,6 +185,13 @@ public partial class GameClientSession
 
         // 서버 측 상태 저장
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+        CurrentState = msg.State == global::network.common.PlayerState.EXPLORE_1
+            ? PlayerState.Exploring
+            : PlayerState.Idle;
+        _exploreMoveGraceUntil = CurrentState == PlayerState.Exploring
+            ? DateTime.UtcNow + ExploreMoveGracePeriod
+            : DateTime.MinValue;
+
         var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
         if (playerInfo != null)
         {
@@ -287,6 +419,15 @@ public partial class GameClientSession
 
         int itemId = itemInfo.ItemId;
         var itemData = GameItemData.Get(itemId);
+        if (itemId == ChalkPowderItemId)
+        {
+            using var failPacket =
+                PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.ITEM_NOT_USABLE);
+            Send(failPacket);
+            Logger.LogWarning("Player {PlayerId} tried to use attack-only item outside encounter: ItemUid={ItemUid}, ItemId={ItemId}",
+                PlayerId, msg.ItemUid, itemId);
+            return;
+        }
 
         // Reusable 아이템은 소모하지 않음
         if (itemData.Reusable)
@@ -384,11 +525,17 @@ public partial class GameClientSession
             switch (buffData.SubType)
             {
                 case BuffSubType.CONDITION_ADD:
-                    staminaDelta += value;
+                    staminaDelta += PassiveBuffUtility.ApplyIncrease(
+                        value,
+                        ActiveBuffIds,
+                        BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
                     break;
 
                 case BuffSubType.CORRUPTION_DOWN:
-                    corruptionDelta -= value;
+                    corruptionDelta -= PassiveBuffUtility.ApplyIncrease(
+                        value,
+                        ActiveBuffIds,
+                        BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
                     break;
 
                 case BuffSubType.CORRUPTION_ADD:
@@ -495,6 +642,7 @@ public partial class GameClientSession
         Stamina = InitialStamina;
         Corruption = InitialCorruption;
         CurrentState = PlayerState.Idle;
+        _exploreMoveGraceUntil = DateTime.MinValue;
         CurrentExploringInteractId = null;
         Logger.LogInformation("Player {PlayerId} in-game stats reset: Stamina={Stamina}, Corruption={Corruption}",
             PlayerId, Stamina, Corruption);

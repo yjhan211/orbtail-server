@@ -6,8 +6,6 @@ id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,
 701000005,13,10,interactable/701000005/name,interactable/701000005/desc,7,34,30
 701000006,42,8,interactable/701000006/name,interactable/701000006/desc,7,182,101
 701000007,42,8,interactable/701000007/name,interactable/701000007/desc,7,176,101
-701000010,12,6,interactable/701000010/name,interactable/701000010/desc,7,97,0
-701000011,12,7,interactable/701000011/name,interactable/701000011/desc,7,100,-1
 701000022,10,9,interactable/701000022/name,interactable/701000022/desc,7,93,-28
 701000023,12,4,interactable/701000023/name,interactable/701000023/desc,7,92,11
 701000024,12,4,interactable/701000024/name,interactable/701000024/desc,7,102,11
@@ -36,7 +34,6 @@ id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,
 701000069,30,10,interactable/701000069/name,interactable/701000069/desc,7,173,26
 701000070,32,6,interactable/701000070/name,interactable/701000070/desc,7,160,5
 701000071,12,3,interactable/701000071/name,interactable/701000071/desc,7,94,9
-701000072,30,12,interactable/701000072/name,interactable/701000072/desc,7,166,38
 701000073,22,5,interactable/701000073/name,interactable/701000073/desc,7,117,65
 701000074,40,7,interactable/701000074/name,interactable/701000074/desc,7,152,99
 701000075,13,5,interactable/701000075/name,interactable/701000075/desc,7,51,45
@@ -45,7 +42,6 @@ id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,
 701000078,20,1,interactable/701000078/name,interactable/701000078/desc,7,85,76
 701000079,10,12,interactable/701000079/name,interactable/701000079/desc,7,99,-23
 701000080,22,1,interactable/701000080/name,interactable/701000080/desc,7,117,61
-701000081,13,6,interactable/701000081/name,interactable/701000081/desc,7,51,33
 701000082,10,6,interactable/701000082/name,interactable/701000082/desc,7,100,-36
 701000083,32,4,interactable/701000083/name,interactable/701000083/desc,7,171,11
 701000084,14,10,interactable/701000084/name,interactable/701000084/desc,7,10,38

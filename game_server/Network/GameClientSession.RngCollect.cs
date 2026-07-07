@@ -21,6 +21,8 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     private const int RngCollectGiftResultType = 5;
+    private const int RngCollectEncounterResultType = 6;
+    private const int RngCollectItemResultType = 2;
     private const int RngCollectStaminaCost = 5;
 
     /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
@@ -41,9 +43,12 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        CancelPendingRoomEncounterTurnsForCurrentPlayer("RngCollectStart");
+
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {
+            ClearRoomEncounterStartCandidates(msg.InteractId);
             Logger.LogWarning("RNG START InteractId 미존재: {InteractId}", msg.InteractId);
             SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
             return Task.CompletedTask;
@@ -67,14 +72,13 @@ public partial class GameClientSession
         if (currentState == (int)InteractableStateType.SABOTAGE)
             _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, 0);
 
+        SnapshotRoomEncounterStartCandidates(msg.InteractId, info);
         _pendingFinish.Add(msg.InteractId);
 
-        Logger.LogInformation("RNG 채집 START: PlayerId={PlayerId}, InteractId={InteractId}",
+        Logger.LogInformation("RNG collect START: PlayerId={PlayerId}, InteractId={InteractId}",
             PlayerId, msg.InteractId);
 
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
-        // EXPLORE_1 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
-        BroadcastPlayerState(global::network.common.PlayerState.EXPLORE_1);
         return Task.CompletedTask;
     }
 
@@ -83,9 +87,46 @@ public partial class GameClientSession
         if (!PlayerId.HasValue) return Task.CompletedTask;
         if (IsEliminated) return Task.CompletedTask;
 
+        if (msg.EncounterCheckOnly)
+        {
+            if (!_pendingFinish.Contains(msg.InteractId))
+            {
+                ClearRoomEncounterStartCandidates(msg.InteractId);
+                Logger.LogWarning(
+                    "RNG encounter check without START or duplicated: PlayerId={PlayerId}, InteractId={InteractId}",
+                    PlayerId, msg.InteractId);
+                SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+                return Task.CompletedTask;
+            }
+
+            var checkInfo = GameInteractableData.Get(msg.InteractId);
+            if (checkInfo == null)
+            {
+                _pendingFinish.Remove(msg.InteractId);
+                ClearRoomEncounterStartCandidates(msg.InteractId);
+                Logger.LogWarning("RNG encounter check InteractId missing: {InteractId}", msg.InteractId);
+                SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
+                return Task.CompletedTask;
+            }
+
+            if (TryHandleRoomEncounterFromExploreSpot(msg.InteractId, checkInfo))
+            {
+                _pendingFinish.Remove(msg.InteractId);
+                Logger.LogInformation(
+                    "RNG arrival room encounter resolved at explore spot: PlayerId={PlayerId}, InteractId={InteractId}",
+                    PlayerId, msg.InteractId);
+                return Task.CompletedTask;
+            }
+
+            SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
+            return Task.CompletedTask;
+        }
+
         if (!_pendingFinish.Remove(msg.InteractId))
         {
-            Logger.LogWarning("RNG FINISH — START 미수신 또는 중복: PlayerId={PlayerId}, InteractId={InteractId}",
+            ClearRoomEncounterStartCandidates(msg.InteractId);
+            Logger.LogWarning(
+                "RNG FINISH without START or duplicated: PlayerId={PlayerId}, InteractId={InteractId}",
                 PlayerId, msg.InteractId);
             return Task.CompletedTask;
         }
@@ -93,9 +134,12 @@ public partial class GameClientSession
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {
-            Logger.LogWarning("RNG FINISH InteractId 미존재: {InteractId}", msg.InteractId);
+            ClearRoomEncounterStartCandidates(msg.InteractId);
+            Logger.LogWarning("RNG FINISH InteractId missing: {InteractId}", msg.InteractId);
             return Task.CompletedTask;
         }
+
+        ClearRoomEncounterStartCandidates(msg.InteractId);
 
         if (TryHandleGiftDiscoveryBeforeCollect(msg.InteractId, out var otherGiftDiscovery))
             return Task.CompletedTask;
@@ -108,7 +152,10 @@ public partial class GameClientSession
             missionManager: _missionManager,
             inventoryManager: _inGameInventoryManager,
             itemPoolManager: _itemPoolManager,
-            isBot: false);
+            isBot: false,
+            bonusItemChancePercent: PassiveBuffUtility.GetValuePercent(
+                ActiveBuffIds,
+                BuffSubType.ITEM_GAIN_CHANCE_ADD));
 
         // 부품 회수 시 패킷 송신
         if (outcome is { ResultType: 3, CollectedPart: not null })
@@ -179,18 +226,26 @@ public partial class GameClientSession
                 GetMissionCollectTraceDescription(extraCollectResult.CompletedMissionNodeIds), true);
         }
 
+        int clientResultType = outcome.ResultType;
+        int clientItemId = outcome.ItemId;
+        if (IsEmptyRngCollectResult(clientResultType) && outcome.BonusItemId > 0)
+        {
+            clientResultType = RngCollectItemResultType;
+            clientItemId = outcome.BonusItemId;
+        }
+
+        Logger.LogInformation(
+            "RNG 채집 FINISH: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, ClientResultType={ClientType}, ItemId={ItemId}, ClientItemId={ClientItemId}, BonusItemId={BonusItemId}",
+            PlayerId, msg.InteractId, outcome.ResultType, clientResultType, outcome.ItemId, clientItemId, outcome.BonusItemId);
+
+        SendRngCollectResult(msg.InteractId, clientResultType, clientItemId,
+            outcome.StaminaReward, outcome.CooldownSeconds);
+
         if (outcome.AddedInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedInventoryItem);
         foreach (var extraInventoryItem in outcome.AddedExtraInventoryItems)
             SendInGameInventoryUpdate(extraInventoryItem);
         if (outcome.AddedBonusInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedBonusInventoryItem);
         TryCompleteInteractObjectChecklist(info);
-
-        Logger.LogInformation(
-            "RNG 채집 FINISH: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, ItemId={ItemId}, BonusItemId={BonusItemId}",
-            PlayerId, msg.InteractId, outcome.ResultType, outcome.ItemId, outcome.BonusItemId);
-
-        SendRngCollectResult(msg.InteractId, outcome.ResultType, outcome.ItemId,
-            outcome.StaminaReward, outcome.CooldownSeconds);
 
         if (otherGiftDiscovery != null)
             SendGiftDiscovered(otherGiftDiscovery, 0);
@@ -201,6 +256,7 @@ public partial class GameClientSession
         BroadcastRngCollectCooldown(msg.InteractId, outcome.CooldownSeconds);
         // IDLE 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        ResolvePendingRoomDiscoveriesAfterExploreFinished((AreaType)info.ZoneId);
         return Task.CompletedTask;
     }
 
@@ -268,16 +324,16 @@ public partial class GameClientSession
 
         var receivedGift = _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, result.ItemId, 1,
             GiftState.Received);
-        SendInGameInventoryUpdate(receivedGift);
 
         ModifyStats(corruptionDelta: GiftFoundCorruptionDelta);
+        SendRngCollectResult(interactId, RngCollectGiftResultType, result.ItemId, 0, 0);
+        SendInGameInventoryUpdate(receivedGift);
         SendGiftDiscovered(result, GiftFoundCorruptionDelta);
         SendGiftProgressToOwner(result);
-
-        SendRngCollectResult(interactId, RngCollectGiftResultType, result.ItemId, 0, 0);
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
         BroadcastRngCollectCooldown(interactId, 0);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        ResolvePendingRoomDiscoveriesAfterExploreFinished(CurrentArea);
 
         CheckResourceElimination();
         return true;
@@ -289,6 +345,13 @@ public partial class GameClientSession
     private void BroadcastPlayerState(global::network.common.PlayerState state)
     {
         if (!PlayerId.HasValue) return;
+        CurrentState = state == global::network.common.PlayerState.EXPLORE_1
+            ? PlayerState.Exploring
+            : PlayerState.Idle;
+        _exploreMoveGraceUntil = CurrentState == PlayerState.Exploring
+            ? DateTime.UtcNow + ExploreMoveGracePeriod
+            : DateTime.MinValue;
+
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
@@ -375,5 +438,10 @@ public partial class GameClientSession
         using var packet = Packet.Create((int)Protocol.G_TO_C_RNG_COLLECT_RESULT, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);
+    }
+
+    private static bool IsEmptyRngCollectResult(int resultType)
+    {
+        return resultType == 0 || resultType == 1;
     }
 }
