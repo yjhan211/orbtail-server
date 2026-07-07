@@ -1,4 +1,4 @@
-﻿using MessagePack;
+using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -244,8 +244,8 @@ public class MatchingManager : IMatchingManager
                     allGroupEntries.Add(MessagePackSerializer.Serialize(botData));
                 }
 
-        _logger.LogInformation("Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}",
-                    matchingId, groupEntries.Length, botsNeeded);
+                _logger.LogInformation("Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}",
+                            matchingId, groupEntries.Length, botsNeeded);
 
                 // ?먰삎 泥댁씤 ?앹꽦: ?뷀뵆 ??A?묪?묬?묭?묮?묨 (?붿궡??= 留덈땲??愿怨?
                 var chain = await BuildManittoChain(allGroupEntries.ToArray());
@@ -272,7 +272,7 @@ public class MatchingManager : IMatchingManager
                 }
                 await SavePlayerBuffAssignmentsAsync(matchingId, chain);
 
-if (botInfoList.Count > 0)
+                if (botInfoList.Count > 0)
                 {
                     byte[] serialized = MessagePackSerializer.Serialize(botInfoList);
                     await _cacheHelper.HashSetAsync(BotInfoKeyPrefix, matchingId, serialized);
@@ -362,12 +362,12 @@ if (botInfoList.Count > 0)
                 TargetJobTitle = link.TargetJobTitle,
                 Persona = link.Persona,
                 StartArea = link.StartArea,
-                        ActiveBuffIds = BuildActiveBuffIds(link.Persona)
-                    });
+                ActiveBuffIds = BuildActiveBuffIds(link.Persona)
+            });
         }
-                await SavePlayerBuffAssignmentsAsync(matchingId, chain);
+        await SavePlayerBuffAssignmentsAsync(matchingId, chain);
 
-if (botInfoList.Count > 0)
+        if (botInfoList.Count > 0)
         {
             byte[] serialized = MessagePackSerializer.Serialize(botInfoList);
             await _cacheHelper.HashSetAsync(BotInfoKeyPrefix, matchingId, serialized);

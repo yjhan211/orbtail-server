@@ -13,8 +13,12 @@ pool/4213/title,보건실 배낭 확인,Check Infirmary Backpack,保健室のカ
 pool/4213/success,배낭 안에서 작은 호명 소리가 새어 나옵니다.,A small roll-call sound leaks from inside the backpack.,カバンの中から小さな呼名音が漏れています。
 pool/4221/title,보건실 책상 확인,Check Infirmary Desk,保健室の机を確認
 pool/4221/success,보건실 책상에 같은 붉은 표시가 남아 있습니다.,The same red mark remains on an infirmary desk.,保健室の机に同じ赤い印が残っています。
+pool/4222/title,학생 명단 확인,Check Student Roster,生徒名簿を確認
+pool/4222/success,학생 명단의 이름 옆에도 같은 표시가 있습니다.,The same mark appears beside a name in the student roster.,生徒名簿の名前の横にも同じ印があります。
 pool/4223/title,2-1 청소 도구함 확인,Check Class 2-1 Cleaning Cabinet,2-1の掃除用具入れを確認
 pool/4223/success,청소 도구함 안쪽에 닦아도 남은 검은 자국이 있습니다.,"Inside the cleaning cabinet, a black stain remains despite being wiped.",掃除用具入れの内側に、拭いても残る黒い跡があります。
+pool/4231/title,사무용 책상 서랍 확인,Check Office Desk Drawer,事務机の引き出しを確認
+pool/4231/success,서랍 안에 돌려받지 못한 물건이 있습니다.,Inside the drawer is an item that was never returned.,引き出しの中に返されなかった物があります。
 pool/4232/title,창고 공 바구니 확인,Check Storage Ball Basket,倉庫のボールかごを確認
 pool/4232/success,공 바구니 바닥에 작은 물건이 숨어 있습니다.,A small object is hidden at the bottom of the ball basket.,ボールかごの底に小さな物が隠れています。
 pool/4233/title,행정실 복합기 확인,Check Admin Office Copier,事務室の複合機を確認
@@ -27,6 +31,8 @@ pool/4243/title,강당 공 바구니 확인,Check Gym Ball Basket,講堂のボ�
 pool/4243/success,공 바구니 안쪽에 이름표들이 모여 있습니다.,Nametags are gathered inside the ball basket.,ボールかごの内側に名札が集まっています。
 pool/4301/title,책상 서랍 확인,Check Desk Drawer,机の引き出しを確認
 pool/4301/success,책상 서랍에서 접힌 메모를 꺼냅니다.,You take a folded memo from the desk drawer.,机の引き出しから折りたたまれたメモを取り出します。
+pool/4302/title,학생 명단 대조,Cross-check Student Roster,生徒名簿と照合
+pool/4302/success,학생 명단 사이에 같은 문장이 끼어 있습니다.,The same sentence is tucked between the roster pages.,生徒名簿の間に同じ文が挟まっています。
 pool/4303/title,고사실 창문 확인,Check Exam Room Window,試験室の窓を確認
 pool/4303/success,창문 틈에 찢긴 종이가 붙어 있습니다.,A torn piece of paper is stuck in the window gap.,窓の隙間に破れた紙が貼り付いています。
 pool/4311/title,방송실 기록 장치 재생,Play Broadcast Room Recorder,放送室の記録装置を再生
@@ -41,6 +47,8 @@ pool/4322/title,청소 도구함 확인,Check Cleaning Cabinet,掃除用具入�
 pool/4322/success,청소 도구함 안쪽에 같은 방향으로 번진 검은 줄이 남아 있습니다.,A black line smeared in the same direction remains inside the cleaning cabinet.,掃除用具入れの内側に、同じ方向へにじんだ黒い線が残っています。
 pool/4323/title,행정실 복합기 출력물 확인,Check Admin Office Copier Printout,事務室の複合機出力物を確認
 pool/4323/success,복합기 출력물에도 같은 붉은 표시가 찍혀 있습니다.,The same red mark is printed on the copier output.,複合機の出力物にも同じ赤い印が印刷されています。
+pool/4331/title,사무용 책상 서랍 재확인,Recheck Office Desk Drawer,事務机の引き出しを再確認
+pool/4331/success,서랍 안쪽 라벨이 한 번 뜯겨 있습니다.,A label inside the drawer has been torn off once.,引き出しの内側のラベルが一度はがされています。
 pool/4332/title,창고 캐비넷 확인,Check Storage Cabinet,倉庫のキャビネットを確認
 pool/4332/success,철제 캐비넷 안에 작은 봉투가 붙어 있습니다.,A small envelope is stuck inside the metal cabinet.,金属キャビネットの中に小さな封筒が貼り付いています。
 pool/4333/title,공 바구니 바닥 확인,Check Bottom of Ball Basket,ボールかごの底を確認
@@ -63,6 +71,8 @@ pool/4362/title,보건실 책상 위 먼지 확인,Check Dust on Infirmary Desk,
 pool/4362/success,책상 위 먼지가 손바닥 모양으로 비어 있습니다.,The dust on the desk is missing in the shape of a palm.,机の上のほこりが手のひらの形に抜けています。
 pool/4363/title,행정실 창가 확인,Check Admin Office Window,事務室の窓際を確認
 pool/4363/success,창가 복합기 위에 같은 먼지 자국이 남아 있습니다.,The same dust mark remains on the copier by the window.,窓際の複合機の上に同じほこり跡が残っています。
+pool/4401/title,같은 이름 대조,Compare the Same Name,同じ名前を照合
+pool/4401/success,서로 다른 기록에서 같은 이름이 빠져 있습니다.,The same name is missing from different records.,異なる記録から同じ名前が抜けています。
 pool/4402/title,사라진 시간 대조,Compare the Missing Time,消えた時間を照合
 pool/4402/success,기록 장치의 시간이 한 칸 비어 있습니다.,One block of time is blank in the recorder.,記録装置の時間が一枠空白になっています。
 pool/4403/title,돌아오지 않은 물건 대조,Compare the Unreturned Item,戻らなかった物を照合

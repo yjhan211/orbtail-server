@@ -40,7 +40,7 @@ namespace network.common.data.models
         [Key("gameServerPort")] public int GameServerPort { get; set; }
         [Key("gameEndTimestamp")] public long GameEndTimestamp { get; set; }
 
-        // 마니??체인 ?�보
+        // 마니또 체인 정보
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
         [Key("targetJobTitle")] public JobTitle TargetJobTitle { get; set; }
         [Key("myJobTitle")] public JobTitle MyJobTitle { get; set; }
@@ -55,7 +55,7 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     �?채�? 매칭 ??Redis???�?�되??�??�보
+    ///     봇 채움 매칭 때 Redis에 저장되는 봇 정보
     /// </summary>
     [MessagePackObject]
     public class BotMatchingInfo
