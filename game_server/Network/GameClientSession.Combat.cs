@@ -12,11 +12,19 @@ public partial class GameClientSession
     private const int CatPillowItemId = 401000003;
     private const int ChalkPowderItemId = 201000015;
     private const int CatPillowRestDurationSeconds = 15;
+    private DateTime _lastRoomEncounterItemUseUtc = DateTime.MinValue;
 
     private Task HandleAttack(C_TO_G_ATTACK msg)
     {
         if (!PlayerId.HasValue || msg == null)
             return Task.CompletedTask;
+
+        if (IsEliminated)
+        {
+            SendErrorResponse(ErrorCode.PLAYER_DEAD, "Eliminated players cannot attack");
+            SendRoomEncounterItemUseResult(false, ErrorCode.PLAYER_DEAD, ChalkPowderItemId, 0);
+            return Task.CompletedTask;
+        }
 
         if (IsRoundActionLocked(out _))
         {
@@ -35,10 +43,25 @@ public partial class GameClientSession
         }
 
         var area = CurrentArea;
-        if (area == AreaType.None)
+        if (CurrentMapSubId <= 0 || area == AreaType.None)
         {
             SendErrorResponse(ErrorCode.INVALID_AREA, "Invalid encounter area");
             SendRoomEncounterItemUseResult(false, ErrorCode.INVALID_AREA, ChalkPowderItemId, targetPlayerId);
+            return Task.CompletedTask;
+        }
+
+        var now = DateTime.UtcNow;
+        if (now - _lastRoomEncounterItemUseUtc < RoomEncounterActionSuppressDuration)
+        {
+            SendErrorResponse(ErrorCode.ACTION_COOLDOWN, "Room encounter item use is in cooldown");
+            SendRoomEncounterItemUseResult(false, ErrorCode.ACTION_COOLDOWN, ChalkPowderItemId, targetPlayerId);
+            Logger.LogWarning(
+                "Player {PlayerId} failed room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}",
+                PlayerId,
+                targetPlayerId,
+                CurrentMapSubId,
+                area,
+                ErrorCode.ACTION_COOLDOWN);
             return Task.CompletedTask;
         }
 
@@ -99,6 +122,8 @@ public partial class GameClientSession
 
         if (updatedItem != null)
             SendInGameInventoryUpdate(updatedItem);
+
+        _lastRoomEncounterItemUseUtc = now;
 
         if (targetSession != null)
         {
@@ -179,13 +204,18 @@ public partial class GameClientSession
 
         if (msg.State == global::network.common.PlayerState.SLEEP)
         {
+            CancelPendingRngCollect("PlayerState:SLEEP");
             await HandleRestStateRequest();
             return;
         }
 
         // 서버 측 상태 저장
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-        CurrentState = msg.State == global::network.common.PlayerState.EXPLORE_1
+        bool isExploreState = msg.State == global::network.common.PlayerState.EXPLORE_1;
+        if (!isExploreState)
+            CancelPendingRngCollect($"PlayerState:{msg.State}");
+
+        CurrentState = isExploreState
             ? PlayerState.Exploring
             : PlayerState.Idle;
         _exploreMoveGraceUntil = CurrentState == PlayerState.Exploring
@@ -606,6 +636,8 @@ public partial class GameClientSession
                 staminaDelta, totalCorDelta, Stamina, Corruption,
                 conversionCor > 0, reason: "", isBot: false);
         }
+
+        CheckResourceElimination();
     }
 
     /// <summary>
