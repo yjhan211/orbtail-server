@@ -56,6 +56,17 @@ namespace network.common.data
             return false;
         }
 
+        public static bool TryGetChoice(int eventId, int choiceId,
+            out RoomEntryEventInfoData entryEvent, out RoomEntryEventChoiceInfoData choice)
+        {
+            choice = null;
+            if (!TryGet(eventId, out entryEvent) || entryEvent?.Choices == null)
+                return false;
+
+            choice = entryEvent.Choices.FirstOrDefault(candidate => candidate.ChoiceId == choiceId);
+            return choice != null;
+        }
+
         public static IReadOnlyList<RoomEntryEventInfoData> GetByArea(AreaType areaType)
         {
             return _eventsByArea.TryGetValue(areaType, out var events) ? events : new List<RoomEntryEventInfoData>();
@@ -73,8 +84,7 @@ namespace network.common.data
         public AreaType AreaType { get; private set; }
         public LocalizedText Title { get; private set; }
         public LocalizedText Description { get; private set; }
-        public LocalizedText AcceptLabel { get; private set; }
-        public LocalizedText RejectLabel { get; private set; }
+        public List<RoomEntryEventChoiceInfoData> Choices { get; private set; } = new();
 
         public static RoomEntryEventInfoData CreateFromData(CsvRow row)
         {
@@ -84,9 +94,37 @@ namespace network.common.data
                 AreaType = (AreaType)int.Parse(row["area_type"]),
                 Title = LocalizedText.FromCsv(row, "title"),
                 Description = LocalizedText.FromCsvMultiline(row, "description"),
-                AcceptLabel = LocalizedText.FromCsv(row, "accept_label"),
-                RejectLabel = LocalizedText.FromCsv(row, "reject_label")
+                Choices = RoomEntryEventChoiceInfoData.CreateChoices(row)
             };
+        }
+    }
+
+    public class RoomEntryEventChoiceInfoData
+    {
+        public int ChoiceId { get; private set; }
+        public LocalizedText Label { get; private set; }
+        public LocalizedText ResultText { get; private set; }
+        public string GrantedTraitId { get; private set; }
+
+        public static List<RoomEntryEventChoiceInfoData> CreateChoices(CsvRow row)
+        {
+            var choices = new List<RoomEntryEventChoiceInfoData>();
+            for (int index = 1; index <= 3; index++)
+            {
+                string idKey = $"choice{index}_id";
+                if (!row.ContainsKey(idKey) || !int.TryParse(row[idKey], out int choiceId) || choiceId <= 0)
+                    continue;
+
+                choices.Add(new RoomEntryEventChoiceInfoData
+                {
+                    ChoiceId = choiceId,
+                    Label = LocalizedText.FromCsv(row, $"choice{index}_label"),
+                    ResultText = LocalizedText.FromCsvMultiline(row, $"choice{index}_result"),
+                    GrantedTraitId = row.ContainsKey($"choice{index}_trait") ? row[$"choice{index}_trait"].Trim() : ""
+                });
+            }
+
+            return choices;
         }
     }
 }

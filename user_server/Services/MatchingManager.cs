@@ -46,16 +46,7 @@ public class MatchingManager : IMatchingManager
     private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
     private static JobTitle? ForcedPlayerJob => ParseForcedPlayerJob();
     private static AreaType? ForcedPlayerSpawnArea => ParseForcedPlayerSpawnArea();
-    private static readonly PersonaType[] Personas =
-    {
-        PersonaType.SecretCollector,
-        PersonaType.Coward,
-        PersonaType.GuardianAngel,
-        PersonaType.PhysicalSolver,
-        PersonaType.Nocturnal
-    };
-
-    private static readonly AreaType[] PersonaStartFallbackAreas =
+    private static readonly AreaType[] InitialRoomStartAreas =
     {
         AreaType.AdminOffice,
         AreaType.StaffRoom,
@@ -67,16 +58,6 @@ public class MatchingManager : IMatchingManager
         AreaType.BroadcastRoom
     };
 
-    private static readonly HashSet<AreaType> PersonaStartExcludedAreas = new()
-    {
-        AreaType.Ground,
-        AreaType.Gym,
-        AreaType.Storage,
-        AreaType.Corridor1F,
-        AreaType.Corridor2F,
-        AreaType.Corridor3F,
-        AreaType.Corridor4F
-    };
     private static long _botIdCounter; // 遊?PlayerId (?뚯닔)
     private readonly ICacheHelper _cacheHelper;
     private readonly Func<long, GameSession?> _getSession;
@@ -249,7 +230,7 @@ public class MatchingManager : IMatchingManager
 
                 // ?먰삎 泥댁씤 ?앹꽦: ?뷀뵆 ??A?묪?묬?묭?묮?묨 (?붿궡??= 留덈땲??愿怨?
                 var chain = await BuildManittoChain(allGroupEntries.ToArray());
-                ApplyPersonaMatchStartAssignments(matchingId, chain);
+                ApplyInitialRoomStartAssignments(matchingId, chain);
                 await ApplyTwoPlayerTestTargetOutfitAsync(chain);
                 var playerRoster = await BuildPlayerRosterAsync(chain);
 
@@ -265,9 +246,9 @@ public class MatchingManager : IMatchingManager
                         TargetPlayerId = link.TargetPlayerId,
                         MyJobTitle = link.MyJobTitle,
                         TargetJobTitle = link.TargetJobTitle,
-                        Persona = link.Persona,
+                        Persona = PersonaType.None,
                         StartArea = link.StartArea,
-                        ActiveBuffIds = BuildActiveBuffIds(link.Persona)
+                        ActiveBuffIds = new List<int>()
                     });
                 }
                 await SavePlayerBuffAssignmentsAsync(matchingId, chain);
@@ -287,7 +268,7 @@ public class MatchingManager : IMatchingManager
                     try
                     {
                         await ProcessMatchedEntry(link.Entry, matchingId, link.TargetPlayerId,
-                            link.TargetJobTitle, link.MyJobTitle, playerRoster, link.Persona, link.StartArea);
+                            link.TargetJobTitle, link.MyJobTitle, playerRoster, link.StartArea);
                     }
                     catch (Exception ex)
                     {
@@ -345,7 +326,7 @@ public class MatchingManager : IMatchingManager
             matchingId, longWaitEntries.Length, botsNeeded);
 
         var chain = await BuildManittoChain(allEntries.ToArray());
-        ApplyPersonaMatchStartAssignments(matchingId, chain);
+        ApplyInitialRoomStartAssignments(matchingId, chain);
         var playerRoster = await BuildPlayerRosterAsync(chain);
 
         // 遊??뺣낫瑜?Redis?????(game_server?먯꽌 濡쒕뱶). ?먰삎 泥댁씤 ?뺥빀 ??遊??寃잛? 泥댁씤 ?ㅼ쓬 ?몃뱶.
@@ -360,9 +341,9 @@ public class MatchingManager : IMatchingManager
                 TargetPlayerId = link.TargetPlayerId,
                 MyJobTitle = link.MyJobTitle,
                 TargetJobTitle = link.TargetJobTitle,
-                Persona = link.Persona,
+                Persona = PersonaType.None,
                 StartArea = link.StartArea,
-                ActiveBuffIds = BuildActiveBuffIds(link.Persona)
+                ActiveBuffIds = new List<int>()
             });
         }
         await SavePlayerBuffAssignmentsAsync(matchingId, chain);
@@ -382,7 +363,7 @@ public class MatchingManager : IMatchingManager
             try
             {
                 await ProcessMatchedEntry(link.Entry, matchingId, link.TargetPlayerId,
-                    link.TargetJobTitle, link.MyJobTitle, playerRoster, link.Persona, link.StartArea);
+                    link.TargetJobTitle, link.MyJobTitle, playerRoster, link.StartArea);
             }
             catch (Exception ex)
             {
@@ -517,7 +498,7 @@ public class MatchingManager : IMatchingManager
             : null;
     }
 
-    private void ApplyPersonaMatchStartAssignments(long matchingId, List<ManittoChainLink> chain)
+    private void ApplyInitialRoomStartAssignments(long matchingId, List<ManittoChainLink> chain)
     {
         if (chain.Count == 0) return;
 
@@ -534,71 +515,35 @@ public class MatchingManager : IMatchingManager
 
         foreach (var entry in assignmentOrder)
         {
-            var persona = Personas[rng.Next(Personas.Length)];
-            var startArea = ResolvePersonaStartArea(persona, assignedAreas, rng);
+            var startArea = ResolveInitialStartArea(assignedAreas, rng);
 
-            entry.Link.Persona = persona;
+            entry.Link.Persona = PersonaType.None;
             entry.Link.StartArea = startArea;
             if (startArea != AreaType.None)
                 assignedAreas.Add(startArea);
 
             _logger.LogInformation(
-                "Persona match start assigned: MatchingId={MatchingId}, PlayerId={PlayerId}, Persona={Persona}, StartArea={Area}",
-                matchingId, entry.PlayerId, persona, startArea);
+                "Initial room start assigned: MatchingId={MatchingId}, PlayerId={PlayerId}, StartArea={Area}",
+                matchingId, entry.PlayerId, startArea);
         }
     }
 
-    private static AreaType ResolvePersonaStartArea(PersonaType persona, HashSet<AreaType> assignedAreas, Random rng)
+    private static AreaType ResolveInitialStartArea(HashSet<AreaType> assignedAreas, Random rng)
     {
-        foreach (var area in Shuffle(GetPersonaStartCandidates(persona), rng))
+        foreach (var area in Shuffle(InitialRoomStartAreas, rng))
         {
-            if (IsAllowedPersonaStartArea(area) && !assignedAreas.Contains(area))
+            if (IsAllowedInitialStartArea(area) && !assignedAreas.Contains(area))
                 return area;
         }
 
-        foreach (var area in Shuffle(PersonaStartFallbackAreas, rng))
+        foreach (var area in Shuffle(InitialRoomStartAreas, rng))
         {
-            if (IsAllowedPersonaStartArea(area) && !assignedAreas.Contains(area))
+            if (IsAllowedInitialStartArea(area))
                 return area;
         }
 
-        return PersonaStartFallbackAreas.FirstOrDefault(IsAllowedPersonaStartArea);
+        return AreaType.Classroom2;
     }
-
-    private static AreaType[] GetPersonaStartCandidates(PersonaType persona) => persona switch
-    {
-        PersonaType.SecretCollector => new[]
-        {
-            AreaType.Library,
-            AreaType.AdminOffice,
-            AreaType.BroadcastRoom
-        },
-        PersonaType.Coward => new[]
-        {
-            AreaType.Classroom2,
-            AreaType.Library,
-            AreaType.StaffRoom
-        },
-        PersonaType.GuardianAngel => new[]
-        {
-            AreaType.Classroom2,
-            AreaType.StaffRoom,
-            AreaType.Classroom3
-        },
-        PersonaType.PhysicalSolver => new[]
-        {
-            AreaType.ExamRoom,
-            AreaType.Classroom4,
-            AreaType.Corridor3F
-        },
-        PersonaType.Nocturnal => new[]
-        {
-            AreaType.BroadcastRoom,
-            AreaType.AdminOffice,
-            AreaType.ExamRoom
-        },
-        _ => PersonaStartFallbackAreas
-    };
 
     private static List<AreaType> Shuffle(IEnumerable<AreaType> areas, Random rng)
     {
@@ -612,14 +557,10 @@ public class MatchingManager : IMatchingManager
         return result;
     }
 
-    private static bool IsAllowedPersonaStartArea(AreaType area)
+    private static bool IsAllowedInitialStartArea(AreaType area)
     {
-        if (area == AreaType.None || PersonaStartExcludedAreas.Contains(area))
-            return false;
-
-        return !area.IsCorridor();
+        return area != AreaType.None && !area.IsCorridor();
     }
-
     private void ApplyForcedPlayerJob(List<MatchingQueueData> players, List<JobTitle> jobs)
     {
         var forcedJob = ForcedPlayerJob;
@@ -939,27 +880,22 @@ public class MatchingManager : IMatchingManager
 
     private static string MakePlayerBuffField(long matchingId, long playerId) => $"{matchingId}:{playerId}";
 
-    private static List<int> BuildActiveBuffIds(PersonaType persona)
-    {
-        int buffId = GameBuffData.GetPersonaBuffId(persona);
-        return buffId > 0 ? new List<int> { buffId } : new List<int>();
-    }
+
 
     private async Task SavePlayerBuffAssignmentsAsync(long matchingId, IReadOnlyCollection<ManittoChainLink> chain)
     {
         foreach (var link in chain)
         {
             var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
-            var activeBuffIds = BuildActiveBuffIds(link.Persona);
             await _cacheHelper.HashSetAsync(
                 PlayerBuffInfoKey,
                 MakePlayerBuffField(matchingId, data.PlayerId),
-                MessagePackSerializer.Serialize(activeBuffIds));
+                MessagePackSerializer.Serialize(new List<int>()));
         }
     }
     private async Task ProcessMatchedEntry(byte[] entry, long matchingId,
         long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle, List<PlayerInfo> playerRoster,
-        PersonaType persona, AreaType startArea)
+        AreaType startArea)
     {
         var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
         _logger.LogInformation("?뚮젅?댁뼱 {DataPlayerId} 泥섎━ 以?.. (?寃? {TargetPlayerId})", data.PlayerId, targetPlayerId);
@@ -974,12 +910,12 @@ public class MatchingManager : IMatchingManager
         const MapId mapId = MapId.School;
         var mapInfo = GameMapData.GetMapInfo(mapId);
         var (spawnPosition, _) = mapInfo.GetInitialPosition();
-        if (IsAllowedPersonaStartArea(startArea))
+        if (IsAllowedInitialStartArea(startArea))
         {
             spawnPosition = GameMapData.GetAreaSpawnCell(mapId, startArea);
             _logger.LogInformation(
-                "Persona start assignment: PlayerId={PlayerId}, Persona={Persona}, Area={Area}, Cell=({X},{Y})",
-                data.PlayerId, persona, startArea, spawnPosition.X, spawnPosition.Y);
+                "Initial room start assignment: PlayerId={PlayerId}, Area={Area}, Cell=({X},{Y})",
+                data.PlayerId, startArea, spawnPosition.X, spawnPosition.Y);
         }
 
         var forcedSpawnArea = ForcedPlayerSpawnArea;
@@ -1021,7 +957,7 @@ public class MatchingManager : IMatchingManager
         using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
             matchingId, mapId, matchingId, spawnPosition,
             gameServerIp, gameServerPort, gameEndTimestamp,
-            targetPlayerId, targetJobTitle, myJobTitle, playerRoster, BuildActiveBuffIds(persona)
+            targetPlayerId, targetJobTitle, myJobTitle, playerRoster, new List<int>()
         );
 
         session.Send(packet);

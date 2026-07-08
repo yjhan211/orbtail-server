@@ -88,6 +88,7 @@ public partial class GameClientSession : SessionBase
     // 플레이어 상호작용 요청 상태
     private long? _pendingInteractPlayerId;
     private long? _pendingBotRequesterPlayerId;
+    private int _pendingRoomEntryEventId;
 
     private Timer? _periodicBuffTimer;
 
@@ -374,6 +375,8 @@ public partial class GameClientSession : SessionBase
         // 구역 이동 프로토콜 (GDD v0.0.8: 문/계단 마커 방식)
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_AREA_MOVE,
             async bytes => await HandleMessage<C_TO_G_AREA_MOVE>(bytes, HandleAreaMove));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ROOM_ENTRY_EVENT_CHOICE,
+            async bytes => await HandleMessage<C_TO_G_ROOM_ENTRY_EVENT_CHOICE>(bytes, HandleRoomEntryEventChoice));
 
         // 소셜 액션 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SOCIAL_ACTION,

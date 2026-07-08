@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -210,16 +212,92 @@ public partial class GameClientSession
 
     private void TrySendRoomEntryEvent(AreaType area)
     {
-        if (PlayerId == null) return;
+        if (!PlayerId.HasValue || _pendingRoomEntryEventId != 0) return;
+        if (HasInitialRoomEntryTrait()) return;
         if (!GameRoomEntryEventData.TryGetByArea(area, out var entryEvent)) return;
+
+        _pendingRoomEntryEventId = entryEvent.Id;
 
         using var packet = PacketMaker.G_TO_C_ROOM_ENTRY_EVENT(entryEvent.Id);
         Send(packet);
 
         Logger.LogInformation(
-            "Player {PlayerId} room entry event: eventId={EventId}, area={Area}",
+            "Player {PlayerId} initial room entry event: eventId={EventId}, area={Area}",
             PlayerId,
             entryEvent.Id,
             area);
+    }
+
+    private Task HandleRoomEntryEventChoice(C_TO_G_ROOM_ENTRY_EVENT_CHOICE msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (_pendingRoomEntryEventId != msg.EventId)
+        {
+            Logger.LogWarning(
+                "Room entry event choice ignored: Player={PlayerId}, Pending={Pending}, Event={Event}, Choice={Choice}",
+                PlayerId,
+                _pendingRoomEntryEventId,
+                msg.EventId,
+                msg.ChoiceId);
+            return Task.CompletedTask;
+        }
+
+        if (!GameRoomEntryEventData.TryGetChoice(msg.EventId, msg.ChoiceId, out var entryEvent, out var choice))
+        {
+            Logger.LogWarning(
+                "Room entry event choice missing: Player={PlayerId}, Event={Event}, Choice={Choice}",
+                PlayerId,
+                msg.EventId,
+                msg.ChoiceId);
+            return Task.CompletedTask;
+        }
+
+        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
+        if (state == null)
+        {
+            Logger.LogWarning(
+                "Room entry event choice failed because mission state is missing: Matching={MatchingId}, Player={PlayerId}",
+                CurrentMapSubId,
+                PlayerId);
+            return Task.CompletedTask;
+        }
+
+        bool granted = false;
+        lock (state.SyncRoot)
+        {
+            if (!HasInitialRoomEntryTrait(state) && !string.IsNullOrWhiteSpace(choice.GrantedTraitId))
+                granted = state.OwnedClueTags.Add(choice.GrantedTraitId);
+        }
+
+        _pendingRoomEntryEventId = 0;
+        SendMissionInfo();
+
+        Logger.LogInformation(
+            "Room entry event choice resolved: Matching={MatchingId}, Player={PlayerId}, Event={Event}, Choice={Choice}, Trait={Trait}, Granted={Granted}",
+            CurrentMapSubId,
+            PlayerId,
+            entryEvent.Id,
+            choice.ChoiceId,
+            choice.GrantedTraitId,
+            granted);
+
+        return Task.CompletedTask;
+    }
+
+    private bool HasInitialRoomEntryTrait()
+    {
+        if (!PlayerId.HasValue) return false;
+        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
+        return state != null && HasInitialRoomEntryTrait(state);
+    }
+
+    private static bool HasInitialRoomEntryTrait(PlayerPartState state)
+    {
+        return state.OwnedClueTags.Any(IsInitialRoomEntryTrait);
+    }
+
+    private static bool IsInitialRoomEntryTrait(string tag)
+    {
+        return tag is "trait_observation" or "trait_calm" or "trait_execution" or "trait_survival" or "trait_courage";
     }
 }
