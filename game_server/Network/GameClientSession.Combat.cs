@@ -204,13 +204,18 @@ public partial class GameClientSession
 
         if (msg.State == global::network.common.PlayerState.SLEEP)
         {
+            CancelPendingRngCollect("PlayerState:SLEEP");
             await HandleRestStateRequest();
             return;
         }
 
         // 서버 측 상태 저장
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-        CurrentState = msg.State == global::network.common.PlayerState.EXPLORE_1
+        bool isExploreState = msg.State == global::network.common.PlayerState.EXPLORE_1;
+        if (!isExploreState)
+            CancelPendingRngCollect($"PlayerState:{msg.State}");
+
+        CurrentState = isExploreState
             ? PlayerState.Exploring
             : PlayerState.Idle;
         _exploreMoveGraceUntil = CurrentState == PlayerState.Exploring

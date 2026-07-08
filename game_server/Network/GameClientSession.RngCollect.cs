@@ -393,6 +393,21 @@ public partial class GameClientSession
             _rngCollectPendingEncounterBlockUntilUtc = DateTime.MinValue;
     }
 
+    private void CancelPendingRngCollect(string reason)
+    {
+        if (_pendingFinish.Count == 0)
+            return;
+
+        foreach (int interactId in _pendingFinish.ToArray())
+            ClearRoomEncounterStartCandidates(interactId);
+
+        Logger.LogInformation(
+            "RNG collect pending cancelled: PlayerId={PlayerId}, Count={Count}, Reason={Reason}",
+            PlayerId, _pendingFinish.Count, reason);
+        _pendingFinish.Clear();
+        ClearRngCollectPendingEncounterBlockIfIdle();
+    }
+
     private bool HasPendingRngCollectEncounterBlock(DateTime now)
     {
         return _pendingFinish.Count > 0 && now <= _rngCollectPendingEncounterBlockUntilUtc;
