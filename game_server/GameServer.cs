@@ -1938,6 +1938,27 @@ public class GameServer(
             _clientSessions.TryRemove(session.PlayerId.Value, out _);
             logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", session.PlayerId.Value);
 
+            if (session.CurrentMapSubId > 0 && session.CurrentArea != AreaType.None)
+            {
+                using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(session.PlayerId.Value);
+                var sameAreaSessions = _clientSessions.Values
+                    .Where(other =>
+                        !ReferenceEquals(other, session) &&
+                        other.PlayerId.HasValue &&
+                        other.CurrentMapId == session.CurrentMapId &&
+                        other.CurrentMapSubId == session.CurrentMapSubId &&
+                        other.CurrentArea == session.CurrentArea)
+                    .ToList();
+                foreach (var other in sameAreaSessions) other.Send(leavePacket);
+
+                logger.LogInformation(
+                    "Broadcasted disconnected player leave: PlayerId={PlayerId}, MatchingId={MatchingId}, Area={Area}, Receivers={ReceiverCount}",
+                    session.PlayerId.Value,
+                    session.CurrentMapSubId,
+                    session.CurrentArea,
+                    sameAreaSessions.Count);
+            }
+
             // 복도 규칙 플레이어 상태 정리
             if (session.CurrentMapSubId > 0)
                 _corridorRuleManager.RemovePlayerState(session.CurrentMapSubId, session.PlayerId.Value);

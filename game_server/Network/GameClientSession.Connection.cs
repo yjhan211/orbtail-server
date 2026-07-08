@@ -113,6 +113,8 @@ public partial class GameClientSession
                 _lastValidatedRotation = playerInfo.ObjectInfo.Rotation;
                 // 珥덇린 Area ?ㅼ젙
                 CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
+                playerInfo.State = global::network.common.PlayerState.IDLE;
+                await playerInfo.Save(CacheHelper);
                 Logger.LogInformation(
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
                     PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
