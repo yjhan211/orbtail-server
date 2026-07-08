@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.services;
@@ -12,6 +13,9 @@ public class PlayerInGameInventory(long matchingId)
     private readonly ConcurrentDictionary<long, InGameItemInfo> _items = new();
     private readonly object _sequenceLock = new();
     private int _nextSequence = 1;
+
+    private static bool ShouldKeepSeparateStack(int itemId, GiftState giftState) =>
+        giftState == GiftState.None && BattleItemRecipeData.IsRecipeInputItem(itemId);
 
     /// <summary>
     ///     ItemUid 생성: MatchingId * 100000 + Sequence
@@ -30,15 +34,19 @@ public class PlayerInGameInventory(long matchingId)
     /// <returns>변경된 아이템 정보</returns>
     public InGameItemInfo AddItem(int itemId, int count = 1, GiftState giftState = GiftState.None)
     {
-        // 같은 itemId와 선물 상태가 있으면 수량 추가 (스택)
-        foreach (var kvp in _items)
-            if (kvp.Value.ItemId == itemId && kvp.Value.GiftState == giftState)
-            {
-                kvp.Value.Count += count;
-                return kvp.Value;
-            }
+        bool keepSeparateStack = ShouldKeepSeparateStack(itemId, giftState);
 
-        // 없으면 새로 생성
+        // Merge puzzle inputs need separate slots so duplicate materials can be selected independently.
+        if (!keepSeparateStack)
+        {
+            foreach (var kvp in _items)
+                if (kvp.Value.ItemId == itemId && kvp.Value.GiftState == giftState)
+                {
+                    kvp.Value.Count += count;
+                    return kvp.Value;
+                }
+        }
+
         var newItem = new InGameItemInfo { ItemUid = GenerateUid(), ItemId = itemId, Count = count, GiftState = giftState };
         _items[newItem.ItemUid] = newItem;
         return newItem;
@@ -47,7 +55,7 @@ public class PlayerInGameInventory(long matchingId)
     /// <summary>
     ///     아이템 사용/제거
     /// </summary>
-    /// <returns>성공 여부와 변경된 아이템 정보 (삭제된 경우 Count=0)</returns>
+    /// <returns>성공 여부와 변경된 아이템 정보</returns>
     public bool TryRemoveItem(long itemUid, int count, out InGameItemInfo? updatedItem)
     {
         updatedItem = null;

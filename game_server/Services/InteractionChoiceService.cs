@@ -78,6 +78,14 @@ public class InteractionChoiceService
     private const int NearbyReasonRecentWindowSeconds = 20;
     private const int ActivityEvidenceRecentWindowSeconds = 60;
     private const int EncounterChalkPowderItemId = 201000015;
+    private const int EncounterShortChalkItemId = 201000016;
+    private const int EncounterLongChalkItemId = 201000017;
+    private static readonly int[] EncounterAttackItemIds =
+    {
+        EncounterLongChalkItemId,
+        EncounterChalkPowderItemId,
+        EncounterShortChalkItemId
+    };
 
     private readonly InteractionLogManager _logManager;
     private readonly ManittoChainManager _chainManager;
@@ -91,6 +99,17 @@ public class InteractionChoiceService
         _logManager = logManager;
         _chainManager = chainManager;
         _eventLogManager = eventLogManager;
+    }
+
+    private static bool IsEncounterAttackItem(int itemId)
+    {
+        return Array.IndexOf(EncounterAttackItemIds, itemId) >= 0;
+    }
+
+    private static int GetEncounterAttackItemPriority(int itemId)
+    {
+        int index = Array.IndexOf(EncounterAttackItemIds, itemId);
+        return index >= 0 ? index : int.MaxValue;
     }
 
     public List<InteractionQuestion> GenerateQuestions(
@@ -252,9 +271,10 @@ public class InteractionChoiceService
         }
 
         var usableItems = (inventoryItems ?? Enumerable.Empty<InGameItemInfo>())
-            .Where(item => item.Count > 0 && item.ItemId == EncounterChalkPowderItemId)
+            .Where(item => item.Count > 0 && IsEncounterAttackItem(item.ItemId))
             .GroupBy(item => item.ItemId)
             .Select(group => group.First())
+            .OrderBy(item => GetEncounterAttackItemPriority(item.ItemId))
             .Take(1)
             .ToList();
 

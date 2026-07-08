@@ -18,24 +18,37 @@ namespace network.common.data
     {
         private static readonly Dictionary<int, BattleItemRecipe> _recipesById = new();
         private static readonly Dictionary<int, List<BattleItemRecipe>> _recipesByOutput = new();
+        private static readonly Dictionary<int, List<BattleItemRecipe>> _recipesByInput = new();
 
         public static void Initialize(List<CsvRow> data)
         {
             _recipesById.Clear();
             _recipesByOutput.Clear();
+            _recipesByInput.Clear();
 
             foreach (var row in data)
             {
                 var recipe = BattleItemRecipe.CreateFromData(row);
                 _recipesById[recipe.RecipeId] = recipe;
 
-                if (!_recipesByOutput.TryGetValue(recipe.OutputItemId, out var recipes))
+                if (!_recipesByOutput.TryGetValue(recipe.OutputItemId, out var outputRecipes))
                 {
-                    recipes = new List<BattleItemRecipe>();
-                    _recipesByOutput[recipe.OutputItemId] = recipes;
+                    outputRecipes = new List<BattleItemRecipe>();
+                    _recipesByOutput[recipe.OutputItemId] = outputRecipes;
                 }
 
-                recipes.Add(recipe);
+                outputRecipes.Add(recipe);
+
+                foreach (int inputItemId in recipe.InputItemIds.Distinct())
+                {
+                    if (!_recipesByInput.TryGetValue(inputItemId, out var inputRecipes))
+                    {
+                        inputRecipes = new List<BattleItemRecipe>();
+                        _recipesByInput[inputItemId] = inputRecipes;
+                    }
+
+                    inputRecipes.Add(recipe);
+                }
             }
         }
 
@@ -49,6 +62,17 @@ namespace network.common.data
             _recipesByOutput.TryGetValue(outputItemId, out var recipes)
                 ? recipes.OrderBy(recipe => recipe.RecipeId).ToList()
                 : new List<BattleItemRecipe>();
+
+        public static List<BattleItemRecipe> GetRecipesByInput(int inputItemId) =>
+            _recipesByInput.TryGetValue(inputItemId, out var recipes)
+                ? recipes.OrderBy(recipe => recipe.RecipeId).ToList()
+                : new List<BattleItemRecipe>();
+
+        public static bool IsRecipeInputItem(int itemId) =>
+            _recipesByInput.ContainsKey(itemId);
+
+        public static bool IsRecipeOutputItem(int itemId) =>
+            _recipesByOutput.ContainsKey(itemId);
 
         public static BattleItemRecipe TryCombine(IEnumerable<int> inputItemIds)
         {

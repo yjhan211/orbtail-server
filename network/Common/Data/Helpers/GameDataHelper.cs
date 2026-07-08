@@ -32,6 +32,7 @@ namespace network.common.data.helpers
                     validate: GameAreaNameData.Validate),
                 (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize,
                     validate: GameAreaRuleData.Validate),
+                (fileName: DataFiles.RoomEntryEvent, init: GameRoomEntryEventData.Initialize, validate: null),
                 (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
                 (fileName: DataFiles.StatusEffectInfo, init: GameStatusEffectData.Initialize, validate: null),
                 (fileName: DataFiles.DoorInfo, init: GameDoorData.Initialize, validate: null),
@@ -594,6 +595,7 @@ namespace network.common.data.helpers
             public const string LoadingText = "loading_text.csv";
             public const string AreaName = "area_name.csv";
             public const string AreaRule = "area_rule.csv";
+            public const string RoomEntryEvent = "room_entry_event.csv";
             public const string SystemText = "system_text.csv";
             public const string StatusEffectInfo = "status_effect_info.csv";
             public const string DoorInfo = "door_info.csv";

@@ -163,6 +163,8 @@ public partial class GameClientSession
             Stamina);
         Send(resultPacket);
 
+        TrySendRoomEntryEvent(msg.TargetArea);
+
         // 10. 위치 텔레포트 브로드캐스트 (같은 새 Area의 플레이어들에게)
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         using var movePacket = PacketMaker.G_TO_C_MOVE(
@@ -204,5 +206,20 @@ public partial class GameClientSession
             _isSleeping,
             _pendingInteractPlayerId,
             _activeConversationPlayerId);
+    }
+
+    private void TrySendRoomEntryEvent(AreaType area)
+    {
+        if (PlayerId == null) return;
+        if (!GameRoomEntryEventData.TryGetByArea(area, out var entryEvent)) return;
+
+        using var packet = PacketMaker.G_TO_C_ROOM_ENTRY_EVENT(entryEvent.Id);
+        Send(packet);
+
+        Logger.LogInformation(
+            "Player {PlayerId} room entry event: eventId={EventId}, area={Area}",
+            PlayerId,
+            entryEvent.Id,
+            area);
     }
 }

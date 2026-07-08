@@ -20,6 +20,13 @@ public static class RngCollectCore
     private const int BlackedOutPaperPartId = 309;
     // 소모품 회수 stamina 보상 제거 (#135) — 회복은 아이템 사용 시점에만.
     private const int ConsumableStaminaReward = 0;
+    private const int MergeDropBaseWeight = 10;
+    private const int MergeDropStarterBonus = 4;
+    private const int MergeDropMissingIngredientBonus = 18;
+    private const int MergeDropProgressBonus = 12;
+    private const int MergeDropCompleteRecipeBonus = 40;
+    private const int MergeDropDuplicatePenalty = 4;
+    private const int MergeDropRecipeBonusCap = 120;
     // Regular explore should only grant consumables. Mission parts are collected through explicit mission actions.
     private const bool AllowMissionPartDropsFromExplore = false;
     private static readonly Random _rng = new();
@@ -117,7 +124,9 @@ public static class RngCollectCore
                 var areaPool = GetAllowedRngItemPool(info.ZoneId);
                 if (areaPool.Count > 0)
                 {
-                    int itemId = areaPool[_rng.Next(areaPool.Count)];
+                    int itemId = SelectMergePuzzleDropItem(
+                        areaPool,
+                        inventoryManager.GetAllItems(matchingId, playerId));
                     outcome.ResultType = 2;
                     outcome.ItemId = itemId;
                     outcome.StaminaReward = ConsumableStaminaReward;
@@ -172,7 +181,9 @@ public static class RngCollectCore
         int bonusItemId;
         lock (_rng)
         {
-            bonusItemId = areaPool[_rng.Next(areaPool.Count)];
+            bonusItemId = SelectMergePuzzleDropItem(
+                areaPool,
+                inventoryManager.GetAllItems(matchingId, playerId));
         }
 
         outcome.BonusItemId = bonusItemId;
@@ -233,11 +244,114 @@ public static class RngCollectCore
         var areaPool = GetAllowedRngItemPool(areaType);
         if (areaPool.Count == 0) return;
 
-        int bonusItemId = areaPool[_rng.Next(areaPool.Count)];
+        int bonusItemId = SelectMergePuzzleDropItem(
+            areaPool,
+            inventoryManager.GetAllItems(matchingId, playerId));
         outcome.BonusItemId = bonusItemId;
         outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
     }
 
+    private static int SelectMergePuzzleDropItem(
+        List<int> areaPool,
+        IReadOnlyCollection<InGameItemInfo> inventoryItems)
+    {
+        if (areaPool.Count == 0) return 0;
+
+        var ownedCounts = inventoryItems?
+            .Where(item => item.Count > 0)
+            .GroupBy(item => item.ItemId)
+            .ToDictionary(group => group.Key, group => group.Sum(item => item.Count))
+            ?? new Dictionary<int, int>();
+
+        var weightedItems = areaPool
+            .GroupBy(itemId => itemId)
+            .Select(group => new
+            {
+                ItemId = group.Key,
+                Weight = CalculateMergePuzzleDropWeight(group.Key, group.Count(), ownedCounts)
+            })
+            .Where(candidate => candidate.Weight > 0)
+            .ToList();
+
+        if (weightedItems.Count == 0)
+            return areaPool[_rng.Next(areaPool.Count)];
+
+        int totalWeight = weightedItems.Sum(candidate => candidate.Weight);
+        int roll = _rng.Next(totalWeight);
+        int cursor = 0;
+
+        foreach (var candidate in weightedItems)
+        {
+            cursor += candidate.Weight;
+            if (roll < cursor)
+                return candidate.ItemId;
+        }
+
+        return weightedItems[^1].ItemId;
+    }
+
+    private static int CalculateMergePuzzleDropWeight(
+        int itemId,
+        int basePoolCount,
+        Dictionary<int, int> ownedCounts)
+    {
+        int weight = Math.Max(1, basePoolCount) * MergeDropBaseWeight;
+        int recipeBonus = CalculateRecipeProgressBonus(itemId, ownedCounts);
+        int ownedCount = ownedCounts.GetValueOrDefault(itemId);
+
+        weight += recipeBonus;
+        if (ownedCount > 0)
+            weight -= ownedCount * MergeDropDuplicatePenalty;
+
+        return Math.Max(1, weight);
+    }
+
+    private static int CalculateRecipeProgressBonus(int itemId, Dictionary<int, int> ownedCounts)
+    {
+        int bonus = 0;
+
+        foreach (var recipe in BattleItemRecipeData.GetRecipesByInput(itemId))
+        {
+            var requiredCounts = recipe.InputItemIds
+                .GroupBy(inputItemId => inputItemId)
+                .ToDictionary(group => group.Key, group => group.Count());
+
+            int missingBefore = CountMissingRecipeInputs(requiredCounts, ownedCounts);
+            if (missingBefore == 0)
+                continue;
+
+            var ownedAfterDrop = new Dictionary<int, int>(ownedCounts);
+            ownedAfterDrop[itemId] = ownedAfterDrop.GetValueOrDefault(itemId) + 1;
+            int missingAfter = CountMissingRecipeInputs(requiredCounts, ownedAfterDrop);
+            if (missingAfter >= missingBefore)
+                continue;
+
+            bool hasRecipeProgress = requiredCounts.Keys.Any(inputItemId => ownedCounts.GetValueOrDefault(inputItemId) > 0);
+            bonus += MergeDropMissingIngredientBonus;
+
+            if (hasRecipeProgress)
+                bonus += MergeDropProgressBonus;
+            else
+                bonus += MergeDropStarterBonus;
+
+            if (missingAfter == 0)
+                bonus += MergeDropCompleteRecipeBonus;
+        }
+
+        return Math.Min(bonus, MergeDropRecipeBonusCap);
+    }
+
+    private static int CountMissingRecipeInputs(
+        Dictionary<int, int> requiredCounts,
+        Dictionary<int, int> ownedCounts)
+    {
+        int missing = 0;
+
+        foreach (var (itemId, requiredCount) in requiredCounts)
+            missing += Math.Max(0, requiredCount - ownedCounts.GetValueOrDefault(itemId));
+
+        return missing;
+    }
     private static List<int> GetAllowedRngItemPool(int areaType)
     {
         var areaPool = GameInteractableData.GetItemPoolByArea(areaType)
@@ -250,7 +364,9 @@ public static class RngCollectCore
     private static bool IsBattleLootDropItem(int itemId)
     {
         var item = GameItemData.Get(itemId);
-        return item != null && (item.Type == ItemType.CONSUMABLE || item.Type == ItemType.MATERIAL);
+        return item != null
+               && !BattleItemRecipeData.IsRecipeOutputItem(itemId)
+               && (item.Type == ItemType.CONSUMABLE || item.Type == ItemType.MATERIAL);
     }
 }
 
