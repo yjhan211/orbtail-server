@@ -840,19 +840,13 @@ public partial class GameClientSession
         };
     }
 
-    private int ResolveBotRoomEncounterAction(long matchingId, long botPlayerId)
+    private static int ResolveBotRoomEncounterAction(long matchingId, long botPlayerId)
     {
         var actions = new List<int>
         {
             EncounterRevealManager.RoomEncounterActionObserve,
             EncounterRevealManager.RoomEncounterActionLeave
         };
-
-        if (_inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId)
-            .GetItemCount(ChalkPowderItemId) > 0)
-        {
-            actions.Insert(0, EncounterRevealManager.RoomEncounterActionUseItem);
-        }
 
         return actions[Random.Shared.Next(actions.Count)];
     }
