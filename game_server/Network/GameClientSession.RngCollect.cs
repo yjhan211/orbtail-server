@@ -149,7 +149,9 @@ public partial class GameClientSession
 
         ClearRoomEncounterStartCandidates(msg.InteractId);
 
-        if (TryHandleGiftDiscoveryBeforeCollect(msg.InteractId, out var otherGiftDiscovery))
+        bool allowGiftDiscovery = AllowsGiftDiscoveryOnCollect(info, CurrentArea);
+        GiftDiscoveryResult? otherGiftDiscovery = null;
+        if (allowGiftDiscovery && TryHandleGiftDiscoveryBeforeCollect(msg.InteractId, out otherGiftDiscovery))
             return Task.CompletedTask;
 
         var outcome = RngCollectCore.Resolve(
@@ -255,10 +257,13 @@ public partial class GameClientSession
         if (outcome.AddedBonusInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedBonusInventoryItem);
         TryCompleteInteractObjectChecklist(info);
 
-        if (otherGiftDiscovery != null)
-            SendGiftDiscovered(otherGiftDiscovery, 0);
-        else
-            CheckGiftDiscovery(msg.InteractId);
+        if (allowGiftDiscovery)
+        {
+            if (otherGiftDiscovery != null)
+                SendGiftDiscovered(otherGiftDiscovery, 0);
+            else
+                CheckGiftDiscovery(msg.InteractId);
+        }
 
         // FINISH 시점에 30초 cooldown 갱신 broadcast (RngCollectCore.Resolve 내부에서 SetCooldown 30 호출됨)
         BroadcastRngCollectCooldown(msg.InteractId, outcome.CooldownSeconds);
@@ -481,5 +486,10 @@ public partial class GameClientSession
     private static bool IsEmptyRngCollectResult(int resultType)
     {
         return resultType == 0 || resultType == 1;
+    }
+
+    private static bool AllowsGiftDiscoveryOnCollect(InteractableInfoData info, AreaType currentArea)
+    {
+        return currentArea != AreaType.BroadcastRoom && (AreaType)info.ZoneId != AreaType.BroadcastRoom;
     }
 }
