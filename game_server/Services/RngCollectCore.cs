@@ -39,6 +39,7 @@ public static class RngCollectCore
         MissionManager missionManager,
         InGameInventoryManager inventoryManager,
         ItemPoolManager itemPoolManager,
+        AreaItemStockManager areaItemStockManager,
         bool isBot,
         int bonusItemChancePercent = 0)
     {
@@ -117,38 +118,28 @@ public static class RngCollectCore
         }
         else
         {
-            int roll = _rng.Next(100);
-            // 자기 풀 외: 75% 지역 아이템 / 25% 빈손. 풀은 영역(AreaType) 단위 — area_item_pool.csv (#185)
-            if (roll < 75)
+            if (TryResolveAreaStockDrop(matchingId, info.ZoneId, areaItemStockManager, consumeStock: !isBot, out int itemId))
             {
-                var areaPool = GetAllowedRngItemPool(info.ZoneId);
-                if (areaPool.Count > 0)
-                {
-                    int itemId = SelectMergePuzzleDropItem(
-                        areaPool,
-                        inventoryManager.GetAllItems(matchingId, playerId));
-                    outcome.ResultType = 2;
-                    outcome.ItemId = itemId;
-                    outcome.StaminaReward = ConsumableStaminaReward;
-                    outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, itemId, 1);
-                }
-                else
-                {
-                    outcome.ResultType = 0; // 영역 풀 비어있으면 빈손
-                }
+                outcome.ResultType = 2;
+                outcome.ItemId = itemId;
+                outcome.StaminaReward = ConsumableStaminaReward;
+                outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, itemId, 1);
             }
             else
             {
-                outcome.ResultType = 0; // 빈손
+                outcome.ResultType = 0;
             }
         }
 
-        TryApplySharpObservationBonus(matchingId, playerId, info.ZoneId, missionManager, inventoryManager, outcome);
+        TryApplySharpObservationBonus(matchingId, playerId, info.ZoneId, missionManager, inventoryManager,
+            areaItemStockManager, isBot, outcome);
         TryApplyPassiveItemGainBonus(
             matchingId,
             playerId,
             info.ZoneId,
             inventoryManager,
+            areaItemStockManager,
+            isBot,
             outcome,
             bonusItemChancePercent);
 
@@ -163,6 +154,8 @@ public static class RngCollectCore
         long playerId,
         int areaType,
         InGameInventoryManager inventoryManager,
+        AreaItemStockManager areaItemStockManager,
+        bool isBot,
         RngCollectOutcome outcome,
         int bonusItemChancePercent)
     {
@@ -175,16 +168,8 @@ public static class RngCollectCore
                 return;
         }
 
-        var areaPool = GetAllowedRngItemPool(areaType);
-        if (areaPool.Count == 0) return;
-
-        int bonusItemId;
-        lock (_rng)
-        {
-            bonusItemId = SelectMergePuzzleDropItem(
-                areaPool,
-                inventoryManager.GetAllItems(matchingId, playerId));
-        }
+        if (!TryResolveAreaStockDrop(matchingId, areaType, areaItemStockManager, consumeStock: !isBot, out int bonusItemId))
+            return;
 
         outcome.BonusItemId = bonusItemId;
         outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
@@ -228,6 +213,8 @@ public static class RngCollectCore
         int areaType,
         MissionManager missionManager,
         InGameInventoryManager inventoryManager,
+        AreaItemStockManager areaItemStockManager,
+        bool isBot,
         RngCollectOutcome outcome)
     {
         if (!missionManager.TryConsumeShortRewardUse(
@@ -241,16 +228,34 @@ public static class RngCollectCore
         if (_rng.Next(100) >= reward.ValuePercent)
             return;
 
-        var areaPool = GetAllowedRngItemPool(areaType);
-        if (areaPool.Count == 0) return;
+        if (!TryResolveAreaStockDrop(matchingId, areaType, areaItemStockManager, consumeStock: !isBot, out int bonusItemId))
+            return;
 
-        int bonusItemId = SelectMergePuzzleDropItem(
-            areaPool,
-            inventoryManager.GetAllItems(matchingId, playerId));
         outcome.BonusItemId = bonusItemId;
         outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
     }
 
+    private static bool TryResolveAreaStockDrop(
+        long matchingId,
+        int areaType,
+        AreaItemStockManager areaItemStockManager,
+        bool consumeStock,
+        out int itemId)
+    {
+        itemId = 0;
+        if (consumeStock)
+            return areaItemStockManager.TryConsumeDrop(matchingId, areaType, out itemId);
+
+        if (_rng.Next(100) >= 90)
+            return false;
+
+        var areaPool = GetAllowedRngItemPool(areaType);
+        if (areaPool.Count == 0)
+            return false;
+
+        itemId = areaPool[_rng.Next(areaPool.Count)];
+        return itemId > 0;
+    }
     private static int SelectMergePuzzleDropItem(
         List<int> areaPool,
         IReadOnlyCollection<InGameItemInfo> inventoryItems)

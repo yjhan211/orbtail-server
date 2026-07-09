@@ -242,6 +242,9 @@ public partial class GameClientSession
             return;
         }
 
+        if (TryHandleRoomExploreEventChoice(msg))
+            return;
+
         if (!GameRoomEntryEventData.TryGetChoice(msg.EventId, msg.ChoiceId, out var entryEvent, out var choice))
         {
             Logger.LogWarning(
@@ -255,6 +258,7 @@ public partial class GameClientSession
         var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
         if (state == null)
         {
+            _pendingRoomEntryEventId = 0;
             Logger.LogWarning(
                 "Room entry event choice failed because mission state is missing: Matching={MatchingId}, Player={PlayerId}",
                 CurrentMapSubId,

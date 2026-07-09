@@ -46,7 +46,8 @@ public partial class GameClientSession
                 TargetJobTitle = msg.TargetJobTitle
             });
 
-            // 誘몄뀡 珥덇린??            _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
+            // 誘몄뀡 珥덇린??
+            _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
             _missionManager.EnsureBroadcastTransmitterGift(msg.MatchingId, msg.PlayerId, msg.TargetPlayerId);
 
             // 遊?濡쒕뱶 (留ㅼ묶??理쒖큹 1?? ???먯뇙 珥덇린???꾩뿉 濡쒕뱶??吏곸콉 ????뺤젙 (#87)

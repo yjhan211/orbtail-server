@@ -45,6 +45,11 @@ public partial class GameClientSession
             SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
             return Task.CompletedTask;
         }
+        if (_pendingRoomEntryEventId != 0)
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
+        }
 
         CancelPendingRoomEncounterTurnsForCurrentPlayer("RngCollectStart");
 
@@ -149,6 +154,9 @@ public partial class GameClientSession
 
         ClearRoomEncounterStartCandidates(msg.InteractId);
 
+        if (TryStartRoomExploreEvent((AreaType)info.ZoneId, msg.InteractId))
+            return Task.CompletedTask;
+
         bool allowGiftDiscovery = AllowsGiftDiscoveryOnCollect(info, CurrentArea);
         GiftDiscoveryResult? otherGiftDiscovery = null;
         if (allowGiftDiscovery && TryHandleGiftDiscoveryBeforeCollect(msg.InteractId, out otherGiftDiscovery))
@@ -162,6 +170,7 @@ public partial class GameClientSession
             missionManager: _missionManager,
             inventoryManager: _inGameInventoryManager,
             itemPoolManager: _itemPoolManager,
+            areaItemStockManager: _areaItemStockManager,
             isBot: false,
             bonusItemChancePercent: PassiveBuffUtility.GetValuePercent(
                 ActiveBuffIds,

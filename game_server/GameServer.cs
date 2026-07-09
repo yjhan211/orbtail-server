@@ -45,6 +45,7 @@ public class GameServer(
     private readonly List<InstanceMapManager> _instanceControllerList = [];
     private readonly InteractableStateManager _interactableStateManager = new();
     private readonly ItemPoolManager _itemPoolManager = new();
+    private readonly AreaItemStockManager _areaItemStockManager = new();
     private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
@@ -823,7 +824,7 @@ public class GameServer(
         try
         {
             var missionResult = _botPlayerManager.ProcessBotMissionTick(
-                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _checklistManager);
+                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _areaItemStockManager, _checklistManager);
 
             // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
             foreach (var (botId, partId) in missionResult.CollectedParts)
@@ -1870,6 +1871,7 @@ public class GameServer(
                 _inGameInventoryManager,
                 _areaRuleManager,
                 _itemPoolManager,
+                _areaItemStockManager,
                 _corridorRuleManager,
                 _doorStateManager,
                 _sabotageManager,

@@ -44,6 +44,7 @@ public partial class GameClientSession : SessionBase
     private readonly InGameInventoryManager _inGameInventoryManager;
     private readonly InteractableStateManager _interactableStateManager;
     private readonly ItemPoolManager _itemPoolManager;
+    private readonly AreaItemStockManager _areaItemStockManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly SabotageManager _sabotageManager;
@@ -126,6 +127,7 @@ public partial class GameClientSession : SessionBase
         InGameInventoryManager inGameInventoryManager,
         AreaRuleManager areaRuleManager,
         ItemPoolManager itemPoolManager,
+        AreaItemStockManager areaItemStockManager,
         CorridorRuleManager corridorRuleManager,
         DoorStateManager doorStateManager,
         SabotageManager sabotageManager,
@@ -147,6 +149,7 @@ public partial class GameClientSession : SessionBase
         _inGameInventoryManager = inGameInventoryManager;
         _areaRuleManager = areaRuleManager;
         _itemPoolManager = itemPoolManager;
+        _areaItemStockManager = areaItemStockManager;
         _corridorRuleManager = corridorRuleManager;
         _doorStateManager = doorStateManager;
         _sabotageManager = sabotageManager;
