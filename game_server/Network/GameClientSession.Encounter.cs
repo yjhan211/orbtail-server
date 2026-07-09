@@ -247,12 +247,11 @@ public partial class GameClientSession
             return false;
         }
 
-        StartRoomEncounterReveal(actorPlayerId, targetPlayerId, allSessions, interactId,
+        return StartRoomEncounterReveal(actorPlayerId, targetPlayerId, allSessions, interactId,
             sendCollectResult: true, forceDirectEncounter: true);
-        return true;
     }
 
-    private void StartRoomEncounterReveal(
+    private bool StartRoomEncounterReveal(
         long actorPlayerId,
         long targetPlayerId,
         IReadOnlyCollection<GameClientSession> allSessions,
@@ -270,7 +269,7 @@ public partial class GameClientSession
                 targetPlayerId,
                 CurrentArea,
                 interactId);
-            return;
+            return false;
         }
 
         var targetSession = allSessions.FirstOrDefault(session => session.PlayerId == targetPlayerId);
@@ -321,12 +320,13 @@ public partial class GameClientSession
             sendCollectResult ? "Explore" : "Vision");
 
         if (!sendCollectResult)
-            return;
+            return true;
 
         SendRngCollectResult(interactId, RngCollectEncounterResultType, 0, 0, 0);
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
         BroadcastRngCollectCooldown(interactId, 0);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        return true;
     }
 
     private void AddRoomEncounterStartCandidatesStillAtExploreSpot(

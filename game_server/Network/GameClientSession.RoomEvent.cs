@@ -20,9 +20,18 @@ public partial class GameClientSession
         if (!PlayerId.HasValue || _pendingRoomEntryEventId != 0)
             return false;
 
-        var roomEvent = SelectRoomExploreEvent(area);
+        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
+        if (state == null)
+            return false;
+
+        var roomEvent = SelectRoomExploreEvent(area, state);
         if (roomEvent == null)
             return false;
+
+        lock (state.SyncRoot)
+        {
+            state.TriggeredRoomEventIds.Add(roomEvent.EventId);
+        }
 
         _pendingRoomEntryEventId = roomEvent.EventId;
         _pendingRoomEventInteractId = interactId;
@@ -45,10 +54,19 @@ public partial class GameClientSession
         return true;
     }
 
-    private static RoomEventInfoData? SelectRoomExploreEvent(AreaType area)
+    private static RoomEventInfoData? SelectRoomExploreEvent(AreaType area, PlayerPartState state)
     {
+        HashSet<int> triggeredRoomEventIds;
+        lock (state.SyncRoot)
+        {
+            triggeredRoomEventIds = new HashSet<int>(state.TriggeredRoomEventIds);
+        }
+
         foreach (var roomEvent in GameRoomEventData.GetByArea(area))
         {
+            if (triggeredRoomEventIds.Contains(roomEvent.EventId))
+                continue;
+
             if (!string.Equals(roomEvent.TriggerType, "explore", StringComparison.OrdinalIgnoreCase))
                 continue;
 

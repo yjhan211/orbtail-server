@@ -95,6 +95,7 @@ public partial class GameClientSession
             // #87: 留ㅼ묶??吏곸콉 ????뷀뵆 ?곗꽑?쒖쐞??諛섏쁺 (5遺?1?④퀎 蹂댁옣 + 吏곸콉蹂??꾩닚??
             var jobPool = _manittoChainManager.GetMatchingJobs(msg.MatchingId);
             _areaClosureManager.InitializeMatching(msg.MatchingId, jobPool);
+            _areaItemStockManager.InitializeMatching(msg.MatchingId);
 
             // ?멸쾶???ㅽ꺈 珥덇린??            ResetInGameStats();
 

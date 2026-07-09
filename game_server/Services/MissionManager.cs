@@ -1120,6 +1120,7 @@ public class PlayerPartState
     public HashSet<string> TrackedStoryletIds { get; set; } = new();
     public HashSet<string> ClaimedStoryletIds { get; set; } = new();
     public HashSet<string> LostStoryletIds { get; set; } = new();
+    public HashSet<int> TriggeredRoomEventIds { get; set; } = new();
     public HashSet<string> OwnedClueTags { get; set; } = new();
     public HashSet<int> CraftedFunctionItems { get; set; } = new();
     public HashSet<int> VisibleVictoryTraceIds { get; set; } = new();

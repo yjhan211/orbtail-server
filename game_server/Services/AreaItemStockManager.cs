@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using network.common;
 using network.common.data;
 
 namespace game_server.services;
@@ -7,6 +8,22 @@ public sealed class AreaItemStockManager
 {
     private const int DropChancePercent = 90;
     private readonly ConcurrentDictionary<long, MatchingAreaItemStock> _matchingStocks = new();
+
+    public void InitializeMatching(long matchingId)
+    {
+        var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
+
+        lock (stock.SyncRoot)
+        {
+            foreach (var area in Enum.GetValues<AreaType>())
+            {
+                if (area == AreaType.None || area.IsCorridor())
+                    continue;
+
+                stock.GetOrCreateAreaStock((int)area);
+            }
+        }
+    }
 
     public bool TryConsumeDrop(long matchingId, int areaType, out int itemId)
     {

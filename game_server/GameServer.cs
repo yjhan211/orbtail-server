@@ -2085,6 +2085,7 @@ public class GameServer(
         }
 
         _areaClosureManager.InitializeMatching(matchingId, jobs);
+        _areaItemStockManager.InitializeMatching(matchingId);
         _doorStateManager.InitializeMatching(matchingId);
         _checklistManager.StartRound(matchingId, 1, playerIds,
             playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));

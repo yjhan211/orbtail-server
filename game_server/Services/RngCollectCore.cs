@@ -118,7 +118,7 @@ public static class RngCollectCore
         }
         else
         {
-            if (TryResolveAreaStockDrop(matchingId, info.ZoneId, areaItemStockManager, consumeStock: !isBot, out int itemId))
+            if (TryResolveAreaStockDrop(matchingId, info.ZoneId, areaItemStockManager, consumeStock: true, out int itemId))
             {
                 outcome.ResultType = 2;
                 outcome.ItemId = itemId;
@@ -168,7 +168,7 @@ public static class RngCollectCore
                 return;
         }
 
-        if (!TryResolveAreaStockDrop(matchingId, areaType, areaItemStockManager, consumeStock: !isBot, out int bonusItemId))
+        if (!TryResolveAreaStockDrop(matchingId, areaType, areaItemStockManager, consumeStock: true, out int bonusItemId))
             return;
 
         outcome.BonusItemId = bonusItemId;
@@ -228,7 +228,7 @@ public static class RngCollectCore
         if (_rng.Next(100) >= reward.ValuePercent)
             return;
 
-        if (!TryResolveAreaStockDrop(matchingId, areaType, areaItemStockManager, consumeStock: !isBot, out int bonusItemId))
+        if (!TryResolveAreaStockDrop(matchingId, areaType, areaItemStockManager, consumeStock: true, out int bonusItemId))
             return;
 
         outcome.BonusItemId = bonusItemId;
