@@ -33,7 +33,6 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize,
                     validate: GameAreaRuleData.Validate),
                 (fileName: DataFiles.RoomEntryEvent, init: GameRoomEntryEventData.Initialize, validate: null),
-                (fileName: DataFiles.RoomEvent, init: GameRoomEventData.Initialize, validate: null),
                 (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
                 (fileName: DataFiles.StatusEffectInfo, init: GameStatusEffectData.Initialize, validate: null),
                 (fileName: DataFiles.DoorInfo, init: GameDoorData.Initialize, validate: null),
@@ -111,6 +110,22 @@ namespace network.common.data.helpers
             {
                 var filePath = GetCsvFilePath(fileName);
                 Log($"[GameDataHelper] Loading: {filePath}");
+                try
+                {
+                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
+                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
+                }
+                catch (Exception ex)
+                {
+                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
+                    throw;
+                }
+            }
+
+            // 반복 방 사건 데이터 로드
+            foreach (var fileName in DataFiles.RoomEvent.ALL)
+            {
+                var filePath = GetCsvFilePath(fileName);
                 try
                 {
                     loadedData[fileName] = CsvHelper.LoadCsv(filePath);
@@ -221,6 +236,10 @@ namespace network.common.data.helpers
             {
                 init(loadedData[fileName]);
             }
+
+            GameRoomEventData.Initialize(
+                loadedData[DataFiles.RoomEvent.Master],
+                loadedData[DataFiles.RoomEvent.Choice]);
 
             // Buff data
             GameBuffData.Initialize(loadedData[DataFiles.BuffInfo]);
@@ -597,7 +616,13 @@ namespace network.common.data.helpers
             public const string AreaName = "area_name.csv";
             public const string AreaRule = "area_rule.csv";
             public const string RoomEntryEvent = "room_entry_event.csv";
-            public const string RoomEvent = "room_event.csv";
+            public static class RoomEvent
+            {
+                public const string Master = "room_event_master.csv";
+                public const string Choice = "room_event_choice.csv";
+
+                public static readonly string[] ALL = new[] { Master, Choice };
+            }
             public const string SystemText = "system_text.csv";
             public const string StatusEffectInfo = "status_effect_info.csv";
             public const string DoorInfo = "door_info.csv";

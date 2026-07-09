@@ -17,6 +17,36 @@ namespace network.common.data
         private static readonly Dictionary<int, RoomEventInfoData> _eventsById = new();
         private static readonly Dictionary<AreaType, List<RoomEventInfoData>> _eventsByArea = new();
 
+        public static void Initialize(List<CsvRow> masterData, List<CsvRow> choiceData)
+        {
+            _eventsById.Clear();
+            _eventsByArea.Clear();
+
+            var choicesByEventId = choiceData
+                .Select(RoomEventChoiceInfoData.CreateFromData)
+                .Where(choice => choice.ChoiceId > 0)
+                .GroupBy(choice => choice.EventId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group
+                        .OrderBy(choice => choice.SortOrder)
+                        .ThenBy(choice => choice.ChoiceId)
+                        .ToList());
+
+            foreach (var row in masterData)
+            {
+                int eventId = int.Parse(row["event_id"]);
+                var roomEvent = RoomEventInfoData.CreateFromData(
+                    row,
+                    choicesByEventId.TryGetValue(eventId, out var choices)
+                        ? choices
+                        : new List<RoomEventChoiceInfoData>());
+                Register(roomEvent);
+            }
+
+            SortByArea();
+        }
+
         public static void Initialize(List<CsvRow> csvData)
         {
             _eventsById.Clear();
@@ -25,20 +55,30 @@ namespace network.common.data
             foreach (var group in csvData.GroupBy(row => int.Parse(row["event_id"])))
             {
                 var roomEvent = RoomEventInfoData.CreateFromRows(group.ToList());
-                _eventsById[roomEvent.EventId] = roomEvent;
-
-                foreach (var areaType in roomEvent.AreaTypes)
-                {
-                    if (!_eventsByArea.TryGetValue(areaType, out var list))
-                    {
-                        list = new List<RoomEventInfoData>();
-                        _eventsByArea[areaType] = list;
-                    }
-
-                    list.Add(roomEvent);
-                }
+                Register(roomEvent);
             }
 
+            SortByArea();
+        }
+
+        private static void Register(RoomEventInfoData roomEvent)
+        {
+            _eventsById[roomEvent.EventId] = roomEvent;
+
+            foreach (var areaType in roomEvent.AreaTypes)
+            {
+                if (!_eventsByArea.TryGetValue(areaType, out var list))
+                {
+                    list = new List<RoomEventInfoData>();
+                    _eventsByArea[areaType] = list;
+                }
+
+                list.Add(roomEvent);
+            }
+        }
+
+        private static void SortByArea()
+        {
             foreach (var list in _eventsByArea.Values)
                 list.Sort((a, b) => a.EventId.CompareTo(b.EventId));
         }
@@ -85,24 +125,31 @@ namespace network.common.data
         public static RoomEventInfoData CreateFromRows(List<CsvRow> rows)
         {
             var first = rows[0];
-            var areaValues = JsonConvert.DeserializeObject<List<int>>(first["area_types"]) ?? new List<int>();
+            var choices = rows
+                .Select(RoomEventChoiceInfoData.CreateFromData)
+                .Where(choice => choice.ChoiceId > 0)
+                .OrderBy(choice => choice.SortOrder)
+                .ThenBy(choice => choice.ChoiceId)
+                .ToList();
+
+            return CreateFromData(first, choices);
+        }
+
+        public static RoomEventInfoData CreateFromData(CsvRow row, List<RoomEventChoiceInfoData> choices)
+        {
+            var areaValues = JsonConvert.DeserializeObject<List<int>>(row["area_types"]) ?? new List<int>();
 
             return new RoomEventInfoData
             {
-                EventId = int.Parse(first["event_id"]),
+                EventId = int.Parse(row["event_id"]),
                 AreaTypes = areaValues.Select(value => (AreaType)value).ToList(),
-                Title = LocalizedText.FromCsv(first, "title"),
-                Description = LocalizedText.FromCsvMultiline(first, "description"),
-                TriggerType = first.ContainsKey("trigger_type") ? first["trigger_type"].Trim() : "explore",
-                ProbabilityPercent = ParseInt(first, "probability", 0),
-                TimeoutSeconds = ParseInt(first, "timeout_seconds", 0),
-                DefaultChoiceId = ParseInt(first, "default_choice_id", 0),
-                Choices = rows
-                    .Select(RoomEventChoiceInfoData.CreateFromData)
-                    .Where(choice => choice.ChoiceId > 0)
-                    .OrderBy(choice => choice.SortOrder)
-                    .ThenBy(choice => choice.ChoiceId)
-                    .ToList()
+                Title = LocalizedText.FromCsv(row, "title"),
+                Description = LocalizedText.FromCsvMultiline(row, "description"),
+                TriggerType = row.ContainsKey("trigger_type") ? row["trigger_type"].Trim() : "explore",
+                ProbabilityPercent = ParseInt(row, "probability", 0),
+                TimeoutSeconds = ParseInt(row, "timeout_seconds", 0),
+                DefaultChoiceId = ParseInt(row, "default_choice_id", 0),
+                Choices = choices ?? new List<RoomEventChoiceInfoData>()
             };
         }
 
