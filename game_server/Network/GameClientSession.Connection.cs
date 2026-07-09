@@ -215,6 +215,23 @@ public partial class GameClientSession
         }
     }
 
+    private async Task SaveActiveBuffIds(long matchingId, long playerId)
+    {
+        try
+        {
+            await CacheHelper.HashSetAsync(
+                PlayerBuffInfoKey,
+                MakePlayerBuffField(matchingId, playerId),
+                MessagePackSerializer.Serialize(_activeBuffIds));
+            Logger.LogInformation("Active buffs saved: MatchingId={MatchingId}, PlayerId={PlayerId}, Buffs=[{Buffs}]",
+                matchingId, playerId, string.Join(",", _activeBuffIds));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Active buffs save failed: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId, playerId);
+        }
+    }
+
     private static string MakePlayerBuffField(long matchingId, long playerId) => $"{matchingId}:{playerId}";
     private async Task BroadcastPlayerJoin()
     {

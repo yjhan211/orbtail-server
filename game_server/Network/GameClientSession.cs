@@ -106,6 +106,14 @@ public partial class GameClientSession : SessionBase
         }
     }
 
+    private bool AddActiveBuffId(int buffId)
+    {
+        if (buffId <= 0 || _activeBuffIds.Contains(buffId)) return false;
+
+        _activeBuffIds.Add(buffId);
+        return true;
+    }
+
     public GameClientSession(
         UserToken token,
         IRedLockFactory redLock,

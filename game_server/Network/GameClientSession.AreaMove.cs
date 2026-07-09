@@ -228,9 +228,9 @@ public partial class GameClientSession
             area);
     }
 
-    private Task HandleRoomEntryEventChoice(C_TO_G_ROOM_ENTRY_EVENT_CHOICE msg)
+    private async Task HandleRoomEntryEventChoice(C_TO_G_ROOM_ENTRY_EVENT_CHOICE msg)
     {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (!PlayerId.HasValue) return;
         if (_pendingRoomEntryEventId != msg.EventId)
         {
             Logger.LogWarning(
@@ -239,7 +239,7 @@ public partial class GameClientSession
                 _pendingRoomEntryEventId,
                 msg.EventId,
                 msg.ChoiceId);
-            return Task.CompletedTask;
+            return;
         }
 
         if (!GameRoomEntryEventData.TryGetChoice(msg.EventId, msg.ChoiceId, out var entryEvent, out var choice))
@@ -249,7 +249,7 @@ public partial class GameClientSession
                 PlayerId,
                 msg.EventId,
                 msg.ChoiceId);
-            return Task.CompletedTask;
+            return;
         }
 
         var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
@@ -259,29 +259,38 @@ public partial class GameClientSession
                 "Room entry event choice failed because mission state is missing: Matching={MatchingId}, Player={PlayerId}",
                 CurrentMapSubId,
                 PlayerId);
-            return Task.CompletedTask;
+            return;
         }
 
-        bool granted = false;
+        int buffId = ResolveInitialRoomEntryTraitBuffId(choice.GrantedTraitId);
+        bool traitGranted = false;
+        bool buffGranted = false;
         lock (state.SyncRoot)
         {
             if (!HasInitialRoomEntryTrait(state) && !string.IsNullOrWhiteSpace(choice.GrantedTraitId))
-                granted = state.OwnedClueTags.Add(choice.GrantedTraitId);
+            {
+                traitGranted = state.OwnedClueTags.Add(choice.GrantedTraitId);
+                if (traitGranted)
+                    buffGranted = AddActiveBuffId(buffId);
+            }
         }
+
+        if (buffGranted)
+            await SaveActiveBuffIds(CurrentMapSubId, PlayerId.Value);
 
         _pendingRoomEntryEventId = 0;
         SendMissionInfo();
 
         Logger.LogInformation(
-            "Room entry event choice resolved: Matching={MatchingId}, Player={PlayerId}, Event={Event}, Choice={Choice}, Trait={Trait}, Granted={Granted}",
+            "Room entry event choice resolved: Matching={MatchingId}, Player={PlayerId}, Event={Event}, Choice={Choice}, Trait={Trait}, TraitGranted={TraitGranted}, Buff={Buff}, BuffGranted={BuffGranted}",
             CurrentMapSubId,
             PlayerId,
             entryEvent.Id,
             choice.ChoiceId,
             choice.GrantedTraitId,
-            granted);
-
-        return Task.CompletedTask;
+            traitGranted,
+            buffId,
+            buffGranted);
     }
 
     private bool HasInitialRoomEntryTrait()
@@ -298,6 +307,19 @@ public partial class GameClientSession
 
     private static bool IsInitialRoomEntryTrait(string tag)
     {
-        return tag is "trait_observation" or "trait_calm" or "trait_execution" or "trait_survival" or "trait_courage";
+        return ResolveInitialRoomEntryTraitBuffId(tag) > 0;
+    }
+
+    private static int ResolveInitialRoomEntryTraitBuffId(string? traitId)
+    {
+        return traitId switch
+        {
+            "trait_observation" => GameBuffData.PersonaSecretCollectorBuffId,
+            "trait_calm" => GameBuffData.PersonaNocturnalBuffId,
+            "trait_execution" => GameBuffData.PersonaPhysicalSolverBuffId,
+            "trait_survival" => GameBuffData.PersonaCowardBuffId,
+            "trait_courage" => GameBuffData.PersonaGuardianAngelBuffId,
+            _ => 0
+        };
     }
 }
