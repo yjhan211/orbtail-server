@@ -113,6 +113,7 @@ namespace network.common
         RECOVERY_ITEM_EFFECT_ADD = 7,
         ENCOUNTER_ESCAPE_CHANCE_ADD = 8,
         ISOLATION_CORRUPTION_GAIN_DOWN = 9,
+        UNFAVORABLE_SUCCESS_CHANCE_ADD = 10,
     }
 
     public enum ItemType
