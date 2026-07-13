@@ -228,6 +228,20 @@ public partial class GameClientSession
             area);
     }
 
+    private void ResendPendingRoomEntryEvent(string reason)
+    {
+        if (!PlayerId.HasValue || _pendingRoomEntryEventId == 0) return;
+
+        using var packet = PacketMaker.G_TO_C_ROOM_ENTRY_EVENT(_pendingRoomEntryEventId);
+        Send(packet);
+
+        Logger.LogInformation(
+            "Pending room entry event resent: Player={PlayerId}, Event={EventId}, Reason={Reason}",
+            PlayerId,
+            _pendingRoomEntryEventId,
+            reason);
+    }
+
     private async Task HandleRoomEntryEventChoice(C_TO_G_ROOM_ENTRY_EVENT_CHOICE msg)
     {
         if (!PlayerId.HasValue) return;

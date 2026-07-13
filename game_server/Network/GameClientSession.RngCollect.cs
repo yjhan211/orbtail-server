@@ -48,6 +48,7 @@ public partial class GameClientSession
         if (_pendingRoomEntryEventId != 0)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+            ResendPendingRoomEntryEvent("RngCollectStartBlocked");
             return Task.CompletedTask;
         }
 
