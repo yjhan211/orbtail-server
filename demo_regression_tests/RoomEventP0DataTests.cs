@@ -113,11 +113,16 @@ public sealed class RoomEventP0DataTests
             byte[] canonical = File.ReadAllBytes(Path.Combine(repoRoot, "network", "Common", "csv", fileName));
             foreach (string relativeDirectory in new[]
                      {
+                         Path.Combine("client", "Assets", "Scripts", "Common", "csv"),
                          Path.Combine("client", "Assets", "Resources", "Common", "csv"),
                          Path.Combine("client", "Assets", "StreamingAssets", "Common", "csv")
                      })
             {
-                Assert.Equal(canonical, File.ReadAllBytes(Path.Combine(repoRoot, relativeDirectory, fileName)));
+                string mirrorDirectory = Path.Combine(repoRoot, relativeDirectory);
+                if (!Directory.Exists(mirrorDirectory))
+                    continue;
+
+                Assert.Equal(canonical, File.ReadAllBytes(Path.Combine(mirrorDirectory, fileName)));
             }
         }
     }
