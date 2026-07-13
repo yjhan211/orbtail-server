@@ -78,9 +78,9 @@ public enum RoomEventCommandError
 
 public interface IRoomEventActorGateway
 {
-    bool IsPlayerInArea(long matchingId, long playerId, AreaType areaType);
+    public bool IsPlayerInArea(long matchingId, long playerId, AreaType areaType);
 
-    bool TryApplyResourceDelta(
+    public bool TryApplyResourceDelta(
         long matchingId,
         long playerId,
         int staminaDelta,
