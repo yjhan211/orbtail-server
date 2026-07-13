@@ -90,6 +90,7 @@ public partial class GameClientSession : SessionBase
     private long? _pendingInteractPlayerId;
     private long? _pendingBotRequesterPlayerId;
     private int _pendingRoomEntryEventId;
+    private readonly object _roomEntryEventChoiceLock = new();
 
     private Timer? _periodicBuffTimer;
 

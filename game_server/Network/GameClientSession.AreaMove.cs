@@ -255,34 +255,49 @@ public partial class GameClientSession
             return;
         }
 
-        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
-        if (state == null)
-        {
-            _pendingRoomEntryEventId = 0;
-            Logger.LogWarning(
-                "Room entry event choice failed because mission state is missing: Matching={MatchingId}, Player={PlayerId}",
-                CurrentMapSubId,
-                PlayerId);
-            return;
-        }
-
         int buffId = ResolveInitialRoomEntryTraitBuffId(choice.GrantedTraitId);
         bool traitGranted = false;
         bool buffGranted = false;
-        lock (state.SyncRoot)
+        lock (_roomEntryEventChoiceLock)
         {
-            if (!HasInitialRoomEntryTrait(state) && !string.IsNullOrWhiteSpace(choice.GrantedTraitId))
+            if (_pendingRoomEntryEventId != msg.EventId)
             {
-                traitGranted = state.OwnedClueTags.Add(choice.GrantedTraitId);
-                if (traitGranted)
-                    buffGranted = AddActiveBuffId(buffId);
+                Logger.LogWarning(
+                    "Room entry event choice ignored after atomic check: Player={PlayerId}, Pending={Pending}, Event={Event}, Choice={Choice}",
+                    PlayerId,
+                    _pendingRoomEntryEventId,
+                    msg.EventId,
+                    msg.ChoiceId);
+                return;
             }
+
+            var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
+            if (state == null)
+            {
+                _pendingRoomEntryEventId = 0;
+                Logger.LogWarning(
+                    "Room entry event choice failed because mission state is missing: Matching={MatchingId}, Player={PlayerId}",
+                    CurrentMapSubId,
+                    PlayerId);
+                return;
+            }
+
+            lock (state.SyncRoot)
+            {
+                if (!HasInitialRoomEntryTrait(state) && !string.IsNullOrWhiteSpace(choice.GrantedTraitId))
+                {
+                    traitGranted = state.OwnedClueTags.Add(choice.GrantedTraitId);
+                    if (traitGranted)
+                        buffGranted = AddActiveBuffId(buffId);
+                }
+            }
+
+            _pendingRoomEntryEventId = 0;
         }
 
         if (buffGranted)
             await SaveActiveBuffIds(CurrentMapSubId, PlayerId.Value);
 
-        _pendingRoomEntryEventId = 0;
         SendMissionInfo();
 
         Logger.LogInformation(

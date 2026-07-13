@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using network.common;
 using network.common.data.helpers;
@@ -120,6 +121,14 @@ namespace network.common.data
         public int ProbabilityPercent { get; private set; }
         public int TimeoutSeconds { get; private set; }
         public int DefaultChoiceId { get; private set; }
+        public bool UsesWorldState { get; private set; }
+        public List<string> ResponseTagPool { get; private set; } = new();
+        public int TargetContribution { get; private set; }
+        public int DurationSeconds { get; private set; }
+        public int MaxContributionPerPlayer { get; private set; }
+        public int MaxTimeExtensions { get; private set; }
+        public int TimeExtensionSeconds { get; private set; }
+        public int MaxManualResponses { get; private set; }
         public List<RoomEventChoiceInfoData> Choices { get; private set; } = new();
 
         public static RoomEventInfoData CreateFromRows(List<CsvRow> rows)
@@ -149,6 +158,14 @@ namespace network.common.data
                 ProbabilityPercent = ParseInt(row, "probability", 0),
                 TimeoutSeconds = ParseInt(row, "timeout_seconds", 0),
                 DefaultChoiceId = ParseInt(row, "default_choice_id", 0),
+                UsesWorldState = ParseBool(row, "uses_world_state"),
+                ResponseTagPool = ParseStringList(row, "response_tag_pool"),
+                TargetContribution = ParseInt(row, "target_contribution", 0),
+                DurationSeconds = ParseInt(row, "duration_seconds", 0),
+                MaxContributionPerPlayer = ParseInt(row, "max_contribution_per_player", 0),
+                MaxTimeExtensions = ParseInt(row, "max_time_extensions", 0),
+                TimeExtensionSeconds = ParseInt(row, "time_extension_seconds", 0),
+                MaxManualResponses = ParseInt(row, "max_manual_responses", 0),
                 Choices = choices ?? new List<RoomEventChoiceInfoData>()
             };
         }
@@ -156,6 +173,19 @@ namespace network.common.data
         private static int ParseInt(CsvRow row, string key, int fallback)
         {
             return row.ContainsKey(key) && int.TryParse(row[key], out int value) ? value : fallback;
+        }
+
+        private static bool ParseBool(CsvRow row, string key)
+        {
+            return row.ContainsKey(key) && bool.TryParse(row[key], out bool value) && value;
+        }
+
+        private static List<string> ParseStringList(CsvRow row, string key)
+        {
+            if (!row.ContainsKey(key) || string.IsNullOrWhiteSpace(row[key]))
+                return new List<string>();
+
+            return JsonConvert.DeserializeObject<List<string>>(row[key]) ?? new List<string>();
         }
     }
 
@@ -169,6 +199,9 @@ namespace network.common.data
         public string ChoiceType { get; private set; }
         public string RequirementType { get; private set; }
         public string RequirementValue { get; private set; }
+        public string WorldEffectId { get; private set; }
+        public int ConsumeItemCount { get; private set; }
+        public string StatePrecondition { get; private set; }
         public bool ConsumeItem { get; private set; }
         public int MentalDelta { get; private set; }
         public int StaminaDelta { get; private set; }
@@ -180,6 +213,8 @@ namespace network.common.data
 
         public static RoomEventChoiceInfoData CreateFromData(CsvRow row)
         {
+            int consumeItemCount = ParseConsumeItemCount(row);
+
             return new RoomEventChoiceInfoData
             {
                 ChoiceId = ParseInt(row, "choice_id", 0),
@@ -190,7 +225,10 @@ namespace network.common.data
                 ChoiceType = Read(row, "choice_type"),
                 RequirementType = Read(row, "requirement_type"),
                 RequirementValue = Read(row, "requirement_value"),
-                ConsumeItem = ParseBool(row, "consume_item"),
+                WorldEffectId = Read(row, "world_effect_id"),
+                ConsumeItemCount = consumeItemCount,
+                StatePrecondition = Read(row, "state_precondition"),
+                ConsumeItem = consumeItemCount > 0,
                 MentalDelta = ParseInt(row, "mental_delta", 0),
                 StaminaDelta = ParseInt(row, "stamina_delta", 0),
                 RewardItemId = ParseInt(row, "reward_item_id", 0),
@@ -214,6 +252,17 @@ namespace network.common.data
         private static bool ParseBool(CsvRow row, string key)
         {
             return row.ContainsKey(key) && bool.TryParse(row[key], out bool value) && value;
+        }
+
+        private static int ParseConsumeItemCount(CsvRow row)
+        {
+            int value = row.ContainsKey("consume_item_count") &&
+                        int.TryParse(row["consume_item_count"], out int parsed)
+                ? parsed
+                : ParseBool(row, "consume_item") ? 1 : 0;
+            if (value is < 0 or > 1)
+                throw new InvalidDataException($"consume_item_count must be 0 or 1, got {value}");
+            return value;
         }
     }
 }

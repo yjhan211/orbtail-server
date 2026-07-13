@@ -240,6 +240,8 @@ namespace network.common.data.helpers
             GameRoomEventData.Initialize(
                 loadedData[DataFiles.RoomEvent.Master],
                 loadedData[DataFiles.RoomEvent.Choice]);
+            GameRoomEventResponseItemData.Initialize(
+                loadedData[DataFiles.RoomEvent.ResponseItem]);
 
             // Buff data
             GameBuffData.Initialize(loadedData[DataFiles.BuffInfo]);
@@ -620,8 +622,9 @@ namespace network.common.data.helpers
             {
                 public const string Master = "room_event_master.csv";
                 public const string Choice = "room_event_choice.csv";
+                public const string ResponseItem = "room_event_response_item.csv";
 
-                public static readonly string[] ALL = new[] { Master, Choice };
+                public static readonly string[] ALL = new[] { Master, Choice, ResponseItem };
             }
             public const string SystemText = "system_text.csv";
             public const string StatusEffectInfo = "status_effect_info.csv";

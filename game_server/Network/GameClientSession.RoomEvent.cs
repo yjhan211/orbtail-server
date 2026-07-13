@@ -64,6 +64,9 @@ public partial class GameClientSession
 
         foreach (var roomEvent in GameRoomEventData.GetByArea(area))
         {
+            if (roomEvent.UsesWorldState)
+                continue;
+
             if (triggeredRoomEventIds.Contains(roomEvent.EventId))
                 continue;
 
@@ -89,29 +92,68 @@ public partial class GameClientSession
         if (!PlayerId.HasValue)
             return true;
 
-        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
-        if (state == null)
+        RoomEventChoiceApplication? application = null;
+        bool shouldRetry = false;
+        lock (_roomEntryEventChoiceLock)
         {
-            _pendingRoomEntryEventId = 0;
-            _pendingRoomEventInteractId = 0;
+            if (_pendingRoomEntryEventId != msg.EventId)
+            {
+                Logger.LogWarning(
+                    "Room explore event choice ignored after atomic check: Player={PlayerId}, Pending={Pending}, Event={Event}, Choice={Choice}",
+                    PlayerId,
+                    _pendingRoomEntryEventId,
+                    msg.EventId,
+                    msg.ChoiceId);
+                return true;
+            }
+
+            var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
+            if (state == null)
+            {
+                _pendingRoomEntryEventId = 0;
+                _pendingRoomEventInteractId = 0;
+                Logger.LogWarning(
+                    "Room explore event choice failed because mission state is missing: Matching={MatchingId}, Player={PlayerId}, Event={Event}, Choice={Choice}",
+                    CurrentMapSubId,
+                    PlayerId,
+                    msg.EventId,
+                    msg.ChoiceId);
+                return true;
+            }
+
+            if (!MeetsRoomEventRequirement(choice, state))
+                choice = ResolveDefaultRoomEventChoice(roomEvent) ?? choice;
+
+            choice = ResolveLuckRoomEventChoice(roomEvent, choice);
+
+            if (!TryApplyRoomEventChoice(choice, state, out application))
+            {
+                shouldRetry = true;
+            }
+            else
+            {
+                _pendingRoomEntryEventId = 0;
+                _pendingRoomEventInteractId = 0;
+            }
+        }
+
+        if (shouldRetry)
+        {
             Logger.LogWarning(
-                "Room explore event choice failed because mission state is missing: Matching={MatchingId}, Player={PlayerId}, Event={Event}, Choice={Choice}",
+                "Room explore event choice rejected before commit because item consumption failed: Matching={MatchingId}, Player={PlayerId}, Event={Event}, Choice={Choice}",
                 CurrentMapSubId,
                 PlayerId,
-                msg.EventId,
-                msg.ChoiceId);
+                roomEvent.EventId,
+                choice.ChoiceId);
+            using var retryPacket = PacketMaker.G_TO_C_ROOM_ENTRY_EVENT(roomEvent.EventId);
+            Send(retryPacket);
             return true;
         }
 
-        if (!MeetsRoomEventRequirement(choice, state))
-            choice = ResolveDefaultRoomEventChoice(roomEvent) ?? choice;
+        if (application == null)
+            return true;
 
-        choice = ResolveLuckRoomEventChoice(roomEvent, choice);
-
-        ApplyRoomEventChoice(choice, state);
-
-        _pendingRoomEntryEventId = 0;
-        _pendingRoomEventInteractId = 0;
+        PublishRoomEventChoiceApplication(application);
         SendMissionInfo();
 
         Logger.LogInformation(
@@ -119,11 +161,11 @@ public partial class GameClientSession
             CurrentMapSubId,
             PlayerId,
             roomEvent.EventId,
-            choice.ChoiceId,
-            choice.MentalDelta,
-            choice.StaminaDelta,
-            choice.RewardItemId,
-            choice.ClueRewardId);
+            application.Choice.ChoiceId,
+            application.Choice.MentalDelta,
+            application.Choice.StaminaDelta,
+            application.Choice.RewardItemId,
+            application.Choice.ClueRewardId);
 
         return true;
     }
@@ -183,21 +225,33 @@ public partial class GameClientSession
         };
     }
 
-    private void ApplyRoomEventChoice(RoomEventChoiceInfoData choice, PlayerPartState state)
+    private bool TryApplyRoomEventChoice(
+        RoomEventChoiceInfoData choice,
+        PlayerPartState state,
+        out RoomEventChoiceApplication? application)
     {
+        application = null;
         if (!PlayerId.HasValue)
-            return;
+            return false;
 
         int requiredItemId = ResolveRequiredRoomEventItemId(choice);
-        if (choice.ConsumeItem && requiredItemId > 0 &&
-            _inGameInventoryManager.TryRemoveOneByItemId(
-                CurrentMapSubId,
-                PlayerId.Value,
-                requiredItemId,
-                out var updatedItem) &&
-            updatedItem != null)
+        InGameItemInfo? consumedItemUpdate = null;
+        InGameItemInfo? rewardItemUpdate = null;
+        int interactId = _pendingRoomEventInteractId;
+
+        if (choice.ConsumeItem)
         {
-            SendInGameInventoryUpdate(updatedItem);
+            if (requiredItemId <= 0 ||
+                !_inGameInventoryManager.TryRemoveOneByItemId(
+                    CurrentMapSubId,
+                    PlayerId.Value,
+                    requiredItemId,
+                    out var updatedItem))
+            {
+                return false;
+            }
+
+            consumedItemUpdate = SnapshotRoomEventItemUpdate(updatedItem);
         }
 
         if (choice.RewardItemId > 0 && choice.RewardItemCount > 0)
@@ -207,7 +261,7 @@ public partial class GameClientSession
                 PlayerId.Value,
                 choice.RewardItemId,
                 choice.RewardItemCount);
-            SendInGameInventoryUpdate(added);
+            rewardItemUpdate = SnapshotRoomEventItemUpdate(added);
         }
 
         if (!string.IsNullOrWhiteSpace(choice.ClueRewardId))
@@ -221,15 +275,51 @@ public partial class GameClientSession
         if (choice.StaminaDelta != 0 || choice.MentalDelta != 0)
             ModifyStats(staminaDelta: choice.StaminaDelta, corruptionDelta: choice.MentalDelta);
 
-        if (_pendingRoomEventInteractId > 0)
+        application = new RoomEventChoiceApplication(
+            choice,
+            consumedItemUpdate,
+            rewardItemUpdate,
+            interactId);
+        return true;
+    }
+
+    private void PublishRoomEventChoiceApplication(RoomEventChoiceApplication application)
+    {
+        if (application.ConsumedItemUpdate != null)
+            SendInGameInventoryUpdate(application.ConsumedItemUpdate);
+
+        if (application.RewardItemUpdate != null)
+            SendInGameInventoryUpdate(application.RewardItemUpdate);
+
+        if (application.InteractId > 0)
         {
-            RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, _pendingRoomEventInteractId);
-            BroadcastRngCollectCooldown(_pendingRoomEventInteractId, 0);
+            RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, application.InteractId);
+            BroadcastRngCollectCooldown(application.InteractId, 0);
         }
 
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
         CheckResourceElimination();
     }
+
+    private static InGameItemInfo? SnapshotRoomEventItemUpdate(InGameItemInfo? item)
+    {
+        if (item == null)
+            return null;
+
+        return new InGameItemInfo
+        {
+            ItemUid = item.ItemUid,
+            ItemId = item.ItemId,
+            Count = item.Count,
+            GiftState = item.GiftState
+        };
+    }
+
+    private sealed record RoomEventChoiceApplication(
+        RoomEventChoiceInfoData Choice,
+        InGameItemInfo? ConsumedItemUpdate,
+        InGameItemInfo? RewardItemUpdate,
+        int InteractId);
 
     private static int ResolveRequiredRoomEventItemId(RoomEventChoiceInfoData choice)
     {
