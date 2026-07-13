@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.services;
@@ -12,6 +14,9 @@ public class PlayerInGameInventory(long matchingId)
     private readonly ConcurrentDictionary<long, InGameItemInfo> _items = new();
     private readonly object _sequenceLock = new();
     private int _nextSequence = 1;
+
+    private static bool ShouldKeepSeparateStack(int itemId, GiftState giftState) =>
+        giftState == GiftState.None && BattleItemRecipeData.IsRecipeInputItem(itemId);
 
     /// <summary>
     ///     ItemUid 생성: MatchingId * 100000 + Sequence
@@ -28,17 +33,22 @@ public class PlayerInGameInventory(long matchingId)
     ///     아이템 추가. 스택 가능하면 기존 아이템에 수량 추가, 아니면 새로 생성
     /// </summary>
     /// <returns>변경된 아이템 정보</returns>
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public InGameItemInfo AddItem(int itemId, int count = 1, GiftState giftState = GiftState.None)
     {
-        // 같은 itemId와 선물 상태가 있으면 수량 추가 (스택)
-        foreach (var kvp in _items)
-            if (kvp.Value.ItemId == itemId && kvp.Value.GiftState == giftState)
-            {
-                kvp.Value.Count += count;
-                return kvp.Value;
-            }
+        bool keepSeparateStack = ShouldKeepSeparateStack(itemId, giftState);
 
-        // 없으면 새로 생성
+        // Merge puzzle inputs need separate slots so duplicate materials can be selected independently.
+        if (!keepSeparateStack)
+        {
+            foreach (var kvp in _items)
+                if (kvp.Value.ItemId == itemId && kvp.Value.GiftState == giftState)
+                {
+                    kvp.Value.Count += count;
+                    return kvp.Value;
+                }
+        }
+
         var newItem = new InGameItemInfo { ItemUid = GenerateUid(), ItemId = itemId, Count = count, GiftState = giftState };
         _items[newItem.ItemUid] = newItem;
         return newItem;
@@ -47,7 +57,8 @@ public class PlayerInGameInventory(long matchingId)
     /// <summary>
     ///     아이템 사용/제거
     /// </summary>
-    /// <returns>성공 여부와 변경된 아이템 정보 (삭제된 경우 Count=0)</returns>
+    /// <returns>성공 여부와 변경된 아이템 정보</returns>
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public bool TryRemoveItem(long itemUid, int count, out InGameItemInfo? updatedItem)
     {
         updatedItem = null;
@@ -80,6 +91,15 @@ public class PlayerInGameInventory(long matchingId)
     /// <summary>
     ///     특정 아이템 조회
     /// </summary>
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryRemoveOneByItemId(int itemId, out InGameItemInfo? updatedItem)
+    {
+        updatedItem = null;
+        var item = _items.Values.FirstOrDefault(candidate => candidate.ItemId == itemId && candidate.Count > 0);
+        return item != null && TryRemoveItem(item.ItemUid, 1, out updatedItem);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public InGameItemInfo? GetItem(long itemUid)
     {
         return _items.GetValueOrDefault(itemUid);
@@ -88,6 +108,7 @@ public class PlayerInGameInventory(long matchingId)
     /// <summary>
     ///     전체 아이템 목록
     /// </summary>
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public List<InGameItemInfo> GetAllItems()
     {
         return _items.Values.ToList();
@@ -96,6 +117,7 @@ public class PlayerInGameInventory(long matchingId)
     /// <summary>
     ///     특정 종류의 아이템 수량 합계
     /// </summary>
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public int GetItemCount(int itemId)
     {
         return _items.Values.Where(i => i.ItemId == itemId).Sum(i => i.Count);
@@ -212,16 +234,11 @@ public class InGameInventoryManager
     /// </summary>
     public bool TryRemoveOneByItemId(long matchingId, long playerId, int itemId, out InGameItemInfo? updatedItem)
     {
-        updatedItem = null;
-
         var inventory = GetPlayerInventory(matchingId, playerId);
-        var item = inventory.GetAllItems().FirstOrDefault(i => i.ItemId == itemId && i.Count > 0);
-        if (item == null) return false;
-
-        bool result = inventory.TryRemoveItem(item.ItemUid, 1, out updatedItem);
+        bool result = inventory.TryRemoveOneByItemId(itemId, out updatedItem);
         if (result)
             _logAction?.Invoke(
-                $"InGameInventoryManager: Removed one item by ItemId (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={item.ItemUid})");
+                $"InGameInventoryManager: Removed one item by ItemId (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={updatedItem?.ItemUid})");
         return result;
     }
 

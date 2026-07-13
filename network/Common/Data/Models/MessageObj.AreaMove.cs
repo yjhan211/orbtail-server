@@ -32,4 +32,23 @@ namespace network.common.data.models
         [Key("staminaCost")] public int StaminaCost { get; set; }
         [Key("remainingStamina")] public int RemainingStamina { get; set; }
     }
+
+    /// <summary>
+    ///     방 입장 사건 알림. 서버가 구역 이동 성공 후 판정해서 내려준다.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_ROOM_ENTRY_EVENT : IMessagePackObject
+    {
+        [Key("eventId")] public int EventId { get; set; }
+    }
+
+    /// <summary>
+    ///     방 입장 초기 사건 선택 응답. 서버는 eventId와 choiceId를 CSV 기준으로 검증한다.
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_ROOM_ENTRY_EVENT_CHOICE : IMessagePackObject
+    {
+        [Key("eventId")] public int EventId { get; set; }
+        [Key("choiceId")] public int ChoiceId { get; set; }
+    }
 }

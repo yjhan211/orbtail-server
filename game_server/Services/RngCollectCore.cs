@@ -20,6 +20,13 @@ public static class RngCollectCore
     private const int BlackedOutPaperPartId = 309;
     // 소모품 회수 stamina 보상 제거 (#135) — 회복은 아이템 사용 시점에만.
     private const int ConsumableStaminaReward = 0;
+    private const int MergeDropBaseWeight = 10;
+    private const int MergeDropStarterBonus = 4;
+    private const int MergeDropMissingIngredientBonus = 18;
+    private const int MergeDropProgressBonus = 12;
+    private const int MergeDropCompleteRecipeBonus = 40;
+    private const int MergeDropDuplicatePenalty = 4;
+    private const int MergeDropRecipeBonusCap = 120;
     // Regular explore should only grant consumables. Mission parts are collected through explicit mission actions.
     private const bool AllowMissionPartDropsFromExplore = false;
     private static readonly Random _rng = new();
@@ -32,6 +39,7 @@ public static class RngCollectCore
         MissionManager missionManager,
         InGameInventoryManager inventoryManager,
         ItemPoolManager itemPoolManager,
+        AreaItemStockManager areaItemStockManager,
         bool isBot,
         int bonusItemChancePercent = 0)
     {
@@ -110,36 +118,28 @@ public static class RngCollectCore
         }
         else
         {
-            int roll = _rng.Next(100);
-            // 자기 풀 외: 75% 지역 아이템 / 25% 빈손. 풀은 영역(AreaType) 단위 — area_item_pool.csv (#185)
-            if (roll < 75)
+            if (TryResolveAreaStockDrop(matchingId, info.ZoneId, areaItemStockManager, consumeStock: true, out int itemId))
             {
-                var areaPool = GetAllowedRngItemPool(info.ZoneId);
-                if (areaPool.Count > 0)
-                {
-                    int itemId = areaPool[_rng.Next(areaPool.Count)];
-                    outcome.ResultType = 2;
-                    outcome.ItemId = itemId;
-                    outcome.StaminaReward = ConsumableStaminaReward;
-                    outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, itemId, 1);
-                }
-                else
-                {
-                    outcome.ResultType = 0; // 영역 풀 비어있으면 빈손
-                }
+                outcome.ResultType = 2;
+                outcome.ItemId = itemId;
+                outcome.StaminaReward = ConsumableStaminaReward;
+                outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, itemId, 1);
             }
             else
             {
-                outcome.ResultType = 0; // 빈손
+                outcome.ResultType = 0;
             }
         }
 
-        TryApplySharpObservationBonus(matchingId, playerId, info.ZoneId, missionManager, inventoryManager, outcome);
+        TryApplySharpObservationBonus(matchingId, playerId, info.ZoneId, missionManager, inventoryManager,
+            areaItemStockManager, isBot, outcome);
         TryApplyPassiveItemGainBonus(
             matchingId,
             playerId,
             info.ZoneId,
             inventoryManager,
+            areaItemStockManager,
+            isBot,
             outcome,
             bonusItemChancePercent);
 
@@ -154,6 +154,8 @@ public static class RngCollectCore
         long playerId,
         int areaType,
         InGameInventoryManager inventoryManager,
+        AreaItemStockManager areaItemStockManager,
+        bool isBot,
         RngCollectOutcome outcome,
         int bonusItemChancePercent)
     {
@@ -166,14 +168,8 @@ public static class RngCollectCore
                 return;
         }
 
-        var areaPool = GetAllowedRngItemPool(areaType);
-        if (areaPool.Count == 0) return;
-
-        int bonusItemId;
-        lock (_rng)
-        {
-            bonusItemId = areaPool[_rng.Next(areaPool.Count)];
-        }
+        if (!TryResolveAreaStockDrop(matchingId, areaType, areaItemStockManager, consumeStock: true, out int bonusItemId))
+            return;
 
         outcome.BonusItemId = bonusItemId;
         outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
@@ -217,6 +213,8 @@ public static class RngCollectCore
         int areaType,
         MissionManager missionManager,
         InGameInventoryManager inventoryManager,
+        AreaItemStockManager areaItemStockManager,
+        bool isBot,
         RngCollectOutcome outcome)
     {
         if (!missionManager.TryConsumeShortRewardUse(
@@ -230,14 +228,135 @@ public static class RngCollectCore
         if (_rng.Next(100) >= reward.ValuePercent)
             return;
 
-        var areaPool = GetAllowedRngItemPool(areaType);
-        if (areaPool.Count == 0) return;
+        if (!TryResolveAreaStockDrop(matchingId, areaType, areaItemStockManager, consumeStock: true, out int bonusItemId))
+            return;
 
-        int bonusItemId = areaPool[_rng.Next(areaPool.Count)];
         outcome.BonusItemId = bonusItemId;
         outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
     }
 
+    private static bool TryResolveAreaStockDrop(
+        long matchingId,
+        int areaType,
+        AreaItemStockManager areaItemStockManager,
+        bool consumeStock,
+        out int itemId)
+    {
+        itemId = 0;
+        if (consumeStock)
+            return areaItemStockManager.TryConsumeDrop(matchingId, areaType, out itemId);
+
+        if (_rng.Next(100) >= 90)
+            return false;
+
+        var areaPool = GetAllowedRngItemPool(areaType);
+        if (areaPool.Count == 0)
+            return false;
+
+        itemId = areaPool[_rng.Next(areaPool.Count)];
+        return itemId > 0;
+    }
+    private static int SelectMergePuzzleDropItem(
+        List<int> areaPool,
+        IReadOnlyCollection<InGameItemInfo> inventoryItems)
+    {
+        if (areaPool.Count == 0) return 0;
+
+        var ownedCounts = inventoryItems?
+            .Where(item => item.Count > 0)
+            .GroupBy(item => item.ItemId)
+            .ToDictionary(group => group.Key, group => group.Sum(item => item.Count))
+            ?? new Dictionary<int, int>();
+
+        var weightedItems = areaPool
+            .GroupBy(itemId => itemId)
+            .Select(group => new
+            {
+                ItemId = group.Key,
+                Weight = CalculateMergePuzzleDropWeight(group.Key, group.Count(), ownedCounts)
+            })
+            .Where(candidate => candidate.Weight > 0)
+            .ToList();
+
+        if (weightedItems.Count == 0)
+            return areaPool[_rng.Next(areaPool.Count)];
+
+        int totalWeight = weightedItems.Sum(candidate => candidate.Weight);
+        int roll = _rng.Next(totalWeight);
+        int cursor = 0;
+
+        foreach (var candidate in weightedItems)
+        {
+            cursor += candidate.Weight;
+            if (roll < cursor)
+                return candidate.ItemId;
+        }
+
+        return weightedItems[^1].ItemId;
+    }
+
+    private static int CalculateMergePuzzleDropWeight(
+        int itemId,
+        int basePoolCount,
+        Dictionary<int, int> ownedCounts)
+    {
+        int weight = Math.Max(1, basePoolCount) * MergeDropBaseWeight;
+        int recipeBonus = CalculateRecipeProgressBonus(itemId, ownedCounts);
+        int ownedCount = ownedCounts.GetValueOrDefault(itemId);
+
+        weight += recipeBonus;
+        if (ownedCount > 0)
+            weight -= ownedCount * MergeDropDuplicatePenalty;
+
+        return Math.Max(1, weight);
+    }
+
+    private static int CalculateRecipeProgressBonus(int itemId, Dictionary<int, int> ownedCounts)
+    {
+        int bonus = 0;
+
+        foreach (var recipe in BattleItemRecipeData.GetRecipesByInput(itemId))
+        {
+            var requiredCounts = recipe.InputItemIds
+                .GroupBy(inputItemId => inputItemId)
+                .ToDictionary(group => group.Key, group => group.Count());
+
+            int missingBefore = CountMissingRecipeInputs(requiredCounts, ownedCounts);
+            if (missingBefore == 0)
+                continue;
+
+            var ownedAfterDrop = new Dictionary<int, int>(ownedCounts);
+            ownedAfterDrop[itemId] = ownedAfterDrop.GetValueOrDefault(itemId) + 1;
+            int missingAfter = CountMissingRecipeInputs(requiredCounts, ownedAfterDrop);
+            if (missingAfter >= missingBefore)
+                continue;
+
+            bool hasRecipeProgress = requiredCounts.Keys.Any(inputItemId => ownedCounts.GetValueOrDefault(inputItemId) > 0);
+            bonus += MergeDropMissingIngredientBonus;
+
+            if (hasRecipeProgress)
+                bonus += MergeDropProgressBonus;
+            else
+                bonus += MergeDropStarterBonus;
+
+            if (missingAfter == 0)
+                bonus += MergeDropCompleteRecipeBonus;
+        }
+
+        return Math.Min(bonus, MergeDropRecipeBonusCap);
+    }
+
+    private static int CountMissingRecipeInputs(
+        Dictionary<int, int> requiredCounts,
+        Dictionary<int, int> ownedCounts)
+    {
+        int missing = 0;
+
+        foreach (var (itemId, requiredCount) in requiredCounts)
+            missing += Math.Max(0, requiredCount - ownedCounts.GetValueOrDefault(itemId));
+
+        return missing;
+    }
     private static List<int> GetAllowedRngItemPool(int areaType)
     {
         var areaPool = GameInteractableData.GetItemPoolByArea(areaType)
@@ -250,7 +369,9 @@ public static class RngCollectCore
     private static bool IsBattleLootDropItem(int itemId)
     {
         var item = GameItemData.Get(itemId);
-        return item != null && (item.Type == ItemType.CONSUMABLE || item.Type == ItemType.MATERIAL);
+        return item != null
+               && !BattleItemRecipeData.IsRecipeOutputItem(itemId)
+               && (item.Type == ItemType.CONSUMABLE || item.Type == ItemType.MATERIAL);
     }
 }
 

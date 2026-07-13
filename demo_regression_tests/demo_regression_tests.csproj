@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\network\network.csproj" />
+    <ProjectReference Include="..\game_server\game_server.csproj" />
   </ItemGroup>
 
 </Project>

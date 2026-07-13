@@ -204,6 +204,8 @@ namespace network.common
         G_TO_C_ROUND_STATE,
         G_TO_C_ENCOUNTER_REVEAL,
         C_TO_G_ROOM_ENCOUNTER_AVOID,
+        G_TO_C_ROOM_ENTRY_EVENT,
+        C_TO_G_ROOM_ENTRY_EVENT_CHOICE,
 
         END
     }

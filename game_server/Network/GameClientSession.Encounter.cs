@@ -247,12 +247,11 @@ public partial class GameClientSession
             return false;
         }
 
-        StartRoomEncounterReveal(actorPlayerId, targetPlayerId, allSessions, interactId,
+        return StartRoomEncounterReveal(actorPlayerId, targetPlayerId, allSessions, interactId,
             sendCollectResult: true, forceDirectEncounter: true);
-        return true;
     }
 
-    private void StartRoomEncounterReveal(
+    private bool StartRoomEncounterReveal(
         long actorPlayerId,
         long targetPlayerId,
         IReadOnlyCollection<GameClientSession> allSessions,
@@ -270,7 +269,7 @@ public partial class GameClientSession
                 targetPlayerId,
                 CurrentArea,
                 interactId);
-            return;
+            return false;
         }
 
         var targetSession = allSessions.FirstOrDefault(session => session.PlayerId == targetPlayerId);
@@ -321,12 +320,13 @@ public partial class GameClientSession
             sendCollectResult ? "Explore" : "Vision");
 
         if (!sendCollectResult)
-            return;
+            return true;
 
         SendRngCollectResult(interactId, RngCollectEncounterResultType, 0, 0, 0);
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
         BroadcastRngCollectCooldown(interactId, 0);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        return true;
     }
 
     private void AddRoomEncounterStartCandidatesStillAtExploreSpot(
@@ -712,11 +712,13 @@ public partial class GameClientSession
             return;
         }
 
-        if (!_inGameInventoryManager.TryRemoveOneByItemId(resolution.MatchingId, actorPlayerId,
-                ChalkPowderItemId, out var updatedItem))
+        var inventory = _inGameInventoryManager.GetPlayerInventory(resolution.MatchingId, actorPlayerId);
+        int attackItemId = ResolveRoomEncounterAttackItemId(inventory);
+        if (attackItemId == 0 || !_inGameInventoryManager.TryRemoveOneByItemId(resolution.MatchingId, actorPlayerId,
+                attackItemId, out var updatedItem))
         {
             Logger.LogWarning(
-                "Room encounter item use skipped because chalk powder was missing: Matching={MatchingId}, Actor={Actor}, Target={Target}",
+                "Room encounter item use skipped because attack item was missing: Matching={MatchingId}, Actor={Actor}, Target={Target}",
                 resolution.MatchingId,
                 actorPlayerId,
                 targetPlayerId);
@@ -727,16 +729,16 @@ public partial class GameClientSession
         if (actorSession != null && updatedItem != null)
             actorSession.SendInGameInventoryUpdate(updatedItem);
 
-        ApplyRoomEncounterChalkDamage(allSessions, resolution.MatchingId, targetPlayerId);
+        ApplyRoomEncounterChalkDamage(allSessions, resolution.MatchingId, targetPlayerId, attackItemId);
     }
 
     private void ApplyRoomEncounterChalkDamage(IReadOnlyCollection<GameClientSession> allSessions,
-        long matchingId, long targetPlayerId)
+        long matchingId, long targetPlayerId, int attackItemId)
     {
         var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == targetPlayerId);
         if (targetSession != null)
         {
-            targetSession.ApplyItemBuffs(ChalkPowderItemId);
+            targetSession.ApplyItemBuffs(attackItemId);
             return;
         }
 
@@ -744,7 +746,7 @@ public partial class GameClientSession
         if (targetBot == null || targetBot.IsEliminated)
             return;
 
-        ApplyItemBuffsToRoomEncounterBot(targetBot, ChalkPowderItemId);
+        ApplyItemBuffsToRoomEncounterBot(targetBot, attackItemId);
     }
 
     private static void ApplyItemBuffsToRoomEncounterBot(BotPlayerState? bot, int itemId)
@@ -840,19 +842,13 @@ public partial class GameClientSession
         };
     }
 
-    private int ResolveBotRoomEncounterAction(long matchingId, long botPlayerId)
+    private static int ResolveBotRoomEncounterAction(long matchingId, long botPlayerId)
     {
         var actions = new List<int>
         {
             EncounterRevealManager.RoomEncounterActionObserve,
             EncounterRevealManager.RoomEncounterActionLeave
         };
-
-        if (_inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId)
-            .GetItemCount(ChalkPowderItemId) > 0)
-        {
-            actions.Insert(0, EncounterRevealManager.RoomEncounterActionUseItem);
-        }
 
         return actions[Random.Shared.Next(actions.Count)];
     }

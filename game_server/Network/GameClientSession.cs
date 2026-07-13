@@ -44,6 +44,7 @@ public partial class GameClientSession : SessionBase
     private readonly InGameInventoryManager _inGameInventoryManager;
     private readonly InteractableStateManager _interactableStateManager;
     private readonly ItemPoolManager _itemPoolManager;
+    private readonly AreaItemStockManager _areaItemStockManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly SabotageManager _sabotageManager;
@@ -88,6 +89,8 @@ public partial class GameClientSession : SessionBase
     // 플레이어 상호작용 요청 상태
     private long? _pendingInteractPlayerId;
     private long? _pendingBotRequesterPlayerId;
+    private int _pendingRoomEntryEventId;
+    private readonly object _roomEntryEventChoiceLock = new();
 
     private Timer? _periodicBuffTimer;
 
@@ -105,6 +108,14 @@ public partial class GameClientSession : SessionBase
         }
     }
 
+    private bool AddActiveBuffId(int buffId)
+    {
+        if (buffId <= 0 || _activeBuffIds.Contains(buffId)) return false;
+
+        _activeBuffIds.Add(buffId);
+        return true;
+    }
+
     public GameClientSession(
         UserToken token,
         IRedLockFactory redLock,
@@ -117,6 +128,7 @@ public partial class GameClientSession : SessionBase
         InGameInventoryManager inGameInventoryManager,
         AreaRuleManager areaRuleManager,
         ItemPoolManager itemPoolManager,
+        AreaItemStockManager areaItemStockManager,
         CorridorRuleManager corridorRuleManager,
         DoorStateManager doorStateManager,
         SabotageManager sabotageManager,
@@ -138,6 +150,7 @@ public partial class GameClientSession : SessionBase
         _inGameInventoryManager = inGameInventoryManager;
         _areaRuleManager = areaRuleManager;
         _itemPoolManager = itemPoolManager;
+        _areaItemStockManager = areaItemStockManager;
         _corridorRuleManager = corridorRuleManager;
         _doorStateManager = doorStateManager;
         _sabotageManager = sabotageManager;
@@ -374,6 +387,8 @@ public partial class GameClientSession : SessionBase
         // 구역 이동 프로토콜 (GDD v0.0.8: 문/계단 마커 방식)
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_AREA_MOVE,
             async bytes => await HandleMessage<C_TO_G_AREA_MOVE>(bytes, HandleAreaMove));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ROOM_ENTRY_EVENT_CHOICE,
+            async bytes => await HandleMessage<C_TO_G_ROOM_ENTRY_EVENT_CHOICE>(bytes, HandleRoomEntryEventChoice));
 
         // 소셜 액션 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SOCIAL_ACTION,

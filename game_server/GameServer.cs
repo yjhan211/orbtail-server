@@ -32,7 +32,6 @@ public class GameServer(
 {
     // 하트비트 체크 간격 (10초마다 체크)
     private const int HeartbeatCheckIntervalSeconds = 10;
-    private const int ChalkPowderItemId = 201000015;
     private const float RoomExploreSpotOccupancyDistance = 2.75f;
 
     // 복도 정지 체크 간격
@@ -46,6 +45,7 @@ public class GameServer(
     private readonly List<InstanceMapManager> _instanceControllerList = [];
     private readonly InteractableStateManager _interactableStateManager = new();
     private readonly ItemPoolManager _itemPoolManager = new();
+    private readonly AreaItemStockManager _areaItemStockManager = new();
     private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
@@ -824,7 +824,7 @@ public class GameServer(
         try
         {
             var missionResult = _botPlayerManager.ProcessBotMissionTick(
-                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _checklistManager);
+                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _areaItemStockManager, _checklistManager);
 
             // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
             foreach (var (botId, partId) in missionResult.CollectedParts)
@@ -1148,13 +1148,7 @@ public class GameServer(
         _gameEventLogManager.LogInteraction(matchingId, bot.PlayerId,
             $"Bot room encounter reveal: Target={targetPlayerId}, Area={area}", isBot: true);
 
-        int actionType = ResolveBotAsyncRoomEncounterAction(matchingId, bot);
-        if (actionType == EncounterRevealManager.RoomEncounterActionUseItem)
-        {
-            TryUseBotRoomEncounterItem(matchingId, bot, targetSession, area);
-            return;
-        }
-
+        const int actionType = EncounterRevealManager.RoomEncounterActionLeave;
         logger.LogInformation(
             "Bot room encounter resolved without item use: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}, ActionType={ActionType}",
             matchingId,
@@ -1162,39 +1156,6 @@ public class GameServer(
             targetPlayerId,
             area,
             actionType);
-    }
-
-    private int ResolveBotAsyncRoomEncounterAction(long matchingId, BotPlayerState bot)
-    {
-        return _inGameInventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
-            .GetItemCount(ChalkPowderItemId) > 0
-            ? EncounterRevealManager.RoomEncounterActionUseItem
-            : EncounterRevealManager.RoomEncounterActionLeave;
-    }
-
-    private void TryUseBotRoomEncounterItem(long matchingId, BotPlayerState bot,
-        GameClientSession targetSession, AreaType area)
-    {
-        if (!_inGameInventoryManager.TryRemoveOneByItemId(matchingId, bot.PlayerId,
-                ChalkPowderItemId, out _))
-        {
-            logger.LogWarning(
-                "Bot failed room encounter item use because chalk powder was missing: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}",
-                matchingId,
-                bot.PlayerId,
-                targetSession.PlayerId,
-                area);
-            return;
-        }
-
-        targetSession.ApplyRoomEncounterChalkHitFrom(bot.PlayerId, area, ChalkPowderItemId);
-        logger.LogInformation(
-            "Bot used room encounter item immediately: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}, ItemId={ItemId}",
-            matchingId,
-            bot.PlayerId,
-            targetSession.PlayerId,
-            area,
-            ChalkPowderItemId);
     }
 
     private static bool IsAtSameRoomExploreSpot(Vector3f botPosition, Vector3f? playerPosition)
@@ -1910,6 +1871,7 @@ public class GameServer(
                 _inGameInventoryManager,
                 _areaRuleManager,
                 _itemPoolManager,
+                _areaItemStockManager,
                 _corridorRuleManager,
                 _doorStateManager,
                 _sabotageManager,
@@ -2123,6 +2085,7 @@ public class GameServer(
         }
 
         _areaClosureManager.InitializeMatching(matchingId, jobs);
+        _areaItemStockManager.InitializeMatching(matchingId);
         _doorStateManager.InitializeMatching(matchingId);
         _checklistManager.StartRound(matchingId, 1, playerIds,
             playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));

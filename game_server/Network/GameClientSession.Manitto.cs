@@ -1539,6 +1539,9 @@ public partial class GameClientSession
         }
         if (!HasInGamePartItem(msg.PartA) || !HasInGamePartItem(msg.PartB))
         {
+            if (TryHandleBattleItemCombine(msg))
+                return Task.CompletedTask;
+
             SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INSUFFICIENT_ITEM);
             return Task.CompletedTask;
         }
@@ -1604,6 +1607,79 @@ public partial class GameClientSession
         return inventory.GetItemCount(itemId) > 0;
     }
 
+    private bool TryHandleBattleItemCombine(C_TO_G_COMBINE_PARTS msg)
+    {
+        if (!PlayerId.HasValue) return false;
+
+        var recipe = BattleItemRecipeData.TryCombine(new[] { msg.PartA, msg.PartB });
+        if (recipe == null)
+            return false;
+
+        if (!HasInGameBattleItems(recipe.InputItemIds))
+        {
+            SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INSUFFICIENT_ITEM);
+            return true;
+        }
+
+        var items = new List<InGameItemInfo>();
+        foreach (int inputItemId in recipe.InputItemIds)
+        {
+            if (_inGameInventoryManager.TryRemoveOneByItemId(
+                    CurrentMapSubId,
+                    PlayerId.Value,
+                    inputItemId,
+                    out var removed) &&
+                removed != null)
+            {
+                items.Add(removed);
+            }
+        }
+
+        var added = _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, recipe.OutputItemId, 1);
+        items.Add(added);
+
+        using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
+        Send(inventoryPacket);
+
+        using var combinePacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId.Value);
+        var itemData = GameItemData.Get(recipe.OutputItemId);
+        var combinedMsg = new G_TO_C_PART_COMBINED
+        {
+            RecipeId = recipe.RecipeId,
+            InputPartA = msg.PartA,
+            InputPartB = msg.PartB,
+            OutputPartId = recipe.OutputItemId,
+            OutputPartNameKr = itemData?.Name?.Kr ?? "",
+            StaminaReward = 0,
+            IsRaceComplete = false
+        };
+        combinePacket.SetBody(MessagePackSerializer.Serialize(combinedMsg));
+        Send(combinePacket);
+
+        _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
+            $"Battle item combine: {msg.PartA} + {msg.PartB} => {recipe.OutputItemId}",
+            isBot: false);
+
+        return true;
+    }
+
+    private bool HasInGameBattleItems(IReadOnlyCollection<int> inputItemIds)
+    {
+        if (!PlayerId.HasValue) return false;
+
+        var requiredCounts = inputItemIds
+            .GroupBy(itemId => itemId)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+
+        foreach (var (itemId, requiredCount) in requiredCounts)
+        {
+            if (inventory.GetItemCount(itemId) < requiredCount)
+                return false;
+        }
+
+        return true;
+    }
     private void SendCombinePartsFailure(int partA, int partB, ErrorCode errorCode)
     {
         using var failPacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId!.Value);

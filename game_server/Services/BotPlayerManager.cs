@@ -29,9 +29,14 @@ public partial class BotPlayerManager
         AreaType.BroadcastRoom,
     };
 
-    // ?꾨줈??0: ?꾩썝 4痢듭뿉???쒖옉. 蹂듬룄??泥대쪟 遺덇???4痢?諛⑹뿉???ㅽ룿.
     private static readonly AreaType[] Proto0SpawnAreas =
     {
+        AreaType.AdminOffice,
+        AreaType.StaffRoom,
+        AreaType.Classroom2,
+        AreaType.Library,
+        AreaType.Classroom3,
+        AreaType.ExamRoom,
         AreaType.Classroom4,
         AreaType.BroadcastRoom,
     };
@@ -123,10 +128,10 @@ public partial class BotPlayerManager
                 Cell = startCell,
                 Position = startPosition,
                 Rotation = 0f,
-                Persona = info.Persona,
+                Persona = PersonaType.None,
                 ActiveBuffIds = info.ActiveBuffIds is { Count: > 0 }
                     ? new List<int>(info.ActiveBuffIds)
-                    : BuildPersonaBuffIds(info.Persona),
+                    : new List<int>(),
                 Proto0Profile = Proto0Profiles[index % Proto0Profiles.Length],
                 Stamina = InitialStamina,
                 Corruption = InitialCorruption,
@@ -159,11 +164,7 @@ public partial class BotPlayerManager
         return area is not (AreaType.Ground or AreaType.Gym or AreaType.Storage);
     }
 
-    private static List<int> BuildPersonaBuffIds(PersonaType persona)
-    {
-        int buffId = GameBuffData.GetPersonaBuffId(persona);
-        return buffId > 0 ? new List<int> { buffId } : new List<int>();
-    }
+
 
     /// <summary>
     ///     留ㅼ묶?먯꽌 ?ъ슜 以묒씤 MapId 議고쉶. ?깅줉?섏? ?딆? 留ㅼ묶?대㈃ MapId.School ?대갚.

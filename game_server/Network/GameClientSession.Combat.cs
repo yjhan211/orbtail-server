@@ -11,6 +11,14 @@ public partial class GameClientSession
 {
     private const int CatPillowItemId = 401000003;
     private const int ChalkPowderItemId = 201000015;
+    private const int ShortChalkItemId = 201000016;
+    private const int LongChalkItemId = 201000017;
+    private static readonly int[] RoomEncounterAttackItemIds =
+    {
+        LongChalkItemId,
+        ChalkPowderItemId,
+        ShortChalkItemId
+    };
     private const int CatPillowRestDurationSeconds = 15;
     private DateTime _lastRoomEncounterItemUseUtc = DateTime.MinValue;
 
@@ -66,9 +74,10 @@ public partial class GameClientSession
         }
 
         var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-        if (inventory.GetItemCount(ChalkPowderItemId) <= 0)
+        int attackItemId = ResolveRoomEncounterAttackItemId(inventory);
+        if (attackItemId == 0)
         {
-            SendErrorResponse(ErrorCode.INSUFFICIENT_ITEM, "Chalk powder is required");
+            SendErrorResponse(ErrorCode.INSUFFICIENT_ITEM, "Encounter attack item is required");
             SendRoomEncounterItemUseResult(false, ErrorCode.INSUFFICIENT_ITEM, ChalkPowderItemId, targetPlayerId);
             Logger.LogWarning(
                 "Player {PlayerId} failed room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}",
@@ -106,10 +115,10 @@ public partial class GameClientSession
         }
 
         if (!_inGameInventoryManager.TryRemoveOneByItemId(CurrentMapSubId, PlayerId.Value,
-                ChalkPowderItemId, out var updatedItem))
+                attackItemId, out var updatedItem))
         {
-            SendErrorResponse(ErrorCode.INSUFFICIENT_ITEM, "Chalk powder is required");
-            SendRoomEncounterItemUseResult(false, ErrorCode.INSUFFICIENT_ITEM, ChalkPowderItemId, targetPlayerId);
+            SendErrorResponse(ErrorCode.INSUFFICIENT_ITEM, "Encounter attack item is required");
+            SendRoomEncounterItemUseResult(false, ErrorCode.INSUFFICIENT_ITEM, attackItemId, targetPlayerId);
             Logger.LogWarning(
                 "Player {PlayerId} failed room encounter item use: Target={Target}, Matching={MatchingId}, Area={Area}, Error={Error}",
                 PlayerId,
@@ -127,16 +136,16 @@ public partial class GameClientSession
 
         if (targetSession != null)
         {
-            targetSession.ApplyItemBuffs(ChalkPowderItemId);
+            targetSession.ApplyItemBuffs(attackItemId);
             targetSession.SendEncounterEvent(PlayerId.Value, area, EncounterRevealManager.RoomEncounterChalkHitEventType,
                 EncounterRevealManager.PairCooldownSeconds);
         }
         else
         {
-            ApplyItemBuffsToRoomEncounterBot(targetBot, ChalkPowderItemId);
+            ApplyItemBuffsToRoomEncounterBot(targetBot, attackItemId);
         }
 
-        SendRoomEncounterItemUseResult(true, ErrorCode.SUCCESS, ChalkPowderItemId, targetPlayerId);
+        SendRoomEncounterItemUseResult(true, ErrorCode.SUCCESS, attackItemId, targetPlayerId);
 
         SuppressRoomEncounterBriefly();
 
@@ -146,7 +155,7 @@ public partial class GameClientSession
             targetPlayerId,
             CurrentMapSubId,
             area,
-            ChalkPowderItemId);
+            attackItemId);
 
         return Task.CompletedTask;
     }
@@ -156,6 +165,17 @@ public partial class GameClientSession
         using var resultPacket = PacketMaker.G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT(
             success, errorCode, itemId, targetPlayerId);
         Send(resultPacket);
+    }
+
+    private static int ResolveRoomEncounterAttackItemId(PlayerInGameInventory inventory)
+    {
+        foreach (int itemId in RoomEncounterAttackItemIds)
+        {
+            if (inventory.GetItemCount(itemId) > 0)
+                return itemId;
+        }
+
+        return 0;
     }
 
     internal void ApplyRoomEncounterChalkHitFrom(long sourcePlayerId, AreaType area, int itemId)
@@ -449,7 +469,7 @@ public partial class GameClientSession
 
         int itemId = itemInfo.ItemId;
         var itemData = GameItemData.Get(itemId);
-        if (itemId == ChalkPowderItemId)
+        if (System.Array.IndexOf(RoomEncounterAttackItemIds, itemId) >= 0)
         {
             using var failPacket =
                 PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.ITEM_NOT_USABLE);

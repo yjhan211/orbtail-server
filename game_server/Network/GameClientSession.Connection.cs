@@ -46,7 +46,8 @@ public partial class GameClientSession
                 TargetJobTitle = msg.TargetJobTitle
             });
 
-            // 誘몄뀡 珥덇린??            _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
+            // 誘몄뀡 珥덇린??
+            _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
             _missionManager.EnsureBroadcastTransmitterGift(msg.MatchingId, msg.PlayerId, msg.TargetPlayerId);
 
             // 遊?濡쒕뱶 (留ㅼ묶??理쒖큹 1?? ???먯뇙 珥덇린???꾩뿉 濡쒕뱶??吏곸콉 ????뺤젙 (#87)
@@ -94,6 +95,7 @@ public partial class GameClientSession
             // #87: 留ㅼ묶??吏곸콉 ????뷀뵆 ?곗꽑?쒖쐞??諛섏쁺 (5遺?1?④퀎 蹂댁옣 + 吏곸콉蹂??꾩닚??
             var jobPool = _manittoChainManager.GetMatchingJobs(msg.MatchingId);
             _areaClosureManager.InitializeMatching(msg.MatchingId, jobPool);
+            _areaItemStockManager.InitializeMatching(msg.MatchingId);
 
             // ?멸쾶???ㅽ꺈 珥덇린??            ResetInGameStats();
 
@@ -169,6 +171,7 @@ public partial class GameClientSession
             SendMissionInfo();
             SendRoundStateSnapshot(msg.MatchingId);
             SendChecklistInfo();
+            TrySendRoomEntryEvent(CurrentArea);
 
             // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃
             await BroadcastPlayerJoin();
@@ -211,6 +214,23 @@ public partial class GameClientSession
         {
             SetActiveBuffIds([]);
             Logger.LogWarning(ex, "Active buffs load failed: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId, playerId);
+        }
+    }
+
+    private async Task SaveActiveBuffIds(long matchingId, long playerId)
+    {
+        try
+        {
+            await CacheHelper.HashSetAsync(
+                PlayerBuffInfoKey,
+                MakePlayerBuffField(matchingId, playerId),
+                MessagePackSerializer.Serialize(_activeBuffIds));
+            Logger.LogInformation("Active buffs saved: MatchingId={MatchingId}, PlayerId={PlayerId}, Buffs=[{Buffs}]",
+                matchingId, playerId, string.Join(",", _activeBuffIds));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Active buffs save failed: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId, playerId);
         }
     }
 
