@@ -27,6 +27,12 @@ public partial class GameClientSession
         if (!PlayerId.HasValue || msg == null)
             return Task.CompletedTask;
 
+        if (Config.PROXIMITY_AUTO_COMBAT_P0_ENABLED)
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Manual attack is disabled during proximity auto combat P0");
+            return Task.CompletedTask;
+        }
+
         if (IsEliminated)
         {
             SendErrorResponse(ErrorCode.PLAYER_DEAD, "Eliminated players cannot attack");

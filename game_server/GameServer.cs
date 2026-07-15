@@ -20,7 +20,7 @@ using network.packets;
 
 namespace game_server;
 
-public class GameServer(
+public partial class GameServer(
     IConfiguration configuration,
     ILogger<GameServer> logger,
     INatsClientFactory natsClientFactory,
@@ -119,6 +119,8 @@ public class GameServer(
             StartBotMovementTimer();
             StartBotMissionTimer();
             StartChecklistProgressTickTimer();
+            if (Config.PROXIMITY_AUTO_COMBAT_P0_ENABLED)
+                StartProximityAutoCombatTimer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -160,6 +162,7 @@ public class GameServer(
         if (_botMovementTimer != null) { await _botMovementTimer.DisposeAsync(); _botMovementTimer = null; }
         if (_botMissionTimer != null) { await _botMissionTimer.DisposeAsync(); _botMissionTimer = null; }
         if (_checklistProgressTickTimer != null) { await _checklistProgressTickTimer.DisposeAsync(); _checklistProgressTickTimer = null; }
+        if (_proximityAutoCombatTimer != null) { await _proximityAutoCombatTimer.DisposeAsync(); _proximityAutoCombatTimer = null; }
         foreach (var timer in _headlessRoundTimers.Values)
             await timer.DisposeAsync();
         _headlessRoundTimers.Clear();

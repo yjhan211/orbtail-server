@@ -14,8 +14,8 @@ namespace game_server.services;
 /// </summary>
 public partial class BotPlayerManager
 {
-    /// <summary>봇 walking 속도 (실제 플레이어 walkSpeed=3과 동일).</summary>
-    private const float BotWalkSpeed = 3.0f;
+    /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
+    private const float BotWalkSpeed = 6.0f;
 
     /// <summary>영역 전환 직전 도어 앞에서 잠시 멈추는 시간(ms). 포탈 들어가는 시각적 단서.</summary>
     private const int BotTransitionPauseMs = 600;
@@ -198,7 +198,7 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     #127: 봇 walking 틱(50ms). DemoMode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
-    ///     실제 플레이어와 동일한 walkSpeed=3.0 적용. 매 틱 G_TO_C_MOVE 동등 이벤트 발행.
+    ///     Uses the same fixed movement speed 6.0 as the player and emits an equivalent G_TO_C_MOVE event each tick.
     ///     #134: 추가로 ChooseNewWanderTarget 시 PendingExploreEndBroadcast가 set된 봇은 ExploreEnds list에 수집 — walking 시작 안전망.
     /// </summary>
     public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager,

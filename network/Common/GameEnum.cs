@@ -16,11 +16,14 @@ namespace network.common
         None = 0,
         Junkyard = 1,
         Ground = 2,
+        Corridor = 7,
+        Storage2 = 9,
         AdminOffice = 10,
         Corridor1F = 11,
         StaffRoom = 12,
         Gym = 13,
         Storage = 14,
+        Junkyard2 = 15,
         Classroom2 = 20,
         Corridor2F = 21,
         Library = 22,
@@ -49,7 +52,8 @@ namespace network.common
         ///     蹂듬룄 援ъ뿭 ?щ? (1~4痢듬났??
         /// </summary>
         public static bool IsCorridor(this AreaType area) =>
-            area is AreaType.Corridor1F or AreaType.Corridor2F or AreaType.Corridor3F or AreaType.Corridor4F;
+            area is AreaType.Corridor or AreaType.Corridor1F or AreaType.Corridor2F or AreaType.Corridor3F or
+                AreaType.Corridor4F;
 
         /// <summary>
         ///     援ъ뿭??痢?踰덊샇 (0~4). None?대㈃ -1

@@ -102,6 +102,9 @@ namespace network.common
         ///     서버 판정과 클라 HUD/Dock 점 표시가 같은 값을 쓴다.</summary>
         public const float TARGET_PROXIMITY_DISTANCE = 3f;
 
+        /// <summary>근접 자동전투 P0. 활성화 중에는 기존 수동 분필 공격 진입을 숨긴다.</summary>
+        public static readonly bool PROXIMITY_AUTO_COMBAT_P0_ENABLED = true;
+
         /// <summary>교감(1010) 추가 회복량 (5초당 오염도 감소). 의존(1002) 회복에 합산. (#161)</summary>
         public const int TARGET_PROXIMITY_RECOVERY_BONUS = 10;
     }
