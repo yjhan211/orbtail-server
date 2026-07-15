@@ -167,6 +167,21 @@ public class SchoolNewMapRestorationTests
         Assert.Equal(new Cell(92, 56),
             GameAreaConnectionData.GetSpawnCell(MapId.School, AreaType.Storage, AreaType.Ground));
 
+        var groundCorridorDoor = GameDoorData.GetDoorForTransition(
+            AreaType.Ground,
+            AreaType.Corridor,
+            new Cell(140, 56),
+            new Cell(141, 57));
+        Assert.NotNull(groundCorridorDoor);
+        Assert.Equal(116, groundCorridorDoor.DoorId);
+        Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(140, 56)));
+        Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(141, 57)));
+        Assert.True(GameAreaConnectionData.IsAdjacent(MapId.School, AreaType.Ground, AreaType.Corridor));
+        Assert.Equal(new Cell(141, 57),
+            GameAreaConnectionData.GetSpawnCell(MapId.School, AreaType.Ground, AreaType.Corridor));
+        Assert.Equal(new Cell(140, 56),
+            GameAreaConnectionData.GetSpawnCell(MapId.School, AreaType.Corridor, AreaType.Ground));
+
         var adminOfficeDoor = GameDoorData.GetDoorForTransition(
             AreaType.AdminOffice,
             AreaType.Corridor,

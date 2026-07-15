@@ -12,7 +12,7 @@ map_id,from_area,to_area,connection_type,stair_side,forward_spawn_x,forward_spaw
 1,12,15,door,none,168,71,167,71
 1,13,11,door,none,67,6,49,29
 1,14,13,door,none,34,45,12,35
-1,2,13,door,none,47,45,37,101
+1,2,7,door,none,141,57,140,56
 1,2,14,door,none,93,57,92,56
 1,41,31,door,west,144,33,135,67
 1,31,21,door,west,93,40,144,33
