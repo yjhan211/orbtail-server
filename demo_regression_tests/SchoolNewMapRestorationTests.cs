@@ -29,7 +29,10 @@ public class SchoolNewMapRestorationTests
         Assert.True(GameMapData.GetCurrentArea(MapId.School, corridor).IsCorridor());
         Assert.True(GameMapData.IsMoveablePosition(MapId.School, corridor));
 
-        Assert.False(GameMapData.IsMoveablePosition(MapId.School, new Cell(82, 18)));
+        Assert.DoesNotContain(
+            GameMapData.GetMapRegions(MapId.School),
+            region => region.RegionType.Equals("obstacle", StringComparison.OrdinalIgnoreCase));
+        Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(82, 18)));
         Assert.False(GameMapData.IsMoveablePosition(MapId.School, new Cell(0, 0)));
     }
 
