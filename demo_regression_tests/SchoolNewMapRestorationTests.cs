@@ -108,7 +108,9 @@ public class SchoolNewMapRestorationTests
         Assert.Equal(AreaType.Storage2, GameDoorData.Get(115)!.AreaType);
         Assert.Equal(AreaType.Ground, GameDoorData.Get(116)!.AreaType);
         Assert.Equal(AreaType.AdminOffice, GameDoorData.Get(117)!.AreaType);
-        Assert.Equal(17, GameDoorData.GetAll().Count());
+        Assert.Equal(AreaType.AdminOffice, GameDoorData.Get(118)!.AreaType);
+        Assert.Equal(AreaType.StaffRoom, GameDoorData.Get(119)!.AreaType);
+        Assert.Equal(19, GameDoorData.GetAll().Count());
         Assert.All(GameDoorData.GetAll(), door => Assert.True(door.IsInitiallyOpen));
 
         var classroomDoor = GameDoorData.GetDoorForTransition(
@@ -135,6 +137,36 @@ public class SchoolNewMapRestorationTests
         Assert.NotNull(infirmaryDoor);
         Assert.Equal(109, infirmaryDoor.DoorId);
 
+        var libraryStorageDoor = GameDoorData.GetDoorForTransition(
+            AreaType.Library,
+            AreaType.Storage,
+            new Cell(93, 72),
+            new Cell(92, 71));
+        Assert.NotNull(libraryStorageDoor);
+        Assert.Equal(111, libraryStorageDoor.DoorId);
+        Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(93, 72)));
+        Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(92, 71)));
+
+        var storageGroundDoor = GameDoorData.GetDoorForTransition(
+            AreaType.Storage,
+            AreaType.Ground,
+            new Cell(93, 57),
+            new Cell(92, 56));
+        Assert.NotNull(storageGroundDoor);
+        Assert.Equal(112, storageGroundDoor.DoorId);
+        Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(93, 57)));
+        Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(92, 56)));
+
+        Assert.True(GameAreaConnectionData.IsAdjacent(MapId.School, AreaType.Library, AreaType.Storage));
+        Assert.Equal(new Cell(92, 71),
+            GameAreaConnectionData.GetSpawnCell(MapId.School, AreaType.Library, AreaType.Storage));
+        Assert.Equal(new Cell(93, 72),
+            GameAreaConnectionData.GetSpawnCell(MapId.School, AreaType.Storage, AreaType.Library));
+        Assert.Equal(new Cell(93, 57),
+            GameAreaConnectionData.GetSpawnCell(MapId.School, AreaType.Ground, AreaType.Storage));
+        Assert.Equal(new Cell(92, 56),
+            GameAreaConnectionData.GetSpawnCell(MapId.School, AreaType.Storage, AreaType.Ground));
+
         var adminOfficeDoor = GameDoorData.GetDoorForTransition(
             AreaType.AdminOffice,
             AreaType.Corridor,
@@ -142,6 +174,29 @@ public class SchoolNewMapRestorationTests
             new Cell(133, 74));
         Assert.NotNull(adminOfficeDoor);
         Assert.Equal(117, adminOfficeDoor.DoorId);
+
+        var westDumpDoor = GameDoorData.GetDoorForTransition(
+            AreaType.AdminOffice,
+            AreaType.Junkyard,
+            new Cell(117, 74),
+            new Cell(116, 74));
+        Assert.NotNull(westDumpDoor);
+        Assert.Equal(118, westDumpDoor.DoorId);
+
+        var eastDumpDoor = GameDoorData.GetDoorForTransition(
+            AreaType.StaffRoom,
+            AreaType.Junkyard2,
+            new Cell(167, 71),
+            new Cell(168, 71));
+        Assert.NotNull(eastDumpDoor);
+        Assert.Equal(119, eastDumpDoor.DoorId);
+
+        Assert.True(GameAreaConnectionData.IsAdjacent(MapId.School, AreaType.AdminOffice, AreaType.Junkyard));
+        Assert.True(GameAreaConnectionData.IsAdjacent(MapId.School, AreaType.StaffRoom, AreaType.Junkyard2));
+        Assert.Equal(new Cell(116, 74),
+            GameAreaConnectionData.GetSpawnCell(MapId.School, AreaType.AdminOffice, AreaType.Junkyard));
+        Assert.Equal(new Cell(167, 71),
+            GameAreaConnectionData.GetSpawnCell(MapId.School, AreaType.Junkyard2, AreaType.StaffRoom));
 
         Assert.Null(GameDoorData.GetDoorForTransition(
             AreaType.Classroom4,
