@@ -66,7 +66,7 @@ public partial class GameServer(
     private Timer? _corridorStopCheckTimer;
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
-    private Timer? _resourceTickTimer;        // 정신력 자연감소 + 타겟 근접 회복 + 시한부
+    private Timer? _resourceTickTimer;        // 폐쇄 구역 등 주기성 자원 변화
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
     private Timer? _botMovementTimer;         // #127 봇 walking step (250ms)
@@ -78,19 +78,7 @@ public partial class GameServer(
 
     internal const int ResourceTickIntervalSeconds = 5;
     private const int ChecklistProgressTickIntervalSeconds = 1;
-    // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
-    // 프로토 0: 타겟에서 떨어지면(복도/빈방) 압박이 실질적이도록 기본 감소를 회복(-3)과 균형 맞춰 상향. 튜닝 노브.
-    private const int MentalDecayPhase1 = 3;            // 0~5분: 5초당 오염도 +3
-    private const int MentalDecayPhase2 = 4;            // 5~10분: 5초당 오염도 +4
-    private const int MentalDecayPhase3 = 5;            // 10분+: 5초당 오염도 +5
-    private const int Phase2StartSeconds = 300;          // 5분
-    private const int Phase3StartSeconds = 600;          // 10분
-    internal const int TargetProximityRecovery = 8;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -8)
-    private const int IsolationStatusEffectId = 1001;   // status_effect_info: 고립
-    internal const int NearbyStatusEffectId = 1002;      // status_effect_info: 의존
-    internal const int ProximityStatusEffectId = 1010;   // status_effect_info: 교감 (#161)
     private const int ClosedAreaStatusEffectId = 1003;  // status_effect_info: 폐쇄 구역
-    private const double SharpGazeRecoveryMultiplier = 0.5;
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
     internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모 (인접 구역 진입)
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
@@ -237,7 +225,7 @@ public partial class GameServer(
         logger.LogInformation("Heartbeat checker started (interval: {Interval}s)", HeartbeatCheckIntervalSeconds);
     }
 
-    // ===== 자원 틱 (정신력 자연감소, 타겟 근접 회복, 시한부) =====
+    // ===== 자원 틱 (폐쇄 구역 등 주기성 자원 변화) =====
 
     private void StartResourceTickTimer()
     {
@@ -302,20 +290,6 @@ public partial class GameServer(
         }
     }
 
-    /// <summary>
-    ///     경과 시간에 따른 오염도 자연증가량 결정 (GDD v0.0.5 점진적 가속)
-    /// </summary>
-    private int GetMentalDecayAmount(long matchingId)
-    {
-        var closureState = _areaClosureManager.GetMatchingState(matchingId);
-        if (closureState == null) return MentalDecayPhase1;
-
-        double elapsed = (DateTime.UtcNow - closureState.GameStartTime).TotalSeconds;
-        if (elapsed >= Phase3StartSeconds) return MentalDecayPhase3;
-        if (elapsed >= Phase2StartSeconds) return MentalDecayPhase2;
-        return MentalDecayPhase1;
-    }
-
     private void ProcessResourceTick(object? state)
     {
         try
@@ -332,61 +306,6 @@ public partial class GameServer(
                 bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
 
                 int corruptionDelta = 0;
-
-                if (!isTerminal && session.CurrentArea != AreaType.None)
-                {
-                    GameClientSession? targetSession = null;
-                    BotPlayerState? targetBot = null;
-                    bool targetInSameArea = false;
-
-                    targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                    targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
-                    if (!targetInSameArea)
-                    {
-                        // 프로토 0: 회복은 타겟과 같은 영역에 있을 때 적용한다.
-                        //   혼잡할수록 느림 — 회복량 = 기본 × (2 / 영역 총인원).
-                        targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
-                        targetInSameArea = targetBot is { IsEliminated: false } &&
-                                           targetBot.CurrentArea == session.CurrentArea;
-                    }
-
-                    bool targetWithinProximity = IsTargetWithinProximity(session, targetSession, targetBot);
-
-                    if (!targetInSameArea)
-                    {
-                        int isolationDelta = ResolveStatusEffectCorruptionDelta(
-                            IsolationStatusEffectId,
-                            GetMentalDecayAmount(session.CurrentMapSubId));
-                        isolationDelta = PassiveBuffUtility.ApplyReduction(
-                            isolationDelta,
-                            session.ActiveBuffIds,
-                            BuffSubType.ISOLATION_CORRUPTION_GAIN_DOWN);
-                        corruptionDelta += isolationDelta;
-                    }
-
-                    if (targetInSameArea &&
-                        !session.ShouldSkipTargetEncounterRecoveryTick(DateTime.UtcNow, ResourceTickIntervalSeconds))
-                    {
-                        int pop = CountAreaPopulation(activeSessions, session.CurrentMapSubId, session.CurrentArea);
-                        int recovery = Math.Max(1,
-                            (int)Math.Round(TargetProximityRecovery * (2.0 / Math.Max(2, pop))));
-                        int recoveryDelta = ResolveStatusEffectCorruptionDelta(NearbyStatusEffectId, recovery);
-                        recoveryDelta = ApplyTargetEncounterStability(session, recoveryDelta);
-                        recoveryDelta = ApplySharpGazeRecoveryPenalty(session, targetSession, targetBot, recoveryDelta);
-                        corruptionDelta += recoveryDelta;
-
-                        // 교감(#161): 같은 영역에서 거리까지 좁히면 추가 회복.
-                        // 1:1로 붙어 있는 상황 자체가 보상 조건이라 혼잡 보정은 없다.
-                        if (targetWithinProximity)
-                        {
-                            corruptionDelta += ResolveStatusEffectCorruptionDelta(
-                                ProximityStatusEffectId, Config.TARGET_PROXIMITY_RECOVERY_BONUS);
-                        }
-
-                        session.MarkTargetEncounterRecoveryApplied(DateTime.UtcNow);
-                    }
-
-                }
 
                 // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
                 // if (isTerminal)
@@ -425,26 +344,11 @@ public partial class GameServer(
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
-                // 봇도 사람과 같은 타겟 부재/의존/밀착/폐쇄구역 자원 변동을 적용한다.
-                var botResourceSnapshots = activeSessions
-                    .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
-                    .Select(s => new BotBehaviorPlayerSnapshot
-                    {
-                        PlayerId = s.PlayerId!.Value,
-                        TargetPlayerId = s.TargetPlayerId,
-                        CurrentArea = s.CurrentArea,
-                        Position = s.LastValidatedPosition,
-                        IsEliminated = s.IsEliminated
-                    })
-                    .ToList();
+                // 봇도 사람과 같은 폐쇄 구역 자원 변동을 적용한다.
                 var tickResult = _botPlayerManager.ProcessBotTick(
                     matchingId,
-                    ResolveStatusEffectCorruptionDelta(IsolationStatusEffectId, GetMentalDecayAmount(matchingId)),
-                    ResolveStatusEffectCorruptionDelta(NearbyStatusEffectId, TargetProximityRecovery),
-                    ResolveStatusEffectCorruptionDelta(ProximityStatusEffectId, Config.TARGET_PROXIMITY_RECOVERY_BONUS),
                     ResolveStatusEffectCorruptionDelta(ClosedAreaStatusEffectId, Config.CLOSED_AREA_CORRUPTION_TICK),
-                    _areaClosureManager,
-                    botResourceSnapshots);
+                    _areaClosureManager);
 
                 // #125: 봇 위치 이동 이벤트 → 같은 영역 인간 세션에 패킷 브로드캐스트
                 foreach (var ev in tickResult.Movements)
@@ -530,13 +434,6 @@ public partial class GameServer(
                     areas[bot.PlayerId] = bot.CurrentArea;
 
         return areas;
-    }
-
-    /// <summary>프로토 0: 특정 영역의 총 인원(인간 + 봇). 회복 2/N 스케일링용.</summary>
-    private int CountAreaPopulation(List<GameClientSession> sessions, long matchingId, AreaType area)
-    {
-        int humans = sessions.Count(s => s.CurrentMapSubId == matchingId && s.CurrentArea == area);
-        return humans + _botPlayerManager.CountBotsInArea(matchingId, area);
     }
 
     private void ProcessBotTargetProximityChecklistProgress(
@@ -625,7 +522,7 @@ public partial class GameServer(
         return true;
     }
 
-    /// <summary>교감(#161) 판정 — 타겟(사람/봇)과의 평면 거리가 TARGET_PROXIMITY_DISTANCE 이내인지.</summary>
+    /// <summary>타겟 근접 체크리스트 판정용 평면 거리 확인.</summary>
     private static bool IsTargetWithinProximity(
         GameClientSession session, GameClientSession? targetSession, BotPlayerState? targetBot)
     {
@@ -668,54 +565,6 @@ public partial class GameServer(
             BuffSubType.CORRUPTION_DOWN => -magnitude,
             _ => 0
         };
-    }
-
-    private int ApplyTargetEncounterStability(GameClientSession session, int baseRecoveryDelta)
-    {
-        if (!session.PlayerId.HasValue || baseRecoveryDelta >= 0) return baseRecoveryDelta;
-        if (!_missionManager.TryConsumeShortRewardUse(
-                session.CurrentMapSubId,
-                session.PlayerId.Value,
-                MissionShortRewardType.TargetEncounterStability,
-                out var reward) || reward == null)
-        {
-            return baseRecoveryDelta;
-        }
-
-        int bonusRecovery = Math.Max(1, (int)Math.Ceiling(Math.Abs(baseRecoveryDelta) * reward.ValuePercent / 100.0));
-        int adjustedDelta = baseRecoveryDelta - bonusRecovery;
-
-        logger.LogInformation(
-            "타겟 조우 안정 적용: PlayerId={PlayerId}, BaseRecovery={BaseRecovery}, AdjustedRecovery={AdjustedRecovery}, RemainingUses={RemainingUses}",
-            session.PlayerId, baseRecoveryDelta, adjustedDelta, reward.RemainingUses);
-
-        return adjustedDelta;
-    }
-
-    private int ApplySharpGazeRecoveryPenalty(
-        GameClientSession session,
-        GameClientSession? targetSession,
-        BotPlayerState? targetBot,
-        int baseRecoveryDelta)
-    {
-        long? playerIdValue = session.PlayerId;
-        long? targetPlayerIdValue = targetSession?.PlayerId;
-        if (!targetPlayerIdValue.HasValue && targetBot != null) targetPlayerIdValue = targetBot.PlayerId;
-        long targetBookmarkPlayerId = targetSession?.PresenceBookmarkPlayerId ?? targetBot?.PresenceBookmarkPlayerId ?? 0;
-        if (!playerIdValue.HasValue || baseRecoveryDelta >= 0) return baseRecoveryDelta;
-        if (!targetPlayerIdValue.HasValue) return baseRecoveryDelta;
-
-        long playerId = playerIdValue.Value;
-        long targetPlayerId = targetPlayerIdValue.Value;
-        if (session.TargetPlayerId != targetPlayerId) return baseRecoveryDelta;
-        if (targetBookmarkPlayerId != playerId) return baseRecoveryDelta;
-
-        var targetManitto = _manittoChainManager.FindManittoOf(session.CurrentMapSubId, targetPlayerId);
-        if (targetManitto?.PlayerId != playerId) return baseRecoveryDelta;
-
-        int recovery = Math.Abs(baseRecoveryDelta);
-        int adjustedRecovery = Math.Max(1, (int)Math.Ceiling(recovery * SharpGazeRecoveryMultiplier));
-        return -adjustedRecovery;
     }
 
     private int ApplyClosedAreaResistance(GameClientSession session, int basePenalty)
@@ -1351,12 +1200,6 @@ public partial class GameServer(
         {
             if (session.CurrentArea != ev.ToArea) continue;
             session.Send(movePacket);
-        }
-
-        foreach (var session in matchingSessions)
-        {
-            if (session.CurrentArea != ev.ToArea || session.TargetPlayerId != ev.BotPlayerId) continue;
-            session.TryApplyImmediateTargetEncounterRecovery(matchingSessions);
         }
 
         TrySendBotCorridorEncounterEvent(matchingId, ev, matchingSessions);

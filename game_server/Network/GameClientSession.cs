@@ -77,7 +77,6 @@ public partial class GameClientSession : SessionBase
     private DateTime _lastInteractRejectTime = DateTime.MinValue;
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
-    private DateTime _lastTargetEncounterRecoveryAt = DateTime.MinValue;
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
 
     private Vector3f? _lastValidatedPosition;
@@ -270,7 +269,7 @@ public partial class GameClientSession : SessionBase
     public AreaType CurrentArea { get; private set; } = AreaType.None;
     private PlayerState CurrentState { get; set; } = PlayerState.Idle;
 
-    /// <summary>마지막 검증된 월드 좌표 — 교감(근접 회복) 등 거리 판정용 (#161)</summary>
+    /// <summary>마지막 검증된 월드 좌표 — 근접 전투와 체크리스트 거리 판정용.</summary>
     public Vector3f? LastValidatedPosition => _lastValidatedPosition;
 
     // 마니또 체인 정보
@@ -295,17 +294,6 @@ public partial class GameClientSession : SessionBase
     // 인게임 스탯 (게임 종료 시 초기화)
     private int Stamina { get; set; } = InitialStamina;
     private int Corruption { get; set; } = InitialCorruption;
-
-    internal bool ShouldSkipTargetEncounterRecoveryTick(DateTime now, int intervalSeconds)
-    {
-        return _lastTargetEncounterRecoveryAt != DateTime.MinValue &&
-               now - _lastTargetEncounterRecoveryAt < TimeSpan.FromSeconds(intervalSeconds);
-    }
-
-    internal void MarkTargetEncounterRecoveryApplied(DateTime now)
-    {
-        _lastTargetEncounterRecoveryAt = now;
-    }
 
     // 게임 타이머 설정 (Config에서 참조)
     private static int GameDurationMinutes => Config.GAME_DURATION_MINUTES;

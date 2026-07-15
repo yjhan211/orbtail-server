@@ -1037,7 +1037,6 @@ public class MissionManager
             "LIB-05" => AddOrRefreshShortReward(state, MissionShortRewardType.SharpObservation, remainingUses: 2, valuePercent: 25),
             "LIB-06" => AddOrRefreshShortReward(state, MissionShortRewardType.ClosedAreaResistance, remainingUses: 1, valuePercent: 30, durationSeconds: 8),
             "LIB-07" => AddOrRefreshShortReward(state, MissionShortRewardType.DutyStaminaSaver, remainingUses: 3, valuePercent: 20),
-            "LIB-08" => AddOrRefreshShortReward(state, MissionShortRewardType.TargetEncounterStability, remainingUses: 1, valuePercent: 20),
             _ => null
         };
     }
@@ -1199,8 +1198,7 @@ public enum MissionShortRewardType
     None = 0,
     SharpObservation = 1,
     ClosedAreaResistance = 2,
-    DutyStaminaSaver = 3,
-    TargetEncounterStability = 4
+    DutyStaminaSaver = 3
 }
 
 public class MissionShortRewardState

@@ -40,29 +40,11 @@ public partial class BotPlayerManager
     /// </summary>
     public BotTickResult ProcessBotTick(
         long matchingId,
-        int isolationCorruptionDelta,
-        int nearbyRecoveryDelta,
-        int proximityRecoveryDelta,
         int closedAreaCorruptionDelta,
-        AreaClosureManager areaClosureManager,
-        IReadOnlyList<BotBehaviorPlayerSnapshot> humanSnapshots)
+        AreaClosureManager areaClosureManager)
     {
         var result = new BotTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
-
-        var allPlayerSnapshots = new List<BotBehaviorPlayerSnapshot>(humanSnapshots);
-        foreach (var b in bots)
-        {
-            if (b.IsEliminated) continue;
-            allPlayerSnapshots.Add(new BotBehaviorPlayerSnapshot
-            {
-                PlayerId = b.PlayerId,
-                TargetPlayerId = b.TargetPlayerId,
-                CurrentArea = b.CurrentArea,
-                Position = b.Position,
-                IsEliminated = false
-            });
-        }
 
         foreach (var bot in bots)
         {
@@ -71,44 +53,19 @@ public partial class BotPlayerManager
             bool isTerminal = bot.ManittoStatus == ManittoStatus.TERMINAL;
             int totalCorruptionDelta = 0;
 
-            if (!isTerminal && bot.CurrentArea != AreaType.None)
+            if (!isTerminal &&
+                bot.CurrentArea != AreaType.None &&
+                areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
             {
-                var target = allPlayerSnapshots.FirstOrDefault(p =>
-                    p.PlayerId == bot.TargetPlayerId && !p.IsEliminated);
-                bool targetInSameArea = target != null && target.CurrentArea == bot.CurrentArea;
-
-                if (!targetInSameArea)
-                {
-                    totalCorruptionDelta += PassiveBuffUtility.ApplyReduction(
-                        isolationCorruptionDelta,
-                        bot.ActiveBuffIds,
-                        BuffSubType.ISOLATION_CORRUPTION_GAIN_DOWN);
-                }
-                else
-                {
-                    int population = CountPlayerSnapshotsInArea(allPlayerSnapshots, bot.CurrentArea);
-                    int recoveryMagnitude = Math.Max(1,
-                        (int)Math.Round(Math.Abs(nearbyRecoveryDelta) * (2.0 / Math.Max(2, population))));
-                    totalCorruptionDelta += nearbyRecoveryDelta < 0 ? -recoveryMagnitude : recoveryMagnitude;
-
-                    if (IsBotTargetWithinProximity(bot, target))
-                        totalCorruptionDelta += proximityRecoveryDelta;
-                }
-
-                if (areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
-                    totalCorruptionDelta += closedAreaCorruptionDelta;
+                totalCorruptionDelta += closedAreaCorruptionDelta;
             }
 
-            // issue22 디버그: walking 시각 검증을 위해 자원 자연 감소 + 탈락 비활성.
-            // DemoMode일 때만 기존 자원/탈락 로직 유지(영상 시나리오 정합).
             if (totalCorruptionDelta != 0)
                 bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
 
-
             if (DemoMode.IsActive)
             {
-                // 1) 오염도 적용 (시한부 추가)
-                // General resource deltas are accumulated outside DemoMode.
+                // DemoMode 전용 시한부 및 강제 탈락 연출.
                 if (bot.ManittoStatus == ManittoStatus.TERMINAL)
                     bot.Corruption = Math.Clamp(bot.Corruption + 5, 0, 100);
 
@@ -124,11 +81,6 @@ public partial class BotPlayerManager
                     }
                 }
 
-                // 2) 폐쇄 구역 체류 시 오염도 가속 (권고안 B 2026-05-05 — 변별력 보강 +4/틱).
-                //    이전엔 stamina -20이었으나 자원 통합 후 stamina 0이어도 탈락 안 되므로 cor로 변경.
-                // 3) Corruption 100: 정신력 소모로 탈락. Stamina 0은 비탈락.
-                // 4) DemoMode 스크립트 텔레포트 폐기 — 봇은 직책 큐(JobAreaQueue) 따라 walking으로만 이동.
-                //    H3/H6/H8 narrative 트리거(색출/흔적/탈락)는 BotPlayerManager.Mission.cs에서 별도 시간 기반 처리.
             }
 
             if (TryQueueBotMentalElimination(bot, matchingId, result))
@@ -166,24 +118,6 @@ public partial class BotPlayerManager
             "Bot mental depleted: MatchingId={MatchingId}, BotId={BotId}, Corruption={Corruption}. Eliminating bot.",
             matchingId, bot.PlayerId, bot.Corruption);
         return true;
-    }
-
-    private static int CountPlayerSnapshotsInArea(
-        IReadOnlyList<BotBehaviorPlayerSnapshot> players,
-        AreaType area)
-    {
-        return players.Count(p => !p.IsEliminated && p.CurrentArea == area);
-    }
-
-    private static bool IsBotTargetWithinProximity(BotPlayerState bot, BotBehaviorPlayerSnapshot? target)
-    {
-        var targetPosition = target?.Position;
-        if (targetPosition == null) return false;
-
-        float dx = bot.Position.X - targetPosition.X;
-        float dy = bot.Position.Y - targetPosition.Y;
-        return dx * dx + dy * dy <=
-               Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
     }
 
     private void SyncBotForcedFollowState(BotPlayerState bot, long matchingId)
