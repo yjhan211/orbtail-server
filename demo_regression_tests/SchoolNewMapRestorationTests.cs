@@ -97,6 +97,57 @@ public class SchoolNewMapRestorationTests
         Assert.Equal(AreaType.Classroom3, GameDoorData.Get(104)!.AreaType);
         Assert.Equal(AreaType.Classroom3, GameDoorData.Get(105)!.AreaType);
         Assert.Equal(AreaType.StaffRoom, GameDoorData.Get(106)!.AreaType);
+        Assert.Equal(AreaType.ExamRoom, GameDoorData.Get(107)!.AreaType);
+        Assert.Equal(AreaType.BroadcastRoom, GameDoorData.Get(108)!.AreaType);
+        Assert.Equal(AreaType.Classroom2, GameDoorData.Get(109)!.AreaType);
+        Assert.Equal(AreaType.Library, GameDoorData.Get(110)!.AreaType);
+        Assert.Equal(AreaType.Library, GameDoorData.Get(111)!.AreaType);
+        Assert.Equal(AreaType.Storage, GameDoorData.Get(112)!.AreaType);
+        Assert.Equal(AreaType.Storage, GameDoorData.Get(113)!.AreaType);
+        Assert.Equal(AreaType.Storage2, GameDoorData.Get(114)!.AreaType);
+        Assert.Equal(AreaType.Storage2, GameDoorData.Get(115)!.AreaType);
+        Assert.Equal(AreaType.Ground, GameDoorData.Get(116)!.AreaType);
+        Assert.Equal(AreaType.AdminOffice, GameDoorData.Get(117)!.AreaType);
+        Assert.Equal(17, GameDoorData.GetAll().Count());
+        Assert.All(GameDoorData.GetAll(), door => Assert.True(door.IsInitiallyOpen));
+
+        var classroomDoor = GameDoorData.GetDoorForTransition(
+            AreaType.Classroom4,
+            AreaType.Corridor,
+            new Cell(116, 91),
+            new Cell(113, 91));
+        Assert.NotNull(classroomDoor);
+        Assert.Equal(102, classroomDoor.DoorId);
+
+        var examRoomDoor = GameDoorData.GetDoorForTransition(
+            AreaType.ExamRoom,
+            AreaType.Corridor,
+            new Cell(117, 113),
+            new Cell(117, 112));
+        Assert.NotNull(examRoomDoor);
+        Assert.Equal(107, examRoomDoor.DoorId);
+
+        var infirmaryDoor = GameDoorData.GetDoorForTransition(
+            AreaType.Classroom2,
+            AreaType.Corridor,
+            new Cell(181, 113),
+            new Cell(180, 112));
+        Assert.NotNull(infirmaryDoor);
+        Assert.Equal(109, infirmaryDoor.DoorId);
+
+        var adminOfficeDoor = GameDoorData.GetDoorForTransition(
+            AreaType.AdminOffice,
+            AreaType.Corridor,
+            new Cell(132, 74),
+            new Cell(133, 74));
+        Assert.NotNull(adminOfficeDoor);
+        Assert.Equal(117, adminOfficeDoor.DoorId);
+
+        Assert.Null(GameDoorData.GetDoorForTransition(
+            AreaType.Classroom4,
+            AreaType.Corridor,
+            new Cell(120, 95),
+            new Cell(120, 94)));
 
         Assert.Equal(new[] { AreaType.BroadcastRoom }, GameRoomEventData.Get(188003)!.AreaTypes);
         Assert.Equal(new[] { AreaType.ExamRoom }, GameRoomEventData.Get(188004)!.AreaTypes);
