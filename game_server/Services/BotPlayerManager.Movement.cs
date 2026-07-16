@@ -17,6 +17,27 @@ public partial class BotPlayerManager
     /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
     private const float BotWalkSpeed = 6.0f;
 
+    /// <summary>아이소메트릭 셀 세로/가로 비율 — 클라 PlayerMovement.isoVerticalSpeedScale과 같은 값을 유지해야 한다.</summary>
+    private const float IsoVerticalSpeedScale = 0.5f;
+
+    /// <summary>
+    ///     화면 좌표 진행 방향(정규화)의 타일 기준 등속 속력.
+    ///     세로가 압축된 아이소메트릭 화면에서 어느 방향이든 타일 통과 속도가 BotWalkSpeed로 일정해진다
+    ///     (플레이어 로컬 이동의 세로 보정과 동일 규칙).
+    /// </summary>
+    private static float ScaledWalkSpeed(float dirX, float dirY)
+    {
+        float tileY = dirY / IsoVerticalSpeedScale;
+        float tileFactor = (float)Math.Sqrt(dirX * dirX + tileY * tileY);
+        return tileFactor > 0.0001f ? BotWalkSpeed / tileFactor : BotWalkSpeed;
+    }
+
+    private static Vector3f ScaledWalkVelocity(float dirX, float dirY)
+    {
+        float speed = ScaledWalkSpeed(dirX, dirY);
+        return new Vector3f(dirX * speed, dirY * speed, 0f);
+    }
+
 
     /// <summary>봇 자원 틱 결과. 자원 고갈 탈락 + 위치 이동 이벤트(DemoMode 영역 전환만)를 함께 반환.</summary>
     public class BotTickResult
@@ -259,6 +280,8 @@ public partial class BotPlayerManager
         float dy = targetPos.Y - bot.Position.Y;
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
         float maxDist = BotWalkSpeed * deltaSec;
+        if (dist >= 0.01f)
+            maxDist = ScaledWalkSpeed(dx / dist, dy / dist) * deltaSec;
 
         Vector3f newPosition;
         Vector3f velocity;
@@ -279,10 +302,7 @@ public partial class BotPlayerManager
                 float nextDy = followingPos.Y - newPosition.Y;
                 float nextDist = (float)Math.Sqrt(nextDx * nextDx + nextDy * nextDy);
                 if (nextDist > 0.01f)
-                    velocity = new Vector3f(
-                        nextDx / nextDist * BotWalkSpeed,
-                        nextDy / nextDist * BotWalkSpeed,
-                        0f);
+                    velocity = ScaledWalkVelocity(nextDx / nextDist, nextDy / nextDist);
             }
         }
         else
@@ -293,7 +313,7 @@ public partial class BotPlayerManager
                 bot.Position.X + dirX * maxDist,
                 bot.Position.Y + dirY * maxDist,
                 0f);
-            velocity = new Vector3f(dirX * BotWalkSpeed, dirY * BotWalkSpeed, 0f);
+            velocity = ScaledWalkVelocity(dirX, dirY);
             bot.Position = newPosition;
         }
 
