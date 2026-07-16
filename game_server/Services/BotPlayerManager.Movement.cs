@@ -17,8 +17,8 @@ public partial class BotPlayerManager
     /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
     private const float BotWalkSpeed = 6.0f;
 
-    /// <summary>아이소메트릭 셀 세로/가로 비율 — 클라 PlayerMovement.isoVerticalSpeedScale과 같은 값을 유지해야 한다.</summary>
-    private const float IsoVerticalSpeedScale = 0.5f;
+    /// <summary>아이소메트릭 세로 속도 보정 — 클라 PlayerMovement.isoVerticalSpeedScale과 같은 값을 유지해야 한다.</summary>
+    private const float IsoVerticalSpeedScale = 1f;
 
     /// <summary>
     ///     화면 좌표 진행 방향(정규화)의 타일 기준 등속 속력.
