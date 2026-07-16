@@ -194,6 +194,14 @@ public partial class GameClientSession : SessionBase
         _presenceTracker = presenceTracker;
     }
 
+    internal static void CleanupAbandonedMatchingRuntime(long matchingId)
+    {
+        GameRoundStates.TryRemove(matchingId, out _);
+        _presenceTracker?.Remove(matchingId);
+        if (GameTimers.TryRemove(matchingId, out var timer))
+            timer.Dispose();
+    }
+
     internal static (int RoundNumber, int TotalRounds, string Phase, int RemainingSeconds, int PhaseDurationSeconds,
         bool IsSessionEnded)? GetRoundSnapshot(long matchingId)
     {

@@ -15,36 +15,8 @@ public class AreaClosureManager
     private const int ClosureWarningSeconds = 30;   // 폐쇄 전 경고 시간
     // 폐쇄 구역 체류 페널티는 GameServer.ClosedAreaStaminaPenaltyPerTick에서 처리
 
-    // 폐쇄 불가 (6구역): 1층 전체(행정실/1층복도/교무실/강당) + 외부(창고/운동장)
-    // 폐쇄 대상 (9구역): 2~4층 전체
-    //
-    // [복도 hard 후순위 규칙, GDD §2.1.5, v0.0.8→v0.1.0 hard 강화, 패키지 M1A, #24]
-    // 복도(2층/3층/4층복도) 3개는 말단 6구역(교실4/방송실/교실3/고사실/교실2/도서관)이
-    // 모두 폐쇄된 이후에만 셔플 후보로 진입한다. 이 순서를 보장하기 위해
-    // InitializeMatching()에서 말단 6구역을 앞에, 복도 3개를 뒤에 배치한 후 각 그룹 내부만 셔플.
-    //
-    // 이유: v0.1.0 트리 구조에서 복도 1개 폐쇄 = 척추 절단 → 직책 미션 데드락 발생 (8/8 직책 영향).
-    //       말단 6구역 폐쇄(~18분) 이후에만 복도 폐쇄 허용 → 미션 페이즈 전구간 데드락 0 보장.
-
-    // 말단 6구역 (hard 선순위 — 복도보다 먼저 폐쇄됨)
-    private static readonly AreaType[] LeafClosableAreas =
-    {
-        AreaType.Classroom4,    // 교실4 (4층)
-        AreaType.BroadcastRoom, // 방송실 (4층)
-        AreaType.Classroom3,    // 교실3 (3층)
-        AreaType.ExamRoom,      // 고사실 (3층)
-        AreaType.Classroom2,    // 교실2 (2층)
-        AreaType.Library,       // 도서관 (2층)
-    };
-
-    // 복도 3개 (hard 후순위 — 말단 6구역 전부 폐쇄 후에만 셔플 후보)
-    private static readonly AreaType[] CorridorClosableAreas =
-    {
-        AreaType.Corridor4F,    // 4층복도
-        AreaType.Corridor3F,    // 3층복도
-        AreaType.Corridor2F,    // 2층복도
-    };
-
+    // School_New uses one shared Corridor area. Closing it would disconnect the whole map,
+    // so only room areas are included in closure schedules.
     // matchingId → ClosureState
     // #185 P0 opening compression. Issue wording maps Auditorium -> Gym, Playground -> Ground/Schoolyard.
     private static readonly AreaType[] InitialClosedAreas =
@@ -77,12 +49,6 @@ public class AreaClosureManager
         AreaType.StaffRoom
     };
 
-    private static readonly AreaType[] LateCorridorAreas =
-    {
-        AreaType.Corridor3F,
-        AreaType.Corridor2F
-    };
-
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();
     private readonly ILogger _logger;
     private readonly MatchingConfigService _matchingConfig;
@@ -96,8 +62,8 @@ public class AreaClosureManager
     /// <summary>
     ///     매칭 시작 시 폐쇄 스케줄 생성.
     ///     MatchingConfigService에서 config를 읽어 적용한다.
-    ///     forcedSequence가 null이면 기존 무작위 규칙(복도 hard 후순위 GDD §2.1.5) 사용.
-    ///     복도 hard 후순위 규칙: 말단 6구역을 셔플 후 앞에, 복도 3개를 셔플 후 뒤에 배치.
+    ///     forcedSequence가 null이면 현재 School_New 방 구조에 맞는 기본 순서를 사용한다.
+    ///     School_New의 단일 공유 복도는 폐쇄하지 않고 실제 방 구역만 순서에 포함한다.
     ///
     ///     #87 추가 규칙 (jobsInMatching 제공 시):
     ///     - 1번째 슬롯(시작 5분)은 이번 매칭 직책들의 1단계(Material) 발견 구역 제외 강제 —
@@ -133,8 +99,12 @@ public class AreaClosureManager
                 sequence = ApplyJobAwareShuffle(sequence, jobsInMatching);
         }
 
+        var mapAreas = GameMapData.GetAreas(MapId.School)
+            .Select(region => region.AreaType)
+            .ToHashSet();
         sequence = sequence
-            .Where(area => !InitialClosedAreas.Contains(area))
+            .Where(area => mapAreas.Contains(area) && !InitialClosedAreas.Contains(area))
+            .Distinct()
             .ToList();
 
         var state = new MatchingClosureState
@@ -177,11 +147,8 @@ public class AreaClosureManager
         AddNext(sequence, coreHubs);
         // 10:00 - close the remaining utility fork.
         AddNext(sequence, routeForks);
-        // 11:30 - 4F becomes dangerous after BroadcastRoom had a fair window.
-        sequence.Add(AreaType.Corridor4F);
-        // 13:00+ - collapse remaining hubs, then late corridors.
+        // 11:30+ - collapse the remaining hubs. The shared corridor stays open.
         AddRemaining(sequence, coreHubs);
-        sequence.AddRange(ShuffleAreas(rng, LateCorridorAreas));
 
         return sequence;
     }

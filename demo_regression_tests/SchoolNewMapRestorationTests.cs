@@ -1,3 +1,4 @@
+using game_server.services;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
@@ -8,6 +9,41 @@ namespace demo_regression_tests;
 
 public class SchoolNewMapRestorationTests
 {
+    [Fact]
+    public void BotPathfinder_Crosses_School_Doors_As_Adjacent_Walking_Steps()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
+        var start = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Library);
+        var target = GameAreaConnectionData.GetSpawnCell(
+            MapId.School,
+            AreaType.Library,
+            AreaType.Storage);
+        Assert.NotNull(target);
+
+        var path = BotPathfinder.FindPath(
+            MapId.School,
+            AreaType.Library,
+            start,
+            AreaType.Storage,
+            target!);
+        Assert.NotNull(path);
+
+        int transitionIndex = path!.FindIndex(step => step.IsAreaTransition);
+        Assert.True(transitionIndex > 0);
+
+        var exitStep = path[transitionIndex - 1];
+        var entryStep = path[transitionIndex];
+        Assert.Equal(AreaType.Library, exitStep.Area);
+        Assert.Equal(AreaType.Storage, entryStep.Area);
+        Assert.Equal(AreaType.Library, GameMapData.GetCurrentArea(MapId.School, exitStep.Cell));
+        Assert.Equal(AreaType.Storage, GameMapData.GetCurrentArea(MapId.School, entryStep.Cell));
+        Assert.InRange(Math.Abs(exitStep.Cell.X - entryStep.Cell.X), 0, 1);
+        Assert.InRange(Math.Abs(exitStep.Cell.Y - entryStep.Cell.Y), 0, 1);
+        Assert.NotEqual(exitStep.Cell, entryStep.Cell);
+    }
+
     [Fact]
     public void School_Map_Uses_Legacy_Continuous_Map_Contract()
     {
@@ -34,6 +70,34 @@ public class SchoolNewMapRestorationTests
             region => region.RegionType.Equals("obstacle", StringComparison.OrdinalIgnoreCase));
         Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(82, 18)));
         Assert.False(GameMapData.IsMoveablePosition(MapId.School, new Cell(0, 0)));
+
+        var schoolAreas = GameMapData.GetAreas(MapId.School)
+            .Select(region => region.AreaType)
+            .ToHashSet();
+        var schoolConnections = GameAreaConnectionData.GetAll()
+            .Where(connection => connection.MapId == MapId.School)
+            .ToList();
+
+        Assert.Equal(19, schoolConnections.Count);
+        Assert.DoesNotContain(schoolConnections, connection =>
+            connection.FromArea is AreaType.Corridor1F or AreaType.Corridor2F or AreaType.Corridor3F or AreaType.Corridor4F ||
+            connection.ToArea is AreaType.Corridor1F or AreaType.Corridor2F or AreaType.Corridor3F or AreaType.Corridor4F);
+        Assert.All(schoolConnections, connection =>
+        {
+            Assert.Contains(connection.FromArea, schoolAreas);
+            Assert.Contains(connection.ToArea, schoolAreas);
+            Assert.True(GameMapData.IsMoveablePosition(MapId.School, connection.SpawnCell));
+            Assert.Equal(connection.ToArea, GameMapData.GetCurrentArea(MapId.School, connection.SpawnCell));
+
+            var reverseSpawn = GameAreaConnectionData.GetSpawnCell(
+                MapId.School,
+                connection.ToArea,
+                connection.FromArea,
+                connection.StairSide);
+            Assert.NotNull(reverseSpawn);
+            Assert.True(GameMapData.IsMoveablePosition(MapId.School, reverseSpawn));
+            Assert.Equal(connection.FromArea, GameMapData.GetCurrentArea(MapId.School, reverseSpawn));
+        });
     }
 
     [Fact]

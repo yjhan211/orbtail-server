@@ -311,15 +311,6 @@ public partial class GameServer(
                 // if (isTerminal)
                 //     corruptionDelta += TerminalDecayAmount;
 
-                // 4. 강당 체류 오염도 추가 증가 (패키지 Y 3A, GDD §3.1.1, #24)
-                if (!isTerminal && session.CurrentArea == (AreaType)Config.AUDITORIUM_AREA_TYPE)
-                {
-                    var targetSession2 = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                    bool targetInGym = targetSession2 != null && targetSession2.CurrentArea == session.CurrentArea;
-                    if (!targetInGym)
-                        corruptionDelta += Config.AUDITORIUM_STAY_CORRUPTION_BONUS;
-                }
-
                 // 4. 폐쇄 구역 체류 시 오염도 추가 증가
                 if (session.CurrentArea != AreaType.None &&
                     _areaClosureManager.IsAreaClosed(session.CurrentMapSubId, session.CurrentArea))
@@ -1776,6 +1767,40 @@ public partial class GameServer(
                 foreach (var controller in _instanceControllerList)
                     controller.OnPlayerDisconnected(session.CurrentMapId, session.CurrentMapSubId,
                         session.PlayerId.Value);
+
+            if (session.CurrentMapSubId > 0)
+                CleanupMatchingIfNoHumanSessionsRemain(session.CurrentMapSubId);
+        }
+    }
+
+    private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId)
+    {
+        if (_clientSessions.Values.Any(other =>
+                other.PlayerId.HasValue && other.CurrentMapSubId == matchingId))
+            return;
+
+        GameClientSession.CleanupAbandonedMatchingRuntime(matchingId);
+        _botPlayerManager.CleanupMatching(matchingId);
+        _presenceTracker.Remove(matchingId);
+        _checklistManager.RemoveMatchingState(matchingId);
+        _ = CleanupAbandonedMatchingRedisAsync(matchingId);
+
+        logger.LogInformation(
+            "Removed abandoned matching after last human player left: MatchingId={MatchingId}",
+            matchingId);
+    }
+
+    private async Task CleanupAbandonedMatchingRedisAsync(long matchingId)
+    {
+        try
+        {
+            await cacheHelper.HashDeleteAsync("matching_bots", matchingId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Failed to remove abandoned matching from Redis: MatchingId={MatchingId}",
+                matchingId);
         }
     }
 
@@ -2366,7 +2391,7 @@ public partial class GameServer(
     }
 
     /// <summary>
-    ///     인스턴스 풀 스냅샷 (폐쇄 스케줄 + 미션 전체 단계 포함)
+    ///     인스턴스 풀 스냅샷 (폐쇄 스케줄 포함)
     /// </summary>
     public InstanceSnapshot? GetFullInstanceSnapshot(long matchingId)
     {
@@ -2392,48 +2417,6 @@ public partial class GameServer(
             StartDelaySec = startDelaySec,
             IntervalSec = intervalSec
         };
-
-        // 플레이어별 직책 + 전체 미션 단계 보강 (description 포함). 인간 + 봇 모두 처리.
-        var sessions = _clientSessions.Values
-            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
-            .ToDictionary(s => s.PlayerId!.Value);
-        var botMap = _botPlayerManager.GetBots(matchingId).ToDictionary(b => b.PlayerId);
-
-        foreach (var player in base_.Players)
-        {
-            JobTitle jobTitle;
-            if (sessions.TryGetValue(player.PlayerId, out var session))
-            {
-                jobTitle = session.AdminJobTitle;
-            }
-            else if (botMap.TryGetValue(player.PlayerId, out var bot))
-            {
-                jobTitle = bot.MyJobTitle;
-            }
-            else
-            {
-                continue;
-            }
-
-            player.JobTitle = jobTitle.ToKorean();
-
-            // v0.2.0 — 부품 진행도로 어드민 표시 재구성
-            var jobParts = GameMissionData.GetParts((short)jobTitle);
-            var partState = _missionManager.GetState(matchingId, player.PlayerId);
-            int order = 0;
-            player.AllSteps = jobParts.Select(p => new MissionFullStep
-            {
-                Order = ++order,
-                PartId = p.PartId,
-                PartNameKr = p.PartNameKr,
-                PartTier = (int)p.PartTier,
-                TargetAreaType = p.TargetArea,
-                TargetAreaName = p.TargetArea > 0 ? GameAreaNameData.Get((AreaType)p.TargetArea) : "",
-                TargetObjectType = p.TargetObjectType,
-                IsCollected = partState?.CollectedParts.Contains(p.PartId) ?? false,
-                PrerequisiteShareGroup = p.PrerequisiteShareGroup
-            }).ToList();
-        }
 
         return base_;
     }
@@ -2474,7 +2457,6 @@ public partial class GameServer(
         // 1) 인간 플레이어
         foreach (var s in sessions)
         {
-            var missionState = _missionManager.GetState(matchingId, s.PlayerId!.Value);
             var chainLink = _manittoChainManager.GetLink(matchingId, s.PlayerId!.Value);
             playerSnapshots.Add(new PlayerSnapshot
             {
@@ -2486,11 +2468,6 @@ public partial class GameServer(
                 TargetPlayerId = s.TargetPlayerId,
                 IsBot = s.IsBot,
                 IsEliminated = s.IsEliminated,
-                MissionStep = missionState?.CollectedParts.Count ?? 0,
-                MissionTotalSteps = missionState != null
-                    ? GameMissionData.GetTotalParts((short)missionState.JobTitle)
-                    : 0,
-                MissionCompleted = missionState?.IsCompleted ?? false,
                 ManittoOfMe = FindManittoOf(s.PlayerId!.Value),
                 ChainStatus = chainLink?.Status.ToString() ?? ""
             });
@@ -2499,7 +2476,6 @@ public partial class GameServer(
         // 2) 봇 — TCP 세션이 없으므로 BotPlayerManager._botStates에서 조회
         foreach (var bot in bots)
         {
-            var missionState = _missionManager.GetState(matchingId, bot.PlayerId);
             var chainLink = _manittoChainManager.GetLink(matchingId, bot.PlayerId);
             playerSnapshots.Add(new PlayerSnapshot
             {
@@ -2511,11 +2487,6 @@ public partial class GameServer(
                 TargetPlayerId = bot.TargetPlayerId,
                 IsBot = true,
                 IsEliminated = bot.IsEliminated,
-                MissionStep = missionState?.CollectedParts.Count ?? 0,
-                MissionTotalSteps = missionState != null
-                    ? GameMissionData.GetTotalParts((short)missionState.JobTitle)
-                    : 0,
-                MissionCompleted = missionState?.IsCompleted ?? false,
                 ManittoOfMe = FindManittoOf(bot.PlayerId),
                 ChainStatus = chainLink?.Status.ToString() ?? ""
             });

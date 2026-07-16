@@ -21,10 +21,6 @@
         .closure-warning  { background: #7f1d1d; color: #f87171; border: 1px solid #ef4444; animation: pulse 1s infinite; }
         .closure-pending  { background: #1f2937; color: #4b5563; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
-        /* 미션 단계 */
-        .step-done    { color: #22c55e; }
-        .step-current { color: #facc15; font-weight: bold; }
-        .step-future  { color: #4b5563; }
         /* 토스트 */
         #toast { transition: opacity 0.3s; }
         /* 이벤트 로그 타입별 색상 */
@@ -36,8 +32,6 @@
         .ev-CLOSURE   { color: #fb923c; }
         .ev-SYSTEM    { color: #9ca3af; font-style: italic; }
         .ev-bot       { background: rgba(168, 85, 247, 0.08); }
-        /* 직책 체크박스 */
-        .job-cb:checked + label { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
         .storylet-row.active { background: rgba(37, 99, 235, 0.22); border-color: #3b82f6; }
         .storylet-field textarea { min-height: 5.5rem; }
         .storylet-tag { background: #111827; border: 1px solid #374151; color: #cbd5e1; }
@@ -73,7 +67,7 @@
         <!-- 현재 config 표시 -->
         <div id="config-status" class="text-xs text-gray-400 mb-4 bg-gray-800 rounded px-3 py-2">로딩 중...</div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 gap-6">
             <!-- 폐쇄 Config -->
             <div>
                 <h3 class="text-sm font-semibold text-gray-300 mb-3">폐쇄 타이밍</h3>
@@ -116,14 +110,13 @@
                     <p class="text-xs text-gray-500 mb-1">폐쇄 대상 구역을 순서대로 선택 (아래 버튼 클릭으로 추가)</p>
                     <div class="flex flex-wrap gap-1 mb-2">
                         <!-- 폐쇄 가능 구역 버튼 -->
-                        <button onclick="addSeqArea(20)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">교실2(20)</button>
-                        <button onclick="addSeqArea(21)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">2층복도(21)</button>
+                        <button onclick="addSeqArea(10)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">행정실(10)</button>
+                        <button onclick="addSeqArea(12)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">교무실(12)</button>
+                        <button onclick="addSeqArea(20)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">보건실(20)</button>
                         <button onclick="addSeqArea(22)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">도서관(22)</button>
-                        <button onclick="addSeqArea(30)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">교실3(30)</button>
-                        <button onclick="addSeqArea(31)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">3층복도(31)</button>
+                        <button onclick="addSeqArea(30)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">2-1(30)</button>
                         <button onclick="addSeqArea(32)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">고사실(32)</button>
-                        <button onclick="addSeqArea(40)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">교실4(40)</button>
-                        <button onclick="addSeqArea(41)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">4층복도(41)</button>
+                        <button onclick="addSeqArea(40)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">3-1(40)</button>
                         <button onclick="addSeqArea(42)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">방송실(42)</button>
                     </div>
                     <div id="seq-list" class="text-xs text-yellow-300 mb-1 min-h-4">순서 없음</div>
@@ -140,43 +133,9 @@
                 </div>
             </div>
 
-            <!-- 직책 풀 Config -->
-            <div>
-                <h3 class="text-sm font-semibold text-gray-300 mb-3">직책 풀</h3>
-                <div class="flex gap-2 mb-2">
-                    <label class="flex items-center gap-1 text-xs cursor-pointer">
-                        <input type="radio" name="job-mode" id="job-random" value="random" checked
-                               onchange="onJobModeChange()" class="accent-blue-500" />
-                        무작위 8개 (기본)
-                    </label>
-                    <label class="flex items-center gap-1 text-xs cursor-pointer">
-                        <input type="radio" name="job-mode" id="job-forced" value="forced"
-                               onchange="onJobModeChange()" class="accent-blue-500" />
-                        강제 지정
-                    </label>
-                </div>
 
-                <div id="job-forced-panel" class="hidden">
-                    <p class="text-xs text-gray-500 mb-2">사용할 직책을 선택 (매칭 인원수만큼 셔플 배정)</p>
-                    <div class="flex flex-col gap-1 mb-3" id="job-checkboxes">
-                        <!-- JS에서 동적 생성 -->
-                    </div>
-                    <div class="flex gap-2">
-                        <button onclick="applyJobPool()"
-                                class="flex-1 bg-blue-700 hover:bg-blue-600 text-white text-xs px-3 py-1.5 rounded">
-                            직책 풀 적용
-                        </button>
-                    </div>
-                </div>
 
-                <div id="job-random-info" class="text-xs text-gray-500 mt-2">
-                    8개 직책 중 플레이어 수만큼 무작위 배정됩니다.
-                </div>
 
-                <button onclick="resetJobPool()" class="mt-3 w-full bg-gray-700 hover:bg-gray-600 text-xs px-3 py-1.5 rounded">
-                    직책 풀 무작위 복원
-                </button>
-            </div>
         </div>
     </section>
 
@@ -210,12 +169,10 @@
                 <thead>
                     <tr class="text-gray-400 border-b border-gray-700">
                         <th class="text-left pb-2">PlayerId</th>
-                        <th class="text-left pb-2">직책</th>
                         <th class="text-left pb-2">구역</th>
                         <th class="text-left pb-2">스태미나</th>
                         <th class="text-left pb-2">오염도</th>
                         <th class="text-left pb-2">상태</th>
-                        <th class="text-left pb-2">미션 단계</th>
                         <th class="text-left pb-2">마니또</th>
                         <th class="text-left pb-2">타겟</th>
                     </tr>

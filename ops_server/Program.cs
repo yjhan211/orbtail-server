@@ -56,7 +56,7 @@ app.MapGet("/api/instance/{matchingId:long}", async (long matchingId, GameServer
         : Results.Ok(result);
 });
 
-// 프록시: 인스턴스 풀 상세 (폐쇄 스케줄 + 미션 전체 단계)
+// 프록시: 인스턴스 풀 상세 (폐쇄 스케줄)
 app.MapGet("/api/instance/{matchingId:long}/full", async (long matchingId, GameServerClient client, CancellationToken ct) =>
 {
     var result = await client.GetFullInstanceAsync(matchingId, ct);
@@ -93,14 +93,6 @@ app.MapPost("/api/matching-config/closure", async (System.Text.Json.JsonElement 
         : Results.Ok(result);
 });
 
-// 프록시: 직책 풀 config 변경
-app.MapPost("/api/matching-config/job-pool", async (System.Text.Json.JsonElement body, GameServerClient client, CancellationToken ct) =>
-{
-    var result = await client.PostJobPoolConfigAsync(body, ct);
-    return result is null
-        ? Results.Problem("game_server 연결 실패")
-        : Results.Ok(result);
-});
 
 // 기록 Storylet CSV 조회
 app.MapGet("/api/storylets", (StoryletCsvService service) => Results.Ok(service.Load()));

@@ -17,8 +17,6 @@ public partial class BotPlayerManager
     /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
     private const float BotWalkSpeed = 6.0f;
 
-    /// <summary>영역 전환 직전 도어 앞에서 잠시 멈추는 시간(ms). 포탈 들어가는 시각적 단서.</summary>
-    private const int BotTransitionPauseMs = 600;
 
     /// <summary>봇 자원 틱 결과. 자원 고갈 탈락 + 위치 이동 이벤트(DemoMode 영역 전환만)를 함께 반환.</summary>
     public class BotTickResult
@@ -162,7 +160,7 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     봇 한 명의 walking step 처리. 경로가 없으면 새 wander 타겟 선택.
-    ///     영역 전환 단계는 텔레포트(LEAVE+ENTER+MOVE) 이벤트 반환,
+    ///     영역 경계도 인접 셀까지 연속 보행하며, 도착 셀을 기준으로 영역 변경 이벤트를 반환한다.
     ///     일반 셀 walk는 진행 방향 + 속도 포함 MOVE 이벤트 반환.
     /// </summary>
     private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
@@ -250,59 +248,12 @@ public partial class BotPlayerManager
         }
 
         var nextStep = bot.Path[bot.PathIndex];
+        var mapId = GetMatchingMapId(matchingId);
+        var fromArea = bot.CurrentArea;
+        var fromCell = bot.Cell;
+        bool reachedStep = false;
 
-        // 1) 영역 경계 통과 — 도어 앞 짧은 멈춤 후 텔레포트 (포탈 들어가는 시각적 단서)
-        if (nextStep.IsAreaTransition)
-        {
-            // 첫 진입: 멈춤 시각 설정 + velocity 0 정지 이벤트 발행
-            // (클라가 발소리/walk 애니를 즉시 정지하도록 명시 알림 — 미발행 시 LateUpdate 0.3초 timeout까지 발소리 잔존)
-            if (bot.TransitionPauseUntil == DateTime.MinValue)
-            {
-                bot.TransitionPauseUntil = now.AddMilliseconds(BotTransitionPauseMs);
-                bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
-                return new BotMovementEvent
-                {
-                    BotPlayerId = bot.PlayerId,
-                    FromArea = bot.CurrentArea,
-                    ToArea = bot.CurrentArea,
-                    FromCell = bot.Cell,
-                    ToCell = bot.Cell,
-                    Position = bot.Position,
-                    Velocity = new Vector3f(0f, 0f, 0f),
-                    Rotation = bot.Rotation,
-                    IsAreaTransition = false
-                };
-            }
-
-            // 멈춤 진행 중: 패킷 발행 없이 대기
-            if (now < bot.TransitionPauseUntil) return null;
-
-            // 멈춤 종료 → 실제 영역 전환
-            bot.TransitionPauseUntil = DateTime.MinValue;
-
-            var fromArea = bot.CurrentArea;
-            var fromCell = bot.Cell;
-            bot.CurrentArea = nextStep.Area;
-            bot.Cell = nextStep.Cell;
-            bot.Position = CellToWorldPosition(nextStep.Cell);
-            bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
-            bot.PathIndex++;
-            ClearBotRoomExplorePlan(bot);
-            return new BotMovementEvent
-            {
-                BotPlayerId = bot.PlayerId,
-                FromArea = fromArea,
-                ToArea = bot.CurrentArea,
-                FromCell = fromCell,
-                ToCell = bot.Cell,
-                Position = bot.Position,
-                Velocity = new Vector3f(0f, 0f, 0f),
-                Rotation = bot.Rotation,
-                IsAreaTransition = true
-            };
-        }
-
-        // 2) 일반 셀 walk — walkSpeed × deltaSec 만큼 진행
+        // Walk every waypoint at the same speed. An area transition is just the adjacent cell across a door.
         var targetPos = CellToWorldPosition(nextStep.Cell);
         float dx = targetPos.X - bot.Position.X;
         float dy = targetPos.Y - bot.Position.Y;
@@ -319,8 +270,9 @@ public partial class BotPlayerManager
             bot.Cell = nextStep.Cell;
             bot.Position = newPosition;
             bot.PathIndex++;
+            reachedStep = true;
             velocity = new Vector3f(0f, 0f, 0f);
-            if (bot.PathIndex < bot.Path.Count && !bot.Path[bot.PathIndex].IsAreaTransition)
+            if (bot.PathIndex < bot.Path.Count)
             {
                 var followingPos = CellToWorldPosition(bot.Path[bot.PathIndex].Cell);
                 float nextDx = followingPos.X - newPosition.X;
@@ -345,6 +297,18 @@ public partial class BotPlayerManager
             bot.Position = newPosition;
         }
 
+        bool areaChanged = false;
+        if (reachedStep)
+        {
+            var resolvedArea = GameMapData.GetCurrentArea(mapId, bot.Cell);
+            if (resolvedArea != AreaType.None && resolvedArea != bot.CurrentArea)
+            {
+                bot.CurrentArea = resolvedArea;
+                areaChanged = true;
+                ClearBotRoomExplorePlan(bot);
+            }
+        }
+
         bot.WalkVelocity = velocity;
 
         // velocity.X 부호에 따라 Rotation 갱신 (실제 플레이어 PlayerMovement.cs와 동일 규칙).
@@ -356,14 +320,14 @@ public partial class BotPlayerManager
         return new BotMovementEvent
         {
             BotPlayerId = bot.PlayerId,
-            FromArea = bot.CurrentArea,
+            FromArea = fromArea,
             ToArea = bot.CurrentArea,
-            FromCell = bot.Cell,
+            FromCell = fromCell,
             ToCell = nextStep.Cell,
             Position = newPosition,
             Velocity = velocity,
             Rotation = bot.Rotation,
-            IsAreaTransition = false
+            IsAreaTransition = areaChanged
         };
     }
 
@@ -1122,7 +1086,7 @@ public partial class BotPlayerManager
 
 /// <summary>
 ///     봇 이동 이벤트. ProcessBotTick / ProcessBotMovementTick이 반환하면 GameServer가 같은 영역 인간 세션에 패킷 브로드캐스트.
-///     영역 전환 시: G_TO_C_AREA_PLAYER_LEAVE(이전) + G_TO_C_AREA_PLAYER_ENTER(새) + G_TO_C_MOVE(텔레포트)
+///     영역 변경 시: 보행으로 새 영역 셀에 도착한 뒤 LEAVE + ENTER + MOVE를 전송.
 ///     영역 내 walk 시: G_TO_C_MOVE 만 (같은 영역 인간들에게)
 /// </summary>
 public class BotMovementEvent

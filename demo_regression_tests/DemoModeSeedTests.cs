@@ -52,7 +52,7 @@ public class DemoModeSeedTests
     [InlineData(JobTitle.BROADCAST_MEMBER, 0, AreaType.BroadcastRoom)]
     [InlineData(JobTitle.BROADCAST_MEMBER, 360, AreaType.Library)]
     [InlineData(JobTitle.BROADCAST_MEMBER, 570, AreaType.Library)]
-    [InlineData(JobTitle.DISCIPLINE_MEMBER, 0, AreaType.Corridor1F)]
+    [InlineData(JobTitle.DISCIPLINE_MEMBER, 0, AreaType.Corridor)]
     [InlineData(JobTitle.DISCIPLINE_MEMBER, 270, AreaType.Library)]
     [InlineData(JobTitle.SCIENCE_MEMBER, 0, AreaType.ExamRoom)]
     [InlineData(JobTitle.SCIENCE_MEMBER, 170, AreaType.Library)]

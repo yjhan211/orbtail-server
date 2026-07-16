@@ -458,8 +458,8 @@ public partial class GameClientSession
         try
         {
             int corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(CurrentMapSubId);
-            // 복도 규칙 1번(종소리 중 이동 금지) 또는 6번(정지 금지)일 때만 체크
-            if (corridorRuleId != 1 && corridorRuleId != 6) return;
+            // Only rule 6 (no stopping in corridors) still applies.
+            if (corridorRuleId != 6) return;
 
             var result = _corridorRuleManager.CheckPlayerMove(
                 CurrentMapSubId,
