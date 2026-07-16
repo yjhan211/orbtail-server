@@ -1042,7 +1042,6 @@ public partial class BotPlayerManager
         if (bot.Path.Count > 0 && bot.PathIndex < bot.Path.Count) return null;
 
         var ev = TransitionBotArea(bot, matchingId, target);
-        bot.Stamina = Math.Max(0, bot.Stamina - BotMoveStaminaCost);
         bot.LastMoveTime = DateTime.UtcNow;
         _logger.LogInformation("DEMO_MODE 봇 이동(스크립트): BotId={Bot}, Job={Job}, {Prev} → {Area} (경과 {Sec}s)",
             bot.PlayerId, bot.MyJobTitle, ev.FromArea, ev.ToArea, elapsedSec);

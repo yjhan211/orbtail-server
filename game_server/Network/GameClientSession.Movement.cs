@@ -123,12 +123,9 @@ public partial class GameClientSession
                 // 폐쇄 구역 진입 경고 (지속 페널티는 ResourceTick에서 처리)
                 if (_areaClosureManager.IsAreaClosed(CurrentMapSubId, newArea))
                 {
-                    Logger.LogInformation("폐쇄 구역 진입: PlayerId={PlayerId}, Area={Area} (체류 시 스태미나 지속 감소)",
+                    Logger.LogInformation("폐쇄 구역 진입: PlayerId={PlayerId}, Area={Area} (체류 시 오염도 지속 증가)",
                         PlayerId, newArea);
                 }
-
-                // 구역 이동 시 스태미나 소모
-                ModifyStats(staminaDelta: -GameServer.MoveStaminaCost);
 
                 Logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);

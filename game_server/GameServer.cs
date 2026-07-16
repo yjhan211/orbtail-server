@@ -80,7 +80,6 @@ public partial class GameServer(
     private const int ChecklistProgressTickIntervalSeconds = 1;
     private const int ClosedAreaStatusEffectId = 1003;  // status_effect_info: 폐쇄 구역
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
-    internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모 (인접 구역 진입)
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
     internal const int TraceFoundManittoRecovery = 15;   // 흔적 발견 시 마니또 정신력 회복량
     internal const int TraceFoundTargetDecay = 10;       // 흔적 발견 시 타겟 오염도 증가량

@@ -76,7 +76,6 @@ public partial class BotPlayerManager
 
     private const int BotMoveIntervalSeconds = 12;
     private const int BotMissionTickIntervalSeconds = 1;
-    private const int BotMoveStaminaCost = 3;
     private const int DetectScoreThreshold = 18;          // ?됱텧 ?대━?ㅽ떛 ?꾧퀎媛????⑥젙 ?붿쟻 諛쒓껄 ?꾩쟻 ?먯닔
     private const int InitialStamina = 100;
     private const int InitialCorruption = 0;
