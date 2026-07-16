@@ -118,12 +118,12 @@ public static class RngCollectCore
         }
         else
         {
-            if (TryResolveAreaStockDrop(matchingId, info.ZoneId, areaItemStockManager, consumeStock: true, out int itemId))
+            if (areaItemStockManager.TryConsumeDrops(matchingId, info.ZoneId, 3, out var itemIds))
             {
                 outcome.ResultType = 2;
-                outcome.ItemId = itemId;
+                outcome.ItemId = itemIds[0];
                 outcome.StaminaReward = ConsumableStaminaReward;
-                outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, itemId, 1);
+                outcome.DroppedItemIds.AddRange(itemIds);
             }
             else
             {
@@ -131,20 +131,8 @@ public static class RngCollectCore
             }
         }
 
-        TryApplySharpObservationBonus(matchingId, playerId, info.ZoneId, missionManager, inventoryManager,
-            areaItemStockManager, isBot, outcome);
-        TryApplyPassiveItemGainBonus(
-            matchingId,
-            playerId,
-            info.ZoneId,
-            inventoryManager,
-            areaItemStockManager,
-            isBot,
-            outcome,
-            bonusItemChancePercent);
-
-        RngCollectCooldownStore.ClearCooldown(matchingId, info.Id);
-        outcome.CooldownSeconds = 0;
+        RngCollectCooldownStore.SetCooldown(matchingId, info.Id, RngCollectCooldownStore.DefaultCooldownSeconds);
+        outcome.CooldownSeconds = RngCollectCooldownStore.DefaultCooldownSeconds;
 
         return outcome;
     }
@@ -399,6 +387,9 @@ public class RngCollectOutcome
 
     /// <summary>부품 회수와 함께 완료된 미션 그래프 노드 id.</summary>
     public List<int> CompletedMissionNodeIds { get; set; } = new();
+
+    /// <summary>지역 재고에서 차감되어 바닥에 생성할 아이템.</summary>
+    public List<int> DroppedItemIds { get; } = new();
 
     /// <summary>소모품 회수 시 인벤토리에 추가된 아이템 (호출자 G_TO_C_INGAME_INVENTORY_UPDATE 송신용)</summary>
     public InGameItemInfo? AddedInventoryItem { get; set; }

@@ -23,7 +23,7 @@ public partial class BotPlayerManager
     /// </summary>
     public BotMissionTickResult ProcessBotMissionTick(long matchingId, MissionManager missionManager,
         InGameInventoryManager inventoryManager, ItemPoolManager itemPoolManager,
-        AreaItemStockManager areaItemStockManager, ChecklistManager checklistManager)
+        AreaItemStockManager areaItemStockManager, GroundItemManager groundItemManager, ChecklistManager checklistManager)
     {
         var result = new BotMissionTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
@@ -48,7 +48,7 @@ public partial class BotPlayerManager
             if (state == null || state.IsCompleted) continue;
 
             // 1) 봇 walking 도착 후 RNG 채집 (PendingRngInteractId가 있을 때만)
-            TryRngCollectIfArrived(bot, matchingId, missionManager, inventoryManager, itemPoolManager, areaItemStockManager, state, result);
+            TryRngCollectIfArrived(bot, matchingId, missionManager, inventoryManager, itemPoolManager, areaItemStockManager, groundItemManager, state, result);
 
             // 2) 결합 시도 (회수 직후 보유 부품 검사)
             TryAutoCombine(bot, matchingId, missionManager, state, result);
@@ -72,7 +72,7 @@ public partial class BotPlayerManager
     /// <summary>봇 RNG 채집 progress 지속 시간 (플레이어 클라 2초 progress와 동등).</summary>
     private const double BotRngCollectProgressSeconds = 2.0;
 
-    private static readonly int RngCollectCooldownSeconds = 0;
+    private const int RngCollectCooldownSeconds = RngCollectCooldownStore.DefaultCooldownSeconds;
 
     /// <summary>봇 RNG 인스턴스 쿨타임 — RngCollectCore의 동등 상수 (BotPlayerManager 내부 노출용).</summary>
     private const int GiftFoundCorruptionDelta = 30;
@@ -200,7 +200,7 @@ public partial class BotPlayerManager
     /// </summary>
     private void TryRngCollectIfArrived(BotPlayerState bot, long matchingId,
         MissionManager missionManager, InGameInventoryManager inventoryManager,
-        ItemPoolManager itemPoolManager, AreaItemStockManager areaItemStockManager, PlayerPartState state, BotMissionTickResult result)
+        ItemPoolManager itemPoolManager, AreaItemStockManager areaItemStockManager, GroundItemManager groundItemManager, PlayerPartState state, BotMissionTickResult result)
     {
         if (bot.PendingRngInteractId <= 0) return;
 
@@ -219,16 +219,22 @@ public partial class BotPlayerManager
             return;
         }
 
+        if (!areaItemStockManager.HasRemaining(matchingId, info.ZoneId))
+        {
+            bot.PendingRngInteractId = 0;
+            bot.RngCollectProgressStartTime = DateTime.MinValue;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            return;
+        }
         // 쿨타임 체크 — walking 도중 다른 누군가가 회수한 경우 progress 시작 X. 즉시 다음 InteractObject로 진행.
         // 봇 본인이 1단계 진입 후 cooldown 등록한 경우는 우회 (자기 cooldown).
-        if (RngCollectCooldownSeconds > 0 &&
-            bot.RngCollectProgressStartTime == DateTime.MinValue
-            && RngCollectCooldownStore.IsInCooldown(matchingId, info.Id, out _))
+        if (bot.RngCollectProgressStartTime == DateTime.MinValue &&
+            !RngCollectCooldownStore.TryAcquireCooldown(
+                matchingId, info.Id, RngCollectCooldownSeconds, out _))
         {
             _logger.LogInformation(
-                "봇 RNG 스킵(이미 회수됨): BotId={Bot}, InteractId={Iid}",
+                "Bot RNG skipped (already collected): BotId={Bot}, InteractId={Iid}",
                 bot.PlayerId, info.Id);
-            // 다른 봇/플레이어가 등록한 cooldown — clear 안 함.
             bot.PendingRngInteractId = 0;
             bot.RngCollectProgressStartTime = DateTime.MinValue;
             bot.LoopWaitUntil = DateTime.MinValue;
@@ -247,7 +253,6 @@ public partial class BotPlayerManager
             result.BotExploreStarts.Add((bot.PlayerId, info.Id, bot.CurrentArea));
             if (RngCollectCooldownSeconds > 0)
             {
-                RngCollectCooldownStore.SetCooldown(matchingId, info.Id, RngCollectCooldownSeconds);
                 result.RngCooldownBroadcasts.Add((info.Id, RngCollectCooldownSeconds));
             }
 
@@ -278,6 +283,13 @@ public partial class BotPlayerManager
                 bot.ActiveBuffIds,
                 BuffSubType.ITEM_GAIN_CHANCE_ADD));
 
+        if (outcome.DroppedItemIds.Count > 0)
+        {
+            float originX = (info.CellX - info.CellY) / 2f;
+            float originY = (info.CellX + info.CellY) / 4f;
+            result.GroundItemSpawns.AddRange(groundItemManager.SpawnItems(
+                matchingId, bot.CurrentArea, originX, originY, outcome.DroppedItemIds));
+        }
         if (outcome is { ResultType: 3, CollectedPart: not null })
         {
             bot.Stamina = Math.Min(100, bot.Stamina + outcome.StaminaReward);
@@ -657,6 +669,7 @@ public class BotMissionTickResult
 
     /// <summary>#134 — 봇이 RNG 채집한 InteractObject 인스턴스 쿨타임 broadcast 정보.</summary>
     public List<(int interactId, int cooldownSeconds)> RngCooldownBroadcasts { get; } = new();
+    public List<GroundItemInfo> GroundItemSpawns { get; } = new();
 
     /// <summary>#134 — 봇이 RNG progress 시작했음을 같은 영역 인간 세션에 알림 (G_TO_C_EXPLORE_START).</summary>
     public List<(long botId, int interactId, AreaType area)> BotExploreStarts { get; } = new();

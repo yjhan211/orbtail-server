@@ -46,6 +46,7 @@ public partial class GameServer(
     private readonly InteractableStateManager _interactableStateManager = new();
     private readonly ItemPoolManager _itemPoolManager = new();
     private readonly AreaItemStockManager _areaItemStockManager = new();
+    private readonly GroundItemManager _groundItemManager = new();
     private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
@@ -604,6 +605,7 @@ public partial class GameServer(
             var matchingSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                 .ToList();
+            matchingSessions.FirstOrDefault()?.DropBotInventoryAtCurrentPosition(botId);
 
             // 1) 전체에게 봇 탈락 알림 (G_TO_C_PLAYER_ELIMINATED)
             using (var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED))
@@ -666,7 +668,7 @@ public partial class GameServer(
         try
         {
             var missionResult = _botPlayerManager.ProcessBotMissionTick(
-                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _areaItemStockManager, _checklistManager);
+                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _areaItemStockManager, _groundItemManager, _checklistManager);
 
             // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
             foreach (var (botId, partId) in missionResult.CollectedParts)
@@ -719,6 +721,14 @@ public partial class GameServer(
                 BroadcastBotPlayerStates(matchingId, missionResult.BotRestEnds,
                     global::network.common.PlayerState.IDLE, activeSessions);
 
+            foreach (var group in missionResult.GroundItemSpawns.GroupBy(item => item.AreaType))
+            {
+                var area = (AreaType)group.Key;
+                int remaining = _areaItemStockManager.GetRemainingCount(matchingId, group.Key);
+                using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(group.Key, remaining, group.ToList());
+                foreach (var session in activeSessions.Where(session => session.CurrentArea == area))
+                    session.Send(packet);
+            }
             // #134 — 봇 RNG 채집으로 발생한 인스턴스 쿨타임 broadcast
             if (missionResult.RngCooldownBroadcasts.Count > 0)
                 BroadcastBotRngCooldowns(matchingId, missionResult.RngCooldownBroadcasts);
@@ -1708,6 +1718,7 @@ public partial class GameServer(
                 _areaRuleManager,
                 _itemPoolManager,
                 _areaItemStockManager,
+                _groundItemManager,
                 _corridorRuleManager,
                 _doorStateManager,
                 _sabotageManager,
@@ -1782,6 +1793,9 @@ public partial class GameServer(
         _botPlayerManager.CleanupMatching(matchingId);
         _presenceTracker.Remove(matchingId);
         _checklistManager.RemoveMatchingState(matchingId);
+        _areaItemStockManager.RemoveMatchingState(matchingId);
+        _groundItemManager.RemoveMatchingState(matchingId);
+        _inGameInventoryManager.RemoveMatchingState(matchingId);
         _ = CleanupAbandonedMatchingRedisAsync(matchingId);
 
         logger.LogInformation(

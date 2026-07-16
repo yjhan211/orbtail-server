@@ -16,6 +16,8 @@ namespace game_server.network;
 /// </summary>
 public partial class GameClientSession
 {
+    private static readonly bool RoomEntryEventsEnabled = false;
+
     private async Task HandleAreaMove(C_TO_G_AREA_MOVE msg)
     {
         if (PlayerId == null) return;
@@ -205,6 +207,7 @@ public partial class GameClientSession
 
     private void TrySendRoomEntryEvent(AreaType area)
     {
+        if (!RoomEntryEventsEnabled) return;
         if (!PlayerId.HasValue || _pendingRoomEntryEventId != 0) return;
         if (HasInitialRoomEntryTrait()) return;
         if (!GameRoomEntryEventData.TryGetByArea(area, out var entryEvent)) return;

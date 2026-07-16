@@ -21,6 +21,7 @@ namespace game_server.network;
 /// </summary>
 public partial class GameClientSession
 {
+    private static readonly bool MissionActionCollectBlockingEnabled = false;
     private const int RngCollectGiftResultType = 5;
     private const int RngCollectEncounterResultType = 6;
     private const int RngCollectItemResultType = 2;
@@ -63,11 +64,32 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        if (HasAvailableMissionActionTarget(info))
+        if (info.ZoneId != (int)CurrentArea)
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.AREA_MISMATCH, 0);
+            return Task.CompletedTask;
+        }
+
+        if (!_areaItemStockManager.HasRemaining(CurrentMapSubId, info.ZoneId))
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.INTERACTABLE_NOT_AVAILABLE, 0);
+            return Task.CompletedTask;
+        }
+        if (MissionActionCollectBlockingEnabled && HasAvailableMissionActionTarget(info))
         {
             Logger.LogDebug("RNG START mission action target blocked: PlayerId={PlayerId}, InteractId={InteractId}",
                 PlayerId, msg.InteractId);
             SendRngCollectAck(msg.InteractId, ErrorCode.INTERACTABLE_NOT_AVAILABLE, 0);
+            return Task.CompletedTask;
+        }
+
+        if (!RngCollectCooldownStore.TryAcquireCooldown(
+                CurrentMapSubId, msg.InteractId, RngCollectCooldownStore.DefaultCooldownSeconds, out int remaining))
+        {
+            Logger.LogDebug(
+                "RNG START cooldown rejected: PlayerId={PlayerId}, InteractId={InteractId}, Remaining={Remaining}s",
+                PlayerId, msg.InteractId, remaining);
+            SendRngCollectAck(msg.InteractId, ErrorCode.ACTION_ALREADY_EXPLORED, remaining);
             return Task.CompletedTask;
         }
 
@@ -260,6 +282,7 @@ public partial class GameClientSession
 
         SendRngCollectResult(msg.InteractId, clientResultType, clientItemId,
             outcome.StaminaReward, outcome.CooldownSeconds);
+        SpawnGroundItemsFromExplore(info, outcome);
 
         if (outcome.AddedInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedInventoryItem);
         foreach (var extraInventoryItem in outcome.AddedExtraInventoryItems)
@@ -414,7 +437,11 @@ public partial class GameClientSession
             return;
 
         foreach (int interactId in _pendingFinish.ToArray())
+        {
             ClearRoomEncounterStartCandidates(interactId);
+            RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
+            BroadcastRngCollectCooldown(interactId, 0);
+        }
 
         Logger.LogInformation(
             "RNG collect pending cancelled: PlayerId={PlayerId}, Count={Count}, Reason={Reason}",

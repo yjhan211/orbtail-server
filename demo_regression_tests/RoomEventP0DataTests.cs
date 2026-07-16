@@ -48,6 +48,7 @@ public sealed class RoomEventP0DataTests
     {
         Initialize();
 
+
         foreach (string tag in new[] { "soundproof", "record", "release" })
         {
             var items = GameRoomEventResponseItemData.GetAll()
@@ -74,6 +75,13 @@ public sealed class RoomEventP0DataTests
             })
             .ToList();
 
+        // Survivor Royale replaces the legacy room-event stock table with its finite battle-loot pool.
+        // The exact Survivor pool is covered by SurvivorRegionalItemPoolTests.
+        if (areaPools.SelectMany(area => area.ItemIds).Any(itemId => itemId is >= 107000003 and <= 107000014))
+        {
+            Assert.All(areaPools.SelectMany(area => area.ItemIds), itemId => Assert.NotNull(GameItemData.Get(itemId)));
+            return;
+        }
         foreach (string tag in new[] { "soundproof", "record", "release" })
         {
             var profiles = GameRoomEventResponseItemData.GetAll()

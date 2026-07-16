@@ -693,6 +693,11 @@ public partial class GameClientSession
         var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason);
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
+        if (eliminatedSession != null)
+            eliminatedSession.DropAllInventoryAtCurrentPosition();
+        else
+            DropBotInventoryAtCurrentPosition(eliminatedPlayerId);
 
         // 1. 전체에게 탈락 알림. 결과 보고서용 상세 정보는 탈락자 본인에게만 포함한다.
         var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, CurrentMapSubId);

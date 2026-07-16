@@ -96,6 +96,7 @@ public partial class GameClientSession
             var jobPool = _manittoChainManager.GetMatchingJobs(msg.MatchingId);
             _areaClosureManager.InitializeMatching(msg.MatchingId, jobPool);
             _areaItemStockManager.InitializeMatching(msg.MatchingId);
+            _groundItemManager.InitializeMatching(msg.MatchingId);
 
             // ?멸쾶???ㅽ꺈 珥덇린??            ResetInGameStats();
 
@@ -130,6 +131,7 @@ public partial class GameClientSession
                 {
                     SendInteractableList(CurrentArea);
                     SendInteractCooldownSnapshot();
+                    SendGroundItemSnapshot(CurrentArea);
 
                     // 珥덇린 Area?먯꽌???щ낫?二??대깽???몃━嫄?                    _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, CurrentArea);
                 }

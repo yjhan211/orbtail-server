@@ -45,6 +45,7 @@ public partial class GameClientSession : SessionBase
     private readonly InteractableStateManager _interactableStateManager;
     private readonly ItemPoolManager _itemPoolManager;
     private readonly AreaItemStockManager _areaItemStockManager;
+    private readonly GroundItemManager _groundItemManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly SabotageManager _sabotageManager;
@@ -128,6 +129,7 @@ public partial class GameClientSession : SessionBase
         AreaRuleManager areaRuleManager,
         ItemPoolManager itemPoolManager,
         AreaItemStockManager areaItemStockManager,
+        GroundItemManager groundItemManager,
         CorridorRuleManager corridorRuleManager,
         DoorStateManager doorStateManager,
         SabotageManager sabotageManager,
@@ -150,6 +152,7 @@ public partial class GameClientSession : SessionBase
         _areaRuleManager = areaRuleManager;
         _itemPoolManager = itemPoolManager;
         _areaItemStockManager = areaItemStockManager;
+        _groundItemManager = groundItemManager;
         _corridorRuleManager = corridorRuleManager;
         _doorStateManager = doorStateManager;
         _sabotageManager = sabotageManager;
@@ -320,6 +323,10 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,
             async bytes => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_GROUND_ITEM_PICKUP,
+            async bytes => await HandleMessage<C_TO_G_GROUND_ITEM_PICKUP>(bytes, HandleGroundItemPickup));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DROP_GROUND_ITEM,
+            async bytes => await HandleMessage<C_TO_G_DROP_GROUND_ITEM>(bytes, HandleDropGroundItem));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE,
             async bytes => await HandleMessage<C_TO_G_PLAYER_STATE>(bytes, HandlePlayerState));
 

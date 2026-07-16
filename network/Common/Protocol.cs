@@ -207,6 +207,14 @@ namespace network.common
         G_TO_C_ROOM_ENTRY_EVENT,
         C_TO_G_ROOM_ENTRY_EVENT_CHOICE,
 
+        // 서버 권위 바닥 아이템
+        G_TO_C_GROUND_ITEM_SNAPSHOT,
+        G_TO_C_GROUND_ITEM_SPAWN,
+        C_TO_G_GROUND_ITEM_PICKUP,
+        C_TO_G_DROP_GROUND_ITEM,
+        G_TO_C_GROUND_ITEM_REMOVED,
+        G_TO_C_GROUND_ITEM_PICKUP_RESULT,
+
         END
     }
 
