@@ -375,6 +375,12 @@ public partial class BotPlayerManager
         // walking 시작 시 EXPLORE_END broadcast 안전망 — 다음 ProcessBotMovementTick에서 수집.
         bot.PendingExploreEndBroadcast = true;
 
+        if (bot.CompletedRoomExploreArea == bot.CurrentArea &&
+            TryStartPostExploreRelocation(bot, matchingId, mapId, closureManager))
+        {
+            return;
+        }
+
         if (bot.IsForcedFollowActive &&
             TryStartBotForcedFollowPath(bot, matchingId, mapId, playerAreas))
         {
@@ -432,6 +438,42 @@ public partial class BotPlayerManager
             "Proto0 bot move: BotId={Bot}, Target={Target}, Policy={Policy}, Profile={Profile}, {From}->{To}, Steps={Steps}",
             bot.PlayerId, bot.TargetPlayerId, ActiveProto0BotPolicy, bot.Proto0Profile,
             bot.CurrentArea, destination, path.Count);
+    }
+
+    private bool TryStartPostExploreRelocation(BotPlayerState bot, long matchingId, MapId mapId,
+        AreaClosureManager closureManager)
+    {
+        var candidateAreas = GameMapData.GetAreas(mapId)
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Where(area => area != AreaType.None &&
+                           area != bot.CurrentArea &&
+                           !area.IsCorridor() &&
+                           !closureManager.IsAreaClosed(matchingId, area) &&
+                           GameInteractableData.GetByZone((int)area)
+                               .Any(info => IsBotRoomExploreCandidate(info, area)))
+            .OrderBy(_ => _rng.Next())
+            .ToList();
+
+        foreach (var destination in candidateAreas)
+        {
+            var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, destination)
+                ?? GameMapData.GetAreaSpawnCell(mapId, destination);
+            var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
+                destination, targetCell,
+                area => closureManager.IsAreaClosed(matchingId, area));
+            if (path == null || path.Count == 0) continue;
+
+            bot.Path = path;
+            bot.PathIndex = 0;
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 1.0);
+            _logger.LogInformation(
+                "Bot post-explore relocation: BotId={Bot}, {From}->{To}, Steps={Steps}",
+                bot.PlayerId, bot.CurrentArea, destination, path.Count);
+            return true;
+        }
+
+        return false;
     }
 
     private bool TryStartBotForcedFollowPath(BotPlayerState bot, long matchingId, MapId mapId,

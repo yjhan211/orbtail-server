@@ -274,6 +274,7 @@ public partial class BotPlayerManager
 
             bot.PendingRngInteractId = 0;
             bot.RngCollectProgressStartTime = DateTime.MinValue;
+            CompleteRoomExploreCycle(bot);
             return;
         }
 
@@ -312,6 +313,15 @@ public partial class BotPlayerManager
 
         bot.PendingRngInteractId = 0;
         bot.RngCollectProgressStartTime = DateTime.MinValue;
+        CompleteRoomExploreCycle(bot);
+    }
+
+    private static void CompleteRoomExploreCycle(BotPlayerState bot)
+    {
+        bot.InteractQueueInArea.Clear();
+        bot.RoomExploreQueueArea = AreaType.None;
+        bot.CompletedRoomExploreArea = bot.CurrentArea;
+        bot.LoopWaitUntil = DateTime.MinValue;
     }
 
     private bool TryHandleGiftDiscoveryForBot(BotPlayerState bot, long matchingId, MissionManager missionManager,
