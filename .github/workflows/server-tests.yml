@@ -7,12 +7,16 @@ on:
       - '**.cs'
       - '**.csproj'
       - 'server.sln'
+      - 'network/Common/csv/**'
+      - '.github/workflows/server-tests.yml'
   push:
     branches: [main]
     paths:
       - '**.cs'
       - '**.csproj'
       - 'server.sln'
+      - 'network/Common/csv/**'
+      - '.github/workflows/server-tests.yml'
 
 jobs:
   test:
@@ -28,6 +32,13 @@ jobs:
 
       - name: Restore
         run: dotnet restore server.sln
+
+      - name: Sync Unity CSV mirrors
+        run: |
+          mkdir -p client/Assets/Resources/Common/csv
+          mkdir -p client/Assets/StreamingAssets/Common/csv
+          cp network/Common/csv/*.csv client/Assets/Resources/Common/csv/
+          cp network/Common/csv/*.csv client/Assets/StreamingAssets/Common/csv/
 
       - name: Build
         run: dotnet build server.sln --no-restore --configuration Release

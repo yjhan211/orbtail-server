@@ -1,9 +1,9 @@
+using System.Text.RegularExpressions;
 using game_server.services;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
-using System.Text.RegularExpressions;
 
 namespace demo_regression_tests;
 
