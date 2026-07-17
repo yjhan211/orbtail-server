@@ -18,14 +18,6 @@ public class AreaClosureManager
     // School_New uses one shared Corridor area. Closing it would disconnect the whole map,
     // so only room areas are included in closure schedules.
     // matchingId → ClosureState
-    // #185 P0 opening compression. Issue wording maps Auditorium -> Gym, Playground -> Ground/Schoolyard.
-    private static readonly AreaType[] InitialClosedAreas =
-    {
-        AreaType.Gym,
-        AreaType.Storage,
-        AreaType.Ground
-    };
-
     // #185 route-aware default closure groups.
     // Defaults target a 15-minute item-farming match: first closure at 02:30,
     // then every 90s. Areas are grouped so one item route does not lose two
@@ -103,7 +95,7 @@ public class AreaClosureManager
             .Select(region => region.AreaType)
             .ToHashSet();
         sequence = sequence
-            .Where(area => mapAreas.Contains(area) && !InitialClosedAreas.Contains(area))
+            .Where(mapAreas.Contains)
             .Distinct()
             .ToList();
 
@@ -111,7 +103,7 @@ public class AreaClosureManager
         {
             MatchingId = matchingId,
             ClosureOrder = sequence,
-            ClosedAreas = InitialClosedAreas.ToHashSet(),
+            ClosedAreas = new HashSet<AreaType>(),
             NextClosureIndex = 0,
             GameStartTime = DateTime.UtcNow,
             StartDelaySec = config.StartDelaySec,
