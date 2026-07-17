@@ -1,7 +1,7 @@
 id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,cell_y
 701000001,13,11,interactable/701000001/name,interactable/701000001/desc,7,195,96
 701000002,13,10,interactable/701000002/name,interactable/701000002/desc,7,190,90
-701000003,13,10,interactable/701000003/name,interactable/701000003/desc,7,194,90
+701000003,13,10,interactable/701000003/name,interactable/701000003/desc,7,199,91
 701000004,13,10,interactable/701000004/name,interactable/701000004/desc,7,179,100
 701000005,13,10,interactable/701000005/name,interactable/701000005/desc,7,193,101
 701000006,42,8,interactable/701000006/name,interactable/701000006/desc,7,152,128
@@ -30,7 +30,7 @@ id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,
 701000052,40,12,interactable/701000052/name,interactable/701000052/desc,7,123,94
 701000053,40,12,interactable/701000053/name,interactable/701000053/desc,7,117,101
 701000054,30,2,interactable/701000054/name,interactable/701000054/desc,7,151,92
-701000060,30,7,interactable/701000060/name,interactable/701000060/desc,7,159,102
+701000060,30,7,interactable/701000060/name,interactable/701000060/desc,7,159,94
 701000061,20,12,interactable/701000061/name,interactable/701000061/desc,7,182,131
 701000062,40,4,interactable/701000062/name,interactable/701000062/desc,7,125,101
 701000063,14,6,interactable/701000063/name,interactable/701000063/desc,7,98,71
@@ -39,12 +39,12 @@ id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,
 701000066,40,5,interactable/701000066/name,interactable/701000066/desc,7,129,101
 701000067,30,9,interactable/701000067/name,interactable/701000067/desc,7,150,93
 701000068,10,4,interactable/701000068/name,interactable/701000068/desc,7,124,64
-701000069,30,10,interactable/701000069/name,interactable/701000069/desc,7,159,101
+701000069,30,10,interactable/701000069/name,interactable/701000069/desc,7,157,97
 701000070,32,6,interactable/701000070/name,interactable/701000070/desc,7,114,132
 701000071,12,3,interactable/701000071/name,interactable/701000071/desc,7,163,75
 701000073,22,5,interactable/701000073/name,interactable/701000073/desc,7,102,91
 701000074,40,7,interactable/701000074/name,interactable/701000074/desc,7,127,100
-701000075,13,5,interactable/701000075/name,interactable/701000075/desc,7,182,90
+701000075,13,5,interactable/701000075/name,interactable/701000075/desc,7,185,100
 701000076,42,9,interactable/701000076/name,interactable/701000076/desc,7,146,129
 701000077,30,4,interactable/701000077/name,interactable/701000077/desc,7,157,102
 701000078,20,1,interactable/701000078/name,interactable/701000078/desc,7,186,127

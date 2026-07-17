@@ -18,24 +18,27 @@ public sealed class SurvivorRegionalItemPoolTests
     {
         var expected = new Dictionary<AreaType, int[]>
         {
-            [AreaType.Classroom3] = [107000003, 107000003, 201000008, 201000011, 301000039],
-            [AreaType.Classroom4] = [107000003, 301000038, 201000011, 201000008, 301000039],
-            [AreaType.ExamRoom] = [107000003, 107000003, 301000039, 201000008],
-            [AreaType.BroadcastRoom] = [107000011, 107000011, 301000039, 301000039, 201000011],
+            [AreaType.Classroom3] = [107000003, 107000003, 201000008, 201000011, 201000011],
+            [AreaType.Classroom4] = [107000003, 201000008, 201000011, 201000008, 201000011],
+            [AreaType.ExamRoom] = [107000003, 107000003, 201000011, 201000008],
+            [AreaType.BroadcastRoom] = [107000011, 107000011, 201000011],
             [AreaType.Classroom2] = [201000008, 201000008, 201000018, 201000011],
-            [AreaType.Library] = [107000003, 107000011, 301000038, 301000039, 201000008, 201000008, 201000011, 201000011],
-            [AreaType.Gym] = [107000007, 107000007, 107000011, 201000008, 201000011, 301000038],
-            [AreaType.Storage] = [107000007, 107000007, 301000038, 201000011],
+            [AreaType.Library] = [107000003, 107000011, 201000008, 201000008, 201000008, 201000011, 201000011, 201000011],
+            [AreaType.Gym] = [107000007, 107000007, 107000011, 201000008, 201000011, 201000008],
+            [AreaType.Storage] = [107000007, 107000007, 201000008, 201000011],
             [AreaType.Storage2] = [107000011, 107000011, 201000011, 201000008],
             [AreaType.Junkyard] = [107000007, 201000008, 201000011],
             [AreaType.Junkyard2] = [107000011, 201000008],
-            [AreaType.AdminOffice] = [107000007, 201000011, 201000008, 201000011, 301000039],
-            [AreaType.StaffRoom] = [107000003, 201000011, 201000011, 301000039, 201000008, 301000038, 301000039],
+            [AreaType.AdminOffice] = [107000007, 201000011, 201000008, 201000011, 201000008],
+            [AreaType.StaffRoom] = [107000003, 201000011, 201000011, 201000011, 201000008, 201000008, 201000008],
             [AreaType.Ground] = [107000007, 201000008, 201000011]
         };
 
         foreach (var (area, items) in expected)
             Assert.Equal(items.Order(), GameInteractableData.GetItemPoolByArea((int)area).Order());
+
+        Assert.DoesNotContain(301000038, GameInteractableData.GetAllAreaItemPoolItems());
+        Assert.DoesNotContain(301000039, GameInteractableData.GetAllAreaItemPoolItems());
 
         foreach (var corridor in new[]
                  {
