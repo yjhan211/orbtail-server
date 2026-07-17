@@ -104,6 +104,11 @@ public partial class GameClientSession
             return;
         }
 
+        var crossedDoor = actualType == ConnectionType.Door
+            ? GameDoorData.GetDoorForTransition(
+                CurrentArea, msg.TargetArea, _lastValidCell ?? spawnCell, spawnCell)
+            : null;
+
         // 6. 위치/구역 정보 영구 저장 (스태미나는 인-게임 한정이라 Redis 갱신 안 함)
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
         var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
@@ -148,6 +153,7 @@ public partial class GameClientSession
             oldArea.ToString(), msg.TargetArea.ToString(), isBot: false);
 
         await HandleAreaChange(oldArea, msg.TargetArea);
+        TrackDoorAfterPassage(crossedDoor);
         TrySendCorridorEncounterEvents(spawnPos);
 
         // 9. 응답 (요청자에게만 — 다른 플레이어는 G_TO_C_MOVE 브로드캐스트로 위치 동기화)

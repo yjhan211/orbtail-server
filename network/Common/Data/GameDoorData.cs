@@ -12,6 +12,8 @@ namespace network.common.data
 {
     public static class GameDoorData
     {
+        private const float PassageRadiusPadding = 1f;
+
         // door_id -> DoorInfoData
         private static readonly Dictionary<int, DoorInfoData> _doors = new();
 
@@ -114,7 +116,7 @@ namespace network.common.data
                 float distanceSquared = currentDistanceSquared < nextDistanceSquared
                     ? currentDistanceSquared
                     : nextDistanceSquared;
-                float transitionDistance = door.InteractDistance > 0f ? door.InteractDistance : 1f;
+                float transitionDistance = GetPassageRadius(door);
 
                 if (distanceSquared > transitionDistance * transitionDistance ||
                     distanceSquared >= nearestDistanceSquared)
@@ -125,6 +127,17 @@ namespace network.common.data
             }
 
             return nearestDoor;
+        }
+
+        public static bool IsOutsidePassageRadius(DoorInfoData door, Cell cell)
+        {
+            float passageRadius = GetPassageRadius(door);
+            return GetDistanceSquared(door, cell) > passageRadius * passageRadius;
+        }
+
+        private static float GetPassageRadius(DoorInfoData door)
+        {
+            return (door.InteractDistance > 0f ? door.InteractDistance : 1f) + PassageRadiusPadding;
         }
 
         private static float GetDistanceSquared(DoorInfoData door, Cell cell)

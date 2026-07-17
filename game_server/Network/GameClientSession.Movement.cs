@@ -52,11 +52,13 @@ public partial class GameClientSession
                 return;
             }
 
+            var previousCell = _lastValidCell;
             var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
 
             // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
             var currentCell = WorldPositionToCell(validatedPosition);
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
+            TryRelockPassedDoors(currentCell);
 
             // 3. 주기적 저장 (1초마다)
             bool needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
@@ -94,6 +96,9 @@ public partial class GameClientSession
             {
                 // 가장 가까운 문 기준으로 잠김 체크 (클라이언트는 이미 막고 있음, 서버는 보정 역할)
                 // 1. 진입하려는 영역의 가장 가까운 문이 잠겨있으면 차단
+                var crossedDoor = GameDoorData.GetDoorForTransition(
+                    CurrentArea, newArea, previousCell ?? currentCell, currentCell);
+
                 var entryBlockedDoor =
                     _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, newArea, currentCell.X, currentCell.Y);
                 if (entryBlockedDoor != null)
@@ -139,6 +144,7 @@ public partial class GameClientSession
                 _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
                     oldArea.ToString(), newArea.ToString(), isBot: false);
                 await HandleAreaChange(oldArea, newArea);
+                TrackDoorAfterPassage(crossedDoor);
             }
 
             TrySendCorridorEncounterEvents(validatedPosition);

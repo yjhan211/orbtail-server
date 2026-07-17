@@ -101,6 +101,24 @@ public class SchoolNewMapRestorationTests
     }
 
     [Fact]
+    public void DoorStateManager_Relocks_Door_After_Passage()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
+        const long matchingId = 99101;
+        var manager = new DoorStateManager();
+        manager.InitializeMatching(matchingId);
+
+        Assert.Empty(manager.GetOpenDoors(matchingId));
+        Assert.True(manager.OpenDoor(matchingId, 101));
+        Assert.True(manager.IsDoorOpen(matchingId, 101));
+        Assert.True(manager.CloseDoor(matchingId, 101));
+        Assert.False(manager.IsDoorOpen(matchingId, 101));
+        Assert.False(manager.CloseDoor(matchingId, 101));
+    }
+
+    [Fact]
     public void School_New_Does_Not_Load_Corridor_Stop_Penalty_Rule()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
@@ -188,7 +206,11 @@ public class SchoolNewMapRestorationTests
         Assert.Equal(AreaType.AdminOffice, GameDoorData.Get(118)!.AreaType);
         Assert.Equal(AreaType.StaffRoom, GameDoorData.Get(119)!.AreaType);
         Assert.Equal(19, GameDoorData.GetAll().Count());
-        Assert.All(GameDoorData.GetAll(), door => Assert.True(door.IsInitiallyOpen));
+        Assert.All(GameDoorData.GetAll(), door =>
+        {
+            Assert.False(door.IsInitiallyOpen);
+            Assert.Equal(0, door.RequiredItemId);
+        });
 
         var classroomDoor = GameDoorData.GetDoorForTransition(
             AreaType.Classroom4,
@@ -213,6 +235,18 @@ public class SchoolNewMapRestorationTests
             new Cell(180, 112));
         Assert.NotNull(infirmaryDoor);
         Assert.Equal(109, infirmaryDoor.DoorId);
+
+        // The Library/Corridor boundary is one cell beyond the door's interaction radius.
+        // Passage detection must identify Door_110 so relocking can wait for the player to leave its radius.
+        var libraryCorridorDoor = GameDoorData.GetDoorForTransition(
+            AreaType.Library,
+            AreaType.Corridor,
+            new Cell(103, 95),
+            new Cell(103, 95));
+        Assert.NotNull(libraryCorridorDoor);
+        Assert.Equal(110, libraryCorridorDoor.DoorId);
+        Assert.False(GameDoorData.IsOutsidePassageRadius(libraryCorridorDoor, new Cell(103, 95)));
+        Assert.True(GameDoorData.IsOutsidePassageRadius(libraryCorridorDoor, new Cell(103, 93)));
 
         var libraryStorageDoor = GameDoorData.GetDoorForTransition(
             AreaType.Library,
