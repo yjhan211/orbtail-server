@@ -137,7 +137,13 @@ public sealed class RoomEventP0DataTests
 
     private static void Initialize()
     {
-        string csvPath = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv");
+        string repositoryRoot = FindRepositoryRoot();
+        string csvPath = Path.Combine(repositoryRoot, "network", "Common", "csv");
+        GameItemData.Initialize(
+            CsvHelper.LoadCsv(Path.Combine(csvPath, "item_info.csv")),
+            CsvHelper.LoadCsv(Path.Combine(csvPath, "item_info_equipment.csv")),
+            CsvHelper.LoadCsv(Path.Combine(csvPath, "item_info_consumable.csv")),
+            []);
         GameRoomEventData.Initialize(
             CsvHelper.LoadCsv(Path.Combine(csvPath, "room_event_master.csv")),
             CsvHelper.LoadCsv(Path.Combine(csvPath, "room_event_choice.csv")));

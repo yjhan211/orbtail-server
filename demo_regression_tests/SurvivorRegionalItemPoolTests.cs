@@ -18,19 +18,19 @@ public sealed class SurvivorRegionalItemPoolTests
     {
         var expected = new Dictionary<AreaType, int[]>
         {
-            [AreaType.Classroom3] = [107000003, 107000003, 201000008, 201000011],
-            [AreaType.Classroom4] = [107000003, 301000038, 201000011],
+            [AreaType.Classroom3] = [107000003, 107000003, 201000008, 201000011, 301000039],
+            [AreaType.Classroom4] = [107000003, 301000038, 201000011, 201000008, 301000039],
             [AreaType.ExamRoom] = [107000003, 107000003, 301000039, 201000008],
             [AreaType.BroadcastRoom] = [107000011, 107000011, 301000039, 301000039, 201000011],
             [AreaType.Classroom2] = [201000008, 201000008, 201000018, 201000011],
-            [AreaType.Library] = [107000003, 107000011, 301000038, 301000039],
-            [AreaType.Gym] = [107000007, 107000007, 107000011, 201000008],
+            [AreaType.Library] = [107000003, 107000011, 301000038, 301000039, 201000008, 201000008, 201000011, 201000011],
+            [AreaType.Gym] = [107000007, 107000007, 107000011, 201000008, 201000011, 301000038],
             [AreaType.Storage] = [107000007, 107000007, 301000038, 201000011],
             [AreaType.Storage2] = [107000011, 107000011, 201000011, 201000008],
             [AreaType.Junkyard] = [107000007, 201000008, 201000011],
             [AreaType.Junkyard2] = [107000011, 201000008],
-            [AreaType.AdminOffice] = [107000007, 201000011, 201000008],
-            [AreaType.StaffRoom] = [107000003, 201000011, 201000011, 301000039],
+            [AreaType.AdminOffice] = [107000007, 201000011, 201000008, 201000011, 301000039],
+            [AreaType.StaffRoom] = [107000003, 201000011, 201000011, 301000039, 201000008, 301000038, 301000039],
             [AreaType.Ground] = [107000007, 201000008, 201000011]
         };
 
@@ -46,21 +46,112 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Fact]
-    public void ExploreConsumesAtMostThreeAndNeverRegeneratesWithinMatch()
+    public void RegionalStockCoversEveryActiveExploreMarkerAtLeastOnce()
+    {
+        var activeMarkerCounts = new Dictionary<AreaType, int>
+        {
+            [AreaType.Junkyard] = 2,
+            [AreaType.AdminOffice] = 5,
+            [AreaType.StaffRoom] = 7,
+            [AreaType.Gym] = 6,
+            [AreaType.Storage] = 3,
+            [AreaType.Junkyard2] = 2,
+            [AreaType.Classroom2] = 4,
+            [AreaType.Library] = 8,
+            [AreaType.Classroom3] = 5,
+            [AreaType.ExamRoom] = 4,
+            [AreaType.Classroom4] = 5,
+            [AreaType.BroadcastRoom] = 3
+        };
+
+        foreach (var (area, markerCount) in activeMarkerCounts)
+        {
+            int stockCount = GameInteractableData.GetItemPoolByArea((int)area).Count;
+            Assert.True(
+                stockCount >= markerCount,
+                $"{area}: stock={stockCount}, active markers={markerCount}");
+        }
+    }
+
+    [Fact]
+    public void ExploreConsumesExactlyOneAndNeverRegeneratesWithinMatch()
     {
         var manager = new AreaItemStockManager();
         manager.InitializeMatching(19301);
 
-        Assert.True(manager.TryConsumeDrops(19301, (int)AreaType.Classroom3, 3, out var first));
-        Assert.Equal(3, first.Count);
-        Assert.True(manager.TryConsumeDrops(19301, (int)AreaType.Classroom3, 3, out var second));
-        Assert.Single(second);
-        Assert.False(manager.TryConsumeDrops(19301, (int)AreaType.Classroom3, 3, out var third));
-        Assert.Empty(third);
+        for (int i = 0; i < 5; i++)
+        {
+            Assert.True(manager.TryConsumeDrops(19301, (int)AreaType.Classroom3, 1, out var drop));
+            Assert.Single(drop);
+        }
+
+        Assert.False(manager.TryConsumeDrops(19301, (int)AreaType.Classroom3, 1, out var exhausted));
+        Assert.Empty(exhausted);
 
         manager.InitializeMatching(19301);
         Assert.Equal(0, manager.GetRemainingCount(19301, (int)AreaType.Classroom3));
-        Assert.Equal(4, manager.GetRemainingCount(19302, (int)AreaType.Classroom3));
+        Assert.Equal(5, manager.GetRemainingCount(19302, (int)AreaType.Classroom3));
+    }
+
+    [Fact]
+    public void SuccessfulExploreReturnsOneItemAndExhaustedExploreReturnsNone()
+    {
+        var manager = new AreaItemStockManager();
+        const long matchId = 19308;
+
+        for (int i = 0; i < 5; i++)
+        {
+            Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out int itemId));
+            Assert.NotEqual(0, itemId);
+        }
+
+        Assert.False(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out int exhaustedItemId));
+        Assert.Equal(0, exhaustedItemId);
+    }
+
+    [Fact]
+    public void RemovingMatchStateAllowsFreshStockForReusedMatchId()
+    {
+        var manager = new AreaItemStockManager();
+        const long matchId = 19309;
+
+        while (manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out _))
+        {
+        }
+
+        Assert.Equal(0, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
+        manager.RemoveMatchingState(matchId);
+        manager.InitializeMatching(matchId);
+        Assert.Equal(5, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
+    }
+
+    [Fact]
+    public void CooldownIsSharedPerMatchAndInteractableButNotAcrossInteractables()
+    {
+        const long matchId = 19310;
+        const int firstInteractId = 701000054;
+        const int otherInteractId = 701000060;
+        RngCollectCooldownStore.ClearMatching(matchId);
+
+        try
+        {
+            Assert.Equal(30, RngCollectCooldownStore.DefaultCooldownSeconds);
+            Assert.True(RngCollectCooldownStore.TryAcquireCooldown(
+                matchId, firstInteractId, RngCollectCooldownStore.DefaultCooldownSeconds, out int firstRemaining));
+            Assert.Equal(0, firstRemaining);
+
+            Assert.False(RngCollectCooldownStore.TryAcquireCooldown(
+                matchId, firstInteractId, RngCollectCooldownStore.DefaultCooldownSeconds, out int sharedRemaining));
+            Assert.InRange(sharedRemaining, 1, RngCollectCooldownStore.DefaultCooldownSeconds);
+
+            Assert.True(RngCollectCooldownStore.TryAcquireCooldown(
+                matchId, otherInteractId, RngCollectCooldownStore.DefaultCooldownSeconds, out int otherRemaining));
+            Assert.Equal(0, otherRemaining);
+        }
+        finally
+        {
+            RngCollectCooldownStore.ClearMatching(matchId);
+        }
     }
 
     [Fact]
@@ -70,13 +161,13 @@ public sealed class SurvivorRegionalItemPoolTests
         const long matchId = 19303;
         manager.InitializeMatching(matchId);
 
-        var results = await Task.WhenAll(
-            Task.Run(() => Consume(manager, matchId, AreaType.Classroom3)),
-            Task.Run(() => Consume(manager, matchId, AreaType.Classroom3)));
+        var results = await Task.WhenAll(Enumerable.Range(0, 8)
+            .Select(_ => Task.Run(() => Consume(manager, matchId, AreaType.Classroom3))));
 
-        Assert.Equal(4, results.Sum(items => items.Count));
+        Assert.Equal(5, results.Sum(items => items.Count));
         Assert.Equal(0, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
-        Assert.All(results, items => Assert.InRange(items.Count, 1, 3));
+        Assert.Equal(5, results.Count(items => items.Count == 1));
+        Assert.Equal(3, results.Count(items => items.Count == 0));
     }
 
     [Fact]
@@ -154,6 +245,37 @@ public sealed class SurvivorRegionalItemPoolTests
         Assert.DoesNotContain(manager.GetAllItems(19305, 1), item => item.ItemId == 301000039);
     }
 
+    [Fact]
+    public void FullInventoryRejectsPickupAndLeavesGroundItemInPlace()
+    {
+        var inventory = new InGameInventoryManager();
+        inventory.Initialize();
+        const long matchId = 19311;
+        const long playerId = 8101;
+        for (int i = 0; i < 6; i++)
+            Assert.True(inventory.TryAddItemWithCapacity(matchId, playerId, 107000003 + i, 6, out _));
+
+        var ground = new GroundItemManager();
+        var spawned = Assert.Single(ground.SpawnItems(
+            matchId, AreaType.Classroom3, 4f, 5f, [301000039]));
+
+        var status = ground.TryClaim(
+            matchId,
+            spawned.GroundItemUid,
+            playerId,
+            AreaType.Classroom3,
+            spawned.PositionX,
+            spawned.PositionY,
+            item => inventory.TryAddItemWithCapacity(matchId, playerId, item.ItemId, 6, out _),
+            out _);
+
+        Assert.Equal(GroundItemClaimStatus.Rejected, status);
+        Assert.Contains(
+            ground.GetSnapshot(matchId, AreaType.Classroom3),
+            item => item.GroundItemUid == spawned.GroundItemUid);
+        Assert.Equal(6, inventory.GetAllItems(matchId, playerId).Count);
+    }
+
     [Theory]
     [InlineData(201000008, 0, GroundItemPickupDisposition.LeaveOnGround, 15)]
     [InlineData(201000008, 1, GroundItemPickupDisposition.AutoUse, 15)]
@@ -169,9 +291,45 @@ public sealed class SurvivorRegionalItemPoolTests
         Assert.Equal(expectedRecovery, recovery);
     }
 
+    [Fact]
+    public void SpecialRewardPoolsExactlyMatchObjectActionReferences()
+    {
+        string csvRoot = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv");
+        var referencedPoolIds = CsvHelper.LoadCsv(Path.Combine(csvRoot, "object_action.csv"))
+            .Where(row => row["result_type"] == "1")
+            .Select(row => int.Parse(row["result_id"]))
+            .ToHashSet();
+        var definedPoolIds = CsvHelper.LoadCsv(Path.Combine(csvRoot, "interactable_item_pool.csv"))
+            .Select(row => int.Parse(row["id"]))
+            .ToHashSet();
+
+        Assert.Equal(referencedPoolIds.Order(), definedPoolIds.Order());
+    }
+
+    [Fact]
+    public void SurvivorExploreCsvMirrorsAreByteIdentical()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        foreach (string fileName in new[]
+                 {
+                     "interactable_info.csv",
+                     "area_item_pool.csv",
+                     "interactable_item_pool.csv",
+                     "object_action.csv"
+                 })
+        {
+            byte[] canonical = File.ReadAllBytes(
+                Path.Combine(repositoryRoot, "network", "Common", "csv", fileName));
+            Assert.Equal(canonical, File.ReadAllBytes(Path.Combine(
+                repositoryRoot, "client", "Assets", "Resources", "Common", "csv", fileName)));
+            Assert.Equal(canonical, File.ReadAllBytes(Path.Combine(
+                repositoryRoot, "client", "Assets", "StreamingAssets", "Common", "csv", fileName)));
+        }
+    }
+
     private static List<int> Consume(AreaItemStockManager manager, long matchId, AreaType area)
     {
-        manager.TryConsumeDrops(matchId, (int)area, 3, out var items);
+        manager.TryConsumeDrops(matchId, (int)area, 1, out var items);
         return items;
     }
 
@@ -185,5 +343,10 @@ public sealed class SurvivorRegionalItemPoolTests
             dir = dir.Parent;
         }
         throw new DirectoryNotFoundException("Could not locate network/Common/csv.");
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        return Directory.GetParent(FindNetworkBasePath())!.FullName;
     }
 }

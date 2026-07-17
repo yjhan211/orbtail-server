@@ -108,7 +108,9 @@ public class SchoolNewMapRestorationTests
         GameDataHelper.Initialize();
 
         var interactables = GameInteractableData.GetAll().ToDictionary(info => info.Id);
-        Assert.Equal(56, interactables.Count);
+        Assert.Equal(54, interactables.Count);
+        Assert.DoesNotContain(701000055, interactables.Keys);
+        Assert.DoesNotContain(701000056, interactables.Keys);
 
         var csvDirectory = Path.Combine(networkBasePath, "Common", "csv");
         var referencedInteractables = Directory

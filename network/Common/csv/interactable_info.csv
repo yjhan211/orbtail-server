@@ -30,8 +30,6 @@ id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,
 701000052,40,12,interactable/701000052/name,interactable/701000052/desc,7,123,94
 701000053,40,12,interactable/701000053/name,interactable/701000053/desc,7,117,101
 701000054,30,2,interactable/701000054/name,interactable/701000054/desc,7,151,92
-701000055,30,1,interactable/701000055/name,interactable/701000055/desc,7,153,104
-701000056,13,12,interactable/701000056/name,interactable/701000056/desc,7,186,97
 701000060,30,7,interactable/701000060/name,interactable/701000060/desc,7,159,102
 701000061,20,12,interactable/701000061/name,interactable/701000061/desc,7,182,131
 701000062,40,4,interactable/701000062/name,interactable/701000062/desc,7,125,101

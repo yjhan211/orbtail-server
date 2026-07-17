@@ -162,6 +162,8 @@ public partial class GameClientSession
             Logger.LogWarning(
                 "RNG FINISH without START or duplicated: PlayerId={PlayerId}, InteractId={InteractId}",
                 PlayerId, msg.InteractId);
+            // 무응답으로 두면 클라이언트가 EXPLORE_1 채집 상태에 박제된다 — 에러 ACK로 정리를 유도
+            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
             return Task.CompletedTask;
         }
 
@@ -172,6 +174,7 @@ public partial class GameClientSession
         {
             ClearRoomEncounterStartCandidates(msg.InteractId);
             Logger.LogWarning("RNG FINISH InteractId missing: {InteractId}", msg.InteractId);
+            SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
             return Task.CompletedTask;
         }
 

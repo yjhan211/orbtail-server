@@ -15,7 +15,7 @@ namespace game_server.services;
 public static class RngCollectCore
 {
     private const int FailStaminaReward = 0;
-    private const int AttendanceBlackboardInteractId = 701000055;
+    private const int AttendanceLecternInteractId = 701000054;
     private const int TornAttendancePagePartId = 308;
     private const int BlackedOutPaperPartId = 309;
     // 소모품 회수 stamina 보상 제거 (#135) — 회복은 아이템 사용 시점에만.
@@ -87,7 +87,7 @@ public static class RngCollectCore
                     if (partItemId > 0)
                         outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, partItemId, 1);
 
-                    TryGrantAttendanceBlackboardPair(
+                    TryGrantAttendanceLecternPair(
                         matchingId,
                         playerId,
                         info,
@@ -118,7 +118,7 @@ public static class RngCollectCore
         }
         else
         {
-            if (areaItemStockManager.TryConsumeDrops(matchingId, info.ZoneId, 3, out var itemIds))
+            if (areaItemStockManager.TryConsumeDrops(matchingId, info.ZoneId, 1, out var itemIds))
             {
                 outcome.ResultType = 2;
                 outcome.ItemId = itemIds[0];
@@ -163,7 +163,7 @@ public static class RngCollectCore
         outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
     }
 
-    private static void TryGrantAttendanceBlackboardPair(
+    private static void TryGrantAttendanceLecternPair(
         long matchingId,
         long playerId,
         InteractableInfoData info,
@@ -174,7 +174,7 @@ public static class RngCollectCore
         bool isBot)
     {
         if (isBot ||
-            info.Id != AttendanceBlackboardInteractId ||
+            info.Id != AttendanceLecternInteractId ||
             collectedPartId != TornAttendancePagePartId)
         {
             return;

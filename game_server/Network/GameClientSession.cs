@@ -201,6 +201,7 @@ public partial class GameClientSession : SessionBase
     {
         GameRoundStates.TryRemove(matchingId, out _);
         _presenceTracker?.Remove(matchingId);
+        RngCollectCooldownStore.ClearMatching(matchingId);
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
     }
