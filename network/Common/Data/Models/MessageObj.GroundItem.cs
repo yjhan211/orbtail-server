@@ -12,6 +12,8 @@ namespace network.common.data.models
         [Key("areaType")] public int AreaType { get; set; }
         [Key("positionX")] public float PositionX { get; set; }
         [Key("positionY")] public float PositionY { get; set; }
+        [Key("spawnOriginX")] public float SpawnOriginX { get; set; }
+        [Key("spawnOriginY")] public float SpawnOriginY { get; set; }
         [Key("sourcePlayerId")] public long SourcePlayerId { get; set; }
     }
 
