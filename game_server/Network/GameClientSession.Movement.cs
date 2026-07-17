@@ -141,12 +141,10 @@ public partial class GameClientSession
                 await HandleAreaChange(oldArea, newArea);
             }
 
-            // 5. 복도 규칙 체크
-            CheckCorridorRuleViolation(validatedPosition, msg.Velocity, newArea);
             TrySendCorridorEncounterEvents(validatedPosition);
             TrySendRoomEncounterEventsFromVision(validatedPosition);
 
-            // 6. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
+            // 5. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
                 validatedPosition,
@@ -448,40 +446,4 @@ public partial class GameClientSession
             objects.Count, areaType, PlayerId, CurrentMapSubId);
     }
 
-    /// <summary>
-    ///     복도 규칙 위반 체크 및 정신오염도 증가 처리
-    /// </summary>
-    private void CheckCorridorRuleViolation(Vector3f position, Vector3f velocity, AreaType currentArea)
-    {
-        if (!PlayerId.HasValue) return;
-
-        try
-        {
-            int corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(CurrentMapSubId);
-            // Only rule 6 (no stopping in corridors) still applies.
-            if (corridorRuleId != 6) return;
-
-            var result = _corridorRuleManager.CheckPlayerMove(
-                CurrentMapSubId,
-                PlayerId.Value,
-                position,
-                velocity,
-                currentArea,
-                corridorRuleId);
-
-            if (result.IsViolation)
-            {
-                Logger.LogInformation(
-                    "Player {PlayerId} violated corridor rule {RuleId}: {Message}, Corruption +{Delta}",
-                    PlayerId, corridorRuleId, result.Message, result.CorruptionDelta);
-
-                // 정신오염도 증가
-                ModifyStats(corruptionDelta: result.CorruptionDelta);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "CheckCorridorRuleViolation error for player {PlayerId}", PlayerId);
-        }
-    }
 }

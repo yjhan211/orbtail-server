@@ -35,7 +35,6 @@ public partial class GameClientSession : SessionBase
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly List<int> _activeBuffIds = new();
     private readonly AreaRuleManager _areaRuleManager;
-    private readonly CorridorRuleManager _corridorRuleManager;
 
     // 플레이어가 발견한 행동 수칙 (ruleId → 최초 발견자 PlayerId)
     private readonly Dictionary<int, long> _discoveredRules = new();
@@ -130,7 +129,6 @@ public partial class GameClientSession : SessionBase
         ItemPoolManager itemPoolManager,
         AreaItemStockManager areaItemStockManager,
         GroundItemManager groundItemManager,
-        CorridorRuleManager corridorRuleManager,
         DoorStateManager doorStateManager,
         SabotageManager sabotageManager,
         ManittoChainManager manittoChainManager,
@@ -153,7 +151,6 @@ public partial class GameClientSession : SessionBase
         _itemPoolManager = itemPoolManager;
         _areaItemStockManager = areaItemStockManager;
         _groundItemManager = groundItemManager;
-        _corridorRuleManager = corridorRuleManager;
         _doorStateManager = doorStateManager;
         _sabotageManager = sabotageManager;
         _manittoChainManager = manittoChainManager;

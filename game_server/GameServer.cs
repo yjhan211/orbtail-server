@@ -34,11 +34,8 @@ public partial class GameServer(
     private const int HeartbeatCheckIntervalSeconds = 10;
     private const float RoomExploreSpotOccupancyDistance = 2.75f;
 
-    // 복도 정지 체크 간격
-    private const int CorridorStopCheckIntervalMs = 500;
     private readonly AreaRuleManager _areaRuleManager = new();
     private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
-    private readonly CorridorRuleManager _corridorRuleManager = new();
     private readonly DoorStateManager _doorStateManager = new();
     private readonly InGameInventoryManager _inGameInventoryManager = new();
 
@@ -64,7 +61,6 @@ public partial class GameServer(
     private long _adminBotOnlyMatchingIdSeed = 9_000_000;
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
 
-    private Timer? _corridorStopCheckTimer;
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
     private Timer? _resourceTickTimer;        // 폐쇄 구역 등 주기성 자원 변화
@@ -100,7 +96,6 @@ public partial class GameServer(
 
             StartTcpServer();
             StartHeartbeatChecker();
-            StartCorridorStopCheckTimer();
             StartResourceTickTimer();
             StartAreaClosureTickTimer();
             StartTargetLocationTimer();
@@ -136,12 +131,6 @@ public partial class GameServer(
         {
             await _heartbeatCheckTimer.DisposeAsync();
             _heartbeatCheckTimer = null;
-        }
-
-        if (_corridorStopCheckTimer != null)
-        {
-            await _corridorStopCheckTimer.DisposeAsync();
-            _corridorStopCheckTimer = null;
         }
 
         if (_resourceTickTimer != null) { await _resourceTickTimer.DisposeAsync(); _resourceTickTimer = null; }
@@ -184,7 +173,6 @@ public partial class GameServer(
             Action<string> log = msg => logger.LogInformation(msg);
             _interactableStateManager.Initialize(log);
             _inGameInventoryManager.Initialize(log);
-            _corridorRuleManager.Initialize(log, OnCorridorStopViolation);
             _areaRuleManager.Initialize(log);
             _itemPoolManager.Initialize(log);
             _checklistManager.Initialize(log);
@@ -201,8 +189,7 @@ public partial class GameServer(
     private void InitializeControllers()
     {
         var instanceController = new InstanceMapManager(logger, natsClientFactory.Create(), cacheHelper,
-            serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager,
-            _corridorRuleManager);
+            serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
@@ -1634,47 +1621,6 @@ public partial class GameServer(
         return null;
     }
 
-    private void StartCorridorStopCheckTimer()
-    {
-        _corridorStopCheckTimer = new Timer(
-            ProcessCorridorStopCheck,
-            null,
-            TimeSpan.FromMilliseconds(CorridorStopCheckIntervalMs),
-            TimeSpan.FromMilliseconds(CorridorStopCheckIntervalMs));
-        logger.LogInformation("Corridor stop check timer started (interval: {Interval}ms)",
-            CorridorStopCheckIntervalMs);
-    }
-
-    /// <summary>
-    ///     복도에서 정지한 플레이어들의 정신오염도 증가 처리 (규칙 6)
-    /// </summary>
-    private void ProcessCorridorStopCheck(object? state)
-    {
-        try
-        {
-            var violations = _corridorRuleManager.CheckAllStoppedPlayersForRule6();
-
-            foreach ((long matchingId, long playerId, var result) in violations)
-            {
-                // 규칙 6번이 적용된 매칭인지 확인
-                int corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(matchingId);
-                if (corridorRuleId != 6) continue;
-
-                if (_clientSessions.TryGetValue(playerId, out var session))
-                {
-                    session.ModifyStats(corruptionDelta: result.CorruptionDelta);
-                    logger.LogInformation(
-                        "Player {PlayerId} corridor stop violation (timer): {Message}, Corruption +{Delta}",
-                        playerId, result.Message, result.CorruptionDelta);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error processing corridor stop check");
-        }
-    }
-
     private void CheckHeartbeatTimeouts(object? state)
     {
         try
@@ -1719,7 +1665,6 @@ public partial class GameServer(
                 _itemPoolManager,
                 _areaItemStockManager,
                 _groundItemManager,
-                _corridorRuleManager,
                 _doorStateManager,
                 _sabotageManager,
                 _manittoChainManager,
@@ -1767,10 +1712,6 @@ public partial class GameServer(
                     session.CurrentArea,
                     sameAreaSessions.Count);
             }
-
-            // 복도 규칙 플레이어 상태 정리
-            if (session.CurrentMapSubId > 0)
-                _corridorRuleManager.RemovePlayerState(session.CurrentMapSubId, session.PlayerId.Value);
 
             // 인스턴스 컨트롤러에 연결 해제 알림 (모든 유저 연결 해제 시 게임 종료 처리)
             if (session.CurrentMapSubId > 0)
@@ -1828,19 +1769,6 @@ public partial class GameServer(
         return _clientSessions.Values
             .Where(s => s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId)
             .ToList();
-    }
-
-    /// <summary>
-    ///     복도 정지 위반 시 해당 플레이어의 정신오염도 증가
-    /// </summary>
-    private void OnCorridorStopViolation(long matchingId, long playerId, int corruptionDelta)
-    {
-        if (_clientSessions.TryGetValue(playerId, out var session))
-        {
-            session.ModifyStats(corruptionDelta: corruptionDelta);
-            logger.LogInformation("Player {PlayerId} corridor stop violation: Corruption +{Delta}", playerId,
-                corruptionDelta);
-        }
     }
 
     /// <summary>

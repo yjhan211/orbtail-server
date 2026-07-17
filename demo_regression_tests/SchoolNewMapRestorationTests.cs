@@ -101,6 +101,17 @@ public class SchoolNewMapRestorationTests
     }
 
     [Fact]
+    public void School_New_Does_Not_Load_Corridor_Stop_Penalty_Rule()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
+        Assert.DoesNotContain(
+            GameAreaRuleData.GetByArea(AreaType.Corridor),
+            rule => rule.Id == 6);
+    }
+
+    [Fact]
     public void School_New_Content_References_Are_Internally_Consistent()
     {
         var networkBasePath = FindNetworkBasePath();
