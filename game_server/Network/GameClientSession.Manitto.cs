@@ -693,6 +693,11 @@ public partial class GameClientSession
         var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason);
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
+        if (eliminatedSession != null)
+            eliminatedSession.DropAllInventoryAtCurrentPosition();
+        else
+            DropBotInventoryAtCurrentPosition(eliminatedPlayerId);
 
         // 1. 전체에게 탈락 알림. 결과 보고서용 상세 정보는 탈락자 본인에게만 포함한다.
         var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, CurrentMapSubId);
@@ -1611,32 +1616,23 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return false;
 
-        var recipe = BattleItemRecipeData.TryCombine(new[] { msg.PartA, msg.PartB });
+        var recipe = BattleItemRecipeData.PickRandomRecipe(
+            new[] { msg.PartA, msg.PartB },
+            CurrentArea,
+            Random.Shared);
         if (recipe == null)
             return false;
 
-        if (!HasInGameBattleItems(recipe.InputItemIds))
+        if (!_inGameInventoryManager.TryCombineItems(
+                CurrentMapSubId,
+                PlayerId.Value,
+                recipe.InputItemIds,
+                recipe.OutputItemId,
+                out var items))
         {
             SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INSUFFICIENT_ITEM);
             return true;
         }
-
-        var items = new List<InGameItemInfo>();
-        foreach (int inputItemId in recipe.InputItemIds)
-        {
-            if (_inGameInventoryManager.TryRemoveOneByItemId(
-                    CurrentMapSubId,
-                    PlayerId.Value,
-                    inputItemId,
-                    out var removed) &&
-                removed != null)
-            {
-                items.Add(removed);
-            }
-        }
-
-        var added = _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, recipe.OutputItemId, 1);
-        items.Add(added);
 
         using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
         Send(inventoryPacket);
@@ -1663,23 +1659,6 @@ public partial class GameClientSession
         return true;
     }
 
-    private bool HasInGameBattleItems(IReadOnlyCollection<int> inputItemIds)
-    {
-        if (!PlayerId.HasValue) return false;
-
-        var requiredCounts = inputItemIds
-            .GroupBy(itemId => itemId)
-            .ToDictionary(group => group.Key, group => group.Count());
-        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-
-        foreach (var (itemId, requiredCount) in requiredCounts)
-        {
-            if (inventory.GetItemCount(itemId) < requiredCount)
-                return false;
-        }
-
-        return true;
-    }
     private void SendCombinePartsFailure(int partA, int partB, ErrorCode errorCode)
     {
         using var failPacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId!.Value);

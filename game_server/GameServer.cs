@@ -20,7 +20,7 @@ using network.packets;
 
 namespace game_server;
 
-public class GameServer(
+public partial class GameServer(
     IConfiguration configuration,
     ILogger<GameServer> logger,
     INatsClientFactory natsClientFactory,
@@ -34,11 +34,8 @@ public class GameServer(
     private const int HeartbeatCheckIntervalSeconds = 10;
     private const float RoomExploreSpotOccupancyDistance = 2.75f;
 
-    // 복도 정지 체크 간격
-    private const int CorridorStopCheckIntervalMs = 500;
     private readonly AreaRuleManager _areaRuleManager = new();
     private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
-    private readonly CorridorRuleManager _corridorRuleManager = new();
     private readonly DoorStateManager _doorStateManager = new();
     private readonly InGameInventoryManager _inGameInventoryManager = new();
 
@@ -46,6 +43,7 @@ public class GameServer(
     private readonly InteractableStateManager _interactableStateManager = new();
     private readonly ItemPoolManager _itemPoolManager = new();
     private readonly AreaItemStockManager _areaItemStockManager = new();
+    private readonly GroundItemManager _groundItemManager = new();
     private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
@@ -63,10 +61,9 @@ public class GameServer(
     private long _adminBotOnlyMatchingIdSeed = 9_000_000;
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
 
-    private Timer? _corridorStopCheckTimer;
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
-    private Timer? _resourceTickTimer;        // 정신력 자연감소 + 타겟 근접 회복 + 시한부
+    private Timer? _resourceTickTimer;        // 폐쇄 구역 등 주기성 자원 변화
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
     private Timer? _botMovementTimer;         // #127 봇 walking step (250ms)
@@ -78,21 +75,8 @@ public class GameServer(
 
     internal const int ResourceTickIntervalSeconds = 5;
     private const int ChecklistProgressTickIntervalSeconds = 1;
-    // 오염도 점진적 가속: 0~5분 +2, 5~10분 +4, 10분+ +6 (전반적 증가량 2배 상향)
-    // 프로토 0: 타겟에서 떨어지면(복도/빈방) 압박이 실질적이도록 기본 감소를 회복(-3)과 균형 맞춰 상향. 튜닝 노브.
-    private const int MentalDecayPhase1 = 3;            // 0~5분: 5초당 오염도 +3
-    private const int MentalDecayPhase2 = 4;            // 5~10분: 5초당 오염도 +4
-    private const int MentalDecayPhase3 = 5;            // 10분+: 5초당 오염도 +5
-    private const int Phase2StartSeconds = 300;          // 5분
-    private const int Phase3StartSeconds = 600;          // 10분
-    internal const int TargetProximityRecovery = 8;      // 타겟 동일 구역 시 회복량 (5초당 오염도 -8)
-    private const int IsolationStatusEffectId = 1001;   // status_effect_info: 고립
-    internal const int NearbyStatusEffectId = 1002;      // status_effect_info: 의존
-    internal const int ProximityStatusEffectId = 1010;   // status_effect_info: 교감 (#161)
     private const int ClosedAreaStatusEffectId = 1003;  // status_effect_info: 폐쇄 구역
-    private const double SharpGazeRecoveryMultiplier = 0.5;
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
-    internal const int MoveStaminaCost = 3;              // 구역 이동 시 스태미나 소모 (인접 구역 진입)
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
     internal const int TraceFoundManittoRecovery = 15;   // 흔적 발견 시 마니또 정신력 회복량
     internal const int TraceFoundTargetDecay = 10;       // 흔적 발견 시 타겟 오염도 증가량
@@ -112,13 +96,14 @@ public class GameServer(
 
             StartTcpServer();
             StartHeartbeatChecker();
-            StartCorridorStopCheckTimer();
             StartResourceTickTimer();
             StartAreaClosureTickTimer();
             StartTargetLocationTimer();
             StartBotMovementTimer();
             StartBotMissionTimer();
             StartChecklistProgressTickTimer();
+            if (Config.PROXIMITY_AUTO_COMBAT_P0_ENABLED)
+                StartProximityAutoCombatTimer();
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -148,18 +133,13 @@ public class GameServer(
             _heartbeatCheckTimer = null;
         }
 
-        if (_corridorStopCheckTimer != null)
-        {
-            await _corridorStopCheckTimer.DisposeAsync();
-            _corridorStopCheckTimer = null;
-        }
-
         if (_resourceTickTimer != null) { await _resourceTickTimer.DisposeAsync(); _resourceTickTimer = null; }
         if (_areaClosureTickTimer != null) { await _areaClosureTickTimer.DisposeAsync(); _areaClosureTickTimer = null; }
         if (_targetLocationTimer != null) { await _targetLocationTimer.DisposeAsync(); _targetLocationTimer = null; }
         if (_botMovementTimer != null) { await _botMovementTimer.DisposeAsync(); _botMovementTimer = null; }
         if (_botMissionTimer != null) { await _botMissionTimer.DisposeAsync(); _botMissionTimer = null; }
         if (_checklistProgressTickTimer != null) { await _checklistProgressTickTimer.DisposeAsync(); _checklistProgressTickTimer = null; }
+        if (_proximityAutoCombatTimer != null) { await _proximityAutoCombatTimer.DisposeAsync(); _proximityAutoCombatTimer = null; }
         foreach (var timer in _headlessRoundTimers.Values)
             await timer.DisposeAsync();
         _headlessRoundTimers.Clear();
@@ -193,7 +173,6 @@ public class GameServer(
             Action<string> log = msg => logger.LogInformation(msg);
             _interactableStateManager.Initialize(log);
             _inGameInventoryManager.Initialize(log);
-            _corridorRuleManager.Initialize(log, OnCorridorStopViolation);
             _areaRuleManager.Initialize(log);
             _itemPoolManager.Initialize(log);
             _checklistManager.Initialize(log);
@@ -210,8 +189,7 @@ public class GameServer(
     private void InitializeControllers()
     {
         var instanceController = new InstanceMapManager(logger, natsClientFactory.Create(), cacheHelper,
-            serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager,
-            _corridorRuleManager);
+            serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
@@ -234,7 +212,7 @@ public class GameServer(
         logger.LogInformation("Heartbeat checker started (interval: {Interval}s)", HeartbeatCheckIntervalSeconds);
     }
 
-    // ===== 자원 틱 (정신력 자연감소, 타겟 근접 회복, 시한부) =====
+    // ===== 자원 틱 (폐쇄 구역 등 주기성 자원 변화) =====
 
     private void StartResourceTickTimer()
     {
@@ -299,20 +277,6 @@ public class GameServer(
         }
     }
 
-    /// <summary>
-    ///     경과 시간에 따른 오염도 자연증가량 결정 (GDD v0.0.5 점진적 가속)
-    /// </summary>
-    private int GetMentalDecayAmount(long matchingId)
-    {
-        var closureState = _areaClosureManager.GetMatchingState(matchingId);
-        if (closureState == null) return MentalDecayPhase1;
-
-        double elapsed = (DateTime.UtcNow - closureState.GameStartTime).TotalSeconds;
-        if (elapsed >= Phase3StartSeconds) return MentalDecayPhase3;
-        if (elapsed >= Phase2StartSeconds) return MentalDecayPhase2;
-        return MentalDecayPhase1;
-    }
-
     private void ProcessResourceTick(object? state)
     {
         try
@@ -330,73 +294,9 @@ public class GameServer(
 
                 int corruptionDelta = 0;
 
-                if (!isTerminal && session.CurrentArea != AreaType.None)
-                {
-                    GameClientSession? targetSession = null;
-                    BotPlayerState? targetBot = null;
-                    bool targetInSameArea = false;
-
-                    targetSession = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                    targetInSameArea = targetSession != null && targetSession.CurrentArea == session.CurrentArea;
-                    if (!targetInSameArea)
-                    {
-                        // 프로토 0: 회복은 타겟과 같은 영역에 있을 때 적용한다.
-                        //   혼잡할수록 느림 — 회복량 = 기본 × (2 / 영역 총인원).
-                        targetBot = _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId);
-                        targetInSameArea = targetBot is { IsEliminated: false } &&
-                                           targetBot.CurrentArea == session.CurrentArea;
-                    }
-
-                    bool targetWithinProximity = IsTargetWithinProximity(session, targetSession, targetBot);
-
-                    if (!targetInSameArea)
-                    {
-                        int isolationDelta = ResolveStatusEffectCorruptionDelta(
-                            IsolationStatusEffectId,
-                            GetMentalDecayAmount(session.CurrentMapSubId));
-                        isolationDelta = PassiveBuffUtility.ApplyReduction(
-                            isolationDelta,
-                            session.ActiveBuffIds,
-                            BuffSubType.ISOLATION_CORRUPTION_GAIN_DOWN);
-                        corruptionDelta += isolationDelta;
-                    }
-
-                    if (targetInSameArea &&
-                        !session.ShouldSkipTargetEncounterRecoveryTick(DateTime.UtcNow, ResourceTickIntervalSeconds))
-                    {
-                        int pop = CountAreaPopulation(activeSessions, session.CurrentMapSubId, session.CurrentArea);
-                        int recovery = Math.Max(1,
-                            (int)Math.Round(TargetProximityRecovery * (2.0 / Math.Max(2, pop))));
-                        int recoveryDelta = ResolveStatusEffectCorruptionDelta(NearbyStatusEffectId, recovery);
-                        recoveryDelta = ApplyTargetEncounterStability(session, recoveryDelta);
-                        recoveryDelta = ApplySharpGazeRecoveryPenalty(session, targetSession, targetBot, recoveryDelta);
-                        corruptionDelta += recoveryDelta;
-
-                        // 교감(#161): 같은 영역에서 거리까지 좁히면 추가 회복.
-                        // 1:1로 붙어 있는 상황 자체가 보상 조건이라 혼잡 보정은 없다.
-                        if (targetWithinProximity)
-                        {
-                            corruptionDelta += ResolveStatusEffectCorruptionDelta(
-                                ProximityStatusEffectId, Config.TARGET_PROXIMITY_RECOVERY_BONUS);
-                        }
-
-                        session.MarkTargetEncounterRecoveryApplied(DateTime.UtcNow);
-                    }
-
-                }
-
                 // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
                 // if (isTerminal)
                 //     corruptionDelta += TerminalDecayAmount;
-
-                // 4. 강당 체류 오염도 추가 증가 (패키지 Y 3A, GDD §3.1.1, #24)
-                if (!isTerminal && session.CurrentArea == (AreaType)Config.AUDITORIUM_AREA_TYPE)
-                {
-                    var targetSession2 = activeSessions.FirstOrDefault(s => s.PlayerId == session.TargetPlayerId);
-                    bool targetInGym = targetSession2 != null && targetSession2.CurrentArea == session.CurrentArea;
-                    if (!targetInGym)
-                        corruptionDelta += Config.AUDITORIUM_STAY_CORRUPTION_BONUS;
-                }
 
                 // 4. 폐쇄 구역 체류 시 오염도 추가 증가
                 if (session.CurrentArea != AreaType.None &&
@@ -422,26 +322,11 @@ public class GameServer(
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
-                // 봇도 사람과 같은 타겟 부재/의존/밀착/폐쇄구역 자원 변동을 적용한다.
-                var botResourceSnapshots = activeSessions
-                    .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
-                    .Select(s => new BotBehaviorPlayerSnapshot
-                    {
-                        PlayerId = s.PlayerId!.Value,
-                        TargetPlayerId = s.TargetPlayerId,
-                        CurrentArea = s.CurrentArea,
-                        Position = s.LastValidatedPosition,
-                        IsEliminated = s.IsEliminated
-                    })
-                    .ToList();
+                // 봇도 사람과 같은 폐쇄 구역 자원 변동을 적용한다.
                 var tickResult = _botPlayerManager.ProcessBotTick(
                     matchingId,
-                    ResolveStatusEffectCorruptionDelta(IsolationStatusEffectId, GetMentalDecayAmount(matchingId)),
-                    ResolveStatusEffectCorruptionDelta(NearbyStatusEffectId, TargetProximityRecovery),
-                    ResolveStatusEffectCorruptionDelta(ProximityStatusEffectId, Config.TARGET_PROXIMITY_RECOVERY_BONUS),
                     ResolveStatusEffectCorruptionDelta(ClosedAreaStatusEffectId, Config.CLOSED_AREA_CORRUPTION_TICK),
-                    _areaClosureManager,
-                    botResourceSnapshots);
+                    _areaClosureManager);
 
                 // #125: 봇 위치 이동 이벤트 → 같은 영역 인간 세션에 패킷 브로드캐스트
                 foreach (var ev in tickResult.Movements)
@@ -527,13 +412,6 @@ public class GameServer(
                     areas[bot.PlayerId] = bot.CurrentArea;
 
         return areas;
-    }
-
-    /// <summary>프로토 0: 특정 영역의 총 인원(인간 + 봇). 회복 2/N 스케일링용.</summary>
-    private int CountAreaPopulation(List<GameClientSession> sessions, long matchingId, AreaType area)
-    {
-        int humans = sessions.Count(s => s.CurrentMapSubId == matchingId && s.CurrentArea == area);
-        return humans + _botPlayerManager.CountBotsInArea(matchingId, area);
     }
 
     private void ProcessBotTargetProximityChecklistProgress(
@@ -622,7 +500,7 @@ public class GameServer(
         return true;
     }
 
-    /// <summary>교감(#161) 판정 — 타겟(사람/봇)과의 평면 거리가 TARGET_PROXIMITY_DISTANCE 이내인지.</summary>
+    /// <summary>타겟 근접 체크리스트 판정용 평면 거리 확인.</summary>
     private static bool IsTargetWithinProximity(
         GameClientSession session, GameClientSession? targetSession, BotPlayerState? targetBot)
     {
@@ -665,54 +543,6 @@ public class GameServer(
             BuffSubType.CORRUPTION_DOWN => -magnitude,
             _ => 0
         };
-    }
-
-    private int ApplyTargetEncounterStability(GameClientSession session, int baseRecoveryDelta)
-    {
-        if (!session.PlayerId.HasValue || baseRecoveryDelta >= 0) return baseRecoveryDelta;
-        if (!_missionManager.TryConsumeShortRewardUse(
-                session.CurrentMapSubId,
-                session.PlayerId.Value,
-                MissionShortRewardType.TargetEncounterStability,
-                out var reward) || reward == null)
-        {
-            return baseRecoveryDelta;
-        }
-
-        int bonusRecovery = Math.Max(1, (int)Math.Ceiling(Math.Abs(baseRecoveryDelta) * reward.ValuePercent / 100.0));
-        int adjustedDelta = baseRecoveryDelta - bonusRecovery;
-
-        logger.LogInformation(
-            "타겟 조우 안정 적용: PlayerId={PlayerId}, BaseRecovery={BaseRecovery}, AdjustedRecovery={AdjustedRecovery}, RemainingUses={RemainingUses}",
-            session.PlayerId, baseRecoveryDelta, adjustedDelta, reward.RemainingUses);
-
-        return adjustedDelta;
-    }
-
-    private int ApplySharpGazeRecoveryPenalty(
-        GameClientSession session,
-        GameClientSession? targetSession,
-        BotPlayerState? targetBot,
-        int baseRecoveryDelta)
-    {
-        long? playerIdValue = session.PlayerId;
-        long? targetPlayerIdValue = targetSession?.PlayerId;
-        if (!targetPlayerIdValue.HasValue && targetBot != null) targetPlayerIdValue = targetBot.PlayerId;
-        long targetBookmarkPlayerId = targetSession?.PresenceBookmarkPlayerId ?? targetBot?.PresenceBookmarkPlayerId ?? 0;
-        if (!playerIdValue.HasValue || baseRecoveryDelta >= 0) return baseRecoveryDelta;
-        if (!targetPlayerIdValue.HasValue) return baseRecoveryDelta;
-
-        long playerId = playerIdValue.Value;
-        long targetPlayerId = targetPlayerIdValue.Value;
-        if (session.TargetPlayerId != targetPlayerId) return baseRecoveryDelta;
-        if (targetBookmarkPlayerId != playerId) return baseRecoveryDelta;
-
-        var targetManitto = _manittoChainManager.FindManittoOf(session.CurrentMapSubId, targetPlayerId);
-        if (targetManitto?.PlayerId != playerId) return baseRecoveryDelta;
-
-        int recovery = Math.Abs(baseRecoveryDelta);
-        int adjustedRecovery = Math.Max(1, (int)Math.Ceiling(recovery * SharpGazeRecoveryMultiplier));
-        return -adjustedRecovery;
     }
 
     private int ApplyClosedAreaResistance(GameClientSession session, int basePenalty)
@@ -762,6 +592,7 @@ public class GameServer(
             var matchingSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                 .ToList();
+            matchingSessions.FirstOrDefault()?.DropBotInventoryAtCurrentPosition(botId);
 
             // 1) 전체에게 봇 탈락 알림 (G_TO_C_PLAYER_ELIMINATED)
             using (var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED))
@@ -824,7 +655,7 @@ public class GameServer(
         try
         {
             var missionResult = _botPlayerManager.ProcessBotMissionTick(
-                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _areaItemStockManager, _checklistManager);
+                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _areaItemStockManager, _groundItemManager, _checklistManager);
 
             // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
             foreach (var (botId, partId) in missionResult.CollectedParts)
@@ -877,6 +708,14 @@ public class GameServer(
                 BroadcastBotPlayerStates(matchingId, missionResult.BotRestEnds,
                     global::network.common.PlayerState.IDLE, activeSessions);
 
+            foreach (var group in missionResult.GroundItemSpawns.GroupBy(item => item.AreaType))
+            {
+                var area = (AreaType)group.Key;
+                int remaining = _areaItemStockManager.GetRemainingCount(matchingId, group.Key);
+                using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(group.Key, remaining, group.ToList());
+                foreach (var session in activeSessions.Where(session => session.CurrentArea == area))
+                    session.Send(packet);
+            }
             // #134 — 봇 RNG 채집으로 발생한 인스턴스 쿨타임 broadcast
             if (missionResult.RngCooldownBroadcasts.Count > 0)
                 BroadcastBotRngCooldowns(matchingId, missionResult.RngCooldownBroadcasts);
@@ -1350,12 +1189,6 @@ public class GameServer(
             session.Send(movePacket);
         }
 
-        foreach (var session in matchingSessions)
-        {
-            if (session.CurrentArea != ev.ToArea || session.TargetPlayerId != ev.BotPlayerId) continue;
-            session.TryApplyImmediateTargetEncounterRecovery(matchingSessions);
-        }
-
         TrySendBotCorridorEncounterEvent(matchingId, ev, matchingSessions);
         TrySendBotRoomEncounterEvent(matchingId, ev, matchingSessions);
     }
@@ -1788,47 +1621,6 @@ public class GameServer(
         return null;
     }
 
-    private void StartCorridorStopCheckTimer()
-    {
-        _corridorStopCheckTimer = new Timer(
-            ProcessCorridorStopCheck,
-            null,
-            TimeSpan.FromMilliseconds(CorridorStopCheckIntervalMs),
-            TimeSpan.FromMilliseconds(CorridorStopCheckIntervalMs));
-        logger.LogInformation("Corridor stop check timer started (interval: {Interval}ms)",
-            CorridorStopCheckIntervalMs);
-    }
-
-    /// <summary>
-    ///     복도에서 정지한 플레이어들의 정신오염도 증가 처리 (규칙 6)
-    /// </summary>
-    private void ProcessCorridorStopCheck(object? state)
-    {
-        try
-        {
-            var violations = _corridorRuleManager.CheckAllStoppedPlayersForRule6();
-
-            foreach ((long matchingId, long playerId, var result) in violations)
-            {
-                // 규칙 6번이 적용된 매칭인지 확인
-                int corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(matchingId);
-                if (corridorRuleId != 6) continue;
-
-                if (_clientSessions.TryGetValue(playerId, out var session))
-                {
-                    session.ModifyStats(corruptionDelta: result.CorruptionDelta);
-                    logger.LogInformation(
-                        "Player {PlayerId} corridor stop violation (timer): {Message}, Corruption +{Delta}",
-                        playerId, result.Message, result.CorruptionDelta);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error processing corridor stop check");
-        }
-    }
-
     private void CheckHeartbeatTimeouts(object? state)
     {
         try
@@ -1872,7 +1664,7 @@ public class GameServer(
                 _areaRuleManager,
                 _itemPoolManager,
                 _areaItemStockManager,
-                _corridorRuleManager,
+                _groundItemManager,
                 _doorStateManager,
                 _sabotageManager,
                 _manittoChainManager,
@@ -1921,15 +1713,48 @@ public class GameServer(
                     sameAreaSessions.Count);
             }
 
-            // 복도 규칙 플레이어 상태 정리
-            if (session.CurrentMapSubId > 0)
-                _corridorRuleManager.RemovePlayerState(session.CurrentMapSubId, session.PlayerId.Value);
-
             // 인스턴스 컨트롤러에 연결 해제 알림 (모든 유저 연결 해제 시 게임 종료 처리)
             if (session.CurrentMapSubId > 0)
                 foreach (var controller in _instanceControllerList)
                     controller.OnPlayerDisconnected(session.CurrentMapId, session.CurrentMapSubId,
                         session.PlayerId.Value);
+
+            if (session.CurrentMapSubId > 0)
+                CleanupMatchingIfNoHumanSessionsRemain(session.CurrentMapSubId);
+        }
+    }
+
+    private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId)
+    {
+        if (_clientSessions.Values.Any(other =>
+                other.PlayerId.HasValue && other.CurrentMapSubId == matchingId))
+            return;
+
+        GameClientSession.CleanupAbandonedMatchingRuntime(matchingId);
+        _botPlayerManager.CleanupMatching(matchingId);
+        _presenceTracker.Remove(matchingId);
+        _checklistManager.RemoveMatchingState(matchingId);
+        _areaItemStockManager.RemoveMatchingState(matchingId);
+        _groundItemManager.RemoveMatchingState(matchingId);
+        _inGameInventoryManager.RemoveMatchingState(matchingId);
+        _ = CleanupAbandonedMatchingRedisAsync(matchingId);
+
+        logger.LogInformation(
+            "Removed abandoned matching after last human player left: MatchingId={MatchingId}",
+            matchingId);
+    }
+
+    private async Task CleanupAbandonedMatchingRedisAsync(long matchingId)
+    {
+        try
+        {
+            await cacheHelper.HashDeleteAsync("matching_bots", matchingId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Failed to remove abandoned matching from Redis: MatchingId={MatchingId}",
+                matchingId);
         }
     }
 
@@ -1944,19 +1769,6 @@ public class GameServer(
         return _clientSessions.Values
             .Where(s => s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId)
             .ToList();
-    }
-
-    /// <summary>
-    ///     복도 정지 위반 시 해당 플레이어의 정신오염도 증가
-    /// </summary>
-    private void OnCorridorStopViolation(long matchingId, long playerId, int corruptionDelta)
-    {
-        if (_clientSessions.TryGetValue(playerId, out var session))
-        {
-            session.ModifyStats(corruptionDelta: corruptionDelta);
-            logger.LogInformation("Player {PlayerId} corridor stop violation: Corruption +{Delta}", playerId,
-                corruptionDelta);
-        }
     }
 
     /// <summary>
@@ -2520,7 +2332,7 @@ public class GameServer(
     }
 
     /// <summary>
-    ///     인스턴스 풀 스냅샷 (폐쇄 스케줄 + 미션 전체 단계 포함)
+    ///     인스턴스 풀 스냅샷 (폐쇄 스케줄 포함)
     /// </summary>
     public InstanceSnapshot? GetFullInstanceSnapshot(long matchingId)
     {
@@ -2546,48 +2358,6 @@ public class GameServer(
             StartDelaySec = startDelaySec,
             IntervalSec = intervalSec
         };
-
-        // 플레이어별 직책 + 전체 미션 단계 보강 (description 포함). 인간 + 봇 모두 처리.
-        var sessions = _clientSessions.Values
-            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
-            .ToDictionary(s => s.PlayerId!.Value);
-        var botMap = _botPlayerManager.GetBots(matchingId).ToDictionary(b => b.PlayerId);
-
-        foreach (var player in base_.Players)
-        {
-            JobTitle jobTitle;
-            if (sessions.TryGetValue(player.PlayerId, out var session))
-            {
-                jobTitle = session.AdminJobTitle;
-            }
-            else if (botMap.TryGetValue(player.PlayerId, out var bot))
-            {
-                jobTitle = bot.MyJobTitle;
-            }
-            else
-            {
-                continue;
-            }
-
-            player.JobTitle = jobTitle.ToKorean();
-
-            // v0.2.0 — 부품 진행도로 어드민 표시 재구성
-            var jobParts = GameMissionData.GetParts((short)jobTitle);
-            var partState = _missionManager.GetState(matchingId, player.PlayerId);
-            int order = 0;
-            player.AllSteps = jobParts.Select(p => new MissionFullStep
-            {
-                Order = ++order,
-                PartId = p.PartId,
-                PartNameKr = p.PartNameKr,
-                PartTier = (int)p.PartTier,
-                TargetAreaType = p.TargetArea,
-                TargetAreaName = p.TargetArea > 0 ? GameAreaNameData.Get((AreaType)p.TargetArea) : "",
-                TargetObjectType = p.TargetObjectType,
-                IsCollected = partState?.CollectedParts.Contains(p.PartId) ?? false,
-                PrerequisiteShareGroup = p.PrerequisiteShareGroup
-            }).ToList();
-        }
 
         return base_;
     }
@@ -2628,7 +2398,6 @@ public class GameServer(
         // 1) 인간 플레이어
         foreach (var s in sessions)
         {
-            var missionState = _missionManager.GetState(matchingId, s.PlayerId!.Value);
             var chainLink = _manittoChainManager.GetLink(matchingId, s.PlayerId!.Value);
             playerSnapshots.Add(new PlayerSnapshot
             {
@@ -2640,11 +2409,6 @@ public class GameServer(
                 TargetPlayerId = s.TargetPlayerId,
                 IsBot = s.IsBot,
                 IsEliminated = s.IsEliminated,
-                MissionStep = missionState?.CollectedParts.Count ?? 0,
-                MissionTotalSteps = missionState != null
-                    ? GameMissionData.GetTotalParts((short)missionState.JobTitle)
-                    : 0,
-                MissionCompleted = missionState?.IsCompleted ?? false,
                 ManittoOfMe = FindManittoOf(s.PlayerId!.Value),
                 ChainStatus = chainLink?.Status.ToString() ?? ""
             });
@@ -2653,7 +2417,6 @@ public class GameServer(
         // 2) 봇 — TCP 세션이 없으므로 BotPlayerManager._botStates에서 조회
         foreach (var bot in bots)
         {
-            var missionState = _missionManager.GetState(matchingId, bot.PlayerId);
             var chainLink = _manittoChainManager.GetLink(matchingId, bot.PlayerId);
             playerSnapshots.Add(new PlayerSnapshot
             {
@@ -2665,11 +2428,6 @@ public class GameServer(
                 TargetPlayerId = bot.TargetPlayerId,
                 IsBot = true,
                 IsEliminated = bot.IsEliminated,
-                MissionStep = missionState?.CollectedParts.Count ?? 0,
-                MissionTotalSteps = missionState != null
-                    ? GameMissionData.GetTotalParts((short)missionState.JobTitle)
-                    : 0,
-                MissionCompleted = missionState?.IsCompleted ?? false,
                 ManittoOfMe = FindManittoOf(bot.PlayerId),
                 ChainStatus = chainLink?.Status.ToString() ?? ""
             });

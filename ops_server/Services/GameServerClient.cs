@@ -108,23 +108,6 @@ public class GameServerClient(HttpClient httpClient)
             return null;
         }
     }
-
-    public async Task<MatchingConfigApiResponse?> PostJobPoolConfigAsync(object body, CancellationToken ct = default)
-    {
-        try
-        {
-            var json = JsonSerializer.Serialize(body, JsonOpts);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = await httpClient.PostAsync("/admin/matching-config/job-pool", content, ct);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<MatchingConfigApiResponse>(JsonOpts, ct);
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[GameServerClient] PostJobPoolConfig 오류: {ex.Message}");
-            return null;
-        }
-    }
 }
 
 // ─── DTO mirrors (game_server Admin DTO와 구조 일치) ───────────────────────
@@ -171,17 +154,6 @@ public class ClosureSnapshot
     public int IntervalSec { get; set; }
 }
 
-public class MissionFullStep
-{
-    public int Order { get; set; }
-    public int TargetAreaType { get; set; }
-    public string TargetAreaName { get; set; } = "";
-    public int TargetInteractId { get; set; }
-    public bool IsCompleted { get; set; }
-    public bool IsCurrent { get; set; }
-    public string Description { get; set; } = "";
-    public string TargetObjectName { get; set; } = "";
-}
 
 public class PlayerSnapshot
 {
@@ -193,13 +165,8 @@ public class PlayerSnapshot
     public long TargetPlayerId { get; set; }
     public bool IsBot { get; set; }
     public bool IsEliminated { get; set; }
-    public int MissionStep { get; set; }
-    public int MissionTotalSteps { get; set; }
-    public bool MissionCompleted { get; set; }
     public long? ManittoOfMe { get; set; }
     public string ChainStatus { get; set; } = "";
-    public string JobTitle { get; set; } = "";
-    public List<MissionFullStep> AllSteps { get; set; } = [];
 }
 
 public class MatchingConfigSnapshot
@@ -207,7 +174,6 @@ public class MatchingConfigSnapshot
     public int StartDelaySec { get; set; }
     public int IntervalSec { get; set; }
     public List<int>? ForcedSequence { get; set; }
-    public List<int>? ForcedJobs { get; set; }
 }
 
 public class MatchingConfigApiResponse

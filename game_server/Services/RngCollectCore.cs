@@ -15,7 +15,7 @@ namespace game_server.services;
 public static class RngCollectCore
 {
     private const int FailStaminaReward = 0;
-    private const int AttendanceBlackboardInteractId = 701000055;
+    private const int AttendanceLecternInteractId = 701000054;
     private const int TornAttendancePagePartId = 308;
     private const int BlackedOutPaperPartId = 309;
     // 소모품 회수 stamina 보상 제거 (#135) — 회복은 아이템 사용 시점에만.
@@ -87,7 +87,7 @@ public static class RngCollectCore
                     if (partItemId > 0)
                         outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, partItemId, 1);
 
-                    TryGrantAttendanceBlackboardPair(
+                    TryGrantAttendanceLecternPair(
                         matchingId,
                         playerId,
                         info,
@@ -118,12 +118,12 @@ public static class RngCollectCore
         }
         else
         {
-            if (TryResolveAreaStockDrop(matchingId, info.ZoneId, areaItemStockManager, consumeStock: true, out int itemId))
+            if (areaItemStockManager.TryConsumeDrops(matchingId, info.ZoneId, 1, out var itemIds))
             {
                 outcome.ResultType = 2;
-                outcome.ItemId = itemId;
+                outcome.ItemId = itemIds[0];
                 outcome.StaminaReward = ConsumableStaminaReward;
-                outcome.AddedInventoryItem = inventoryManager.AddItem(matchingId, playerId, itemId, 1);
+                outcome.DroppedItemIds.AddRange(itemIds);
             }
             else
             {
@@ -131,20 +131,8 @@ public static class RngCollectCore
             }
         }
 
-        TryApplySharpObservationBonus(matchingId, playerId, info.ZoneId, missionManager, inventoryManager,
-            areaItemStockManager, isBot, outcome);
-        TryApplyPassiveItemGainBonus(
-            matchingId,
-            playerId,
-            info.ZoneId,
-            inventoryManager,
-            areaItemStockManager,
-            isBot,
-            outcome,
-            bonusItemChancePercent);
-
-        RngCollectCooldownStore.ClearCooldown(matchingId, info.Id);
-        outcome.CooldownSeconds = 0;
+        RngCollectCooldownStore.SetCooldown(matchingId, info.Id, RngCollectCooldownStore.DefaultCooldownSeconds);
+        outcome.CooldownSeconds = RngCollectCooldownStore.DefaultCooldownSeconds;
 
         return outcome;
     }
@@ -175,7 +163,7 @@ public static class RngCollectCore
         outcome.AddedBonusInventoryItem = inventoryManager.AddItem(matchingId, playerId, bonusItemId, 1);
     }
 
-    private static void TryGrantAttendanceBlackboardPair(
+    private static void TryGrantAttendanceLecternPair(
         long matchingId,
         long playerId,
         InteractableInfoData info,
@@ -186,7 +174,7 @@ public static class RngCollectCore
         bool isBot)
     {
         if (isBot ||
-            info.Id != AttendanceBlackboardInteractId ||
+            info.Id != AttendanceLecternInteractId ||
             collectedPartId != TornAttendancePagePartId)
         {
             return;
@@ -399,6 +387,9 @@ public class RngCollectOutcome
 
     /// <summary>부품 회수와 함께 완료된 미션 그래프 노드 id.</summary>
     public List<int> CompletedMissionNodeIds { get; set; } = new();
+
+    /// <summary>지역 재고에서 차감되어 바닥에 생성할 아이템.</summary>
+    public List<int> DroppedItemIds { get; } = new();
 
     /// <summary>소모품 회수 시 인벤토리에 추가된 아이템 (호출자 G_TO_C_INGAME_INVENTORY_UPDATE 송신용)</summary>
     public InGameItemInfo? AddedInventoryItem { get; set; }

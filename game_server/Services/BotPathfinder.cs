@@ -8,7 +8,7 @@ namespace game_server.services;
 ///     #127: 봇 셀 단위 walking을 위한 pathfinding.
 ///     - 영역 그래프 BFS (어느 영역들을 거칠지)
 ///     - 영역별 셀 그리드 BFS (영역 안에서 어디로 갈지)
-///     - 영역 경계 통과 시 GameAreaConnectionData.GetSpawnCell로 텔레포트 (실제 플레이어 HandleAreaMove 동등)
+///     - 영역 경계 통과 시 GameAreaConnectionData의 문 양쪽 셀을 연속 보행
 /// </summary>
 public static class BotPathfinder
 {
@@ -17,7 +17,7 @@ public static class BotPathfinder
     {
         public Cell Cell { get; set; } = new(0, 0);
         public AreaType Area { get; set; }
-        /// <summary>true면 이 셀로 텔레포트 진입 (영역 경계 통과). false면 인접 셀로 walk.</summary>
+        /// <summary>true면 문 건너편 영역의 첫 보행 웨이포인트.</summary>
         public bool IsAreaTransition { get; set; }
         /// <summary>영역 전환일 때 직전 영역 (LEAVE 패킷용).</summary>
         public AreaType FromAreaForTransition { get; set; }
@@ -65,7 +65,7 @@ public static class BotPathfinder
                     path.Add(new Step { Cell = c, Area = fromA, IsAreaTransition = false });
             }
 
-            // 영역 경계 통과 (텔레포트) — 선택된 conn의 SpawnCell이 toA 측 도어 위치
+            // 영역 경계 통과: 선택된 connection의 SpawnCell은 대상 영역 문어귀의 인접 보행 셀이다.
             Cell entryCell = forwardConn?.SpawnCell ?? GameMapData.GetAreaSpawnCell(mapId, toA);
             path.Add(new Step
             {
@@ -201,8 +201,8 @@ public static class BotPathfinder
     {
         if (fromCell.Equals(toCell)) return new List<Cell> { fromCell };
 
-        var areaRegion = GameMapData.GetAreas(mapId).FirstOrDefault(r => r.AreaType == area);
-        if (areaRegion == null) return null;
+        var areaRegions = GameMapData.GetAreas(mapId).Where(r => r.AreaType == area).ToList();
+        if (areaRegions.Count == 0) return null;
 
         var visited = new HashSet<(int, int)> { (fromCell.X, fromCell.Y) };
         var parent = new Dictionary<(int, int), Cell>();
@@ -219,7 +219,7 @@ public static class BotPathfinder
             foreach (var neighbor in current.GetAdjacentCells())
             {
                 if (visited.Contains((neighbor.X, neighbor.Y))) continue;
-                if (!areaRegion.Contains(neighbor)) continue;
+                if (!IsWithinArea(areaRegions, neighbor)) continue;
                 if (!GameMapData.IsMoveablePosition(mapId, neighbor)) continue;
 
                 visited.Add((neighbor.X, neighbor.Y));
@@ -234,8 +234,8 @@ public static class BotPathfinder
                         path.Insert(0, p);
                         c = p;
                     }
-                    var smoothed = SmoothPath(mapId, areaRegion, path);
-                    return InsertIsoAxisCorners(mapId, areaRegion, smoothed);
+                    var smoothed = SmoothPath(mapId, areaRegions, path);
+                    return InsertIsoAxisCorners(mapId, areaRegions, smoothed);
                 }
                 queue.Enqueue(neighbor);
             }
@@ -249,7 +249,7 @@ public static class BotPathfinder
     ///     사선처럼 보이는 문제 해결. 셀 dx/dy 중 더 큰 축을 먼저 걷고, 코너에서 다음 축으로 이동.
     ///     L 코너 셀이 walkable이 아니면 직선 폴백.
     /// </summary>
-    private static List<Cell> InsertIsoAxisCorners(MapId mapId, GameMapData.AreaRegion area, List<Cell> smoothed)
+    private static List<Cell> InsertIsoAxisCorners(MapId mapId, IReadOnlyList<GameMapData.AreaRegion> areaRegions, List<Cell> smoothed)
     {
         if (smoothed.Count <= 1) return smoothed;
 
@@ -274,10 +274,10 @@ public static class BotPathfinder
                 : new Cell(a.X, a.Y + dy);
 
             // 두 segment(L 양변) 모두 LOS 통과 + 영역 안인지 확인
-            if (area.Contains(corner)
+            if (IsWithinArea(areaRegions, corner)
                 && GameMapData.IsMoveablePosition(mapId, corner)
-                && HasClearLine(mapId, area, a, corner)
-                && HasClearLine(mapId, area, corner, b))
+                && HasClearLine(mapId, areaRegions, a, corner)
+                && HasClearLine(mapId, areaRegions, corner, b))
             {
                 result.Add(corner);
                 result.Add(b);
@@ -296,7 +296,7 @@ public static class BotPathfinder
     ///     셀 그리드는 8방향이라 BFS 최단경로가 staircase 형태가 되어 봇이 좌우로 흔들린다.
     ///     "i에서 j까지 직선으로 이동 가능하면 중간 셀 제거" 규칙으로 turning point만 남김 → 자연스러운 직선 walking.
     /// </summary>
-    private static List<Cell> SmoothPath(MapId mapId, GameMapData.AreaRegion area, List<Cell> path)
+    private static List<Cell> SmoothPath(MapId mapId, IReadOnlyList<GameMapData.AreaRegion> areaRegions, List<Cell> path)
     {
         if (path.Count <= 2) return path;
 
@@ -307,7 +307,7 @@ public static class BotPathfinder
             int j = path.Count - 1;
             while (j > i + 1)
             {
-                if (HasClearLine(mapId, area, path[i], path[j])) break;
+                if (HasClearLine(mapId, areaRegions, path[i], path[j])) break;
                 j--;
             }
             smoothed.Add(path[j]);
@@ -316,10 +316,15 @@ public static class BotPathfinder
         return smoothed;
     }
 
+    private static bool IsWithinArea(IReadOnlyList<GameMapData.AreaRegion> areaRegions, Cell cell)
+    {
+        return areaRegions.Any(region => region.Contains(cell));
+    }
+
     /// <summary>
     ///     Bresenham 라인 트레이싱으로 from → to 사이 모든 중간 셀이 walkable + 영역 안에 있는지 확인.
     /// </summary>
-    private static bool HasClearLine(MapId mapId, GameMapData.AreaRegion area, Cell from, Cell to)
+    private static bool HasClearLine(MapId mapId, IReadOnlyList<GameMapData.AreaRegion> areaRegions, Cell from, Cell to)
     {
         int dx = Math.Abs(to.X - from.X);
         int dy = Math.Abs(to.Y - from.Y);
@@ -333,7 +338,7 @@ public static class BotPathfinder
         while (steps++ < maxSteps)
         {
             var c = new Cell(x, y);
-            if (!area.Contains(c)) return false;
+            if (!IsWithinArea(areaRegions, c)) return false;
             if (!GameMapData.IsMoveablePosition(mapId, c)) return false;
             if (x == to.X && y == to.Y) return true;
             int e2 = 2 * err;

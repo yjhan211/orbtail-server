@@ -308,6 +308,12 @@ namespace network.common.data.helpers
             var buffIds = new HashSet<int>(GameBuffData.GetAll().Select(buff => buff.Id));
             var poolIds = GameInteractableData.GetAllItemPoolIds();
 
+            foreach (int itemId in GameInteractableData.GetAllAreaItemPoolItems())
+            {
+                if (!itemIds.Contains(itemId))
+                    errors.Add($"area_item_pool: item_id={itemId} not found in item_info");
+            }
+
             foreach (var effect in GameStatusEffectData.GetAll())
             {
                 if (effect.BuffId != 0 && !buffIds.Contains(effect.BuffId))

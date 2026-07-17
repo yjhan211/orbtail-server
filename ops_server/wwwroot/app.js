@@ -12,19 +12,6 @@ let _seqList = [];      // 강제 폐쇄 시퀀스 (AreaType 정수 목록)
 let _eventLastSeq = 0;  // 이벤트 로그 폴링 진행 커서
 let _eventEntries = []; // 누적된 이벤트 (최근 200개 유지)
 
-// ─── 직책 정의 ──────────────────────────────────────────────────────────────
-
-const JOB_TITLES = [
-    { id: 1, name: '방송부원' },
-    { id: 2, name: '선도부원' },
-    { id: 3, name: '도서위원' },
-    { id: 4, name: '체육부장' },
-    { id: 5, name: '과학부원' },
-    { id: 6, name: '미화부원' },
-    { id: 7, name: '학생회장' },
-    { id: 8, name: '보건부원' },
-];
-
 // ─── 폴링 ──────────────────────────────────────────────────────────────────
 
 async function fetchInstances() {
@@ -40,7 +27,7 @@ async function fetchInstances() {
 
 async function fetchInstance(matchingId) {
     try {
-        // 풀 스냅샷 endpoint 사용 (폐쇄 스케줄 + 미션 전체 단계 포함)
+        // 풀 스냅샷 endpoint 사용 (폐쇄 스케줄 포함)
         const res = await fetch(`/api/instance/${matchingId}/full`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.json();
@@ -306,21 +293,17 @@ function renderClosureSchedule(closure) {
 
 // AreaType 정수 → 한글 라벨 (fallback — 서버 응답 한글명 없을 때)
 const AREA_LABELS = {
-    10:'행정실', 11:'1층복도', 12:'교무실', 13:'강당', 14:'창고',
-    20:'교실2', 21:'2층복도', 22:'도서관',
-    30:'교실3', 31:'3층복도', 32:'고사실',
-    40:'교실4', 41:'4층복도', 42:'방송실',
-    1:'쓰레기장', 2:'운동장', 100:'캠프'
+    1:'서쪽 쓰레기장', 2:'운동장', 7:'복도', 9:'동쪽 창고',
+    10:'행정실', 12:'교무실', 13:'강당', 14:'서쪽 창고', 15:'동쪽 쓰레기장',
+    20:'보건실', 22:'도서관', 30:'2-1', 32:'고사실', 40:'3-1', 42:'방송실',
+    100:'캠프'
 };
-function areaTypeLabel(t) { return AREA_LABELS[t] ?? `Area${t}`; }
-
 let _areaLabelsFromCsv = new Map();
 const AREA_LABEL_OVERRIDES = {
-    10:'행정실', 11:'1F', 12:'교무실', 13:'강당', 14:'창고',
-    20:'보건실', 21:'2F', 22:'도서관',
-    30:'2-1', 31:'3F', 32:'고사실',
-    40:'3-1', 41:'4F', 42:'방송실',
-    1:'쓰레기장', 2:'운동장', 100:'캠프'
+    1:'서쪽 쓰레기장', 2:'운동장', 7:'복도', 9:'동쪽 창고',
+    10:'행정실', 12:'교무실', 13:'강당', 14:'서쪽 창고', 15:'동쪽 쓰레기장',
+    20:'보건실', 22:'도서관', 30:'2-1', 32:'고사실', 40:'3-1', 42:'방송실',
+    100:'캠프'
 };
 function areaTypeLabel(t) {
     const key = Number.parseInt(t, 10);
@@ -335,22 +318,10 @@ function buildPlayerRow(p) {
     const botBadge = p.isBot ? '<span class="ml-1 text-xs bg-gray-700 px-1 rounded">BOT</span>' : '';
     const statusClass = `status-${p.manittoStatus}`;
     const rowClass = p.isEliminated ? 'opacity-40' : '';
-    const jobStr = p.jobTitle || '—';
-
-    // 미션 단계 — allSteps 있으면 가로 흐름, 없으면 숫자 fallback
-    let missionStr;
-    if (p.allSteps && p.allSteps.length > 0) {
-        missionStr = buildMissionSteps(p.allSteps, p.missionCompleted);
-    } else {
-        missionStr = p.missionCompleted
-            ? '<span class="text-green-400">완료</span>'
-            : `${p.missionStep}/${p.missionTotalSteps}`;
-    }
 
     return `
         <tr class="border-b border-gray-800 ${rowClass}">
             <td class="py-2 pr-4">${p.playerId}${botBadge}</td>
-            <td class="py-2 pr-4 text-xs text-gray-300">${jobStr}</td>
             <td class="py-2 pr-4 text-xs">${p.area}</td>
             <td class="py-2 pr-4">
                 <div class="flex items-center gap-1">
@@ -369,40 +340,10 @@ function buildPlayerRow(p) {
                 </div>
             </td>
             <td class="py-2 pr-4 text-xs ${statusClass}">${p.manittoStatus}</td>
-            <td class="py-2 pr-4">${missionStr}</td>
             <td class="py-2 pr-4 text-xs text-gray-400">${p.manittoOfMe ?? '—'}</td>
             <td class="py-2 text-xs text-gray-400">${p.targetPlayerId || '—'}</td>
         </tr>
     `;
-}
-
-function buildMissionSteps(steps, allCompleted) {
-    if (allCompleted) {
-        return steps.map(s => {
-            const tip = buildStepTooltip(s);
-            return `<span class="step-done text-xs" title="${tip}">완료${s.order}</span>`;
-        }).join('<span class="text-gray-600 mx-0.5">→</span>');
-    }
-    return steps.map(s => {
-        const tip = buildStepTooltip(s);
-        if (s.isCompleted) {
-            return `<span class="step-done text-xs" title="${tip}">완료${s.order}</span>`;
-        }
-        if (s.isCurrent) {
-            const label = s.targetAreaName || areaTypeLabel(s.targetAreaType);
-            const desc = s.description ? `: ${s.description}` : '';
-            return `<span class="step-current text-xs" title="${tip}">▶${s.order} ${label}${desc}</span>`;
-        }
-        return `<span class="step-future text-xs" title="${tip}">${s.order}</span>`;
-    }).join('<span class="text-gray-700 mx-0.5">→</span>');
-}
-
-function buildStepTooltip(s) {
-    const areaName = s.targetAreaName || areaTypeLabel(s.targetAreaType);
-    const parts = [`${s.order}단계: ${areaName}`];
-    if (s.description) parts.push(s.description);
-    if (s.targetObjectName) parts.push(`대상: ${s.targetObjectName}`);
-    return parts.join('\n').replace(/"/g, '&quot;');
 }
 
 // ─── 진행 로그 렌더링 ──────────────────────────────────────────────────────
@@ -459,17 +400,6 @@ async function loadMatchingConfig() {
         document.getElementById('seq-forced-panel').classList.remove('hidden');
         renderSeqList();
     }
-
-    if (cfg.forcedJobs && cfg.forcedJobs.length > 0) {
-        document.getElementById('job-forced').checked = true;
-        document.getElementById('job-forced-panel').classList.remove('hidden');
-        document.getElementById('job-random-info').classList.add('hidden');
-        // 체크박스 반영
-        cfg.forcedJobs.forEach(id => {
-            const cb = document.getElementById(`job-cb-${id}`);
-            if (cb) cb.checked = true;
-        });
-    }
 }
 
 function renderConfigStatus(cfg) {
@@ -477,24 +407,10 @@ function renderConfigStatus(cfg) {
     const seqStr = cfg.forcedSequence && cfg.forcedSequence.length > 0
         ? cfg.forcedSequence.map(a => areaTypeLabel(a)).join('→')
         : '무작위';
-    const jobStr = cfg.forcedJobs && cfg.forcedJobs.length > 0
-        ? cfg.forcedJobs.map(j => JOB_TITLES.find(t => t.id === j)?.name ?? `직책${j}`).join(', ')
-        : '무작위 8개';
 
     el.innerHTML = `시작딜레이: <span class="text-white">${cfg.startDelaySec}s</span>&nbsp;&nbsp;`
         + `폐쇄간격: <span class="text-white">${cfg.intervalSec}s</span>&nbsp;&nbsp;`
-        + `폐쇄순서: <span class="text-yellow-300">${seqStr}</span>&nbsp;&nbsp;`
-        + `직책풀: <span class="text-blue-300">${jobStr}</span>`;
-}
-
-function buildJobCheckboxes() {
-    const container = document.getElementById('job-checkboxes');
-    container.innerHTML = JOB_TITLES.map(j => `
-        <label class="flex items-center gap-2 text-xs cursor-pointer">
-            <input type="checkbox" id="job-cb-${j.id}" value="${j.id}" class="accent-blue-500" />
-            ${j.name}
-        </label>
-    `).join('');
+        + `폐쇄순서: <span class="text-yellow-300">${seqStr}</span>`;
 }
 
 function onSeqModeChange() {
@@ -502,11 +418,6 @@ function onSeqModeChange() {
     document.getElementById('seq-forced-panel').classList.toggle('hidden', !forced);
 }
 
-function onJobModeChange() {
-    const forced = document.getElementById('job-forced').checked;
-    document.getElementById('job-forced-panel').classList.toggle('hidden', !forced);
-    document.getElementById('job-random-info').classList.toggle('hidden', forced);
-}
 
 function addSeqArea(areaType) {
     _seqList.push(areaType);
@@ -561,23 +472,6 @@ async function applyForcedSequence() {
     if (res) { showToast(res.message || '순서 적용 완료'); if (res.config) renderConfigStatus(res.config); }
 }
 
-async function applyJobPool() {
-    const checked = [...document.querySelectorAll('#job-checkboxes input:checked')].map(cb => parseInt(cb.value));
-    if (checked.length === 0) { showToast('하나 이상의 직책을 선택하세요.', true); return; }
-    const res = await postConfig('/api/matching-config/job-pool', { jobs: checked });
-    if (res) { showToast(res.message || '직책 풀 적용 완료'); if (res.config) renderConfigStatus(res.config); }
-}
-
-async function resetJobPool() {
-    const res = await postConfig('/api/matching-config/job-pool', { jobs: null });
-    if (res) {
-        showToast(res.message || '직책 풀 무작위 복원 완료');
-        if (res.config) renderConfigStatus(res.config);
-        document.querySelectorAll('#job-checkboxes input').forEach(cb => { cb.checked = false; });
-        document.getElementById('job-random').checked = true;
-        onJobModeChange();
-    }
-}
 
 async function postConfig(url, body) {
     try {
@@ -2147,6 +2041,5 @@ function escapeAttr(value) {
 
 // ─── 진입 ──────────────────────────────────────────────────────────────────
 
-buildJobCheckboxes();
 loadMatchingConfig();
 startPolling();

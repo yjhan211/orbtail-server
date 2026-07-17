@@ -48,6 +48,17 @@ public class DoorStateManager
     }
 
     /// <summary>
+    ///     열린 문을 다시 잠급니다.
+    /// </summary>
+    public bool CloseDoor(long matchingId, int doorId)
+    {
+        lock (_lock)
+        {
+            return _openDoors.TryGetValue(matchingId, out var doors) && doors.Remove(doorId);
+        }
+    }
+
+    /// <summary>
     ///     문이 열려있는지 확인
     /// </summary>
     public bool IsDoorOpen(long matchingId, int doorId)

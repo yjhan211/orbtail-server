@@ -13,10 +13,12 @@ namespace game_server.network;
 
 public partial class GameClientSession
 {
+    private static readonly bool RoomExploreEventsEnabled = false;
     private int _pendingRoomEventInteractId;
 
     private bool TryStartRoomExploreEvent(AreaType area, int interactId)
     {
+        if (!RoomExploreEventsEnabled) return false;
         if (!PlayerId.HasValue || _pendingRoomEntryEventId != 0)
             return false;
 

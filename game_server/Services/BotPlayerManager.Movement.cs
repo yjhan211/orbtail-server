@@ -14,11 +14,30 @@ namespace game_server.services;
 /// </summary>
 public partial class BotPlayerManager
 {
-    /// <summary>봇 walking 속도 (실제 플레이어 walkSpeed=3과 동일).</summary>
-    private const float BotWalkSpeed = 3.0f;
+    /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
+    private const float BotWalkSpeed = 6.0f;
 
-    /// <summary>영역 전환 직전 도어 앞에서 잠시 멈추는 시간(ms). 포탈 들어가는 시각적 단서.</summary>
-    private const int BotTransitionPauseMs = 600;
+    /// <summary>아이소메트릭 세로 속도 보정 — 클라 PlayerMovement.isoVerticalSpeedScale과 같은 값을 유지해야 한다.</summary>
+    private const float IsoVerticalSpeedScale = 1f;
+
+    /// <summary>
+    ///     화면 좌표 진행 방향(정규화)의 타일 기준 등속 속력.
+    ///     세로가 압축된 아이소메트릭 화면에서 어느 방향이든 타일 통과 속도가 BotWalkSpeed로 일정해진다
+    ///     (플레이어 로컬 이동의 세로 보정과 동일 규칙).
+    /// </summary>
+    private static float ScaledWalkSpeed(float dirX, float dirY)
+    {
+        float tileY = dirY / IsoVerticalSpeedScale;
+        float tileFactor = (float)Math.Sqrt(dirX * dirX + tileY * tileY);
+        return tileFactor > 0.0001f ? BotWalkSpeed / tileFactor : BotWalkSpeed;
+    }
+
+    private static Vector3f ScaledWalkVelocity(float dirX, float dirY)
+    {
+        float speed = ScaledWalkSpeed(dirX, dirY);
+        return new Vector3f(dirX * speed, dirY * speed, 0f);
+    }
+
 
     /// <summary>봇 자원 틱 결과. 자원 고갈 탈락 + 위치 이동 이벤트(DemoMode 영역 전환만)를 함께 반환.</summary>
     public class BotTickResult
@@ -40,29 +59,11 @@ public partial class BotPlayerManager
     /// </summary>
     public BotTickResult ProcessBotTick(
         long matchingId,
-        int isolationCorruptionDelta,
-        int nearbyRecoveryDelta,
-        int proximityRecoveryDelta,
         int closedAreaCorruptionDelta,
-        AreaClosureManager areaClosureManager,
-        IReadOnlyList<BotBehaviorPlayerSnapshot> humanSnapshots)
+        AreaClosureManager areaClosureManager)
     {
         var result = new BotTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
-
-        var allPlayerSnapshots = new List<BotBehaviorPlayerSnapshot>(humanSnapshots);
-        foreach (var b in bots)
-        {
-            if (b.IsEliminated) continue;
-            allPlayerSnapshots.Add(new BotBehaviorPlayerSnapshot
-            {
-                PlayerId = b.PlayerId,
-                TargetPlayerId = b.TargetPlayerId,
-                CurrentArea = b.CurrentArea,
-                Position = b.Position,
-                IsEliminated = false
-            });
-        }
 
         foreach (var bot in bots)
         {
@@ -71,44 +72,19 @@ public partial class BotPlayerManager
             bool isTerminal = bot.ManittoStatus == ManittoStatus.TERMINAL;
             int totalCorruptionDelta = 0;
 
-            if (!isTerminal && bot.CurrentArea != AreaType.None)
+            if (!isTerminal &&
+                bot.CurrentArea != AreaType.None &&
+                areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
             {
-                var target = allPlayerSnapshots.FirstOrDefault(p =>
-                    p.PlayerId == bot.TargetPlayerId && !p.IsEliminated);
-                bool targetInSameArea = target != null && target.CurrentArea == bot.CurrentArea;
-
-                if (!targetInSameArea)
-                {
-                    totalCorruptionDelta += PassiveBuffUtility.ApplyReduction(
-                        isolationCorruptionDelta,
-                        bot.ActiveBuffIds,
-                        BuffSubType.ISOLATION_CORRUPTION_GAIN_DOWN);
-                }
-                else
-                {
-                    int population = CountPlayerSnapshotsInArea(allPlayerSnapshots, bot.CurrentArea);
-                    int recoveryMagnitude = Math.Max(1,
-                        (int)Math.Round(Math.Abs(nearbyRecoveryDelta) * (2.0 / Math.Max(2, population))));
-                    totalCorruptionDelta += nearbyRecoveryDelta < 0 ? -recoveryMagnitude : recoveryMagnitude;
-
-                    if (IsBotTargetWithinProximity(bot, target))
-                        totalCorruptionDelta += proximityRecoveryDelta;
-                }
-
-                if (areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
-                    totalCorruptionDelta += closedAreaCorruptionDelta;
+                totalCorruptionDelta += closedAreaCorruptionDelta;
             }
 
-            // issue22 디버그: walking 시각 검증을 위해 자원 자연 감소 + 탈락 비활성.
-            // DemoMode일 때만 기존 자원/탈락 로직 유지(영상 시나리오 정합).
             if (totalCorruptionDelta != 0)
                 bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
 
-
             if (DemoMode.IsActive)
             {
-                // 1) 오염도 적용 (시한부 추가)
-                // General resource deltas are accumulated outside DemoMode.
+                // DemoMode 전용 시한부 및 강제 탈락 연출.
                 if (bot.ManittoStatus == ManittoStatus.TERMINAL)
                     bot.Corruption = Math.Clamp(bot.Corruption + 5, 0, 100);
 
@@ -124,11 +100,6 @@ public partial class BotPlayerManager
                     }
                 }
 
-                // 2) 폐쇄 구역 체류 시 오염도 가속 (권고안 B 2026-05-05 — 변별력 보강 +4/틱).
-                //    이전엔 stamina -20이었으나 자원 통합 후 stamina 0이어도 탈락 안 되므로 cor로 변경.
-                // 3) Corruption 100: 정신력 소모로 탈락. Stamina 0은 비탈락.
-                // 4) DemoMode 스크립트 텔레포트 폐기 — 봇은 직책 큐(JobAreaQueue) 따라 walking으로만 이동.
-                //    H3/H6/H8 narrative 트리거(색출/흔적/탈락)는 BotPlayerManager.Mission.cs에서 별도 시간 기반 처리.
             }
 
             if (TryQueueBotMentalElimination(bot, matchingId, result))
@@ -168,24 +139,6 @@ public partial class BotPlayerManager
         return true;
     }
 
-    private static int CountPlayerSnapshotsInArea(
-        IReadOnlyList<BotBehaviorPlayerSnapshot> players,
-        AreaType area)
-    {
-        return players.Count(p => !p.IsEliminated && p.CurrentArea == area);
-    }
-
-    private static bool IsBotTargetWithinProximity(BotPlayerState bot, BotBehaviorPlayerSnapshot? target)
-    {
-        var targetPosition = target?.Position;
-        if (targetPosition == null) return false;
-
-        float dx = bot.Position.X - targetPosition.X;
-        float dy = bot.Position.Y - targetPosition.Y;
-        return dx * dx + dy * dy <=
-               Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
-    }
-
     private void SyncBotForcedFollowState(BotPlayerState bot, long matchingId)
     {
         if (!bot.IsForcedFollowActive) return;
@@ -198,7 +151,7 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     #127: 봇 walking 틱(50ms). DemoMode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
-    ///     실제 플레이어와 동일한 walkSpeed=3.0 적용. 매 틱 G_TO_C_MOVE 동등 이벤트 발행.
+    ///     Uses the same fixed movement speed 6.0 as the player and emits an equivalent G_TO_C_MOVE event each tick.
     ///     #134: 추가로 ChooseNewWanderTarget 시 PendingExploreEndBroadcast가 set된 봇은 ExploreEnds list에 수집 — walking 시작 안전망.
     /// </summary>
     public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager,
@@ -228,7 +181,7 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     봇 한 명의 walking step 처리. 경로가 없으면 새 wander 타겟 선택.
-    ///     영역 전환 단계는 텔레포트(LEAVE+ENTER+MOVE) 이벤트 반환,
+    ///     영역 경계도 인접 셀까지 연속 보행하며, 도착 셀을 기준으로 영역 변경 이벤트를 반환한다.
     ///     일반 셀 walk는 진행 방향 + 속도 포함 MOVE 이벤트 반환.
     /// </summary>
     private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
@@ -316,64 +269,19 @@ public partial class BotPlayerManager
         }
 
         var nextStep = bot.Path[bot.PathIndex];
+        var mapId = GetMatchingMapId(matchingId);
+        var fromArea = bot.CurrentArea;
+        var fromCell = bot.Cell;
+        bool reachedStep = false;
 
-        // 1) 영역 경계 통과 — 도어 앞 짧은 멈춤 후 텔레포트 (포탈 들어가는 시각적 단서)
-        if (nextStep.IsAreaTransition)
-        {
-            // 첫 진입: 멈춤 시각 설정 + velocity 0 정지 이벤트 발행
-            // (클라가 발소리/walk 애니를 즉시 정지하도록 명시 알림 — 미발행 시 LateUpdate 0.3초 timeout까지 발소리 잔존)
-            if (bot.TransitionPauseUntil == DateTime.MinValue)
-            {
-                bot.TransitionPauseUntil = now.AddMilliseconds(BotTransitionPauseMs);
-                bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
-                return new BotMovementEvent
-                {
-                    BotPlayerId = bot.PlayerId,
-                    FromArea = bot.CurrentArea,
-                    ToArea = bot.CurrentArea,
-                    FromCell = bot.Cell,
-                    ToCell = bot.Cell,
-                    Position = bot.Position,
-                    Velocity = new Vector3f(0f, 0f, 0f),
-                    Rotation = bot.Rotation,
-                    IsAreaTransition = false
-                };
-            }
-
-            // 멈춤 진행 중: 패킷 발행 없이 대기
-            if (now < bot.TransitionPauseUntil) return null;
-
-            // 멈춤 종료 → 실제 영역 전환
-            bot.TransitionPauseUntil = DateTime.MinValue;
-
-            var fromArea = bot.CurrentArea;
-            var fromCell = bot.Cell;
-            bot.CurrentArea = nextStep.Area;
-            bot.Cell = nextStep.Cell;
-            bot.Position = CellToWorldPosition(nextStep.Cell);
-            bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
-            bot.PathIndex++;
-            ClearBotRoomExplorePlan(bot);
-            return new BotMovementEvent
-            {
-                BotPlayerId = bot.PlayerId,
-                FromArea = fromArea,
-                ToArea = bot.CurrentArea,
-                FromCell = fromCell,
-                ToCell = bot.Cell,
-                Position = bot.Position,
-                Velocity = new Vector3f(0f, 0f, 0f),
-                Rotation = bot.Rotation,
-                IsAreaTransition = true
-            };
-        }
-
-        // 2) 일반 셀 walk — walkSpeed × deltaSec 만큼 진행
+        // Walk every waypoint at the same speed. An area transition is just the adjacent cell across a door.
         var targetPos = CellToWorldPosition(nextStep.Cell);
         float dx = targetPos.X - bot.Position.X;
         float dy = targetPos.Y - bot.Position.Y;
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
         float maxDist = BotWalkSpeed * deltaSec;
+        if (dist >= 0.01f)
+            maxDist = ScaledWalkSpeed(dx / dist, dy / dist) * deltaSec;
 
         Vector3f newPosition;
         Vector3f velocity;
@@ -385,18 +293,16 @@ public partial class BotPlayerManager
             bot.Cell = nextStep.Cell;
             bot.Position = newPosition;
             bot.PathIndex++;
+            reachedStep = true;
             velocity = new Vector3f(0f, 0f, 0f);
-            if (bot.PathIndex < bot.Path.Count && !bot.Path[bot.PathIndex].IsAreaTransition)
+            if (bot.PathIndex < bot.Path.Count)
             {
                 var followingPos = CellToWorldPosition(bot.Path[bot.PathIndex].Cell);
                 float nextDx = followingPos.X - newPosition.X;
                 float nextDy = followingPos.Y - newPosition.Y;
                 float nextDist = (float)Math.Sqrt(nextDx * nextDx + nextDy * nextDy);
                 if (nextDist > 0.01f)
-                    velocity = new Vector3f(
-                        nextDx / nextDist * BotWalkSpeed,
-                        nextDy / nextDist * BotWalkSpeed,
-                        0f);
+                    velocity = ScaledWalkVelocity(nextDx / nextDist, nextDy / nextDist);
             }
         }
         else
@@ -407,8 +313,20 @@ public partial class BotPlayerManager
                 bot.Position.X + dirX * maxDist,
                 bot.Position.Y + dirY * maxDist,
                 0f);
-            velocity = new Vector3f(dirX * BotWalkSpeed, dirY * BotWalkSpeed, 0f);
+            velocity = ScaledWalkVelocity(dirX, dirY);
             bot.Position = newPosition;
+        }
+
+        bool areaChanged = false;
+        if (reachedStep)
+        {
+            var resolvedArea = GameMapData.GetCurrentArea(mapId, bot.Cell);
+            if (resolvedArea != AreaType.None && resolvedArea != bot.CurrentArea)
+            {
+                bot.CurrentArea = resolvedArea;
+                areaChanged = true;
+                ClearBotRoomExplorePlan(bot);
+            }
         }
 
         bot.WalkVelocity = velocity;
@@ -422,14 +340,14 @@ public partial class BotPlayerManager
         return new BotMovementEvent
         {
             BotPlayerId = bot.PlayerId,
-            FromArea = bot.CurrentArea,
+            FromArea = fromArea,
             ToArea = bot.CurrentArea,
-            FromCell = bot.Cell,
+            FromCell = fromCell,
             ToCell = nextStep.Cell,
             Position = newPosition,
             Velocity = velocity,
             Rotation = bot.Rotation,
-            IsAreaTransition = false
+            IsAreaTransition = areaChanged
         };
     }
 
@@ -456,6 +374,12 @@ public partial class BotPlayerManager
         bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
         // walking 시작 시 EXPLORE_END broadcast 안전망 — 다음 ProcessBotMovementTick에서 수집.
         bot.PendingExploreEndBroadcast = true;
+
+        if (bot.CompletedRoomExploreArea == bot.CurrentArea &&
+            TryStartPostExploreRelocation(bot, matchingId, mapId, closureManager))
+        {
+            return;
+        }
 
         if (bot.IsForcedFollowActive &&
             TryStartBotForcedFollowPath(bot, matchingId, mapId, playerAreas))
@@ -514,6 +438,42 @@ public partial class BotPlayerManager
             "Proto0 bot move: BotId={Bot}, Target={Target}, Policy={Policy}, Profile={Profile}, {From}->{To}, Steps={Steps}",
             bot.PlayerId, bot.TargetPlayerId, ActiveProto0BotPolicy, bot.Proto0Profile,
             bot.CurrentArea, destination, path.Count);
+    }
+
+    private bool TryStartPostExploreRelocation(BotPlayerState bot, long matchingId, MapId mapId,
+        AreaClosureManager closureManager)
+    {
+        var candidateAreas = GameMapData.GetAreas(mapId)
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Where(area => area != AreaType.None &&
+                           area != bot.CurrentArea &&
+                           !area.IsCorridor() &&
+                           !closureManager.IsAreaClosed(matchingId, area) &&
+                           GameInteractableData.GetByZone((int)area)
+                               .Any(info => IsBotRoomExploreCandidate(info, area)))
+            .OrderBy(_ => _rng.Next())
+            .ToList();
+
+        foreach (var destination in candidateAreas)
+        {
+            var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, destination)
+                ?? GameMapData.GetAreaSpawnCell(mapId, destination);
+            var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
+                destination, targetCell,
+                area => closureManager.IsAreaClosed(matchingId, area));
+            if (path == null || path.Count == 0) continue;
+
+            bot.Path = path;
+            bot.PathIndex = 0;
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 1.0);
+            _logger.LogInformation(
+                "Bot post-explore relocation: BotId={Bot}, {From}->{To}, Steps={Steps}",
+                bot.PlayerId, bot.CurrentArea, destination, path.Count);
+            return true;
+        }
+
+        return false;
     }
 
     private bool TryStartBotForcedFollowPath(BotPlayerState bot, long matchingId, MapId mapId,
@@ -1144,7 +1104,6 @@ public partial class BotPlayerManager
         if (bot.Path.Count > 0 && bot.PathIndex < bot.Path.Count) return null;
 
         var ev = TransitionBotArea(bot, matchingId, target);
-        bot.Stamina = Math.Max(0, bot.Stamina - BotMoveStaminaCost);
         bot.LastMoveTime = DateTime.UtcNow;
         _logger.LogInformation("DEMO_MODE 봇 이동(스크립트): BotId={Bot}, Job={Job}, {Prev} → {Area} (경과 {Sec}s)",
             bot.PlayerId, bot.MyJobTitle, ev.FromArea, ev.ToArea, elapsedSec);
@@ -1188,7 +1147,7 @@ public partial class BotPlayerManager
 
 /// <summary>
 ///     봇 이동 이벤트. ProcessBotTick / ProcessBotMovementTick이 반환하면 GameServer가 같은 영역 인간 세션에 패킷 브로드캐스트.
-///     영역 전환 시: G_TO_C_AREA_PLAYER_LEAVE(이전) + G_TO_C_AREA_PLAYER_ENTER(새) + G_TO_C_MOVE(텔레포트)
+///     영역 변경 시: 보행으로 새 영역 셀에 도착한 뒤 LEAVE + ENTER + MOVE를 전송.
 ///     영역 내 walk 시: G_TO_C_MOVE 만 (같은 영역 인간들에게)
 /// </summary>
 public class BotMovementEvent

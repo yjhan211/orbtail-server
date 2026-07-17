@@ -27,6 +27,12 @@ public partial class GameClientSession
         if (!PlayerId.HasValue || msg == null)
             return Task.CompletedTask;
 
+        if (Config.PROXIMITY_AUTO_COMBAT_P0_ENABLED)
+        {
+            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Manual attack is disabled during proximity auto combat P0");
+            return Task.CompletedTask;
+        }
+
         if (IsEliminated)
         {
             SendErrorResponse(ErrorCode.PLAYER_DEAD, "Eliminated players cannot attack");
@@ -222,6 +228,17 @@ public partial class GameClientSession
 
         Logger.LogInformation("Player {PlayerId} state change request: {State}", PlayerId, msg.State);
 
+        bool isExploreState = msg.State == global::network.common.PlayerState.EXPLORE_1;
+        if (!isExploreState &&
+            msg.State != global::network.common.PlayerState.IDLE &&
+            _pendingFinish.Count > 0)
+        {
+            Logger.LogDebug(
+                "Ignored state change while RNG collect is pending: PlayerId={PlayerId}, State={State}",
+                PlayerId, msg.State);
+            return;
+        }
+
         if (msg.State == global::network.common.PlayerState.SLEEP)
         {
             CancelPendingRngCollect("PlayerState:SLEEP");
@@ -231,7 +248,6 @@ public partial class GameClientSession
 
         // 서버 측 상태 저장
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-        bool isExploreState = msg.State == global::network.common.PlayerState.EXPLORE_1;
         if (!isExploreState)
             CancelPendingRngCollect($"PlayerState:{msg.State}");
 

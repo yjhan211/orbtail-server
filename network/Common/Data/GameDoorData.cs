@@ -6,11 +6,14 @@
 
 using System.Collections.Generic;
 using network.common.data.helpers;
+using network.common.data.models;
 
 namespace network.common.data
 {
     public static class GameDoorData
     {
+        private const float PassageRadiusPadding = 1f;
+
         // door_id -> DoorInfoData
         private static readonly Dictionary<int, DoorInfoData> _doors = new();
 
@@ -85,6 +88,63 @@ namespace network.common.data
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Finds the door that permits a direct movement transition between two areas.
+        /// A transition is valid only near a door assigned to either side of the boundary.
+        /// </summary>
+        public static DoorInfoData GetDoorForTransition(
+            AreaType currentArea,
+            AreaType nextArea,
+            Cell currentCell,
+            Cell nextCell)
+        {
+            if (currentArea == nextArea || currentArea == AreaType.None || nextArea == AreaType.None)
+                return null;
+
+            DoorInfoData nearestDoor = null;
+            float nearestDistanceSquared = float.MaxValue;
+
+            foreach (var door in _doors.Values)
+            {
+                if (door.AreaType != currentArea && door.AreaType != nextArea)
+                    continue;
+
+                float currentDistanceSquared = GetDistanceSquared(door, currentCell);
+                float nextDistanceSquared = GetDistanceSquared(door, nextCell);
+                float distanceSquared = currentDistanceSquared < nextDistanceSquared
+                    ? currentDistanceSquared
+                    : nextDistanceSquared;
+                float transitionDistance = GetPassageRadius(door);
+
+                if (distanceSquared > transitionDistance * transitionDistance ||
+                    distanceSquared >= nearestDistanceSquared)
+                    continue;
+
+                nearestDistanceSquared = distanceSquared;
+                nearestDoor = door;
+            }
+
+            return nearestDoor;
+        }
+
+        public static bool IsOutsidePassageRadius(DoorInfoData door, Cell cell)
+        {
+            float passageRadius = GetPassageRadius(door);
+            return GetDistanceSquared(door, cell) > passageRadius * passageRadius;
+        }
+
+        private static float GetPassageRadius(DoorInfoData door)
+        {
+            return (door.InteractDistance > 0f ? door.InteractDistance : 1f) + PassageRadiusPadding;
+        }
+
+        private static float GetDistanceSquared(DoorInfoData door, Cell cell)
+        {
+            float dx = cell.X - door.PositionX;
+            float dy = cell.Y - door.PositionY;
+            return dx * dx + dy * dy;
         }
 
         /// <summary>

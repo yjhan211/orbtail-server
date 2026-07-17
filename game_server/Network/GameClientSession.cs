@@ -35,7 +35,6 @@ public partial class GameClientSession : SessionBase
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly List<int> _activeBuffIds = new();
     private readonly AreaRuleManager _areaRuleManager;
-    private readonly CorridorRuleManager _corridorRuleManager;
 
     // 플레이어가 발견한 행동 수칙 (ruleId → 최초 발견자 PlayerId)
     private readonly Dictionary<int, long> _discoveredRules = new();
@@ -45,6 +44,7 @@ public partial class GameClientSession : SessionBase
     private readonly InteractableStateManager _interactableStateManager;
     private readonly ItemPoolManager _itemPoolManager;
     private readonly AreaItemStockManager _areaItemStockManager;
+    private readonly GroundItemManager _groundItemManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly SabotageManager _sabotageManager;
@@ -77,11 +77,11 @@ public partial class GameClientSession : SessionBase
     private DateTime _lastInteractRejectTime = DateTime.MinValue;
     private DateTime _lastMoveTime = DateTime.UtcNow;
     private DateTime _lastSaveTime = DateTime.UtcNow;
-    private DateTime _lastTargetEncounterRecoveryAt = DateTime.MinValue;
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
 
     private Vector3f? _lastValidatedPosition;
     private Cell? _lastValidCell;
+    private readonly HashSet<int> _doorsPendingRelock = new();
     private float _lastValidatedRotation;
     private bool _hasFirstMoveCalibrated;
     private long _lastClientMoveTimestamp; // 클라이언트 측 Unix ms — 패킷 클러스터 영향 없는 정확한 deltaTime 계산용
@@ -129,7 +129,7 @@ public partial class GameClientSession : SessionBase
         AreaRuleManager areaRuleManager,
         ItemPoolManager itemPoolManager,
         AreaItemStockManager areaItemStockManager,
-        CorridorRuleManager corridorRuleManager,
+        GroundItemManager groundItemManager,
         DoorStateManager doorStateManager,
         SabotageManager sabotageManager,
         ManittoChainManager manittoChainManager,
@@ -151,7 +151,7 @@ public partial class GameClientSession : SessionBase
         _areaRuleManager = areaRuleManager;
         _itemPoolManager = itemPoolManager;
         _areaItemStockManager = areaItemStockManager;
-        _corridorRuleManager = corridorRuleManager;
+        _groundItemManager = groundItemManager;
         _doorStateManager = doorStateManager;
         _sabotageManager = sabotageManager;
         _manittoChainManager = manittoChainManager;
@@ -193,6 +193,15 @@ public partial class GameClientSession : SessionBase
     internal static void SetPresenceTracker(Proto0PresenceTracker presenceTracker)
     {
         _presenceTracker = presenceTracker;
+    }
+
+    internal static void CleanupAbandonedMatchingRuntime(long matchingId)
+    {
+        GameRoundStates.TryRemove(matchingId, out _);
+        _presenceTracker?.Remove(matchingId);
+        RngCollectCooldownStore.ClearMatching(matchingId);
+        if (GameTimers.TryRemove(matchingId, out var timer))
+            timer.Dispose();
     }
 
     internal static (int RoundNumber, int TotalRounds, string Phase, int RemainingSeconds, int PhaseDurationSeconds,
@@ -270,7 +279,7 @@ public partial class GameClientSession : SessionBase
     public AreaType CurrentArea { get; private set; } = AreaType.None;
     private PlayerState CurrentState { get; set; } = PlayerState.Idle;
 
-    /// <summary>마지막 검증된 월드 좌표 — 교감(근접 회복) 등 거리 판정용 (#161)</summary>
+    /// <summary>마지막 검증된 월드 좌표 — 근접 전투와 체크리스트 거리 판정용.</summary>
     public Vector3f? LastValidatedPosition => _lastValidatedPosition;
 
     // 마니또 체인 정보
@@ -296,17 +305,6 @@ public partial class GameClientSession : SessionBase
     private int Stamina { get; set; } = InitialStamina;
     private int Corruption { get; set; } = InitialCorruption;
 
-    internal bool ShouldSkipTargetEncounterRecoveryTick(DateTime now, int intervalSeconds)
-    {
-        return _lastTargetEncounterRecoveryAt != DateTime.MinValue &&
-               now - _lastTargetEncounterRecoveryAt < TimeSpan.FromSeconds(intervalSeconds);
-    }
-
-    internal void MarkTargetEncounterRecoveryApplied(DateTime now)
-    {
-        _lastTargetEncounterRecoveryAt = now;
-    }
-
     // 게임 타이머 설정 (Config에서 참조)
     private static int GameDurationMinutes => Config.GAME_DURATION_MINUTES;
     private static int GameDurationSeconds => Config.GAME_DURATION_SECONDS;
@@ -324,6 +322,10 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,
             async bytes => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_GROUND_ITEM_PICKUP,
+            async bytes => await HandleMessage<C_TO_G_GROUND_ITEM_PICKUP>(bytes, HandleGroundItemPickup));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DROP_GROUND_ITEM,
+            async bytes => await HandleMessage<C_TO_G_DROP_GROUND_ITEM>(bytes, HandleDropGroundItem));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE,
             async bytes => await HandleMessage<C_TO_G_PLAYER_STATE>(bytes, HandlePlayerState));
 

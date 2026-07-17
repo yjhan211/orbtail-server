@@ -78,13 +78,6 @@ namespace network.common
         public const int ROUND_SETTLEMENT_DETECTION_RESULT_SECONDS = 3;
         public const int ROUND_SETTLEMENT_ELIMINATION_SECONDS = 3;
 
-        // 패키지 Y 추가 상수 (#24)
-        /// <summary>강당 체류 시 자연증가에 추가되는 오염도 (5초당). GDD §3.1.1, 패키지 Y 3A.</summary>
-        public const int AUDITORIUM_STAY_CORRUPTION_BONUS = 1;
-
-        /// <summary>강당 체류 페널티 적용 구역 (AreaType enum 값: 13 = Gym)</summary>
-        public const int AUDITORIUM_AREA_TYPE = 13;
-
         /// <summary>흔적 배치 스태미나 비용. GDD §3.1.2, 패키지 Y 2A: -10 → -5.</summary>
         public const int TRACE_PLACE_STAMINA_COST = 5;
 
@@ -94,15 +87,14 @@ namespace network.common
         /// <summary>폐쇄 구역 체류 시 5초당 오염도 증가량. GDD §2.1.5, v0.1.9, #66.
         ///     스태미나 패널티(-20/5초)에서 오염도 패널티로 변경.
         ///     메타포: 밀폐된 위험 구역 체류 = 정신적 압박 상승.
-        ///     자연증가와 합산됨 (후반 10분+ 기준 총 +7/5초).
+        ///     사건·전투 등 다른 오염도 변화와 합산된다.
         ///     수치는 플레이테스트 후 최종 확정 예정 (미확정 #67). v0.1.10에서 2 → 4 → 5로 상향.</summary>
         public const int CLOSED_AREA_CORRUPTION_TICK = 5;
 
-        /// <summary>교감(1010) 판정 거리. 타겟과 같은 영역 + 이 거리 안이면 추가 회복 (#161).
-        ///     서버 판정과 클라 HUD/Dock 점 표시가 같은 값을 쓴다.</summary>
+        /// <summary>근접 자동전투와 타겟 근접 체크리스트의 공통 거리 기준.</summary>
         public const float TARGET_PROXIMITY_DISTANCE = 3f;
 
-        /// <summary>교감(1010) 추가 회복량 (5초당 오염도 감소). 의존(1002) 회복에 합산. (#161)</summary>
-        public const int TARGET_PROXIMITY_RECOVERY_BONUS = 10;
+        /// <summary>근접 자동전투 P0. 활성화 중에는 기존 수동 분필 공격 진입을 숨긴다.</summary>
+        public static readonly bool PROXIMITY_AUTO_COMBAT_P0_ENABLED = true;
     }
 }

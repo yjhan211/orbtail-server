@@ -9,6 +9,9 @@ namespace game_server.services;
 /// </summary>
 public static class RngCollectCooldownStore
 {
+    public const int DefaultCooldownSeconds = 30;
+    private static readonly object SyncRoot = new();
+
     private static readonly ConcurrentDictionary<(long, int), DateTime> _cooldowns = new();
 
     public static bool IsInCooldown(long matchingId, int interactId, out int remainingSeconds)
@@ -21,15 +24,35 @@ public static class RngCollectCooldownStore
         return true;
     }
 
+    public static bool TryAcquireCooldown(long matchingId, int interactId, int seconds, out int remainingSeconds)
+    {
+        lock (SyncRoot)
+        {
+            var now = DateTime.UtcNow;
+            if (_cooldowns.TryGetValue((matchingId, interactId), out var nextAvailable) && now < nextAvailable)
+            {
+                remainingSeconds = (int)Math.Ceiling((nextAvailable - now).TotalSeconds);
+                return false;
+            }
+
+            _cooldowns[(matchingId, interactId)] = now.AddSeconds(seconds);
+            remainingSeconds = 0;
+            return true;
+        }
+    }
+
     public static void SetCooldown(long matchingId, int interactId, int seconds)
     {
-        if (seconds <= 0)
+        lock (SyncRoot)
         {
-            ClearCooldown(matchingId, interactId);
-            return;
-        }
+            if (seconds <= 0)
+            {
+                _cooldowns.TryRemove((matchingId, interactId), out _);
+                return;
+            }
 
-        _cooldowns[(matchingId, interactId)] = DateTime.UtcNow.AddSeconds(seconds);
+            _cooldowns[(matchingId, interactId)] = DateTime.UtcNow.AddSeconds(seconds);
+        }
     }
 
     public static List<(int InteractId, int RemainingSeconds)> GetSnapshot(long matchingId)
@@ -65,6 +88,7 @@ public static class RngCollectCooldownStore
     /// </summary>
     public static void ClearCooldown(long matchingId, int interactId)
     {
-        _cooldowns.TryRemove((matchingId, interactId), out _);
+        lock (SyncRoot)
+            _cooldowns.TryRemove((matchingId, interactId), out _);
     }
 }

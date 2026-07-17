@@ -178,14 +178,31 @@ namespace network.common.data
                 }
             }
 
-            // area 리전으로 walkable 판정
+            var regions = GetMapRegions(mapId);
+            var groundRegions = regions
+                .Where(r => r.RegionType.Equals("ground", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            // Legacy continuous maps export exact walkable ground cells, while the
+            // current room map uses area rectangles as its walkable definition.
             var areaRegions = _areaRegions.TryGetValue(mapId, out var areas) ? areas : new List<AreaRegion>();
 
-            if (areaRegions.Count > 0)
+            if (groundRegions.Count > 0 || areaRegions.Count > 0)
             {
                 var isInWalkable = false;
+                foreach (var region in groundRegions)
+                {
+                    if (position.X >= region.Start.X && position.X <= region.End.X &&
+                        position.Y >= region.Start.Y && position.Y <= region.End.Y)
+                    {
+                        isInWalkable = true;
+                        break;
+                    }
+                }
+
                 foreach (var area in areaRegions)
                 {
+                    if (isInWalkable) break;
                     if (position.X >= area.Start.X && position.X <= area.End.X &&
                         position.Y >= area.Start.Y && position.Y <= area.End.Y)
                     {
@@ -200,7 +217,6 @@ namespace network.common.data
                 }
             }
 
-            var regions = GetMapRegions(mapId);
             var obstacleRegions =
                 regions.Where(r => r.RegionType.Equals("obstacle", StringComparison.OrdinalIgnoreCase));
             foreach (var region in obstacleRegions)

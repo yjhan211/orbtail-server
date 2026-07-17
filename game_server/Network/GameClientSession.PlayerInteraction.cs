@@ -582,5 +582,49 @@ public partial class GameClientSession
         Logger.LogDebug("Sent DOOR_STATE_LIST to Player {PlayerId}: {Count} open doors", PlayerId, openDoors.Count);
     }
 
+    private void TrackDoorAfterPassage(DoorInfoData? doorInfo)
+    {
+        if (doorInfo == null) return;
+
+        _doorsPendingRelock.Add(doorInfo.DoorId);
+        Logger.LogDebug(
+            "Player {PlayerId} passed Door_{DoorId}; waiting to relock until player leaves the door radius",
+            PlayerId, doorInfo.DoorId);
+    }
+
+    private void TryRelockPassedDoors(Cell currentCell)
+    {
+        if (_doorsPendingRelock.Count == 0) return;
+
+        foreach (int doorId in new List<int>(_doorsPendingRelock))
+        {
+            var doorInfo = GameDoorData.Get(doorId);
+            if (doorInfo == null)
+            {
+                _doorsPendingRelock.Remove(doorId);
+                continue;
+            }
+
+            if (!GameDoorData.IsOutsidePassageRadius(doorInfo, currentCell)) continue;
+
+            _doorsPendingRelock.Remove(doorId);
+            CloseDoorAfterPassage(doorInfo);
+        }
+    }
+
+    private void CloseDoorAfterPassage(DoorInfoData doorInfo)
+    {
+        if (!_doorStateManager.CloseDoor(CurrentMapSubId, doorInfo.DoorId)) return;
+
+        using var updatePacket =
+            PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorInfo.DoorId, false, ErrorCode.SUCCESS);
+        var matchingSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        foreach (var session in matchingSessions) session.Send(updatePacket);
+
+        Logger.LogInformation(
+            "Player {PlayerId} moved beyond Door_{DoorId} relock radius; door relocked",
+            PlayerId, doorInfo.DoorId);
+    }
+
     #endregion
 }

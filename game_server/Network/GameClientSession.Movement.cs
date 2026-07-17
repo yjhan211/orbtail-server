@@ -52,11 +52,13 @@ public partial class GameClientSession
                 return;
             }
 
+            var previousCell = _lastValidCell;
             var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
 
             // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
             var currentCell = WorldPositionToCell(validatedPosition);
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
+            TryRelockPassedDoors(currentCell);
 
             // 3. 주기적 저장 (1초마다)
             bool needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
@@ -81,6 +83,8 @@ public partial class GameClientSession
             }
 
             _lastValidatedPosition = validatedPosition;
+            _groundItemManager.ReleaseSourcePickupBlocks(CurrentMapSubId, PlayerId.Value,
+                newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
             _lastValidatedRotation = msg.Rotation;
 
             // 4. Area 변경 처리 (퇴장 조건 통과한 경우만)
@@ -92,6 +96,9 @@ public partial class GameClientSession
             {
                 // 가장 가까운 문 기준으로 잠김 체크 (클라이언트는 이미 막고 있음, 서버는 보정 역할)
                 // 1. 진입하려는 영역의 가장 가까운 문이 잠겨있으면 차단
+                var crossedDoor = GameDoorData.GetDoorForTransition(
+                    CurrentArea, newArea, previousCell ?? currentCell, currentCell);
+
                 var entryBlockedDoor =
                     _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, newArea, currentCell.X, currentCell.Y);
                 if (entryBlockedDoor != null)
@@ -123,12 +130,9 @@ public partial class GameClientSession
                 // 폐쇄 구역 진입 경고 (지속 페널티는 ResourceTick에서 처리)
                 if (_areaClosureManager.IsAreaClosed(CurrentMapSubId, newArea))
                 {
-                    Logger.LogInformation("폐쇄 구역 진입: PlayerId={PlayerId}, Area={Area} (체류 시 스태미나 지속 감소)",
+                    Logger.LogInformation("폐쇄 구역 진입: PlayerId={PlayerId}, Area={Area} (체류 시 오염도 지속 증가)",
                         PlayerId, newArea);
                 }
-
-                // 구역 이동 시 스태미나 소모
-                ModifyStats(staminaDelta: -GameServer.MoveStaminaCost);
 
                 Logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
@@ -140,14 +144,13 @@ public partial class GameClientSession
                 _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
                     oldArea.ToString(), newArea.ToString(), isBot: false);
                 await HandleAreaChange(oldArea, newArea);
+                TrackDoorAfterPassage(crossedDoor);
             }
 
-            // 5. 복도 규칙 체크
-            CheckCorridorRuleViolation(validatedPosition, msg.Velocity, newArea);
             TrySendCorridorEncounterEvents(validatedPosition);
             TrySendRoomEncounterEventsFromVision(validatedPosition);
 
-            // 6. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
+            // 5. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
                 validatedPosition,
@@ -408,100 +411,16 @@ public partial class GameClientSession
 
                 // 5. 나에게 새 Area의 Interactable 목록 전송
                 SendInteractableList(newArea);
+                SendGroundItemSnapshot(newArea);
 
                 // 6. 사보타주 이벤트 트리거 (해당 Area 최초 진입 시)
                 _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, newArea);
-                ApplyImmediateTargetEncounterRecoveryForArea(allSessions, newArea);
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "HandleAreaChange error for player {PlayerId}", PlayerId);
         }
-    }
-
-    /// <summary>
-    ///     Area 도착 시 탈출 조건 체크
-    /// </summary>
-    private void ApplyImmediateTargetEncounterRecoveryForArea(
-        IReadOnlyCollection<GameClientSession> allSessions,
-        AreaType area)
-    {
-        if (area == AreaType.None) return;
-        if (!IsRoundActionPhase(CurrentMapSubId)) return;
-
-        foreach (var session in allSessions)
-        {
-            if (session.CurrentMapSubId != CurrentMapSubId || session.CurrentArea != area)
-                continue;
-
-            session.TryApplyImmediateTargetEncounterRecovery(allSessions);
-        }
-    }
-
-    internal void TryApplyImmediateTargetEncounterRecovery(IReadOnlyCollection<GameClientSession> allSessions)
-    {
-        if (!PlayerId.HasValue || IsEliminated || ManittoStatus == ManittoStatus.TERMINAL)
-            return;
-        if (TargetPlayerId == 0 || CurrentArea == AreaType.None)
-            return;
-        if (!IsRoundActionPhase(CurrentMapSubId))
-            return;
-
-        var now = DateTime.UtcNow;
-        if (ShouldSkipTargetEncounterRecoveryTick(now, GameServer.ResourceTickIntervalSeconds))
-            return;
-
-        var targetSession = allSessions.FirstOrDefault(s =>
-            s.PlayerId == TargetPlayerId &&
-            s.CurrentMapSubId == CurrentMapSubId &&
-            !s.IsEliminated);
-        var targetBot = targetSession == null
-            ? _botPlayerManager.GetBot(CurrentMapSubId, TargetPlayerId)
-            : null;
-
-        bool targetInSameArea =
-            targetSession?.CurrentArea == CurrentArea ||
-            targetBot is { IsEliminated: false } && targetBot.CurrentArea == CurrentArea;
-        if (!targetInSameArea)
-            return;
-
-        int population = allSessions.Count(s =>
-                             s.CurrentMapSubId == CurrentMapSubId &&
-                             s.CurrentArea == CurrentArea &&
-                             s.PlayerId.HasValue &&
-                             !s.IsEliminated)
-                         + _botPlayerManager.CountBotsInArea(CurrentMapSubId, CurrentArea);
-        int recovery = Math.Max(1,
-            (int)Math.Round(GameServer.TargetProximityRecovery * (2.0 / Math.Max(2, population))));
-        int recoveryDelta = GameServer.ResolveStatusEffectCorruptionDelta(GameServer.NearbyStatusEffectId, recovery);
-
-        if (IsTargetWithinImmediateProximity(targetSession, targetBot))
-            recoveryDelta += GameServer.ResolveStatusEffectCorruptionDelta(
-                GameServer.ProximityStatusEffectId,
-                Config.TARGET_PROXIMITY_RECOVERY_BONUS);
-
-        if (recoveryDelta == 0)
-            return;
-
-        MarkTargetEncounterRecoveryApplied(now);
-        ModifyStats(corruptionDelta: recoveryDelta);
-        Logger.LogInformation(
-            "Immediate target encounter recovery: PlayerId={PlayerId}, Target={TargetPlayerId}, Area={Area}, Delta={Delta}",
-            PlayerId, TargetPlayerId, CurrentArea, recoveryDelta);
-    }
-
-    private bool IsTargetWithinImmediateProximity(GameClientSession? targetSession, BotPlayerState? targetBot)
-    {
-        if (_lastValidatedPosition == null) return false;
-
-        var targetPosition = targetSession?.LastValidatedPosition ?? targetBot?.Position;
-        if (targetPosition == null) return false;
-
-        float dx = _lastValidatedPosition.X - targetPosition.X;
-        float dy = _lastValidatedPosition.Y - targetPosition.Y;
-        return dx * dx + dy * dy <=
-               Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
     }
 
     private void SendInteractableList(AreaType areaType)
@@ -533,40 +452,4 @@ public partial class GameClientSession
             objects.Count, areaType, PlayerId, CurrentMapSubId);
     }
 
-    /// <summary>
-    ///     복도 규칙 위반 체크 및 정신오염도 증가 처리
-    /// </summary>
-    private void CheckCorridorRuleViolation(Vector3f position, Vector3f velocity, AreaType currentArea)
-    {
-        if (!PlayerId.HasValue) return;
-
-        try
-        {
-            int corridorRuleId = _areaRuleManager.GetFirstCorridorRuleId(CurrentMapSubId);
-            // 복도 규칙 1번(종소리 중 이동 금지) 또는 6번(정지 금지)일 때만 체크
-            if (corridorRuleId != 1 && corridorRuleId != 6) return;
-
-            var result = _corridorRuleManager.CheckPlayerMove(
-                CurrentMapSubId,
-                PlayerId.Value,
-                position,
-                velocity,
-                currentArea,
-                corridorRuleId);
-
-            if (result.IsViolation)
-            {
-                Logger.LogInformation(
-                    "Player {PlayerId} violated corridor rule {RuleId}: {Message}, Corruption +{Delta}",
-                    PlayerId, corridorRuleId, result.Message, result.CorruptionDelta);
-
-                // 정신오염도 증가
-                ModifyStats(corruptionDelta: result.CorruptionDelta);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "CheckCorridorRuleViolation error for player {PlayerId}", PlayerId);
-        }
-    }
 }

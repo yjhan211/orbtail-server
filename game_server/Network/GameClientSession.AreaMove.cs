@@ -16,6 +16,8 @@ namespace game_server.network;
 /// </summary>
 public partial class GameClientSession
 {
+    private static readonly bool RoomEntryEventsEnabled = false;
+
     private async Task HandleAreaMove(C_TO_G_AREA_MOVE msg)
     {
         if (PlayerId == null) return;
@@ -84,12 +86,8 @@ public partial class GameClientSession
             return;
         }
 
-        // 3. 이동 비용 산정 (모든 area 이동은 Door — 계단 개념 폐지)
-        // 강제 미행은 정신오염도 한계치로 제어권을 잃은 상태이므로 구역 이동 비용을 면제한다.
-        bool forcedFollowActive = Corruption >= MaxCorruption;
-        int staminaCost = forcedFollowActive || roomEncounterLeaveAreaMoveCostExempt ? 0 : GameServer.MoveStaminaCost;
-
-        // 4. 스태미나 부족 시 ModifyStats가 Cor 1:2 변환 (권고안 B 2026-05-05) — 사전 차단 제거.
+        // 3. 구역 이동 자체에는 스태미나 비용이 없다.
+        const int staminaCost = 0;
 
         // 5. 목적지 스폰 셀 조회 — CSV 연결별 스폰(from→to 방향, 계단은 서/동 구분) 우선,
         //    없으면 영역 중심 fallback
@@ -105,6 +103,11 @@ public partial class GameClientSession
             SendAreaMoveError(ErrorCode.SERVER_INTERNAL_ERROR, msg.TargetArea);
             return;
         }
+
+        var crossedDoor = actualType == ConnectionType.Door
+            ? GameDoorData.GetDoorForTransition(
+                CurrentArea, msg.TargetArea, _lastValidCell ?? spawnCell, spawnCell)
+            : null;
 
         // 6. 위치/구역 정보 영구 저장 (스태미나는 인-게임 한정이라 Redis 갱신 안 함)
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
@@ -137,22 +140,20 @@ public partial class GameClientSession
         _lastValidatedPosition = spawnPos;
         _lastValidCell = spawnCell;
 
-        // 8. 스태미나 차감 + G_TO_C_PLAYER_STATS_UPDATE 송신 (다른 스태미나 변경 흐름과 동일 경로)
+        // 8. 방 사건 이탈 비용 면제 상태는 한 번의 구역 이동 후 해제한다.
         if (roomEncounterLeaveAreaMoveCostExempt)
             _roomEncounterLeaveAreaMoveCostExemptUntilUtc = DateTime.MinValue;
 
-        ModifyStats(staminaDelta: -staminaCost);
-
         Logger.LogInformation(
-            "Player {PlayerId} AreaMove: {From} → {To} (cost {Cost}, type {Type}, forcedFollow={ForcedFollow}, encounterLeaveExempt={EncounterLeaveExempt})",
-            PlayerId, oldArea, msg.TargetArea, staminaCost, actualType, forcedFollowActive,
-            roomEncounterLeaveAreaMoveCostExempt);
+            "Player {PlayerId} AreaMove: {From} → {To} (cost {Cost}, type {Type}, encounterLeaveExempt={EncounterLeaveExempt})",
+            PlayerId, oldArea, msg.TargetArea, staminaCost, actualType, roomEncounterLeaveAreaMoveCostExempt);
 
         // HandleAreaChange는 Movement에 정의됨 — 폐쇄 알림, 동선 추적 등 공통 처리
         _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
             oldArea.ToString(), msg.TargetArea.ToString(), isBot: false);
 
         await HandleAreaChange(oldArea, msg.TargetArea);
+        TrackDoorAfterPassage(crossedDoor);
         TrySendCorridorEncounterEvents(spawnPos);
 
         // 9. 응답 (요청자에게만 — 다른 플레이어는 G_TO_C_MOVE 브로드캐스트로 위치 동기화)
@@ -212,6 +213,7 @@ public partial class GameClientSession
 
     private void TrySendRoomEntryEvent(AreaType area)
     {
+        if (!RoomEntryEventsEnabled) return;
         if (!PlayerId.HasValue || _pendingRoomEntryEventId != 0) return;
         if (HasInitialRoomEntryTrait()) return;
         if (!GameRoomEntryEventData.TryGetByArea(area, out var entryEvent)) return;

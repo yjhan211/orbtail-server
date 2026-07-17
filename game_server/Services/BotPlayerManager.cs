@@ -19,7 +19,7 @@ public partial class BotPlayerManager
 {
     // ?꾨줈??0: ?쒖꽦 怨듦컙 = 3쨌4痢?6援ъ뿭(1쨌2痢??대룞??李⑤떒, 3??留??대룞).
     //   諛??뺤떊???뚮났 媛??: Classroom3(2-1)/ExamRoom(怨좎궗??/Classroom4(3-1)/BroadcastRoom(諛⑹넚??
-    //   蹂듬룄(transit, ?뚮났 ?놁쓬 + ?κ린 泥대쪟 ???몄젒 諛?媛뺤젣 ?좊룄): Corridor3F/Corridor4F
+    //   蹂듬룄(transit, ?뚮났 ?놁쓬 + ?κ린 泥대쪟 ???몄젒 諛?媛뺤젣 ?좊룄): Corridor
     // ?뚮났???쇱뼱?섎뒗 "諛?(蹂듬룄 ?쒖쇅). ?寃?異붿쟻/?좊낫湲?湲곗쿃??湲곗? 援ъ뿭.
     private static readonly AreaType[] Proto0Rooms =
     {
@@ -76,7 +76,6 @@ public partial class BotPlayerManager
 
     private const int BotMoveIntervalSeconds = 12;
     private const int BotMissionTickIntervalSeconds = 1;
-    private const int BotMoveStaminaCost = 3;
     private const int DetectScoreThreshold = 18;          // ?됱텧 ?대━?ㅽ떛 ?꾧퀎媛????⑥젙 ?붿쟻 諛쒓껄 ?꾩쟻 ?먯닔
     private const int InitialStamina = 100;
     private const int InitialCorruption = 0;
@@ -109,7 +108,7 @@ public partial class BotPlayerManager
         var bots = botInfoList.Select((info, index) =>
         {
             // ?꾨줈??0: ?꾩썝 4痢?諛⑹뿉???쒖옉 (吏곸콉 誘몄뀡 ???숈꽑 ?먭린).
-            var startArea = IsAllowedAssignedStartArea(info.StartArea)
+            var startArea = IsAllowedAssignedStartArea(mapId, info.StartArea)
                 ? info.StartArea
                 : Proto0SpawnAreas[_rng.Next(Proto0SpawnAreas.Length)];
 
@@ -156,12 +155,13 @@ public partial class BotPlayerManager
             string.Join(",", bots.Select(b => $"{b.PlayerId}({b.MyJobTitle}/{b.Persona}@{b.CurrentArea})")));
     }
 
-    private static bool IsAllowedAssignedStartArea(AreaType area)
+    private static bool IsAllowedAssignedStartArea(MapId mapId, AreaType area)
     {
         if (area == AreaType.None || area.IsCorridor())
             return false;
 
-        return area is not (AreaType.Ground or AreaType.Gym or AreaType.Storage);
+        return area is not (AreaType.Ground or AreaType.Gym or AreaType.Storage) &&
+               GameMapData.GetAreas(mapId).Any(region => region.AreaType == area);
     }
 
 

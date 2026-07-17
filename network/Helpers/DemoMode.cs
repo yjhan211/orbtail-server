@@ -59,27 +59,27 @@ public static class DemoMode
         [JobTitle.BROADCAST_MEMBER] = new[]
         {
             (0, AreaType.BroadcastRoom),  // 시작 (4F 방송실)
-            (60, AreaType.Corridor4F),    // 01:00 4F 복도
-            (180, AreaType.Corridor2F),   // 03:00 2F 도서관 인근 진입
+            (60, AreaType.Corridor),    // 01:00 4F 복도
+            (180, AreaType.Corridor),   // 03:00 2F 도서관 인근 진입
             (360, AreaType.Library),      // 06:00 도서관 (회복 흔적 배치)
-            (480, AreaType.Corridor2F),   // 08:00 후퇴
+            (480, AreaType.Corridor),   // 08:00 후퇴
             (570, AreaType.Library)       // 09:30 도서관 재방문 (09:40 함정 흔적 발동 위치)
         },
         [JobTitle.DISCIPLINE_MEMBER] = new[]
         {
-            (0, AreaType.Corridor1F),     // 시작 (1F 복도)
+            (0, AreaType.Corridor),     // 시작 (1F 복도)
             (60, AreaType.AdminOffice),   // 01:00 행정실 (DC 발견 구역)
-            (180, AreaType.Corridor2F),   // 03:00 2F 진입
+            (180, AreaType.Corridor),   // 03:00 2F 진입
             (270, AreaType.Library),      // 04:30 도서관 진입 (04:50 시연자 조우 셋업)
-            (360, AreaType.Corridor2F),   // 06:00 후퇴
+            (360, AreaType.Corridor),   // 06:00 후퇴
             (480, AreaType.AdminOffice)   // 08:00 1F 회귀
         },
         [JobTitle.SCIENCE_MEMBER] = new[]
         {
             (0, AreaType.ExamRoom),       // 시작 (3F 고사실)
-            (120, AreaType.Corridor3F),   // 02:00 3F 복도 경유
+            (120, AreaType.Corridor),   // 02:00 3F 복도 경유
             (170, AreaType.Library),      // 02:50 도서관 (시연자 1:1)
-            (240, AreaType.Corridor3F),   // 04:00 후퇴
+            (240, AreaType.Corridor),   // 04:00 후퇴
             (300, AreaType.ExamRoom)      // 05:00 고사실 회귀 (06:40 색출 위치)
         }
         // HEALTH_MEMBER 단일 영역 고정 항목 제거 — 직책 큐 따라 자연 walking 시각.

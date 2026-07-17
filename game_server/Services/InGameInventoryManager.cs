@@ -34,9 +34,10 @@ public class PlayerInGameInventory(long matchingId)
     /// </summary>
     /// <returns>변경된 아이템 정보</returns>
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public InGameItemInfo AddItem(int itemId, int count = 1, GiftState giftState = GiftState.None)
+    public InGameItemInfo AddItem(int itemId, int count = 1, GiftState giftState = GiftState.None,
+        bool forceSeparateStack = false)
     {
-        bool keepSeparateStack = ShouldKeepSeparateStack(itemId, giftState);
+        bool keepSeparateStack = forceSeparateStack || ShouldKeepSeparateStack(itemId, giftState);
 
         // Merge puzzle inputs need separate slots so duplicate materials can be selected independently.
         if (!keepSeparateStack)
@@ -88,6 +89,15 @@ public class PlayerInGameInventory(long matchingId)
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryAddItemWithCapacity(int itemId, int maxSlots, out InGameItemInfo? addedItem,
+        GiftState giftState = GiftState.None)
+    {
+        addedItem = null;
+        if (maxSlots <= 0 || _items.Count >= maxSlots) return false;
+        addedItem = AddItem(itemId, 1, giftState, forceSeparateStack: true);
+        return true;
+    }
     /// <summary>
     ///     특정 아이템 조회
     /// </summary>
@@ -99,6 +109,43 @@ public class PlayerInGameInventory(long matchingId)
         return item != null && TryRemoveItem(item.ItemUid, 1, out updatedItem);
     }
 
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryCombineItems(IReadOnlyCollection<int> inputItemIds, int outputItemId,
+        out List<InGameItemInfo> changedItems)
+    {
+        changedItems = new List<InGameItemInfo>();
+        if (inputItemIds.Count < 2 || outputItemId <= 0) return false;
+
+        var requiredCounts = inputItemIds
+            .GroupBy(itemId => itemId)
+            .ToDictionary(group => group.Key, group => group.Count());
+        if (requiredCounts.Any(required => GetItemCount(required.Key) < required.Value))
+            return false;
+
+        foreach (int inputItemId in inputItemIds)
+        {
+            if (!TryRemoveOneByItemId(inputItemId, out var removed) || removed == null)
+                throw new InvalidOperationException("Inventory changed during atomic battle item combine.");
+            changedItems.Add(removed);
+        }
+
+        changedItems.Add(AddItem(outputItemId, 1));
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public List<InGameItemInfo> TakeAllItems()
+    {
+        var items = _items.Values.Select(item => new InGameItemInfo
+        {
+            ItemUid = item.ItemUid,
+            ItemId = item.ItemId,
+            Count = item.Count,
+            GiftState = item.GiftState
+        }).ToList();
+        _items.Clear();
+        return items;
+    }
     [MethodImpl(MethodImplOptions.Synchronized)]
     public InGameItemInfo? GetItem(long itemUid)
     {
@@ -229,6 +276,15 @@ public class InGameInventoryManager
         return result;
     }
 
+    public bool TryAddItemWithCapacity(long matchingId, long playerId, int itemId, int maxSlots,
+        out InGameItemInfo? addedItem, GiftState giftState = GiftState.None)
+    {
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        bool result = inventory.TryAddItemWithCapacity(itemId, maxSlots, out addedItem, giftState);
+        if (result && addedItem != null)
+            _logAction?.Invoke($"InGameInventoryManager: Added capacity-limited item (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={addedItem.ItemUid}, MaxSlots={maxSlots})");
+        return result;
+    }
     /// <summary>
     ///     ItemId로 아이템 제거 (탈출 아이템 전달용)
     /// </summary>
@@ -239,6 +295,17 @@ public class InGameInventoryManager
         if (result)
             _logAction?.Invoke(
                 $"InGameInventoryManager: Removed one item by ItemId (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={updatedItem?.ItemUid})");
+        return result;
+    }
+
+    public bool TryCombineItems(long matchingId, long playerId, IReadOnlyCollection<int> inputItemIds,
+        int outputItemId, out List<InGameItemInfo> changedItems)
+    {
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        bool result = inventory.TryCombineItems(inputItemIds, outputItemId, out changedItems);
+        if (result)
+            _logAction?.Invoke(
+                $"InGameInventoryManager: Combined items (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', inputItemIds)}], Output={outputItemId})");
         return result;
     }
 
@@ -270,6 +337,14 @@ public class InGameInventoryManager
     /// <summary>
     ///     매칭 종료 시 해당 매칭의 상태 정리
     /// </summary>
+    public List<InGameItemInfo> TakeAllItems(long matchingId, long playerId)
+    {
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        var items = inventory.TakeAllItems();
+        _logAction?.Invoke(
+            $"InGameInventoryManager: Dropped all items (MatchingId={matchingId}, PlayerId={playerId}, Slots={items.Count})");
+        return items;
+    }
     public void RemoveMatchingState(long matchingId)
     {
         if (_matchingStates.TryRemove(matchingId, out _))
