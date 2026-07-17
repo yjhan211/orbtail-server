@@ -20,7 +20,8 @@ public partial class GameClientSession
 
         InGameItemInfo? addedItem = null;
         bool autoUsed = false;
-        int recovery = 0;
+        int staminaRecovery = 0;
+        int corruptionRecovery = 0;
         ErrorCode rejection = ErrorCode.INVENTORY_FULL;
         var position = _lastValidatedPosition;
         var status = _groundItemManager.TryClaim(
@@ -32,7 +33,13 @@ public partial class GameClientSession
             position.Y,
             item =>
             {
-                var disposition = GroundItemPickupPolicy.Resolve(item.ItemId, Corruption, out recovery);
+                var disposition = GroundItemPickupPolicy.Resolve(
+                    item.ItemId,
+                    Stamina,
+                    MaxStamina,
+                    Corruption,
+                    out staminaRecovery,
+                    out corruptionRecovery);
                 if (disposition == GroundItemPickupDisposition.LeaveOnGround)
                 {
                     rejection = ErrorCode.ITEM_NOT_USABLE;
@@ -66,7 +73,7 @@ public partial class GameClientSession
         }
 
         if (autoUsed)
-            ModifyStats(corruptionDelta: -recovery);
+            ModifyStats(staminaDelta: staminaRecovery, corruptionDelta: -corruptionRecovery);
         else if (addedItem != null)
             SendInGameInventoryUpdate(addedItem);
 

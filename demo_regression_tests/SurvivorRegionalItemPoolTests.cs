@@ -277,18 +277,26 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Theory]
-    [InlineData(201000008, 0, GroundItemPickupDisposition.LeaveOnGround, 15)]
-    [InlineData(201000008, 1, GroundItemPickupDisposition.AutoUse, 15)]
-    [InlineData(201000018, 30, GroundItemPickupDisposition.AutoUse, 35)]
-    [InlineData(201000011, 30, GroundItemPickupDisposition.Store, 0)]
-    [InlineData(301000039, 30, GroundItemPickupDisposition.Store, 0)]
-    [InlineData(301000038, 30, GroundItemPickupDisposition.Store, 0)]
-    public void ConsumablePickupPolicyMatchesSpecification(int itemId, int corruption,
-        GroundItemPickupDisposition expected, int expectedRecovery)
+    [InlineData(201000008, 100, 0, GroundItemPickupDisposition.LeaveOnGround, 0, 15)]
+    [InlineData(201000008, 100, 1, GroundItemPickupDisposition.AutoUse, 0, 15)]
+    [InlineData(201000018, 100, 30, GroundItemPickupDisposition.AutoUse, 0, 35)]
+    [InlineData(201000011, 100, 30, GroundItemPickupDisposition.LeaveOnGround, 15, 0)]
+    [InlineData(201000011, 99, 30, GroundItemPickupDisposition.AutoUse, 15, 0)]
+    [InlineData(301000039, 30, 30, GroundItemPickupDisposition.Store, 0, 0)]
+    [InlineData(301000038, 30, 30, GroundItemPickupDisposition.Store, 0, 0)]
+    public void ConsumablePickupPolicyMatchesSpecification(int itemId, int stamina, int corruption,
+        GroundItemPickupDisposition expected, int expectedStaminaRecovery, int expectedCorruptionRecovery)
     {
-        var actual = GroundItemPickupPolicy.Resolve(itemId, corruption, out int recovery);
+        var actual = GroundItemPickupPolicy.Resolve(
+            itemId,
+            stamina,
+            100,
+            corruption,
+            out int staminaRecovery,
+            out int corruptionRecovery);
         Assert.Equal(expected, actual);
-        Assert.Equal(expectedRecovery, recovery);
+        Assert.Equal(expectedStaminaRecovery, staminaRecovery);
+        Assert.Equal(expectedCorruptionRecovery, corruptionRecovery);
     }
 
     [Fact]
