@@ -110,6 +110,30 @@ public class PlayerInGameInventory(long matchingId)
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryCombineItems(IReadOnlyCollection<int> inputItemIds, int outputItemId,
+        out List<InGameItemInfo> changedItems)
+    {
+        changedItems = new List<InGameItemInfo>();
+        if (inputItemIds.Count < 2 || outputItemId <= 0) return false;
+
+        var requiredCounts = inputItemIds
+            .GroupBy(itemId => itemId)
+            .ToDictionary(group => group.Key, group => group.Count());
+        if (requiredCounts.Any(required => GetItemCount(required.Key) < required.Value))
+            return false;
+
+        foreach (int inputItemId in inputItemIds)
+        {
+            if (!TryRemoveOneByItemId(inputItemId, out var removed) || removed == null)
+                throw new InvalidOperationException("Inventory changed during atomic battle item combine.");
+            changedItems.Add(removed);
+        }
+
+        changedItems.Add(AddItem(outputItemId, 1));
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public List<InGameItemInfo> TakeAllItems()
     {
         var items = _items.Values.Select(item => new InGameItemInfo
@@ -271,6 +295,17 @@ public class InGameInventoryManager
         if (result)
             _logAction?.Invoke(
                 $"InGameInventoryManager: Removed one item by ItemId (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={updatedItem?.ItemUid})");
+        return result;
+    }
+
+    public bool TryCombineItems(long matchingId, long playerId, IReadOnlyCollection<int> inputItemIds,
+        int outputItemId, out List<InGameItemInfo> changedItems)
+    {
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        bool result = inventory.TryCombineItems(inputItemIds, outputItemId, out changedItems);
+        if (result)
+            _logAction?.Invoke(
+                $"InGameInventoryManager: Combined items (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', inputItemIds)}], Output={outputItemId})");
         return result;
     }
 

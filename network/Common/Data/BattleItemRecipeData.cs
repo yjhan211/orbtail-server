@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using network.common;
 using network.common.data.helpers;
 using Newtonsoft.Json;
 
@@ -76,11 +77,47 @@ namespace network.common.data
 
         public static BattleItemRecipe TryCombine(IEnumerable<int> inputItemIds)
         {
-            var normalizedInputs = NormalizeInputs(inputItemIds);
-            if (normalizedInputs.Count == 0) return null;
+            return GetMatchingRecipes(inputItemIds).FirstOrDefault();
+        }
 
-            return _recipesById.Values.FirstOrDefault(recipe =>
-                NormalizeInputs(recipe.InputItemIds).SequenceEqual(normalizedInputs));
+        public static BattleItemRecipe TryCombine(IEnumerable<int> inputItemIds, AreaType currentArea)
+        {
+            return GetAvailableRecipes(inputItemIds, currentArea).FirstOrDefault();
+        }
+
+        public static List<BattleItemRecipe> GetMatchingRecipes(IEnumerable<int> inputItemIds)
+        {
+            var normalizedInputs = NormalizeInputs(inputItemIds);
+            if (normalizedInputs.Count == 0) return new List<BattleItemRecipe>();
+
+            return _recipesById.Values
+                .Where(recipe => NormalizeInputs(recipe.InputItemIds).SequenceEqual(normalizedInputs))
+                .OrderBy(recipe => recipe.RecipeId)
+                .ToList();
+        }
+
+        public static List<BattleItemRecipe> GetAvailableRecipes(IEnumerable<int> inputItemIds, AreaType currentArea)
+        {
+            return GetMatchingRecipes(inputItemIds)
+                .Where(recipe => IsAvailableInArea(recipe, currentArea))
+                .ToList();
+        }
+
+        public static BattleItemRecipe PickRandomRecipe(IEnumerable<int> inputItemIds, Random random)
+        {
+            if (random == null) throw new ArgumentNullException(nameof(random));
+
+            var candidates = GetMatchingRecipes(inputItemIds);
+            return candidates.Count == 0 ? null : candidates[random.Next(candidates.Count)];
+        }
+
+        public static BattleItemRecipe PickRandomRecipe(IEnumerable<int> inputItemIds, AreaType currentArea,
+            Random random)
+        {
+            if (random == null) throw new ArgumentNullException(nameof(random));
+
+            var candidates = GetAvailableRecipes(inputItemIds, currentArea);
+            return candidates.Count == 0 ? null : candidates[random.Next(candidates.Count)];
         }
 
         public static void ValidateReferentialIntegrity(List<string> errors, HashSet<int> itemIds)
@@ -118,6 +155,16 @@ namespace network.common.data
                 .OrderBy(id => id)
                 .ToList()
             ?? new List<int>();
+
+        private static bool IsAvailableInArea(BattleItemRecipe recipe, AreaType currentArea)
+        {
+            const string areaPrefix = "area:";
+            if (!recipe.RouteType.StartsWith(areaPrefix, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return Enum.TryParse(recipe.RouteType.Substring(areaPrefix.Length), true, out AreaType requiredArea) &&
+                   requiredArea == currentArea;
+        }
     }
 
     public class BattleItemRecipe
