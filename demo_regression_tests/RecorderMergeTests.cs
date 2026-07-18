@@ -45,22 +45,21 @@ public sealed class RecorderMergeTests
     }
 
     [Theory]
-    [InlineData(107000004, 107000006, AreaType.StaffRoom)]
-    [InlineData(107000005, 107000006, AreaType.StaffRoom)]
-    [InlineData(107000008, 107000010, AreaType.Ground)]
-    [InlineData(107000009, 107000010, AreaType.Ground)]
-    [InlineData(107000012, 107000014, AreaType.Storage2)]
-    [InlineData(107000013, 107000014, AreaType.Storage2)]
-    public void SameT2MagicToolsMergeIntoT3OnlyInRequiredArea(
-        int t2ItemId,
-        int t3ItemId,
-        AreaType requiredArea)
+    [InlineData(107000004, 107000006)]
+    [InlineData(107000005, 107000006)]
+    [InlineData(107000008, 107000010)]
+    [InlineData(107000009, 107000010)]
+    [InlineData(107000012, 107000014)]
+    [InlineData(107000013, 107000014)]
+    public void SameT2MagicToolsMergeIntoT3InEveryArea(int t2ItemId, int t3ItemId)
     {
-        var availableRecipe = BattleItemRecipeData.TryCombine([t2ItemId, t2ItemId], requiredArea);
-
-        Assert.NotNull(availableRecipe);
-        Assert.Equal(t3ItemId, availableRecipe.OutputItemId);
-        Assert.Null(BattleItemRecipeData.TryCombine([t2ItemId, t2ItemId], AreaType.None));
+        foreach (var area in Enum.GetValues<AreaType>())
+        {
+            var availableRecipe = BattleItemRecipeData.TryCombine([t2ItemId, t2ItemId], area);
+            Assert.NotNull(availableRecipe);
+            Assert.Equal(t3ItemId, availableRecipe.OutputItemId);
+            Assert.Equal("primary", availableRecipe.RouteType);
+        }
     }
 
     [Theory]
