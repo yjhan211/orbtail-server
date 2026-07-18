@@ -717,6 +717,9 @@ public partial class GameServer(
                     session.Send(packet);
             }
             // #134 — 봇 RNG 채집으로 발생한 인스턴스 쿨타임 broadcast
+            if (missionResult.BattleItemEquips.Count > 0)
+                BroadcastBotBattleItemEquips(matchingId, missionResult.BattleItemEquips, activeSessions);
+
             if (missionResult.RngCooldownBroadcasts.Count > 0)
                 BroadcastBotRngCooldowns(matchingId, missionResult.RngCooldownBroadcasts);
 
@@ -1007,6 +1010,28 @@ public partial class GameServer(
         return dx * dx + dy * dy <= RoomExploreSpotOccupancyDistance * RoomExploreSpotOccupancyDistance;
     }
 
+    private void BroadcastBotBattleItemEquips(long matchingId,
+        IReadOnlyCollection<(long botPlayerId, int itemId)> equips,
+        List<GameClientSession> activeSessions)
+    {
+        foreach (var (botPlayerId, _) in equips)
+        {
+            var bot = _botPlayerManager.GetBot(matchingId, botPlayerId);
+            var botInfo = _botPlayerManager.SynthesizePlayerInfo(matchingId, botPlayerId);
+            if (bot == null || botInfo == null) continue;
+
+            var sameAreaSessions = activeSessions
+                .Where(session => session.PlayerId.HasValue &&
+                                  session.CurrentMapSubId == matchingId &&
+                                  session.CurrentArea == bot.CurrentArea)
+                .ToList();
+            if (sameAreaSessions.Count == 0) continue;
+
+            using var packet = PacketMaker.G_TO_C_PLAYER_INFO([botInfo]);
+            foreach (var session in sameAreaSessions)
+                session.Send(packet);
+        }
+    }
     private void BroadcastBotPlayerStates(long matchingId,
         List<(long botId, AreaType area)> states, global::network.common.PlayerState playerState,
         List<GameClientSession> activeSessions)
@@ -1131,6 +1156,25 @@ public partial class GameServer(
     ///     - 영역 전환: G_TO_C_AREA_PLAYER_LEAVE(이전 영역) + G_TO_C_AREA_PLAYER_ENTER(새 영역) + G_TO_C_MOVE(텔레포트)
     ///     - 영역 내 wander: G_TO_C_MOVE(같은 영역)
     /// </summary>
+    private void BroadcastBotGroundItemPickups(
+        long matchingId,
+        IReadOnlyCollection<BotGroundItemPickup> pickups,
+        IReadOnlyCollection<GameClientSession> activeSessions)
+    {
+        foreach (var pickup in pickups)
+        {
+            var area = (AreaType)pickup.Item.AreaType;
+            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
+                pickup.Item.GroundItemUid,
+                pickup.BotPlayerId,
+                pickup.AutoUsed);
+            foreach (var session in activeSessions.Where(session =>
+                         session.CurrentMapSubId == matchingId && session.CurrentArea == area))
+            {
+                session.Send(packet);
+            }
+        }
+    }
     private void BroadcastBotMovement(long matchingId, BotMovementEvent ev,
         List<GameClientSession> activeSessions)
     {
@@ -1444,8 +1488,30 @@ public partial class GameServer(
                 var humanAreas = activeSessions
                     .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
                     .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
+                var combatTargets = activeSessions
+                    .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue && !s.IsEliminated &&
+                                s.LastValidatedPosition != null)
+                    .Select(s => new BotCombatTargetSnapshot(
+                        s.PlayerId!.Value,
+                        s.CurrentArea,
+                        s.LastValidatedPosition!,
+                        _inGameInventoryManager.GetEquippedBattleItem(matchingId, s.PlayerId.Value)?.ItemId ?? 0))
+                    .Concat(_botPlayerManager.GetBots(matchingId)
+                        .Where(bot => !bot.IsEliminated)
+                        .Select(bot => new BotCombatTargetSnapshot(
+                            bot.PlayerId,
+                            bot.CurrentArea,
+                            bot.Position,
+                            _inGameInventoryManager.GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0)))
+                    .ToList();
                 var movementResult = _botPlayerManager.ProcessBotMovementTick(
-                    matchingId, _areaClosureManager, humanAreas, _checklistManager);
+                    matchingId,
+                    _areaClosureManager,
+                    humanAreas,
+                    _checklistManager,
+                    _inGameInventoryManager,
+                    _groundItemManager,
+                    combatTargets);
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
@@ -1454,6 +1520,8 @@ public partial class GameServer(
                     ResolvePendingRoomDiscoveriesForBotExploreEnds(matchingId, movementResult.ExploreEnds,
                         activeSessions);
                 }
+                if (movementResult.GroundItemPickups.Count > 0)
+                    BroadcastBotGroundItemPickups(matchingId, movementResult.GroundItemPickups, activeSessions);
                 StartTargetBotInterrogations(matchingId, activeSessions);
             }
         }

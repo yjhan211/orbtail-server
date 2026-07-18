@@ -201,11 +201,13 @@ public partial class BotPlayerManager
     /// <summary>
     ///     遊?湲곕낯 ?섏긽 + 遊뉖퀎 而ㅼ뒪?곕쭏?댁쭠 ?꾩씠??1醫?議고빀 wear list ?앹꽦.
     /// </summary>
-    private static List<int> BuildBotWearItems(long playerId)
+    private static List<int> BuildBotWearItems(BotPlayerState bot)
     {
         var list = new List<int>(BotDefaultWearItemIds);
-        int idx = (int)(Math.Abs(playerId) % BotCustomizationItems.Length);
+        int idx = (int)(Math.Abs(bot.PlayerId) % BotCustomizationItems.Length);
         list.Add(BotCustomizationItems[idx]);
+        if (bot.EquippedBattleItemId > 0)
+            list.Add(bot.EquippedBattleItemId);
         return list;
     }
 
@@ -237,7 +239,7 @@ public partial class BotPlayerManager
             LastCell = bot.Cell,
             Hp = 5000,
             Stamina = bot.Stamina,
-            WearItemIdList = BuildBotWearItems(bot.PlayerId)
+            WearItemIdList = BuildBotWearItems(bot)
         };
         info.ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, mapId, matchingId, bot.Cell)
         {
@@ -418,6 +420,9 @@ public class BotPlayerState
     /// <summary>留덉?留?誘몄뀡 ?됰룞(?뚯닔/寃고빀) ?쒓컖</summary>
     public DateTime LastMissionTickTime { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Next time the bot may replace its chase or retreat path.</summary>
+    public DateTime NextCombatRepathAt { get; set; } = DateTime.MinValue;
+
     /// <summary>?먭린 吏곸콉 諛쒓껄 援ъ뿭 ?쒗쉶 ??(?뷀뵆??4媛?+ ?좏뻾 ?꾩씠???꾩튂)</summary>
     public List<AreaType> JobAreaQueue { get; set; } = new();
 
@@ -479,6 +484,9 @@ public class BotPlayerState
 
     /// <summary>留덉?留됱쑝濡??먮룞 ?뚮え?덉쓣 ?ъ슜???쒓컖 (?ъ궗??荑⑤떎??.</summary>
     public DateTime LastAutoConsumableUseTime { get; set; } = DateTime.MinValue;
+
+    /// <summary>Current equipped battle tool, used to synchronize remote bot visuals.</summary>
+    public int EquippedBattleItemId { get; set; }
 
     /// <summary>RNG 梨꾩쭛 progress ?쒖옉 ?쒓컖. 0?대㈃ ?꾩쭅 ?쒖옉 ???? ?쒖옉 ??1.5珥?寃쎄낵 ??寃곌낵 ?곗텧.</summary>
     public DateTime RngCollectProgressStartTime { get; set; } = DateTime.MinValue;

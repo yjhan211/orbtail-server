@@ -51,6 +51,7 @@ public partial class BotPlayerManager
     {
         public List<BotMovementEvent> Movements { get; } = new();
         public List<(long botId, AreaType area)> ExploreEnds { get; } = new();
+        public List<BotGroundItemPickup> GroundItemPickups { get; } = new();
     }
 
     /// <summary>
@@ -155,7 +156,11 @@ public partial class BotPlayerManager
     ///     #134: 추가로 ChooseNewWanderTarget 시 PendingExploreEndBroadcast가 set된 봇은 ExploreEnds list에 수집 — walking 시작 안전망.
     /// </summary>
     public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager,
-        IReadOnlyDictionary<long, AreaType> humanAreas, ChecklistManager checklistManager)
+        IReadOnlyDictionary<long, AreaType> humanAreas,
+        ChecklistManager checklistManager,
+        InGameInventoryManager inventoryManager,
+        GroundItemManager groundItemManager,
+        IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets)
     {
         var result = new BotWalkingTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
@@ -168,6 +173,12 @@ public partial class BotPlayerManager
         foreach (var bot in bots)
         {
             if (bot.IsEliminated) continue;
+            if (TryAutoPickupGroundItem(bot, matchingId, inventoryManager, groundItemManager, out var pickup) &&
+                pickup.HasValue)
+            {
+                result.GroundItemPickups.Add(pickup.Value);
+            }
+            UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
             var ev = WalkStep(bot, matchingId, closureManager, playerAreas, checklistManager);
             if (ev != null) result.Movements.Add(ev);
             if (bot.PendingExploreEndBroadcast)

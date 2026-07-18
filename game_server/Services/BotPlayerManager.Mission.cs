@@ -37,7 +37,7 @@ public partial class BotPlayerManager
             if (TryAdvanceBotRest(bot, result)) continue;
             if (bot.Stamina <= 0 && TryStartBotRest(bot, result)) continue;
             TryAutoUseConsumable(bot, matchingId, inventoryManager);
-
+            TryAutoPrepareBattleItem(bot, matchingId, inventoryManager, result);
             // 플레이어와 대화 중일 때는 탐색/선물 회수를 잠시 멈춘다.
             if (bot.IsInInteraction) continue;
 
@@ -61,6 +61,41 @@ public partial class BotPlayerManager
     }
 
     /// <summary>봇이 자동 소모품을 사용하기 위한 스태미나 임계값.</summary>
+    private void TryAutoPrepareBattleItem(
+        BotPlayerState bot,
+        long matchingId,
+        InGameInventoryManager inventoryManager,
+        BotMissionTickResult result)
+    {
+        int previouslyEquippedItemId = inventoryManager
+            .GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0;
+        var loadout = BotBattleItemLoadout.CombineAndEquip(
+            inventoryManager,
+            matchingId,
+            bot.PlayerId,
+            _rng);
+
+        foreach (int itemId in loadout.CombinedItemIds)
+        {
+            result.BattleItemCombines.Add((bot.PlayerId, itemId));
+            _logger.LogInformation(
+                "Bot battle item combined: MatchingId={MatchingId}, BotId={BotId}, ItemId={ItemId}",
+                matchingId,
+                bot.PlayerId,
+                itemId);
+        }
+
+        if (loadout.EquippedItemId == 0 || loadout.EquippedItemId == previouslyEquippedItemId)
+            return;
+
+        bot.EquippedBattleItemId = loadout.EquippedItemId;
+        result.BattleItemEquips.Add((bot.PlayerId, loadout.EquippedItemId));
+        _logger.LogInformation(
+            "Bot battle item equipped: MatchingId={MatchingId}, BotId={BotId}, ItemId={ItemId}",
+            matchingId,
+            bot.PlayerId,
+            loadout.EquippedItemId);
+    }
     private const int BotAutoConsumableStaminaThreshold = 30;
 
     /// <summary>봇 자동 소모품 재사용 쿨다운(초).</summary>
@@ -680,6 +715,8 @@ public class BotMissionTickResult
     /// <summary>#134 — 봇이 RNG 채집한 InteractObject 인스턴스 쿨타임 broadcast 정보.</summary>
     public List<(int interactId, int cooldownSeconds)> RngCooldownBroadcasts { get; } = new();
     public List<GroundItemInfo> GroundItemSpawns { get; } = new();
+    public List<(long botPlayerId, int itemId)> BattleItemCombines { get; } = new();
+    public List<(long botPlayerId, int itemId)> BattleItemEquips { get; } = new();
 
     /// <summary>#134 — 봇이 RNG progress 시작했음을 같은 영역 인간 세션에 알림 (G_TO_C_EXPLORE_START).</summary>
     public List<(long botId, int interactId, AreaType area)> BotExploreStarts { get; } = new();
