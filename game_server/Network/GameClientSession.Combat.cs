@@ -425,9 +425,15 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        var items = _inGameInventoryManager.GetAllItems(CurrentMapSubId, PlayerId.Value);
+        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+        var items = inventory.GetAllItems();
         using var packet = PacketMaker.G_TO_C_INGAME_INVENTORY_LIST(items);
         Send(packet);
+
+        var equippedItem = inventory.GetEquippedBattleItem();
+        using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
+            true, equippedItem?.ItemUid ?? 0, ErrorCode.SUCCESS);
+        Send(equippedPacket);
 
         Logger.LogDebug("Sent InGameInventory list to PlayerId={PlayerId}, ItemCount={Count}", PlayerId, items.Count);
     }
@@ -484,6 +490,34 @@ public partial class GameClientSession
         }
 
         int itemId = itemInfo.ItemId;
+        if (msg.Count == 0)
+        {
+            if (!BattleItemCombatData.IsCombatItem(itemId) ||
+                !inventory.TryEquipBattleItem(msg.ItemUid, out var equippedItem))
+            {
+                using var failPacket =
+                    PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.ITEM_NOT_USABLE);
+                Send(failPacket);
+                return;
+            }
+
+            using var resultPacket =
+                PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, equippedItem!.ItemUid, ErrorCode.SUCCESS);
+            Send(resultPacket);
+            Logger.LogInformation(
+                "Player {PlayerId} equipped battle item: ItemUid={ItemUid}, ItemId={ItemId}",
+                PlayerId, equippedItem.ItemUid, equippedItem.ItemId);
+            return;
+        }
+
+        if (msg.Count < 1)
+        {
+            using var failPacket =
+                PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.INVALID_REQUEST);
+            Send(failPacket);
+            return;
+        }
+
         var itemData = GameItemData.Get(itemId);
         if (System.Array.IndexOf(RoomEncounterAttackItemIds, itemId) >= 0)
         {

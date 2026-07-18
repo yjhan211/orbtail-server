@@ -1,48 +1,17 @@
 using game_server.services;
 using network.common;
-using network.common.data;
-using network.common.data.models;
 
 namespace game_server.network;
 
 public partial class GameClientSession
 {
-    internal const int ProximityCombatChalkPowderItemId = 201000015;
-    internal const int ProximityCombatShortChalkItemId = 201000016;
-    internal const int ProximityCombatLongChalkItemId = 201000017;
     internal const int ProximityAutoAttackDealtEventType = 17;
 
-    internal static int ResolveProximityAutoCombatWeaponItemId(PlayerInGameInventory inventory)
-    {
-        if (inventory.GetItemCount(ProximityCombatLongChalkItemId) > 0)
-            return ProximityCombatLongChalkItemId;
-        if (inventory.GetItemCount(ProximityCombatShortChalkItemId) > 0)
-            return ProximityCombatShortChalkItemId;
-        if (inventory.GetItemCount(ProximityCombatChalkPowderItemId) > 0)
-            return ProximityCombatChalkPowderItemId;
-
-        return 0;
-    }
-
-    internal static int ResolveProximityAutoCombatDamage(int weaponItemId)
-    {
-        int damage = 0;
-        foreach ((int buffId, int value, int _) in GameItemData.Get(weaponItemId).ConsumableBuffList)
-        {
-            var buffData = GameBuffData.Get(buffId);
-            if (buffData.SubType == BuffSubType.CORRUPTION_ADD)
-                damage += Math.Abs(value);
-        }
-
-        return damage;
-    }
-
-    internal void ApplyProximityAutoCombatHit(long sourcePlayerId, AreaType area, int weaponItemId)
+    internal void ApplyProximityAutoCombatHit(long sourcePlayerId, AreaType area, int weaponItemId, int damage)
     {
         if (!PlayerId.HasValue || IsEliminated)
             return;
 
-        int damage = ResolveProximityAutoCombatDamage(weaponItemId);
         if (damage <= 0)
             return;
 

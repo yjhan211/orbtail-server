@@ -8,13 +8,21 @@ public readonly record struct ProximityCombatActor(
     long PlayerId,
     AreaType Area,
     Vector3f Position,
-    int WeaponItemId);
+    int WeaponItemId,
+    float AttackRange,
+    int Damage,
+    float AttackIntervalSeconds,
+    float ProjectileWidth = 0f,
+    float EffectDurationSeconds = 0f);
 
 public readonly record struct ProximityCombatAttack(
     long AttackerPlayerId,
     long TargetPlayerId,
     AreaType Area,
-    int WeaponItemId);
+    int WeaponItemId,
+    int Damage,
+    float ProjectileWidth,
+    float EffectDurationSeconds);
 
 /// <summary>
 ///     Selects one nearest target per armed actor while keeping attack cadence server-authoritative.
@@ -22,30 +30,33 @@ public readonly record struct ProximityCombatAttack(
 /// </summary>
 public sealed class ProximityAutoCombatResolver
 {
-    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId), DateTime> _nextAttackAtUtc = new();
+    public static readonly TimeSpan AimDuration = TimeSpan.FromMilliseconds(500);
+
+    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId), CombatState> _combatStates = new();
 
     public IReadOnlyList<ProximityCombatAttack> Resolve(
         long matchingId,
         IReadOnlyList<ProximityCombatActor> actors,
-        DateTime nowUtc,
-        float attackRange,
-        TimeSpan attackCooldown)
+        DateTime nowUtc)
     {
-        if (matchingId <= 0 || actors.Count < 2 || attackRange <= 0f || attackCooldown <= TimeSpan.Zero)
+        if (matchingId <= 0)
             return [];
 
-        float attackRangeSquared = attackRange * attackRange;
         var attacks = new List<ProximityCombatAttack>();
+        var activeAttackers = new HashSet<long>();
 
         foreach (var attacker in actors)
         {
-            if (attacker.WeaponItemId <= 0 || attacker.Area == AreaType.None)
+            var stateKey = (matchingId, attacker.PlayerId);
+            if (attacker.WeaponItemId <= 0 || attacker.Area == AreaType.None ||
+                attacker.AttackRange <= 0f || attacker.Damage <= 0 || attacker.AttackIntervalSeconds <= 0f)
+            {
+                _combatStates.TryRemove(stateKey, out _);
                 continue;
+            }
 
-            var cooldownKey = (matchingId, attacker.PlayerId);
-            if (_nextAttackAtUtc.TryGetValue(cooldownKey, out var nextAttackAtUtc) && nowUtc < nextAttackAtUtc)
-                continue;
-
+            activeAttackers.Add(attacker.PlayerId);
+            float attackRangeSquared = attacker.AttackRange * attacker.AttackRange;
             ProximityCombatActor? nearestTarget = null;
             float nearestDistanceSquared = float.MaxValue;
 
@@ -70,14 +81,45 @@ public sealed class ProximityAutoCombatResolver
             }
 
             if (!nearestTarget.HasValue)
+            {
+                _combatStates.TryRemove(stateKey, out _);
+                continue;
+            }
+
+            if (!_combatStates.TryGetValue(stateKey, out var combatState) ||
+                combatState.TargetPlayerId != nearestTarget.Value.PlayerId ||
+                combatState.WeaponItemId != attacker.WeaponItemId)
+            {
+                var aimReadyAtUtc = nowUtc.Add(AimDuration);
+                _combatStates[stateKey] = new CombatState(
+                    nearestTarget.Value.PlayerId,
+                    attacker.WeaponItemId,
+                    aimReadyAtUtc,
+                    aimReadyAtUtc);
+                continue;
+            }
+
+            if (nowUtc < combatState.AimReadyAtUtc || nowUtc < combatState.NextAttackAtUtc)
                 continue;
 
             attacks.Add(new ProximityCombatAttack(
                 attacker.PlayerId,
                 nearestTarget.Value.PlayerId,
                 attacker.Area,
-                attacker.WeaponItemId));
-            _nextAttackAtUtc[cooldownKey] = nowUtc.Add(attackCooldown);
+                attacker.WeaponItemId,
+                attacker.Damage,
+                attacker.ProjectileWidth,
+                attacker.EffectDurationSeconds));
+            _combatStates[stateKey] = combatState with
+            {
+                NextAttackAtUtc = nowUtc.AddSeconds(attacker.AttackIntervalSeconds)
+            };
+        }
+
+        foreach (var key in _combatStates.Keys)
+        {
+            if (key.MatchingId == matchingId && !activeAttackers.Contains(key.PlayerId))
+                _combatStates.TryRemove(key, out _);
         }
 
         return attacks;
@@ -85,12 +127,18 @@ public sealed class ProximityAutoCombatResolver
 
     public void RemoveMatching(long matchingId)
     {
-        foreach (var key in _nextAttackAtUtc.Keys)
+        foreach (var key in _combatStates.Keys)
         {
             if (key.MatchingId == matchingId)
-                _nextAttackAtUtc.TryRemove(key, out _);
+                _combatStates.TryRemove(key, out _);
         }
     }
 
-    public void Clear() => _nextAttackAtUtc.Clear();
+    public void Clear() => _combatStates.Clear();
+
+    private readonly record struct CombatState(
+        long TargetPlayerId,
+        int WeaponItemId,
+        DateTime AimReadyAtUtc,
+        DateTime NextAttackAtUtc);
 }

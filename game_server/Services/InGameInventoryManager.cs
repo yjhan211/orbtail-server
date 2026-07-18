@@ -15,6 +15,7 @@ public class PlayerInGameInventory(long matchingId)
     private readonly object _sequenceLock = new();
     private int _nextSequence = 1;
 
+    private long _equippedBattleItemUid;
     private static bool ShouldKeepSeparateStack(int itemId, GiftState giftState) =>
         giftState == GiftState.None && BattleItemRecipeData.IsRecipeInputItem(itemId);
 
@@ -73,6 +74,8 @@ public class PlayerInGameInventory(long matchingId)
         if (item.Count <= 0)
         {
             _items.TryRemove(itemUid, out _);
+            if (_equippedBattleItemUid == itemUid)
+                _equippedBattleItemUid = 0;
             updatedItem = new InGameItemInfo
             {
                 ItemUid = itemUid,
@@ -144,12 +147,42 @@ public class PlayerInGameInventory(long matchingId)
             GiftState = item.GiftState
         }).ToList();
         _items.Clear();
+        _equippedBattleItemUid = 0;
         return items;
     }
     [MethodImpl(MethodImplOptions.Synchronized)]
     public InGameItemInfo? GetItem(long itemUid)
     {
         return _items.GetValueOrDefault(itemUid);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryEquipBattleItem(long itemUid, out InGameItemInfo? equippedItem)
+    {
+        equippedItem = null;
+        if (!_items.TryGetValue(itemUid, out var item) || item.Count <= 0 ||
+            !BattleItemCombatData.IsCombatItem(item.ItemId))
+        {
+            return false;
+        }
+
+        _equippedBattleItemUid = itemUid;
+        equippedItem = item;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public InGameItemInfo? GetEquippedBattleItem()
+    {
+        if (_equippedBattleItemUid != 0 &&
+            _items.TryGetValue(_equippedBattleItemUid, out var item) && item.Count > 0 &&
+            BattleItemCombatData.IsCombatItem(item.ItemId))
+        {
+            return item;
+        }
+
+        _equippedBattleItemUid = 0;
+        return null;
     }
 
     /// <summary>
@@ -308,6 +341,25 @@ public class InGameInventoryManager
                 $"InGameInventoryManager: Combined items (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', inputItemIds)}], Output={outputItemId})");
         return result;
     }
+    public bool TryEquipBattleItem(long matchingId, long playerId, long itemUid,
+        out InGameItemInfo? equippedItem)
+    {
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        bool result = inventory.TryEquipBattleItem(itemUid, out equippedItem);
+        if (result)
+        {
+            _logAction?.Invoke(
+                $"InGameInventoryManager: Equipped battle item (MatchingId={matchingId}, PlayerId={playerId}, ItemId={equippedItem?.ItemId}, ItemUid={itemUid})");
+        }
+
+        return result;
+    }
+
+    public InGameItemInfo? GetEquippedBattleItem(long matchingId, long playerId)
+    {
+        return GetPlayerInventory(matchingId, playerId).GetEquippedBattleItem();
+    }
+
 
     public InGameItemInfo? RemoveItemByItemId(long matchingId, long playerId, int itemId)
     {

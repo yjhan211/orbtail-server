@@ -2,14 +2,13 @@ using game_server.network;
 using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data;
 
 namespace game_server;
 
 public partial class GameServer
 {
     private const int ProximityAutoCombatTickIntervalMs = 250;
-    private const float ProximityAutoCombatRange = Config.TARGET_PROXIMITY_DISTANCE;
-    private static readonly TimeSpan ProximityAutoCombatCooldown = TimeSpan.FromSeconds(1.5);
 
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
     private Timer? _proximityAutoCombatTimer;
@@ -23,10 +22,9 @@ public partial class GameServer
             TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs),
             TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs));
         logger.LogInformation(
-            "Proximity auto combat timer started: TickMs={TickMs}, Range={Range}, CooldownSeconds={CooldownSeconds}",
+            "Proximity auto combat timer started: TickMs={TickMs}, AimMilliseconds={AimMilliseconds}",
             ProximityAutoCombatTickIntervalMs,
-            ProximityAutoCombatRange,
-            ProximityAutoCombatCooldown.TotalSeconds);
+            ProximityAutoCombatResolver.AimDuration.TotalMilliseconds);
     }
 
     private void ProcessProximityAutoCombatTick(object? state)
@@ -56,9 +54,7 @@ public partial class GameServer
                 var attacks = _proximityAutoCombatResolver.Resolve(
                     matchingId,
                     actors,
-                    DateTime.UtcNow,
-                    ProximityAutoCombatRange,
-                    ProximityAutoCombatCooldown);
+                    DateTime.UtcNow);
                 if (attacks.Count == 0)
                     continue;
 
@@ -91,12 +87,18 @@ public partial class GameServer
             }
 
             var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, session.PlayerId.Value);
-            int weaponItemId = GameClientSession.ResolveProximityAutoCombatWeaponItemId(inventory);
+            var equippedItem = inventory.GetEquippedBattleItem();
+            var combatData = equippedItem == null ? null : BattleItemCombatData.Get(equippedItem.ItemId);
             actors.Add(new ProximityCombatActor(
                 session.PlayerId.Value,
                 session.CurrentArea,
                 session.LastValidatedPosition,
-                weaponItemId));
+                equippedItem?.ItemId ?? 0,
+                combatData?.AttackRange ?? 0f,
+                combatData?.Damage ?? 0,
+                combatData?.AttackIntervalSeconds ?? 0f,
+                combatData?.ProjectileWidth ?? 0f,
+                combatData?.EffectDurationSeconds ?? 0f));
         }
 
         foreach (var bot in matchingBots)
@@ -105,12 +107,18 @@ public partial class GameServer
                 continue;
 
             var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, bot.PlayerId);
-            int weaponItemId = GameClientSession.ResolveProximityAutoCombatWeaponItemId(inventory);
+            var equippedItem = inventory.GetEquippedBattleItem();
+            var combatData = equippedItem == null ? null : BattleItemCombatData.Get(equippedItem.ItemId);
             actors.Add(new ProximityCombatActor(
                 bot.PlayerId,
                 bot.CurrentArea,
                 bot.Position,
-                weaponItemId));
+                equippedItem?.ItemId ?? 0,
+                combatData?.AttackRange ?? 0f,
+                combatData?.Damage ?? 0,
+                combatData?.AttackIntervalSeconds ?? 0f,
+                combatData?.ProjectileWidth ?? 0f,
+                combatData?.EffectDurationSeconds ?? 0f));
         }
 
         return actors;
@@ -125,7 +133,7 @@ public partial class GameServer
     {
         foreach (var attack in attacks)
         {
-            int damage = GameClientSession.ResolveProximityAutoCombatDamage(attack.WeaponItemId);
+            int damage = attack.Damage;
             if (damage <= 0)
                 continue;
 
@@ -138,7 +146,8 @@ public partial class GameServer
                 targetSession.ApplyProximityAutoCombatHit(
                     attack.AttackerPlayerId,
                     attack.Area,
-                    attack.WeaponItemId);
+                    attack.WeaponItemId,
+                    damage);
             }
             else
             {

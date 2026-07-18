@@ -1,5 +1,6 @@
 using System.Text.Json;
 using network.common.data.helpers;
+using network.common.data;
 
 namespace demo_regression_tests;
 
@@ -34,6 +35,55 @@ public class ProximityAutoCombatDataTests
         Assert.Equal(
             [201000016, 201000016],
             JsonSerializer.Deserialize<List<int>>(recipes[201000017]["input_item_ids"]));
+    }
+
+    [Fact]
+    public void GuardianCombatDataDefinesAllFamiliesTiersAndVariants()
+    {
+        string csvRoot = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv");
+        BattleItemCombatData.Initialize(
+            CsvHelper.LoadCsv(Path.Combine(csvRoot, "battle_item_combat.csv")));
+
+        var definitions = BattleItemCombatData.GetAll();
+
+        Assert.Equal(12, definitions.Count);
+        Assert.Equal(4, definitions.Count(definition => definition.Family == "recorder"));
+        Assert.Equal(4, definitions.Count(definition => definition.Family == "racket"));
+        Assert.Equal(4, definitions.Count(definition => definition.Family == "fan"));
+        Assert.All(definitions, definition =>
+        {
+            Assert.InRange(definition.Tier, 1, 3);
+            Assert.True(definition.AttackRange > 0f);
+            Assert.True(definition.Damage > 0);
+            Assert.True(definition.AttackIntervalSeconds > 0f);
+            Assert.True(definition.ProjectileWidth >= 0f);
+            Assert.True(definition.EffectDurationSeconds >= 0f);
+        });
+
+        Assert.True(BattleItemCombatData.Get(107000004).Damage >
+                    BattleItemCombatData.Get(107000005).Damage);
+        Assert.True(BattleItemCombatData.Get(107000005).AttackIntervalSeconds <
+                    BattleItemCombatData.Get(107000004).AttackIntervalSeconds);
+        Assert.True(BattleItemCombatData.Get(107000009).ProjectileWidth >
+                    BattleItemCombatData.Get(107000008).ProjectileWidth);
+        Assert.True(BattleItemCombatData.Get(107000013).EffectDurationSeconds >
+                    BattleItemCombatData.Get(107000012).EffectDurationSeconds);
+    }
+
+    [Fact]
+    public void GuardianCombatDataMatchesBothUnityMirrors()
+    {
+        string repoRoot = FindRepositoryRoot();
+        byte[] canonical = File.ReadAllBytes(
+            Path.Combine(repoRoot, "network", "Common", "csv", "battle_item_combat.csv"));
+
+        foreach (string clientRoot in new[] { "Resources", "StreamingAssets" })
+        {
+            Assert.Equal(
+                canonical,
+                File.ReadAllBytes(Path.Combine(
+                    repoRoot, "client", "Assets", clientRoot, "Common", "csv", "battle_item_combat.csv")));
+        }
     }
 
     [Fact]
