@@ -101,7 +101,7 @@ public class SchoolNewMapRestorationTests
     }
 
     [Fact]
-    public void DoorStateManager_Relocks_Door_After_Passage()
+    public void DoorStateManager_Initializes_All_Doors_Open_And_Does_Not_Close_Them()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
@@ -110,12 +110,11 @@ public class SchoolNewMapRestorationTests
         var manager = new DoorStateManager();
         manager.InitializeMatching(matchingId);
 
-        Assert.Empty(manager.GetOpenDoors(matchingId));
-        Assert.True(manager.OpenDoor(matchingId, 101));
+        var doorIds = GameDoorData.GetAll().Select(door => door.DoorId).ToList();
+        Assert.Equal(doorIds.Order(), manager.GetOpenDoors(matchingId).Order());
+        Assert.All(doorIds, doorId => Assert.True(manager.IsDoorOpen(matchingId, doorId)));
+        Assert.False(manager.OpenDoor(matchingId, 101));
         Assert.True(manager.IsDoorOpen(matchingId, 101));
-        Assert.True(manager.CloseDoor(matchingId, 101));
-        Assert.False(manager.IsDoorOpen(matchingId, 101));
-        Assert.False(manager.CloseDoor(matchingId, 101));
     }
 
     [Fact]
@@ -208,7 +207,7 @@ public class SchoolNewMapRestorationTests
         Assert.Equal(19, GameDoorData.GetAll().Count());
         Assert.All(GameDoorData.GetAll(), door =>
         {
-            Assert.False(door.IsInitiallyOpen);
+            Assert.True(door.IsInitiallyOpen);
             Assert.Equal(0, door.RequiredItemId);
         });
 
