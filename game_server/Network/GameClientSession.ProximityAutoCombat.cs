@@ -6,6 +6,7 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     internal const int ProximityAutoAttackDealtEventType = 17;
+    internal const int ProximityAutoAttackTakenEventType = 18;
 
     internal void ApplyProximityAutoCombatHit(long sourcePlayerId, AreaType area, int weaponItemId, int damage)
     {
@@ -17,13 +18,12 @@ public partial class GameClientSession
 
         ModifyStats(corruptionDelta: damage);
 
-        // For this event type RevealDelayMs is used as lightweight weapon metadata.
-        // It keeps the P0 on the existing encounter packet and avoids adding a new input surface.
+        // RevealDelayMs carries lightweight weapon metadata without adding a new packet surface.
         SendEncounterEvent(
             sourcePlayerId,
             area,
-            EncounterRevealManager.RoomEncounterChalkHitEventType,
-            EncounterRevealManager.PairCooldownSeconds,
+            ProximityAutoAttackTakenEventType,
+            0,
             weaponItemId);
     }
 
