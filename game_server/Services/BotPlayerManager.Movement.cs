@@ -414,7 +414,8 @@ public partial class BotPlayerManager
             }
         }
 
-        if (bot.Stamina < BotAutoConsumableStaminaThreshold &&
+        if ((bot.Stamina < BotAutoConsumableStaminaThreshold ||
+             bot.Corruption >= BotAutoConsumableCorruptionThreshold) &&
             TryStartRecoveryRngPath(bot, matchingId, closureManager, areaItemStockManager))
         {
             return;

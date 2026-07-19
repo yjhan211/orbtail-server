@@ -23,3 +23,5 @@ recipe_id,output_item_id,input_item_ids,craft_seconds,category,route_type
 193022,107000013,"[107000011,107000011]",1,fan,random
 193023,107000014,"[107000012,107000012]",1,fan,primary
 193024,107000014,"[107000013,107000013]",1,fan,primary
+193031,201000019,"[201000008,201000008]",1,consumable_merge,primary
+193032,201000020,"[201000011,201000011]",1,consumable_merge,primary

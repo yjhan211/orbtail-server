@@ -132,7 +132,7 @@ public class PlayerInGameInventory(long matchingId)
             changedItems.Add(removed);
         }
 
-        changedItems.Add(AddItem(outputItemId, 1));
+        changedItems.Add(AddItem(outputItemId, 1, forceSeparateStack: true));
         return true;
     }
 

@@ -29,6 +29,7 @@ public static class BotBattleItemLoadout
                 .Select(item => item.ItemId)
                 .ToList();
             var candidates = BattleItemRecipeData.GetAllRecipes()
+                .Where(recipe => BattleItemCombatData.IsCombatItem(recipe.OutputItemId))
                 .Where(recipe => HasInputs(itemIds, recipe.InputItemIds))
                 .ToList();
             if (candidates.Count == 0)

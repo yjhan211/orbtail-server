@@ -107,6 +107,9 @@ public partial class BotPlayerManager
     }
     private const int BotAutoConsumableStaminaThreshold = 30;
 
+    /// <summary>봇이 오염 회복품 사용을 검토하는 정신오염도 임계값.</summary>
+    private const int BotAutoConsumableCorruptionThreshold = 50;
+
     /// <summary>봇 자동 소모품 재사용 쿨다운(초).</summary>
     private const int BotAutoConsumableCooldownSeconds = 20;
 
@@ -442,20 +445,22 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     #134 — 봇 자동 소모품 사용. Stamina < 임계값일 때 인벤토리 회복 아이템 소비.
+    ///     #134 — 봇 자동 소모품 사용. 스태미나 또는 정신오염도 임계값에 따라 보관 중인 아이템 소비.
     ///     CONDITION_ADD(stamina up) 또는 CORRUPTION_DOWN buff를 즉시 적용.
     ///     CORRUPTION_ADD는 회복 후보에서 제외하되, 실제 아이템 처리 경로가 추가되면 오염 증가 효과로 해석한다.
     /// </summary>
     private void TryAutoUseConsumable(BotPlayerState bot, long matchingId, InGameInventoryManager inventoryManager)
     {
-        if (bot.Stamina >= BotAutoConsumableStaminaThreshold) return;
+        bool needsStamina = bot.Stamina < BotAutoConsumableStaminaThreshold;
+        bool needsCorruptionRecovery = bot.Corruption >= BotAutoConsumableCorruptionThreshold;
+        if (!needsStamina && !needsCorruptionRecovery) return;
         if ((DateTime.UtcNow - bot.LastAutoConsumableUseTime).TotalSeconds < BotAutoConsumableCooldownSeconds) return;
 
         var inventory = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId);
         var items = inventory.GetAllItems();
         if (items.Count == 0) return;
 
-        // 가장 효율 높은 회복 아이템 선택 — CONDITION_ADD value 합 기준
+        // 현재 부족한 자원에 실제로 기여하는 회복량이 가장 큰 아이템을 선택한다.
         InGameItemInfo? bestItem = null;
         int bestStaminaGain = 0;
         int bestCorruptionDown = 0;
@@ -486,9 +491,14 @@ public partial class BotPlayerManager
                         BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
             }
 
+            staminaGain = needsStamina ? Math.Min(100 - bot.Stamina, staminaGain) : 0;
+            corruptionDown = needsCorruptionRecovery ? Math.Min(bot.Corruption, corruptionDown) : 0;
             if (staminaGain <= 0 && corruptionDown <= 0) continue;
 
-            if (staminaGain > bestStaminaGain || (staminaGain == bestStaminaGain && corruptionDown > bestCorruptionDown))
+            int recoveryScore = staminaGain + corruptionDown;
+            int bestRecoveryScore = bestStaminaGain + bestCorruptionDown;
+            if (recoveryScore > bestRecoveryScore ||
+                recoveryScore == bestRecoveryScore && staminaGain > bestStaminaGain)
             {
                 bestItem = item;
                 bestStaminaGain = staminaGain;
