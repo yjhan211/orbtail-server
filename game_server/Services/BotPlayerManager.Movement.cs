@@ -156,6 +156,7 @@ public partial class BotPlayerManager
     ///     #134: 추가로 ChooseNewWanderTarget 시 PendingExploreEndBroadcast가 set된 봇은 ExploreEnds list에 수집 — walking 시작 안전망.
     /// </summary>
     public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager,
+        AreaItemStockManager areaItemStockManager,
         IReadOnlyDictionary<long, AreaType> humanAreas,
         ChecklistManager checklistManager,
         InGameInventoryManager inventoryManager,
@@ -179,7 +180,7 @@ public partial class BotPlayerManager
                 result.GroundItemPickups.Add(pickup.Value);
             }
             UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
-            var ev = WalkStep(bot, matchingId, closureManager, playerAreas, checklistManager);
+            var ev = WalkStep(bot, matchingId, closureManager, areaItemStockManager, playerAreas, checklistManager);
             if (ev != null) result.Movements.Add(ev);
             if (bot.PendingExploreEndBroadcast)
             {
@@ -196,7 +197,8 @@ public partial class BotPlayerManager
     ///     일반 셀 walk는 진행 방향 + 속도 포함 MOVE 이벤트 반환.
     /// </summary>
     private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
-        IReadOnlyDictionary<long, AreaType> playerAreas, ChecklistManager checklistManager)
+        AreaItemStockManager areaItemStockManager, IReadOnlyDictionary<long, AreaType> playerAreas,
+        ChecklistManager checklistManager)
     {
         var now = DateTime.UtcNow;
         float deltaSec = (float)(now - bot.LastWalkStepTime).TotalSeconds;
@@ -272,7 +274,8 @@ public partial class BotPlayerManager
             // #134 — 도착 후 RNG 채집이 아직 안 됐으면 walking 보류 (ProcessBotMissionTick이 PendingRngInteractId 처리 후 0으로 클리어할 때까지 대기).
             if (bot.PendingRngInteractId != 0 || bot.PendingChecklistTaskId != 0) return null;
 
-            ChooseNewWanderTarget(bot, matchingId, closureManager, playerAreas, checklistManager);
+            ChooseNewWanderTarget(bot, matchingId, closureManager, areaItemStockManager, playerAreas,
+                checklistManager);
             if (bot.Path.Count == 0) return null;
             // ChooseNewWanderTarget이 LoopWaitUntil(+3초)을 설정하므로 새 path는 다음 틱부터 진행.
             // 같은 틱에서 walking 시작 시 영역 도착 후 3초 휴식이 무력화되어 발소리/walk 애니가 끊기지 않음.
@@ -373,7 +376,8 @@ public partial class BotPlayerManager
     ///     복도는 목적지가 아니라 통과만(transit). 미션 수집 동선(직책 큐/RNG 채집)은 폐기.
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
-        IReadOnlyDictionary<long, AreaType> playerAreas, ChecklistManager checklistManager)
+        AreaItemStockManager areaItemStockManager, IReadOnlyDictionary<long, AreaType> playerAreas,
+        ChecklistManager checklistManager)
     {
         var mapId = GetMatchingMapId(matchingId);
         bot.Path.Clear();
@@ -386,8 +390,8 @@ public partial class BotPlayerManager
         // walking 시작 시 EXPLORE_END broadcast 안전망 — 다음 ProcessBotMovementTick에서 수집.
         bot.PendingExploreEndBroadcast = true;
 
-        if (bot.CompletedRoomExploreArea == bot.CurrentArea &&
-            TryStartPostExploreRelocation(bot, matchingId, mapId, closureManager))
+        if (bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) &&
+            TryStartPostExploreRelocation(bot, matchingId, mapId, closureManager, areaItemStockManager))
         {
             return;
         }
@@ -398,22 +402,31 @@ public partial class BotPlayerManager
             return;
         }
 
-        var activeSchoolTask = checklistManager.GetNextActiveGeneralInteractTask(matchingId, bot.PlayerId);
-        int schoolTaskCost = activeSchoolTask != null ? Math.Max(0, activeSchoolTask.StaminaCost) : 0;
-        if (activeSchoolTask != null &&
-            bot.Stamina >= schoolTaskCost &&
-            TryStartBotChecklistTaskPath(bot, matchingId, activeSchoolTask, closureManager))
+        if (Config.CHECKLIST_SYSTEM_ENABLED)
         {
-            return;
+            var activeSchoolTask = checklistManager.GetNextActiveGeneralInteractTask(matchingId, bot.PlayerId);
+            int schoolTaskCost = activeSchoolTask != null ? Math.Max(0, activeSchoolTask.StaminaCost) : 0;
+            if (activeSchoolTask != null &&
+                bot.Stamina >= schoolTaskCost &&
+                TryStartBotChecklistTaskPath(bot, matchingId, activeSchoolTask, closureManager))
+            {
+                return;
+            }
         }
 
         if (bot.Stamina < BotAutoConsumableStaminaThreshold &&
-            TryStartRecoveryRngPath(bot, matchingId, closureManager))
+            TryStartRecoveryRngPath(bot, matchingId, closureManager, areaItemStockManager))
         {
             return;
         }
 
-        if (TryStartQueuedRoomExplore(bot, matchingId, closureManager))
+        if (TryStartQueuedRoomExplore(bot, matchingId, closureManager, areaItemStockManager))
+        {
+            return;
+        }
+
+        if (bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) &&
+            TryStartPostExploreRelocation(bot, matchingId, mapId, closureManager, areaItemStockManager))
         {
             return;
         }
@@ -452,7 +465,7 @@ public partial class BotPlayerManager
     }
 
     private bool TryStartPostExploreRelocation(BotPlayerState bot, long matchingId, MapId mapId,
-        AreaClosureManager closureManager)
+        AreaClosureManager closureManager, AreaItemStockManager areaItemStockManager)
     {
         var candidateAreas = GameMapData.GetAreas(mapId)
             .Select(region => region.AreaType)
@@ -460,10 +473,20 @@ public partial class BotPlayerManager
             .Where(area => area != AreaType.None &&
                            area != bot.CurrentArea &&
                            !area.IsCorridor() &&
+                           !bot.CompletedRoomExploreAreas.Contains(area) &&
                            !closureManager.IsAreaClosed(matchingId, area) &&
+                           areaItemStockManager.HasRemaining(matchingId, (int)area) &&
                            GameInteractableData.GetByZone((int)area)
-                               .Any(info => IsBotRoomExploreCandidate(info, area)))
-            .OrderBy(_ => _rng.Next())
+                               .Any(info => IsBotRoomExploreAvailable(bot, matchingId, info, area)))
+            .Select(area => new
+            {
+                Area = area,
+                CanSpawnBattleItem = GameInteractableData.GetItemPoolByArea((int)area)
+                    .Any(BattleItemCombatData.IsCombatItem)
+            })
+            .OrderByDescending(candidate => bot.EquippedBattleItemId <= 0 && candidate.CanSpawnBattleItem)
+            .ThenBy(_ => _rng.Next())
+            .Select(candidate => candidate.Area)
             .ToList();
 
         foreach (var destination in candidateAreas)
@@ -540,7 +563,8 @@ public partial class BotPlayerManager
         return TryStartBotChecklistPath(bot, matchingId, area, task.InteractId, task.TaskId, closureManager);
     }
 
-    private bool TryStartQueuedRoomExplore(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
+    private bool TryStartQueuedRoomExplore(BotPlayerState bot, long matchingId,
+        AreaClosureManager closureManager, AreaItemStockManager areaItemStockManager)
     {
         if (bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor() ||
             closureManager.IsAreaClosed(matchingId, bot.CurrentArea))
@@ -549,8 +573,13 @@ public partial class BotPlayerManager
             return false;
         }
 
-        if (bot.CompletedRoomExploreArea == bot.CurrentArea)
+        if (bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea))
             return false;
+        if (!areaItemStockManager.HasRemaining(matchingId, (int)bot.CurrentArea))
+        {
+            MarkBotRoomExploreComplete(bot);
+            return false;
+        }
 
         if (bot.RoomExploreQueueArea != AreaType.None && bot.RoomExploreQueueArea != bot.CurrentArea)
         {
@@ -558,16 +587,30 @@ public partial class BotPlayerManager
             bot.RoomExploreQueueArea = AreaType.None;
         }
 
-        if (bot.InteractQueueInArea.Count == 0 && !RefillRoomExploreQueue(bot))
-            return false;
+        if (bot.InteractQueueInArea.Count == 0)
+        {
+            // 같은 방 방문에서 이미 만든 큐를 전부 소비했다면 정적 후보를 다시 채우지 않는다.
+            if (bot.RoomExploreQueueArea == bot.CurrentArea ||
+                !RefillRoomExploreQueue(bot, matchingId, areaItemStockManager))
+            {
+                MarkBotRoomExploreComplete(bot);
+                return false;
+            }
+        }
 
         while (bot.InteractQueueInArea.Count > 0)
         {
+            if (!areaItemStockManager.HasRemaining(matchingId, (int)bot.CurrentArea))
+            {
+                MarkBotRoomExploreComplete(bot);
+                return false;
+            }
+
             int interactId = bot.InteractQueueInArea[0];
             bot.InteractQueueInArea.RemoveAt(0);
 
             var info = GameInteractableData.Get(interactId);
-            if (!IsBotRoomExploreCandidate(info, bot.CurrentArea))
+            if (!IsBotRoomExploreAvailable(bot, matchingId, info, bot.CurrentArea))
                 continue;
 
             if (!TryStartBotInteractPath(bot, matchingId, bot.CurrentArea, interactId, closureManager,
@@ -580,29 +623,37 @@ public partial class BotPlayerManager
             return true;
         }
 
-        bot.CompletedRoomExploreArea = bot.CurrentArea;
-        bot.RoomExploreQueueArea = AreaType.None;
+        MarkBotRoomExploreComplete(bot);
         return false;
     }
 
-    private bool RefillRoomExploreQueue(BotPlayerState bot)
+    private bool RefillRoomExploreQueue(BotPlayerState bot, long matchingId,
+        AreaItemStockManager areaItemStockManager)
     {
+        if (!areaItemStockManager.HasRemaining(matchingId, (int)bot.CurrentArea))
+            return false;
+
         var candidates = GameInteractableData.GetByZone((int)bot.CurrentArea)
-            .Where(info => IsBotRoomExploreCandidate(info, bot.CurrentArea))
+            .Where(info => IsBotRoomExploreAvailable(bot, matchingId, info, bot.CurrentArea))
             .OrderBy(_ => _rng.Next())
             .Select(info => info.Id)
             .ToList();
 
         if (candidates.Count == 0)
-        {
-            bot.CompletedRoomExploreArea = bot.CurrentArea;
             return false;
-        }
 
         bot.InteractQueueInArea.Clear();
         bot.InteractQueueInArea.AddRange(candidates);
         bot.RoomExploreQueueArea = bot.CurrentArea;
         return true;
+    }
+
+    private static bool IsBotRoomExploreAvailable(BotPlayerState bot, long matchingId,
+        InteractableInfoData? info, AreaType area)
+    {
+        return IsBotRoomExploreCandidate(info, area) &&
+               !bot.ExploredRngInteractIds.Contains(info!.Id) &&
+               !RngCollectCooldownStore.IsInCooldown(matchingId, info.Id, out _);
     }
 
     private static bool IsBotRoomExploreCandidate(InteractableInfoData? info, AreaType area)
@@ -617,23 +668,45 @@ public partial class BotPlayerManager
     {
         bot.InteractQueueInArea.Clear();
         bot.RoomExploreQueueArea = AreaType.None;
-        bot.CompletedRoomExploreArea = AreaType.None;
     }
 
-    private bool TryStartRecoveryRngPath(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
+    private static void MarkBotRoomExploreComplete(BotPlayerState bot)
+    {
+        bot.InteractQueueInArea.Clear();
+        bot.RoomExploreQueueArea = AreaType.None;
+        if (bot.CurrentArea != AreaType.None && !bot.CurrentArea.IsCorridor())
+            bot.CompletedRoomExploreAreas.Add(bot.CurrentArea);
+        bot.LoopWaitUntil = DateTime.MinValue;
+    }
+
+    private bool TryStartRecoveryRngPath(BotPlayerState bot, long matchingId,
+        AreaClosureManager closureManager, AreaItemStockManager areaItemStockManager)
     {
         var areaOrder = new List<AreaType>();
-        if (bot.CurrentArea != AreaType.None && !closureManager.IsAreaClosed(matchingId, bot.CurrentArea))
+        if (bot.CurrentArea != AreaType.None &&
+            !bot.CurrentArea.IsCorridor() &&
+            !bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) &&
+            !closureManager.IsAreaClosed(matchingId, bot.CurrentArea) &&
+            areaItemStockManager.HasRemaining(matchingId, (int)bot.CurrentArea))
+        {
             areaOrder.Add(bot.CurrentArea);
+        }
 
-        areaOrder.AddRange(Proto0Rooms
-            .Where(area => area != bot.CurrentArea && !closureManager.IsAreaClosed(matchingId, area))
+        areaOrder.AddRange(GameMapData.GetAreas(GetMatchingMapId(matchingId))
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Where(area => area != AreaType.None &&
+                           area != bot.CurrentArea &&
+                           !area.IsCorridor() &&
+                           !bot.CompletedRoomExploreAreas.Contains(area) &&
+                           !closureManager.IsAreaClosed(matchingId, area) &&
+                           areaItemStockManager.HasRemaining(matchingId, (int)area))
             .OrderBy(_ => _rng.Next()));
 
         foreach (var area in areaOrder)
         {
             var candidates = GameInteractableData.GetByZone((int)area)
-                .Where(info => info.CellX != 0 || info.CellY != 0)
+                .Where(info => IsBotRoomExploreAvailable(bot, matchingId, info, area))
                 .OrderBy(_ => _rng.Next())
                 .ToList();
 

@@ -66,6 +66,7 @@ public partial class GameClientSession
                 GroundItemClaimStatus.TooFar => ErrorCode.INVALID_POSITION,
                 GroundItemClaimStatus.Rejected => rejection,
                 GroundItemClaimStatus.SourceBlocked => ErrorCode.INVALID_GAME_STATE,
+                GroundItemClaimStatus.Reserved => ErrorCode.ITEM_NOT_FOUND,
                 _ => ErrorCode.ITEM_NOT_FOUND
             };
             SendGroundItemPickupResult(msg.GroundItemUid, claimedItem?.ItemId ?? 0, false, false, error);
@@ -158,7 +159,10 @@ public partial class GameClientSession
         var origin = CellToWorldPosition(new Cell(info.CellX, info.CellY));
         var area = (AreaType)info.ZoneId;
         var spawned = _groundItemManager.SpawnItems(CurrentMapSubId, area,
-            origin.X, origin.Y, outcome.DroppedItemIds);
+            origin.X, origin.Y, outcome.DroppedItemIds,
+            mapId: CurrentMapId,
+            discovererPlayerId: PlayerId.GetValueOrDefault(),
+            discovererPickupWindow: GroundItemManager.DiscovererPickupWindow);
         BroadcastGroundItemsSpawned(area, spawned);
     }
 

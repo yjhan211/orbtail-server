@@ -225,8 +225,9 @@ public partial class BotPlayerManager
         // 遊뉗씠 RNG progress 以묒씠硫?EXPLORE_1濡??⑹꽦 ???곸뿭 吏꾩엯 ???대씪媛 遊?罹먮┃???먯깋 ?좊땲 利됱떆 ?쒖떆.
         var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
             ? PlayerState.SLEEP
-            : bot.RngCollectProgressStartTime != DateTime.MinValue
-              || bot.ChecklistActivityProgressStartTime != DateTime.MinValue
+            : bot.RngCollectProgressStartTime != DateTime.MinValue ||
+              Config.CHECKLIST_SYSTEM_ENABLED &&
+              bot.ChecklistActivityProgressStartTime != DateTime.MinValue
                 ? PlayerState.EXPLORE_1
                 : PlayerState.IDLE;
         var info = new PlayerInfo
@@ -478,9 +479,13 @@ public class BotPlayerState
     /// 鍮꾨㈃ ChooseNewWanderTarget???ㅼ쓬 ?곸뿭 寃곗젙.</summary>
     public List<int> InteractQueueInArea { get; set; } = new();
 
-    public AreaType RoomExploreQueueArea { get; set; } = AreaType.None;
+    /// <summary>이번 매치에서 이 봇이 탐색을 끝낸 방. 방을 이동해도 유지한다.</summary>
+    public HashSet<AreaType> CompletedRoomExploreAreas { get; } = new();
 
-    public AreaType CompletedRoomExploreArea { get; set; } = AreaType.None;
+    /// <summary>이번 매치에서 이 봇이 실제 RNG 탐색을 완료한 상호작용 지점.</summary>
+    public HashSet<int> ExploredRngInteractIds { get; } = new();
+
+    public AreaType RoomExploreQueueArea { get; set; } = AreaType.None;
 
     /// <summary>留덉?留됱쑝濡??먮룞 ?뚮え?덉쓣 ?ъ슜???쒓컖 (?ъ궗??荑⑤떎??.</summary>
     public DateTime LastAutoConsumableUseTime { get; set; } = DateTime.MinValue;

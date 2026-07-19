@@ -872,6 +872,7 @@ public partial class GameClientSession
             return false;
 
         return targetBot.RngCollectProgressStartTime != DateTime.MinValue ||
+               Config.CHECKLIST_SYSTEM_ENABLED &&
                targetBot.ChecklistActivityProgressStartTime != DateTime.MinValue;
     }
 

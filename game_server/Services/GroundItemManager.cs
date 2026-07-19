@@ -12,19 +12,28 @@ public enum GroundItemClaimStatus
     AreaMismatch,
     TooFar,
     Rejected,
-    SourceBlocked
+    SourceBlocked,
+    Reserved
 }
 
 public sealed class GroundItemManager
 {
     public const float PickupRadius = 1.15f;
+    public static readonly TimeSpan DiscovererPickupWindow = TimeSpan.FromSeconds(1);
     private readonly ConcurrentDictionary<long, MatchingGroundItemState> _matchingStates = new();
+    private readonly TimeProvider _timeProvider;
+
+    public GroundItemManager(TimeProvider? timeProvider = null)
+    {
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
 
     public void InitializeMatching(long matchingId) =>
         _matchingStates.GetOrAdd(matchingId, _ => new MatchingGroundItemState(matchingId));
 
     public List<GroundItemInfo> SpawnItems(long matchingId, AreaType area, float originX, float originY,
-        IReadOnlyList<int> itemIds, long sourcePlayerId = 0, MapId mapId = MapId.School)
+        IReadOnlyList<int> itemIds, long sourcePlayerId = 0, MapId mapId = MapId.School,
+        long discovererPlayerId = 0, TimeSpan? discovererPickupWindow = null)
     {
         if (matchingId <= 0 || area == AreaType.None || itemIds.Count == 0)
             return new List<GroundItemInfo>();
@@ -48,6 +57,13 @@ public sealed class GroundItemManager
                     SourcePlayerId = sourcePlayerId
                 };
                 state.Items[item.GroundItemUid] = item;
+                if (discovererPlayerId != 0 &&
+                    discovererPickupWindow is { } pickupWindow &&
+                    pickupWindow > TimeSpan.Zero)
+                {
+                    state.ClaimReservations[item.GroundItemUid] = new GroundItemClaimReservation(
+                        discovererPlayerId, _timeProvider.GetUtcNow().Add(pickupWindow));
+                }
                 spawned.Add(Clone(item));
             }
             return spawned;
@@ -79,6 +95,17 @@ public sealed class GroundItemManager
         {
             if (!state.Items.TryGetValue(groundItemUid, out var item))
                 return GroundItemClaimStatus.NotFound;
+            if (state.ClaimReservations.TryGetValue(groundItemUid, out var reservation))
+            {
+                if (reservation.ExpiresAtUtc <= _timeProvider.GetUtcNow())
+                {
+                    state.ClaimReservations.Remove(groundItemUid);
+                }
+                else if (reservation.PlayerId != claimingPlayerId)
+                {
+                    return GroundItemClaimStatus.Reserved;
+                }
+            }
             if (item.SourcePlayerId != 0 && item.SourcePlayerId == claimingPlayerId)
                 return GroundItemClaimStatus.SourceBlocked;
             if (item.AreaType != (int)playerArea)
@@ -92,6 +119,7 @@ public sealed class GroundItemManager
                 return GroundItemClaimStatus.Rejected;
 
             state.Items.Remove(groundItemUid);
+            state.ClaimReservations.Remove(groundItemUid);
             claimedItem = Clone(item);
             return GroundItemClaimStatus.Success;
         }
@@ -113,6 +141,22 @@ public sealed class GroundItemManager
             }
         }
     }
+
+    public void ReleaseClaimReservationsForPlayer(long matchingId, long playerId)
+    {
+        if (playerId == 0 || !_matchingStates.TryGetValue(matchingId, out var state)) return;
+
+        lock (state.SyncRoot)
+        {
+            var reservedItemIds = state.ClaimReservations
+                .Where(entry => entry.Value.PlayerId == playerId)
+                .Select(entry => entry.Key)
+                .ToArray();
+            foreach (long groundItemUid in reservedItemIds)
+                state.ClaimReservations.Remove(groundItemUid);
+        }
+    }
+
     public void RemoveMatchingState(long matchingId) => _matchingStates.TryRemove(matchingId, out _);
 
     private static (float X, float Y) ResolveLandingPosition(MapId mapId, AreaType area, float originX,
@@ -185,6 +229,9 @@ public sealed class GroundItemManager
         private long _sequence;
         public object SyncRoot { get; } = new();
         public Dictionary<long, GroundItemInfo> Items { get; } = new();
+        public Dictionary<long, GroundItemClaimReservation> ClaimReservations { get; } = new();
         public long NextUid() => checked(matchingId * 1_000_000L + ++_sequence);
     }
+
+    private readonly record struct GroundItemClaimReservation(long PlayerId, DateTimeOffset ExpiresAtUtc);
 }

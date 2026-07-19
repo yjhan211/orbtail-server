@@ -7,6 +7,12 @@ namespace game_server.services;
 public sealed class AreaItemStockManager
 {
     private readonly ConcurrentDictionary<long, MatchingAreaItemStock> _matchingStocks = new();
+    private readonly Random _random;
+
+    public AreaItemStockManager(Random? random = null)
+    {
+        _random = random ?? Random.Shared;
+    }
 
     public void InitializeMatching(long matchingId)
     {
@@ -40,7 +46,7 @@ public sealed class AreaItemStockManager
             int count = Math.Min(maxCount, areaStock.Count);
             for (int i = 0; i < count; i++)
             {
-                int index = Random.Shared.Next(areaStock.Count);
+                int index = _random.Next(areaStock.Count);
                 itemIds.Add(areaStock[index]);
                 areaStock.RemoveAt(index);
             }

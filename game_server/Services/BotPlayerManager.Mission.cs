@@ -41,19 +41,28 @@ public partial class BotPlayerManager
             // 플레이어와 대화 중일 때는 탐색/선물 회수를 잠시 멈춘다.
             if (bot.IsInInteraction) continue;
 
-            TryChecklistActivityIfArrived(bot, matchingId, checklistManager, inventoryManager, result);
-            if (bot.PendingChecklistTaskId > 0) continue;
+            if (Config.CHECKLIST_SYSTEM_ENABLED)
+            {
+                TryChecklistActivityIfArrived(bot, matchingId, checklistManager, inventoryManager, result);
+                if (bot.PendingChecklistTaskId > 0) continue;
+            }
+            else if (bot.PendingChecklistTaskId > 0 ||
+                     bot.PendingChecklistInteractId > 0 ||
+                     bot.ChecklistActivityProgressStartTime != DateTime.MinValue)
+            {
+                ClearPendingChecklistActivity(bot);
+            }
+
+            // 실제 지역 루팅은 레거시 부품 미션의 존재/완료 여부와 무관하게 진행한다.
+            TryRngCollectIfArrived(bot, matchingId, missionManager, inventoryManager, itemPoolManager,
+                areaItemStockManager, groundItemManager, result);
 
             var state = missionManager.GetState(matchingId, bot.PlayerId);
             if (state == null || state.IsCompleted) continue;
 
-            // 1) 봇 walking 도착 후 RNG 채집 (PendingRngInteractId가 있을 때만)
-            TryRngCollectIfArrived(bot, matchingId, missionManager, inventoryManager, itemPoolManager, areaItemStockManager, groundItemManager, state, result);
-
-            // 2) 결합 시도 (회수 직후 보유 부품 검사)
+            // 레거시 부품 결합은 해당 미션이 활성 상태일 때만 유지한다.
             TryAutoCombine(bot, matchingId, missionManager, state, result);
 
-            // 3) 스태미나 부족 시 자동 소모품 사용 (인벤토리에 회복 아이템 있을 때)
             TryAutoUseConsumable(bot, matchingId, inventoryManager);
         }
 
@@ -235,7 +244,8 @@ public partial class BotPlayerManager
     /// </summary>
     private void TryRngCollectIfArrived(BotPlayerState bot, long matchingId,
         MissionManager missionManager, InGameInventoryManager inventoryManager,
-        ItemPoolManager itemPoolManager, AreaItemStockManager areaItemStockManager, GroundItemManager groundItemManager, PlayerPartState state, BotMissionTickResult result)
+        ItemPoolManager itemPoolManager, AreaItemStockManager areaItemStockManager,
+        GroundItemManager groundItemManager, BotMissionTickResult result)
     {
         if (bot.PendingRngInteractId <= 0) return;
 
@@ -256,9 +266,9 @@ public partial class BotPlayerManager
 
         if (!areaItemStockManager.HasRemaining(matchingId, info.ZoneId))
         {
+            MarkBotRoomExploreComplete(bot);
             bot.PendingRngInteractId = 0;
             bot.RngCollectProgressStartTime = DateTime.MinValue;
-            bot.LoopWaitUntil = DateTime.MinValue;
             return;
         }
         // 쿨타임 체크 — walking 도중 다른 누군가가 회수한 경우 progress 시작 X. 즉시 다음 InteractObject로 진행.
@@ -309,7 +319,10 @@ public partial class BotPlayerManager
 
             bot.PendingRngInteractId = 0;
             bot.RngCollectProgressStartTime = DateTime.MinValue;
-            CompleteRoomExploreCycle(bot);
+            CompleteRoomExploreAttempt(
+                bot,
+                info.Id,
+                bot.EquippedBattleItemId <= 0 && areaItemStockManager.HasRemaining(matchingId, info.ZoneId));
             return;
         }
 
@@ -324,7 +337,9 @@ public partial class BotPlayerManager
             float originX = (info.CellX - info.CellY) / 2f;
             float originY = (info.CellX + info.CellY) / 4f;
             result.GroundItemSpawns.AddRange(groundItemManager.SpawnItems(
-                matchingId, bot.CurrentArea, originX, originY, outcome.DroppedItemIds));
+                matchingId, bot.CurrentArea, originX, originY, outcome.DroppedItemIds,
+                discovererPlayerId: bot.PlayerId,
+                discovererPickupWindow: GroundItemManager.DiscovererPickupWindow));
         }
         if (outcome is { ResultType: 3, CollectedPart: not null })
         {
@@ -346,17 +361,28 @@ public partial class BotPlayerManager
         result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
         result.RngCooldownBroadcasts.Add((info.Id, outcome.CooldownSeconds));
 
+        bool droppedBattleItem = outcome.DroppedItemIds.Any(BattleItemCombatData.IsCombatItem);
         bot.PendingRngInteractId = 0;
         bot.RngCollectProgressStartTime = DateTime.MinValue;
-        CompleteRoomExploreCycle(bot);
+        CompleteRoomExploreAttempt(
+            bot,
+            info.Id,
+            bot.EquippedBattleItemId <= 0 &&
+            !droppedBattleItem &&
+            areaItemStockManager.HasRemaining(matchingId, info.ZoneId));
     }
 
-    private static void CompleteRoomExploreCycle(BotPlayerState bot)
+    private static void CompleteRoomExploreAttempt(BotPlayerState bot, int interactId,
+        bool keepExploringCurrentRoom)
     {
-        bot.InteractQueueInArea.Clear();
-        bot.RoomExploreQueueArea = AreaType.None;
-        bot.CompletedRoomExploreArea = bot.CurrentArea;
+        if (interactId > 0)
+            bot.ExploredRngInteractIds.Add(interactId);
+
         bot.LoopWaitUntil = DateTime.MinValue;
+        if (keepExploringCurrentRoom && bot.InteractQueueInArea.Count > 0)
+            return;
+
+        MarkBotRoomExploreComplete(bot);
     }
 
     private bool TryHandleGiftDiscoveryForBot(BotPlayerState bot, long matchingId, MissionManager missionManager,

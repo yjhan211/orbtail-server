@@ -224,6 +224,12 @@ public partial class GameServer(
 
     private void StartChecklistProgressTickTimer()
     {
+        if (!Config.CHECKLIST_SYSTEM_ENABLED)
+        {
+            logger.LogInformation("Checklist progress timer disabled by configuration");
+            return;
+        }
+
         _checklistProgressTickTimer = new Timer(ProcessChecklistProgressTick, null,
             TimeSpan.FromSeconds(ChecklistProgressTickIntervalSeconds),
             TimeSpan.FromSeconds(ChecklistProgressTickIntervalSeconds));
@@ -588,6 +594,7 @@ public partial class GameServer(
     {
         try
         {
+            _groundItemManager.ReleaseClaimReservationsForPlayer(matchingId, botId);
             var affected = _manittoChainManager.EliminatePlayer(matchingId, botId, reason);
             var matchingSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
@@ -1507,6 +1514,7 @@ public partial class GameServer(
                 var movementResult = _botPlayerManager.ProcessBotMovementTick(
                     matchingId,
                     _areaClosureManager,
+                    _areaItemStockManager,
                     humanAreas,
                     _checklistManager,
                     _inGameInventoryManager,
