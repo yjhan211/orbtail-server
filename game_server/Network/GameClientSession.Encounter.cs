@@ -24,7 +24,7 @@ public partial class GameClientSession
     private DateTime _suppressRoomEncounterUntilUtc = DateTime.MinValue;
 
     private void SendEncounterEvent(long targetPlayerId, AreaType area, int eventType, int cooldownSeconds,
-        int revealDelayMs = 0)
+        int revealDelayMs = 0, int damageValue = 0)
     {
         if (!PlayerId.HasValue || targetPlayerId == 0) return;
 
@@ -33,7 +33,8 @@ public partial class GameClientSession
             area,
             eventType,
             cooldownSeconds,
-            revealDelayMs);
+            revealDelayMs,
+            damageValue);
         Send(packet);
     }
 

@@ -78,6 +78,7 @@ namespace network.common.data.models
         [Key("eventType")] public int EventType { get; set; }
         [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
         [Key("revealDelayMs")] public int RevealDelayMs { get; set; }
+        [Key("damageValue")] public int DamageValue { get; set; }
     }
 
     [MessagePackObject]

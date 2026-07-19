@@ -18,13 +18,14 @@ public partial class GameClientSession
 
         ModifyStats(corruptionDelta: damage);
 
-        // RevealDelayMs carries lightweight weapon metadata without adding a new packet surface.
+        // RevealDelayMs carries weapon metadata; DamageValue preserves the authoritative hit result.
         SendEncounterEvent(
             sourcePlayerId,
             area,
             ProximityAutoAttackTakenEventType,
             0,
-            weaponItemId);
+            weaponItemId,
+            damage);
     }
 
     internal void SendProximityAutoCombatAttackFeedback(
