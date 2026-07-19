@@ -197,12 +197,15 @@ public partial class BotPlayerManager
     private static Cell WorldToCell(Vector3f position) =>
         new((int)MathF.Floor(position.X + 2f * position.Y),
             (int)MathF.Floor(2f * position.Y - position.X));
-    public void ApplyProximityAutoCombatDamage(BotPlayerState bot, int damage)
+    public void ApplyProximityAutoCombatDamage(BotPlayerState bot, int damage, long attackerPlayerId = 0)
     {
         if (bot.IsEliminated || damage <= 0)
             return;
 
+        int previousCorruption = bot.Corruption;
         bot.Corruption = Math.Clamp(bot.Corruption + damage, 0, 100);
+        if (previousCorruption < 100 && bot.Corruption >= 100)
+            bot.LastProximityAttackerPlayerId = attackerPlayerId;
     }
 
     public bool TryFinalizeProximityAutoCombatElimination(BotPlayerState bot, long matchingId)

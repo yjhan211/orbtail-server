@@ -676,6 +676,7 @@ namespace network.common.data.models
     public class G_TO_C_PLAYER_ELIMINATED : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
+        [Key("attackerPlayerId")] public long AttackerPlayerId { get; set; }
         [Key("reason")] public EliminationReason Reason { get; set; }
         [Key("resultPlayers")] public List<GameResultPlayerInfo> ResultPlayers { get; set; } = new();
     }

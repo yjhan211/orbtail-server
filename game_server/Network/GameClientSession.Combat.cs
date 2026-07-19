@@ -657,7 +657,7 @@ public partial class GameClientSession
     ///     2026-05-05 권고안 B: 스태미나 부족 시 부족분만큼 Corruption 1:2 변환.
     ///     단, 양수 staminaDelta(회복)는 그대로 처리.
     /// </summary>
-    public void ModifyStats(int staminaDelta = 0, int corruptionDelta = 0)
+    public void ModifyStats(int staminaDelta = 0, int corruptionDelta = 0, long attackerPlayerId = 0)
     {
         int oldStamina = Stamina;
         int oldCorruption = Corruption;
@@ -707,7 +707,7 @@ public partial class GameClientSession
                 conversionCor > 0, reason: "", isBot: false);
         }
 
-        CheckResourceElimination();
+        CheckResourceElimination(attackerPlayerId);
     }
 
     /// <summary>

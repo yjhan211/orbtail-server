@@ -687,7 +687,7 @@ public partial class GameClientSession
     ///     플레이어 탈락 처리 + 체인 단절 브로드캐스트
     /// </summary>
     private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
-        bool deferGameOver = false)
+        bool deferGameOver = false, long attackerPlayerId = 0)
     {
         _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
         _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
@@ -708,6 +708,7 @@ public partial class GameClientSession
             var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED
             {
                 PlayerId = eliminatedPlayerId,
+                AttackerPlayerId = attackerPlayerId,
                 Reason = reason,
                 ResultPlayers = session.PlayerId == eliminatedPlayerId
                     ? eliminatedResultPlayers
@@ -1899,7 +1900,7 @@ public partial class GameClientSession
     ///     정신력 100 도달 시 탈락 체크. 권고안 B(2026-05-05): Stamina 0 단독으로는 탈락 트리거 안 됨
     ///     (대신 ModifyStats가 Stamina 부족분을 Corruption 1:2 변환).
     /// </summary>
-    public void CheckResourceElimination()
+    public void CheckResourceElimination(long attackerPlayerId = 0)
     {
         if (!PlayerId.HasValue || _isGameEnded || IsEliminated) return;
         if (Corruption < MaxCorruption) return;
@@ -1907,7 +1908,8 @@ public partial class GameClientSession
         Logger.LogInformation(
             "[Resource] Mental depleted: PlayerId={PlayerId}, Corruption={Corruption}/{MaxCorruption}. Eliminating player.",
             PlayerId.Value, Corruption, MaxCorruption);
-        _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO);
+        _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO,
+            attackerPlayerId: attackerPlayerId);
     }
 
     // ===== 시한부 사보타주 (GDD 2.5.4, 패키지 Y 4B, #24) =====

@@ -586,7 +586,7 @@ public partial class GameServer(
     ///     ManittoChainManager.EliminatePlayer로 체인 단절 (마니또 시한부 / 타겟 해방 등) 일괄 적용.
     /// </summary>
     private void ProcessBotElimination(long matchingId, long botId, EliminationReason reason,
-        List<GameClientSession> activeSessions)
+        List<GameClientSession> activeSessions, long attackerPlayerId = 0)
     {
         try
         {
@@ -600,7 +600,12 @@ public partial class GameServer(
             // 1) 전체에게 봇 탈락 알림 (G_TO_C_PLAYER_ELIMINATED)
             using (var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED))
             {
-                var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED { PlayerId = botId, Reason = reason };
+                var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED
+                {
+                    PlayerId = botId,
+                    AttackerPlayerId = attackerPlayerId,
+                    Reason = reason
+                };
                 eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
                 foreach (var s in matchingSessions) s.Send(eliminatedPacket);
             }

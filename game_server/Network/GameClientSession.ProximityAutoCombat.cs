@@ -16,7 +16,7 @@ public partial class GameClientSession
         if (damage <= 0)
             return;
 
-        ModifyStats(corruptionDelta: damage);
+        ModifyStats(corruptionDelta: damage, attackerPlayerId: sourcePlayerId);
 
         // RevealDelayMs carries weapon metadata; DamageValue preserves the authoritative hit result.
         SendEncounterEvent(

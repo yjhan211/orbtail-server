@@ -171,7 +171,8 @@ public partial class GameServer
                 if (targetBot == null)
                     continue;
 
-                _botPlayerManager.ApplyProximityAutoCombatDamage(targetBot, damage);
+                _botPlayerManager.ApplyProximityAutoCombatDamage(
+                    targetBot, damage, attack.AttackerPlayerId);
             }
 
             var attackerSession = matchingSessions.FirstOrDefault(session =>
@@ -201,7 +202,8 @@ public partial class GameServer
                 bot.PlayerId,
                 EliminationReason.MENTAL_ZERO.ToString(),
                 isBot: true);
-            ProcessBotElimination(matchingId, bot.PlayerId, EliminationReason.MENTAL_ZERO, activeSessions);
+            ProcessBotElimination(matchingId, bot.PlayerId, EliminationReason.MENTAL_ZERO, activeSessions,
+                attackerPlayerId: bot.LastProximityAttackerPlayerId);
         }
     }
 
