@@ -13,7 +13,9 @@ public readonly record struct ProximityCombatActor(
     int Damage,
     float AttackIntervalSeconds,
     float ProjectileWidth = 0f,
-    float EffectDurationSeconds = 0f);
+    float EffectDurationSeconds = 0f,
+    MapId MapId = MapId.None,
+    Cell? Cell = null);
 
 public readonly record struct ProximityCombatAttack(
     long AttackerPlayerId,
@@ -37,7 +39,8 @@ public sealed class ProximityAutoCombatResolver
     public IReadOnlyList<ProximityCombatAttack> Resolve(
         long matchingId,
         IReadOnlyList<ProximityCombatActor> actors,
-        DateTime nowUtc)
+        DateTime nowUtc,
+        Func<ProximityCombatActor, ProximityCombatActor, bool>? hasLineOfSight = null)
     {
         if (matchingId <= 0)
             return [];
@@ -69,6 +72,8 @@ public sealed class ProximityAutoCombatResolver
                 float dy = attacker.Position.Y - candidate.Position.Y;
                 float distanceSquared = dx * dx + dy * dy;
                 if (distanceSquared > attackRangeSquared)
+                    continue;
+                if (hasLineOfSight != null && !hasLineOfSight(attacker, candidate))
                     continue;
 
                 if (distanceSquared < nearestDistanceSquared ||

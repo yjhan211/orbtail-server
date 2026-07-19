@@ -3,6 +3,7 @@ using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
+using network.common.data.models;
 
 namespace game_server;
 
@@ -54,7 +55,8 @@ public partial class GameServer
                 var attacks = _proximityAutoCombatResolver.Resolve(
                     matchingId,
                     actors,
-                    DateTime.UtcNow);
+                    DateTime.UtcNow,
+                    ProximityCombatLineOfSight.CanTarget);
                 if (attacks.Count == 0)
                     continue;
 
@@ -80,8 +82,13 @@ public partial class GameServer
 
         foreach (var session in matchingSessions)
         {
-            if (!session.PlayerId.HasValue || session.CurrentArea == AreaType.None ||
-                session.LastValidatedPosition == null)
+            if (!session.PlayerId.HasValue ||
+                !TryCreateSpatialActor(
+                    session.PlayerId.Value,
+                    session.CurrentMapId,
+                    session.CurrentArea,
+                    session.LastValidatedPosition,
+                    out var actor))
             {
                 continue;
             }
@@ -89,36 +96,42 @@ public partial class GameServer
             var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, session.PlayerId.Value);
             var equippedItem = inventory.GetEquippedBattleItem();
             var combatData = equippedItem == null ? null : BattleItemCombatData.Get(equippedItem.ItemId);
-            actors.Add(new ProximityCombatActor(
-                session.PlayerId.Value,
-                session.CurrentArea,
-                session.LastValidatedPosition,
-                equippedItem?.ItemId ?? 0,
-                combatData?.AttackRange ?? 0f,
-                combatData?.Damage ?? 0,
-                combatData?.AttackIntervalSeconds ?? 0f,
-                combatData?.ProjectileWidth ?? 0f,
-                combatData?.EffectDurationSeconds ?? 0f));
+            actors.Add(actor with
+            {
+                WeaponItemId = equippedItem?.ItemId ?? 0,
+                AttackRange = combatData?.AttackRange ?? 0f,
+                Damage = combatData?.Damage ?? 0,
+                AttackIntervalSeconds = combatData?.AttackIntervalSeconds ?? 0f,
+                ProjectileWidth = combatData?.ProjectileWidth ?? 0f,
+                EffectDurationSeconds = combatData?.EffectDurationSeconds ?? 0f
+            });
         }
 
+        var botMapId = _botPlayerManager.GetMatchingMapId(matchingId);
         foreach (var bot in matchingBots)
         {
-            if (bot.CurrentArea == AreaType.None)
+            if (!TryCreateSpatialActor(
+                    bot.PlayerId,
+                    botMapId,
+                    bot.CurrentArea,
+                    bot.Position,
+                    out var actor))
+            {
                 continue;
+            }
 
             var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, bot.PlayerId);
             var equippedItem = inventory.GetEquippedBattleItem();
             var combatData = equippedItem == null ? null : BattleItemCombatData.Get(equippedItem.ItemId);
-            actors.Add(new ProximityCombatActor(
-                bot.PlayerId,
-                bot.CurrentArea,
-                bot.Position,
-                equippedItem?.ItemId ?? 0,
-                combatData?.AttackRange ?? 0f,
-                combatData?.Damage ?? 0,
-                combatData?.AttackIntervalSeconds ?? 0f,
-                combatData?.ProjectileWidth ?? 0f,
-                combatData?.EffectDurationSeconds ?? 0f));
+            actors.Add(actor with
+            {
+                WeaponItemId = equippedItem?.ItemId ?? 0,
+                AttackRange = combatData?.AttackRange ?? 0f,
+                Damage = combatData?.Damage ?? 0,
+                AttackIntervalSeconds = combatData?.AttackIntervalSeconds ?? 0f,
+                ProjectileWidth = combatData?.ProjectileWidth ?? 0f,
+                EffectDurationSeconds = combatData?.EffectDurationSeconds ?? 0f
+            });
         }
 
         return actors;
@@ -190,5 +203,39 @@ public partial class GameServer
                 isBot: true);
             ProcessBotElimination(matchingId, bot.PlayerId, EliminationReason.MENTAL_ZERO, activeSessions);
         }
+    }
+
+    private static bool TryCreateSpatialActor(
+        long playerId,
+        MapId mapId,
+        AreaType committedArea,
+        Vector3f? position,
+        out ProximityCombatActor actor)
+    {
+        actor = default;
+        if (mapId == MapId.None || committedArea == AreaType.None || position == null)
+            return false;
+
+        var cell = ProximityCombatLineOfSight.WorldPositionToCell(position);
+        var resolvedArea = GameMapData.GetCurrentArea(mapId, cell);
+        if (resolvedArea == AreaType.None || resolvedArea != committedArea ||
+            !GameMapData.IsMoveablePosition(mapId, cell))
+        {
+            return false;
+        }
+
+        actor = new ProximityCombatActor(
+            playerId,
+            resolvedArea,
+            position,
+            0,
+            0f,
+            0,
+            0f,
+            0f,
+            0f,
+            mapId,
+            cell);
+        return true;
     }
 }
