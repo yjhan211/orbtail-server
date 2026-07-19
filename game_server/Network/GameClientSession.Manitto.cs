@@ -1638,6 +1638,15 @@ public partial class GameClientSession
         using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
         Send(inventoryPacket);
 
+        var outputItem = items.LastOrDefault();
+        var equippedBattleItem = _inGameInventoryManager.GetEquippedBattleItem(CurrentMapSubId, PlayerId.Value);
+        if (outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid)
+        {
+            using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
+                true, outputItem.ItemUid, ErrorCode.SUCCESS);
+            Send(equippedPacket);
+        }
+
         using var combinePacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId.Value);
         var itemData = GameItemData.Get(recipe.OutputItemId);
         var combinedMsg = new G_TO_C_PART_COMBINED

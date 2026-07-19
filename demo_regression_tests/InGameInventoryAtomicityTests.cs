@@ -52,6 +52,24 @@ public sealed class InGameInventoryAtomicityTests
     }
 
     [Fact]
+    public void CombiningAnEquippedBattleItemKeepsTheOutputEquipped()
+    {
+        InitializeBattleCombatData();
+        var manager = new InGameInventoryManager();
+        manager.Initialize();
+        var firstItem = manager.AddItem(matchingId: 10, playerId: 100, itemId: 107000003);
+        manager.AddItem(matchingId: 10, playerId: 100, itemId: 107000003);
+
+        Assert.True(manager.TryEquipBattleItem(10, 100, firstItem.ItemUid, out _));
+        Assert.True(manager.TryCombineItems(10, 100, [107000003, 107000003], 107000004, out var changedItems));
+
+        var outputItem = Assert.Single(changedItems, item => item.ItemId == 107000004);
+        var equippedItem = manager.GetEquippedBattleItem(10, 100);
+        Assert.NotNull(equippedItem);
+        Assert.Equal(outputItem.ItemUid, equippedItem!.ItemUid);
+    }
+
+    [Fact]
     public void NonCombatItemCannotBecomeEquippedBattleItem()
     {
         InitializeBattleCombatData();

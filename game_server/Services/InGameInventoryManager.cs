@@ -119,6 +119,10 @@ public class PlayerInGameInventory(long matchingId)
         changedItems = new List<InGameItemInfo>();
         if (inputItemIds.Count < 2 || outputItemId <= 0) return false;
 
+        bool replaceEquippedBattleItem = _equippedBattleItemUid != 0 &&
+                                          _items.TryGetValue(_equippedBattleItemUid, out var equippedItem) &&
+                                          inputItemIds.Contains(equippedItem.ItemId);
+
         var requiredCounts = inputItemIds
             .GroupBy(itemId => itemId)
             .ToDictionary(group => group.Key, group => group.Count());
@@ -132,7 +136,10 @@ public class PlayerInGameInventory(long matchingId)
             changedItems.Add(removed);
         }
 
-        changedItems.Add(AddItem(outputItemId, 1, forceSeparateStack: true));
+        var outputItem = AddItem(outputItemId, 1, forceSeparateStack: true);
+        changedItems.Add(outputItem);
+        if (replaceEquippedBattleItem && BattleItemCombatData.IsCombatItem(outputItemId))
+            _equippedBattleItemUid = outputItem.ItemUid;
         return true;
     }
 

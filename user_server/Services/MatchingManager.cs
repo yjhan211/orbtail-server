@@ -33,7 +33,7 @@ public class MatchingManager : IMatchingManager
     private const int LeavePenaltySeconds = 30; // ?댄깉 1?뚮떦 異붽? ?湲??쒓컙
     private const int MaxLeavePenaltySeconds = 300; // 理쒕? ?섎꼸???湲??쒓컙 (5遺?
     private const int PenaltyDecayIntervalHours = 24; // 24?쒓컙 寃쎄낵 ???댄깉 ?잛닔 1 媛먯냼
-    private const int DefaultPlayersPerMatch = 1; // 留ㅼ묶 ?몃━嫄?理쒖냼 ?몄썝 (#22 ?붾쾭洹???1???몃━嫄?
+    private const int DefaultPlayersPerMatch = 2; // 留ㅼ묶 ?몃━嫄?理쒖냼 ?몄썝 (#22 ?붾쾭洹???1???몃━嫄?
     private const int DefaultGamePlayersPerMatch = 8; // ?ㅼ젣 寃뚯엫 ?몄썝 (#22 ?붾쾭洹???1??+ 遊?4紐? 媛?痢듬퀎 1紐?
 
     /// <summary>留ㅼ묶 ?몃━嫄?理쒖냼 ?몄썝. DEMO_MODE ?쒖꽦 ??1紐낅쭔?쇰줈 ?몃━嫄?利됱떆 遊?4紐?梨꾩?).</summary>
@@ -303,7 +303,7 @@ public class MatchingManager : IMatchingManager
         byte[][] longWaitEntries = await _cacheHelper.SortedSetRangeByScoreAsync(
             MatchingQueueKey, double.NegativeInfinity, botCutoff);
 
-        if (longWaitEntries.Length == 0 || longWaitEntries.Length >= GamePlayersPerMatch) return;
+        if (longWaitEntries.Length < PlayersPerMatch || longWaitEntries.Length >= GamePlayersPerMatch) return;
 
         int botsNeeded = GamePlayersPerMatch - longWaitEntries.Length;
         var allEntries = new List<byte[]>(longWaitEntries);
