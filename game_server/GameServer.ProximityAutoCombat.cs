@@ -8,7 +8,7 @@ namespace game_server;
 
 public partial class GameServer
 {
-    private const int ProximityAutoCombatTickIntervalMs = 250;
+    private const int ProximityAutoCombatTickIntervalMs = 50;
 
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
     private Timer? _proximityAutoCombatTimer;

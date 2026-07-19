@@ -60,10 +60,9 @@ public class ProximityAutoCombatDataTests
             Assert.True(definition.EffectDurationSeconds >= 0f);
         });
 
-        Assert.True(BattleItemCombatData.Get(107000004).Damage >
-                    BattleItemCombatData.Get(107000005).Damage);
-        Assert.True(BattleItemCombatData.Get(107000005).AttackIntervalSeconds <
-                    BattleItemCombatData.Get(107000004).AttackIntervalSeconds);
+        AssertGuardianTierGrowth("recorder", definitions);
+        AssertGuardianTierGrowth("racket", definitions);
+        AssertGuardianTierGrowth("fan", definitions);
         Assert.True(BattleItemCombatData.Get(107000009).ProjectileWidth >
                     BattleItemCombatData.Get(107000008).ProjectileWidth);
         Assert.True(BattleItemCombatData.Get(107000013).EffectDurationSeconds >
@@ -126,5 +125,26 @@ public class ProximityAutoCombatDataTests
         }
 
         throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
+    }
+
+    private static void AssertGuardianTierGrowth(
+        string family,
+        IReadOnlyCollection<BattleItemCombatDefinition> definitions)
+    {
+        var tiers = definitions.Where(definition => definition.Family == family)
+            .GroupBy(definition => definition.Tier)
+            .ToDictionary(group => group.Key, group => group.ToList());
+        var tierOne = Assert.Single(tiers[1]);
+
+        Assert.All(tiers[2], tierTwo =>
+        {
+            Assert.True(tierTwo.Damage > tierOne.Damage);
+            Assert.Equal(tierOne.AttackIntervalSeconds / 2f, tierTwo.AttackIntervalSeconds, 3);
+        });
+        Assert.All(tiers[3], tierThree =>
+        {
+            Assert.True(tierThree.Damage > tiers[2].Max(tierTwo => tierTwo.Damage));
+            Assert.Equal(tierOne.AttackIntervalSeconds / 4f, tierThree.AttackIntervalSeconds, 3);
+        });
     }
 }
