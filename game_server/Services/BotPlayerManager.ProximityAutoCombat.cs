@@ -7,7 +7,6 @@ namespace game_server.services;
 
 public partial class BotPlayerManager
 {
-    private const int SurvivorInventorySlotCount = 6;
     private static readonly TimeSpan BotCombatRepathInterval = TimeSpan.FromMilliseconds(600);
 
     public bool TryAutoPickupGroundItem(
@@ -28,7 +27,7 @@ public partial class BotPlayerManager
             GroundItemPickupDisposition disposition = GroundItemPickupDisposition.LeaveOnGround;
             int staminaRecovery = 0;
             int corruptionRecovery = 0;
-            bool canStore = inventory.GetAllItems().Count < SurvivorInventorySlotCount;
+            bool canStore = inventory.GetAllItems().Count < Config.SURVIVOR_INVENTORY_SLOT_COUNT;
 
             var status = groundItemManager.TryClaim(
                 matchingId,
@@ -63,7 +62,7 @@ public partial class BotPlayerManager
                          matchingId,
                          bot.PlayerId,
                          claimedItem.ItemId,
-                         SurvivorInventorySlotCount,
+                         Config.SURVIVOR_INVENTORY_SLOT_COUNT,
                          out _))
             {
                 _logger.LogWarning(

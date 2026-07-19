@@ -94,6 +94,9 @@ namespace network.common
         /// <summary>근접 자동전투와 타겟 근접 체크리스트의 공통 거리 기준.</summary>
         public const float TARGET_PROXIMITY_DISTANCE = 3f;
 
+        /// <summary>Survivor Royale inventory slot capacity shared by clients, bots, and the game server.</summary>
+        public const int SURVIVOR_INVENTORY_SLOT_COUNT = 6;
+
         /// <summary>근접 자동전투 P0. 활성화 중에는 기존 수동 분필 공격 진입을 숨긴다.</summary>
         public static readonly bool PROXIMITY_AUTO_COMBAT_P0_ENABLED = true;
 

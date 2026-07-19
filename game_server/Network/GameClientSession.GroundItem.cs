@@ -8,8 +8,6 @@ namespace game_server.network;
 
 public partial class GameClientSession
 {
-    private const int SurvivorInventorySlotCount = 6;
-
     private Task HandleGroundItemPickup(C_TO_G_GROUND_ITEM_PICKUP msg)
     {
         if (!PlayerId.HasValue || IsEliminated || _lastValidatedPosition == null)
@@ -52,7 +50,8 @@ public partial class GameClientSession
                 }
 
                 bool added = _inGameInventoryManager.TryAddItemWithCapacity(
-                    CurrentMapSubId, PlayerId.Value, item.ItemId, SurvivorInventorySlotCount, out addedItem);
+                    CurrentMapSubId, PlayerId.Value, item.ItemId, Config.SURVIVOR_INVENTORY_SLOT_COUNT,
+                    out addedItem);
                 if (!added) rejection = ErrorCode.INVENTORY_FULL;
                 return added;
             },
