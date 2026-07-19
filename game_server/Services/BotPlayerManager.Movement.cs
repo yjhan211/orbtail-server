@@ -15,7 +15,7 @@ namespace game_server.services;
 public partial class BotPlayerManager
 {
     /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
-    private const float BotWalkSpeed = 6.0f;
+    private const float BotWalkSpeed = 5f;
 
     /// <summary>아이소메트릭 세로 속도 보정 — 클라 PlayerMovement.isoVerticalSpeedScale과 같은 값을 유지해야 한다.</summary>
     private const float IsoVerticalSpeedScale = 1f;
