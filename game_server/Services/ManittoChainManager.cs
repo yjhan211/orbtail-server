@@ -11,6 +11,9 @@ namespace game_server.services;
 /// </summary>
 public class ManittoChainManager
 {
+    // Survivor Royale replaces the legacy chain-break aftermath with combat and loot progression.
+    // Keep link registration for compatibility, but do not propagate FREED/TERMINAL states.
+    private static readonly bool ChainBreakConsequencesEnabled = false;
     // matchingId → 체인 상태
     private readonly ConcurrentDictionary<long, MatchingChainState> _states = new();
     private readonly ILogger _logger;
@@ -161,6 +164,9 @@ public class ManittoChainManager
             matchingId, playerId, reason, state.AliveCount);
 
         affected[playerId] = ManittoStatus.ELIMINATED;
+
+        if (!ChainBreakConsequencesEnabled)
+            return affected;
 
         // 1) 탈락자의 타겟(▓▓) → 마니또(스토커)로부터 해방
         long freedPlayerId = link.TargetPlayerId;
