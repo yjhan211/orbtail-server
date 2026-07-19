@@ -24,7 +24,7 @@ public sealed class BotBattleItemLoadoutTests
         var result = BotBattleItemLoadout.CombineAndEquip(inventory, matchingId, botPlayerId, new Random(194));
 
         Assert.Single(result.CombinedItemIds);
-        Assert.Contains(result.EquippedItemId, new[] { 107000004, 107000005 });
+        Assert.Equal(107000004, result.EquippedItemId);
         Assert.Equal(result.EquippedItemId, result.CombinedItemIds[0]);
         Assert.Equal(result.EquippedItemId, inventory.GetEquippedBattleItem(matchingId, botPlayerId)!.ItemId);
         Assert.Equal(0, inventory.GetPlayerInventory(matchingId, botPlayerId).GetItemCount(107000003));

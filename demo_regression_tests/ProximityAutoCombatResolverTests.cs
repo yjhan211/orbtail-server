@@ -36,7 +36,7 @@ public class ProximityAutoCombatResolverTests
         var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
-            Actor(1, 0f, 0f, weaponItemId: 107000007),
+            Actor(1, 0f, 0f, weaponItemId: 107000003),
             Actor(2, 1f, 0f)
         };
 
@@ -55,7 +55,7 @@ public class ProximityAutoCombatResolverTests
         var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
-            Actor(1, 0f, 0f, weaponItemId: 107000011),
+            Actor(1, 0f, 0f, weaponItemId: 107000003),
             Actor(2, 4f, 0f),
             Actor(3, 1f, 0f, area: AreaType.Corridor3F)
         };
@@ -77,7 +77,7 @@ public class ProximityAutoCombatResolverTests
         var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
-            Actor(10, 0f, 0f, weaponItemId: 107000011),
+            Actor(10, 0f, 0f, weaponItemId: 107000003),
             Actor(3, -1f, 0f),
             Actor(2, 1f, 0f)
         };

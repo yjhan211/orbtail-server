@@ -14,28 +14,35 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Fact]
-    public void RegionalPoolsMatchIssue193Specification()
+    public void RegionalPoolsMatchRecorderOnlyBaseline()
     {
         var expected = new Dictionary<AreaType, int[]>
         {
             [AreaType.Classroom3] = [107000003, 107000003, 201000008, 201000011, 201000011],
             [AreaType.Classroom4] = [107000003, 201000008, 201000011, 201000008, 201000011],
             [AreaType.ExamRoom] = [107000003, 107000003, 201000011, 201000008],
-            [AreaType.BroadcastRoom] = [107000011, 107000011, 201000011],
+            [AreaType.BroadcastRoom] = [107000003, 107000003, 201000011],
             [AreaType.Classroom2] = [201000008, 201000008, 201000018, 201000011],
-            [AreaType.Library] = [107000003, 107000011, 201000008, 201000008, 201000008, 201000011, 201000011, 201000011],
-            [AreaType.Gym] = [107000007, 107000007, 107000011, 201000008, 201000011, 201000008],
-            [AreaType.Storage] = [107000007, 107000007, 201000008, 201000011],
-            [AreaType.Storage2] = [107000011, 107000011, 201000011, 201000008],
-            [AreaType.Junkyard] = [107000007, 201000008, 201000011],
-            [AreaType.Junkyard2] = [107000011, 201000008],
-            [AreaType.AdminOffice] = [107000007, 201000011, 201000008, 201000011, 201000008],
+            [AreaType.Library] = [107000003, 107000003, 201000008, 201000008, 201000008, 201000011, 201000011, 201000011],
+            [AreaType.Gym] = [107000003, 107000003, 107000003, 201000008, 201000011, 201000008],
+            [AreaType.Storage] = [107000003, 107000003, 201000008, 201000011],
+            [AreaType.Storage2] = [107000003, 107000003, 201000011, 201000008],
+            [AreaType.Junkyard] = [107000003, 201000008, 201000011],
+            [AreaType.Junkyard2] = [107000003, 201000008],
+            [AreaType.AdminOffice] = [107000003, 201000011, 201000008, 201000011, 201000008],
             [AreaType.StaffRoom] = [107000003, 201000011, 201000011, 201000011, 201000008, 201000008, 201000008],
-            [AreaType.Ground] = [107000007, 201000008, 201000011]
+            [AreaType.Ground] = [107000003, 201000008, 201000011]
         };
 
         foreach (var (area, items) in expected)
             Assert.Equal(items.Order(), GameInteractableData.GetItemPoolByArea((int)area).Order());
+
+        var naturalBattleItems = expected.Keys
+            .SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
+            .Where(BattleItemCombatData.IsCombatItem)
+            .ToArray();
+        Assert.Equal(21, naturalBattleItems.Length);
+        Assert.All(naturalBattleItems, itemId => Assert.Equal(107000003, itemId));
 
         Assert.DoesNotContain(301000038, GameInteractableData.GetAllAreaItemPoolItems());
         Assert.DoesNotContain(301000039, GameInteractableData.GetAllAreaItemPoolItems());

@@ -38,7 +38,7 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
-    public void GuardianCombatDataDefinesAllFamiliesTiersAndVariants()
+    public void GuardianCombatDataDefinesOneOrbAcrossThreeTiers()
     {
         string csvRoot = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv");
         BattleItemCombatData.Initialize(
@@ -46,29 +46,20 @@ public class ProximityAutoCombatDataTests
 
         var definitions = BattleItemCombatData.GetAll();
 
-        Assert.Equal(12, definitions.Count);
-        Assert.Equal(4, definitions.Count(definition => definition.Family == "recorder"));
-        Assert.Equal(4, definitions.Count(definition => definition.Family == "racket"));
-        Assert.Equal(4, definitions.Count(definition => definition.Family == "fan"));
+        Assert.Equal([107000003, 107000004, 107000006], definitions.Select(definition => definition.ItemId));
         Assert.All(definitions, definition =>
         {
+            Assert.Equal("orb", definition.Family);
             Assert.InRange(definition.Tier, 1, 3);
             Assert.True(definition.AttackRange > 0f);
             Assert.True(definition.Damage > 0);
             Assert.True(definition.AttackIntervalSeconds > 0f);
-            Assert.True(definition.ProjectileWidth >= 0f);
-            Assert.True(definition.EffectDurationSeconds >= 0f);
+            Assert.Equal(0.25f, definition.ProjectileWidth);
+            Assert.Equal(0f, definition.EffectDurationSeconds);
         });
 
-        AssertGuardianTierGrowth("recorder", definitions);
-        AssertGuardianTierGrowth("racket", definitions);
-        AssertGuardianTierGrowth("fan", definitions);
-        Assert.True(BattleItemCombatData.Get(107000009).ProjectileWidth >
-                    BattleItemCombatData.Get(107000008).ProjectileWidth);
-        Assert.True(BattleItemCombatData.Get(107000013).EffectDurationSeconds >
-                    BattleItemCombatData.Get(107000012).EffectDurationSeconds);
+        AssertGuardianTierGrowth("orb", definitions);
     }
-
     [Fact]
     public void GuardianCombatDataMatchesBothUnityMirrors()
     {
