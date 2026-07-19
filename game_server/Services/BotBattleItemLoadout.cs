@@ -1,4 +1,4 @@
-﻿using network.common.data;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.services;

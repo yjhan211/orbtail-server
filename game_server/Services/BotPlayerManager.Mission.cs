@@ -575,7 +575,7 @@ public partial class BotPlayerManager
         var owned = state.CollectedParts;
 
         // H4 봇 race 페이스 캡 — legacy mode에서 봇은 7:00 이전 결합 차단 (시연자 race 보장)
-                // 가능한 모든 레시피 시도 (PartRecipeData 직접 참조)
+        // 가능한 모든 레시피 시도 (PartRecipeData 직접 참조)
         foreach (var recipe in PartRecipeData.GetRecipes((short)bot.MyJobTitle))
         {
             if (state.IsCompleted) break;
@@ -652,7 +652,7 @@ public partial class BotPlayerManager
         var result = new List<(long, long)>();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
 
-                foreach (var bot in GetActiveBots(bots))
+        foreach (var bot in GetActiveBots(bots))
         {
             if (bot.HasUsedDetection) continue;
             if (bot.DetectionUrgency < DetectScoreThreshold) continue;
@@ -673,7 +673,7 @@ public partial class BotPlayerManager
     ///     H3 — SC 봇이 06:40 경과 시 DC를 색출 강제 지목 (영상 4컷 비트).
     ///     실제 마니또 관계와 무관하게 target=DC로 고정 — 결과 빗나감은 ManittoChainManager.TryDetect에서 보정.
     /// </summary>
-        /// <summary>
+    /// <summary>
     ///     봇 색출 휴리스틱 점수 가산. 호출자가 흔적 발견/타겟 함정 등을 감지했을 때 호출.
     ///     마니또 배치 흔적이 자기 race를 방해할수록 점수 누적.
     /// </summary>
@@ -689,7 +689,7 @@ public partial class BotPlayerManager
     ///     1회 캡(HasPlacedDemoTrapTrace)으로 영상 09:40 비트 정합. BR 외 직책은 배치 안 함.
     ///     반환: 배치 성공 시 (BR PlayerId, area, interactId, description), 아니면 null.
     /// </summary>
-    }
+}
 
 /// <summary>
 ///     봇 미션 틱 결과 — 호출자(GameServer)가 클라이언트 브로드캐스트에 사용.

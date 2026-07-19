@@ -130,8 +130,8 @@ public class ManittoChainManager
                          && IsAliveLink(myManitto);
 
         // H3 시연 모드 — SC가 DC를 지목하는 케이스는 narrative상 강제 빗나감 ("단 한 번의 무게" cut)
-                _logger.LogInformation("색출 시도: DetecterId={Detecter}, Target={Target}, 실제마니또={Manitto}, 결과={Result}",
-            detecterId, targetPlayerId, myManitto?.PlayerId, isCorrect ? "적중" : "실패");
+        _logger.LogInformation("색출 시도: DetecterId={Detecter}, Target={Target}, 실제마니또={Manitto}, 결과={Result}",
+    detecterId, targetPlayerId, myManitto?.PlayerId, isCorrect ? "적중" : "실패");
 
         return (isCorrect, ErrorCode.SUCCESS);
     }

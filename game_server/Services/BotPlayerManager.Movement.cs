@@ -83,7 +83,7 @@ public partial class BotPlayerManager
             if (totalCorruptionDelta != 0)
                 bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
 
-                        if (TryQueueBotMentalElimination(bot, matchingId, result))
+            if (TryQueueBotMentalElimination(bot, matchingId, result))
                 continue;
 
             // legacy mode 비활성에서도 일반 자원/상태 변동 후 오염도 100이면 탈락 처리한다.
@@ -1178,11 +1178,11 @@ public partial class BotPlayerManager
     ///     W3 시연 모드 — 봇 위치를 BotMovementScript에 따라 강제. 매 틱(5초)마다 평가.
     ///     큐 순회 로직 우회. 폐쇄된 위치는 도착 보류(다음 웨이포인트로 진행되면 자연 해소).
     /// </summary>
-        /// <summary>
+    /// <summary>
     ///     봇 영역 전환 — Cell/Position을 새 영역의 스폰 셀로 갱신하고 BotMovementEvent 생성.
     ///     legacy mode 스크립트 텔레포트 전용. walking 경로 통과 시점은 WalkStep에서 처리.
     /// </summary>
-    }
+}
 
 /// <summary>
 ///     봇 이동 이벤트. ProcessBotTick / ProcessBotMovementTick이 반환하면 GameServer가 같은 영역 인간 세션에 패킷 브로드캐스트.
