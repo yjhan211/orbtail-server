@@ -88,9 +88,9 @@ public partial class BotPlayerManager
 
     private readonly ILogger _logger;
 
-    // H1 寃곗젙濡??쒕뱶 ??DemoMode ?쒖꽦?????쒕뱶 湲곕컲 RNG, ?꾨땲硫?Random.Shared ?꾩엫.
+    // H1 寃곗젙濡??쒕뱶 ??legacy mode ?쒖꽦?????쒕뱶 湲곕컲 RNG, ?꾨땲硫?Random.Shared ?꾩엫.
     // 紐⑤뱺 遊??섏궗寃곗젙(?대룞/?됱텧/?묐떟/?щ낫?二???蹂??몄뒪?댁뒪 ?ъ슜.
-    private readonly Random _rng = DemoMode.IsActive ? new Random(DemoMode.Seed) : Random.Shared;
+    private readonly Random _rng = Random.Shared;
 
     public BotPlayerManager(ILogger logger)
     {
@@ -157,6 +157,15 @@ public partial class BotPlayerManager
 
     private static bool IsAllowedAssignedStartArea(MapId mapId, AreaType area)
     {
+        return IsSecludedFarmingArea(mapId, area);
+    }
+
+    /// <summary>
+    /// Rooms where an unarmed survivor can farm without deliberately lingering in a corridor or a large open zone.
+    /// Corridors may still be crossed by the pathfinder while travelling between these rooms.
+    /// </summary>
+    private static bool IsSecludedFarmingArea(MapId mapId, AreaType area)
+    {
         if (area == AreaType.None || area.IsCorridor())
             return false;
 
@@ -201,11 +210,13 @@ public partial class BotPlayerManager
     /// <summary>
     ///     遊?湲곕낯 ?섏긽 + 遊뉖퀎 而ㅼ뒪?곕쭏?댁쭠 ?꾩씠??1醫?議고빀 wear list ?앹꽦.
     /// </summary>
-    private static List<int> BuildBotWearItems(long playerId)
+    private static List<int> BuildBotWearItems(BotPlayerState bot)
     {
         var list = new List<int>(BotDefaultWearItemIds);
-        int idx = (int)(Math.Abs(playerId) % BotCustomizationItems.Length);
+        int idx = (int)(Math.Abs(bot.PlayerId) % BotCustomizationItems.Length);
         list.Add(BotCustomizationItems[idx]);
+        if (bot.EquippedBattleItemId > 0)
+            list.Add(bot.EquippedBattleItemId);
         return list;
     }
 
@@ -223,8 +234,9 @@ public partial class BotPlayerManager
         // 遊뉗씠 RNG progress 以묒씠硫?EXPLORE_1濡??⑹꽦 ???곸뿭 吏꾩엯 ???대씪媛 遊?罹먮┃???먯깋 ?좊땲 利됱떆 ?쒖떆.
         var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
             ? PlayerState.SLEEP
-            : bot.RngCollectProgressStartTime != DateTime.MinValue
-              || bot.ChecklistActivityProgressStartTime != DateTime.MinValue
+            : bot.RngCollectProgressStartTime != DateTime.MinValue ||
+              Config.CHECKLIST_SYSTEM_ENABLED &&
+              bot.ChecklistActivityProgressStartTime != DateTime.MinValue
                 ? PlayerState.EXPLORE_1
                 : PlayerState.IDLE;
         var info = new PlayerInfo
@@ -237,7 +249,7 @@ public partial class BotPlayerManager
             LastCell = bot.Cell,
             Hp = 5000,
             Stamina = bot.Stamina,
-            WearItemIdList = BuildBotWearItems(bot.PlayerId)
+            WearItemIdList = BuildBotWearItems(bot)
         };
         info.ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, mapId, matchingId, bot.Cell)
         {
@@ -345,6 +357,7 @@ public class BotPlayerState
     public AreaType CurrentArea { get; set; }
     public int Stamina { get; set; } = 100;
     public int Corruption { get; set; } = 0;
+    public long LastProximityAttackerPlayerId { get; set; }
     public bool IsForcedFollowActive { get; set; }
     public bool IsEliminated { get; set; }
     public ManittoStatus ManittoStatus { get; set; } = ManittoStatus.ACTIVE;
@@ -411,12 +424,15 @@ public class BotPlayerState
 
     public DateTime NextRestTickAt { get; set; } = DateTime.MinValue;
 
-    /// <summary>留ㅼ묶 ?쒖옉 ?쒓컖. DemoMode H4 遊?race ?섏씠??罹?怨꾩궛??</summary>
+    /// <summary>留ㅼ묶 ?쒖옉 ?쒓컖. legacy mode H4 遊?race ?섏씠??罹?怨꾩궛??</summary>
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
 
     // === v0.2.0 遺???쒕? ?곹깭 ===
     /// <summary>留덉?留?誘몄뀡 ?됰룞(?뚯닔/寃고빀) ?쒓컖</summary>
     public DateTime LastMissionTickTime { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Next time the bot may replace its chase or retreat path.</summary>
+    public DateTime NextCombatRepathAt { get; set; } = DateTime.MinValue;
 
     /// <summary>?먭린 吏곸콉 諛쒓껄 援ъ뿭 ?쒗쉶 ??(?뷀뵆??4媛?+ ?좏뻾 ?꾩씠???꾩튂)</summary>
     public List<AreaType> JobAreaQueue { get; set; } = new();
@@ -473,12 +489,19 @@ public class BotPlayerState
     /// 鍮꾨㈃ ChooseNewWanderTarget???ㅼ쓬 ?곸뿭 寃곗젙.</summary>
     public List<int> InteractQueueInArea { get; set; } = new();
 
-    public AreaType RoomExploreQueueArea { get; set; } = AreaType.None;
+    /// <summary>이번 매치에서 이 봇이 탐색을 끝낸 방. 방을 이동해도 유지한다.</summary>
+    public HashSet<AreaType> CompletedRoomExploreAreas { get; } = new();
 
-    public AreaType CompletedRoomExploreArea { get; set; } = AreaType.None;
+    /// <summary>이번 매치에서 이 봇이 실제 RNG 탐색을 완료한 상호작용 지점.</summary>
+    public HashSet<int> ExploredRngInteractIds { get; } = new();
+
+    public AreaType RoomExploreQueueArea { get; set; } = AreaType.None;
 
     /// <summary>留덉?留됱쑝濡??먮룞 ?뚮え?덉쓣 ?ъ슜???쒓컖 (?ъ궗??荑⑤떎??.</summary>
     public DateTime LastAutoConsumableUseTime { get; set; } = DateTime.MinValue;
+
+    /// <summary>Current equipped battle tool, used to synchronize remote bot visuals.</summary>
+    public int EquippedBattleItemId { get; set; }
 
     /// <summary>RNG 梨꾩쭛 progress ?쒖옉 ?쒓컖. 0?대㈃ ?꾩쭅 ?쒖옉 ???? ?쒖옉 ??1.5珥?寃쎄낵 ??寃곌낵 ?곗텧.</summary>
     public DateTime RngCollectProgressStartTime { get; set; } = DateTime.MinValue;

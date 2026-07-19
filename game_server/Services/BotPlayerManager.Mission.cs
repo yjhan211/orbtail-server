@@ -35,33 +35,102 @@ public partial class BotPlayerManager
             bot.LastMissionTickTime = DateTime.UtcNow;
 
             if (TryAdvanceBotRest(bot, result)) continue;
-            if (bot.Stamina <= 0 && TryStartBotRest(bot, result)) continue;
+            TryAutoMergeConsumables(bot, matchingId, inventoryManager, result);
             TryAutoUseConsumable(bot, matchingId, inventoryManager);
-
+            if (bot.Stamina <= 0 && TryStartBotRest(bot, result)) continue;
+            TryAutoPrepareBattleItem(bot, matchingId, inventoryManager, result);
             // 플레이어와 대화 중일 때는 탐색/선물 회수를 잠시 멈춘다.
             if (bot.IsInInteraction) continue;
 
-            TryChecklistActivityIfArrived(bot, matchingId, checklistManager, inventoryManager, result);
-            if (bot.PendingChecklistTaskId > 0) continue;
+            if (Config.CHECKLIST_SYSTEM_ENABLED)
+            {
+                TryChecklistActivityIfArrived(bot, matchingId, checklistManager, inventoryManager, result);
+                if (bot.PendingChecklistTaskId > 0) continue;
+            }
+            else if (bot.PendingChecklistTaskId > 0 ||
+                     bot.PendingChecklistInteractId > 0 ||
+                     bot.ChecklistActivityProgressStartTime != DateTime.MinValue)
+            {
+                ClearPendingChecklistActivity(bot);
+            }
+
+            // 실제 지역 루팅은 레거시 부품 미션의 존재/완료 여부와 무관하게 진행한다.
+            TryRngCollectIfArrived(bot, matchingId, missionManager, inventoryManager, itemPoolManager,
+                areaItemStockManager, groundItemManager, result);
 
             var state = missionManager.GetState(matchingId, bot.PlayerId);
             if (state == null || state.IsCompleted) continue;
 
-            // 1) 봇 walking 도착 후 RNG 채집 (PendingRngInteractId가 있을 때만)
-            TryRngCollectIfArrived(bot, matchingId, missionManager, inventoryManager, itemPoolManager, areaItemStockManager, groundItemManager, state, result);
-
-            // 2) 결합 시도 (회수 직후 보유 부품 검사)
+            // 레거시 부품 결합은 해당 미션이 활성 상태일 때만 유지한다.
             TryAutoCombine(bot, matchingId, missionManager, state, result);
 
-            // 3) 스태미나 부족 시 자동 소모품 사용 (인벤토리에 회복 아이템 있을 때)
             TryAutoUseConsumable(bot, matchingId, inventoryManager);
         }
 
         return result;
     }
 
+    private void TryAutoMergeConsumables(
+        BotPlayerState bot,
+        long matchingId,
+        InGameInventoryManager inventoryManager,
+        BotMissionTickResult result)
+    {
+        var mergedItemIds = BotConsumableLoadout.MergeAvailable(
+            inventoryManager,
+            matchingId,
+            bot.PlayerId);
+        foreach (int itemId in mergedItemIds)
+        {
+            result.ConsumableMerges.Add((bot.PlayerId, itemId));
+            _logger.LogInformation(
+                "Bot consumable merged: MatchingId={MatchingId}, BotId={BotId}, ItemId={ItemId}",
+                matchingId,
+                bot.PlayerId,
+                itemId);
+        }
+    }
+
     /// <summary>봇이 자동 소모품을 사용하기 위한 스태미나 임계값.</summary>
+    private void TryAutoPrepareBattleItem(
+        BotPlayerState bot,
+        long matchingId,
+        InGameInventoryManager inventoryManager,
+        BotMissionTickResult result)
+    {
+        int previouslyEquippedItemId = inventoryManager
+            .GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0;
+        var loadout = BotBattleItemLoadout.CombineAndEquip(
+            inventoryManager,
+            matchingId,
+            bot.PlayerId,
+            _rng);
+
+        foreach (int itemId in loadout.CombinedItemIds)
+        {
+            result.BattleItemCombines.Add((bot.PlayerId, itemId));
+            _logger.LogInformation(
+                "Bot battle item combined: MatchingId={MatchingId}, BotId={BotId}, ItemId={ItemId}",
+                matchingId,
+                bot.PlayerId,
+                itemId);
+        }
+
+        if (loadout.EquippedItemId == 0 || loadout.EquippedItemId == previouslyEquippedItemId)
+            return;
+
+        bot.EquippedBattleItemId = loadout.EquippedItemId;
+        result.BattleItemEquips.Add((bot.PlayerId, loadout.EquippedItemId));
+        _logger.LogInformation(
+            "Bot battle item equipped: MatchingId={MatchingId}, BotId={BotId}, ItemId={ItemId}",
+            matchingId,
+            bot.PlayerId,
+            loadout.EquippedItemId);
+    }
     private const int BotAutoConsumableStaminaThreshold = 30;
+
+    /// <summary>봇이 오염 회복품 사용을 검토하는 정신오염도 임계값.</summary>
+    private const int BotAutoConsumableCorruptionThreshold = 50;
 
     /// <summary>봇 자동 소모품 재사용 쿨다운(초).</summary>
     private const int BotAutoConsumableCooldownSeconds = 20;
@@ -200,7 +269,8 @@ public partial class BotPlayerManager
     /// </summary>
     private void TryRngCollectIfArrived(BotPlayerState bot, long matchingId,
         MissionManager missionManager, InGameInventoryManager inventoryManager,
-        ItemPoolManager itemPoolManager, AreaItemStockManager areaItemStockManager, GroundItemManager groundItemManager, PlayerPartState state, BotMissionTickResult result)
+        ItemPoolManager itemPoolManager, AreaItemStockManager areaItemStockManager,
+        GroundItemManager groundItemManager, BotMissionTickResult result)
     {
         if (bot.PendingRngInteractId <= 0) return;
 
@@ -221,9 +291,9 @@ public partial class BotPlayerManager
 
         if (!areaItemStockManager.HasRemaining(matchingId, info.ZoneId))
         {
+            MarkBotRoomExploreComplete(bot);
             bot.PendingRngInteractId = 0;
             bot.RngCollectProgressStartTime = DateTime.MinValue;
-            bot.LoopWaitUntil = DateTime.MinValue;
             return;
         }
         // 쿨타임 체크 — walking 도중 다른 누군가가 회수한 경우 progress 시작 X. 즉시 다음 InteractObject로 진행.
@@ -274,7 +344,10 @@ public partial class BotPlayerManager
 
             bot.PendingRngInteractId = 0;
             bot.RngCollectProgressStartTime = DateTime.MinValue;
-            CompleteRoomExploreCycle(bot);
+            CompleteRoomExploreAttempt(
+                bot,
+                info.Id,
+                bot.EquippedBattleItemId <= 0 && areaItemStockManager.HasRemaining(matchingId, info.ZoneId));
             return;
         }
 
@@ -289,7 +362,9 @@ public partial class BotPlayerManager
             float originX = (info.CellX - info.CellY) / 2f;
             float originY = (info.CellX + info.CellY) / 4f;
             result.GroundItemSpawns.AddRange(groundItemManager.SpawnItems(
-                matchingId, bot.CurrentArea, originX, originY, outcome.DroppedItemIds));
+                matchingId, bot.CurrentArea, originX, originY, outcome.DroppedItemIds,
+                discovererPlayerId: bot.PlayerId,
+                discovererPickupWindow: GroundItemManager.DiscovererPickupWindow));
         }
         if (outcome is { ResultType: 3, CollectedPart: not null })
         {
@@ -311,17 +386,28 @@ public partial class BotPlayerManager
         result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
         result.RngCooldownBroadcasts.Add((info.Id, outcome.CooldownSeconds));
 
+        bool droppedBattleItem = outcome.DroppedItemIds.Any(BattleItemCombatData.IsCombatItem);
         bot.PendingRngInteractId = 0;
         bot.RngCollectProgressStartTime = DateTime.MinValue;
-        CompleteRoomExploreCycle(bot);
+        CompleteRoomExploreAttempt(
+            bot,
+            info.Id,
+            bot.EquippedBattleItemId <= 0 &&
+            !droppedBattleItem &&
+            areaItemStockManager.HasRemaining(matchingId, info.ZoneId));
     }
 
-    private static void CompleteRoomExploreCycle(BotPlayerState bot)
+    private static void CompleteRoomExploreAttempt(BotPlayerState bot, int interactId,
+        bool keepExploringCurrentRoom)
     {
-        bot.InteractQueueInArea.Clear();
-        bot.RoomExploreQueueArea = AreaType.None;
-        bot.CompletedRoomExploreArea = bot.CurrentArea;
+        if (interactId > 0)
+            bot.ExploredRngInteractIds.Add(interactId);
+
         bot.LoopWaitUntil = DateTime.MinValue;
+        if (keepExploringCurrentRoom && bot.InteractQueueInArea.Count > 0)
+            return;
+
+        MarkBotRoomExploreComplete(bot);
     }
 
     private bool TryHandleGiftDiscoveryForBot(BotPlayerState bot, long matchingId, MissionManager missionManager,
@@ -381,20 +467,22 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     #134 — 봇 자동 소모품 사용. Stamina < 임계값일 때 인벤토리 회복 아이템 소비.
+    ///     #134 — 봇 자동 소모품 사용. 스태미나 또는 정신오염도 임계값에 따라 보관 중인 아이템 소비.
     ///     CONDITION_ADD(stamina up) 또는 CORRUPTION_DOWN buff를 즉시 적용.
     ///     CORRUPTION_ADD는 회복 후보에서 제외하되, 실제 아이템 처리 경로가 추가되면 오염 증가 효과로 해석한다.
     /// </summary>
     private void TryAutoUseConsumable(BotPlayerState bot, long matchingId, InGameInventoryManager inventoryManager)
     {
-        if (bot.Stamina >= BotAutoConsumableStaminaThreshold) return;
+        bool needsStamina = bot.Stamina < BotAutoConsumableStaminaThreshold;
+        bool needsCorruptionRecovery = bot.Corruption >= BotAutoConsumableCorruptionThreshold;
+        if (!needsStamina && !needsCorruptionRecovery) return;
         if ((DateTime.UtcNow - bot.LastAutoConsumableUseTime).TotalSeconds < BotAutoConsumableCooldownSeconds) return;
 
         var inventory = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId);
         var items = inventory.GetAllItems();
         if (items.Count == 0) return;
 
-        // 가장 효율 높은 회복 아이템 선택 — CONDITION_ADD value 합 기준
+        // 현재 부족한 자원에 실제로 기여하는 회복량이 가장 큰 아이템을 선택한다.
         InGameItemInfo? bestItem = null;
         int bestStaminaGain = 0;
         int bestCorruptionDown = 0;
@@ -425,9 +513,14 @@ public partial class BotPlayerManager
                         BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
             }
 
+            staminaGain = needsStamina ? Math.Min(100 - bot.Stamina, staminaGain) : 0;
+            corruptionDown = needsCorruptionRecovery ? Math.Min(bot.Corruption, corruptionDown) : 0;
             if (staminaGain <= 0 && corruptionDown <= 0) continue;
 
-            if (staminaGain > bestStaminaGain || (staminaGain == bestStaminaGain && corruptionDown > bestCorruptionDown))
+            int recoveryScore = staminaGain + corruptionDown;
+            int bestRecoveryScore = bestStaminaGain + bestCorruptionDown;
+            if (recoveryScore > bestRecoveryScore ||
+                recoveryScore == bestRecoveryScore && staminaGain > bestStaminaGain)
             {
                 bestItem = item;
                 bestStaminaGain = staminaGain;
@@ -481,13 +574,7 @@ public partial class BotPlayerManager
     {
         var owned = state.CollectedParts;
 
-        // H4 봇 race 페이스 캡 — DemoMode에서 봇은 7:00 이전 결합 차단 (시연자 race 보장)
-        if (DemoMode.IsActive)
-        {
-            var elapsed = DateTime.UtcNow - bot.GameStartTime;
-            if (elapsed.TotalSeconds < DemoMode.BotRaceMinSeconds) return;
-        }
-
+        // H4 봇 race 페이스 캡 — legacy mode에서 봇은 7:00 이전 결합 차단 (시연자 race 보장)
         // 가능한 모든 레시피 시도 (PartRecipeData 직접 참조)
         foreach (var recipe in PartRecipeData.GetRecipes((short)bot.MyJobTitle))
         {
@@ -557,19 +644,13 @@ public partial class BotPlayerManager
     ///     봇 색출 휴리스틱. 자기 race 진행을 방해하는 흔적 함정 누적 점수가 임계값 초과 시
     ///     자기 마니또(자기를 타겟으로 가진 플레이어) 후보 1명을 색출.
     ///     호출자(GameServer)가 색출 결과를 ManittoChainManager로 위임.
-    ///     H3+D4: DemoMode 활성화 시 SC 봇이 06:40에 DC를 강제 지목, 그 외 봇 색출은 비활성.
+    ///     H3+D4: legacy mode 활성화 시 SC 봇이 06:40에 DC를 강제 지목, 그 외 봇 색출은 비활성.
     /// </summary>
     public List<(long detecterBotId, long candidateManittoId)> CollectDetectionAttempts(long matchingId,
         Func<long, long?> findMyManittoForBot)
     {
         var result = new List<(long, long)>();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
-
-        if (DemoMode.IsActive)
-        {
-            TryAddDemoForcedDetection(bots, result);
-            return result; // D4: 시연 모드에서는 강제 트리거(SC→DC) 외 봇 색출 비활성
-        }
 
         foreach (var bot in GetActiveBots(bots))
         {
@@ -592,28 +673,6 @@ public partial class BotPlayerManager
     ///     H3 — SC 봇이 06:40 경과 시 DC를 색출 강제 지목 (영상 4컷 비트).
     ///     실제 마니또 관계와 무관하게 target=DC로 고정 — 결과 빗나감은 ManittoChainManager.TryDetect에서 보정.
     /// </summary>
-    private void TryAddDemoForcedDetection(List<BotPlayerState> bots, List<(long, long)> result)
-    {
-        var sc = bots.FirstOrDefault(b => b.MyJobTitle == JobTitle.SCIENCE_MEMBER
-            && !b.IsEliminated && !b.HasUsedDetection);
-        if (sc == null) return;
-
-        var elapsed = DateTime.UtcNow - sc.GameStartTime;
-        if (elapsed.TotalSeconds < DemoMode.ScDetectionAttemptSeconds) return;
-
-        var dc = bots.FirstOrDefault(b => b.MyJobTitle == JobTitle.DISCIPLINE_MEMBER && !b.IsEliminated);
-        if (dc == null)
-        {
-            _logger.LogWarning("DEMO_MODE 색출 강제: DC 봇이 없어 SC 강제 색출 스킵");
-            return;
-        }
-
-        sc.HasUsedDetection = true;
-        _logger.LogInformation("DEMO_MODE 색출 강제: SC({Sc}) → DC({Dc}) (경과 {S}s)",
-            sc.PlayerId, dc.PlayerId, (int)elapsed.TotalSeconds);
-        result.Add((sc.PlayerId, dc.PlayerId));
-    }
-
     /// <summary>
     ///     봇 색출 휴리스틱 점수 가산. 호출자가 흔적 발견/타겟 함정 등을 감지했을 때 호출.
     ///     마니또 배치 흔적이 자기 race를 방해할수록 점수 누적.
@@ -626,39 +685,10 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     H6 — DEMO_MODE BR 봇이 09:30 시점 도서관에 함정 흔적 1회 배치.
+    ///     H6 — legacy mode BR 봇이 09:30 시점 도서관에 함정 흔적 1회 배치.
     ///     1회 캡(HasPlacedDemoTrapTrace)으로 영상 09:40 비트 정합. BR 외 직책은 배치 안 함.
     ///     반환: 배치 성공 시 (BR PlayerId, area, interactId, description), 아니면 null.
     /// </summary>
-    public (long brPlayerId, AreaType area, int interactId, string description)? ProcessDemoBotTracePlacement(
-        long matchingId, TraceManager traceManager)
-    {
-        if (!DemoMode.IsActive) return null;
-        if (!_botStates.TryGetValue(matchingId, out var bots)) return null;
-
-        var br = bots.FirstOrDefault(b =>
-            b.MyJobTitle == JobTitle.BROADCAST_MEMBER
-            && !b.IsEliminated
-            && !b.HasPlacedDemoTrapTrace);
-        if (br == null) return null;
-
-        var elapsed = DateTime.UtcNow - br.GameStartTime;
-        if (elapsed.TotalSeconds < DemoMode.BrTracePlacementSeconds) return null;
-
-        // 동선 스크립트상 BR이 09:30에 도서관에 있어야 정합. 다른 곳이면 보류 (다음 틱 재시도).
-        if (br.CurrentArea != DemoMode.BrTraceArea) return null;
-
-        traceManager.AddTrace(matchingId, DemoMode.BrTraceArea, DemoMode.BrTraceInteractId,
-            DemoMode.BrTraceDescription, br.PlayerId, isMissionTrace: false);
-        br.HasPlacedDemoTrapTrace = true;
-        br.LastTracePlaceTime = DateTime.UtcNow;
-
-        _logger.LogInformation(
-            "DEMO_MODE H6: BR 봇 함정 흔적 배치 (BotId={Bot}, Area={Area}, InteractId={Iid}, 경과 {Sec}s)",
-            br.PlayerId, DemoMode.BrTraceArea, DemoMode.BrTraceInteractId, (int)elapsed.TotalSeconds);
-
-        return (br.PlayerId, DemoMode.BrTraceArea, DemoMode.BrTraceInteractId, DemoMode.BrTraceDescription);
-    }
 }
 
 /// <summary>
@@ -680,6 +710,9 @@ public class BotMissionTickResult
     /// <summary>#134 — 봇이 RNG 채집한 InteractObject 인스턴스 쿨타임 broadcast 정보.</summary>
     public List<(int interactId, int cooldownSeconds)> RngCooldownBroadcasts { get; } = new();
     public List<GroundItemInfo> GroundItemSpawns { get; } = new();
+    public List<(long botPlayerId, int itemId)> ConsumableMerges { get; } = new();
+    public List<(long botPlayerId, int itemId)> BattleItemCombines { get; } = new();
+    public List<(long botPlayerId, int itemId)> BattleItemEquips { get; } = new();
 
     /// <summary>#134 — 봇이 RNG progress 시작했음을 같은 영역 인간 세션에 알림 (G_TO_C_EXPLORE_START).</summary>
     public List<(long botId, int interactId, AreaType area)> BotExploreStarts { get; } = new();

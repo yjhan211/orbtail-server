@@ -94,7 +94,16 @@ namespace network.common
         /// <summary>근접 자동전투와 타겟 근접 체크리스트의 공통 거리 기준.</summary>
         public const float TARGET_PROXIMITY_DISTANCE = 3f;
 
+        /// <summary>Survivor Royale inventory slot capacity shared by clients, bots, and the game server.</summary>
+        public const int SURVIVOR_INVENTORY_SLOT_COUNT = 6;
+
         /// <summary>근접 자동전투 P0. 활성화 중에는 기존 수동 분필 공격 진입을 숨긴다.</summary>
         public static readonly bool PROXIMITY_AUTO_COMBAT_P0_ENABLED = true;
+
+        /// <summary>
+        /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
+        /// 데이터와 프로토콜은 보존하므로 레거시 모드가 다시 분리되면 이 게이트로 복구할 수 있다.
+        /// </summary>
+        public static readonly bool CHECKLIST_SYSTEM_ENABLED = false;
     }
 }

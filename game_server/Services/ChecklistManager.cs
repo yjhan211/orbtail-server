@@ -72,6 +72,16 @@ public sealed class ChecklistManager(ILogger logger)
         IEnumerable<long> playerIds,
         Func<long, ChecklistChainContext> chainContextResolver)
     {
+        if (!Config.CHECKLIST_SYSTEM_ENABLED)
+        {
+            _states.TryRemove(matchingId, out _);
+            logger.LogInformation(
+                "Checklist round skipped because the checklist system is disabled: MatchingId={MatchingId}, Round={Round}",
+                matchingId,
+                roundNumber);
+            return;
+        }
+
         var state = _states.GetOrAdd(matchingId, id => new MatchingChecklistState(id));
 
         lock (state.SyncRoot)

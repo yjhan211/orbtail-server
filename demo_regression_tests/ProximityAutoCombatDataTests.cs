@@ -1,4 +1,5 @@
 using System.Text.Json;
+using network.common.data;
 using network.common.data.helpers;
 
 namespace demo_regression_tests;
@@ -34,6 +35,45 @@ public class ProximityAutoCombatDataTests
         Assert.Equal(
             [201000016, 201000016],
             JsonSerializer.Deserialize<List<int>>(recipes[201000017]["input_item_ids"]));
+    }
+
+    [Fact]
+    public void GuardianCombatDataDefinesOneOrbAcrossThreeTiers()
+    {
+        string csvRoot = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv");
+        BattleItemCombatData.Initialize(
+            CsvHelper.LoadCsv(Path.Combine(csvRoot, "battle_item_combat.csv")));
+
+        var definitions = BattleItemCombatData.GetAll();
+
+        Assert.Equal([107000003, 107000004, 107000006], definitions.Select(definition => definition.ItemId));
+        Assert.All(definitions, definition =>
+        {
+            Assert.Equal("orb", definition.Family);
+            Assert.InRange(definition.Tier, 1, 3);
+            Assert.True(definition.AttackRange > 0f);
+            Assert.True(definition.Damage > 0);
+            Assert.True(definition.AttackIntervalSeconds > 0f);
+            Assert.Equal(0.25f, definition.ProjectileWidth);
+            Assert.Equal(0f, definition.EffectDurationSeconds);
+        });
+
+        AssertGuardianTierGrowth("orb", definitions);
+    }
+    [Fact]
+    public void GuardianCombatDataMatchesBothUnityMirrors()
+    {
+        string repoRoot = FindRepositoryRoot();
+        byte[] canonical = File.ReadAllBytes(
+            Path.Combine(repoRoot, "network", "Common", "csv", "battle_item_combat.csv"));
+
+        foreach (string clientRoot in new[] { "Resources", "StreamingAssets" })
+        {
+            Assert.Equal(
+                canonical,
+                File.ReadAllBytes(Path.Combine(
+                    repoRoot, "client", "Assets", clientRoot, "Common", "csv", "battle_item_combat.csv")));
+        }
     }
 
     [Fact]
@@ -76,5 +116,26 @@ public class ProximityAutoCombatDataTests
         }
 
         throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
+    }
+
+    private static void AssertGuardianTierGrowth(
+        string family,
+        IReadOnlyCollection<BattleItemCombatDefinition> definitions)
+    {
+        var tiers = definitions.Where(definition => definition.Family == family)
+            .GroupBy(definition => definition.Tier)
+            .ToDictionary(group => group.Key, group => group.ToList());
+        var tierOne = Assert.Single(tiers[1]);
+
+        Assert.All(tiers[2], tierTwo =>
+        {
+            Assert.True(tierTwo.Damage > tierOne.Damage);
+            Assert.Equal(tierOne.AttackIntervalSeconds / 2f, tierTwo.AttackIntervalSeconds, 3);
+        });
+        Assert.All(tiers[3], tierThree =>
+        {
+            Assert.True(tierThree.Damage > tiers[2].Max(tierTwo => tierTwo.Damage));
+            Assert.Equal(tierOne.AttackIntervalSeconds / 4f, tierThree.AttackIntervalSeconds, 3);
+        });
     }
 }

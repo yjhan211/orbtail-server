@@ -28,8 +28,7 @@ public class DoorStateManager
 
             // 초기 열림 상태인 문 등록
             foreach (var door in GameDoorData.GetAll())
-                if (door.IsInitiallyOpen)
-                    _openDoors[matchingId].Add(door.DoorId);
+                _openDoors[matchingId].Add(door.DoorId);
         }
     }
 
@@ -44,17 +43,6 @@ public class DoorStateManager
             if (!_openDoors.ContainsKey(matchingId)) _openDoors[matchingId] = new HashSet<int>();
 
             return _openDoors[matchingId].Add(doorId);
-        }
-    }
-
-    /// <summary>
-    ///     열린 문을 다시 잠급니다.
-    /// </summary>
-    public bool CloseDoor(long matchingId, int doorId)
-    {
-        lock (_lock)
-        {
-            return _openDoors.TryGetValue(matchingId, out var doors) && doors.Remove(doorId);
         }
     }
 

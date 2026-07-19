@@ -1043,6 +1043,7 @@ public partial class GameClientSession
 
     private void ProcessBotRoundElimination(long matchingId, long botId, EliminationReason reason)
     {
+        _groundItemManager.ReleaseClaimReservationsForPlayer(matchingId, botId);
         _gameEventLogManager.LogElimination(matchingId, botId, reason.ToString(), isBot: true);
         var affected = _manittoChainManager.EliminatePlayer(matchingId, botId, reason);
         var matchingSessions = _getSessionsByInstance(CurrentMapId, matchingId);

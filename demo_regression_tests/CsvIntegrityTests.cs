@@ -97,6 +97,32 @@ public class CsvIntegrityTests
             "node_id 충돌(start/pool/prep 소스 간 중복): " + string.Join(", ", dups));
     }
 
+    [Fact]
+    public void FullBagStatusEffectAndCsvMirrorsAreValid()
+    {
+        Init();
+
+        var effect = GameStatusEffectData.Get(1013);
+        Assert.Equal(0, effect.BuffId);
+        Assert.Equal("debuff", effect.Kind);
+        Assert.Equal(12176, effect.NameTextId);
+        Assert.Equal(12177, effect.DescTextId);
+        Assert.Equal("가득찬 가방", GameSystemTextData.GetText(12176, "kr"));
+        Assert.Equal("더 이상 아이템을 주울 수 없습니다.", GameSystemTextData.GetText(12177, "kr"));
+
+        string networkRoot = FindNetworkBasePath();
+        string repositoryRoot = Directory.GetParent(networkRoot)!.FullName;
+        string networkCsvRoot = Path.Combine(networkRoot, "Common", "csv");
+        foreach (string fileName in new[] { "status_effect_info.csv", "system_text.csv" })
+        {
+            byte[] canonical = File.ReadAllBytes(Path.Combine(networkCsvRoot, fileName));
+            Assert.Equal(canonical, File.ReadAllBytes(Path.Combine(
+                repositoryRoot, "client", "Assets", "Resources", "Common", "csv", fileName)));
+            Assert.Equal(canonical, File.ReadAllBytes(Path.Combine(
+                repositoryRoot, "client", "Assets", "StreamingAssets", "Common", "csv", fileName)));
+        }
+    }
+
     private static string FindNetworkBasePath()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

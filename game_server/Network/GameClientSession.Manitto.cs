@@ -687,8 +687,9 @@ public partial class GameClientSession
     ///     플레이어 탈락 처리 + 체인 단절 브로드캐스트
     /// </summary>
     private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
-        bool deferGameOver = false)
+        bool deferGameOver = false, long attackerPlayerId = 0)
     {
+        _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
         _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
         var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason);
 
@@ -707,6 +708,7 @@ public partial class GameClientSession
             var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED
             {
                 PlayerId = eliminatedPlayerId,
+                AttackerPlayerId = attackerPlayerId,
                 Reason = reason,
                 ResultPlayers = session.PlayerId == eliminatedPlayerId
                     ? eliminatedResultPlayers
@@ -1322,7 +1324,7 @@ public partial class GameClientSession
             ReleaseTargetBotInterrogation(botPlayerId, resetEncounterDelay: true);
             _lastInteractRejectTime = DateTime.UtcNow;
             Logger.LogInformation(
-                "DEMO_MODE 타겟 봇 선심문 거절: BotId={Bot}, PlayerId={Player}",
+                "타겟 봇 선심문 거절: BotId={Bot}, PlayerId={Player}",
                 botPlayerId, PlayerId.Value);
             return Task.CompletedTask;
         }
@@ -1378,7 +1380,7 @@ public partial class GameClientSession
         Send(answerChoicesPacket);
 
         Logger.LogInformation(
-            "DEMO_MODE 타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
+            "타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
             bot.PlayerId, PlayerId.Value, bot.CurrentArea);
     }
 
@@ -1406,7 +1408,7 @@ public partial class GameClientSession
                 Send(timeoutPacket);
 
                 Logger.LogInformation(
-                    "DEMO_MODE 타겟 봇 선심문 타임아웃: BotId={Bot}, PlayerId={Player}",
+                    "타겟 봇 선심문 타임아웃: BotId={Bot}, PlayerId={Player}",
                     botPlayerId, PlayerId);
             }
             catch (TaskCanceledException)
@@ -1415,7 +1417,7 @@ public partial class GameClientSession
             catch (Exception ex)
             {
                 Logger.LogError(ex,
-                    "DEMO_MODE 타겟 봇 선심문 타임아웃 처리 오류: BotId={Bot}, PlayerId={Player}",
+                    "타겟 봇 선심문 타임아웃 처리 오류: BotId={Bot}, PlayerId={Player}",
                     botPlayerId, PlayerId);
             }
         }, cts.Token);
@@ -1637,6 +1639,15 @@ public partial class GameClientSession
         using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
         Send(inventoryPacket);
 
+        var outputItem = items.LastOrDefault();
+        var equippedBattleItem = _inGameInventoryManager.GetEquippedBattleItem(CurrentMapSubId, PlayerId.Value);
+        if (outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid)
+        {
+            using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
+                true, outputItem.ItemUid, ErrorCode.SUCCESS);
+            Send(equippedPacket);
+        }
+
         using var combinePacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId.Value);
         var itemData = GameItemData.Get(recipe.OutputItemId);
         var combinedMsg = new G_TO_C_PART_COMBINED
@@ -1654,6 +1665,14 @@ public partial class GameClientSession
 
         _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
             $"Battle item combine: {msg.PartA} + {msg.PartB} => {recipe.OutputItemId}",
+            isBot: false);
+
+        var combinedCombatData = BattleItemCombatData.Get(recipe.OutputItemId);
+        _gameEventLogManager.LogSurvivorTierReached(
+            CurrentMapSubId,
+            PlayerId.Value,
+            recipe.OutputItemId,
+            combinedCombatData?.Tier ?? 0,
             isBot: false);
 
         return true;
@@ -1889,7 +1908,7 @@ public partial class GameClientSession
     ///     정신력 100 도달 시 탈락 체크. 권고안 B(2026-05-05): Stamina 0 단독으로는 탈락 트리거 안 됨
     ///     (대신 ModifyStats가 Stamina 부족분을 Corruption 1:2 변환).
     /// </summary>
-    public void CheckResourceElimination()
+    public void CheckResourceElimination(long attackerPlayerId = 0)
     {
         if (!PlayerId.HasValue || _isGameEnded || IsEliminated) return;
         if (Corruption < MaxCorruption) return;
@@ -1897,7 +1916,8 @@ public partial class GameClientSession
         Logger.LogInformation(
             "[Resource] Mental depleted: PlayerId={PlayerId}, Corruption={Corruption}/{MaxCorruption}. Eliminating player.",
             PlayerId.Value, Corruption, MaxCorruption);
-        _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO);
+        _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO,
+            attackerPlayerId: attackerPlayerId);
     }
 
     // ===== 시한부 사보타주 (GDD 2.5.4, 패키지 Y 4B, #24) =====
@@ -2215,7 +2235,7 @@ public partial class GameClientSession
         StartTargetBotInterrogationChoiceDelay(bot.PlayerId);
 
         Logger.LogInformation(
-            "DEMO_MODE 타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
+            "타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
             bot.PlayerId, PlayerId.Value, bot.CurrentArea);
 
         return true;
@@ -2321,7 +2341,7 @@ public partial class GameClientSession
         _pendingQuestionContexts = null;
 
         Logger.LogInformation(
-            "DEMO_MODE 봇 심문 응답: BotId={Bot}, Asker={Asker}, AnswerTextId={AnswerTextId}",
+            "봇 심문 응답: BotId={Bot}, Asker={Asker}, AnswerTextId={AnswerTextId}",
             botPlayerId, PlayerId.Value, answerTextId);
     }
 
@@ -2543,7 +2563,7 @@ public partial class GameClientSession
                 selectedAnswer.IsTrue);
 
             Logger.LogInformation(
-                "DEMO_MODE 타겟 봇 선심문 응답: BotId={Bot}, Answerer={Answerer}, TextId={TextId}",
+                "타겟 봇 선심문 응답: BotId={Bot}, Answerer={Answerer}, TextId={TextId}",
                 askerPlayerId, PlayerId.Value, selectedAnswer.TextId);
 
             LogStatementIfNeeded(PlayerId.Value, askerPlayerId, selectedAnswerContext, isBot: false);

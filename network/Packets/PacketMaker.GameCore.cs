@@ -77,7 +77,8 @@ public static partial class PacketMaker
         AreaType areaType,
         int eventType,
         int cooldownSeconds,
-        int revealDelayMs = 0)
+        int revealDelayMs = 0,
+        int damageValue = 0)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_ENCOUNTER_REVEAL);
         G_TO_C_ENCOUNTER_REVEAL body = new()
@@ -86,7 +87,8 @@ public static partial class PacketMaker
             AreaType = areaType,
             EventType = eventType,
             CooldownSeconds = cooldownSeconds,
-            RevealDelayMs = revealDelayMs
+            RevealDelayMs = revealDelayMs,
+            DamageValue = damageValue
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

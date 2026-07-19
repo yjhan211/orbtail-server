@@ -1,4 +1,6 @@
 using game_server.services;
+using network.common.data;
+using network.common.data.helpers;
 
 namespace demo_regression_tests;
 
@@ -31,5 +33,67 @@ public sealed class InGameInventoryAtomicityTests
         Assert.NotNull(updated);
         Assert.Equal(1, updated.Count);
         Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetItemCount(401000005));
+    }
+
+    [Fact]
+    public void EquippedBattleItemIsStoredAndClearedWithInventoryRemoval()
+    {
+        InitializeBattleCombatData();
+        var manager = new InGameInventoryManager();
+        manager.Initialize();
+        var item = manager.AddItem(matchingId: 10, playerId: 100, itemId: 107000003);
+
+        Assert.True(manager.TryEquipBattleItem(10, 100, item.ItemUid, out var equipped));
+        Assert.Equal(item.ItemUid, equipped!.ItemUid);
+        Assert.Equal(107000003, manager.GetEquippedBattleItem(10, 100)!.ItemId);
+
+        Assert.True(manager.TryRemoveItem(10, 100, item.ItemUid, 1, out _));
+        Assert.Null(manager.GetEquippedBattleItem(10, 100));
+    }
+
+    [Fact]
+    public void CombiningAnEquippedBattleItemKeepsTheOutputEquipped()
+    {
+        InitializeBattleCombatData();
+        var manager = new InGameInventoryManager();
+        manager.Initialize();
+        var firstItem = manager.AddItem(matchingId: 10, playerId: 100, itemId: 107000003);
+        manager.AddItem(matchingId: 10, playerId: 100, itemId: 107000003);
+
+        Assert.True(manager.TryEquipBattleItem(10, 100, firstItem.ItemUid, out _));
+        Assert.True(manager.TryCombineItems(10, 100, [107000003, 107000003], 107000004, out var changedItems));
+
+        var outputItem = Assert.Single(changedItems, item => item.ItemId == 107000004);
+        var equippedItem = manager.GetEquippedBattleItem(10, 100);
+        Assert.NotNull(equippedItem);
+        Assert.Equal(outputItem.ItemUid, equippedItem!.ItemUid);
+    }
+
+    [Fact]
+    public void NonCombatItemCannotBecomeEquippedBattleItem()
+    {
+        InitializeBattleCombatData();
+        var manager = new InGameInventoryManager();
+        manager.Initialize();
+        var item = manager.AddItem(matchingId: 10, playerId: 100, itemId: 401000005);
+
+        Assert.False(manager.TryEquipBattleItem(10, 100, item.ItemUid, out _));
+        Assert.Null(manager.GetEquippedBattleItem(10, 100));
+    }
+
+    private static void InitializeBattleCombatData()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null &&
+               !Directory.Exists(Path.Combine(directory.FullName, "network", "Common", "csv")))
+        {
+            directory = directory.Parent;
+        }
+
+        if (directory == null)
+            throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
+
+        BattleItemCombatData.Initialize(CsvHelper.LoadCsv(Path.Combine(
+            directory.FullName, "network", "Common", "csv", "battle_item_combat.csv")));
     }
 }

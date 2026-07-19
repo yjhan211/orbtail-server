@@ -58,36 +58,12 @@ public partial class GameClientSession
             // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
             var currentCell = WorldPositionToCell(validatedPosition);
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
-            TryRelockPassedDoors(currentCell);
 
-            // 3. 주기적 저장 (1초마다)
+            // 위치/지역 상태를 반영한 뒤 실행할 주기적 저장 여부를 미리 계산한다.
             bool needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
             bool isIdle = msg.Velocity.Magnitude() < 0.01f;
 
-            if (needsDbUpdate && !isIdle)
-            {
-                await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-                var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
-
-                if (playerInfo != null)
-                {
-                    playerInfo.ObjectInfo.Position = validatedPosition;
-                    playerInfo.ObjectInfo.Velocity = msg.Velocity;
-                    playerInfo.ObjectInfo.Rotation = msg.Rotation;
-                    playerInfo.ObjectInfo.MoveTimestamp = now;
-                    playerInfo.ObjectInfo.UpdateCellFromPosition(); // Position에서 Cell 자동 계산
-
-                    await playerInfo.Save(CacheHelper);
-                    _lastSaveTime = now;
-                }
-            }
-
-            _lastValidatedPosition = validatedPosition;
-            _groundItemManager.ReleaseSourcePickupBlocks(CurrentMapSubId, PlayerId.Value,
-                newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
-            _lastValidatedRotation = msg.Rotation;
-
-            // 4. Area 변경 처리 (퇴장 조건 통과한 경우만)
+            // 3. Area 변경 처리 (퇴장 조건 통과한 경우만)
             long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
             // 셀이 어떤 영역에도 속하지 않으면 (영역 경계 바로 밖 등) CurrentArea를 None으로 덮어쓰지 않음
@@ -96,9 +72,6 @@ public partial class GameClientSession
             {
                 // 가장 가까운 문 기준으로 잠김 체크 (클라이언트는 이미 막고 있음, 서버는 보정 역할)
                 // 1. 진입하려는 영역의 가장 가까운 문이 잠겨있으면 차단
-                var crossedDoor = GameDoorData.GetDoorForTransition(
-                    CurrentArea, newArea, previousCell ?? currentCell, currentCell);
-
                 var entryBlockedDoor =
                     _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, newArea, currentCell.X, currentCell.Y);
                 if (entryBlockedDoor != null)
@@ -126,7 +99,17 @@ public partial class GameClientSession
                     SendAreaExitBlocked(newArea, positionCell);
                     return;
                 }
+            }
 
+            // 잠긴 문 검증이 끝난 뒤 위치를 게시한다. 전투 타이머는 아래 지역 갱신까지의
+            // 짧은 불일치 구간을 좌표에서 재계산한 지역과 비교해 제외한다.
+            _lastValidatedPosition = validatedPosition;
+            _groundItemManager.ReleaseSourcePickupBlocks(CurrentMapSubId, PlayerId.Value,
+                newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
+            _lastValidatedRotation = msg.Rotation;
+
+            if (newArea != CurrentArea && newArea != AreaType.None)
+            {
                 // 폐쇄 구역 진입 경고 (지속 페널티는 ResourceTick에서 처리)
                 if (_areaClosureManager.IsAreaClosed(CurrentMapSubId, newArea))
                 {
@@ -144,7 +127,25 @@ public partial class GameClientSession
                 _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
                     oldArea.ToString(), newArea.ToString(), isBot: false);
                 await HandleAreaChange(oldArea, newArea);
-                TrackDoorAfterPassage(crossedDoor);
+            }
+
+            // 4. 주기적 저장 (1초마다). 서버 메모리의 위치와 지역은 await 전에 일관되게 게시한다.
+            if (needsDbUpdate && !isIdle)
+            {
+                await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+                var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+
+                if (playerInfo != null)
+                {
+                    playerInfo.ObjectInfo.Position = validatedPosition;
+                    playerInfo.ObjectInfo.Velocity = msg.Velocity;
+                    playerInfo.ObjectInfo.Rotation = msg.Rotation;
+                    playerInfo.ObjectInfo.MoveTimestamp = now;
+                    playerInfo.ObjectInfo.UpdateCellFromPosition(); // Position에서 Cell 자동 계산
+
+                    await playerInfo.Save(CacheHelper);
+                    _lastSaveTime = now;
+                }
             }
 
             TrySendCorridorEncounterEvents(validatedPosition);

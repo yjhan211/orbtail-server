@@ -37,9 +37,8 @@ public static class GroundItemPickupPolicy
         if (staminaRecovery == 0 && corruptionRecovery == 0)
             return GroundItemPickupDisposition.Store;
 
-        bool canUse = staminaRecovery > 0
-            ? stamina < maxStamina
-            : corruption > 0;
-        return canUse ? GroundItemPickupDisposition.AutoUse : GroundItemPickupDisposition.LeaveOnGround;
+        // Ground pickups never consume recovery items immediately. Stats are applied only
+        // when the player later chooses the stored inventory item.
+        return GroundItemPickupDisposition.Store;
     }
 }

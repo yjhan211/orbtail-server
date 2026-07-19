@@ -67,7 +67,7 @@ public static class RngCollectCore
             bool missingPrerequisite = hasPrerequisite &&
                                        state != null &&
                                        !state.CollectedPrereqGroups.Contains(matchedPart.PrerequisiteShareGroup);
-            int missionPartDropRate = DemoMode.IsActive && !missingPrerequisite ? 100 : 90;
+            int missionPartDropRate = 90;
 
             // 자기 풀: 90% 부품 / 7% 선행(있을 때) / 디코이/빈손 — 시연 시간 내 회수 가능하도록 상향 (#135)
             if (roll < missionPartDropRate)

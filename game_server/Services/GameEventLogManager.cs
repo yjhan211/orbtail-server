@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using network.common.data;
 
 namespace game_server.services;
 
@@ -12,6 +13,7 @@ public class GameEventLogManager
     private const int FollowInWindowSeconds = 6;
 
     private readonly ConcurrentDictionary<long, MatchingEventLog> _logs = new();
+    private readonly ConcurrentDictionary<long, SurvivorCombatState> _survivorCombatStates = new();
     private long _nextSeq;
 
     public void SetPlayerArea(long matchingId, long playerId, string area)
@@ -88,7 +90,289 @@ public class GameEventLogManager
 
     public void LogElimination(long matchingId, long playerId, string reason, bool isBot)
     {
-        Append(matchingId, "ELIMINATE", playerId, isBot, reason);
+        var occurredAt = DateTimeOffset.UtcNow;
+        LogFirstSurvivorElimination(matchingId, playerId, reason, isBot, occurredAt);
+        AppendAt(matchingId, "ELIMINATE", playerId, isBot, reason, occurredAt);
+    }
+
+    public void LogSurvivorTierReached(
+        long matchingId,
+        long playerId,
+        int itemId,
+        int tier,
+        bool isBot,
+        DateTimeOffset? occurredAt = null)
+    {
+        if (tier is < 2 or > 3)
+            return;
+
+        var timestamp = occurredAt ?? DateTimeOffset.UtcNow;
+        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        lock (state.SyncRoot)
+        {
+            state.KnownPlayerIds.Add(playerId);
+            if (tier == 2)
+            {
+                if (state.FirstTier2AtUnixMs.HasValue)
+                    return;
+                state.FirstTier2AtUnixMs = timestamp.ToUnixTimeMilliseconds();
+            }
+            else
+            {
+                if (state.FirstTier3AtUnixMs.HasValue)
+                    return;
+                state.FirstTier3AtUnixMs = timestamp.ToUnixTimeMilliseconds();
+            }
+        }
+
+        AppendAt(
+            matchingId,
+            $"SURVIVOR_FIRST_T{tier}",
+            playerId,
+            isBot,
+            $"First T{tier}: {FormatPlayer(playerId)} equipped or crafted Item{itemId}.",
+            timestamp,
+            entry =>
+            {
+                entry.WeaponItemId = itemId;
+                entry.WeaponTier = tier;
+                entry.IsFirstMilestone = true;
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
+    public void LogSurvivorTargetAcquired(
+        long matchingId,
+        long attackerPlayerId,
+        long targetPlayerId,
+        string area,
+        int weaponItemId,
+        int targetWeaponItemId,
+        bool isBot,
+        DateTimeOffset occurredAt)
+    {
+        int weaponTier = BattleItemCombatData.Get(weaponItemId)?.Tier ?? 0;
+        int targetWeaponTier = BattleItemCombatData.Get(targetWeaponItemId)?.Tier ?? 0;
+        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        bool isFirstEncounter;
+        lock (state.SyncRoot)
+        {
+            state.KnownPlayerIds.Add(attackerPlayerId);
+            state.KnownPlayerIds.Add(targetPlayerId);
+            isFirstEncounter = !state.FirstEncounterAtUnixMs.HasValue;
+            if (isFirstEncounter)
+                state.FirstEncounterAtUnixMs = occurredAt.ToUnixTimeMilliseconds();
+
+            state.EngagementsByAttacker[attackerPlayerId] = new SurvivorCombatEngagement(
+                targetPlayerId,
+                area,
+                weaponItemId,
+                weaponTier,
+                targetWeaponTier,
+                occurredAt);
+        }
+
+        AppendAt(
+            matchingId,
+            "SURVIVOR_ENCOUNTER_START",
+            attackerPlayerId,
+            isBot,
+            $"{FormatPlayer(attackerPlayerId)} acquired {FormatPlayer(targetPlayerId)} in {area}; aim window started.",
+            occurredAt,
+            entry =>
+            {
+                entry.TargetPlayerId = targetPlayerId;
+                entry.Area = area;
+                entry.WeaponItemId = weaponItemId;
+                entry.WeaponTier = weaponTier;
+                entry.TargetWeaponTier = targetWeaponTier;
+                entry.HitCount = 0;
+                entry.ElapsedMilliseconds = 0;
+                entry.IsFirstMilestone = isFirstEncounter;
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
+    public void LogSurvivorTargetLost(
+        long matchingId,
+        long attackerPlayerId,
+        long targetPlayerId,
+        string reason,
+        bool isBot,
+        DateTimeOffset occurredAt)
+    {
+        if (!_survivorCombatStates.TryGetValue(matchingId, out var state))
+            return;
+
+        SurvivorCombatEngagement engagement;
+        lock (state.SyncRoot)
+        {
+            if (!state.EngagementsByAttacker.TryGetValue(attackerPlayerId, out engagement!) ||
+                engagement.TargetPlayerId != targetPlayerId)
+            {
+                return;
+            }
+
+            state.EngagementsByAttacker.Remove(attackerPlayerId);
+        }
+
+        long elapsedMilliseconds = Math.Max(
+            0,
+            (long)(occurredAt - engagement.StartedAt).TotalMilliseconds);
+        bool escaped = string.Equals(reason, "out_of_range_or_los", StringComparison.Ordinal);
+        AppendAt(
+            matchingId,
+            "SURVIVOR_ENCOUNTER_END",
+            attackerPlayerId,
+            isBot,
+            $"{FormatPlayer(targetPlayerId)} left {FormatPlayer(attackerPlayerId)}'s engagement: reason={reason}, hits={engagement.HitCount}, elapsedMs={elapsedMilliseconds}.",
+            occurredAt,
+            entry =>
+            {
+                entry.TargetPlayerId = targetPlayerId;
+                entry.Area = engagement.Area;
+                entry.WeaponItemId = engagement.WeaponItemId;
+                entry.WeaponTier = engagement.WeaponTier;
+                entry.TargetWeaponTier = engagement.TargetWeaponTier;
+                entry.ElapsedMilliseconds = elapsedMilliseconds;
+                entry.HitCount = engagement.HitCount;
+                entry.Escaped = escaped;
+                entry.Outcome = reason;
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
+    public void LogSurvivorHit(
+        long matchingId,
+        long attackerPlayerId,
+        long targetPlayerId,
+        int weaponItemId,
+        int damage,
+        bool isLethal,
+        bool isBot,
+        DateTimeOffset occurredAt)
+    {
+        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        int weaponTier = BattleItemCombatData.Get(weaponItemId)?.Tier ?? 0;
+        int targetWeaponTier;
+        int hitCount;
+        int killCount = 0;
+        long elapsedMilliseconds;
+        long? previousHitGapMilliseconds;
+        bool isFirstElimination = false;
+
+        lock (state.SyncRoot)
+        {
+            state.KnownPlayerIds.Add(attackerPlayerId);
+            state.KnownPlayerIds.Add(targetPlayerId);
+            if (!state.EngagementsByAttacker.TryGetValue(attackerPlayerId, out var engagement) ||
+                engagement.TargetPlayerId != targetPlayerId)
+            {
+                engagement = new SurvivorCombatEngagement(
+                    targetPlayerId,
+                    "",
+                    weaponItemId,
+                    weaponTier,
+                    0,
+                    occurredAt);
+                state.EngagementsByAttacker[attackerPlayerId] = engagement;
+            }
+
+            targetWeaponTier = engagement.TargetWeaponTier;
+            elapsedMilliseconds = Math.Max(
+                0,
+                (long)(occurredAt - engagement.StartedAt).TotalMilliseconds);
+            previousHitGapMilliseconds = engagement.LastHitAt.HasValue
+                ? Math.Max(0, (long)(occurredAt - engagement.LastHitAt.Value).TotalMilliseconds)
+                : null;
+            engagement.LastHitAt = occurredAt;
+            engagement.HitCount++;
+            hitCount = engagement.HitCount;
+
+            if (isLethal)
+            {
+                state.KillCountsByPlayer.TryGetValue(attackerPlayerId, out int previousKillCount);
+                killCount = previousKillCount + 1;
+                state.KillCountsByPlayer[attackerPlayerId] = killCount;
+                isFirstElimination = !state.FirstEliminationAtUnixMs.HasValue;
+                if (isFirstElimination)
+                    state.FirstEliminationAtUnixMs = occurredAt.ToUnixTimeMilliseconds();
+
+                var endingAttackers = state.EngagementsByAttacker
+                    .Where(pair => pair.Key == targetPlayerId || pair.Value.TargetPlayerId == targetPlayerId)
+                    .Select(pair => pair.Key)
+                    .ToList();
+                foreach (long endingAttacker in endingAttackers)
+                    state.EngagementsByAttacker.Remove(endingAttacker);
+            }
+        }
+
+        AppendAt(
+            matchingId,
+            "SURVIVOR_HIT",
+            attackerPlayerId,
+            isBot,
+            $"{FormatPlayer(attackerPlayerId)} hit {FormatPlayer(targetPlayerId)} for {damage}; hit={hitCount}, elapsedMs={elapsedMilliseconds}, gapMs={previousHitGapMilliseconds?.ToString() ?? "first"}.",
+            occurredAt,
+            entry =>
+            {
+                entry.TargetPlayerId = targetPlayerId;
+                entry.WeaponItemId = weaponItemId;
+                entry.WeaponTier = weaponTier;
+                entry.TargetWeaponTier = targetWeaponTier;
+                entry.Damage = damage;
+                entry.ElapsedMilliseconds = elapsedMilliseconds;
+                entry.PreviousHitGapMilliseconds = previousHitGapMilliseconds;
+                entry.HitCount = hitCount;
+                entry.Outcome = isLethal ? "eliminated" : "hit";
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+
+        if (!isLethal)
+            return;
+
+        if (isFirstElimination)
+        {
+            AppendAt(
+                matchingId,
+                "SURVIVOR_FIRST_ELIMINATION",
+                targetPlayerId,
+                BotPlayerManager.IsBotPlayerId(targetPlayerId),
+                $"First elimination: {FormatPlayer(targetPlayerId)} was eliminated by {FormatPlayer(attackerPlayerId)}.",
+                occurredAt,
+                entry =>
+                {
+                    entry.WeaponItemId = weaponItemId;
+                    entry.WeaponTier = weaponTier;
+                    entry.TargetWeaponTier = targetWeaponTier;
+                    entry.ElapsedMilliseconds = elapsedMilliseconds;
+                    entry.HitCount = hitCount;
+                    entry.IsFirstMilestone = true;
+                    entry.Outcome = "combat";
+                    entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+                });
+        }
+
+        AppendAt(
+            matchingId,
+            "SURVIVOR_COMBAT_ELIMINATION",
+            attackerPlayerId,
+            isBot,
+            $"{FormatPlayer(attackerPlayerId)} eliminated {FormatPlayer(targetPlayerId)} with T{weaponTier}; killCount={killCount}, elapsedMs={elapsedMilliseconds}.",
+            occurredAt,
+            entry =>
+            {
+                entry.TargetPlayerId = targetPlayerId;
+                entry.WeaponItemId = weaponItemId;
+                entry.WeaponTier = weaponTier;
+                entry.TargetWeaponTier = targetWeaponTier;
+                entry.ElapsedMilliseconds = elapsedMilliseconds;
+                entry.HitCount = hitCount;
+                entry.KillCount = killCount;
+                entry.IsFirstMilestone = isFirstElimination;
+                entry.Outcome = "eliminated";
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
     }
 
     public void LogInteraction(long matchingId, long playerId, string description, bool isBot)
@@ -164,12 +448,19 @@ public class GameEventLogManager
     public void Clear(long matchingId)
     {
         _logs.TryRemove(matchingId, out _);
+        _survivorCombatStates.TryRemove(matchingId, out _);
     }
 
     private GameEventEntry Append(long matchingId, string type, long playerId, bool isBot, string description,
         Action<GameEventEntry>? configure = null)
     {
-        var entry = CreateEntry(type, playerId, isBot, description, DateTimeOffset.UtcNow, configure);
+        return AppendAt(matchingId, type, playerId, isBot, description, DateTimeOffset.UtcNow, configure);
+    }
+
+    private GameEventEntry AppendAt(long matchingId, string type, long playerId, bool isBot, string description,
+        DateTimeOffset timestamp, Action<GameEventEntry>? configure = null)
+    {
+        var entry = CreateEntry(type, playerId, isBot, description, timestamp, configure);
         var log = _logs.GetOrAdd(matchingId, _ => new MatchingEventLog());
         log.Add(entry);
         return entry;
@@ -191,6 +482,89 @@ public class GameEventLogManager
 
         configure?.Invoke(entry);
         return entry;
+    }
+
+    private void LogFirstSurvivorElimination(
+        long matchingId,
+        long playerId,
+        string reason,
+        bool isBot,
+        DateTimeOffset occurredAt)
+    {
+        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        bool isFirstElimination;
+        lock (state.SyncRoot)
+        {
+            state.KnownPlayerIds.Add(playerId);
+            isFirstElimination = !state.FirstEliminationAtUnixMs.HasValue;
+            if (isFirstElimination)
+                state.FirstEliminationAtUnixMs = occurredAt.ToUnixTimeMilliseconds();
+
+            var endingAttackers = state.EngagementsByAttacker
+                .Where(pair => pair.Key == playerId || pair.Value.TargetPlayerId == playerId)
+                .Select(pair => pair.Key)
+                .ToList();
+            foreach (long endingAttacker in endingAttackers)
+                state.EngagementsByAttacker.Remove(endingAttacker);
+        }
+
+        if (!isFirstElimination)
+            return;
+
+        AppendAt(
+            matchingId,
+            "SURVIVOR_FIRST_ELIMINATION",
+            playerId,
+            isBot,
+            $"First elimination: {FormatPlayer(playerId)}, reason={reason}.",
+            occurredAt,
+            entry =>
+            {
+                entry.IsFirstMilestone = true;
+                entry.Outcome = reason;
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
+
+    private sealed class SurvivorCombatState
+    {
+        public object SyncRoot { get; } = new();
+        public long? FirstEncounterAtUnixMs { get; set; }
+        public long? FirstTier2AtUnixMs { get; set; }
+        public long? FirstTier3AtUnixMs { get; set; }
+        public long? FirstEliminationAtUnixMs { get; set; }
+        public HashSet<long> KnownPlayerIds { get; } = new();
+        public Dictionary<long, int> KillCountsByPlayer { get; } = new();
+        public Dictionary<long, SurvivorCombatEngagement> EngagementsByAttacker { get; } = new();
+    }
+
+    private sealed class SurvivorCombatEngagement
+    {
+        public SurvivorCombatEngagement(
+            long targetPlayerId,
+            string area,
+            int weaponItemId,
+            int weaponTier,
+            int targetWeaponTier,
+            DateTimeOffset startedAt)
+        {
+            TargetPlayerId = targetPlayerId;
+            Area = area;
+            WeaponItemId = weaponItemId;
+            WeaponTier = weaponTier;
+            TargetWeaponTier = targetWeaponTier;
+            StartedAt = startedAt;
+        }
+
+        public long TargetPlayerId { get; }
+        public string Area { get; }
+        public int WeaponItemId { get; }
+        public int WeaponTier { get; }
+        public int TargetWeaponTier { get; }
+        public DateTimeOffset StartedAt { get; }
+        public DateTimeOffset? LastHitAt { get; set; }
+        public int HitCount { get; set; }
     }
 
     private static string FormatPlayer(long playerId) => $"Player{playerId}";
@@ -516,6 +890,19 @@ public class GameEventEntry
     public float? ScoreDelta { get; set; }
     public int? ContributionDelta { get; set; }
     public string? ActivityReason { get; set; }
+
+    public long? TargetPlayerId { get; set; }
+    public int? WeaponItemId { get; set; }
+    public int? WeaponTier { get; set; }
+    public int? TargetWeaponTier { get; set; }
+    public int? Damage { get; set; }
+    public long? ElapsedMilliseconds { get; set; }
+    public long? PreviousHitGapMilliseconds { get; set; }
+    public int? HitCount { get; set; }
+    public int? KillCount { get; set; }
+    public bool? Escaped { get; set; }
+    public bool? IsFirstMilestone { get; set; }
+    public string? Outcome { get; set; }
 
     public long? StatementId { get; set; }
     public int? RoundId { get; set; }

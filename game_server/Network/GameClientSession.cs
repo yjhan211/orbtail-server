@@ -81,7 +81,7 @@ public partial class GameClientSession : SessionBase
 
     private Vector3f? _lastValidatedPosition;
     private Cell? _lastValidCell;
-    private readonly HashSet<int> _doorsPendingRelock = new();
+
     private float _lastValidatedRotation;
     private bool _hasFirstMoveCalibrated;
     private long _lastClientMoveTimestamp; // 클라이언트 측 Unix ms — 패킷 클러스터 영향 없는 정확한 deltaTime 계산용
@@ -540,8 +540,6 @@ public partial class GameClientSession : SessionBase
     /// </summary>
     private async Task RecordLeavePenaltyAsync(long playerId)
     {
-        if (DemoMode.IsActive) return;
-
         try
         {
             const string penaltyKey = "leave_penalties";
