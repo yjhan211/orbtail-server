@@ -370,13 +370,21 @@ public partial class BotPlayerManager
         // walking 시작 시 EXPLORE_END broadcast 안전망 — 다음 ProcessBotMovementTick에서 수집.
         bot.PendingExploreEndBroadcast = true;
 
-        if (bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) &&
-            TryStartPostExploreRelocation(bot, matchingId, mapId, closureManager, areaItemStockManager))
+        bool needsGuardianOrb = bot.EquippedBattleItemId <= 0;
+        if ((bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) ||
+             needsGuardianOrb && !IsSecludedFarmingArea(mapId, bot.CurrentArea)) &&
+            TryStartPostExploreRelocation(
+                bot,
+                matchingId,
+                mapId,
+                closureManager,
+                areaItemStockManager,
+                requireSecludedArea: needsGuardianOrb))
         {
             return;
         }
 
-        if (bot.IsForcedFollowActive &&
+        if (!needsGuardianOrb && bot.IsForcedFollowActive &&
             TryStartBotForcedFollowPath(bot, matchingId, mapId, playerAreas))
         {
             return;
@@ -407,8 +415,22 @@ public partial class BotPlayerManager
         }
 
         if (bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) &&
-            TryStartPostExploreRelocation(bot, matchingId, mapId, closureManager, areaItemStockManager))
+            TryStartPostExploreRelocation(
+                bot,
+                matchingId,
+                mapId,
+                closureManager,
+                areaItemStockManager,
+                requireSecludedArea: needsGuardianOrb))
         {
+            return;
+        }
+
+        // Until the first guardian orb is equipped, farming is the whole objective. If no valid
+        // secluded room is currently reachable, wait and retry instead of roaming toward players.
+        if (needsGuardianOrb)
+        {
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
             return;
         }
 
@@ -446,7 +468,8 @@ public partial class BotPlayerManager
     }
 
     private bool TryStartPostExploreRelocation(BotPlayerState bot, long matchingId, MapId mapId,
-        AreaClosureManager closureManager, AreaItemStockManager areaItemStockManager)
+        AreaClosureManager closureManager, AreaItemStockManager areaItemStockManager,
+        bool requireSecludedArea)
     {
         var candidateAreas = GameMapData.GetAreas(mapId)
             .Select(region => region.AreaType)
@@ -454,6 +477,7 @@ public partial class BotPlayerManager
             .Where(area => area != AreaType.None &&
                            area != bot.CurrentArea &&
                            !area.IsCorridor() &&
+                           (!requireSecludedArea || IsSecludedFarmingArea(mapId, area)) &&
                            !bot.CompletedRoomExploreAreas.Contains(area) &&
                            !closureManager.IsAreaClosed(matchingId, area) &&
                            areaItemStockManager.HasRemaining(matchingId, (int)area) &&
@@ -547,7 +571,9 @@ public partial class BotPlayerManager
     private bool TryStartQueuedRoomExplore(BotPlayerState bot, long matchingId,
         AreaClosureManager closureManager, AreaItemStockManager areaItemStockManager)
     {
+        var mapId = GetMatchingMapId(matchingId);
         if (bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor() ||
+            bot.EquippedBattleItemId <= 0 && !IsSecludedFarmingArea(mapId, bot.CurrentArea) ||
             closureManager.IsAreaClosed(matchingId, bot.CurrentArea))
         {
             ClearBotRoomExplorePlan(bot);
@@ -663,9 +689,12 @@ public partial class BotPlayerManager
     private bool TryStartRecoveryRngPath(BotPlayerState bot, long matchingId,
         AreaClosureManager closureManager, AreaItemStockManager areaItemStockManager)
     {
+        var mapId = GetMatchingMapId(matchingId);
+        bool requireSecludedArea = bot.EquippedBattleItemId <= 0;
         var areaOrder = new List<AreaType>();
         if (bot.CurrentArea != AreaType.None &&
             !bot.CurrentArea.IsCorridor() &&
+            (!requireSecludedArea || IsSecludedFarmingArea(mapId, bot.CurrentArea)) &&
             !bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) &&
             !closureManager.IsAreaClosed(matchingId, bot.CurrentArea) &&
             areaItemStockManager.HasRemaining(matchingId, (int)bot.CurrentArea))
@@ -673,13 +702,14 @@ public partial class BotPlayerManager
             areaOrder.Add(bot.CurrentArea);
         }
 
-        areaOrder.AddRange(GameMapData.GetAreas(GetMatchingMapId(matchingId))
+        areaOrder.AddRange(GameMapData.GetAreas(mapId)
             .Select(region => region.AreaType)
             .Distinct()
             .Where(area => area != AreaType.None &&
                            area != bot.CurrentArea &&
                            !area.IsCorridor() &&
                            !bot.CompletedRoomExploreAreas.Contains(area) &&
+                           (!requireSecludedArea || IsSecludedFarmingArea(mapId, area)) &&
                            !closureManager.IsAreaClosed(matchingId, area) &&
                            areaItemStockManager.HasRemaining(matchingId, (int)area))
             .OrderBy(_ => _rng.Next()));

@@ -507,6 +507,9 @@ public partial class GameClientSession
             Logger.LogInformation(
                 "Player {PlayerId} equipped battle item: ItemUid={ItemUid}, ItemId={ItemId}",
                 PlayerId, equippedItem.ItemUid, equippedItem.ItemId);
+            var equippedCombatData = BattleItemCombatData.Get(equippedItem.ItemId);
+            _gameEventLogManager.LogSurvivorTierReached(
+                CurrentMapSubId, PlayerId.Value, equippedItem.ItemId, equippedCombatData?.Tier ?? 0, isBot: false);
             return;
         }
 

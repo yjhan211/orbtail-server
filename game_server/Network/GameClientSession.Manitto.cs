@@ -1667,6 +1667,14 @@ public partial class GameClientSession
             $"Battle item combine: {msg.PartA} + {msg.PartB} => {recipe.OutputItemId}",
             isBot: false);
 
+        var combinedCombatData = BattleItemCombatData.Get(recipe.OutputItemId);
+        _gameEventLogManager.LogSurvivorTierReached(
+            CurrentMapSubId,
+            PlayerId.Value,
+            recipe.OutputItemId,
+            combinedCombatData?.Tier ?? 0,
+            isBot: false);
+
         return true;
     }
 

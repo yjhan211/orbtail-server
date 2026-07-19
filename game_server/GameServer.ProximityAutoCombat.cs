@@ -52,11 +52,30 @@ public partial class GameServer
                     .ToList();
 
                 var actors = BuildProximityCombatActors(matchingId, matchingSessions, matchingBots);
+                var nowUtc = DateTime.UtcNow;
                 var attacks = _proximityAutoCombatResolver.Resolve(
                     matchingId,
                     actors,
-                    DateTime.UtcNow,
-                    ProximityCombatLineOfSight.CanTarget);
+                    nowUtc,
+                    ProximityCombatLineOfSight.CanTarget,
+                    onTargetAcquired: targetEvent =>
+                        _gameEventLogManager.LogSurvivorTargetAcquired(
+                            matchingId,
+                            targetEvent.AttackerPlayerId,
+                            targetEvent.TargetPlayerId,
+                            targetEvent.Area.ToString(),
+                            targetEvent.WeaponItemId,
+                            targetEvent.TargetWeaponItemId,
+                            BotPlayerManager.IsBotPlayerId(targetEvent.AttackerPlayerId),
+                            targetEvent.OccurredAtUtc),
+                    onTargetLost: targetEvent =>
+                        _gameEventLogManager.LogSurvivorTargetLost(
+                            matchingId,
+                            targetEvent.AttackerPlayerId,
+                            targetEvent.TargetPlayerId,
+                            targetEvent.Reason,
+                            BotPlayerManager.IsBotPlayerId(targetEvent.AttackerPlayerId),
+                            targetEvent.OccurredAtUtc));
                 if (attacks.Count == 0)
                     continue;
 
@@ -171,6 +190,15 @@ public partial class GameServer
                 if (targetBot == null)
                     continue;
 
+                _gameEventLogManager.LogSurvivorHit(
+                    matchingId,
+                    attack.AttackerPlayerId,
+                    attack.TargetPlayerId,
+                    attack.WeaponItemId,
+                    damage,
+                    targetBot.Corruption < 100 && targetBot.Corruption + damage >= 100,
+                    BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId),
+                    DateTimeOffset.UtcNow);
                 _botPlayerManager.ApplyProximityAutoCombatDamage(
                     targetBot, damage, attack.AttackerPlayerId);
             }

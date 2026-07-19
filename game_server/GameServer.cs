@@ -595,7 +595,7 @@ public partial class GameServer(
             var matchingSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                 .ToList();
-            matchingSessions.FirstOrDefault()?.DropBotInventoryAtCurrentPosition(botId);
+            DropBotInventoryAtCurrentPosition(matchingId, botId, matchingSessions);
 
             // 1) 전체에게 봇 탈락 알림 (G_TO_C_PLAYER_ELIMINATED)
             using (var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED))
@@ -655,6 +655,41 @@ public partial class GameServer(
         }
     }
 
+    /// <summary>Drops a bot inventory even when a bot-only instance has no client session.</summary>
+    private void DropBotInventoryAtCurrentPosition(
+        long matchingId,
+        long botPlayerId,
+        IReadOnlyCollection<GameClientSession> matchingSessions)
+    {
+        var bot = _botPlayerManager.GetBot(matchingId, botPlayerId);
+        if (bot == null || bot.CurrentArea == AreaType.None)
+            return;
+
+        var removed = _inGameInventoryManager.TakeAllItems(matchingId, botPlayerId);
+        if (removed.Count == 0)
+            return;
+
+        var itemIds = removed
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
+            .ToList();
+        var spawned = _groundItemManager.SpawnItems(
+            matchingId,
+            bot.CurrentArea,
+            bot.Position.X,
+            bot.Position.Y,
+            itemIds);
+        if (spawned.Count == 0)
+            return;
+
+        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)bot.CurrentArea);
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
+            (int)bot.CurrentArea,
+            remaining,
+            spawned.ToList());
+        foreach (var session in matchingSessions.Where(session => session.CurrentArea == bot.CurrentArea))
+            session.Send(packet);
+    }
+
     /// <summary>
     ///     #26: 봇 미션 시뮬 — 부품 회수 + 자동 결합. 최종 결합 시 즉시 게임 종료.
     /// </summary>
@@ -683,6 +718,34 @@ public partial class GameServer(
                         ? $"최종 결합 완성! ({part?.PartNameKr ?? outputPartId.ToString()}) — race 완주"
                         : $"부품 결합: {part?.PartNameKr ?? outputPartId.ToString()}",
                     isBot: true);
+            }
+
+            foreach (var (botId, itemId) in missionResult.ConsumableMerges)
+            {
+                _gameEventLogManager.LogMission(
+                    matchingId,
+                    botId,
+                    $"Consumable merge: Item{itemId}",
+                    isBot: true);
+            }
+
+            foreach (var (botId, itemId) in missionResult.BattleItemCombines)
+            {
+                var combatData = BattleItemCombatData.Get(itemId);
+                _gameEventLogManager.LogMission(
+                    matchingId,
+                    botId,
+                    $"Guardian orb awakening: Item{itemId}, T{combatData?.Tier ?? 0}",
+                    isBot: true);
+                _gameEventLogManager.LogSurvivorTierReached(
+                    matchingId, botId, itemId, combatData?.Tier ?? 0, isBot: true);
+            }
+
+            foreach (var (botId, itemId) in missionResult.BattleItemEquips)
+            {
+                var combatData = BattleItemCombatData.Get(itemId);
+                _gameEventLogManager.LogSurvivorTierReached(
+                    matchingId, botId, itemId, combatData?.Tier ?? 0, isBot: true);
             }
 
             // #134 — 봇 RNG progress 시작/종료 → 같은 영역 인간 세션에 EXPLORE_START/END (봇 EXPLORE_1 애니 동기화)

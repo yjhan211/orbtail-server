@@ -157,6 +157,15 @@ public partial class BotPlayerManager
 
     private static bool IsAllowedAssignedStartArea(MapId mapId, AreaType area)
     {
+        return IsSecludedFarmingArea(mapId, area);
+    }
+
+    /// <summary>
+    /// Rooms where an unarmed survivor can farm without deliberately lingering in a corridor or a large open zone.
+    /// Corridors may still be crossed by the pathfinder while travelling between these rooms.
+    /// </summary>
+    private static bool IsSecludedFarmingArea(MapId mapId, AreaType area)
+    {
         if (area == AreaType.None || area.IsCorridor())
             return false;
 

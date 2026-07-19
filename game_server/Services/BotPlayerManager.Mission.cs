@@ -35,8 +35,9 @@ public partial class BotPlayerManager
             bot.LastMissionTickTime = DateTime.UtcNow;
 
             if (TryAdvanceBotRest(bot, result)) continue;
-            if (bot.Stamina <= 0 && TryStartBotRest(bot, result)) continue;
+            TryAutoMergeConsumables(bot, matchingId, inventoryManager, result);
             TryAutoUseConsumable(bot, matchingId, inventoryManager);
+            if (bot.Stamina <= 0 && TryStartBotRest(bot, result)) continue;
             TryAutoPrepareBattleItem(bot, matchingId, inventoryManager, result);
             // 플레이어와 대화 중일 때는 탐색/선물 회수를 잠시 멈춘다.
             if (bot.IsInInteraction) continue;
@@ -67,6 +68,27 @@ public partial class BotPlayerManager
         }
 
         return result;
+    }
+
+    private void TryAutoMergeConsumables(
+        BotPlayerState bot,
+        long matchingId,
+        InGameInventoryManager inventoryManager,
+        BotMissionTickResult result)
+    {
+        var mergedItemIds = BotConsumableLoadout.MergeAvailable(
+            inventoryManager,
+            matchingId,
+            bot.PlayerId);
+        foreach (int itemId in mergedItemIds)
+        {
+            result.ConsumableMerges.Add((bot.PlayerId, itemId));
+            _logger.LogInformation(
+                "Bot consumable merged: MatchingId={MatchingId}, BotId={BotId}, ItemId={ItemId}",
+                matchingId,
+                bot.PlayerId,
+                itemId);
+        }
     }
 
     /// <summary>봇이 자동 소모품을 사용하기 위한 스태미나 임계값.</summary>
@@ -688,6 +710,7 @@ public class BotMissionTickResult
     /// <summary>#134 — 봇이 RNG 채집한 InteractObject 인스턴스 쿨타임 broadcast 정보.</summary>
     public List<(int interactId, int cooldownSeconds)> RngCooldownBroadcasts { get; } = new();
     public List<GroundItemInfo> GroundItemSpawns { get; } = new();
+    public List<(long botPlayerId, int itemId)> ConsumableMerges { get; } = new();
     public List<(long botPlayerId, int itemId)> BattleItemCombines { get; } = new();
     public List<(long botPlayerId, int itemId)> BattleItemEquips { get; } = new();
 

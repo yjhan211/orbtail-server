@@ -16,6 +16,16 @@ public partial class GameClientSession
         if (damage <= 0)
             return;
 
+        _gameEventLogManager.LogSurvivorHit(
+            CurrentMapSubId,
+            sourcePlayerId,
+            PlayerId.Value,
+            weaponItemId,
+            damage,
+            Corruption < MaxCorruption && Corruption + damage >= MaxCorruption,
+            BotPlayerManager.IsBotPlayerId(sourcePlayerId),
+            DateTimeOffset.UtcNow);
+
         ModifyStats(corruptionDelta: damage, attackerPlayerId: sourcePlayerId);
 
         // RevealDelayMs carries weapon metadata; DamageValue preserves the authoritative hit result.
