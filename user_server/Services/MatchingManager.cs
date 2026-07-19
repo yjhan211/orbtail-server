@@ -10,10 +10,6 @@ using user_server.network;
 
 namespace user_server.services;
 
-/// <summary>
-///     game_server MatchingConfigService? 怨듭쑀?섎뒗 Redis ???곸닔.
-///     媛?蹂寃????묒そ ?숈떆 ?섏젙 ?꾩슂.
-/// </summary>
 internal static class MatchingConfigRedisKeys
 {
     internal const string Key = "matching_config";
@@ -24,24 +20,20 @@ public class MatchingManager : IMatchingManager
 {
     private const string MatchingQueueKey = "matching_queue";
     private const string MatchingIdKey = "matching_id";
-    private const string BotInfoKeyPrefix = "matching_bots"; // Redis Hash: field=matchingId
-    private const string PlayerBuffInfoKey = "matching_player_buffs"; // Redis Hash: field={matchingId}:{playerId}, value=List<int>
-    private const string LeavePenaltyKey = "leave_penalties"; // Redis Hash: field=playerId, value=int64 count
-    private const string LeavePenaltyDecayAtKey = "leave_penalty_decay_at"; // Redis Hash: field=playerId, value=int64 unix timestamp
+    private const string BotInfoKeyPrefix = "matching_bots";
+    private const string PlayerBuffInfoKey = "matching_player_buffs";
+    private const string LeavePenaltyKey = "leave_penalties";
+    private const string LeavePenaltyDecayAtKey = "leave_penalty_decay_at";
     private const int MatchingTimeoutSeconds = 3;
-    private const int BotFillTimeoutSeconds = 30; // 遊?梨꾩? ?湲??쒓컙
-    private const int LeavePenaltySeconds = 30; // ?댄깉 1?뚮떦 異붽? ?湲??쒓컙
-    private const int MaxLeavePenaltySeconds = 300; // 理쒕? ?섎꼸???湲??쒓컙 (5遺?
-    private const int PenaltyDecayIntervalHours = 24; // 24?쒓컙 寃쎄낵 ???댄깉 ?잛닔 1 媛먯냼
-    private const int DefaultPlayersPerMatch = 2; // 留ㅼ묶 ?몃━嫄?理쒖냼 ?몄썝 (#22 ?붾쾭洹???1???몃━嫄?
-    private const int DefaultGamePlayersPerMatch = 8; // ?ㅼ젣 寃뚯엫 ?몄썝 (#22 ?붾쾭洹???1??+ 遊?4紐? 媛?痢듬퀎 1紐?
+    private const int BotFillTimeoutSeconds = 30;
+    private const int LeavePenaltySeconds = 30;
+    private const int MaxLeavePenaltySeconds = 300;
+    private const int PenaltyDecayIntervalHours = 24;
+    private const int DefaultPlayersPerMatch = 1;
+    private const int DefaultGamePlayersPerMatch = 8;
 
-    /// <summary>留ㅼ묶 ?몃━嫄?理쒖냼 ?몄썝. DEMO_MODE ?쒖꽦 ??1紐낅쭔?쇰줈 ?몃━嫄?利됱떆 遊?4紐?梨꾩?).</summary>
-    private static int PlayersPerMatch => IsTwoPlayerTestMatch ? 2 : DemoMode.IsActive ? 1 : DefaultPlayersPerMatch;
-
-    /// <summary>?ㅼ젣 寃뚯엫 ?몄썝. TEST_TWO_PLAYER_MATCH ???ㅽ뵆?덉씠??2紐?+ 遊?3紐?</summary>
-    private static int GamePlayersPerMatch =>
-        IsTwoPlayerTestMatch ? DefaultGamePlayersPerMatch : DemoMode.IsActive ? DemoMode.MatchPlayerCount : DefaultGamePlayersPerMatch;
+    private static int PlayersPerMatch => IsTwoPlayerTestMatch ? 2 : DefaultPlayersPerMatch;
+    private static int GamePlayersPerMatch => DefaultGamePlayersPerMatch;
 
     private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
     private static JobTitle? ForcedPlayerJob => ParseForcedPlayerJob();
@@ -379,15 +371,13 @@ public class MatchingManager : IMatchingManager
     /// <summary>
     ///     ?먰삎 泥댁씤 ?앹꽦: ?뷀뵆 ??i踰덉㎏ ?뚮젅?댁뼱???寃?= (i+1)%N踰덉㎏ ?뚮젅?댁뼱
     ///     吏곸콉(JobTitle)??臾댁옉??諛곗젙. Redis 吏곸콉 ? 媛뺤젣 吏?뺤씠 ?덉쑝硫??곗꽑 ?ъ슜.
-    ///     DEMO_MODE ?쒖꽦 ???쒖뿰??遊?紐?BR/DC/SC/HE) 泥댁씤 媛뺤젣 ???뷀뵆 ?놁쓬.
+    ///     ?쒖꽦 ???쒖뿰??遊?紐?BR/DC/SC/HE) 泥댁씤 媛뺤젣 ???뷀뵆 ?놁쓬.
     /// </summary>
     private async Task<List<ManittoChainLink>> BuildManittoChain(byte[][] groupEntries)
     {
         if (IsTwoPlayerTestMatch && groupEntries.Length == DefaultGamePlayersPerMatch)
             return BuildTwoPlayerTestManittoChain(groupEntries);
 
-        if (DemoMode.IsActive && groupEntries.Length == DemoMode.MatchPlayerCount)
-            return BuildDemoManittoChain(groupEntries);
 
         // ?뷀뵆
         var entries = groupEntries.ToList();
@@ -678,14 +668,14 @@ public class MatchingManager : IMatchingManager
             _logger.LogWarning(
                 "TEST_TWO_PLAYER_MATCH 留ㅼ묶 援ъ꽦 鍮꾩젙??(??{Real}紐?/ 遊?{Bot}紐? ???쇰컲 泥댁씤 ?대갚",
                 realPlayers.Count, bots.Count);
-            return BuildDemoFallback(groupEntries);
+            throw new InvalidOperationException("TEST_TWO_PLAYER_MATCH requires two real players and six bots.");
         }
 
         var ordered = realPlayers.Concat(bots).ToList();
         var players = ordered.Select(x => x.Data).ToList();
         var jobs = new[]
         {
-            DemoMode.PlayerJob,
+            JobTitle.NONE,
             JobTitle.DISCIPLINE_MEMBER,
             JobTitle.BROADCAST_MEMBER,
             JobTitle.SCIENCE_MEMBER,
@@ -711,97 +701,6 @@ public class MatchingManager : IMatchingManager
         _logger.LogInformation(
             "TEST_TWO_PLAYER_MATCH 泥댁씤 媛뺤젣: {Chain}",
             string.Join(" -> ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" -> {players[0].PlayerId}");
-
-        return chain;
-    }
-
-    /// <summary>
-    ///     ?쒖뿰 紐⑤뱶 泥댁씤 媛뺤젣 ?앹꽦. ?쒖뿰????PlayerId)???몃뜳??1??
-    ///     遊?4紐낆? ?몃뜳??0/2/3/4??BR/DC/SC/HE ?쒖꽌濡?怨좎젙 諛곗튂.
-    ///     泥댁씤: BR ???쒖뿰????DC ??SC ??HE ??BR.
-    ///     ?뷀뵆?섏? ?딆쓬 ??寃곗젙濡??쒕뱶 + ?곸긽 鍮꾪듃 ?뺥빀??蹂댁옣.
-    /// </summary>
-    private List<ManittoChainLink> BuildDemoManittoChain(byte[][] groupEntries)
-    {
-        var realEntries = new List<byte[]>();
-        var botEntries = new List<byte[]>();
-
-        foreach (var entry in groupEntries)
-        {
-            var data = MessagePackSerializer.Deserialize<MatchingQueueData>(entry);
-            if (data.PlayerId >= 0) realEntries.Add(entry);
-            else botEntries.Add(entry);
-        }
-
-        if (realEntries.Count != 1 || botEntries.Count != 4)
-        {
-            _logger.LogWarning(
-                "DEMO_MODE 留ㅼ묶 援ъ꽦 鍮꾩젙??(??{Real}紐?/ 遊?{Bot}紐? ???쇰컲 泥댁씤 ?대갚",
-                realEntries.Count, botEntries.Count);
-            return BuildDemoFallback(groupEntries);
-        }
-
-        // Index 0/2/3/4 are bots, index 1 is the player.
-        var ordered = new byte[DemoMode.MatchPlayerCount][];
-        ordered[DemoMode.PlayerChainIndex] = realEntries[0];
-        int botCursor = 0;
-        for (int i = 0; i < DemoMode.MatchPlayerCount; i++)
-        {
-            if (i == DemoMode.PlayerChainIndex) continue;
-            ordered[i] = botEntries[botCursor++];
-        }
-
-        var players = ordered.Select(e => MessagePackSerializer.Deserialize<MatchingQueueData>(e)).ToList();
-        var jobs = DemoMode.ChainJobOrder;
-
-        var chain = new List<ManittoChainLink>();
-        for (int i = 0; i < ordered.Length; i++)
-        {
-            int targetIndex = (i + 1) % ordered.Length;
-            chain.Add(new ManittoChainLink
-            {
-                Entry = ordered[i],
-                TargetPlayerId = players[targetIndex].PlayerId,
-                MyJobTitle = jobs[i],
-                TargetJobTitle = jobs[targetIndex]
-            });
-        }
-
-        _logger.LogInformation(
-            "DEMO_MODE 泥댁씤 媛뺤젣: {Chain}",
-            string.Join(" ??", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" ??{players[0].PlayerId}");
-
-        return chain;
-    }
-
-    /// <summary>
-    ///     DEMO_MODE 留ㅼ묶 援ъ꽦??鍮꾩젙?곸씪 ??(??0紐??? ?쇰컲 泥댁씤 ?뚭퀬由ъ쬁?쇰줈 ?대갚.
-    /// </summary>
-    private List<ManittoChainLink> BuildDemoFallback(byte[][] groupEntries)
-    {
-        var entries = groupEntries.ToList();
-        var rng = new Random(DemoMode.Seed);
-        for (int i = entries.Count - 1; i > 0; i--)
-        {
-            int j = rng.Next(i + 1);
-            (entries[i], entries[j]) = (entries[j], entries[i]);
-        }
-
-        var jobs = DemoMode.ChainJobOrder.ToList();
-        var players = entries.Select(e => MessagePackSerializer.Deserialize<MatchingQueueData>(e)).ToList();
-
-        var chain = new List<ManittoChainLink>();
-        for (int i = 0; i < entries.Count; i++)
-        {
-            int targetIndex = (i + 1) % entries.Count;
-            chain.Add(new ManittoChainLink
-            {
-                Entry = entries[i],
-                TargetPlayerId = players[targetIndex].PlayerId,
-                MyJobTitle = jobs[i],
-                TargetJobTitle = jobs[targetIndex]
-            });
-        }
 
         return chain;
     }
@@ -978,8 +877,6 @@ public class MatchingManager : IMatchingManager
     /// </summary>
     private async Task<long> GetLeavePenaltyDelayAsync(long playerId)
     {
-        if (DemoMode.IsActive) return 0;
-
         try
         {
             var value = await _cacheHelper.HashGetAsync(LeavePenaltyKey, playerId);

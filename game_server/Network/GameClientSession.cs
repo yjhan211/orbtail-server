@@ -540,8 +540,6 @@ public partial class GameClientSession : SessionBase
     /// </summary>
     private async Task RecordLeavePenaltyAsync(long playerId)
     {
-        if (DemoMode.IsActive) return;
-
         try
         {
             const string penaltyKey = "leave_penalties";

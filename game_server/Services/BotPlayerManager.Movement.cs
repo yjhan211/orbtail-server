@@ -39,7 +39,7 @@ public partial class BotPlayerManager
     }
 
 
-    /// <summary>봇 자원 틱 결과. 자원 고갈 탈락 + 위치 이동 이벤트(DemoMode 영역 전환만)를 함께 반환.</summary>
+    /// <summary>봇 자원 틱 결과. 자원 고갈 탈락 + 위치 이동 이벤트(legacy mode 영역 전환만)를 함께 반환.</summary>
     public class BotTickResult
     {
         public List<(long botPlayerId, EliminationReason reason)> Eliminated { get; } = new();
@@ -55,7 +55,7 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     봇 자원 틱(5초). 자원 변동 + 탈락 + DemoMode 스크립트 영역 전환만 처리.
+    ///     봇 자원 틱(5초). 자원 변동 + 탈락 + legacy mode 스크립트 영역 전환만 처리.
     ///     일반 walking은 ProcessBotMovementTick(250ms)에서 별도 처리.
     /// </summary>
     public BotTickResult ProcessBotTick(
@@ -83,30 +83,10 @@ public partial class BotPlayerManager
             if (totalCorruptionDelta != 0)
                 bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
 
-            if (DemoMode.IsActive)
-            {
-                // DemoMode 전용 시한부 및 강제 탈락 연출.
-                if (bot.ManittoStatus == ManittoStatus.TERMINAL)
-                    bot.Corruption = Math.Clamp(bot.Corruption + 5, 0, 100);
-
-                // H8 — DemoMode HE 봇 12:00 강제 탈락 (오염도 100으로 가속)
-                if (bot.MyJobTitle == JobTitle.HEALTH_MEMBER && bot.Corruption < 100)
-                {
-                    var elapsedSec = (DateTime.UtcNow - bot.GameStartTime).TotalSeconds;
-                    if (elapsedSec >= DemoMode.HeForcedEliminationSeconds)
-                    {
-                        bot.Corruption = 100;
-                        _logger.LogInformation(
-                            "DEMO_MODE H8: HE 봇 강제 탈락 트리거 (경과 {Sec}s)", (int)elapsedSec);
-                    }
-                }
-
-            }
-
-            if (TryQueueBotMentalElimination(bot, matchingId, result))
+                        if (TryQueueBotMentalElimination(bot, matchingId, result))
                 continue;
 
-            // DemoMode 비활성에서도 일반 자원/상태 변동 후 오염도 100이면 탈락 처리한다.
+            // legacy mode 비활성에서도 일반 자원/상태 변동 후 오염도 100이면 탈락 처리한다.
         }
         foreach (var bot in bots)
         {
@@ -151,7 +131,7 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     #127: 봇 walking 틱(50ms). DemoMode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
+    ///     #127: 봇 walking 틱(50ms). legacy mode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
     ///     Uses the same fixed movement speed 6.0 as the player and emits an equivalent G_TO_C_MOVE event each tick.
     ///     #134: 추가로 ChooseNewWanderTarget 시 PendingExploreEndBroadcast가 set된 봇은 ExploreEnds list에 수집 — walking 시작 안전망.
     /// </summary>
@@ -1168,67 +1148,11 @@ public partial class BotPlayerManager
     ///     W3 시연 모드 — 봇 위치를 BotMovementScript에 따라 강제. 매 틱(5초)마다 평가.
     ///     큐 순회 로직 우회. 폐쇄된 위치는 도착 보류(다음 웨이포인트로 진행되면 자연 해소).
     /// </summary>
-    private BotMovementEvent? AdvanceToScriptedArea(BotPlayerState bot, long matchingId, AreaClosureManager closureManager)
-    {
-        if (!DemoMode.BotMovementScript.TryGetValue(bot.MyJobTitle, out var script) || script.Count == 0)
-            return null;
-
-        int elapsedSec = (int)(DateTime.UtcNow - bot.GameStartTime).TotalSeconds;
-        AreaType target = script[0].area;
-        foreach (var (sec, area) in script)
-        {
-            if (sec > elapsedSec) break;
-            target = area;
-        }
-
-        if (bot.CurrentArea == target) return null;
-        if (closureManager.IsAreaClosed(matchingId, target)) return null;
-
-        // walking 중이면 텔레포트 보류 — 봇이 복도 중앙 등에서 갑자기 사라지는 시각 부자연스러움 회피.
-        // 도착 후 LoopWaitUntil 시점에 평가되어 자연스럽게 텔레포트.
-        if (bot.Path.Count > 0 && bot.PathIndex < bot.Path.Count) return null;
-
-        var ev = TransitionBotArea(bot, matchingId, target);
-        bot.LastMoveTime = DateTime.UtcNow;
-        _logger.LogInformation("DEMO_MODE 봇 이동(스크립트): BotId={Bot}, Job={Job}, {Prev} → {Area} (경과 {Sec}s)",
-            bot.PlayerId, bot.MyJobTitle, ev.FromArea, ev.ToArea, elapsedSec);
-        return ev;
-    }
-
-    /// <summary>
+        /// <summary>
     ///     봇 영역 전환 — Cell/Position을 새 영역의 스폰 셀로 갱신하고 BotMovementEvent 생성.
-    ///     DemoMode 스크립트 텔레포트 전용. walking 경로 통과 시점은 WalkStep에서 처리.
+    ///     legacy mode 스크립트 텔레포트 전용. walking 경로 통과 시점은 WalkStep에서 처리.
     /// </summary>
-    private BotMovementEvent TransitionBotArea(BotPlayerState bot, long matchingId, AreaType targetArea)
-    {
-        var fromArea = bot.CurrentArea;
-        var fromCell = bot.Cell;
-        var mapId = GetMatchingMapId(matchingId);
-        var newCell = GameMapData.GetAreaSpawnCell(mapId, targetArea);
-        var newPosition = CellToWorldPosition(newCell);
-
-        bot.CurrentArea = targetArea;
-        bot.Cell = newCell;
-        bot.Position = newPosition;
-        bot.Path.Clear();
-        bot.PathIndex = 0;
-        ClearBotRoomExplorePlan(bot);
-
-        return new BotMovementEvent
-        {
-            BotPlayerId = bot.PlayerId,
-            FromArea = fromArea,
-            ToArea = targetArea,
-            FromCell = fromCell,
-            ToCell = newCell,
-            Position = newPosition,
-            Velocity = new Vector3f(0f, 0f, 0f),
-            Rotation = bot.Rotation,
-            IsAreaTransition = true
-        };
     }
-
-}
 
 /// <summary>
 ///     봇 이동 이벤트. ProcessBotTick / ProcessBotMovementTick이 반환하면 GameServer가 같은 영역 인간 세션에 패킷 브로드캐스트.

@@ -1323,7 +1323,7 @@ public partial class GameClientSession
             ReleaseTargetBotInterrogation(botPlayerId, resetEncounterDelay: true);
             _lastInteractRejectTime = DateTime.UtcNow;
             Logger.LogInformation(
-                "DEMO_MODE 타겟 봇 선심문 거절: BotId={Bot}, PlayerId={Player}",
+                "타겟 봇 선심문 거절: BotId={Bot}, PlayerId={Player}",
                 botPlayerId, PlayerId.Value);
             return Task.CompletedTask;
         }
@@ -1379,7 +1379,7 @@ public partial class GameClientSession
         Send(answerChoicesPacket);
 
         Logger.LogInformation(
-            "DEMO_MODE 타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
+            "타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
             bot.PlayerId, PlayerId.Value, bot.CurrentArea);
     }
 
@@ -1407,7 +1407,7 @@ public partial class GameClientSession
                 Send(timeoutPacket);
 
                 Logger.LogInformation(
-                    "DEMO_MODE 타겟 봇 선심문 타임아웃: BotId={Bot}, PlayerId={Player}",
+                    "타겟 봇 선심문 타임아웃: BotId={Bot}, PlayerId={Player}",
                     botPlayerId, PlayerId);
             }
             catch (TaskCanceledException)
@@ -1416,7 +1416,7 @@ public partial class GameClientSession
             catch (Exception ex)
             {
                 Logger.LogError(ex,
-                    "DEMO_MODE 타겟 봇 선심문 타임아웃 처리 오류: BotId={Bot}, PlayerId={Player}",
+                    "타겟 봇 선심문 타임아웃 처리 오류: BotId={Bot}, PlayerId={Player}",
                     botPlayerId, PlayerId);
             }
         }, cts.Token);
@@ -2225,7 +2225,7 @@ public partial class GameClientSession
         StartTargetBotInterrogationChoiceDelay(bot.PlayerId);
 
         Logger.LogInformation(
-            "DEMO_MODE 타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
+            "타겟 봇 선심문 시작: BotId={Bot}, PlayerId={Player}, Area={Area}",
             bot.PlayerId, PlayerId.Value, bot.CurrentArea);
 
         return true;
@@ -2331,7 +2331,7 @@ public partial class GameClientSession
         _pendingQuestionContexts = null;
 
         Logger.LogInformation(
-            "DEMO_MODE 봇 심문 응답: BotId={Bot}, Asker={Asker}, AnswerTextId={AnswerTextId}",
+            "봇 심문 응답: BotId={Bot}, Asker={Asker}, AnswerTextId={AnswerTextId}",
             botPlayerId, PlayerId.Value, answerTextId);
     }
 
@@ -2553,7 +2553,7 @@ public partial class GameClientSession
                 selectedAnswer.IsTrue);
 
             Logger.LogInformation(
-                "DEMO_MODE 타겟 봇 선심문 응답: BotId={Bot}, Answerer={Answerer}, TextId={TextId}",
+                "타겟 봇 선심문 응답: BotId={Bot}, Answerer={Answerer}, TextId={TextId}",
                 askerPlayerId, PlayerId.Value, selectedAnswer.TextId);
 
             LogStatementIfNeeded(PlayerId.Value, askerPlayerId, selectedAnswerContext, isBot: false);

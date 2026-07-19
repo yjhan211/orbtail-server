@@ -88,9 +88,9 @@ public partial class BotPlayerManager
 
     private readonly ILogger _logger;
 
-    // H1 寃곗젙濡??쒕뱶 ??DemoMode ?쒖꽦?????쒕뱶 湲곕컲 RNG, ?꾨땲硫?Random.Shared ?꾩엫.
+    // H1 寃곗젙濡??쒕뱶 ??legacy mode ?쒖꽦?????쒕뱶 湲곕컲 RNG, ?꾨땲硫?Random.Shared ?꾩엫.
     // 紐⑤뱺 遊??섏궗寃곗젙(?대룞/?됱텧/?묐떟/?щ낫?二???蹂??몄뒪?댁뒪 ?ъ슜.
-    private readonly Random _rng = DemoMode.IsActive ? new Random(DemoMode.Seed) : Random.Shared;
+    private readonly Random _rng = Random.Shared;
 
     public BotPlayerManager(ILogger logger)
     {
@@ -414,7 +414,7 @@ public class BotPlayerState
 
     public DateTime NextRestTickAt { get; set; } = DateTime.MinValue;
 
-    /// <summary>留ㅼ묶 ?쒖옉 ?쒓컖. DemoMode H4 遊?race ?섏씠??罹?怨꾩궛??</summary>
+    /// <summary>留ㅼ묶 ?쒖옉 ?쒓컖. legacy mode H4 遊?race ?섏씠??罹?怨꾩궛??</summary>
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
 
     // === v0.2.0 遺???쒕? ?곹깭 ===

@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.helpers;
 using network.interfaces;
 #pragma warning disable CS8618
 
@@ -43,16 +42,6 @@ public class MatchingConfigService
 
     public ClosureConfig GetClosureConfig()
     {
-        if (DemoMode.IsActive)
-        {
-            return new ClosureConfig
-            {
-                StartDelaySec = DemoMode.ClosureStartDelaySec,
-                IntervalSec = DemoMode.ClosureIntervalSec,
-                ForcedSequence = new List<AreaType>(DemoMode.ForcedClosureSequence)
-            };
-        }
-
         return new ClosureConfig
         {
             StartDelaySec = _startDelaySec,
@@ -70,43 +59,26 @@ public class MatchingConfigService
         try
         {
             var startRaw = await _cacheHelper.HashGetAsync(JobPoolRedisKey, StartDelayRedisField);
-            if (startRaw.HasValue && int.TryParse((string)startRaw!, out int sd))
-                _startDelaySec = Math.Max(0, sd);
+            if (startRaw.HasValue && int.TryParse((string)startRaw!, out int startDelay))
+                _startDelaySec = Math.Max(0, startDelay);
 
             var intervalRaw = await _cacheHelper.HashGetAsync(JobPoolRedisKey, IntervalRedisField);
-            if (intervalRaw.HasValue && int.TryParse((string)intervalRaw!, out int iv))
-                _intervalSec = Math.Max(1, iv);
+            if (intervalRaw.HasValue && int.TryParse((string)intervalRaw!, out int interval))
+                _intervalSec = Math.Max(1, interval);
 
-            var seqRaw = await _cacheHelper.HashGetAsync(JobPoolRedisKey, ForcedSequenceRedisField);
-            if (seqRaw.HasValue)
+            var sequenceRaw = await _cacheHelper.HashGetAsync(JobPoolRedisKey, ForcedSequenceRedisField);
+            if (sequenceRaw.HasValue)
             {
-                var ints = JsonSerializer.Deserialize<List<int>>((string)seqRaw!);
-                _forcedSequence = ints?.Select(v => (AreaType)v).ToList();
+                var values = JsonSerializer.Deserialize<List<int>>((string)sequenceRaw!);
+                _forcedSequence = values?.Select(value => (AreaType)value).ToList();
             }
-
-            // DEMO_MODE에서는 Redis에 남은 이전 설정보다 시연용 폐쇄 기본값을 우선한다.
-            if (DemoMode.IsActive)
-            {
-                _startDelaySec = DemoMode.ClosureStartDelaySec;
-                _intervalSec = DemoMode.ClosureIntervalSec;
-                _forcedSequence = new List<AreaType>(DemoMode.ForcedClosureSequence);
-                _logger.LogInformation("DEMO_MODE 활성 — 폐쇄 config를 시연 기본값으로 고정");
-            }
-
-            _logger.LogInformation(
-                "Redis에서 폐쇄 config 로드 — startDelaySec={StartDelay}, intervalSec={Interval}, forcedSequence={Seq}",
-                _startDelaySec, _intervalSec,
-                _forcedSequence != null ? string.Join(",", _forcedSequence) : "무작위");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Redis 폐쇄 config 로드 실패 — 기본값 사용");
+            _logger.LogError(ex, "Failed to load closure config from Redis.");
         }
     }
 
-    /// <summary>
-    ///     폐쇄 config 부분 업데이트. null 인자는 변경하지 않는다. Redis에 영속화.
-    /// </summary>
     public async Task SetClosureConfigAsync(int? startDelaySec, int? intervalSec, List<int>? sequence)
     {
         if (startDelaySec.HasValue)
@@ -138,24 +110,20 @@ public class MatchingConfigService
 
     public async Task ResetClosureConfigAsync()
     {
-        _startDelaySec = DemoMode.IsActive ? DemoMode.ClosureStartDelaySec : DefaultStartDelaySec;
-        _intervalSec = DemoMode.IsActive ? DemoMode.ClosureIntervalSec : DefaultIntervalSec;
-        // DEMO_MODE 활성 시 DemoMode.ForcedClosureSequence로 복원 (GDD 정합), 비활성 시 무작위(null)
-        _forcedSequence = DemoMode.IsActive ? new List<AreaType>(DemoMode.ForcedClosureSequence) : null;
+        _startDelaySec = DefaultStartDelaySec;
+        _intervalSec = DefaultIntervalSec;
+        _forcedSequence = null;
         await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, StartDelayRedisField);
         await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, IntervalRedisField);
         await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, ForcedSequenceRedisField);
-        _logger.LogInformation("폐쇄 config 초기화 (DEMO_MODE={Demo}, 시퀀스={Seq})",
-            DemoMode.IsActive, _forcedSequence != null ? "DemoMode 시퀀스" : "무작위");
+        _logger.LogInformation("Closure config reset to defaults.");
     }
 
     public async Task ClearForcedSequenceAsync()
     {
-        // DEMO_MODE 활성 시 DemoMode.ForcedClosureSequence로 복원, 비활성 시 무작위(null)
-        _forcedSequence = DemoMode.IsActive ? new List<AreaType>(DemoMode.ForcedClosureSequence) : null;
+        _forcedSequence = null;
         await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, ForcedSequenceRedisField);
-        _logger.LogInformation("폐쇄 시퀀스 강제 지정 해제 (DEMO_MODE={Demo}, 시퀀스={Seq})",
-            DemoMode.IsActive, _forcedSequence != null ? "DemoMode 시퀀스" : "무작위");
+        _logger.LogInformation("Forced closure sequence cleared.");
     }
 
     // ─── 직책 풀 Config (Redis 공유) ─────────────────────────────────────────
@@ -169,28 +137,18 @@ public class MatchingConfigService
         try
         {
             var raw = await _cacheHelper.HashGetAsync(JobPoolRedisKey, JobPoolRedisField);
-            if (raw.HasValue)
-            {
-                var ints = JsonSerializer.Deserialize<List<int>>((string)raw!);
-                return ints?.Select(v => (JobTitle)v).ToList();
-            }
+            if (!raw.HasValue) return null;
 
-            // DEMO_MODE 활성 + Redis에 강제 직책 풀 없으면 DemoMode.ChainJobOrder 기본 적용
-            if (DemoMode.IsActive)
-                return new List<JobTitle>(DemoMode.ChainJobOrder);
-
-            return null;
+            var values = JsonSerializer.Deserialize<List<int>>((string)raw!);
+            return values?.Select(value => (JobTitle)value).ToList();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "직책 풀 config 읽기 실패");
+            _logger.LogError(ex, "Failed to load job pool config from Redis.");
             return null;
         }
     }
 
-    /// <summary>
-    ///     직책 풀 config 저장. jobs=null이면 키 삭제(무작위 복원).
-    /// </summary>
     public async Task SetJobPoolConfigAsync(List<int>? jobs)
     {
         try
@@ -215,20 +173,11 @@ public class MatchingConfigService
     }
 
     /// <summary>
-    ///     직책 풀 config 초기화. DEMO_MODE 활성 시 ChainJobOrder로 복원, 비활성 시 무작위.
+    ///     직책 풀 config 초기화. standard 활성 시 ChainJobOrder로 복원, 비활성 시 무작위.
     /// </summary>
     public async Task ResetJobPoolConfigAsync()
     {
-        if (DemoMode.IsActive)
-        {
-            // user_server가 Redis 직접 읽으므로 DemoMode.ChainJobOrder를 명시적으로 Redis에 쓰기
-            await SetJobPoolConfigAsync(DemoMode.ChainJobOrder.Select(j => (int)j).ToList());
-            _logger.LogInformation("직책 풀 config 초기화 — DEMO_MODE 활성 → ChainJobOrder 적용");
-        }
-        else
-        {
-            await SetJobPoolConfigAsync(null);
-        }
+        await SetJobPoolConfigAsync(null);
     }
 
     // ─── 현재 전체 config 조회 (GET endpoint용) ───────────────────────────────

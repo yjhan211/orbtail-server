@@ -552,14 +552,8 @@ public partial class BotPlayerManager
     {
         var owned = state.CollectedParts;
 
-        // H4 봇 race 페이스 캡 — DemoMode에서 봇은 7:00 이전 결합 차단 (시연자 race 보장)
-        if (DemoMode.IsActive)
-        {
-            var elapsed = DateTime.UtcNow - bot.GameStartTime;
-            if (elapsed.TotalSeconds < DemoMode.BotRaceMinSeconds) return;
-        }
-
-        // 가능한 모든 레시피 시도 (PartRecipeData 직접 참조)
+        // H4 봇 race 페이스 캡 — legacy mode에서 봇은 7:00 이전 결합 차단 (시연자 race 보장)
+                // 가능한 모든 레시피 시도 (PartRecipeData 직접 참조)
         foreach (var recipe in PartRecipeData.GetRecipes((short)bot.MyJobTitle))
         {
             if (state.IsCompleted) break;
@@ -628,7 +622,7 @@ public partial class BotPlayerManager
     ///     봇 색출 휴리스틱. 자기 race 진행을 방해하는 흔적 함정 누적 점수가 임계값 초과 시
     ///     자기 마니또(자기를 타겟으로 가진 플레이어) 후보 1명을 색출.
     ///     호출자(GameServer)가 색출 결과를 ManittoChainManager로 위임.
-    ///     H3+D4: DemoMode 활성화 시 SC 봇이 06:40에 DC를 강제 지목, 그 외 봇 색출은 비활성.
+    ///     H3+D4: legacy mode 활성화 시 SC 봇이 06:40에 DC를 강제 지목, 그 외 봇 색출은 비활성.
     /// </summary>
     public List<(long detecterBotId, long candidateManittoId)> CollectDetectionAttempts(long matchingId,
         Func<long, long?> findMyManittoForBot)
@@ -636,13 +630,7 @@ public partial class BotPlayerManager
         var result = new List<(long, long)>();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
 
-        if (DemoMode.IsActive)
-        {
-            TryAddDemoForcedDetection(bots, result);
-            return result; // D4: 시연 모드에서는 강제 트리거(SC→DC) 외 봇 색출 비활성
-        }
-
-        foreach (var bot in GetActiveBots(bots))
+                foreach (var bot in GetActiveBots(bots))
         {
             if (bot.HasUsedDetection) continue;
             if (bot.DetectionUrgency < DetectScoreThreshold) continue;
@@ -663,29 +651,7 @@ public partial class BotPlayerManager
     ///     H3 — SC 봇이 06:40 경과 시 DC를 색출 강제 지목 (영상 4컷 비트).
     ///     실제 마니또 관계와 무관하게 target=DC로 고정 — 결과 빗나감은 ManittoChainManager.TryDetect에서 보정.
     /// </summary>
-    private void TryAddDemoForcedDetection(List<BotPlayerState> bots, List<(long, long)> result)
-    {
-        var sc = bots.FirstOrDefault(b => b.MyJobTitle == JobTitle.SCIENCE_MEMBER
-            && !b.IsEliminated && !b.HasUsedDetection);
-        if (sc == null) return;
-
-        var elapsed = DateTime.UtcNow - sc.GameStartTime;
-        if (elapsed.TotalSeconds < DemoMode.ScDetectionAttemptSeconds) return;
-
-        var dc = bots.FirstOrDefault(b => b.MyJobTitle == JobTitle.DISCIPLINE_MEMBER && !b.IsEliminated);
-        if (dc == null)
-        {
-            _logger.LogWarning("DEMO_MODE 색출 강제: DC 봇이 없어 SC 강제 색출 스킵");
-            return;
-        }
-
-        sc.HasUsedDetection = true;
-        _logger.LogInformation("DEMO_MODE 색출 강제: SC({Sc}) → DC({Dc}) (경과 {S}s)",
-            sc.PlayerId, dc.PlayerId, (int)elapsed.TotalSeconds);
-        result.Add((sc.PlayerId, dc.PlayerId));
-    }
-
-    /// <summary>
+        /// <summary>
     ///     봇 색출 휴리스틱 점수 가산. 호출자가 흔적 발견/타겟 함정 등을 감지했을 때 호출.
     ///     마니또 배치 흔적이 자기 race를 방해할수록 점수 누적.
     /// </summary>
@@ -697,40 +663,11 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     H6 — DEMO_MODE BR 봇이 09:30 시점 도서관에 함정 흔적 1회 배치.
+    ///     H6 — legacy mode BR 봇이 09:30 시점 도서관에 함정 흔적 1회 배치.
     ///     1회 캡(HasPlacedDemoTrapTrace)으로 영상 09:40 비트 정합. BR 외 직책은 배치 안 함.
     ///     반환: 배치 성공 시 (BR PlayerId, area, interactId, description), 아니면 null.
     /// </summary>
-    public (long brPlayerId, AreaType area, int interactId, string description)? ProcessDemoBotTracePlacement(
-        long matchingId, TraceManager traceManager)
-    {
-        if (!DemoMode.IsActive) return null;
-        if (!_botStates.TryGetValue(matchingId, out var bots)) return null;
-
-        var br = bots.FirstOrDefault(b =>
-            b.MyJobTitle == JobTitle.BROADCAST_MEMBER
-            && !b.IsEliminated
-            && !b.HasPlacedDemoTrapTrace);
-        if (br == null) return null;
-
-        var elapsed = DateTime.UtcNow - br.GameStartTime;
-        if (elapsed.TotalSeconds < DemoMode.BrTracePlacementSeconds) return null;
-
-        // 동선 스크립트상 BR이 09:30에 도서관에 있어야 정합. 다른 곳이면 보류 (다음 틱 재시도).
-        if (br.CurrentArea != DemoMode.BrTraceArea) return null;
-
-        traceManager.AddTrace(matchingId, DemoMode.BrTraceArea, DemoMode.BrTraceInteractId,
-            DemoMode.BrTraceDescription, br.PlayerId, isMissionTrace: false);
-        br.HasPlacedDemoTrapTrace = true;
-        br.LastTracePlaceTime = DateTime.UtcNow;
-
-        _logger.LogInformation(
-            "DEMO_MODE H6: BR 봇 함정 흔적 배치 (BotId={Bot}, Area={Area}, InteractId={Iid}, 경과 {Sec}s)",
-            br.PlayerId, DemoMode.BrTraceArea, DemoMode.BrTraceInteractId, (int)elapsed.TotalSeconds);
-
-        return (br.PlayerId, DemoMode.BrTraceArea, DemoMode.BrTraceInteractId, DemoMode.BrTraceDescription);
     }
-}
 
 /// <summary>
 ///     봇 미션 틱 결과 — 호출자(GameServer)가 클라이언트 브로드캐스트에 사용.

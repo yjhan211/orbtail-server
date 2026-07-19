@@ -350,10 +350,6 @@ public partial class GameServer(
                 // #26: 시한부 봇 사보타주 + 색출 시뮬
                 ProcessBotTerminalActionsForMatching(matchingId, activeSessions);
 
-                // H6: DEMO_MODE BR 봇 09:30 함정 흔적 1회 배치
-                var tracePlaced = _botPlayerManager.ProcessDemoBotTracePlacement(matchingId, _traceManager);
-                if (tracePlaced.HasValue)
-                    BroadcastTracePlacedAnnounce(matchingId, activeSessions, tracePlaced.Value);
             }
 
             // 7. 프로토 0 기척 틱 (#159) — 5초 조우 강도 계산 후 인간 세션에 전송
@@ -867,36 +863,7 @@ public partial class GameServer(
     ///     흔적 배치를 매칭 내 모든 활성 세션에 브로드캐스트 — 영상 cut 시각화용.
     ///     봇 placer는 ChainLink로 직책 조회. 발견자 본인 효과는 기존 TRACE_CREATED 흐름 유지(본 패킷은 cut 신호만).
     /// </summary>
-    private void BroadcastTracePlacedAnnounce(long matchingId, List<GameClientSession> activeSessions,
-        (long placerPlayerId, AreaType area, int interactId, string description) trace)
-    {
-        var placerLink = _manittoChainManager.GetLink(matchingId, trace.placerPlayerId);
-        if (placerLink == null) return;
-
-        var msg = new G_TO_C_TRACE_PLACED_ANNOUNCE
-        {
-            PlacerPlayerId = trace.placerPlayerId,
-            PlacerJobTitle = placerLink.MyJobTitle,
-            AreaType = trace.area,
-            InteractId = trace.interactId,
-            Description = trace.description
-        };
-        byte[] body = MessagePackSerializer.Serialize(msg);
-
-        foreach (var session in activeSessions)
-        {
-            if (session.CurrentMapSubId != matchingId) continue;
-            if (session.IsEliminated) continue;
-            using var packet = Packet.Create((int)Protocol.G_TO_C_TRACE_PLACED_ANNOUNCE);
-            packet.SetBody(body);
-            session.Send(packet);
-        }
-
-        logger.LogInformation("흔적 배치 broadcast: Placer={P}({J}), Area={A}, InteractId={I}",
-            trace.placerPlayerId, placerLink.MyJobTitle, trace.area, trace.interactId);
-    }
-
-    /// <summary>
+        /// <summary>
     ///     #134 — 봇 RNG progress 시작을 같은 영역 인간 세션에 G_TO_C_EXPLORE_START broadcast.
     ///     클라가 봇 캐릭터를 EXPLORE_1 상태로 설정 → 탐색 애니메이션 + 사운드 자동 재생.
     /// </summary>

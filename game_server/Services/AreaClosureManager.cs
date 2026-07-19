@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
-using network.helpers;
 
 namespace game_server.services;
 
@@ -65,18 +64,11 @@ public class AreaClosureManager
     public MatchingClosureState InitializeMatching(long matchingId, List<JobTitle>? jobsInMatching = null)
     {
         var config = _matchingConfig.GetClosureConfig();
-        // H1 결정론 시드 — DemoMode 활성화 시 시드 기반 RNG.
-        var rng = DemoMode.IsActive ? new Random(DemoMode.Seed) : Random.Shared;
+        // H1 결정론 시드 — legacy mode 활성화 시 시드 기반 RNG.
+        var rng = Random.Shared;
 
         List<AreaType> sequence;
-        if (DemoMode.IsActive)
-        {
-            // H2 폐쇄 셔플 보호 — 도서관/교실2 제외한 시연용 강제 시퀀스.
-            sequence = DemoMode.ForcedClosureSequence
-                .Where(a => !DemoMode.ProtectedAreas.Contains(a))
-                .ToList();
-        }
-        else if (config.ForcedSequence != null && config.ForcedSequence.Count > 0)
+        if (config.ForcedSequence != null && config.ForcedSequence.Count > 0)
         {
             // 강제 시퀀스 사용 (그대로 적용)
             sequence = config.ForcedSequence;
