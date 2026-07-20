@@ -102,6 +102,8 @@ public partial class GameClientSession
 
             // ?몄뀡 ?깅줉 ??寃뚯엫 ??대㉧ ?쒖옉 (?대떦 留ㅼ묶?????理쒖큹 1?뚮쭔)
             _registerSessionCallback(PlayerId.Value, this);
+            MatchStartGate.RegisterHumanPlayer(msg.MatchingId, PlayerId.Value,
+                _botPlayerManager.GetBots(msg.MatchingId).Count);
 
             StartGameTimerIfNeeded(msg.MatchingId);
 
@@ -147,6 +149,7 @@ public partial class GameClientSession
             };
             connectResultPacket.SetBody(MessagePackSerializer.Serialize(response));
             Send(connectResultPacket);
+            SendMatchStartCountdown(msg.MatchingId);
 
             Logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
 
@@ -306,6 +309,38 @@ public partial class GameClientSession
         {
             Logger.LogError(ex, "Failed to broadcast player join for PlayerId={L}", PlayerId);
         }
+    }
+
+    private void SendMatchStartCountdown(long matchingId)
+    {
+        var snapshot = MatchStartGate.GetSnapshot(matchingId);
+        if (!snapshot.IsKnown)
+            return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN, PlayerId ?? 0);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ROUND_STATE
+        {
+            MatchingId = matchingId,
+            RoundNumber = 0,
+            TotalRounds = 0,
+            Phase = RoundPhase.Action,
+            RemainingSeconds = snapshot.RemainingSeconds,
+            PhaseDurationSeconds = 5,
+            ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            IsSessionEnded = false
+        }));
+        Send(packet);
+    }
+
+    private Task HandleMatchStartReady()
+    {
+        if (PlayerId.HasValue && CurrentMapSubId > 0)
+        {
+            MatchStartGate.MarkHumanReady(CurrentMapSubId, PlayerId.Value);
+            SendMatchStartCountdown(CurrentMapSubId);
+        }
+
+        return Task.CompletedTask;
     }
 
     private Task HandleHeartbeat()

@@ -197,6 +197,7 @@ public partial class GameClientSession : SessionBase
 
     internal static void CleanupAbandonedMatchingRuntime(long matchingId)
     {
+        MatchStartGate.RemoveMatching(matchingId);
         GameRoundStates.TryRemove(matchingId, out _);
         _presenceTracker?.Remove(matchingId);
         RngCollectCooldownStore.ClearMatching(matchingId);
@@ -228,6 +229,9 @@ public partial class GameClientSession : SessionBase
 
     internal static bool IsRoundActionPhase(long matchingId)
     {
+        if (!MatchStartGate.IsGameplayActive(matchingId))
+            return false;
+
         if (!Config.ROUND_SYSTEM_ENABLED)
             return true;
 
@@ -261,6 +265,9 @@ public partial class GameClientSession : SessionBase
     private bool IsRoundActionLocked(out RoundPhase phase)
     {
         phase = RoundPhase.Action;
+        if (CurrentMapSubId > 0 && !MatchStartGate.IsGameplayActive(CurrentMapSubId))
+            return true;
+
         if (!Config.ROUND_SYSTEM_ENABLED)
             return false;
 
@@ -315,6 +322,8 @@ public partial class GameClientSession : SessionBase
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_HEART_BEAT, async _ => await HandleHeartbeat());
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT,
             async bytes => await HandleMessage<C_TO_G_CONNECT>(bytes, HandleConnect));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_MATCH_START_READY,
+            async _ => await HandleMatchStartReady());
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_MOVE,
             async bytes => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ATTACK,

@@ -58,6 +58,7 @@ public partial class GameServer(
     private readonly EncounterRevealManager _encounterRevealManager = new();
     private readonly Proto0PresenceTracker _presenceTracker = new();
     private readonly ConcurrentDictionary<long, Timer> _headlessRoundTimers = new();
+    private readonly ConcurrentDictionary<long, int> _lastMatchStartCountdownBroadcast = new();
     private long _adminBotOnlyMatchingIdSeed = 9_000_000;
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
 
@@ -1516,6 +1517,7 @@ public partial class GameServer(
                 .Where(s => s.PlayerId.HasValue)
                 .ToList();
             var matchingIds = GetActiveMatchingIds();
+            BroadcastMatchStartCountdowns(matchingIds, activeSessions);
 
             foreach (long matchingId in matchingIds)
             {
@@ -1570,6 +1572,47 @@ public partial class GameServer(
         finally
         {
             System.Threading.Volatile.Write(ref _botMovementProcessing, 0);
+        }
+    }
+
+    private void BroadcastMatchStartCountdowns(
+        IEnumerable<long> matchingIds,
+        IReadOnlyCollection<GameClientSession> activeSessions)
+    {
+        foreach (long matchingId in matchingIds)
+        {
+            var snapshot = MatchStartGate.GetSnapshot(matchingId);
+            if (!snapshot.IsKnown)
+                continue;
+
+            if (_lastMatchStartCountdownBroadcast.TryGetValue(matchingId, out int previous) &&
+                previous == snapshot.RemainingSeconds)
+            {
+                continue;
+            }
+
+            _lastMatchStartCountdownBroadcast[matchingId] = snapshot.RemainingSeconds;
+            var matchingSessions = activeSessions
+                .Where(session => session.CurrentMapSubId == matchingId)
+                .ToList();
+            if (matchingSessions.Count == 0)
+                continue;
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ROUND_STATE
+            {
+                MatchingId = matchingId,
+                RoundNumber = 0,
+                TotalRounds = 0,
+                Phase = RoundPhase.Action,
+                RemainingSeconds = snapshot.RemainingSeconds,
+                PhaseDurationSeconds = 5,
+                ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                IsSessionEnded = false
+            }));
+
+            foreach (var session in matchingSessions)
+                session.Send(packet);
         }
     }
 
