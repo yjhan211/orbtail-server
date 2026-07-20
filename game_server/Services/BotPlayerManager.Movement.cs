@@ -60,7 +60,7 @@ public partial class BotPlayerManager
     /// </summary>
     public BotTickResult ProcessBotTick(
         long matchingId,
-        int closedAreaCorruptionDelta,
+        int resourceTickSeconds,
         AreaClosureManager areaClosureManager)
     {
         var result = new BotTickResult();
@@ -70,15 +70,10 @@ public partial class BotPlayerManager
         {
             if (bot.IsEliminated) continue;
 
-            bool isTerminal = bot.ManittoStatus == ManittoStatus.TERMINAL;
-            int totalCorruptionDelta = 0;
-
-            if (!isTerminal &&
-                bot.CurrentArea != AreaType.None &&
-                areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
-            {
-                totalCorruptionDelta += closedAreaCorruptionDelta;
-            }
+            int totalCorruptionDelta = areaClosureManager.GetEnvironmentalCorruptionDelta(
+                matchingId,
+                bot.CurrentArea,
+                resourceTickSeconds);
 
             if (totalCorruptionDelta != 0)
                 bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);

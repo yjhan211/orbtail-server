@@ -1,0 +1,57 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using network.common.data.models;
+
+namespace network.common.data
+{
+
+/// <summary>
+/// Fixed Survivor Royale opening anchors.  A match seed permutes anchors, never players,
+/// so every roster member receives one unique corridor position regardless of join order.
+/// </summary>
+public static class SurvivorRoyaleSpawnData
+{
+    private static readonly Cell[] CorridorAnchors =
+    {
+        new(137, 66),
+        new(188, 112),
+        new(103, 112),
+        new(145, 108),
+        new(172, 78),
+        new(103, 76),
+        new(130, 89),
+        new(167, 101)
+    };
+
+    public static IReadOnlyList<Cell> GetCorridorAnchors() =>
+        CorridorAnchors.Select(Cell.Clone).ToList();
+
+    public static IReadOnlyDictionary<long, Cell> CreateAssignments(long matchingId, IEnumerable<long> playerIds)
+    {
+        var orderedPlayerIds = playerIds.Distinct().OrderBy(playerId => playerId).ToList();
+        if (orderedPlayerIds.Count > CorridorAnchors.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(playerIds), orderedPlayerIds.Count,
+                $"Survivor Royale supports at most {CorridorAnchors.Length} players per match.");
+        }
+
+        var shuffledAnchors = Enumerable.Range(0, CorridorAnchors.Length).ToList();
+        var rng = new Random(ToDeterministicSeed(matchingId));
+        for (var index = shuffledAnchors.Count - 1; index > 0; index--)
+        {
+            var swapIndex = rng.Next(index + 1);
+            (shuffledAnchors[index], shuffledAnchors[swapIndex]) =
+                (shuffledAnchors[swapIndex], shuffledAnchors[index]);
+        }
+
+        return orderedPlayerIds
+            .Select((playerId, index) => new KeyValuePair<long, Cell>(
+                playerId, Cell.Clone(CorridorAnchors[shuffledAnchors[index]])))
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+    }
+
+    private static int ToDeterministicSeed(long matchingId) =>
+        unchecked((int)(matchingId ^ (matchingId >> 32) ^ 0x51A7_195));
+}
+}

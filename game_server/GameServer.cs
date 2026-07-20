@@ -296,29 +296,14 @@ public partial class GameServer(
                 if (!GameClientSession.IsRoundActionPhase(session.CurrentMapSubId))
                     continue;
 
-                bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
-
-                int corruptionDelta = 0;
-
-                // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
-                // if (isTerminal)
-                //     corruptionDelta += TerminalDecayAmount;
-
-                // 4. 폐쇄 구역 체류 시 오염도 추가 증가
-                if (session.CurrentArea != AreaType.None &&
-                    _areaClosureManager.IsAreaClosed(session.CurrentMapSubId, session.CurrentArea))
-                {
-                    int closedAreaBasePenalty = ResolveStatusEffectCorruptionDelta(
-                        ClosedAreaStatusEffectId,
-                        Config.CLOSED_AREA_CORRUPTION_TICK);
-                    int closedAreaPenalty = ApplyClosedAreaResistance(session, closedAreaBasePenalty);
-                    corruptionDelta += closedAreaPenalty;
-                }
+                // Survivor Royale P0: 현재 웨이브의 폐쇄 오염은 이미 닫힌 모든 방에 적용되고,
+                // 4:50부터는 지역과 무관한 운동장 전역 오버타임이 더해진다.
+                int corruptionDelta = _areaClosureManager.GetEnvironmentalCorruptionDelta(
+                    session.CurrentMapSubId,
+                    session.CurrentArea,
+                    ResourceTickIntervalSeconds);
 
                 session.ModifyStats(corruptionDelta: corruptionDelta);
-
-                // 5. 자원 고갈 탈락 체크
-                session.CheckResourceElimination();
             }
 
             // 6. 봇 플레이어 자원 틱
@@ -331,7 +316,7 @@ public partial class GameServer(
                 // 봇도 사람과 같은 폐쇄 구역 자원 변동을 적용한다.
                 var tickResult = _botPlayerManager.ProcessBotTick(
                     matchingId,
-                    ResolveStatusEffectCorruptionDelta(ClosedAreaStatusEffectId, Config.CLOSED_AREA_CORRUPTION_TICK),
+                    ResourceTickIntervalSeconds,
                     _areaClosureManager);
 
                 // #125: 봇 위치 이동 이벤트 → 같은 영역 인간 세션에 패킷 브로드캐스트
@@ -1398,36 +1383,33 @@ public partial class GameServer(
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
 
-                var (warningArea, warningSeconds, closureAtUnixMs, closingArea) =
-                    _areaClosureManager.CheckClosureSchedule(matchingId);
+                var closureTick = _areaClosureManager.CheckClosureSchedule(matchingId);
 
                 var sessions = _clientSessions.Values
                     .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                     .ToList();
 
-                // 경고 브로드캐스트
-                if (warningArea.HasValue)
+                foreach (var warningArea in closureTick.WarningAreas)
                 {
                     using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
                     var msg = new G_TO_C_AREA_CLOSURE_WARNING
                     {
-                        AreaType = warningArea.Value,
-                        SecondsRemaining = warningSeconds,
-                        ClosureAtUnixMs = closureAtUnixMs
+                        AreaType = warningArea,
+                        SecondsRemaining = closureTick.WarningSeconds,
+                        ClosureAtUnixMs = closureTick.ClosureAtUnixMs
                     };
                     packet.SetBody(MessagePackSerializer.Serialize(msg));
-                    foreach (var s in sessions) s.Send(packet);
+                    foreach (var session in sessions) session.Send(packet);
                 }
 
-                // 폐쇄 확정 브로드캐스트
-                if (closingArea.HasValue)
+                foreach (var closedArea in closureTick.ClosedAreas)
                 {
-                    _gameEventLogManager.LogClosure(matchingId, ((AreaType)closingArea.Value).ToString());
+                    _gameEventLogManager.LogClosure(matchingId, closedArea.ToString());
 
                     using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
-                    var msg = new G_TO_C_AREA_CLOSED { AreaType = closingArea.Value };
+                    var msg = new G_TO_C_AREA_CLOSED { AreaType = closedArea };
                     packet.SetBody(MessagePackSerializer.Serialize(msg));
-                    foreach (var s in sessions) s.Send(packet);
+                    foreach (var session in sessions) session.Send(packet);
                 }
             }
         }

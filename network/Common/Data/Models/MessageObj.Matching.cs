@@ -67,5 +67,6 @@ namespace network.common.data.models
         [Key(4)] public PersonaType Persona { get; set; }
         [Key(5)] public AreaType StartArea { get; set; }
         [Key(6)] public List<int> ActiveBuffIds { get; set; } = new();
+        [Key(7)] public Cell SpawnCell { get; set; } = new(0, 0);
     }
 }

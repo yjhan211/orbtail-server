@@ -6,332 +6,255 @@ using network.common.data;
 namespace game_server.services;
 
 /// <summary>
-///     인스턴스별 구역 폐쇄 관리.
-///     시간 경과에 따른 순차 폐쇄, 경고, 폐쇄 구역 진입 시 페널티.
+/// Survivor Royale P0의 서버 권위 구역 폐쇄·오버타임 상태를 관리한다.
+/// 복도는 하나의 연결 영역이므로 절대로 폐쇄하지 않는다.
 /// </summary>
 public class AreaClosureManager
 {
-    private const int ClosureWarningSeconds = 30;   // 폐쇄 전 경고 시간
-    // 폐쇄 구역 체류 페널티는 GameServer.ClosedAreaStaminaPenaltyPerTick에서 처리
+    public const int ClosureWarningSeconds = 15;
+    public const int ResourceTickSeconds = 5;
 
-    // School_New uses one shared Corridor area. Closing it would disconnect the whole map,
-    // so only room areas are included in closure schedules.
-    // matchingId → ClosureState
-    // #185 route-aware default closure groups.
-    // Defaults target a 15-minute item-farming match: first closure at 02:30,
-    // then every 90s. Areas are grouped so one item route does not lose two
-    // required stops in a row.
-    private static readonly AreaType[] StarterClassroomAreas =
-    {
-        AreaType.Classroom3, // 2-1
-        AreaType.Classroom4  // 3-1
-    };
-
-    private static readonly AreaType[] RouteForkAreas =
-    {
-        AreaType.AdminOffice,
-        AreaType.ExamRoom
-    };
-
-    private static readonly AreaType[] CoreHubAreas =
-    {
-        AreaType.Classroom2, // Infirmary
-        AreaType.Library,
-        AreaType.StaffRoom
-    };
+    private static readonly IReadOnlyList<ClosureWaveDefinition> DefaultP0Waves =
+    [
+        new(105, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2], 2),
+        new(165, [AreaType.Classroom4, AreaType.Classroom3], 3),
+        new(215, [AreaType.Library, AreaType.Gym], 4),
+        new(255, [AreaType.Storage, AreaType.Junkyard, AreaType.AdminOffice], 5),
+        new(290, [AreaType.StaffRoom, AreaType.Junkyard2, AreaType.Storage2], 6)
+    ];
 
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();
     private readonly ILogger _logger;
-    private readonly MatchingConfigService _matchingConfig;
+    private readonly Func<DateTime> _utcNow;
 
-    public AreaClosureManager(ILogger logger, MatchingConfigService matchingConfig)
+    public AreaClosureManager(ILogger logger, MatchingConfigService matchingConfig, Func<DateTime>? utcNow = null)
     {
         _logger = logger;
-        _matchingConfig = matchingConfig;
+        _utcNow = utcNow ?? (() => DateTime.UtcNow);
+        _ = matchingConfig; // Legacy admin config is intentionally not used by fixed P0 waves.
     }
 
     /// <summary>
-    ///     매칭 시작 시 폐쇄 스케줄 생성.
-    ///     MatchingConfigService에서 config를 읽어 적용한다.
-    ///     forcedSequence가 null이면 현재 School_New 방 구조에 맞는 기본 순서를 사용한다.
-    ///     School_New의 단일 공유 복도는 폐쇄하지 않고 실제 방 구역만 순서에 포함한다.
-    ///
-    ///     #87 추가 규칙 (jobsInMatching 제공 시):
-    ///     - 1번째 슬롯(시작 5분)은 이번 매칭 직책들의 1단계(Material) 발견 구역 제외 강제 —
-    ///       race 자동 패배 차단.
-    ///     - CL(미화부원, 6) 강당 출구 후순위 (CL 과강화 보정).
+    /// 매치별 고정 P0 웨이브를 만든다. jobsInMatching은 기존 호출 호환을 위해 유지한다.
     /// </summary>
     public MatchingClosureState InitializeMatching(long matchingId, List<JobTitle>? jobsInMatching = null)
     {
-        var config = _matchingConfig.GetClosureConfig();
-        // H1 결정론 시드 — legacy mode 활성화 시 시드 기반 RNG.
-        var rng = Random.Shared;
-
-        List<AreaType> sequence;
-        if (config.ForcedSequence != null && config.ForcedSequence.Count > 0)
-        {
-            // 강제 시퀀스 사용 (그대로 적용)
-            sequence = config.ForcedSequence;
-        }
-        else
-        {
-            // #185: item-route-aware default sequence for the 15-minute battle loop.
-            sequence = BuildRouteAwareClosureSequence(rng);
-
-            // #87: 직책 풀에 따른 셔플 우선순위 보정
-            if (jobsInMatching != null && jobsInMatching.Count > 0)
-                sequence = ApplyJobAwareShuffle(sequence, jobsInMatching);
-        }
+        _ = jobsInMatching;
 
         var mapAreas = GameMapData.GetAreas(MapId.School)
             .Select(region => region.AreaType)
             .ToHashSet();
-        sequence = sequence
-            .Where(mapAreas.Contains)
-            .Distinct()
+        var waves = DefaultP0Waves
+            .Select(wave => wave with
+            {
+                Areas = wave.Areas.Where(mapAreas.Contains).ToArray()
+            })
+            .Where(wave => wave.Areas.Count > 0)
             .ToList();
+
+        if (waves.Any(wave => wave.Areas.Any(area => area.IsCorridor())))
+            throw new InvalidOperationException("Survivor Royale P0 closure schedule must not contain corridors.");
 
         var state = new MatchingClosureState
         {
             MatchingId = matchingId,
-            ClosureOrder = sequence,
+            Waves = waves,
+            ClosureOrder = waves.SelectMany(wave => wave.Areas).ToList(),
             ClosedAreas = new HashSet<AreaType>(),
             NextClosureIndex = 0,
-            GameStartTime = DateTime.UtcNow,
-            StartDelaySec = config.StartDelaySec,
-            IntervalSec = config.IntervalSec
+            GameStartTime = _utcNow(),
+            StartDelaySec = waves.Count > 0 ? waves[0].ClosureAtSeconds : 0,
+            IntervalSec = 0
         };
 
         _states[matchingId] = state;
-
         _logger.LogInformation(
-            "구역 폐쇄 스케줄 생성: MatchingId={MatchingId}, startDelay={StartDelay}s, interval={Interval}s, 순서={Order}",
-            matchingId, config.StartDelaySec, config.IntervalSec, string.Join("→", sequence));
+            "Survivor Royale closure schedule initialized: MatchingId={MatchingId}, Waves={Waves}",
+            matchingId,
+            string.Join(" | ", waves.Select(wave =>
+                $"{wave.ClosureAtSeconds}s:{string.Join(',', wave.Areas)}@{wave.ClosedAreaCorruptionPerSecond}/s")));
 
         return state;
     }
 
-    private static List<AreaType> BuildRouteAwareClosureSequence(Random rng)
-    {
-        var starters = ShuffleAreas(rng, StarterClassroomAreas);
-        var routeForks = ShuffleAreas(rng, RouteForkAreas);
-        var coreHubs = ShuffleAreas(rng, CoreHubAreas);
-
-        var sequence = new List<AreaType>();
-
-        // 02:30 - remove one early material room while leaving the other route alive.
-        AddNext(sequence, starters);
-        // 04:00 - pressure either information/control utility, not the same route twice.
-        AddNext(sequence, routeForks);
-        // 05:30 - close the remaining early material room.
-        AddNext(sequence, starters);
-        // 07:00 - start compressing the upper information/install route.
-        sequence.Add(AreaType.BroadcastRoom);
-        // 08:30 - remove one recovery/protect/info hub, leaving alternatives open.
-        AddNext(sequence, coreHubs);
-        // 10:00 - close the remaining utility fork.
-        AddNext(sequence, routeForks);
-        // 11:30+ - collapse the remaining hubs. The shared corridor stays open.
-        AddRemaining(sequence, coreHubs);
-
-        return sequence;
-    }
-
-    private static List<AreaType> ShuffleAreas(Random rng, IEnumerable<AreaType> areas)
-    {
-        return areas.OrderBy(_ => rng.Next()).ToList();
-    }
-
-    private static void AddNext(List<AreaType> sequence, List<AreaType> group)
-    {
-        if (group.Count == 0) return;
-
-        sequence.Add(group[0]);
-        group.RemoveAt(0);
-    }
-
-    private static void AddRemaining(List<AreaType> sequence, List<AreaType> group)
-    {
-        sequence.AddRange(group);
-        group.Clear();
-    }
-
     /// <summary>
-    ///     #87: 직책 풀 인지 셔플. 시작 5분 내 1단계 보장 + 직책별 후순위 보정.
+    /// 현재 시각에 발생한 경고와 폐쇄를 반환한다. 타이머 지연이 있어도 지나간 웨이브를 한 번에 반영한다.
     /// </summary>
-    private static List<AreaType> ApplyJobAwareShuffle(List<AreaType> baseSequence, List<JobTitle> jobs)
+    public ClosureScheduleTick CheckClosureSchedule(long matchingId)
     {
-        var result = new List<AreaType>(baseSequence);
+        if (!_states.TryGetValue(matchingId, out var state)) return ClosureScheduleTick.Empty;
 
-        // 1) 이번 매칭 모든 직책의 1단계(Material) 발견 구역 집합
-        var stage1Areas = new HashSet<AreaType>();
-        foreach (var job in jobs)
+        lock (state.SyncRoot)
         {
-            var materials = GameMissionData.GetMaterials((short)job);
-            foreach (var part in materials)
+            double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
+            var closedAreas = new List<AreaType>();
+
+            while (state.NextClosureIndex < state.Waves.Count &&
+                   elapsedSeconds >= state.Waves[state.NextClosureIndex].ClosureAtSeconds)
             {
-                if (part.TargetArea > 0) stage1Areas.Add((AreaType)part.TargetArea);
-            }
-        }
+                var wave = state.Waves[state.NextClosureIndex];
+                foreach (var area in wave.Areas)
+                {
+                    if (state.ClosedAreas.Add(area)) closedAreas.Add(area);
+                }
 
-        // 첫 슬롯(시작 5분 폐쇄)이 1단계 발견 구역이면, 1단계가 아닌 area를 앞으로 swap
-        if (stage1Areas.Contains(result[0]))
-        {
-            for (int i = 1; i < result.Count; i++)
-            {
-                if (stage1Areas.Contains(result[i])) continue;
-                (result[0], result[i]) = (result[i], result[0]);
-                break;
-            }
-        }
-
-        // 2) CL(미화부원=6) 강당 출구(=강당) 후순위 — 강당은 폐쇄 불가지만,
-        // 미화부원 발견 구역(교실2/2층복도 등)도 한 번 보정해 race 자동 패배를 더 차단한다.
-        if (jobs.Contains(JobTitle.CLEANING_MEMBER))
-            DemoteOneOfTheseAreasIfPossible(result,
-                new[] { AreaType.Classroom2 });
-
-        return result;
-    }
-
-    /// <summary>
-    ///     주어진 후보 구역들 중 시퀀스에 포함된 것 1개를 가능한 한 뒤로(말단 그룹 끝쪽) 이동.
-    ///     복도 hard 후순위 규칙은 깨뜨리지 않도록 말단 그룹 내부에서만 swap한다.
-    /// </summary>
-    private static void DemoteOneOfTheseAreasIfPossible(List<AreaType> seq, IEnumerable<AreaType> candidates)
-    {
-        // 말단 6구역 영역 = 인덱스 [0..5] (생성 시 leaves가 앞에 배치됨)
-        const int leafGroupEnd = 6;
-        foreach (var candidate in candidates)
-        {
-            int idx = seq.IndexOf(candidate);
-            if (idx < 0 || idx >= leafGroupEnd) continue;
-
-            int targetIdx = leafGroupEnd - 1;
-            if (idx == targetIdx) return;     // 이미 말단 그룹 끝
-            (seq[idx], seq[targetIdx]) = (seq[targetIdx], seq[idx]);
-            return;
-        }
-    }
-
-    /// <summary>
-    ///     현재 시각 기준 폐쇄해야 할 구역 확인.
-    ///     반환: (경고할 구역, 폐쇄 확정할 구역)
-    /// </summary>
-    public (AreaType? warningArea, int warningSeconds, long closureAtUnixMs, AreaType? closingArea)
-        CheckClosureSchedule(long matchingId)
-    {
-        if (!_states.TryGetValue(matchingId, out var state)) return (null, 0, 0, null);
-        if (state.NextClosureIndex >= state.ClosureOrder.Count) return (null, 0, 0, null);
-
-        double elapsed = (DateTime.UtcNow - state.GameStartTime).TotalSeconds;
-        double nextClosureTime = state.StartDelaySec + state.NextClosureIndex * state.IntervalSec;
-        double warningTime = nextClosureTime - ClosureWarningSeconds;
-
-        AreaType? warningArea = null;
-        AreaType? closingArea = null;
-        int warningSeconds = 0;
-        long closureAtUnixMs = 0;
-
-        // 폐쇄 시간 도달
-        if (elapsed >= nextClosureTime)
-        {
-            var area = state.ClosureOrder[state.NextClosureIndex];
-            if (!state.ClosedAreas.Contains(area))
-            {
-                state.ClosedAreas.Add(area);
-                closingArea = area;
                 state.NextClosureIndex++;
-                _logger.LogInformation("구역 폐쇄: MatchingId={MatchingId}, Area={Area}", matchingId, area);
+                _logger.LogInformation(
+                    "Survivor Royale closure wave applied: MatchingId={MatchingId}, CloseAt={CloseAt}s, Areas={Areas}, Rate={Rate}/s",
+                    matchingId, wave.ClosureAtSeconds, string.Join(',', wave.Areas), wave.ClosedAreaCorruptionPerSecond);
             }
+
+            if (closedAreas.Count > 0)
+                return new ClosureScheduleTick([], 0, 0, closedAreas);
+
+            if (state.NextClosureIndex >= state.Waves.Count)
+                return ClosureScheduleTick.Empty;
+
+            var nextWave = state.Waves[state.NextClosureIndex];
+            double warningAtSeconds = nextWave.ClosureAtSeconds - ClosureWarningSeconds;
+            if (elapsedSeconds < warningAtSeconds || !state.WarningsSent.Add(state.NextClosureIndex))
+                return ClosureScheduleTick.Empty;
+
+            int remainingSeconds = Math.Max(1, (int)Math.Ceiling(nextWave.ClosureAtSeconds - elapsedSeconds));
+            long closureAtUnixMs = ((DateTimeOffset)state.GameStartTime.AddSeconds(nextWave.ClosureAtSeconds))
+                .ToUnixTimeMilliseconds();
+            _logger.LogInformation(
+                "Survivor Royale closure warning: MatchingId={MatchingId}, CloseAt={CloseAt}s, Areas={Areas}, Remaining={Remaining}s",
+                matchingId, nextWave.ClosureAtSeconds, string.Join(',', nextWave.Areas), remainingSeconds);
+            return new ClosureScheduleTick(nextWave.Areas, remainingSeconds, closureAtUnixMs, []);
         }
-        // 경고 시간 도달 (아직 경고 안 보낸 경우)
-        else if (elapsed >= warningTime && !state.WarningsSent.Contains(state.NextClosureIndex))
-        {
-            warningArea = state.ClosureOrder[state.NextClosureIndex];
-            state.WarningsSent.Add(state.NextClosureIndex);
-            warningSeconds = Math.Max(1, (int)Math.Ceiling(nextClosureTime - elapsed));
-
-            // 정확한 폐쇄 시각 (UTC Unix ms) — 클라이언트 카운트다운 동기화용
-            var closureAtUtc = state.GameStartTime.AddSeconds(nextClosureTime);
-            closureAtUnixMs = ((DateTimeOffset)closureAtUtc).ToUnixTimeMilliseconds();
-
-            _logger.LogInformation("구역 폐쇄 경고: MatchingId={MatchingId}, Area={Area}, {Remaining}초 후 (closure at {UnixMs}ms)",
-                matchingId, warningArea, warningSeconds, closureAtUnixMs);
-        }
-
-        return (warningArea, warningSeconds, closureAtUnixMs, closingArea);
     }
 
-    /// <summary>
-    ///     매칭 상태 조회 (게임 시작 시각 등)
-    /// </summary>
+    public int GetEnvironmentalCorruptionDelta(long matchingId, AreaType area, int tickSeconds = ResourceTickSeconds)
+    {
+        if (tickSeconds <= 0 || !_states.TryGetValue(matchingId, out var state)) return 0;
+
+        lock (state.SyncRoot)
+        {
+            int corruptionPerSecond = GetOvertimeCorruptionPerSecond(state);
+            if (area != AreaType.None && state.ClosedAreas.Contains(area))
+                corruptionPerSecond += GetCurrentClosedAreaCorruptionPerSecond(state);
+            return corruptionPerSecond * tickSeconds;
+        }
+    }
+
+    public int GetClosedAreaCorruptionPerTick(long matchingId, AreaType area, int tickSeconds = ResourceTickSeconds)
+    {
+        if (tickSeconds <= 0 || !_states.TryGetValue(matchingId, out var state)) return 0;
+
+        lock (state.SyncRoot)
+        {
+            return state.ClosedAreas.Contains(area)
+                ? GetCurrentClosedAreaCorruptionPerSecond(state) * tickSeconds
+                : 0;
+        }
+    }
+
+    public int GetOvertimeCorruptionPerTick(long matchingId, int tickSeconds = ResourceTickSeconds)
+    {
+        if (tickSeconds <= 0 || !_states.TryGetValue(matchingId, out var state)) return 0;
+        lock (state.SyncRoot)
+        {
+            return GetOvertimeCorruptionPerSecond(state) * tickSeconds;
+        }
+    }
+
+    public bool IsOvertimeActive(long matchingId) => GetOvertimeCorruptionPerTick(matchingId, 1) > 0;
+
+    /// <summary>운동장 전역 오버타임 단계. 마지막 폐쇄 완료 시각(4:50)부터 시작한다.</summary>
+    private int GetOvertimeCorruptionPerSecond(MatchingClosureState state)
+    {
+        if (state.Waves.Count == 0) return 0;
+
+        double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
+        double overtimeStartSeconds = state.Waves[^1].ClosureAtSeconds;
+        if (elapsedSeconds < overtimeStartSeconds) return 0;
+        if (elapsedSeconds < overtimeStartSeconds + 30) return 1;
+        if (elapsedSeconds < overtimeStartSeconds + 50) return 2;
+        if (elapsedSeconds < overtimeStartSeconds + 70) return 4;
+        return 8;
+    }
+
+    private static int GetCurrentClosedAreaCorruptionPerSecond(MatchingClosureState state)
+    {
+        int lastClosedWaveIndex = state.NextClosureIndex - 1;
+        return lastClosedWaveIndex >= 0 && lastClosedWaveIndex < state.Waves.Count
+            ? state.Waves[lastClosedWaveIndex].ClosedAreaCorruptionPerSecond
+            : 0;
+    }
+
     public MatchingClosureState? GetMatchingState(long matchingId)
     {
         _states.TryGetValue(matchingId, out var state);
         return state;
     }
 
-    /// <summary>
-    ///     어드민 운영툴용 폐쇄 스케줄 요약 조회.
-    ///     다음 폐쇄 시각, 카운트다운, 경고 활성 여부를 계산해 반환한다.
-    ///     startDelaySec / intervalSec은 이 인스턴스에 적용된 값이다.
-    /// </summary>
     public (List<int> closureSequence, List<int> closedAreaIds, int nextAreaType,
         long nextAtUnix, int secondsLeft, bool warningActive, int startDelaySec, int intervalSec)
         GetClosureSnapshot(long matchingId)
     {
         if (!_states.TryGetValue(matchingId, out var state))
-            return ([], [], -1, -1, -1, false, MatchingConfigService.DefaultStartDelaySec, MatchingConfigService.DefaultIntervalSec);
+            return ([], [], -1, -1, -1, false, 0, 0);
 
-        var sequence = state.ClosureOrder.Select(a => (int)a).ToList();
-        var closed = state.ClosedAreas.Select(a => (int)a).ToList();
+        lock (state.SyncRoot)
+        {
+            var sequence = state.ClosureOrder.Select(area => (int)area).ToList();
+            var closed = state.ClosedAreas.Select(area => (int)area).ToList();
+            if (state.NextClosureIndex >= state.Waves.Count)
+                return (sequence, closed, -1, -1, -1, false, state.StartDelaySec, state.IntervalSec);
 
-        if (state.NextClosureIndex >= state.ClosureOrder.Count)
-            return (sequence, closed, -1, -1, -1, false, state.StartDelaySec, state.IntervalSec);
-
-        double elapsed = (DateTime.UtcNow - state.GameStartTime).TotalSeconds;
-        double nextClosureTime = state.StartDelaySec + state.NextClosureIndex * state.IntervalSec;
-        double remaining = nextClosureTime - elapsed;
-
-        int nextAreaType = (int)state.ClosureOrder[state.NextClosureIndex];
-        long nextAtUnix = ((DateTimeOffset)state.GameStartTime).ToUnixTimeSeconds() + (long)nextClosureTime;
-        int secondsLeft = remaining > 0 ? (int)Math.Ceiling(remaining) : 0;
-        bool warningActive = remaining > 0 && remaining <= ClosureWarningSeconds;
-
-        return (sequence, closed, nextAreaType, nextAtUnix, secondsLeft, warningActive, state.StartDelaySec, state.IntervalSec);
+            var nextWave = state.Waves[state.NextClosureIndex];
+            double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
+            double remainingSeconds = nextWave.ClosureAtSeconds - elapsedSeconds;
+            long nextAtUnix = ((DateTimeOffset)state.GameStartTime.AddSeconds(nextWave.ClosureAtSeconds)).ToUnixTimeSeconds();
+            return (
+                sequence,
+                closed,
+                (int)nextWave.Areas[0],
+                nextAtUnix,
+                remainingSeconds > 0 ? (int)Math.Ceiling(remainingSeconds) : 0,
+                remainingSeconds > 0 && remainingSeconds <= ClosureWarningSeconds,
+                state.StartDelaySec,
+                state.IntervalSec);
+        }
     }
 
-    /// <summary>
-    ///     해당 구역이 폐쇄되었는지 확인
-    /// </summary>
     public bool IsAreaClosed(long matchingId, AreaType area)
     {
         if (!_states.TryGetValue(matchingId, out var state)) return false;
-        return state.ClosedAreas.Contains(area);
+        lock (state.SyncRoot) return state.ClosedAreas.Contains(area);
     }
 
-    /// <summary>
-    ///     매칭 정리
-    /// </summary>
     public void CleanupMatching(long matchingId)
     {
         _states.TryRemove(matchingId, out _);
     }
 }
 
+public sealed record ClosureWaveDefinition(
+    int ClosureAtSeconds,
+    IReadOnlyList<AreaType> Areas,
+    int ClosedAreaCorruptionPerSecond);
+
+public sealed record ClosureScheduleTick(
+    IReadOnlyList<AreaType> WarningAreas,
+    int WarningSeconds,
+    long ClosureAtUnixMs,
+    IReadOnlyList<AreaType> ClosedAreas)
+{
+    public static readonly ClosureScheduleTick Empty = new([], 0, 0, []);
+}
+
 public class MatchingClosureState
 {
+    internal object SyncRoot { get; } = new();
     public long MatchingId { get; set; }
+    public List<ClosureWaveDefinition> Waves { get; set; } = new();
     public List<AreaType> ClosureOrder { get; set; } = new();
     public HashSet<AreaType> ClosedAreas { get; set; } = new();
     public int NextClosureIndex { get; set; }
     public DateTime GameStartTime { get; set; }
-    public HashSet<int> WarningsSent { get; set; } = new(); // 경고 보낸 인덱스
-
-    /// <summary>이 인스턴스에 적용된 폐쇄 시작 딜레이 (초) — 생성 시 config에서 복사</summary>
-    public int StartDelaySec { get; set; } = MatchingConfigService.DefaultStartDelaySec;
-
-    /// <summary>이 인스턴스에 적용된 폐쇄 간격 (초) — 생성 시 config에서 복사</summary>
-    public int IntervalSec { get; set; } = MatchingConfigService.DefaultIntervalSec;
+    public HashSet<int> WarningsSent { get; set; } = new();
+    public int StartDelaySec { get; set; }
+    public int IntervalSec { get; set; }
 }
