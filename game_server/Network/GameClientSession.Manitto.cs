@@ -1636,8 +1636,6 @@ public partial class GameClientSession
             return true;
         }
 
-        using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
-        Send(inventoryPacket);
 
         var outputItem = items.LastOrDefault();
         var equippedBattleItem = _inGameInventoryManager.GetEquippedBattleItem(CurrentMapSubId, PlayerId.Value);
@@ -1662,6 +1660,10 @@ public partial class GameClientSession
         };
         combinePacket.SetBody(MessagePackSerializer.Serialize(combinedMsg));
         Send(combinePacket);
+
+        // 파트 머지와 동일하게 결과 패킷을 먼저 보내 클라이언트가 결과 슬롯 펄스를 준비하게 한다.
+        using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
+        Send(inventoryPacket);
 
         _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
             $"Battle item combine: {msg.PartA} + {msg.PartB} => {recipe.OutputItemId}",
