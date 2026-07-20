@@ -29,7 +29,7 @@ public sealed class SurvivorRegionalItemPoolTests
             [AreaType.Storage] = [107000003, 107000003, 201000008, 201000011],
             [AreaType.Storage2] = [107000003, 107000003, 201000011, 201000008],
             [AreaType.Junkyard] = [107000003, 201000008, 201000011],
-            [AreaType.Junkyard2] = [107000003, 201000008],
+            [AreaType.Junkyard2] = [107000003, 201000008, 201000011],
             [AreaType.AdminOffice] = [107000003, 201000011, 201000008, 201000011, 201000008],
             [AreaType.StaffRoom] = [107000003, 201000011, 201000011, 201000011, 201000008, 201000008, 201000008],
             [AreaType.Ground] = [107000003, 201000008, 201000011]
@@ -66,13 +66,15 @@ public sealed class SurvivorRegionalItemPoolTests
             [AreaType.StaffRoom] = 7,
             [AreaType.Gym] = 6,
             [AreaType.Storage] = 3,
-            [AreaType.Junkyard2] = 2,
+            [AreaType.Storage2] = 3,
+            [AreaType.Junkyard2] = 3,
             [AreaType.Classroom2] = 4,
             [AreaType.Library] = 8,
             [AreaType.Classroom3] = 5,
             [AreaType.ExamRoom] = 4,
             [AreaType.Classroom4] = 5,
-            [AreaType.BroadcastRoom] = 3
+            [AreaType.BroadcastRoom] = 3,
+            [AreaType.Ground] = 3,
         };
 
         foreach (var (area, markerCount) in activeMarkerCounts)

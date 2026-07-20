@@ -136,7 +136,7 @@ public class SchoolNewMapRestorationTests
         GameDataHelper.Initialize();
 
         var interactables = GameInteractableData.GetAll().ToDictionary(info => info.Id);
-        Assert.Equal(54, interactables.Count);
+        Assert.Equal(61, interactables.Count);
         Assert.DoesNotContain(701000055, interactables.Keys);
         Assert.DoesNotContain(701000056, interactables.Keys);
 
