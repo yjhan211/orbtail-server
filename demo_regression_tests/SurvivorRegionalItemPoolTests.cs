@@ -1,4 +1,5 @@
 using game_server.services;
+using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
@@ -117,6 +118,51 @@ public sealed class SurvivorRegionalItemPoolTests
 
         Assert.False(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out int exhaustedItemId));
         Assert.Equal(0, exhaustedItemId);
+    }
+
+    [Fact]
+    public void FirstHumanExploreDropsCompassThenReturnsToRegionalStock()
+    {
+        const long matchId = 195015;
+        const long firstPlayerId = 1501;
+        const long secondPlayerId = 1502;
+        var info = GameInteractableData.GetByZone((int)AreaType.Classroom3)
+            .First(candidate => candidate.InteractionType == InteractionType.RNG_COLLECT);
+        var missionManager = new MissionManager(NullLogger.Instance);
+        var inventoryManager = new InGameInventoryManager();
+        var itemPoolManager = new ItemPoolManager();
+        var areaStockManager = new AreaItemStockManager(new ZeroRandom());
+        inventoryManager.Initialize();
+        itemPoolManager.Initialize();
+        areaStockManager.InitializeMatching(matchId);
+        missionManager.InitializePlayer(matchId, firstPlayerId, JobTitle.SCIENCE_MEMBER);
+        missionManager.InitializePlayer(matchId, secondPlayerId, JobTitle.SCIENCE_MEMBER);
+        RngCollectCore.ClearMatching(matchId);
+
+        try
+        {
+            int initialStock = areaStockManager.GetRemainingCount(matchId, (int)AreaType.Classroom3);
+            var first = RngCollectCore.Resolve(
+                matchId, firstPlayerId, JobTitle.SCIENCE_MEMBER, info,
+                missionManager, inventoryManager, itemPoolManager, areaStockManager, isBot: false);
+            var second = RngCollectCore.Resolve(
+                matchId, firstPlayerId, JobTitle.SCIENCE_MEMBER, info,
+                missionManager, inventoryManager, itemPoolManager, areaStockManager, isBot: false);
+            var otherPlayerFirst = RngCollectCore.Resolve(
+                matchId, secondPlayerId, JobTitle.SCIENCE_MEMBER, info,
+                missionManager, inventoryManager, itemPoolManager, areaStockManager, isBot: false);
+
+            Assert.Equal(107000015, Assert.Single(first.DroppedItemIds));
+            Assert.Equal(107000003, Assert.Single(second.DroppedItemIds));
+            Assert.Equal(107000015, Assert.Single(otherPlayerFirst.DroppedItemIds));
+            Assert.Equal(initialStock - 1,
+                areaStockManager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
+        }
+        finally
+        {
+            RngCollectCore.ClearMatching(matchId);
+            RngCollectCooldownStore.ClearMatching(matchId);
+        }
     }
 
     [Fact]
@@ -349,6 +395,11 @@ public sealed class SurvivorRegionalItemPoolTests
     {
         manager.TryConsumeDrops(matchId, (int)area, 1, out var items);
         return items;
+    }
+
+    private sealed class ZeroRandom : Random
+    {
+        public override int Next(int maxValue) => 0;
     }
 
     private static string FindNetworkBasePath()
