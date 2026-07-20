@@ -123,7 +123,7 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Fact]
-    public void FirstHumanExploreDropsCompassThenReturnsToRegionalStock()
+    public void HumanExploresUseRegionalStockFromFirstDrop()
     {
         const long matchId = 195015;
         const long firstPlayerId = 1501;
@@ -139,8 +139,6 @@ public sealed class SurvivorRegionalItemPoolTests
         areaStockManager.InitializeMatching(matchId);
         missionManager.InitializePlayer(matchId, firstPlayerId, JobTitle.SCIENCE_MEMBER);
         missionManager.InitializePlayer(matchId, secondPlayerId, JobTitle.SCIENCE_MEMBER);
-        RngCollectCore.ClearMatching(matchId);
-
         try
         {
             int initialStock = areaStockManager.GetRemainingCount(matchId, (int)AreaType.Classroom3);
@@ -154,15 +152,14 @@ public sealed class SurvivorRegionalItemPoolTests
                 matchId, secondPlayerId, JobTitle.SCIENCE_MEMBER, info,
                 missionManager, inventoryManager, itemPoolManager, areaStockManager, isBot: false);
 
-            Assert.Equal(107000015, Assert.Single(first.DroppedItemIds));
+            Assert.Equal(107000003, Assert.Single(first.DroppedItemIds));
             Assert.Equal(107000003, Assert.Single(second.DroppedItemIds));
-            Assert.Equal(107000015, Assert.Single(otherPlayerFirst.DroppedItemIds));
-            Assert.Equal(initialStock - 1,
+            Assert.Equal(201000008, Assert.Single(otherPlayerFirst.DroppedItemIds));
+            Assert.Equal(initialStock - 3,
                 areaStockManager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
         }
         finally
         {
-            RngCollectCore.ClearMatching(matchId);
             RngCollectCooldownStore.ClearMatching(matchId);
         }
     }

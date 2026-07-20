@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -28,19 +27,9 @@ public static class RngCollectCore
     private const int MergeDropCompleteRecipeBonus = 40;
     private const int MergeDropDuplicatePenalty = 4;
     private const int MergeDropRecipeBonusCap = 120;
-    private const int ForcedFirstHumanExploreItemId = 107000015;
     // Regular explore should only grant consumables. Mission parts are collected through explicit mission actions.
     private const bool AllowMissionPartDropsFromExplore = false;
-    private static readonly ConcurrentDictionary<(long MatchingId, long PlayerId), byte>
-        ForcedFirstHumanExploreDrops = new();
     private static readonly Random _rng = new();
-
-    public static void ClearMatching(long matchingId)
-    {
-        foreach (var key in ForcedFirstHumanExploreDrops.Keys)
-            if (key.MatchingId == matchingId)
-                ForcedFirstHumanExploreDrops.TryRemove(key, out _);
-    }
 
     public static RngCollectOutcome Resolve(
         long matchingId,
@@ -71,14 +60,7 @@ public static class RngCollectCore
             ? MissionPartSelection.SelectNextCollectablePart(matchedParts, state)
             : null;
 
-        if (!isBot && ForcedFirstHumanExploreDrops.TryAdd((matchingId, playerId), 0))
-        {
-            outcome.ResultType = 2;
-            outcome.ItemId = ForcedFirstHumanExploreItemId;
-            outcome.StaminaReward = ConsumableStaminaReward;
-            outcome.DroppedItemIds.Add(ForcedFirstHumanExploreItemId);
-        }
-        else if (matchedPart != null)
+        if (matchedPart != null)
         {
             int roll = _rng.Next(100);
             bool hasPrerequisite = matchedPart.PrerequisiteShareGroup > 0;
