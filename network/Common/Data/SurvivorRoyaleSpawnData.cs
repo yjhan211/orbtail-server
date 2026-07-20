@@ -14,14 +14,14 @@ public static class SurvivorRoyaleSpawnData
 {
     private static readonly Cell[] CorridorAnchors =
     {
-        new(137, 66),
-        new(188, 112),
-        new(103, 112),
+        new(140, 70),
+        new(174, 108),
+        new(112, 108),
         new(145, 108),
-        new(172, 78),
-        new(103, 76),
-        new(130, 89),
-        new(167, 101)
+        new(178, 73),
+        new(109, 85),
+        new(139, 93),
+        new(165, 85)
     };
 
     public static IReadOnlyList<Cell> GetCorridorAnchors() =>
