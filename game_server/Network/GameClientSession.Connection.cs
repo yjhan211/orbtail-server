@@ -172,6 +172,7 @@ public partial class GameClientSession
             // 誘몄뀡 ?뺣낫 ?꾩넚
             SendMissionInfo();
             SendRoundStateSnapshot(msg.MatchingId);
+            SendAreaClosureStateSnapshot();
             SendChecklistInfo();
 
             // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃
@@ -1138,6 +1139,45 @@ public partial class GameClientSession
                 includeEmpty: true);
             session.SendPresenceNotebookUpdate(matchingId, roundNumber, records);
         }
+    }
+
+    /// <summary>
+    /// 새 접속과 재접속 시 현재 방송 대상·남은 시간·누적 폐쇄 지역을 복원한다.
+    /// 미래 웨이브는 아직 보내지 않아 다음 방송 전까지 대상이 드러나지 않는다.
+    /// </summary>
+    private void SendAreaClosureStateSnapshot()
+    {
+        if (CurrentMapSubId <= 0) return;
+
+        var snapshot = _areaClosureManager.GetClientStateSnapshot(CurrentMapSubId);
+        foreach (var closedArea in snapshot.ClosedAreas)
+        {
+            using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED { AreaType = closedArea }));
+            Send(packet);
+        }
+
+        foreach (var warningArea in snapshot.WarningAreas)
+        {
+            using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+            {
+                AreaType = warningArea,
+                SecondsRemaining = snapshot.WarningSeconds,
+                ClosureAtUnixMs = snapshot.ClosureAtUnixMs
+            }));
+            Send(packet);
+        }
+
+        // AreaType.None은 미래 대상은 밝히지 않고 다음 경보 시각만 전달한다.
+        using var countdownPacket = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+        countdownPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+        {
+            AreaType = AreaType.None,
+            SecondsRemaining = snapshot.NextWarningSeconds,
+            ClosureAtUnixMs = snapshot.NextWarningAtUnixMs
+        }));
+        Send(countdownPacket);
     }
 
     private void SendRoundStateSnapshot(long matchingId)

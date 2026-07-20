@@ -1639,12 +1639,7 @@ public partial class GameClientSession
 
         var outputItem = items.LastOrDefault();
         var equippedBattleItem = _inGameInventoryManager.GetEquippedBattleItem(CurrentMapSubId, PlayerId.Value);
-        if (outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid)
-        {
-            using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
-                true, outputItem.ItemUid, ErrorCode.SUCCESS);
-            Send(equippedPacket);
-        }
+        bool shouldReplaceEquippedItem = outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid;
 
         using var combinePacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId.Value);
         var itemData = GameItemData.Get(recipe.OutputItemId);
@@ -1664,6 +1659,15 @@ public partial class GameClientSession
         // 파트 머지와 동일하게 결과 패킷을 먼저 보내 클라이언트가 결과 슬롯 펄스를 준비하게 한다.
         using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
         Send(inventoryPacket);
+
+        // 결과 아이템을 인벤토리에 반영한 뒤 장착 결과를 보낸다. 반대로 보내면 클라이언트가
+        // 아직 존재하지 않는 ItemUid를 장착하려다 무시하고, 직전 장착이 해제된 채 남는다.
+        if (shouldReplaceEquippedItem)
+        {
+            using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
+                true, outputItem!.ItemUid, ErrorCode.SUCCESS);
+            Send(equippedPacket);
+        }
 
         _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
             $"Battle item combine: {msg.PartA} + {msg.PartB} => {recipe.OutputItemId}",

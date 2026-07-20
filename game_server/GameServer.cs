@@ -1411,6 +1411,19 @@ public partial class GameServer(
                     packet.SetBody(MessagePackSerializer.Serialize(msg));
                     foreach (var session in sessions) session.Send(packet);
                 }
+
+                if (closureTick.WarningAreas.Count > 0 || closureTick.ClosedAreas.Count > 0)
+                {
+                    var snapshot = _areaClosureManager.GetClientStateSnapshot(matchingId);
+                    using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+                    packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+                    {
+                        AreaType = AreaType.None,
+                        SecondsRemaining = snapshot.NextWarningSeconds,
+                        ClosureAtUnixMs = snapshot.NextWarningAtUnixMs
+                    }));
+                    foreach (var session in sessions) session.Send(packet);
+                }
             }
         }
         catch (Exception ex)

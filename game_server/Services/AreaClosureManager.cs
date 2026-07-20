@@ -41,6 +41,11 @@ public class AreaClosureManager
     {
         _ = jobsInMatching;
 
+        // 동일 매치의 뒤늦은 접속(재접속 포함)이 폐쇄 시계와 누적 폐쇄 상태를
+        // 처음부터 다시 만들면 안 된다. 최초 접속만 상태를 생성한다.
+        if (_states.TryGetValue(matchingId, out var existingState))
+            return existingState;
+
         var mapAreas = GameMapData.GetAreas(MapId.School)
             .Select(region => region.AreaType)
             .ToHashSet();
@@ -67,7 +72,10 @@ public class AreaClosureManager
             IntervalSec = 0
         };
 
-        _states[matchingId] = state;
+        // 동시에 접속한 플레이어가 있어도 하나의 웨이브 시계만 사용한다.
+        var actualState = _states.GetOrAdd(matchingId, state);
+        if (!ReferenceEquals(actualState, state)) return actualState;
+
         _logger.LogInformation(
             "Survivor Royale closure schedule initialized: MatchingId={MatchingId}, Waves={Waves}",
             matchingId,
@@ -75,6 +83,56 @@ public class AreaClosureManager
                 $"{wave.ClosureAtSeconds}s:{string.Join(',', wave.Areas)}@{wave.ClosedAreaCorruptionPerSecond}/s")));
 
         return state;
+    }
+
+    /// <summary>
+    /// 접속·재접속한 클라이언트가 즉시 복원해야 하는 공개 폐쇄 상태다.
+    /// 미래 웨이브 대상은 노출하지 않고, 현재 방송 중인 대상 묶음만 제공한다.
+    /// </summary>
+    public ClosureClientStateSnapshot GetClientStateSnapshot(long matchingId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state))
+            return ClosureClientStateSnapshot.Empty;
+
+        lock (state.SyncRoot)
+        {
+            double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
+            var closedAreas = state.ClosedAreas.OrderBy(area => (int)area).ToArray();
+
+            if (state.NextClosureIndex >= state.Waves.Count)
+                return new ClosureClientStateSnapshot(closedAreas, [], 0, 0, 0, 0);
+
+            var nextWave = state.Waves[state.NextClosureIndex];
+            double warningAtSeconds = nextWave.ClosureAtSeconds - ClosureWarningSeconds;
+            bool isWarningActive = elapsedSeconds >= warningAtSeconds &&
+                                   elapsedSeconds < nextWave.ClosureAtSeconds;
+
+            var warningAreas = isWarningActive ? nextWave.Areas.ToArray() : [];
+            int warningSeconds = isWarningActive
+                ? Math.Max(1, (int)Math.Ceiling(nextWave.ClosureAtSeconds - elapsedSeconds))
+                : 0;
+            long closureAtUnixMs = isWarningActive
+                ? ((DateTimeOffset)state.GameStartTime.AddSeconds(nextWave.ClosureAtSeconds)).ToUnixTimeMilliseconds()
+                : 0;
+
+            // 현재 경보가 진행 중이면 그 다음 웨이브, 아니면 아직 시작되지 않은 현재 웨이브의
+            // 경보 시각만 공유한다. 대상 지역은 이 패킷에 포함하지 않는다.
+            int nextWarningIndex = isWarningActive ? state.NextClosureIndex + 1 : state.NextClosureIndex;
+            if (nextWarningIndex >= state.Waves.Count)
+                return new ClosureClientStateSnapshot(closedAreas, warningAreas, warningSeconds, closureAtUnixMs, 0, 0);
+
+            double nextWarningAtSeconds = state.Waves[nextWarningIndex].ClosureAtSeconds - ClosureWarningSeconds;
+            long nextWarningAtUnixMs = ((DateTimeOffset)state.GameStartTime.AddSeconds(nextWarningAtSeconds))
+                .ToUnixTimeMilliseconds();
+            int nextWarningSeconds = Math.Max(0, (int)Math.Ceiling(nextWarningAtSeconds - elapsedSeconds));
+            return new ClosureClientStateSnapshot(
+                closedAreas,
+                warningAreas,
+                warningSeconds,
+                closureAtUnixMs,
+                nextWarningSeconds,
+                nextWarningAtUnixMs);
+        }
     }
 
     /// <summary>
@@ -243,6 +301,17 @@ public sealed record ClosureScheduleTick(
     IReadOnlyList<AreaType> ClosedAreas)
 {
     public static readonly ClosureScheduleTick Empty = new([], 0, 0, []);
+}
+
+public sealed record ClosureClientStateSnapshot(
+    IReadOnlyList<AreaType> ClosedAreas,
+    IReadOnlyList<AreaType> WarningAreas,
+    int WarningSeconds,
+    long ClosureAtUnixMs,
+    int NextWarningSeconds,
+    long NextWarningAtUnixMs)
+{
+    public static readonly ClosureClientStateSnapshot Empty = new([], [], 0, 0, 0, 0);
 }
 
 public class MatchingClosureState
