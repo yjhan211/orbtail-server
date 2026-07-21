@@ -362,6 +362,91 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.Single(events, entry => entry.Type == "SURVIVOR_FIRST_T3");
     }
 
+
+    [Fact]
+    public void ClosureWarningInterruptsLootAndRoutesBotToAnOpenRoom()
+    {
+        const long matchingId = 194205;
+        const long botPlayerId = -1942051;
+        var now = new DateTime(2026, 7, 21, 0, 0, 0, DateTimeKind.Utc);
+        var botManager = new BotPlayerManager(NullLogger.Instance);
+        botManager.RegisterBots(matchingId, MapId.School, [BotInfo(botPlayerId, botPlayerId - 1, AreaType.Classroom3)]);
+        var bot = botManager.GetBot(matchingId, botPlayerId)!;
+        SetBotPosition(bot, AreaType.Classroom3);
+        bot.IsInInteraction = true;
+        bot.InteractionStayUntil = DateTime.UtcNow.AddSeconds(10);
+        bot.PendingRngInteractId = 1234;
+        bot.LastWalkStepTime = DateTime.UtcNow.AddSeconds(-1);
+
+        var closure = new AreaClosureManager(
+            NullLogger.Instance,
+            new MatchingConfigService(null!, NullLogger.Instance),
+            () => now);
+        closure.InitializeMatching(matchingId);
+        now = now.AddSeconds(150); // Classroom3 closes in the second 15-second warning window.
+        closure.CheckClosureSchedule(matchingId);
+        Assert.Contains(AreaType.Classroom3, closure.GetClientStateSnapshot(matchingId).WarningAreas);
+
+        var stock = new AreaItemStockManager(new ZeroRandom());
+        stock.InitializeMatching(matchingId);
+        var inventory = new InGameInventoryManager();
+        inventory.Initialize();
+        var ground = new GroundItemManager();
+        ground.InitializeMatching(matchingId);
+        ground.SpawnItems(matchingId, AreaType.Classroom3, bot.Position.X, bot.Position.Y, [CannedCoffee]);
+        var checklist = new ChecklistManager(NullLogger.Instance);
+        checklist.Initialize();
+
+        var tick = botManager.ProcessBotMovementTick(
+            matchingId,
+            closure,
+            stock,
+            new Dictionary<long, AreaType>(),
+            checklist,
+            inventory,
+            ground,
+            Array.Empty<BotCombatTargetSnapshot>());
+
+        Assert.False(bot.IsInInteraction);
+        Assert.Equal(0, bot.PendingRngInteractId);
+        Assert.NotEqual(AreaType.None, bot.EvacuationDestination);
+        Assert.NotEqual(AreaType.Classroom3, bot.EvacuationDestination);
+        Assert.False(bot.EvacuationDestination.IsCorridor());
+        Assert.NotEmpty(bot.Path);
+        Assert.Equal(bot.EvacuationDestination, bot.Path[^1].Area);
+        Assert.Empty(tick.GroundItemPickups);
+    }
+
+    [Fact]
+    public void StrongerNearbyOpponentMakesBotLeaveTheRoomInsteadOfKitingInPlace()
+    {
+        const long matchingId = 194206;
+        const long botPlayerId = -1942061;
+        const long enemyPlayerId = -1942062;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        SetBotPosition(bot, AreaType.Classroom3);
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+
+        fixture.BotManager.UpdateCombatMovementIntent(
+            bot,
+            matchingId,
+            fixture.ClosureManager,
+            [
+                new BotCombatTargetSnapshot(botPlayerId, AreaType.Classroom3, bot.Position, RecorderT1),
+                new BotCombatTargetSnapshot(
+                    enemyPlayerId,
+                    AreaType.Classroom3,
+                    new Vector3f(bot.Position.X + 0.5f, bot.Position.Y, 0f),
+                    RecorderT3)
+            ]);
+
+        Assert.NotEmpty(bot.Path);
+        Assert.NotEqual(AreaType.Classroom3, bot.Path[^1].Area);
+        Assert.False(bot.Path[^1].Area.IsCorridor());
+    }
+
     private static ProximityCombatActor CombatActor(long playerId, Vector3f position, int weaponItemId)
     {
         var combatData = BattleItemCombatData.Get(weaponItemId)!;

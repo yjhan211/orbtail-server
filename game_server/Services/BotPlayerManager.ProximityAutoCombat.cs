@@ -92,6 +92,13 @@ public partial class BotPlayerManager
             return;
         }
 
+        // Corridors are transit only. Do not overwrite a room-bound path because an opponent is nearby.
+        if (bot.CurrentArea.IsCorridor() || bot.EvacuationDestination != AreaType.None ||
+            IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea))
+        {
+            return;
+        }
+
         var ownSnapshot = combatTargets.FirstOrDefault(target => target.PlayerId == bot.PlayerId);
         var ownCombatData = BattleItemCombatData.Get(ownSnapshot.WeaponItemId);
         if (ownCombatData == null)
@@ -112,9 +119,10 @@ public partial class BotPlayerManager
                         targetCombatData.AttackRange > ownCombatData.AttackRange);
         float preferredDistance = ownCombatData.AttackRange * 0.72f;
 
-        if (retreat && distance < Math.Max(1.4f, preferredDistance))
-            TryStartCombatRetreatPath(bot, matchingId, closureManager, nearest.Position);
-        else if (!retreat && distance > preferredDistance)
+        bool survivalRisk = bot.Corruption >= 60;
+        if ((retreat || survivalRisk) && distance < Math.Max(1.4f, preferredDistance))
+            TryStartCombatRetreatPath(bot, matchingId, closureManager, nearest.Position, nearest.Area);
+        else if (!retreat && !survivalRisk && distance > preferredDistance)
             TryStartCombatApproachPath(bot, matchingId, closureManager, nearest.Position);
 
         bot.NextCombatRepathAt = DateTime.UtcNow.Add(BotCombatRepathInterval);
@@ -132,7 +140,7 @@ public partial class BotPlayerManager
             bot.Cell,
             bot.CurrentArea,
             WorldToCell(targetPosition),
-            area => closureManager.IsAreaClosed(matchingId, area));
+            area => IsAreaClosingOrClosed(closureManager, matchingId, area));
         if (path == null || path.Count == 0)
             return false;
 
@@ -146,9 +154,38 @@ public partial class BotPlayerManager
         BotPlayerState bot,
         long matchingId,
         AreaClosureManager closureManager,
-        Vector3f threatPosition)
+        Vector3f threatPosition,
+        AreaType threatArea)
     {
         var mapId = GetMatchingMapId(matchingId);
+        var closure = closureManager.GetClientStateSnapshot(matchingId);
+        var unavailableAreas = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
+        var escape = GameMapData.GetAreas(mapId)
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Where(area => area != AreaType.None && !area.IsCorridor() &&
+                           area != bot.CurrentArea && area != threatArea &&
+                           !unavailableAreas.Contains(area))
+            .Select(area => new
+            {
+                Area = area,
+                Path = BotPathfinder.FindPath(
+                    mapId, bot.CurrentArea, bot.Cell, area,
+                    GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, area)
+                    ?? GameMapData.GetAreaSpawnCell(mapId, area),
+                    unavailableAreas.Contains)
+            })
+            .Where(entry => entry.Path is { Count: > 0 })
+            .OrderBy(entry => entry.Area == AreaType.Ground ? 1 : 0)
+            .ThenBy(entry => entry.Path!.Count)
+            .FirstOrDefault();
+        if (escape?.Path != null)
+        {
+            bot.Path = escape.Path;
+            bot.PathIndex = 0;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            return true;
+        }
         int directionX = Math.Sign(bot.Position.X - threatPosition.X);
         int directionY = Math.Sign(bot.Position.Y - threatPosition.Y);
         if (directionX == 0 && directionY == 0)
@@ -174,7 +211,7 @@ public partial class BotPlayerManager
                 bot.Cell,
                 bot.CurrentArea,
                 candidate,
-                area => closureManager.IsAreaClosed(matchingId, area));
+                area => IsAreaClosingOrClosed(closureManager, matchingId, area));
             if (path == null || path.Count == 0)
                 continue;
 

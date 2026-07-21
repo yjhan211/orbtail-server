@@ -440,6 +440,9 @@ public class BotPlayerState
     /// <summary>Next time the bot may replace its chase or retreat path.</summary>
     public DateTime NextCombatRepathAt { get; set; } = DateTime.MinValue;
 
+    /// <summary>Safe room retained while the bot is travelling out of a warned area.</summary>
+    public AreaType EvacuationDestination { get; set; } = AreaType.None;
+
     /// <summary>?먭린 吏곸콉 諛쒓껄 援ъ뿭 ?쒗쉶 ??(?뷀뵆??4媛?+ ?좏뻾 ?꾩씠???꾩튂)</summary>
     public List<AreaType> JobAreaQueue { get; set; } = new();
 

@@ -149,12 +149,17 @@ public partial class BotPlayerManager
         foreach (var bot in bots)
         {
             if (bot.IsEliminated) continue;
-            if (TryAutoPickupGroundItem(bot, matchingId, inventoryManager, groundItemManager, out var pickup) &&
+
+            // Escape routes outrank looting and combat so a warning cannot be overwritten by a chase path.
+            bool isEvacuating = TryMaintainClosureEvacuation(bot, matchingId, closureManager);
+            if (!isEvacuating &&
+                TryAutoPickupGroundItem(bot, matchingId, inventoryManager, groundItemManager, out var pickup) &&
                 pickup.HasValue)
             {
                 result.GroundItemPickups.Add(pickup.Value);
             }
-            UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
+            if (!isEvacuating)
+                UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
             var ev = WalkStep(bot, matchingId, closureManager, areaItemStockManager, playerAreas, checklistManager);
             if (ev != null) result.Movements.Add(ev);
             if (bot.PendingExploreEndBroadcast)
@@ -166,6 +171,110 @@ public partial class BotPlayerManager
         return result;
     }
 
+    private bool TryMaintainClosureEvacuation(BotPlayerState bot, long matchingId,
+        AreaClosureManager closureManager)
+    {
+        var closure = closureManager.GetClientStateSnapshot(matchingId);
+        var unavailableAreas = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
+        bool currentAreaUnsafe = unavailableAreas.Contains(bot.CurrentArea);
+
+        if (bot.EvacuationDestination != AreaType.None &&
+            (unavailableAreas.Contains(bot.EvacuationDestination) || bot.EvacuationDestination.IsCorridor()))
+        {
+            bot.EvacuationDestination = AreaType.None;
+        }
+
+        if (!currentAreaUnsafe && bot.EvacuationDestination != AreaType.None)
+        {
+            if (bot.CurrentArea == bot.EvacuationDestination)
+            {
+                bot.EvacuationDestination = AreaType.None;
+                return false;
+            }
+
+            return true;
+        }
+
+        if (!currentAreaUnsafe)
+            return false;
+
+        CancelBotActionForEvacuation(bot);
+        var mapId = GetMatchingMapId(matchingId);
+        var candidate = GameMapData.GetAreas(mapId)
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Where(area => area != AreaType.None && !area.IsCorridor() &&
+                           area != bot.CurrentArea && !unavailableAreas.Contains(area))
+            .Select(area => new
+            {
+                Area = area,
+                Path = BotPathfinder.FindPath(
+                    mapId, bot.CurrentArea, bot.Cell, area,
+                    GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, area)
+                    ?? GameMapData.GetAreaSpawnCell(mapId, area),
+                    unavailableAreas.Contains)
+            })
+            .Where(entry => entry.Path is { Count: > 0 })
+            .OrderBy(entry => CountEvacuationReservations(matchingId, entry.Area))
+            .ThenBy(entry => entry.Area == AreaType.Ground ? 1 : 0)
+            .ThenBy(entry => entry.Path!.Count)
+            .ThenBy(entry => Math.Abs((int)(bot.PlayerId % 97) - (int)entry.Area))
+            .FirstOrDefault();
+
+        if (candidate?.Path == null)
+        {
+            bot.LoopWaitUntil = DateTime.UtcNow.AddMilliseconds(250);
+            return true;
+        }
+
+        bot.EvacuationDestination = candidate.Area;
+        bot.Path = candidate.Path;
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        bot.NextCombatRepathAt = DateTime.UtcNow.AddSeconds(1);
+        _logger.LogInformation(
+            "Bot closure evacuation: MatchingId={MatchingId}, BotId={BotId}, {From}->{To}, Steps={Steps}",
+            matchingId, bot.PlayerId, bot.CurrentArea, candidate.Area, candidate.Path.Count);
+        return true;
+    }
+
+    private int CountEvacuationReservations(long matchingId, AreaType area)
+    {
+        return _botStates.TryGetValue(matchingId, out var bots)
+            ? bots.Count(other => !other.IsEliminated && other.EvacuationDestination == area)
+            : 0;
+    }
+
+    private static void CancelBotActionForEvacuation(BotPlayerState bot)
+    {
+        bool hadAction = bot.IsInInteraction || bot.PendingRngInteractId != 0 ||
+                         bot.PendingChecklistTaskId != 0 || bot.PendingForcedInteractId != 0;
+        bot.IsInInteraction = false;
+        bot.InteractionStayUntil = DateTime.MinValue;
+        bot.PendingRngInteractId = 0;
+        bot.PendingChecklistTaskId = 0;
+        bot.PendingChecklistInteractId = 0;
+        bot.PendingForcedInteractArea = AreaType.None;
+        bot.PendingForcedInteractId = 0;
+        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
+        bot.RngCollectProgressStartTime = DateTime.MinValue;
+        bot.RestUntil = DateTime.MinValue;
+        bot.TransitionPauseUntil = DateTime.MinValue;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+        ClearBotRoomExplorePlan(bot);
+        if (hadAction)
+            bot.PendingExploreEndBroadcast = true;
+    }
+
+    private static bool IsAreaClosingOrClosed(AreaClosureManager closureManager, long matchingId, AreaType area)
+    {
+        if (area == AreaType.None)
+            return false;
+
+        var closure = closureManager.GetClientStateSnapshot(matchingId);
+        return closure.ClosedAreas.Contains(area) || closure.WarningAreas.Contains(area);
+    }
     /// <summary>
     ///     봇 한 명의 walking step 처리. 경로가 없으면 새 wander 타겟 선택.
     ///     영역 경계도 인접 셀까지 연속 보행하며, 도착 셀을 기준으로 영역 변경 이벤트를 반환한다.
@@ -444,7 +553,7 @@ public partial class BotPlayerManager
 
         var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
             destination, targetCell,
-            a => closureManager.IsAreaClosed(matchingId, a));
+            a => IsAreaClosingOrClosed(closureManager, matchingId, a));
         if (path == null || path.Count == 0)
         {
             bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
@@ -474,7 +583,7 @@ public partial class BotPlayerManager
                            !area.IsCorridor() &&
                            (!requireSecludedArea || IsSecludedFarmingArea(mapId, area)) &&
                            !bot.CompletedRoomExploreAreas.Contains(area) &&
-                           !closureManager.IsAreaClosed(matchingId, area) &&
+                           !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
                            areaItemStockManager.HasRemaining(matchingId, (int)area) &&
                            GameInteractableData.GetByZone((int)area)
                                .Any(info => IsBotRoomExploreAvailable(bot, matchingId, info, area)))
@@ -495,7 +604,7 @@ public partial class BotPlayerManager
                 ?? GameMapData.GetAreaSpawnCell(mapId, destination);
             var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
                 destination, targetCell,
-                area => closureManager.IsAreaClosed(matchingId, area));
+                area => IsAreaClosingOrClosed(closureManager, matchingId, area));
             if (path == null || path.Count == 0) continue;
 
             bot.Path = path;
@@ -554,7 +663,7 @@ public partial class BotPlayerManager
         AreaClosureManager closureManager)
     {
         var area = (AreaType)task.AreaType;
-        if (area == AreaType.None || closureManager.IsAreaClosed(matchingId, area)) return false;
+        if (area == AreaType.None || IsAreaClosingOrClosed(closureManager, matchingId, area)) return false;
 
         var info = GameInteractableData.Get(task.InteractId);
         if (info == null || info.ZoneId != task.AreaType) return false;
@@ -569,7 +678,7 @@ public partial class BotPlayerManager
         var mapId = GetMatchingMapId(matchingId);
         if (bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor() ||
             bot.EquippedBattleItemId <= 0 && !IsSecludedFarmingArea(mapId, bot.CurrentArea) ||
-            closureManager.IsAreaClosed(matchingId, bot.CurrentArea))
+            IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea))
         {
             ClearBotRoomExplorePlan(bot);
             return false;
@@ -691,7 +800,7 @@ public partial class BotPlayerManager
             !bot.CurrentArea.IsCorridor() &&
             (!requireSecludedArea || IsSecludedFarmingArea(mapId, bot.CurrentArea)) &&
             !bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) &&
-            !closureManager.IsAreaClosed(matchingId, bot.CurrentArea) &&
+            !IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea) &&
             areaItemStockManager.HasRemaining(matchingId, (int)bot.CurrentArea))
         {
             areaOrder.Add(bot.CurrentArea);
@@ -705,7 +814,7 @@ public partial class BotPlayerManager
                            !area.IsCorridor() &&
                            !bot.CompletedRoomExploreAreas.Contains(area) &&
                            (!requireSecludedArea || IsSecludedFarmingArea(mapId, area)) &&
-                           !closureManager.IsAreaClosed(matchingId, area) &&
+                           !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
                            areaItemStockManager.HasRemaining(matchingId, (int)area))
             .OrderBy(_ => _rng.Next()));
 
@@ -761,7 +870,7 @@ public partial class BotPlayerManager
             bot,
             mapId,
             players,
-            area => closureManager.IsAreaClosed(matchingId, area));
+            area => IsAreaClosingOrClosed(closureManager, matchingId, area));
 
         if (decision.Kind == BotBehaviorActionKind.FollowTarget
             && decision.TargetArea != AreaType.None
@@ -775,7 +884,7 @@ public partial class BotPlayerManager
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
     {
         var rooms = Proto0Rooms
-            .Where(a => !closureManager.IsAreaClosed(matchingId, a))
+            .Where(a => !IsAreaClosingOrClosed(closureManager, matchingId, a))
             .ToList();
         if (rooms.Count == 0) return AreaType.None;
 
@@ -806,7 +915,7 @@ public partial class BotPlayerManager
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
     {
         var rooms = Proto0Rooms
-            .Where(a => !closureManager.IsAreaClosed(matchingId, a))
+            .Where(a => !IsAreaClosingOrClosed(closureManager, matchingId, a))
             .ToList();
         if (rooms.Count == 0) return AreaType.None;
 
@@ -1062,7 +1171,7 @@ public partial class BotPlayerManager
         AreaClosureManager closureManager, bool clearInteractQueue = true)
     {
         if (bot.IsEliminated) return false;
-        if (closureManager.IsAreaClosed(matchingId, area)) return false;
+        if (IsAreaClosingOrClosed(closureManager, matchingId, area)) return false;
 
         var info = GameInteractableData.Get(interactId);
         if (info == null || info.ZoneId != (int)area) return false;
@@ -1096,7 +1205,7 @@ public partial class BotPlayerManager
 
         var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
             area, targetCell,
-            a => closureManager.IsAreaClosed(matchingId, a));
+            a => IsAreaClosingOrClosed(closureManager, matchingId, a));
         if (path == null || path.Count == 0) return false;
 
         bot.Path = path;
@@ -1124,7 +1233,7 @@ public partial class BotPlayerManager
         int taskId, AreaClosureManager closureManager)
     {
         if (bot.IsEliminated) return false;
-        if (closureManager.IsAreaClosed(matchingId, area)) return false;
+        if (IsAreaClosingOrClosed(closureManager, matchingId, area)) return false;
 
         var info = GameInteractableData.Get(interactId);
         if (info == null || info.ZoneId != (int)area) return false;
@@ -1141,7 +1250,7 @@ public partial class BotPlayerManager
         {
             var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
                 area, targetCell,
-                a => closureManager.IsAreaClosed(matchingId, a));
+                a => IsAreaClosingOrClosed(closureManager, matchingId, a));
             if (path == null || path.Count == 0) return false;
 
             bot.Path = path;
