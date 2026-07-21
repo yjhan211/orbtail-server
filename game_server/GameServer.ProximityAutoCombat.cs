@@ -1,9 +1,11 @@
 using game_server.network;
 using game_server.services;
+using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.packets;
 
 namespace game_server;
 
@@ -209,6 +211,7 @@ public partial class GameServer
                 attack.TargetPlayerId,
                 attack.Area,
                 attack.WeaponItemId);
+            BroadcastObservedProximityAttackVfx(attack, matchingSessions);
 
             logger.LogDebug(
                 "Proximity auto attack: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Area={Area}, WeaponItemId={WeaponItemId}, Damage={Damage}",
@@ -232,6 +235,30 @@ public partial class GameServer
                 isBot: true);
             ProcessBotElimination(matchingId, bot.PlayerId, EliminationReason.MENTAL_ZERO, activeSessions,
                 attackerPlayerId: bot.LastProximityAttackerPlayerId);
+        }
+    }
+
+    private static void BroadcastObservedProximityAttackVfx(
+        ProximityCombatAttack attack,
+        IReadOnlyCollection<GameClientSession> matchingSessions)
+    {
+        foreach (var observer in matchingSessions)
+        {
+            if (!observer.PlayerId.HasValue || observer.IsEliminated ||
+                observer.PlayerId.Value == attack.AttackerPlayerId ||
+                observer.PlayerId.Value == attack.TargetPlayerId ||
+                observer.CurrentArea != attack.Area)
+                continue;
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_PROXIMITY_ATTACK_VFX);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_PROXIMITY_ATTACK_VFX
+            {
+                AttackerPlayerId = attack.AttackerPlayerId,
+                TargetPlayerId = attack.TargetPlayerId,
+                AreaType = attack.Area,
+                WeaponItemId = attack.WeaponItemId
+            }));
+            observer.Send(packet);
         }
     }
 

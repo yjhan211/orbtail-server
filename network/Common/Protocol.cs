@@ -217,6 +217,9 @@ namespace network.common
         G_TO_C_GROUND_ITEM_PICKUP_RESULT,
         G_TO_C_MATCH_START_COUNTDOWN,
 
+        // 자동 전투 제3자 관전용 투사체 이펙트
+        G_TO_C_PROXIMITY_ATTACK_VFX,
+
         END
     }
 
