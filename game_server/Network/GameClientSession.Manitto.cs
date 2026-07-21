@@ -687,32 +687,55 @@ public partial class GameClientSession
     ///     플레이어 탈락 처리 + 체인 단절 브로드캐스트
     /// </summary>
     private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
-        bool deferGameOver = false, long attackerPlayerId = 0)
+        bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false)
     {
-        _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
-        _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
-        var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason);
-
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
+        var eliminatedBot = _botPlayerManager.GetBot(CurrentMapSubId, eliminatedPlayerId);
+        AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
+        long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
+
+        _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
+        _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
+        var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason,
+            resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination);
+
         if (eliminatedSession != null)
             eliminatedSession.DropAllInventoryAtCurrentPosition();
         else
             DropBotInventoryAtCurrentPosition(eliminatedPlayerId);
 
-        // 1. 전체에게 탈락 알림. 결과 보고서용 상세 정보는 탈락자 본인에게만 포함한다.
-        var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, CurrentMapSubId);
+        // 1. 전체에게 탈락 알림. 탈락자에게만 결과표를 고정 패킷 예산 안에서 나눠 보낸다.
+        var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, CurrentMapSubId, 0);
+        var eliminatedResultChunks = GameResultPacketChunker.CreateEliminationChunks(
+            eliminatedPlayerId,
+            resolvedAttackerPlayerId,
+            reason,
+            eliminatedResultPlayers);
+
         foreach (var session in allSessions)
         {
+            if (session.PlayerId == eliminatedPlayerId)
+            {
+                foreach (var resultChunk in eliminatedResultChunks)
+                {
+                    using var resultPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);
+                    resultPacket.SetBody(MessagePackSerializer.Serialize(resultChunk));
+                    session.Send(resultPacket);
+                }
+
+                continue;
+            }
+
             using var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);
             var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED
             {
                 PlayerId = eliminatedPlayerId,
-                AttackerPlayerId = attackerPlayerId,
+                AttackerPlayerId = resolvedAttackerPlayerId,
                 Reason = reason,
-                ResultPlayers = session.PlayerId == eliminatedPlayerId
-                    ? eliminatedResultPlayers
-                    : new List<GameResultPlayerInfo>()
+                ResultPlayers = [],
+                ResultChunkIndex = 0,
+                IsResultEnd = true
             };
             eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
             session.Send(eliminatedPacket);
@@ -787,17 +810,15 @@ public partial class GameClientSession
     /// </summary>
     private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout, long matchingId)
     {
-        var players = BuildGameResultPlayers(allSessions, matchingId);
+        var players = BuildGameResultPlayers(allSessions, matchingId, winnerId);
 
-        using var resultPacket = Packet.Create((int)Protocol.G_TO_C_GAME_RESULT);
-        var resultMsg = new G_TO_C_GAME_RESULT
+        var resultChunks = GameResultPacketChunker.CreateGameResultChunks(winnerId, isTimeout, players);
+        foreach (var resultChunk in resultChunks)
         {
-            WinnerId = winnerId,
-            IsTimeout = isTimeout,
-            Players = players
-        };
-        resultPacket.SetBody(MessagePackSerializer.Serialize(resultMsg));
-        foreach (var session in allSessions) session.Send(resultPacket);
+            using var resultPacket = Packet.Create((int)Protocol.G_TO_C_GAME_RESULT);
+            resultPacket.SetBody(MessagePackSerializer.Serialize(resultChunk));
+            foreach (var session in allSessions) session.Send(resultPacket);
+        }
 
         // 기존 게임 종료 패킷도 전송 (클라이언트 호환)
         foreach (var session in allSessions)
@@ -814,6 +835,7 @@ public partial class GameClientSession
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
         GameRoundStates.TryRemove(matchingId, out _);
+        _areaClosureManager.CleanupMatching(matchingId);
         _presenceTracker?.Remove(matchingId);
 
         // #26: 봇 상태 + Redis matching_bots Hash 엔트리 정리 (TTL/누수 방지)
@@ -821,34 +843,73 @@ public partial class GameClientSession
         _ = CleanupRedisMatchingBotsAsync(matchingId);
     }
 
-    private List<GameResultPlayerInfo> BuildGameResultPlayers(List<GameClientSession> allSessions, long matchingId)
+    private List<GameResultPlayerInfo> BuildGameResultPlayers(List<GameClientSession> allSessions, long matchingId,
+        long winnerId)
     {
-        var chainData = _manittoChainManager.BuildGameResult(matchingId);
-        return chainData.Select(d =>
-        {
-            var playerInfo = ResolveResultPlayerInfo(matchingId, d.playerId);
-            var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
-            var bot = _botPlayerManager.GetBot(matchingId, d.playerId);
+        DateTime endedAtUtc = DateTime.UtcNow;
+        DateTime startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId) ?? endedAtUtc;
+        var resultRows = _manittoChainManager.BuildGameResult(matchingId);
+        var killCountsByPlayerId = resultRows
+            .Where(row => row.attackerPlayerId != 0 && row.reason == EliminationReason.MENTAL_ZERO)
+            .GroupBy(row => row.attackerPlayerId)
+            .ToDictionary(group => group.Key, group => group.Count());
 
-            return new GameResultPlayerInfo
+        var rows = resultRows
+            .Select(d =>
             {
-                PlayerId = d.playerId,
-                Name = ResolveResultPlayerName(d.playerId, playerInfo, bot),
-                JobTitle = d.job,
-                TargetPlayerId = d.targetId,
-                ManittoPlayerId = d.manittoId,
-                EliminationReason = d.reason,
-                FinalStatus = d.finalStatus,
-                Corruption = session?.Corruption ?? bot?.Corruption ?? 0,
-                MaxCorruption = MaxCorruption,
-                WearItemIdList = playerInfo?.WearItemIdList != null
-                    ? new List<int>(playerInfo.WearItemIdList)
-                    : new List<int>(),
-                SurvivalTimeSeconds = 0 // 근사값; 추후 정확한 타이밍 필요 시 개선
-            };
-        }).ToList();
-    }
+                var playerInfo = ResolveResultPlayerInfo(matchingId, d.playerId);
+                var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
+                var bot = _botPlayerManager.GetBot(matchingId, d.playerId);
+                var stats = _gameEventLogManager.GetSurvivorResultStats(matchingId, d.playerId);
+                DateTime survivalEndUtc = d.eliminatedAt ?? endedAtUtc;
+                int survivalSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds));
 
+                return new
+                {
+                    Info = new GameResultPlayerInfo
+                    {
+                        PlayerId = d.playerId,
+                        Name = ResolveResultPlayerName(d.playerId, playerInfo, bot),
+                        JobTitle = d.job,
+                        TargetPlayerId = d.targetId,
+                        ManittoPlayerId = d.manittoId,
+                        EliminationReason = d.reason,
+                        FinalStatus = d.finalStatus,
+                        Corruption = session?.Corruption ?? bot?.Corruption ?? 0,
+                        MaxCorruption = MaxCorruption,
+                        WearItemIdList = playerInfo?.WearItemIdList != null
+                            ? new List<int>(playerInfo.WearItemIdList)
+                            : new List<int>(),
+                        SurvivalTimeSeconds = survivalSeconds,
+                        // 실제 탈락 결과를 기준으로 집계해 전투 로그 누락/중복과 무관하게 결과표를 맞춘다.
+                        KillCount = killCountsByPlayerId.TryGetValue(d.playerId, out int killCount) ? killCount : 0,
+                        TotalDamageDealt = stats.TotalDamageDealt,
+                        TotalRecovery = stats.TotalRecovery,
+                        AttackerPlayerId = d.attackerPlayerId,
+                        EliminatedArea = d.eliminatedArea,
+                        IsAreaClosureElimination = d.isAreaClosureElimination
+                    },
+                    EliminatedAt = d.eliminatedAt
+                };
+            })
+            .ToList();
+
+        // A player who is eliminated during an ongoing match receives a combat leaderboard.
+        // The final result retains survival order, with the winner fixed at the top.
+        var ordered = winnerId == 0
+            ? rows
+                .OrderByDescending(row => row.Info.KillCount)
+                .ThenByDescending(row => row.Info.TotalDamageDealt)
+                .ThenByDescending(row => row.Info.SurvivalTimeSeconds)
+                .ThenBy(row => row.Info.PlayerId)
+            : rows
+                .OrderBy(row => row.Info.PlayerId == winnerId ? 0 : 1)
+                .ThenByDescending(row => row.EliminatedAt ?? endedAtUtc)
+                .ThenByDescending(row => row.Info.KillCount)
+                .ThenBy(row => row.Info.PlayerId);
+
+        return ordered.Select(row => row.Info).ToList();
+    }
     private PlayerInfo? ResolveResultPlayerInfo(long matchingId, long playerId)
     {
         if (BotPlayerManager.IsBotPlayerId(playerId))
@@ -1914,7 +1975,7 @@ public partial class GameClientSession
     ///     정신력 100 도달 시 탈락 체크. 권고안 B(2026-05-05): Stamina 0 단독으로는 탈락 트리거 안 됨
     ///     (대신 ModifyStats가 Stamina 부족분을 Corruption 1:2 변환).
     /// </summary>
-    public void CheckResourceElimination(long attackerPlayerId = 0)
+    public void CheckResourceElimination(long attackerPlayerId = 0, bool isAreaClosureElimination = false)
     {
         if (!PlayerId.HasValue || _isGameEnded || IsEliminated) return;
         if (Corruption < MaxCorruption) return;
@@ -1923,7 +1984,7 @@ public partial class GameClientSession
             "[Resource] Mental depleted: PlayerId={PlayerId}, Corruption={Corruption}/{MaxCorruption}. Eliminating player.",
             PlayerId.Value, Corruption, MaxCorruption);
         _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO,
-            attackerPlayerId: attackerPlayerId);
+            attackerPlayerId: attackerPlayerId, isAreaClosureElimination: isAreaClosureElimination);
     }
 
     // ===== 시한부 사보타주 (GDD 2.5.4, 패키지 Y 4B, #24) =====
