@@ -48,6 +48,12 @@ public class ManittoChainManager
                 existing.HasUsedDetection = link.HasUsedDetection;
                 existing.EliminationReason = link.EliminationReason;
                 existing.EliminatedAt = link.EliminatedAt;
+                existing.AttackerPlayerId = link.AttackerPlayerId;
+                existing.EliminatedArea = link.EliminatedArea;
+                existing.IsAreaClosureElimination = link.IsAreaClosureElimination;
+                existing.IsOvertimeElimination = link.IsOvertimeElimination;
+                existing.EliminationRank = link.EliminationRank;
+                existing.FinalOrbTier = link.FinalOrbTier;
             }
             else
             {
@@ -147,7 +153,10 @@ public class ManittoChainManager
     ///     플레이어 탈락 처리. 체인 단절 + 영향받는 플레이어 상태 변경.
     ///     반환: 영향받는 플레이어 목록 (playerId → 새 상태)
     /// </summary>
-    public Dictionary<long, ManittoStatus> EliminatePlayer(long matchingId, long playerId, EliminationReason reason)
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
+    public Dictionary<long, ManittoStatus> EliminatePlayer(long matchingId, long playerId, EliminationReason reason,
+        long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, bool isAreaClosureElimination = false,
+        bool isOvertimeElimination = false, int forcedRank = 0, int finalOrbTier = 0)
     {
         var affected = new Dictionary<long, ManittoStatus>();
 
@@ -158,6 +167,12 @@ public class ManittoChainManager
         link.Status = ManittoStatus.ELIMINATED;
         link.EliminationReason = reason;
         link.EliminatedAt = DateTime.UtcNow;
+        link.AttackerPlayerId = attackerPlayerId;
+        link.EliminatedArea = eliminatedArea;
+        link.IsAreaClosureElimination = isAreaClosureElimination;
+        link.IsOvertimeElimination = isOvertimeElimination;
+        link.FinalOrbTier = finalOrbTier;
+        link.EliminationRank = forcedRank > 0 ? forcedRank : state.AliveCount;
         state.AliveCount--;
 
         _logger.LogInformation("플레이어 탈락: MatchingId={MatchingId}, PlayerId={PlayerId}, 사유={Reason}, 생존={Alive}",
@@ -193,6 +208,7 @@ public class ManittoChainManager
     /// <summary>
     ///     최후의 1인 판정
     /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
     public (bool isGameOver, long? winnerId) CheckGameOver(long matchingId)
     {
         if (!_states.TryGetValue(matchingId, out var state))
@@ -256,21 +272,27 @@ public class ManittoChainManager
     /// <summary>
     ///     게임 결과 데이터 생성 (체인 전체 공개)
     /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
     public List<(long playerId, JobTitle job, long targetId, long manittoId,
-        EliminationReason reason, ManittoStatus finalStatus)> BuildGameResult(long matchingId)
+        EliminationReason reason, ManittoStatus finalStatus, DateTime? eliminatedAt,
+        long attackerPlayerId, AreaType eliminatedArea, bool isAreaClosureElimination,
+        bool isOvertimeElimination, int eliminationRank, int finalOrbTier)> BuildGameResult(long matchingId)
     {
         if (!_states.TryGetValue(matchingId, out var state))
             return new();
 
         var links = state.Links.Values.ToList();
-        var result = new List<(long, JobTitle, long, long, EliminationReason, ManittoStatus)>();
+        var result = new List<(long, JobTitle, long, long, EliminationReason, ManittoStatus, DateTime?, long,
+            AreaType, bool, bool, int, int)>();
 
         foreach (var link in links)
         {
             // 이 플레이어의 마니또 = 이 플레이어를 타겟으로 가진 링크
             long manittoId = links.FirstOrDefault(l => l.TargetPlayerId == link.PlayerId)?.PlayerId ?? 0;
             result.Add((link.PlayerId, link.MyJobTitle, link.TargetPlayerId, manittoId,
-                link.EliminationReason, link.Status));
+                link.EliminationReason, link.Status, link.EliminatedAt, link.AttackerPlayerId,
+                link.EliminatedArea, link.IsAreaClosureElimination, link.IsOvertimeElimination,
+                link.EliminationRank, link.FinalOrbTier));
         }
 
         return result;
@@ -287,6 +309,7 @@ public class ManittoChainManager
 
 public class MatchingChainState
 {
+    public object SyncRoot { get; } = new();
     public long MatchingId { get; set; }
     public ConcurrentDictionary<long, ChainLink> Links { get; set; } = new();
     public int AliveCount { get; set; }
@@ -302,4 +325,10 @@ public class ChainLink
     public bool HasUsedDetection { get; set; }
     public EliminationReason EliminationReason { get; set; } = EliminationReason.NONE;
     public DateTime? EliminatedAt { get; set; }
+    public long AttackerPlayerId { get; set; }
+    public AreaType EliminatedArea { get; set; } = AreaType.None;
+    public bool IsAreaClosureElimination { get; set; }
+    public bool IsOvertimeElimination { get; set; }
+    public int EliminationRank { get; set; }
+    public int FinalOrbTier { get; set; }
 }

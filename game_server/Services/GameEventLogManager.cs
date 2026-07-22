@@ -9,11 +9,16 @@ namespace game_server.services;
 /// </summary>
 public class GameEventLogManager
 {
-    private const int MaxEventsPerMatching = 500;
+    private const int MaxEventsPerMatching = 5_000;
+    private const int MaxArchivedMatchings = 50;
     private const int FollowInWindowSeconds = 6;
 
     private readonly ConcurrentDictionary<long, MatchingEventLog> _logs = new();
+    private readonly ConcurrentDictionary<long, MatchingEventLog> _archivedLogs = new();
     private readonly ConcurrentDictionary<long, SurvivorCombatState> _survivorCombatStates = new();
+    private readonly ConcurrentDictionary<long, SurvivorTelemetryState> _telemetryStates = new();
+    private readonly Queue<long> _archivedMatchingIds = new();
+    private readonly object _archiveLock = new();
     private long _nextSeq;
 
     public void SetPlayerArea(long matchingId, long playerId, string area)
@@ -35,6 +40,7 @@ public class GameEventLogManager
             now,
             FollowInWindowSeconds,
             CreateEntry);
+        LogClosureMovement(matchingId, playerId, fromArea, toArea, isBot, now);
     }
 
     public void LogResource(long matchingId, long playerId, int staminaDelta, int corruptionDelta,
@@ -265,6 +271,8 @@ public class GameEventLogManager
         {
             state.KnownPlayerIds.Add(attackerPlayerId);
             state.KnownPlayerIds.Add(targetPlayerId);
+            state.DamageDealtByPlayer.TryGetValue(attackerPlayerId, out int previousDamage);
+            state.DamageDealtByPlayer[attackerPlayerId] = previousDamage + Math.Max(0, damage);
             if (!state.EngagementsByAttacker.TryGetValue(attackerPlayerId, out var engagement) ||
                 engagement.TargetPlayerId != targetPlayerId)
             {
@@ -439,16 +447,294 @@ public class GameEventLogManager
         Append(matchingId, "SYSTEM", 0, false, description);
     }
 
+    public void BeginMatch(long matchingId, int seed)
+    {
+        if (matchingId <= 0) return;
+        _archivedLogs.TryRemove(matchingId, out _);
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        lock (state.SyncRoot)
+        {
+            if (state.MatchStarted) return;
+            state.MatchStarted = true;
+        }
+
+        Append(matchingId, "MATCH_STARTED", 0, false, $"Match started: seed={seed}.", entry =>
+        {
+            entry.MatchSeed = seed;
+            entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+        });
+    }
+
+    public void LogSpawnAssignment(long matchingId, long playerId, int seed, int anchorIndex, int cellX, int cellY,
+        string area, bool isBot)
+    {
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        lock (state.SyncRoot)
+        {
+            if (!state.SpawnLoggedPlayerIds.Add(playerId)) return;
+        }
+
+        Append(matchingId, "SPAWN_ASSIGNMENT", playerId, isBot,
+            $"Spawn: seed={seed}, anchor={anchorIndex}, cell=({cellX},{cellY}), area={area}.", entry =>
+            {
+                entry.MatchSeed = seed;
+                entry.SpawnAnchorIndex = anchorIndex;
+                entry.CellX = cellX;
+                entry.CellY = cellY;
+                entry.Area = area;
+            });
+    }
+
+    public void LogExploreStart(long matchingId, long playerId, int interactId, string area, bool isBot)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        lock (state.SyncRoot)
+        {
+            state.ExploreStarts[(playerId, interactId)] = now;
+            foreach (var warning in state.ClosureWarnings.Values.Where(warning =>
+                         warning.PlayerId == playerId && string.Equals(warning.Area, area, StringComparison.Ordinal) &&
+                         !warning.ExitedAt.HasValue))
+                warning.AdditionalExploreCount++;
+        }
+
+        AppendAt(matchingId, "EXPLORE_STARTED", playerId, isBot,
+            $"Explore started: interact={interactId}, area={area}.", now, entry =>
+            {
+                entry.ActivityId = interactId;
+                entry.Area = area;
+                entry.StartedAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
+    public void LogExploreCancelled(long matchingId, long playerId, int interactId, string area, string reason,
+        bool isBot) => LogExploreFinished(matchingId, playerId, interactId, area, "EXPLORE_CANCELLED", reason,
+        [], 0, isBot);
+
+    public void LogExploreCompleted(long matchingId, long playerId, int interactId, string area,
+        IReadOnlyCollection<int> generatedItemIds, int areaRemainingStock, bool isBot) =>
+        LogExploreFinished(matchingId, playerId, interactId, area, "EXPLORE_COMPLETED", "completed",
+            generatedItemIds, areaRemainingStock, isBot);
+
+    public void LogGroundItemSpawned(long matchingId, long discovererPlayerId, long groundItemUid, int itemId,
+        string area, long priorityExpiresAtUnixMs, bool isBot)
+    {
+        Append(matchingId, "GROUND_ITEM_SPAWNED", discovererPlayerId, isBot,
+            $"Ground item spawned: uid={groundItemUid}, item={itemId}, priorityUntil={priorityExpiresAtUnixMs}.", entry =>
+            {
+                entry.Area = area;
+                entry.GroundItemUid = groundItemUid;
+                entry.ItemId = itemId;
+                entry.DiscovererPlayerId = discovererPlayerId;
+                entry.PriorityExpiresAtUnixMs = priorityExpiresAtUnixMs;
+            });
+    }
+
+    public void LogGroundItemPriorityExpired(long matchingId, long discovererPlayerId, long groundItemUid,
+        int itemId, long expiredAtUnixMs)
+    {
+        Append(matchingId, "GROUND_ITEM_PRIORITY_EXPIRED", discovererPlayerId,
+            BotPlayerManager.IsBotPlayerId(discovererPlayerId),
+            $"Ground item priority expired: uid={groundItemUid}, item={itemId}.", entry =>
+            {
+                entry.GroundItemUid = groundItemUid;
+                entry.ItemId = itemId;
+                entry.DiscovererPlayerId = discovererPlayerId;
+                entry.PriorityExpiresAtUnixMs = expiredAtUnixMs;
+                entry.PriorityExpired = true;
+            });
+    }
+
+    public void LogGroundItemPickup(long matchingId, long pickerPlayerId, long discovererPlayerId,
+        long groundItemUid, int itemId, string area, bool autoUsed, bool isBot)
+    {
+        Append(matchingId, "GROUND_ITEM_PICKED_UP", pickerPlayerId, isBot,
+            $"Ground item picked up: uid={groundItemUid}, item={itemId}, discoverer={discovererPlayerId}, autoUsed={autoUsed}.", entry =>
+            {
+                entry.Area = area;
+                entry.GroundItemUid = groundItemUid;
+                entry.ItemId = itemId;
+                entry.DiscovererPlayerId = discovererPlayerId;
+                entry.PickerPlayerId = pickerPlayerId;
+                entry.AutoUsed = autoUsed;
+            });
+    }
+
+    public void LogClosureWarningSnapshot(long matchingId, long playerId, IReadOnlyCollection<string> warningAreas,
+        string currentArea, int corruption, int inventorySlotsUsed, int inventorySlotCapacity,
+        int areaRemainingStock, long closureAtUnixMs, bool isBot)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        lock (state.SyncRoot)
+        {
+            foreach (string warningArea in warningAreas)
+                state.ClosureWarnings[(playerId, warningArea, closureAtUnixMs)] =
+                    new ClosureWarningResponse(playerId, warningArea, now);
+        }
+
+        AppendAt(matchingId, "CLOSURE_WARNING_SNAPSHOT", playerId, isBot,
+            $"Closure warning: areas={string.Join(',', warningAreas)}, current={currentArea}, corruption={corruption}, slots={inventorySlotsUsed}/{inventorySlotCapacity}, stock={areaRemainingStock}.",
+            now, entry =>
+            {
+                entry.WarningAreas = warningAreas.ToList();
+                entry.Area = currentArea;
+                entry.Corruption = corruption;
+                entry.InventorySlotsUsed = inventorySlotsUsed;
+                entry.InventorySlotCapacity = inventorySlotCapacity;
+                entry.AreaRemainingStock = areaRemainingStock;
+                entry.ClosureAtUnixMs = closureAtUnixMs;
+            });
+    }
+
+    public void LogRecoveryUse(long matchingId, long playerId, int itemId, int recoveryAmount, string source,
+        bool isBot)
+    {
+        if (recoveryAmount <= 0) return;
+        Append(matchingId, "RECOVERY_USED", playerId, isBot,
+            $"Recovery used: item={itemId}, amount={recoveryAmount}, source={source}.", entry =>
+            {
+                entry.ItemId = itemId;
+                entry.RecoveryAmount = recoveryAmount;
+                entry.Outcome = source;
+            });
+    }
+
+    public void LogEliminationDrop(long matchingId, long playerId, string area,
+        IReadOnlyCollection<int> itemIds, int totalRecovery, bool isBot)
+    {
+        Append(matchingId, "ELIMINATION_DROP", playerId, isBot,
+            $"Elimination drop: items={itemIds.Count}, recovery={totalRecovery}.", entry =>
+            {
+                entry.Area = area;
+                entry.GeneratedItemIds = itemIds.ToList();
+                entry.DropRecoveryTotal = totalRecovery;
+            });
+    }
+
+    public static int CalculateDropRecoveryTotal(IEnumerable<int> itemIds) =>
+        itemIds.Sum(itemId => itemId switch
+        {
+            GroundItemPickupPolicy.BandageItemId => GroundItemPickupPolicy.BandageRecovery,
+            GroundItemPickupPolicy.FirstAidKitItemId => GroundItemPickupPolicy.FirstAidKitRecovery,
+            _ => 0
+        });
+
+    public void LogOvertimeStageChanged(long matchingId, int stage, int corruptionPerSecond)
+    {
+        if (stage <= 0 || corruptionPerSecond <= 0) return;
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        lock (state.SyncRoot)
+        {
+            if (state.OvertimeStage >= stage) return;
+            state.OvertimeStage = stage;
+        }
+
+        Append(matchingId, "OVERTIME_STAGE_CHANGED", 0, false,
+            $"Overtime stage {stage}: corruption={corruptionPerSecond}/s.", entry =>
+            {
+                entry.OvertimeStage = stage;
+                entry.CorruptionPerSecond = corruptionPerSecond;
+            });
+    }
+
+    public void LogMatchEnded(long matchingId, long winnerPlayerId, string endReason, string tieBreakCriterion,
+        IReadOnlyCollection<SurvivorFinalPlayerStats> players)
+    {
+        Append(matchingId, "MATCH_ENDED", winnerPlayerId, BotPlayerManager.IsBotPlayerId(winnerPlayerId),
+            $"Match ended: winner={winnerPlayerId}, reason={endReason}, tieBreak={tieBreakCriterion}.", entry =>
+            {
+                entry.WinnerPlayerId = winnerPlayerId;
+                entry.EndReason = endReason;
+                entry.TieBreakCriterion = tieBreakCriterion;
+                entry.FinalPlayerStats = players.ToList();
+                entry.CompletedAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
     public List<GameEventEntry> GetRecent(long matchingId, int limit = MaxEventsPerMatching, long? sinceSeq = null)
     {
-        if (!_logs.TryGetValue(matchingId, out var log)) return new List<GameEventEntry>();
+        if (!_logs.TryGetValue(matchingId, out var log) && !_archivedLogs.TryGetValue(matchingId, out log))
+            return new List<GameEventEntry>();
         return log.Snapshot(limit, sinceSeq);
     }
 
     public void Clear(long matchingId)
     {
-        _logs.TryRemove(matchingId, out _);
+        if (_logs.TryRemove(matchingId, out var log))
+        {
+            _archivedLogs[matchingId] = log;
+            lock (_archiveLock)
+            {
+                _archivedMatchingIds.Enqueue(matchingId);
+                while (_archivedMatchingIds.Count > MaxArchivedMatchings)
+                    _archivedLogs.TryRemove(_archivedMatchingIds.Dequeue(), out _);
+            }
+        }
         _survivorCombatStates.TryRemove(matchingId, out _);
+        _telemetryStates.TryRemove(matchingId, out _);
+    }
+
+    private void LogExploreFinished(long matchingId, long playerId, int interactId, string area, string type,
+        string outcome, IReadOnlyCollection<int> generatedItemIds, int areaRemainingStock, bool isBot)
+    {
+        var now = DateTimeOffset.UtcNow;
+        DateTimeOffset? startedAt = null;
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        lock (state.SyncRoot)
+            if (state.ExploreStarts.Remove((playerId, interactId), out var value)) startedAt = value;
+
+        AppendAt(matchingId, type, playerId, isBot,
+            $"Explore {outcome}: interact={interactId}, area={area}, items={string.Join(',', generatedItemIds)}, stock={areaRemainingStock}.",
+            now, entry =>
+            {
+                entry.ActivityId = interactId;
+                entry.Area = area;
+                entry.StartedAtUnixMs = startedAt?.ToUnixTimeMilliseconds();
+                entry.CompletedAtUnixMs = entry.TimestampUnixMs;
+                entry.ElapsedMilliseconds = startedAt.HasValue
+                    ? Math.Max(0, (long)(now - startedAt.Value).TotalMilliseconds)
+                    : null;
+                entry.GeneratedItemIds = generatedItemIds.ToList();
+                entry.AreaRemainingStock = areaRemainingStock;
+                entry.Outcome = outcome;
+            });
+    }
+
+    private void LogClosureMovement(long matchingId, long playerId, string fromArea, string toArea, bool isBot,
+        DateTimeOffset now)
+    {
+        if (!_telemetryStates.TryGetValue(matchingId, out var state)) return;
+        var derived = new List<(string Type, ClosureWarningResponse Warning)>();
+        lock (state.SyncRoot)
+        {
+            foreach (var warning in state.ClosureWarnings.Values.Where(w => w.PlayerId == playerId))
+            {
+                if (string.Equals(fromArea, warning.Area, StringComparison.Ordinal) &&
+                    !string.Equals(toArea, warning.Area, StringComparison.Ordinal) && !warning.ExitedAt.HasValue)
+                {
+                    warning.ExitedAt = now;
+                    derived.Add(("CLOSURE_WARNING_EXIT", warning));
+                }
+                else if (string.Equals(toArea, warning.Area, StringComparison.Ordinal) &&
+                         warning.ExitedAt.HasValue && !warning.ReenteredAt.HasValue)
+                {
+                    warning.ReenteredAt = now;
+                    derived.Add(("CLOSURE_WARNING_REENTRY", warning));
+                }
+            }
+        }
+
+        foreach (var (type, warning) in derived)
+            AppendAt(matchingId, type, playerId, isBot,
+                $"Closure response: area={warning.Area}, explores={warning.AdditionalExploreCount}.", now, entry =>
+                {
+                    entry.Area = warning.Area;
+                    entry.AdditionalExploreCount = warning.AdditionalExploreCount;
+                    entry.ElapsedMilliseconds = Math.Max(0, (long)(now - warning.WarnedAt).TotalMilliseconds);
+                    entry.ExitedAtUnixMs = warning.ExitedAt?.ToUnixTimeMilliseconds();
+                    entry.ReenteredAtUnixMs = warning.ReenteredAt?.ToUnixTimeMilliseconds();
+                });
     }
 
     private GameEventEntry Append(long matchingId, string type, long playerId, bool isBot, string description,
@@ -527,6 +813,34 @@ public class GameEventLogManager
     }
 
 
+    public void RecordSurvivorRecovery(long matchingId, long playerId, int amount)
+    {
+        if (playerId == 0 || amount <= 0)
+            return;
+
+        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        lock (state.SyncRoot)
+        {
+            state.KnownPlayerIds.Add(playerId);
+            state.RecoveryByPlayer.TryGetValue(playerId, out int previousRecovery);
+            state.RecoveryByPlayer[playerId] = previousRecovery + amount;
+        }
+    }
+
+    public SurvivorResultStats GetSurvivorResultStats(long matchingId, long playerId)
+    {
+        if (!_survivorCombatStates.TryGetValue(matchingId, out var state))
+            return default;
+
+        lock (state.SyncRoot)
+        {
+            state.KillCountsByPlayer.TryGetValue(playerId, out int kills);
+            state.DamageDealtByPlayer.TryGetValue(playerId, out int damage);
+            state.RecoveryByPlayer.TryGetValue(playerId, out int recovery);
+            return new SurvivorResultStats(kills, damage, recovery);
+        }
+    }
+
     private sealed class SurvivorCombatState
     {
         public object SyncRoot { get; } = new();
@@ -536,8 +850,34 @@ public class GameEventLogManager
         public long? FirstEliminationAtUnixMs { get; set; }
         public HashSet<long> KnownPlayerIds { get; } = new();
         public Dictionary<long, int> KillCountsByPlayer { get; } = new();
+        public Dictionary<long, int> DamageDealtByPlayer { get; } = new();
+        public Dictionary<long, int> RecoveryByPlayer { get; } = new();
         public Dictionary<long, SurvivorCombatEngagement> EngagementsByAttacker { get; } = new();
     }
+
+    private sealed class SurvivorTelemetryState
+    {
+        public object SyncRoot { get; } = new();
+        public bool MatchStarted { get; set; }
+        public int OvertimeStage { get; set; }
+        public HashSet<long> SpawnLoggedPlayerIds { get; } = new();
+        public Dictionary<(long PlayerId, int InteractId), DateTimeOffset> ExploreStarts { get; } = new();
+        public Dictionary<(long PlayerId, string Area, long ClosureAtUnixMs), ClosureWarningResponse>
+            ClosureWarnings
+        { get; } = new();
+    }
+
+    private sealed class ClosureWarningResponse(long playerId, string area, DateTimeOffset warnedAt)
+    {
+        public long PlayerId { get; } = playerId;
+        public string Area { get; } = area;
+        public DateTimeOffset WarnedAt { get; } = warnedAt;
+        public DateTimeOffset? ExitedAt { get; set; }
+        public DateTimeOffset? ReenteredAt { get; set; }
+        public int AdditionalExploreCount { get; set; }
+    }
+
+    public readonly record struct SurvivorResultStats(int KillCount, int TotalDamageDealt, int TotalRecovery);
 
     private sealed class SurvivorCombatEngagement
     {
@@ -904,6 +1244,35 @@ public class GameEventEntry
     public bool? IsFirstMilestone { get; set; }
     public string? Outcome { get; set; }
 
+    public int? MatchSeed { get; set; }
+    public int? SpawnAnchorIndex { get; set; }
+    public int? CellX { get; set; }
+    public int? CellY { get; set; }
+    public long? GroundItemUid { get; set; }
+    public int? ItemId { get; set; }
+    public List<int>? GeneratedItemIds { get; set; }
+    public long? DiscovererPlayerId { get; set; }
+    public long? PickerPlayerId { get; set; }
+    public long? PriorityExpiresAtUnixMs { get; set; }
+    public bool? PriorityExpired { get; set; }
+    public bool? AutoUsed { get; set; }
+    public List<string>? WarningAreas { get; set; }
+    public int? Corruption { get; set; }
+    public int? InventorySlotsUsed { get; set; }
+    public int? InventorySlotCapacity { get; set; }
+    public int? AreaRemainingStock { get; set; }
+    public long? ClosureAtUnixMs { get; set; }
+    public int? AdditionalExploreCount { get; set; }
+    public long? ReenteredAtUnixMs { get; set; }
+    public int? RecoveryAmount { get; set; }
+    public int? DropRecoveryTotal { get; set; }
+    public int? OvertimeStage { get; set; }
+    public int? CorruptionPerSecond { get; set; }
+    public long? WinnerPlayerId { get; set; }
+    public string? EndReason { get; set; }
+    public string? TieBreakCriterion { get; set; }
+    public List<SurvivorFinalPlayerStats>? FinalPlayerStats { get; set; }
+
     public long? StatementId { get; set; }
     public int? RoundId { get; set; }
     public long? SpeakerPlayerId { get; set; }
@@ -916,3 +1285,11 @@ public class GameEventEntry
     public List<long>? LinkedLogIds { get; set; }
     public long? SaidAtUnixMs { get; set; }
 }
+
+public sealed record SurvivorFinalPlayerStats(
+    long PlayerId,
+    int Rank,
+    int SurvivalTimeSeconds,
+    int KillCount,
+    int TotalDamageDealt,
+    int TotalRecovery);

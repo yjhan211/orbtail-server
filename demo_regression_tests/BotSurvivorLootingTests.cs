@@ -148,6 +148,9 @@ public sealed class BotSurvivorLootingTests
                 spawned[0].PositionX, spawned[0].PositionY, _ => true, out _));
 
         clock.Advance(GroundItemManager.DiscovererPickupWindow);
+        var expired = Assert.Single(manager.ExpireClaimReservations(matchingId));
+        Assert.Equal(spawned[1].GroundItemUid, expired.GroundItemUid);
+        Assert.Equal(discovererPlayerId, expired.DiscovererPlayerId);
         Assert.Equal(GroundItemClaimStatus.Success,
             manager.TryClaim(matchingId, spawned[1].GroundItemUid, otherPlayerId, AreaType.Classroom3,
                 spawned[1].PositionX, spawned[1].PositionY, _ => true, out _));

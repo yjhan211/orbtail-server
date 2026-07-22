@@ -687,32 +687,57 @@ public partial class GameClientSession
     ///     플레이어 탈락 처리 + 체인 단절 브로드캐스트
     /// </summary>
     private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
-        bool deferGameOver = false, long attackerPlayerId = 0)
+        bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
+        bool isOvertimeElimination = false, int forcedRank = 0)
     {
-        _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
-        _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
-        var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason);
-
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
+        var eliminatedBot = _botPlayerManager.GetBot(CurrentMapSubId, eliminatedPlayerId);
+        AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
+        long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
+
+        _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
+        _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
+        int finalOrbTier = ResolveFinalOrbTier(CurrentMapSubId, eliminatedPlayerId);
+        var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason,
+            resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank, finalOrbTier);
+
         if (eliminatedSession != null)
             eliminatedSession.DropAllInventoryAtCurrentPosition();
         else
             DropBotInventoryAtCurrentPosition(eliminatedPlayerId);
 
-        // 1. 전체에게 탈락 알림. 결과 보고서용 상세 정보는 탈락자 본인에게만 포함한다.
-        var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, CurrentMapSubId);
+        // 1. 전체에게 탈락 알림. 탈락자에게만 결과표를 고정 패킷 예산 안에서 나눠 보낸다.
+        var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, CurrentMapSubId, 0);
+        var eliminatedResultChunks = GameResultPacketChunker.CreateEliminationChunks(
+            eliminatedPlayerId,
+            resolvedAttackerPlayerId,
+            reason,
+            eliminatedResultPlayers);
+
         foreach (var session in allSessions)
         {
+            if (session.PlayerId == eliminatedPlayerId)
+            {
+                foreach (var resultChunk in eliminatedResultChunks)
+                {
+                    using var resultPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);
+                    resultPacket.SetBody(MessagePackSerializer.Serialize(resultChunk));
+                    session.Send(resultPacket);
+                }
+
+                continue;
+            }
+
             using var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);
             var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED
             {
                 PlayerId = eliminatedPlayerId,
-                AttackerPlayerId = attackerPlayerId,
+                AttackerPlayerId = resolvedAttackerPlayerId,
                 Reason = reason,
-                ResultPlayers = session.PlayerId == eliminatedPlayerId
-                    ? eliminatedResultPlayers
-                    : new List<GameResultPlayerInfo>()
+                ResultPlayers = [],
+                ResultChunkIndex = 0,
+                IsResultEnd = true
             };
             eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
             session.Send(eliminatedPacket);
@@ -781,23 +806,72 @@ public partial class GameClientSession
 
         return Task.CompletedTask;
     }
+    internal void EliminateForSettlement(
+        long eliminatedPlayerId,
+        bool isAreaClosureElimination,
+        bool isOvertimeElimination,
+        int forcedRank)
+    {
+        _ = ProcessElimination(
+            eliminatedPlayerId,
+            EliminationReason.MENTAL_ZERO,
+            deferGameOver: true,
+            isAreaClosureElimination: isAreaClosureElimination,
+            isOvertimeElimination: isOvertimeElimination,
+            forcedRank: forcedRank);
+    }
+
+    internal void TryEndSurvivorMatch(long winnerId, string criterion)
+    {
+        if (_isGameEnded || CurrentMapSubId <= 0)
+            return;
+
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        Logger.LogInformation(
+            "Survivor match resolved: MatchingId={MatchingId}, WinnerId={WinnerId}, Criterion={Criterion}",
+            CurrentMapSubId, winnerId, criterion);
+        _gameEventLogManager.LogSystem(
+            CurrentMapSubId,
+            $"survivor_settlement winner={winnerId} criterion={criterion}");
+        SendGameResult(allSessions, winnerId, false, CurrentMapSubId, "overtime_settlement", criterion);
+    }
+
+    private int ResolveFinalOrbTier(long matchingId, long playerId)
+    {
+        var equippedItem = _inGameInventoryManager.GetEquippedBattleItem(matchingId, playerId);
+        return equippedItem == null ? 0 : BattleItemCombatData.Get(equippedItem.ItemId)?.Tier ?? 0;
+    }
 
     /// <summary>
     ///     게임 결과 패킷 전송 (체인 전체 공개)
     /// </summary>
-    private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout, long matchingId)
+    private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout, long matchingId,
+        string endReason = "last_survivor", string tieBreakCriterion = "not_required")
     {
-        var players = BuildGameResultPlayers(allSessions, matchingId);
+        if (allSessions.Any(session => session.IsGameEnded))
+            return;
 
-        using var resultPacket = Packet.Create((int)Protocol.G_TO_C_GAME_RESULT);
-        var resultMsg = new G_TO_C_GAME_RESULT
+        var players = BuildGameResultPlayers(allSessions, matchingId, winnerId);
+        _gameEventLogManager.LogMatchEnded(
+            matchingId,
+            winnerId,
+            endReason,
+            tieBreakCriterion,
+            players.Select(player => new SurvivorFinalPlayerStats(
+                player.PlayerId,
+                player.Rank,
+                player.SurvivalTimeSeconds,
+                player.KillCount,
+                player.TotalDamageDealt,
+                player.TotalRecovery)).ToList());
+
+        var resultChunks = GameResultPacketChunker.CreateGameResultChunks(winnerId, isTimeout, players);
+        foreach (var resultChunk in resultChunks)
         {
-            WinnerId = winnerId,
-            IsTimeout = isTimeout,
-            Players = players
-        };
-        resultPacket.SetBody(MessagePackSerializer.Serialize(resultMsg));
-        foreach (var session in allSessions) session.Send(resultPacket);
+            using var resultPacket = Packet.Create((int)Protocol.G_TO_C_GAME_RESULT);
+            resultPacket.SetBody(MessagePackSerializer.Serialize(resultChunk));
+            foreach (var session in allSessions) session.Send(resultPacket);
+        }
 
         // 기존 게임 종료 패킷도 전송 (클라이언트 호환)
         foreach (var session in allSessions)
@@ -814,41 +888,87 @@ public partial class GameClientSession
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
         GameRoundStates.TryRemove(matchingId, out _);
+        _areaClosureManager.CleanupMatching(matchingId);
         _presenceTracker?.Remove(matchingId);
 
+        MatchStartGate.RemoveMatching(matchingId);
+        RngCollectCooldownStore.ClearMatching(matchingId);
+        _checklistManager.RemoveMatchingState(matchingId);
+        _areaItemStockManager.RemoveMatchingState(matchingId);
+        _groundItemManager.RemoveMatchingState(matchingId);
+        _inGameInventoryManager.RemoveMatchingState(matchingId);
+        _interactableStateManager.RemoveMatchingState(matchingId);
+        _areaRuleManager.RemoveMatchingState(matchingId);
+        _itemPoolManager.RemoveMatchingState(matchingId);
+        _doorStateManager.ClearMatching(matchingId);
+        _sabotageManager.RemoveMatchingState(matchingId);
+        _missionManager.CleanupMatching(matchingId);
+        _traceManager.CleanupMatching(matchingId);
+        _interactionChoiceService.CleanupMatching(matchingId);
+        _encounterRevealManager.CleanupMatching(matchingId);
+        _manittoChainManager.CleanupMatching(matchingId);
+        _gameEventLogManager.Clear(matchingId);
         // #26: 봇 상태 + Redis matching_bots Hash 엔트리 정리 (TTL/누수 방지)
         _botPlayerManager.CleanupMatching(matchingId);
         _ = CleanupRedisMatchingBotsAsync(matchingId);
     }
 
-    private List<GameResultPlayerInfo> BuildGameResultPlayers(List<GameClientSession> allSessions, long matchingId)
+    private List<GameResultPlayerInfo> BuildGameResultPlayers(List<GameClientSession> allSessions, long matchingId,
+        long winnerId)
     {
-        var chainData = _manittoChainManager.BuildGameResult(matchingId);
-        return chainData.Select(d =>
-        {
-            var playerInfo = ResolveResultPlayerInfo(matchingId, d.playerId);
-            var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
-            var bot = _botPlayerManager.GetBot(matchingId, d.playerId);
+        DateTime endedAtUtc = DateTime.UtcNow;
+        DateTime startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId) ?? endedAtUtc;
+        var resultRows = _manittoChainManager.BuildGameResult(matchingId);
+        var killCountsByPlayerId = resultRows
+            .Where(row => row.attackerPlayerId != 0 && row.reason == EliminationReason.MENTAL_ZERO)
+            .GroupBy(row => row.attackerPlayerId)
+            .ToDictionary(group => group.Key, group => group.Count());
 
-            return new GameResultPlayerInfo
+        var rows = resultRows
+            .Select(d =>
             {
-                PlayerId = d.playerId,
-                Name = ResolveResultPlayerName(d.playerId, playerInfo, bot),
-                JobTitle = d.job,
-                TargetPlayerId = d.targetId,
-                ManittoPlayerId = d.manittoId,
-                EliminationReason = d.reason,
-                FinalStatus = d.finalStatus,
-                Corruption = session?.Corruption ?? bot?.Corruption ?? 0,
-                MaxCorruption = MaxCorruption,
-                WearItemIdList = playerInfo?.WearItemIdList != null
-                    ? new List<int>(playerInfo.WearItemIdList)
-                    : new List<int>(),
-                SurvivalTimeSeconds = 0 // 근사값; 추후 정확한 타이밍 필요 시 개선
-            };
-        }).ToList();
-    }
+                var playerInfo = ResolveResultPlayerInfo(matchingId, d.playerId);
+                var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
+                var bot = _botPlayerManager.GetBot(matchingId, d.playerId);
+                var stats = _gameEventLogManager.GetSurvivorResultStats(matchingId, d.playerId);
+                DateTime survivalEndUtc = d.eliminatedAt ?? endedAtUtc;
+                int survivalSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds));
 
+                return new
+                {
+                    Info = new GameResultPlayerInfo
+                    {
+                        PlayerId = d.playerId,
+                        Name = ResolveResultPlayerName(d.playerId, playerInfo, bot),
+                        JobTitle = d.job,
+                        TargetPlayerId = d.targetId,
+                        ManittoPlayerId = d.manittoId,
+                        EliminationReason = d.reason,
+                        FinalStatus = d.finalStatus,
+                        Corruption = session?.Corruption ?? bot?.Corruption ?? 0,
+                        MaxCorruption = MaxCorruption,
+                        WearItemIdList = playerInfo?.WearItemIdList != null
+                            ? new List<int>(playerInfo.WearItemIdList)
+                            : new List<int>(),
+                        SurvivalTimeSeconds = survivalSeconds,
+                        // 실제 탈락 결과를 기준으로 집계해 전투 로그 누락/중복과 무관하게 결과표를 맞춘다.
+                        KillCount = killCountsByPlayerId.TryGetValue(d.playerId, out int killCount) ? killCount : 0,
+                        TotalDamageDealt = stats.TotalDamageDealt,
+                        TotalRecovery = stats.TotalRecovery,
+                        AttackerPlayerId = d.attackerPlayerId,
+                        EliminatedArea = d.eliminatedArea,
+                        IsAreaClosureElimination = d.isAreaClosureElimination,
+                        IsOvertimeElimination = d.isOvertimeElimination,
+                        Rank = d.playerId == winnerId ? 1 : d.eliminationRank,
+                        FinalOrbTier = d.playerId == winnerId ? ResolveFinalOrbTier(matchingId, d.playerId) : d.finalOrbTier
+                    },
+                    EliminatedAt = d.eliminatedAt
+                };
+            })
+            .ToList();
+
+        return GameResultRankingResolver.Resolve(rows.Select(row => row.Info));
+    }
     private PlayerInfo? ResolveResultPlayerInfo(long matchingId, long playerId)
     {
         if (BotPlayerManager.IsBotPlayerId(playerId))
@@ -1636,17 +1756,10 @@ public partial class GameClientSession
             return true;
         }
 
-        using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
-        Send(inventoryPacket);
 
         var outputItem = items.LastOrDefault();
         var equippedBattleItem = _inGameInventoryManager.GetEquippedBattleItem(CurrentMapSubId, PlayerId.Value);
-        if (outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid)
-        {
-            using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
-                true, outputItem.ItemUid, ErrorCode.SUCCESS);
-            Send(equippedPacket);
-        }
+        bool shouldReplaceEquippedItem = outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid;
 
         using var combinePacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId.Value);
         var itemData = GameItemData.Get(recipe.OutputItemId);
@@ -1662,6 +1775,19 @@ public partial class GameClientSession
         };
         combinePacket.SetBody(MessagePackSerializer.Serialize(combinedMsg));
         Send(combinePacket);
+
+        // 파트 머지와 동일하게 결과 패킷을 먼저 보내 클라이언트가 결과 슬롯 펄스를 준비하게 한다.
+        using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
+        Send(inventoryPacket);
+
+        // 결과 아이템을 인벤토리에 반영한 뒤 장착 결과를 보낸다. 반대로 보내면 클라이언트가
+        // 아직 존재하지 않는 ItemUid를 장착하려다 무시하고, 직전 장착이 해제된 채 남는다.
+        if (shouldReplaceEquippedItem)
+        {
+            using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
+                true, outputItem!.ItemUid, ErrorCode.SUCCESS);
+            Send(equippedPacket);
+        }
 
         _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
             $"Battle item combine: {msg.PartA} + {msg.PartB} => {recipe.OutputItemId}",
@@ -1767,7 +1893,7 @@ public partial class GameClientSession
         Logger.LogInformation("게임 즉시 종료(race 완주): MatchingId={MatchingId}, Winner={WinnerId}",
             CurrentMapSubId, winnerId);
 
-        SendGameResult(allSessions, winnerId, isTimeout: false, CurrentMapSubId);
+        SendGameResult(allSessions, winnerId, isTimeout: false, CurrentMapSubId, "race_completion");
     }
 
     /// <summary>
@@ -1908,7 +2034,8 @@ public partial class GameClientSession
     ///     정신력 100 도달 시 탈락 체크. 권고안 B(2026-05-05): Stamina 0 단독으로는 탈락 트리거 안 됨
     ///     (대신 ModifyStats가 Stamina 부족분을 Corruption 1:2 변환).
     /// </summary>
-    public void CheckResourceElimination(long attackerPlayerId = 0)
+    public void CheckResourceElimination(long attackerPlayerId = 0, bool isAreaClosureElimination = false,
+        bool isOvertimeElimination = false)
     {
         if (!PlayerId.HasValue || _isGameEnded || IsEliminated) return;
         if (Corruption < MaxCorruption) return;
@@ -1917,7 +2044,8 @@ public partial class GameClientSession
             "[Resource] Mental depleted: PlayerId={PlayerId}, Corruption={Corruption}/{MaxCorruption}. Eliminating player.",
             PlayerId.Value, Corruption, MaxCorruption);
         _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO,
-            attackerPlayerId: attackerPlayerId);
+            attackerPlayerId: attackerPlayerId, isAreaClosureElimination: isAreaClosureElimination,
+            isOvertimeElimination: isOvertimeElimination);
     }
 
     // ===== 시한부 사보타주 (GDD 2.5.4, 패키지 Y 4B, #24) =====

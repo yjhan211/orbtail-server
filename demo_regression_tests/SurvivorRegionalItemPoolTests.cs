@@ -1,4 +1,5 @@
 using game_server.services;
+using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
@@ -28,7 +29,7 @@ public sealed class SurvivorRegionalItemPoolTests
             [AreaType.Storage] = [107000003, 107000003, 201000008, 201000011],
             [AreaType.Storage2] = [107000003, 107000003, 201000011, 201000008],
             [AreaType.Junkyard] = [107000003, 201000008, 201000011],
-            [AreaType.Junkyard2] = [107000003, 201000008],
+            [AreaType.Junkyard2] = [107000003, 201000008, 201000011],
             [AreaType.AdminOffice] = [107000003, 201000011, 201000008, 201000011, 201000008],
             [AreaType.StaffRoom] = [107000003, 201000011, 201000011, 201000011, 201000008, 201000008, 201000008],
             [AreaType.Ground] = [107000003, 201000008, 201000011]
@@ -65,13 +66,15 @@ public sealed class SurvivorRegionalItemPoolTests
             [AreaType.StaffRoom] = 7,
             [AreaType.Gym] = 6,
             [AreaType.Storage] = 3,
-            [AreaType.Junkyard2] = 2,
+            [AreaType.Storage2] = 3,
+            [AreaType.Junkyard2] = 3,
             [AreaType.Classroom2] = 4,
             [AreaType.Library] = 8,
             [AreaType.Classroom3] = 5,
             [AreaType.ExamRoom] = 4,
             [AreaType.Classroom4] = 5,
-            [AreaType.BroadcastRoom] = 3
+            [AreaType.BroadcastRoom] = 3,
+            [AreaType.Ground] = 3,
         };
 
         foreach (var (area, markerCount) in activeMarkerCounts)
@@ -117,6 +120,48 @@ public sealed class SurvivorRegionalItemPoolTests
 
         Assert.False(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out int exhaustedItemId));
         Assert.Equal(0, exhaustedItemId);
+    }
+
+    [Fact]
+    public void HumanExploresUseRegionalStockFromFirstDrop()
+    {
+        const long matchId = 195015;
+        const long firstPlayerId = 1501;
+        const long secondPlayerId = 1502;
+        var info = GameInteractableData.GetByZone((int)AreaType.Classroom3)
+            .First(candidate => candidate.InteractionType == InteractionType.RNG_COLLECT);
+        var missionManager = new MissionManager(NullLogger.Instance);
+        var inventoryManager = new InGameInventoryManager();
+        var itemPoolManager = new ItemPoolManager();
+        var areaStockManager = new AreaItemStockManager(new ZeroRandom());
+        inventoryManager.Initialize();
+        itemPoolManager.Initialize();
+        areaStockManager.InitializeMatching(matchId);
+        missionManager.InitializePlayer(matchId, firstPlayerId, JobTitle.SCIENCE_MEMBER);
+        missionManager.InitializePlayer(matchId, secondPlayerId, JobTitle.SCIENCE_MEMBER);
+        try
+        {
+            int initialStock = areaStockManager.GetRemainingCount(matchId, (int)AreaType.Classroom3);
+            var first = RngCollectCore.Resolve(
+                matchId, firstPlayerId, JobTitle.SCIENCE_MEMBER, info,
+                missionManager, inventoryManager, itemPoolManager, areaStockManager, isBot: false);
+            var second = RngCollectCore.Resolve(
+                matchId, firstPlayerId, JobTitle.SCIENCE_MEMBER, info,
+                missionManager, inventoryManager, itemPoolManager, areaStockManager, isBot: false);
+            var otherPlayerFirst = RngCollectCore.Resolve(
+                matchId, secondPlayerId, JobTitle.SCIENCE_MEMBER, info,
+                missionManager, inventoryManager, itemPoolManager, areaStockManager, isBot: false);
+
+            Assert.Equal(107000003, Assert.Single(first.DroppedItemIds));
+            Assert.Equal(107000003, Assert.Single(second.DroppedItemIds));
+            Assert.Equal(201000008, Assert.Single(otherPlayerFirst.DroppedItemIds));
+            Assert.Equal(initialStock - 3,
+                areaStockManager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
+        }
+        finally
+        {
+            RngCollectCooldownStore.ClearMatching(matchId);
+        }
     }
 
     [Fact]
@@ -349,6 +394,11 @@ public sealed class SurvivorRegionalItemPoolTests
     {
         manager.TryConsumeDrops(matchId, (int)area, 1, out var items);
         return items;
+    }
+
+    private sealed class ZeroRandom : Random
+    {
+        public override int Next(int maxValue) => 0;
     }
 
     private static string FindNetworkBasePath()

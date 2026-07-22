@@ -97,11 +97,27 @@ public partial class GameClientSession
             _areaClosureManager.InitializeMatching(msg.MatchingId, jobPool);
             _areaItemStockManager.InitializeMatching(msg.MatchingId);
             _groundItemManager.InitializeMatching(msg.MatchingId);
+            int matchSeed = SurvivorRoyaleSpawnData.GetDeterministicSeed(msg.MatchingId);
+            _gameEventLogManager.BeginMatch(msg.MatchingId, matchSeed);
+            foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
+            {
+                _gameEventLogManager.LogSpawnAssignment(
+                    msg.MatchingId,
+                    bot.PlayerId,
+                    matchSeed,
+                    SurvivorRoyaleSpawnData.GetAnchorIndex(bot.Cell),
+                    bot.Cell.X,
+                    bot.Cell.Y,
+                    bot.CurrentArea.ToString(),
+                    isBot: true);
+            }
 
             // ?멸쾶???ㅽ꺈 珥덇린??            ResetInGameStats();
 
             // ?몄뀡 ?깅줉 ??寃뚯엫 ??대㉧ ?쒖옉 (?대떦 留ㅼ묶?????理쒖큹 1?뚮쭔)
             _registerSessionCallback(PlayerId.Value, this);
+            MatchStartGate.RegisterHumanPlayer(msg.MatchingId, PlayerId.Value,
+                _botPlayerManager.GetBots(msg.MatchingId).Count);
 
             StartGameTimerIfNeeded(msg.MatchingId);
 
@@ -124,6 +140,15 @@ public partial class GameClientSession
                     _lastValidCell?.Y);
                 _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea,
                     countAsEntry: false);
+                _gameEventLogManager.LogSpawnAssignment(
+                    CurrentMapSubId,
+                    PlayerId.Value,
+                    SurvivorRoyaleSpawnData.GetDeterministicSeed(CurrentMapSubId),
+                    SurvivorRoyaleSpawnData.GetAnchorIndex(_lastValidCell),
+                    _lastValidCell.X,
+                    _lastValidCell.Y,
+                    CurrentArea.ToString(),
+                    isBot: false);
                 _gameEventLogManager.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea.ToString());
 
                 // 珥덇린 Area??Interactable 紐⑸줉 ?꾩넚
@@ -147,6 +172,7 @@ public partial class GameClientSession
             };
             connectResultPacket.SetBody(MessagePackSerializer.Serialize(response));
             Send(connectResultPacket);
+            SendMatchStartCountdown(msg.MatchingId);
 
             Logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
 
@@ -172,6 +198,7 @@ public partial class GameClientSession
             // 誘몄뀡 ?뺣낫 ?꾩넚
             SendMissionInfo();
             SendRoundStateSnapshot(msg.MatchingId);
+            SendAreaClosureStateSnapshot();
             SendChecklistInfo();
 
             // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃
@@ -305,6 +332,38 @@ public partial class GameClientSession
         {
             Logger.LogError(ex, "Failed to broadcast player join for PlayerId={L}", PlayerId);
         }
+    }
+
+    private void SendMatchStartCountdown(long matchingId)
+    {
+        var snapshot = MatchStartGate.GetSnapshot(matchingId);
+        if (!snapshot.IsKnown)
+            return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN, PlayerId ?? 0);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ROUND_STATE
+        {
+            MatchingId = matchingId,
+            RoundNumber = 0,
+            TotalRounds = 0,
+            Phase = RoundPhase.Action,
+            RemainingSeconds = snapshot.RemainingSeconds,
+            PhaseDurationSeconds = 5,
+            ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            IsSessionEnded = false
+        }));
+        Send(packet);
+    }
+
+    private Task HandleMatchStartReady()
+    {
+        if (PlayerId.HasValue && CurrentMapSubId > 0)
+        {
+            MatchStartGate.MarkHumanReady(CurrentMapSubId, PlayerId.Value);
+            SendMatchStartCountdown(CurrentMapSubId);
+        }
+
+        return Task.CompletedTask;
     }
 
     private Task HandleHeartbeat()
@@ -1104,7 +1163,7 @@ public partial class GameClientSession
         Logger.LogInformation("Round session completed: MatchingId={MatchingId}, WinnerId={WinnerId}",
             matchingId, winnerId);
 
-        SendGameResult(sessions, winnerId ?? 0, false, matchingId);
+        SendGameResult(sessions, winnerId ?? 0, false, matchingId, "round_completion", "resource_ranking");
     }
 
     private void BroadcastRoundState(long matchingId, RoundRuntimeState state)
@@ -1138,6 +1197,45 @@ public partial class GameClientSession
                 includeEmpty: true);
             session.SendPresenceNotebookUpdate(matchingId, roundNumber, records);
         }
+    }
+
+    /// <summary>
+    /// 새 접속과 재접속 시 현재 방송 대상·남은 시간·누적 폐쇄 지역을 복원한다.
+    /// 미래 웨이브는 아직 보내지 않아 다음 방송 전까지 대상이 드러나지 않는다.
+    /// </summary>
+    private void SendAreaClosureStateSnapshot()
+    {
+        if (CurrentMapSubId <= 0) return;
+
+        var snapshot = _areaClosureManager.GetClientStateSnapshot(CurrentMapSubId);
+        foreach (var closedArea in snapshot.ClosedAreas)
+        {
+            using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED { AreaType = closedArea }));
+            Send(packet);
+        }
+
+        foreach (var warningArea in snapshot.WarningAreas)
+        {
+            using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+            {
+                AreaType = warningArea,
+                SecondsRemaining = snapshot.WarningSeconds,
+                ClosureAtUnixMs = snapshot.ClosureAtUnixMs
+            }));
+            Send(packet);
+        }
+
+        // AreaType.None은 미래 대상은 밝히지 않고 다음 경보 시각만 전달한다.
+        using var countdownPacket = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+        countdownPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+        {
+            AreaType = AreaType.None,
+            SecondsRemaining = snapshot.NextWarningSeconds,
+            ClosureAtUnixMs = snapshot.NextWarningAtUnixMs
+        }));
+        Send(countdownPacket);
     }
 
     private void SendRoundStateSnapshot(long matchingId)
@@ -1217,7 +1315,7 @@ public partial class GameClientSession
         Logger.LogInformation("?쒓컙 珥덇낵 ?뱀옄: MatchingId={MatchingId}, WinnerId={WinnerId}", matchingId, winnerId);
 
         // 寃곌낵 ?⑦궥 ?꾩넚
-        SendGameResult(sessions, winnerId ?? 0, true, matchingId);
+        SendGameResult(sessions, winnerId ?? 0, true, matchingId, "timeout", "resource_ranking");
     }
 
 }

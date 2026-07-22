@@ -397,6 +397,17 @@ public sealed class EncounterRevealManager
         return dx * dx + dy * dy;
     }
 
+    public void CleanupMatching(long matchingId)
+    {
+        foreach (var key in _pairCooldownUntil.Keys.Where(key => key.MatchingId == matchingId))
+            _pairCooldownUntil.TryRemove(key, out _);
+        foreach (var key in _corridorHintCooldownUntil.Keys.Where(key => key.MatchingId == matchingId))
+            _corridorHintCooldownUntil.TryRemove(key, out _);
+        foreach (var key in _pendingRoomDiscoveries.Keys.Where(key => key.MatchingId == matchingId))
+            _pendingRoomDiscoveries.TryRemove(key, out _);
+        foreach (var key in _pendingRoomEncounterTurns.Keys.Where(key => key.MatchingId == matchingId))
+            _pendingRoomEncounterTurns.TryRemove(key, out _);
+    }
     private readonly record struct PairKey(long MatchingId, long A, long B)
     {
         public static PairKey Create(long matchingId, long a, long b)

@@ -101,6 +101,11 @@ public class InteractionChoiceService
         _eventLogManager = eventLogManager;
     }
 
+    public void CleanupMatching(long matchingId)
+    {
+        _logManager.CleanupMatching(matchingId);
+    }
+
     private static bool IsEncounterAttackItem(int itemId)
     {
         return Array.IndexOf(EncounterAttackItemIds, itemId) >= 0;

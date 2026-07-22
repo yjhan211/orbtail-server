@@ -58,6 +58,8 @@ public partial class GameServer(
     private readonly EncounterRevealManager _encounterRevealManager = new();
     private readonly Proto0PresenceTracker _presenceTracker = new();
     private readonly ConcurrentDictionary<long, Timer> _headlessRoundTimers = new();
+    private readonly ConcurrentDictionary<long, int> _lastMatchStartCountdownBroadcast = new();
+    private readonly ConcurrentDictionary<long, object> _survivorSettlementLocks = new();
     private long _adminBotOnlyMatchingIdSeed = 9_000_000;
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
 
@@ -291,59 +293,13 @@ public partial class GameServer(
                 .Where(s => s.PlayerId.HasValue && !s.IsEliminated)
                 .ToList();
 
-            foreach (var session in activeSessions)
-            {
-                if (!GameClientSession.IsRoundActionPhase(session.CurrentMapSubId))
-                    continue;
-
-                bool isTerminal = session.ManittoStatus == ManittoStatus.TERMINAL;
-
-                int corruptionDelta = 0;
-
-                // [TEMP] 3. 시한부 추가 감소 — 디버깅용 비활성
-                // if (isTerminal)
-                //     corruptionDelta += TerminalDecayAmount;
-
-                // 4. 폐쇄 구역 체류 시 오염도 추가 증가
-                if (session.CurrentArea != AreaType.None &&
-                    _areaClosureManager.IsAreaClosed(session.CurrentMapSubId, session.CurrentArea))
-                {
-                    int closedAreaBasePenalty = ResolveStatusEffectCorruptionDelta(
-                        ClosedAreaStatusEffectId,
-                        Config.CLOSED_AREA_CORRUPTION_TICK);
-                    int closedAreaPenalty = ApplyClosedAreaResistance(session, closedAreaBasePenalty);
-                    corruptionDelta += closedAreaPenalty;
-                }
-
-                session.ModifyStats(corruptionDelta: corruptionDelta);
-
-                // 5. 자원 고갈 탈락 체크
-                session.CheckResourceElimination();
-            }
-
-            // 6. 봇 플레이어 자원 틱
+            // Environmental damage and eliminations are settled per matching below.
             var matchingIds = GetActiveMatchingIds();
 
             foreach (long matchingId in matchingIds)
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
-                if (!_botPlayerManager.HasBots(matchingId)) continue;
-                // 봇도 사람과 같은 폐쇄 구역 자원 변동을 적용한다.
-                var tickResult = _botPlayerManager.ProcessBotTick(
-                    matchingId,
-                    ResolveStatusEffectCorruptionDelta(ClosedAreaStatusEffectId, Config.CLOSED_AREA_CORRUPTION_TICK),
-                    _areaClosureManager);
-
-                // #125: 봇 위치 이동 이벤트 → 같은 영역 인간 세션에 패킷 브로드캐스트
-                foreach (var ev in tickResult.Movements)
-                    BroadcastBotMovement(matchingId, ev, activeSessions);
-
-                // #26: 봇 탈락 → 체인 단절 알림 + 영향받는 플레이어/봇 상태 변경
-                foreach (var (botId, reason) in tickResult.Eliminated)
-                {
-                    _gameEventLogManager.LogElimination(matchingId, botId, reason.ToString(), isBot: true);
-                    ProcessBotElimination(matchingId, botId, reason, activeSessions);
-                }
+                ProcessSurvivorResourceTickForMatching(matchingId, activeSessions);
 
                 // 봇 미션 처리(부품 회수/결합/RNG 채집)는 별도 1초 타이머(ProcessBotMission)에서 수행.
 
@@ -586,12 +542,18 @@ public partial class GameServer(
     ///     ManittoChainManager.EliminatePlayer로 체인 단절 (마니또 시한부 / 타겟 해방 등) 일괄 적용.
     /// </summary>
     private void ProcessBotElimination(long matchingId, long botId, EliminationReason reason,
-        List<GameClientSession> activeSessions, long attackerPlayerId = 0)
+        List<GameClientSession> activeSessions, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
+        bool isOvertimeElimination = false, bool deferGameOver = false, int forcedRank = 0)
     {
         try
         {
             _groundItemManager.ReleaseClaimReservationsForPlayer(matchingId, botId);
-            var affected = _manittoChainManager.EliminatePlayer(matchingId, botId, reason);
+            var eliminatedBot = _botPlayerManager.GetBot(matchingId, botId);
+            AreaType eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
+            int finalOrbTier = ResolveFinalOrbTier(matchingId, botId);
+            var affected = _manittoChainManager.EliminatePlayer(matchingId, botId, reason,
+                attackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
+                finalOrbTier);
             var matchingSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                 .ToList();
@@ -642,11 +604,11 @@ public partial class GameServer(
 
             // 3) 게임 종료 판정 — 봇 탈락으로 최후 1인 결정 가능
             var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(matchingId);
-            if (isGameOver && matchingSessions.Count > 0)
+            if (!deferGameOver && isGameOver && matchingSessions.Count > 0)
             {
                 logger.LogInformation("게임 종료(봇 탈락 후): MatchingId={MatchingId}, Winner={WinnerId}",
                     matchingId, winnerId);
-                matchingSessions[0].EndGameByBotRaceCompletion(winnerId ?? 0);
+                matchingSessions[0].TryEndSurvivorMatch(winnerId ?? 0, "last_survivor_after_combat");
             }
         }
         catch (Exception ex)
@@ -672,6 +634,13 @@ public partial class GameServer(
         var itemIds = removed
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
             .ToList();
+        _gameEventLogManager.LogEliminationDrop(
+            matchingId,
+            botPlayerId,
+            bot.CurrentArea.ToString(),
+            itemIds,
+            GameEventLogManager.CalculateDropRecoveryTotal(itemIds),
+            isBot: true);
         var spawned = _groundItemManager.SpawnItems(
             matchingId,
             bot.CurrentArea,
@@ -699,6 +668,12 @@ public partial class GameServer(
         {
             var missionResult = _botPlayerManager.ProcessBotMissionTick(
                 matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _areaItemStockManager, _groundItemManager, _checklistManager);
+
+            foreach (var (botId, itemId, amount) in missionResult.CorruptionRecoveries)
+            {
+                _gameEventLogManager.RecordSurvivorRecovery(matchingId, botId, amount);
+                _gameEventLogManager.LogRecoveryUse(matchingId, botId, itemId, amount, "bot_auto_use", isBot: true);
+            }
 
             // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
             foreach (var (botId, partId) in missionResult.CollectedParts)
@@ -762,6 +737,39 @@ public partial class GameServer(
                 _gameEventLogManager.LogSchoolActivityComplete(matchingId, botId, taskId,
                     area.ToString(), interactId, awardedScore, awardedContribution,
                     task?.TitleKr ?? "", isBot: true);
+            }
+
+            foreach (var (botId, interactId, area) in missionResult.BotExploreStarts)
+                _gameEventLogManager.LogExploreStart(
+                    matchingId, botId, interactId, area.ToString(), isBot: true);
+
+            foreach (var (botId, interactId, area, generatedItemIds, areaRemainingStock, outcome)
+                     in missionResult.RngExploreCompletions)
+            {
+                if (outcome == "cancelled")
+                    _gameEventLogManager.LogExploreCancelled(
+                        matchingId, botId, interactId, area.ToString(), outcome, isBot: true);
+                else
+                    _gameEventLogManager.LogExploreCompleted(
+                        matchingId, botId, interactId, area.ToString(),
+                        generatedItemIds, areaRemainingStock, isBot: true);
+            }
+
+            long botPriorityExpiresAtUnixMs = DateTimeOffset.UtcNow
+                .Add(GroundItemManager.DiscovererPickupWindow)
+                .ToUnixTimeMilliseconds();
+            foreach (var item in missionResult.GroundItemSpawns)
+            {
+                long discovererPlayerId = _groundItemManager.GetDiscovererPlayerId(
+                    matchingId, item.GroundItemUid);
+                _gameEventLogManager.LogGroundItemSpawned(
+                    matchingId,
+                    discovererPlayerId,
+                    item.GroundItemUid,
+                    item.ItemId,
+                    ((AreaType)item.AreaType).ToString(),
+                    botPriorityExpiresAtUnixMs,
+                    isBot: true);
             }
 
             if (missionResult.BotExploreStarts.Count > 0)
@@ -1205,7 +1213,19 @@ public partial class GameServer(
     {
         foreach (var pickup in pickups)
         {
+            if (pickup.CorruptionRecovery > 0)
+                _gameEventLogManager.RecordSurvivorRecovery(matchingId, pickup.BotPlayerId, pickup.CorruptionRecovery);
+
             var area = (AreaType)pickup.Item.AreaType;
+            _gameEventLogManager.LogGroundItemPickup(
+                matchingId,
+                pickup.BotPlayerId,
+                pickup.DiscovererPlayerId,
+                pickup.Item.GroundItemUid,
+                pickup.Item.ItemId,
+                area.ToString(),
+                pickup.AutoUsed,
+                isBot: true);
             using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
                 pickup.Item.GroundItemUid,
                 pickup.BotPlayerId,
@@ -1398,36 +1418,96 @@ public partial class GameServer(
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
 
-                var (warningArea, warningSeconds, closureAtUnixMs, closingArea) =
-                    _areaClosureManager.CheckClosureSchedule(matchingId);
+                var closureTick = _areaClosureManager.CheckClosureSchedule(matchingId);
 
                 var sessions = _clientSessions.Values
                     .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                     .ToList();
 
-                // 경고 브로드캐스트
-                if (warningArea.HasValue)
+                foreach (var expired in _groundItemManager.ExpireClaimReservations(matchingId))
+                    _gameEventLogManager.LogGroundItemPriorityExpired(
+                        matchingId,
+                        expired.DiscovererPlayerId,
+                        expired.GroundItemUid,
+                        expired.ItemId,
+                        expired.ExpiresAtUnixMs);
+
+                var (overtimeStage, overtimeRate) = _areaClosureManager.GetOvertimeStatus(matchingId);
+                _gameEventLogManager.LogOvertimeStageChanged(matchingId, overtimeStage, overtimeRate);
+
+                if (closureTick.WarningAreas.Count > 0)
+                {
+                    var warningAreas = closureTick.WarningAreas.Select(area => area.ToString()).ToList();
+                    foreach (var session in sessions.Where(session => !session.IsEliminated))
+                    {
+                        long playerId = session.PlayerId!.Value;
+                        int slots = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId)
+                            .GetAllItems().Count;
+                        _gameEventLogManager.LogClosureWarningSnapshot(
+                            matchingId,
+                            playerId,
+                            warningAreas,
+                            session.CurrentArea.ToString(),
+                            session.CurrentCorruption,
+                            slots,
+                            Config.SURVIVOR_INVENTORY_SLOT_COUNT,
+                            _areaItemStockManager.GetRemainingCount(matchingId, (int)session.CurrentArea),
+                            closureTick.ClosureAtUnixMs,
+                            isBot: false);
+                    }
+
+                    foreach (var bot in _botPlayerManager.GetBots(matchingId).Where(bot => !bot.IsEliminated))
+                    {
+                        int slots = _inGameInventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
+                            .GetAllItems().Count;
+                        _gameEventLogManager.LogClosureWarningSnapshot(
+                            matchingId,
+                            bot.PlayerId,
+                            warningAreas,
+                            bot.CurrentArea.ToString(),
+                            bot.Corruption,
+                            slots,
+                            Config.SURVIVOR_INVENTORY_SLOT_COUNT,
+                            _areaItemStockManager.GetRemainingCount(matchingId, (int)bot.CurrentArea),
+                            closureTick.ClosureAtUnixMs,
+                            isBot: true);
+                    }
+                }
+
+                foreach (var warningArea in closureTick.WarningAreas)
                 {
                     using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
                     var msg = new G_TO_C_AREA_CLOSURE_WARNING
                     {
-                        AreaType = warningArea.Value,
-                        SecondsRemaining = warningSeconds,
-                        ClosureAtUnixMs = closureAtUnixMs
+                        AreaType = warningArea,
+                        SecondsRemaining = closureTick.WarningSeconds,
+                        ClosureAtUnixMs = closureTick.ClosureAtUnixMs
                     };
                     packet.SetBody(MessagePackSerializer.Serialize(msg));
-                    foreach (var s in sessions) s.Send(packet);
+                    foreach (var session in sessions) session.Send(packet);
                 }
 
-                // 폐쇄 확정 브로드캐스트
-                if (closingArea.HasValue)
+                foreach (var closedArea in closureTick.ClosedAreas)
                 {
-                    _gameEventLogManager.LogClosure(matchingId, ((AreaType)closingArea.Value).ToString());
+                    _gameEventLogManager.LogClosure(matchingId, closedArea.ToString());
 
                     using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
-                    var msg = new G_TO_C_AREA_CLOSED { AreaType = closingArea.Value };
+                    var msg = new G_TO_C_AREA_CLOSED { AreaType = closedArea };
                     packet.SetBody(MessagePackSerializer.Serialize(msg));
-                    foreach (var s in sessions) s.Send(packet);
+                    foreach (var session in sessions) session.Send(packet);
+                }
+
+                if (closureTick.WarningAreas.Count > 0 || closureTick.ClosedAreas.Count > 0)
+                {
+                    var snapshot = _areaClosureManager.GetClientStateSnapshot(matchingId);
+                    using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+                    packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+                    {
+                        AreaType = AreaType.None,
+                        SecondsRemaining = snapshot.NextWarningSeconds,
+                        ClosureAtUnixMs = snapshot.NextWarningAtUnixMs
+                    }));
+                    foreach (var session in sessions) session.Send(packet);
                 }
             }
         }
@@ -1521,6 +1601,7 @@ public partial class GameServer(
                 .Where(s => s.PlayerId.HasValue)
                 .ToList();
             var matchingIds = GetActiveMatchingIds();
+            BroadcastMatchStartCountdowns(matchingIds, activeSessions);
 
             foreach (long matchingId in matchingIds)
             {
@@ -1575,6 +1656,47 @@ public partial class GameServer(
         finally
         {
             System.Threading.Volatile.Write(ref _botMovementProcessing, 0);
+        }
+    }
+
+    private void BroadcastMatchStartCountdowns(
+        IEnumerable<long> matchingIds,
+        IReadOnlyCollection<GameClientSession> activeSessions)
+    {
+        foreach (long matchingId in matchingIds)
+        {
+            var snapshot = MatchStartGate.GetSnapshot(matchingId);
+            if (!snapshot.IsKnown)
+                continue;
+
+            if (_lastMatchStartCountdownBroadcast.TryGetValue(matchingId, out int previous) &&
+                previous == snapshot.RemainingSeconds)
+            {
+                continue;
+            }
+
+            _lastMatchStartCountdownBroadcast[matchingId] = snapshot.RemainingSeconds;
+            var matchingSessions = activeSessions
+                .Where(session => session.CurrentMapSubId == matchingId)
+                .ToList();
+            if (matchingSessions.Count == 0)
+                continue;
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ROUND_STATE
+            {
+                MatchingId = matchingId,
+                RoundNumber = 0,
+                TotalRounds = 0,
+                Phase = RoundPhase.Action,
+                RemainingSeconds = snapshot.RemainingSeconds,
+                PhaseDurationSeconds = 5,
+                ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                IsSessionEnded = false
+            }));
+
+            foreach (var session in matchingSessions)
+                session.Send(packet);
         }
     }
 
@@ -1842,12 +1964,26 @@ public partial class GameServer(
             return;
 
         GameClientSession.CleanupAbandonedMatchingRuntime(matchingId);
+        _areaClosureManager.CleanupMatching(matchingId);
         _botPlayerManager.CleanupMatching(matchingId);
         _presenceTracker.Remove(matchingId);
         _checklistManager.RemoveMatchingState(matchingId);
         _areaItemStockManager.RemoveMatchingState(matchingId);
         _groundItemManager.RemoveMatchingState(matchingId);
         _inGameInventoryManager.RemoveMatchingState(matchingId);
+        _interactableStateManager.RemoveMatchingState(matchingId);
+        _areaRuleManager.RemoveMatchingState(matchingId);
+        _itemPoolManager.RemoveMatchingState(matchingId);
+        _doorStateManager.ClearMatching(matchingId);
+        _sabotageManager.RemoveMatchingState(matchingId);
+        _manittoChainManager.CleanupMatching(matchingId);
+        _missionManager.CleanupMatching(matchingId);
+        _traceManager.CleanupMatching(matchingId);
+        _interactionLogManager.CleanupMatching(matchingId);
+        _gameEventLogManager.Clear(matchingId);
+        _encounterRevealManager.CleanupMatching(matchingId);
+        _proximityAutoCombatResolver.RemoveMatching(matchingId);
+        _survivorSettlementLocks.TryRemove(matchingId, out _);
         _ = CleanupAbandonedMatchingRedisAsync(matchingId);
 
         logger.LogInformation(
@@ -1988,7 +2124,26 @@ public partial class GameServer(
             });
         }
 
+        var spawnAssignments = SurvivorRoyaleSpawnData.CreateAssignments(matchingId, playerIds);
+        foreach (var botInfo in botInfoList)
+            botInfo.SpawnCell = Cell.Clone(spawnAssignments[botInfo.PlayerId]);
+
         _botPlayerManager.RegisterBots(matchingId, MapId.School, botInfoList);
+        int matchSeed = SurvivorRoyaleSpawnData.GetDeterministicSeed(matchingId);
+        _gameEventLogManager.BeginMatch(matchingId, matchSeed);
+        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        {
+            _gameEventLogManager.LogSpawnAssignment(
+                matchingId,
+                bot.PlayerId,
+                matchSeed,
+                SurvivorRoyaleSpawnData.GetAnchorIndex(bot.Cell),
+                bot.Cell.X,
+                bot.Cell.Y,
+                bot.CurrentArea.ToString(),
+                isBot: true);
+        }
+
 
         foreach (var bot in botInfoList)
         {
@@ -2009,6 +2164,7 @@ public partial class GameServer(
 
         _areaClosureManager.InitializeMatching(matchingId, jobs);
         _areaItemStockManager.InitializeMatching(matchingId);
+        _groundItemManager.InitializeMatching(matchingId);
         _doorStateManager.InitializeMatching(matchingId);
         _checklistManager.StartRound(matchingId, 1, playerIds,
             playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
@@ -2350,6 +2506,29 @@ public partial class GameServer(
 
             _gameEventLogManager.LogSystem(matchingId,
                 $"Headless game ended: Round={state.RoundNumber}, Winner={winnerId ?? 0}");
+            DateTime endedAtUtc = DateTime.UtcNow;
+            DateTime startedAtUtc = _areaClosureManager.GetMatchingState(matchingId)?.GameStartTime ?? endedAtUtc;
+            var finalPlayerStats = _manittoChainManager.BuildGameResult(matchingId)
+                .Select(row =>
+                {
+                    var stats = _gameEventLogManager.GetSurvivorResultStats(matchingId, row.playerId);
+                    DateTime survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
+                    return new SurvivorFinalPlayerStats(
+                        row.playerId,
+                        row.playerId == winnerId ? 1 : row.eliminationRank,
+                        Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
+                        stats.KillCount,
+                        stats.TotalDamageDealt,
+                        stats.TotalRecovery);
+                })
+                .ToList();
+            _gameEventLogManager.LogMatchEnded(
+                matchingId,
+                winnerId ?? 0,
+                isGameOver ? "last_survivor" : "round_limit",
+                isGameOver ? "not_required" : "resource_ranking",
+                finalPlayerStats);
+            _gameEventLogManager.Clear(matchingId);
             StopHeadlessRoundTimer(matchingId);
             return;
         }

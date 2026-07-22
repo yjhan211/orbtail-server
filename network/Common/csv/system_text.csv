@@ -300,3 +300,33 @@ id,category,text_kr,text_en,text_jp
 "11047","6","우연입니다.","It was a coincidence.","偶然です。"
 "11048","6","{0} 중이었습니다.","I was doing {0}.","{0}の途中でした。"
 "11049","6","{0}(으)로 이동 중이었습니다.","I was heading to {0}.","{0}へ移動中でした。"
+
+"12178","6","다른 플레이어들을 기다리는 중입니다","Waiting for other players","他のプレイヤーを待っています"
+"12179","6","{0}초 뒤에 게임이 시작됩니다.","Game starts in {0} seconds.","ゲーム開始まであと{0}秒"
+12180,7,배낭,Bag,バッグ
+12181,7,상대방은 아직 나를 발견하지 못했습니다.,Your opponent has not noticed you yet.,相手はまだあなたに気づいていません。
+12182,7,서로를 발견했습니다.,You found each other.,互いを発見しました。
+12183,7,분필가루를 사용했습니다.,You used chalk powder.,チョーク粉を使いました。
+12184,7,조우에서 이탈했습니다.,You left the encounter.,遭遇から離脱しました。
+12185,7,상대방이 장소를 이탈했습니다.,Your opponent left the area.,相手がこの場所を離れました。
+12186,7,상대방이 기척을 숨겼습니다.,Your opponent hid their presence.,相手が気配を隠しました。
+12187,7,기척을 숨겼습니다.,You hid your presence.,気配を隠しました。
+12188,7,상대의 시야에서 벗어났습니다.,You left your opponent's sight.,相手の視界から外れました。
+12189,7,서로 기척을 숨겼습니다.,You both hid your presence.,互いに気配を隠しました。
+12190,7,서로의 시야에서 벗어났습니다.,You left each other's sight.,互いの視界から外れました。
+12191,7,당신은 상대방을 가만히 살펴보았습니다.,You quietly observed your opponent.,あなたは相手を静かに観察しました。
+12192,7,상대방이 분필가루를 사용했습니다.,Your opponent used chalk powder.,相手がチョーク粉を使いました。
+12193,7,상대방이 기척을 숨겼습니다.,Your opponent hid their presence.,相手が気配を隠しました。
+12194,7,상대방이 당신을 가만히 살펴보았습니다.,Your opponent quietly observed you.,相手があなたを静かに観察しました。
+12195,7,누군가의 공격,Someone's attack,誰かの攻撃
+12196,7,상대방,Opponent,相手
+12197,7,{0}의 공격,{0}'s attack,{0}の攻撃
+12198,7,공격을 받았습니다.,You were attacked.,攻撃を受けました。
+12199,7,{0} 탈락,{0} eliminated,{0} 脱落
+12200,7,플레이어가 탈락했습니다.,A player was eliminated.,プレイヤーが脱落しました。
+12201,7,{0}의 공격으로 사망,Killed by {0}'s attack,{0}の攻撃で死亡
+12202,7,{0}를 발견했습니다.,You discovered {0}.,{0}を発見しました。
+12203,7,{0}과 마주쳤습니다.,You encountered {0}.,{0}と遭遇しました。
+12204,7,상대가 시야에서 벗어났습니다.,Your opponent left your sight.,相手が視界から外れました。
+12205,7,조우 기회를 잃었습니다.,You lost the chance to encounter them.,遭遇の機会を逃しました。
+12206,7,{0}명,{0} players,{0}人

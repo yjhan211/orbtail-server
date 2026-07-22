@@ -2,3 +2,4 @@ item_id,family,tier,attack_range,damage,attack_interval_seconds,projectile_width
 107000003,orb,1,7.0,6,1.6,0.25,0
 107000004,orb,2,8.0,10,0.8,0.25,0
 107000006,orb,3,9.0,15,0.4,0.25,0
+107000015,compass,1,1.8,8,1.2,0,0

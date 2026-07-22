@@ -57,6 +57,8 @@ public sealed class GroundItemManager
                     SourcePlayerId = sourcePlayerId
                 };
                 state.Items[item.GroundItemUid] = item;
+                if (discovererPlayerId != 0)
+                    state.DiscovererPlayerIds[item.GroundItemUid] = discovererPlayerId;
                 if (discovererPlayerId != 0 &&
                     discovererPickupWindow is { } pickupWindow &&
                     pickupWindow > TimeSpan.Zero)
@@ -81,6 +83,35 @@ public sealed class GroundItemManager
                 .OrderBy(item => item.GroundItemUid)
                 .Select(Clone)
                 .ToList();
+    }
+
+    public long GetDiscovererPlayerId(long matchingId, long groundItemUid)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var state)) return 0;
+        lock (state.SyncRoot)
+            return state.DiscovererPlayerIds.GetValueOrDefault(groundItemUid);
+    }
+
+    public List<ExpiredGroundItemReservation> ExpireClaimReservations(long matchingId)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var state))
+            return [];
+
+        var now = _timeProvider.GetUtcNow();
+        lock (state.SyncRoot)
+        {
+            var expired = state.ClaimReservations
+                .Where(entry => entry.Value.ExpiresAtUtc <= now)
+                .Select(entry => new ExpiredGroundItemReservation(
+                    entry.Key,
+                    state.Items.TryGetValue(entry.Key, out var item) ? item.ItemId : 0,
+                    entry.Value.PlayerId,
+                    entry.Value.ExpiresAtUtc.ToUnixTimeMilliseconds()))
+                .ToList();
+            foreach (var reservation in expired)
+                state.ClaimReservations.Remove(reservation.GroundItemUid);
+            return expired;
+        }
     }
 
     public GroundItemClaimStatus TryClaim(long matchingId, long groundItemUid, long claimingPlayerId, AreaType playerArea,
@@ -119,6 +150,7 @@ public sealed class GroundItemManager
                 return GroundItemClaimStatus.Rejected;
 
             state.Items.Remove(groundItemUid);
+            state.DiscovererPlayerIds.Remove(groundItemUid);
             state.ClaimReservations.Remove(groundItemUid);
             claimedItem = Clone(item);
             return GroundItemClaimStatus.Success;
@@ -230,8 +262,15 @@ public sealed class GroundItemManager
         public object SyncRoot { get; } = new();
         public Dictionary<long, GroundItemInfo> Items { get; } = new();
         public Dictionary<long, GroundItemClaimReservation> ClaimReservations { get; } = new();
+        public Dictionary<long, long> DiscovererPlayerIds { get; } = new();
         public long NextUid() => checked(matchingId * 1_000_000L + ++_sequence);
     }
+
+    public readonly record struct ExpiredGroundItemReservation(
+        long GroundItemUid,
+        int ItemId,
+        long DiscovererPlayerId,
+        long ExpiresAtUnixMs);
 
     private readonly record struct GroundItemClaimReservation(long PlayerId, DateTimeOffset ExpiresAtUtc);
 }

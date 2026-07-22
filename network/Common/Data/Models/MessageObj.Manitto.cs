@@ -679,6 +679,8 @@ namespace network.common.data.models
         [Key("attackerPlayerId")] public long AttackerPlayerId { get; set; }
         [Key("reason")] public EliminationReason Reason { get; set; }
         [Key("resultPlayers")] public List<GameResultPlayerInfo> ResultPlayers { get; set; } = new();
+        [Key("resultChunkIndex")] public int ResultChunkIndex { get; set; }
+        [Key("isResultEnd")] public bool IsResultEnd { get; set; } = true;
     }
 
     [MessagePackObject]
@@ -885,6 +887,15 @@ namespace network.common.data.models
         [Key("corruption")] public int Corruption { get; set; }
         [Key("maxCorruption")] public int MaxCorruption { get; set; }
         [Key("wearItemIdList")] public List<int> WearItemIdList { get; set; } = new();
+        [Key("killCount")] public int KillCount { get; set; }
+        [Key("totalDamageDealt")] public int TotalDamageDealt { get; set; }
+        [Key("totalRecovery")] public int TotalRecovery { get; set; }
+        [Key("attackerPlayerId")] public long AttackerPlayerId { get; set; }
+        [Key("eliminatedArea")] public AreaType EliminatedArea { get; set; }
+        [Key("isAreaClosureElimination")] public bool IsAreaClosureElimination { get; set; }
+        [Key("isOvertimeElimination")] public bool IsOvertimeElimination { get; set; }
+        [Key("rank")] public int Rank { get; set; }
+        [Key("finalOrbTier")] public int FinalOrbTier { get; set; }
     }
 
     [MessagePackObject]
@@ -893,5 +904,7 @@ namespace network.common.data.models
         [Key("winnerId")] public long WinnerId { get; set; }
         [Key("isTimeout")] public bool IsTimeout { get; set; }
         [Key("players")] public List<GameResultPlayerInfo> Players { get; set; }
+        [Key("resultChunkIndex")] public int ResultChunkIndex { get; set; }
+        [Key("isResultEnd")] public bool IsResultEnd { get; set; } = true;
     }
 }

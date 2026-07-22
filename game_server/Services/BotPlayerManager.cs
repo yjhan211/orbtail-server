@@ -107,12 +107,18 @@ public partial class BotPlayerManager
 
         var bots = botInfoList.Select((info, index) =>
         {
-            // ?꾨줈??0: ?꾩썝 4痢?諛⑹뿉???쒖옉 (吏곸콉 誘몄뀡 ???숈꽑 ?먭린).
-            var startArea = IsAllowedAssignedStartArea(mapId, info.StartArea)
-                ? info.StartArea
-                : Proto0SpawnAreas[_rng.Next(Proto0SpawnAreas.Length)];
+            var hasAssignedSpawn = info.SpawnCell is { X: not 0 } || info.SpawnCell is { Y: not 0 };
+            var startCell = hasAssignedSpawn
+                ? Cell.Clone(info.SpawnCell)
+                : GameMapData.GetAreaSpawnCell(mapId, IsAllowedAssignedStartArea(mapId, info.StartArea)
+                    ? info.StartArea
+                    : Proto0SpawnAreas[_rng.Next(Proto0SpawnAreas.Length)]);
+            var startArea = GameMapData.GetCurrentArea(mapId, startCell);
+            if (startArea == AreaType.None)
+            {
+                startArea = AreaType.Corridor;
+            }
 
-            var startCell = GameMapData.GetAreaSpawnCell(mapId, startArea);
             var startPosition = CellToWorldPosition(startCell);
             var now = DateTime.UtcNow;
 
@@ -433,6 +439,9 @@ public class BotPlayerState
 
     /// <summary>Next time the bot may replace its chase or retreat path.</summary>
     public DateTime NextCombatRepathAt { get; set; } = DateTime.MinValue;
+
+    /// <summary>Safe room retained while the bot is travelling out of a warned area.</summary>
+    public AreaType EvacuationDestination { get; set; } = AreaType.None;
 
     /// <summary>?먭린 吏곸콉 諛쒓껄 援ъ뿭 ?쒗쉶 ??(?뷀뵆??4媛?+ ?좏뻾 ?꾩씠???꾩튂)</summary>
     public List<AreaType> JobAreaQueue { get; set; } = new();

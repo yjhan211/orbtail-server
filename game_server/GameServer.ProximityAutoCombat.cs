@@ -1,9 +1,11 @@
 using game_server.network;
 using game_server.services;
+using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.packets;
 
 namespace game_server;
 
@@ -36,7 +38,10 @@ public partial class GameServer
         try
         {
             var activeSessions = _clientSessions.Values
-                .Where(session => session.PlayerId.HasValue && !session.IsEliminated)
+                .Where(session =>
+                    session.PlayerId.HasValue &&
+                    !session.IsEliminated &&
+                    !session.IsGameEnded)
                 .ToList();
 
             foreach (long matchingId in GetActiveMatchingIds())
@@ -44,42 +49,16 @@ public partial class GameServer
                 if (!GameClientSession.IsRoundActionPhase(matchingId))
                     continue;
 
-                var matchingSessions = activeSessions
-                    .Where(session => session.CurrentMapSubId == matchingId)
-                    .ToList();
-                var matchingBots = _botPlayerManager.GetBots(matchingId)
-                    .Where(bot => !bot.IsEliminated)
-                    .ToList();
-
-                var actors = BuildProximityCombatActors(matchingId, matchingSessions, matchingBots);
-                var nowUtc = DateTime.UtcNow;
-                var attacks = _proximityAutoCombatResolver.Resolve(
-                    matchingId,
-                    actors,
-                    nowUtc,
-                    ProximityCombatLineOfSight.CanTarget,
-                    onTargetAcquired: targetEvent =>
-                        _gameEventLogManager.LogSurvivorTargetAcquired(
-                            matchingId,
-                            targetEvent.AttackerPlayerId,
-                            targetEvent.TargetPlayerId,
-                            targetEvent.Area.ToString(),
-                            targetEvent.WeaponItemId,
-                            targetEvent.TargetWeaponItemId,
-                            BotPlayerManager.IsBotPlayerId(targetEvent.AttackerPlayerId),
-                            targetEvent.OccurredAtUtc),
-                    onTargetLost: targetEvent =>
-                        _gameEventLogManager.LogSurvivorTargetLost(
-                            matchingId,
-                            targetEvent.AttackerPlayerId,
-                            targetEvent.TargetPlayerId,
-                            targetEvent.Reason,
-                            BotPlayerManager.IsBotPlayerId(targetEvent.AttackerPlayerId),
-                            targetEvent.OccurredAtUtc));
-                if (attacks.Count == 0)
-                    continue;
-
-                ApplyProximityCombatVolley(matchingId, attacks, matchingSessions, matchingBots, activeSessions);
+                lock (GetSurvivorSettlementLock(matchingId))
+                {
+                    ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
+                    bool matchingEnded = _clientSessions.Values
+                        .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
+                        .All(session => session.IsGameEnded);
+                    if (!matchingEnded) continue;
+                    _proximityAutoCombatResolver.RemoveMatching(matchingId);
+                    _survivorSettlementLocks.TryRemove(matchingId, out _);
+                }
             }
         }
         catch (Exception ex)
@@ -92,6 +71,48 @@ public partial class GameServer
         }
     }
 
+    private void ProcessProximityAutoCombatForMatching(
+        long matchingId,
+        List<GameClientSession> activeSessions)
+    {
+        var matchingSessions = activeSessions
+            .Where(session =>
+                session.CurrentMapSubId == matchingId &&
+                !session.IsEliminated &&
+                !session.IsGameEnded)
+            .ToList();
+        var matchingBots = _botPlayerManager.GetBots(matchingId)
+            .Where(bot => !bot.IsEliminated)
+            .ToList();
+
+        var actors = BuildProximityCombatActors(matchingId, matchingSessions, matchingBots);
+        var attacks = _proximityAutoCombatResolver.Resolve(
+            matchingId,
+            actors,
+            DateTime.UtcNow,
+            ProximityCombatLineOfSight.CanTarget,
+            onTargetAcquired: targetEvent =>
+                _gameEventLogManager.LogSurvivorTargetAcquired(
+                    matchingId,
+                    targetEvent.AttackerPlayerId,
+                    targetEvent.TargetPlayerId,
+                    targetEvent.Area.ToString(),
+                    targetEvent.WeaponItemId,
+                    targetEvent.TargetWeaponItemId,
+                    BotPlayerManager.IsBotPlayerId(targetEvent.AttackerPlayerId),
+                    targetEvent.OccurredAtUtc),
+            onTargetLost: targetEvent =>
+                _gameEventLogManager.LogSurvivorTargetLost(
+                    matchingId,
+                    targetEvent.AttackerPlayerId,
+                    targetEvent.TargetPlayerId,
+                    targetEvent.Reason,
+                    BotPlayerManager.IsBotPlayerId(targetEvent.AttackerPlayerId),
+                    targetEvent.OccurredAtUtc));
+
+        if (attacks.Count > 0)
+            ApplyProximityCombatVolley(matchingId, attacks, matchingSessions, matchingBots, activeSessions);
+    }
     private List<ProximityCombatActor> BuildProximityCombatActors(
         long matchingId,
         IReadOnlyCollection<GameClientSession> matchingSessions,
@@ -168,6 +189,16 @@ public partial class GameServer
             int damage = attack.Damage;
             if (damage <= 0)
                 continue;
+            bool attackerAlive = matchingSessions.Any(session =>
+                                     session.PlayerId == attack.AttackerPlayerId &&
+                                     !session.IsEliminated &&
+                                     session.CurrentCorruption < 100) ||
+                                 matchingBots.Any(bot =>
+                                     bot.PlayerId == attack.AttackerPlayerId &&
+                                     !bot.IsEliminated &&
+                                     bot.Corruption < 100);
+            if (!attackerAlive)
+                continue;
 
             var targetSession = matchingSessions.FirstOrDefault(session =>
                 session.PlayerId == attack.TargetPlayerId &&
@@ -186,6 +217,7 @@ public partial class GameServer
                 var targetBot = matchingBots.FirstOrDefault(bot =>
                     bot.PlayerId == attack.TargetPlayerId &&
                     !bot.IsEliminated &&
+                    bot.Corruption < 100 &&
                     bot.CurrentArea == attack.Area);
                 if (targetBot == null)
                     continue;
@@ -209,6 +241,7 @@ public partial class GameServer
                 attack.TargetPlayerId,
                 attack.Area,
                 attack.WeaponItemId);
+            BroadcastObservedProximityAttackVfx(attack, matchingSessions);
 
             logger.LogDebug(
                 "Proximity auto attack: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Area={Area}, WeaponItemId={WeaponItemId}, Damage={Damage}",
@@ -232,6 +265,30 @@ public partial class GameServer
                 isBot: true);
             ProcessBotElimination(matchingId, bot.PlayerId, EliminationReason.MENTAL_ZERO, activeSessions,
                 attackerPlayerId: bot.LastProximityAttackerPlayerId);
+        }
+    }
+
+    private static void BroadcastObservedProximityAttackVfx(
+        ProximityCombatAttack attack,
+        IReadOnlyCollection<GameClientSession> matchingSessions)
+    {
+        foreach (var observer in matchingSessions)
+        {
+            if (!observer.PlayerId.HasValue || observer.IsEliminated ||
+                observer.PlayerId.Value == attack.AttackerPlayerId ||
+                observer.PlayerId.Value == attack.TargetPlayerId ||
+                observer.CurrentArea != attack.Area)
+                continue;
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_PROXIMITY_ATTACK_VFX);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_PROXIMITY_ATTACK_VFX
+            {
+                AttackerPlayerId = attack.AttackerPlayerId,
+                TargetPlayerId = attack.TargetPlayerId,
+                AreaType = attack.Area,
+                WeaponItemId = attack.WeaponItemId
+            }));
+            observer.Send(packet);
         }
     }
 

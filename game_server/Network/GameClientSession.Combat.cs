@@ -647,7 +647,13 @@ public partial class GameClientSession
             }
         }
 
+        int corruptionBeforeBuffs = Corruption;
         if (staminaDelta != 0 || corruptionDelta != 0) ModifyStats(staminaDelta, corruptionDelta);
+        int recoveredCorruption = Math.Max(0, corruptionBeforeBuffs - Corruption);
+        if (PlayerId.HasValue && recoveredCorruption > 0)
+            _gameEventLogManager.LogRecoveryUse(
+                CurrentMapSubId, PlayerId.Value, itemId, recoveredCorruption,
+                source: "inventory_consumable", isBot: false);
 
         return hasPeriodicBuff;
     }
@@ -660,7 +666,8 @@ public partial class GameClientSession
     ///     2026-05-05 권고안 B: 스태미나 부족 시 부족분만큼 Corruption 1:2 변환.
     ///     단, 양수 staminaDelta(회복)는 그대로 처리.
     /// </summary>
-    public void ModifyStats(int staminaDelta = 0, int corruptionDelta = 0, long attackerPlayerId = 0)
+    public void ModifyStats(int staminaDelta = 0, int corruptionDelta = 0, long attackerPlayerId = 0,
+        bool isAreaClosureElimination = false, bool isOvertimeElimination = false, bool deferElimination = false)
     {
         int oldStamina = Stamina;
         int oldCorruption = Corruption;
@@ -705,12 +712,17 @@ public partial class GameClientSession
         // 운영툴 진행 로그
         if (PlayerId.HasValue)
         {
+            int recoveredCorruption = Math.Max(0, oldCorruption - Corruption);
+            if (recoveredCorruption > 0)
+                _gameEventLogManager.RecordSurvivorRecovery(CurrentMapSubId, PlayerId.Value, recoveredCorruption);
+
             _gameEventLogManager.LogResource(CurrentMapSubId, PlayerId.Value,
                 staminaDelta, totalCorDelta, Stamina, Corruption,
                 conversionCor > 0, reason: "", isBot: false);
         }
 
-        CheckResourceElimination(attackerPlayerId);
+        if (!deferElimination)
+            CheckResourceElimination(attackerPlayerId, isAreaClosureElimination, isOvertimeElimination);
     }
 
     /// <summary>

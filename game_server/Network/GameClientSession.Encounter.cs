@@ -750,7 +750,7 @@ public partial class GameClientSession
         ApplyItemBuffsToRoomEncounterBot(targetBot, attackItemId);
     }
 
-    private static void ApplyItemBuffsToRoomEncounterBot(BotPlayerState? bot, int itemId)
+    private void ApplyItemBuffsToRoomEncounterBot(BotPlayerState? bot, int itemId)
     {
         if (bot == null)
             return;
@@ -780,7 +780,13 @@ public partial class GameClientSession
         if (staminaDelta != 0)
             bot.Stamina = Math.Clamp(bot.Stamina + staminaDelta, 0, 100);
         if (corruptionDelta != 0)
+        {
+            int previousCorruption = bot.Corruption;
             bot.Corruption = Math.Clamp(bot.Corruption + corruptionDelta, 0, 100);
+            int recoveredCorruption = Math.Max(0, previousCorruption - bot.Corruption);
+            if (recoveredCorruption > 0)
+                _gameEventLogManager.RecordSurvivorRecovery(CurrentMapSubId, bot.PlayerId, recoveredCorruption);
+        }
     }
 
     private void SendRoomEncounterTurnResultToPlayer(IReadOnlyCollection<GameClientSession> allSessions,
