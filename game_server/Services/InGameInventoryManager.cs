@@ -99,6 +99,8 @@ public class PlayerInGameInventory(long matchingId)
         addedItem = null;
         if (maxSlots <= 0 || _items.Count >= maxSlots) return false;
         addedItem = AddItem(itemId, 1, giftState, forceSeparateStack: true);
+        if (_equippedBattleItemUid == 0 && SurvivorOrbData.IsSurvivorOrb(itemId))
+            _equippedBattleItemUid = addedItem.ItemUid;
         return true;
     }
     /// <summary>
@@ -190,6 +192,23 @@ public class PlayerInGameInventory(long matchingId)
 
         _equippedBattleItemUid = 0;
         return null;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryGetActiveSurvivorOrbPair(out SurvivorOrbColor color, out int pairTier)
+    {
+        var equippedItem = GetEquippedBattleItem();
+        if (equippedItem == null)
+        {
+            color = SurvivorOrbColor.None;
+            pairTier = 0;
+            return false;
+        }
+
+        var boardItemIds = _items.Values
+            .Where(item => item.Count > 0)
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count));
+        return SurvivorOrbData.TryGetActivePair(equippedItem.ItemId, boardItemIds, out color, out pairTier);
     }
 
     /// <summary>

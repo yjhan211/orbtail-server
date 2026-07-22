@@ -77,7 +77,7 @@ public sealed class RoomEventP0DataTests
 
         // Survivor Royale replaces the legacy room-event stock table with its finite battle-loot pool.
         // The exact Survivor pool is covered by SurvivorRegionalItemPoolTests.
-        if (areaPools.SelectMany(area => area.ItemIds).Any(itemId => itemId is >= 107000003 and <= 107000014))
+        if (areaPools.SelectMany(area => area.ItemIds).Any(itemId => itemId is >= 107000003 and <= 107000032))
         {
             Assert.All(areaPools.SelectMany(area => area.ItemIds), itemId => Assert.NotNull(GameItemData.Get(itemId)));
             return;

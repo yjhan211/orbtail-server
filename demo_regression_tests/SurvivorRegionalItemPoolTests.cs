@@ -15,24 +15,24 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Fact]
-    public void RegionalPoolsMatchRecorderOnlyBaseline()
+    public void RegionalPoolsMatchColorSupplyPlan()
     {
         var expected = new Dictionary<AreaType, int[]>
         {
-            [AreaType.Classroom3] = [107000003, 107000003, 201000008, 201000011, 201000011],
-            [AreaType.Classroom4] = [107000003, 201000008, 201000011, 201000008, 201000011],
-            [AreaType.ExamRoom] = [107000003, 107000003, 201000011, 201000008],
-            [AreaType.BroadcastRoom] = [107000003, 107000003, 201000011],
+            [AreaType.Classroom3] = [107000010, 107000020, 201000008, 201000011, 201000011],
+            [AreaType.Classroom4] = [107000030, 201000008, 201000011, 201000008, 201000011],
+            [AreaType.ExamRoom] = [107000030, 107000020, 201000011, 201000008],
+            [AreaType.BroadcastRoom] = [107000010, 107000020, 201000011],
             [AreaType.Classroom2] = [201000008, 201000008, 201000018, 201000011],
-            [AreaType.Library] = [107000003, 107000003, 201000008, 201000008, 201000008, 201000011, 201000011, 201000011],
-            [AreaType.Gym] = [107000003, 107000003, 107000003, 201000008, 201000011, 201000008],
-            [AreaType.Storage] = [107000003, 107000003, 201000008, 201000011],
-            [AreaType.Storage2] = [107000003, 107000003, 201000011, 201000008],
-            [AreaType.Junkyard] = [107000003, 201000008, 201000011],
-            [AreaType.Junkyard2] = [107000003, 201000008, 201000011],
-            [AreaType.AdminOffice] = [107000003, 201000011, 201000008, 201000011, 201000008],
-            [AreaType.StaffRoom] = [107000003, 201000011, 201000011, 201000011, 201000008, 201000008, 201000008],
-            [AreaType.Ground] = [107000003, 201000008, 201000011]
+            [AreaType.Library] = [107000010, 107000020, 201000008, 201000008, 201000008, 201000011, 201000011, 201000011],
+            [AreaType.Gym] = [107000010, 107000030, 107000020, 201000008, 201000011, 201000008],
+            [AreaType.Storage] = [107000010, 107000030, 201000008, 201000011],
+            [AreaType.Storage2] = [107000010, 107000020, 201000011, 201000008],
+            [AreaType.Junkyard] = [107000030, 201000008, 201000011],
+            [AreaType.Junkyard2] = [107000030, 201000008, 201000011],
+            [AreaType.AdminOffice] = [107000010, 201000011, 201000008, 201000011, 201000008],
+            [AreaType.StaffRoom] = [107000030, 201000011, 201000011, 201000011, 201000008, 201000008, 201000008],
+            [AreaType.Ground] = [107000020, 201000008, 201000011]
         };
 
         foreach (var (area, items) in expected)
@@ -43,7 +43,9 @@ public sealed class SurvivorRegionalItemPoolTests
             .Where(BattleItemCombatData.IsCombatItem)
             .ToArray();
         Assert.Equal(21, naturalBattleItems.Length);
-        Assert.All(naturalBattleItems, itemId => Assert.Equal(107000003, itemId));
+        Assert.Equal(7, naturalBattleItems.Count(itemId => itemId == 107000010));
+        Assert.Equal(7, naturalBattleItems.Count(itemId => itemId == 107000020));
+        Assert.Equal(7, naturalBattleItems.Count(itemId => itemId == 107000030));
 
         Assert.DoesNotContain(301000038, GameInteractableData.GetAllAreaItemPoolItems());
         Assert.DoesNotContain(301000039, GameInteractableData.GetAllAreaItemPoolItems());
@@ -152,8 +154,8 @@ public sealed class SurvivorRegionalItemPoolTests
                 matchId, secondPlayerId, JobTitle.SCIENCE_MEMBER, info,
                 missionManager, inventoryManager, itemPoolManager, areaStockManager, isBot: false);
 
-            Assert.Equal(107000003, Assert.Single(first.DroppedItemIds));
-            Assert.Equal(107000003, Assert.Single(second.DroppedItemIds));
+            Assert.Equal(107000010, Assert.Single(first.DroppedItemIds));
+            Assert.Equal(107000020, Assert.Single(second.DroppedItemIds));
             Assert.Equal(201000008, Assert.Single(otherPlayerFirst.DroppedItemIds));
             Assert.Equal(initialStock - 3,
                 areaStockManager.GetRemainingCount(matchId, (int)AreaType.Classroom3));

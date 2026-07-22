@@ -967,7 +967,7 @@ public partial class GameClientSession
             })
             .ToList();
 
-        return GameResultRankingResolver.Resolve(rows.Select(row => row.Info));
+        return GameResultRankingResolver.Resolve(rows.Select(row => row.Info), winnerId);
     }
     private PlayerInfo? ResolveResultPlayerInfo(long matchingId, long playerId)
     {
