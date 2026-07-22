@@ -48,10 +48,13 @@ public readonly record struct ProximityCombatTargetEvent(
 public sealed class ProximityAutoCombatResolver
 {
     public static readonly TimeSpan AimDuration = TimeSpan.FromMilliseconds(500);
+    public static readonly TimeSpan TargetReacquireGraceDuration = TimeSpan.FromSeconds(1.5);
 
     private readonly ConcurrentDictionary<(long MatchingId, long PlayerId), CombatState> _combatStates = new();
     private readonly ConcurrentDictionary<(long MatchingId, long PlayerId), DateTime>
         _burstRechargeReadyAtUtc = new();
+    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId), SuspendedCombatState>
+        _recentlyLostCombatStates = new();
 
     public IReadOnlyList<ProximityCombatAttack> Resolve(
         long matchingId,
@@ -77,6 +80,7 @@ public sealed class ProximityAutoCombatResolver
                     onTargetLost?.Invoke(CreateTargetEvent(
                         attacker.PlayerId, previousState, nowUtc, "attacker_unarmed"));
                 _burstRechargeReadyAtUtc.TryRemove(stateKey, out _);
+                _recentlyLostCombatStates.TryRemove(stateKey, out _);
                 continue;
             }
 
@@ -84,6 +88,11 @@ public sealed class ProximityAutoCombatResolver
                 _burstRechargeReadyAtUtc.TryRemove(stateKey, out _);
 
             activeAttackers.Add(attacker.PlayerId);
+            if (_recentlyLostCombatStates.TryGetValue(stateKey, out var expiredState) &&
+                nowUtc - expiredState.LostAtUtc > TargetReacquireGraceDuration)
+            {
+                _recentlyLostCombatStates.TryRemove(stateKey, out _);
+            }
             float attackRangeSquared = attacker.AttackRange * attacker.AttackRange;
             var eligibleTargets = new List<(ProximityCombatActor Actor, float DistanceSquared)>();
 
@@ -107,6 +116,7 @@ public sealed class ProximityAutoCombatResolver
             {
                 if (_combatStates.TryRemove(stateKey, out var previousState))
                 {
+                    _recentlyLostCombatStates[stateKey] = new SuspendedCombatState(previousState, nowUtc);
                     onTargetLost?.Invoke(CreateTargetEvent(
                         attacker.PlayerId, previousState, nowUtc, "out_of_range_or_los"));
                     if (attacker.InitialBurstAttackCount > 0 && attacker.BurstRechargeSeconds > 0f)
@@ -140,28 +150,53 @@ public sealed class ProximityAutoCombatResolver
                         combatState,
                         nowUtc,
                         reason));
+                    _recentlyLostCombatStates.TryRemove(stateKey, out _);
                 }
 
-                var aimReadyAtUtc = nowUtc.Add(AimDuration);
-                int initialBurstAttackCount = 0;
-                if (attacker.InitialBurstAttackCount > 0)
+                CombatState nextCombatState;
+                if (!hasCombatState &&
+                    _recentlyLostCombatStates.TryRemove(stateKey, out var suspendedState) &&
+                    suspendedState.State.TargetPlayerId == nearestTarget.PlayerId &&
+                    suspendedState.State.WeaponItemId == attacker.WeaponItemId &&
+                    nowUtc >= suspendedState.LostAtUtc &&
+                    nowUtc - suspendedState.LostAtUtc <= TargetReacquireGraceDuration)
                 {
-                    bool burstCharged = !_burstRechargeReadyAtUtc.TryGetValue(
-                                            stateKey, out var burstReadyAtUtc) ||
-                                        nowUtc >= burstReadyAtUtc;
-                    if (burstCharged)
-                        initialBurstAttackCount = attacker.InitialBurstAttackCount;
-                    _burstRechargeReadyAtUtc[stateKey] = DateTime.MaxValue;
+                    var suspensionDuration = nowUtc - suspendedState.LostAtUtc;
+                    nextCombatState = suspendedState.State with
+                    {
+                        TargetWeaponItemId = nearestTarget.WeaponItemId,
+                        Area = attacker.Area,
+                        AimReadyAtUtc = suspendedState.State.AimReadyAtUtc.Add(suspensionDuration),
+                        NextAttackAtUtc = suspendedState.State.NextAttackAtUtc.Add(suspensionDuration)
+                    };
+                }
+                else
+                {
+                    _recentlyLostCombatStates.TryRemove(stateKey, out _);
+
+                    var aimReadyAtUtc = nowUtc.Add(AimDuration);
+                    int initialBurstAttackCount = 0;
+                    if (attacker.InitialBurstAttackCount > 0)
+                    {
+                        bool burstCharged = !_burstRechargeReadyAtUtc.TryGetValue(
+                                                stateKey, out var burstReadyAtUtc) ||
+                                            nowUtc >= burstReadyAtUtc;
+                        if (burstCharged)
+                            initialBurstAttackCount = attacker.InitialBurstAttackCount;
+                        _burstRechargeReadyAtUtc[stateKey] = DateTime.MaxValue;
+                    }
+
+                    nextCombatState = new CombatState(
+                        nearestTarget.PlayerId,
+                        attacker.WeaponItemId,
+                        nearestTarget.WeaponItemId,
+                        attacker.Area,
+                        aimReadyAtUtc,
+                        aimReadyAtUtc,
+                        initialBurstAttackCount);
                 }
 
-                _combatStates[stateKey] = new CombatState(
-                    nearestTarget.PlayerId,
-                    attacker.WeaponItemId,
-                    nearestTarget.WeaponItemId,
-                    attacker.Area,
-                    aimReadyAtUtc,
-                    aimReadyAtUtc,
-                    initialBurstAttackCount);
+                _combatStates[stateKey] = nextCombatState;
                 onTargetAcquired?.Invoke(new ProximityCombatTargetEvent(
                     attacker.PlayerId,
                     nearestTarget.PlayerId,
@@ -218,6 +253,15 @@ public sealed class ProximityAutoCombatResolver
                     key.PlayerId, previousState, nowUtc, "attacker_inactive"));
             }
             _burstRechargeReadyAtUtc.TryRemove(key, out _);
+            _recentlyLostCombatStates.TryRemove(key, out _);
+        }
+
+        foreach (var key in _recentlyLostCombatStates.Keys)
+        {
+            if (key.MatchingId != matchingId || activeAttackers.Contains(key.PlayerId))
+                continue;
+
+            _recentlyLostCombatStates.TryRemove(key, out _);
         }
 
         return attacks;
@@ -233,12 +277,21 @@ public sealed class ProximityAutoCombatResolver
             _combatStates.TryRemove(key, out _);
             _burstRechargeReadyAtUtc.TryRemove(key, out _);
         }
+
+        foreach (var key in _recentlyLostCombatStates.Keys)
+        {
+            if (key.MatchingId != matchingId)
+                continue;
+
+            _recentlyLostCombatStates.TryRemove(key, out _);
+        }
     }
 
     public void Clear()
     {
         _combatStates.Clear();
         _burstRechargeReadyAtUtc.Clear();
+        _recentlyLostCombatStates.Clear();
     }
 
     private static ProximityCombatTargetEvent CreateTargetEvent(
@@ -270,4 +323,8 @@ public sealed class ProximityAutoCombatResolver
         DateTime AimReadyAtUtc,
         DateTime NextAttackAtUtc,
         int RemainingInitialBurstAttacks);
+
+    private readonly record struct SuspendedCombatState(
+        CombatState State,
+        DateTime LostAtUtc);
 }

@@ -190,6 +190,50 @@ public class ProximityAutoCombatResolverTests
         Assert.Equal(6, attack.Damage);
     }
 
+    [Fact]
+    public void Resolve_ReacquiringSameTargetWithinGraceResumesPausedAim()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 22, 1, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000003),
+            Actor(2, 1f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(198, actors, now));
+        actors[1] = Actor(2, 1f, 0f, area: AreaType.Corridor3F);
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(300)));
+
+        actors[1] = Actor(2, 1f, 0f);
+        var reacquiredAt = now.AddMilliseconds(1200);
+        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt));
+        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(199)));
+        Assert.Single(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(200)));
+    }
+
+    [Fact]
+    public void Resolve_ReacquiringSameTargetAfterGraceRestartsAim()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 22, 2, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000003),
+            Actor(2, 1f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(198, actors, now));
+        actors[1] = Actor(2, 1f, 0f, area: AreaType.Corridor3F);
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(300)));
+
+        var reacquiredAt = now.AddMilliseconds(1801);
+        actors[1] = Actor(2, 1f, 0f);
+        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt));
+        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(499)));
+        Assert.Single(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(500)));
+    }
+
     private static ProximityCombatActor Actor(
         long playerId,
         float x,
