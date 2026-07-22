@@ -134,6 +134,32 @@ public class ProximityAutoCombatDataTests
                 "item_info_consumable.csv")));
     }
 
+    [Fact]
+    public void AuthoritativeProximityDamageFeedsNumericWorldPopup()
+    {
+        string repoRoot = FindRepositoryRoot();
+        string gameServerSource = ReadNormalizedSource(
+            repoRoot, "game_server", "GameServer.ProximityAutoCombat.cs");
+        string sessionSource = ReadNormalizedSource(
+            repoRoot, "game_server", "Network", "GameClientSession.ProximityAutoCombat.cs");
+        string mapSource = ReadNormalizedSource(
+            repoRoot, "client", "Assets", "Scripts", "Managers", "Map", "MapManager.PlayerVisibility.cs");
+        string playerSource = ReadNormalizedSource(
+            repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");
+
+        Assert.Contains("attack.WeaponItemId,\n                damage);", gameServerSource);
+        Assert.Contains("weaponItemId,\n            damage);", sessionSource);
+        Assert.Contains(
+            "localPlayerIsAttacker: true,\n                    packet.DamageValue);",
+            mapSource);
+        Assert.Contains(
+            "int damageValue = authoritativeDamageValue > 0\n" +
+            "                ? authoritativeDamageValue",
+            mapSource);
+        Assert.Contains("_guardianHitPopup.text = corruptionAmount.ToString();", playerSource);
+        Assert.DoesNotContain("_guardianHitPopup.text = $\"오염 +", playerSource);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -145,6 +171,13 @@ public class ProximityAutoCombatDataTests
         }
 
         throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
+    }
+
+    private static string ReadNormalizedSource(string repositoryRoot, params string[] pathParts)
+    {
+        string[] fullPathParts = [repositoryRoot, .. pathParts];
+        return File.ReadAllText(Path.Combine(fullPathParts))
+            .Replace("\r\n", "\n");
     }
 
     private static void AssertGuardianTierGrowth(

@@ -320,7 +320,8 @@ public partial class GameServer
             attackerSession?.SendProximityAutoCombatAttackFeedback(
                 attack.TargetPlayerId,
                 attack.Area,
-                attack.WeaponItemId);
+                attack.WeaponItemId,
+                damage);
             BroadcastObservedProximityAttackVfx(attack, matchingSessions);
 
             logger.LogDebug(
