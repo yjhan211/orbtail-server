@@ -63,6 +63,15 @@ public static class MatchStartGate
         }
     }
 
+    public static DateTime? GetGameplayStartedAtUtc(long matchingId)
+    {
+        if (!States.TryGetValue(matchingId, out var state))
+            return null;
+
+        lock (state.SyncRoot)
+            return state.CountdownEndsAtUtc;
+    }
+
     public static void RemoveMatching(long matchingId)
     {
         States.TryRemove(matchingId, out _);

@@ -36,7 +36,7 @@ public partial class BotPlayerManager
 
             if (TryAdvanceBotRest(bot, result)) continue;
             TryAutoMergeConsumables(bot, matchingId, inventoryManager, result);
-            TryAutoUseConsumable(bot, matchingId, inventoryManager);
+            TryAutoUseConsumable(bot, matchingId, inventoryManager, result);
             if (bot.Stamina <= 0 && TryStartBotRest(bot, result)) continue;
             TryAutoPrepareBattleItem(bot, matchingId, inventoryManager, result);
             // 플레이어와 대화 중일 때는 탐색/선물 회수를 잠시 멈춘다.
@@ -64,7 +64,7 @@ public partial class BotPlayerManager
             // 레거시 부품 결합은 해당 미션이 활성 상태일 때만 유지한다.
             TryAutoCombine(bot, matchingId, missionManager, state, result);
 
-            TryAutoUseConsumable(bot, matchingId, inventoryManager);
+            TryAutoUseConsumable(bot, matchingId, inventoryManager, result);
         }
 
         return result;
@@ -471,7 +471,7 @@ public partial class BotPlayerManager
     ///     CONDITION_ADD(stamina up) 또는 CORRUPTION_DOWN buff를 즉시 적용.
     ///     CORRUPTION_ADD는 회복 후보에서 제외하되, 실제 아이템 처리 경로가 추가되면 오염 증가 효과로 해석한다.
     /// </summary>
-    private void TryAutoUseConsumable(BotPlayerState bot, long matchingId, InGameInventoryManager inventoryManager)
+    private void TryAutoUseConsumable(BotPlayerState bot, long matchingId, InGameInventoryManager inventoryManager, BotMissionTickResult result)
     {
         bool needsStamina = bot.Stamina < BotAutoConsumableStaminaThreshold;
         bool needsCorruptionRecovery = bot.Corruption >= BotAutoConsumableCorruptionThreshold;
@@ -534,6 +534,8 @@ public partial class BotPlayerManager
 
         bot.Stamina = Math.Min(100, bot.Stamina + bestStaminaGain);
         bot.Corruption = Math.Max(0, bot.Corruption - bestCorruptionDown);
+        if (bestCorruptionDown > 0)
+            result.CorruptionRecoveries.Add((bot.PlayerId, bestCorruptionDown));
         bot.LastAutoConsumableUseTime = DateTime.UtcNow;
 
         _logger.LogInformation(
@@ -711,6 +713,7 @@ public class BotMissionTickResult
     public List<(int interactId, int cooldownSeconds)> RngCooldownBroadcasts { get; } = new();
     public List<GroundItemInfo> GroundItemSpawns { get; } = new();
     public List<(long botPlayerId, int itemId)> ConsumableMerges { get; } = new();
+    public List<(long botPlayerId, int amount)> CorruptionRecoveries { get; } = new();
     public List<(long botPlayerId, int itemId)> BattleItemCombines { get; } = new();
     public List<(long botPlayerId, int itemId)> BattleItemEquips { get; } = new();
 

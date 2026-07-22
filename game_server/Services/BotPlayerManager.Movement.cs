@@ -92,6 +92,35 @@ public partial class BotPlayerManager
         return result;
     }
 
+    public void ApplyEnvironmentalCorruption(BotPlayerState bot, int corruptionDelta)
+    {
+        if (bot.IsEliminated || corruptionDelta == 0)
+            return;
+
+        bot.Corruption = Math.Clamp(bot.Corruption + corruptionDelta, 0, 100);
+    }
+
+    public void MarkEnvironmentalEliminated(BotPlayerState bot, long matchingId)
+    {
+        if (bot.IsEliminated)
+            return;
+
+        bot.IsEliminated = true;
+        bot.IsForcedFollowActive = false;
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.PendingRngInteractId = 0;
+        bot.PendingChecklistTaskId = 0;
+        bot.PendingChecklistInteractId = 0;
+        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
+        bot.RngCollectProgressStartTime = DateTime.MinValue;
+        ClearBotRoomExplorePlan(bot);
+        bot.LoopWaitUntil = DateTime.MinValue;
+
+        _logger.LogInformation(
+            "Bot environmental elimination finalized: MatchingId={MatchingId}, BotId={BotId}, Corruption={Corruption}",
+            matchingId, bot.PlayerId, bot.Corruption);
+    }
     private bool TryQueueBotMentalElimination(BotPlayerState bot, long matchingId, BotTickResult result)
     {
         if (bot.Corruption < 100) return false;

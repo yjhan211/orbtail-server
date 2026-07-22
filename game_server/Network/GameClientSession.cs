@@ -264,6 +264,9 @@ public partial class GameClientSession : SessionBase
     private bool IsRoundActionLocked(out RoundPhase phase)
     {
         phase = RoundPhase.Action;
+        if (IsEliminated || _isGameEnded)
+            return true;
+
         if (CurrentMapSubId > 0 && !MatchStartGate.IsGameplayActive(CurrentMapSubId))
             return true;
 
@@ -305,6 +308,8 @@ public partial class GameClientSession : SessionBase
     /// <summary>
     ///     탈락/관전 상태에서 행동 가능한지 체크
     /// </summary>
+    internal bool IsGameEnded => _isGameEnded;
+    internal int CurrentCorruption => Corruption;
     public bool IsEliminated => ManittoStatus == ManittoStatus.ELIMINATED || ManittoStatus == ManittoStatus.SPECTATING;
     private int? CurrentExploringInteractId { get; set; }
 

@@ -59,6 +59,7 @@ public partial class GameServer(
     private readonly Proto0PresenceTracker _presenceTracker = new();
     private readonly ConcurrentDictionary<long, Timer> _headlessRoundTimers = new();
     private readonly ConcurrentDictionary<long, int> _lastMatchStartCountdownBroadcast = new();
+    private readonly ConcurrentDictionary<long, object> _survivorSettlementLocks = new();
     private long _adminBotOnlyMatchingIdSeed = 9_000_000;
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
 
@@ -292,44 +293,13 @@ public partial class GameServer(
                 .Where(s => s.PlayerId.HasValue && !s.IsEliminated)
                 .ToList();
 
-            foreach (var session in activeSessions)
-            {
-                if (!GameClientSession.IsRoundActionPhase(session.CurrentMapSubId))
-                    continue;
-
-                // Survivor Royale P0: 현재 웨이브의 폐쇄 오염은 이미 닫힌 모든 방에 적용되고,
-                // 4:50부터는 지역과 무관한 운동장 전역 오버타임이 더해진다.
-                int corruptionDelta = _areaClosureManager.GetEnvironmentalCorruptionDelta(
-                    session.CurrentMapSubId,
-                    session.CurrentArea,
-                    ResourceTickIntervalSeconds);
-
-                session.ModifyStats(corruptionDelta: corruptionDelta);
-            }
-
-            // 6. 봇 플레이어 자원 틱
+            // Environmental damage and eliminations are settled per matching below.
             var matchingIds = GetActiveMatchingIds();
 
             foreach (long matchingId in matchingIds)
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
-                if (!_botPlayerManager.HasBots(matchingId)) continue;
-                // 봇도 사람과 같은 폐쇄 구역 자원 변동을 적용한다.
-                var tickResult = _botPlayerManager.ProcessBotTick(
-                    matchingId,
-                    ResourceTickIntervalSeconds,
-                    _areaClosureManager);
-
-                // #125: 봇 위치 이동 이벤트 → 같은 영역 인간 세션에 패킷 브로드캐스트
-                foreach (var ev in tickResult.Movements)
-                    BroadcastBotMovement(matchingId, ev, activeSessions);
-
-                // #26: 봇 탈락 → 체인 단절 알림 + 영향받는 플레이어/봇 상태 변경
-                foreach (var (botId, reason) in tickResult.Eliminated)
-                {
-                    _gameEventLogManager.LogElimination(matchingId, botId, reason.ToString(), isBot: true);
-                    ProcessBotElimination(matchingId, botId, reason, activeSessions);
-                }
+                ProcessSurvivorResourceTickForMatching(matchingId, activeSessions);
 
                 // 봇 미션 처리(부품 회수/결합/RNG 채집)는 별도 1초 타이머(ProcessBotMission)에서 수행.
 
@@ -572,12 +542,18 @@ public partial class GameServer(
     ///     ManittoChainManager.EliminatePlayer로 체인 단절 (마니또 시한부 / 타겟 해방 등) 일괄 적용.
     /// </summary>
     private void ProcessBotElimination(long matchingId, long botId, EliminationReason reason,
-        List<GameClientSession> activeSessions, long attackerPlayerId = 0)
+        List<GameClientSession> activeSessions, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
+        bool isOvertimeElimination = false, bool deferGameOver = false, int forcedRank = 0)
     {
         try
         {
             _groundItemManager.ReleaseClaimReservationsForPlayer(matchingId, botId);
-            var affected = _manittoChainManager.EliminatePlayer(matchingId, botId, reason);
+            var eliminatedBot = _botPlayerManager.GetBot(matchingId, botId);
+            AreaType eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
+            int finalOrbTier = ResolveFinalOrbTier(matchingId, botId);
+            var affected = _manittoChainManager.EliminatePlayer(matchingId, botId, reason,
+                attackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
+                finalOrbTier);
             var matchingSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                 .ToList();
@@ -628,11 +604,11 @@ public partial class GameServer(
 
             // 3) 게임 종료 판정 — 봇 탈락으로 최후 1인 결정 가능
             var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(matchingId);
-            if (isGameOver && matchingSessions.Count > 0)
+            if (!deferGameOver && isGameOver && matchingSessions.Count > 0)
             {
                 logger.LogInformation("게임 종료(봇 탈락 후): MatchingId={MatchingId}, Winner={WinnerId}",
                     matchingId, winnerId);
-                matchingSessions[0].EndGameByBotRaceCompletion(winnerId ?? 0);
+                matchingSessions[0].TryEndSurvivorMatch(winnerId ?? 0, "last_survivor_after_combat");
             }
         }
         catch (Exception ex)
@@ -685,6 +661,9 @@ public partial class GameServer(
         {
             var missionResult = _botPlayerManager.ProcessBotMissionTick(
                 matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _areaItemStockManager, _groundItemManager, _checklistManager);
+
+            foreach (var (botId, amount) in missionResult.CorruptionRecoveries)
+                _gameEventLogManager.RecordSurvivorRecovery(matchingId, botId, amount);
 
             // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
             foreach (var (botId, partId) in missionResult.CollectedParts)
@@ -1191,6 +1170,9 @@ public partial class GameServer(
     {
         foreach (var pickup in pickups)
         {
+            if (pickup.CorruptionRecovery > 0)
+                _gameEventLogManager.RecordSurvivorRecovery(matchingId, pickup.BotPlayerId, pickup.CorruptionRecovery);
+
             var area = (AreaType)pickup.Item.AreaType;
             using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
                 pickup.Item.GroundItemUid,
@@ -1880,12 +1862,26 @@ public partial class GameServer(
             return;
 
         GameClientSession.CleanupAbandonedMatchingRuntime(matchingId);
+        _areaClosureManager.CleanupMatching(matchingId);
         _botPlayerManager.CleanupMatching(matchingId);
         _presenceTracker.Remove(matchingId);
         _checklistManager.RemoveMatchingState(matchingId);
         _areaItemStockManager.RemoveMatchingState(matchingId);
         _groundItemManager.RemoveMatchingState(matchingId);
         _inGameInventoryManager.RemoveMatchingState(matchingId);
+        _interactableStateManager.RemoveMatchingState(matchingId);
+        _areaRuleManager.RemoveMatchingState(matchingId);
+        _itemPoolManager.RemoveMatchingState(matchingId);
+        _doorStateManager.ClearMatching(matchingId);
+        _sabotageManager.RemoveMatchingState(matchingId);
+        _manittoChainManager.CleanupMatching(matchingId);
+        _missionManager.CleanupMatching(matchingId);
+        _traceManager.CleanupMatching(matchingId);
+        _interactionLogManager.CleanupMatching(matchingId);
+        _gameEventLogManager.Clear(matchingId);
+        _encounterRevealManager.CleanupMatching(matchingId);
+        _proximityAutoCombatResolver.RemoveMatching(matchingId);
+        _survivorSettlementLocks.TryRemove(matchingId, out _);
         _ = CleanupAbandonedMatchingRedisAsync(matchingId);
 
         logger.LogInformation(

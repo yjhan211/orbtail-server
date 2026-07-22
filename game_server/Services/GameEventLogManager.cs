@@ -265,6 +265,8 @@ public class GameEventLogManager
         {
             state.KnownPlayerIds.Add(attackerPlayerId);
             state.KnownPlayerIds.Add(targetPlayerId);
+            state.DamageDealtByPlayer.TryGetValue(attackerPlayerId, out int previousDamage);
+            state.DamageDealtByPlayer[attackerPlayerId] = previousDamage + Math.Max(0, damage);
             if (!state.EngagementsByAttacker.TryGetValue(attackerPlayerId, out var engagement) ||
                 engagement.TargetPlayerId != targetPlayerId)
             {
@@ -527,6 +529,34 @@ public class GameEventLogManager
     }
 
 
+    public void RecordSurvivorRecovery(long matchingId, long playerId, int amount)
+    {
+        if (playerId == 0 || amount <= 0)
+            return;
+
+        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        lock (state.SyncRoot)
+        {
+            state.KnownPlayerIds.Add(playerId);
+            state.RecoveryByPlayer.TryGetValue(playerId, out int previousRecovery);
+            state.RecoveryByPlayer[playerId] = previousRecovery + amount;
+        }
+    }
+
+    public SurvivorResultStats GetSurvivorResultStats(long matchingId, long playerId)
+    {
+        if (!_survivorCombatStates.TryGetValue(matchingId, out var state))
+            return default;
+
+        lock (state.SyncRoot)
+        {
+            state.KillCountsByPlayer.TryGetValue(playerId, out int kills);
+            state.DamageDealtByPlayer.TryGetValue(playerId, out int damage);
+            state.RecoveryByPlayer.TryGetValue(playerId, out int recovery);
+            return new SurvivorResultStats(kills, damage, recovery);
+        }
+    }
+
     private sealed class SurvivorCombatState
     {
         public object SyncRoot { get; } = new();
@@ -536,8 +566,12 @@ public class GameEventLogManager
         public long? FirstEliminationAtUnixMs { get; set; }
         public HashSet<long> KnownPlayerIds { get; } = new();
         public Dictionary<long, int> KillCountsByPlayer { get; } = new();
+        public Dictionary<long, int> DamageDealtByPlayer { get; } = new();
+        public Dictionary<long, int> RecoveryByPlayer { get; } = new();
         public Dictionary<long, SurvivorCombatEngagement> EngagementsByAttacker { get; } = new();
     }
+
+    public readonly record struct SurvivorResultStats(int KillCount, int TotalDamageDealt, int TotalRecovery);
 
     private sealed class SurvivorCombatEngagement
     {

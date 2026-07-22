@@ -93,6 +93,22 @@ public class AreaClosureManagerTests
         Assert.Equal(10, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
     }
 
+    [Fact]
+    public void CleanupMatching_RemovesClosureStateBeforeMatchingIdIsReused()
+    {
+        var now = new DateTime(2026, 7, 20, 0, 0, 0, DateTimeKind.Utc);
+        var manager = CreateManager(() => now);
+        const long matchingId = 195004;
+        var state = manager.InitializeMatching(matchingId);
+        state.ClosedAreas.Add(AreaType.ExamRoom);
+        Assert.True(manager.IsAreaClosed(matchingId, AreaType.ExamRoom));
+
+        manager.CleanupMatching(matchingId);
+
+        Assert.False(manager.IsAreaClosed(matchingId, AreaType.ExamRoom));
+        Assert.Empty(manager.GetClientStateSnapshot(matchingId).ClosedAreas);
+    }
+
     private static AreaClosureManager CreateManager(Func<DateTime> utcNow)
     {
         return new AreaClosureManager(

@@ -25,6 +25,48 @@ public sealed class LegacyManittoChainEffectsTests
         Assert.Empty(manager.GetTerminalPlayers(matchingId));
     }
 
+    [Fact]
+    public void Elimination_PreservesAttackerAndClosureContextInGameResult()
+    {
+        const long matchingId = 194002;
+        var manager = new ManittoChainManager(NullLogger.Instance);
+
+        manager.RegisterLink(matchingId, CreateLink(1, 2));
+        manager.RegisterLink(matchingId, CreateLink(2, 1));
+
+        manager.EliminatePlayer(matchingId, 2, EliminationReason.MENTAL_ZERO,
+            attackerPlayerId: 1, eliminatedArea: AreaType.Library, isAreaClosureElimination: true);
+
+        var result = Assert.Single(manager.BuildGameResult(matchingId), row => row.playerId == 2);
+
+        Assert.Equal(1, result.attackerPlayerId);
+        Assert.Equal(AreaType.Library, result.eliminatedArea);
+        Assert.True(result.isAreaClosureElimination);
+    }
+    [Fact]
+    public void Elimination_FixesRankTierAndEnvironmentalCauseAtEliminationTime()
+    {
+        const long matchingId = 194003;
+        var manager = new ManittoChainManager(NullLogger.Instance);
+
+        manager.RegisterLink(matchingId, CreateLink(1, 2));
+        manager.RegisterLink(matchingId, CreateLink(2, 3));
+        manager.RegisterLink(matchingId, CreateLink(3, 1));
+
+        manager.EliminatePlayer(
+            matchingId,
+            2,
+            EliminationReason.MENTAL_ZERO,
+            isOvertimeElimination: true,
+            forcedRank: 3,
+            finalOrbTier: 2);
+
+        var result = Assert.Single(manager.BuildGameResult(matchingId), row => row.playerId == 2);
+        Assert.Equal(3, result.eliminationRank);
+        Assert.Equal(2, result.finalOrbTier);
+        Assert.True(result.isOvertimeElimination);
+        Assert.False(result.isAreaClosureElimination);
+    }
     private static ChainLink CreateLink(long playerId, long targetPlayerId) => new()
     {
         PlayerId = playerId,

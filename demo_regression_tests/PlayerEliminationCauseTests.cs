@@ -28,6 +28,26 @@ public sealed class PlayerEliminationCauseTests
     }
 
     [Fact]
+    public void GameResultPlayerInfo_RoundTripsRankTierAndEnvironmentalCause()
+    {
+        var source = new GameResultPlayerInfo
+        {
+            PlayerId = 20,
+            Rank = 4,
+            FinalOrbTier = 3,
+            IsAreaClosureElimination = false,
+            IsOvertimeElimination = true
+        };
+
+        byte[] bytes = MessagePackSerializer.Serialize(source);
+        var result = MessagePackSerializer.Deserialize<GameResultPlayerInfo>(bytes);
+
+        Assert.Equal(4, result.Rank);
+        Assert.Equal(3, result.FinalOrbTier);
+        Assert.False(result.IsAreaClosureElimination);
+        Assert.True(result.IsOvertimeElimination);
+    }
+    [Fact]
     public void BotDamage_RemembersFirstAttackerThatReachesEliminationThreshold()
     {
         var manager = new BotPlayerManager(NullLogger.Instance);

@@ -893,6 +893,9 @@ namespace network.common.data.models
         [Key("attackerPlayerId")] public long AttackerPlayerId { get; set; }
         [Key("eliminatedArea")] public AreaType EliminatedArea { get; set; }
         [Key("isAreaClosureElimination")] public bool IsAreaClosureElimination { get; set; }
+        [Key("isOvertimeElimination")] public bool IsOvertimeElimination { get; set; }
+        [Key("rank")] public int Rank { get; set; }
+        [Key("finalOrbTier")] public int FinalOrbTier { get; set; }
     }
 
     [MessagePackObject]

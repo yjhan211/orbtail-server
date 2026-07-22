@@ -687,7 +687,8 @@ public partial class GameClientSession
     ///     플레이어 탈락 처리 + 체인 단절 브로드캐스트
     /// </summary>
     private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
-        bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false)
+        bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
+        bool isOvertimeElimination = false, int forcedRank = 0)
     {
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
@@ -697,8 +698,9 @@ public partial class GameClientSession
 
         _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
         _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
+        int finalOrbTier = ResolveFinalOrbTier(CurrentMapSubId, eliminatedPlayerId);
         var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason,
-            resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination);
+            resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank, finalOrbTier);
 
         if (eliminatedSession != null)
             eliminatedSession.DropAllInventoryAtCurrentPosition();
@@ -804,6 +806,41 @@ public partial class GameClientSession
 
         return Task.CompletedTask;
     }
+    internal void EliminateForSettlement(
+        long eliminatedPlayerId,
+        bool isAreaClosureElimination,
+        bool isOvertimeElimination,
+        int forcedRank)
+    {
+        _ = ProcessElimination(
+            eliminatedPlayerId,
+            EliminationReason.MENTAL_ZERO,
+            deferGameOver: true,
+            isAreaClosureElimination: isAreaClosureElimination,
+            isOvertimeElimination: isOvertimeElimination,
+            forcedRank: forcedRank);
+    }
+
+    internal void TryEndSurvivorMatch(long winnerId, string criterion)
+    {
+        if (_isGameEnded || CurrentMapSubId <= 0)
+            return;
+
+        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        Logger.LogInformation(
+            "Survivor match resolved: MatchingId={MatchingId}, WinnerId={WinnerId}, Criterion={Criterion}",
+            CurrentMapSubId, winnerId, criterion);
+        _gameEventLogManager.LogSystem(
+            CurrentMapSubId,
+            $"survivor_settlement winner={winnerId} criterion={criterion}");
+        SendGameResult(allSessions, winnerId, false, CurrentMapSubId);
+    }
+
+    private int ResolveFinalOrbTier(long matchingId, long playerId)
+    {
+        var equippedItem = _inGameInventoryManager.GetEquippedBattleItem(matchingId, playerId);
+        return equippedItem == null ? 0 : BattleItemCombatData.Get(equippedItem.ItemId)?.Tier ?? 0;
+    }
 
     /// <summary>
     ///     게임 결과 패킷 전송 (체인 전체 공개)
@@ -811,6 +848,9 @@ public partial class GameClientSession
     private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout, long matchingId)
     {
         var players = BuildGameResultPlayers(allSessions, matchingId, winnerId);
+        if (allSessions.Any(session => session.IsGameEnded))
+            return;
+
 
         var resultChunks = GameResultPacketChunker.CreateGameResultChunks(winnerId, isTimeout, players);
         foreach (var resultChunk in resultChunks)
@@ -838,6 +878,23 @@ public partial class GameClientSession
         _areaClosureManager.CleanupMatching(matchingId);
         _presenceTracker?.Remove(matchingId);
 
+        MatchStartGate.RemoveMatching(matchingId);
+        RngCollectCooldownStore.ClearMatching(matchingId);
+        _checklistManager.RemoveMatchingState(matchingId);
+        _areaItemStockManager.RemoveMatchingState(matchingId);
+        _groundItemManager.RemoveMatchingState(matchingId);
+        _inGameInventoryManager.RemoveMatchingState(matchingId);
+        _interactableStateManager.RemoveMatchingState(matchingId);
+        _areaRuleManager.RemoveMatchingState(matchingId);
+        _itemPoolManager.RemoveMatchingState(matchingId);
+        _doorStateManager.ClearMatching(matchingId);
+        _sabotageManager.RemoveMatchingState(matchingId);
+        _missionManager.CleanupMatching(matchingId);
+        _traceManager.CleanupMatching(matchingId);
+        _interactionChoiceService.CleanupMatching(matchingId);
+        _encounterRevealManager.CleanupMatching(matchingId);
+        _manittoChainManager.CleanupMatching(matchingId);
+        _gameEventLogManager.Clear(matchingId);
         // #26: 봇 상태 + Redis matching_bots Hash 엔트리 정리 (TTL/누수 방지)
         _botPlayerManager.CleanupMatching(matchingId);
         _ = CleanupRedisMatchingBotsAsync(matchingId);
@@ -887,28 +944,17 @@ public partial class GameClientSession
                         TotalRecovery = stats.TotalRecovery,
                         AttackerPlayerId = d.attackerPlayerId,
                         EliminatedArea = d.eliminatedArea,
-                        IsAreaClosureElimination = d.isAreaClosureElimination
+                        IsAreaClosureElimination = d.isAreaClosureElimination,
+                        IsOvertimeElimination = d.isOvertimeElimination,
+                        Rank = d.playerId == winnerId ? 1 : d.eliminationRank,
+                        FinalOrbTier = d.playerId == winnerId ? ResolveFinalOrbTier(matchingId, d.playerId) : d.finalOrbTier
                     },
                     EliminatedAt = d.eliminatedAt
                 };
             })
             .ToList();
 
-        // A player who is eliminated during an ongoing match receives a combat leaderboard.
-        // The final result retains survival order, with the winner fixed at the top.
-        var ordered = winnerId == 0
-            ? rows
-                .OrderByDescending(row => row.Info.KillCount)
-                .ThenByDescending(row => row.Info.TotalDamageDealt)
-                .ThenByDescending(row => row.Info.SurvivalTimeSeconds)
-                .ThenBy(row => row.Info.PlayerId)
-            : rows
-                .OrderBy(row => row.Info.PlayerId == winnerId ? 0 : 1)
-                .ThenByDescending(row => row.EliminatedAt ?? endedAtUtc)
-                .ThenByDescending(row => row.Info.KillCount)
-                .ThenBy(row => row.Info.PlayerId);
-
-        return ordered.Select(row => row.Info).ToList();
+        return GameResultRankingResolver.Resolve(rows.Select(row => row.Info));
     }
     private PlayerInfo? ResolveResultPlayerInfo(long matchingId, long playerId)
     {
@@ -1975,7 +2021,8 @@ public partial class GameClientSession
     ///     정신력 100 도달 시 탈락 체크. 권고안 B(2026-05-05): Stamina 0 단독으로는 탈락 트리거 안 됨
     ///     (대신 ModifyStats가 Stamina 부족분을 Corruption 1:2 변환).
     /// </summary>
-    public void CheckResourceElimination(long attackerPlayerId = 0, bool isAreaClosureElimination = false)
+    public void CheckResourceElimination(long attackerPlayerId = 0, bool isAreaClosureElimination = false,
+        bool isOvertimeElimination = false)
     {
         if (!PlayerId.HasValue || _isGameEnded || IsEliminated) return;
         if (Corruption < MaxCorruption) return;
@@ -1984,7 +2031,8 @@ public partial class GameClientSession
             "[Resource] Mental depleted: PlayerId={PlayerId}, Corruption={Corruption}/{MaxCorruption}. Eliminating player.",
             PlayerId.Value, Corruption, MaxCorruption);
         _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO,
-            attackerPlayerId: attackerPlayerId, isAreaClosureElimination: isAreaClosureElimination);
+            attackerPlayerId: attackerPlayerId, isAreaClosureElimination: isAreaClosureElimination,
+            isOvertimeElimination: isOvertimeElimination);
     }
 
     // ===== 시한부 사보타주 (GDD 2.5.4, 패키지 Y 4B, #24) =====

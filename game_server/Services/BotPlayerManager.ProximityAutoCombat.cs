@@ -73,7 +73,7 @@ public partial class BotPlayerManager
                 return false;
             }
 
-            pickup = new BotGroundItemPickup(bot.PlayerId, claimedItem, autoUsed);
+            pickup = new BotGroundItemPickup(bot.PlayerId, claimedItem, autoUsed, corruptionRecovery);
             return true;
         }
 
@@ -273,7 +273,8 @@ public partial class BotPlayerManager
 public readonly record struct BotGroundItemPickup(
     long BotPlayerId,
     GroundItemInfo Item,
-    bool AutoUsed);
+    bool AutoUsed,
+    int CorruptionRecovery);
 
 public readonly record struct BotCombatTargetSnapshot(
     long PlayerId,
