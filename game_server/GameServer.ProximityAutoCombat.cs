@@ -14,6 +14,8 @@ public partial class GameServer
     private const int ProximityAutoCombatTickIntervalMs = 50;
 
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
+    private readonly Dictionary<(long MatchingId, long ObserverPlayerId, long ActorPlayerId),
+        SurvivorOrbVisualState> _survivorOrbVisualStates = new();
     private Timer? _proximityAutoCombatTimer;
     private int _proximityAutoCombatProcessing;
 
@@ -57,6 +59,7 @@ public partial class GameServer
                         .All(session => session.IsGameEnded);
                     if (!matchingEnded) continue;
                     _proximityAutoCombatResolver.RemoveMatching(matchingId);
+                    RemoveSurvivorOrbVisualStates(matchingId);
                     _survivorSettlementLocks.TryRemove(matchingId, out _);
                 }
             }
@@ -86,6 +89,7 @@ public partial class GameServer
             .ToList();
 
         var actors = BuildProximityCombatActors(matchingId, matchingSessions, matchingBots);
+        BroadcastSurvivorOrbVisualStates(matchingId, actors, matchingSessions);
         var attacks = _proximityAutoCombatResolver.Resolve(
             matchingId,
             actors,
@@ -136,14 +140,26 @@ public partial class GameServer
             var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, session.PlayerId.Value);
             var equippedItem = inventory.GetEquippedBattleItem();
             var combatData = equippedItem == null ? null : BattleItemCombatData.Get(equippedItem.ItemId);
+            bool orbEffectActive = inventory.TryGetActiveSurvivorOrbPair(out var orbColor, out _);
             actors.Add(actor with
             {
                 WeaponItemId = equippedItem?.ItemId ?? 0,
                 AttackRange = combatData?.AttackRange ?? 0f,
-                Damage = combatData?.Damage ?? 0,
-                AttackIntervalSeconds = combatData?.AttackIntervalSeconds ?? 0f,
+                Damage = SurvivorOrbData.GetCombatDamage(
+                    orbColor, orbEffectActive, combatData?.Damage ?? 0),
+                AttackIntervalSeconds = SurvivorOrbData.GetAttackIntervalSeconds(
+                    orbColor, orbEffectActive, combatData?.AttackIntervalSeconds ?? 0f),
                 ProjectileWidth = combatData?.ProjectileWidth ?? 0f,
-                EffectDurationSeconds = combatData?.EffectDurationSeconds ?? 0f
+                EffectDurationSeconds = combatData?.EffectDurationSeconds ?? 0f,
+                MaxTargets = SurvivorOrbData.GetMaxTargets(orbColor, orbEffectActive),
+                AdditionalTargetDamageMultiplier = SurvivorOrbData.GetAdditionalTargetDamageMultiplier(
+                    orbColor, orbEffectActive),
+                InitialBurstAttackCount = orbEffectActive && orbColor == SurvivorOrbColor.Blue
+                    ? SurvivorOrbData.WaveInitialBurstAttackCount : 0,
+                InitialBurstAttackIntervalMultiplier = SurvivorOrbData.WaveInitialBurstIntervalMultiplier,
+                BurstRechargeSeconds = orbEffectActive && orbColor == SurvivorOrbColor.Blue
+                    ? SurvivorOrbData.WaveBurstRechargeSeconds : 0f,
+                OrbEffectActive = orbEffectActive
             });
         }
 
@@ -163,18 +179,82 @@ public partial class GameServer
             var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, bot.PlayerId);
             var equippedItem = inventory.GetEquippedBattleItem();
             var combatData = equippedItem == null ? null : BattleItemCombatData.Get(equippedItem.ItemId);
+            bool orbEffectActive = inventory.TryGetActiveSurvivorOrbPair(out var orbColor, out _);
             actors.Add(actor with
             {
                 WeaponItemId = equippedItem?.ItemId ?? 0,
                 AttackRange = combatData?.AttackRange ?? 0f,
-                Damage = combatData?.Damage ?? 0,
-                AttackIntervalSeconds = combatData?.AttackIntervalSeconds ?? 0f,
+                Damage = SurvivorOrbData.GetCombatDamage(
+                    orbColor, orbEffectActive, combatData?.Damage ?? 0),
+                AttackIntervalSeconds = SurvivorOrbData.GetAttackIntervalSeconds(
+                    orbColor, orbEffectActive, combatData?.AttackIntervalSeconds ?? 0f),
                 ProjectileWidth = combatData?.ProjectileWidth ?? 0f,
-                EffectDurationSeconds = combatData?.EffectDurationSeconds ?? 0f
+                EffectDurationSeconds = combatData?.EffectDurationSeconds ?? 0f,
+                MaxTargets = SurvivorOrbData.GetMaxTargets(orbColor, orbEffectActive),
+                AdditionalTargetDamageMultiplier = SurvivorOrbData.GetAdditionalTargetDamageMultiplier(
+                    orbColor, orbEffectActive),
+                InitialBurstAttackCount = orbEffectActive && orbColor == SurvivorOrbColor.Blue
+                    ? SurvivorOrbData.WaveInitialBurstAttackCount : 0,
+                InitialBurstAttackIntervalMultiplier = SurvivorOrbData.WaveInitialBurstIntervalMultiplier,
+                BurstRechargeSeconds = orbEffectActive && orbColor == SurvivorOrbColor.Blue
+                    ? SurvivorOrbData.WaveBurstRechargeSeconds : 0f,
+                OrbEffectActive = orbEffectActive
             });
         }
 
         return actors;
+    }
+
+    private void BroadcastSurvivorOrbVisualStates(
+        long matchingId,
+        IReadOnlyCollection<ProximityCombatActor> actors,
+        IReadOnlyCollection<GameClientSession> matchingSessions)
+    {
+        foreach (var observer in matchingSessions)
+        {
+            if (!observer.PlayerId.HasValue || observer.IsEliminated)
+                continue;
+
+            foreach (var actor in actors)
+            {
+                var key = (matchingId, observer.PlayerId.Value, actor.PlayerId);
+                if (observer.CurrentArea != actor.Area)
+                {
+                    _survivorOrbVisualStates.Remove(key);
+                    continue;
+                }
+
+                var state = new SurvivorOrbVisualState(
+                    actor.Area,
+                    actor.WeaponItemId,
+                    actor.OrbEffectActive);
+                if (_survivorOrbVisualStates.TryGetValue(key, out var previousState) &&
+                    previousState == state)
+                {
+                    continue;
+                }
+
+                _survivorOrbVisualStates[key] = state;
+                using var packet = Packet.Create((int)Protocol.G_TO_C_SURVIVOR_ORB_EFFECT_STATE);
+                packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SURVIVOR_ORB_EFFECT_STATE
+                {
+                    PlayerId = actor.PlayerId,
+                    WeaponItemId = actor.WeaponItemId,
+                    IsActive = actor.OrbEffectActive
+                }));
+                observer.Send(packet);
+            }
+        }
+    }
+
+    private void RemoveSurvivorOrbVisualStates(long matchingId)
+    {
+        foreach (var key in _survivorOrbVisualStates.Keys
+                     .Where(key => key.MatchingId == matchingId)
+                     .ToArray())
+        {
+            _survivorOrbVisualStates.Remove(key);
+        }
     }
 
     private void ApplyProximityCombatVolley(
@@ -325,4 +405,9 @@ public partial class GameServer
             cell);
         return true;
     }
+    private readonly record struct SurvivorOrbVisualState(
+        AreaType Area,
+        int WeaponItemId,
+        bool IsActive);
+
 }

@@ -91,6 +91,26 @@ public sealed class SurvivorOrbBoardTests
         Assert.Equal(0, pairTier);
     }
 
+    [Fact]
+    public void ActiveOrbColorsApplyOnlyTheirConfiguredCombatProfile()
+    {
+        Assert.Equal(18, SurvivorOrbData.GetCombatDamage(SurvivorOrbColor.Red, true, 10));
+        Assert.Equal(10, SurvivorOrbData.GetCombatDamage(SurvivorOrbColor.Red, false, 10));
+        Assert.Equal(1f, SurvivorOrbData.GetAttackIntervalSeconds(
+            SurvivorOrbColor.Red, true, 0.8f), 4);
+
+        Assert.Equal(3, SurvivorOrbData.WaveInitialBurstAttackCount);
+        Assert.Equal(0.4f, SurvivorOrbData.WaveInitialBurstIntervalMultiplier);
+        Assert.Equal(3f, SurvivorOrbData.WaveBurstRechargeSeconds);
+
+        Assert.Equal(3, SurvivorOrbData.GetMaxTargets(SurvivorOrbColor.Green, true));
+        Assert.Equal(0.5f, SurvivorOrbData.GetAdditionalTargetDamageMultiplier(
+            SurvivorOrbColor.Green, true));
+        Assert.Equal(1, SurvivorOrbData.GetMaxTargets(SurvivorOrbColor.Green, false));
+        Assert.Equal(1f, SurvivorOrbData.GetAdditionalTargetDamageMultiplier(
+            SurvivorOrbColor.Green, false));
+    }
+
     private static void InitializeBattleCombatData()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

@@ -97,6 +97,51 @@ public sealed class BotSurvivorLootingTests
         }
     }
 
+    [Theory]
+    [InlineData(201000008, 40, 70, 40, 55)]
+    [InlineData(201000011, 40, 70, 55, 70)]
+    public void ImmediateUsePickupAppliesRecoveryAndDisappearsEvenWhenBotInventoryIsFull(
+        int itemId,
+        int initialStamina,
+        int initialCorruption,
+        int expectedStamina,
+        int expectedCorruption)
+    {
+        long matchingId = 194106 + itemId;
+        long botPlayerId = -matchingId * 10 - 1;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        bot.Stamina = initialStamina;
+        bot.Corruption = initialCorruption;
+
+        for (int i = 0; i < Config.SURVIVOR_INVENTORY_SLOT_COUNT; i++)
+            Assert.True(fixture.InventoryManager.TryAddItemWithCapacity(
+                matchingId, botPlayerId, 107000003 + i, Config.SURVIVOR_INVENTORY_SLOT_COUNT, out _));
+
+        var groundItem = Assert.Single(fixture.GroundItemManager.SpawnItems(
+            matchingId,
+            bot.CurrentArea,
+            bot.Position.X,
+            bot.Position.Y,
+            [itemId]));
+
+        Assert.True(fixture.BotManager.TryAutoPickupGroundItem(
+            bot,
+            matchingId,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            out BotGroundItemPickup? pickup));
+        Assert.True(pickup.HasValue);
+        Assert.True(pickup.Value.AutoUsed);
+        Assert.Equal(expectedStamina, bot.Stamina);
+        Assert.Equal(expectedCorruption, bot.Corruption);
+        Assert.Equal(Config.SURVIVOR_INVENTORY_SLOT_COUNT,
+            fixture.InventoryManager.GetAllItems(matchingId, botPlayerId).Count);
+        Assert.DoesNotContain(
+            fixture.GroundItemManager.GetSnapshot(matchingId, bot.CurrentArea),
+            item => item.GroundItemUid == groundItem.GroundItemUid);
+    }
+
     [Fact]
     public void DepletedRoomIsMarkedCompleteWithoutQueueingAnotherExplore()
     {

@@ -633,7 +633,11 @@ public partial class GameServer(
 
         var itemIds = removed
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
+            .Where(GroundItemPickupPolicy.ShouldDropOnElimination)
             .ToList();
+        if (itemIds.Count == 0)
+            return;
+
         _gameEventLogManager.LogEliminationDrop(
             matchingId,
             botPlayerId,
@@ -1062,7 +1066,7 @@ public partial class GameServer(
 
     private void BroadcastBotBattleItemEquips(long matchingId,
         IReadOnlyCollection<(long botPlayerId, int itemId)> equips,
-        List<GameClientSession> activeSessions)
+        IReadOnlyCollection<GameClientSession> activeSessions)
     {
         foreach (var (botPlayerId, _) in equips)
         {
@@ -1236,6 +1240,13 @@ public partial class GameServer(
                 session.Send(packet);
             }
         }
+
+        var autoEquips = pickups
+            .Where(pickup => pickup.AutoEquippedItemId > 0)
+            .Select(pickup => (pickup.BotPlayerId, pickup.AutoEquippedItemId))
+            .ToList();
+        if (autoEquips.Count > 0)
+            BroadcastBotBattleItemEquips(matchingId, autoEquips, activeSessions);
     }
     private void BroadcastBotMovement(long matchingId, BotMovementEvent ev,
         List<GameClientSession> activeSessions)

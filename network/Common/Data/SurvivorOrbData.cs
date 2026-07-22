@@ -19,6 +19,15 @@ namespace network.common.data
 
     public static class SurvivorOrbData
     {
+        public const float SunDamageMultiplier = 1.75f;
+        public const float SunAttackIntervalMultiplier = 1.25f;
+        public const int WaveInitialBurstAttackCount = 3;
+        public const float WaveInitialBurstIntervalMultiplier = 0.4f;
+        public const float WaveBurstRechargeSeconds = 3f;
+        public const int WindMaxTargets = 3;
+        public const float WindAdditionalTargetDamageMultiplier = 0.5f;
+
+
         public static bool TryGetColorAndTier(int itemId, out SurvivorOrbColor color, out int tier)
         {
             switch (itemId)
@@ -38,6 +47,35 @@ namespace network.common.data
 
         public static bool IsSurvivorOrb(int itemId) => TryGetColorAndTier(itemId, out _, out _);
 
+        public static int GetCombatDamage(SurvivorOrbColor color, bool isActive, int baseDamage)
+        {
+            if (!isActive || color != SurvivorOrbColor.Red || baseDamage <= 0)
+                return baseDamage;
+
+            return (int)Math.Ceiling(baseDamage * SunDamageMultiplier);
+        }
+
+        public static float GetAttackIntervalSeconds(
+            SurvivorOrbColor color,
+            bool isActive,
+            float baseAttackIntervalSeconds)
+        {
+            if (!isActive || color != SurvivorOrbColor.Red || baseAttackIntervalSeconds <= 0f)
+                return baseAttackIntervalSeconds;
+
+            return baseAttackIntervalSeconds * SunAttackIntervalMultiplier;
+        }
+
+        public static int GetMaxTargets(SurvivorOrbColor color, bool isActive)
+        {
+            return isActive && color == SurvivorOrbColor.Green ? WindMaxTargets : 1;
+        }
+
+
+        public static float GetAdditionalTargetDamageMultiplier(SurvivorOrbColor color, bool isActive)
+        {
+            return isActive && color == SurvivorOrbColor.Green ? WindAdditionalTargetDamageMultiplier : 1f;
+        }
         public static bool TryGetActivePair(
             int equippedItemId,
             IEnumerable<int> boardItemIds,

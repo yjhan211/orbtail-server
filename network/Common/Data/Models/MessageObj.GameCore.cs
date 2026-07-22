@@ -95,6 +95,14 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
+    public class G_TO_C_SURVIVOR_ORB_EFFECT_STATE : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("weaponItemId")] public int WeaponItemId { get; set; }
+        [Key("isActive")] public bool IsActive { get; set; }
+    }
+
+    [MessagePackObject]
     public class C_TO_G_ROOM_ENCOUNTER_AVOID : IMessagePackObject
     {
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }

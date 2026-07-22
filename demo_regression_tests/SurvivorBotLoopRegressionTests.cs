@@ -224,6 +224,7 @@ public sealed class SurvivorBotLoopRegressionTests
         var removed = inventory.TakeAllItems(matchingId, victimId);
         var droppedItemIds = removed
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
+            .Where(GroundItemPickupPolicy.ShouldDropOnElimination)
             .ToList();
         var dropped = ground.SpawnItems(
             matchingId,
@@ -232,7 +233,7 @@ public sealed class SurvivorBotLoopRegressionTests
             victim.Position.Y,
             droppedItemIds);
 
-        Assert.Contains(dropped, item => item.ItemId == CannedCoffee);
+        Assert.DoesNotContain(dropped, item => item.ItemId == CannedCoffee);
         var events = eventLog.GetRecent(matchingId);
         Assert.Single(events, entry => entry.Type == "SURVIVOR_FIRST_T2");
         Assert.Single(events, entry => entry.Type == "SURVIVOR_ENCOUNTER_START");

@@ -282,12 +282,15 @@ public sealed class SurvivorRegionalItemPoolTests
         Assert.Empty(inventory.GetAllItems(19307, 7001));
 
         var ground = new GroundItemManager();
-        var itemIds = removed.SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count)).ToList();
+        var itemIds = removed
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
+            .Where(GroundItemPickupPolicy.ShouldDropOnElimination)
+            .ToList();
         var spawned = ground.SpawnItems(19307, AreaType.Corridor, 3f, 4f, itemIds);
 
-        Assert.Equal(3, spawned.Count);
-        Assert.Equal(new[] { 107000003, 201000011, 201000011 }, spawned.Select(item => item.ItemId).Order());
-        Assert.Equal(3, ground.GetSnapshot(19307, AreaType.Corridor).Count);
+        Assert.Single(spawned);
+        Assert.Equal(107000003, spawned[0].ItemId);
+        Assert.Single(ground.GetSnapshot(19307, AreaType.Corridor));
     }
     [Fact]
     public void InventoryCapacityDoesNotReplaceExistingItems()
@@ -334,11 +337,11 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Theory]
-    [InlineData(201000008, 100, 0, GroundItemPickupDisposition.Store, 0, 15)]
-    [InlineData(201000008, 100, 1, GroundItemPickupDisposition.Store, 0, 15)]
+    [InlineData(201000008, 100, 0, GroundItemPickupDisposition.AutoUse, 0, 15)]
+    [InlineData(201000008, 100, 1, GroundItemPickupDisposition.AutoUse, 0, 15)]
     [InlineData(201000018, 100, 30, GroundItemPickupDisposition.Store, 0, 35)]
-    [InlineData(201000011, 100, 30, GroundItemPickupDisposition.Store, 15, 0)]
-    [InlineData(201000011, 99, 30, GroundItemPickupDisposition.Store, 15, 0)]
+    [InlineData(201000011, 100, 30, GroundItemPickupDisposition.AutoUse, 15, 0)]
+    [InlineData(201000011, 99, 30, GroundItemPickupDisposition.AutoUse, 15, 0)]
     [InlineData(301000039, 30, 30, GroundItemPickupDisposition.Store, 0, 0)]
     [InlineData(301000038, 30, 30, GroundItemPickupDisposition.Store, 0, 0)]
     public void ConsumablePickupPolicyMatchesSpecification(int itemId, int stamina, int corruption,
@@ -354,6 +357,18 @@ public sealed class SurvivorRegionalItemPoolTests
         Assert.Equal(expected, actual);
         Assert.Equal(expectedStaminaRecovery, staminaRecovery);
         Assert.Equal(expectedCorruptionRecovery, corruptionRecovery);
+    }
+
+    [Theory]
+    [InlineData(201000008, false)]
+    [InlineData(201000011, false)]
+    [InlineData(201000018, true)]
+    [InlineData(201000019, true)]
+    [InlineData(201000020, true)]
+    [InlineData(107000010, true)]
+    public void EliminationDropPolicyExcludesOnlyImmediateUseConsumables(int itemId, bool expected)
+    {
+        Assert.Equal(expected, GroundItemPickupPolicy.ShouldDropOnElimination(itemId));
     }
 
     [Fact]

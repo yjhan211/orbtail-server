@@ -16,6 +16,11 @@ public static class GroundItemPickupPolicy
     public const int CannedCoffeeStaminaRecovery = 15;
     public const int FirstAidKitRecovery = 35;
 
+    public static bool IsImmediateUseItem(int itemId) =>
+        itemId is BandageItemId or CannedCoffeeItemId;
+
+    public static bool ShouldDropOnElimination(int itemId) => !IsImmediateUseItem(itemId);
+
     public static GroundItemPickupDisposition Resolve(
         int itemId,
         int stamina,
@@ -37,8 +42,8 @@ public static class GroundItemPickupPolicy
         if (staminaRecovery == 0 && corruptionRecovery == 0)
             return GroundItemPickupDisposition.Store;
 
-        // Ground pickups never consume recovery items immediately. Stats are applied only
-        // when the player later chooses the stored inventory item.
-        return GroundItemPickupDisposition.Store;
+        return IsImmediateUseItem(itemId)
+            ? GroundItemPickupDisposition.AutoUse
+            : GroundItemPickupDisposition.Store;
     }
 }

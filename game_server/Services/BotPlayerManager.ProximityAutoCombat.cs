@@ -55,6 +55,7 @@ public partial class BotPlayerManager
                 continue;
 
             bool autoUsed = disposition == GroundItemPickupDisposition.AutoUse;
+            InGameItemInfo? addedItem = null;
             if (autoUsed)
             {
                 bot.Stamina = Math.Min(100, bot.Stamina + staminaRecovery);
@@ -65,7 +66,7 @@ public partial class BotPlayerManager
                          bot.PlayerId,
                          claimedItem.ItemId,
                          Config.SURVIVOR_INVENTORY_SLOT_COUNT,
-                         out _))
+                         out addedItem))
             {
                 _logger.LogWarning(
                     "Bot ground pickup inventory race: MatchingId={MatchingId}, BotId={BotId}, GroundItemUid={GroundItemUid}",
@@ -75,7 +76,20 @@ public partial class BotPlayerManager
                 return false;
             }
 
-            pickup = new BotGroundItemPickup(bot.PlayerId, claimedItem, autoUsed, corruptionRecovery, discovererPlayerId);
+            int autoEquippedItemId = 0;
+            if (addedItem != null && inventory.GetEquippedBattleItem()?.ItemUid == addedItem.ItemUid)
+            {
+                bot.EquippedBattleItemId = addedItem.ItemId;
+                autoEquippedItemId = addedItem.ItemId;
+            }
+
+            pickup = new BotGroundItemPickup(
+                bot.PlayerId,
+                claimedItem,
+                autoUsed,
+                corruptionRecovery,
+                discovererPlayerId,
+                autoEquippedItemId);
             return true;
         }
 
@@ -277,7 +291,8 @@ public readonly record struct BotGroundItemPickup(
     GroundItemInfo Item,
     bool AutoUsed,
     int CorruptionRecovery,
-    long DiscovererPlayerId);
+    long DiscovererPlayerId,
+    int AutoEquippedItemId = 0);
 
 public readonly record struct BotCombatTargetSnapshot(
     long PlayerId,
