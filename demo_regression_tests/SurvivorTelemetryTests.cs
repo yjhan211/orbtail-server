@@ -42,7 +42,7 @@ public sealed class SurvivorTelemetryTests
             entry.AreaRemainingStock == 6);
         Assert.Contains(events, entry =>
             entry.Type == "RECOVERY_USED" && entry.RecoveryAmount == 15);
-        var ended = Assert.Single(events.Where(entry => entry.Type == "MATCH_ENDED"));
+        var ended = Assert.Single(events, entry => entry.Type == "MATCH_ENDED");
         Assert.Equal(101, ended.WinnerPlayerId);
         Assert.Equal("last_survivor", ended.EndReason);
         Assert.Equal(45, Assert.Single(ended.FinalPlayerStats!).TotalDamageDealt);
@@ -70,16 +70,16 @@ public sealed class SurvivorTelemetryTests
         log.LogMove(matchingId, 202, "Corridor1F", "Library", isBot: false);
 
         var events = log.GetRecent(matchingId, 5_000);
-        var snapshot = Assert.Single(events.Where(entry => entry.Type == "CLOSURE_WARNING_SNAPSHOT"));
+        var snapshot = Assert.Single(events, entry => entry.Type == "CLOSURE_WARNING_SNAPSHOT");
         Assert.Equal(40, snapshot.Corruption);
         Assert.Equal(5, snapshot.InventorySlotsUsed);
         Assert.Equal(3, snapshot.AreaRemainingStock);
 
-        var exit = Assert.Single(events.Where(entry => entry.Type == "CLOSURE_WARNING_EXIT"));
+        var exit = Assert.Single(events, entry => entry.Type == "CLOSURE_WARNING_EXIT");
         Assert.Equal(1, exit.AdditionalExploreCount);
         Assert.NotNull(exit.ExitedAtUnixMs);
 
-        var reentry = Assert.Single(events.Where(entry => entry.Type == "CLOSURE_WARNING_REENTRY"));
+        var reentry = Assert.Single(events, entry => entry.Type == "CLOSURE_WARNING_REENTRY");
         Assert.Equal(1, reentry.AdditionalExploreCount);
         Assert.NotNull(reentry.ReenteredAtUnixMs);
     }

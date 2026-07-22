@@ -229,7 +229,7 @@ public class MatchingManager : IMatchingManager
                         Persona = PersonaType.None,
                         StartArea = AreaType.Corridor,
                         SpawnCell = Cell.Clone(link.SpawnCell),
-                ActiveBuffIds = new List<int>()
+                        ActiveBuffIds = new List<int>()
                     });
                 }
                 await SavePlayerBuffAssignmentsAsync(matchingId, chain);

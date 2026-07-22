@@ -732,7 +732,8 @@ public class BotMissionTickResult
     public List<(long botId, AreaType area)> BotExploreEnds { get; } = new();
 
     public List<(long botId, int interactId, AreaType area, List<int> generatedItemIds,
-        int areaRemainingStock, string outcome)> RngExploreCompletions { get; } = new();
+        int areaRemainingStock, string outcome)> RngExploreCompletions
+    { get; } = new();
 
     public List<(long botId, AreaType area)> BotRestStarts { get; } = new();
     public List<(long botId, AreaType area)> BotRestEnds { get; } = new();

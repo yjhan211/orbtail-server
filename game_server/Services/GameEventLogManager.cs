@@ -863,7 +863,8 @@ public class GameEventLogManager
         public HashSet<long> SpawnLoggedPlayerIds { get; } = new();
         public Dictionary<(long PlayerId, int InteractId), DateTimeOffset> ExploreStarts { get; } = new();
         public Dictionary<(long PlayerId, string Area, long ClosureAtUnixMs), ClosureWarningResponse>
-            ClosureWarnings { get; } = new();
+            ClosureWarnings
+        { get; } = new();
     }
 
     private sealed class ClosureWarningResponse(long playerId, string area, DateTimeOffset warnedAt)

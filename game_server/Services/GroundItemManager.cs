@@ -266,11 +266,11 @@ public sealed class GroundItemManager
         public long NextUid() => checked(matchingId * 1_000_000L + ++_sequence);
     }
 
-public readonly record struct ExpiredGroundItemReservation(
-    long GroundItemUid,
-    int ItemId,
-    long DiscovererPlayerId,
-    long ExpiresAtUnixMs);
+    public readonly record struct ExpiredGroundItemReservation(
+        long GroundItemUid,
+        int ItemId,
+        long DiscovererPlayerId,
+        long ExpiresAtUnixMs);
 
     private readonly record struct GroundItemClaimReservation(long PlayerId, DateTimeOffset ExpiresAtUtc);
 }
