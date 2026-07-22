@@ -37,7 +37,7 @@ public static class SurvivorRoyaleSpawnData
         }
 
         var shuffledAnchors = Enumerable.Range(0, CorridorAnchors.Length).ToList();
-        var rng = new Random(ToDeterministicSeed(matchingId));
+        var rng = new Random(GetDeterministicSeed(matchingId));
         for (var index = shuffledAnchors.Count - 1; index > 0; index--)
         {
             var swapIndex = rng.Next(index + 1);
@@ -51,7 +51,13 @@ public static class SurvivorRoyaleSpawnData
             .ToDictionary(pair => pair.Key, pair => pair.Value);
     }
 
-    private static int ToDeterministicSeed(long matchingId) =>
+    public static int GetDeterministicSeed(long matchingId) =>
         unchecked((int)(matchingId ^ (matchingId >> 32) ^ 0x51A7_195));
+
+    public static int GetAnchorIndex(Cell cell)
+    {
+        int index = Array.FindIndex(CorridorAnchors, anchor => anchor.X == cell.X && anchor.Y == cell.Y);
+        return index < 0 ? 0 : index + 1;
+    }
 }
 }

@@ -109,6 +109,8 @@ public partial class GameClientSession
 
         Logger.LogInformation("RNG collect START: PlayerId={PlayerId}, InteractId={InteractId}",
             PlayerId, msg.InteractId);
+        _gameEventLogManager.LogExploreStart(
+            CurrentMapSubId, PlayerId.Value, msg.InteractId, CurrentArea.ToString(), isBot: false);
 
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
         return Task.CompletedTask;
@@ -287,6 +289,14 @@ public partial class GameClientSession
             outcome.StaminaReward, outcome.CooldownSeconds);
         SpawnGroundItemsFromExplore(info, outcome);
 
+        _gameEventLogManager.LogExploreCompleted(
+            CurrentMapSubId,
+            PlayerId.Value,
+            msg.InteractId,
+            CurrentArea.ToString(),
+            outcome.DroppedItemIds,
+            _areaItemStockManager.GetRemainingCount(CurrentMapSubId, (int)CurrentArea),
+            isBot: false);
         if (outcome.AddedInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedInventoryItem);
         foreach (var extraInventoryItem in outcome.AddedExtraInventoryItems)
             SendInGameInventoryUpdate(extraInventoryItem);
@@ -441,6 +451,8 @@ public partial class GameClientSession
 
         foreach (int interactId in _pendingFinish.ToArray())
         {
+            _gameEventLogManager.LogExploreCancelled(
+                CurrentMapSubId, PlayerId.GetValueOrDefault(), interactId, CurrentArea.ToString(), reason, isBot: false);
             ClearRoomEncounterStartCandidates(interactId);
             RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
             BroadcastRngCollectCooldown(interactId, 0);

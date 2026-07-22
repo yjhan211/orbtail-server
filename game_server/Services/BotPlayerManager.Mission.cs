@@ -340,6 +340,9 @@ public partial class BotPlayerManager
         {
             RngCollectCooldownStore.ClearCooldown(matchingId, info.Id);
             result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
+            result.RngExploreCompletions.Add((
+                bot.PlayerId, info.Id, bot.CurrentArea, [],
+                areaItemStockManager.GetRemainingCount(matchingId, info.ZoneId), "gift"));
             result.RngCooldownBroadcasts.Add((info.Id, 0));
 
             bot.PendingRngInteractId = 0;
@@ -384,6 +387,9 @@ public partial class BotPlayerManager
 
         // ExploreEnd + 쿨타임 broadcast (다른 클라가 봇 EXPLORE_1 → IDLE 복귀 + 마커 30초 숨김)
         result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
+        result.RngExploreCompletions.Add((
+            bot.PlayerId, info.Id, bot.CurrentArea, outcome.DroppedItemIds.ToList(),
+            areaItemStockManager.GetRemainingCount(matchingId, info.ZoneId), "completed"));
         result.RngCooldownBroadcasts.Add((info.Id, outcome.CooldownSeconds));
 
         bool droppedBattleItem = outcome.DroppedItemIds.Any(BattleItemCombatData.IsCombatItem);
@@ -445,6 +451,8 @@ public partial class BotPlayerManager
             RngCollectCooldownStore.ClearCooldown(matchingId, interactId);
             result.RngCooldownBroadcasts.Add((interactId, 0));
             result.BotExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
+            result.RngExploreCompletions.Add((
+                bot.PlayerId, interactId, bot.CurrentArea, [], 0, "cancelled"));
         }
     }
 
@@ -535,7 +543,7 @@ public partial class BotPlayerManager
         bot.Stamina = Math.Min(100, bot.Stamina + bestStaminaGain);
         bot.Corruption = Math.Max(0, bot.Corruption - bestCorruptionDown);
         if (bestCorruptionDown > 0)
-            result.CorruptionRecoveries.Add((bot.PlayerId, bestCorruptionDown));
+            result.CorruptionRecoveries.Add((bot.PlayerId, bestItem.ItemId, bestCorruptionDown));
         bot.LastAutoConsumableUseTime = DateTime.UtcNow;
 
         _logger.LogInformation(
@@ -713,7 +721,7 @@ public class BotMissionTickResult
     public List<(int interactId, int cooldownSeconds)> RngCooldownBroadcasts { get; } = new();
     public List<GroundItemInfo> GroundItemSpawns { get; } = new();
     public List<(long botPlayerId, int itemId)> ConsumableMerges { get; } = new();
-    public List<(long botPlayerId, int amount)> CorruptionRecoveries { get; } = new();
+    public List<(long botPlayerId, int itemId, int amount)> CorruptionRecoveries { get; } = new();
     public List<(long botPlayerId, int itemId)> BattleItemCombines { get; } = new();
     public List<(long botPlayerId, int itemId)> BattleItemEquips { get; } = new();
 
@@ -722,6 +730,9 @@ public class BotMissionTickResult
 
     /// <summary>#134 — 봇이 RNG progress 종료했음을 같은 영역 인간 세션에 알림 (G_TO_C_EXPLORE_END).</summary>
     public List<(long botId, AreaType area)> BotExploreEnds { get; } = new();
+
+    public List<(long botId, int interactId, AreaType area, List<int> generatedItemIds,
+        int areaRemainingStock, string outcome)> RngExploreCompletions { get; } = new();
 
     public List<(long botId, AreaType area)> BotRestStarts { get; } = new();
     public List<(long botId, AreaType area)> BotRestEnds { get; } = new();

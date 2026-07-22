@@ -29,6 +29,8 @@ public partial class BotPlayerManager
             int corruptionRecovery = 0;
             bool canStore = inventory.GetAllItems().Count < Config.SURVIVOR_INVENTORY_SLOT_COUNT;
 
+            long discovererPlayerId = groundItemManager.GetDiscovererPlayerId(
+                matchingId, candidate.GroundItemUid);
             var status = groundItemManager.TryClaim(
                 matchingId,
                 candidate.GroundItemUid,
@@ -73,7 +75,7 @@ public partial class BotPlayerManager
                 return false;
             }
 
-            pickup = new BotGroundItemPickup(bot.PlayerId, claimedItem, autoUsed, corruptionRecovery);
+            pickup = new BotGroundItemPickup(bot.PlayerId, claimedItem, autoUsed, corruptionRecovery, discovererPlayerId);
             return true;
         }
 
@@ -274,7 +276,8 @@ public readonly record struct BotGroundItemPickup(
     long BotPlayerId,
     GroundItemInfo Item,
     bool AutoUsed,
-    int CorruptionRecovery);
+    int CorruptionRecovery,
+    long DiscovererPlayerId);
 
 public readonly record struct BotCombatTargetSnapshot(
     long PlayerId,

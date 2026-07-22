@@ -647,7 +647,13 @@ public partial class GameClientSession
             }
         }
 
+        int corruptionBeforeBuffs = Corruption;
         if (staminaDelta != 0 || corruptionDelta != 0) ModifyStats(staminaDelta, corruptionDelta);
+        int recoveredCorruption = Math.Max(0, corruptionBeforeBuffs - Corruption);
+        if (PlayerId.HasValue && recoveredCorruption > 0)
+            _gameEventLogManager.LogRecoveryUse(
+                CurrentMapSubId, PlayerId.Value, itemId, recoveredCorruption,
+                source: "inventory_consumable", isBot: false);
 
         return hasPeriodicBuff;
     }

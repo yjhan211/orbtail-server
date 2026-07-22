@@ -65,7 +65,7 @@ public static class AdminEndpoints
         app.MapGet("/admin/instance/{matchingId:long}/events",
             (long matchingId, int? limit, long? since) =>
             {
-                int take = Math.Clamp(limit ?? 200, 1, 200);
+                int take = Math.Clamp(limit ?? 500, 1, 5_000);
                 var events = gameServer.GameEventLogManager.GetRecent(matchingId, take, since);
                 return Results.Ok(new { matchingId, count = events.Count, events });
             });

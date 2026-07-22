@@ -97,6 +97,20 @@ public partial class GameClientSession
             _areaClosureManager.InitializeMatching(msg.MatchingId, jobPool);
             _areaItemStockManager.InitializeMatching(msg.MatchingId);
             _groundItemManager.InitializeMatching(msg.MatchingId);
+            int matchSeed = SurvivorRoyaleSpawnData.GetDeterministicSeed(msg.MatchingId);
+            _gameEventLogManager.BeginMatch(msg.MatchingId, matchSeed);
+            foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
+            {
+                _gameEventLogManager.LogSpawnAssignment(
+                    msg.MatchingId,
+                    bot.PlayerId,
+                    matchSeed,
+                    SurvivorRoyaleSpawnData.GetAnchorIndex(bot.Cell),
+                    bot.Cell.X,
+                    bot.Cell.Y,
+                    bot.CurrentArea.ToString(),
+                    isBot: true);
+            }
 
             // ?멸쾶???ㅽ꺈 珥덇린??            ResetInGameStats();
 
@@ -126,6 +140,15 @@ public partial class GameClientSession
                     _lastValidCell?.Y);
                 _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea,
                     countAsEntry: false);
+                _gameEventLogManager.LogSpawnAssignment(
+                    CurrentMapSubId,
+                    PlayerId.Value,
+                    SurvivorRoyaleSpawnData.GetDeterministicSeed(CurrentMapSubId),
+                    SurvivorRoyaleSpawnData.GetAnchorIndex(_lastValidCell),
+                    _lastValidCell.X,
+                    _lastValidCell.Y,
+                    CurrentArea.ToString(),
+                    isBot: false);
                 _gameEventLogManager.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea.ToString());
 
                 // 珥덇린 Area??Interactable 紐⑸줉 ?꾩넚
@@ -1140,7 +1163,7 @@ public partial class GameClientSession
         Logger.LogInformation("Round session completed: MatchingId={MatchingId}, WinnerId={WinnerId}",
             matchingId, winnerId);
 
-        SendGameResult(sessions, winnerId ?? 0, false, matchingId);
+        SendGameResult(sessions, winnerId ?? 0, false, matchingId, "round_completion", "resource_ranking");
     }
 
     private void BroadcastRoundState(long matchingId, RoundRuntimeState state)
@@ -1292,7 +1315,7 @@ public partial class GameClientSession
         Logger.LogInformation("?쒓컙 珥덇낵 ?뱀옄: MatchingId={MatchingId}, WinnerId={WinnerId}", matchingId, winnerId);
 
         // 寃곌낵 ?⑦궥 ?꾩넚
-        SendGameResult(sessions, winnerId ?? 0, true, matchingId);
+        SendGameResult(sessions, winnerId ?? 0, true, matchingId, "timeout", "resource_ranking");
     }
 
 }

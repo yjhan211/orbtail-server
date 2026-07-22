@@ -833,7 +833,7 @@ public partial class GameClientSession
         _gameEventLogManager.LogSystem(
             CurrentMapSubId,
             $"survivor_settlement winner={winnerId} criterion={criterion}");
-        SendGameResult(allSessions, winnerId, false, CurrentMapSubId);
+        SendGameResult(allSessions, winnerId, false, CurrentMapSubId, "overtime_settlement", criterion);
     }
 
     private int ResolveFinalOrbTier(long matchingId, long playerId)
@@ -845,12 +845,25 @@ public partial class GameClientSession
     /// <summary>
     ///     게임 결과 패킷 전송 (체인 전체 공개)
     /// </summary>
-    private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout, long matchingId)
+    private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout, long matchingId,
+        string endReason = "last_survivor", string tieBreakCriterion = "not_required")
     {
-        var players = BuildGameResultPlayers(allSessions, matchingId, winnerId);
         if (allSessions.Any(session => session.IsGameEnded))
             return;
 
+        var players = BuildGameResultPlayers(allSessions, matchingId, winnerId);
+        _gameEventLogManager.LogMatchEnded(
+            matchingId,
+            winnerId,
+            endReason,
+            tieBreakCriterion,
+            players.Select(player => new SurvivorFinalPlayerStats(
+                player.PlayerId,
+                player.Rank,
+                player.SurvivalTimeSeconds,
+                player.KillCount,
+                player.TotalDamageDealt,
+                player.TotalRecovery)).ToList());
 
         var resultChunks = GameResultPacketChunker.CreateGameResultChunks(winnerId, isTimeout, players);
         foreach (var resultChunk in resultChunks)
@@ -1880,7 +1893,7 @@ public partial class GameClientSession
         Logger.LogInformation("게임 즉시 종료(race 완주): MatchingId={MatchingId}, Winner={WinnerId}",
             CurrentMapSubId, winnerId);
 
-        SendGameResult(allSessions, winnerId, isTimeout: false, CurrentMapSubId);
+        SendGameResult(allSessions, winnerId, isTimeout: false, CurrentMapSubId, "race_completion");
     }
 
     /// <summary>

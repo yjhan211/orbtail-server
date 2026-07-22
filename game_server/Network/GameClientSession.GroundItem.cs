@@ -22,6 +22,8 @@ public partial class GameClientSession
         int corruptionRecovery = 0;
         ErrorCode rejection = ErrorCode.INVENTORY_FULL;
         var position = _lastValidatedPosition;
+        long discovererPlayerId = _groundItemManager.GetDiscovererPlayerId(
+            CurrentMapSubId, msg.GroundItemUid);
         var status = _groundItemManager.TryClaim(
             CurrentMapSubId,
             msg.GroundItemUid,
@@ -73,11 +75,25 @@ public partial class GameClientSession
         }
 
         if (autoUsed)
+        {
             ModifyStats(staminaDelta: staminaRecovery, corruptionDelta: -corruptionRecovery);
+            _gameEventLogManager.LogRecoveryUse(
+                CurrentMapSubId, PlayerId.Value, claimedItem.ItemId,
+                corruptionRecovery, source: "ground_auto_use", isBot: false);
+        }
         else if (addedItem != null)
             SendInGameInventoryUpdate(addedItem);
 
         BroadcastGroundItemRemoved(claimedItem, autoUsed);
+        _gameEventLogManager.LogGroundItemPickup(
+            CurrentMapSubId,
+            PlayerId.Value,
+            discovererPlayerId,
+            claimedItem.GroundItemUid,
+            claimedItem.ItemId,
+            CurrentArea.ToString(),
+            autoUsed,
+            isBot: false);
         SendGroundItemPickupResult(claimedItem.GroundItemUid, claimedItem.ItemId, true, autoUsed, ErrorCode.SUCCESS);
         return Task.CompletedTask;
     }
@@ -114,6 +130,13 @@ public partial class GameClientSession
         if (removed.Count == 0) return;
 
         var itemIds = removed.SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count)).ToList();
+        _gameEventLogManager.LogEliminationDrop(
+            CurrentMapSubId,
+            PlayerId.Value,
+            CurrentArea.ToString(),
+            itemIds,
+            GameEventLogManager.CalculateDropRecoveryTotal(itemIds),
+            isBot: false);
         foreach (var item in removed)
             SendInGameInventoryUpdate(new InGameItemInfo
             {
@@ -138,6 +161,13 @@ public partial class GameClientSession
         if (removed.Count == 0) return;
 
         var itemIds = removed.SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count)).ToList();
+        _gameEventLogManager.LogEliminationDrop(
+            CurrentMapSubId,
+            botPlayerId,
+            bot.CurrentArea.ToString(),
+            itemIds,
+            GameEventLogManager.CalculateDropRecoveryTotal(itemIds),
+            isBot: true);
         var spawned = _groundItemManager.SpawnItems(CurrentMapSubId, bot.CurrentArea,
             bot.Position.X, bot.Position.Y, itemIds);
         BroadcastGroundItemsSpawned(bot.CurrentArea, spawned);
@@ -163,6 +193,18 @@ public partial class GameClientSession
             discovererPlayerId: PlayerId.GetValueOrDefault(),
             discovererPickupWindow: GroundItemManager.DiscovererPickupWindow);
         BroadcastGroundItemsSpawned(area, spawned);
+        long priorityExpiresAtUnixMs = DateTimeOffset.UtcNow
+            .Add(GroundItemManager.DiscovererPickupWindow)
+            .ToUnixTimeMilliseconds();
+        foreach (var item in spawned)
+            _gameEventLogManager.LogGroundItemSpawned(
+                CurrentMapSubId,
+                PlayerId.GetValueOrDefault(),
+                item.GroundItemUid,
+                item.ItemId,
+                area.ToString(),
+                priorityExpiresAtUnixMs,
+                isBot: false);
     }
 
     private void BroadcastGroundItemsSpawned(AreaType area, IReadOnlyList<GroundItemInfo> spawned)

@@ -218,6 +218,20 @@ public class AreaClosureManager
     }
 
     public bool IsOvertimeActive(long matchingId) => GetOvertimeCorruptionPerTick(matchingId, 1) > 0;
+    public (int Stage, int CorruptionPerSecond) GetOvertimeStatus(long matchingId)
+    {
+        int rate = GetOvertimeCorruptionPerTick(matchingId, 1);
+        int stage = rate switch
+        {
+            <= 0 => 0,
+            1 => 1,
+            2 => 2,
+            4 => 3,
+            _ => 4
+        };
+        return (stage, rate);
+    }
+
 
     /// <summary>운동장 전역 오버타임 단계. 마지막 폐쇄 완료 시각(4:50)부터 시작한다.</summary>
     private int GetOvertimeCorruptionPerSecond(MatchingClosureState state)
