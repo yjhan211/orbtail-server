@@ -156,8 +156,8 @@ public class ProximityAutoCombatResolverTests
         Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(1099)));
         Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(1100)));
         Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(1700)));
-        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(2299)));
-        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(2300)));
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(3199)));
+        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(3200)));
     }
 
     [Fact]

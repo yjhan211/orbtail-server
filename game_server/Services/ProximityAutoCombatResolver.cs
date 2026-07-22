@@ -192,8 +192,10 @@ public sealed class ProximityAutoCombatResolver
                     attacker.EffectDurationSeconds));
             }
 
+            // A burst of N attacks has N - 1 shortened gaps between those attacks.
+            // The interval after the final burst attack returns to the base cadence.
             bool useInitialBurst = attacker.InitialBurstAttackCount > 0 &&
-                                   combatState.RemainingInitialBurstAttacks > 0;
+                                   combatState.RemainingInitialBurstAttacks > 1;
             float nextAttackIntervalSeconds = useInitialBurst
                 ? attacker.AttackIntervalSeconds * attacker.InitialBurstAttackIntervalMultiplier
                 : attacker.AttackIntervalSeconds;
