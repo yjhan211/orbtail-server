@@ -448,6 +448,64 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.False(bot.Path[^1].Area.IsCorridor());
     }
 
+    [Theory]
+    [InlineData(AreaType.Gym, AreaType.Corridor, 173, 88, 172, 88, 170, 88)]
+    [InlineData(AreaType.Corridor, AreaType.Gym, 172, 88, 173, 88, 175, 88)]
+    public void BotAreaArrivalClearsDoorwayBeforeStopping(
+        AreaType fromArea,
+        AreaType toArea,
+        int startX,
+        int startY,
+        int entryX,
+        int entryY,
+        int expectedX,
+        int expectedY)
+    {
+        var entryCell = new Cell(entryX, entryY);
+
+        var path = BotPathfinder.FindPath(
+            MapId.School,
+            fromArea,
+            new Cell(startX, startY),
+            toArea,
+            entryCell);
+
+        Assert.NotNull(path);
+        Assert.Contains(path, step => step.IsAreaTransition && step.Cell.Equals(entryCell));
+        Assert.Equal(toArea, path[^1].Area);
+        Assert.False(path[^1].IsAreaTransition);
+        Assert.Equal(new Cell(expectedX, expectedY), path[^1].Cell);
+    }
+
+    [Fact]
+    public void DefaultBotAreaArrivalsClearEverySchoolDoorway()
+    {
+        foreach (var fromArea in Enum.GetValues<AreaType>())
+        {
+            foreach (var toArea in GameAreaConnectionData.GetConnections(MapId.School, fromArea)
+                         .Select(connection => connection.ToArea)
+                         .Distinct())
+            {
+                var entryCell = GameAreaConnectionData.GetSpawnCell(MapId.School, fromArea, toArea);
+                Assert.NotNull(entryCell);
+
+                var path = BotPathfinder.FindPath(
+                    MapId.School,
+                    fromArea,
+                    GameMapData.GetAreaSpawnCell(MapId.School, fromArea),
+                    toArea,
+                    entryCell);
+
+                Assert.NotNull(path);
+                Assert.NotEmpty(path);
+                Assert.NotEqual(entryCell, path[^1].Cell);
+                Assert.Equal(toArea, path[^1].Area);
+                Assert.Equal(toArea, GameMapData.GetCurrentArea(MapId.School, path[^1].Cell));
+                Assert.True(GameMapData.IsMoveablePosition(MapId.School, path[^1].Cell));
+            }
+        }
+    }
+
     private static ProximityCombatActor CombatActor(long playerId, Vector3f position, int weaponItemId)
     {
         var combatData = BattleItemCombatData.Get(weaponItemId)!;
