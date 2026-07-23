@@ -115,28 +115,11 @@ public partial class GameClientSession
 
     private Task HandleDropGroundItem(C_TO_G_DROP_GROUND_ITEM msg)
     {
-        if (!PlayerId.HasValue || IsEliminated || _lastValidatedPosition == null || CurrentArea == AreaType.None)
-        {
-            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Cannot drop an item in the current state");
-            return Task.CompletedTask;
-        }
-
-        var item = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value).GetItem(msg.ItemUid);
-        if (item == null || item.Count <= 0 ||
-            !_inGameInventoryManager.TryRemoveItem(CurrentMapSubId, PlayerId.Value, msg.ItemUid, 1, out var updated))
-        {
-            SendErrorResponse(ErrorCode.ITEM_NOT_FOUND, "Item is not in the inventory");
-            return Task.CompletedTask;
-        }
-
-        if (updated != null) SendInGameInventoryUpdate(updated);
-        var position = _lastValidatedPosition;
-        var spawned = _groundItemManager.SpawnItems(CurrentMapSubId, CurrentArea,
-            position.X, position.Y, [item.ItemId], PlayerId.Value);
-        BroadcastGroundItemsSpawned(CurrentArea, spawned);
+        // P1 보드는 자유 버리기로 정리할 수 없다. 재활용 지역만 별도 권위 규칙으로 추가한다.
+        // 구버전 클라이언트나 임의 패킷도 인벤토리·월드 상태를 바꾸지 못하게 서버에서 차단한다.
+        SendErrorResponse(ErrorCode.ITEM_NOT_USABLE, "Manual item discard is disabled");
         return Task.CompletedTask;
     }
-
     internal void DropAllInventoryAtCurrentPosition()
     {
         if (!PlayerId.HasValue || _lastValidatedPosition == null || CurrentArea == AreaType.None) return;
