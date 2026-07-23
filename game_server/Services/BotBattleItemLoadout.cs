@@ -4,8 +4,8 @@ using network.common.data.models;
 namespace game_server.services;
 
 /// <summary>
-/// Keeps bot equipment decisions on the same inventory and recipe rules as players.
-/// Bots choose a highest-tier available recipe, then equip their best resulting battle item.
+/// Keeps bot equipment decisions on the same inventory and random Survivor-orb rules as players.
+/// After every evolution bots prefer an equipped orb that still has a same-colour support orb.
 /// </summary>
 public static class BotBattleItemLoadout
 {
@@ -21,9 +21,38 @@ public static class BotBattleItemLoadout
         var combinedItemIds = new List<int>();
         var inventory = inventoryManager.GetPlayerInventory(matchingId, playerId);
 
-        // Three combines are enough for four T1 items to become one T3 in a single decision tick.
+        // At most three merges can turn four T1 orbs into one T3 orb.
         for (int attempt = 0; attempt < 3; attempt++)
         {
+            var survivorInputs = inventory.GetAllItems()
+                .Where(item => item.Count > 0)
+                .Select(item => item.ItemId)
+                .Where(SurvivorOrbData.IsSurvivorOrb)
+                .GroupBy(itemId => itemId)
+                .Where(group => group.Count() >= 2 && SurvivorOrbData.CanMerge(group.Key, group.Key))
+                .OrderByDescending(group =>
+                {
+                    SurvivorOrbData.TryGetColorAndTier(group.Key, out _, out int tier);
+                    return tier;
+                })
+                .Select(group => group.Key)
+                .ToList();
+
+            if (survivorInputs.Count > 0)
+            {
+                int inputItemId = survivorInputs[random.Next(survivorInputs.Count)];
+                if (!inventoryManager.TryCombineSurvivorOrbs(
+                        matchingId, playerId, inputItemId, inputItemId, random,
+                        out int outputItemId, out _))
+                {
+                    break;
+                }
+
+                combinedItemIds.Add(outputItemId);
+                continue;
+            }
+
+            // Legacy non-Survivor battle recipes remain available outside the P1 orb board.
             var itemIds = inventory.GetAllItems()
                 .Where(item => item.Count > 0)
                 .Select(item => item.ItemId)
@@ -42,13 +71,8 @@ public static class BotBattleItemLoadout
                 .Where(recipe => (BattleItemCombatData.Get(recipe.OutputItemId)?.Tier ?? 0) == highestTier)
                 .ToList();
             var recipe = bestCandidates[random.Next(bestCandidates.Count)];
-
             if (!inventoryManager.TryCombineItems(
-                    matchingId,
-                    playerId,
-                    recipe.InputItemIds,
-                    recipe.OutputItemId,
-                    out _))
+                    matchingId, playerId, recipe.InputItemIds, recipe.OutputItemId, out _))
             {
                 break;
             }
@@ -56,9 +80,11 @@ public static class BotBattleItemLoadout
             combinedItemIds.Add(recipe.OutputItemId);
         }
 
-        var bestItem = inventory.GetAllItems()
-            .Where(item => item.Count > 0 && BattleItemCombatData.IsCombatItem(item.ItemId))
-            .OrderByDescending(item => BattleItemCombatData.Get(item.ItemId)?.Tier ?? 0)
+        var allItems = inventory.GetAllItems().Where(item => item.Count > 0).ToList();
+        var bestItem = allItems
+            .Where(item => BattleItemCombatData.IsCombatItem(item.ItemId))
+            .OrderByDescending(item => HasSameColorSupport(item, allItems))
+            .ThenByDescending(item => BattleItemCombatData.Get(item.ItemId)?.Tier ?? 0)
             .ThenByDescending(item => BattleItemCombatData.Get(item.ItemId)?.AttackRange ?? 0f)
             .ThenBy(item => item.ItemId)
             .FirstOrDefault();
@@ -68,6 +94,16 @@ public static class BotBattleItemLoadout
             inventoryManager.TryEquipBattleItem(matchingId, playerId, bestItem.ItemUid, out equippedItem);
 
         return new BotBattleItemLoadoutResult(combinedItemIds, equippedItem?.ItemId ?? 0);
+    }
+
+    private static bool HasSameColorSupport(InGameItemInfo item, IReadOnlyCollection<InGameItemInfo> allItems)
+    {
+        if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out SurvivorOrbColor color, out _))
+            return false;
+
+        return allItems.Any(other => other.ItemUid != item.ItemUid && other.Count > 0 &&
+                                     SurvivorOrbData.TryGetColorAndTier(other.ItemId, out SurvivorOrbColor otherColor,
+                                         out _) && otherColor == color);
     }
 
     private static bool HasInputs(IReadOnlyCollection<int> itemIds, IReadOnlyCollection<int> requiredItemIds)

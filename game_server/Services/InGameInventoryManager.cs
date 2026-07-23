@@ -146,6 +146,18 @@ public class PlayerInGameInventory(long matchingId)
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryCombineSurvivorOrbs(int inputA, int inputB, Random random,
+        out int outputItemId, out List<InGameItemInfo> changedItems)
+    {
+        outputItemId = 0;
+        changedItems = new List<InGameItemInfo>();
+        if (!SurvivorOrbData.TryGetRandomMergeOutput(inputA, inputB, random, out outputItemId))
+            return false;
+
+        return TryCombineItems([inputA, inputB], outputItemId, out changedItems);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public List<InGameItemInfo> TakeAllItems()
     {
         var items = _items.Values.Select(item => new InGameItemInfo
@@ -206,7 +218,7 @@ public class PlayerInGameInventory(long matchingId)
         }
 
         var boardItemIds = _items.Values
-            .Where(item => item.Count > 0)
+            .Where(item => item.Count > 0 && item.ItemUid != equippedItem.ItemUid)
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count));
         return SurvivorOrbData.TryGetActivePair(equippedItem.ItemId, boardItemIds, out color, out pairTier);
     }
@@ -365,6 +377,17 @@ public class InGameInventoryManager
         if (result)
             _logAction?.Invoke(
                 $"InGameInventoryManager: Combined items (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', inputItemIds)}], Output={outputItemId})");
+        return result;
+    }
+
+    public bool TryCombineSurvivorOrbs(long matchingId, long playerId, int inputA, int inputB,
+        Random random, out int outputItemId, out List<InGameItemInfo> changedItems)
+    {
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        bool result = inventory.TryCombineSurvivorOrbs(inputA, inputB, random, out outputItemId, out changedItems);
+        if (result)
+            _logAction?.Invoke(
+                $"InGameInventoryManager: Random Survivor orb merge (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");
         return result;
     }
     public bool TryEquipBattleItem(long matchingId, long playerId, long itemUid,

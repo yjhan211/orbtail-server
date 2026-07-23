@@ -16,14 +16,45 @@ public sealed class SurvivorOrbBoardTests
     [InlineData(107000030, SurvivorOrbColor.Blue, 1)]
     [InlineData(107000031, SurvivorOrbColor.Blue, 2)]
     [InlineData(107000032, SurvivorOrbColor.Blue, 3)]
-    public void ColoredOrbIdsMapToStableColorAndTier(
-        int itemId,
-        SurvivorOrbColor expectedColor,
-        int expectedTier)
+    public void ColoredOrbIdsMapToStableColorAndTier(int itemId, SurvivorOrbColor expectedColor, int expectedTier)
     {
         Assert.True(SurvivorOrbData.TryGetColorAndTier(itemId, out var color, out int tier));
         Assert.Equal(expectedColor, color);
         Assert.Equal(expectedTier, tier);
+    }
+
+    [Theory]
+    [InlineData(107000010, 107000010)]
+    [InlineData(107000011, 107000011)]
+    [InlineData(107000020, 107000020)]
+    [InlineData(107000021, 107000021)]
+    [InlineData(107000030, 107000030)]
+    [InlineData(107000031, 107000031)]
+    public void SameColorSameTierOrbMergeEvolvesToRandomNextTier(int inputA, int inputB)
+    {
+        var random = new Random(198);
+        var outputs = new HashSet<int>();
+        for (int i = 0; i < 50; i++)
+        {
+            Assert.True(SurvivorOrbData.TryGetRandomMergeOutput(inputA, inputB, random, out int output));
+            Assert.True(SurvivorOrbData.TryGetColorAndTier(inputA, out _, out int inputTier));
+            Assert.True(SurvivorOrbData.TryGetColorAndTier(output, out _, out int outputTier));
+            Assert.Equal(inputTier + 1, outputTier);
+            outputs.Add(output);
+        }
+
+        Assert.All(outputs, output => Assert.True(SurvivorOrbData.IsSurvivorOrb(output)));
+        Assert.True(outputs.Count > 1);
+    }
+
+    [Theory]
+    [InlineData(107000010, 107000020)]
+    [InlineData(107000010, 107000011)]
+    [InlineData(107000012, 107000012)]
+    public void DifferentColorDifferentTierOrTierThreeCannotMerge(int inputA, int inputB)
+    {
+        Assert.False(SurvivorOrbData.CanMerge(inputA, inputB));
+        Assert.False(SurvivorOrbData.TryGetRandomMergeOutput(inputA, inputB, new Random(1), out _));
     }
 
     [Fact]
@@ -35,26 +66,16 @@ public sealed class SurvivorOrbBoardTests
     }
 
     [Fact]
-    public void PickupCannotDisableAnExistingActivePair()
+    public void ResonanceUsesEquippedColorAndAnyOtherTier()
     {
-        int[] beforePickup = [107000030, 107000030];
-        int[] afterPickup = [107000030, 107000030, 107000020];
-
-        Assert.True(SurvivorOrbData.TryGetActivePair(107000030, beforePickup, out var beforeColor,
-            out int beforeTier));
-        Assert.True(SurvivorOrbData.TryGetActivePair(107000030, afterPickup, out var afterColor,
-            out int afterTier));
-        Assert.Equal((beforeColor, beforeTier), (afterColor, afterTier));
-    }
-
-    [Fact]
-    public void HighestSameTierPairOfEquippedColorWinsWhenSeveralPairsExist()
-    {
-        int[] board = [107000010, 107000010, 107000011, 107000011, 107000020, 107000020];
-
-        Assert.True(SurvivorOrbData.TryGetActivePair(107000010, board, out var color, out int pairTier));
+        Assert.True(SurvivorOrbData.TryGetActivePair(107000010, [107000021, 107000012], out var color,
+            out int supportTier));
         Assert.Equal(SurvivorOrbColor.Red, color);
-        Assert.Equal(2, pairTier);
+        Assert.Equal(3, supportTier);
+
+        Assert.False(SurvivorOrbData.TryGetActivePair(107000010, [], out color, out supportTier));
+        Assert.Equal(SurvivorOrbColor.Red, color);
+        Assert.Equal(0, supportTier);
     }
 
     [Fact]
@@ -72,53 +93,46 @@ public sealed class SurvivorOrbBoardTests
     }
 
     [Fact]
-    public void ActivePairUsesEquippedColorAndRecomputesAfterMerge()
+    public void EquippedInputStaysEquippedAndResonanceRecomputesAfterRandomMerge()
     {
         InitializeBattleCombatData();
         var inventory = new PlayerInGameInventory(198);
-        var equippedOrb = inventory.AddItem(107000010);
-        inventory.AddItem(107000010);
-        inventory.AddItem(107000020);
+        var equippedOrb = inventory.AddItem(107000010, forceSeparateStack: true);
+        inventory.AddItem(107000010, forceSeparateStack: true);
 
         Assert.True(inventory.TryEquipBattleItem(equippedOrb.ItemUid, out _));
-        Assert.True(inventory.TryGetActiveSurvivorOrbPair(out var color, out int pairTier));
+        Assert.True(inventory.TryGetActiveSurvivorOrbPair(out var color, out int supportTier));
         Assert.Equal(SurvivorOrbColor.Red, color);
-        Assert.Equal(1, pairTier);
+        Assert.Equal(1, supportTier);
 
-        Assert.True(inventory.TryCombineItems([107000010, 107000010], 107000011, out _));
-        Assert.False(inventory.TryGetActiveSurvivorOrbPair(out color, out pairTier));
-        Assert.Equal(SurvivorOrbColor.Red, color);
-        Assert.Equal(0, pairTier);
+        Assert.True(inventory.TryCombineSurvivorOrbs(107000010, 107000010, new Random(1), out int output, out _));
+        Assert.Equal(output, inventory.GetEquippedBattleItem()!.ItemId);
+        Assert.False(inventory.TryGetActiveSurvivorOrbPair(out color, out supportTier));
     }
 
     [Fact]
-    public void ActiveOrbColorsApplyOnlyTheirConfiguredCombatProfile()
+    public async Task ConcurrentRandomMergeConsumesInputsOnlyOnce()
     {
-        Assert.Equal(18, SurvivorOrbData.GetCombatDamage(SurvivorOrbColor.Red, true, 10));
-        Assert.Equal(10, SurvivorOrbData.GetCombatDamage(SurvivorOrbColor.Red, false, 10));
-        Assert.Equal(1f, SurvivorOrbData.GetAttackIntervalSeconds(
-            SurvivorOrbColor.Red, true, 0.8f), 4);
+        InitializeBattleCombatData();
+        var manager = new InGameInventoryManager();
+        manager.Initialize();
+        manager.AddItem(10, 100, 107000010);
+        manager.AddItem(10, 100, 107000010);
 
-        Assert.Equal(3, SurvivorOrbData.WaveInitialBurstAttackCount);
-        Assert.Equal(0.4f, SurvivorOrbData.WaveInitialBurstIntervalMultiplier);
-        Assert.Equal(3f, SurvivorOrbData.WaveBurstRechargeSeconds);
+        var attempts = await Task.WhenAll(
+            Task.Run(() => manager.TryCombineSurvivorOrbs(10, 100, 107000010, 107000010, new Random(1), out _, out _)),
+            Task.Run(() => manager.TryCombineSurvivorOrbs(10, 100, 107000010, 107000010, new Random(2), out _, out _)));
 
-        Assert.Equal(3, SurvivorOrbData.GetMaxTargets(SurvivorOrbColor.Green, true));
-        Assert.Equal(0.5f, SurvivorOrbData.GetAdditionalTargetDamageMultiplier(
-            SurvivorOrbColor.Green, true));
-        Assert.Equal(1, SurvivorOrbData.GetMaxTargets(SurvivorOrbColor.Green, false));
-        Assert.Equal(1f, SurvivorOrbData.GetAdditionalTargetDamageMultiplier(
-            SurvivorOrbColor.Green, false));
+        Assert.Single(attempts, success => success);
+        Assert.Single(attempts, success => !success);
+        Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetAllItems().Sum(item => item.Count));
     }
 
     private static void InitializeBattleCombatData()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null &&
-               !Directory.Exists(Path.Combine(directory.FullName, "network", "Common", "csv")))
-        {
+        while (directory != null && !Directory.Exists(Path.Combine(directory.FullName, "network", "Common", "csv")))
             directory = directory.Parent;
-        }
 
         if (directory == null)
             throw new DirectoryNotFoundException("Could not locate repository root from test output path.");

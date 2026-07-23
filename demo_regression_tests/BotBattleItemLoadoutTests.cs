@@ -1,4 +1,5 @@
 using game_server.services;
+using network.common.data;
 using network.common.data.helpers;
 
 namespace demo_regression_tests;
@@ -47,6 +48,25 @@ public sealed class BotBattleItemLoadoutTests
         Assert.Equal(107000006, inventory.GetEquippedBattleItem(matchingId, botPlayerId)!.ItemId);
     }
 
+    [Fact]
+    public void BotRandomlyEvolvesSurvivorOrbsAndPivotsToTheBestAvailableOrb()
+    {
+        const long matchingId = 198;
+        const long botPlayerId = -19801;
+        var inventory = new InGameInventoryManager();
+        inventory.Initialize();
+
+        inventory.AddItem(matchingId, botPlayerId, 107000010);
+        inventory.AddItem(matchingId, botPlayerId, 107000010);
+
+        var result = BotBattleItemLoadout.CombineAndEquip(inventory, matchingId, botPlayerId, new Random(198));
+
+        int output = Assert.Single(result.CombinedItemIds);
+        Assert.True(SurvivorOrbData.TryGetColorAndTier(output, out _, out int tier));
+        Assert.Equal(2, tier);
+        Assert.Equal(output, result.EquippedItemId);
+        Assert.Equal(output, inventory.GetEquippedBattleItem(matchingId, botPlayerId)!.ItemId);
+    }
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
