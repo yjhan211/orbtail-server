@@ -78,7 +78,8 @@ public static partial class PacketMaker
         int eventType,
         int cooldownSeconds,
         int revealDelayMs = 0,
-        int damageValue = 0)
+        int damageValue = 0,
+        int targetCorruption = -1)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_ENCOUNTER_REVEAL);
         G_TO_C_ENCOUNTER_REVEAL body = new()
@@ -88,7 +89,8 @@ public static partial class PacketMaker
             EventType = eventType,
             CooldownSeconds = cooldownSeconds,
             RevealDelayMs = revealDelayMs,
-            DamageValue = damageValue
+            DamageValue = damageValue,
+            TargetCorruption = targetCorruption
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

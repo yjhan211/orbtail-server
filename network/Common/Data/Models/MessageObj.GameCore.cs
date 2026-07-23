@@ -79,6 +79,8 @@ namespace network.common.data.models
         [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
         [Key("revealDelayMs")] public int RevealDelayMs { get; set; }
         [Key("damageValue")] public int DamageValue { get; set; }
+        /// <summary>자동전투로 공개된 대상의 현재 오염도. -1이면 공개 정보가 없다.</summary>
+        [Key("targetCorruption")] public int TargetCorruption { get; set; } = -1;
     }
 
     /// <summary>
