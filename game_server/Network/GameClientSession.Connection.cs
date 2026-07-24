@@ -199,6 +199,7 @@ public partial class GameClientSession
             SendMissionInfo();
             SendRoundStateSnapshot(msg.MatchingId);
             SendAreaClosureStateSnapshot();
+            SendSurvivorAreaStockStateSnapshot();
             SendChecklistInfo();
 
             // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃

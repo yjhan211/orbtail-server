@@ -799,6 +799,8 @@ public partial class GameServer(
                 foreach (var session in activeSessions.Where(session => session.CurrentArea == area))
                     session.Send(packet);
             }
+            if (missionResult.RngExploreCompletions.Count > 0)
+                BroadcastSurvivorAreaStockState(matchingId, activeSessions);
             // #134 — 봇 RNG 채집으로 발생한 인스턴스 쿨타임 broadcast
             if (missionResult.BattleItemEquips.Count > 0)
                 BroadcastBotBattleItemEquips(matchingId, missionResult.BattleItemEquips, activeSessions);
@@ -827,6 +829,25 @@ public partial class GameServer(
         {
             logger.LogError(ex, "봇 미션 틱 처리 중 오류: MatchingId={MatchingId}", matchingId);
         }
+    }
+
+    private void BroadcastSurvivorAreaStockState(long matchingId, List<GameClientSession> sessions)
+    {
+        var message = new G_TO_C_SURVIVOR_AREA_STOCK_STATE
+        {
+            Areas = _areaItemStockManager.GetPublicDepletionSnapshot(matchingId)
+                .Select(state => new SurvivorAreaNaturalStockState
+                {
+                    AreaType = state.AreaType,
+                    IsDepleted = state.IsDepleted,
+                    DepletedOrbColors = state.DepletedOrbColors
+                })
+                .ToList()
+        };
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SURVIVOR_AREA_STOCK_STATE);
+        packet.SetBody(MessagePackSerializer.Serialize(message));
+        foreach (var session in sessions.Where(session => session.CurrentMapSubId == matchingId))
+            session.Send(packet);
     }
 
     /// <summary>

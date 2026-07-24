@@ -109,6 +109,37 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Fact]
+    public void PublicStockSnapshotExposesOnlyColorDepletionState()
+    {
+        var manager = new AreaItemStockManager(new ZeroRandom());
+        const long matchId = 19307;
+        manager.InitializeMatching(matchId);
+
+        var initial = manager.GetPublicDepletionSnapshot(matchId);
+        Assert.False(initial.Single(state => state.AreaType == AreaType.Classroom3).IsDepleted);
+        Assert.Empty(initial.Single(state => state.AreaType == AreaType.Classroom3).DepletedOrbColors);
+
+        // Classroom3 starts with red and green orbs. Red must disappear from the minimap
+        // immediately after its own stock is gone, before the regional stock is exhausted.
+        Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out _));
+        var redDepleted = manager.GetPublicDepletionSnapshot(matchId)
+            .Single(state => state.AreaType == AreaType.Classroom3);
+        Assert.False(redDepleted.IsDepleted);
+        Assert.Equal([SurvivorOrbColor.Red], redDepleted.DepletedOrbColors);
+
+        while (manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out _))
+        {
+        }
+
+        var depleted = manager.GetPublicDepletionSnapshot(matchId);
+        Assert.True(depleted.Single(state => state.AreaType == AreaType.Classroom3).IsDepleted);
+        Assert.Equal(
+            [SurvivorOrbColor.Red, SurvivorOrbColor.Green],
+            depleted.Single(state => state.AreaType == AreaType.Classroom3).DepletedOrbColors.Order());
+        Assert.False(depleted.Single(state => state.AreaType == AreaType.Library).IsDepleted);
+    }
+
+    [Fact]
     public void SuccessfulExploreReturnsOneItemAndExhaustedExploreReturnsNone()
     {
         var manager = new AreaItemStockManager();

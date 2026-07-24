@@ -1,4 +1,5 @@
 using game_server.services;
+using MessagePack;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -204,6 +205,42 @@ public partial class GameClientSession
         int remaining = _areaItemStockManager.GetRemainingCount(CurrentMapSubId, (int)area);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, remaining, items);
         Send(packet);
+    }
+
+    private void SendSurvivorAreaStockStateSnapshot()
+    {
+        if (CurrentMapSubId <= 0) return;
+
+        var message = BuildSurvivorAreaStockStateMessage();
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SURVIVOR_AREA_STOCK_STATE);
+        packet.SetBody(MessagePackSerializer.Serialize(message));
+        Send(packet);
+    }
+
+    private void BroadcastSurvivorAreaStockState()
+    {
+        if (CurrentMapSubId <= 0) return;
+
+        var message = BuildSurvivorAreaStockStateMessage();
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SURVIVOR_AREA_STOCK_STATE);
+        packet.SetBody(MessagePackSerializer.Serialize(message));
+        foreach (var session in _getSessionsByInstance(CurrentMapId, CurrentMapSubId))
+            session.Send(packet);
+    }
+
+    private G_TO_C_SURVIVOR_AREA_STOCK_STATE BuildSurvivorAreaStockStateMessage()
+    {
+        return new G_TO_C_SURVIVOR_AREA_STOCK_STATE
+        {
+            Areas = _areaItemStockManager.GetPublicDepletionSnapshot(CurrentMapSubId)
+                .Select(state => new SurvivorAreaNaturalStockState
+                {
+                    AreaType = state.AreaType,
+                    IsDepleted = state.IsDepleted,
+                    DepletedOrbColors = state.DepletedOrbColors
+                })
+                .ToList()
+        };
     }
 
     private void SpawnGroundItemsFromExplore(InteractableInfoData info, RngCollectOutcome outcome)

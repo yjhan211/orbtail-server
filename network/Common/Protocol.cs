@@ -220,6 +220,7 @@ namespace network.common
         // 자동 전투 제3자 관전용 투사체 이펙트
         G_TO_C_PROXIMITY_ATTACK_VFX,
         G_TO_C_SURVIVOR_ORB_EFFECT_STATE,
+        G_TO_C_SURVIVOR_AREA_STOCK_STATE,
 
         END
     }
