@@ -22,6 +22,19 @@ public sealed class GameResultRankingResolverTests
     }
 
     [Fact]
+    public void Resolve_PutsWinnerFirstEvenWhenStatisticsSortLower()
+    {
+        var result = GameResultRankingResolver.Resolve(new[]
+        {
+            CreatePlayer(10, survival: 99, kills: 1, damage: 100, recovery: 10),
+            CreatePlayer(20, survival: 100, kills: 3, damage: 300, recovery: 30)
+        }, winnerId: 10);
+
+        Assert.Equal(new long[] { 10, 20 }, result.Select(player => player.PlayerId));
+        Assert.Equal(new[] { 1, 2 }, result.Select(player => player.Rank));
+    }
+
+    [Fact]
     public void Resolve_UsesPlayerIdAsStableFinalTieBreaker()
     {
         var result = GameResultRankingResolver.Resolve(new[]

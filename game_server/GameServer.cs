@@ -631,22 +631,32 @@ public partial class GameServer(
         if (removed.Count == 0)
             return;
 
+        var emptyBoard = _inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId);
+        _gameEventLogManager.LogSurvivorOrbBoardTransition(
+            matchingId, botPlayerId, emptyBoard.GetAllItems(), 0, bot.CurrentArea.ToString(), "elimination_drop",
+            isBot: true);
         var itemIds = removed
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
+            .Where(GroundItemPickupPolicy.ShouldDropOnElimination)
             .ToList();
-        _gameEventLogManager.LogEliminationDrop(
-            matchingId,
-            botPlayerId,
-            bot.CurrentArea.ToString(),
-            itemIds,
-            GameEventLogManager.CalculateDropRecoveryTotal(itemIds),
-            isBot: true);
+        if (itemIds.Count == 0)
+            return;
+
         var spawned = _groundItemManager.SpawnItems(
             matchingId,
             bot.CurrentArea,
             bot.Position.X,
             bot.Position.Y,
-            itemIds);
+            itemIds,
+            layout: GroundItemSpawnLayout.EliminationScatter);
+        _gameEventLogManager.LogEliminationDrop(
+            matchingId,
+            botPlayerId,
+            bot.CurrentArea.ToString(),
+            itemIds,
+            spawned,
+            GameEventLogManager.CalculateDropRecoveryTotal(itemIds),
+            isBot: true);
         if (spawned.Count == 0)
             return;
 
@@ -714,6 +724,27 @@ public partial class GameServer(
                     isBot: true);
                 _gameEventLogManager.LogSurvivorTierReached(
                     matchingId, botId, itemId, combatData?.Tier ?? 0, isBot: true);
+            }
+
+            foreach (var merge in missionResult.SurvivorOrbMerges)
+            {
+                var botInventory = _inGameInventoryManager.GetPlayerInventory(matchingId, merge.BotPlayerId);
+                _gameEventLogManager.LogSurvivorOrbBoardTransition(
+                    matchingId, merge.BotPlayerId, botInventory.GetAllItems(),
+                    botInventory.GetEquippedBattleItem()?.ItemId ?? 0,
+                    _botPlayerManager.GetBot(matchingId, merge.BotPlayerId)?.CurrentArea.ToString() ?? "None",
+                    "bot_merge", isBot: true);
+                SurvivorOrbData.TryGetColorAndTier(merge.OutputItemId, out SurvivorOrbColor outputColor,
+                    out int outputTier);
+                _gameEventLogManager.LogMission(
+                    matchingId,
+                    merge.BotPlayerId,
+                    $"SURVIVOR_ORB_MERGE inputs=[{merge.InputItemId},{merge.InputItemId}] " +
+                    $"output={merge.OutputItemId} outputColor={outputColor} outputTier={outputTier} " +
+                    $"resonanceBefore={merge.PreviousResonanceColor}/T{merge.PreviousSupportTier} " +
+                    $"resonanceAfter={merge.ResonanceColor}/T{merge.SupportTier} " +
+                    $"nextOrbColor={merge.NextTargetColor} nextArea=pending",
+                    isBot: true);
             }
 
             foreach (var (botId, itemId) in missionResult.BattleItemEquips)
@@ -795,6 +826,8 @@ public partial class GameServer(
                 foreach (var session in activeSessions.Where(session => session.CurrentArea == area))
                     session.Send(packet);
             }
+            if (missionResult.RngExploreCompletions.Count > 0)
+                BroadcastSurvivorAreaStockState(matchingId, activeSessions);
             // #134 — 봇 RNG 채집으로 발생한 인스턴스 쿨타임 broadcast
             if (missionResult.BattleItemEquips.Count > 0)
                 BroadcastBotBattleItemEquips(matchingId, missionResult.BattleItemEquips, activeSessions);
@@ -823,6 +856,25 @@ public partial class GameServer(
         {
             logger.LogError(ex, "봇 미션 틱 처리 중 오류: MatchingId={MatchingId}", matchingId);
         }
+    }
+
+    private void BroadcastSurvivorAreaStockState(long matchingId, List<GameClientSession> sessions)
+    {
+        var message = new G_TO_C_SURVIVOR_AREA_STOCK_STATE
+        {
+            Areas = _areaItemStockManager.GetPublicDepletionSnapshot(matchingId)
+                .Select(state => new SurvivorAreaNaturalStockState
+                {
+                    AreaType = state.AreaType,
+                    IsDepleted = state.IsDepleted,
+                    DepletedOrbColors = state.DepletedOrbColors
+                })
+                .ToList()
+        };
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SURVIVOR_AREA_STOCK_STATE);
+        packet.SetBody(MessagePackSerializer.Serialize(message));
+        foreach (var session in sessions.Where(session => session.CurrentMapSubId == matchingId))
+            session.Send(packet);
     }
 
     /// <summary>
@@ -1062,7 +1114,7 @@ public partial class GameServer(
 
     private void BroadcastBotBattleItemEquips(long matchingId,
         IReadOnlyCollection<(long botPlayerId, int itemId)> equips,
-        List<GameClientSession> activeSessions)
+        IReadOnlyCollection<GameClientSession> activeSessions)
     {
         foreach (var (botPlayerId, _) in equips)
         {
@@ -1215,6 +1267,17 @@ public partial class GameServer(
         {
             if (pickup.CorruptionRecovery > 0)
                 _gameEventLogManager.RecordSurvivorRecovery(matchingId, pickup.BotPlayerId, pickup.CorruptionRecovery);
+            if (pickup.AutoUsed)
+            {
+                _gameEventLogManager.LogRecoveryUse(
+                    matchingId, pickup.BotPlayerId, pickup.Item.ItemId, pickup.EffectiveRecovery,
+                    source: "ground_auto_use", isBot: true);
+                _gameEventLogManager.LogPelletPickupOutcome(
+                    matchingId, pickup.BotPlayerId, pickup.Item.ItemId, pickup.RequestedRecovery, pickup.EffectiveRecovery,
+                    pickup.EffectiveRecovery == 0 ? "wasted" :
+                    pickup.EffectiveRecovery == pickup.RequestedRecovery ? "effective" : "partial_waste",
+                    isBot: true);
+            }
 
             var area = (AreaType)pickup.Item.AreaType;
             _gameEventLogManager.LogGroundItemPickup(
@@ -1226,6 +1289,10 @@ public partial class GameServer(
                 area.ToString(),
                 pickup.AutoUsed,
                 isBot: true);
+            var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(matchingId, pickup.BotPlayerId);
+            _gameEventLogManager.LogSurvivorOrbBoardTransition(
+                matchingId, pickup.BotPlayerId, boardAfterPickup.GetAllItems(),
+                boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, area.ToString(), "pickup", isBot: true);
             using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
                 pickup.Item.GroundItemUid,
                 pickup.BotPlayerId,
@@ -1236,6 +1303,13 @@ public partial class GameServer(
                 session.Send(packet);
             }
         }
+
+        var autoEquips = pickups
+            .Where(pickup => pickup.AutoEquippedItemId > 0)
+            .Select(pickup => (pickup.BotPlayerId, pickup.AutoEquippedItemId))
+            .ToList();
+        if (autoEquips.Count > 0)
+            BroadcastBotBattleItemEquips(matchingId, autoEquips, activeSessions);
     }
     private void BroadcastBotMovement(long matchingId, BotMovementEvent ev,
         List<GameClientSession> activeSessions)
@@ -1431,6 +1505,10 @@ public partial class GameServer(
                         expired.GroundItemUid,
                         expired.ItemId,
                         expired.ExpiresAtUnixMs);
+
+                _gameEventLogManager.FlushElapsedEliminationDrops(
+                    matchingId,
+                    groundItemUid => _groundItemManager.Exists(matchingId, groundItemUid));
 
                 var (overtimeStage, overtimeRate) = _areaClosureManager.GetOvertimeStatus(matchingId);
                 _gameEventLogManager.LogOvertimeStageChanged(matchingId, overtimeStage, overtimeRate);
@@ -1638,6 +1716,14 @@ public partial class GameServer(
                     combatTargets);
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
+                foreach (var pivot in movementResult.OrbFarmingPivots)
+                {
+                    _gameEventLogManager.LogMission(
+                        matchingId,
+                        pivot.BotPlayerId,
+                        $"SURVIVOR_ORB_ROUTE_PIVOT color={pivot.Color} from={pivot.FromArea} to={pivot.ToArea}",
+                        isBot: true);
+                }
                 if (movementResult.ExploreEnds.Count > 0)
                 {
                     BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);

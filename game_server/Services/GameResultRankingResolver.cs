@@ -4,11 +4,12 @@ namespace game_server.services;
 
 public static class GameResultRankingResolver
 {
-    public static List<GameResultPlayerInfo> Resolve(IEnumerable<GameResultPlayerInfo> players)
+    public static List<GameResultPlayerInfo> Resolve(IEnumerable<GameResultPlayerInfo> players, long winnerId = 0)
     {
         var ordered = players
             .Where(player => player != null && player.PlayerId != 0)
-            .OrderByDescending(player => player.SurvivalTimeSeconds)
+            .OrderByDescending(player => winnerId != 0 && player.PlayerId == winnerId)
+            .ThenByDescending(player => player.SurvivalTimeSeconds)
             .ThenByDescending(player => player.KillCount)
             .ThenByDescending(player => player.TotalDamageDealt)
             .ThenByDescending(player => player.TotalRecovery)

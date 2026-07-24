@@ -967,7 +967,7 @@ public partial class GameClientSession
             })
             .ToList();
 
-        return GameResultRankingResolver.Resolve(rows.Select(row => row.Info));
+        return GameResultRankingResolver.Resolve(rows.Select(row => row.Info), winnerId);
     }
     private PlayerInfo? ResolveResultPlayerInfo(long matchingId, long playerId)
     {
@@ -1738,6 +1738,54 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return false;
 
+        bool isSurvivorOrbRequest = SurvivorOrbData.IsSurvivorOrb(msg.PartA) ||
+                                    SurvivorOrbData.IsSurvivorOrb(msg.PartB);
+        if (isSurvivorOrbRequest)
+        {
+            var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+            bool hadResonance = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor previousResonanceColor,
+                out int previousSupportTier);
+            if (!_inGameInventoryManager.TryCombineSurvivorOrbs(
+                    CurrentMapSubId,
+                    PlayerId.Value,
+                    msg.PartA,
+                    msg.PartB,
+                    Random.Shared,
+                    out int outputItemId,
+                    out var changedItems))
+            {
+                SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INVALID_PARAMETER);
+                return true;
+            }
+
+            SendBattleItemCombineResult(msg, outputItemId, changedItems, recipeId: 0);
+
+            bool resonanceActive = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor resonanceColor,
+                out int supportTier);
+            SurvivorOrbData.TryGetColorAndTier(outputItemId, out SurvivorOrbColor outputColor, out int outputTier);
+            _gameEventLogManager.LogSurvivorOrbBoardTransition(
+                CurrentMapSubId, PlayerId.Value, inventory.GetAllItems(),
+                inventory.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "merge", isBot: false);
+            _gameEventLogManager.LogMission(
+                CurrentMapSubId,
+                PlayerId.Value,
+                $"SURVIVOR_ORB_MERGE inputs=[{msg.PartA},{msg.PartB}] output={outputItemId} " +
+                $"outputColor={outputColor} outputTier={outputTier} " +
+                $"resonanceBefore={(hadResonance ? previousResonanceColor.ToString() : "off")}/T{previousSupportTier} " +
+                $"resonanceAfter={(resonanceActive ? resonanceColor.ToString() : "off")}/T{supportTier} " +
+                $"area={CurrentArea} nextArea=pending",
+                isBot: false);
+
+            var outputCombatData = BattleItemCombatData.Get(outputItemId);
+            _gameEventLogManager.LogSurvivorTierReached(
+                CurrentMapSubId,
+                PlayerId.Value,
+                outputItemId,
+                outputCombatData?.Tier ?? 0,
+                isBot: false);
+            return true;
+        }
+
         var recipe = BattleItemRecipeData.PickRandomRecipe(
             new[] { msg.PartA, msg.PartB },
             CurrentArea,
@@ -1750,45 +1798,13 @@ public partial class GameClientSession
                 PlayerId.Value,
                 recipe.InputItemIds,
                 recipe.OutputItemId,
-                out var items))
+                out var legacyChangedItems))
         {
             SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INSUFFICIENT_ITEM);
             return true;
         }
 
-
-        var outputItem = items.LastOrDefault();
-        var equippedBattleItem = _inGameInventoryManager.GetEquippedBattleItem(CurrentMapSubId, PlayerId.Value);
-        bool shouldReplaceEquippedItem = outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid;
-
-        using var combinePacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId.Value);
-        var itemData = GameItemData.Get(recipe.OutputItemId);
-        var combinedMsg = new G_TO_C_PART_COMBINED
-        {
-            RecipeId = recipe.RecipeId,
-            InputPartA = msg.PartA,
-            InputPartB = msg.PartB,
-            OutputPartId = recipe.OutputItemId,
-            OutputPartNameKr = itemData?.Name?.Kr ?? "",
-            StaminaReward = 0,
-            IsRaceComplete = false
-        };
-        combinePacket.SetBody(MessagePackSerializer.Serialize(combinedMsg));
-        Send(combinePacket);
-
-        // 파트 머지와 동일하게 결과 패킷을 먼저 보내 클라이언트가 결과 슬롯 펄스를 준비하게 한다.
-        using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
-        Send(inventoryPacket);
-
-        // 결과 아이템을 인벤토리에 반영한 뒤 장착 결과를 보낸다. 반대로 보내면 클라이언트가
-        // 아직 존재하지 않는 ItemUid를 장착하려다 무시하고, 직전 장착이 해제된 채 남는다.
-        if (shouldReplaceEquippedItem)
-        {
-            using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
-                true, outputItem!.ItemUid, ErrorCode.SUCCESS);
-            Send(equippedPacket);
-        }
-
+        SendBattleItemCombineResult(msg, recipe.OutputItemId, legacyChangedItems, recipe.RecipeId);
         _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
             $"Battle item combine: {msg.PartA} + {msg.PartB} => {recipe.OutputItemId}",
             isBot: false);
@@ -1800,10 +1816,42 @@ public partial class GameClientSession
             recipe.OutputItemId,
             combinedCombatData?.Tier ?? 0,
             isBot: false);
-
         return true;
     }
 
+    private void SendBattleItemCombineResult(C_TO_G_COMBINE_PARTS msg, int outputItemId,
+        IReadOnlyCollection<InGameItemInfo> changedItems, int recipeId)
+    {
+        var outputItem = changedItems.LastOrDefault(item => item.ItemId == outputItemId && item.Count > 0);
+        var equippedBattleItem = _inGameInventoryManager.GetEquippedBattleItem(CurrentMapSubId, PlayerId!.Value);
+        bool shouldReplaceEquippedItem = outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid;
+
+        using var combinePacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId.Value);
+        var itemData = GameItemData.Get(outputItemId);
+        var combinedMsg = new G_TO_C_PART_COMBINED
+        {
+            RecipeId = recipeId,
+            InputPartA = msg.PartA,
+            InputPartB = msg.PartB,
+            OutputPartId = outputItemId,
+            OutputPartNameKr = itemData?.Name?.Kr ?? "",
+            StaminaReward = 0,
+            IsRaceComplete = false
+        };
+        combinePacket.SetBody(MessagePackSerializer.Serialize(combinedMsg));
+        Send(combinePacket);
+
+        // Inventory update follows the result packet so the client reveals the server-authoritative outcome.
+        using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(changedItems.ToList());
+        Send(inventoryPacket);
+
+        if (shouldReplaceEquippedItem)
+        {
+            using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
+                true, outputItem!.ItemUid, ErrorCode.SUCCESS);
+            Send(equippedPacket);
+        }
+    }
     private void SendCombinePartsFailure(int partA, int partB, ErrorCode errorCode)
     {
         using var failPacket = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId!.Value);

@@ -79,6 +79,8 @@ namespace network.common.data.models
         [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
         [Key("revealDelayMs")] public int RevealDelayMs { get; set; }
         [Key("damageValue")] public int DamageValue { get; set; }
+        /// <summary>자동전투로 공개된 대상의 현재 오염도. -1이면 공개 정보가 없다.</summary>
+        [Key("targetCorruption")] public int TargetCorruption { get; set; } = -1;
     }
 
     /// <summary>
@@ -92,6 +94,32 @@ namespace network.common.data.models
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
         [Key("areaType")] public AreaType AreaType { get; set; }
         [Key("weaponItemId")] public int WeaponItemId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_SURVIVOR_ORB_EFFECT_STATE : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("weaponItemId")] public int WeaponItemId { get; set; }
+        [Key("isActive")] public bool IsActive { get; set; }
+    }
+
+    /// <summary>
+    /// 공개 미니맵용 지역 자연 재고 상태다. 정확한 잔여 수량은 전송하지 않는다.
+    /// </summary>
+    [MessagePackObject]
+    public class SurvivorAreaNaturalStockState : IMessagePackObject
+    {
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("isDepleted")] public bool IsDepleted { get; set; }
+        // 공개 정보는 색상별 소진 여부까지만이다. 정확한 남은 개수는 서버에만 둔다.
+        [Key("depletedOrbColors")] public List<SurvivorOrbColor> DepletedOrbColors { get; set; } = new();
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_SURVIVOR_AREA_STOCK_STATE : IMessagePackObject
+    {
+        [Key("areas")] public List<SurvivorAreaNaturalStockState> Areas { get; set; } = new();
     }
 
     [MessagePackObject]

@@ -28,13 +28,25 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue || targetPlayerId == 0) return;
 
+        int targetCorruption = -1;
+        if (eventType == ProximityAutoAttackDealtEventType || eventType == ProximityAutoAttackTakenEventType)
+        {
+            var targetSession = _getSessionsByInstance(CurrentMapId, CurrentMapSubId)
+                .FirstOrDefault(session => session.PlayerId == targetPlayerId);
+            if (targetSession != null)
+                targetCorruption = targetSession.Corruption;
+            else
+                targetCorruption = _botPlayerManager.GetBot(CurrentMapSubId, targetPlayerId)?.Corruption ?? -1;
+        }
+
         using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
             targetPlayerId,
             area,
             eventType,
             cooldownSeconds,
             revealDelayMs,
-            damageValue);
+            damageValue,
+            targetCorruption);
         Send(packet);
     }
 

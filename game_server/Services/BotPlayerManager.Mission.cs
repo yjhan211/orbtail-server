@@ -98,13 +98,43 @@ public partial class BotPlayerManager
         InGameInventoryManager inventoryManager,
         BotMissionTickResult result)
     {
-        int previouslyEquippedItemId = inventoryManager
-            .GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0;
+        var inventory = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId);
+        int previouslyEquippedItemId = inventory.GetEquippedBattleItem()?.ItemId ?? 0;
+        bool hadResonance = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor previousResonanceColor,
+            out int previousSupportTier);
+        bool allowSurvivorOrbMerges = inventory.GetAllItems().Count >= Config.SURVIVOR_INVENTORY_SLOT_COUNT;
         var loadout = BotBattleItemLoadout.CombineAndEquip(
             inventoryManager,
             matchingId,
             bot.PlayerId,
-            _rng);
+            _rng,
+            allowSurvivorOrbMerges);
+
+        bool hasResonance = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor resonanceColor,
+            out int supportTier);
+        var equipped = inventory.GetEquippedBattleItem();
+        SurvivorOrbColor equippedColor = SurvivorOrbColor.None;
+        bool hasEquippedOrb = equipped != null &&
+                              SurvivorOrbData.TryGetColorAndTier(equipped.ItemId, out equippedColor, out _);
+        if (hasResonance)
+        {
+            bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
+            bot.OrbFarmingDestination = AreaType.None;
+            bot.OrbFarmingPivotPending = false;
+        }
+        else if (hasEquippedOrb)
+        {
+            bool changedTarget = bot.OrbFarmingTargetColor != equippedColor;
+            bot.OrbFarmingTargetColor = equippedColor;
+            if (changedTarget || loadout.SurvivorOrbMerges.Count > 0)
+                bot.OrbFarmingPivotPending = true;
+        }
+        else
+        {
+            bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
+            bot.OrbFarmingDestination = AreaType.None;
+            bot.OrbFarmingPivotPending = false;
+        }
 
         foreach (int itemId in loadout.CombinedItemIds)
         {
@@ -114,6 +144,19 @@ public partial class BotPlayerManager
                 matchingId,
                 bot.PlayerId,
                 itemId);
+        }
+
+        foreach (var merge in loadout.SurvivorOrbMerges)
+        {
+            result.SurvivorOrbMerges.Add(new BotSurvivorOrbMergeTelemetry(
+                bot.PlayerId,
+                merge.InputItemId,
+                merge.OutputItemId,
+                hadResonance ? previousResonanceColor : SurvivorOrbColor.None,
+                previousSupportTier,
+                hasResonance ? resonanceColor : SurvivorOrbColor.None,
+                supportTier,
+                bot.OrbFarmingTargetColor));
         }
 
         if (loadout.EquippedItemId == 0 || loadout.EquippedItemId == previouslyEquippedItemId)
@@ -724,6 +767,7 @@ public class BotMissionTickResult
     public List<(long botPlayerId, int itemId, int amount)> CorruptionRecoveries { get; } = new();
     public List<(long botPlayerId, int itemId)> BattleItemCombines { get; } = new();
     public List<(long botPlayerId, int itemId)> BattleItemEquips { get; } = new();
+    public List<BotSurvivorOrbMergeTelemetry> SurvivorOrbMerges { get; } = new();
 
     /// <summary>#134 — 봇이 RNG progress 시작했음을 같은 영역 인간 세션에 알림 (G_TO_C_EXPLORE_START).</summary>
     public List<(long botId, int interactId, AreaType area)> BotExploreStarts { get; } = new();
@@ -744,3 +788,13 @@ public class BotMissionTickResult
     /// <summary>race 완주 PlayerId — 0이면 없음, GameServer가 즉시 게임 종료 처리.</summary>
     public long RaceWinnerPlayerId { get; set; }
 }
+
+public sealed record BotSurvivorOrbMergeTelemetry(
+    long BotPlayerId,
+    int InputItemId,
+    int OutputItemId,
+    SurvivorOrbColor PreviousResonanceColor,
+    int PreviousSupportTier,
+    SurvivorOrbColor ResonanceColor,
+    int SupportTier,
+    SurvivorOrbColor NextTargetColor);

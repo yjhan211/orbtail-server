@@ -111,6 +111,164 @@ public class ProximityAutoCombatResolverTests
         Assert.Equal(3, attack.TargetPlayerId);
     }
 
+    [Fact]
+    public void Resolve_WindProfileHitsPrimaryAndTwoAdditionalTargetsWithReducedDamage()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000020) with
+            {
+                MaxTargets = 3,
+                AdditionalTargetDamageMultiplier = 0.5f
+            },
+            Actor(2, 2f, 0f),
+            Actor(3, 1f, 0f),
+            Actor(4, 2.5f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(198, actors, now));
+        var attacks = resolver.Resolve(198, actors, now.Add(ProximityAutoCombatResolver.AimDuration));
+
+        Assert.Equal(new long[] { 3, 2, 4 }, attacks.Select(attack => attack.TargetPlayerId));
+        Assert.Equal(new[] { 6, 3, 3 }, attacks.Select(attack => attack.Damage));
+    }
+
+    [Fact]
+    public void Resolve_WaveProfileUsesThreeFastOpeningAttacksThenReturnsToBaseInterval()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000030) with
+            {
+                InitialBurstAttackCount = 3,
+                InitialBurstAttackIntervalMultiplier = 0.4f,
+                BurstRechargeSeconds = 3f
+            },
+            Actor(2, 1f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(198, actors, now));
+        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(500)));
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(1099)));
+        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(1100)));
+        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(1700)));
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(3199)));
+        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(3200)));
+    }
+
+    [Fact]
+    public void Resolve_WaveBurstRechargesOnlyAfterZeroTargetsAndDoesNotReturnOnTargetChangeOrGraceReacquire()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 24, 0, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000030) with
+            {
+                InitialBurstAttackCount = 3,
+                InitialBurstAttackIntervalMultiplier = 0.4f,
+                BurstRechargeSeconds = 3f
+            },
+            Actor(2, 1f, 0f),
+            Actor(3, 2f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(198, actors, now));
+        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(500)));
+
+        // Target 2 disappears but target 3 remains: this is a target change, not a recharge condition.
+        actors[1] = Actor(2, 1f, 0f, area: AreaType.Corridor3F);
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(600)));
+        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(1100)));
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(1700)));
+
+        // Only now, with no valid target, does the three-second recharge start.
+        actors[2] = Actor(3, 2f, 0f, area: AreaType.Corridor3F);
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(1800)));
+        actors[2] = Actor(3, 2f, 0f);
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(2500)));
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(3299)));
+        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(3300)));
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(3900)));
+    }
+    [Fact]
+    public void Resolve_WindProfileChecksLineOfSightForEveryAdditionalTarget()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000020) with
+            {
+                MaxTargets = 3,
+                AdditionalTargetDamageMultiplier = 0.5f
+            },
+            Actor(2, 1f, 0f),
+            Actor(3, 2f, 0f)
+        };
+        static bool HasLineOfSight(ProximityCombatActor _, ProximityCombatActor target) =>
+            target.PlayerId != 2;
+
+        Assert.Empty(resolver.Resolve(198, actors, now, HasLineOfSight));
+        var attacks = resolver.Resolve(
+            198,
+            actors,
+            now.Add(ProximityAutoCombatResolver.AimDuration),
+            HasLineOfSight);
+
+        var attack = Assert.Single(attacks);
+        Assert.Equal(3, attack.TargetPlayerId);
+        Assert.Equal(6, attack.Damage);
+    }
+
+    [Fact]
+    public void Resolve_ReacquiringSameTargetWithinGraceResumesPausedAim()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 22, 1, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000003),
+            Actor(2, 1f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(198, actors, now));
+        actors[1] = Actor(2, 1f, 0f, area: AreaType.Corridor3F);
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(300)));
+
+        actors[1] = Actor(2, 1f, 0f);
+        var reacquiredAt = now.AddMilliseconds(1200);
+        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt));
+        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(199)));
+        Assert.Single(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(200)));
+    }
+
+    [Fact]
+    public void Resolve_ReacquiringSameTargetAfterGraceRestartsAim()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 22, 2, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000003),
+            Actor(2, 1f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(198, actors, now));
+        actors[1] = Actor(2, 1f, 0f, area: AreaType.Corridor3F);
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(300)));
+
+        var reacquiredAt = now.AddMilliseconds(1801);
+        actors[1] = Actor(2, 1f, 0f);
+        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt));
+        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(499)));
+        Assert.Single(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(500)));
+    }
+
     private static ProximityCombatActor Actor(
         long playerId,
         float x,

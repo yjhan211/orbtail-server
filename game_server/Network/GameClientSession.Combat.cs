@@ -504,6 +504,9 @@ public partial class GameClientSession
             using var resultPacket =
                 PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, equippedItem!.ItemUid, ErrorCode.SUCCESS);
             Send(resultPacket);
+            _gameEventLogManager.LogSurvivorOrbBoardTransition(
+                CurrentMapSubId, PlayerId.Value, inventory.GetAllItems(), equippedItem.ItemId,
+                CurrentArea.ToString(), "equip", isBot: false);
             Logger.LogInformation(
                 "Player {PlayerId} equipped battle item: ItemUid={ItemUid}, ItemId={ItemId}",
                 PlayerId, equippedItem.ItemUid, equippedItem.ItemId);

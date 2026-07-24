@@ -41,13 +41,15 @@ public partial class GameClientSession
     internal void SendProximityAutoCombatAttackFeedback(
         long targetPlayerId,
         AreaType area,
-        int weaponItemId)
+        int weaponItemId,
+        int damage)
     {
         SendEncounterEvent(
             targetPlayerId,
             area,
             ProximityAutoAttackDealtEventType,
             0,
-            weaponItemId);
+            weaponItemId,
+            damage);
     }
 }

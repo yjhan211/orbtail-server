@@ -288,6 +288,7 @@ public partial class GameClientSession
         SendRngCollectResult(msg.InteractId, clientResultType, clientItemId,
             outcome.StaminaReward, outcome.CooldownSeconds);
         SpawnGroundItemsFromExplore(info, outcome);
+        BroadcastSurvivorAreaStockState();
 
         _gameEventLogManager.LogExploreCompleted(
             CurrentMapSubId,

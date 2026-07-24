@@ -99,6 +99,8 @@ public class PlayerInGameInventory(long matchingId)
         addedItem = null;
         if (maxSlots <= 0 || _items.Count >= maxSlots) return false;
         addedItem = AddItem(itemId, 1, giftState, forceSeparateStack: true);
+        if (_equippedBattleItemUid == 0 && SurvivorOrbData.IsSurvivorOrb(itemId))
+            _equippedBattleItemUid = addedItem.ItemUid;
         return true;
     }
     /// <summary>
@@ -141,6 +143,18 @@ public class PlayerInGameInventory(long matchingId)
         if (replaceEquippedBattleItem && BattleItemCombatData.IsCombatItem(outputItemId))
             _equippedBattleItemUid = outputItem.ItemUid;
         return true;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryCombineSurvivorOrbs(int inputA, int inputB, Random random,
+        out int outputItemId, out List<InGameItemInfo> changedItems)
+    {
+        outputItemId = 0;
+        changedItems = new List<InGameItemInfo>();
+        if (!SurvivorOrbData.TryGetRandomMergeOutput(inputA, inputB, random, out outputItemId))
+            return false;
+
+        return TryCombineItems([inputA, inputB], outputItemId, out changedItems);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -190,6 +204,23 @@ public class PlayerInGameInventory(long matchingId)
 
         _equippedBattleItemUid = 0;
         return null;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryGetActiveSurvivorOrbPair(out SurvivorOrbColor color, out int pairTier)
+    {
+        var equippedItem = GetEquippedBattleItem();
+        if (equippedItem == null)
+        {
+            color = SurvivorOrbColor.None;
+            pairTier = 0;
+            return false;
+        }
+
+        var boardItemIds = _items.Values
+            .Where(item => item.Count > 0 && item.ItemUid != equippedItem.ItemUid)
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count));
+        return SurvivorOrbData.TryGetActivePair(equippedItem.ItemId, boardItemIds, out color, out pairTier);
     }
 
     /// <summary>
@@ -346,6 +377,17 @@ public class InGameInventoryManager
         if (result)
             _logAction?.Invoke(
                 $"InGameInventoryManager: Combined items (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', inputItemIds)}], Output={outputItemId})");
+        return result;
+    }
+
+    public bool TryCombineSurvivorOrbs(long matchingId, long playerId, int inputA, int inputB,
+        Random random, out int outputItemId, out List<InGameItemInfo> changedItems)
+    {
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        bool result = inventory.TryCombineSurvivorOrbs(inputA, inputB, random, out outputItemId, out changedItems);
+        if (result)
+            _logAction?.Invoke(
+                $"InGameInventoryManager: Random Survivor orb merge (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");
         return result;
     }
     public bool TryEquipBattleItem(long matchingId, long playerId, long itemUid,

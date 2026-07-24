@@ -68,6 +68,20 @@ public sealed class AreaItemStockManager
             return stock.GetOrCreateAreaStock(areaType).Count;
     }
 
+    /// <summary>
+    /// Server-only routing query for bots. The minimap intentionally exposes only depletion,
+    /// while bots need to know whether a route can still rebuild their active orb resonance.
+    /// </summary>
+    public bool HasRemainingOrbColor(long matchingId, int areaType, SurvivorOrbColor color)
+    {
+        if (color == SurvivorOrbColor.None) return false;
+
+        var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
+        lock (stock.SyncRoot)
+            return stock.GetOrCreateAreaStock(areaType)
+                .Any(itemId => SurvivorOrbData.TryGetColorAndTier(itemId, out var itemColor, out _) && itemColor == color);
+    }
+
     public IReadOnlyDictionary<int, int> GetRemainingSnapshot(long matchingId, int areaType)
     {
         if (!_matchingStocks.TryGetValue(matchingId, out var stock))
@@ -79,6 +93,42 @@ public sealed class AreaItemStockManager
                 .GroupBy(id => id)
                 .ToDictionary(group => group.Key, group => group.Count());
         }
+    }
+
+    /// <summary>
+    /// 공개 미니맵용 상태다. 남은 개수는 서버에만 두고, 색상별 소진 여부까지만 반환한다.
+    /// </summary>
+    public IReadOnlyList<(AreaType AreaType, bool IsDepleted, List<SurvivorOrbColor> DepletedOrbColors)>
+        GetPublicDepletionSnapshot(long matchingId)
+    {
+        var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
+        lock (stock.SyncRoot)
+        {
+            return Enum.GetValues<AreaType>()
+                .Where(area => area != AreaType.None)
+                .Select(area =>
+                {
+                    var remainingItems = stock.GetOrCreateAreaStock((int)area);
+                    var possibleColors = GetOrbColors(GameInteractableData.GetItemPoolByArea((int)area));
+                    var remainingColors = GetOrbColors(remainingItems);
+                    return (
+                        AreaType: area,
+                        IsDepleted: remainingItems.Count == 0,
+                        DepletedOrbColors: possibleColors
+                            .Where(color => !remainingColors.Contains(color))
+                            .ToList());
+                })
+                .ToList();
+        }
+    }
+
+    private static HashSet<SurvivorOrbColor> GetOrbColors(IEnumerable<int> itemIds)
+    {
+        var colors = new HashSet<SurvivorOrbColor>();
+        foreach (int itemId in itemIds)
+            if (SurvivorOrbData.TryGetColorAndTier(itemId, out var color, out _))
+                colors.Add(color);
+        return colors;
     }
 
     public void RemoveMatchingState(long matchingId) => _matchingStocks.TryRemove(matchingId, out _);

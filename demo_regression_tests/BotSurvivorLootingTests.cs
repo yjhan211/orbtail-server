@@ -97,6 +97,51 @@ public sealed class BotSurvivorLootingTests
         }
     }
 
+    [Theory]
+    [InlineData(201000008, 40, 70, 40, 55)]
+    [InlineData(201000011, 40, 70, 55, 70)]
+    public void ImmediateUsePickupAppliesRecoveryAndDisappearsEvenWhenBotInventoryIsFull(
+        int itemId,
+        int initialStamina,
+        int initialCorruption,
+        int expectedStamina,
+        int expectedCorruption)
+    {
+        long matchingId = 194106 + itemId;
+        long botPlayerId = -matchingId * 10 - 1;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        bot.Stamina = initialStamina;
+        bot.Corruption = initialCorruption;
+
+        for (int i = 0; i < Config.SURVIVOR_INVENTORY_SLOT_COUNT; i++)
+            Assert.True(fixture.InventoryManager.TryAddItemWithCapacity(
+                matchingId, botPlayerId, 107000003 + i, Config.SURVIVOR_INVENTORY_SLOT_COUNT, out _));
+
+        var groundItem = Assert.Single(fixture.GroundItemManager.SpawnItems(
+            matchingId,
+            bot.CurrentArea,
+            bot.Position.X,
+            bot.Position.Y,
+            [itemId]));
+
+        Assert.True(fixture.BotManager.TryAutoPickupGroundItem(
+            bot,
+            matchingId,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            out BotGroundItemPickup? pickup));
+        Assert.True(pickup.HasValue);
+        Assert.True(pickup.Value.AutoUsed);
+        Assert.Equal(expectedStamina, bot.Stamina);
+        Assert.Equal(expectedCorruption, bot.Corruption);
+        Assert.Equal(Config.SURVIVOR_INVENTORY_SLOT_COUNT,
+            fixture.InventoryManager.GetAllItems(matchingId, botPlayerId).Count);
+        Assert.DoesNotContain(
+            fixture.GroundItemManager.GetSnapshot(matchingId, bot.CurrentArea),
+            item => item.GroundItemUid == groundItem.GroundItemUid);
+    }
+
     [Fact]
     public void DepletedRoomIsMarkedCompleteWithoutQueueingAnotherExplore()
     {
@@ -219,7 +264,7 @@ public sealed class BotSurvivorLootingTests
                 fixture.GroundItemManager,
                 fixture.ChecklistManager);
             var spawnedRecorder = Assert.Single(completed.GroundItemSpawns);
-            Assert.Equal(107000003, spawnedRecorder.ItemId);
+            Assert.Equal(107000010, spawnedRecorder.ItemId);
             Assert.Contains(marker.Id, bot.ExploredRngInteractIds);
             Assert.Equal(GroundItemClaimStatus.Reserved,
                 fixture.GroundItemManager.TryClaim(
@@ -237,6 +282,9 @@ public sealed class BotSurvivorLootingTests
                 fixture.GroundItemManager,
                 Array.Empty<BotCombatTargetSnapshot>());
             Assert.Single(pickup.GroundItemPickups);
+            Assert.Equal(107000010,
+                fixture.InventoryManager.GetEquippedBattleItem(matchingId, botPlayerId)!.ItemId);
+            Assert.Equal(107000010, bot.EquippedBattleItemId);
 
             BackdateMissionTick(bot);
             var equipped = fixture.BotManager.ProcessBotMissionTick(
@@ -247,11 +295,7 @@ public sealed class BotSurvivorLootingTests
                 fixture.AreaStockManager,
                 fixture.GroundItemManager,
                 fixture.ChecklistManager);
-            Assert.Contains(equipped.BattleItemEquips,
-                entry => entry.botPlayerId == botPlayerId && entry.itemId == 107000003);
-            Assert.Equal(107000003,
-                fixture.InventoryManager.GetEquippedBattleItem(matchingId, botPlayerId)!.ItemId);
-            Assert.Equal(107000003, bot.EquippedBattleItemId);
+            Assert.Empty(equipped.BattleItemEquips);
         }
         finally
         {

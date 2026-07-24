@@ -38,7 +38,7 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
-    public void GuardianCombatDataDefinesOneOrbAcrossThreeTiers()
+    public void GuardianCombatDataDefinesLegacyAndThreeColoredOrbTierLines()
     {
         string csvRoot = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv");
         BattleItemCombatData.Initialize(
@@ -47,8 +47,15 @@ public class ProximityAutoCombatDataTests
         var definitions = BattleItemCombatData.GetAll()
             .Where(definition => definition.Family == "orb")
             .ToArray();
+        int[][] orbLines =
+        [
+            [107000003, 107000004, 107000006],
+            [107000010, 107000011, 107000012],
+            [107000020, 107000021, 107000022],
+            [107000030, 107000031, 107000032]
+        ];
 
-        Assert.Equal([107000003, 107000004, 107000006], definitions.Select(definition => definition.ItemId));
+        Assert.Equal(orbLines.SelectMany(line => line), definitions.Select(definition => definition.ItemId));
         Assert.All(definitions, definition =>
         {
             Assert.Equal("orb", definition.Family);
@@ -59,8 +66,8 @@ public class ProximityAutoCombatDataTests
             Assert.Equal(0.25f, definition.ProjectileWidth);
             Assert.Equal(0f, definition.EffectDurationSeconds);
         });
-
-        AssertGuardianTierGrowth("orb", definitions);
+        foreach (int[] orbLine in orbLines)
+            AssertGuardianTierGrowth(definitions.Where(definition => orbLine.Contains(definition.ItemId)).ToArray());
     }
 
     [Fact]
@@ -127,6 +134,32 @@ public class ProximityAutoCombatDataTests
                 "item_info_consumable.csv")));
     }
 
+    [Fact]
+    public void AuthoritativeProximityDamageFeedsNumericWorldPopup()
+    {
+        string repoRoot = FindRepositoryRoot();
+        string gameServerSource = ReadNormalizedSource(
+            repoRoot, "game_server", "GameServer.ProximityAutoCombat.cs");
+        string sessionSource = ReadNormalizedSource(
+            repoRoot, "game_server", "Network", "GameClientSession.ProximityAutoCombat.cs");
+        string mapSource = ReadNormalizedSource(
+            repoRoot, "client", "Assets", "Scripts", "Managers", "Map", "MapManager.PlayerVisibility.cs");
+        string playerSource = ReadNormalizedSource(
+            repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");
+
+        Assert.Contains("attack.WeaponItemId,\n                damage);", gameServerSource);
+        Assert.Contains("weaponItemId,\n            damage);", sessionSource);
+        Assert.Contains(
+            "localPlayerIsAttacker: true,\n                    packet.DamageValue);",
+            mapSource);
+        Assert.Contains(
+            "int damageValue = authoritativeDamageValue > 0\n" +
+            "                ? authoritativeDamageValue",
+            mapSource);
+        Assert.Contains("_guardianHitDisplay.Play(Mathf.Max(1, damageValue), damageColor", playerSource);
+        Assert.DoesNotContain("오염 +", playerSource);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -140,11 +173,17 @@ public class ProximityAutoCombatDataTests
         throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
     }
 
+    private static string ReadNormalizedSource(string repositoryRoot, params string[] pathParts)
+    {
+        string[] fullPathParts = [repositoryRoot, .. pathParts];
+        return File.ReadAllText(Path.Combine(fullPathParts))
+            .Replace("\r\n", "\n");
+    }
+
     private static void AssertGuardianTierGrowth(
-        string family,
         IReadOnlyCollection<BattleItemCombatDefinition> definitions)
     {
-        var tiers = definitions.Where(definition => definition.Family == family)
+        var tiers = definitions
             .GroupBy(definition => definition.Tier)
             .ToDictionary(group => group.Key, group => group.ToList());
         var tierOne = Assert.Single(tiers[1]);

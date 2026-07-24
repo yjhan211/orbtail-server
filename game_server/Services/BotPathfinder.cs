@@ -12,6 +12,8 @@ namespace game_server.services;
 /// </summary>
 public static class BotPathfinder
 {
+    private const int DoorClearanceStepCount = 2;
+
     /// <summary>경로의 한 단계. 셀 + 그 셀이 속한 영역 + 영역 전환 여부.</summary>
     public class Step
     {
@@ -75,6 +77,26 @@ public static class BotPathfinder
                 FromAreaForTransition = fromA
             });
             currentCell = entryCell;
+
+            // Do not let a bot wait on the doorway spawn cell after its final area transition.
+            // Existing paths with a separate in-room target continue through the normal final BFS.
+            bool isFinalTransition = i == areaSeq.Count - 2;
+            if (isFinalTransition && toCell.Equals(entryCell))
+            {
+                foreach (var clearanceCell in FindDoorClearanceCells(mapId, toA, exitCell, entryCell))
+                {
+                    path.Add(new Step
+                    {
+                        Cell = clearanceCell,
+                        Area = toA,
+                        IsAreaTransition = false
+                    });
+                    currentCell = clearanceCell;
+                }
+
+                // Prevent the final BFS from walking back to the requested doorway cell.
+                toCell = currentCell;
+            }
         }
 
         // 3) 마지막 영역 안에서 toCell까지 walk
@@ -86,6 +108,36 @@ public static class BotPathfinder
         }
 
         return path;
+    }
+
+    private static IReadOnlyList<Cell> FindDoorClearanceCells(
+        MapId mapId,
+        AreaType targetArea,
+        Cell exitCell,
+        Cell entryCell)
+    {
+        int stepX = Math.Sign(entryCell.X - exitCell.X);
+        int stepY = Math.Sign(entryCell.Y - exitCell.Y);
+        if (stepX == 0 && stepY == 0) return Array.Empty<Cell>();
+
+        var areaRegions = GameMapData.GetAreas(mapId)
+            .Where(region => region.AreaType == targetArea)
+            .ToList();
+        if (areaRegions.Count == 0) return Array.Empty<Cell>();
+
+        var result = new List<Cell>(DoorClearanceStepCount);
+        var current = entryCell;
+        for (int i = 0; i < DoorClearanceStepCount; i++)
+        {
+            var candidate = new Cell(current.X + stepX, current.Y + stepY);
+            if (!IsWithinArea(areaRegions, candidate) || !GameMapData.IsMoveablePosition(mapId, candidate))
+                break;
+
+            result.Add(candidate);
+            current = candidate;
+        }
+
+        return result;
     }
 
     /// <summary>BFS 영역 시퀀스 한 노드 — 그 영역으로 진입할 때 사용된 conn 정보를 함께 보관.</summary>

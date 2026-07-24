@@ -188,9 +188,8 @@ public sealed class ConsumableInventoryMergeTests
 
         Assert.Contains("BuffSubType.CORRUPTION_DOWN", source);
         Assert.DoesNotContain("ConsumableBuffList[0]", source);
-        Assert.True(
-            source.Split("bool showCorruption = isCorruption || isReceivedGift;").Length - 1 >= 2,
-            "Both in-game and item-id slot paths must preserve corruption recovery visuals.");
+        Assert.Contains("SetSlotVisuals(isCondition, isCorruption, showWear);", source);
+        Assert.Contains("bool showCorruption = isCorruption || isReceivedGift;", source);
     }
 
     private static string FindRepositoryRoot()
