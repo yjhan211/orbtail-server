@@ -1199,7 +1199,7 @@ public class GameEventLogManager
         SurvivorOrbColor EquippedColor,
         bool MergeCandidateBecameAvailable,
         double? EndedMergeCandidateDurationSeconds);
-private sealed class ClosureWarningResponse(long playerId, string area, DateTimeOffset warnedAt)
+    private sealed class ClosureWarningResponse(long playerId, string area, DateTimeOffset warnedAt)
     {
         public long PlayerId { get; } = playerId;
         public string Area { get; } = area;

@@ -28,4 +28,4 @@ jobs:
         run: dotnet restore server.sln
 
       - name: Check formatting
-        run: dotnet format server.sln --verify-no-changes --verbosity diagnostic
+        run: dotnet format server.sln --verify-no-changes --verbosity diagnostic --no-restore

@@ -156,8 +156,8 @@ public class ProximityAutoCombatDataTests
             "int damageValue = authoritativeDamageValue > 0\n" +
             "                ? authoritativeDamageValue",
             mapSource);
-        Assert.Contains("_guardianHitPopup.text = corruptionAmount.ToString();", playerSource);
-        Assert.DoesNotContain("_guardianHitPopup.text = $\"오염 +", playerSource);
+        Assert.Contains("_guardianHitDisplay.Play(Mathf.Max(1, damageValue), damageColor", playerSource);
+        Assert.DoesNotContain("오염 +", playerSource);
     }
 
     private static string FindRepositoryRoot()
