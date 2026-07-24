@@ -1742,6 +1742,9 @@ public partial class GameClientSession
                                     SurvivorOrbData.IsSurvivorOrb(msg.PartB);
         if (isSurvivorOrbRequest)
         {
+            var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+            bool hadResonance = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor previousResonanceColor,
+                out int previousSupportTier);
             if (!_inGameInventoryManager.TryCombineSurvivorOrbs(
                     CurrentMapSubId,
                     PlayerId.Value,
@@ -1757,14 +1760,20 @@ public partial class GameClientSession
 
             SendBattleItemCombineResult(msg, outputItemId, changedItems, recipeId: 0);
 
-            bool resonanceActive = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
-                .TryGetActiveSurvivorOrbPair(out SurvivorOrbColor resonanceColor, out int supportTier);
+            bool resonanceActive = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor resonanceColor,
+                out int supportTier);
+            SurvivorOrbData.TryGetColorAndTier(outputItemId, out SurvivorOrbColor outputColor, out int outputTier);
+            _gameEventLogManager.LogSurvivorOrbBoardTransition(
+                CurrentMapSubId, PlayerId.Value, inventory.GetAllItems(),
+                inventory.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "merge", isBot: false);
             _gameEventLogManager.LogMission(
                 CurrentMapSubId,
                 PlayerId.Value,
                 $"SURVIVOR_ORB_MERGE inputs=[{msg.PartA},{msg.PartB}] output={outputItemId} " +
-                $"resonance={(resonanceActive ? resonanceColor.ToString() : "off")} " +
-                $"supportTier={supportTier} area={CurrentArea} nextArea=uncommitted",
+                $"outputColor={outputColor} outputTier={outputTier} " +
+                $"resonanceBefore={(hadResonance ? previousResonanceColor.ToString() : "off")}/T{previousSupportTier} " +
+                $"resonanceAfter={(resonanceActive ? resonanceColor.ToString() : "off")}/T{supportTier} " +
+                $"area={CurrentArea} nextArea=pending",
                 isBot: false);
 
             var outputCombatData = BattleItemCombatData.Get(outputItemId);

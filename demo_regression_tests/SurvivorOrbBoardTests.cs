@@ -79,6 +79,19 @@ public sealed class SurvivorOrbBoardTests
     }
 
     [Fact]
+    public void MultiplePairsStillResolveOnlyTheEquippedColorAndNoCrossColorFallback()
+    {
+        Assert.True(SurvivorOrbData.TryGetActivePair(107000010,
+            [107000011, 107000020, 107000021, 107000030, 107000031], out var color, out int supportTier));
+        Assert.Equal(SurvivorOrbColor.Red, color);
+        Assert.Equal(2, supportTier);
+
+        Assert.False(SurvivorOrbData.TryGetActivePair(107000010,
+            [107000020, 107000021, 107000030, 107000031], out color, out supportTier));
+        Assert.Equal(SurvivorOrbColor.Red, color);
+        Assert.Equal(0, supportTier);
+    }
+    [Fact]
     public void FirstColoredOrbPickupAutoEquipsWithoutReplacingItOnLaterPickups()
     {
         InitializeBattleCombatData();
@@ -111,6 +124,22 @@ public sealed class SurvivorOrbBoardTests
     }
 
     [Fact]
+    public void ReconnectRecomputesTheSameSingleResonanceFromTheAuthoritativeBoard()
+    {
+        InitializeBattleCombatData();
+        var manager = new InGameInventoryManager();
+        manager.Initialize();
+        Assert.True(manager.TryAddItemWithCapacity(198, 101, 107000010, 6, out _));
+        Assert.True(manager.TryAddItemWithCapacity(198, 101, 107000010, 6, out _));
+        Assert.True(manager.TryAddItemWithCapacity(198, 101, 107000020, 6, out _));
+        Assert.True(manager.TryAddItemWithCapacity(198, 101, 107000020, 6, out _));
+
+        var reconnectedInventory = manager.GetPlayerInventory(198, 101);
+        Assert.True(reconnectedInventory.TryGetActiveSurvivorOrbPair(out var color, out int supportTier));
+        Assert.Equal(SurvivorOrbColor.Red, color);
+        Assert.Equal(1, supportTier);
+    }
+    [Fact]
     public async Task ConcurrentRandomMergeConsumesInputsOnlyOnce()
     {
         InitializeBattleCombatData();
@@ -126,6 +155,27 @@ public sealed class SurvivorOrbBoardTests
         Assert.Single(attempts, success => success);
         Assert.Single(attempts, success => !success);
         Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetAllItems().Sum(item => item.Count));
+    }
+
+    [Fact]
+    public void ReconnectingToTheSameMatchReadsTheSingleAuthoritativeMergeResult()
+    {
+        InitializeBattleCombatData();
+        var manager = new InGameInventoryManager();
+        manager.Initialize();
+        manager.AddItem(198, 100, 107000010);
+        manager.AddItem(198, 100, 107000010);
+
+        Assert.True(manager.TryCombineSurvivorOrbs(198, 100, 107000010, 107000010,
+            new Random(198), out int outputItemId, out _));
+
+        // A new session retrieves the same matching/player inventory; it must not replay the merge.
+        var reconnectedInventory = manager.GetPlayerInventory(198, 100);
+        var output = Assert.Single(reconnectedInventory.GetAllItems());
+        Assert.Equal(outputItemId, output.ItemId);
+        Assert.Equal(1, output.Count);
+        Assert.False(manager.TryCombineSurvivorOrbs(198, 100, 107000010, 107000010,
+            new Random(199), out _, out _));
     }
 
     private static void InitializeBattleCombatData()

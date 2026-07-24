@@ -188,8 +188,11 @@ public partial class GameClientSession
                     addedCount);
             }
 
-            // ?멸쾶???몃깽?좊━ 紐⑸줉 ?꾩넚
             SendInGameInventoryList();
+            var connectionBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+            _gameEventLogManager.LogSurvivorOrbBoardTransition(
+                CurrentMapSubId, PlayerId.Value, connectionBoard.GetAllItems(),
+                connectionBoard.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
 
             // 臾?珥덇린 ?곹깭 ?ㅼ젙 諛??대┛ 臾?紐⑸줉 ?꾩넚
             _doorStateManager.InitializeMatching(CurrentMapSubId);

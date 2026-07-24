@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
+using network.common.data.models;
 
 namespace demo_regression_tests;
 
@@ -324,6 +325,29 @@ public sealed class SurvivorRegionalItemPoolTests
         Assert.Single(ground.GetSnapshot(19307, AreaType.Corridor));
     }
     [Fact]
+    public void EliminationScatterSeparatesLootBeyondOneAutoPickupCircleWhenTheAreaAllowsIt()
+    {
+        var region = GameMapData.GetAreas(MapId.School)
+            .Where(area => area.AreaType != AreaType.None)
+            .OrderByDescending(area => (area.End.X - area.Start.X + 1) * (area.End.Y - area.Start.Y + 1))
+            .First();
+        var center = new Cell((region.Start.X + region.End.X) / 2, (region.Start.Y + region.End.Y) / 2);
+        float originX = (center.X - center.Y) / 2f;
+        float originY = (center.X + center.Y) / 4f;
+        var ground = new GroundItemManager();
+
+        var spawned = ground.SpawnItems(19308, region.AreaType, originX, originY,
+            [107000010, 107000020, 107000030], layout: GroundItemSpawnLayout.EliminationScatter);
+
+        Assert.Equal(3, spawned.Count);
+        Assert.All(spawned, item =>
+        {
+            float dx = item.PositionX - originX;
+            float dy = item.PositionY - originY;
+            Assert.True(MathF.Sqrt(dx * dx + dy * dy) >= GroundItemManager.PickupRadius * 2f);
+        });
+    }
+    [Fact]
     public void InventoryCapacityDoesNotReplaceExistingItems()
     {
         var manager = new InGameInventoryManager();
@@ -438,6 +462,30 @@ public sealed class SurvivorRegionalItemPoolTests
         }
     }
 
+    [Fact]
+    public void EveryOrbColorHasAnOpenReplacementRegionUntilTheFinalClosureWave()
+    {
+        var closure = new AreaClosureManager(NullLogger.Instance, new MatchingConfigService(null!, NullLogger.Instance));
+        var state = closure.InitializeMatching(198501);
+        var closed = new HashSet<AreaType>();
+        var colors = new[] { SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue };
+
+        for (int waveIndex = 0; waveIndex < state.Waves.Count - 1; waveIndex++)
+        {
+            foreach (var area in state.Waves[waveIndex].Areas)
+                closed.Add(area);
+
+            foreach (var color in colors)
+            {
+                bool hasOpenSupply = GameMapData.GetAreas(MapId.School)
+                    .Select(region => region.AreaType)
+                    .Where(area => !closed.Contains(area))
+                    .SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
+                    .Any(itemId => SurvivorOrbData.TryGetColorAndTier(itemId, out var itemColor, out _) && itemColor == color);
+                Assert.True(hasOpenSupply, $"{color} has no open replacement region after wave {waveIndex + 1}.");
+            }
+        }
+    }
     private static List<int> Consume(AreaItemStockManager manager, long matchId, AreaType area)
     {
         manager.TryConsumeDrops(matchId, (int)area, 1, out var items);

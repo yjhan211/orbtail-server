@@ -161,6 +161,41 @@ public class ProximityAutoCombatResolverTests
     }
 
     [Fact]
+    public void Resolve_WaveBurstRechargesOnlyAfterZeroTargetsAndDoesNotReturnOnTargetChangeOrGraceReacquire()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 24, 0, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000030) with
+            {
+                InitialBurstAttackCount = 3,
+                InitialBurstAttackIntervalMultiplier = 0.4f,
+                BurstRechargeSeconds = 3f
+            },
+            Actor(2, 1f, 0f),
+            Actor(3, 2f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(198, actors, now));
+        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(500)));
+
+        // Target 2 disappears but target 3 remains: this is a target change, not a recharge condition.
+        actors[1] = Actor(2, 1f, 0f, area: AreaType.Corridor3F);
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(600)));
+        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(1100)));
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(1700)));
+
+        // Only now, with no valid target, does the three-second recharge start.
+        actors[2] = Actor(3, 2f, 0f, area: AreaType.Corridor3F);
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(1800)));
+        actors[2] = Actor(3, 2f, 0f);
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(2500)));
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(3299)));
+        Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(3300)));
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(3900)));
+    }
+    [Fact]
     public void Resolve_WindProfileChecksLineOfSightForEveryAdditionalTarget()
     {
         var resolver = new ProximityAutoCombatResolver();

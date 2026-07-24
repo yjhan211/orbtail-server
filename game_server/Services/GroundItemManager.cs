@@ -16,6 +16,12 @@ public enum GroundItemClaimStatus
     Reserved
 }
 
+public enum GroundItemSpawnLayout
+{
+    Default,
+    EliminationScatter
+}
+
 public sealed class GroundItemManager
 {
     public const float PickupRadius = 1.15f;
@@ -33,7 +39,8 @@ public sealed class GroundItemManager
 
     public List<GroundItemInfo> SpawnItems(long matchingId, AreaType area, float originX, float originY,
         IReadOnlyList<int> itemIds, long sourcePlayerId = 0, MapId mapId = MapId.School,
-        long discovererPlayerId = 0, TimeSpan? discovererPickupWindow = null)
+        long discovererPlayerId = 0, TimeSpan? discovererPickupWindow = null,
+        GroundItemSpawnLayout layout = GroundItemSpawnLayout.Default)
     {
         if (matchingId <= 0 || area == AreaType.None || itemIds.Count == 0)
             return new List<GroundItemInfo>();
@@ -44,7 +51,7 @@ public sealed class GroundItemManager
             var spawned = new List<GroundItemInfo>(itemIds.Count);
             for (int i = 0; i < itemIds.Count; i++)
             {
-                var landing = ResolveLandingPosition(mapId, area, originX, originY, i, itemIds.Count);
+                var landing = ResolveLandingPosition(mapId, area, originX, originY, i, itemIds.Count, layout);
                 var item = new GroundItemInfo
                 {
                     GroundItemUid = state.NextUid(),
@@ -85,6 +92,21 @@ public sealed class GroundItemManager
                 .ToList();
     }
 
+    public bool Exists(long matchingId, long groundItemUid)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var state))
+            return false;
+        lock (state.SyncRoot)
+            return state.Items.ContainsKey(groundItemUid);
+    }
+
+    public GroundItemInfo? GetItem(long matchingId, long groundItemUid)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var state))
+            return null;
+        lock (state.SyncRoot)
+            return state.Items.TryGetValue(groundItemUid, out var item) ? Clone(item) : null;
+    }
     public long GetDiscovererPlayerId(long matchingId, long groundItemUid)
     {
         if (!_matchingStates.TryGetValue(matchingId, out var state)) return 0;
@@ -192,8 +214,11 @@ public sealed class GroundItemManager
     public void RemoveMatchingState(long matchingId) => _matchingStates.TryRemove(matchingId, out _);
 
     private static (float X, float Y) ResolveLandingPosition(MapId mapId, AreaType area, float originX,
-        float originY, int itemIndex, int itemCount)
+        float originY, int itemIndex, int itemCount, GroundItemSpawnLayout layout)
     {
+        if (layout == GroundItemSpawnLayout.EliminationScatter)
+            return ResolveEliminationScatterLanding(mapId, area, originX, originY, itemIndex, itemCount);
+
         var originCell = WorldPositionToCell(originX, originY);
         var areaRegions = GameMapData.GetAreas(mapId)
             .Where(candidate => candidate.AreaType == area)
@@ -227,6 +252,35 @@ public sealed class GroundItemManager
             return (candidateX, candidateY);
         }
 
+        return ResolveFallbackLanding(originX, originY, itemIndex, itemCount);
+    }
+
+    private static (float X, float Y) ResolveEliminationScatterLanding(MapId mapId, AreaType area,
+        float originX, float originY, int itemIndex, int itemCount)
+    {
+        // Keep loot outside one contact-pickup circle so a player must choose which orb to approach.
+        const float minRadius = PickupRadius * 2.1f;
+        const float maxRadius = 3.45f;
+        const float goldenAngle = 2.3999632f;
+        float baseAngle = itemCount <= 1
+            ? Random.Shared.NextSingle() * MathF.Tau
+            : MathF.Tau * itemIndex / itemCount + (Random.Shared.NextSingle() - 0.5f) * 0.22f;
+
+        for (int attempt = 0; attempt < 24; attempt++)
+        {
+            float radius = MathF.Max(minRadius, maxRadius - (attempt / 6) * 0.25f);
+            float angle = baseAngle + attempt * goldenAngle;
+            float candidateX = originX + MathF.Cos(angle) * radius;
+            float candidateY = originY + MathF.Sin(angle) * radius;
+            var candidateCell = WorldPositionToCell(candidateX, candidateY);
+            if (GameMapData.GetCurrentArea(mapId, candidateCell) != area ||
+                !GameMapData.IsMoveablePosition(mapId, candidateCell))
+                continue;
+
+            return (candidateX, candidateY);
+        }
+
+        // A narrow room can have no valid point at the target radius. Keep the item rather than lose it.
         return ResolveFallbackLanding(originX, originY, itemIndex, itemCount);
     }
 

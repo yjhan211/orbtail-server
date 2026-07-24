@@ -55,9 +55,14 @@ public partial class BotPlayerManager
                 continue;
 
             bool autoUsed = disposition == GroundItemPickupDisposition.AutoUse;
+            int requestedRecovery = staminaRecovery + corruptionRecovery;
+            int effectiveRecovery = 0;
             InGameItemInfo? addedItem = null;
             if (autoUsed)
             {
+                int effectiveStaminaRecovery = Math.Min(staminaRecovery, Math.Max(0, 100 - bot.Stamina));
+                int effectiveCorruptionRecovery = Math.Min(corruptionRecovery, Math.Max(0, bot.Corruption));
+                effectiveRecovery = effectiveStaminaRecovery + effectiveCorruptionRecovery;
                 bot.Stamina = Math.Min(100, bot.Stamina + staminaRecovery);
                 bot.Corruption = Math.Max(0, bot.Corruption - corruptionRecovery);
             }
@@ -89,7 +94,9 @@ public partial class BotPlayerManager
                 autoUsed,
                 corruptionRecovery,
                 discovererPlayerId,
-                autoEquippedItemId);
+                autoEquippedItemId,
+                requestedRecovery,
+                effectiveRecovery);
             return true;
         }
 
@@ -103,7 +110,8 @@ public partial class BotPlayerManager
         IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets)
     {
         if (bot.IsEliminated || bot.IsInInteraction || bot.PendingRngInteractId != 0 ||
-            bot.PendingChecklistTaskId != 0 || DateTime.UtcNow < bot.NextCombatRepathAt)
+            bot.PendingChecklistTaskId != 0 || bot.OrbFarmingTargetColor != SurvivorOrbColor.None ||
+            DateTime.UtcNow < bot.NextCombatRepathAt)
         {
             return;
         }
@@ -292,7 +300,9 @@ public readonly record struct BotGroundItemPickup(
     bool AutoUsed,
     int CorruptionRecovery,
     long DiscovererPlayerId,
-    int AutoEquippedItemId = 0);
+    int AutoEquippedItemId = 0,
+    int RequestedRecovery = 0,
+    int EffectiveRecovery = 0);
 
 public readonly record struct BotCombatTargetSnapshot(
     long PlayerId,

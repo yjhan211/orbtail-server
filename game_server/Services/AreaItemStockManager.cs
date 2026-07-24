@@ -68,6 +68,20 @@ public sealed class AreaItemStockManager
             return stock.GetOrCreateAreaStock(areaType).Count;
     }
 
+    /// <summary>
+    /// Server-only routing query for bots. The minimap intentionally exposes only depletion,
+    /// while bots need to know whether a route can still rebuild their active orb resonance.
+    /// </summary>
+    public bool HasRemainingOrbColor(long matchingId, int areaType, SurvivorOrbColor color)
+    {
+        if (color == SurvivorOrbColor.None) return false;
+
+        var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
+        lock (stock.SyncRoot)
+            return stock.GetOrCreateAreaStock(areaType)
+                .Any(itemId => SurvivorOrbData.TryGetColorAndTier(itemId, out var itemColor, out _) && itemColor == color);
+    }
+
     public IReadOnlyDictionary<int, int> GetRemainingSnapshot(long matchingId, int areaType)
     {
         if (!_matchingStocks.TryGetValue(matchingId, out var stock))

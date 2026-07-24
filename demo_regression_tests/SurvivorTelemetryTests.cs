@@ -1,4 +1,5 @@
 using game_server.services;
+using network.common;
 using network.common.data;
 using network.common.data.models;
 
@@ -110,4 +111,52 @@ public sealed class SurvivorTelemetryTests
             entry.Type == "MATCH_ENDED" &&
             entry.TieBreakCriterion == "survival>kills>damage>recovery");
     }
+
+    [Fact]
+    public void OrbBoardTelemetryCapturesTransitionsMergeWindowsColorRatesAndVolleyTargets()
+    {
+        const long matchingId = 198401;
+        const long playerId = 401;
+        var log = new GameEventLogManager();
+        var redPair = new[]
+        {
+            new InGameItemInfo { ItemId = 107000010, Count = 1 },
+            new InGameItemInfo { ItemId = 107000010, Count = 1 }
+        };
+
+        log.LogSurvivorOrbBoardTransition(matchingId, playerId, redPair, 107000010, "Library", "pickup", false);
+        Thread.Sleep(10);
+        log.LogSurvivorOrbBoardTransition(matchingId, playerId,
+            [new InGameItemInfo { ItemId = 107000031, Count = 1 }], 107000031, "Gym", "merge", false);
+        var volley = new ProximityCombatAttack(playerId, 402, AreaType.Gym, 107000020, 6, 0.2f, 1f, 3);
+        log.LogSurvivorOrbAttackTargets(matchingId, [volley], [volley],
+            new Dictionary<long, SurvivorOrbColor> { [playerId] = SurvivorOrbColor.Green });
+        log.LogPelletPickupOutcome(matchingId, playerId, 201000008, 15, 15, "effective", false);
+        log.LogPelletPickupOutcome(matchingId, playerId, 201000008, 15, 0, "wasted", false);
+        log.LogPelletPickupOutcome(matchingId, playerId, 201000008, 15, 0, "denied_reserved", false);
+        log.LogMatchEnded(matchingId, playerId, "last_survivor", "not_required",
+            [new SurvivorFinalPlayerStats(playerId, 1, 30, 0, 0, 0)]);
+
+        var events = log.GetRecent(matchingId, 500);
+        var merge = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" && entry.Outcome == "merge");
+        Assert.Equal([107000010, 107000010], merge.PreviousBoardItemIds);
+        Assert.Equal("Blue", merge.EquippedColor);
+        Assert.Equal("Red", merge.PreviousEquippedColor);
+        Assert.False(merge.ResonanceActive ?? true);
+        Assert.True(Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_MERGE_WINDOW_ENDED")
+            .MergeCandidateDurationSeconds > 0d);
+        Assert.Contains(events, entry => entry.Type == "SURVIVOR_ORB_RESONANCE_APPLIED" && entry.ResonanceProfile == "sun_single_target");
+        Assert.Contains(events, entry => entry.Type == "SURVIVOR_ORB_RESONANCE_REMOVED" && entry.Outcome == "merge");
+        var greenVolley = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_ATTACK_TARGETS");
+        Assert.Equal(3, greenVolley.CandidateTargetCount);
+        Assert.Equal([402L], greenVolley.AttackTargetPlayerIds);
+        Assert.Equal("wind_multi_target", greenVolley.ResonanceProfile);
+        Assert.Contains(events, entry => entry.Type == "SURVIVOR_ORB_COLOR_SUMMARY" &&
+            entry.ResonanceColor == "Red" && entry.DurationSeconds > 0d);
+        Assert.Equal(1, Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_SUMMARY").ContributionDelta);
+        Assert.Contains(events, entry => entry.Type == "PELLET_PICKUP_OUTCOME" && entry.Outcome == "effective" && entry.RecoveryAmount == 15);
+        Assert.Contains(events, entry => entry.Type == "PELLET_PICKUP_OUTCOME" && entry.Outcome == "wasted" && entry.WastedRecoveryAmount == 15);
+        Assert.Contains(events, entry => entry.Type == "PELLET_PICKUP_OUTCOME" && entry.Outcome == "denied_reserved");
+    }
+
 }

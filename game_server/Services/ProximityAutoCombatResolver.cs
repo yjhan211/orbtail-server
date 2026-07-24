@@ -30,7 +30,8 @@ public readonly record struct ProximityCombatAttack(
     int WeaponItemId,
     int Damage,
     float ProjectileWidth,
-    float EffectDurationSeconds);
+    float EffectDurationSeconds,
+    int CandidateTargetCount = 0);
 
 public readonly record struct ProximityCombatTargetEvent(
     long AttackerPlayerId,
@@ -224,7 +225,8 @@ public sealed class ProximityAutoCombatResolver
                     attacker.WeaponItemId,
                     damage,
                     attacker.ProjectileWidth,
-                    attacker.EffectDurationSeconds));
+                    attacker.EffectDurationSeconds,
+                    eligibleTargets.Count));
             }
 
             // A burst of N attacks has N - 1 shortened gaps between those attacks.

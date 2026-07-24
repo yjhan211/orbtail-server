@@ -52,6 +52,7 @@ public partial class BotPlayerManager
         public List<BotMovementEvent> Movements { get; } = new();
         public List<(long botId, AreaType area)> ExploreEnds { get; } = new();
         public List<BotGroundItemPickup> GroundItemPickups { get; } = new();
+        public List<BotOrbFarmingPivot> OrbFarmingPivots { get; } = new();
     }
 
     /// <summary>
@@ -191,6 +192,16 @@ public partial class BotPlayerManager
                 UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
             var ev = WalkStep(bot, matchingId, closureManager, areaItemStockManager, playerAreas, checklistManager);
             if (ev != null) result.Movements.Add(ev);
+            if (bot.PendingOrbFarmingPivotTo != AreaType.None)
+            {
+                result.OrbFarmingPivots.Add(new BotOrbFarmingPivot(
+                    bot.PlayerId,
+                    bot.OrbFarmingTargetColor,
+                    bot.PendingOrbFarmingPivotFrom,
+                    bot.PendingOrbFarmingPivotTo));
+                bot.PendingOrbFarmingPivotFrom = AreaType.None;
+                bot.PendingOrbFarmingPivotTo = AreaType.None;
+            }
             if (bot.PendingExploreEndBroadcast)
             {
                 result.ExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
@@ -504,6 +515,11 @@ public partial class BotPlayerManager
         bot.PendingExploreEndBroadcast = true;
 
         bool needsGuardianOrb = bot.EquippedBattleItemId <= 0;
+        if (!needsGuardianOrb && bot.OrbFarmingTargetColor != SurvivorOrbColor.None &&
+            TryStartOrbResonanceFarmingPath(bot, matchingId, mapId, closureManager, areaItemStockManager))
+        {
+            return;
+        }
         if ((bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) ||
              needsGuardianOrb && !IsSecludedFarmingArea(mapId, bot.CurrentArea)) &&
             TryStartPostExploreRelocation(
@@ -598,6 +614,67 @@ public partial class BotPlayerManager
             "Proto0 bot move: BotId={Bot}, Target={Target}, Policy={Policy}, Profile={Profile}, {From}->{To}, Steps={Steps}",
             bot.PlayerId, bot.TargetPlayerId, ActiveProto0BotPolicy, bot.Proto0Profile,
             bot.CurrentArea, destination, path.Count);
+    }
+
+    private bool TryStartOrbResonanceFarmingPath(BotPlayerState bot, long matchingId, MapId mapId,
+        AreaClosureManager closureManager, AreaItemStockManager areaItemStockManager)
+    {
+        var color = bot.OrbFarmingTargetColor;
+        if (color == SurvivorOrbColor.None)
+            return false;
+
+        if (!bot.CurrentArea.IsCorridor() &&
+            !IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea) &&
+            areaItemStockManager.HasRemainingOrbColor(matchingId, (int)bot.CurrentArea, color))
+        {
+            bot.OrbFarmingDestination = bot.CurrentArea;
+            bot.OrbFarmingPivotPending = false;
+            return false;
+        }
+
+        var destination = GameMapData.GetAreas(mapId)
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Where(area => area != AreaType.None && area != bot.CurrentArea && !area.IsCorridor() &&
+                           !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
+                           areaItemStockManager.HasRemainingOrbColor(matchingId, (int)area, color))
+            .Select(area => new
+            {
+                Area = area,
+                Path = BotPathfinder.FindPath(
+                    mapId, bot.CurrentArea, bot.Cell, area,
+                    GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, area) ??
+                    GameMapData.GetAreaSpawnCell(mapId, area),
+                    candidate => IsAreaClosingOrClosed(closureManager, matchingId, candidate))
+            })
+            .Where(candidate => candidate.Path is { Count: > 0 })
+            .OrderBy(candidate => candidate.Path!.Count)
+            .ThenBy(candidate => (int)candidate.Area)
+            .FirstOrDefault();
+
+        if (destination?.Path == null)
+        {
+            bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
+            bot.OrbFarmingDestination = AreaType.None;
+            bot.OrbFarmingPivotPending = false;
+            return false;
+        }
+
+        AreaType from = bot.CurrentArea;
+        bot.Path = destination.Path;
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 1.0);
+        bot.OrbFarmingDestination = destination.Area;
+        if (bot.OrbFarmingPivotPending)
+        {
+            bot.PendingOrbFarmingPivotFrom = from;
+            bot.PendingOrbFarmingPivotTo = destination.Area;
+        }
+        bot.OrbFarmingPivotPending = false;
+        _logger.LogInformation(
+            "Bot orb route pivot: MatchingId={MatchingId}, BotId={BotId}, Color={Color}, {From}->{To}, Steps={Steps}",
+            matchingId, bot.PlayerId, color, from, destination.Area, destination.Path.Count);
+        return true;
     }
 
     private bool TryStartPostExploreRelocation(BotPlayerState bot, long matchingId, MapId mapId,
@@ -1334,3 +1411,6 @@ public class BotMovementEvent
     public float Rotation { get; set; }
     public bool IsAreaTransition { get; set; }
 }
+
+public sealed record BotOrbFarmingPivot(long BotPlayerId, SurvivorOrbColor Color, AreaType FromArea,
+    AreaType ToArea);

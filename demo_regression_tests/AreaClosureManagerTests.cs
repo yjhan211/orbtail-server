@@ -2,11 +2,18 @@ using game_server.services;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
+using network.common.data.helpers;
 
 namespace demo_regression_tests;
 
 public class AreaClosureManagerTests
 {
+    public AreaClosureManagerTests()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+    }
+
     [Fact]
     public void SpawnAssignments_AreSeededUniqueCorridorAnchorsForTheWholeRoster()
     {
@@ -94,6 +101,23 @@ public class AreaClosureManagerTests
     }
 
     [Fact]
+    public void ClosureAndOvertimeReachTheFiveToSevenMinuteTerminationEnvelope()
+    {
+        var now = new DateTime(2026, 7, 24, 0, 0, 0, DateTimeKind.Utc);
+        var manager = CreateManager(() => now);
+        const long matchingId = 198502;
+        var state = manager.InitializeMatching(matchingId);
+
+        Assert.Equal(290, state.Waves[^1].ClosureAtSeconds);
+        now = now.AddSeconds(290);
+        manager.CheckClosureSchedule(matchingId);
+        Assert.True(manager.IsOvertimeActive(matchingId));
+        Assert.Equal((1, 1), manager.GetOvertimeStatus(matchingId));
+
+        now = now.AddSeconds(70);
+        Assert.Equal((4, 8), manager.GetOvertimeStatus(matchingId));
+    }
+    [Fact]
     public void CleanupMatching_RemovesClosureStateBeforeMatchingIdIsReused()
     {
         var now = new DateTime(2026, 7, 20, 0, 0, 0, DateTimeKind.Utc);
@@ -115,5 +139,17 @@ public class AreaClosureManagerTests
             NullLogger.Instance,
             new MatchingConfigService(null!, NullLogger.Instance),
             utcNow);
+    }
+    private static string FindNetworkBasePath()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            string candidate = Path.Combine(directory.FullName, "network", "Common", "csv");
+            if (Directory.Exists(candidate))
+                return Path.Combine(directory.FullName, "network");
+            directory = directory.Parent;
+        }
+        throw new DirectoryNotFoundException("Could not locate network/Common/csv.");
     }
 }

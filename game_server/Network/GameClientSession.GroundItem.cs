@@ -26,6 +26,7 @@ public partial class GameClientSession
         var position = _lastValidatedPosition;
         long discovererPlayerId = _groundItemManager.GetDiscovererPlayerId(
             CurrentMapSubId, msg.GroundItemUid);
+        var attemptedItem = _groundItemManager.GetItem(CurrentMapSubId, msg.GroundItemUid);
         var status = _groundItemManager.TryClaim(
             CurrentMapSubId,
             msg.GroundItemUid,
@@ -78,16 +79,33 @@ public partial class GameClientSession
                 GroundItemClaimStatus.Reserved => ErrorCode.ITEM_NOT_FOUND,
                 _ => ErrorCode.ITEM_NOT_FOUND
             };
-            SendGroundItemPickupResult(msg.GroundItemUid, claimedItem?.ItemId ?? 0, false, false, error);
+            if (attemptedItem != null && GroundItemPickupPolicy.IsImmediateUseItem(attemptedItem.ItemId))
+            {
+                GroundItemPickupPolicy.Resolve(attemptedItem.ItemId, Stamina, MaxStamina, Corruption,
+                    out int deniedStaminaRecovery, out int deniedCorruptionRecovery);
+                _gameEventLogManager.LogPelletPickupOutcome(
+                    CurrentMapSubId, PlayerId.Value, attemptedItem.ItemId,
+                    deniedStaminaRecovery + deniedCorruptionRecovery, 0,
+                    $"denied_{status.ToString().ToLowerInvariant()}", isBot: false);
+            }
+            SendGroundItemPickupResult(msg.GroundItemUid, attemptedItem?.ItemId ?? 0, false, false, error);
             return Task.CompletedTask;
         }
 
         if (autoUsed)
         {
+            int effectiveStaminaRecovery = Math.Min(staminaRecovery, Math.Max(0, MaxStamina - Stamina));
+            int effectiveCorruptionRecovery = Math.Min(corruptionRecovery, Math.Max(0, Corruption));
+            int requestedRecovery = staminaRecovery + corruptionRecovery;
+            int effectiveRecovery = effectiveStaminaRecovery + effectiveCorruptionRecovery;
             ModifyStats(staminaDelta: staminaRecovery, corruptionDelta: -corruptionRecovery);
             _gameEventLogManager.LogRecoveryUse(
                 CurrentMapSubId, PlayerId.Value, claimedItem.ItemId,
-                corruptionRecovery, source: "ground_auto_use", isBot: false);
+                effectiveRecovery, source: "ground_auto_use", isBot: false);
+            _gameEventLogManager.LogPelletPickupOutcome(
+                CurrentMapSubId, PlayerId.Value, claimedItem.ItemId, requestedRecovery, effectiveRecovery,
+                effectiveRecovery == 0 ? "wasted" : effectiveRecovery == requestedRecovery ? "effective" : "partial_waste",
+                isBot: false);
         }
         else if (addedItem != null)
         {
@@ -110,31 +128,18 @@ public partial class GameClientSession
             CurrentArea.ToString(),
             autoUsed,
             isBot: false);
+        var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+        _gameEventLogManager.LogSurvivorOrbBoardTransition(
+            CurrentMapSubId, PlayerId.Value, boardAfterPickup.GetAllItems(),
+            boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "pickup", isBot: false);
         SendGroundItemPickupResult(claimedItem.GroundItemUid, claimedItem.ItemId, true, autoUsed, ErrorCode.SUCCESS);
         return Task.CompletedTask;
     }
 
     private Task HandleDropGroundItem(C_TO_G_DROP_GROUND_ITEM msg)
     {
-        if (!PlayerId.HasValue || IsEliminated || _lastValidatedPosition == null || CurrentArea == AreaType.None)
-        {
-            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Cannot drop an item in the current state");
-            return Task.CompletedTask;
-        }
-
-        var item = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value).GetItem(msg.ItemUid);
-        if (item == null || item.Count <= 0 ||
-            !_inGameInventoryManager.TryRemoveItem(CurrentMapSubId, PlayerId.Value, msg.ItemUid, 1, out var updated))
-        {
-            SendErrorResponse(ErrorCode.ITEM_NOT_FOUND, "Item is not in the inventory");
-            return Task.CompletedTask;
-        }
-
-        if (updated != null) SendInGameInventoryUpdate(updated);
-        var position = _lastValidatedPosition;
-        var spawned = _groundItemManager.SpawnItems(CurrentMapSubId, CurrentArea,
-            position.X, position.Y, [item.ItemId], PlayerId.Value);
-        BroadcastGroundItemsSpawned(CurrentArea, spawned);
+        // The six board slots are deliberate route pressure. Free floor drops would bypass that pressure.
+        SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Direct board discard is unavailable");
         return Task.CompletedTask;
     }
     internal void DropAllInventoryAtCurrentPosition()
@@ -144,6 +149,10 @@ public partial class GameClientSession
         var removed = _inGameInventoryManager.TakeAllItems(CurrentMapSubId, PlayerId.Value);
         if (removed.Count == 0) return;
 
+        var emptyBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+        _gameEventLogManager.LogSurvivorOrbBoardTransition(
+            CurrentMapSubId, PlayerId.Value, emptyBoard.GetAllItems(), 0, CurrentArea.ToString(), "elimination_drop",
+            isBot: false);
         var itemIds = removed
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
             .Where(GroundItemPickupPolicy.ShouldDropOnElimination)
@@ -159,17 +168,17 @@ public partial class GameClientSession
 
         if (itemIds.Count == 0) return;
 
+        var position = _lastValidatedPosition;
+        var spawned = _groundItemManager.SpawnItems(CurrentMapSubId, CurrentArea,
+            position.X, position.Y, itemIds, layout: GroundItemSpawnLayout.EliminationScatter);
         _gameEventLogManager.LogEliminationDrop(
             CurrentMapSubId,
             PlayerId.Value,
             CurrentArea.ToString(),
             itemIds,
+            spawned,
             GameEventLogManager.CalculateDropRecoveryTotal(itemIds),
             isBot: false);
-
-        var position = _lastValidatedPosition;
-        var spawned = _groundItemManager.SpawnItems(CurrentMapSubId, CurrentArea,
-            position.X, position.Y, itemIds);
         BroadcastGroundItemsSpawned(CurrentArea, spawned);
     }
 
@@ -181,21 +190,26 @@ public partial class GameClientSession
         var removed = _inGameInventoryManager.TakeAllItems(CurrentMapSubId, botPlayerId);
         if (removed.Count == 0) return;
 
+        var emptyBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, botPlayerId);
+        _gameEventLogManager.LogSurvivorOrbBoardTransition(
+            CurrentMapSubId, botPlayerId, emptyBoard.GetAllItems(), 0, bot.CurrentArea.ToString(), "elimination_drop",
+            isBot: true);
         var itemIds = removed
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
             .Where(GroundItemPickupPolicy.ShouldDropOnElimination)
             .ToList();
         if (itemIds.Count == 0) return;
 
+        var spawned = _groundItemManager.SpawnItems(CurrentMapSubId, bot.CurrentArea,
+            bot.Position.X, bot.Position.Y, itemIds, layout: GroundItemSpawnLayout.EliminationScatter);
         _gameEventLogManager.LogEliminationDrop(
             CurrentMapSubId,
             botPlayerId,
             bot.CurrentArea.ToString(),
             itemIds,
+            spawned,
             GameEventLogManager.CalculateDropRecoveryTotal(itemIds),
             isBot: true);
-        var spawned = _groundItemManager.SpawnItems(CurrentMapSubId, bot.CurrentArea,
-            bot.Position.X, bot.Position.Y, itemIds);
         BroadcastGroundItemsSpawned(bot.CurrentArea, spawned);
     }
     private void SendGroundItemSnapshot(AreaType area)

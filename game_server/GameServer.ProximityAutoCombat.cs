@@ -115,7 +115,15 @@ public partial class GameServer
                     targetEvent.OccurredAtUtc));
 
         if (attacks.Count > 0)
-            ApplyProximityCombatVolley(matchingId, attacks, matchingSessions, matchingBots, activeSessions);
+        {
+            var activeOrbColors = new Dictionary<long, SurvivorOrbColor>();
+            foreach (var actor in actors.Where(actor => actor.OrbEffectActive))
+            {
+                if (SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out var color, out _))
+                    activeOrbColors[actor.PlayerId] = color;
+            }
+            ApplyProximityCombatVolley(matchingId, attacks, matchingSessions, matchingBots, activeSessions, activeOrbColors);
+        }
     }
     private List<ProximityCombatActor> BuildProximityCombatActors(
         long matchingId,
@@ -262,8 +270,10 @@ public partial class GameServer
         IReadOnlyCollection<ProximityCombatAttack> attacks,
         IReadOnlyCollection<GameClientSession> matchingSessions,
         IReadOnlyCollection<BotPlayerState> matchingBots,
-        List<GameClientSession> activeSessions)
+        List<GameClientSession> activeSessions,
+        IReadOnlyDictionary<long, SurvivorOrbColor> activeOrbColors)
     {
+        var actualHits = new List<ProximityCombatAttack>();
         foreach (var attack in attacks)
         {
             int damage = attack.Damage;
@@ -315,6 +325,7 @@ public partial class GameServer
                     targetBot, damage, attack.AttackerPlayerId);
             }
 
+            actualHits.Add(attack);
             var attackerSession = matchingSessions.FirstOrDefault(session =>
                 session.PlayerId == attack.AttackerPlayerId && !session.IsEliminated);
             attackerSession?.SendProximityAutoCombatAttackFeedback(
@@ -333,6 +344,8 @@ public partial class GameServer
                 attack.WeaponItemId,
                 damage);
         }
+
+        _gameEventLogManager.LogSurvivorOrbAttackTargets(matchingId, attacks, actualHits, activeOrbColors);
 
         foreach (var bot in matchingBots)
         {

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using network.common.data;
+using network.common.data.models;
 
 namespace game_server.services;
 
@@ -548,6 +549,7 @@ public class GameEventLogManager
     public void LogGroundItemPickup(long matchingId, long pickerPlayerId, long discovererPlayerId,
         long groundItemUid, int itemId, string area, bool autoUsed, bool isBot)
     {
+        TrackEliminationDropPickup(matchingId, groundItemUid, pickerPlayerId);
         Append(matchingId, "GROUND_ITEM_PICKED_UP", pickerPlayerId, isBot,
             $"Ground item picked up: uid={groundItemUid}, item={itemId}, discoverer={discovererPlayerId}, autoUsed={autoUsed}.", entry =>
             {
@@ -600,16 +602,76 @@ public class GameEventLogManager
             });
     }
 
-    public void LogEliminationDrop(long matchingId, long playerId, string area,
-        IReadOnlyCollection<int> itemIds, int totalRecovery, bool isBot)
+    public void LogPelletPickupOutcome(long matchingId, long playerId, int itemId, int requestedRecovery,
+        int effectiveRecovery, string outcome, bool isBot)
     {
-        Append(matchingId, "ELIMINATION_DROP", playerId, isBot,
-            $"Elimination drop: items={itemIds.Count}, recovery={totalRecovery}.", entry =>
+        if (requestedRecovery < 0 || effectiveRecovery < 0)
+            return;
+        Append(matchingId, "PELLET_PICKUP_OUTCOME", playerId, isBot,
+            $"Pellet outcome: item={itemId}, requested={requestedRecovery}, effective={effectiveRecovery}, outcome={outcome}.", entry =>
+            {
+                entry.ItemId = itemId;
+                entry.RequestedRecoveryAmount = requestedRecovery;
+                entry.RecoveryAmount = effectiveRecovery;
+                entry.WastedRecoveryAmount = Math.Max(0, requestedRecovery - effectiveRecovery);
+                entry.Outcome = outcome;
+            });
+    }
+    public void LogEliminationDrop(long matchingId, long playerId, string area,
+        IReadOnlyCollection<int> itemIds, IReadOnlyList<GroundItemInfo> spawnedItems,
+        int totalRecovery, bool isBot)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var droppedItems = spawnedItems.Select(EliminationDroppedItem.FromGroundItem).ToList();
+        float scatterRadius = droppedItems.Count == 0 ? 0f : droppedItems.Max(item => item.DistanceFromOrigin);
+        AppendAt(matchingId, "ELIMINATION_DROP", playerId, isBot,
+            $"Elimination drop: items={itemIds.Count}, recovery={totalRecovery}.", now, entry =>
             {
                 entry.Area = area;
                 entry.GeneratedItemIds = itemIds.ToList();
                 entry.DropRecoveryTotal = totalRecovery;
+                entry.EliminationDroppedItems = droppedItems;
+                entry.DropScatterRadius = scatterRadius;
             });
+
+        if (droppedItems.Count == 0)
+            return;
+
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        lock (state.SyncRoot)
+            state.PendingEliminationDrops.Add(new PendingEliminationDrop(
+                playerId, area, isBot, now.AddSeconds(3), droppedItems));
+    }
+
+    public void FlushElapsedEliminationDrops(long matchingId, Func<long, bool> isStillOnGround)
+    {
+        ArgumentNullException.ThrowIfNull(isStillOnGround);
+        if (!_telemetryStates.TryGetValue(matchingId, out var state))
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        List<PendingEliminationDrop> elapsed;
+        lock (state.SyncRoot)
+        {
+            elapsed = state.PendingEliminationDrops.Where(drop => drop.ObserveAtUtc <= now).ToList();
+            state.PendingEliminationDrops.RemoveAll(drop => drop.ObserveAtUtc <= now);
+        }
+
+        foreach (var drop in elapsed)
+        {
+            var uncollected = drop.Items.Where(item => isStillOnGround(item.GroundItemUid))
+                .Select(item => item.GroundItemUid).ToList();
+            AppendAt(matchingId, "ELIMINATION_DROP_3S", drop.PlayerId, drop.IsBot,
+                $"Elimination drop after 3s: picked={drop.PickupOrder.Count}, uncollected={uncollected.Count}.",
+                now, entry =>
+                {
+                    entry.Area = drop.Area;
+                    entry.EliminationDroppedItems = drop.Items;
+                    entry.DropPickupOrder = drop.PickupOrder.ToList();
+                    entry.UncollectedDroppedItemUids = uncollected;
+                    entry.DropScatterRadius = drop.Items.Max(item => item.DistanceFromOrigin);
+                });
+        }
     }
 
     public static int CalculateDropRecoveryTotal(IEnumerable<int> itemIds) =>
@@ -620,6 +682,219 @@ public class GameEventLogManager
             _ => 0
         });
 
+    public void LogSurvivorOrbBoardTransition(long matchingId, long playerId,
+        IReadOnlyCollection<InGameItemInfo> items, int equippedItemId, string area, string reason, bool isBot)
+    {
+        var itemIds = items.Where(item => item.Count > 0)
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count)).ToList();
+        var otherBoardItemIds = itemIds.ToList();
+        if (equippedItemId > 0)
+            otherBoardItemIds.Remove(equippedItemId);
+        bool resonance = SurvivorOrbData.TryGetActivePair(equippedItemId, otherBoardItemIds,
+            out SurvivorOrbColor color, out int supportTier);
+        var transition = TrackOrbTelemetry(matchingId, playerId, itemIds, equippedItemId, resonance, color);
+        Append(matchingId, "SURVIVOR_ORB_BOARD_STATE", playerId, isBot,
+            $"Orb board: reason={reason}, equipped={equippedItemId}, resonance={(resonance ? color : SurvivorOrbColor.None)}.", entry =>
+            {
+                entry.Area = area;
+                entry.Outcome = reason;
+                entry.GeneratedItemIds = itemIds;
+                entry.BoardItemIds = itemIds;
+                entry.PreviousBoardItemIds = transition.PreviousBoardItemIds;
+                entry.WeaponItemId = equippedItemId;
+                entry.PreviousEquippedItemId = transition.PreviousEquippedItemId;
+                entry.EquippedColor = transition.EquippedColor.ToString();
+                entry.PreviousEquippedColor = transition.PreviousEquippedColor.ToString();
+                entry.WeaponTier = resonance ? supportTier : 0;
+                entry.ResonanceActive = resonance;
+                entry.ResonanceColor = resonance ? color.ToString() : SurvivorOrbColor.None.ToString();
+                entry.PreviousResonanceActive = transition.PreviousResonanceActive;
+                entry.PreviousResonanceColor = transition.PreviousResonanceColor.ToString();
+                entry.ResonanceProfile = GetResonanceProfile(resonance ? color : SurvivorOrbColor.None);
+                entry.MergeCandidateDurationSeconds = transition.EndedMergeCandidateDurationSeconds;
+            });
+
+        if (transition.MergeCandidateBecameAvailable)
+            Append(matchingId, "SURVIVOR_ORB_MERGE_AVAILABLE", playerId, isBot,
+                $"Orb merge became available: reason={reason}.", entry =>
+                {
+                    entry.Area = area;
+                    entry.Outcome = reason;
+                    entry.BoardItemIds = itemIds;
+                    entry.WeaponItemId = equippedItemId;
+                });
+
+        if (transition.EndedMergeCandidateDurationSeconds.HasValue)
+            Append(matchingId, "SURVIVOR_ORB_MERGE_WINDOW_ENDED", playerId, isBot,
+                $"Orb merge window ended: reason={reason}, held={transition.EndedMergeCandidateDurationSeconds.Value:F1}s.", entry =>
+                {
+                    entry.Area = area;
+                    entry.Outcome = reason;
+                    entry.MergeCandidateDurationSeconds = transition.EndedMergeCandidateDurationSeconds;
+                    entry.BoardItemIds = itemIds;
+                    entry.PreviousBoardItemIds = transition.PreviousBoardItemIds;
+                });
+
+        if (transition.PreviousResonanceActive != resonance ||
+            transition.PreviousResonanceColor != (resonance ? color : SurvivorOrbColor.None))
+        {
+            string type = resonance ? "SURVIVOR_ORB_RESONANCE_APPLIED" : "SURVIVOR_ORB_RESONANCE_REMOVED";
+            var eventColor = resonance ? color : transition.PreviousResonanceColor;
+            Append(matchingId, type, playerId, isBot,
+                $"Orb resonance {(resonance ? "applied" : "removed")}: color={eventColor}, reason={reason}.", entry =>
+                {
+                    entry.Area = area;
+                    entry.Outcome = reason;
+                    entry.WeaponItemId = equippedItemId;
+                    entry.WeaponTier = resonance ? supportTier : 0;
+                    entry.ResonanceActive = resonance;
+                    entry.ResonanceColor = eventColor.ToString();
+                    entry.ResonanceProfile = GetResonanceProfile(eventColor);
+                });
+        }
+    }
+
+    public void LogSurvivorOrbAttackTargets(long matchingId, IReadOnlyCollection<ProximityCombatAttack> attacks,
+        IReadOnlyCollection<ProximityCombatAttack> actualHits,
+        IReadOnlyDictionary<long, SurvivorOrbColor> activeOrbColors)
+    {
+        foreach (var attackerAttacks in attacks.GroupBy(attack => attack.AttackerPlayerId))
+        {
+            if (!activeOrbColors.TryGetValue(attackerAttacks.Key, out var color) || color == SurvivorOrbColor.None)
+                continue;
+
+            var volley = attackerAttacks.ToList();
+            var hitTargets = actualHits
+                .Where(attack => attack.AttackerPlayerId == attackerAttacks.Key)
+                .Select(attack => attack.TargetPlayerId)
+                .Distinct()
+                .ToList();
+            var primary = volley[0];
+            Append(matchingId, "SURVIVOR_ORB_ATTACK_TARGETS", primary.AttackerPlayerId,
+                BotPlayerManager.IsBotPlayerId(primary.AttackerPlayerId),
+                $"Orb volley: color={color}, candidates={primary.CandidateTargetCount}, targets={volley.Count}.", entry =>
+                {
+                    entry.Area = primary.Area.ToString();
+                    entry.WeaponItemId = primary.WeaponItemId;
+                    entry.ResonanceActive = true;
+                    entry.ResonanceColor = color.ToString();
+                    entry.ResonanceProfile = GetResonanceProfile(color);
+                    entry.CandidateTargetCount = primary.CandidateTargetCount;
+                    entry.ValidTargetCount = volley.Count;
+                    entry.HitTargetCount = hitTargets.Count;
+                    entry.AttackTargetPlayerIds = hitTargets;
+                });
+        }
+    }
+
+    private OrbTransitionSnapshot TrackOrbTelemetry(long matchingId, long playerId, IReadOnlyList<int> itemIds,
+        int equippedItemId, bool active, SurvivorOrbColor color)
+    {
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var now = DateTimeOffset.UtcNow;
+        lock (state.SyncRoot)
+        {
+            var telemetry = state.OrbTelemetry.GetValueOrDefault(playerId) ?? new OrbTelemetry();
+            state.OrbTelemetry[playerId] = telemetry;
+            var previousBoard = telemetry.BoardItemIds.ToList();
+            int previousEquippedItemId = telemetry.EquippedItemId;
+            bool previousActive = telemetry.Active;
+            SurvivorOrbColor previousActiveColor = telemetry.ActiveColor;
+            SurvivorOrbColor previousEquippedColor = telemetry.EquippedColor;
+            var equippedColor = SurvivorOrbData.TryGetColorAndTier(equippedItemId, out var resolvedColor, out _)
+                ? resolvedColor : SurvivorOrbColor.None;
+            if (telemetry.EquippedColor != SurvivorOrbColor.None && equippedColor != SurvivorOrbColor.None && telemetry.EquippedColor != equippedColor)
+                telemetry.EquipChanges++;
+            telemetry.EquippedColor = equippedColor;
+            telemetry.EquippedItemId = equippedItemId;
+            if (telemetry.Active && (!active || telemetry.ActiveColor != color))
+            {
+                double elapsed = Math.Max(0d, (now - telemetry.ActiveSince).TotalSeconds);
+                telemetry.ActiveSeconds += elapsed;
+                telemetry.ActiveSecondsByColor.TryGetValue(telemetry.ActiveColor, out double previousColorSeconds);
+                telemetry.ActiveSecondsByColor[telemetry.ActiveColor] = previousColorSeconds + elapsed;
+            }
+            if (active && (!telemetry.Active || telemetry.ActiveColor != color))
+                telemetry.ActiveSince = now;
+            telemetry.Active = active;
+            telemetry.ActiveColor = active ? color : SurvivorOrbColor.None;
+
+            bool hasMergeCandidate = HasMergeCandidate(itemIds);
+            bool mergeCandidateBecameAvailable = !telemetry.HasMergeCandidate && hasMergeCandidate;
+            double? endedMergeCandidateDurationSeconds = null;
+            if (mergeCandidateBecameAvailable)
+                telemetry.MergeCandidateSince = now;
+            else if (telemetry.HasMergeCandidate && !hasMergeCandidate)
+                endedMergeCandidateDurationSeconds = Math.Max(0d, (now - telemetry.MergeCandidateSince).TotalSeconds);
+            telemetry.HasMergeCandidate = hasMergeCandidate;
+            telemetry.BoardItemIds = itemIds.ToList();
+
+            return new OrbTransitionSnapshot(
+                previousBoard,
+                previousEquippedItemId,
+                previousEquippedColor,
+                previousActive,
+                previousActiveColor,
+                equippedColor,
+                mergeCandidateBecameAvailable,
+                endedMergeCandidateDurationSeconds);
+        }
+    }
+
+    private void LogOrbTelemetrySummaries(long matchingId, IReadOnlyCollection<SurvivorFinalPlayerStats> players)
+    {
+        if (!_telemetryStates.TryGetValue(matchingId, out var state)) return;
+        var now = DateTimeOffset.UtcNow;
+        lock (state.SyncRoot)
+        {
+            if (state.OrbSummariesLogged)
+                return;
+            state.OrbSummariesLogged = true;
+            foreach (var player in players)
+            {
+                if (!state.OrbTelemetry.TryGetValue(player.PlayerId, out var telemetry)) continue;
+                var secondsByColor = telemetry.ActiveSecondsByColor.ToDictionary(pair => pair.Key, pair => pair.Value);
+                double active = telemetry.ActiveSeconds;
+                if (telemetry.Active)
+                {
+                    double currentElapsed = Math.Max(0d, (now - telemetry.ActiveSince).TotalSeconds);
+                    active += currentElapsed;
+                    secondsByColor.TryGetValue(telemetry.ActiveColor, out double colorSeconds);
+                    secondsByColor[telemetry.ActiveColor] = colorSeconds + currentElapsed;
+                }
+                double rate = player.SurvivalTimeSeconds <= 0 ? 0d : active / player.SurvivalTimeSeconds;
+                Append(matchingId, "SURVIVOR_ORB_SUMMARY", player.PlayerId, BotPlayerManager.IsBotPlayerId(player.PlayerId),
+                    $"Orb summary: active={active:F1}s, rate={rate:P0}, colorChanges={telemetry.EquipChanges}.", entry =>
+                    { entry.DurationSeconds = active; entry.ScoreDelta = (float)rate; entry.ContributionDelta = telemetry.EquipChanges; });
+
+                foreach (var color in new[] { SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue })
+                {
+                    secondsByColor.TryGetValue(color, out double colorActive);
+                    double colorRate = player.SurvivalTimeSeconds <= 0 ? 0d : colorActive / player.SurvivalTimeSeconds;
+                    Append(matchingId, "SURVIVOR_ORB_COLOR_SUMMARY", player.PlayerId,
+                        BotPlayerManager.IsBotPlayerId(player.PlayerId),
+                        $"Orb color summary: color={color}, active={colorActive:F1}s, rate={colorRate:P0}.", entry =>
+                        {
+                            entry.ResonanceColor = color.ToString();
+                            entry.ResonanceProfile = GetResonanceProfile(color);
+                            entry.DurationSeconds = colorActive;
+                            entry.ScoreDelta = (float)colorRate;
+                        });
+                }
+            }
+        }
+    }
+
+    private static bool HasMergeCandidate(IEnumerable<int> itemIds) =>
+        itemIds.GroupBy(itemId => itemId).Any(group => group.Count() >= 2 && SurvivorOrbData.CanMerge(group.Key, group.Key));
+
+    private static string GetResonanceProfile(SurvivorOrbColor color) => color switch
+    {
+        SurvivorOrbColor.Red => "sun_single_target",
+        SurvivorOrbColor.Green => "wind_multi_target",
+        SurvivorOrbColor.Blue => "wave_burst",
+        _ => "none"
+    };
     public void LogOvertimeStageChanged(long matchingId, int stage, int corruptionPerSecond)
     {
         if (stage <= 0 || corruptionPerSecond <= 0) return;
@@ -650,6 +925,7 @@ public class GameEventLogManager
                 entry.FinalPlayerStats = players.ToList();
                 entry.CompletedAtUnixMs = entry.TimestampUnixMs;
             });
+        LogOrbTelemetrySummaries(matchingId, players);
     }
 
     public List<GameEventEntry> GetRecent(long matchingId, int limit = MaxEventsPerMatching, long? sinceSeq = null)
@@ -865,9 +1141,65 @@ public class GameEventLogManager
         public Dictionary<(long PlayerId, string Area, long ClosureAtUnixMs), ClosureWarningResponse>
             ClosureWarnings
         { get; } = new();
+        public List<PendingEliminationDrop> PendingEliminationDrops { get; } = new();
+        public Dictionary<long, OrbTelemetry> OrbTelemetry { get; } = new();
+        public bool OrbSummariesLogged { get; set; }
     }
 
-    private sealed class ClosureWarningResponse(long playerId, string area, DateTimeOffset warnedAt)
+    private void TrackEliminationDropPickup(long matchingId, long groundItemUid, long pickerPlayerId)
+    {
+        if (!_telemetryStates.TryGetValue(matchingId, out var state))
+            return;
+
+        lock (state.SyncRoot)
+        {
+            foreach (var drop in state.PendingEliminationDrops)
+            {
+                if (drop.Items.All(item => item.GroundItemUid != groundItemUid) ||
+                    drop.PickupOrder.Any(pickup => pickup.GroundItemUid == groundItemUid))
+                    continue;
+                drop.PickupOrder.Add(new EliminationDropPickup(groundItemUid, pickerPlayerId));
+                return;
+            }
+        }
+    }
+
+    private sealed class PendingEliminationDrop(
+        long playerId, string area, bool isBot, DateTimeOffset observeAtUtc, List<EliminationDroppedItem> items)
+    {
+        public long PlayerId { get; } = playerId;
+        public string Area { get; } = area;
+        public bool IsBot { get; } = isBot;
+        public DateTimeOffset ObserveAtUtc { get; } = observeAtUtc;
+        public List<EliminationDroppedItem> Items { get; } = items;
+        public List<EliminationDropPickup> PickupOrder { get; } = new();
+    }
+
+    private sealed class OrbTelemetry
+    {
+        public bool Active;
+        public SurvivorOrbColor ActiveColor;
+        public DateTimeOffset ActiveSince;
+        public double ActiveSeconds;
+        public Dictionary<SurvivorOrbColor, double> ActiveSecondsByColor { get; } = new();
+        public SurvivorOrbColor EquippedColor;
+        public int EquippedItemId;
+        public int EquipChanges;
+        public List<int> BoardItemIds { get; set; } = new();
+        public bool HasMergeCandidate;
+        public DateTimeOffset MergeCandidateSince;
+    }
+
+    private readonly record struct OrbTransitionSnapshot(
+        List<int> PreviousBoardItemIds,
+        int PreviousEquippedItemId,
+        SurvivorOrbColor PreviousEquippedColor,
+        bool PreviousResonanceActive,
+        SurvivorOrbColor PreviousResonanceColor,
+        SurvivorOrbColor EquippedColor,
+        bool MergeCandidateBecameAvailable,
+        double? EndedMergeCandidateDurationSeconds);
+private sealed class ClosureWarningResponse(long playerId, string area, DateTimeOffset warnedAt)
     {
         public long PlayerId { get; } = playerId;
         public string Area { get; } = area;
@@ -1251,6 +1583,23 @@ public class GameEventEntry
     public long? GroundItemUid { get; set; }
     public int? ItemId { get; set; }
     public List<int>? GeneratedItemIds { get; set; }
+    public List<int>? BoardItemIds { get; set; }
+    public List<int>? PreviousBoardItemIds { get; set; }
+    public int? PreviousEquippedItemId { get; set; }
+    public string? EquippedColor { get; set; }
+    public string? PreviousEquippedColor { get; set; }
+    public bool? ResonanceActive { get; set; }
+    public bool? PreviousResonanceActive { get; set; }
+    public string? ResonanceColor { get; set; }
+    public string? PreviousResonanceColor { get; set; }
+    public string? ResonanceProfile { get; set; }
+    public double? MergeCandidateDurationSeconds { get; set; }
+    public List<long>? AttackTargetPlayerIds { get; set; }
+    public int? CandidateTargetCount { get; set; }
+    public int? ValidTargetCount { get; set; }
+    public int? HitTargetCount { get; set; }
+    public int? RequestedRecoveryAmount { get; set; }
+    public int? WastedRecoveryAmount { get; set; }
     public long? DiscovererPlayerId { get; set; }
     public long? PickerPlayerId { get; set; }
     public long? PriorityExpiresAtUnixMs { get; set; }
@@ -1266,6 +1615,10 @@ public class GameEventEntry
     public long? ReenteredAtUnixMs { get; set; }
     public int? RecoveryAmount { get; set; }
     public int? DropRecoveryTotal { get; set; }
+    public float? DropScatterRadius { get; set; }
+    public List<EliminationDroppedItem>? EliminationDroppedItems { get; set; }
+    public List<EliminationDropPickup>? DropPickupOrder { get; set; }
+    public List<long>? UncollectedDroppedItemUids { get; set; }
     public int? OvertimeStage { get; set; }
     public int? CorruptionPerSecond { get; set; }
     public long? WinnerPlayerId { get; set; }
@@ -1293,3 +1646,25 @@ public sealed record SurvivorFinalPlayerStats(
     int KillCount,
     int TotalDamageDealt,
     int TotalRecovery);
+
+public sealed record EliminationDroppedItem(
+    long GroundItemUid,
+    int ItemId,
+    string? OrbColor,
+    int? OrbTier,
+    float PositionX,
+    float PositionY,
+    float DistanceFromOrigin)
+{
+    public static EliminationDroppedItem FromGroundItem(GroundItemInfo item)
+    {
+        bool isOrb = SurvivorOrbData.TryGetColorAndTier(item.ItemId, out SurvivorOrbColor color, out int tier);
+        float dx = item.PositionX - item.SpawnOriginX;
+        float dy = item.PositionY - item.SpawnOriginY;
+        return new EliminationDroppedItem(
+            item.GroundItemUid, item.ItemId, isOrb ? color.ToString() : null, isOrb ? tier : null,
+            item.PositionX, item.PositionY, MathF.Sqrt(dx * dx + dy * dy));
+    }
+}
+
+public sealed record EliminationDropPickup(long GroundItemUid, long PickerPlayerId);
