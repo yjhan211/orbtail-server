@@ -449,7 +449,9 @@ public partial class GameServer
                      .ToArray())
         {
             _survivorOrbRecoveryReadyAtUtc.Remove(key);
-        }        RemoveSurvivorOrbResonanceStates(matchingId);
+        }
+
+        RemoveSurvivorOrbResonanceStates(matchingId);
 
     }
 
