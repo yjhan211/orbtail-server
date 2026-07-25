@@ -29,7 +29,7 @@ public class MatchingManager : IMatchingManager
     private const int LeavePenaltySeconds = 30;
     private const int MaxLeavePenaltySeconds = 300;
     private const int PenaltyDecayIntervalHours = 24;
-    private const int DefaultPlayersPerMatch = 2;
+    private const int DefaultPlayersPerMatch = 1;
     private const int DefaultGamePlayersPerMatch = 8;
 
     private static int PlayersPerMatch => IsTwoPlayerTestMatch ? 2 : DefaultPlayersPerMatch;
