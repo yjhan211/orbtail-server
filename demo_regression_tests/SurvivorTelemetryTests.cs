@@ -159,4 +159,43 @@ public sealed class SurvivorTelemetryTests
         Assert.Contains(events, entry => entry.Type == "PELLET_PICKUP_OUTCOME" && entry.Outcome == "denied_reserved");
     }
 
+    [Fact]
+    public void OrbBoardTelemetryCapturesFirstPickupFullBoardAndBlockedPickup()
+    {
+        const long matchingId = 200401;
+        const long playerId = 401;
+        var log = new GameEventLogManager();
+        log.BeginMatch(matchingId, seed: 200);
+
+        log.LogSurvivorOrbBoardTransition(
+            matchingId,
+            playerId,
+            [new InGameItemInfo { ItemId = 107000010, Count = 1 }],
+            107000010,
+            "Library",
+            "pickup",
+            false);
+        var fullBoard = new[]
+        {
+            new InGameItemInfo { ItemId = 107000010, Count = 1 },
+            new InGameItemInfo { ItemId = 107000020, Count = 1 },
+            new InGameItemInfo { ItemId = 107000030, Count = 1 },
+            new InGameItemInfo { ItemId = 107000040, Count = 1 },
+            new InGameItemInfo { ItemId = 107000010, Count = 1 },
+            new InGameItemInfo { ItemId = 107000020, Count = 1 }
+        };
+        log.LogSurvivorOrbBoardTransition(matchingId, playerId, fullBoard, 107000010, "Gym", "pickup", false);
+        log.LogSurvivorOrbPickupBlockedFull(matchingId, playerId, 107000030, "Gym", fullBoard, false);
+
+        var events = log.GetRecent(matchingId, 100);
+        var first = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_FIRST_PICKUP");
+        Assert.Equal(1, first.InventorySlotsUsed);
+        Assert.Equal(6, first.InventorySlotCapacity);
+        var full = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_FULL");
+        Assert.Equal(6, full.InventorySlotsUsed);
+        Assert.NotNull(full.ElapsedMilliseconds);
+        var blocked = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_PICKUP_BLOCKED_FULL");
+        Assert.Equal(107000030, blocked.ItemId);
+        Assert.Equal(6, blocked.InventorySlotsUsed);
+    }
 }
