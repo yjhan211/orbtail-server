@@ -794,7 +794,7 @@ public partial class GameClientSession
         if (corruptionDelta != 0)
         {
             int previousCorruption = bot.Corruption;
-            bot.Corruption = Math.Clamp(bot.Corruption + corruptionDelta, 0, 100);
+            bot.Corruption = Math.Clamp(bot.Corruption + corruptionDelta, 0, Config.SURVIVOR_MAX_CORRUPTION);
             int recoveredCorruption = Math.Max(0, previousCorruption - bot.Corruption);
             if (recoveredCorruption > 0)
                 _gameEventLogManager.RecordSurvivorRecovery(CurrentMapSubId, bot.PlayerId, recoveredCorruption);

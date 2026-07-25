@@ -269,6 +269,68 @@ public class ProximityAutoCombatResolverTests
         Assert.Single(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(500)));
     }
 
+    [Fact]
+    public void Resolve_PreservesSunAndWaveResonanceMetadataForServerProcResolution()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 25, 0, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000010) with
+            {
+                WeaponItemUid = 101,
+                SunResonanceStage = 5,
+                WaveResonanceArmed = true
+            },
+            Actor(2, 1f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(200, actors, now));
+        var attack = Assert.Single(resolver.Resolve(200, actors, now.Add(ProximityAutoCombatResolver.AimDuration)));
+
+        Assert.Equal(5, attack.SunResonanceStage);
+        Assert.True(attack.WaveResonanceArmed);
+        Assert.False(attack.IsResonanceProc);
+    }
+    [Fact]
+    public void Resolve_MultipleOrbInstancesUseIndependentCooldownsAndOneTargetActor()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 24, 3, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000010) with
+            {
+                WeaponItemUid = 101
+            },
+            Actor(1, 0f, 0f, weaponItemId: 107000020) with
+            {
+                WeaponItemUid = 102,
+                AttackIntervalSeconds = 0.6f
+            },
+            Actor(2, 1f, 0f) with
+            {
+                WeaponItemUid = 201
+            },
+            Actor(2, 1f, 0f) with
+            {
+                WeaponItemUid = 202
+            }
+        };
+
+        Assert.Empty(resolver.Resolve(200, actors, now));
+
+        var openingAttacks = resolver.Resolve(
+            200,
+            actors,
+            now.Add(ProximityAutoCombatResolver.AimDuration));
+        Assert.Equal(2, openingAttacks.Count);
+        Assert.All(openingAttacks, attack => Assert.Equal(2, attack.TargetPlayerId));
+
+        var nextAttack = Assert.Single(resolver.Resolve(200, actors, now.AddMilliseconds(1100)));
+        Assert.Equal(107000020, nextAttack.WeaponItemId);
+    }
+
     private static ProximityCombatActor Actor(
         long playerId,
         float x,

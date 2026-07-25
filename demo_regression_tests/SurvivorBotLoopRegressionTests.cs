@@ -200,11 +200,11 @@ public sealed class SurvivorBotLoopRegressionTests
             matchingId, actors, start.AddMilliseconds(499), onTargetAcquired: OnAcquired, onTargetLost: OnLost));
 
         DateTime attackAt = start.Add(ProximityAutoCombatResolver.AimDuration);
-        while (victim.Corruption < 100)
+        while (victim.Corruption < Config.SURVIVOR_MAX_CORRUPTION)
         {
             var attack = Assert.Single(resolver.Resolve(
                 matchingId, actors, attackAt, onTargetAcquired: OnAcquired, onTargetLost: OnLost));
-            bool isLethal = victim.Corruption < 100 && victim.Corruption + attack.Damage >= 100;
+            bool isLethal = victim.Corruption < Config.SURVIVOR_MAX_CORRUPTION && victim.Corruption + attack.Damage >= Config.SURVIVOR_MAX_CORRUPTION;
             eventLog.LogSurvivorHit(
                 matchingId,
                 attack.AttackerPlayerId,

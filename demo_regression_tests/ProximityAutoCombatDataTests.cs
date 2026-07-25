@@ -160,6 +160,19 @@ public class ProximityAutoCombatDataTests
         Assert.DoesNotContain("오염 +", playerSource);
     }
 
+    [Fact]
+    public void LocalDamageDisplayPulsesInventoryDecoWhileTheTotalIsPresented()
+    {
+        string source = ReadNormalizedSource(
+            FindRepositoryRoot(), "client", "Assets", "Scripts", "UserInterfaces", "InGame", "Display",
+            "DamageComboDisplay.cs");
+
+        Assert.Contains("InventoryDecoPath = \"InGameCanvas/Displays/Inventory/Deco\"", source);
+        Assert.Contains("PulseInventoryDeco();", source);
+        Assert.Contains("private IEnumerator PulseInventoryDecoRoutine()", source);
+        Assert.Contains("Time.unscaledDeltaTime", source);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

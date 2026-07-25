@@ -102,6 +102,7 @@ namespace network.common.data.models
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("weaponItemId")] public int WeaponItemId { get; set; }
         [Key("isActive")] public bool IsActive { get; set; }
+        [Key("orbItemIds")] public List<int> OrbItemIds { get; set; } = new();
     }
 
     /// <summary>
@@ -113,7 +114,7 @@ namespace network.common.data.models
         [Key("areaType")] public AreaType AreaType { get; set; }
         [Key("isDepleted")] public bool IsDepleted { get; set; }
         // 공개 정보는 색상별 소진 여부까지만이다. 정확한 남은 개수는 서버에만 둔다.
-        [Key("depletedOrbColors")] public List<SurvivorOrbColor> DepletedOrbColors { get; set; } = new();
+        [Key("availableOrbColors")] public List<SurvivorOrbColor> AvailableOrbColors { get; set; } = new();
     }
 
     [MessagePackObject]

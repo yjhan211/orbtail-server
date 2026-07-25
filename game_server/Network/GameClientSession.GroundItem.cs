@@ -88,6 +88,17 @@ public partial class GameClientSession
                     deniedStaminaRecovery + deniedCorruptionRecovery, 0,
                     $"denied_{status.ToString().ToLowerInvariant()}", isBot: false);
             }
+            if (attemptedItem != null && error == ErrorCode.INVENTORY_FULL)
+            {
+                var board = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+                _gameEventLogManager.LogSurvivorOrbPickupBlockedFull(
+                    CurrentMapSubId,
+                    PlayerId.Value,
+                    attemptedItem.ItemId,
+                    CurrentArea.ToString(),
+                    board.GetAllItems(),
+                    isBot: false);
+            }
             SendGroundItemPickupResult(msg.GroundItemUid, attemptedItem?.ItemId ?? 0, false, false, error);
             return Task.CompletedTask;
         }
@@ -251,7 +262,7 @@ public partial class GameClientSession
                 {
                     AreaType = state.AreaType,
                     IsDepleted = state.IsDepleted,
-                    DepletedOrbColors = state.DepletedOrbColors
+                    AvailableOrbColors = state.AvailableOrbColors
                 })
                 .ToList()
         };

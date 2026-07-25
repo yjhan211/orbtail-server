@@ -22,6 +22,21 @@ public sealed class SurvivorOrbBoardTests
         Assert.Equal(expectedColor, color);
         Assert.Equal(expectedTier, tier);
     }
+    [Theory]
+    [InlineData(107000040, 1, 1)]
+    [InlineData(107000041, 2, 2)]
+    [InlineData(107000042, 3, 3)]
+    public void RecoveryOrbTierDefinesFiveSecondRecoveryAmount(
+        int itemId,
+        int expectedTier,
+        int expectedRecovery)
+    {
+        Assert.Equal(5f, SurvivorOrbData.RecoveryTickSeconds);
+        Assert.True(SurvivorOrbData.TryGetRecoveryTier(itemId, out int tier));
+        Assert.Equal(expectedTier, tier);
+        Assert.Equal(expectedRecovery, SurvivorOrbData.GetRecoveryAmount(itemId));
+        Assert.False(SurvivorOrbData.IsSurvivorOrb(itemId));
+    }
 
     [Theory]
     [InlineData(107000010, 107000010)]
@@ -57,6 +72,18 @@ public sealed class SurvivorOrbBoardTests
         Assert.False(SurvivorOrbData.TryGetRandomMergeOutput(inputA, inputB, new Random(1), out _));
     }
 
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]
+    [InlineData(2, 1)]
+    [InlineData(3, 3)]
+    [InlineData(4, 3)]
+    [InlineData(5, 5)]
+    [InlineData(6, 5)]
+    public void SunResonanceUsesOneThreeFiveBoardStages(int sunCount, int expectedStage)
+    {
+        Assert.Equal(expectedStage, SurvivorOrbData.GetSunResonanceStage(sunCount));
+    }
     [Fact]
     public void LegacyGuardianOrbDoesNotEnterColoredBoardRules()
     {
@@ -91,6 +118,54 @@ public sealed class SurvivorOrbBoardTests
         Assert.Equal(SurvivorOrbColor.Red, color);
         Assert.Equal(0, supportTier);
     }
+
+    [Fact]
+    public void BoardResonanceDoesNotRequireAnEquippedOrb()
+    {
+        Assert.True(SurvivorOrbData.TryGetActivePair(
+            [107000010, 107000020, 107000021],
+            out var color,
+            out int supportTier));
+        Assert.Equal(SurvivorOrbColor.Green, color);
+        Assert.Equal(2, supportTier);
+
+        Assert.False(SurvivorOrbData.HasActivePair(
+            [107000010, 107000020, 107000021],
+            SurvivorOrbColor.Red,
+            out _));
+        Assert.True(SurvivorOrbData.HasActivePair(
+            [107000010, 107000020, 107000021],
+            SurvivorOrbColor.Green,
+            out supportTier));
+        Assert.Equal(2, supportTier);
+    }
+
+    [Fact]
+    public void BoardCanActivateMultipleResonanceColorsAtOnce()
+    {
+        int[] board = [107000010, 107000011, 107000020, 107000021, 107000030, 107000031];
+
+        Assert.True(SurvivorOrbData.HasActivePair(board, SurvivorOrbColor.Red, out int redTier));
+        Assert.True(SurvivorOrbData.HasActivePair(board, SurvivorOrbColor.Green, out int greenTier));
+        Assert.True(SurvivorOrbData.HasActivePair(board, SurvivorOrbColor.Blue, out int blueTier));
+        Assert.Equal(2, redTier);
+        Assert.Equal(2, greenTier);
+        Assert.Equal(2, blueTier);
+    }
+
+    [Fact]
+    public void InventoryResonanceWorksBeforeAnyManualEquip()
+    {
+        var inventory = new PlayerInGameInventory(198);
+        inventory.AddItem(107000030, forceSeparateStack: true);
+        inventory.AddItem(107000032, forceSeparateStack: true);
+
+        Assert.Null(inventory.GetEquippedBattleItem());
+        Assert.True(inventory.TryGetActiveSurvivorOrbPair(out var color, out int supportTier));
+        Assert.Equal(SurvivorOrbColor.Blue, color);
+        Assert.Equal(3, supportTier);
+    }
+
     [Fact]
     public void FirstColoredOrbPickupAutoEquipsWithoutReplacingItOnLaterPickups()
     {

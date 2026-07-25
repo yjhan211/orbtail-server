@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using network.common;
 using network.common.data;
 using network.common.data.models;
 
@@ -453,10 +454,12 @@ public class GameEventLogManager
         if (matchingId <= 0) return;
         _archivedLogs.TryRemove(matchingId, out _);
         var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var startedAt = DateTimeOffset.UtcNow;
         lock (state.SyncRoot)
         {
             if (state.MatchStarted) return;
             state.MatchStarted = true;
+            state.MatchStartedAtUtc = startedAt;
         }
 
         Append(matchingId, "MATCH_STARTED", 0, false, $"Match started: seed={seed}.", entry =>
@@ -687,11 +690,7 @@ public class GameEventLogManager
     {
         var itemIds = items.Where(item => item.Count > 0)
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count)).ToList();
-        var otherBoardItemIds = itemIds.ToList();
-        if (equippedItemId > 0)
-            otherBoardItemIds.Remove(equippedItemId);
-        bool resonance = SurvivorOrbData.TryGetActivePair(equippedItemId, otherBoardItemIds,
-            out SurvivorOrbColor color, out int supportTier);
+        bool resonance = SurvivorOrbData.TryGetActivePair(itemIds, out SurvivorOrbColor color, out int supportTier);
         var transition = TrackOrbTelemetry(matchingId, playerId, itemIds, equippedItemId, resonance, color);
         Append(matchingId, "SURVIVOR_ORB_BOARD_STATE", playerId, isBot,
             $"Orb board: reason={reason}, equipped={equippedItemId}, resonance={(resonance ? color : SurvivorOrbColor.None)}.", entry =>
@@ -735,6 +734,30 @@ public class GameEventLogManager
                     entry.PreviousBoardItemIds = transition.PreviousBoardItemIds;
                 });
 
+        if (transition.FirstOrbPickup)
+            Append(matchingId, "SURVIVOR_ORB_FIRST_PICKUP", playerId, isBot,
+                $"First orb pickup: slots={transition.BoardItemCount}/{Config.SURVIVOR_INVENTORY_SLOT_COUNT}.", entry =>
+                {
+                    entry.Area = area;
+                    entry.Outcome = reason;
+                    entry.BoardItemIds = itemIds;
+                    entry.InventorySlotsUsed = transition.BoardItemCount;
+                    entry.InventorySlotCapacity = Config.SURVIVOR_INVENTORY_SLOT_COUNT;
+                    entry.ElapsedMilliseconds = transition.MatchElapsedMilliseconds;
+                });
+
+        if (transition.BoardReachedCapacity)
+            Append(matchingId, "SURVIVOR_ORB_BOARD_FULL", playerId, isBot,
+                $"Orb board reached capacity: slots={transition.BoardItemCount}/{Config.SURVIVOR_INVENTORY_SLOT_COUNT}.", entry =>
+                {
+                    entry.Area = area;
+                    entry.Outcome = reason;
+                    entry.BoardItemIds = itemIds;
+                    entry.InventorySlotsUsed = transition.BoardItemCount;
+                    entry.InventorySlotCapacity = Config.SURVIVOR_INVENTORY_SLOT_COUNT;
+                    entry.ElapsedMilliseconds = transition.MatchElapsedMilliseconds;
+                });
+
         if (transition.PreviousResonanceActive != resonance ||
             transition.PreviousResonanceColor != (resonance ? color : SurvivorOrbColor.None))
         {
@@ -752,6 +775,32 @@ public class GameEventLogManager
                     entry.ResonanceProfile = GetResonanceProfile(eventColor);
                 });
         }
+    }
+
+    public void LogSurvivorOrbPickupBlockedFull(
+        long matchingId,
+        long playerId,
+        int itemId,
+        string area,
+        IReadOnlyCollection<InGameItemInfo> items,
+        bool isBot)
+    {
+        if (!SurvivorOrbData.IsSurvivorOrb(itemId) && !SurvivorOrbData.IsRecoveryOrb(itemId))
+            return;
+
+        var boardItemIds = items.Where(item => item.Count > 0)
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
+            .ToList();
+        int boardItemCount = CountBoardOrbs(boardItemIds);
+        Append(matchingId, "SURVIVOR_ORB_PICKUP_BLOCKED_FULL", playerId, isBot,
+            $"Orb pickup blocked: item={itemId}, slots={boardItemCount}/{Config.SURVIVOR_INVENTORY_SLOT_COUNT}.", entry =>
+            {
+                entry.Area = area;
+                entry.ItemId = itemId;
+                entry.BoardItemIds = boardItemIds;
+                entry.InventorySlotsUsed = boardItemCount;
+                entry.InventorySlotCapacity = Config.SURVIVOR_INVENTORY_SLOT_COUNT;
+            });
     }
 
     public void LogSurvivorOrbAttackTargets(long matchingId, IReadOnlyCollection<ProximityCombatAttack> attacks,
@@ -827,7 +876,21 @@ public class GameEventLogManager
             else if (telemetry.HasMergeCandidate && !hasMergeCandidate)
                 endedMergeCandidateDurationSeconds = Math.Max(0d, (now - telemetry.MergeCandidateSince).TotalSeconds);
             telemetry.HasMergeCandidate = hasMergeCandidate;
+            int previousBoardItemCount = CountBoardOrbs(previousBoard);
+            int boardItemCount = CountBoardOrbs(itemIds);
+            bool firstOrbPickup = previousBoardItemCount == 0 && boardItemCount > 0 && !telemetry.FirstOrbPickupLogged;
+            if (firstOrbPickup)
+                telemetry.FirstOrbPickupLogged = true;
+            bool boardReachedCapacity = previousBoardItemCount < Config.SURVIVOR_INVENTORY_SLOT_COUNT &&
+                                        boardItemCount >= Config.SURVIVOR_INVENTORY_SLOT_COUNT &&
+                                        !telemetry.BoardFullLogged;
+            if (boardReachedCapacity)
+                telemetry.BoardFullLogged = true;
             telemetry.BoardItemIds = itemIds.ToList();
+
+            long? matchElapsedMilliseconds = state.MatchStartedAtUtc.HasValue
+                ? Math.Max(0, (long)(now - state.MatchStartedAtUtc.Value).TotalMilliseconds)
+                : null;
 
             return new OrbTransitionSnapshot(
                 previousBoard,
@@ -837,7 +900,11 @@ public class GameEventLogManager
                 previousActiveColor,
                 equippedColor,
                 mergeCandidateBecameAvailable,
-                endedMergeCandidateDurationSeconds);
+                endedMergeCandidateDurationSeconds,
+                firstOrbPickup,
+                boardReachedCapacity,
+                boardItemCount,
+                matchElapsedMilliseconds);
         }
     }
 
@@ -887,6 +954,9 @@ public class GameEventLogManager
 
     private static bool HasMergeCandidate(IEnumerable<int> itemIds) =>
         itemIds.GroupBy(itemId => itemId).Any(group => group.Count() >= 2 && SurvivorOrbData.CanMerge(group.Key, group.Key));
+
+    private static int CountBoardOrbs(IEnumerable<int> itemIds) =>
+        itemIds.Count(itemId => SurvivorOrbData.IsSurvivorOrb(itemId) || SurvivorOrbData.IsRecoveryOrb(itemId));
 
     private static string GetResonanceProfile(SurvivorOrbColor color) => color switch
     {
@@ -1135,6 +1205,7 @@ public class GameEventLogManager
     {
         public object SyncRoot { get; } = new();
         public bool MatchStarted { get; set; }
+        public DateTimeOffset? MatchStartedAtUtc { get; set; }
         public int OvertimeStage { get; set; }
         public HashSet<long> SpawnLoggedPlayerIds { get; } = new();
         public Dictionary<(long PlayerId, int InteractId), DateTimeOffset> ExploreStarts { get; } = new();
@@ -1188,6 +1259,8 @@ public class GameEventLogManager
         public List<int> BoardItemIds { get; set; } = new();
         public bool HasMergeCandidate;
         public DateTimeOffset MergeCandidateSince;
+        public bool FirstOrbPickupLogged;
+        public bool BoardFullLogged;
     }
 
     private readonly record struct OrbTransitionSnapshot(
@@ -1198,7 +1271,11 @@ public class GameEventLogManager
         SurvivorOrbColor PreviousResonanceColor,
         SurvivorOrbColor EquippedColor,
         bool MergeCandidateBecameAvailable,
-        double? EndedMergeCandidateDurationSeconds);
+        double? EndedMergeCandidateDurationSeconds,
+        bool FirstOrbPickup,
+        bool BoardReachedCapacity,
+        int BoardItemCount,
+        long? MatchElapsedMilliseconds);
     private sealed class ClosureWarningResponse(long playerId, string area, DateTimeOffset warnedAt)
     {
         public long PlayerId { get; } = playerId;

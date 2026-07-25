@@ -264,14 +264,14 @@ public partial class BotPlayerManager
             return;
 
         int previousCorruption = bot.Corruption;
-        bot.Corruption = Math.Clamp(bot.Corruption + damage, 0, 100);
-        if (previousCorruption < 100 && bot.Corruption >= 100)
+        bot.Corruption = Math.Clamp(bot.Corruption + damage, 0, Config.SURVIVOR_MAX_CORRUPTION);
+        if (previousCorruption < Config.SURVIVOR_MAX_CORRUPTION && bot.Corruption >= Config.SURVIVOR_MAX_CORRUPTION)
             bot.LastProximityAttackerPlayerId = attackerPlayerId;
     }
 
     public bool TryFinalizeProximityAutoCombatElimination(BotPlayerState bot, long matchingId)
     {
-        if (bot.IsEliminated || bot.Corruption < 100)
+        if (bot.IsEliminated || bot.Corruption < Config.SURVIVOR_MAX_CORRUPTION)
             return false;
 
         bot.IsEliminated = true;

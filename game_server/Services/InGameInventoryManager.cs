@@ -209,18 +209,19 @@ public class PlayerInGameInventory(long matchingId)
     [MethodImpl(MethodImplOptions.Synchronized)]
     public bool TryGetActiveSurvivorOrbPair(out SurvivorOrbColor color, out int pairTier)
     {
-        var equippedItem = GetEquippedBattleItem();
-        if (equippedItem == null)
-        {
-            color = SurvivorOrbColor.None;
-            pairTier = 0;
-            return false;
-        }
-
         var boardItemIds = _items.Values
-            .Where(item => item.Count > 0 && item.ItemUid != equippedItem.ItemUid)
+            .Where(item => item.Count > 0)
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count));
-        return SurvivorOrbData.TryGetActivePair(equippedItem.ItemId, boardItemIds, out color, out pairTier);
+        return SurvivorOrbData.TryGetActivePair(boardItemIds, out color, out pairTier);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool HasActiveSurvivorOrbPair(SurvivorOrbColor color, out int pairTier)
+    {
+        var boardItemIds = _items.Values
+            .Where(item => item.Count > 0)
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count));
+        return SurvivorOrbData.HasActivePair(boardItemIds, color, out pairTier);
     }
 
     /// <summary>

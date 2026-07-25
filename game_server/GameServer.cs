@@ -867,7 +867,7 @@ public partial class GameServer(
                 {
                     AreaType = state.AreaType,
                     IsDepleted = state.IsDepleted,
-                    DepletedOrbColors = state.DepletedOrbColors
+                    AvailableOrbColors = state.AvailableOrbColors
                 })
                 .ToList()
         };
@@ -877,6 +877,17 @@ public partial class GameServer(
             session.Send(packet);
     }
 
+    private void BroadcastNaturalStockRefresh(long matchingId, List<GameClientSession> sessions,
+        IEnumerable<AreaType> areas)
+    {
+        foreach (var area in areas.Distinct())
+        {
+            var items = _groundItemManager.GetSnapshot(matchingId, area);
+            int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)area);
+            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, remaining, items);
+            foreach (var session in sessions) session.Send(packet);
+        }
+    }
     /// <summary>
     ///     #26: 시한부 봇 사보타주 + 색출 시뮬.
     /// </summary>
@@ -1515,6 +1526,22 @@ public partial class GameServer(
 
                 if (closureTick.WarningAreas.Count > 0)
                 {
+                    var closureState = _areaClosureManager.GetClientStateSnapshot(matchingId);
+                    var replenished = _areaItemStockManager.ReplenishForClosureWarning(
+                        matchingId,
+                        closureTick.ClosureAtUnixMs,
+                        closureTick.WarningAreas,
+                        closureState.ClosedAreas);
+                    if (replenished.Count > 0)
+                    {
+                        BroadcastSurvivorAreaStockState(matchingId, sessions);
+                        BroadcastNaturalStockRefresh(matchingId, sessions, replenished.Select(entry => entry.AreaType));
+                        logger.LogInformation(
+                            "Survivor Royale closure supply added: MatchingId={MatchingId}, Supply={Supply}",
+                            matchingId,
+                            string.Join(',', replenished.Select(entry => $"{entry.AreaType}:{entry.ItemId}")));
+                    }
+
                     var warningAreas = closureTick.WarningAreas.Select(area => area.ToString()).ToList();
                     foreach (var session in sessions.Where(session => !session.IsEliminated))
                     {
@@ -2584,10 +2611,10 @@ public partial class GameServer(
             winnerId ??= _manittoChainManager.DetermineWinnerByResources(matchingId, playerId =>
             {
                 var session = _clientSessions.Values.FirstOrDefault(s => s.PlayerId == playerId);
-                if (session != null) return (session.AdminStamina, session.AdminCorruption, 100);
+                if (session != null) return (session.AdminStamina, session.AdminCorruption, Config.SURVIVOR_MAX_CORRUPTION);
 
                 var bot = _botPlayerManager.GetBot(matchingId, playerId);
-                return bot != null ? (bot.Stamina, bot.Corruption, 100) : (0, 100, 100);
+                return bot != null ? (bot.Stamina, bot.Corruption, Config.SURVIVOR_MAX_CORRUPTION) : (0, Config.SURVIVOR_MAX_CORRUPTION, Config.SURVIVOR_MAX_CORRUPTION);
             });
 
             _gameEventLogManager.LogSystem(matchingId,

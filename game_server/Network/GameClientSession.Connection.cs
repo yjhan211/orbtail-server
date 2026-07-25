@@ -1313,7 +1313,7 @@ public partial class GameClientSession
             if (s != null) return (s.Stamina, s.Corruption, MaxCorruption);
 
             var bot = _botPlayerManager.GetBot(matchingId, playerId);
-            return bot != null ? (bot.Stamina, bot.Corruption, 100) : (0, 100, 100);
+            return bot != null ? (bot.Stamina, bot.Corruption, MaxCorruption) : (0, MaxCorruption, MaxCorruption);
         });
 
         Logger.LogInformation("?쒓컙 珥덇낵 ?뱀옄: MatchingId={MatchingId}, WinnerId={WinnerId}", matchingId, winnerId);

@@ -220,9 +220,12 @@ public partial class GameClientSession
     private async Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
     {
         if (!PlayerId.HasValue) return;
-        if (IsRoundActionLocked(out _))
+        if (IsRoundActionLocked(out _, out string lockReason))
         {
-            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
+            // EXPLORE_1 is a collection-side state sync. The following collection ACK reports
+            // the actionable result, so do not surface a second generic alert to the player.
+            Logger.LogDebug("Ignored player state while gameplay is locked: PlayerId={PlayerId}, State={State}, Reason={Reason}",
+                PlayerId, msg.State, lockReason);
             return;
         }
 
