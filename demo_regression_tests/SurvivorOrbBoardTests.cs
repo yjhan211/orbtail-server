@@ -92,6 +92,19 @@ public sealed class SurvivorOrbBoardTests
         Assert.Equal(0, supportTier);
     }
     [Fact]
+    public void BoardCanActivateMultipleResonanceColorsAtOnce()
+    {
+        int[] board = [107000010, 107000011, 107000020, 107000021, 107000030, 107000031];
+
+        Assert.True(SurvivorOrbData.HasActivePair(board, SurvivorOrbColor.Red, out int redTier));
+        Assert.True(SurvivorOrbData.HasActivePair(board, SurvivorOrbColor.Green, out int greenTier));
+        Assert.True(SurvivorOrbData.HasActivePair(board, SurvivorOrbColor.Blue, out int blueTier));
+        Assert.Equal(2, redTier);
+        Assert.Equal(2, greenTier);
+        Assert.Equal(2, blueTier);
+    }
+
+    [Fact]
     public void FirstColoredOrbPickupAutoEquipsWithoutReplacingItOnLaterPickups()
     {
         InitializeBattleCombatData();
