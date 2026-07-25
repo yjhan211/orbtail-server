@@ -97,7 +97,7 @@ public partial class GameServer
             }
 
             var eliminatedTargets = targets
-                .Where(target => target.PreDamageCorruption + target.ClosureDelta + target.OvertimeDelta >= 100)
+                .Where(target => target.PreDamageCorruption + target.ClosureDelta + target.OvertimeDelta >= Config.SURVIVOR_MAX_CORRUPTION)
                 .ToList();
             if (eliminatedTargets.Count == 0)
                 return;
@@ -140,7 +140,7 @@ public partial class GameServer
                 var target = eliminatedTargets.First(entry => entry.PlayerId == candidate.PlayerId);
                 bool closureElimination =
                     target.ClosureDelta > 0 &&
-                    target.PreDamageCorruption + target.ClosureDelta >= 100;
+                    target.PreDamageCorruption + target.ClosureDelta >= Config.SURVIVOR_MAX_CORRUPTION;
                 bool overtimeElimination = !closureElimination && target.OvertimeDelta > 0;
 
                 if (target.Session != null)

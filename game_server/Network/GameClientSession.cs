@@ -20,7 +20,7 @@ public enum PlayerState
 public partial class GameClientSession : SessionBase
 {
     private const int MaxStamina = 100;
-    private const int MaxCorruption = 100;
+    private const int MaxCorruption = Config.SURVIVOR_MAX_CORRUPTION;
     private const int InitialStamina = MaxStamina;
     private const int InitialCorruption = 0;
     private static readonly TimeSpan ExploreMoveGracePeriod = TimeSpan.FromMilliseconds(750);
@@ -263,12 +263,31 @@ public partial class GameClientSession : SessionBase
 
     private bool IsRoundActionLocked(out RoundPhase phase)
     {
+        return IsRoundActionLocked(out phase, out _);
+    }
+
+    private bool IsRoundActionLocked(out RoundPhase phase, out string reason)
+    {
         phase = RoundPhase.Action;
-        if (IsEliminated || _isGameEnded)
+        reason = string.Empty;
+
+        if (IsEliminated)
+        {
+            reason = "Eliminated players cannot act";
             return true;
+        }
+
+        if (_isGameEnded)
+        {
+            reason = "Game has already ended";
+            return true;
+        }
 
         if (CurrentMapSubId > 0 && !MatchStartGate.IsGameplayActive(CurrentMapSubId))
+        {
+            reason = "Waiting for match start";
             return true;
+        }
 
         if (!Config.ROUND_SYSTEM_ENABLED)
             return false;
@@ -279,7 +298,19 @@ public partial class GameClientSession : SessionBase
         lock (state.SyncRoot)
         {
             phase = state.Phase;
-            return state.IsSessionEnded || state.Phase != RoundPhase.Action;
+            if (state.IsSessionEnded)
+            {
+                reason = "Round session has ended";
+                return true;
+            }
+
+            if (state.Phase != RoundPhase.Action)
+            {
+                reason = "Round settlement in progress";
+                return true;
+            }
+
+            return false;
         }
     }
 

@@ -21,7 +21,11 @@ public readonly record struct ProximityCombatActor(
     int InitialBurstAttackCount = 0,
     float InitialBurstAttackIntervalMultiplier = 1f,
     float BurstRechargeSeconds = 0f,
-    bool OrbEffectActive = false);
+    bool OrbEffectActive = false,
+    long WeaponItemUid = 0,
+    int WeaponStackIndex = 0,
+    int SunResonanceStage = 0,
+    bool WaveResonanceArmed = false);
 
 public readonly record struct ProximityCombatAttack(
     long AttackerPlayerId,
@@ -31,7 +35,10 @@ public readonly record struct ProximityCombatAttack(
     int Damage,
     float ProjectileWidth,
     float EffectDurationSeconds,
-    int CandidateTargetCount = 0);
+    int CandidateTargetCount = 0,
+    int SunResonanceStage = 0,
+    bool WaveResonanceArmed = false,
+    bool IsResonanceProc = false);
 
 public readonly record struct ProximityCombatTargetEvent(
     long AttackerPlayerId,
@@ -51,10 +58,12 @@ public sealed class ProximityAutoCombatResolver
     public static readonly TimeSpan AimDuration = TimeSpan.FromMilliseconds(500);
     public static readonly TimeSpan TargetReacquireGraceDuration = TimeSpan.FromSeconds(1.5);
 
-    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId), CombatState> _combatStates = new();
-    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId), DateTime>
+    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), CombatState>
+        _combatStates = new();
+    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), DateTime>
         _burstRechargeReadyAtUtc = new();
-    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId), SuspendedCombatState>
+    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex),
+        SuspendedCombatState>
         _recentlyLostCombatStates = new();
 
     public IReadOnlyList<ProximityCombatAttack> Resolve(
@@ -69,11 +78,12 @@ public sealed class ProximityAutoCombatResolver
             return [];
 
         var attacks = new List<ProximityCombatAttack>();
-        var activeAttackers = new HashSet<long>();
+        var activeAttackers = new HashSet<(long PlayerId, long ItemUid, int StackIndex)>();
 
         foreach (var attacker in actors)
         {
-            var stateKey = (matchingId, attacker.PlayerId);
+            var attackerKey = (attacker.PlayerId, attacker.WeaponItemUid, attacker.WeaponStackIndex);
+            var stateKey = (matchingId, attacker.PlayerId, attacker.WeaponItemUid, attacker.WeaponStackIndex);
             if (attacker.WeaponItemId <= 0 || attacker.Area == AreaType.None ||
                 attacker.AttackRange <= 0f || attacker.Damage <= 0 || attacker.AttackIntervalSeconds <= 0f)
             {
@@ -88,14 +98,15 @@ public sealed class ProximityAutoCombatResolver
             if (attacker.InitialBurstAttackCount <= 0)
                 _burstRechargeReadyAtUtc.TryRemove(stateKey, out _);
 
-            activeAttackers.Add(attacker.PlayerId);
+            activeAttackers.Add(attackerKey);
             if (_recentlyLostCombatStates.TryGetValue(stateKey, out var expiredState) &&
                 nowUtc - expiredState.LostAtUtc > TargetReacquireGraceDuration)
             {
                 _recentlyLostCombatStates.TryRemove(stateKey, out _);
             }
             float attackRangeSquared = attacker.AttackRange * attacker.AttackRange;
-            var eligibleTargets = new List<(ProximityCombatActor Actor, float DistanceSquared)>();
+            var eligibleTargetsByPlayer =
+                new Dictionary<long, (ProximityCombatActor Actor, float DistanceSquared)>();
 
             foreach (var candidate in actors)
             {
@@ -110,8 +121,16 @@ public sealed class ProximityAutoCombatResolver
                 if (hasLineOfSight != null && !hasLineOfSight(attacker, candidate))
                     continue;
 
-                eligibleTargets.Add((candidate, distanceSquared));
+                if (!eligibleTargetsByPlayer.TryGetValue(candidate.PlayerId, out var existing) ||
+                    distanceSquared < existing.DistanceSquared ||
+                    distanceSquared.Equals(existing.DistanceSquared) &&
+                    CompareWeaponInstance(candidate, existing.Actor) < 0)
+                {
+                    eligibleTargetsByPlayer[candidate.PlayerId] = (candidate, distanceSquared);
+                }
             }
+
+            var eligibleTargets = eligibleTargetsByPlayer.Values.ToList();
 
             if (eligibleTargets.Count == 0)
             {
@@ -226,7 +245,9 @@ public sealed class ProximityAutoCombatResolver
                     damage,
                     attacker.ProjectileWidth,
                     attacker.EffectDurationSeconds,
-                    eligibleTargets.Count));
+                    eligibleTargets.Count,
+                    attacker.SunResonanceStage,
+                    attacker.WaveResonanceArmed));
             }
 
             // A burst of N attacks has N - 1 shortened gaps between those attacks.
@@ -247,7 +268,8 @@ public sealed class ProximityAutoCombatResolver
 
         foreach (var key in _combatStates.Keys)
         {
-            if (key.MatchingId != matchingId || activeAttackers.Contains(key.PlayerId))
+            if (key.MatchingId != matchingId ||
+                activeAttackers.Contains((key.PlayerId, key.ItemUid, key.StackIndex)))
                 continue;
             if (_combatStates.TryRemove(key, out var previousState))
             {
@@ -260,7 +282,8 @@ public sealed class ProximityAutoCombatResolver
 
         foreach (var key in _recentlyLostCombatStates.Keys)
         {
-            if (key.MatchingId != matchingId || activeAttackers.Contains(key.PlayerId))
+            if (key.MatchingId != matchingId ||
+                activeAttackers.Contains((key.PlayerId, key.ItemUid, key.StackIndex)))
                 continue;
 
             _recentlyLostCombatStates.TryRemove(key, out _);
@@ -315,6 +338,14 @@ public sealed class ProximityAutoCombatResolver
     private static DateTimeOffset AsUtcOffset(DateTime value)
     {
         return new DateTimeOffset(value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime());
+    }
+
+    private static int CompareWeaponInstance(ProximityCombatActor left, ProximityCombatActor right)
+    {
+        int uidComparison = left.WeaponItemUid.CompareTo(right.WeaponItemUid);
+        return uidComparison != 0
+            ? uidComparison
+            : left.WeaponStackIndex.CompareTo(right.WeaponStackIndex);
     }
 
     private readonly record struct CombatState(

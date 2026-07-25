@@ -465,7 +465,7 @@ public partial class BotPlayerManager
         if (!missionManager.TryDiscoverGift(matchingId, bot.PlayerId, interactId, out var discovery)) return false;
         if (discovery.DiscoveryType == GiftDiscoveryType.Other) return false;
 
-        bot.Corruption = Math.Min(100, bot.Corruption + GiftFoundCorruptionDelta);
+        bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + GiftFoundCorruptionDelta);
         result.GiftDiscoveries.Add(discovery);
 
         _logger.LogInformation(
@@ -509,7 +509,7 @@ public partial class BotPlayerManager
         {
             int deficit = -newStamina;
             bot.Stamina = 0;
-            bot.Corruption = Math.Min(100, bot.Corruption + deficit * 2);
+            bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + deficit * 2);
         }
         else
         {

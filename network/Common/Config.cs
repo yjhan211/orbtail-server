@@ -97,6 +97,9 @@ namespace network.common
         /// <summary>Survivor Royale inventory slot capacity shared by clients, bots, and the game server.</summary>
         public const int SURVIVOR_INVENTORY_SLOT_COUNT = 6;
 
+        /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
+        public const int SURVIVOR_MAX_CORRUPTION = 160;
+
         /// <summary>근접 자동전투 P0. 활성화 중에는 기존 수동 분필 공격 진입을 숨긴다.</summary>
         public static readonly bool PROXIMITY_AUTO_COMBAT_P0_ENABLED = true;
 

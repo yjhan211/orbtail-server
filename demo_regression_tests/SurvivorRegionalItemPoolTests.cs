@@ -25,14 +25,14 @@ public sealed class SurvivorRegionalItemPoolTests
             [AreaType.ExamRoom] = [107000010, 107000030],
             [AreaType.BroadcastRoom] = [107000010, 107000030],
             [AreaType.Classroom2] = [107000040, 107000030],
-            [AreaType.Library] = [107000010, 107000030, 107000020],
+            [AreaType.Library] = [107000010, 107000020, 107000040],
             [AreaType.Gym] = [107000020, 107000030, 107000010],
             [AreaType.Storage] = [107000010, 107000020],
             [AreaType.Storage2] = [107000010, 107000030],
             [AreaType.Junkyard] = [107000030, 107000040],
             [AreaType.Junkyard2] = [107000030, 107000020],
             [AreaType.AdminOffice] = [107000010, 107000040, 107000020],
-            [AreaType.StaffRoom] = [107000010, 107000030, 107000020],
+            [AreaType.StaffRoom] = [107000010, 107000030, 107000040],
             [AreaType.Ground] = [107000020, 107000040]
         };
         foreach (var (area, items) in expected)
@@ -42,12 +42,16 @@ public sealed class SurvivorRegionalItemPoolTests
             .SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
             .Where(BattleItemCombatData.IsCombatItem)
             .ToArray();
-        Assert.Equal(28, naturalBattleItems.Length);
+        Assert.Equal(26, naturalBattleItems.Length);
         Assert.Equal(10, naturalBattleItems.Count(itemId => itemId == 107000010));
-        Assert.Equal(9, naturalBattleItems.Count(itemId => itemId == 107000020));
-        Assert.Equal(9, naturalBattleItems.Count(itemId => itemId == 107000030));
-        Assert.Equal(4, expected.Keys.SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
+        Assert.Equal(8, naturalBattleItems.Count(itemId => itemId == 107000020));
+        Assert.Equal(8, naturalBattleItems.Count(itemId => itemId == 107000030));
+        Assert.Equal(6, expected.Keys.SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
             .Count(itemId => itemId == 107000040));
+
+        Assert.All(expected.Keys, area =>
+            Assert.True(GameInteractableData.GetItemPoolByArea((int)area).Distinct().Count() <= 3,
+                $"{area} exposes more than three natural orb types."));
 
         Assert.DoesNotContain(301000038, GameInteractableData.GetAllAreaItemPoolItems());
         Assert.DoesNotContain(301000039, GameInteractableData.GetAllAreaItemPoolItems());
@@ -117,6 +121,24 @@ public sealed class SurvivorRegionalItemPoolTests
         Assert.True(depleted.IsDepleted);
         Assert.Empty(depleted.AvailableOrbColors);
     }
+    [Fact]
+    public void PublicStockSnapshotIncludesRecoveryOrbAvailability()
+    {
+        var manager = new AreaItemStockManager(new ZeroRandom());
+        const long matchId = 19312;
+        manager.InitializeMatching(matchId);
+
+        var initial = manager.GetPublicDepletionSnapshot(matchId)
+            .Single(state => state.AreaType == AreaType.Classroom2);
+        Assert.Equal([SurvivorOrbColor.Blue, SurvivorOrbColor.Recovery], initial.AvailableOrbColors.Order());
+
+        Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom2, out int itemId));
+        Assert.Equal(107000040, itemId);
+        var afterRecovery = manager.GetPublicDepletionSnapshot(matchId)
+            .Single(state => state.AreaType == AreaType.Classroom2);
+        Assert.Equal([SurvivorOrbColor.Blue], afterRecovery.AvailableOrbColors);
+    }
+
     [Fact]
     public void SuccessfulExploreReturnsOneItemAndExhaustedExploreReturnsNone()
     {
@@ -259,6 +281,29 @@ public sealed class SurvivorRegionalItemPoolTests
             [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2],
             []));
     }
+    [Fact]
+    public void ClosureWarningNeverExpandsAnAreaBeyondThreeOrbTypes()
+    {
+        var manager = new AreaItemStockManager(new ZeroRandom());
+        const long matchId = 19313;
+        manager.InitializeMatching(matchId);
+
+        var protectedAreas = Enum.GetValues<AreaType>()
+            .Where(area => area != AreaType.None && !area.IsCorridor())
+            .Except([AreaType.StaffRoom, AreaType.Gym, AreaType.Library, AreaType.Ground])
+            .ToArray();
+        var added = manager.ReplenishForClosureWarning(matchId, 90_001, protectedAreas, []);
+
+        Assert.Equal(4, added.Count);
+        foreach (var area in added.Select(entry => entry.AreaType))
+        {
+            var colors = manager.GetPublicDepletionSnapshot(matchId)
+                .Single(state => state.AreaType == area)
+                .AvailableOrbColors;
+            Assert.True(colors.Distinct().Count() <= 3, $"{area} exceeded the three-type cap.");
+        }
+    }
+
     [Fact]
     public async Task ConcurrentPickupAllowsOnlyOneWinnerAndPersistsForReconnect()
     {

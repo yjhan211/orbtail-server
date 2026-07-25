@@ -54,7 +54,7 @@ public sealed class PlayerEliminationCauseTests
         var bot = new BotPlayerState
         {
             PlayerId = -1,
-            Corruption = 90
+            Corruption = Config.SURVIVOR_MAX_CORRUPTION - 10
         };
 
         manager.ApplyProximityAutoCombatDamage(bot, 9, attackerPlayerId: 101);

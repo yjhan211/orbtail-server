@@ -512,6 +512,11 @@ public class BotPlayerState
     /// <summary>Current equipped battle tool, used to synchronize remote bot visuals.</summary>
     public int EquippedBattleItemId { get; set; }
 
+    /// <summary>Server-authoritative wind resonance movement state.</summary>
+    public bool WindResonanceActive { get; set; }
+
+    /// <summary>Temporary movement slow applied by a wave counter.</summary>
+    public DateTime WaveSlowUntilUtc { get; set; }
     /// <summary>Colour the bot is currently farming to restore its equipped-orb resonance.</summary>
     public SurvivorOrbColor OrbFarmingTargetColor { get; set; } = SurvivorOrbColor.None;
 

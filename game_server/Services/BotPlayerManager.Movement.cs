@@ -25,16 +25,29 @@ public partial class BotPlayerManager
     ///     세로가 압축된 아이소메트릭 화면에서 어느 방향이든 타일 통과 속도가 BotWalkSpeed로 일정해진다
     ///     (플레이어 로컬 이동의 세로 보정과 동일 규칙).
     /// </summary>
-    private static float ScaledWalkSpeed(float dirX, float dirY)
+    private static float ScaledWalkSpeed(float dirX, float dirY, bool windResonanceActive = false)
     {
         float tileY = dirY / IsoVerticalSpeedScale;
         float tileFactor = (float)Math.Sqrt(dirX * dirX + tileY * tileY);
-        return tileFactor > 0.0001f ? BotWalkSpeed / tileFactor : BotWalkSpeed;
+        float baseSpeed = BotWalkSpeed * (windResonanceActive ? SurvivorOrbData.WindMoveSpeedMultiplier : 1f);
+        return tileFactor > 0.0001f ? baseSpeed / tileFactor : baseSpeed;
     }
 
-    private static Vector3f ScaledWalkVelocity(float dirX, float dirY)
+    private static float GetBotMovementSpeedMultiplier(BotPlayerState bot)
     {
-        float speed = ScaledWalkSpeed(dirX, dirY);
+        float wind = bot.WindResonanceActive ? SurvivorOrbData.WindMoveSpeedMultiplier : 1f;
+        return wind * GetBotWaveSlowMultiplier(bot);
+    }
+
+    private static float GetBotWaveSlowMultiplier(BotPlayerState bot)
+    {
+        return DateTime.UtcNow < bot.WaveSlowUntilUtc
+            ? SurvivorOrbData.WaveSlowMoveSpeedMultiplier
+            : 1f;
+    }
+    private static Vector3f ScaledWalkVelocity(float dirX, float dirY, bool windResonanceActive = false)
+    {
+        float speed = ScaledWalkSpeed(dirX, dirY, windResonanceActive);
         return new Vector3f(dirX * speed, dirY * speed, 0f);
     }
 
@@ -77,7 +90,7 @@ public partial class BotPlayerManager
                 resourceTickSeconds);
 
             if (totalCorruptionDelta != 0)
-                bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, 100);
+                bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, Config.SURVIVOR_MAX_CORRUPTION);
 
             if (TryQueueBotMentalElimination(bot, matchingId, result))
                 continue;
@@ -98,7 +111,7 @@ public partial class BotPlayerManager
         if (bot.IsEliminated || corruptionDelta == 0)
             return;
 
-        bot.Corruption = Math.Clamp(bot.Corruption + corruptionDelta, 0, 100);
+        bot.Corruption = Math.Clamp(bot.Corruption + corruptionDelta, 0, Config.SURVIVOR_MAX_CORRUPTION);
     }
 
     public void MarkEnvironmentalEliminated(BotPlayerState bot, long matchingId)
@@ -124,7 +137,7 @@ public partial class BotPlayerManager
     }
     private bool TryQueueBotMentalElimination(BotPlayerState bot, long matchingId, BotTickResult result)
     {
-        if (bot.Corruption < 100) return false;
+        if (bot.Corruption < Config.SURVIVOR_MAX_CORRUPTION) return false;
 
         bot.IsEliminated = true;
         bot.IsForcedFollowActive = false;
@@ -417,9 +430,9 @@ public partial class BotPlayerManager
         float dx = targetPos.X - bot.Position.X;
         float dy = targetPos.Y - bot.Position.Y;
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-        float maxDist = BotWalkSpeed * deltaSec;
+        float maxDist = BotWalkSpeed * GetBotMovementSpeedMultiplier(bot) * deltaSec;
         if (dist >= 0.01f)
-            maxDist = ScaledWalkSpeed(dx / dist, dy / dist) * deltaSec;
+            maxDist = ScaledWalkSpeed(dx / dist, dy / dist, bot.WindResonanceActive) * GetBotWaveSlowMultiplier(bot) * deltaSec;
 
         Vector3f newPosition;
         Vector3f velocity;
@@ -440,7 +453,7 @@ public partial class BotPlayerManager
                 float nextDy = followingPos.Y - newPosition.Y;
                 float nextDist = (float)Math.Sqrt(nextDx * nextDx + nextDy * nextDy);
                 if (nextDist > 0.01f)
-                    velocity = ScaledWalkVelocity(nextDx / nextDist, nextDy / nextDist);
+                    velocity = ScaledWalkVelocity(nextDx / nextDist, nextDy / nextDist, bot.WindResonanceActive) * GetBotWaveSlowMultiplier(bot);
             }
         }
         else
@@ -451,7 +464,7 @@ public partial class BotPlayerManager
                 bot.Position.X + dirX * maxDist,
                 bot.Position.Y + dirY * maxDist,
                 0f);
-            velocity = ScaledWalkVelocity(dirX, dirY);
+            velocity = ScaledWalkVelocity(dirX, dirY, bot.WindResonanceActive) * GetBotWaveSlowMultiplier(bot);
             bot.Position = newPosition;
         }
 

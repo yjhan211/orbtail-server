@@ -13,19 +13,29 @@ namespace network.common.data
         None = 0,
         Red = 1,
         Green = 2,
-        Blue = 3
+        Blue = 3,
+        Recovery = 4
     }
 
     public static class SurvivorOrbData
     {
-        public const float SunDamageMultiplier = 1.75f;
-        public const float SunAttackIntervalMultiplier = 1.25f;
-        public const int WaveInitialBurstAttackCount = 3;
-        public const float WaveInitialBurstIntervalMultiplier = 0.4f;
-        public const float WaveBurstRechargeSeconds = 3f;
         public const float RecoveryTickSeconds = 5f;
-        public const int WindMaxTargets = 3;
-        public const float WindAdditionalTargetDamageMultiplier = 0.5f;
+        public const float WindChargeSeconds = 2f;
+        public const float WindMoveSpeedMultiplier = 1.2f;
+        public const float WindAttackRangeMultiplier = 1.2f;
+        public const float WindAttackIntervalMultiplier = 0.85f;
+        public const float WindProjectileSpeedMultiplier = 1.25f;
+        public const float SunMarkLifetimeSeconds = 3f;
+        public const int SunMarkTriggerCount = 3;
+        public const float SunBurstDamageMultiplier = 0.75f;
+        public const float SunBurstRadius = 2.4f;
+        public const float SunFiveBurstRadiusMultiplier = 1.5f;
+        public const int SunFiveBurstMaxTargets = 2;
+        public const float WaveHitWindowSeconds = 1.5f;
+        public const float WaveCounterCooldownSeconds = 6f;
+        public const float WaveCounterDamageMultiplier = 1.25f;
+        public const float WaveSlowSeconds = 1.5f;
+        public const float WaveSlowMoveSpeedMultiplier = 0.65f;
 
         private static readonly SurvivorOrbColor[] EvolutionColors =
             new[] { SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue };
@@ -104,35 +114,12 @@ namespace network.common.data
             return itemId > 0;
         }
 
-        public static int GetCombatDamage(SurvivorOrbColor color, bool isActive, int baseDamage)
+        public static int GetSunResonanceStage(int sunCount)
         {
-            if (!isActive || color != SurvivorOrbColor.Red || baseDamage <= 0)
-                return baseDamage;
-
-            return (int)Math.Ceiling(baseDamage * SunDamageMultiplier);
+            if (sunCount >= 5) return 5;
+            if (sunCount >= 3) return 3;
+            return sunCount >= 1 ? 1 : 0;
         }
-
-        public static float GetAttackIntervalSeconds(
-            SurvivorOrbColor color,
-            bool isActive,
-            float baseAttackIntervalSeconds)
-        {
-            if (!isActive || color != SurvivorOrbColor.Red || baseAttackIntervalSeconds <= 0f)
-                return baseAttackIntervalSeconds;
-
-            return baseAttackIntervalSeconds * SunAttackIntervalMultiplier;
-        }
-
-        public static int GetMaxTargets(SurvivorOrbColor color, bool isActive) =>
-            isActive && color == SurvivorOrbColor.Green ? WindMaxTargets : 1;
-
-        public static float GetAdditionalTargetDamageMultiplier(SurvivorOrbColor color, bool isActive) =>
-            isActive && color == SurvivorOrbColor.Green ? WindAdditionalTargetDamageMultiplier : 1f;
-
-        /// <summary>
-        /// Resolves the first active resonance directly from the orb board.
-        /// Equipment state is intentionally ignored; every owned orb is active.
-        /// </summary>
         public static bool TryGetActivePair(
             IEnumerable<int> boardItemIds,
             out SurvivorOrbColor color,

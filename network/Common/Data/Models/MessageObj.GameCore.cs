@@ -102,6 +102,7 @@ namespace network.common.data.models
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("weaponItemId")] public int WeaponItemId { get; set; }
         [Key("isActive")] public bool IsActive { get; set; }
+        [Key("orbItemIds")] public List<int> OrbItemIds { get; set; } = new();
     }
 
     /// <summary>

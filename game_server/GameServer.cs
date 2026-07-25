@@ -2611,10 +2611,10 @@ public partial class GameServer(
             winnerId ??= _manittoChainManager.DetermineWinnerByResources(matchingId, playerId =>
             {
                 var session = _clientSessions.Values.FirstOrDefault(s => s.PlayerId == playerId);
-                if (session != null) return (session.AdminStamina, session.AdminCorruption, 100);
+                if (session != null) return (session.AdminStamina, session.AdminCorruption, Config.SURVIVOR_MAX_CORRUPTION);
 
                 var bot = _botPlayerManager.GetBot(matchingId, playerId);
-                return bot != null ? (bot.Stamina, bot.Corruption, 100) : (0, 100, 100);
+                return bot != null ? (bot.Stamina, bot.Corruption, Config.SURVIVOR_MAX_CORRUPTION) : (0, Config.SURVIVOR_MAX_CORRUPTION, Config.SURVIVOR_MAX_CORRUPTION);
             });
 
             _gameEventLogManager.LogSystem(matchingId,

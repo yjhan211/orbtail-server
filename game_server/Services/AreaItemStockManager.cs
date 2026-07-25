@@ -81,29 +81,42 @@ public sealed class AreaItemStockManager
         var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
         lock (stock.SyncRoot)
         {
-            if (!stock.AppliedSupplyWaves.Add(closureAtUnixMs)) return [];
+            if (stock.AppliedSupplyWaves.Contains(closureAtUnixMs)) return [];
 
             var unavailable = warningAreas.Concat(closedAreas).ToHashSet();
             var candidates = Enum.GetValues<AreaType>()
                 .Where(area => area != AreaType.None && !area.IsCorridor() && !unavailable.Contains(area))
                 .Where(area => GameInteractableData.GetItemPoolByArea((int)area).Count > 0)
-                .OrderBy(area => stock.GetOrCreateAreaStock((int)area).Count)
-                .ThenBy(_ => _random.Next())
-                .Take(SupplyItemIds.Length)
                 .ToArray();
 
-            if (candidates.Length < SupplyItemIds.Length) return [];
-
             var supply = SupplyItemIds.OrderBy(_ => _random.Next()).ToArray();
-            var added = new List<(AreaType AreaType, int ItemId)>(SupplyItemIds.Length);
-            for (int index = 0; index < candidates.Length; index++)
-            {
-                int itemId = supply[index];
-                stock.GetOrCreateAreaStock((int)candidates[index]).Add(itemId);
-                added.Add((candidates[index], itemId));
-            }
+            var planned = new List<(AreaType AreaType, int ItemId)>(SupplyItemIds.Length);
+            if (!TryPlanSupply(0)) return [];
 
-            return added;
+            stock.AppliedSupplyWaves.Add(closureAtUnixMs);
+            foreach (var entry in planned)
+                stock.GetOrCreateAreaStock((int)entry.AreaType).Add(entry.ItemId);
+
+            return planned;
+
+            bool TryPlanSupply(int supplyIndex)
+            {
+                if (supplyIndex >= supply.Length) return true;
+
+                int itemId = supply[supplyIndex];
+                foreach (var area in candidates
+                             .Where(area => planned.All(entry => entry.AreaType != area))
+                             .Where(area => CanAddOrbType(stock.GetOrCreateAreaStock((int)area), itemId))
+                             .OrderBy(area => stock.GetOrCreateAreaStock((int)area).Count)
+                             .ThenBy(_ => _random.Next()))
+                {
+                    planned.Add((area, itemId));
+                    if (TryPlanSupply(supplyIndex + 1)) return true;
+                    planned.RemoveAt(planned.Count - 1);
+                }
+
+                return false;
+            }
         }
     }
 
@@ -118,7 +131,7 @@ public sealed class AreaItemStockManager
         var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
         lock (stock.SyncRoot)
             return stock.GetOrCreateAreaStock(areaType)
-                .Any(itemId => SurvivorOrbData.TryGetColorAndTier(itemId, out var itemColor, out _) && itemColor == color);
+                .Any(itemId => TryGetOrbMapColor(itemId, out var itemColor) && itemColor == color);
     }
 
     public IReadOnlyDictionary<int, int> GetRemainingSnapshot(long matchingId, int areaType)
@@ -162,13 +175,35 @@ public sealed class AreaItemStockManager
     {
         var colors = new HashSet<SurvivorOrbColor>();
         foreach (int itemId in itemIds)
-            if (SurvivorOrbData.TryGetColorAndTier(itemId, out var color, out _))
+            if (TryGetOrbMapColor(itemId, out var color))
                 colors.Add(color);
         return colors;
     }
 
+    private static bool CanAddOrbType(IEnumerable<int> itemIds, int addedItemId)
+    {
+        var colors = GetOrbColors(itemIds);
+        if (!TryGetOrbMapColor(addedItemId, out var addedColor)) return true;
+        colors.Add(addedColor);
+        return colors.Count <= MaxOrbTypesPerArea;
+    }
+
+    private static bool TryGetOrbMapColor(int itemId, out SurvivorOrbColor color)
+    {
+        if (SurvivorOrbData.TryGetColorAndTier(itemId, out color, out _)) return true;
+        if (SurvivorOrbData.IsRecoveryOrb(itemId))
+        {
+            color = SurvivorOrbColor.Recovery;
+            return true;
+        }
+
+        color = SurvivorOrbColor.None;
+        return false;
+    }
+
     public void RemoveMatchingState(long matchingId) => _matchingStocks.TryRemove(matchingId, out _);
 
+    private const int MaxOrbTypesPerArea = 3;
     private static readonly int[] SupplyItemIds = [107000010, 107000020, 107000030, 107000040];
 
     private sealed class MatchingAreaItemStock
