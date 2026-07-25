@@ -262,7 +262,7 @@ public partial class GameClientSession
                 {
                     AreaType = state.AreaType,
                     IsDepleted = state.IsDepleted,
-                    DepletedOrbColors = state.DepletedOrbColors
+                    AvailableOrbColors = state.AvailableOrbColors
                 })
                 .ToList()
         };

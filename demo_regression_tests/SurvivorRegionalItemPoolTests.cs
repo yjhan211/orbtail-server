@@ -20,22 +20,21 @@ public sealed class SurvivorRegionalItemPoolTests
     {
         var expected = new Dictionary<AreaType, int[]>
         {
-            [AreaType.Classroom3] = [107000010, 107000020, 107000030, 107000040, 107000030],
-            [AreaType.Classroom4] = [107000010, 107000020, 107000030, 107000040, 107000010],
-            [AreaType.ExamRoom] = [107000010, 107000030, 107000040, 107000040],
-            [AreaType.BroadcastRoom] = [107000010, 107000020, 107000030],
-            [AreaType.Classroom2] = [107000040, 107000040, 107000010, 107000030],
-            [AreaType.Library] = [107000010, 107000010, 107000030, 107000020, 107000040, 107000010, 107000020, 107000040],
-            [AreaType.Gym] = [107000020, 107000020, 107000030, 107000010, 107000040, 107000030],
-            [AreaType.Storage] = [107000010, 107000030, 107000020, 107000040],
-            [AreaType.Storage2] = [107000010, 107000020, 107000030, 107000040],
-            [AreaType.Junkyard] = [107000030, 107000040, 107000010],
-            [AreaType.Junkyard2] = [107000030, 107000030, 107000020],
-            [AreaType.AdminOffice] = [107000010, 107000040, 107000020, 107000030, 107000010],
-            [AreaType.StaffRoom] = [107000010, 107000030, 107000020, 107000040, 107000020, 107000020, 107000040],
-            [AreaType.Ground] = [107000020, 107000020, 107000040]
+            [AreaType.Classroom3] = [107000010, 107000020],
+            [AreaType.Classroom4] = [107000010, 107000020],
+            [AreaType.ExamRoom] = [107000010, 107000030],
+            [AreaType.BroadcastRoom] = [107000010, 107000030],
+            [AreaType.Classroom2] = [107000040, 107000030],
+            [AreaType.Library] = [107000010, 107000030, 107000020],
+            [AreaType.Gym] = [107000020, 107000030, 107000010],
+            [AreaType.Storage] = [107000010, 107000020],
+            [AreaType.Storage2] = [107000010, 107000030],
+            [AreaType.Junkyard] = [107000030, 107000040],
+            [AreaType.Junkyard2] = [107000030, 107000020],
+            [AreaType.AdminOffice] = [107000010, 107000040, 107000020],
+            [AreaType.StaffRoom] = [107000010, 107000030, 107000020],
+            [AreaType.Ground] = [107000020, 107000040]
         };
-
         foreach (var (area, items) in expected)
             Assert.Equal(items.Order(), GameInteractableData.GetItemPoolByArea((int)area).Order());
 
@@ -43,11 +42,11 @@ public sealed class SurvivorRegionalItemPoolTests
             .SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
             .Where(BattleItemCombatData.IsCombatItem)
             .ToArray();
-        Assert.Equal(48, naturalBattleItems.Length);
-        Assert.Equal(16, naturalBattleItems.Count(itemId => itemId == 107000010));
-        Assert.Equal(16, naturalBattleItems.Count(itemId => itemId == 107000020));
-        Assert.Equal(16, naturalBattleItems.Count(itemId => itemId == 107000030));
-        Assert.Equal(16, expected.Keys.SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
+        Assert.Equal(28, naturalBattleItems.Length);
+        Assert.Equal(10, naturalBattleItems.Count(itemId => itemId == 107000010));
+        Assert.Equal(9, naturalBattleItems.Count(itemId => itemId == 107000020));
+        Assert.Equal(9, naturalBattleItems.Count(itemId => itemId == 107000030));
+        Assert.Equal(4, expected.Keys.SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
             .Count(itemId => itemId == 107000040));
 
         Assert.DoesNotContain(301000038, GameInteractableData.GetAllAreaItemPoolItems());
@@ -62,33 +61,17 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Fact]
-    public void RegionalStockCoversEveryActiveExploreMarkerAtLeastOnce()
+    public void EveryPlayableRegionStartsWithAtLeastTwoOrbs()
     {
-        var activeMarkerCounts = new Dictionary<AreaType, int>
-        {
-            [AreaType.Junkyard] = 2,
-            [AreaType.AdminOffice] = 5,
-            [AreaType.StaffRoom] = 7,
-            [AreaType.Gym] = 6,
-            [AreaType.Storage] = 3,
-            [AreaType.Storage2] = 3,
-            [AreaType.Junkyard2] = 3,
-            [AreaType.Classroom2] = 4,
-            [AreaType.Library] = 8,
-            [AreaType.Classroom3] = 5,
-            [AreaType.ExamRoom] = 4,
-            [AreaType.Classroom4] = 5,
-            [AreaType.BroadcastRoom] = 3,
-            [AreaType.Ground] = 3,
-        };
+        var playableAreas = GameMapData.GetAreas(MapId.School)
+            .Select(region => region.AreaType)
+            .Where(area => area != AreaType.None && !area.IsCorridor())
+            .Distinct()
+            .ToArray();
 
-        foreach (var (area, markerCount) in activeMarkerCounts)
-        {
-            int stockCount = GameInteractableData.GetItemPoolByArea((int)area).Count;
-            Assert.True(
-                stockCount >= markerCount,
-                $"{area}: stock={stockCount}, active markers={markerCount}");
-        }
+        Assert.Equal(32, playableAreas.Sum(area => GameInteractableData.GetItemPoolByArea((int)area).Count));
+        Assert.All(playableAreas, area =>
+            Assert.True(GameInteractableData.GetItemPoolByArea((int)area).Count >= 2, $"{area} starts empty."));
     }
 
     [Fact]
@@ -97,7 +80,7 @@ public sealed class SurvivorRegionalItemPoolTests
         var manager = new AreaItemStockManager();
         manager.InitializeMatching(19301);
 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 2; i++)
         {
             Assert.True(manager.TryConsumeDrops(19301, (int)AreaType.Classroom3, 1, out var drop));
             Assert.Single(drop);
@@ -108,47 +91,39 @@ public sealed class SurvivorRegionalItemPoolTests
 
         manager.InitializeMatching(19301);
         Assert.Equal(0, manager.GetRemainingCount(19301, (int)AreaType.Classroom3));
-        Assert.Equal(5, manager.GetRemainingCount(19302, (int)AreaType.Classroom3));
+        Assert.Equal(2, manager.GetRemainingCount(19302, (int)AreaType.Classroom3));
     }
-
     [Fact]
-    public void PublicStockSnapshotExposesOnlyColorDepletionState()
+    public void PublicStockSnapshotExposesCurrentOrbColors()
     {
         var manager = new AreaItemStockManager(new ZeroRandom());
         const long matchId = 19307;
         manager.InitializeMatching(matchId);
 
-        var initial = manager.GetPublicDepletionSnapshot(matchId);
-        Assert.False(initial.Single(state => state.AreaType == AreaType.Classroom3).IsDepleted);
-        Assert.Empty(initial.Single(state => state.AreaType == AreaType.Classroom3).DepletedOrbColors);
-
-        // Classroom3 starts with red, green, and blue combat orbs. Red must disappear from the minimap
-        // immediately after its own stock is gone, before the regional stock is exhausted.
-        Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out _));
-        var redDepleted = manager.GetPublicDepletionSnapshot(matchId)
+        var initial = manager.GetPublicDepletionSnapshot(matchId)
             .Single(state => state.AreaType == AreaType.Classroom3);
-        Assert.False(redDepleted.IsDepleted);
-        Assert.Equal([SurvivorOrbColor.Red], redDepleted.DepletedOrbColors);
+        Assert.False(initial.IsDepleted);
+        Assert.Equal([SurvivorOrbColor.Red, SurvivorOrbColor.Green], initial.AvailableOrbColors.Order());
 
-        while (manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out _))
-        {
-        }
+        Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out _));
+        var afterFirst = manager.GetPublicDepletionSnapshot(matchId)
+            .Single(state => state.AreaType == AreaType.Classroom3);
+        Assert.False(afterFirst.IsDepleted);
+        Assert.Equal([SurvivorOrbColor.Green], afterFirst.AvailableOrbColors);
 
-        var depleted = manager.GetPublicDepletionSnapshot(matchId);
-        Assert.True(depleted.Single(state => state.AreaType == AreaType.Classroom3).IsDepleted);
-        Assert.Equal(
-            [SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue],
-            depleted.Single(state => state.AreaType == AreaType.Classroom3).DepletedOrbColors.Order());
-        Assert.False(depleted.Single(state => state.AreaType == AreaType.Library).IsDepleted);
+        Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out _));
+        var depleted = manager.GetPublicDepletionSnapshot(matchId)
+            .Single(state => state.AreaType == AreaType.Classroom3);
+        Assert.True(depleted.IsDepleted);
+        Assert.Empty(depleted.AvailableOrbColors);
     }
-
     [Fact]
     public void SuccessfulExploreReturnsOneItemAndExhaustedExploreReturnsNone()
     {
         var manager = new AreaItemStockManager();
         const long matchId = 19308;
 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 2; i++)
         {
             Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out int itemId));
             Assert.NotEqual(0, itemId);
@@ -157,7 +132,6 @@ public sealed class SurvivorRegionalItemPoolTests
         Assert.False(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out int exhaustedItemId));
         Assert.Equal(0, exhaustedItemId);
     }
-
     [Fact]
     public void HumanExploresUseRegionalStockFromFirstDrop()
     {
@@ -190,8 +164,8 @@ public sealed class SurvivorRegionalItemPoolTests
 
             Assert.Equal(107000010, Assert.Single(first.DroppedItemIds));
             Assert.Equal(107000020, Assert.Single(second.DroppedItemIds));
-            Assert.Equal(107000030, Assert.Single(otherPlayerFirst.DroppedItemIds));
-            Assert.Equal(initialStock - 3,
+            Assert.Empty(otherPlayerFirst.DroppedItemIds);
+            Assert.Equal(initialStock - 2,
                 areaStockManager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
         }
         finally
@@ -213,7 +187,7 @@ public sealed class SurvivorRegionalItemPoolTests
         Assert.Equal(0, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
         manager.RemoveMatchingState(matchId);
         manager.InitializeMatching(matchId);
-        Assert.Equal(5, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
+        Assert.Equal(2, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
     }
 
     [Fact]
@@ -255,12 +229,36 @@ public sealed class SurvivorRegionalItemPoolTests
         var results = await Task.WhenAll(Enumerable.Range(0, 8)
             .Select(_ => Task.Run(() => Consume(manager, matchId, AreaType.Classroom3))));
 
-        Assert.Equal(5, results.Sum(items => items.Count));
+        Assert.Equal(2, results.Sum(items => items.Count));
         Assert.Equal(0, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
-        Assert.Equal(5, results.Count(items => items.Count == 1));
-        Assert.Equal(3, results.Count(items => items.Count == 0));
+        Assert.Equal(2, results.Count(items => items.Count == 1));
+        Assert.Equal(6, results.Count(items => items.Count == 0));
     }
 
+    [Fact]
+    public void ClosureWarningReplenishesFourDistinctSafeRegionsOnce()
+    {
+        var manager = new AreaItemStockManager(new ZeroRandom());
+        const long matchId = 19311;
+        manager.InitializeMatching(matchId);
+
+        var added = manager.ReplenishForClosureWarning(
+            matchId,
+            90_000,
+            [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2],
+            []);
+
+        Assert.Equal(4, added.Count);
+        Assert.Equal(4, added.Select(entry => entry.AreaType).Distinct().Count());
+        Assert.Equal(
+            [107000010, 107000020, 107000030, 107000040],
+            added.Select(entry => entry.ItemId).Order());
+        Assert.Empty(manager.ReplenishForClosureWarning(
+            matchId,
+            90_000,
+            [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2],
+            []));
+    }
     [Fact]
     public async Task ConcurrentPickupAllowsOnlyOneWinnerAndPersistsForReconnect()
     {

@@ -69,6 +69,45 @@ public sealed class AreaItemStockManager
     }
 
     /// <summary>
+    /// Adds one of each P0 orb type to distinct safe regions when a closure warning begins.
+    /// The final convergence warning is intentionally skipped when fewer than four safe regions remain.
+    /// </summary>
+    public IReadOnlyList<(AreaType AreaType, int ItemId)> ReplenishForClosureWarning(
+        long matchingId,
+        long closureAtUnixMs,
+        IReadOnlyCollection<AreaType> warningAreas,
+        IReadOnlyCollection<AreaType> closedAreas)
+    {
+        var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
+        lock (stock.SyncRoot)
+        {
+            if (!stock.AppliedSupplyWaves.Add(closureAtUnixMs)) return [];
+
+            var unavailable = warningAreas.Concat(closedAreas).ToHashSet();
+            var candidates = Enum.GetValues<AreaType>()
+                .Where(area => area != AreaType.None && !area.IsCorridor() && !unavailable.Contains(area))
+                .Where(area => GameInteractableData.GetItemPoolByArea((int)area).Count > 0)
+                .OrderBy(area => stock.GetOrCreateAreaStock((int)area).Count)
+                .ThenBy(_ => _random.Next())
+                .Take(SupplyItemIds.Length)
+                .ToArray();
+
+            if (candidates.Length < SupplyItemIds.Length) return [];
+
+            var supply = SupplyItemIds.OrderBy(_ => _random.Next()).ToArray();
+            var added = new List<(AreaType AreaType, int ItemId)>(SupplyItemIds.Length);
+            for (int index = 0; index < candidates.Length; index++)
+            {
+                int itemId = supply[index];
+                stock.GetOrCreateAreaStock((int)candidates[index]).Add(itemId);
+                added.Add((candidates[index], itemId));
+            }
+
+            return added;
+        }
+    }
+
+    /// <summary>
     /// Server-only routing query for bots. The minimap intentionally exposes only depletion,
     /// while bots need to know whether a route can still rebuild their active orb resonance.
     /// </summary>
@@ -98,7 +137,7 @@ public sealed class AreaItemStockManager
     /// <summary>
     /// 공개 미니맵용 상태다. 남은 개수는 서버에만 두고, 색상별 소진 여부까지만 반환한다.
     /// </summary>
-    public IReadOnlyList<(AreaType AreaType, bool IsDepleted, List<SurvivorOrbColor> DepletedOrbColors)>
+    public IReadOnlyList<(AreaType AreaType, bool IsDepleted, List<SurvivorOrbColor> AvailableOrbColors)>
         GetPublicDepletionSnapshot(long matchingId)
     {
         var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
@@ -109,14 +148,11 @@ public sealed class AreaItemStockManager
                 .Select(area =>
                 {
                     var remainingItems = stock.GetOrCreateAreaStock((int)area);
-                    var possibleColors = GetOrbColors(GameInteractableData.GetItemPoolByArea((int)area));
                     var remainingColors = GetOrbColors(remainingItems);
                     return (
                         AreaType: area,
                         IsDepleted: remainingItems.Count == 0,
-                        DepletedOrbColors: possibleColors
-                            .Where(color => !remainingColors.Contains(color))
-                            .ToList());
+                        AvailableOrbColors: remainingColors.Order().ToList());
                 })
                 .ToList();
         }
@@ -133,9 +169,12 @@ public sealed class AreaItemStockManager
 
     public void RemoveMatchingState(long matchingId) => _matchingStocks.TryRemove(matchingId, out _);
 
+    private static readonly int[] SupplyItemIds = [107000010, 107000020, 107000030, 107000040];
+
     private sealed class MatchingAreaItemStock
     {
         private readonly Dictionary<int, List<int>> _areaStocks = new();
+        public HashSet<long> AppliedSupplyWaves { get; } = new();
         public object SyncRoot { get; } = new();
 
         public List<int> GetOrCreateAreaStock(int areaType)
