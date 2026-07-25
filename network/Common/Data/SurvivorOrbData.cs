@@ -23,6 +23,7 @@ namespace network.common.data
         public const int WaveInitialBurstAttackCount = 3;
         public const float WaveInitialBurstIntervalMultiplier = 0.4f;
         public const float WaveBurstRechargeSeconds = 3f;
+        public const float RecoveryTickSeconds = 5f;
         public const int WindMaxTargets = 3;
         public const float WindAdditionalTargetDamageMultiplier = 0.5f;
 
@@ -47,6 +48,22 @@ namespace network.common.data
         }
 
         public static bool IsSurvivorOrb(int itemId) => TryGetColorAndTier(itemId, out _, out _);
+        public static bool TryGetRecoveryTier(int itemId, out int tier)
+        {
+            tier = itemId switch
+            {
+                107000040 => 1,
+                107000041 => 2,
+                107000042 => 3,
+                _ => 0
+            };
+            return tier > 0;
+        }
+
+        public static bool IsRecoveryOrb(int itemId) => TryGetRecoveryTier(itemId, out _);
+
+        public static int GetRecoveryAmount(int itemId) =>
+            TryGetRecoveryTier(itemId, out int tier) ? tier : 0;
 
         /// <summary>
         /// Validates a P1 merge and randomly evolves its colour. The server calls this only after
@@ -111,6 +128,58 @@ namespace network.common.data
 
         public static float GetAdditionalTargetDamageMultiplier(SurvivorOrbColor color, bool isActive) =>
             isActive && color == SurvivorOrbColor.Green ? WindAdditionalTargetDamageMultiplier : 1f;
+
+        /// <summary>
+        /// Resolves the first active resonance directly from the orb board.
+        /// Equipment state is intentionally ignored; every owned orb is active.
+        /// </summary>
+        public static bool TryGetActivePair(
+            IEnumerable<int> boardItemIds,
+            out SurvivorOrbColor color,
+            out int pairTier)
+        {
+            if (boardItemIds == null)
+                throw new ArgumentNullException(nameof(boardItemIds));
+
+            var itemIds = boardItemIds.ToList();
+            foreach (SurvivorOrbColor candidateColor in EvolutionColors)
+            {
+                if (!HasActivePair(itemIds, candidateColor, out pairTier))
+                    continue;
+
+                color = candidateColor;
+                return true;
+            }
+
+            color = SurvivorOrbColor.None;
+            pairTier = 0;
+            return false;
+        }
+
+        public static bool HasActivePair(
+            IEnumerable<int> boardItemIds,
+            SurvivorOrbColor targetColor,
+            out int pairTier)
+        {
+            if (boardItemIds == null)
+                throw new ArgumentNullException(nameof(boardItemIds));
+
+            int matchingCount = 0;
+            pairTier = 0;
+            foreach (int itemId in boardItemIds)
+            {
+                if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out int tier) ||
+                    color != targetColor)
+                    continue;
+
+                matchingCount++;
+                pairTier = Math.Max(pairTier, tier);
+            }
+
+            if (matchingCount >= 2) return true;
+            pairTier = 0;
+            return false;
+        }
 
         /// <summary>
         /// Resonance is active when the equipped orb has at least one other orb of the same colour.
