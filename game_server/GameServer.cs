@@ -1723,14 +1723,16 @@ public partial class GameServer(
                         s.PlayerId!.Value,
                         s.CurrentArea,
                         s.LastValidatedPosition!,
-                        _inGameInventoryManager.GetEquippedBattleItem(matchingId, s.PlayerId.Value)?.ItemId ?? 0))
+                        _inGameInventoryManager.GetEquippedBattleItem(matchingId, s.PlayerId.Value)?.ItemId ?? 0,
+                        s.CurrentCorruption))
                     .Concat(_botPlayerManager.GetBots(matchingId)
                         .Where(bot => !bot.IsEliminated)
                         .Select(bot => new BotCombatTargetSnapshot(
                             bot.PlayerId,
                             bot.CurrentArea,
                             bot.Position,
-                            _inGameInventoryManager.GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0)))
+                            _inGameInventoryManager.GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0,
+                            bot.Corruption)))
                     .ToList();
                 var movementResult = _botPlayerManager.ProcessBotMovementTick(
                     matchingId,

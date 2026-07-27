@@ -288,7 +288,7 @@ public sealed class SurvivorBotLoopRegressionTests
             matchingId, attackerId, victimId, RecorderT3, firstAttack.Damage, false, true,
             new DateTimeOffset(firstAttackAt));
 
-        var secondAttackAt = firstAttackAt.AddSeconds(1);
+        var secondAttackAt = firstAttackAt.AddSeconds(1.15);
         var secondAttack = Assert.Single(resolver.Resolve(
             matchingId, actors, secondAttackAt, onTargetAcquired: OnAcquired, onTargetLost: OnLost));
         eventLog.LogSurvivorHit(
@@ -297,7 +297,7 @@ public sealed class SurvivorBotLoopRegressionTests
 
         actors[1] = actors[1] with { Position = new Vector3f(30f, 0f, 0f) };
         Assert.Empty(resolver.Resolve(
-            matchingId, actors, start.AddMilliseconds(1550), onTargetAcquired: OnAcquired, onTargetLost: OnLost));
+            matchingId, actors, secondAttackAt.AddMilliseconds(50), onTargetAcquired: OnAcquired, onTargetLost: OnLost));
 
         var events = eventLog.GetRecent(matchingId)
             .Where(entry => entry.PlayerId == attackerId)
@@ -312,13 +312,13 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.Equal(2, hits.Count);
         Assert.Equal(500, hits[0].ElapsedMilliseconds);
         Assert.Null(hits[0].PreviousHitGapMilliseconds);
-        Assert.Equal(1500, hits[1].ElapsedMilliseconds);
-        Assert.Equal(1000, hits[1].PreviousHitGapMilliseconds);
+        Assert.InRange(hits[1].ElapsedMilliseconds!.Value, 1649, 1650);
+        Assert.InRange(hits[1].PreviousHitGapMilliseconds!.Value, 1149, 1150);
 
         var escaped = Assert.Single(events, entry => entry.Type == "SURVIVOR_ENCOUNTER_END");
         Assert.True(escaped.Escaped);
         Assert.Equal("out_of_range_or_los", escaped.Outcome);
-        Assert.Equal(1550, escaped.ElapsedMilliseconds);
+        Assert.InRange(escaped.ElapsedMilliseconds!.Value, 1699, 1700);
         Assert.Equal(2, escaped.HitCount);
     }
 
@@ -446,8 +446,96 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.NotEmpty(bot.Path);
         Assert.NotEqual(AreaType.Classroom3, bot.Path[^1].Area);
         Assert.False(bot.Path[^1].Area.IsCorridor());
+        Assert.Equal(bot.Path[^1].Area, bot.EvacuationDestination);
+
+        var committedPath = bot.Path.ToArray();
+        bot.NextCombatRepathAt = DateTime.MinValue;
+        fixture.BotManager.UpdateCombatMovementIntent(
+            bot,
+            matchingId,
+            fixture.ClosureManager,
+            [
+                new BotCombatTargetSnapshot(botPlayerId, AreaType.Classroom3, bot.Position, RecorderT1),
+                new BotCombatTargetSnapshot(
+                    enemyPlayerId,
+                    AreaType.Classroom3,
+                    new Vector3f(bot.Position.X + 0.5f, bot.Position.Y, 0f),
+                    RecorderT3)
+            ]);
+
+        Assert.Equal(committedPath, bot.Path);
     }
 
+    [Fact]
+    public void CommittedLootRouteIsNotOverwrittenByAHealthyNearbyOpponent()
+    {
+        const long matchingId = 194207;
+        const long botPlayerId = -1942071;
+        const long enemyPlayerId = -1942072;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        SetBotPosition(bot, AreaType.Classroom3);
+        bot.MovementDestination = AreaType.Classroom4;
+        bot.Path = BotPathfinder.FindPath(
+            MapId.School,
+            bot.CurrentArea,
+            bot.Cell,
+            bot.MovementDestination,
+            GameMapData.GetAreaSpawnCell(MapId.School, bot.MovementDestination))!;
+        var committedPath = bot.Path.ToArray();
+
+        fixture.BotManager.UpdateCombatMovementIntent(
+            bot,
+            matchingId,
+            fixture.ClosureManager,
+            [
+                new BotCombatTargetSnapshot(botPlayerId, AreaType.Classroom3, bot.Position, RecorderT1),
+                new BotCombatTargetSnapshot(
+                    enemyPlayerId,
+                    AreaType.Classroom3,
+                    new Vector3f(bot.Position.X + 0.5f, bot.Position.Y, 0f),
+                    RecorderT1)
+            ]);
+
+        Assert.Equal(AreaType.Classroom4, bot.MovementDestination);
+        Assert.Equal(committedPath, bot.Path);
+    }
+
+    [Fact]
+    public void LowHealthBotAbandonsLootRouteToEscapeNearbyOpponent()
+    {
+        const long matchingId = 194208;
+        const long botPlayerId = -1942081;
+        const long enemyPlayerId = -1942082;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        SetBotPosition(bot, AreaType.Classroom3);
+        bot.Corruption = (int)(Config.SURVIVOR_MAX_CORRUPTION * 0.8f);
+        bot.MovementDestination = AreaType.Classroom4;
+        bot.Path = BotPathfinder.FindPath(
+            MapId.School,
+            bot.CurrentArea,
+            bot.Cell,
+            bot.MovementDestination,
+            GameMapData.GetAreaSpawnCell(MapId.School, bot.MovementDestination))!;
+
+        fixture.BotManager.UpdateCombatMovementIntent(
+            bot,
+            matchingId,
+            fixture.ClosureManager,
+            [
+                new BotCombatTargetSnapshot(botPlayerId, AreaType.Classroom3, bot.Position, RecorderT1, bot.Corruption),
+                new BotCombatTargetSnapshot(
+                    enemyPlayerId,
+                    AreaType.Classroom3,
+                    new Vector3f(bot.Position.X + 0.5f, bot.Position.Y, 0f),
+                    RecorderT1)
+            ]);
+
+        Assert.Equal(AreaType.None, bot.MovementDestination);
+        Assert.NotEqual(AreaType.None, bot.EvacuationDestination);
+        Assert.NotEqual(AreaType.Classroom3, bot.EvacuationDestination);
+    }
     [Theory]
     [InlineData(AreaType.Gym, AreaType.Corridor, 173, 88, 172, 88, 170, 88)]
     [InlineData(AreaType.Corridor, AreaType.Gym, 172, 88, 173, 88, 175, 88)]

@@ -8,6 +8,8 @@ namespace game_server.services;
 public partial class BotPlayerManager
 {
     private static readonly TimeSpan BotCombatRepathInterval = TimeSpan.FromMilliseconds(600);
+    private const float BotRetreatCorruptionRatio = 0.70f;
+    private const float BotFinishTargetCorruptionRatio = 0.72f;
 
     public bool TryAutoPickupGroundItem(
         BotPlayerState bot,
@@ -110,7 +112,7 @@ public partial class BotPlayerManager
         IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets)
     {
         if (bot.IsEliminated || bot.IsInInteraction || bot.PendingRngInteractId != 0 ||
-            bot.PendingChecklistTaskId != 0 || bot.OrbFarmingTargetColor != SurvivorOrbColor.None ||
+            bot.PendingChecklistTaskId != 0 ||
             DateTime.UtcNow < bot.NextCombatRepathAt)
         {
             return;
@@ -143,10 +145,25 @@ public partial class BotPlayerManager
                         targetCombatData.AttackRange > ownCombatData.AttackRange);
         float preferredDistance = ownCombatData.AttackRange * 0.72f;
 
-        bool survivalRisk = bot.Corruption >= 60;
+        bool survivalRisk = bot.Corruption >= Config.SURVIVOR_MAX_CORRUPTION * BotRetreatCorruptionRatio;
+        bool targetNearElimination = nearest.Corruption >=
+                                     Config.SURVIVOR_MAX_CORRUPTION * BotFinishTargetCorruptionRatio;
+
+        // A planned loot route is the default. Immediate survival and a visible
+        // finishing opportunity are the only combat reasons to abandon it.
+        if (bot.MovementDestination != AreaType.None && !survivalRisk && !targetNearElimination)
+            return;
+
+        if (survivalRisk || targetNearElimination)
+        {
+            bot.MovementDestination = AreaType.None;
+            bot.Path.Clear();
+            bot.PathIndex = 0;
+        }
+
         if ((retreat || survivalRisk) && distance < Math.Max(1.4f, preferredDistance))
             TryStartCombatRetreatPath(bot, matchingId, closureManager, nearest.Position, nearest.Area);
-        else if (!retreat && !survivalRisk && distance > preferredDistance)
+        else if (targetNearElimination && !retreat && !survivalRisk && distance > preferredDistance)
             TryStartCombatApproachPath(bot, matchingId, closureManager, nearest.Position);
 
         bot.NextCombatRepathAt = DateTime.UtcNow.Add(BotCombatRepathInterval);
@@ -205,6 +222,9 @@ public partial class BotPlayerManager
             .FirstOrDefault();
         if (escape?.Path != null)
         {
+            // A low-health retreat must commit to one room. Replanning while the bot is
+            // still on the doorway makes it alternate between adjacent exits.
+            bot.EvacuationDestination = escape.Area;
             bot.Path = escape.Path;
             bot.PathIndex = 0;
             bot.LoopWaitUntil = DateTime.MinValue;
@@ -308,4 +328,5 @@ public readonly record struct BotCombatTargetSnapshot(
     long PlayerId,
     AreaType Area,
     Vector3f Position,
-    int WeaponItemId);
+    int WeaponItemId,
+    int Corruption = 0);
