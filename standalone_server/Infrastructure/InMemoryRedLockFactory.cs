@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using RedLockNet;
 using network.interfaces;
+using RedLockNet;
 
 namespace standalone_server.infrastructure;
 
