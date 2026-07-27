@@ -8,6 +8,7 @@ namespace game_server.services;
 public partial class BotPlayerManager
 {
     private static readonly TimeSpan BotCombatRepathInterval = TimeSpan.FromMilliseconds(600);
+    private static readonly TimeSpan BotCombatRetreatReturnDelay = TimeSpan.FromSeconds(10);
     private const float BotRetreatCorruptionRatio = 0.70f;
     private const float BotFinishTargetCorruptionRatio = 0.72f;
 
@@ -217,13 +218,16 @@ public partial class BotPlayerManager
                     unavailableAreas.Contains)
             })
             .Where(entry => entry.Path is { Count: > 0 })
-            .OrderBy(entry => entry.Area == AreaType.Ground ? 1 : 0)
+            .OrderBy(entry => CountAreaPressure(matchingId, entry.Area))
+            .ThenBy(entry => entry.Area == AreaType.Ground ? 1 : 0)
             .ThenBy(entry => entry.Path!.Count)
             .FirstOrDefault();
         if (escape?.Path != null)
         {
             // A low-health retreat must commit to one room. Replanning while the bot is
             // still on the doorway makes it alternate between adjacent exits.
+            bot.RecentCombatRetreatOrigin = bot.CurrentArea;
+            bot.CombatRetreatOriginBlockedUntil = DateTime.UtcNow.Add(BotCombatRetreatReturnDelay);
             bot.EvacuationDestination = escape.Area;
             bot.Path = escape.Path;
             bot.PathIndex = 0;

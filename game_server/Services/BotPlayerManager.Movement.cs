@@ -353,13 +353,29 @@ public partial class BotPlayerManager
             : 0;
     }
 
-    private int CountMovementReservations(long matchingId, AreaType area)
+    private int CountAreaPressure(long matchingId, AreaType area)
     {
         return _botStates.TryGetValue(matchingId, out var bots)
-            ? bots.Count(other => !other.IsEliminated &&
-                                  (other.MovementDestination == area || other.EvacuationDestination == area))
+            ? bots.Count(other =>
+            {
+                if (other.IsEliminated)
+                    return false;
+
+                // Travelling bots occupy their committed destination; idle bots occupy their current room.
+                AreaType committedArea = other.EvacuationDestination != AreaType.None
+                    ? other.EvacuationDestination
+                    : other.MovementDestination != AreaType.None
+                        ? other.MovementDestination
+                        : other.CurrentArea;
+                return committedArea == area;
+            })
             : 0;
     }
+
+    private static bool IsRecentCombatRetreatOrigin(BotPlayerState bot, AreaType area) =>
+        area != AreaType.None &&
+        area == bot.RecentCombatRetreatOrigin &&
+        DateTime.UtcNow < bot.CombatRetreatOriginBlockedUntil;
 
     private static void CancelBotActionForEvacuation(BotPlayerState bot)
     {
@@ -662,6 +678,11 @@ public partial class BotPlayerManager
 
         var destination = ChooseBehaviorDestination(bot, matchingId, mapId, playerAreas, closureManager);
         if (destination == AreaType.None) return;
+        if (IsRecentCombatRetreatOrigin(bot, destination))
+        {
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
+            return;
+        }
         if (destination == bot.CurrentArea)
         {
             // 이미 원하는 방(타겟 방 등)에 있음 → 잠시 머물며 회복/기척.
@@ -701,19 +722,22 @@ public partial class BotPlayerManager
         if (color == SurvivorOrbColor.None)
             return false;
 
-        if (!bot.CurrentArea.IsCorridor() &&
-            !IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea) &&
-            areaItemStockManager.HasRemainingOrbColor(matchingId, (int)bot.CurrentArea, color))
-        {
-            bot.OrbFarmingDestination = bot.CurrentArea;
-            bot.OrbFarmingPivotPending = false;
-            return false;
-        }
+        bool currentAreaHasTargetStock = !bot.CurrentArea.IsCorridor() &&
+                                         !IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea) &&
+                                         areaItemStockManager.HasRemainingOrbColor(
+                                             matchingId, (int)bot.CurrentArea, color);
+        bool hasAnyTargetStock = currentAreaHasTargetStock || GameMapData.GetAreas(mapId)
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Any(area => area != AreaType.None && !area.IsCorridor() &&
+                         !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
+                         areaItemStockManager.HasRemainingOrbColor(matchingId, (int)area, color));
 
-        var destination = GameMapData.GetAreas(mapId)
+        var candidates = GameMapData.GetAreas(mapId)
             .Select(region => region.AreaType)
             .Distinct()
             .Where(area => area != AreaType.None && area != bot.CurrentArea && !area.IsCorridor() &&
+                           !IsRecentCombatRetreatOrigin(bot, area) &&
                            !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
                            areaItemStockManager.HasRemainingOrbColor(matchingId, (int)area, color))
             .Select(area => new
@@ -726,16 +750,26 @@ public partial class BotPlayerManager
                     candidate => IsAreaClosingOrClosed(closureManager, matchingId, candidate))
             })
             .Where(candidate => candidate.Path is { Count: > 0 })
-            // Reserve a destination as soon as a bot commits to it. Without this every bot
-            // independently selects the same nearest color source and travels as a flock.
-            .OrderBy(candidate => CountMovementReservations(matchingId, candidate.Area))
+            .OrderBy(candidate => CountAreaPressure(matchingId, candidate.Area))
             .ThenBy(candidate => candidate.Path!.Count)
             .ThenBy(_ => _rng.Next())
-            .FirstOrDefault();
+            .ToList();
+
+        var destination = candidates.FirstOrDefault();
+        if (currentAreaHasTargetStock &&
+            (destination == null ||
+             CountAreaPressure(matchingId, bot.CurrentArea) <=
+             CountAreaPressure(matchingId, destination.Area) + 1))
+        {
+            bot.OrbFarmingDestination = bot.CurrentArea;
+            bot.OrbFarmingPivotPending = false;
+            return false;
+        }
 
         if (destination?.Path == null)
         {
-            bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
+            if (!hasAnyTargetStock)
+                bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
             bot.OrbFarmingDestination = AreaType.None;
             bot.OrbFarmingPivotPending = false;
             return false;
@@ -769,6 +803,7 @@ public partial class BotPlayerManager
             .Where(area => area != AreaType.None &&
                            area != bot.CurrentArea &&
                            !area.IsCorridor() &&
+                           !IsRecentCombatRetreatOrigin(bot, area) &&
                            (!requireSecludedArea || IsSecludedFarmingArea(mapId, area)) &&
                            !bot.CompletedRoomExploreAreas.Contains(area) &&
                            !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
@@ -782,7 +817,7 @@ public partial class BotPlayerManager
                     .Any(BattleItemCombatData.IsCombatItem)
             })
             .OrderByDescending(candidate => bot.EquippedBattleItemId <= 0 && candidate.CanSpawnBattleItem)
-            .ThenBy(candidate => CountMovementReservations(matchingId, candidate.Area))
+            .ThenBy(candidate => CountAreaPressure(matchingId, candidate.Area))
             .ThenBy(_ => _rng.Next())
             .Select(candidate => candidate.Area)
             .ToList();
@@ -1003,11 +1038,12 @@ public partial class BotPlayerManager
             .Where(area => area != AreaType.None &&
                            area != bot.CurrentArea &&
                            !area.IsCorridor() &&
+                           !IsRecentCombatRetreatOrigin(bot, area) &&
                            !bot.CompletedRoomExploreAreas.Contains(area) &&
                            (!requireSecludedArea || IsSecludedFarmingArea(mapId, area)) &&
                            !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
                            areaItemStockManager.HasRemaining(matchingId, (int)area))
-            .OrderBy(area => CountMovementReservations(matchingId, area))
+            .OrderBy(area => CountAreaPressure(matchingId, area))
             .ThenBy(_ => _rng.Next()));
 
         foreach (var area in areaOrder)

@@ -20,19 +20,19 @@ public sealed class SurvivorRegionalItemPoolTests
     {
         var expected = new Dictionary<AreaType, int[]>
         {
-            [AreaType.Classroom3] = [107000010, 107000020],
-            [AreaType.Classroom4] = [107000010, 107000020],
-            [AreaType.ExamRoom] = [107000010, 107000030],
-            [AreaType.BroadcastRoom] = [107000010, 107000030],
+            [AreaType.Classroom3] = [107000020],
+            [AreaType.Classroom4] = [107000010],
+            [AreaType.ExamRoom] = [107000010],
+            [AreaType.BroadcastRoom] = [107000010],
             [AreaType.Classroom2] = [107000040, 107000030],
-            [AreaType.Library] = [107000010, 107000040],
+            [AreaType.Library] = [107000010],
             [AreaType.Gym] = [107000020, 107000010],
-            [AreaType.Storage] = [107000010, 107000020],
+            [AreaType.Storage] = [107000020],
             [AreaType.Storage2] = [107000010, 107000030],
             [AreaType.Junkyard] = [107000030, 107000040],
             [AreaType.Junkyard2] = [107000030, 107000020],
-            [AreaType.AdminOffice] = [107000010, 107000040],
-            [AreaType.StaffRoom] = [107000030, 107000040],
+            [AreaType.AdminOffice] = [107000040],
+            [AreaType.StaffRoom] = [107000030],
             [AreaType.Ground] = [107000020, 107000040]
         };
         foreach (var (area, items) in expected)
@@ -42,11 +42,11 @@ public sealed class SurvivorRegionalItemPoolTests
             .SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
             .Where(BattleItemCombatData.IsCombatItem)
             .ToArray();
-        Assert.Equal(22, naturalBattleItems.Length);
-        Assert.Equal(9, naturalBattleItems.Count(itemId => itemId == 107000010));
-        Assert.Equal(6, naturalBattleItems.Count(itemId => itemId == 107000020));
-        Assert.Equal(7, naturalBattleItems.Count(itemId => itemId == 107000030));
-        Assert.Equal(6, expected.Keys.SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
+        Assert.Equal(16, naturalBattleItems.Length);
+        Assert.Equal(6, naturalBattleItems.Count(itemId => itemId == 107000010));
+        Assert.Equal(5, naturalBattleItems.Count(itemId => itemId == 107000020));
+        Assert.Equal(5, naturalBattleItems.Count(itemId => itemId == 107000030));
+        Assert.Equal(4, expected.Keys.SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
             .Count(itemId => itemId == 107000040));
 
         Assert.All(expected.Keys, area =>
@@ -65,7 +65,7 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Fact]
-    public void EveryPlayableRegionStartsWithAtLeastTwoOrbs()
+    public void EveryPlayableRegionStartsWithAtLeastOneOrb()
     {
         var playableAreas = GameMapData.GetAreas(MapId.School)
             .Select(region => region.AreaType)
@@ -73,9 +73,9 @@ public sealed class SurvivorRegionalItemPoolTests
             .Distinct()
             .ToArray();
 
-        Assert.Equal(28, playableAreas.Sum(area => GameInteractableData.GetItemPoolByArea((int)area).Count));
+        Assert.Equal(20, playableAreas.Sum(area => GameInteractableData.GetItemPoolByArea((int)area).Count));
         Assert.All(playableAreas, area =>
-            Assert.True(GameInteractableData.GetItemPoolByArea((int)area).Count >= 2, $"{area} starts empty."));
+            Assert.True(GameInteractableData.GetItemPoolByArea((int)area).Count >= 1, $"{area} starts empty."));
     }
 
     [Fact]
@@ -83,8 +83,10 @@ public sealed class SurvivorRegionalItemPoolTests
     {
         var manager = new AreaItemStockManager();
         manager.InitializeMatching(19301);
+        int initialStock = manager.GetRemainingCount(19301, (int)AreaType.Classroom3);
+        Assert.Equal(1, initialStock);
 
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < initialStock; i++)
         {
             Assert.True(manager.TryConsumeDrops(19301, (int)AreaType.Classroom3, 1, out var drop));
             Assert.Single(drop);
@@ -95,7 +97,7 @@ public sealed class SurvivorRegionalItemPoolTests
 
         manager.InitializeMatching(19301);
         Assert.Equal(0, manager.GetRemainingCount(19301, (int)AreaType.Classroom3));
-        Assert.Equal(2, manager.GetRemainingCount(19302, (int)AreaType.Classroom3));
+        Assert.Equal(initialStock, manager.GetRemainingCount(19302, (int)AreaType.Classroom3));
     }
     [Fact]
     public void PublicStockSnapshotExposesCurrentOrbColors()
@@ -107,15 +109,10 @@ public sealed class SurvivorRegionalItemPoolTests
         var initial = manager.GetPublicDepletionSnapshot(matchId)
             .Single(state => state.AreaType == AreaType.Classroom3);
         Assert.False(initial.IsDepleted);
-        Assert.Equal([SurvivorOrbColor.Red, SurvivorOrbColor.Green], initial.AvailableOrbColors.Order());
+        Assert.Equal([SurvivorOrbColor.Green], initial.AvailableOrbColors);
 
-        Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out _));
-        var afterFirst = manager.GetPublicDepletionSnapshot(matchId)
-            .Single(state => state.AreaType == AreaType.Classroom3);
-        Assert.False(afterFirst.IsDepleted);
-        Assert.Equal([SurvivorOrbColor.Green], afterFirst.AvailableOrbColors);
-
-        Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out _));
+        Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out int itemId));
+        Assert.Equal(107000020, itemId);
         var depleted = manager.GetPublicDepletionSnapshot(matchId)
             .Single(state => state.AreaType == AreaType.Classroom3);
         Assert.True(depleted.IsDepleted);
@@ -145,12 +142,8 @@ public sealed class SurvivorRegionalItemPoolTests
         var manager = new AreaItemStockManager();
         const long matchId = 19308;
 
-        for (int i = 0; i < 2; i++)
-        {
-            Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out int itemId));
-            Assert.NotEqual(0, itemId);
-        }
-
+        Assert.True(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out int itemId));
+        Assert.NotEqual(0, itemId);
         Assert.False(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out int exhaustedItemId));
         Assert.Equal(0, exhaustedItemId);
     }
@@ -184,10 +177,10 @@ public sealed class SurvivorRegionalItemPoolTests
                 matchId, secondPlayerId, JobTitle.SCIENCE_MEMBER, info,
                 missionManager, inventoryManager, itemPoolManager, areaStockManager, isBot: false);
 
-            Assert.Equal(107000010, Assert.Single(first.DroppedItemIds));
-            Assert.Equal(107000020, Assert.Single(second.DroppedItemIds));
+            Assert.Equal(107000020, Assert.Single(first.DroppedItemIds));
+            Assert.Empty(second.DroppedItemIds);
             Assert.Empty(otherPlayerFirst.DroppedItemIds);
-            Assert.Equal(initialStock - 2,
+            Assert.Equal(initialStock - 1,
                 areaStockManager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
         }
         finally
@@ -209,7 +202,7 @@ public sealed class SurvivorRegionalItemPoolTests
         Assert.Equal(0, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
         manager.RemoveMatchingState(matchId);
         manager.InitializeMatching(matchId);
-        Assert.Equal(2, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
+        Assert.Equal(1, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
     }
 
     [Fact]
@@ -251,10 +244,10 @@ public sealed class SurvivorRegionalItemPoolTests
         var results = await Task.WhenAll(Enumerable.Range(0, 8)
             .Select(_ => Task.Run(() => Consume(manager, matchId, AreaType.Classroom3))));
 
-        Assert.Equal(2, results.Sum(items => items.Count));
+        Assert.Equal(1, results.Sum(items => items.Count));
         Assert.Equal(0, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
-        Assert.Equal(2, results.Count(items => items.Count == 1));
-        Assert.Equal(6, results.Count(items => items.Count == 0));
+        Assert.Equal(1, results.Count(items => items.Count == 1));
+        Assert.Equal(7, results.Count(items => items.Count == 0));
     }
 
     [Fact]

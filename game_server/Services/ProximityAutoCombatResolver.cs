@@ -25,7 +25,8 @@ public readonly record struct ProximityCombatActor(
     long WeaponItemUid = 0,
     int WeaponStackIndex = 0,
     int SunResonanceStage = 0,
-    bool WaveResonanceArmed = false);
+    bool WaveResonanceArmed = false,
+    float InitialAttackDelaySeconds = 0f);
 
 public readonly record struct ProximityCombatAttack(
     long AttackerPlayerId,
@@ -194,7 +195,8 @@ public sealed class ProximityAutoCombatResolver
                 {
                     _recentlyLostCombatStates.TryRemove(stateKey, out _);
 
-                    var aimReadyAtUtc = nowUtc.Add(AimDuration);
+                    var aimReadyAtUtc = nowUtc.Add(AimDuration).AddSeconds(
+                        Math.Max(0f, attacker.InitialAttackDelaySeconds));
                     int initialBurstAttackCount = 0;
                     if (attacker.InitialBurstAttackCount > 0)
                     {

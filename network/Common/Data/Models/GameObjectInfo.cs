@@ -107,8 +107,11 @@ namespace network.common.data.models
         // Position이 업데이트될 때 Cell도 자동으로 업데이트
         public void UpdateCellFromPosition()
         {
-            // 2D 게임: X축=가로, Y축=세로, Z축=0
-            Cell = new Cell((int)Math.Round(Position.X), (int)Math.Round(Position.Y));
+            // Unity Isometric Z as Y Tilemap conversion. Keep this identical
+            // to GameClientSession.WorldPositionToCell and Tilemap.WorldToCell.
+            Cell = new Cell(
+                (int)Math.Floor(Position.X + 2f * Position.Y),
+                (int)Math.Floor(2f * Position.Y - Position.X));
         }
 
         public string GetGameObjectKey()

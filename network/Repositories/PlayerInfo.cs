@@ -103,17 +103,13 @@ public partial class PlayerInfo
     /// </summary>
     private static Vector3f CellToWorldPosition(Cell cell)
     {
-        // Unity MapController CellOffset
-        const int cellOffsetX = -5;
-        const int cellOffsetY = -5;
         const float cellCenterOffsetY = 0.25f;
 
-        // CellOffset 적용
-        int gridCellX = cell.X + cellOffsetX;
-        int gridCellY = cell.Y + cellOffsetY;
-
-        float worldX = (gridCellX - gridCellY) * 0.5f;
-        float worldY = (gridCellX + gridCellY) * 0.25f + cellCenterOffsetY;
+        // map_region.csv, the Unity Tilemap and the game server all use the
+        // same raw cell coordinates. The old -5/-5 offset moved the cached
+        // world position into a different region while leaving Cell unchanged.
+        float worldX = (cell.X - cell.Y) * 0.5f;
+        float worldY = (cell.X + cell.Y) * 0.25f + cellCenterOffsetY;
 
         return new Vector3f(worldX, worldY, 0);
     }

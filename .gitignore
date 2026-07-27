@@ -57,6 +57,7 @@ manitto/*
 
 # Temporary and Cache Files
 [Tt]emp/
+/tmp/
 .sass-cache/
 *.cache
 *~

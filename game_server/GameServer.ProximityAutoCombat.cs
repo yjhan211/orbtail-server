@@ -197,6 +197,7 @@ public partial class GameServer
         var equippedItem = inventory.GetEquippedBattleItem();
         bool addedBoardOrb = false;
 
+        int attackSlotIndex = 0;
         foreach (var item in inventory.GetAllItems()
                      .Where(item => item.Count > 0)
                      .OrderBy(item => item.ItemUid))
@@ -245,6 +246,7 @@ public partial class GameServer
                     InitialBurstAttackCount = 0,
                     InitialBurstAttackIntervalMultiplier = 1f,
                     BurstRechargeSeconds = 0f,
+                    InitialAttackDelaySeconds = attackSlotIndex++ * 0.15f,
                     OrbEffectActive = orbEffectActive,
                     WeaponItemUid = item.ItemUid,
                     WeaponStackIndex = stackIndex,
@@ -475,15 +477,17 @@ public partial class GameServer
             if (damage <= 0)
                 continue;
 
-            bool attackerAlive = matchingSessions.Any(session =>
-                                     session.PlayerId == attack.AttackerPlayerId &&
-                                     !session.IsEliminated &&
-                                     session.CurrentCorruption < Config.SURVIVOR_MAX_CORRUPTION) ||
-                                 matchingBots.Any(bot =>
-                                     bot.PlayerId == attack.AttackerPlayerId &&
-                                     !bot.IsEliminated &&
-                                     bot.Corruption < Config.SURVIVOR_MAX_CORRUPTION);
-            if (!attackerAlive)
+            bool attackerStillValid = matchingSessions.Any(session =>
+                                          session.PlayerId == attack.AttackerPlayerId &&
+                                          !session.IsEliminated &&
+                                          session.CurrentCorruption < Config.SURVIVOR_MAX_CORRUPTION &&
+                                          session.CurrentArea == attack.Area) ||
+                                      matchingBots.Any(bot =>
+                                          bot.PlayerId == attack.AttackerPlayerId &&
+                                          !bot.IsEliminated &&
+                                          bot.Corruption < Config.SURVIVOR_MAX_CORRUPTION &&
+                                          bot.CurrentArea == attack.Area);
+            if (!attackerStillValid)
                 continue;
 
             bool hitApplied = false;
