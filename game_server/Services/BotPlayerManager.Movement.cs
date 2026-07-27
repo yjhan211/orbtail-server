@@ -239,6 +239,11 @@ public partial class BotPlayerManager
             bot.EvacuationDestination = AreaType.None;
         }
 
+        // A warning lasts for multiple movement ticks. Keep the selected escape route while the
+        // bot is still walking it; otherwise every 50ms picks a different safe room at the door.
+        if (bot.EvacuationDestination != AreaType.None && bot.PathIndex < bot.Path.Count)
+            return true;
+
         if (!currentAreaUnsafe && bot.EvacuationDestination != AreaType.None)
         {
             if (bot.CurrentArea == bot.EvacuationDestination)
@@ -345,6 +350,14 @@ public partial class BotPlayerManager
     {
         return _botStates.TryGetValue(matchingId, out var bots)
             ? bots.Count(other => !other.IsEliminated && other.EvacuationDestination == area)
+            : 0;
+    }
+
+    private int CountMovementReservations(long matchingId, AreaType area)
+    {
+        return _botStates.TryGetValue(matchingId, out var bots)
+            ? bots.Count(other => !other.IsEliminated &&
+                                  (other.MovementDestination == area || other.EvacuationDestination == area))
             : 0;
     }
 
@@ -713,8 +726,11 @@ public partial class BotPlayerManager
                     candidate => IsAreaClosingOrClosed(closureManager, matchingId, candidate))
             })
             .Where(candidate => candidate.Path is { Count: > 0 })
-            .OrderBy(candidate => candidate.Path!.Count)
-            .ThenBy(candidate => (int)candidate.Area)
+            // Reserve a destination as soon as a bot commits to it. Without this every bot
+            // independently selects the same nearest color source and travels as a flock.
+            .OrderBy(candidate => CountMovementReservations(matchingId, candidate.Area))
+            .ThenBy(candidate => candidate.Path!.Count)
+            .ThenBy(_ => _rng.Next())
             .FirstOrDefault();
 
         if (destination?.Path == null)
@@ -766,6 +782,7 @@ public partial class BotPlayerManager
                     .Any(BattleItemCombatData.IsCombatItem)
             })
             .OrderByDescending(candidate => bot.EquippedBattleItemId <= 0 && candidate.CanSpawnBattleItem)
+            .ThenBy(candidate => CountMovementReservations(matchingId, candidate.Area))
             .ThenBy(_ => _rng.Next())
             .Select(candidate => candidate.Area)
             .ToList();
@@ -990,7 +1007,8 @@ public partial class BotPlayerManager
                            (!requireSecludedArea || IsSecludedFarmingArea(mapId, area)) &&
                            !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
                            areaItemStockManager.HasRemaining(matchingId, (int)area))
-            .OrderBy(_ => _rng.Next()));
+            .OrderBy(area => CountMovementReservations(matchingId, area))
+            .ThenBy(_ => _rng.Next()));
 
         foreach (var area in areaOrder)
         {
