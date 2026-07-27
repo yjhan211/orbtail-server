@@ -288,7 +288,7 @@ public sealed class SurvivorBotLoopRegressionTests
             matchingId, attackerId, victimId, RecorderT3, firstAttack.Damage, false, true,
             new DateTimeOffset(firstAttackAt));
 
-        var secondAttackAt = firstAttackAt.AddMilliseconds(400);
+        var secondAttackAt = firstAttackAt.AddSeconds(1);
         var secondAttack = Assert.Single(resolver.Resolve(
             matchingId, actors, secondAttackAt, onTargetAcquired: OnAcquired, onTargetLost: OnLost));
         eventLog.LogSurvivorHit(
@@ -297,7 +297,7 @@ public sealed class SurvivorBotLoopRegressionTests
 
         actors[1] = actors[1] with { Position = new Vector3f(30f, 0f, 0f) };
         Assert.Empty(resolver.Resolve(
-            matchingId, actors, start.AddMilliseconds(950), onTargetAcquired: OnAcquired, onTargetLost: OnLost));
+            matchingId, actors, start.AddMilliseconds(1550), onTargetAcquired: OnAcquired, onTargetLost: OnLost));
 
         var events = eventLog.GetRecent(matchingId)
             .Where(entry => entry.PlayerId == attackerId)
@@ -312,13 +312,13 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.Equal(2, hits.Count);
         Assert.Equal(500, hits[0].ElapsedMilliseconds);
         Assert.Null(hits[0].PreviousHitGapMilliseconds);
-        Assert.Equal(900, hits[1].ElapsedMilliseconds);
-        Assert.Equal(400, hits[1].PreviousHitGapMilliseconds);
+        Assert.Equal(1500, hits[1].ElapsedMilliseconds);
+        Assert.Equal(1000, hits[1].PreviousHitGapMilliseconds);
 
         var escaped = Assert.Single(events, entry => entry.Type == "SURVIVOR_ENCOUNTER_END");
         Assert.True(escaped.Escaped);
         Assert.Equal("out_of_range_or_los", escaped.Outcome);
-        Assert.Equal(950, escaped.ElapsedMilliseconds);
+        Assert.Equal(1550, escaped.ElapsedMilliseconds);
         Assert.Equal(2, escaped.HitCount);
     }
 

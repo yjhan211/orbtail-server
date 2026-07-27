@@ -87,17 +87,17 @@ public class AreaClosureManagerTests
 
         now = now.AddSeconds(105);
         manager.CheckClosureSchedule(matchingId);
-        Assert.Equal(10, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.ExamRoom));
+        Assert.Equal(20, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.ExamRoom));
         Assert.Equal(0, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
 
         now = now.AddSeconds(185); // 4:50: remaining waves close together after a delayed timer tick.
         manager.CheckClosureSchedule(matchingId);
-        Assert.Equal(35, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.ExamRoom));
-        Assert.Equal(5, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
+        Assert.Equal(70, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.ExamRoom));
+        Assert.Equal(10, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
 
         now = now.AddSeconds(30);
-        Assert.Equal(40, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.ExamRoom));
-        Assert.Equal(10, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
+        Assert.Equal(80, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.ExamRoom));
+        Assert.Equal(20, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
     }
 
     [Fact]
@@ -112,10 +112,10 @@ public class AreaClosureManagerTests
         now = now.AddSeconds(290);
         manager.CheckClosureSchedule(matchingId);
         Assert.True(manager.IsOvertimeActive(matchingId));
-        Assert.Equal((1, 1), manager.GetOvertimeStatus(matchingId));
+        Assert.Equal((1, 2), manager.GetOvertimeStatus(matchingId));
 
         now = now.AddSeconds(70);
-        Assert.Equal((4, 8), manager.GetOvertimeStatus(matchingId));
+        Assert.Equal((4, 16), manager.GetOvertimeStatus(matchingId));
     }
     [Fact]
     public void CleanupMatching_RemovesClosureStateBeforeMatchingIdIsReused()

@@ -16,11 +16,11 @@ public class AreaClosureManager
 
     private static readonly IReadOnlyList<ClosureWaveDefinition> DefaultP0Waves =
     [
-        new(105, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2], 2),
-        new(165, [AreaType.Classroom4, AreaType.Classroom3], 3),
-        new(215, [AreaType.Library, AreaType.Gym], 4),
-        new(255, [AreaType.Storage, AreaType.Junkyard, AreaType.AdminOffice], 5),
-        new(290, [AreaType.StaffRoom, AreaType.Junkyard2, AreaType.Storage2], 6)
+        new(105, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2], 4),
+        new(165, [AreaType.Classroom4, AreaType.Classroom3], 6),
+        new(215, [AreaType.Library, AreaType.Gym], 8),
+        new(255, [AreaType.Storage, AreaType.Junkyard, AreaType.AdminOffice], 10),
+        new(290, [AreaType.StaffRoom, AreaType.Junkyard2, AreaType.Storage2], 12)
     ];
 
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();
@@ -224,9 +224,9 @@ public class AreaClosureManager
         int stage = rate switch
         {
             <= 0 => 0,
-            1 => 1,
-            2 => 2,
-            4 => 3,
+            <= 2 => 1,
+            <= 4 => 2,
+            <= 8 => 3,
             _ => 4
         };
         return (stage, rate);
@@ -241,10 +241,10 @@ public class AreaClosureManager
         double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
         double overtimeStartSeconds = state.Waves[^1].ClosureAtSeconds;
         if (elapsedSeconds < overtimeStartSeconds) return 0;
-        if (elapsedSeconds < overtimeStartSeconds + 30) return 1;
-        if (elapsedSeconds < overtimeStartSeconds + 50) return 2;
-        if (elapsedSeconds < overtimeStartSeconds + 70) return 4;
-        return 8;
+        if (elapsedSeconds < overtimeStartSeconds + 30) return 2;
+        if (elapsedSeconds < overtimeStartSeconds + 50) return 4;
+        if (elapsedSeconds < overtimeStartSeconds + 70) return 8;
+        return 16;
     }
 
     private static int GetCurrentClosedAreaCorruptionPerSecond(MatchingClosureState state)

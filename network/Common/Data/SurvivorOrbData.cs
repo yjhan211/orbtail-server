@@ -73,7 +73,15 @@ namespace network.common.data
         public static bool IsRecoveryOrb(int itemId) => TryGetRecoveryTier(itemId, out _);
 
         public static int GetRecoveryAmount(int itemId) =>
-            TryGetRecoveryTier(itemId, out int tier) ? tier : 0;
+            TryGetRecoveryTier(itemId, out int tier)
+                ? tier switch
+                {
+                    1 => 2,
+                    2 => 5,
+                    3 => 10,
+                    _ => 0
+                }
+                : 0;
 
         /// <summary>
         /// Validates a P1 merge and randomly evolves its colour. The server calls this only after
@@ -81,6 +89,12 @@ namespace network.common.data
         /// </summary>
         public static bool CanMerge(int inputA, int inputB)
         {
+            if (TryGetRecoveryTier(inputA, out int recoveryTierA) &&
+                TryGetRecoveryTier(inputB, out int recoveryTierB))
+            {
+                return recoveryTierA == recoveryTierB && recoveryTierA < 3;
+            }
+
             return TryGetColorAndTier(inputA, out SurvivorOrbColor colorA, out int tierA) &&
                    TryGetColorAndTier(inputB, out SurvivorOrbColor colorB, out int tierB) &&
                    colorA == colorB && tierA == tierB && tierA < 3;
@@ -90,7 +104,21 @@ namespace network.common.data
         {
             if (random == null) throw new ArgumentNullException(nameof(random));
             outputItemId = 0;
-            if (!CanMerge(inputA, inputB) || !TryGetColorAndTier(inputA, out _, out int tier))
+            if (!CanMerge(inputA, inputB))
+                return false;
+
+            if (TryGetRecoveryTier(inputA, out int recoveryTier))
+            {
+                outputItemId = recoveryTier switch
+                {
+                    1 => 107000041,
+                    2 => 107000042,
+                    _ => 0
+                };
+                return outputItemId > 0;
+            }
+
+            if (!TryGetColorAndTier(inputA, out _, out int tier))
                 return false;
 
             return TryGetItemId(EvolutionColors[random.Next(EvolutionColors.Length)], tier + 1, out outputItemId);

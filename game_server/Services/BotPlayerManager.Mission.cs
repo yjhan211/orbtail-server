@@ -182,7 +182,7 @@ public partial class BotPlayerManager
     private const int BotRngCollectStaminaCost = 5;
 
     /// <summary>봇 RNG 채집 progress 지속 시간 (플레이어 클라 2초 progress와 동등).</summary>
-    private const double BotRngCollectProgressSeconds = 2.0;
+    private const double BotRngCollectProgressSeconds = 2.5;
 
     private const int RngCollectCooldownSeconds = RngCollectCooldownStore.DefaultCooldownSeconds;
 

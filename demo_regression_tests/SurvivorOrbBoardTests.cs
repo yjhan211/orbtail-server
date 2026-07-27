@@ -23,9 +23,9 @@ public sealed class SurvivorOrbBoardTests
         Assert.Equal(expectedTier, tier);
     }
     [Theory]
-    [InlineData(107000040, 1, 1)]
-    [InlineData(107000041, 2, 2)]
-    [InlineData(107000042, 3, 3)]
+    [InlineData(107000040, 1, 2)]
+    [InlineData(107000041, 2, 5)]
+    [InlineData(107000042, 3, 10)]
     public void RecoveryOrbTierDefinesFiveSecondRecoveryAmount(
         int itemId,
         int expectedTier,
@@ -60,6 +60,16 @@ public sealed class SurvivorOrbBoardTests
 
         Assert.All(outputs, output => Assert.True(SurvivorOrbData.IsSurvivorOrb(output)));
         Assert.True(outputs.Count > 1);
+    }
+
+    [Theory]
+    [InlineData(107000040, 107000041)]
+    [InlineData(107000041, 107000042)]
+    public void SameTierRecoveryOrbsMergeToTheNextRecoveryTier(int input, int expectedOutput)
+    {
+        Assert.True(SurvivorOrbData.CanMerge(input, input));
+        Assert.True(SurvivorOrbData.TryGetRandomMergeOutput(input, input, new Random(198), out int output));
+        Assert.Equal(expectedOutput, output);
     }
 
     [Theory]
