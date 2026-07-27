@@ -25,14 +25,14 @@ public sealed class SurvivorRegionalItemPoolTests
             [AreaType.ExamRoom] = [107000010, 107000030],
             [AreaType.BroadcastRoom] = [107000010, 107000030],
             [AreaType.Classroom2] = [107000040, 107000030],
-            [AreaType.Library] = [107000010, 107000020, 107000040],
-            [AreaType.Gym] = [107000020, 107000030, 107000010],
+            [AreaType.Library] = [107000010, 107000040],
+            [AreaType.Gym] = [107000020, 107000010],
             [AreaType.Storage] = [107000010, 107000020],
             [AreaType.Storage2] = [107000010, 107000030],
             [AreaType.Junkyard] = [107000030, 107000040],
             [AreaType.Junkyard2] = [107000030, 107000020],
-            [AreaType.AdminOffice] = [107000010, 107000040, 107000020],
-            [AreaType.StaffRoom] = [107000010, 107000030, 107000040],
+            [AreaType.AdminOffice] = [107000010, 107000040],
+            [AreaType.StaffRoom] = [107000030, 107000040],
             [AreaType.Ground] = [107000020, 107000040]
         };
         foreach (var (area, items) in expected)
@@ -42,10 +42,10 @@ public sealed class SurvivorRegionalItemPoolTests
             .SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
             .Where(BattleItemCombatData.IsCombatItem)
             .ToArray();
-        Assert.Equal(26, naturalBattleItems.Length);
-        Assert.Equal(10, naturalBattleItems.Count(itemId => itemId == 107000010));
-        Assert.Equal(8, naturalBattleItems.Count(itemId => itemId == 107000020));
-        Assert.Equal(8, naturalBattleItems.Count(itemId => itemId == 107000030));
+        Assert.Equal(22, naturalBattleItems.Length);
+        Assert.Equal(9, naturalBattleItems.Count(itemId => itemId == 107000010));
+        Assert.Equal(6, naturalBattleItems.Count(itemId => itemId == 107000020));
+        Assert.Equal(7, naturalBattleItems.Count(itemId => itemId == 107000030));
         Assert.Equal(6, expected.Keys.SelectMany(area => GameInteractableData.GetItemPoolByArea((int)area))
             .Count(itemId => itemId == 107000040));
 
@@ -73,7 +73,7 @@ public sealed class SurvivorRegionalItemPoolTests
             .Distinct()
             .ToArray();
 
-        Assert.Equal(32, playableAreas.Sum(area => GameInteractableData.GetItemPoolByArea((int)area).Count));
+        Assert.Equal(28, playableAreas.Sum(area => GameInteractableData.GetItemPoolByArea((int)area).Count));
         Assert.All(playableAreas, area =>
             Assert.True(GameInteractableData.GetItemPoolByArea((int)area).Count >= 2, $"{area} starts empty."));
     }

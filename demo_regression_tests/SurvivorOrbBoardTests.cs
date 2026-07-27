@@ -23,9 +23,9 @@ public sealed class SurvivorOrbBoardTests
         Assert.Equal(expectedTier, tier);
     }
     [Theory]
-    [InlineData(107000040, 1, 2)]
-    [InlineData(107000041, 2, 5)]
-    [InlineData(107000042, 3, 10)]
+    [InlineData(107000040, 1, 3)]
+    [InlineData(107000041, 2, 7)]
+    [InlineData(107000042, 3, 14)]
     public void RecoveryOrbTierDefinesFiveSecondRecoveryAmount(
         int itemId,
         int expectedTier,
