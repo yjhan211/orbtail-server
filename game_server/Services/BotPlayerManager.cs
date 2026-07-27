@@ -443,6 +443,15 @@ public class BotPlayerState
     /// <summary>Safe room retained while the bot is travelling out of a warned area.</summary>
     public AreaType EvacuationDestination { get; set; } = AreaType.None;
 
+    /// <summary>Room most recently abandoned because of a nearby combat threat.</summary>
+    public AreaType RecentCombatRetreatOrigin { get; set; } = AreaType.None;
+
+    /// <summary>Prevents loot routing from immediately sending the bot back into the room it fled.</summary>
+    public DateTime CombatRetreatOriginBlockedUntil { get; set; } = DateTime.MinValue;
+
+    /// <summary>Room goal retained while the bot is travelling for loot, an interaction, or a target.</summary>
+    public AreaType MovementDestination { get; set; } = AreaType.None;
+
     /// <summary>?먭린 吏곸콉 諛쒓껄 援ъ뿭 ?쒗쉶 ??(?뷀뵆??4媛?+ ?좏뻾 ?꾩씠???꾩튂)</summary>
     public List<AreaType> JobAreaQueue { get; set; } = new();
 

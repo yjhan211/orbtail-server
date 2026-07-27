@@ -331,6 +331,31 @@ public class ProximityAutoCombatResolverTests
         Assert.Equal(107000020, nextAttack.WeaponItemId);
     }
 
+    [Fact]
+    public void Resolve_MultipleOrbInstancesCanStaggerTheirOpeningVolley()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 27, 0, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000010) with
+            {
+                WeaponItemUid = 101,
+                InitialAttackDelaySeconds = 0f
+            },
+            Actor(1, 0f, 0f, weaponItemId: 107000020) with
+            {
+                WeaponItemUid = 102,
+                InitialAttackDelaySeconds = 0.15f
+            },
+            Actor(2, 1f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(200, actors, now));
+        Assert.Single(resolver.Resolve(200, actors, now.AddMilliseconds(500)));
+        Assert.Empty(resolver.Resolve(200, actors, now.AddMilliseconds(649)));
+        Assert.Single(resolver.Resolve(200, actors, now.AddMilliseconds(650)));
+    }
     private static ProximityCombatActor Actor(
         long playerId,
         float x,

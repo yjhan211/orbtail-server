@@ -10,6 +10,21 @@ namespace demo_regression_tests;
 public class SchoolNewMapRestorationTests
 {
     [Fact]
+    public void Reinitializing_Map_Data_Replaces_Stale_Area_Regions()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
+        int firstAreaCount = GameMapData.GetAreas(MapId.School).Count;
+        Assert.Equal(AreaType.Corridor, GameMapData.GetCurrentArea(MapId.School, new Cell(160, 100)));
+
+        GameDataHelper.Initialize();
+
+        Assert.Equal(firstAreaCount, GameMapData.GetAreas(MapId.School).Count);
+        Assert.Equal(AreaType.Corridor, GameMapData.GetCurrentArea(MapId.School, new Cell(160, 100)));
+    }
+
+    [Fact]
     public void BotPathfinder_Crosses_School_Doors_As_Adjacent_Walking_Steps()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());

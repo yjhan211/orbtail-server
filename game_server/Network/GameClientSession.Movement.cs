@@ -141,7 +141,8 @@ public partial class GameClientSession
                     playerInfo.ObjectInfo.Velocity = msg.Velocity;
                     playerInfo.ObjectInfo.Rotation = msg.Rotation;
                     playerInfo.ObjectInfo.MoveTimestamp = now;
-                    playerInfo.ObjectInfo.UpdateCellFromPosition(); // Position에서 Cell 자동 계산
+                    playerInfo.ObjectInfo.Cell = Cell.Clone(currentCell);
+                    playerInfo.LastCell = Cell.Clone(currentCell);
 
                     await playerInfo.Save(CacheHelper);
                     _lastSaveTime = now;

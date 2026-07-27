@@ -45,6 +45,12 @@ namespace network.common.data
 
         public static void Initialize(List<CsvRow> mapInfo, List<CsvRow> mapRegion)
         {
+            _mapInfos.Clear();
+            _mapRegions.Clear();
+            _chairInfos.Clear();
+            _areaRegions.Clear();
+            _runtimeObstacles.Clear();
+
             InitializeMapInfo(mapInfo);
             InitializeMapRegions(mapRegion);
         }

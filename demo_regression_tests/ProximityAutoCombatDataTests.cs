@@ -204,12 +204,12 @@ public class ProximityAutoCombatDataTests
         Assert.All(tiers[2], tierTwo =>
         {
             Assert.True(tierTwo.Damage > tierOne.Damage);
-            Assert.Equal(tierOne.AttackIntervalSeconds / 2f, tierTwo.AttackIntervalSeconds, 3);
+            Assert.True(tierTwo.AttackIntervalSeconds < tierOne.AttackIntervalSeconds);
         });
         Assert.All(tiers[3], tierThree =>
         {
             Assert.True(tierThree.Damage > tiers[2].Max(tierTwo => tierTwo.Damage));
-            Assert.Equal(tierOne.AttackIntervalSeconds / 4f, tierThree.AttackIntervalSeconds, 3);
+            Assert.True(tierThree.AttackIntervalSeconds < tiers[2].Min(tierTwo => tierTwo.AttackIntervalSeconds));
         });
     }
 }

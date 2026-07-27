@@ -181,8 +181,8 @@ public partial class BotPlayerManager
     /// <summary>봇 채집 시작 시 차감되는 스태미나 (플레이어 RngCollectStaminaCost와 동일).</summary>
     private const int BotRngCollectStaminaCost = 5;
 
-    /// <summary>봇 RNG 채집 progress 지속 시간 (플레이어 클라 2초 progress와 동등).</summary>
-    private const double BotRngCollectProgressSeconds = 2.0;
+    /// <summary>봇 RNG 채집 progress 지속 시간 (플레이어 클라와 동일한 1.5초).</summary>
+    private const double BotRngCollectProgressSeconds = 1.5;
 
     private const int RngCollectCooldownSeconds = RngCollectCooldownStore.DefaultCooldownSeconds;
 

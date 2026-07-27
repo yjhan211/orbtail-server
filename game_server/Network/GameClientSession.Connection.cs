@@ -116,53 +116,56 @@ public partial class GameClientSession
 
             // ?몄뀡 ?깅줉 ??寃뚯엫 ??대㉧ ?쒖옉 (?대떦 留ㅼ묶?????理쒖큹 1?뚮쭔)
             _registerSessionCallback(PlayerId.Value, this);
-            MatchStartGate.RegisterHumanPlayer(msg.MatchingId, PlayerId.Value,
-                _botPlayerManager.GetBots(msg.MatchingId).Count);
+            int connectedBotCount = _botPlayerManager.GetBots(msg.MatchingId).Count;
+            MatchStartGate.RegisterHumanPlayer(msg.MatchingId, PlayerId.Value, connectedBotCount);
 
             StartGameTimerIfNeeded(msg.MatchingId);
 
             // 珥덇린 ?꾩튂 濡쒕뱶
-            await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-            var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
-
-            if (playerInfo != null)
             {
-                _lastValidatedPosition = playerInfo.ObjectInfo.Position;
-                _lastValidCell = playerInfo.ObjectInfo.Cell;
-                _lastValidatedRotation = playerInfo.ObjectInfo.Rotation;
-                // 珥덇린 Area ?ㅼ젙
-                CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
-                playerInfo.State = global::network.common.PlayerState.IDLE;
-                await playerInfo.Save(CacheHelper);
-                Logger.LogInformation(
-                    "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                    PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
-                    _lastValidCell?.Y);
-                _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea,
-                    countAsEntry: false);
-                _gameEventLogManager.LogSpawnAssignment(
-                    CurrentMapSubId,
-                    PlayerId.Value,
-                    SurvivorRoyaleSpawnData.GetDeterministicSeed(CurrentMapSubId),
-                    SurvivorRoyaleSpawnData.GetAnchorIndex(_lastValidCell),
-                    _lastValidCell.X,
-                    _lastValidCell.Y,
-                    CurrentArea.ToString(),
-                    isBot: false);
-                _gameEventLogManager.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea.ToString());
+                await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+                var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
-                // 珥덇린 Area??Interactable 紐⑸줉 ?꾩넚
-                if (CurrentArea != AreaType.None)
+                if (playerInfo != null)
                 {
-                    SendInteractableList(CurrentArea);
-                    SendInteractCooldownSnapshot();
-                    SendGroundItemSnapshot(CurrentArea);
+                    _lastValidatedPosition = playerInfo.ObjectInfo.Position;
+                    _lastValidCell = playerInfo.ObjectInfo.Cell;
+                    _lastValidatedRotation = playerInfo.ObjectInfo.Rotation;
+                    // 珥덇린 Area ?ㅼ젙
+                    CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
+                    playerInfo.State = global::network.common.PlayerState.IDLE;
+                    await playerInfo.Save(CacheHelper);
+                    Logger.LogInformation(
+                        "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
+                        PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
+                        _lastValidCell?.Y);
+                    _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea,
+                        countAsEntry: false);
+                    _gameEventLogManager.LogSpawnAssignment(
+                        CurrentMapSubId,
+                        PlayerId.Value,
+                        SurvivorRoyaleSpawnData.GetDeterministicSeed(CurrentMapSubId),
+                        SurvivorRoyaleSpawnData.GetAnchorIndex(_lastValidCell),
+                        _lastValidCell.X,
+                        _lastValidCell.Y,
+                        CurrentArea.ToString(),
+                        isBot: false);
+                    _gameEventLogManager.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea.ToString());
 
-                    // 珥덇린 Area?먯꽌???щ낫?二??대깽???몃━嫄?                    _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, CurrentArea);
+                    // 珥덇린 Area??Interactable 紐⑸줉 ?꾩넚
+                    if (CurrentArea != AreaType.None)
+                    {
+                        SendInteractableList(CurrentArea);
+                        SendInteractCooldownSnapshot();
+                        SendGroundItemSnapshot(CurrentArea);
+
+                        // 珥덇린 Area?먯꽌???щ낫?二??대깽???몃━嫄?                    _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, CurrentArea);
+                    }
                 }
+
+                // ?곌껐 ?깃났 ?묐떟
             }
 
-            // ?곌껐 ?깃났 ?묐떟
             using var connectResultPacket = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId.Value);
             var response = new G_TO_C_CONNECT_RESULT
             {
@@ -207,6 +210,15 @@ public partial class GameClientSession
 
             // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃
             await BroadcastPlayerJoin();
+
+            // The standalone submission client is only ready after the full initial snapshot
+            // has been sent. Starting the countdown earlier lets bots consume finite room stock
+            // while the human client is still loading the match.
+            if (connectedBotCount == 7)
+            {
+                MatchStartGate.MarkHumanReady(msg.MatchingId, PlayerId.Value);
+                SendMatchStartCountdown(msg.MatchingId);
+            }
         }
         catch (Exception ex)
         {

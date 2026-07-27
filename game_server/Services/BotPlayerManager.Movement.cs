@@ -195,13 +195,15 @@ public partial class BotPlayerManager
 
             // Escape routes outrank looting and combat so a warning cannot be overwritten by a chase path.
             bool isEvacuating = TryMaintainClosureEvacuation(bot, matchingId, closureManager);
+            bool isCommittingToDestination = !isEvacuating &&
+                                             TryMaintainMovementDestination(bot, matchingId, closureManager);
             if (!isEvacuating &&
                 TryAutoPickupGroundItem(bot, matchingId, inventoryManager, groundItemManager, out var pickup) &&
                 pickup.HasValue)
             {
                 result.GroundItemPickups.Add(pickup.Value);
             }
-            if (!isEvacuating)
+            if (!isEvacuating && !isCommittingToDestination)
                 UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
             var ev = WalkStep(bot, matchingId, closureManager, areaItemStockManager, playerAreas, checklistManager);
             if (ev != null) result.Movements.Add(ev);
@@ -236,6 +238,11 @@ public partial class BotPlayerManager
         {
             bot.EvacuationDestination = AreaType.None;
         }
+
+        // A warning lasts for multiple movement ticks. Keep the selected escape route while the
+        // bot is still walking it; otherwise every 50ms picks a different safe room at the door.
+        if (bot.EvacuationDestination != AreaType.None && bot.PathIndex < bot.Path.Count)
+            return true;
 
         if (!currentAreaUnsafe && bot.EvacuationDestination != AreaType.None)
         {
@@ -291,12 +298,84 @@ public partial class BotPlayerManager
         return true;
     }
 
+    private bool TryMaintainMovementDestination(BotPlayerState bot, long matchingId,
+        AreaClosureManager closureManager)
+    {
+        var destination = bot.MovementDestination;
+        if (destination == AreaType.None)
+            return false;
+
+        if (destination.IsCorridor() || IsAreaClosingOrClosed(closureManager, matchingId, destination))
+        {
+            bot.MovementDestination = AreaType.None;
+            return false;
+        }
+
+        if (bot.CurrentArea == destination)
+        {
+            bot.MovementDestination = AreaType.None;
+            return false;
+        }
+
+        if (bot.PathIndex < bot.Path.Count)
+            return true;
+
+        var mapId = GetMatchingMapId(matchingId);
+        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, destination)
+            ?? GameMapData.GetAreaSpawnCell(mapId, destination);
+        var path = BotPathfinder.FindPath(
+            mapId,
+            bot.CurrentArea,
+            bot.Cell,
+            destination,
+            targetCell,
+            area => IsAreaClosingOrClosed(closureManager, matchingId, area));
+        if (path == null || path.Count == 0)
+        {
+            bot.MovementDestination = AreaType.None;
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
+            return false;
+        }
+
+        bot.Path = path;
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        _logger.LogDebug(
+            "Bot restored committed route: BotId={Bot}, {From}->{To}, Steps={Steps}",
+            bot.PlayerId, bot.CurrentArea, destination, path.Count);
+        return true;
+    }
+
     private int CountEvacuationReservations(long matchingId, AreaType area)
     {
         return _botStates.TryGetValue(matchingId, out var bots)
             ? bots.Count(other => !other.IsEliminated && other.EvacuationDestination == area)
             : 0;
     }
+
+    private int CountAreaPressure(long matchingId, AreaType area)
+    {
+        return _botStates.TryGetValue(matchingId, out var bots)
+            ? bots.Count(other =>
+            {
+                if (other.IsEliminated)
+                    return false;
+
+                // Travelling bots occupy their committed destination; idle bots occupy their current room.
+                AreaType committedArea = other.EvacuationDestination != AreaType.None
+                    ? other.EvacuationDestination
+                    : other.MovementDestination != AreaType.None
+                        ? other.MovementDestination
+                        : other.CurrentArea;
+                return committedArea == area;
+            })
+            : 0;
+    }
+
+    private static bool IsRecentCombatRetreatOrigin(BotPlayerState bot, AreaType area) =>
+        area != AreaType.None &&
+        area == bot.RecentCombatRetreatOrigin &&
+        DateTime.UtcNow < bot.CombatRetreatOriginBlockedUntil;
 
     private static void CancelBotActionForEvacuation(BotPlayerState bot)
     {
@@ -313,6 +392,7 @@ public partial class BotPlayerManager
         bot.RngCollectProgressStartTime = DateTime.MinValue;
         bot.RestUntil = DateTime.MinValue;
         bot.TransitionPauseUntil = DateTime.MinValue;
+        bot.MovementDestination = AreaType.None;
         bot.LoopWaitUntil = DateTime.MinValue;
         bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
         ClearBotRoomExplorePlan(bot);
@@ -598,6 +678,11 @@ public partial class BotPlayerManager
 
         var destination = ChooseBehaviorDestination(bot, matchingId, mapId, playerAreas, closureManager);
         if (destination == AreaType.None) return;
+        if (IsRecentCombatRetreatOrigin(bot, destination))
+        {
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
+            return;
+        }
         if (destination == bot.CurrentArea)
         {
             // 이미 원하는 방(타겟 방 등)에 있음 → 잠시 머물며 회복/기척.
@@ -622,7 +707,8 @@ public partial class BotPlayerManager
 
         bot.Path = path;
         bot.PathIndex = 0;
-        bot.LoopWaitUntil = RandomizedDelayFromNow(BotArrivalWaitMinSeconds, BotArrivalWaitMaxSeconds);
+        bot.MovementDestination = destination;
+        bot.LoopWaitUntil = RandomizedDelayFromNow(0.25, 0.6);
         _logger.LogInformation(
             "Proto0 bot move: BotId={Bot}, Target={Target}, Policy={Policy}, Profile={Profile}, {From}->{To}, Steps={Steps}",
             bot.PlayerId, bot.TargetPlayerId, ActiveProto0BotPolicy, bot.Proto0Profile,
@@ -636,19 +722,22 @@ public partial class BotPlayerManager
         if (color == SurvivorOrbColor.None)
             return false;
 
-        if (!bot.CurrentArea.IsCorridor() &&
-            !IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea) &&
-            areaItemStockManager.HasRemainingOrbColor(matchingId, (int)bot.CurrentArea, color))
-        {
-            bot.OrbFarmingDestination = bot.CurrentArea;
-            bot.OrbFarmingPivotPending = false;
-            return false;
-        }
+        bool currentAreaHasTargetStock = !bot.CurrentArea.IsCorridor() &&
+                                         !IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea) &&
+                                         areaItemStockManager.HasRemainingOrbColor(
+                                             matchingId, (int)bot.CurrentArea, color);
+        bool hasAnyTargetStock = currentAreaHasTargetStock || GameMapData.GetAreas(mapId)
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Any(area => area != AreaType.None && !area.IsCorridor() &&
+                         !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
+                         areaItemStockManager.HasRemainingOrbColor(matchingId, (int)area, color));
 
-        var destination = GameMapData.GetAreas(mapId)
+        var candidates = GameMapData.GetAreas(mapId)
             .Select(region => region.AreaType)
             .Distinct()
             .Where(area => area != AreaType.None && area != bot.CurrentArea && !area.IsCorridor() &&
+                           !IsRecentCombatRetreatOrigin(bot, area) &&
                            !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
                            areaItemStockManager.HasRemainingOrbColor(matchingId, (int)area, color))
             .Select(area => new
@@ -661,13 +750,26 @@ public partial class BotPlayerManager
                     candidate => IsAreaClosingOrClosed(closureManager, matchingId, candidate))
             })
             .Where(candidate => candidate.Path is { Count: > 0 })
-            .OrderBy(candidate => candidate.Path!.Count)
-            .ThenBy(candidate => (int)candidate.Area)
-            .FirstOrDefault();
+            .OrderBy(candidate => CountAreaPressure(matchingId, candidate.Area))
+            .ThenBy(candidate => candidate.Path!.Count)
+            .ThenBy(_ => _rng.Next())
+            .ToList();
+
+        var destination = candidates.FirstOrDefault();
+        if (currentAreaHasTargetStock &&
+            (destination == null ||
+             CountAreaPressure(matchingId, bot.CurrentArea) <=
+             CountAreaPressure(matchingId, destination.Area) + 1))
+        {
+            bot.OrbFarmingDestination = bot.CurrentArea;
+            bot.OrbFarmingPivotPending = false;
+            return false;
+        }
 
         if (destination?.Path == null)
         {
-            bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
+            if (!hasAnyTargetStock)
+                bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
             bot.OrbFarmingDestination = AreaType.None;
             bot.OrbFarmingPivotPending = false;
             return false;
@@ -676,6 +778,7 @@ public partial class BotPlayerManager
         AreaType from = bot.CurrentArea;
         bot.Path = destination.Path;
         bot.PathIndex = 0;
+        bot.MovementDestination = destination.Area;
         bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 1.0);
         bot.OrbFarmingDestination = destination.Area;
         if (bot.OrbFarmingPivotPending)
@@ -700,6 +803,7 @@ public partial class BotPlayerManager
             .Where(area => area != AreaType.None &&
                            area != bot.CurrentArea &&
                            !area.IsCorridor() &&
+                           !IsRecentCombatRetreatOrigin(bot, area) &&
                            (!requireSecludedArea || IsSecludedFarmingArea(mapId, area)) &&
                            !bot.CompletedRoomExploreAreas.Contains(area) &&
                            !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
@@ -713,6 +817,7 @@ public partial class BotPlayerManager
                     .Any(BattleItemCombatData.IsCombatItem)
             })
             .OrderByDescending(candidate => bot.EquippedBattleItemId <= 0 && candidate.CanSpawnBattleItem)
+            .ThenBy(candidate => CountAreaPressure(matchingId, candidate.Area))
             .ThenBy(_ => _rng.Next())
             .Select(candidate => candidate.Area)
             .ToList();
@@ -728,6 +833,7 @@ public partial class BotPlayerManager
 
             bot.Path = path;
             bot.PathIndex = 0;
+            bot.MovementDestination = destination;
             bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 1.0);
             _logger.LogInformation(
                 "Bot post-explore relocation: BotId={Bot}, {From}->{To}, Steps={Steps}",
@@ -770,6 +876,7 @@ public partial class BotPlayerManager
 
         bot.Path = path;
         bot.PathIndex = 0;
+        bot.MovementDestination = targetArea;
         bot.LoopWaitUntil = RandomizedDelayFromNow(0.3, 0.8);
         bot.PendingExploreEndBroadcast = true;
         _logger.LogInformation(
@@ -931,11 +1038,13 @@ public partial class BotPlayerManager
             .Where(area => area != AreaType.None &&
                            area != bot.CurrentArea &&
                            !area.IsCorridor() &&
+                           !IsRecentCombatRetreatOrigin(bot, area) &&
                            !bot.CompletedRoomExploreAreas.Contains(area) &&
                            (!requireSecludedArea || IsSecludedFarmingArea(mapId, area)) &&
                            !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
                            areaItemStockManager.HasRemaining(matchingId, (int)area))
-            .OrderBy(_ => _rng.Next()));
+            .OrderBy(area => CountAreaPressure(matchingId, area))
+            .ThenBy(_ => _rng.Next()));
 
         foreach (var area in areaOrder)
         {
@@ -1302,6 +1411,7 @@ public partial class BotPlayerManager
         {
             bot.Path.Clear();
             bot.PathIndex = 0;
+            bot.MovementDestination = AreaType.None;
             bot.PendingRngInteractId = interactId;
             bot.PendingChecklistTaskId = 0;
             bot.PendingChecklistInteractId = 0;
@@ -1329,6 +1439,7 @@ public partial class BotPlayerManager
 
         bot.Path = path;
         bot.PathIndex = 0;
+        bot.MovementDestination = area;
         bot.PendingRngInteractId = interactId;
         bot.PendingChecklistTaskId = 0;
         bot.PendingChecklistInteractId = 0;
@@ -1364,6 +1475,7 @@ public partial class BotPlayerManager
         {
             bot.Path.Clear();
             bot.PathIndex = 0;
+            bot.MovementDestination = AreaType.None;
         }
         else
         {
@@ -1374,6 +1486,7 @@ public partial class BotPlayerManager
 
             bot.Path = path;
             bot.PathIndex = 0;
+            bot.MovementDestination = area;
             bot.PendingExploreEndBroadcast = true;
         }
 

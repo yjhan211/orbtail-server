@@ -264,7 +264,7 @@ public sealed class BotSurvivorLootingTests
                 fixture.GroundItemManager,
                 fixture.ChecklistManager);
             var spawnedRecorder = Assert.Single(completed.GroundItemSpawns);
-            Assert.Equal(107000010, spawnedRecorder.ItemId);
+            Assert.Equal(107000020, spawnedRecorder.ItemId);
             Assert.Contains(marker.Id, bot.ExploredRngInteractIds);
             Assert.Equal(GroundItemClaimStatus.Reserved,
                 fixture.GroundItemManager.TryClaim(
@@ -282,9 +282,9 @@ public sealed class BotSurvivorLootingTests
                 fixture.GroundItemManager,
                 Array.Empty<BotCombatTargetSnapshot>());
             Assert.Single(pickup.GroundItemPickups);
-            Assert.Equal(107000010,
+            Assert.Equal(107000020,
                 fixture.InventoryManager.GetEquippedBattleItem(matchingId, botPlayerId)!.ItemId);
-            Assert.Equal(107000010, bot.EquippedBattleItemId);
+            Assert.Equal(107000020, bot.EquippedBattleItemId);
 
             BackdateMissionTick(bot);
             var equipped = fixture.BotManager.ProcessBotMissionTick(

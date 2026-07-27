@@ -26,7 +26,6 @@ public partial class GameServer(
     INatsClientFactory natsClientFactory,
     ICacheHelper cacheHelper,
     INetworkService networkService,
-    IRedisConnectionPool redisPool,
     ServerConfig serverConfig)
     : IHostedService
 {
@@ -1684,6 +1683,7 @@ public partial class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 ProcessBotMissionForMatching(matchingId, activeSessions);
@@ -1710,6 +1710,7 @@ public partial class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 // 프로토 0: 봇 타겟 추적/떠보기를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
@@ -1723,14 +1724,16 @@ public partial class GameServer(
                         s.PlayerId!.Value,
                         s.CurrentArea,
                         s.LastValidatedPosition!,
-                        _inGameInventoryManager.GetEquippedBattleItem(matchingId, s.PlayerId.Value)?.ItemId ?? 0))
+                        _inGameInventoryManager.GetEquippedBattleItem(matchingId, s.PlayerId.Value)?.ItemId ?? 0,
+                        s.CurrentCorruption))
                     .Concat(_botPlayerManager.GetBots(matchingId)
                         .Where(bot => !bot.IsEliminated)
                         .Select(bot => new BotCombatTargetSnapshot(
                             bot.PlayerId,
                             bot.CurrentArea,
                             bot.Position,
-                            _inGameInventoryManager.GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0)))
+                            _inGameInventoryManager.GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0,
+                            bot.Corruption)))
                     .ToList();
                 var movementResult = _botPlayerManager.ProcessBotMovementTick(
                     matchingId,
@@ -1995,7 +1998,7 @@ public partial class GameServer(
     {
         try
         {
-            var redLockFactory = redisPool.GetRedLockFactory();
+            var redLockFactory = cacheHelper.GetRedLockFactory();
             natsClientFactory.Create();
             _ = new GameClientSession(
                 token,
