@@ -2121,6 +2121,13 @@ public partial class GameServer(
         try
         {
             await cacheHelper.HashDeleteAsync("matching_bots", matchingId);
+            string prefix = $"{matchingId}:";
+            var fields = (await cacheHelper.HashGetAllAsync("matching_player_buffs"))
+                .Select(entry => entry.Name.ToString())
+                .Where(field => field.StartsWith(prefix, StringComparison.Ordinal))
+                .ToArray();
+            foreach (string field in fields)
+                await cacheHelper.HashDeleteAsync("matching_player_buffs", field);
         }
         catch (Exception ex)
         {
@@ -2654,6 +2661,8 @@ public partial class GameServer(
                 isGameOver ? "not_required" : "resource_ranking",
                 finalPlayerStats);
             _gameEventLogManager.Clear(matchingId);
+            _botPlayerManager.CleanupMatching(matchingId);
+            _ = CleanupAbandonedMatchingRedisAsync(matchingId);
             StopHeadlessRoundTimer(matchingId);
             return;
         }

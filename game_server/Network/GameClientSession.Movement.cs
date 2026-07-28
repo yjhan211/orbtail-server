@@ -59,9 +59,6 @@ public partial class GameClientSession
             var currentCell = WorldPositionToCell(validatedPosition);
             var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
 
-            // 위치/지역 상태를 반영한 뒤 실행할 주기적 저장 여부를 미리 계산한다.
-            bool needsDbUpdate = now - _lastSaveTime > TimeSpan.FromSeconds(1) || _lastValidatedPosition == null;
-            bool isIdle = msg.Velocity.Magnitude() < 0.01f;
 
             // 3. Area 변경 처리 (퇴장 조건 통과한 경우만)
             long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -129,25 +126,6 @@ public partial class GameClientSession
                 await HandleAreaChange(oldArea, newArea);
             }
 
-            // 4. 주기적 저장 (1초마다). 서버 메모리의 위치와 지역은 await 전에 일관되게 게시한다.
-            if (needsDbUpdate && !isIdle)
-            {
-                await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-                var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
-
-                if (playerInfo != null)
-                {
-                    playerInfo.ObjectInfo.Position = validatedPosition;
-                    playerInfo.ObjectInfo.Velocity = msg.Velocity;
-                    playerInfo.ObjectInfo.Rotation = msg.Rotation;
-                    playerInfo.ObjectInfo.MoveTimestamp = now;
-                    playerInfo.ObjectInfo.Cell = Cell.Clone(currentCell);
-                    playerInfo.LastCell = Cell.Clone(currentCell);
-
-                    await playerInfo.Save(CacheHelper);
-                    _lastSaveTime = now;
-                }
-            }
 
             TrySendCorridorEncounterEvents(validatedPosition);
             TrySendRoomEncounterEventsFromVision(validatedPosition);

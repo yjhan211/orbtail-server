@@ -77,7 +77,7 @@ public partial class GameClientSession : SessionBase
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
     private DateTime _lastInteractRejectTime = DateTime.MinValue;
     private DateTime _lastMoveTime = DateTime.UtcNow;
-    private DateTime _lastSaveTime = DateTime.UtcNow;
+
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
 
     private Vector3f? _lastValidatedPosition;
