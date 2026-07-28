@@ -27,14 +27,14 @@ internal static class EmotionAfterimageMonsterSpawnData
 
         // The first Classroom4 point is the already-placed MonsterT1 template.
         // Keep it at 202001 so the scene template and server identity never diverge.
-        AddNodes(AreaType.Classroom4, 2, 4, [(127, 95), (120, 91), (117, 99)]);
-        AddNodes(AreaType.ExamRoom, 1, 1, [(113, 121), (118, 126)]);
-        AddNodes(AreaType.BroadcastRoom, 1, 2, [(145, 121), (150, 126)]);
-        AddNodes(AreaType.Classroom2, 1, 3, [(177, 121), (182, 126)]);
-        AddNodes(AreaType.Classroom3, 2, 5, [(151, 94), (147, 89), (156, 99)]);
+        AddNodes(AreaType.Classroom4, 3, 4, [(127, 95), (120, 91), (117, 99)]);
+        AddNodes(AreaType.ExamRoom, 2, 1, [(113, 121), (118, 126)]);
+        AddNodes(AreaType.BroadcastRoom, 2, 2, [(145, 121), (150, 126)]);
+        AddNodes(AreaType.Classroom2, 2, 3, [(177, 121), (182, 126)]);
+        AddNodes(AreaType.Classroom3, 3, 5, [(151, 94), (147, 89), (156, 99)]);
 
-        AddNodes(AreaType.Library, 3, 6, [(92, 86), (96, 91), (90, 96), (97, 101)]);
-        AddNodes(AreaType.Gym, 3, 7, [(180, 86), (188, 90), (180, 97), (190, 99)]);
+        AddNodes(AreaType.Library, 4, 6, [(92, 86), (96, 91), (90, 96), (97, 101)]);
+        AddNodes(AreaType.Gym, 4, 7, [(180, 86), (188, 90), (180, 97), (190, 99)]);
 
         AddNodes(AreaType.Storage, 2, 8, [(87, 62), (93, 67)]);
         AddNodes(AreaType.Junkyard, 2, 9, [(103, 69), (112, 72)]);
@@ -44,7 +44,7 @@ internal static class EmotionAfterimageMonsterSpawnData
         AddNodes(AreaType.Junkyard2, 2, 12, [(179, 72), (190, 75)]);
         AddNodes(AreaType.Storage2, 2, 13, [(201, 73), (208, 79)]);
 
-        AddNodes(AreaType.Ground, 4, 14, [(92, 28), (104, 35), (118, 42), (130, 49), (112, 24), (136, 30)]);
+        AddNodes(AreaType.Ground, 6, 14, [(92, 28), (104, 35), (118, 42), (130, 49), (112, 24), (136, 30)]);
         return definitions.ToArray();
 
         void AddNodes(AreaType area, int liveLimit, int priority, IReadOnlyList<(int x, int y)> cells)
@@ -64,8 +64,9 @@ internal static class EmotionAfterimageMonsterSpawnData
 
     private static int InitialOccupancy(AreaType area) => area switch
     {
-        AreaType.Library or AreaType.Gym => 2,
-        _ => 1
+        AreaType.Library or AreaType.Gym => 3,
+        AreaType.Ground => 4,
+        _ => 2
     };
 
     private static int RewardFor(int monsterId) => ((monsterId - EmotionAfterimageMonsterManager.FirstMonsterId) % 4) switch

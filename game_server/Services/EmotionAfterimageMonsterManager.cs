@@ -165,9 +165,9 @@ public sealed class EmotionAfterimageMonsterManager
                     elapsedSeconds = Math.Clamp(elapsedSeconds, 0f, 0.1f);
                     var targets = possibleTargets
                         .Where(target => target.MapId == state.Definition.MapId && target.Area == state.Definition.Area)
-                        .Where(target => IsWithinRange(state.Definition.Position, target.Position, state.Definition.LeashRange))
-                        .Where(target => state.DamageByPlayer.ContainsKey(target.PlayerId))
-                        .OrderByDescending(target => state.DamageByPlayer[target.PlayerId])
+                        // A same-area monster is a persistent local threat, not an
+                        // interaction prompt: it notices every player in its room.
+                        .OrderByDescending(target => state.DamageByPlayer.GetValueOrDefault(target.PlayerId))
                         .ThenBy(target => DistanceSquared(state.Definition.Position, target.Position))
                         .ThenBy(target => target.PlayerId).ToList();
                     if (targets.Count == 0)
