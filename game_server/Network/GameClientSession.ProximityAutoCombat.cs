@@ -1,6 +1,7 @@
 using game_server.services;
 using network.common;
 using network.common.data;
+using network.packets;
 
 namespace game_server.network;
 
@@ -13,6 +14,8 @@ public partial class GameClientSession
     internal const int SurvivorSunResonanceEventType = 21;
     internal const int SurvivorWindResonanceEventType = 22;
     internal const int SurvivorWaveResonanceEventType = 23;
+    internal const int EmotionAfterimageMonsterAttackTakenEventType = 24;
+    internal const int EmotionAfterimageMonsterAttackDealtEventType = 25;
 
     internal void ApplyProximityAutoCombatHit(long sourcePlayerId, AreaType area, int weaponItemId, int damage)
     {
@@ -58,13 +61,27 @@ public partial class GameClientSession
             weaponItemId,
             damage);
     }
-    internal void ApplyEmotionAfterimageMonsterHit(int damage)
+    internal void SendEmotionAfterimageMonsterAttackFeedback(int monsterId, AreaType area, int weaponItemId, int damage)
     {
-        if (!PlayerId.HasValue || IsEliminated || damage <= 0)
+        if (!PlayerId.HasValue || IsEliminated || monsterId <= 0 || weaponItemId <= 0 || damage <= 0)
+            return;
+
+        // targetCorruption is event-specific metadata here: it carries the attacked monster ID.
+        using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
+            PlayerId.Value, area, EmotionAfterimageMonsterAttackDealtEventType, 0,
+            weaponItemId, damage, monsterId);
+        Send(packet);
+    }
+    internal void ApplyEmotionAfterimageMonsterHit(int monsterId, int damage)
+    {
+        if (!PlayerId.HasValue || IsEliminated || monsterId <= 0 || damage <= 0)
             return;
 
         // Monster damage has no survivor source, so final PvP damage accounting remains correct.
         ModifyStats(corruptionDelta: damage);
+        // The encounter envelope carries the visual source (monster id) and the authoritative damage value.
+        SendEncounterEvent(PlayerId.Value, CurrentArea, EmotionAfterimageMonsterAttackTakenEventType,
+            0, monsterId, damage);
     }
 
     internal void SendSurvivorOrbResonanceFeedback(SurvivorOrbColor color)

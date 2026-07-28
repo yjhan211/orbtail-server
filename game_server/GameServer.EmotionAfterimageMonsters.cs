@@ -71,6 +71,9 @@ public partial class GameServer
                     matchingSessions);
 
             BroadcastMonsterSnapshot(matchingId, matchingSessions, new[] { result.State });
+            matchingSessions.FirstOrDefault(session =>
+                    session.PlayerId == attack.AttackerPlayerId && !session.IsEliminated)
+                ?.SendEmotionAfterimageMonsterAttackFeedback(monsterId, attack.Area, attack.WeaponItemId, attack.Damage);
             logger.LogInformation(
                 "Emotion afterimage hit: MatchingId={MatchingId}, MonsterId={MonsterId}, Attacker={Attacker}, Damage={Damage}, RemainingHp={Health}, Killed={Killed}",
                 matchingId, monsterId, attack.AttackerPlayerId, attack.Damage, result.State.CurrentHealth, result.Killed);
@@ -108,7 +111,7 @@ public partial class GameServer
             session.PlayerId == attack.TargetPlayerId && !session.IsEliminated && session.CurrentArea == attack.Area);
         if (targetSession != null)
         {
-            targetSession.ApplyEmotionAfterimageMonsterHit(attack.Damage);
+            targetSession.ApplyEmotionAfterimageMonsterHit(attack.MonsterId, attack.Damage);
             return;
         }
 
