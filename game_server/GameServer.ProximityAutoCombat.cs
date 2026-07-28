@@ -141,6 +141,8 @@ public partial class GameServer
             }
             ApplyProximityCombatVolley(matchingId, attacks, matchingSessions, matchingBots, activeSessions, activeOrbColors, resonanceStates, actors, nowUtc);
         }
+
+        ProcessEmotionAfterimageMonsterCombat(matchingId, matchingSessions, matchingBots, actors, nowUtc);
     }
     private List<ProximityCombatActor> BuildProximityCombatActors(
         long matchingId,

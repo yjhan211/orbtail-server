@@ -58,6 +58,15 @@ public partial class GameClientSession
             weaponItemId,
             damage);
     }
+    internal void ApplyEmotionAfterimageMonsterHit(int damage)
+    {
+        if (!PlayerId.HasValue || IsEliminated || damage <= 0)
+            return;
+
+        // Monster damage has no survivor source, so final PvP damage accounting remains correct.
+        ModifyStats(corruptionDelta: damage);
+    }
+
     internal void SendSurvivorOrbResonanceFeedback(SurvivorOrbColor color)
     {
         if (!PlayerId.HasValue || IsEliminated)

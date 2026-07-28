@@ -45,6 +45,7 @@ public partial class GameClientSession : SessionBase
     private readonly ItemPoolManager _itemPoolManager;
     private readonly AreaItemStockManager _areaItemStockManager;
     private readonly GroundItemManager _groundItemManager;
+    private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly SabotageManager _sabotageManager;
@@ -130,6 +131,7 @@ public partial class GameClientSession : SessionBase
         ItemPoolManager itemPoolManager,
         AreaItemStockManager areaItemStockManager,
         GroundItemManager groundItemManager,
+        EmotionAfterimageMonsterManager emotionAfterimageMonsterManager,
         DoorStateManager doorStateManager,
         SabotageManager sabotageManager,
         ManittoChainManager manittoChainManager,
@@ -152,6 +154,7 @@ public partial class GameClientSession : SessionBase
         _itemPoolManager = itemPoolManager;
         _areaItemStockManager = areaItemStockManager;
         _groundItemManager = groundItemManager;
+        _emotionAfterimageMonsterManager = emotionAfterimageMonsterManager;
         _doorStateManager = doorStateManager;
         _sabotageManager = sabotageManager;
         _manittoChainManager = manittoChainManager;

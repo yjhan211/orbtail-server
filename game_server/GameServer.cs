@@ -43,6 +43,7 @@ public partial class GameServer(
     private readonly ItemPoolManager _itemPoolManager = new();
     private readonly AreaItemStockManager _areaItemStockManager = new();
     private readonly GroundItemManager _groundItemManager = new();
+    private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager = new();
     private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
@@ -2014,6 +2015,7 @@ public partial class GameServer(
                 _itemPoolManager,
                 _areaItemStockManager,
                 _groundItemManager,
+                _emotionAfterimageMonsterManager,
                 _doorStateManager,
                 _sabotageManager,
                 _manittoChainManager,
@@ -2086,6 +2088,7 @@ public partial class GameServer(
         _checklistManager.RemoveMatchingState(matchingId);
         _areaItemStockManager.RemoveMatchingState(matchingId);
         _groundItemManager.RemoveMatchingState(matchingId);
+        _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId);
         _inGameInventoryManager.RemoveMatchingState(matchingId);
         _interactableStateManager.RemoveMatchingState(matchingId);
         _areaRuleManager.RemoveMatchingState(matchingId);
@@ -2281,6 +2284,7 @@ public partial class GameServer(
         _areaClosureManager.InitializeMatching(matchingId, jobs);
         _areaItemStockManager.InitializeMatching(matchingId);
         _groundItemManager.InitializeMatching(matchingId);
+        _emotionAfterimageMonsterManager.InitializeMatching(matchingId);
         _doorStateManager.InitializeMatching(matchingId);
         _checklistManager.StartRound(matchingId, 1, playerIds,
             playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
