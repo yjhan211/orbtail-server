@@ -392,6 +392,7 @@ public partial class GameClientSession
                 // 5. 나에게 새 Area의 Interactable 목록 전송
                 SendInteractableList(newArea);
                 SendGroundItemSnapshot(newArea);
+                SendMonsterSnapshot(newArea);
 
                 // 6. 사보타주 이벤트 트리거 (해당 Area 최초 진입 시)
                 _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, newArea);

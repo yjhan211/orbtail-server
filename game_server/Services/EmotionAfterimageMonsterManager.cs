@@ -14,6 +14,7 @@ public sealed class EmotionAfterimageMonsterManager
     private static readonly MonsterDefinition[] Definitions = EmotionAfterimageMonsterSpawnData.Definitions;
     private static readonly TimeSpan ResetDelay = TimeSpan.FromSeconds(6);
     private readonly ConcurrentDictionary<long, MatchingMonsterState> _matchingStates = new();
+    private Action<long>? _matchingStateRemoved;
 
     public void InitializeMatching(long matchingId)
     {
@@ -21,10 +22,22 @@ public sealed class EmotionAfterimageMonsterManager
         _matchingStates.GetOrAdd(matchingId, _ => new MatchingMonsterState(Definitions));
     }
 
-    public void RemoveMatchingState(long matchingId) => _matchingStates.TryRemove(matchingId, out _);
+    public void SetMatchingStateRemovedCallback(Action<long> callback) =>
+        _matchingStateRemoved = callback ?? throw new ArgumentNullException(nameof(callback));
+
+    public void RemoveMatchingState(long matchingId)
+    {
+        _matchingStates.TryRemove(matchingId, out _);
+        _matchingStateRemoved?.Invoke(matchingId);
+    }
 
     public IReadOnlyList<MonsterRuntimeInfo> GetSnapshot(long matchingId) =>
         _matchingStates.TryGetValue(matchingId, out var state) ? state.GetSnapshot() : [];
+
+    public IReadOnlyList<MonsterRuntimeInfo> GetSnapshot(long matchingId, AreaType area) =>
+        area != AreaType.None && _matchingStates.TryGetValue(matchingId, out var state)
+            ? state.GetSnapshot(area)
+            : [];
 
     public IReadOnlyList<MonsterCombatTarget> GetAliveTargets(long matchingId) =>
         _matchingStates.TryGetValue(matchingId, out var state) ? state.GetAliveTargets() : [];
@@ -75,12 +88,22 @@ public sealed class EmotionAfterimageMonsterManager
                 return _monsters.Values.OrderBy(state => state.Definition.MonsterId).Select(ToRuntimeInfo).ToList();
         }
 
+        public IReadOnlyList<MonsterRuntimeInfo> GetSnapshot(AreaType area)
+        {
+            lock (_sync)
+                return _monsters.Values
+                    .Where(state => state.Definition.Area == area)
+                    .OrderBy(state => state.Definition.MonsterId)
+                    .Select(ToRuntimeInfo)
+                    .ToList();
+        }
+
         public IReadOnlyList<MonsterCombatTarget> GetAliveTargets()
         {
             lock (_sync)
                 return _monsters.Values.Where(state => state.IsAlive).OrderBy(state => state.Definition.MonsterId)
                     .Select(state => new MonsterCombatTarget(state.Definition.MonsterId, state.Definition.MapId,
-                        state.Definition.Area, state.Position)).ToList();
+                        state.Definition.Area, state.Position, state.Definition.RewardItemId)).ToList();
         }
 
         public bool HasAliveMonsterInArea(AreaType area)
@@ -152,6 +175,7 @@ public sealed class EmotionAfterimageMonsterManager
 
         public MonsterTickResult Tick(IReadOnlyList<MonsterSpatialTarget> possibleTargets, DateTime nowUtc)
         {
+            var targetsByArea = BuildTargetBuckets(possibleTargets);
             lock (_sync)
             {
                 var changed = new List<MonsterRuntimeInfo>();
@@ -163,14 +187,8 @@ public sealed class EmotionAfterimageMonsterManager
                     float elapsedSeconds = (float)(nowUtc - state.LastUpdatedAtUtc).TotalSeconds;
                     state.LastUpdatedAtUtc = nowUtc;
                     elapsedSeconds = Math.Clamp(elapsedSeconds, 0f, 0.1f);
-                    var targets = possibleTargets
-                        .Where(target => target.MapId == state.Definition.MapId && target.Area == state.Definition.Area)
-                        // A same-area monster is a persistent local threat, not an
-                        // interaction prompt: it notices every player in its room.
-                        .OrderByDescending(target => state.DamageByPlayer.GetValueOrDefault(target.PlayerId))
-                        .ThenBy(target => DistanceSquared(state.Definition.Position, target.Position))
-                        .ThenBy(target => target.PlayerId).ToList();
-                    if (targets.Count == 0)
+                    if (!targetsByArea.TryGetValue((state.Definition.MapId, state.Definition.Area), out var targets) ||
+                        targets.Count == 0)
                     {
                         bool movedHome = MoveTowards(state, state.Definition.Position, elapsedSeconds);
                         if (state.CurrentHealth < state.Definition.MaxHealth && nowUtc - state.LastDamagedAtUtc >= ResetDelay)
@@ -184,7 +202,9 @@ public sealed class EmotionAfterimageMonsterManager
                         continue;
                     }
 
-                    var target = targets[0];
+                    // A same-area monster is a persistent local threat, not an
+                    // interaction prompt: it notices every player in its room.
+                    var target = SelectTarget(state, targets);
                     bool moved = MoveTowards(state, target.Position, elapsedSeconds);
                     if (moved) changed.Add(ToRuntimeInfo(state));
                     if (nowUtc < state.NextAttackAtUtc ||
@@ -196,6 +216,54 @@ public sealed class EmotionAfterimageMonsterManager
                 }
                 return new MonsterTickResult(changed, attacks);
             }
+        }
+
+        private static Dictionary<(MapId MapId, AreaType Area), List<MonsterSpatialTarget>> BuildTargetBuckets(
+            IReadOnlyList<MonsterSpatialTarget> possibleTargets)
+        {
+            var targetsByArea = new Dictionary<(MapId, AreaType), List<MonsterSpatialTarget>>();
+            foreach (var target in possibleTargets)
+            {
+                var key = (target.MapId, target.Area);
+                if (!targetsByArea.TryGetValue(key, out var targets))
+                {
+                    targets = new List<MonsterSpatialTarget>();
+                    targetsByArea[key] = targets;
+                }
+                targets.Add(target);
+            }
+            return targetsByArea;
+        }
+
+        private static MonsterSpatialTarget SelectTarget(MonsterState state,
+            IReadOnlyList<MonsterSpatialTarget> targets)
+        {
+            var selected = targets[0];
+            int selectedDamage = state.DamageByPlayer.GetValueOrDefault(selected.PlayerId);
+            float selectedDistance = DistanceSquared(state.Definition.Position, selected.Position);
+
+            for (int index = 1; index < targets.Count; index++)
+            {
+                var candidate = targets[index];
+                int candidateDamage = state.DamageByPlayer.GetValueOrDefault(candidate.PlayerId);
+                if (candidateDamage < selectedDamage)
+                    continue;
+
+                float candidateDistance = DistanceSquared(state.Definition.Position, candidate.Position);
+                if (candidateDamage == selectedDamage && candidateDistance > selectedDistance)
+                    continue;
+                if (candidateDamage == selectedDamage && candidateDistance.Equals(selectedDistance) &&
+                    candidate.PlayerId >= selected.PlayerId)
+                {
+                    continue;
+                }
+
+                selected = candidate;
+                selectedDamage = candidateDamage;
+                selectedDistance = candidateDistance;
+            }
+
+            return selected;
         }
 
         private static MonsterRuntimeInfo ToRuntimeInfo(MonsterState state) => new()
@@ -267,7 +335,12 @@ public readonly record struct MonsterDefinition(int MonsterId, MapId MapId, Area
     int MaxHealth, int AttackDamage, float AttackRange, float AttackIntervalSeconds, int RewardItemId,
     float MoveSpeed, float LeashRange, int AreaAliveLimit, bool StartsActive, int SpawnPriority);
 
-public readonly record struct MonsterCombatTarget(int MonsterId, MapId MapId, AreaType Area, Vector3f Position);
+public readonly record struct MonsterCombatTarget(
+    int MonsterId,
+    MapId MapId,
+    AreaType Area,
+    Vector3f Position,
+    int RewardItemId);
 public readonly record struct MonsterSpatialTarget(long PlayerId, MapId MapId, AreaType Area, Vector3f Position);
 public readonly record struct MonsterAttack(int MonsterId, long TargetPlayerId, AreaType Area, int Damage);
 public readonly record struct MonsterDamageResult(MonsterRuntimeInfo? State, bool Killed, int RewardItemId, bool StateChanged)

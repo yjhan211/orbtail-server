@@ -896,6 +896,7 @@ public partial class GameClientSession
         _checklistManager.RemoveMatchingState(matchingId);
         _areaItemStockManager.RemoveMatchingState(matchingId);
         _groundItemManager.RemoveMatchingState(matchingId);
+        _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId);
         _inGameInventoryManager.RemoveMatchingState(matchingId);
         _interactableStateManager.RemoveMatchingState(matchingId);
         _areaRuleManager.RemoveMatchingState(matchingId);

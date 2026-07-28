@@ -19,6 +19,32 @@ public class EmotionAfterimageMonsterManagerTests
     }
 
     [Fact]
+    public void AreaSnapshot_ReturnsOnlyNodesForRequestedArea()
+    {
+        var manager = new EmotionAfterimageMonsterManager();
+        manager.InitializeMatching(202);
+
+        var snapshot = manager.GetSnapshot(202, AreaType.Classroom4);
+
+        Assert.Equal(3, snapshot.Count);
+        Assert.All(snapshot, info => Assert.Equal(AreaType.Classroom4, info.AreaType));
+    }
+
+    [Fact]
+    public void RemoveMatchingState_InvokesRuntimeCleanupCallback()
+    {
+        var manager = new EmotionAfterimageMonsterManager();
+        long removedMatchingId = 0;
+        manager.SetMatchingStateRemovedCallback(matchingId => removedMatchingId = matchingId);
+        manager.InitializeMatching(202);
+
+        manager.RemoveMatchingState(202);
+
+        Assert.Equal(202, removedMatchingId);
+        Assert.Empty(manager.GetSnapshot(202));
+    }
+
+    [Fact]
     public void Damage_ResetsAfterLeashDelay_WhenNoPlayerRemainsInRange()
     {
         var manager = new EmotionAfterimageMonsterManager();
@@ -101,6 +127,22 @@ public class EmotionAfterimageMonsterManagerTests
         [
             new MonsterSpatialTarget(10, MapId.School, AreaType.Classroom4, new Vector3f(16.4f, 55.7f, 0f)),
             new MonsterSpatialTarget(20, MapId.School, AreaType.Classroom4, new Vector3f(16.5f, 55.8f, 0f))
+        ], now).Attacks;
+
+        Assert.Equal(10, Assert.Single(attacks).TargetPlayerId);
+    }
+
+    [Fact]
+    public void Tick_BucketsTargetsByMapAndAreaBeforeSelecting()
+    {
+        var manager = new EmotionAfterimageMonsterManager();
+        var now = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc);
+        manager.InitializeMatching(202);
+
+        var attacks = manager.Tick(202,
+        [
+            new MonsterSpatialTarget(99, MapId.None, AreaType.Classroom4, new Vector3f(16f, 55.5f, 0f)),
+            new MonsterSpatialTarget(10, MapId.School, AreaType.Classroom4, new Vector3f(16f, 55.5f, 0f))
         ], now).Attacks;
 
         Assert.Equal(10, Assert.Single(attacks).TargetPlayerId);

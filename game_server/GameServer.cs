@@ -173,6 +173,8 @@ public partial class GameServer(
             GameDataHelper.Initialize();
             MapHelper.Initialize(serverConfig.GameServerNum);
             Action<string> log = msg => logger.LogInformation(msg);
+            _emotionAfterimageMonsterManager.SetMatchingStateRemovedCallback(
+                CleanupEmotionAfterimageMonsterRuntime);
             _interactableStateManager.Initialize(log);
             _inGameInventoryManager.Initialize(log);
             _areaRuleManager.Initialize(log);
@@ -2660,6 +2662,7 @@ public partial class GameServer(
                 isGameOver ? "last_survivor" : "round_limit",
                 isGameOver ? "not_required" : "resource_ranking",
                 finalPlayerStats);
+            _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId);
             _gameEventLogManager.Clear(matchingId);
             _botPlayerManager.CleanupMatching(matchingId);
             _ = CleanupAbandonedMatchingRedisAsync(matchingId);

@@ -11,6 +11,7 @@ public class UserToken
     private readonly object _lockSendingQueue = new();
     private readonly MessageResolver _messageResolver = new();
     private readonly Queue<Packet> _sendingQueue = new();
+    private int _sendOffset;
     public readonly SemaphoreSlim LockDisconnect = new(1);
     private Timer? _heartbeatTimer;
     private IPeer? _peer;
@@ -31,7 +32,7 @@ public class UserToken
     {
         _heartbeatTimer = new Timer(_ =>
             {
-                var msg = Packet.Create((int)Protocol.C_TO_U_HEART_BEAT);
+                using var msg = Packet.Create((int)Protocol.C_TO_U_HEART_BEAT);
                 Send(msg);
             },
             null,
@@ -63,69 +64,79 @@ public class UserToken
 
     public virtual void Send(Packet msg)
     {
-        Packet clone = new();
-        msg.CopyTo(clone);
+        var clone = PacketBufferPool.Pop();
+        try
+        {
+            msg.CopyTo(clone);
+        }
+        catch
+        {
+            clone.Dispose();
+            throw;
+        }
 
         lock (_lockSendingQueue)
         {
-            var isSending = _sendingQueue.Count > 0;
+            if (IsReleased || Socket == null)
+            {
+                clone.Dispose();
+                return;
+            }
+
+            bool shouldStartSend = _sendingQueue.Count == 0;
             _sendingQueue.Enqueue(clone);
 
-            if (!isSending) StartSend();
+            if (shouldStartSend) StartSendLocked();
         }
     }
 
-    private void StartSend()
+    private void StartSendLocked()
     {
-        lock (_lockSendingQueue)
-        {
-            if (IsReleased || Socket == null) return;
+        if (IsReleased || Socket == null || _sendingQueue.Count == 0) return;
 
-            var packet = _sendingQueue.Peek();
-            packet.RecordSize();
+        var packet = _sendingQueue.Peek();
+        if (_sendOffset == 0) packet.RecordSize();
 
-            SendEventArgs!.SetBuffer(SendEventArgs.Offset, packet.Position);
-            Array.Copy(packet.Buffer, 0, SendEventArgs.Buffer!, SendEventArgs.Offset, packet.Position);
+        int remaining = packet.Position - _sendOffset;
+        if (remaining <= 0)
+            throw new InvalidOperationException($"Invalid send offset {_sendOffset} for packet size {packet.Position}");
 
-            if (!Socket.SendAsync(SendEventArgs)) ProcessSend(SendEventArgs);
-        }
+        SendEventArgs!.SetBuffer(SendEventArgs.Offset, remaining);
+        Array.Copy(packet.Buffer, _sendOffset, SendEventArgs.Buffer!, SendEventArgs.Offset, remaining);
+
+        if (!Socket.SendAsync(SendEventArgs)) ProcessSend(SendEventArgs);
     }
 
     public void ProcessSend(SocketAsyncEventArgs sendArgs)
     {
         if (sendArgs.SocketError != SocketError.Success || sendArgs.BytesTransferred <= 0)
         {
+            OnRemoved();
             throw new Exception($"[ProcessSend] SocketError:{sendArgs.SocketError}, bytesTransferred:{sendArgs.BytesTransferred}");
         }
 
         lock (_lockSendingQueue)
         {
-            // 보낼 것이 없음
-            if (_sendingQueue.Count <= 0) return;
-
-            // 전송 완료
-            if (_sendingQueue.Sum(buffer => buffer.Position) <= sendArgs.BytesTransferred)
+            if (_sendingQueue.Count == 0)
             {
-                _sendingQueue.Clear();
+                _sendOffset = 0;
                 return;
             }
 
-            var sum = 0;
-            while (true)
+            var packet = _sendingQueue.Peek();
+            _sendOffset += sendArgs.BytesTransferred;
+            if (_sendOffset < packet.Position)
             {
-                sum += _sendingQueue.Peek().Position;
-
-                // 이미 보낸 패킷이므로 제거
-                if (sum <= sendArgs.BytesTransferred)
-                {
-                    _sendingQueue.Dequeue();
-                    continue;
-                }
-
-                break;
+                StartSendLocked();
+                return;
             }
 
-            StartSend();
+            if (_sendOffset > packet.Position)
+                throw new InvalidOperationException($"Sent {_sendOffset} bytes for packet size {packet.Position}");
+
+            _sendingQueue.Dequeue().Dispose();
+            _sendOffset = 0;
+            StartSendLocked();
         }
     }
 
@@ -145,14 +156,18 @@ public class UserToken
     {
         lock (_lockSendingQueue)
         {
-            _sendingQueue.Clear();
+            if (IsReleased) return;
+            IsReleased = true;
+            while (_sendingQueue.Count > 0)
+                _sendingQueue.Dequeue().Dispose();
+            _sendOffset = 0;
         }
 
         if (_heartbeatTimer != null)
         {
             using var waitHandle = new ManualResetEvent(false);
             _heartbeatTimer.Dispose(waitHandle);
-            waitHandle.WaitOne(); // 타이머가 완전히 종료될 때까지 대기
+            waitHandle.WaitOne();
             _heartbeatTimer = null;
         }
 

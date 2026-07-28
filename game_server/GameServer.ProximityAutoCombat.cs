@@ -240,6 +240,7 @@ public partial class GameServer
                                   (windActive ? SurvivorOrbData.WindAttackRangeMultiplier : 1f),
                     Damage = combatData.Damage,
                     AttackIntervalSeconds = combatData.AttackIntervalSeconds *
+                                            SurvivorOrbData.GetBaseAttackIntervalMultiplier(orbColor) *
                                             (windActive ? SurvivorOrbData.WindAttackIntervalMultiplier : 1f),
                     ProjectileWidth = combatData.ProjectileWidth,
                     EffectDurationSeconds = combatData.EffectDurationSeconds,

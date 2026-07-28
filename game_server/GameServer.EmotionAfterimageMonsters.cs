@@ -1,4 +1,5 @@
 using game_server.network;
+using System.Collections.Concurrent;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -12,7 +13,7 @@ namespace game_server;
 public partial class GameServer
 {
     private readonly ProximityAutoCombatResolver _monsterAutoCombatResolver = new();
-    private readonly Dictionary<long, DateTime> _nextMonsterPositionBroadcastAtUtc = new();
+    private readonly ConcurrentDictionary<long, DateTime> _nextMonsterPositionBroadcastAtUtc = new();
     private static readonly TimeSpan MonsterPositionBroadcastInterval = TimeSpan.FromMilliseconds(100);
 
     private void ProcessEmotionAfterimageMonsterCombat(
@@ -55,29 +56,47 @@ public partial class GameServer
         var playerMonsterAttacks = _monsterAutoCombatResolver.Resolve(
             matchingId, monsterAttackers, nowUtc, ProximityCombatLineOfSight.CanTarget);
 
+        var monsterTargetsById = aliveMonsterTargets.ToDictionary(target => target.MonsterId);
+        var finalMonsterStates = new MonsterSnapshotAccumulator();
         foreach (var attack in playerMonsterAttacks)
         {
             if (attack.TargetPlayerId >= 0)
                 continue;
 
-            int monsterId = checked((int)-attack.TargetPlayerId);
-            var result = _emotionAfterimageMonsterManager.ApplyDamage(
-                matchingId, monsterId, attack.AttackerPlayerId, attack.Damage, nowUtc);
-            if (!result.StateChanged || result.State == null)
+            int primaryMonsterId = checked((int)-attack.TargetPlayerId);
+            if (!monsterTargetsById.TryGetValue(primaryMonsterId, out var primaryTarget))
                 continue;
 
-            if (result.Killed)
-                AwardMonsterKill(matchingId, result.State, attack.AttackerPlayerId, result.RewardItemId,
-                    matchingSessions);
+            bool primaryHit = ApplyPlayerOrbDamageToEmotionAfterimageMonster(
+                matchingId,
+                primaryTarget,
+                attack,
+                hitDamageMultiplier: 1f,
+                isSplash: false,
+                nowUtc,
+                matchingSessions,
+                finalMonsterStates);
+            if (!primaryHit || !EmotionAfterimagePveCombatRules.ShouldApplyWaveSplash(
+                    attack.WeaponItemId, attack.TargetPlayerId, attack.IsResonanceProc))
+                continue;
 
-            BroadcastMonsterSnapshot(matchingId, matchingSessions, new[] { result.State });
-            matchingSessions.FirstOrDefault(session =>
-                    session.PlayerId == attack.AttackerPlayerId && !session.IsEliminated)
-                ?.SendEmotionAfterimageMonsterAttackFeedback(monsterId, attack.Area, attack.WeaponItemId, attack.Damage);
-            logger.LogInformation(
-                "Emotion afterimage hit: MatchingId={MatchingId}, MonsterId={MonsterId}, Attacker={Attacker}, Damage={Damage}, RemainingHp={Health}, Killed={Killed}",
-                matchingId, monsterId, attack.AttackerPlayerId, attack.Damage, result.State.CurrentHealth, result.Killed);
+            foreach (var secondaryTarget in EmotionAfterimagePveCombatRules.FindWaveSplashTargets(
+                         aliveMonsterTargets, primaryMonsterId))
+            {
+                ApplyPlayerOrbDamageToEmotionAfterimageMonster(
+                    matchingId,
+                    secondaryTarget,
+                    attack,
+                    SurvivorOrbData.WaveSplashSecondaryDamageMultiplier,
+                    isSplash: true,
+                    nowUtc,
+                    matchingSessions,
+                    finalMonsterStates);
+            }
         }
+
+        if (finalMonsterStates.Count > 0)
+            BroadcastMonsterSnapshot(matchingId, matchingSessions, finalMonsterStates.GetFinalStates());
     }
 
     private static ProximityCombatActor CreateMonsterTargetActor(MonsterCombatTarget monster)
@@ -85,6 +104,61 @@ public partial class GameServer
         var cell = ProximityCombatLineOfSight.WorldPositionToCell(monster.Position);
         return new ProximityCombatActor(
             -monster.MonsterId, monster.Area, monster.Position, 0, 0f, 0, 0f, 0f, 0f, monster.MapId, cell);
+    }
+
+    private bool ApplyPlayerOrbDamageToEmotionAfterimageMonster(
+        long matchingId,
+        MonsterCombatTarget target,
+        ProximityCombatAttack attack,
+        float hitDamageMultiplier,
+        bool isSplash,
+        DateTime nowUtc,
+        IReadOnlyCollection<GameClientSession> matchingSessions,
+        MonsterSnapshotAccumulator finalMonsterStates)
+    {
+        int damage = SurvivorOrbData.CalculatePveDamage(
+            attack.WeaponItemId,
+            target.RewardItemId,
+            attack.Damage,
+            hitDamageMultiplier);
+        if (damage <= 0)
+            return false;
+
+        var result = _emotionAfterimageMonsterManager.ApplyDamage(
+            matchingId, target.MonsterId, attack.AttackerPlayerId, damage, nowUtc);
+        if (!result.StateChanged || result.State == null)
+            return false;
+
+        finalMonsterStates.Record(result.State);
+        if (result.Killed)
+        {
+            AwardMonsterKill(
+                matchingId,
+                result.State,
+                attack.AttackerPlayerId,
+                result.RewardItemId,
+                matchingSessions);
+        }
+
+        matchingSessions.FirstOrDefault(session =>
+                session.PlayerId == attack.AttackerPlayerId && !session.IsEliminated)
+            ?.SendEmotionAfterimageMonsterAttackFeedback(
+                target.MonsterId,
+                target.Area,
+                attack.WeaponItemId,
+                damage);
+
+        logger.LogInformation(
+            "Emotion afterimage hit: MatchingId={MatchingId}, MonsterId={MonsterId}, Attacker={Attacker}, Damage={Damage}, Affinity={Affinity}, Splash={Splash}, RemainingHp={Health}, Killed={Killed}",
+            matchingId,
+            target.MonsterId,
+            attack.AttackerPlayerId,
+            damage,
+            SurvivorOrbData.GetPveDamageMultiplier(attack.WeaponItemId, target.RewardItemId),
+            isSplash,
+            result.State.CurrentHealth,
+            result.Killed);
+        return true;
     }
 
     private static bool HasEligiblePvpTarget(ProximityCombatActor attacker,
@@ -181,20 +255,30 @@ public partial class GameServer
     }
 
     private void BroadcastMonsterSnapshot(long matchingId, IReadOnlyCollection<GameClientSession> sessions,
-        IEnumerable<MonsterRuntimeInfo> states = null)
+        IEnumerable<MonsterRuntimeInfo>? states = null)
     {
-        // Initial/closure syncs use all nodes; movement and damage send state deltas.
-        // The client merges entries by MonsterId, and groups remain within the 2KB budget.
+        // Initial/area-entry syncs are sent directly to one session. Runtime deltas and
+        // closure syncs are routed only to observers currently occupying each monster area.
         var snapshotStates = states ?? _emotionAfterimageMonsterManager.GetSnapshot(matchingId);
-        foreach (var monsterChunk in snapshotStates.Chunk(10))
+        foreach (var monsterChunk in MonsterSnapshotBatcher.CreateAreaChunks(snapshotStates))
         {
+            var observers = sessions.Where(session => session.CurrentArea == monsterChunk.Area).ToList();
+            if (observers.Count == 0)
+                continue;
+
             using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
             {
-                Monsters = monsterChunk.ToList()
+                Monsters = monsterChunk.Monsters
             }));
-            foreach (var session in sessions)
+            foreach (var session in observers)
                 session.Send(packet);
         }
+    }
+
+    private void CleanupEmotionAfterimageMonsterRuntime(long matchingId)
+    {
+        _monsterAutoCombatResolver.RemoveMatching(matchingId);
+        _nextMonsterPositionBroadcastAtUtc.TryRemove(matchingId, out _);
     }
 }
