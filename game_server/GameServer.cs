@@ -1592,6 +1592,12 @@ public partial class GameServer(
                     foreach (var session in sessions) session.Send(packet);
                 }
 
+                if (_emotionAfterimageMonsterManager.ApplyAreaClosureAndSpawnWave(
+                        matchingId, closureTick.ClosedAreas))
+                {
+                    BroadcastMonsterSnapshot(matchingId, sessions);
+                }
+
                 foreach (var closedArea in closureTick.ClosedAreas)
                 {
                     _gameEventLogManager.LogClosure(matchingId, closedArea.ToString());
@@ -2277,8 +2283,7 @@ public partial class GameServer(
             _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
             _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
-            foreach ((int itemId, int count) in GameRuleData.InGameItemList)
-                _inGameInventoryManager.EnsureItemCount(matchingId, bot.PlayerId, itemId, count);
+            SurvivorOrbStartLoadout.EnsureStartingOrb(_inGameInventoryManager, matchingId, bot.PlayerId);
         }
 
         _areaClosureManager.InitializeMatching(matchingId, jobs);

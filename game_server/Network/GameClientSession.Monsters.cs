@@ -12,11 +12,14 @@ public partial class GameClientSession
         if (CurrentMapSubId <= 0)
             return;
 
-        using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
+        foreach (var monsterChunk in _emotionAfterimageMonsterManager.GetSnapshot(CurrentMapSubId).Chunk(10))
         {
-            Monsters = _emotionAfterimageMonsterManager.GetSnapshot(CurrentMapSubId).ToList()
-        }));
-        Send(packet);
+            using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
+            {
+                Monsters = monsterChunk.ToList()
+            }));
+            Send(packet);
+        }
     }
 }

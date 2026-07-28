@@ -222,6 +222,7 @@ namespace network.common
         G_TO_C_SURVIVOR_ORB_EFFECT_STATE,
         G_TO_C_SURVIVOR_AREA_STOCK_STATE,
         G_TO_C_MONSTER_SNAPSHOT,
+        G_TO_C_MONSTER_ATTACK_VFX,
 
         END
     }

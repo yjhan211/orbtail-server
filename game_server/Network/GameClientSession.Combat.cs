@@ -444,7 +444,7 @@ public partial class GameClientSession
     /// <summary>
     ///     인게임 인벤토리 업데이트 전송 (아이템 추가/제거 시)
     /// </summary>
-    private void SendInGameInventoryUpdate(InGameItemInfo item)
+    internal void SendInGameInventoryUpdate(InGameItemInfo item)
     {
         if (!PlayerId.HasValue) return;
 

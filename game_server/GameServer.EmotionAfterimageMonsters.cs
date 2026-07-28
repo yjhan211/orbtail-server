@@ -12,6 +12,8 @@ namespace game_server;
 public partial class GameServer
 {
     private readonly ProximityAutoCombatResolver _monsterAutoCombatResolver = new();
+    private readonly Dictionary<long, DateTime> _nextMonsterPositionBroadcastAtUtc = new();
+    private static readonly TimeSpan MonsterPositionBroadcastInterval = TimeSpan.FromMilliseconds(100);
 
     private void ProcessEmotionAfterimageMonsterCombat(
         long matchingId,
@@ -29,8 +31,8 @@ public partial class GameServer
             .ToList();
 
         var monsterTick = _emotionAfterimageMonsterManager.Tick(matchingId, possibleTargets, nowUtc);
-        if (monsterTick.ChangedStates.Count > 0)
-            BroadcastMonsterSnapshot(matchingId, matchingSessions);
+        if (monsterTick.ChangedStates.Count > 0 && TryConsumeMonsterPositionBroadcastSlot(matchingId, nowUtc))
+            BroadcastMonsterSnapshot(matchingId, matchingSessions, monsterTick.ChangedStates);
 
         foreach (var monsterAttack in monsterTick.Attacks)
             ApplyMonsterAttack(matchingId, monsterAttack, matchingSessions, matchingBots);
@@ -68,7 +70,7 @@ public partial class GameServer
                 AwardMonsterKill(matchingId, result.State, attack.AttackerPlayerId, result.RewardItemId,
                     matchingSessions);
 
-            BroadcastMonsterSnapshot(matchingId, matchingSessions);
+            BroadcastMonsterSnapshot(matchingId, matchingSessions, new[] { result.State });
             logger.LogInformation(
                 "Emotion afterimage hit: MatchingId={MatchingId}, MonsterId={MonsterId}, Attacker={Attacker}, Damage={Damage}, RemainingHp={Health}, Killed={Killed}",
                 matchingId, monsterId, attack.AttackerPlayerId, attack.Damage, result.State.CurrentHealth, result.Killed);
@@ -100,6 +102,8 @@ public partial class GameServer
     private void ApplyMonsterAttack(long matchingId, MonsterAttack attack,
         IReadOnlyCollection<GameClientSession> matchingSessions, IReadOnlyCollection<BotPlayerState> matchingBots)
     {
+        BroadcastMonsterAttackVfx(attack, matchingSessions);
+
         var targetSession = matchingSessions.FirstOrDefault(session =>
             session.PlayerId == attack.TargetPlayerId && !session.IsEliminated && session.CurrentArea == attack.Area);
         if (targetSession != null)
@@ -152,14 +156,42 @@ public partial class GameServer
             session.Send(packet);
     }
 
-    private void BroadcastMonsterSnapshot(long matchingId, IReadOnlyCollection<GameClientSession> sessions)
+    private static void BroadcastMonsterAttackVfx(MonsterAttack attack, IReadOnlyCollection<GameClientSession> sessions)
     {
-        using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
+        using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_ATTACK_VFX);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_ATTACK_VFX
         {
-            Monsters = _emotionAfterimageMonsterManager.GetSnapshot(matchingId).ToList()
+            MonsterId = attack.MonsterId,
+            TargetPlayerId = attack.TargetPlayerId,
+            AreaType = attack.Area
         }));
-        foreach (var session in sessions)
+        foreach (var session in sessions.Where(session => !session.IsEliminated && session.CurrentArea == attack.Area))
             session.Send(packet);
+    }
+    private bool TryConsumeMonsterPositionBroadcastSlot(long matchingId, DateTime nowUtc)
+    {
+        if (_nextMonsterPositionBroadcastAtUtc.TryGetValue(matchingId, out var nextAtUtc) && nowUtc < nextAtUtc)
+            return false;
+
+        _nextMonsterPositionBroadcastAtUtc[matchingId] = nowUtc + MonsterPositionBroadcastInterval;
+        return true;
+    }
+
+    private void BroadcastMonsterSnapshot(long matchingId, IReadOnlyCollection<GameClientSession> sessions,
+        IEnumerable<MonsterRuntimeInfo> states = null)
+    {
+        // Initial/closure syncs use all nodes; movement and damage send state deltas.
+        // The client merges entries by MonsterId, and groups remain within the 2KB budget.
+        var snapshotStates = states ?? _emotionAfterimageMonsterManager.GetSnapshot(matchingId);
+        foreach (var monsterChunk in snapshotStates.Chunk(10))
+        {
+            using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
+            {
+                Monsters = monsterChunk.ToList()
+            }));
+            foreach (var session in sessions)
+                session.Send(packet);
+        }
     }
 }

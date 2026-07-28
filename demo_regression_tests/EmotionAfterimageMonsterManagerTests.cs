@@ -7,6 +7,18 @@ namespace demo_regression_tests;
 public class EmotionAfterimageMonsterManagerTests
 {
     [Fact]
+    public void InitialSpawn_UsesSixteenOfTheThirtyEightFixedNodes()
+    {
+        var manager = new EmotionAfterimageMonsterManager();
+        manager.InitializeMatching(202);
+
+        var snapshot = manager.GetSnapshot(202);
+        Assert.Equal(38, snapshot.Count);
+        Assert.Equal(16, snapshot.Count(info => info.IsAlive));
+        Assert.DoesNotContain(snapshot, info => info.AreaType == AreaType.Corridor && info.IsAlive);
+    }
+
+    [Fact]
     public void Damage_ResetsAfterLeashDelay_WhenNoPlayerRemainsInRange()
     {
         var manager = new EmotionAfterimageMonsterManager();
@@ -41,6 +53,21 @@ public class EmotionAfterimageMonsterManagerTests
         Assert.Empty(manager.Tick(202, [], now.AddSeconds(60)).ChangedStates);
     }
 
+    [Fact]
+    public void AreaClosure_RemovesClosedMonstersAndFillsOneFiniteWaveInOpenAreas()
+    {
+        var manager = new EmotionAfterimageMonsterManager();
+        manager.InitializeMatching(202);
+
+        Assert.True(manager.ApplyAreaClosureAndSpawnWave(202,
+            [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2]));
+
+        var snapshot = manager.GetSnapshot(202);
+        Assert.All(snapshot.Where(info => info.AreaType is AreaType.ExamRoom or AreaType.BroadcastRoom or AreaType.Classroom2),
+            info => Assert.False(info.IsAlive));
+        Assert.Equal(21, snapshot.Count(info => info.IsAlive));
+        Assert.False(manager.ApplyAreaClosureAndSpawnWave(202, [AreaType.ExamRoom]));
+    }
 
     [Fact]
     public void Tick_ChasesHighestDamageTargetBeforeContact()
@@ -49,7 +76,8 @@ public class EmotionAfterimageMonsterManagerTests
         var now = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc);
         manager.InitializeMatching(202);
         manager.ApplyDamage(202, EmotionAfterimageMonsterManager.FirstMonsterId, 10, 1, now);
-        float initialX = Assert.Single(manager.GetSnapshot(202)).PositionX;
+        float initialX = manager.GetSnapshot(202)
+            .Single(info => info.MonsterId == EmotionAfterimageMonsterManager.FirstMonsterId).PositionX;
 
         var tick = manager.Tick(202,
         [
@@ -60,6 +88,7 @@ public class EmotionAfterimageMonsterManagerTests
         Assert.True(moved.PositionX > initialX);
         Assert.Empty(tick.Attacks);
     }
+
     [Fact]
     public void Tick_PrefersHighestTotalDamageWhenSeveralPlayersAreInLeashRange()
     {

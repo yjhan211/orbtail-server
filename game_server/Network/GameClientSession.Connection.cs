@@ -97,6 +97,7 @@ public partial class GameClientSession
             _areaClosureManager.InitializeMatching(msg.MatchingId, jobPool);
             _areaItemStockManager.InitializeMatching(msg.MatchingId);
             _groundItemManager.InitializeMatching(msg.MatchingId);
+            _emotionAfterimageMonsterManager.InitializeMatching(msg.MatchingId);
             int matchSeed = SurvivorRoyaleSpawnData.GetDeterministicSeed(msg.MatchingId);
             _gameEventLogManager.BeginMatch(msg.MatchingId, matchSeed);
             foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
@@ -179,17 +180,11 @@ public partial class GameClientSession
 
             Logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
 
-            // Grant default in-game items.
-            foreach ((int itemId, int count) in GameRuleData.InGameItemList)
-            {
-                int addedCount = _inGameInventoryManager.EnsureItemCount(CurrentMapSubId, PlayerId.Value, itemId, count);
-                Logger.LogInformation(
-                    "InGame default item ensured: PlayerId={PlayerId}, ItemId={ItemId}, TargetCount={TargetCount}, AddedCount={AddedCount}",
-                    PlayerId,
-                    itemId,
-                    count,
-                    addedCount);
-            }
+            int startingOrbItemId = SurvivorOrbStartLoadout.EnsureStartingOrb(
+                _inGameInventoryManager, CurrentMapSubId, PlayerId.Value);
+            if (startingOrbItemId > 0)
+                Logger.LogInformation("Survivor starting orb granted: PlayerId={PlayerId}, ItemId={ItemId}",
+                    PlayerId, startingOrbItemId);
 
             SendInGameInventoryList();
             var connectionBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
@@ -206,6 +201,7 @@ public partial class GameClientSession
             SendRoundStateSnapshot(msg.MatchingId);
             SendAreaClosureStateSnapshot();
             SendSurvivorAreaStockStateSnapshot();
+            SendMonsterSnapshot();
             SendChecklistInfo();
 
             // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃
@@ -444,8 +440,7 @@ public partial class GameClientSession
                 _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
                 _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
-                foreach ((int itemId, int count) in GameRuleData.InGameItemList)
-                    _inGameInventoryManager.EnsureItemCount(matchingId, bot.PlayerId, itemId, count);
+                SurvivorOrbStartLoadout.EnsureStartingOrb(_inGameInventoryManager, matchingId, bot.PlayerId);
             }
         }
         catch (Exception ex)

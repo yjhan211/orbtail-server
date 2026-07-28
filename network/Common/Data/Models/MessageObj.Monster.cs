@@ -19,11 +19,21 @@ namespace network.common.data.models
         [Key("maxHealth")] public int MaxHealth { get; set; }
         [Key("currentHealth")] public int CurrentHealth { get; set; }
         [Key("isAlive")] public bool IsAlive { get; set; }
+        [Key("rewardItemId")] public int RewardItemId { get; set; }
     }
 
     [MessagePackObject]
     public sealed class G_TO_C_MONSTER_SNAPSHOT : IMessagePackObject
     {
         [Key("monsters")] public List<MonsterRuntimeInfo> Monsters { get; set; } = new();
+    }
+
+    /// <summary>Visual-only confirmation that a monster's authoritative contact attack landed.</summary>
+    [MessagePackObject]
+    public sealed class G_TO_C_MONSTER_ATTACK_VFX : IMessagePackObject
+    {
+        [Key("monsterId")] public int MonsterId { get; set; }
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
     }
 }
