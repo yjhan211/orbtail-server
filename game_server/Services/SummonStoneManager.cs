@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.services;
@@ -15,6 +16,9 @@ public sealed class SummonStoneManager
 
     private static readonly int[] SummonCosts = [2, 3, 4, 5, 6];
     private static readonly int[] SummonPool = [107000010, 107000020, 107000030, 107000040];
+    private static readonly int[] OpeningAttackPool = SummonPool
+        .Where(itemId => !SurvivorOrbData.IsRecoveryOrb(itemId))
+        .ToArray();
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerSummonState>> _matchingStates = new();
 
     public IReadOnlyList<int> PoolItemIds => SummonPool;
@@ -102,7 +106,10 @@ public sealed class SummonStoneManager
         value ^= value >> 27;
         value *= 0x94D049BB133111EBUL;
         value ^= value >> 31;
-        return SummonPool[(int)(value % (ulong)SummonPool.Length)];
+        // The opening board needs an immediate way to fight afterimages.
+        // Only the first summon is restricted; later summons retain the full pool.
+        int[] pool = successfulSummonCount == 0 ? OpeningAttackPool : SummonPool;
+        return pool[(int)(value % (ulong)pool.Length)];
     }
 
     private sealed class PlayerSummonState

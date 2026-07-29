@@ -82,9 +82,24 @@ namespace network.common.data
         {
             if (!TryGetColorAndTier(attackerItemId, out SurvivorOrbColor attackerColor, out _) ||
                 !TryGetColorAndTier(monsterRewardItemId, out SurvivorOrbColor targetColor, out _))
-            {
                 return PveNeutralDamageMultiplier;
-            }
+
+            return GetPveDamageMultiplier(attackerColor, targetColor);
+        }
+
+        public static float GetPveDamageMultiplier(SurvivorOrbColor attackerColor, int monsterRewardItemId)
+        {
+            if (!TryGetColorAndTier(monsterRewardItemId, out SurvivorOrbColor targetColor, out _))
+                return PveNeutralDamageMultiplier;
+
+            return GetPveDamageMultiplier(attackerColor, targetColor);
+        }
+
+        public static float GetPveDamageMultiplier(SurvivorOrbColor attackerColor, SurvivorOrbColor targetColor)
+        {
+            if (attackerColor is SurvivorOrbColor.None or SurvivorOrbColor.Recovery ||
+                targetColor is SurvivorOrbColor.None or SurvivorOrbColor.Recovery)
+                return PveNeutralDamageMultiplier;
 
             return (attackerColor, targetColor) switch
             {
@@ -98,6 +113,73 @@ namespace network.common.data
             };
         }
 
+        /// <summary>
+        /// Resolves a board-wide PvE affinity. Total tier is the primary score;
+        /// a ready resonance resolves an otherwise tied top score.
+        /// </summary>
+        public static bool TryGetDominantPveColor(
+            IEnumerable<int> boardItemIds,
+            out SurvivorOrbColor dominantColor)
+        {
+            if (boardItemIds == null)
+                throw new ArgumentNullException(nameof(boardItemIds));
+
+            var tierTotals = new Dictionary<SurvivorOrbColor, int>
+            {
+                [SurvivorOrbColor.Red] = 0,
+                [SurvivorOrbColor.Green] = 0,
+                [SurvivorOrbColor.Blue] = 0
+            };
+            var orbCounts = new Dictionary<SurvivorOrbColor, int>
+            {
+                [SurvivorOrbColor.Red] = 0,
+                [SurvivorOrbColor.Green] = 0,
+                [SurvivorOrbColor.Blue] = 0
+            };
+
+            foreach (int itemId in boardItemIds)
+            {
+                if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out int tier) ||
+                    !tierTotals.ContainsKey(color))
+                    continue;
+
+                tierTotals[color] += tier;
+                orbCounts[color]++;
+            }
+
+            int highestTierTotal = tierTotals.Values.Max();
+            if (highestTierTotal <= 0)
+            {
+                dominantColor = SurvivorOrbColor.None;
+                return false;
+            }
+
+            var tiedColors = tierTotals
+                .Where(pair => pair.Value == highestTierTotal)
+                .Select(pair => pair.Key)
+                .ToArray();
+            if (tiedColors.Length == 1)
+            {
+                dominantColor = tiedColors[0];
+                return true;
+            }
+
+            var resonantTiedColors = tiedColors
+                .Where(color => IsPveResonanceReady(color, orbCounts[color]))
+                .ToArray();
+            if (resonantTiedColors.Length == 1)
+            {
+                dominantColor = resonantTiedColors[0];
+                return true;
+            }
+
+            dominantColor = SurvivorOrbColor.None;
+            return false;
+        }
+
+        public static bool IsPveResonanceReady(SurvivorOrbColor color, int orbCount) =>
+            color == SurvivorOrbColor.Red ? orbCount >= 3 :
+            color is SurvivorOrbColor.Green or SurvivorOrbColor.Blue && orbCount >= 2;
         public static int CalculatePveDamage(
             int attackerItemId,
             int monsterRewardItemId,
@@ -109,6 +191,20 @@ namespace network.common.data
 
             float damage = baseDamage * hitDamageMultiplier *
                            GetPveDamageMultiplier(attackerItemId, monsterRewardItemId);
+            return Math.Max(1, (int)Math.Ceiling(damage));
+        }
+
+        public static int CalculatePveDamage(
+            SurvivorOrbColor attackerColor,
+            int monsterRewardItemId,
+            int baseDamage,
+            float hitDamageMultiplier = 1f)
+        {
+            if (baseDamage <= 0 || hitDamageMultiplier <= 0f)
+                return 0;
+
+            float damage = baseDamage * hitDamageMultiplier *
+                           GetPveDamageMultiplier(attackerColor, monsterRewardItemId);
             return Math.Max(1, (int)Math.Ceiling(damage));
         }
         public static bool TryGetRecoveryTier(int itemId, out int tier)

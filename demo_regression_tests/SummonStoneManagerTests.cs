@@ -1,5 +1,6 @@
 using game_server.services;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace demo_regression_tests;
@@ -31,6 +32,24 @@ public class SummonStoneManagerTests
         Assert.True(secondSummon.Success);
         Assert.Equal(0, secondSummon.State.StoneCount);
         Assert.Equal(4, secondSummon.State.NextCost);
+    }
+
+
+    [Fact]
+    public void FirstSummon_IsAlwaysAnAttackOrb()
+    {
+        for (long matchingId = 1; matchingId <= 16; matchingId++)
+        for (long playerId = 1; playerId <= 16; playerId++)
+        {
+            var manager = new SummonStoneManager();
+            manager.EnsureStartingStones(matchingId, playerId);
+
+            var summon = manager.TrySummon(matchingId, playerId,
+                itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
+
+            Assert.True(summon.Success);
+            Assert.False(SurvivorOrbData.IsRecoveryOrb(summon.ItemId));
+        }
     }
 
     [Fact]

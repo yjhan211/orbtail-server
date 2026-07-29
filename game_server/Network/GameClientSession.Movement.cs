@@ -2,6 +2,7 @@ using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
+using network.common.data.helpers;
 using network.common.data.models;
 using network.packets;
 
@@ -176,7 +177,7 @@ public partial class GameClientSession
             if (_lastValidatedPosition != null)
             {
                 var correctedVelocity = velocity.Normalized() * maxSpeed;
-                return new Vector3f(
+                clientPos = new Vector3f(
                     _lastValidatedPosition.X + correctedVelocity.X * deltaTime,
                     _lastValidatedPosition.Y + correctedVelocity.Y * deltaTime,
                     0
@@ -193,27 +194,28 @@ public partial class GameClientSession
 
             if (distance > maxDistance)
             {
-                // 첫 이동 시 서버 초기 좌표와 클라이언트 스폰 좌표 불일치 허용
-                // (Cell→World 변환이 타일맵 설정에 의존하므로 초기 보정 필요)
+                // The first packet may calibrate the client spawn position, but it must
+                // still pass the same wall-path validation below.
                 if (!_hasFirstMoveCalibrated)
                 {
                     _hasFirstMoveCalibrated = true;
                     Logger.LogInformation(
-                        "Player {PlayerId} 초기 위치 보정: 서버({SX:F2},{SY:F2}) → 클라이언트({CX:F2},{CY:F2}), distance={Distance:F2}",
-                        PlayerId, _lastValidatedPosition.X, _lastValidatedPosition.Y,
-                        clientPos.X, clientPos.Y, distance);
-                    return clientPos;
+                        "Player {PlayerId} is calibrating the initial position before path validation: distance={Distance:F2}",
+                        PlayerId, distance);
                 }
-
-                Logger.LogWarning("Player {PlayerId} 텔레포트 감지: distance={Distance:F2}, maxAllowed={MaxDistance:F2}",
-                    PlayerId, distance, maxDistance);
-                // 서버 계산 위치로 보정
-                return new Vector3f(
-                    _lastValidatedPosition.X + velocity.X * deltaTime,
-                    _lastValidatedPosition.Y + velocity.Y * deltaTime,
-                    0
-                );
+                else
+                {
+                    Logger.LogWarning(
+                        "Player {PlayerId} teleport detected: distance={Distance:F2}, maxAllowed={MaxDistance:F2}",
+                        PlayerId, distance, maxDistance);
+                    clientPos = new Vector3f(
+                        _lastValidatedPosition.X + velocity.X * deltaTime,
+                        _lastValidatedPosition.Y + velocity.Y * deltaTime,
+                        0
+                    );
+                }
             }
+
         }
 
         // 3. Cell 기반 이동 가능 여부 검증 (맵 밖 이탈 방지)
@@ -237,6 +239,18 @@ public partial class GameClientSession
         }
 
         // 4. 검증 통과: 유효 위치 업데이트
+        if (_lastValidatedPosition is not null && _lastValidCell is not null &&
+            !GridMovementTraversal.IsTraversable(
+                _lastValidCell,
+                clientCell,
+                candidate => GameMapData.IsMoveablePosition(CurrentMapId, candidate)))
+        {
+            Logger.LogWarning(
+                "Player {PlayerId} attempted to cross an impassable cell: From=({FromX},{FromY}), To=({ToX},{ToY})",
+                PlayerId, _lastValidCell.X, _lastValidCell.Y, clientCell.X, clientCell.Y);
+            return _lastValidatedPosition;
+        }
+
         _lastValidCell = clientCell;
 
         // 검증 통과: 클라이언트 Position 사용

@@ -90,4 +90,39 @@ public class EmotionAfterimagePveCombatRulesTests
 
     private static MonsterCombatTarget Target(int monsterId, MapId mapId, AreaType area, float x, float y) =>
         new(monsterId, mapId, area, new Vector3f(x, y, 0f), 107000010);
+    [Fact]
+    public void DominantPveColor_UsesTotalTierAcrossTheWholeBoard()
+    {
+        Assert.True(SurvivorOrbData.TryGetDominantPveColor(
+            [107000010, 107000010, 107000022], out var dominantColor));
+
+        Assert.Equal(SurvivorOrbColor.Blue, dominantColor);
+    }
+
+    [Fact]
+    public void DominantPveColor_UsesReadyResonanceToBreakATierTie()
+    {
+        Assert.True(SurvivorOrbData.TryGetDominantPveColor(
+            [107000010, 107000010, 107000010, 107000032], out var dominantColor));
+
+        Assert.Equal(SurvivorOrbColor.Red, dominantColor);
+    }
+
+    [Fact]
+    public void DominantPveColor_StaysNeutralWhenTopTierAndResonanceBothTie()
+    {
+        Assert.False(SurvivorOrbData.TryGetDominantPveColor(
+            [107000010, 107000010, 107000010, 107000020, 107000020, 107000020], out _));
+    }
+
+    [Fact]
+    public void BoardWidePveAffinity_AppliesToEveryOrbAttack()
+    {
+        Assert.True(SurvivorOrbData.TryGetDominantPveColor(
+            [107000010, 107000010, 107000010, 107000020], out var dominantColor));
+
+        Assert.Equal(SurvivorOrbColor.Red, dominantColor);
+        Assert.Equal(1.5f, SurvivorOrbData.GetPveDamageMultiplier(dominantColor, 107000020));
+        Assert.Equal(6, SurvivorOrbData.CalculatePveDamage(dominantColor, 107000020, 4));
+    }
 }

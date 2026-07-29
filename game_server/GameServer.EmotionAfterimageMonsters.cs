@@ -112,8 +112,12 @@ public partial class GameServer
         IReadOnlyCollection<GameClientSession> matchingSessions,
         MonsterSnapshotAccumulator finalMonsterStates)
     {
+        SurvivorOrbColor affinityColor = ResolvePlayerPveAffinityColor(
+            matchingId,
+            attack.AttackerPlayerId,
+            attack.WeaponItemId);
         int damage = SurvivorOrbData.CalculatePveDamage(
-            attack.WeaponItemId,
+            affinityColor,
             target.RewardItemId,
             attack.Damage,
             hitDamageMultiplier);
@@ -150,13 +154,26 @@ public partial class GameServer
             target.MonsterId,
             attack.AttackerPlayerId,
             damage,
-            SurvivorOrbData.GetPveDamageMultiplier(attack.WeaponItemId, target.RewardItemId),
+            SurvivorOrbData.GetPveDamageMultiplier(affinityColor, target.RewardItemId),
             isSplash,
             result.State.CurrentHealth,
             result.Killed);
         return true;
     }
 
+    private SurvivorOrbColor ResolvePlayerPveAffinityColor(long matchingId, long playerId, int fallbackItemId)
+    {
+        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+        var boardItemIds = inventory.GetAllItems()
+            .Where(item => item.Count > 0)
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count));
+        if (SurvivorOrbData.TryGetDominantPveColor(boardItemIds, out SurvivorOrbColor dominantColor))
+            return dominantColor;
+
+        return SurvivorOrbData.TryGetColorAndTier(fallbackItemId, out SurvivorOrbColor fallbackColor, out _)
+            ? fallbackColor
+            : SurvivorOrbColor.None;
+    }
     private void ApplyMonsterAttack(long matchingId, MonsterAttack attack,
         IReadOnlyCollection<GameClientSession> matchingSessions, IReadOnlyCollection<BotPlayerState> matchingBots)
     {
