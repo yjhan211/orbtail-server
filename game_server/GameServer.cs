@@ -1589,6 +1589,7 @@ public partial class GameServer(
                         matchingId, closureTick.ClosedAreas))
                 {
                     BroadcastMonsterSnapshot(matchingId, sessions);
+                    BroadcastMonsterMinimapSnapshot(sessions, _emotionAfterimageMonsterManager.GetSnapshot(matchingId));
                 }
 
                 foreach (var closedArea in closureTick.ClosedAreas)

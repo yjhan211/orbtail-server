@@ -96,7 +96,11 @@ public partial class GameServer
         }
 
         if (finalMonsterStates.Count > 0)
-            BroadcastMonsterSnapshot(matchingId, matchingSessions, finalMonsterStates.GetFinalStates());
+        {
+            var finalStates = finalMonsterStates.GetFinalStates();
+            BroadcastMonsterSnapshot(matchingId, matchingSessions, finalStates);
+            BroadcastMonsterMinimapSnapshot(matchingSessions, finalStates.Where(state => !state.IsAlive));
+        }
     }
 
     private static ProximityCombatActor CreateMonsterTargetActor(MonsterCombatTarget monster)
@@ -263,6 +267,22 @@ public partial class GameServer
                 Monsters = monsterChunk.Monsters
             }));
             foreach (var session in observers)
+                session.Send(packet);
+        }
+    }
+
+    private static void BroadcastMonsterMinimapSnapshot(
+        IReadOnlyCollection<GameClientSession> sessions, IEnumerable<MonsterRuntimeInfo> states)
+    {
+        foreach (var monsterChunk in MonsterSnapshotBatcher.CreateAreaChunks(states))
+        {
+            using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
+            {
+                Monsters = monsterChunk.Monsters
+            }));
+
+            foreach (var session in sessions)
                 session.Send(packet);
         }
     }

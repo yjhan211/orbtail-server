@@ -252,7 +252,34 @@ public partial class BotPlayerManager
                 return false;
             }
 
-            return true;
+            // Combat retreats reuse EvacuationDestination. A corridor transition can consume
+            // the old path before the room change is observed; rebuild it instead of idling.
+            var routeMapId = GetMatchingMapId(matchingId);
+            var targetCell = GameAreaConnectionData.GetSpawnCell(
+                    routeMapId, bot.CurrentArea, bot.EvacuationDestination)
+                ?? GameMapData.GetAreaSpawnCell(routeMapId, bot.EvacuationDestination);
+            var restoredPath = BotPathfinder.FindPath(
+                routeMapId,
+                bot.CurrentArea,
+                bot.Cell,
+                bot.EvacuationDestination,
+                targetCell,
+                unavailableAreas.Contains);
+            if (restoredPath is { Count: > 0 })
+            {
+                bot.Path = restoredPath;
+                bot.PathIndex = 0;
+                bot.LoopWaitUntil = DateTime.MinValue;
+                _logger.LogDebug(
+                    "Bot restored evacuation route: BotId={Bot}, {From}->{To}, Steps={Steps}",
+                    bot.PlayerId, bot.CurrentArea, bot.EvacuationDestination, restoredPath.Count);
+                return true;
+            }
+
+            // The destination no longer has a valid route. Let normal room selection recover.
+            bot.EvacuationDestination = AreaType.None;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            return false;
         }
 
         if (!currentAreaUnsafe)
@@ -607,6 +634,12 @@ public partial class BotPlayerManager
         bot.PendingExploreEndBroadcast = false;
 
         bool needsGuardianOrb = bot.EquippedBattleItemId <= 0;
+
+        if (bot.CurrentArea.IsCorridor() &&
+            TryStartCorridorExitPath(bot, matchingId, mapId, closureManager))
+        {
+            return;
+        }
 
         if (!needsGuardianOrb && bot.IsForcedFollowActive &&
             TryStartBotForcedFollowPath(bot, matchingId, mapId, playerAreas))
@@ -1037,6 +1070,42 @@ public partial class BotPlayerManager
             Proto0BotPolicy.DisguiseMvp => ChooseDisguiseProto0Destination(bot, matchingId, mapId, playerAreas, closureManager),
             _ => ChooseSimpleProto0Destination(bot, matchingId, mapId, playerAreas, closureManager)
         };
+    }
+
+    private bool TryStartCorridorExitPath(BotPlayerState bot, long matchingId, MapId mapId,
+        AreaClosureManager closureManager)
+    {
+        var exit = GetOpenBotDestinationAreas(matchingId, mapId, closureManager)
+            .Where(area => area != bot.CurrentArea)
+            .Select(area => new
+            {
+                Area = area,
+                Path = BotPathfinder.FindPath(
+                    mapId,
+                    bot.CurrentArea,
+                    bot.Cell,
+                    area,
+                    GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, area)
+                    ?? GameMapData.GetAreaSpawnCell(mapId, area),
+                    candidate => IsAreaClosingOrClosed(closureManager, matchingId, candidate))
+            })
+            .Where(candidate => candidate.Path is { Count: > 0 })
+            .OrderBy(candidate => candidate.Path!.Count)
+            .ThenBy(candidate => CountAreaPressure(matchingId, candidate.Area))
+            .ThenBy(candidate => (int)candidate.Area)
+            .FirstOrDefault();
+
+        if (exit?.Path == null)
+            return false;
+
+        bot.Path = exit.Path;
+        bot.PathIndex = 0;
+        bot.MovementDestination = exit.Area;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        _logger.LogDebug(
+            "Bot corridor exit: BotId={Bot}, {From}->{To}, Steps={Steps}",
+            bot.PlayerId, bot.CurrentArea, exit.Area, exit.Path.Count);
+        return true;
     }
 
     private AreaType ChooseBehaviorDestination(BotPlayerState bot, long matchingId, MapId mapId,
