@@ -99,7 +99,6 @@ internal static class EmotionAfterimageMonsterSpawnData
                 for (int memberIndex = 0; memberIndex < PackSize; memberIndex++)
                 {
                     bool isCore = memberIndex == PackSize - 1;
-                    bool isMarkedNormal = memberIndex is PackSize - 3 or PackSize - 2;
                     // Preserve the authored cells as separate homes. Using only their
                     // average made all nine bodies appear to spawn from one point before
                     // the formation logic could spread them.
@@ -114,7 +113,7 @@ internal static class EmotionAfterimageMonsterSpawnData
                         // Replaced per matching by CreateDefinitionsForMatching.
                         RewardItemId: DefaultRoomAffinity,
                         IsCore: isCore,
-                        SummonStoneReward: isCore ? 6 : isMarkedNormal ? 1 : 0,
+                        SummonStoneReward: isCore ? 6 : 1,
                         MoveSpeed: 2.4f,
                         LeashRange: 5f,
                         AreaAliveLimit: packCount * PackSize,

@@ -29,9 +29,8 @@ public class EmotionAfterimageMonsterManagerTests
 
         Assert.Equal(9, pack.Count);
         Assert.Equal(144, pack.Sum(info => info.MaxHealth));
-        Assert.Equal(8, pack.Sum(info => info.SummonStoneReward));
-        Assert.Equal(6, pack.Count(info => !info.IsCore && info.SummonStoneReward == 0));
-        Assert.Equal(2, pack.Count(info => info.RewardItemId > 0 && !info.IsCore && info.SummonStoneReward == 1));
+        Assert.Equal(14, pack.Sum(info => info.SummonStoneReward));
+        Assert.Equal(8, pack.Count(info => !info.IsCore && info.SummonStoneReward == 1));
         Assert.Single(pack.Select(info => info.RewardItemId).Distinct());
         var core = Assert.Single(pack, info => info.IsCore);
         Assert.Equal(48, core.MaxHealth);
@@ -194,8 +193,13 @@ public class EmotionAfterimageMonsterManagerTests
     public void IdleEscorts_KeepDistinctHomeSlotsAndPatrolIndependently()
     {
         var manager = CreateManager();
+        var escortIds = manager.GetAliveTargets(MatchingId)
+            .Where(target => target.Area == AreaType.Classroom4 && !target.IsCore &&
+                             target.ClusterMemberIndex < target.ClusterSize - 3)
+            .Select(target => target.MonsterId)
+            .ToHashSet();
         var initialEscorts = manager.GetSnapshot(MatchingId, AreaType.Classroom4)
-            .Where(info => !info.IsCore && info.SummonStoneReward == 0)
+            .Where(info => escortIds.Contains(info.MonsterId))
             .ToList();
 
         Assert.Equal(6, initialEscorts.Count);
@@ -299,8 +303,10 @@ public class EmotionAfterimageMonsterManagerTests
     }
 
     private static int FirstEscortId(EmotionAfterimageMonsterManager manager) =>
-        manager.GetSnapshot(MatchingId, AreaType.Classroom4)
-            .First(info => !info.IsCore && info.SummonStoneReward == 0).MonsterId;
+        manager.GetAliveTargets(MatchingId)
+            .First(target => target.Area == AreaType.Classroom4 && !target.IsCore &&
+                             target.ClusterMemberIndex < target.ClusterSize - 3)
+            .MonsterId;
 
     private static DateTime Advance(
         EmotionAfterimageMonsterManager manager,

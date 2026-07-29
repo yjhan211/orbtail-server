@@ -326,11 +326,14 @@ public sealed class EmotionAfterimageMonsterManager
             return selected;
         }
 
+        private static bool IsEscort(MonsterDefinition definition) =>
+            !definition.IsAmbientCorridor && !definition.IsCore &&
+            definition.ClusterMemberIndex < definition.ClusterSize - 3;
+
         private static Vector3f GetChaseDestination(MonsterState state, Vector3f targetPosition, DateTime nowUtc)
         {
             Vector3f offset = state.Definition.FormationOffset;
-            bool isEscort = !state.Definition.IsAmbientCorridor && !state.Definition.IsCore &&
-                            state.Definition.SummonStoneReward == 0;
+            bool isEscort = IsEscort(state.Definition);
             if (!isEscort)
                 return new Vector3f(
                     targetPosition.X + offset.X,
@@ -357,8 +360,7 @@ public sealed class EmotionAfterimageMonsterManager
         private static Vector3f GetIdleDestination(MonsterState state, DateTime nowUtc)
         {
             Vector3f home = GetHomePosition(state.Definition);
-            bool isEscort = !state.Definition.IsAmbientCorridor && !state.Definition.IsCore &&
-                            state.Definition.SummonStoneReward == 0;
+            bool isEscort = IsEscort(state.Definition);
             if (!isEscort)
                 return home;
 
