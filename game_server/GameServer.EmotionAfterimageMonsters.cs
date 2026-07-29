@@ -1,5 +1,5 @@
-using game_server.network;
 using System.Collections.Concurrent;
+using game_server.network;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -71,7 +71,7 @@ public partial class GameServer
                 finalMonsterStates);
             if (primaryHit && EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(attack.IsWaveAreaSecondary))
                 BroadcastObservedProximityAttackVfx(attack, matchingSessions);
-}
+        }
 
         if (finalMonsterStates.Count > 0)
         {

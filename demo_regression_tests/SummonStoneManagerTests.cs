@@ -39,17 +39,17 @@ public class SummonStoneManagerTests
     public void FirstSummon_IsAlwaysAnAttackOrb()
     {
         for (long matchingId = 1; matchingId <= 16; matchingId++)
-        for (long playerId = 1; playerId <= 16; playerId++)
-        {
-            var manager = new SummonStoneManager();
-            manager.EnsureStartingStones(matchingId, playerId);
+            for (long playerId = 1; playerId <= 16; playerId++)
+            {
+                var manager = new SummonStoneManager();
+                manager.EnsureStartingStones(matchingId, playerId);
 
-            var summon = manager.TrySummon(matchingId, playerId,
-                itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
+                var summon = manager.TrySummon(matchingId, playerId,
+                    itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
 
-            Assert.True(summon.Success);
-            Assert.False(SurvivorOrbData.IsRecoveryOrb(summon.ItemId));
-        }
+                Assert.True(summon.Success);
+                Assert.False(SurvivorOrbData.IsRecoveryOrb(summon.ItemId));
+            }
     }
 
     [Fact]

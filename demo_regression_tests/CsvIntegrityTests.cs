@@ -107,8 +107,8 @@ public class CsvIntegrityTests
         Assert.Equal("debuff", effect.Kind);
         Assert.Equal(12176, effect.NameTextId);
         Assert.Equal(12177, effect.DescTextId);
-        Assert.Equal("가득찬 가방", GameSystemTextData.GetText(12176, "kr"));
-        Assert.Equal("더 이상 아이템을 주울 수 없습니다.", GameSystemTextData.GetText(12177, "kr"));
+        Assert.Equal("가득 찬 오브", GameSystemTextData.GetText(12176, "kr"));
+        Assert.Equal("더 이상 오브를 소환할 수 없습니다.", GameSystemTextData.GetText(12177, "kr"));
 
         string networkRoot = FindNetworkBasePath();
         string repositoryRoot = Directory.GetParent(networkRoot)!.FullName;
