@@ -1587,7 +1587,7 @@ public partial class GameServer(
                 }
 
                 if (_emotionAfterimageMonsterManager.ApplyAreaClosureAndSpawnWave(
-                        matchingId, closureTick.ClosedAreas))
+                        matchingId, closureTick.ClosedAreas, DateTime.UtcNow))
                 {
                     BroadcastMonsterSnapshot(matchingId, sessions);
                     BroadcastMonsterMinimapSnapshot(sessions, _emotionAfterimageMonsterManager.GetSnapshot(matchingId));

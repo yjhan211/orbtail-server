@@ -33,6 +33,8 @@ public partial class GameServer
         var monsterTick = _emotionAfterimageMonsterManager.Tick(matchingId, possibleTargets, nowUtc);
         if (monsterTick.ChangedStates.Count > 0 && TryConsumeMonsterPositionBroadcastSlot(matchingId, nowUtc))
             BroadcastMonsterSnapshot(matchingId, matchingSessions, monsterTick.ChangedStates);
+        if (monsterTick.SpawnedStates.Count > 0)
+            BroadcastMonsterMinimapSnapshot(matchingSessions, monsterTick.SpawnedStates);
 
         foreach (var monsterAttack in monsterTick.Attacks)
             ApplyMonsterAttack(matchingId, monsterAttack, matchingSessions, matchingBots);
@@ -67,7 +69,7 @@ public partial class GameServer
                 nowUtc,
                 matchingSessions,
                 finalMonsterStates);
-            if (primaryHit && !attack.IsWaveAreaSecondary)
+            if (primaryHit && EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(attack.IsWaveAreaSecondary))
                 BroadcastObservedProximityAttackVfx(attack, matchingSessions);
 }
 
@@ -123,10 +125,11 @@ public partial class GameServer
                 matchingSessions);
         }
 
+        bool playProjectilePresentation = EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(isSplash);
         matchingSessions.FirstOrDefault(session =>
                 session.PlayerId == attack.AttackerPlayerId && !session.IsEliminated)
             ?.SendEmotionAfterimageMonsterAttackFeedback(
-                target.MonsterId,
+                playProjectilePresentation ? target.MonsterId : 0,
                 target.Area,
                 attack.WeaponItemId,
                 damage);

@@ -106,6 +106,49 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.All(bot.Path.Skip(bot.PathIndex), step => Assert.Equal(AreaType.Classroom3, step.Area));
     }
     [Fact]
+    public void BotPveRouteUsesBoardAffinityBeforeLegacyWander()
+    {
+        const long matchingId = 1942005;
+        const long botPlayerId = -19420051;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        SetBotPosition(bot, AreaType.Classroom3);
+        bot.EquippedBattleItemId = 107000010;
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        fixture.InventoryManager.AddItem(matchingId, botPlayerId, 107000010);
+
+        var favorableCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Classroom4);
+        var unfavorableCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.ExamRoom);
+        var targets = new[]
+        {
+            new MonsterCombatTarget(
+                202001, MapId.School, AreaType.Classroom4,
+                new Vector3f((favorableCell.X - favorableCell.Y) / 2f, (favorableCell.X + favorableCell.Y) / 4f, 0f),
+                107000020, IsCore: true),
+            new MonsterCombatTarget(
+                202002, MapId.School, AreaType.ExamRoom,
+                new Vector3f((unfavorableCell.X - unfavorableCell.Y) / 2f, (unfavorableCell.X + unfavorableCell.Y) / 4f, 0f),
+                107000030, IsCore: true)
+        };
+
+        fixture.BotManager.ProcessBotMovementTick(
+            matchingId,
+            fixture.ClosureManager,
+            fixture.AreaStockManager,
+            new Dictionary<long, AreaType>(),
+            fixture.ChecklistManager,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            Array.Empty<BotCombatTargetSnapshot>(),
+            targets);
+
+        Assert.Equal(AreaType.Classroom4, bot.MovementDestination);
+        Assert.NotEmpty(bot.Path);
+        Assert.Equal(AreaType.Classroom4, bot.Path[^1].Area);
+    }
+    [Fact]
     public void BotFollowingTargetInCorridorSelectsRoomDestination()
     {
         const long matchingId = 1942001;

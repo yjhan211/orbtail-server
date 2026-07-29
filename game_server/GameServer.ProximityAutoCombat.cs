@@ -502,7 +502,8 @@ public partial class GameServer
                          combatTargets,
                          attack.AttackerPlayerId,
                          attack.TargetPlayerId,
-                         attack.Area))
+                         attack.Area,
+                         attack.WeaponItemId))
             {
                 expanded.Add(primaryAttack with
                 {

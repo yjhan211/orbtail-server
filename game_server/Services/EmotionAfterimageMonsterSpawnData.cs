@@ -6,8 +6,8 @@ namespace game_server.services;
 
 /// <summary>
 /// Fixed room packs and corridor pressure anchors for the emotion-afterimage loop.
-/// A room pack preserves the previous 144 HP / five-stone budget while making its
-/// weak escort bodies readable as a small horde instead of more economy sources.
+/// A room pack has 144 total HP and a 14-stone maximum reward budget across eight
+/// normal bodies and one core, keeping the horde readable without hiding its economy.
 /// </summary>
 internal static class EmotionAfterimageMonsterSpawnData
 {
@@ -21,9 +21,22 @@ internal static class EmotionAfterimageMonsterSpawnData
 
     public static readonly MonsterDefinition[] Definitions = CreateDefinitions();
     private static readonly int[] WavePackSpawnBudgets = [3, 3, 2, 2, 1];
+    private static readonly TimeSpan[] WavePackReleaseDurations =
+    [
+        TimeSpan.FromSeconds(20),
+        TimeSpan.FromSeconds(20),
+        TimeSpan.FromSeconds(20),
+        TimeSpan.FromSeconds(15),
+        TimeSpan.FromSeconds(15)
+    ];
 
     public static int GetWavePackSpawnBudget(int waveIndex) =>
         waveIndex >= 0 && waveIndex < WavePackSpawnBudgets.Length ? WavePackSpawnBudgets[waveIndex] : 0;
+
+    public static TimeSpan GetWavePackReleaseDuration(int waveIndex) =>
+        waveIndex >= 0 && waveIndex < WavePackReleaseDurations.Length
+            ? WavePackReleaseDurations[waveIndex]
+            : TimeSpan.Zero;
 
     /// <summary>
     /// Assigns a full room pack one affinity for this matching. The seeded plan is

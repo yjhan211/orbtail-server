@@ -147,7 +147,9 @@ public class ProximityAutoCombatDataTests
         string playerSource = ReadNormalizedSource(
             repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");
 
-        Assert.Contains("attack.WeaponItemId,\n                damage);", gameServerSource);
+        Assert.Contains("targetSession.ApplyProximityAutoCombatHit(", gameServerSource);
+        Assert.Contains("attack.WeaponItemId,", gameServerSource);
+        Assert.Contains("damage);", gameServerSource);
         Assert.Contains("weaponItemId,\n            damage);", sessionSource);
         Assert.Contains(
             "localPlayerIsAttacker: true,\n                    packet.DamageValue);",
@@ -180,7 +182,8 @@ public class ProximityAutoCombatDataTests
             repoRoot, "client", "Assets", "Scripts", "Managers", "Map", "MapManager.PlayerVisibility.cs");
 
         Assert.Contains(
-            "if (primaryHit)\n                BroadcastObservedProximityAttackVfx(attack, matchingSessions);",
+            "if (primaryHit && EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(attack.IsWaveAreaSecondary))\n" +
+            "                BroadcastObservedProximityAttackVfx(attack, matchingSessions);",
             serverSource);
         Assert.Contains("if (packet.TargetPlayerId < 0)", mapSource);
         Assert.Contains("PlayObservedGuardianProjectileAtMonster(attacker, monster, packet.WeaponItemId);", mapSource);

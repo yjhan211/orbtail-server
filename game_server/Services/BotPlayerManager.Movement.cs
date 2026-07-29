@@ -226,7 +226,15 @@ public partial class BotPlayerManager
             {
                 TryStartLastStandPatrolPath(bot, matchingId, closureManager);
             }
-            var ev = WalkStep(bot, matchingId, closureManager, areaItemStockManager, playerAreas, checklistManager);
+            var ev = WalkStep(
+                bot,
+                matchingId,
+                closureManager,
+                areaItemStockManager,
+                inventoryManager,
+                playerAreas,
+                checklistManager,
+                pveTargets ?? []);
             if (ev != null) result.Movements.Add(ev);
             if (bot.PendingOrbFarmingPivotTo != AreaType.None)
             {
@@ -615,8 +623,9 @@ public partial class BotPlayerManager
     ///     일반 셀 walk는 진행 방향 + 속도 포함 MOVE 이벤트 반환.
     /// </summary>
     private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
-        AreaItemStockManager areaItemStockManager, IReadOnlyDictionary<long, AreaType> playerAreas,
-        ChecklistManager checklistManager)
+        AreaItemStockManager areaItemStockManager, InGameInventoryManager inventoryManager,
+        IReadOnlyDictionary<long, AreaType> playerAreas,
+        ChecklistManager checklistManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
         var now = DateTime.UtcNow;
         float deltaSec = (float)(now - bot.LastWalkStepTime).TotalSeconds;
@@ -692,8 +701,8 @@ public partial class BotPlayerManager
             // #134 — 도착 후 RNG 채집이 아직 안 됐으면 walking 보류 (ProcessBotMissionTick이 PendingRngInteractId 처리 후 0으로 클리어할 때까지 대기).
             if (bot.PendingRngInteractId != 0 || bot.PendingChecklistTaskId != 0) return null;
 
-            ChooseNewWanderTarget(bot, matchingId, closureManager, areaItemStockManager, playerAreas,
-                checklistManager);
+            ChooseNewWanderTarget(bot, matchingId, closureManager, areaItemStockManager, inventoryManager, playerAreas,
+                checklistManager, pveTargets);
             if (bot.Path.Count == 0) return null;
             // ChooseNewWanderTarget이 LoopWaitUntil(+3초)을 설정하므로 새 path는 다음 틱부터 진행.
             // 같은 틱에서 walking 시작 시 영역 도착 후 3초 휴식이 무력화되어 발소리/walk 애니가 끊기지 않음.
@@ -794,8 +803,9 @@ public partial class BotPlayerManager
     ///     복도는 목적지가 아니라 통과만(transit). 미션 수집 동선(직책 큐/RNG 채집)은 폐기.
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
-        AreaItemStockManager areaItemStockManager, IReadOnlyDictionary<long, AreaType> playerAreas,
-        ChecklistManager checklistManager)
+        AreaItemStockManager areaItemStockManager, InGameInventoryManager inventoryManager,
+        IReadOnlyDictionary<long, AreaType> playerAreas,
+        ChecklistManager checklistManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
         var mapId = GetMatchingMapId(matchingId);
         bot.Path.Clear();
@@ -838,6 +848,12 @@ public partial class BotPlayerManager
         if (needsGuardianOrb)
         {
             bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
+            return;
+        }
+
+        if (Config.MONSTER_SUMMON_ECONOMY_ENABLED &&
+            TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, inventoryManager, pveTargets))
+        {
             return;
         }
 
@@ -956,6 +972,114 @@ public partial class BotPlayerManager
             "Bot orb route pivot: MatchingId={MatchingId}, BotId={BotId}, Color={Color}, {From}->{To}, Steps={Steps}",
             matchingId, bot.PlayerId, color, from, destination.Area, destination.Path.Count);
         return true;
+    }
+
+    /// <summary>
+    /// Survivor Royale PVE policy: treat an afterimage pack as the room objective.
+    /// The score deliberately favors a visible core and an under-contested pack, while
+    /// retaining one committed destination until arrival so door thresholds cannot flip
+    /// the bot between two adjacent rooms every movement tick.
+    /// </summary>
+    private bool TryStartAfterimageHuntPath(
+        BotPlayerState bot,
+        long matchingId,
+        MapId mapId,
+        AreaClosureManager closureManager,
+        InGameInventoryManager inventoryManager,
+        IReadOnlyCollection<MonsterCombatTarget> pveTargets)
+    {
+        if (bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor() || pveTargets.Count == 0)
+            return false;
+
+        var closure = closureManager.GetClientStateSnapshot(matchingId);
+        var unavailable = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
+        var boardItemIds = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
+            .GetAllItems()
+            .Select(item => item.ItemId)
+            .ToArray();
+        var candidates = pveTargets
+            .Where(target => target.MapId == mapId &&
+                             target.Area != AreaType.None &&
+                             !target.Area.IsCorridor() &&
+                             !unavailable.Contains(target.Area) &&
+                             !IsRecentCombatRetreatOrigin(bot, target.Area))
+            .GroupBy(target => target.Area)
+            .Select(group =>
+            {
+                var preferredTarget = group
+                    .OrderByDescending(target => target.IsCore)
+                    .ThenBy(target => DistanceSquared(bot.Position, target.Position.X, target.Position.Y))
+                    .First();
+                var targetCell = WorldToCell(preferredTarget.Position);
+                var path = group.Key == bot.CurrentArea
+                    ? BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea, targetCell,
+                        area => area != bot.CurrentArea || unavailable.Contains(area))
+                    : BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, group.Key,
+                        GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, group.Key) ?? targetCell,
+                        unavailable.Contains);
+                int coreCount = group.Count(target => target.IsCore);
+                float affinityScore = CalculateBotPveAffinityScore(boardItemIds, preferredTarget.RewardItemId);
+                return new
+                {
+                    Area = group.Key,
+                    Target = preferredTarget,
+                    Path = path,
+                    AffinityScore = affinityScore,
+                    Score = group.Count() * 3 + coreCount * 8 + affinityScore * 4 -
+                            CountAreaPressure(matchingId, group.Key) * 5
+                };
+            })
+            .Where(candidate => candidate.Path is { Count: > 0 } || candidate.Area == bot.CurrentArea)
+            .OrderByDescending(candidate => candidate.Score - (candidate.Path?.Count ?? 0) * 0.2)
+            .ThenBy(candidate => candidate.Area == bot.CurrentArea ? 0 : 1)
+            .ThenBy(candidate => Math.Abs((int)(bot.PlayerId % 97) - (int)candidate.Area))
+            .ToList();
+
+        var selected = candidates.FirstOrDefault();
+        if (selected == null)
+            return false;
+
+        // The bot already owns this room's hunt. Let the automatic combat and lateral
+        // kite logic work instead of immediately replacing the local objective.
+        if (selected.Area == bot.CurrentArea && selected.Path is not { Count: > 0 })
+        {
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.45, 0.9);
+            return true;
+        }
+
+        bot.Path = selected.Path!;
+        bot.PathIndex = 0;
+        bot.MovementDestination = selected.Area;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        _logger.LogDebug(
+            "Bot afterimage hunt route: MatchingId={MatchingId}, BotId={BotId}, {From}->{To}, PackMembers={PackMembers}, Core={Core}, Affinity={Affinity}, Steps={Steps}",
+            matchingId,
+            bot.PlayerId,
+            bot.CurrentArea,
+            selected.Area,
+            pveTargets.Count(target => target.Area == selected.Area),
+            selected.Target.IsCore,
+            selected.AffinityScore,
+            selected.Path!.Count);
+        return true;
+    }
+
+    private static float CalculateBotPveAffinityScore(IEnumerable<int> boardItemIds, int monsterRewardItemId)
+    {
+        float score = 0f;
+        foreach (int itemId in boardItemIds)
+        {
+            if (SurvivorOrbData.TryGetColorAndTier(itemId, out SurvivorOrbColor color, out int tier))
+            {
+                score += tier * SurvivorOrbData.GetPveDamageMultiplier(color, monsterRewardItemId);
+                continue;
+            }
+
+            if (SurvivorOrbData.TryGetRecoveryTier(itemId, out int recoveryTier))
+                score += recoveryTier * 0.25f;
+        }
+
+        return score;
     }
 
     private bool TryStartPostExploreRelocation(BotPlayerState bot, long matchingId, MapId mapId,

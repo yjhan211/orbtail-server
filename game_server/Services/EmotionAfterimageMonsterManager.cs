@@ -68,15 +68,17 @@ public sealed class EmotionAfterimageMonsterManager
     /// Closing an area despawns its live monsters without rewards; only empty nodes
     /// in still-open areas may be filled.
     /// </summary>
-    public bool ApplyAreaClosureAndSpawnWave(long matchingId, IReadOnlyCollection<AreaType> closedAreas) =>
+    public bool ApplyAreaClosureAndSpawnWave(long matchingId, IReadOnlyCollection<AreaType> closedAreas,
+        DateTime nowUtc) =>
         closedAreas.Count > 0 && _matchingStates.TryGetValue(matchingId, out var state)
-        && state.ApplyAreaClosureAndSpawnWave(closedAreas);
+        && state.ApplyAreaClosureAndQueueWave(closedAreas, nowUtc);
 
     private sealed class MatchingMonsterState
     {
         private readonly object _sync = new();
         private readonly Dictionary<int, MonsterState> _monsters;
         private readonly HashSet<AreaType> _closedAreas = [];
+        private readonly List<PendingWavePack> _pendingWavePacks = [];
         private int _waveIndex;
         private DateTime _nextAmbientCorridorSpawnAtUtc = DateTime.MinValue;
 
@@ -140,7 +142,7 @@ public sealed class EmotionAfterimageMonsterManager
             }
         }
 
-        public bool ApplyAreaClosureAndSpawnWave(IReadOnlyCollection<AreaType> closedAreas)
+        public bool ApplyAreaClosureAndQueueWave(IReadOnlyCollection<AreaType> closedAreas, DateTime nowUtc)
         {
             lock (_sync)
             {
@@ -149,16 +151,20 @@ public sealed class EmotionAfterimageMonsterManager
                 if (!addedClosure) return false;
 
                 bool changed = false;
-                foreach (var state in _monsters.Values.Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor && _closedAreas.Contains(state.Definition.Area)))
+                foreach (var state in _monsters.Values.Where(state => state.IsAlive &&
+                             !state.Definition.IsAmbientCorridor && _closedAreas.Contains(state.Definition.Area)))
                 {
                     state.IsAlive = false;
                     state.NextAttackAtUtc = DateTime.MaxValue;
                     changed = true;
                 }
 
-                int spawnBudget = EmotionAfterimageMonsterSpawnData.GetWavePackSpawnBudget(_waveIndex++);
+                int waveIndex = _waveIndex++;
+                int spawnBudget = EmotionAfterimageMonsterSpawnData.GetWavePackSpawnBudget(waveIndex);
+                int requestedSpawnBudget = spawnBudget;
                 if (spawnBudget == 0) return changed;
 
+                TimeSpan releaseDuration = EmotionAfterimageMonsterSpawnData.GetWavePackReleaseDuration(waveIndex);
                 var aliveByArea = _monsters.Values.Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor)
                     .GroupBy(state => state.Definition.Area)
                     .ToDictionary(group => group.Key, group => group.Count());
@@ -168,6 +174,8 @@ public sealed class EmotionAfterimageMonsterManager
                     .Where(pack => pack.All(state => !state.IsAlive))
                     .OrderBy(pack => pack.Min(state => state.Definition.SpawnPriority))
                     .ThenBy(pack => pack.Min(state => state.Definition.MonsterId));
+
+                int scheduledCount = 0;
                 foreach (var pack in dormantPacks)
                 {
                     if (spawnBudget <= 0) break;
@@ -177,22 +185,29 @@ public sealed class EmotionAfterimageMonsterManager
                     aliveByArea.TryGetValue(area, out int aliveCount);
                     if (aliveCount + packSize > first.Definition.AreaAliveLimit) continue;
 
-                    foreach (var state in pack)
-                        state.ActivateAtHome();
                     aliveByArea[area] = aliveCount + packSize;
+                    double releaseOffsetSeconds = requestedSpawnBudget == 1
+                        ? 0d
+                        : releaseDuration.TotalSeconds * scheduledCount / (requestedSpawnBudget - 1d);
+                    _pendingWavePacks.Add(new PendingWavePack(
+                        first.Definition.ClusterId,
+                        nowUtc.AddSeconds(releaseOffsetSeconds),
+                        nowUtc + releaseDuration + TimeSpan.FromSeconds(8), waveIndex + 1));
+                    scheduledCount++;
                     spawnBudget--;
                     changed = true;
                 }
                 return changed;
             }
         }
-
         public MonsterTickResult Tick(IReadOnlyList<MonsterSpatialTarget> possibleTargets, DateTime nowUtc)
         {
             var targetsByArea = BuildTargetBuckets(possibleTargets);
             lock (_sync)
             {
                 var changed = new List<MonsterRuntimeInfo>();
+                var spawned = new List<MonsterRuntimeInfo>();
+                ReleaseDueWavePacks(possibleTargets, nowUtc, changed, spawned);
                 var attacks = new List<MonsterAttack>();
                 int spawnedAmbientMonsterId = SpawnAmbientCorridorMonster(possibleTargets, nowUtc, changed);
                 foreach (var state in _monsters.Values)
@@ -216,9 +231,9 @@ public sealed class EmotionAfterimageMonsterManager
                         }
 
                         bool movedHome = MoveTowards(state, GetIdleDestination(state, nowUtc), elapsedSeconds);
-                        if (state.CurrentHealth < state.Definition.MaxHealth && nowUtc - state.LastDamagedAtUtc >= ResetDelay)
+                        if (state.CurrentHealth < state.MaxHealth && nowUtc - state.LastDamagedAtUtc >= ResetDelay)
                         {
-                            state.CurrentHealth = state.Definition.MaxHealth;
+                            state.CurrentHealth = state.MaxHealth;
                             state.LastAttackerPlayerId = 0;
                             state.DamageByPlayer.Clear();
                             movedHome = true;
@@ -240,12 +255,48 @@ public sealed class EmotionAfterimageMonsterManager
 
                     state.NextAttackAtUtc = nowUtc.AddSeconds(state.Definition.AttackIntervalSeconds);
                     attacks.Add(new MonsterAttack(state.Definition.MonsterId, target.PlayerId, state.Definition.Area,
-                        state.Definition.AttackDamage));
+                        state.AttackDamage));
                 }
-                return new MonsterTickResult(changed, attacks);
+                return new MonsterTickResult(changed, attacks, spawned);
             }
         }
 
+        private void ReleaseDueWavePacks(IReadOnlyList<MonsterSpatialTarget> possibleTargets, DateTime nowUtc,
+            ICollection<MonsterRuntimeInfo> changed, ICollection<MonsterRuntimeInfo> spawned)
+        {
+            for (int index = _pendingWavePacks.Count - 1; index >= 0; index--)
+            {
+                PendingWavePack pending = _pendingWavePacks[index];
+                if (nowUtc < pending.ReleaseAtUtc)
+                    continue;
+
+                var pack = _monsters.Values
+                    .Where(state => state.Definition.ClusterId == pending.ClusterId)
+                    .OrderBy(state => state.Definition.MonsterId)
+                    .ToList();
+                if (pack.Count == 0 || pack.Any(state => _closedAreas.Contains(state.Definition.Area)))
+                {
+                    _pendingWavePacks.RemoveAt(index);
+                    continue;
+                }
+
+                bool playerIsTooClose = possibleTargets.Any(target =>
+                    target.MapId == pack[0].Definition.MapId && target.Area == pack[0].Definition.Area &&
+                    pack.Any(state => DistanceSquared(state.Definition.Position, target.Position) <
+                        AmbientCorridorSafeSpawnDistance * AmbientCorridorSafeSpawnDistance));
+                if (playerIsTooClose && nowUtc < pending.ForceAtUtc)
+                    continue;
+
+                foreach (var state in pack)
+                {
+                    state.ActivateAtHome(pending.StrengthTier);
+                    var runtime = ToRuntimeInfo(state);
+                    changed.Add(runtime);
+                    spawned.Add(runtime);
+                }
+                _pendingWavePacks.RemoveAt(index);
+            }
+        }
         private int SpawnAmbientCorridorMonster(IReadOnlyList<MonsterSpatialTarget> possibleTargets, DateTime nowUtc,
             ICollection<MonsterRuntimeInfo> changed)
         {
@@ -382,7 +433,7 @@ public sealed class EmotionAfterimageMonsterManager
             AreaType = state.Definition.Area,
             PositionX = state.Position.X,
             PositionY = state.Position.Y,
-            MaxHealth = state.Definition.MaxHealth,
+            MaxHealth = state.MaxHealth,
             CurrentHealth = state.CurrentHealth,
             IsAlive = state.IsAlive,
             RewardItemId = state.Definition.RewardItemId,
@@ -424,6 +475,8 @@ public sealed class EmotionAfterimageMonsterManager
             definition.Position.X + definition.FormationOffset.X,
             definition.Position.Y + definition.FormationOffset.Y,
             definition.Position.Z);
+        public int MaxHealth { get; private set; } = definition.MaxHealth;
+        public int AttackDamage { get; private set; } = definition.AttackDamage;
         public int CurrentHealth { get; set; } = definition.MaxHealth;
         public bool IsAlive { get; set; } = definition.StartsActive;
         public long LastAttackerPlayerId { get; set; }
@@ -433,13 +486,17 @@ public sealed class EmotionAfterimageMonsterManager
         public DateTime LastTargetSeenAtUtc { get; set; } = DateTime.MinValue;
         public Dictionary<long, int> DamageByPlayer { get; } = new();
 
-        public void ActivateAtHome()
+        public void ActivateAtHome(int strengthTier = 0)
         {
+            float healthMultiplier = 1f + Math.Max(0, strengthTier) * 0.20f;
+            float damageMultiplier = 1f + Math.Max(0, strengthTier) * 0.15f;
+            MaxHealth = Math.Max(1, (int)MathF.Ceiling(Definition.MaxHealth * healthMultiplier));
+            AttackDamage = Math.Max(1, (int)MathF.Ceiling(Definition.AttackDamage * damageMultiplier));
             Position = new Vector3f(
                 Definition.Position.X + Definition.FormationOffset.X,
                 Definition.Position.Y + Definition.FormationOffset.Y,
                 Definition.Position.Z);
-            CurrentHealth = Definition.MaxHealth;
+            CurrentHealth = MaxHealth;
             IsAlive = true;
             LastAttackerPlayerId = 0;
             LastDamagedAtUtc = DateTime.MinValue;
@@ -457,6 +514,8 @@ public sealed class EmotionAfterimageMonsterManager
             DamageByPlayer.Clear();
         }
     }
+
+    private readonly record struct PendingWavePack(int ClusterId, DateTime ReleaseAtUtc, DateTime ForceAtUtc, int StrengthTier);
 }
 
 public readonly record struct MonsterDefinition(int MonsterId, MapId MapId, AreaType Area, Vector3f Position,
@@ -483,7 +542,7 @@ public readonly record struct MonsterDamageResult(MonsterRuntimeInfo? State, boo
     public static MonsterDamageResult None => new(null, false, 0, false);
 }
 public readonly record struct MonsterTickResult(IReadOnlyList<MonsterRuntimeInfo> ChangedStates,
-    IReadOnlyList<MonsterAttack> Attacks)
+    IReadOnlyList<MonsterAttack> Attacks, IReadOnlyList<MonsterRuntimeInfo> SpawnedStates)
 {
-    public static MonsterTickResult None => new([], []);
+    public static MonsterTickResult None => new([], [], []);
 }

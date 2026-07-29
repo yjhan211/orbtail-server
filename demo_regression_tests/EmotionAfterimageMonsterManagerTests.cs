@@ -79,14 +79,23 @@ public class EmotionAfterimageMonsterManagerTests
         var manager = CreateManager();
 
         Assert.True(manager.ApplyAreaClosureAndSpawnWave(MatchingId,
-            [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2]));
+            [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2], StartedAt));
 
         var snapshot = manager.GetSnapshot(MatchingId);
         Assert.All(snapshot.Where(info => info.AreaType is AreaType.ExamRoom or AreaType.BroadcastRoom or AreaType.Classroom2),
             info => Assert.False(info.IsAlive));
-        Assert.Equal(126, snapshot.Count(info => info.IsAlive));
-        Assert.Equal(18, snapshot.Count(info => info.AreaType == AreaType.Library && info.IsAlive));
-        Assert.False(manager.ApplyAreaClosureAndSpawnWave(MatchingId, [AreaType.ExamRoom]));
+        Assert.Equal(99, snapshot.Count(info => info.IsAlive));
+        Assert.Equal(9, snapshot.Count(info => info.AreaType == AreaType.Library && info.IsAlive));
+
+        var firstRelease = manager.Tick(MatchingId, [], StartedAt);
+        Assert.Equal(9, firstRelease.SpawnedStates.Count);
+        Assert.Equal(108, manager.GetSnapshot(MatchingId).Count(info => info.IsAlive));
+
+        var finalRelease = manager.Tick(MatchingId, [], StartedAt.AddSeconds(20));
+        Assert.Equal(18, finalRelease.SpawnedStates.Count);
+        Assert.All(finalRelease.SpawnedStates, state => Assert.True(state.MaxHealth > 12));
+        Assert.Equal(126, manager.GetSnapshot(MatchingId).Count(info => info.IsAlive));
+        Assert.False(manager.ApplyAreaClosureAndSpawnWave(MatchingId, [AreaType.ExamRoom], StartedAt));
     }
 
     [Fact]
@@ -231,7 +240,8 @@ public class EmotionAfterimageMonsterManagerTests
         // The first closure consumes its three-pack budget and exposes every initially
         // dormant second pack without changing the placement chosen for this match.
         Assert.True(manager.ApplyAreaClosureAndSpawnWave(MatchingId,
-            [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2]));
+            [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2], StartedAt));
+        manager.Tick(MatchingId, [], StartedAt.AddSeconds(20));
         foreach (var target in manager.GetAliveTargets(MatchingId))
             observedTargets.TryAdd(target.MonsterId, target);
 
