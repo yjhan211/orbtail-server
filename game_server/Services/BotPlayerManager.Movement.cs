@@ -1029,13 +1029,13 @@ public partial class BotPlayerManager
     ///     프로토 0 목적지(방) 선택. 떠보기 확률이면 최저 인원 방, 아니면 타겟이 있는 방(회복).
     ///     타겟 위치를 모르면 현재와 다른 임의 방.
     /// </summary>
-    private AreaType ChooseProto0Destination(BotPlayerState bot, long matchingId,
+    private AreaType ChooseProto0Destination(BotPlayerState bot, long matchingId, MapId mapId,
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
     {
         return ActiveProto0BotPolicy switch
         {
-            Proto0BotPolicy.DisguiseMvp => ChooseDisguiseProto0Destination(bot, matchingId, playerAreas, closureManager),
-            _ => ChooseSimpleProto0Destination(bot, matchingId, playerAreas, closureManager)
+            Proto0BotPolicy.DisguiseMvp => ChooseDisguiseProto0Destination(bot, matchingId, mapId, playerAreas, closureManager),
+            _ => ChooseSimpleProto0Destination(bot, matchingId, mapId, playerAreas, closureManager)
         };
     }
 
@@ -1058,20 +1058,31 @@ public partial class BotPlayerManager
             players,
             area => IsAreaClosingOrClosed(closureManager, matchingId, area));
 
+        // Corridors are transit only. Following a target whose current area is a corridor
+        // must fall through to the room-selection policy; otherwise bots path to the
+        // corridor center and have no room destination to continue toward.
         if (decision.Kind == BotBehaviorActionKind.FollowTarget
             && decision.TargetArea != AreaType.None
+            && !decision.TargetArea.IsCorridor()
             && decision.TargetArea != bot.CurrentArea)
             return decision.TargetArea;
 
-        return ChooseProto0Destination(bot, matchingId, playerAreas, closureManager);
+        return ChooseProto0Destination(bot, matchingId, mapId, playerAreas, closureManager);
     }
 
-    private AreaType ChooseSimpleProto0Destination(BotPlayerState bot, long matchingId,
+    private List<AreaType> GetOpenBotDestinationAreas(long matchingId, MapId mapId,
+        AreaClosureManager closureManager) =>
+        GameMapData.GetAreas(mapId)
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Where(area => area != AreaType.None && !area.IsCorridor() &&
+                           !IsAreaClosingOrClosed(closureManager, matchingId, area))
+            .ToList();
+
+    private AreaType ChooseSimpleProto0Destination(BotPlayerState bot, long matchingId, MapId mapId,
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
     {
-        var rooms = Proto0Rooms
-            .Where(a => !IsAreaClosingOrClosed(closureManager, matchingId, a))
-            .ToList();
+        var rooms = GetOpenBotDestinationAreas(matchingId, mapId, closureManager);
         if (rooms.Count == 0) return AreaType.None;
 
         // 떠보기: 최저 인원 방으로 (추적자 유인 — 회복 포기 비용)
@@ -1097,12 +1108,10 @@ public partial class BotPlayerManager
     }
 
     /// <summary>프로토 0 위장 정책: 즉시 추적 대신 지연, 미끼 이동, 떠보기 이동을 섞는다.</summary>
-    private AreaType ChooseDisguiseProto0Destination(BotPlayerState bot, long matchingId,
+    private AreaType ChooseDisguiseProto0Destination(BotPlayerState bot, long matchingId, MapId mapId,
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
     {
-        var rooms = Proto0Rooms
-            .Where(a => !IsAreaClosingOrClosed(closureManager, matchingId, a))
-            .ToList();
+        var rooms = GetOpenBotDestinationAreas(matchingId, mapId, closureManager);
         if (rooms.Count == 0) return AreaType.None;
 
         var now = DateTime.UtcNow;

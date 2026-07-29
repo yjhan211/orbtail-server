@@ -18,6 +18,22 @@ public sealed class SummonStoneManager
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerSummonState>> _matchingStates = new();
 
     public IReadOnlyList<int> PoolItemIds => SummonPool;
+    public static int InitialSummonStoneCount => SummonCosts[0];
+
+    public SummonStoneSnapshot EnsureStartingStones(long matchingId, long playerId)
+    {
+        var state = GetOrCreatePlayerState(matchingId, playerId);
+        lock (state.SyncRoot)
+        {
+            if (!state.HasStartingStones)
+            {
+                state.StoneCount = checked(state.StoneCount + InitialSummonStoneCount);
+                state.HasStartingStones = true;
+            }
+
+            return CreateSnapshot(state);
+        }
+    }
 
     public SummonStoneSnapshot AddStones(long matchingId, long playerId, int amount)
     {
@@ -91,6 +107,7 @@ public sealed class SummonStoneManager
         public object SyncRoot { get; } = new();
         public int StoneCount { get; set; }
         public int SuccessfulSummonCount { get; set; }
+        public bool HasStartingStones { get; set; }
     }
 }
 

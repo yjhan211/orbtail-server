@@ -218,6 +218,60 @@ public class AreaClosureManager
     }
 
     public bool IsOvertimeActive(long matchingId) => GetOvertimeCorruptionPerTick(matchingId, 1) > 0;
+    public GlobalClosureTick CheckGlobalClosureSchedule(long matchingId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state)) return GlobalClosureTick.Empty;
+
+        lock (state.SyncRoot)
+        {
+            if (state.Waves.Count == 0) return GlobalClosureTick.Empty;
+
+            var finalWave = state.Waves[^1];
+            double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
+            long closureAtUnixMs = ((DateTimeOffset)state.GameStartTime.AddSeconds(finalWave.ClosureAtSeconds))
+                .ToUnixTimeMilliseconds();
+
+            if (elapsedSeconds >= finalWave.ClosureAtSeconds)
+            {
+                if (state.GlobalClosureActiveSent) return GlobalClosureTick.Empty;
+
+                state.GlobalClosureActiveSent = true;
+                return new GlobalClosureTick(true, 0, closureAtUnixMs);
+            }
+
+            if (elapsedSeconds < finalWave.ClosureAtSeconds - ClosureWarningSeconds ||
+                state.GlobalClosureWarningSent)
+                return GlobalClosureTick.Empty;
+
+            state.GlobalClosureWarningSent = true;
+            int remainingSeconds = Math.Max(1, (int)Math.Ceiling(finalWave.ClosureAtSeconds - elapsedSeconds));
+            return new GlobalClosureTick(false, remainingSeconds, closureAtUnixMs);
+        }
+    }
+
+    public GlobalClosureClientState GetGlobalClosureClientState(long matchingId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state)) return GlobalClosureClientState.Empty;
+
+        lock (state.SyncRoot)
+        {
+            if (state.Waves.Count == 0) return GlobalClosureClientState.Empty;
+
+            var finalWave = state.Waves[^1];
+            double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
+            if (elapsedSeconds < finalWave.ClosureAtSeconds - ClosureWarningSeconds)
+                return GlobalClosureClientState.Empty;
+
+            long closureAtUnixMs = ((DateTimeOffset)state.GameStartTime.AddSeconds(finalWave.ClosureAtSeconds))
+                .ToUnixTimeMilliseconds();
+            bool active = elapsedSeconds >= finalWave.ClosureAtSeconds;
+            int remainingSeconds = active
+                ? 0
+                : Math.Max(1, (int)Math.Ceiling(finalWave.ClosureAtSeconds - elapsedSeconds));
+            return new GlobalClosureClientState(true, active, remainingSeconds, closureAtUnixMs);
+        }
+    }
+
     public (int Stage, int CorruptionPerSecond) GetOvertimeStatus(long matchingId)
     {
         int rate = GetOvertimeCorruptionPerTick(matchingId, 1);
@@ -328,6 +382,21 @@ public sealed record ClosureClientStateSnapshot(
     public static readonly ClosureClientStateSnapshot Empty = new([], [], 0, 0, 0, 0);
 }
 
+public sealed record GlobalClosureTick(bool IsActive, int SecondsRemaining, long ClosureAtUnixMs)
+{
+    public static readonly GlobalClosureTick Empty = new(false, -1, 0);
+    public bool HasTransition => SecondsRemaining >= 0;
+}
+
+public sealed record GlobalClosureClientState(
+    bool IsKnown,
+    bool IsActive,
+    int SecondsRemaining,
+    long ClosureAtUnixMs)
+{
+    public static readonly GlobalClosureClientState Empty = new(false, false, 0, 0);
+}
+
 public class MatchingClosureState
 {
     internal object SyncRoot { get; } = new();
@@ -338,6 +407,8 @@ public class MatchingClosureState
     public int NextClosureIndex { get; set; }
     public DateTime GameStartTime { get; set; }
     public HashSet<int> WarningsSent { get; set; } = new();
+    public bool GlobalClosureWarningSent { get; set; }
+    public bool GlobalClosureActiveSent { get; set; }
     public int StartDelaySec { get; set; }
     public int IntervalSec { get; set; }
 }

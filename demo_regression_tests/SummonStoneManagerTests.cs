@@ -7,6 +7,27 @@ namespace demo_regression_tests;
 public class SummonStoneManagerTests
 {
     [Fact]
+    public void StartingStones_GrantExactlyOneFirstSummonAndDoNotDuplicate()
+    {
+        var manager = new SummonStoneManager();
+
+        var first = manager.EnsureStartingStones(202, 10);
+        var reconnect = manager.EnsureStartingStones(202, 10);
+        var otherPlayer = manager.EnsureStartingStones(202, 20);
+
+        Assert.Equal(SummonStoneManager.InitialSummonStoneCount, first.StoneCount);
+        Assert.Equal(first, reconnect);
+        Assert.Equal(first, otherPlayer);
+
+        var summon = manager.TrySummon(202, 10,
+            itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
+
+        Assert.True(summon.Success);
+        Assert.Equal(0, summon.State.StoneCount);
+        Assert.Equal(3, summon.State.NextCost);
+    }
+
+    [Fact]
     public void MonsterRewards_AccumulateInOneAuthoritativeBalance()
     {
         var manager = new SummonStoneManager();

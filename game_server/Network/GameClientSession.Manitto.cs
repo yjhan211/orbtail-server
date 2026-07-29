@@ -705,7 +705,7 @@ public partial class GameClientSession
         if (eliminatedSession != null)
             eliminatedSession.DropAllInventoryAtCurrentPosition();
         else
-            DropBotInventoryAtCurrentPosition(eliminatedPlayerId);
+            AwardBotEliminationSummonStones(eliminatedPlayerId, resolvedAttackerPlayerId, allSessions);
 
         // 1. 전체에게 탈락 알림. 탈락자에게만 결과표를 고정 패킷 예산 안에서 나눠 보낸다.
         var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, CurrentMapSubId, 0);

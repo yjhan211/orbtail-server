@@ -561,7 +561,7 @@ public partial class GameServer(
             var matchingSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                 .ToList();
-            DropBotInventoryAtCurrentPosition(matchingId, botId, matchingSessions);
+            AwardBotEliminationSummonStones(matchingId, botId, attackerPlayerId, matchingSessions);
 
             // 1) 전체에게 봇 탈락 알림 (G_TO_C_PLAYER_ELIMINATED)
             using (var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED))
@@ -621,58 +621,47 @@ public partial class GameServer(
         }
     }
 
-    /// <summary>Drops a bot inventory even when a bot-only instance has no client session.</summary>
-    private void DropBotInventoryAtCurrentPosition(
+    /// <summary>
+    /// Converts a defeated bot's board into summon stones for its confirmed killer.
+    /// The bot board is removed in every case so eliminated bots cannot leave reusable floor orbs.
+    /// </summary>
+    private void AwardBotEliminationSummonStones(
         long matchingId,
         long botPlayerId,
+        long attackerPlayerId,
         IReadOnlyCollection<GameClientSession> matchingSessions)
     {
         var bot = _botPlayerManager.GetBot(matchingId, botPlayerId);
-        if (bot == null || bot.CurrentArea == AreaType.None)
+        if (bot == null)
             return;
 
         var removed = _inGameInventoryManager.TakeAllItems(matchingId, botPlayerId);
-        if (removed.Count == 0)
-            return;
-
         var emptyBoard = _inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId);
         _gameEventLogManager.LogSurvivorOrbBoardTransition(
             matchingId, botPlayerId, emptyBoard.GetAllItems(), 0, bot.CurrentArea.ToString(), "elimination_drop",
             isBot: true);
-        var itemIds = removed
-            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
-            .Where(GroundItemPickupPolicy.ShouldDropOnElimination)
-            .ToList();
-        if (itemIds.Count == 0)
+
+        int reward = removed
+            .Where(item => SurvivorOrbData.IsSurvivorOrb(item.ItemId) || SurvivorOrbData.IsRecoveryOrb(item.ItemId))
+            .Sum(item => Math.Max(0, item.Count));
+        if (attackerPlayerId == 0 || reward == 0)
             return;
 
-        var spawned = _groundItemManager.SpawnItems(
+        var state = _summonStoneManager.AddStones(matchingId, attackerPlayerId, reward);
+        matchingSessions.FirstOrDefault(session => session.PlayerId == attackerPlayerId)?.SendSummonStoneState();
+        _gameEventLogManager.LogSummonStoneAward(
             matchingId,
-            bot.CurrentArea,
-            bot.Position.X,
-            bot.Position.Y,
-            itemIds,
-            layout: GroundItemSpawnLayout.EliminationScatter);
-        _gameEventLogManager.LogEliminationDrop(
-            matchingId,
-            botPlayerId,
+            attackerPlayerId,
+            unchecked((int)botPlayerId),
+            reward,
+            state.StoneCount,
             bot.CurrentArea.ToString(),
-            itemIds,
-            spawned,
-            GameEventLogManager.CalculateDropRecoveryTotal(itemIds),
-            isBot: true);
-        if (spawned.Count == 0)
-            return;
-
-        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)bot.CurrentArea);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
-            (int)bot.CurrentArea,
-            remaining,
-            spawned.ToList());
-        foreach (var session in matchingSessions.Where(session => session.CurrentArea == bot.CurrentArea))
-            session.Send(packet);
+            isCore: false,
+            isBot: BotPlayerManager.IsBotPlayerId(attackerPlayerId));
+        logger.LogInformation(
+            "Bot elimination summon stones granted: MatchingId={MatchingId}, BotId={BotId}, KillerId={KillerId}, Reward={Reward}, Balance={Balance}",
+            matchingId, botPlayerId, attackerPlayerId, reward, state.StoneCount);
     }
-
     /// <summary>
     ///     #26: 봇 미션 시뮬 — 부품 회수 + 자동 결합. 최종 결합 시 즉시 게임 종료.
     /// </summary>
@@ -1507,9 +1496,8 @@ public partial class GameServer(
             foreach (long matchingId in matchingIds)
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
-
                 var closureTick = _areaClosureManager.CheckClosureSchedule(matchingId);
-
+                var globalClosureTick = _areaClosureManager.CheckGlobalClosureSchedule(matchingId);
                 var sessions = _clientSessions.Values
                     .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                     .ToList();
@@ -1610,6 +1598,19 @@ public partial class GameServer(
                     using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
                     var msg = new G_TO_C_AREA_CLOSED { AreaType = closedArea };
                     packet.SetBody(MessagePackSerializer.Serialize(msg));
+                    foreach (var session in sessions) session.Send(packet);
+                }
+                if (globalClosureTick.HasTransition)
+                {
+                    using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+                    packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+                    {
+                        AreaType = AreaType.None,
+                        SecondsRemaining = globalClosureTick.SecondsRemaining,
+                        ClosureAtUnixMs = globalClosureTick.ClosureAtUnixMs,
+                        IsGlobalClosure = true,
+                        IsGlobalClosureActive = globalClosureTick.IsActive
+                    }));
                     foreach (var session in sessions) session.Send(packet);
                 }
 
@@ -2298,6 +2299,7 @@ public partial class GameServer(
             _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
             SurvivorOrbStartLoadout.EnsureStartingOrb(_inGameInventoryManager, matchingId, bot.PlayerId);
+            _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
         }
 
         _areaClosureManager.InitializeMatching(matchingId, jobs);

@@ -71,6 +71,33 @@ public sealed class SurvivorBotLoopRegressionTests
     }
 
     [Fact]
+    public void BotFollowingTargetInCorridorSelectsRoomDestination()
+    {
+        const long matchingId = 1942001;
+        const long botPlayerId = -19420011;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        bot.EquippedBattleItemId = RecorderT1;
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+
+        fixture.BotManager.ProcessBotMovementTick(
+            matchingId,
+            fixture.ClosureManager,
+            fixture.AreaStockManager,
+            new Dictionary<long, AreaType> { [bot.TargetPlayerId] = AreaType.Corridor },
+            fixture.ChecklistManager,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            Array.Empty<BotCombatTargetSnapshot>());
+
+        Assert.NotEqual(AreaType.None, bot.MovementDestination);
+        Assert.False(bot.MovementDestination.IsCorridor());
+        Assert.NotEmpty(bot.Path);
+        Assert.False(bot.Path[^1].Area.IsCorridor());
+    }
+    [Fact]
     public void BotMergesStoredRecoveryItemsAndUsesThemOnlyAtThreshold()
     {
         const long matchingId = 194201;

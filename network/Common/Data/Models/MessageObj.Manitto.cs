@@ -399,8 +399,9 @@ namespace network.common.data.models
 
         /// <summary>서버 측 폐쇄 예정 시각 (UTC Unix ms). 클라이언트는 이 값으로 카운트다운하여 네트워크 지연 보정.</summary>
         [Key("closureAtUnixMs")] public long ClosureAtUnixMs { get; set; }
+        [Key("isGlobalClosure")] public bool IsGlobalClosure { get; set; }
+        [Key("isGlobalClosureActive")] public bool IsGlobalClosureActive { get; set; }
     }
-
     [MessagePackObject]
     public class G_TO_C_AREA_CLOSED : IMessagePackObject
     {

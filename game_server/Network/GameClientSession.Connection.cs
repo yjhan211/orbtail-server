@@ -185,6 +185,7 @@ public partial class GameClientSession
             if (startingOrbItemId > 0)
                 Logger.LogInformation("Survivor starting orb granted: PlayerId={PlayerId}, ItemId={ItemId}",
                     PlayerId, startingOrbItemId);
+            _summonStoneManager.EnsureStartingStones(CurrentMapSubId, PlayerId.Value);
 
             SendInGameInventoryList();
             SendSummonStoneState();
@@ -442,6 +443,7 @@ public partial class GameClientSession
                 _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
                 SurvivorOrbStartLoadout.EnsureStartingOrb(_inGameInventoryManager, matchingId, bot.PlayerId);
+                _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
             }
         }
         catch (Exception ex)
@@ -1238,8 +1240,22 @@ public partial class GameClientSession
             }));
             Send(packet);
         }
+        var globalClosure = _areaClosureManager.GetGlobalClosureClientState(CurrentMapSubId);
+        if (globalClosure.IsKnown)
+        {
+            using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+            {
+                AreaType = AreaType.None,
+                SecondsRemaining = globalClosure.SecondsRemaining,
+                ClosureAtUnixMs = globalClosure.ClosureAtUnixMs,
+                IsGlobalClosure = true,
+                IsGlobalClosureActive = globalClosure.IsActive
+            }));
+            Send(packet);
+        }
 
-        // AreaType.None은 미래 대상은 밝히지 않고 다음 경보 시각만 전달한다.
+        // AreaType.None is the generic next-warning clock.
         using var countdownPacket = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
         countdownPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
         {
