@@ -187,6 +187,7 @@ public partial class GameClientSession
                     PlayerId, startingOrbItemId);
 
             SendInGameInventoryList();
+            SendSummonStoneState();
             var connectionBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
             _gameEventLogManager.LogSurvivorOrbBoardTransition(
                 CurrentMapSubId, PlayerId.Value, connectionBoard.GetAllItems(),

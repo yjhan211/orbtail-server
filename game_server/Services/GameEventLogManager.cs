@@ -777,6 +777,68 @@ public class GameEventLogManager
         }
     }
 
+    public void LogSummonStoneAward(long matchingId, long playerId, int monsterId, int amount, int balance,
+        string area, bool isCore, bool isBot)
+    {
+        if (amount <= 0) return;
+
+        var now = DateTimeOffset.UtcNow;
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        bool firstStone;
+        long? elapsedMilliseconds;
+        lock (state.SyncRoot)
+        {
+            firstStone = state.FirstSummonStoneLoggedPlayerIds.Add(playerId);
+            elapsedMilliseconds = state.MatchStartedAtUtc.HasValue
+                ? Math.Max(0, (long)(now - state.MatchStartedAtUtc.Value).TotalMilliseconds)
+                : null;
+        }
+
+        AppendAt(matchingId, "SUMMON_STONE_AWARDED", playerId, isBot,
+            $"Summon stones awarded: monster={monsterId}, amount={amount}, balance={balance}, core={isCore}.",
+            now, entry =>
+            {
+                entry.ActivityId = monsterId;
+                entry.Area = area;
+                entry.Outcome = isCore ? "core" : "normal";
+                entry.SummonStoneDelta = amount;
+                entry.SummonStoneBalance = balance;
+                entry.IsFirstMilestone = firstStone;
+                entry.ElapsedMilliseconds = elapsedMilliseconds;
+            });
+    }
+
+    public void LogOrbSummonAttempt(long matchingId, long playerId, bool success, ErrorCode errorCode,
+        int summonedItemId, int stoneBalance, int nextCost, int successfulSummonCount, string area, bool isBot)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        bool firstSuccessfulSummon = false;
+        long? elapsedMilliseconds;
+        lock (state.SyncRoot)
+        {
+            if (success)
+                firstSuccessfulSummon = state.FirstSuccessfulSummonLoggedPlayerIds.Add(playerId);
+            elapsedMilliseconds = state.MatchStartedAtUtc.HasValue
+                ? Math.Max(0, (long)(now - state.MatchStartedAtUtc.Value).TotalMilliseconds)
+                : null;
+        }
+
+        string type = success ? "ORB_SUMMON_SUCCEEDED" : "ORB_SUMMON_BLOCKED";
+        AppendAt(matchingId, type, playerId, isBot,
+            $"Orb summon: success={success}, error={errorCode}, item={summonedItemId}, balance={stoneBalance}, nextCost={nextCost}, count={successfulSummonCount}.",
+            now, entry =>
+            {
+                entry.Area = area;
+                entry.Outcome = errorCode.ToString();
+                entry.ItemId = summonedItemId > 0 ? summonedItemId : null;
+                entry.SummonStoneBalance = stoneBalance;
+                entry.NextSummonCost = nextCost;
+                entry.SuccessfulSummonCount = successfulSummonCount;
+                entry.IsFirstMilestone = firstSuccessfulSummon;
+                entry.ElapsedMilliseconds = elapsedMilliseconds;
+            });
+    }
     public void LogSurvivorOrbPickupBlockedFull(
         long matchingId,
         long playerId,
@@ -1208,6 +1270,8 @@ public class GameEventLogManager
         public DateTimeOffset? MatchStartedAtUtc { get; set; }
         public int OvertimeStage { get; set; }
         public HashSet<long> SpawnLoggedPlayerIds { get; } = new();
+        public HashSet<long> FirstSummonStoneLoggedPlayerIds { get; } = new();
+        public HashSet<long> FirstSuccessfulSummonLoggedPlayerIds { get; } = new();
         public Dictionary<(long PlayerId, int InteractId), DateTimeOffset> ExploreStarts { get; } = new();
         public Dictionary<(long PlayerId, string Area, long ClosureAtUnixMs), ClosureWarningResponse>
             ClosureWarnings
@@ -1659,6 +1723,10 @@ public class GameEventEntry
     public int? CellY { get; set; }
     public long? GroundItemUid { get; set; }
     public int? ItemId { get; set; }
+    public int? SummonStoneDelta { get; set; }
+    public int? SummonStoneBalance { get; set; }
+    public int? NextSummonCost { get; set; }
+    public int? SuccessfulSummonCount { get; set; }
     public List<int>? GeneratedItemIds { get; set; }
     public List<int>? BoardItemIds { get; set; }
     public List<int>? PreviousBoardItemIds { get; set; }

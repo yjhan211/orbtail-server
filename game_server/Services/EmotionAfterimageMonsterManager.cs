@@ -103,7 +103,9 @@ public sealed class EmotionAfterimageMonsterManager
             lock (_sync)
                 return _monsters.Values.Where(state => state.IsAlive).OrderBy(state => state.Definition.MonsterId)
                     .Select(state => new MonsterCombatTarget(state.Definition.MonsterId, state.Definition.MapId,
-                        state.Definition.Area, state.Position, state.Definition.RewardItemId)).ToList();
+                        state.Definition.Area, state.Position, state.Definition.RewardItemId,
+                        state.Definition.ClusterId, state.Definition.ClusterMemberIndex,
+                        state.Definition.ClusterSize)).ToList();
         }
 
         public bool HasAliveMonsterInArea(AreaType area)
@@ -129,7 +131,8 @@ public sealed class EmotionAfterimageMonsterManager
 
                 state.IsAlive = false;
                 state.NextAttackAtUtc = DateTime.MaxValue;
-                return new MonsterDamageResult(ToRuntimeInfo(state), true, state.Definition.RewardItemId, true);
+                return new MonsterDamageResult(ToRuntimeInfo(state), true,
+                    state.Definition.SummonStoneReward, true);
             }
         }
 
@@ -205,7 +208,8 @@ public sealed class EmotionAfterimageMonsterManager
                     // A same-area monster is a persistent local threat, not an
                     // interaction prompt: it notices every player in its room.
                     var target = SelectTarget(state, targets);
-                    bool moved = MoveTowards(state, target.Position, elapsedSeconds);
+                    Vector3f chaseDestination = GetChaseDestination(state, target.Position);
+                    bool moved = MoveTowards(state, chaseDestination, elapsedSeconds);
                     if (moved) changed.Add(ToRuntimeInfo(state));
                     if (nowUtc < state.NextAttackAtUtc ||
                         !IsWithinRange(state.Position, target.Position, state.Definition.AttackRange)) continue;
@@ -266,6 +270,16 @@ public sealed class EmotionAfterimageMonsterManager
             return selected;
         }
 
+        private static Vector3f GetChaseDestination(MonsterState state, Vector3f targetPosition)
+        {
+            // Fixed slots avoid pairwise repulsion, so settling and anchor return cannot oscillate.
+            Vector3f offset = state.Definition.FormationOffset;
+            return new Vector3f(
+                targetPosition.X + offset.X,
+                targetPosition.Y + offset.Y,
+                targetPosition.Z);
+        }
+
         private static MonsterRuntimeInfo ToRuntimeInfo(MonsterState state) => new()
         {
             MonsterId = state.Definition.MonsterId,
@@ -275,7 +289,9 @@ public sealed class EmotionAfterimageMonsterManager
             MaxHealth = state.Definition.MaxHealth,
             CurrentHealth = state.CurrentHealth,
             IsAlive = state.IsAlive,
-            RewardItemId = state.Definition.RewardItemId
+            RewardItemId = state.Definition.RewardItemId,
+            IsCore = state.Definition.IsCore,
+            SummonStoneReward = state.Definition.SummonStoneReward
         };
 
         private static bool MoveTowards(MonsterState state, Vector3f destination, float elapsedSeconds)
@@ -333,17 +349,23 @@ public sealed class EmotionAfterimageMonsterManager
 
 public readonly record struct MonsterDefinition(int MonsterId, MapId MapId, AreaType Area, Vector3f Position,
     int MaxHealth, int AttackDamage, float AttackRange, float AttackIntervalSeconds, int RewardItemId,
-    float MoveSpeed, float LeashRange, int AreaAliveLimit, bool StartsActive, int SpawnPriority);
+    bool IsCore, int SummonStoneReward, float MoveSpeed, float LeashRange, int AreaAliveLimit,
+    bool StartsActive, int SpawnPriority, int ClusterId, int ClusterMemberIndex, int ClusterSize,
+    Vector3f FormationOffset);
 
 public readonly record struct MonsterCombatTarget(
     int MonsterId,
     MapId MapId,
     AreaType Area,
     Vector3f Position,
-    int RewardItemId);
+    int RewardItemId,
+    int ClusterId = 0,
+    int ClusterMemberIndex = 0,
+    int ClusterSize = 1);
 public readonly record struct MonsterSpatialTarget(long PlayerId, MapId MapId, AreaType Area, Vector3f Position);
 public readonly record struct MonsterAttack(int MonsterId, long TargetPlayerId, AreaType Area, int Damage);
-public readonly record struct MonsterDamageResult(MonsterRuntimeInfo? State, bool Killed, int RewardItemId, bool StateChanged)
+public readonly record struct MonsterDamageResult(MonsterRuntimeInfo? State, bool Killed, int SummonStoneReward,
+    bool StateChanged)
 {
     public static MonsterDamageResult None => new(null, false, 0, false);
 }

@@ -43,7 +43,7 @@ public sealed class SurvivorBotLoopRegressionTests
     }
 
     [Fact]
-    public void UnarmedBotLeavesOpenAreaForSecludedFarmingRoom()
+    public void UnarmedBotWaitsInsteadOfEnteringLegacyFarmingRoute()
     {
         const long matchingId = 194200;
         const long botPlayerId = -1942001;
@@ -65,10 +65,9 @@ public sealed class SurvivorBotLoopRegressionTests
             fixture.GroundItemManager,
             Array.Empty<BotCombatTargetSnapshot>());
 
-        Assert.NotEmpty(bot.Path);
-        AreaType destination = bot.Path[^1].Area;
-        Assert.False(destination.IsCorridor());
-        Assert.DoesNotContain(destination, new[] { AreaType.Ground, AreaType.Gym, AreaType.Storage });
+        Assert.Empty(bot.Path);
+        Assert.Equal(AreaType.None, bot.MovementDestination);
+        Assert.True(bot.LoopWaitUntil > DateTime.UtcNow);
     }
 
     [Fact]
@@ -586,7 +585,7 @@ public sealed class SurvivorBotLoopRegressionTests
     }
 
     [Fact]
-    public void OrbLootRoutingSpreadsBotsAcrossAvailableRooms()
+    public void OrbEquippedBotsDoNotUseLegacyLootRouting()
     {
         const long matchingId = 194210;
         long[] botIds = [-1942101, -1942102, -1942103];
@@ -630,14 +629,7 @@ public sealed class SurvivorBotLoopRegressionTests
             ground,
             Array.Empty<BotCombatTargetSnapshot>());
 
-        var committedAreas = botIds
-            .Select(id => botManager.GetBot(matchingId, id)!)
-            .Select(bot => bot.MovementDestination != AreaType.None
-                ? bot.MovementDestination
-                : bot.CurrentArea)
-            .ToList();
-        Assert.True(committedAreas.Distinct().Count() >= 2);
-        Assert.All(committedAreas.GroupBy(area => area), group => Assert.True(group.Count() <= 2));
+        Assert.All(botIds, id => Assert.Equal(0, botManager.GetBot(matchingId, id)!.PendingRngInteractId));
     }
 
     [Theory]

@@ -74,8 +74,15 @@ public class EmotionAfterimageMonsterManagerTests
         var lethal = manager.ApplyDamage(202, EmotionAfterimageMonsterManager.FirstMonsterId, 10, 999, now);
 
         Assert.True(lethal.Killed);
-        Assert.Equal(107000010, lethal.RewardItemId);
+        Assert.Equal(SummonStoneManager.NormalMonsterReward, lethal.SummonStoneReward);
         Assert.False(lethal.State!.IsAlive);
+
+        var duplicateHit = manager.ApplyDamage(
+            202, EmotionAfterimageMonsterManager.FirstMonsterId, 20, 999, now.AddMilliseconds(1));
+
+        Assert.False(duplicateHit.StateChanged);
+        Assert.False(duplicateHit.Killed);
+        Assert.Equal(0, duplicateHit.SummonStoneReward);
         Assert.Empty(manager.Tick(202, [], now.AddSeconds(60)).ChangedStates);
     }
 
@@ -146,5 +153,149 @@ public class EmotionAfterimageMonsterManagerTests
         ], now).Attacks;
 
         Assert.Equal(10, Assert.Single(attacks).TargetPlayerId);
+    }
+
+    [Fact]
+    public void SpawnGroups_AssignFullAndCompactFormationMetadata()
+    {
+        var manager = new EmotionAfterimageMonsterManager();
+        manager.InitializeMatching(202);
+
+        var aliveTargets = manager.GetAliveTargets(202);
+        var libraryGroup = Assert.Single(aliveTargets
+            .Where(target => target.Area == AreaType.Library)
+            .GroupBy(target => target.ClusterId));
+        Assert.Equal(3, libraryGroup.Count());
+        Assert.All(libraryGroup, target => Assert.Equal(3, target.ClusterSize));
+        Assert.Equal([0, 1, 2], libraryGroup
+            .Select(target => target.ClusterMemberIndex)
+            .OrderBy(index => index)
+            .ToArray());
+
+        var examRoomGroup = Assert.Single(aliveTargets
+            .Where(target => target.Area == AreaType.ExamRoom)
+            .GroupBy(target => target.ClusterId));
+        Assert.Equal(2, examRoomGroup.Count());
+        Assert.All(examRoomGroup, target => Assert.Equal(2, target.ClusterSize));
+        Assert.Equal([0, 1], examRoomGroup
+            .Select(target => target.ClusterMemberIndex)
+            .OrderBy(index => index)
+            .ToArray());
+    }
+
+    [Fact]
+    public void Tick_SettlesSameClusterIntoDeterministicLooseFormation()
+    {
+        const long matchingId = 202;
+        var first = new EmotionAfterimageMonsterManager();
+        var second = new EmotionAfterimageMonsterManager();
+        first.InitializeMatching(matchingId);
+        second.InitializeMatching(matchingId);
+        var startedAt = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc);
+        var targetPosition = new Vector3f(16f, 55.5f, 0f);
+        var target = new MonsterSpatialTarget(10, MapId.School, AreaType.Classroom4, targetPosition);
+
+        Advance(first, matchingId, [target], startedAt, 80);
+        Advance(second, matchingId, [target], startedAt, 80);
+
+        var firstFormation = first.GetAliveTargets(matchingId)
+            .Where(monster => monster.Area == AreaType.Classroom4)
+            .OrderBy(monster => monster.MonsterId)
+            .ToList();
+        var secondFormation = second.GetAliveTargets(matchingId)
+            .Where(monster => monster.Area == AreaType.Classroom4)
+            .OrderBy(monster => monster.MonsterId)
+            .ToList();
+
+        Assert.Equal(2, firstFormation.Count);
+        Assert.Equal(firstFormation.Count, secondFormation.Count);
+        for (int index = 0; index < firstFormation.Count; index++)
+        {
+            Assert.Equal(firstFormation[index].Position.X, secondFormation[index].Position.X, 5);
+            Assert.Equal(firstFormation[index].Position.Y, secondFormation[index].Position.Y, 5);
+            Assert.InRange(Distance(firstFormation[index].Position, targetPosition), 0.35f, 0.55f);
+        }
+
+        Assert.True(Distance(firstFormation[0].Position, firstFormation[1].Position) >= 0.6f);
+    }
+
+    [Fact]
+    public void Tick_MultipleGroundClusters_DoNotCollapseOntoTheSamePoint()
+    {
+        const long matchingId = 202;
+        var manager = new EmotionAfterimageMonsterManager();
+        manager.InitializeMatching(matchingId);
+        var startedAt = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc);
+        var targetPosition = new Vector3f(32f, 30f, 0f);
+        var target = new MonsterSpatialTarget(10, MapId.School, AreaType.Ground, targetPosition);
+
+        Advance(manager, matchingId, [target], startedAt, 80);
+
+        var formation = manager.GetAliveTargets(matchingId)
+            .Where(monster => monster.Area == AreaType.Ground)
+            .OrderBy(monster => monster.MonsterId)
+            .ToList();
+        Assert.Equal(4, formation.Count);
+        for (int left = 0; left < formation.Count; left++)
+        {
+            Assert.InRange(Distance(formation[left].Position, targetPosition), 0.55f, 0.61f);
+            for (int right = left + 1; right < formation.Count; right++)
+                Assert.True(Distance(formation[left].Position, formation[right].Position) >= 0.55f);
+        }
+    }
+
+    [Fact]
+    public void Tick_WhenTargetDisappears_ReturnsToOwnAnchorsAndStaysStill()
+    {
+        const long matchingId = 202;
+        var manager = new EmotionAfterimageMonsterManager();
+        manager.InitializeMatching(matchingId);
+        var startedAt = new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc);
+        var homeByMonsterId = manager.GetAliveTargets(matchingId)
+            .Where(monster => monster.Area == AreaType.Classroom4)
+            .ToDictionary(monster => monster.MonsterId, monster => monster.Position);
+        var target = new MonsterSpatialTarget(
+            10, MapId.School, AreaType.Classroom4, new Vector3f(19f, 58f, 0f));
+
+        DateTime now = Advance(manager, matchingId, [target], startedAt, 50);
+        now = Advance(manager, matchingId, [], now, 100);
+
+        var returned = manager.GetAliveTargets(matchingId)
+            .Where(monster => monster.Area == AreaType.Classroom4)
+            .ToList();
+        Assert.All(returned, monster =>
+        {
+            Vector3f home = homeByMonsterId[monster.MonsterId];
+            Assert.Equal(home.X, monster.Position.X, 5);
+            Assert.Equal(home.Y, monster.Position.Y, 5);
+        });
+
+        var stableTick = manager.Tick(matchingId, [], now.AddMilliseconds(100));
+        Assert.Empty(stableTick.ChangedStates);
+        Assert.Empty(stableTick.Attacks);
+    }
+
+    private static DateTime Advance(
+        EmotionAfterimageMonsterManager manager,
+        long matchingId,
+        IReadOnlyList<MonsterSpatialTarget> targets,
+        DateTime startedAt,
+        int tickCount)
+    {
+        DateTime now = startedAt;
+        for (int index = 0; index < tickCount; index++)
+        {
+            now = now.AddMilliseconds(100);
+            manager.Tick(matchingId, targets, now);
+        }
+
+        return now;
+    }
+
+    private static float Distance(Vector3f left, Vector3f right)
+    {
+        float x = left.X - right.X;
+        float y = left.Y - right.Y;
+        return MathF.Sqrt(x * x + y * y);
     }
 }

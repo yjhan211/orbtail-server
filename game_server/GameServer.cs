@@ -41,9 +41,11 @@ public partial class GameServer(
     private readonly List<InstanceMapManager> _instanceControllerList = [];
     private readonly InteractableStateManager _interactableStateManager = new();
     private readonly ItemPoolManager _itemPoolManager = new();
-    private readonly AreaItemStockManager _areaItemStockManager = new();
+    private readonly AreaItemStockManager _areaItemStockManager =
+        new(naturalExploreLootEnabled: !Config.MONSTER_SUMMON_ECONOMY_ENABLED);
     private readonly GroundItemManager _groundItemManager = new();
     private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager = new();
+    private readonly SummonStoneManager _summonStoneManager = new();
     private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
@@ -678,6 +680,7 @@ public partial class GameServer(
     {
         try
         {
+            ProcessBotOrbSummons(matchingId);
             var missionResult = _botPlayerManager.ProcessBotMissionTick(
                 matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _areaItemStockManager, _groundItemManager, _checklistManager);
 
@@ -2024,6 +2027,7 @@ public partial class GameServer(
                 _areaItemStockManager,
                 _groundItemManager,
                 _emotionAfterimageMonsterManager,
+                _summonStoneManager,
                 _doorStateManager,
                 _sabotageManager,
                 _manittoChainManager,
@@ -2097,6 +2101,7 @@ public partial class GameServer(
         _areaItemStockManager.RemoveMatchingState(matchingId);
         _groundItemManager.RemoveMatchingState(matchingId);
         _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId);
+        _summonStoneManager.RemoveMatchingState(matchingId);
         _inGameInventoryManager.RemoveMatchingState(matchingId);
         _interactableStateManager.RemoveMatchingState(matchingId);
         _areaRuleManager.RemoveMatchingState(matchingId);
@@ -2663,6 +2668,7 @@ public partial class GameServer(
                 isGameOver ? "not_required" : "resource_ranking",
                 finalPlayerStats);
             _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId);
+            _summonStoneManager.RemoveMatchingState(matchingId);
             _gameEventLogManager.Clear(matchingId);
             _botPlayerManager.CleanupMatching(matchingId);
             _ = CleanupAbandonedMatchingRedisAsync(matchingId);

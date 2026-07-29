@@ -24,6 +24,7 @@ internal static class EmotionAfterimageMonsterSpawnData
     {
         var definitions = new List<MonsterDefinition>(38);
         int id = EmotionAfterimageMonsterManager.FirstMonsterId;
+        int nextClusterId = 1;
 
         // The first Classroom4 point is the already-placed MonsterT1 template.
         // Keep it at 202001 so the scene template and server identity never diverge.
@@ -49,17 +50,46 @@ internal static class EmotionAfterimageMonsterSpawnData
 
         void AddNodes(AreaType area, int liveLimit, int priority, IReadOnlyList<(int x, int y)> cells)
         {
+            int clusterCount = (cells.Count + 2) / 3;
             for (int index = 0; index < cells.Count; index++)
             {
                 var cell = cells[index];
                 int monsterId = id++;
+                int clusterOffset = index / 3;
+                int memberIndex = index % 3;
+                int membersInCluster = Math.Min(3, cells.Count - clusterOffset * 3);
+                bool isCore = memberIndex == 2 || membersInCluster == 2 && memberIndex == 1;
+                int clusterId = nextClusterId + clusterOffset;
+                Vector3f formationOffset = CreateFormationOffset(area, index, cells.Count);
                 definitions.Add(new MonsterDefinition(
                     monsterId, MapId.School, area, CellToWorld(cell.x, cell.y),
                     MaxHealth: 48, AttackDamage: 4, AttackRange: 0.65f, AttackIntervalSeconds: 1.5f,
-                    RewardItemId: RewardFor(monsterId), MoveSpeed: 2.4f, LeashRange: 5f,
-                    AreaAliveLimit: liveLimit, StartsActive: index < InitialOccupancy(area), SpawnPriority: priority));
+                    RewardItemId: RewardFor(clusterId), IsCore: isCore,
+                    SummonStoneReward: isCore ? 3 : 1, MoveSpeed: 2.4f, LeashRange: 5f,
+                    AreaAliveLimit: liveLimit, StartsActive: index < InitialOccupancy(area), SpawnPriority: priority,
+                    ClusterId: clusterId, ClusterMemberIndex: memberIndex, ClusterSize: membersInCluster,
+                    FormationOffset: formationOffset));
             }
+
+            nextClusterId += clusterCount;
         }
+    }
+
+    private static Vector3f CreateFormationOffset(AreaType area, int areaMemberIndex, int areaMemberCount)
+    {
+        int resolvedSize = Math.Max(1, areaMemberCount);
+        int resolvedMember = Math.Clamp(areaMemberIndex, 0, resolvedSize - 1);
+        float areaRotation = ((int)area + 1) * 2.39996323f;
+        float memberAngle = MathF.Tau * resolvedMember / resolvedSize;
+        float radius = resolvedSize switch
+        {
+            1 => 0.32f,
+            <= 2 => 0.45f,
+            <= 4 => 0.52f,
+            _ => 0.58f
+        };
+        float angle = areaRotation + memberAngle;
+        return new Vector3f(MathF.Cos(angle) * radius, MathF.Sin(angle) * radius, 0f);
     }
 
     private static int InitialOccupancy(AreaType area) => area switch
@@ -69,7 +99,7 @@ internal static class EmotionAfterimageMonsterSpawnData
         _ => 2
     };
 
-    private static int RewardFor(int monsterId) => ((monsterId - EmotionAfterimageMonsterManager.FirstMonsterId) % 4) switch
+    private static int RewardFor(int clusterId) => ((clusterId - 1) % 4) switch
     {
         0 => HopeT1,
         1 => ForgetT1,

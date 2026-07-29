@@ -20,6 +20,8 @@ namespace network.common.data.models
         [Key("currentHealth")] public int CurrentHealth { get; set; }
         [Key("isAlive")] public bool IsAlive { get; set; }
         [Key("rewardItemId")] public int RewardItemId { get; set; }
+        [Key("isCore")] public bool IsCore { get; set; }
+        [Key("summonStoneReward")] public int SummonStoneReward { get; set; }
     }
 
     [MessagePackObject]

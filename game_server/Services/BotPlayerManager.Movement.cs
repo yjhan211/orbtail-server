@@ -604,27 +604,9 @@ public partial class BotPlayerManager
         bot.PendingChecklistTaskId = 0;
         bot.PendingChecklistInteractId = 0;
         bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-        // walking 시작 시 EXPLORE_END broadcast 안전망 — 다음 ProcessBotMovementTick에서 수집.
-        bot.PendingExploreEndBroadcast = true;
+        bot.PendingExploreEndBroadcast = false;
 
         bool needsGuardianOrb = bot.EquippedBattleItemId <= 0;
-        if (!needsGuardianOrb && bot.OrbFarmingTargetColor != SurvivorOrbColor.None &&
-            TryStartOrbResonanceFarmingPath(bot, matchingId, mapId, closureManager, areaItemStockManager))
-        {
-            return;
-        }
-        if ((bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) ||
-             needsGuardianOrb && !IsSecludedFarmingArea(mapId, bot.CurrentArea)) &&
-            TryStartPostExploreRelocation(
-                bot,
-                matchingId,
-                mapId,
-                closureManager,
-                areaItemStockManager,
-                requireSecludedArea: needsGuardianOrb))
-        {
-            return;
-        }
 
         if (!needsGuardianOrb && bot.IsForcedFollowActive &&
             TryStartBotForcedFollowPath(bot, matchingId, mapId, playerAreas))
@@ -644,32 +626,8 @@ public partial class BotPlayerManager
             }
         }
 
-        if ((bot.Stamina < BotAutoConsumableStaminaThreshold ||
-             bot.Corruption >= BotAutoConsumableCorruptionThreshold) &&
-            TryStartRecoveryRngPath(bot, matchingId, closureManager, areaItemStockManager))
-        {
-            return;
-        }
-
-        if (TryStartQueuedRoomExplore(bot, matchingId, closureManager, areaItemStockManager))
-        {
-            return;
-        }
-
-        if (bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) &&
-            TryStartPostExploreRelocation(
-                bot,
-                matchingId,
-                mapId,
-                closureManager,
-                areaItemStockManager,
-                requireSecludedArea: needsGuardianOrb))
-        {
-            return;
-        }
-
-        // Until the first guardian orb is equipped, farming is the whole objective. If no valid
-        // secluded room is currently reachable, wait and retry instead of roaming toward players.
+        // Starting orbs are granted before the first movement tick. Keep the guard for an
+        // unexpected initialization failure, but never route to RNG pickup locations.
         if (needsGuardianOrb)
         {
             bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);

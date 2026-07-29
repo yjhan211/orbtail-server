@@ -46,6 +46,7 @@ public partial class GameClientSession : SessionBase
     private readonly AreaItemStockManager _areaItemStockManager;
     private readonly GroundItemManager _groundItemManager;
     private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager;
+    private readonly SummonStoneManager _summonStoneManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly SabotageManager _sabotageManager;
@@ -132,6 +133,7 @@ public partial class GameClientSession : SessionBase
         AreaItemStockManager areaItemStockManager,
         GroundItemManager groundItemManager,
         EmotionAfterimageMonsterManager emotionAfterimageMonsterManager,
+        SummonStoneManager summonStoneManager,
         DoorStateManager doorStateManager,
         SabotageManager sabotageManager,
         ManittoChainManager manittoChainManager,
@@ -155,6 +157,7 @@ public partial class GameClientSession : SessionBase
         _areaItemStockManager = areaItemStockManager;
         _groundItemManager = groundItemManager;
         _emotionAfterimageMonsterManager = emotionAfterimageMonsterManager;
+        _summonStoneManager = summonStoneManager;
         _doorStateManager = doorStateManager;
         _sabotageManager = sabotageManager;
         _manittoChainManager = manittoChainManager;
@@ -366,6 +369,8 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ATTACK,
             async bytes => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SUMMON_ORB,
+            async bytes => await HandleMessage<C_TO_G_SUMMON_ORB>(bytes, HandleSummonOrb));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT,
             async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,

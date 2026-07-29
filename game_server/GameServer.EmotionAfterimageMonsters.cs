@@ -136,7 +136,7 @@ public partial class GameServer
                 matchingId,
                 result.State,
                 attack.AttackerPlayerId,
-                result.RewardItemId,
+                result.SummonStoneReward,
                 matchingSessions);
         }
 
@@ -200,37 +200,28 @@ public partial class GameServer
             matchingId, attack.MonsterId, attack.TargetPlayerId, attack.Damage);
     }
 
-    private void AwardMonsterKill(long matchingId, MonsterRuntimeInfo monster, long killerPlayerId, int rewardItemId,
-        IReadOnlyCollection<GameClientSession> matchingSessions)
+    private void AwardMonsterKill(long matchingId, MonsterRuntimeInfo monster, long killerPlayerId,
+        int summonStoneReward, IReadOnlyCollection<GameClientSession> matchingSessions)
     {
-        if (rewardItemId <= 0)
+        if (summonStoneReward <= 0)
             return;
 
-        bool inventoryGranted = _inGameInventoryManager.TryAddItemWithCapacity(
-            matchingId, killerPlayerId, rewardItemId, Config.SURVIVOR_INVENTORY_SLOT_COUNT, out var addedItem);
-        var killerSession = matchingSessions.FirstOrDefault(session => session.PlayerId == killerPlayerId);
-        if (inventoryGranted && addedItem != null)
-        {
-            killerSession?.SendInGameInventoryUpdate(addedItem);
-            logger.LogInformation(
-                "Emotion afterimage reward granted: MatchingId={MatchingId}, MonsterId={MonsterId}, PlayerId={PlayerId}, ItemId={ItemId}",
-                matchingId, monster.MonsterId, killerPlayerId, rewardItemId);
-            return;
-        }
+        var state = _summonStoneManager.AddStones(matchingId, killerPlayerId, summonStoneReward);
+        matchingSessions.FirstOrDefault(session => session.PlayerId == killerPlayerId)
+            ?.SendSummonStoneState();
+        _gameEventLogManager.LogSummonStoneAward(
+            matchingId,
+            killerPlayerId,
+            monster.MonsterId,
+            summonStoneReward,
+            state.StoneCount,
+            monster.AreaType.ToString(),
+            monster.IsCore,
+            BotPlayerManager.IsBotPlayerId(killerPlayerId));
 
-        // A full board does not delete a kill reward. It is placed at the monster and
-        // briefly reserved for the final hitter through the existing pickup path.
-        var spawned = _groundItemManager.SpawnItems(
-            matchingId, monster.AreaType, monster.PositionX, monster.PositionY, [rewardItemId],
-            mapId: MapId.School, discovererPlayerId: killerPlayerId,
-            discovererPickupWindow: GroundItemManager.DiscovererPickupWindow);
-        if (spawned.Count == 0)
-            return;
-
-        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)monster.AreaType);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)monster.AreaType, remaining, spawned);
-        foreach (var session in matchingSessions.Where(session => session.CurrentArea == monster.AreaType))
-            session.Send(packet);
+        logger.LogInformation(
+            "Emotion afterimage summon stones granted: MatchingId={MatchingId}, MonsterId={MonsterId}, PlayerId={PlayerId}, Reward={Reward}, Balance={Balance}",
+            matchingId, monster.MonsterId, killerPlayerId, summonStoneReward, state.StoneCount);
     }
 
     private static void BroadcastMonsterAttackVfx(MonsterAttack attack, IReadOnlyCollection<GameClientSession> sessions)
