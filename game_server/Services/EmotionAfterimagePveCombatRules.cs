@@ -1,4 +1,6 @@
+using network.common;
 using network.common.data;
+using network.common.data.models;
 
 namespace game_server.services;
 
@@ -8,62 +10,42 @@ public static class EmotionAfterimagePveCombatRules
         SurvivorOrbData.TryGetColorAndTier(weaponItemId, out SurvivorOrbColor color, out _) &&
         color == SurvivorOrbColor.Blue;
 
-    public static bool ShouldApplyWaveSplash(int weaponItemId, long targetPlayerId, bool isResonanceProc) =>
-        targetPlayerId < 0 && !isResonanceProc && IsWaveOrb(weaponItemId);
+    public static bool ShouldApplyWaveAreaAttack(int weaponItemId, bool isResonanceProc) =>
+        !isResonanceProc && IsWaveOrb(weaponItemId);
 
-    public static IReadOnlyList<MonsterCombatTarget> FindWaveSplashTargets(
-        IReadOnlyCollection<MonsterCombatTarget> aliveTargets,
-        int primaryMonsterId)
+    public static IReadOnlyList<long> FindWaveAreaSecondaryTargetIds(
+        IReadOnlyCollection<ProximityCombatActor> combatTargets,
+        long attackerPlayerId,
+        long primaryTargetId,
+        AreaType area)
     {
-        if (aliveTargets == null)
-            throw new ArgumentNullException(nameof(aliveTargets));
-        if (primaryMonsterId <= 0)
-            return [];
+        if (combatTargets == null)
+            throw new ArgumentNullException(nameof(combatTargets));
 
-        MonsterCombatTarget primary = default;
-        foreach (var target in aliveTargets)
-        {
-            if (target.MonsterId != primaryMonsterId)
-                continue;
-
-            primary = target;
-            break;
-        }
-
-        if (primary.MonsterId == 0)
+        var uniqueTargets = combatTargets
+            .Where(target => target.PlayerId != attackerPlayerId && target.Area == area)
+            .GroupBy(target => target.PlayerId)
+            .Select(group => group.First())
+            .ToArray();
+        var primaryTarget = uniqueTargets.FirstOrDefault(target => target.PlayerId == primaryTargetId);
+        if (primaryTarget.PlayerId == 0)
             return [];
 
         float radiusSquared = SurvivorOrbData.WaveSplashRadius * SurvivorOrbData.WaveSplashRadius;
-        var candidates = new List<(MonsterCombatTarget Target, float DistanceSquared)>();
-        foreach (var target in aliveTargets)
-        {
-            if (target.MonsterId == primaryMonsterId ||
-                target.MapId != primary.MapId ||
-                target.Area != primary.Area)
-            {
-                continue;
-            }
-
-            float x = target.Position.X - primary.Position.X;
-            float y = target.Position.Y - primary.Position.Y;
-            float distanceSquared = x * x + y * y;
-            if (distanceSquared > radiusSquared)
-                continue;
-
-            candidates.Add((target, distanceSquared));
-        }
-
-        candidates.Sort(static (left, right) =>
-        {
-            int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
-            return distanceComparison != 0
-                ? distanceComparison
-                : left.Target.MonsterId.CompareTo(right.Target.MonsterId);
-        });
-
-        return candidates
-            .Take(SurvivorOrbData.WaveSplashMaxSecondaryTargets)
-            .Select(candidate => candidate.Target)
+        return uniqueTargets
+            .Where(target => target.PlayerId != primaryTargetId &&
+                             target.MapId == primaryTarget.MapId &&
+                             IsWithinRadius(target.Position, primaryTarget.Position, radiusSquared))
+            .OrderBy(target => target.PlayerId)
+            .Select(target => target.PlayerId)
             .ToArray();
     }
+
+    private static bool IsWithinRadius(Vector3f targetPosition, Vector3f centerPosition, float radiusSquared)
+    {
+        float x = targetPosition.X - centerPosition.X;
+        float y = targetPosition.Y - centerPosition.Y;
+        return x * x + y * y <= radiusSquared;
+    }
+
 }

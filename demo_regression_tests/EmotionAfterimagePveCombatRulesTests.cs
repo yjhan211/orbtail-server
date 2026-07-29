@@ -44,57 +44,55 @@ public class EmotionAfterimagePveCombatRulesTests
     }
 
     [Fact]
-    public void WaveSplashDamage_CombinesHalfDamageWithAffinity()
+    public void WindOrb_HalvesDamageAndDoublesItsBaseCadence()
     {
-        Assert.Equal(6, SurvivorOrbData.CalculatePveDamage(107000030, 107000010, 4));
-        Assert.Equal(3, SurvivorOrbData.CalculatePveDamage(107000030, 107000010, 4, 0.5f));
-        Assert.Equal(2, SurvivorOrbData.CalculatePveDamage(107000030, 107000020, 4));
-        Assert.Equal(1, SurvivorOrbData.CalculatePveDamage(107000030, 107000020, 4, 0.5f));
+        Assert.Equal(0.5f, SurvivorOrbData.WindBaseDamageMultiplier);
+        Assert.Equal(0.5f,
+            SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Green));
+        Assert.Equal(2, SurvivorOrbData.GetBaseAttackDamage(4, SurvivorOrbColor.Green));
+        Assert.Equal(3, SurvivorOrbData.GetBaseAttackDamage(7, SurvivorOrbColor.Green));
+        Assert.Equal(5, SurvivorOrbData.GetBaseAttackDamage(10, SurvivorOrbColor.Green));
     }
 
     [Fact]
-    public void WaveSplash_SelectsAtMostTwoNearestMonstersInTheSameArea()
+    public void WaveAreaAttack_SelectsEveryPlayerAndMonsterAroundTheImpact()
     {
-        MonsterCombatTarget[] targets =
+        ProximityCombatActor[] targets =
         [
-            Target(100, MapId.School, AreaType.Classroom4, 0f, 0f),
-            Target(104, MapId.School, AreaType.Classroom4, 1f, 0f),
-            Target(102, MapId.School, AreaType.Classroom4, 1f, 0f),
-            Target(103, MapId.School, AreaType.Classroom4, 1.5f, 0f),
-            Target(105, MapId.School, AreaType.Classroom4, 1.81f, 0f),
-            Target(106, MapId.School, AreaType.Classroom2, 0.5f, 0f),
-            Target(107, MapId.None, AreaType.Classroom4, 0.5f, 0f)
+            CombatTarget(1, 0f, 0f),
+            CombatTarget(-100, 2f, 0f),
+            CombatTarget(-101, 3.5f, 0f),
+            CombatTarget(2, 2f, 1.5f),
+            CombatTarget(3, 4f, 0f),
+            CombatTarget(4, 2f, 2f, AreaType.Classroom2)
         ];
 
-        var result = EmotionAfterimagePveCombatRules.FindWaveSplashTargets(targets, 100);
+        var result = EmotionAfterimagePveCombatRules.FindWaveAreaSecondaryTargetIds(
+            targets, 1, -100, AreaType.Classroom4);
 
-        Assert.Equal([102, 104], result.Select(target => target.MonsterId));
+        Assert.Equal([-101, 2], result);
     }
 
     [Fact]
-    public void OnlyWaveOrbs_EnableMonsterSplash()
+    public void OnlyNonResonanceWaveOrbs_UseAreaDamage()
     {
         Assert.True(EmotionAfterimagePveCombatRules.IsWaveOrb(107000030));
         Assert.False(EmotionAfterimagePveCombatRules.IsWaveOrb(107000010));
-        Assert.False(EmotionAfterimagePveCombatRules.IsWaveOrb(107000040));
+        Assert.True(EmotionAfterimagePveCombatRules.ShouldApplyWaveAreaAttack(107000030, false));
+        Assert.False(EmotionAfterimagePveCombatRules.ShouldApplyWaveAreaAttack(107000030, true));
+        Assert.False(EmotionAfterimagePveCombatRules.ShouldApplyWaveAreaAttack(107000010, false));
     }
 
-    [Fact]
-    public void WaveSplash_IsLimitedToNonResonanceMonsterAttacks()
-    {
-        Assert.True(EmotionAfterimagePveCombatRules.ShouldApplyWaveSplash(107000030, -100, false));
-        Assert.False(EmotionAfterimagePveCombatRules.ShouldApplyWaveSplash(107000030, 100, false));
-        Assert.False(EmotionAfterimagePveCombatRules.ShouldApplyWaveSplash(107000030, -100, true));
-        Assert.False(EmotionAfterimagePveCombatRules.ShouldApplyWaveSplash(107000010, -100, false));
-    }
-
+    private static ProximityCombatActor CombatTarget(long playerId, float x, float y,
+        AreaType area = AreaType.Classroom4) =>
+        new(playerId, area, new Vector3f(x, y, 0f), 0, 0f, 0, 0f, 0f, 0f, MapId.School);
     private static MonsterCombatTarget Target(int monsterId, MapId mapId, AreaType area, float x, float y) =>
         new(monsterId, mapId, area, new Vector3f(x, y, 0f), 107000010);
     [Fact]
     public void DominantPveColor_UsesTotalTierAcrossTheWholeBoard()
     {
         Assert.True(SurvivorOrbData.TryGetDominantPveColor(
-            [107000010, 107000010, 107000022], out var dominantColor));
+            [107000010, 107000010, 107000032], out var dominantColor));
 
         Assert.Equal(SurvivorOrbColor.Blue, dominantColor);
     }

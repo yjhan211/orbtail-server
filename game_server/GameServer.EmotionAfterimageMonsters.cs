@@ -63,30 +63,13 @@ public partial class GameServer
                 primaryTarget,
                 attack,
                 hitDamageMultiplier: 1f,
-                isSplash: false,
+                isSplash: attack.IsWaveAreaSecondary,
                 nowUtc,
                 matchingSessions,
                 finalMonsterStates);
-            if (primaryHit)
+            if (primaryHit && !attack.IsWaveAreaSecondary)
                 BroadcastObservedProximityAttackVfx(attack, matchingSessions);
-            if (!primaryHit || !EmotionAfterimagePveCombatRules.ShouldApplyWaveSplash(
-                    attack.WeaponItemId, attack.TargetPlayerId, attack.IsResonanceProc))
-                continue;
-
-            foreach (var secondaryTarget in EmotionAfterimagePveCombatRules.FindWaveSplashTargets(
-                         aliveMonsterTargets, primaryMonsterId))
-            {
-                ApplyPlayerOrbDamageToEmotionAfterimageMonster(
-                    matchingId,
-                    secondaryTarget,
-                    attack,
-                    SurvivorOrbData.WaveSplashSecondaryDamageMultiplier,
-                    isSplash: true,
-                    nowUtc,
-                    matchingSessions,
-                    finalMonsterStates);
-            }
-        }
+}
 
         if (finalMonsterStates.Count > 0)
         {

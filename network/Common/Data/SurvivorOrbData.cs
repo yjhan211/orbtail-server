@@ -24,6 +24,8 @@ namespace network.common.data
         public const float WindMoveSpeedMultiplier = 1.2f;
         public const float WindAttackRangeMultiplier = 1.2f;
         public const float WindAttackIntervalMultiplier = 0.85f;
+        public const float WindBaseDamageMultiplier = 0.5f;
+        public const float WindBaseAttackIntervalMultiplier = 0.5f;
         public const float WindProjectileSpeedMultiplier = 1.25f;
         public const float SunMarkLifetimeSeconds = 3f;
         public const int SunMarkTriggerCount = 3;
@@ -39,9 +41,8 @@ namespace network.common.data
         public const float WaveBaseAttackIntervalMultiplier = 1.25f;
         // The current room-horde pace needs each orb to fire twice as often.
         public const float OrbAttackIntervalMultiplier = 0.5f;
+        // A Wave orb detonates at its primary target and damages every valid target in this radius.
         public const float WaveSplashRadius = 1.8f;
-        public const int WaveSplashMaxSecondaryTargets = 2;
-        public const float WaveSplashSecondaryDamageMultiplier = 0.5f;
         public const float PveAdvantageDamageMultiplier = 1.5f;
         public const float PveNeutralDamageMultiplier = 1f;
         public const float PveDisadvantageDamageMultiplier = 0.5f;
@@ -68,8 +69,22 @@ namespace network.common.data
 
         public static bool IsSurvivorOrb(int itemId) => TryGetColorAndTier(itemId, out _, out _);
 
-        public static float GetBaseAttackIntervalMultiplier(SurvivorOrbColor color) =>
-            color == SurvivorOrbColor.Blue ? WaveBaseAttackIntervalMultiplier : 1f;
+        public static float GetBaseAttackIntervalMultiplier(SurvivorOrbColor color) => color switch
+        {
+            SurvivorOrbColor.Green => WindBaseAttackIntervalMultiplier,
+            SurvivorOrbColor.Blue => WaveBaseAttackIntervalMultiplier,
+            _ => 1f
+        };
+
+        public static int GetBaseAttackDamage(int baseDamage, SurvivorOrbColor color)
+        {
+            if (baseDamage <= 0)
+                return 0;
+
+            return color == SurvivorOrbColor.Green
+                ? Math.Max(1, (int)Math.Floor(baseDamage * WindBaseDamageMultiplier))
+                : baseDamage;
+        }
 
         public static float GetAttackIntervalMultiplier(int itemId) => itemId switch
         {
