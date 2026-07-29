@@ -648,7 +648,8 @@ public partial class GameServer(
             return;
 
         var state = _summonStoneManager.AddStones(matchingId, attackerPlayerId, reward);
-        matchingSessions.FirstOrDefault(session => session.PlayerId == attackerPlayerId)?.SendSummonStoneState();
+        matchingSessions.FirstOrDefault(session => session.PlayerId == attackerPlayerId)
+            ?.SendSummonStoneState(reward, bot.Position.X, bot.Position.Y);
         _gameEventLogManager.LogSummonStoneAward(
             matchingId,
             attackerPlayerId,

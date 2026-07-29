@@ -89,15 +89,15 @@ public class ProximityAutoCombatResolverTests
     }
 
     [Fact]
-    public void Resolve_TargetPriorityWinsBeforeDistance()
+    public void Resolve_UsesStraightLineDistanceAcrossPlayerAndMonsterTargets()
     {
         var resolver = new ProximityAutoCombatResolver();
         var now = new DateTime(2026, 7, 29, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
             Actor(1, 0f, 0f, weaponItemId: 107000010),
-            Actor(-202001, 2f, 0f) with { TargetPriority = 1 },
-            Actor(-202002, 0.5f, 0f) with { TargetPriority = 2 }
+            Actor(2, 2f, 0f),
+            Actor(-202001, 0.5f, 0f)
         };
 
         Assert.Empty(resolver.Resolve(202, actors, now));

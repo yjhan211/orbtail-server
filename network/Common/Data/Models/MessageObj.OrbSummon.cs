@@ -17,6 +17,10 @@ namespace network.common.data.models
     public sealed class G_TO_C_SUMMON_STONE_STATE : IMessagePackObject
     {
         [Key("state")] public SummonStoneStateInfo State { get; set; }
+        // Only award packets populate these fields. Ordinary reconnect/state snapshots remain visual-free.
+        [Key("awardedStones")] public int AwardedStones { get; set; }
+        [Key("awardSourceX")] public float AwardSourceX { get; set; }
+        [Key("awardSourceY")] public float AwardSourceY { get; set; }
     }
 
     [MessagePackObject]

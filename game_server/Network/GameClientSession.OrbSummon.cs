@@ -79,7 +79,7 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
-    internal void SendSummonStoneState()
+    internal void SendSummonStoneState(int awardedStones = 0, float awardSourceX = 0f, float awardSourceY = 0f)
     {
         if (!PlayerId.HasValue || CurrentMapSubId <= 0)
             return;
@@ -88,7 +88,10 @@ public partial class GameClientSession
         using var packet = Packet.Create((int)Protocol.G_TO_C_SUMMON_STONE_STATE, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUMMON_STONE_STATE
         {
-            State = ToNetworkState(state)
+            State = ToNetworkState(state),
+            AwardedStones = Math.Max(0, awardedStones),
+            AwardSourceX = awardSourceX,
+            AwardSourceY = awardSourceY
         }));
         Send(packet);
     }

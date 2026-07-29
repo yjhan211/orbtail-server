@@ -12,11 +12,10 @@ namespace game_server;
 
 public partial class GameServer
 {
-    private readonly ProximityAutoCombatResolver _monsterAutoCombatResolver = new();
     private readonly ConcurrentDictionary<long, DateTime> _nextMonsterPositionBroadcastAtUtc = new();
     private static readonly TimeSpan MonsterPositionBroadcastInterval = TimeSpan.FromMilliseconds(100);
 
-    private void ProcessEmotionAfterimageMonsterCombat(
+    private IReadOnlyCollection<MonsterCombatTarget> AdvanceEmotionAfterimageMonsters(
         long matchingId,
         IReadOnlyCollection<GameClientSession> matchingSessions,
         IReadOnlyCollection<BotPlayerState> matchingBots,
@@ -38,31 +37,23 @@ public partial class GameServer
         foreach (var monsterAttack in monsterTick.Attacks)
             ApplyMonsterAttack(matchingId, monsterAttack, matchingSessions, matchingBots);
 
-        var aliveMonsterTargets = _emotionAfterimageMonsterManager.GetAliveTargets(matchingId);
-        if (aliveMonsterTargets.Count == 0)
-        {
-            _monsterAutoCombatResolver.Resolve(matchingId, [], nowUtc);
-            return;
-        }
+        return _emotionAfterimageMonsterManager.GetAliveTargets(matchingId);
+    }
 
-        var monsterTargetActors = aliveMonsterTargets.Select(CreateMonsterTargetActor).ToList();
-        var monsterAttackers = combatActors
-            .Where(actor => actor.WeaponItemId > 0 && actor.AttackRange > 0f && actor.Damage > 0)
-            // PvP remains the first priority. A monster is selected only when this weapon
-            // has no real player target in its authoritative range/line of sight.
-            .Where(actor => !HasEligiblePvpTarget(actor, spatialPlayers))
-            .Concat(monsterTargetActors)
-            .ToList();
-        var playerMonsterAttacks = _monsterAutoCombatResolver.Resolve(
-            matchingId, monsterAttackers, nowUtc, ProximityCombatLineOfSight.CanTarget);
+    private void ApplyPlayerOrbDamageToEmotionAfterimageMonsters(
+        long matchingId,
+        IReadOnlyCollection<ProximityCombatAttack> attacks,
+        IReadOnlyCollection<MonsterCombatTarget> aliveMonsterTargets,
+        DateTime nowUtc,
+        IReadOnlyCollection<GameClientSession> matchingSessions)
+    {
+        if (attacks.Count == 0 || aliveMonsterTargets.Count == 0)
+            return;
 
         var monsterTargetsById = aliveMonsterTargets.ToDictionary(target => target.MonsterId);
         var finalMonsterStates = new MonsterSnapshotAccumulator();
-        foreach (var attack in playerMonsterAttacks)
+        foreach (var attack in attacks)
         {
-            if (attack.TargetPlayerId >= 0)
-                continue;
-
             int primaryMonsterId = checked((int)-attack.TargetPlayerId);
             if (!monsterTargetsById.TryGetValue(primaryMonsterId, out var primaryTarget))
                 continue;
@@ -104,15 +95,11 @@ public partial class GameServer
             BroadcastMonsterMinimapSnapshot(matchingSessions, finalStates.Where(state => !state.IsAlive));
         }
     }
-
     private static ProximityCombatActor CreateMonsterTargetActor(MonsterCombatTarget monster)
     {
         var cell = ProximityCombatLineOfSight.WorldPositionToCell(monster.Position);
-        // PvP is resolved before this monster pass. Within PvE, cores outrank their escorts.
-        int targetPriority = monster.IsCore ? 1 : 2;
         return new ProximityCombatActor(
-            -monster.MonsterId, monster.Area, monster.Position, 0, 0f, 0, 0f, 0f, 0f, monster.MapId, cell,
-            TargetPriority: targetPriority);
+            -monster.MonsterId, monster.Area, monster.Position, 0, 0f, 0, 0f, 0f, 0f, monster.MapId, cell);
     }
 
     private bool ApplyPlayerOrbDamageToEmotionAfterimageMonster(
@@ -170,21 +157,6 @@ public partial class GameServer
         return true;
     }
 
-    private static bool HasEligiblePvpTarget(ProximityCombatActor attacker,
-        IReadOnlyCollection<ProximityCombatActor> spatialPlayers)
-    {
-        float attackRangeSquared = attacker.AttackRange * attacker.AttackRange;
-        return spatialPlayers.Any(candidate =>
-        {
-            if (candidate.PlayerId == attacker.PlayerId || candidate.Area != attacker.Area)
-                return false;
-            float x = attacker.Position.X - candidate.Position.X;
-            float y = attacker.Position.Y - candidate.Position.Y;
-            return x * x + y * y <= attackRangeSquared &&
-                   ProximityCombatLineOfSight.CanTarget(attacker, candidate);
-        });
-    }
-
     private void ApplyMonsterAttack(long matchingId, MonsterAttack attack,
         IReadOnlyCollection<GameClientSession> matchingSessions, IReadOnlyCollection<BotPlayerState> matchingBots)
     {
@@ -238,7 +210,7 @@ public partial class GameServer
 
         var state = _summonStoneManager.AddStones(matchingId, killerPlayerId, summonStoneReward);
         matchingSessions.FirstOrDefault(session => session.PlayerId == killerPlayerId)
-            ?.SendSummonStoneState();
+            ?.SendSummonStoneState(summonStoneReward, monster.PositionX, monster.PositionY);
         _gameEventLogManager.LogSummonStoneAward(
             matchingId,
             killerPlayerId,
@@ -315,7 +287,7 @@ public partial class GameServer
 
     private void CleanupEmotionAfterimageMonsterRuntime(long matchingId)
     {
-        _monsterAutoCombatResolver.RemoveMatching(matchingId);
+
         _nextMonsterPositionBroadcastAtUtc.TryRemove(matchingId, out _);
     }
 }

@@ -213,7 +213,8 @@ public partial class GameClientSession
             return;
 
         var state = _summonStoneManager.AddStones(CurrentMapSubId, attackerPlayerId, reward);
-        matchingSessions.FirstOrDefault(session => session.PlayerId == attackerPlayerId)?.SendSummonStoneState();
+        matchingSessions.FirstOrDefault(session => session.PlayerId == attackerPlayerId)
+            ?.SendSummonStoneState(reward, bot.Position.X, bot.Position.Y);
         _gameEventLogManager.LogSummonStoneAward(
             CurrentMapSubId,
             attackerPlayerId,

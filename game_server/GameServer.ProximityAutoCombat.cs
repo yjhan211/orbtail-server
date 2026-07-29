@@ -107,9 +107,17 @@ public partial class GameServer
         var actors = BuildProximityCombatActors(matchingId, matchingSessions, matchingBots, resonanceStates);
         ProcessSurvivorOrbRecovery(matchingId, actors, matchingSessions, matchingBots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, matchingSessions);
+        var aliveMonsterTargets = AdvanceEmotionAfterimageMonsters(
+            matchingId, matchingSessions, matchingBots, actors, nowUtc);
+        var monsterTargetIds = aliveMonsterTargets
+            .Select(target => -(long)target.MonsterId)
+            .ToHashSet();
+        var combatTargets = actors
+            .Concat(aliveMonsterTargets.Select(CreateMonsterTargetActor))
+            .ToList();
         var attacks = _proximityAutoCombatResolver.Resolve(
             matchingId,
-            actors,
+            combatTargets,
             nowUtc,
             ProximityCombatLineOfSight.CanTarget,
             onTargetAcquired: targetEvent =>
@@ -131,7 +139,13 @@ public partial class GameServer
                     BotPlayerManager.IsBotPlayerId(targetEvent.AttackerPlayerId),
                     targetEvent.OccurredAtUtc));
 
-        if (attacks.Count > 0)
+        if (attacks.Count == 0)
+            return;
+
+        var playerAttacks = attacks
+            .Where(attack => !monsterTargetIds.Contains(attack.TargetPlayerId))
+            .ToList();
+        if (playerAttacks.Count > 0)
         {
             var activeOrbColors = new Dictionary<long, SurvivorOrbColor>();
             foreach (var actor in actors.Where(actor => actor.OrbEffectActive))
@@ -139,10 +153,14 @@ public partial class GameServer
                 if (SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out var color, out _))
                     activeOrbColors[actor.PlayerId] = color;
             }
-            ApplyProximityCombatVolley(matchingId, attacks, matchingSessions, matchingBots, activeSessions, activeOrbColors, resonanceStates, actors, nowUtc);
+            ApplyProximityCombatVolley(matchingId, playerAttacks, matchingSessions, matchingBots, activeSessions, activeOrbColors, resonanceStates, actors, nowUtc);
         }
 
-        ProcessEmotionAfterimageMonsterCombat(matchingId, matchingSessions, matchingBots, actors, nowUtc);
+        var monsterAttacks = attacks
+            .Where(attack => monsterTargetIds.Contains(attack.TargetPlayerId))
+            .ToList();
+        ApplyPlayerOrbDamageToEmotionAfterimageMonsters(
+            matchingId, monsterAttacks, aliveMonsterTargets, nowUtc, matchingSessions);
     }
     private List<ProximityCombatActor> BuildProximityCombatActors(
         long matchingId,
