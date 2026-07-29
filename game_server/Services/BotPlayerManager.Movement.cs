@@ -20,6 +20,13 @@ public partial class BotPlayerManager
     /// <summary>아이소메트릭 세로 속도 보정 — 클라 PlayerMovement.isoVerticalSpeedScale과 같은 값을 유지해야 한다.</summary>
     private const float IsoVerticalSpeedScale = 1f;
 
+    // Used only after the final room closure leaves no non-corridor refuge.
+    private static readonly (int X, int Y)[] LastStandPatrolOffsets =
+    [
+        (4, 0), (0, 4), (-4, 0), (0, -4),
+        (3, 2), (-3, 2), (3, -2), (-3, -2)
+    ];
+
     /// <summary>
     ///     화면 좌표 진행 방향(정규화)의 타일 기준 등속 속력.
     ///     세로가 압축된 아이소메트릭 화면에서 어느 방향이든 타일 통과 속도가 BotWalkSpeed로 일정해진다
@@ -189,12 +196,14 @@ public partial class BotPlayerManager
         foreach (var b in bots)
             if (!b.IsEliminated) playerAreas[b.PlayerId] = b.CurrentArea;
 
+        bool hasOpenNonCorridorRefuge = HasOpenNonCorridorRefuge(matchingId, closureManager);
         foreach (var bot in bots)
         {
             if (bot.IsEliminated) continue;
 
             // Escape routes outrank looting and combat so a warning cannot be overwritten by a chase path.
-            bool isEvacuating = TryMaintainClosureEvacuation(bot, matchingId, closureManager);
+            bool isEvacuating = TryMaintainClosureEvacuation(
+                bot, matchingId, closureManager, hasOpenNonCorridorRefuge);
             bool isCommittingToDestination = !isEvacuating &&
                                              TryMaintainMovementDestination(bot, matchingId, closureManager);
             if (!isEvacuating &&
@@ -205,6 +214,11 @@ public partial class BotPlayerManager
             }
             if (!isEvacuating && !isCommittingToDestination)
                 UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
+            if (!hasOpenNonCorridorRefuge && bot.PathIndex >= bot.Path.Count &&
+                !bot.IsInInteraction && bot.PendingRngInteractId == 0 && bot.PendingChecklistTaskId == 0)
+            {
+                TryStartLastStandPatrolPath(bot, matchingId, closureManager);
+            }
             var ev = WalkStep(bot, matchingId, closureManager, areaItemStockManager, playerAreas, checklistManager);
             if (ev != null) result.Movements.Add(ev);
             if (bot.PendingOrbFarmingPivotTo != AreaType.None)
@@ -227,7 +241,7 @@ public partial class BotPlayerManager
     }
 
     private bool TryMaintainClosureEvacuation(BotPlayerState bot, long matchingId,
-        AreaClosureManager closureManager)
+        AreaClosureManager closureManager, bool hasOpenNonCorridorRefuge)
     {
         var closure = closureManager.GetClientStateSnapshot(matchingId);
         var unavailableAreas = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
@@ -310,6 +324,20 @@ public partial class BotPlayerManager
 
         if (candidate?.Path == null)
         {
+            if (!hasOpenNonCorridorRefuge)
+            {
+                // No room remains to escape to. Do not keep the bot in an evacuation
+                // wait loop: overtime still applies, but it must remain an active target.
+                bot.EvacuationDestination = AreaType.None;
+                bot.Path.Clear();
+                bot.PathIndex = 0;
+                bot.LoopWaitUntil = DateTime.MinValue;
+                _logger.LogInformation(
+                    "Bot last stand started: MatchingId={MatchingId}, BotId={BotId}, Area={Area}",
+                    matchingId, bot.PlayerId, bot.CurrentArea);
+                return false;
+            }
+
             bot.LoopWaitUntil = DateTime.UtcNow.AddMilliseconds(250);
             return true;
         }
@@ -325,6 +353,53 @@ public partial class BotPlayerManager
         return true;
     }
 
+    private bool HasOpenNonCorridorRefuge(long matchingId, AreaClosureManager closureManager)
+    {
+        var closure = closureManager.GetClientStateSnapshot(matchingId);
+        var unavailableAreas = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
+        return GameMapData.GetAreas(GetMatchingMapId(matchingId))
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Any(area => area != AreaType.None && !area.IsCorridor() && !unavailableAreas.Contains(area));
+    }
+
+    private bool TryStartLastStandPatrolPath(BotPlayerState bot, long matchingId,
+        AreaClosureManager closureManager)
+    {
+        if (bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor())
+            return false;
+
+        var mapId = GetMatchingMapId(matchingId);
+        int startIndex = Math.Abs((int)(bot.PlayerId % LastStandPatrolOffsets.Length));
+        foreach (var offsetIndex in Enumerable.Range(0, LastStandPatrolOffsets.Length))
+        {
+            var offset = LastStandPatrolOffsets[(startIndex + offsetIndex) % LastStandPatrolOffsets.Length];
+            var candidate = new Cell(bot.Cell.X + offset.X, bot.Cell.Y + offset.Y);
+            if (GameMapData.GetCurrentArea(mapId, candidate) != bot.CurrentArea ||
+                !GameMapData.IsMoveablePosition(mapId, candidate))
+            {
+                continue;
+            }
+
+            var path = BotPathfinder.FindPath(
+                mapId,
+                bot.CurrentArea,
+                bot.Cell,
+                bot.CurrentArea,
+                candidate,
+                area => area != bot.CurrentArea && IsAreaClosingOrClosed(closureManager, matchingId, area));
+            if (path is not { Count: > 0 })
+                continue;
+
+            bot.Path = path;
+            bot.PathIndex = 0;
+            bot.MovementDestination = AreaType.None;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            return true;
+        }
+
+        return false;
+    }
     private bool TryMaintainMovementDestination(BotPlayerState bot, long matchingId,
         AreaClosureManager closureManager)
     {

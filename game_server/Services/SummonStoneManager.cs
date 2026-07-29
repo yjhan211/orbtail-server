@@ -18,7 +18,8 @@ public sealed class SummonStoneManager
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerSummonState>> _matchingStates = new();
 
     public IReadOnlyList<int> PoolItemIds => SummonPool;
-    public static int InitialSummonStoneCount => SummonCosts[0];
+    // Players begin without an orb, but can pay the first two summon costs (2 + 3).
+    public static int InitialSummonStoneCount => SummonCosts[0] + SummonCosts[1];
 
     public SummonStoneSnapshot EnsureStartingStones(long matchingId, long playerId)
     {
@@ -91,6 +92,8 @@ public sealed class SummonStoneManager
 
     private static int SelectOrbItemId(long matchingId, long playerId, int successfulSummonCount)
     {
+        // The result is keyed only by match, player and successful summon count.
+        // Region, target and afterimage-affinity state never participate in this RNG path.
         ulong value = unchecked((ulong)matchingId * 0x9E3779B185EBCA87UL)
                       ^ unchecked((ulong)playerId * 0xC2B2AE3D27D4EB4FUL)
                       ^ unchecked((ulong)(successfulSummonCount + 1) * 0x165667B19E3779F9UL);

@@ -7,7 +7,7 @@ namespace demo_regression_tests;
 public class SummonStoneManagerTests
 {
     [Fact]
-    public void StartingStones_GrantExactlyOneFirstSummonAndDoNotDuplicate()
+    public void StartingStones_GrantTwoOpeningSummonsAndDoNotDuplicate()
     {
         var manager = new SummonStoneManager();
 
@@ -15,7 +15,7 @@ public class SummonStoneManagerTests
         var reconnect = manager.EnsureStartingStones(202, 10);
         var otherPlayer = manager.EnsureStartingStones(202, 20);
 
-        Assert.Equal(SummonStoneManager.InitialSummonStoneCount, first.StoneCount);
+        Assert.Equal(5, first.StoneCount);
         Assert.Equal(first, reconnect);
         Assert.Equal(first, otherPlayer);
 
@@ -23,10 +23,38 @@ public class SummonStoneManagerTests
             itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
 
         Assert.True(summon.Success);
-        Assert.Equal(0, summon.State.StoneCount);
+        Assert.Equal(3, summon.State.StoneCount);
         Assert.Equal(3, summon.State.NextCost);
+
+        var secondSummon = manager.TrySummon(202, 10,
+            itemId => new InGameItemInfo { ItemUid = 2, ItemId = itemId, Count = 1 });
+        Assert.True(secondSummon.Success);
+        Assert.Equal(0, secondSummon.State.StoneCount);
+        Assert.Equal(4, secondSummon.State.NextCost);
     }
 
+    [Fact]
+    public void SummonResults_AreUnaffectedByRegionalAfterimagePlacement()
+    {
+        var beforeLayout = new SummonStoneManager();
+        beforeLayout.AddStones(202, 10, 2);
+        var expected = beforeLayout.TrySummon(202, 10,
+            itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
+
+        var monsters = new EmotionAfterimageMonsterManager();
+        monsters.InitializeMatching(202);
+        monsters.InitializeMatching(203);
+
+        var afterLayout = new SummonStoneManager();
+        afterLayout.AddStones(202, 10, 2);
+        var actual = afterLayout.TrySummon(202, 10,
+            itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
+
+        Assert.True(expected.Success);
+        Assert.True(actual.Success);
+        Assert.Equal(expected.ItemId, actual.ItemId);
+        Assert.Equal(expected.State, actual.State);
+    }
     [Fact]
     public void MonsterRewards_AccumulateInOneAuthoritativeBalance()
     {

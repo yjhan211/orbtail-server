@@ -89,6 +89,23 @@ public class ProximityAutoCombatResolverTests
     }
 
     [Fact]
+    public void Resolve_TargetPriorityWinsBeforeDistance()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 29, 0, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000010),
+            Actor(-202001, 2f, 0f) with { TargetPriority = 1 },
+            Actor(-202002, 0.5f, 0f) with { TargetPriority = 2 }
+        };
+
+        Assert.Empty(resolver.Resolve(202, actors, now));
+        var attack = Assert.Single(resolver.Resolve(202, actors, now.Add(ProximityAutoCombatResolver.AimDuration)));
+
+        Assert.Equal(-202001, attack.TargetPlayerId);
+    }
+    [Fact]
     public void Resolve_TargetChangeRestartsHalfSecondAim()
     {
         var resolver = new ProximityAutoCombatResolver();

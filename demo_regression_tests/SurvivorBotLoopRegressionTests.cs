@@ -445,6 +445,43 @@ public sealed class SurvivorBotLoopRegressionTests
     }
 
     [Fact]
+    public void FinalClosureWithoutAnyRefuge_KeepsBotMovingInLastStand()
+    {
+        const long matchingId = 1942052;
+        const long botPlayerId = -1942052;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        SetBotPosition(bot, AreaType.Classroom3);
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        bot.LastWalkStepTime = DateTime.UtcNow.AddSeconds(-1);
+
+        var closureState = fixture.ClosureManager.InitializeMatching(matchingId);
+        foreach (AreaType area in GameMapData.GetAreas(MapId.School)
+                     .Select(region => region.AreaType)
+                     .Distinct()
+                     .Where(area => area != AreaType.None && !area.IsCorridor()))
+        {
+            closureState.ClosedAreas.Add(area);
+        }
+
+        var tick = fixture.BotManager.ProcessBotMovementTick(
+            matchingId,
+            fixture.ClosureManager,
+            fixture.AreaStockManager,
+            new Dictionary<long, AreaType>(),
+            fixture.ChecklistManager,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            Array.Empty<BotCombatTargetSnapshot>());
+
+        Assert.Equal(AreaType.None, bot.EvacuationDestination);
+        Assert.Equal(DateTime.MinValue, bot.LoopWaitUntil);
+        Assert.NotEmpty(bot.Path);
+        Assert.Contains(tick.Movements, movement => movement.BotPlayerId == botPlayerId);
+    }
+    [Fact]
     public void StrongerNearbyOpponentMakesBotLeaveTheRoomInsteadOfKitingInPlace()
     {
         const long matchingId = 194206;

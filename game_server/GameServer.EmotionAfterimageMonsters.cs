@@ -76,6 +76,8 @@ public partial class GameServer
                 nowUtc,
                 matchingSessions,
                 finalMonsterStates);
+            if (primaryHit)
+                BroadcastObservedProximityAttackVfx(attack, matchingSessions);
             if (!primaryHit || !EmotionAfterimagePveCombatRules.ShouldApplyWaveSplash(
                     attack.WeaponItemId, attack.TargetPlayerId, attack.IsResonanceProc))
                 continue;
@@ -106,8 +108,11 @@ public partial class GameServer
     private static ProximityCombatActor CreateMonsterTargetActor(MonsterCombatTarget monster)
     {
         var cell = ProximityCombatLineOfSight.WorldPositionToCell(monster.Position);
+        // PvP is resolved before this monster pass. Within PvE, cores outrank their escorts.
+        int targetPriority = monster.IsCore ? 1 : 2;
         return new ProximityCombatActor(
-            -monster.MonsterId, monster.Area, monster.Position, 0, 0f, 0, 0f, 0f, 0f, monster.MapId, cell);
+            -monster.MonsterId, monster.Area, monster.Position, 0, 0f, 0, 0f, 0f, 0f, monster.MapId, cell,
+            TargetPriority: targetPriority);
     }
 
     private bool ApplyPlayerOrbDamageToEmotionAfterimageMonster(
@@ -198,10 +203,31 @@ public partial class GameServer
         if (targetBot == null)
             return;
 
+        int corruptionBefore = targetBot.Corruption;
+        int corruptionAfter = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, corruptionBefore + attack.Damage);
+        bool isLethal = corruptionBefore < Config.SURVIVOR_MAX_CORRUPTION &&
+                        corruptionAfter >= Config.SURVIVOR_MAX_CORRUPTION;
+        _gameEventLogManager.LogEmotionAfterimageHit(
+            matchingId,
+            attack.MonsterId,
+            targetBot.PlayerId,
+            attack.Area.ToString(),
+            attack.Damage,
+            corruptionBefore,
+            corruptionAfter,
+            isLethal,
+            isBot: true,
+            DateTimeOffset.UtcNow);
+        logger.LogInformation(
+            "Emotion afterimage attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, TargetKind=Bot, Damage={Damage}, CorruptionBefore={CorruptionBefore}, CorruptionAfter={CorruptionAfter}, Killed={Killed}",
+            matchingId,
+            attack.MonsterId,
+            targetBot.PlayerId,
+            attack.Damage,
+            corruptionBefore,
+            corruptionAfter,
+            isLethal);
         _botPlayerManager.ApplyProximityAutoCombatDamage(targetBot, attack.Damage);
-        logger.LogDebug(
-            "Emotion afterimage attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, Damage={Damage}",
-            matchingId, attack.MonsterId, attack.TargetPlayerId, attack.Damage);
     }
 
     private void AwardMonsterKill(long matchingId, MonsterRuntimeInfo monster, long killerPlayerId,

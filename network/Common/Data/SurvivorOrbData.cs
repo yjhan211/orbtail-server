@@ -37,6 +37,8 @@ namespace network.common.data
         public const float WaveSlowSeconds = 1.5f;
         public const float WaveSlowMoveSpeedMultiplier = 0.65f;
         public const float WaveBaseAttackIntervalMultiplier = 1.25f;
+        // The current room-horde pace needs each orb to fire twice as often.
+        public const float OrbAttackIntervalMultiplier = 0.5f;
         public const float WaveSplashRadius = 1.8f;
         public const int WaveSplashMaxSecondaryTargets = 2;
         public const float WaveSplashSecondaryDamageMultiplier = 0.5f;
@@ -68,6 +70,13 @@ namespace network.common.data
 
         public static float GetBaseAttackIntervalMultiplier(SurvivorOrbColor color) =>
             color == SurvivorOrbColor.Blue ? WaveBaseAttackIntervalMultiplier : 1f;
+
+        public static float GetAttackIntervalMultiplier(int itemId) => itemId switch
+        {
+            107000003 or 107000004 or 107000006 => OrbAttackIntervalMultiplier,
+            _ when IsSurvivorOrb(itemId) => OrbAttackIntervalMultiplier,
+            _ => 1f
+        };
 
         public static float GetPveDamageMultiplier(int attackerItemId, int monsterRewardItemId)
         {

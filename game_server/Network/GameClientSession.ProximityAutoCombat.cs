@@ -1,4 +1,5 @@
 using game_server.services;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.packets;
@@ -77,6 +78,29 @@ public partial class GameClientSession
         if (!PlayerId.HasValue || IsEliminated || monsterId <= 0 || damage <= 0)
             return;
 
+        int corruptionBefore = Corruption;
+        int corruptionAfter = Math.Min(MaxCorruption, corruptionBefore + damage);
+        bool isLethal = corruptionBefore < MaxCorruption && corruptionAfter >= MaxCorruption;
+        _gameEventLogManager.LogEmotionAfterimageHit(
+            CurrentMapSubId,
+            monsterId,
+            PlayerId.Value,
+            CurrentArea.ToString(),
+            damage,
+            corruptionBefore,
+            corruptionAfter,
+            isLethal,
+            isBot: false,
+            DateTimeOffset.UtcNow);
+        Logger.LogInformation(
+            "Emotion afterimage attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, TargetKind=Human, Damage={Damage}, CorruptionBefore={CorruptionBefore}, CorruptionAfter={CorruptionAfter}, Killed={Killed}",
+            CurrentMapSubId,
+            monsterId,
+            PlayerId.Value,
+            damage,
+            corruptionBefore,
+            corruptionAfter,
+            isLethal);
         // Monster damage has no survivor source, so final PvP damage accounting remains correct.
         ModifyStats(corruptionDelta: damage);
         // The encounter envelope carries the visual source (monster id) and the authoritative damage value.

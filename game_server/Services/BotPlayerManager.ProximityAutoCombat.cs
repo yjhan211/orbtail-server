@@ -119,9 +119,11 @@ public partial class BotPlayerManager
             return;
         }
 
-        // Corridors are transit only. Do not overwrite a room-bound path because an opponent is nearby.
+        // Corridors are transit only. A closing room blocks combat only while a
+        // refuge still exists; after the final closure bots must keep fighting.
         if (bot.CurrentArea.IsCorridor() || bot.EvacuationDestination != AreaType.None ||
-            IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea))
+            (IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea) &&
+             HasOpenNonCorridorRefuge(matchingId, closureManager)))
         {
             return;
         }
@@ -176,13 +178,15 @@ public partial class BotPlayerManager
         AreaClosureManager closureManager,
         Vector3f targetPosition)
     {
+        bool hasOpenRefuge = HasOpenNonCorridorRefuge(matchingId, closureManager);
         var path = BotPathfinder.FindPath(
             GetMatchingMapId(matchingId),
             bot.CurrentArea,
             bot.Cell,
             bot.CurrentArea,
             WorldToCell(targetPosition),
-            area => IsAreaClosingOrClosed(closureManager, matchingId, area));
+            area => area != bot.CurrentArea && hasOpenRefuge &&
+                    IsAreaClosingOrClosed(closureManager, matchingId, area));
         if (path == null || path.Count == 0)
             return false;
 
@@ -253,13 +257,15 @@ public partial class BotPlayerManager
                 continue;
             }
 
+            bool hasOpenRefuge = HasOpenNonCorridorRefuge(matchingId, closureManager);
             var path = BotPathfinder.FindPath(
                 mapId,
                 bot.CurrentArea,
                 bot.Cell,
                 bot.CurrentArea,
                 candidate,
-                area => IsAreaClosingOrClosed(closureManager, matchingId, area));
+                area => area != bot.CurrentArea && hasOpenRefuge &&
+                        IsAreaClosingOrClosed(closureManager, matchingId, area));
             if (path == null || path.Count == 0)
                 continue;
 

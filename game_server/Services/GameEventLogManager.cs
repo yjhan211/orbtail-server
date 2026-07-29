@@ -385,6 +385,38 @@ public class GameEventLogManager
             });
     }
 
+    public void LogEmotionAfterimageHit(
+        long matchingId,
+        int monsterId,
+        long targetPlayerId,
+        string area,
+        int damage,
+        int corruptionBefore,
+        int corruptionAfter,
+        bool isLethal,
+        bool isBot,
+        DateTimeOffset occurredAt)
+    {
+        AppendAt(
+            matchingId,
+            "AFTERIMAGE_HIT",
+            targetPlayerId,
+            isBot,
+            $"Afterimage {monsterId} hit {FormatPlayer(targetPlayerId)} for {damage}; corruption={corruptionBefore}->{corruptionAfter}.",
+            occurredAt,
+            entry =>
+            {
+                entry.TargetPlayerId = targetPlayerId;
+                entry.Area = area;
+                entry.MonsterId = monsterId;
+                entry.DamageSourceType = "emotion_afterimage";
+                entry.Damage = damage;
+                entry.CorruptionBefore = corruptionBefore;
+                entry.CorruptionAfter = corruptionAfter;
+                entry.Outcome = isLethal ? "eliminated" : "hit";
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
     public void LogInteraction(long matchingId, long playerId, string description, bool isBot)
     {
         Append(matchingId, "INTERACT", playerId, isBot, description);
@@ -1708,6 +1740,10 @@ public class GameEventEntry
     public int? WeaponItemId { get; set; }
     public int? WeaponTier { get; set; }
     public int? TargetWeaponTier { get; set; }
+    public int? MonsterId { get; set; }
+    public string? DamageSourceType { get; set; }
+    public int? CorruptionBefore { get; set; }
+    public int? CorruptionAfter { get; set; }
     public int? Damage { get; set; }
     public long? ElapsedMilliseconds { get; set; }
     public long? PreviousHitGapMilliseconds { get; set; }

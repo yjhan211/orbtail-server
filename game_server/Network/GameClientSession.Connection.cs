@@ -180,11 +180,7 @@ public partial class GameClientSession
 
             Logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
 
-            int startingOrbItemId = SurvivorOrbStartLoadout.EnsureStartingOrb(
-                _inGameInventoryManager, CurrentMapSubId, PlayerId.Value);
-            if (startingOrbItemId > 0)
-                Logger.LogInformation("Survivor starting orb granted: PlayerId={PlayerId}, ItemId={ItemId}",
-                    PlayerId, startingOrbItemId);
+
             _summonStoneManager.EnsureStartingStones(CurrentMapSubId, PlayerId.Value);
 
             SendInGameInventoryList();
@@ -442,7 +438,6 @@ public partial class GameClientSession
                 _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
                 _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
-                SurvivorOrbStartLoadout.EnsureStartingOrb(_inGameInventoryManager, matchingId, bot.PlayerId);
                 _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
             }
         }

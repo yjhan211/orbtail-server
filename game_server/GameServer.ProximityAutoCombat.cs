@@ -240,6 +240,7 @@ public partial class GameServer
                                   (windActive ? SurvivorOrbData.WindAttackRangeMultiplier : 1f),
                     Damage = combatData.Damage,
                     AttackIntervalSeconds = combatData.AttackIntervalSeconds *
+                                            SurvivorOrbData.GetAttackIntervalMultiplier(item.ItemId) *
                                             SurvivorOrbData.GetBaseAttackIntervalMultiplier(orbColor) *
                                             (windActive ? SurvivorOrbData.WindAttackIntervalMultiplier : 1f),
                     ProjectileWidth = combatData.ProjectileWidth,
@@ -272,7 +273,8 @@ public partial class GameServer
                 WeaponItemId = equippedItem.ItemId,
                 AttackRange = legacyCombatData.AttackRange,
                 Damage = legacyCombatData.Damage,
-                AttackIntervalSeconds = legacyCombatData.AttackIntervalSeconds,
+                AttackIntervalSeconds = legacyCombatData.AttackIntervalSeconds *
+                                        SurvivorOrbData.GetAttackIntervalMultiplier(equippedItem.ItemId),
                 ProjectileWidth = legacyCombatData.ProjectileWidth,
                 EffectDurationSeconds = legacyCombatData.EffectDurationSeconds,
                 WeaponItemUid = equippedItem.ItemUid

@@ -6,7 +6,7 @@ namespace demo_regression_tests;
 public sealed class SurvivorOrbStartLoadoutTests
 {
     [Fact]
-    public void GrantsExactlyOneAttackOrbAndDoesNotDuplicateOnReconnect()
+    public void DoesNotGrantAnOpeningOrb()
     {
         const long matchingId = 202;
         const long playerId = 20201;
@@ -17,14 +17,14 @@ public sealed class SurvivorOrbStartLoadoutTests
         int reconnectGrant = SurvivorOrbStartLoadout.EnsureStartingOrb(inventory, matchingId, playerId);
         var playerInventory = inventory.GetPlayerInventory(matchingId, playerId);
 
-        Assert.Contains(grantedItemId, new[] { 107000010, 107000020, 107000030 });
+        Assert.Equal(0, grantedItemId);
         Assert.Equal(0, reconnectGrant);
-        Assert.Equal(1, new[] { 107000010, 107000020, 107000030 }
+        Assert.Equal(0, new[] { 107000010, 107000020, 107000030 }
             .Sum(itemId => playerInventory.GetItemCount(itemId)));
     }
 
     [Fact]
-    public void UsesTheSameOrbForTheSameMatchingAndPlayer()
+    public void DoesNotGrantAnOrbRegardlessOfMatchingOrPlayer()
     {
         const long matchingId = 203;
         const long playerId = 20301;
@@ -36,6 +36,7 @@ public sealed class SurvivorOrbStartLoadoutTests
         int firstItemId = SurvivorOrbStartLoadout.EnsureStartingOrb(firstInventory, matchingId, playerId);
         int secondItemId = SurvivorOrbStartLoadout.EnsureStartingOrb(secondInventory, matchingId, playerId);
 
-        Assert.Equal(firstItemId, secondItemId);
+        Assert.Equal(0, firstItemId);
+        Assert.Equal(0, secondItemId);
     }
 }

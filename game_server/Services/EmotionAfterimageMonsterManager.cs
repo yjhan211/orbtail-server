@@ -11,15 +11,18 @@ namespace game_server.services;
 public sealed class EmotionAfterimageMonsterManager
 {
     public const int FirstMonsterId = 202001;
-    private static readonly MonsterDefinition[] Definitions = EmotionAfterimageMonsterSpawnData.Definitions;
     private static readonly TimeSpan ResetDelay = TimeSpan.FromSeconds(6);
+    private static readonly TimeSpan AmbientCorridorSpawnInterval = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan AmbientCorridorDespawnDelay = TimeSpan.FromSeconds(4);
+    private const float AmbientCorridorSafeSpawnDistance = 3f;
     private readonly ConcurrentDictionary<long, MatchingMonsterState> _matchingStates = new();
     private Action<long>? _matchingStateRemoved;
 
     public void InitializeMatching(long matchingId)
     {
         if (matchingId <= 0) return;
-        _matchingStates.GetOrAdd(matchingId, _ => new MatchingMonsterState(Definitions));
+        _matchingStates.GetOrAdd(matchingId,
+            id => new MatchingMonsterState(EmotionAfterimageMonsterSpawnData.CreateDefinitionsForMatching(id)));
     }
 
     public void SetMatchingStateRemovedCallback(Action<long> callback) =>
@@ -75,6 +78,7 @@ public sealed class EmotionAfterimageMonsterManager
         private readonly Dictionary<int, MonsterState> _monsters;
         private readonly HashSet<AreaType> _closedAreas = [];
         private int _waveIndex;
+        private DateTime _nextAmbientCorridorSpawnAtUtc = DateTime.MinValue;
 
         public MatchingMonsterState(IEnumerable<MonsterDefinition> definitions)
         {
@@ -105,7 +109,7 @@ public sealed class EmotionAfterimageMonsterManager
                     .Select(state => new MonsterCombatTarget(state.Definition.MonsterId, state.Definition.MapId,
                         state.Definition.Area, state.Position, state.Definition.RewardItemId,
                         state.Definition.ClusterId, state.Definition.ClusterMemberIndex,
-                        state.Definition.ClusterSize)).ToList();
+                        state.Definition.ClusterSize, state.Definition.IsCore)).ToList();
         }
 
         public bool HasAliveMonsterInArea(AreaType area)
@@ -145,30 +149,37 @@ public sealed class EmotionAfterimageMonsterManager
                 if (!addedClosure) return false;
 
                 bool changed = false;
-                foreach (var state in _monsters.Values.Where(state => state.IsAlive && _closedAreas.Contains(state.Definition.Area)))
+                foreach (var state in _monsters.Values.Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor && _closedAreas.Contains(state.Definition.Area)))
                 {
                     state.IsAlive = false;
                     state.NextAttackAtUtc = DateTime.MaxValue;
                     changed = true;
                 }
 
-                int spawnBudget = EmotionAfterimageMonsterSpawnData.GetWaveSpawnBudget(_waveIndex++);
+                int spawnBudget = EmotionAfterimageMonsterSpawnData.GetWavePackSpawnBudget(_waveIndex++);
                 if (spawnBudget == 0) return changed;
 
-                var aliveByArea = _monsters.Values.Where(state => state.IsAlive)
+                var aliveByArea = _monsters.Values.Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor)
                     .GroupBy(state => state.Definition.Area)
                     .ToDictionary(group => group.Key, group => group.Count());
-                foreach (var state in _monsters.Values
-                             .Where(state => !state.IsAlive && !_closedAreas.Contains(state.Definition.Area))
-                             .OrderBy(state => state.Definition.SpawnPriority)
-                             .ThenBy(state => state.Definition.MonsterId))
+                var dormantPacks = _monsters.Values
+                    .Where(state => !state.Definition.IsAmbientCorridor && !_closedAreas.Contains(state.Definition.Area))
+                    .GroupBy(state => state.Definition.ClusterId)
+                    .Where(pack => pack.All(state => !state.IsAlive))
+                    .OrderBy(pack => pack.Min(state => state.Definition.SpawnPriority))
+                    .ThenBy(pack => pack.Min(state => state.Definition.MonsterId));
+                foreach (var pack in dormantPacks)
                 {
                     if (spawnBudget <= 0) break;
-                    aliveByArea.TryGetValue(state.Definition.Area, out int aliveCount);
-                    if (aliveCount >= state.Definition.AreaAliveLimit) continue;
+                    var first = pack.First();
+                    int packSize = pack.Count();
+                    AreaType area = first.Definition.Area;
+                    aliveByArea.TryGetValue(area, out int aliveCount);
+                    if (aliveCount + packSize > first.Definition.AreaAliveLimit) continue;
 
-                    state.ActivateAtHome();
-                    aliveByArea[state.Definition.Area] = aliveCount + 1;
+                    foreach (var state in pack)
+                        state.ActivateAtHome();
+                    aliveByArea[area] = aliveCount + packSize;
                     spawnBudget--;
                     changed = true;
                 }
@@ -183,9 +194,10 @@ public sealed class EmotionAfterimageMonsterManager
             {
                 var changed = new List<MonsterRuntimeInfo>();
                 var attacks = new List<MonsterAttack>();
+                int spawnedAmbientMonsterId = SpawnAmbientCorridorMonster(possibleTargets, nowUtc, changed);
                 foreach (var state in _monsters.Values)
                 {
-                    if (!state.IsAlive) continue;
+                    if (!state.IsAlive || state.Definition.MonsterId == spawnedAmbientMonsterId) continue;
 
                     float elapsedSeconds = (float)(nowUtc - state.LastUpdatedAtUtc).TotalSeconds;
                     state.LastUpdatedAtUtc = nowUtc;
@@ -193,7 +205,17 @@ public sealed class EmotionAfterimageMonsterManager
                     if (!targetsByArea.TryGetValue((state.Definition.MapId, state.Definition.Area), out var targets) ||
                         targets.Count == 0)
                     {
-                        bool movedHome = MoveTowards(state, state.Definition.Position, elapsedSeconds);
+                        if (state.Definition.IsAmbientCorridor)
+                        {
+                            if (nowUtc - state.LastTargetSeenAtUtc >= AmbientCorridorDespawnDelay)
+                            {
+                                state.Deactivate();
+                                changed.Add(ToRuntimeInfo(state));
+                                continue;
+                            }
+                        }
+
+                        bool movedHome = MoveTowards(state, GetIdleDestination(state, nowUtc), elapsedSeconds);
                         if (state.CurrentHealth < state.Definition.MaxHealth && nowUtc - state.LastDamagedAtUtc >= ResetDelay)
                         {
                             state.CurrentHealth = state.Definition.MaxHealth;
@@ -205,10 +227,12 @@ public sealed class EmotionAfterimageMonsterManager
                         continue;
                     }
 
+                    state.LastTargetSeenAtUtc = nowUtc;
+
                     // A same-area monster is a persistent local threat, not an
                     // interaction prompt: it notices every player in its room.
                     var target = SelectTarget(state, targets);
-                    Vector3f chaseDestination = GetChaseDestination(state, target.Position);
+                    Vector3f chaseDestination = GetChaseDestination(state, target.Position, nowUtc);
                     bool moved = MoveTowards(state, chaseDestination, elapsedSeconds);
                     if (moved) changed.Add(ToRuntimeInfo(state));
                     if (nowUtc < state.NextAttackAtUtc ||
@@ -220,6 +244,38 @@ public sealed class EmotionAfterimageMonsterManager
                 }
                 return new MonsterTickResult(changed, attacks);
             }
+        }
+
+        private int SpawnAmbientCorridorMonster(IReadOnlyList<MonsterSpatialTarget> possibleTargets, DateTime nowUtc,
+            ICollection<MonsterRuntimeInfo> changed)
+        {
+            if (nowUtc < _nextAmbientCorridorSpawnAtUtc)
+                return 0;
+
+            var corridorTargets = possibleTargets
+                .Where(target => target.MapId == MapId.School && target.Area == AreaType.Corridor)
+                .ToList();
+            if (corridorTargets.Count == 0)
+                return 0;
+
+            int aliveCount = _monsters.Values.Count(state => state.IsAlive && state.Definition.IsAmbientCorridor);
+            if (aliveCount >= 3)
+                return 0;
+
+            var candidate = _monsters.Values
+                .Where(state => !state.IsAlive && state.Definition.IsAmbientCorridor)
+                .OrderBy(state => state.Definition.MonsterId)
+                .FirstOrDefault(state => corridorTargets.All(target =>
+                    DistanceSquared(state.Definition.Position, target.Position) >=
+                    AmbientCorridorSafeSpawnDistance * AmbientCorridorSafeSpawnDistance));
+            _nextAmbientCorridorSpawnAtUtc = nowUtc + AmbientCorridorSpawnInterval;
+            if (candidate == null)
+                return 0;
+
+            candidate.ActivateAtHome();
+            candidate.LastTargetSeenAtUtc = nowUtc;
+            changed.Add(ToRuntimeInfo(candidate));
+            return candidate.Definition.MonsterId;
         }
 
         private static Dictionary<(MapId MapId, AreaType Area), List<MonsterSpatialTarget>> BuildTargetBuckets(
@@ -270,14 +326,52 @@ public sealed class EmotionAfterimageMonsterManager
             return selected;
         }
 
-        private static Vector3f GetChaseDestination(MonsterState state, Vector3f targetPosition)
+        private static Vector3f GetChaseDestination(MonsterState state, Vector3f targetPosition, DateTime nowUtc)
         {
-            // Fixed slots avoid pairwise repulsion, so settling and anchor return cannot oscillate.
             Vector3f offset = state.Definition.FormationOffset;
+            bool isEscort = !state.Definition.IsAmbientCorridor && !state.Definition.IsCore &&
+                            state.Definition.SummonStoneReward == 0;
+            if (!isEscort)
+                return new Vector3f(
+                    targetPosition.X + offset.X,
+                    targetPosition.Y + offset.Y,
+                    targetPosition.Z);
+
+            // Escorts do not share a single pursuit point. Their deterministic orbit
+            // keeps the group loose while retaining enough overlap for close pressure.
+            float seconds = (float)(nowUtc - DateTime.UnixEpoch).TotalSeconds;
+            float angle = seconds * (0.7f + state.Definition.ClusterMemberIndex * 0.025f) +
+                          state.Definition.ClusterId * 0.73f + state.Definition.ClusterMemberIndex * 1.17f;
+            float sway = 0.24f + (state.Definition.ClusterMemberIndex % 3) * 0.04f;
             return new Vector3f(
-                targetPosition.X + offset.X,
-                targetPosition.Y + offset.Y,
+                targetPosition.X + offset.X + MathF.Cos(angle) * sway,
+                targetPosition.Y + offset.Y + MathF.Sin(angle) * sway,
                 targetPosition.Z);
+        }
+
+        private static Vector3f GetHomePosition(MonsterDefinition definition) => new(
+            definition.Position.X + definition.FormationOffset.X,
+            definition.Position.Y + definition.FormationOffset.Y,
+            definition.Position.Z);
+
+        private static Vector3f GetIdleDestination(MonsterState state, DateTime nowUtc)
+        {
+            Vector3f home = GetHomePosition(state.Definition);
+            bool isEscort = !state.Definition.IsAmbientCorridor && !state.Definition.IsCore &&
+                            state.Definition.SummonStoneReward == 0;
+            if (!isEscort)
+                return home;
+
+            // Escorts keep their own small patrol loops around distinct home slots.
+            // This reads as a guard line rather than nine copies idling on one point.
+            float seconds = (float)(nowUtc - DateTime.UnixEpoch).TotalSeconds;
+            float angle = seconds * (0.85f + state.Definition.ClusterMemberIndex * 0.03f) +
+                          state.Definition.ClusterId * 0.73f + state.Definition.ClusterMemberIndex * 1.17f;
+            float radius = 0.13f + (state.Definition.ClusterMemberIndex % 3) * 0.025f;
+            return new Vector3f(
+                home.X + MathF.Cos(angle) * radius,
+                home.Y + MathF.Sin(angle) * radius,
+                home.Z);
         }
 
         private static MonsterRuntimeInfo ToRuntimeInfo(MonsterState state) => new()
@@ -324,24 +418,40 @@ public sealed class EmotionAfterimageMonsterManager
     private sealed class MonsterState(MonsterDefinition definition)
     {
         public MonsterDefinition Definition { get; } = definition;
-        public Vector3f Position { get; set; } = definition.Position;
+        public Vector3f Position { get; set; } = new(
+            definition.Position.X + definition.FormationOffset.X,
+            definition.Position.Y + definition.FormationOffset.Y,
+            definition.Position.Z);
         public int CurrentHealth { get; set; } = definition.MaxHealth;
         public bool IsAlive { get; set; } = definition.StartsActive;
         public long LastAttackerPlayerId { get; set; }
         public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
         public DateTime NextAttackAtUtc { get; set; } = DateTime.MinValue;
         public DateTime LastUpdatedAtUtc { get; set; } = DateTime.MinValue;
+        public DateTime LastTargetSeenAtUtc { get; set; } = DateTime.MinValue;
         public Dictionary<long, int> DamageByPlayer { get; } = new();
 
         public void ActivateAtHome()
         {
-            Position = Definition.Position;
+            Position = new Vector3f(
+                Definition.Position.X + Definition.FormationOffset.X,
+                Definition.Position.Y + Definition.FormationOffset.Y,
+                Definition.Position.Z);
             CurrentHealth = Definition.MaxHealth;
             IsAlive = true;
             LastAttackerPlayerId = 0;
             LastDamagedAtUtc = DateTime.MinValue;
             NextAttackAtUtc = DateTime.MinValue;
             LastUpdatedAtUtc = DateTime.MinValue;
+            LastTargetSeenAtUtc = DateTime.MinValue;
+            DamageByPlayer.Clear();
+        }
+
+        public void Deactivate()
+        {
+            IsAlive = false;
+            NextAttackAtUtc = DateTime.MaxValue;
+            LastTargetSeenAtUtc = DateTime.MinValue;
             DamageByPlayer.Clear();
         }
     }
@@ -351,7 +461,7 @@ public readonly record struct MonsterDefinition(int MonsterId, MapId MapId, Area
     int MaxHealth, int AttackDamage, float AttackRange, float AttackIntervalSeconds, int RewardItemId,
     bool IsCore, int SummonStoneReward, float MoveSpeed, float LeashRange, int AreaAliveLimit,
     bool StartsActive, int SpawnPriority, int ClusterId, int ClusterMemberIndex, int ClusterSize,
-    Vector3f FormationOffset);
+    Vector3f FormationOffset, bool IsAmbientCorridor = false);
 
 public readonly record struct MonsterCombatTarget(
     int MonsterId,
@@ -361,7 +471,8 @@ public readonly record struct MonsterCombatTarget(
     int RewardItemId,
     int ClusterId = 0,
     int ClusterMemberIndex = 0,
-    int ClusterSize = 1);
+    int ClusterSize = 1,
+    bool IsCore = false);
 public readonly record struct MonsterSpatialTarget(long PlayerId, MapId MapId, AreaType Area, Vector3f Position);
 public readonly record struct MonsterAttack(int MonsterId, long TargetPlayerId, AreaType Area, int Damage);
 public readonly record struct MonsterDamageResult(MonsterRuntimeInfo? State, bool Killed, int SummonStoneReward,

@@ -26,7 +26,9 @@ public readonly record struct ProximityCombatActor(
     int WeaponStackIndex = 0,
     int SunResonanceStage = 0,
     bool WaveResonanceArmed = false,
-    float InitialAttackDelaySeconds = 0f);
+    float InitialAttackDelaySeconds = 0f,
+    // Lower values win before distance. Player targets use the default 0.
+    int TargetPriority = 0);
 
 public readonly record struct ProximityCombatAttack(
     long AttackerPlayerId,
@@ -149,6 +151,10 @@ public sealed class ProximityAutoCombatResolver
 
             eligibleTargets.Sort(static (left, right) =>
             {
+                int priorityComparison = left.Actor.TargetPriority.CompareTo(right.Actor.TargetPriority);
+                if (priorityComparison != 0)
+                    return priorityComparison;
+
                 int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
                 return distanceComparison != 0
                     ? distanceComparison

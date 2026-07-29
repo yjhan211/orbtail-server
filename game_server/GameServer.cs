@@ -2299,7 +2299,6 @@ public partial class GameServer(
             _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
             _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
-            SurvivorOrbStartLoadout.EnsureStartingOrb(_inGameInventoryManager, matchingId, bot.PlayerId);
             _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
         }
 

@@ -18,6 +18,15 @@ public class EmotionAfterimagePveCombatRulesTests
             2.3f * SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Blue), 3);
     }
 
+    [Fact]
+    public void AllOrbLines_FireAtTwiceThePreviousRate()
+    {
+        Assert.Equal(0.5f, SurvivorOrbData.GetAttackIntervalMultiplier(107000003));
+        Assert.Equal(0.5f, SurvivorOrbData.GetAttackIntervalMultiplier(107000010));
+        Assert.Equal(0.5f, SurvivorOrbData.GetAttackIntervalMultiplier(107000030));
+        Assert.Equal(1f, SurvivorOrbData.GetAttackIntervalMultiplier(201000015));
+    }
+
     [Theory]
     [InlineData(107000010, 107000020, 1.5f)]
     [InlineData(107000020, 107000030, 1.5f)]

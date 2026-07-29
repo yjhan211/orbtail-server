@@ -161,6 +161,31 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
+    public void NeutralAfterimageMonstersDisableTheirOrbGlyphWhenReusedFromThePool()
+    {
+        string source = ReadNormalizedSource(
+            FindRepositoryRoot(), "client", "Assets", "Scripts", "Components", "MapObject",
+            "EmotionAfterimageOrbTheme.cs");
+
+        Assert.Contains("private int _itemId = -1;", source);
+        Assert.Contains("_core.enabled = itemId > 0;", source);
+    }
+    [Fact]
+    public void ObserversSeeBotOrbProjectilesWhenTheTargetIsAnAfterimageMonster()
+    {
+        string repoRoot = FindRepositoryRoot();
+        string serverSource = ReadNormalizedSource(
+            repoRoot, "game_server", "GameServer.EmotionAfterimageMonsters.cs");
+        string mapSource = ReadNormalizedSource(
+            repoRoot, "client", "Assets", "Scripts", "Managers", "Map", "MapManager.PlayerVisibility.cs");
+
+        Assert.Contains(
+            "if (primaryHit)\n                BroadcastObservedProximityAttackVfx(attack, matchingSessions);",
+            serverSource);
+        Assert.Contains("if (packet.TargetPlayerId < 0)", mapSource);
+        Assert.Contains("PlayObservedGuardianProjectileAtMonster(attacker, monster, packet.WeaponItemId);", mapSource);
+    }
+    [Fact]
     public void LocalDamageDisplayPulsesInventoryDecoWhileTheTotalIsPresented()
     {
         string source = ReadNormalizedSource(
