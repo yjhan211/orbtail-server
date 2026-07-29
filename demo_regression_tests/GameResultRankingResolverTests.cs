@@ -46,12 +46,26 @@ public sealed class GameResultRankingResolverTests
         Assert.Equal(new long[] { 10, 20 }, result.Select(player => player.PlayerId));
     }
 
+    [Fact]
+    public void Resolve_UsesAuthoritativeEliminationRankBeforeStatistics()
+    {
+        var result = GameResultRankingResolver.Resolve(new[]
+        {
+            CreatePlayer(10, survival: 200, kills: 9, damage: 900, recovery: 900, rank: 2),
+            CreatePlayer(20, survival: 1, kills: 0, damage: 0, recovery: 0, rank: 0)
+        });
+
+        Assert.Equal(new long[] { 20, 10 }, result.Select(player => player.PlayerId));
+        Assert.Equal(new[] { 1, 2 }, result.Select(player => player.Rank));
+    }
+
     private static GameResultPlayerInfo CreatePlayer(
         long playerId,
         int survival,
         int kills,
         int damage,
-        int recovery)
+        int recovery,
+        int rank = 0)
     {
         return new GameResultPlayerInfo
         {
@@ -59,7 +73,8 @@ public sealed class GameResultRankingResolverTests
             SurvivalTimeSeconds = survival,
             KillCount = kills,
             TotalDamageDealt = damage,
-            TotalRecovery = recovery
+            TotalRecovery = recovery,
+            Rank = rank
         };
     }
 }
