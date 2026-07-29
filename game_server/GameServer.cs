@@ -1749,6 +1749,7 @@ public partial class GameServer(
                             _inGameInventoryManager.GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0,
                             bot.Corruption)))
                     .ToList();
+                var pveTargets = _emotionAfterimageMonsterManager.GetAliveTargets(matchingId);
                 var movementResult = _botPlayerManager.ProcessBotMovementTick(
                     matchingId,
                     _areaClosureManager,
@@ -1757,7 +1758,8 @@ public partial class GameServer(
                     _checklistManager,
                     _inGameInventoryManager,
                     _groundItemManager,
-                    combatTargets);
+                    combatTargets,
+                    pveTargets);
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 foreach (var pivot in movementResult.OrbFarmingPivots)

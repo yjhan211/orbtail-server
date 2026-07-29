@@ -440,6 +440,9 @@ public class BotPlayerState
     /// <summary>Next time the bot may replace its chase or retreat path.</summary>
     public DateTime NextCombatRepathAt { get; set; } = DateTime.MinValue;
 
+    /// <summary>Next time the bot may re-plan a short lateral path around nearby afterimages.</summary>
+    public DateTime NextPveKiteRepathAt { get; set; } = DateTime.MinValue;
+
     /// <summary>Safe room retained while the bot is travelling out of a warned area.</summary>
     public AreaType EvacuationDestination { get; set; } = AreaType.None;
 

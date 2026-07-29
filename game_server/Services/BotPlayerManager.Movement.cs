@@ -16,6 +16,9 @@ public partial class BotPlayerManager
 {
     /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
     private const float BotWalkSpeed = 5f;
+    private const float PveKiteThreatRange = 3.2f;
+    private const float PveKiteImmediateThreatRange = 1.65f;
+    private const float PveKiteStepDistance = 2.15f;
 
     /// <summary>아이소메트릭 세로 속도 보정 — 클라 PlayerMovement.isoVerticalSpeedScale과 같은 값을 유지해야 한다.</summary>
     private const float IsoVerticalSpeedScale = 1f;
@@ -186,7 +189,8 @@ public partial class BotPlayerManager
         ChecklistManager checklistManager,
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
-        IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets)
+        IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets,
+        IReadOnlyCollection<MonsterCombatTarget>? pveTargets = null)
     {
         var result = new BotWalkingTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
@@ -213,7 +217,10 @@ public partial class BotPlayerManager
                 result.GroundItemPickups.Add(pickup.Value);
             }
             if (!isEvacuating && !isCommittingToDestination)
+            {
                 UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
+                TryStartPveKitePath(bot, matchingId, closureManager, pveTargets ?? []);
+            }
             if (!hasOpenNonCorridorRefuge && bot.PathIndex >= bot.Path.Count &&
                 !bot.IsInInteraction && bot.PendingRngInteractId == 0 && bot.PendingChecklistTaskId == 0)
             {
@@ -363,6 +370,98 @@ public partial class BotPlayerManager
             .Any(area => area != AreaType.None && !area.IsCorridor() && !unavailableAreas.Contains(area));
     }
 
+    /// <summary>
+    /// Keeps a bot moving while it farms a nearby afterimage pack. This is intentionally
+    /// an in-room lateral weave: closure evacuation and committed room travel keep priority.
+    /// </summary>
+    private bool TryStartPveKitePath(BotPlayerState bot, long matchingId,
+        AreaClosureManager closureManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets)
+    {
+        var now = DateTime.UtcNow;
+        if (pveTargets.Count == 0 || bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor() ||
+            bot.EvacuationDestination != AreaType.None || bot.MovementDestination != AreaType.None ||
+            bot.PathIndex < bot.Path.Count || now < bot.NextPveKiteRepathAt)
+        {
+            return false;
+        }
+
+        var nearby = pveTargets
+            .Where(target => target.Area == bot.CurrentArea &&
+                             DistanceSquared(bot.Position, target.Position.X, target.Position.Y) <=
+                             PveKiteThreatRange * PveKiteThreatRange)
+            .OrderBy(target => DistanceSquared(bot.Position, target.Position.X, target.Position.Y))
+            .ToList();
+        if (nearby.Count == 0)
+            return false;
+
+        float nearestDistance = MathF.Sqrt(DistanceSquared(bot.Position, nearby[0].Position.X, nearby[0].Position.Y));
+        if (nearby.Count < 2 && nearestDistance > PveKiteImmediateThreatRange)
+            return false;
+
+        float centerX = nearby.Average(target => target.Position.X);
+        float centerY = nearby.Average(target => target.Position.Y);
+        float awayX = bot.Position.X - centerX;
+        float awayY = bot.Position.Y - centerY;
+        float awayLength = MathF.Sqrt(awayX * awayX + awayY * awayY);
+        if (awayLength < 0.01f)
+        {
+            float fallbackAngle = MathF.Abs(bot.PlayerId % 11) * (MathF.Tau / 11f);
+            awayX = MathF.Cos(fallbackAngle);
+            awayY = MathF.Sin(fallbackAngle);
+            awayLength = 1f;
+        }
+        awayX /= awayLength;
+        awayY /= awayLength;
+
+        int weaveSide = ((Math.Abs(bot.PlayerId) + (long)(now - DateTime.UnixEpoch).TotalSeconds) & 1) == 0 ? 1 : -1;
+        float tangentX = -awayY * weaveSide;
+        float tangentY = awayX * weaveSide;
+        float directionX = awayX * 0.45f + tangentX * 0.9f;
+        float directionY = awayY * 0.45f + tangentY * 0.9f;
+        float directionLength = MathF.Sqrt(directionX * directionX + directionY * directionY);
+        directionX /= directionLength;
+        directionY /= directionLength;
+
+        var mapId = GetMatchingMapId(matchingId);
+        foreach (float angleOffset in new[] { 0f, 0.55f, -0.55f, 1.1f, -1.1f })
+        {
+            float cosine = MathF.Cos(angleOffset);
+            float sine = MathF.Sin(angleOffset);
+            float candidateX = directionX * cosine - directionY * sine;
+            float candidateY = directionX * sine + directionY * cosine;
+            var targetCell = WorldToCell(new Vector3f(
+                bot.Position.X + candidateX * PveKiteStepDistance,
+                bot.Position.Y + candidateY * PveKiteStepDistance,
+                0f));
+            if (GameMapData.GetCurrentArea(mapId, targetCell) != bot.CurrentArea ||
+                !GameMapData.IsMoveablePosition(mapId, targetCell))
+            {
+                continue;
+            }
+
+            var path = BotPathfinder.FindPath(
+                mapId,
+                bot.CurrentArea,
+                bot.Cell,
+                bot.CurrentArea,
+                targetCell,
+                area => area != bot.CurrentArea || IsAreaClosingOrClosed(closureManager, matchingId, area));
+            if (path is not { Count: > 0 })
+                continue;
+
+            bot.Path = path;
+            bot.PathIndex = 0;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            bot.NextPveKiteRepathAt = now.AddMilliseconds(850);
+            _logger.LogDebug(
+                "Bot PVE kite: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, Threats={Threats}, Steps={Steps}",
+                matchingId, bot.PlayerId, bot.CurrentArea, nearby.Count, path.Count);
+            return true;
+        }
+
+        bot.NextPveKiteRepathAt = now.AddMilliseconds(400);
+        return false;
+    }
     private bool TryStartLastStandPatrolPath(BotPlayerState bot, long matchingId,
         AreaClosureManager closureManager)
     {

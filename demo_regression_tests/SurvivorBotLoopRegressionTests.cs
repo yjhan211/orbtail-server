@@ -71,6 +71,41 @@ public sealed class SurvivorBotLoopRegressionTests
     }
 
     [Fact]
+    public void BotKitesWithinItsRoomWhenNearbyAfterimagesCloseIn()
+    {
+        const long matchingId = 1942000;
+        const long botPlayerId = -19420001;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        bot.EquippedBattleItemId = RecorderT1;
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        bot.NextPveKiteRepathAt = DateTime.MinValue;
+
+        var threat = new MonsterCombatTarget(
+            202001,
+            MapId.School,
+            AreaType.Classroom3,
+            new Vector3f(bot.Position.X + 1f, bot.Position.Y, 0f),
+            107000010);
+        var result = fixture.BotManager.ProcessBotMovementTick(
+            matchingId,
+            fixture.ClosureManager,
+            fixture.AreaStockManager,
+            new Dictionary<long, AreaType>(),
+            fixture.ChecklistManager,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            Array.Empty<BotCombatTargetSnapshot>(),
+            [threat]);
+
+        Assert.Contains(result.Movements, movement => movement.BotPlayerId == botPlayerId);
+        Assert.Equal(AreaType.None, bot.MovementDestination);
+        Assert.True(bot.NextPveKiteRepathAt > DateTime.UtcNow);
+        Assert.All(bot.Path.Skip(bot.PathIndex), step => Assert.Equal(AreaType.Classroom3, step.Area));
+    }
+    [Fact]
     public void BotFollowingTargetInCorridorSelectsRoomDestination()
     {
         const long matchingId = 1942001;
