@@ -35,7 +35,7 @@ public sealed class BotSurvivorLootingTests
     }
 
     [Fact]
-    public void BotMovementSkipsChecklistAndQueuesRealRoomExplore()
+    public void BotMovementSkipsChecklistAndDoesNotQueueLegacyExplore()
     {
         const long matchingId = 194101;
         const long botPlayerId = -1941011;
@@ -54,13 +54,12 @@ public sealed class BotSurvivorLootingTests
 
         Assert.Equal(0, bot.PendingChecklistTaskId);
         Assert.Equal(0, bot.PendingChecklistInteractId);
-        Assert.True(bot.PendingRngInteractId > 0);
-        Assert.Equal(InteractionType.RNG_COLLECT,
-            GameInteractableData.Get(bot.PendingRngInteractId)!.InteractionType);
+        Assert.Equal(0, bot.PendingRngInteractId);
+        Assert.Empty(bot.InteractQueueInArea);
     }
 
     [Fact]
-    public void BotMovementSkipsCooldownMarkers()
+    public void BotMovementIgnoresLegacyRngMarkersEvenWhenOffCooldown()
     {
         const long matchingId = 194102;
         const long botPlayerId = -1941021;
@@ -72,7 +71,6 @@ public sealed class BotSurvivorLootingTests
             .Select(info => info.Id)
             .ToArray();
         Assert.True(markerIds.Length >= 2);
-        int expectedMarkerId = markerIds[0];
 
         try
         {
@@ -89,7 +87,7 @@ public sealed class BotSurvivorLootingTests
                 fixture.GroundItemManager,
                 Array.Empty<BotCombatTargetSnapshot>());
 
-            Assert.Equal(expectedMarkerId, bot.PendingRngInteractId);
+            Assert.Equal(0, bot.PendingRngInteractId);
         }
         finally
         {
@@ -143,7 +141,7 @@ public sealed class BotSurvivorLootingTests
     }
 
     [Fact]
-    public void DepletedRoomIsMarkedCompleteWithoutQueueingAnotherExplore()
+    public void BotDoesNotEvaluateLegacyRoomStockForMovement()
     {
         const long matchingId = 194103;
         const long botPlayerId = -1941031;
@@ -164,7 +162,7 @@ public sealed class BotSurvivorLootingTests
             Array.Empty<BotCombatTargetSnapshot>());
 
         Assert.Equal(0, bot.PendingRngInteractId);
-        Assert.Contains(AreaType.Classroom3, bot.CompletedRoomExploreAreas);
+        Assert.DoesNotContain(AreaType.Classroom3, bot.CompletedRoomExploreAreas);
         Assert.Empty(bot.InteractQueueInArea);
     }
 
@@ -212,95 +210,31 @@ public sealed class BotSurvivorLootingTests
     }
 
     [Fact]
-    public void CompletedLegacyMissionStillAllowsRecorderLootPickupAndEquip()
+    public void CompletedLegacyMissionDoesNotRestartLegacyExplore()
     {
         const long matchingId = 194104;
         const long botPlayerId = -1941041;
         var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
         var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
-        var marker = GameInteractableData.GetByZone((int)AreaType.Classroom3)
-            .First(info => info.InteractionType == InteractionType.RNG_COLLECT &&
-                           (info.CellX != 0 || info.CellY != 0));
-        bot.Cell = new Cell(marker.CellX, marker.CellY);
-        bot.Position = new Vector3f(
-            (marker.CellX - marker.CellY) / 2f,
-            (marker.CellX + marker.CellY) / 4f,
-            0f);
-
         var missionManager = new MissionManager(NullLogger.Instance);
         missionManager.InitializePlayer(matchingId, botPlayerId, JobTitle.SCIENCE_MEMBER);
         missionManager.GetState(matchingId, botPlayerId)!.IsCompleted = true;
         var itemPoolManager = new ItemPoolManager();
         itemPoolManager.Initialize();
 
-        try
-        {
-            Assert.True(fixture.BotManager.TrySendBotToInteract(
-                matchingId,
-                botPlayerId,
-                AreaType.Classroom3,
-                marker.Id,
-                fixture.ClosureManager));
+        BackdateMissionTick(bot);
+        var result = fixture.BotManager.ProcessBotMissionTick(
+            matchingId,
+            missionManager,
+            fixture.InventoryManager,
+            itemPoolManager,
+            fixture.AreaStockManager,
+            fixture.GroundItemManager,
+            fixture.ChecklistManager);
 
-            BackdateMissionTick(bot);
-            var started = fixture.BotManager.ProcessBotMissionTick(
-                matchingId,
-                missionManager,
-                fixture.InventoryManager,
-                itemPoolManager,
-                fixture.AreaStockManager,
-                fixture.GroundItemManager,
-                fixture.ChecklistManager);
-            Assert.Single(started.BotExploreStarts);
-
-            BackdateMissionTick(bot);
-            bot.RngCollectProgressStartTime = DateTime.UtcNow.AddSeconds(-3);
-            var completed = fixture.BotManager.ProcessBotMissionTick(
-                matchingId,
-                missionManager,
-                fixture.InventoryManager,
-                itemPoolManager,
-                fixture.AreaStockManager,
-                fixture.GroundItemManager,
-                fixture.ChecklistManager);
-            var spawnedRecorder = Assert.Single(completed.GroundItemSpawns);
-            Assert.Equal(107000020, spawnedRecorder.ItemId);
-            Assert.Contains(marker.Id, bot.ExploredRngInteractIds);
-            Assert.Equal(GroundItemClaimStatus.Reserved,
-                fixture.GroundItemManager.TryClaim(
-                    matchingId, spawnedRecorder.GroundItemUid, botPlayerId - 99, AreaType.Classroom3,
-                    spawnedRecorder.PositionX, spawnedRecorder.PositionY, _ => true, out _));
-
-            bot.LastWalkStepTime = DateTime.UtcNow.AddSeconds(-1);
-            var pickup = fixture.BotManager.ProcessBotMovementTick(
-                matchingId,
-                fixture.ClosureManager,
-                fixture.AreaStockManager,
-                new Dictionary<long, AreaType>(),
-                fixture.ChecklistManager,
-                fixture.InventoryManager,
-                fixture.GroundItemManager,
-                Array.Empty<BotCombatTargetSnapshot>());
-            Assert.Single(pickup.GroundItemPickups);
-            Assert.Equal(107000020,
-                fixture.InventoryManager.GetEquippedBattleItem(matchingId, botPlayerId)!.ItemId);
-            Assert.Equal(107000020, bot.EquippedBattleItemId);
-
-            BackdateMissionTick(bot);
-            var equipped = fixture.BotManager.ProcessBotMissionTick(
-                matchingId,
-                missionManager,
-                fixture.InventoryManager,
-                itemPoolManager,
-                fixture.AreaStockManager,
-                fixture.GroundItemManager,
-                fixture.ChecklistManager);
-            Assert.Empty(equipped.BattleItemEquips);
-        }
-        finally
-        {
-            RngCollectCooldownStore.ClearMatching(matchingId);
-        }
+        Assert.Empty(result.BotExploreStarts);
+        Assert.Empty(result.GroundItemSpawns);
+        Assert.Equal(0, bot.PendingRngInteractId);
     }
 
     private static BotLootFixture CreateFixture(long matchingId, long botPlayerId, AreaType startArea)

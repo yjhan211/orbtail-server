@@ -92,24 +92,20 @@ public partial class GameServer
 
         var nowUtc = DateTime.UtcNow;
         var resonanceStates = UpdateSurvivorOrbResonanceStates(matchingId, matchingSessions, matchingBots, nowUtc);
-        foreach (var session in matchingSessions)
-        {
-            if (!session.PlayerId.HasValue ||
-                !resonanceStates.TryGetValue(session.PlayerId.Value, out var resonanceState) ||
-                !resonanceState.WindJustActivated)
-            {
-                continue;
-            }
-
-            session.SendSurvivorOrbResonanceFeedback(SurvivorOrbColor.Green);
-        }
-
         var actors = BuildProximityCombatActors(matchingId, matchingSessions, matchingBots, resonanceStates);
         ProcessSurvivorOrbRecovery(matchingId, actors, matchingSessions, matchingBots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, matchingSessions);
+        var aliveMonsterTargets = AdvanceEmotionAfterimageMonsters(
+            matchingId, matchingSessions, matchingBots, actors, nowUtc);
+        var monsterTargetIds = aliveMonsterTargets
+            .Select(target => -(long)target.MonsterId)
+            .ToHashSet();
+        var combatTargets = actors
+            .Concat(aliveMonsterTargets.Select(CreateMonsterTargetActor))
+            .ToList();
         var attacks = _proximityAutoCombatResolver.Resolve(
             matchingId,
-            actors,
+            combatTargets,
             nowUtc,
             ProximityCombatLineOfSight.CanTarget,
             onTargetAcquired: targetEvent =>
@@ -131,7 +127,14 @@ public partial class GameServer
                     BotPlayerManager.IsBotPlayerId(targetEvent.AttackerPlayerId),
                     targetEvent.OccurredAtUtc));
 
-        if (attacks.Count > 0)
+        if (attacks.Count == 0)
+            return;
+
+        var resolvedAttacks = ExpandWaveAreaAttacks(attacks, combatTargets);
+        var playerAttacks = resolvedAttacks
+            .Where(attack => !monsterTargetIds.Contains(attack.TargetPlayerId))
+            .ToList();
+        if (playerAttacks.Count > 0)
         {
             var activeOrbColors = new Dictionary<long, SurvivorOrbColor>();
             foreach (var actor in actors.Where(actor => actor.OrbEffectActive))
@@ -139,8 +142,14 @@ public partial class GameServer
                 if (SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out var color, out _))
                     activeOrbColors[actor.PlayerId] = color;
             }
-            ApplyProximityCombatVolley(matchingId, attacks, matchingSessions, matchingBots, activeSessions, activeOrbColors, resonanceStates, actors, nowUtc);
+            ApplyProximityCombatVolley(matchingId, playerAttacks, matchingSessions, matchingBots, activeSessions, activeOrbColors, resonanceStates, actors, nowUtc);
         }
+
+        var monsterAttacks = resolvedAttacks
+            .Where(attack => monsterTargetIds.Contains(attack.TargetPlayerId))
+            .ToList();
+        ApplyPlayerOrbDamageToEmotionAfterimageMonsters(
+            matchingId, monsterAttacks, aliveMonsterTargets, nowUtc, matchingSessions);
     }
     private List<ProximityCombatActor> BuildProximityCombatActors(
         long matchingId,
@@ -224,10 +233,10 @@ public partial class GameServer
             if (combatData == null)
                 continue;
 
-            bool windActive = orbColor == SurvivorOrbColor.Green && resonanceState.WindActive;
-            int sunStage = orbColor == SurvivorOrbColor.Red ? resonanceState.SunStage : 0;
-            bool waveArmed = orbColor == SurvivorOrbColor.Blue && resonanceState.WaveArmed;
-            bool orbEffectActive = sunStage > 0 || windActive || waveArmed;
+            bool windActive = false;
+            int sunStage = 0;
+            bool waveArmed = false;
+            bool orbEffectActive = resonanceState.ActiveColor == orbColor;
 
             for (int stackIndex = 0; stackIndex < item.Count; stackIndex++)
             {
@@ -236,8 +245,10 @@ public partial class GameServer
                     WeaponItemId = item.ItemId,
                     AttackRange = combatData.AttackRange *
                                   (windActive ? SurvivorOrbData.WindAttackRangeMultiplier : 1f),
-                    Damage = combatData.Damage,
+                    Damage = SurvivorOrbData.GetBaseAttackDamage(combatData.Damage, orbColor),
                     AttackIntervalSeconds = combatData.AttackIntervalSeconds *
+                                            SurvivorOrbData.GetAttackIntervalMultiplier(item.ItemId) *
+                                            SurvivorOrbData.GetBaseAttackIntervalMultiplier(orbColor) *
                                             (windActive ? SurvivorOrbData.WindAttackIntervalMultiplier : 1f),
                     ProjectileWidth = combatData.ProjectileWidth,
                     EffectDurationSeconds = combatData.EffectDurationSeconds,
@@ -269,7 +280,8 @@ public partial class GameServer
                 WeaponItemId = equippedItem.ItemId,
                 AttackRange = legacyCombatData.AttackRange,
                 Damage = legacyCombatData.Damage,
-                AttackIntervalSeconds = legacyCombatData.AttackIntervalSeconds,
+                AttackIntervalSeconds = legacyCombatData.AttackIntervalSeconds *
+                                        SurvivorOrbData.GetAttackIntervalMultiplier(equippedItem.ItemId),
                 ProjectileWidth = legacyCombatData.ProjectileWidth,
                 EffectDurationSeconds = legacyCombatData.EffectDurationSeconds,
                 WeaponItemUid = equippedItem.ItemUid
@@ -454,9 +466,43 @@ public partial class GameServer
         }
 
         RemoveSurvivorOrbResonanceStates(matchingId);
-
     }
 
+    private static IReadOnlyList<ProximityCombatAttack> ExpandWaveAreaAttacks(
+        IReadOnlyCollection<ProximityCombatAttack> attacks,
+        IReadOnlyCollection<ProximityCombatActor> combatTargets)
+    {
+        if (attacks.Count == 0)
+            return [];
+
+        var expanded = new List<ProximityCombatAttack>(attacks.Count);
+        foreach (var attack in attacks)
+        {
+            bool isWaveAreaAttack = EmotionAfterimagePveCombatRules.ShouldApplyWaveAreaAttack(
+                attack.WeaponItemId,
+                attack.IsResonanceProc);
+            var primaryAttack = attack with { IsWaveAreaAttack = isWaveAreaAttack };
+            expanded.Add(primaryAttack);
+            if (!isWaveAreaAttack)
+                continue;
+
+            foreach (long secondaryTargetId in EmotionAfterimagePveCombatRules.FindWaveAreaSecondaryTargetIds(
+                         combatTargets,
+                         attack.AttackerPlayerId,
+                         attack.TargetPlayerId,
+                         attack.Area,
+                         attack.WeaponItemId))
+            {
+                expanded.Add(primaryAttack with
+                {
+                    TargetPlayerId = secondaryTargetId,
+                    IsWaveAreaSecondary = true
+                });
+            }
+        }
+
+        return expanded;
+    }
     private void ApplyProximityCombatVolley(
         long matchingId,
         IReadOnlyCollection<ProximityCombatAttack> attacks,
@@ -596,12 +642,15 @@ public partial class GameServer
 
             var attackerSession = matchingSessions.FirstOrDefault(session =>
                 session.PlayerId == attack.AttackerPlayerId && !session.IsEliminated);
-            attackerSession?.SendProximityAutoCombatAttackFeedback(
-                attack.TargetPlayerId,
-                attack.Area,
-                attack.WeaponItemId,
-                damage);
-            BroadcastObservedProximityAttackVfx(attack, matchingSessions);
+            if (!attack.IsWaveAreaSecondary)
+            {
+                attackerSession?.SendProximityAutoCombatAttackFeedback(
+                    attack.TargetPlayerId,
+                    attack.Area,
+                    attack.WeaponItemId,
+                    damage);
+                BroadcastObservedProximityAttackVfx(attack, matchingSessions);
+            }
 
             logger.LogDebug(
                 "Proximity auto attack: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Area={Area}, WeaponItemId={WeaponItemId}, Damage={Damage}, ResonanceProc={ResonanceProc}",

@@ -113,6 +113,37 @@ public sealed class SurvivorTelemetryTests
     }
 
     [Fact]
+    public void AfterimageHitTelemetryCapturesTargetKindCorruptionAndLethalOutcome()
+    {
+        const long matchingId = 195004;
+        var log = new GameEventLogManager();
+        var now = DateTimeOffset.UtcNow;
+
+        log.LogEmotionAfterimageHit(
+            matchingId,
+            monsterId: 202108,
+            targetPlayerId: 401,
+            area: "Library",
+            damage: 7,
+            corruptionBefore: 94,
+            corruptionAfter: 100,
+            isLethal: true,
+            isBot: false,
+            occurredAt: now);
+
+        var hit = Assert.Single(log.GetRecent(matchingId));
+        Assert.Equal("AFTERIMAGE_HIT", hit.Type);
+        Assert.Equal(202108, hit.MonsterId);
+        Assert.Equal("emotion_afterimage", hit.DamageSourceType);
+        Assert.Equal(401, hit.TargetPlayerId);
+        Assert.Equal("Library", hit.Area);
+        Assert.Equal(7, hit.Damage);
+        Assert.Equal(94, hit.CorruptionBefore);
+        Assert.Equal(100, hit.CorruptionAfter);
+        Assert.Equal("eliminated", hit.Outcome);
+        Assert.False(hit.IsBot);
+    }
+    [Fact]
     public void OrbBoardTelemetryCapturesTransitionsMergeWindowsColorRatesAndVolleyTargets()
     {
         const long matchingId = 198401;

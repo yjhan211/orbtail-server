@@ -7,13 +7,8 @@ namespace network.packets;
 public class Packet : IPacket
 {
     private long _playerId;
+    private int _readLimit = Config.BUFFER_SIZE;
     public int ProtocolId;
-
-    private Packet(byte[] buffer)
-    {
-        Buffer = buffer;
-        Position = Config.HEADER_SIZE;
-    }
 
     internal Packet()
     {
@@ -39,7 +34,6 @@ public class Packet : IPacket
     public static Packet Create(int protocolId, long playerId = 0)
     {
         var packet = PacketBufferPool.Pop();
-        packet.Buffer = new byte[Config.BUFFER_SIZE];
         packet.SetProtocolId(protocolId);
         packet.SetPlayerId(playerId);
 
@@ -51,21 +45,22 @@ public class Packet : IPacket
         if (Config.BUFFER_SIZE < buffer.Value.Length)
             throw new Exception($"Invalid Buffer Size. size:{buffer.Value.Length}");
 
-        byte[] clone = new byte[Config.BUFFER_SIZE];
-        Array.Copy(buffer.Value, clone, buffer.Value.Length);
-        return new Packet(clone);
+        var packet = PacketBufferPool.Pop();
+        packet.LoadForReading(buffer.Value);
+        return packet;
     }
 
     private static void Destroy(Packet packet)
     {
         packet.Position = 0;
+        packet._readLimit = packet.Buffer.Length;
         PacketBufferPool.Push(packet);
     }
 
     public void CopyTo(Packet target)
     {
-        target.SetProtocolId(ProtocolId);
-        target.SetPlayerId(_playerId);
+        target.ProtocolId = ProtocolId;
+        target._playerId = _playerId;
         target.Overwrite(Buffer, Position);
     }
 
@@ -82,14 +77,29 @@ public class Packet : IPacket
 
     private void Overwrite(byte[] source, int position)
     {
-        Array.Copy(source, Buffer, source.Length);
+        if (position < 0 || position > source.Length || position > Buffer.Length)
+            throw new ArgumentOutOfRangeException(nameof(position));
+
+        Array.Copy(source, 0, Buffer, 0, position);
         Position = position;
+        _readLimit = position;
+    }
+
+    private void LoadForReading(byte[] source)
+    {
+        if (source.Length > Buffer.Length)
+            throw new ArgumentOutOfRangeException(nameof(source));
+
+        Array.Copy(source, 0, Buffer, 0, source.Length);
+        Position = Config.HEADER_SIZE;
+        _readLimit = source.Length;
     }
 
     private void SetProtocolId(int protocolId)
     {
         ProtocolId = protocolId;
         Position = Config.HEADER_SIZE;
+        _readLimit = Buffer.Length;
         byte[] tempBuffer = BitConverter.GetBytes(ProtocolId);
         tempBuffer.CopyTo(Buffer, Position);
         Position += tempBuffer.Length;
@@ -121,7 +131,7 @@ public class Packet : IPacket
 
     public void SetBody(byte[] serializedBuffer)
     {
-        if (Config.BUFFER_SIZE < serializedBuffer.Length)
+        if (serializedBuffer.Length > Buffer.Length - Position)
             throw new Exception($"BUFFER SIZE OVER. {serializedBuffer.Length}");
 
         serializedBuffer.CopyTo(Buffer, Position);
@@ -130,7 +140,7 @@ public class Packet : IPacket
 
     public byte[] PopBody()
     {
-        byte[] tempBuffer = new byte[Buffer.Length - Position];
+        byte[] tempBuffer = new byte[_readLimit - Position];
         Array.Copy(Buffer, Position, tempBuffer, 0, tempBuffer.Length);
         Position += tempBuffer.Length;
 

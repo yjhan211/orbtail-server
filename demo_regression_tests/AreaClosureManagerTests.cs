@@ -118,6 +118,33 @@ public class AreaClosureManagerTests
         Assert.Equal((4, 16), manager.GetOvertimeStatus(matchingId));
     }
     [Fact]
+    public void GlobalClosureSchedule_WarnsBeforeTheFinalWaveAndActivatesWithOvertime()
+    {
+        var now = new DateTime(2026, 7, 24, 0, 0, 0, DateTimeKind.Utc);
+        var manager = CreateManager(() => now);
+        const long matchingId = 202001;
+        manager.InitializeMatching(matchingId);
+
+        now = now.AddSeconds(274);
+        Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);
+
+        now = now.AddSeconds(1);
+        var warning = manager.CheckGlobalClosureSchedule(matchingId);
+        Assert.True(warning.HasTransition);
+        Assert.False(warning.IsActive);
+        Assert.Equal(15, warning.SecondsRemaining);
+        Assert.True(manager.GetGlobalClosureClientState(matchingId).IsKnown);
+
+        now = now.AddSeconds(15);
+        var active = manager.CheckGlobalClosureSchedule(matchingId);
+        Assert.True(active.HasTransition);
+        Assert.True(active.IsActive);
+        Assert.Equal(0, active.SecondsRemaining);
+        Assert.True(manager.GetGlobalClosureClientState(matchingId).IsActive);
+        Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);
+    }
+
+    [Fact]
     public void CleanupMatching_RemovesClosureStateBeforeMatchingIdIsReused()
     {
         var now = new DateTime(2026, 7, 20, 0, 0, 0, DateTimeKind.Utc);

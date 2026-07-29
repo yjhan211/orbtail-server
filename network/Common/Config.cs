@@ -104,6 +104,12 @@ namespace network.common
         public static readonly bool PROXIMITY_AUTO_COMBAT_P0_ENABLED = true;
 
         /// <summary>
+        /// Survivor Royale #202 uses monster rewards as summon currency instead of direct orb exploration loot.
+        /// Legacy area pools stay loadable for data validation and isolated regression tests.
+        /// </summary>
+        public static readonly bool MONSTER_SUMMON_ECONOMY_ENABLED = true;
+
+        /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
         /// 데이터와 프로토콜은 보존하므로 레거시 모드가 다시 분리되면 이 게이트로 복구할 수 있다.
         /// </summary>

@@ -221,6 +221,11 @@ namespace network.common
         G_TO_C_PROXIMITY_ATTACK_VFX,
         G_TO_C_SURVIVOR_ORB_EFFECT_STATE,
         G_TO_C_SURVIVOR_AREA_STOCK_STATE,
+        G_TO_C_MONSTER_SNAPSHOT,
+        G_TO_C_MONSTER_ATTACK_VFX,
+        G_TO_C_SUMMON_STONE_STATE,
+        C_TO_G_SUMMON_ORB,
+        G_TO_C_SUMMON_ORB_RESULT,
 
         END
     }

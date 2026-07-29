@@ -97,6 +97,7 @@ public partial class GameClientSession
             _areaClosureManager.InitializeMatching(msg.MatchingId, jobPool);
             _areaItemStockManager.InitializeMatching(msg.MatchingId);
             _groundItemManager.InitializeMatching(msg.MatchingId);
+            _emotionAfterimageMonsterManager.InitializeMatching(msg.MatchingId);
             int matchSeed = SurvivorRoyaleSpawnData.GetDeterministicSeed(msg.MatchingId);
             _gameEventLogManager.BeginMatch(msg.MatchingId, matchSeed);
             foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
@@ -179,19 +180,11 @@ public partial class GameClientSession
 
             Logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
 
-            // Grant default in-game items.
-            foreach ((int itemId, int count) in GameRuleData.InGameItemList)
-            {
-                int addedCount = _inGameInventoryManager.EnsureItemCount(CurrentMapSubId, PlayerId.Value, itemId, count);
-                Logger.LogInformation(
-                    "InGame default item ensured: PlayerId={PlayerId}, ItemId={ItemId}, TargetCount={TargetCount}, AddedCount={AddedCount}",
-                    PlayerId,
-                    itemId,
-                    count,
-                    addedCount);
-            }
+
+            _summonStoneManager.EnsureStartingStones(CurrentMapSubId, PlayerId.Value);
 
             SendInGameInventoryList();
+            SendSummonStoneState();
             var connectionBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
             _gameEventLogManager.LogSurvivorOrbBoardTransition(
                 CurrentMapSubId, PlayerId.Value, connectionBoard.GetAllItems(),
@@ -206,6 +199,7 @@ public partial class GameClientSession
             SendRoundStateSnapshot(msg.MatchingId);
             SendAreaClosureStateSnapshot();
             SendSurvivorAreaStockStateSnapshot();
+            SendMonsterSnapshot();
             SendChecklistInfo();
 
             // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃
@@ -444,8 +438,7 @@ public partial class GameClientSession
                 _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
                 _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
-                foreach ((int itemId, int count) in GameRuleData.InGameItemList)
-                    _inGameInventoryManager.EnsureItemCount(matchingId, bot.PlayerId, itemId, count);
+                _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
             }
         }
         catch (Exception ex)
@@ -1242,8 +1235,22 @@ public partial class GameClientSession
             }));
             Send(packet);
         }
+        var globalClosure = _areaClosureManager.GetGlobalClosureClientState(CurrentMapSubId);
+        if (globalClosure.IsKnown)
+        {
+            using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+            {
+                AreaType = AreaType.None,
+                SecondsRemaining = globalClosure.SecondsRemaining,
+                ClosureAtUnixMs = globalClosure.ClosureAtUnixMs,
+                IsGlobalClosure = true,
+                IsGlobalClosureActive = globalClosure.IsActive
+            }));
+            Send(packet);
+        }
 
-        // AreaType.None은 미래 대상은 밝히지 않고 다음 경보 시각만 전달한다.
+        // AreaType.None is the generic next-warning clock.
         using var countdownPacket = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
         countdownPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
         {

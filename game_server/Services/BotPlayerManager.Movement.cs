@@ -16,9 +16,19 @@ public partial class BotPlayerManager
 {
     /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
     private const float BotWalkSpeed = 5f;
+    private const float PveKiteThreatRange = 3.2f;
+    private const float PveKiteImmediateThreatRange = 1.65f;
+    private const float PveKiteStepDistance = 2.15f;
 
     /// <summary>아이소메트릭 세로 속도 보정 — 클라 PlayerMovement.isoVerticalSpeedScale과 같은 값을 유지해야 한다.</summary>
     private const float IsoVerticalSpeedScale = 1f;
+
+    // Used only after the final room closure leaves no non-corridor refuge.
+    private static readonly (int X, int Y)[] LastStandPatrolOffsets =
+    [
+        (4, 0), (0, 4), (-4, 0), (0, -4),
+        (3, 2), (-3, 2), (3, -2), (-3, -2)
+    ];
 
     /// <summary>
     ///     화면 좌표 진행 방향(정규화)의 타일 기준 등속 속력.
@@ -179,7 +189,8 @@ public partial class BotPlayerManager
         ChecklistManager checklistManager,
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
-        IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets)
+        IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets,
+        IReadOnlyCollection<MonsterCombatTarget>? pveTargets = null)
     {
         var result = new BotWalkingTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
@@ -189,12 +200,14 @@ public partial class BotPlayerManager
         foreach (var b in bots)
             if (!b.IsEliminated) playerAreas[b.PlayerId] = b.CurrentArea;
 
+        bool hasOpenNonCorridorRefuge = HasOpenNonCorridorRefuge(matchingId, closureManager);
         foreach (var bot in bots)
         {
             if (bot.IsEliminated) continue;
 
             // Escape routes outrank looting and combat so a warning cannot be overwritten by a chase path.
-            bool isEvacuating = TryMaintainClosureEvacuation(bot, matchingId, closureManager);
+            bool isEvacuating = TryMaintainClosureEvacuation(
+                bot, matchingId, closureManager, hasOpenNonCorridorRefuge);
             bool isCommittingToDestination = !isEvacuating &&
                                              TryMaintainMovementDestination(bot, matchingId, closureManager);
             if (!isEvacuating &&
@@ -204,8 +217,24 @@ public partial class BotPlayerManager
                 result.GroundItemPickups.Add(pickup.Value);
             }
             if (!isEvacuating && !isCommittingToDestination)
+            {
                 UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
-            var ev = WalkStep(bot, matchingId, closureManager, areaItemStockManager, playerAreas, checklistManager);
+                TryStartPveKitePath(bot, matchingId, closureManager, pveTargets ?? []);
+            }
+            if (!hasOpenNonCorridorRefuge && bot.PathIndex >= bot.Path.Count &&
+                !bot.IsInInteraction && bot.PendingRngInteractId == 0 && bot.PendingChecklistTaskId == 0)
+            {
+                TryStartLastStandPatrolPath(bot, matchingId, closureManager);
+            }
+            var ev = WalkStep(
+                bot,
+                matchingId,
+                closureManager,
+                areaItemStockManager,
+                inventoryManager,
+                playerAreas,
+                checklistManager,
+                pveTargets ?? []);
             if (ev != null) result.Movements.Add(ev);
             if (bot.PendingOrbFarmingPivotTo != AreaType.None)
             {
@@ -227,7 +256,7 @@ public partial class BotPlayerManager
     }
 
     private bool TryMaintainClosureEvacuation(BotPlayerState bot, long matchingId,
-        AreaClosureManager closureManager)
+        AreaClosureManager closureManager, bool hasOpenNonCorridorRefuge)
     {
         var closure = closureManager.GetClientStateSnapshot(matchingId);
         var unavailableAreas = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
@@ -252,7 +281,34 @@ public partial class BotPlayerManager
                 return false;
             }
 
-            return true;
+            // Combat retreats reuse EvacuationDestination. A corridor transition can consume
+            // the old path before the room change is observed; rebuild it instead of idling.
+            var routeMapId = GetMatchingMapId(matchingId);
+            var targetCell = GameAreaConnectionData.GetSpawnCell(
+                    routeMapId, bot.CurrentArea, bot.EvacuationDestination)
+                ?? GameMapData.GetAreaSpawnCell(routeMapId, bot.EvacuationDestination);
+            var restoredPath = BotPathfinder.FindPath(
+                routeMapId,
+                bot.CurrentArea,
+                bot.Cell,
+                bot.EvacuationDestination,
+                targetCell,
+                unavailableAreas.Contains);
+            if (restoredPath is { Count: > 0 })
+            {
+                bot.Path = restoredPath;
+                bot.PathIndex = 0;
+                bot.LoopWaitUntil = DateTime.MinValue;
+                _logger.LogDebug(
+                    "Bot restored evacuation route: BotId={Bot}, {From}->{To}, Steps={Steps}",
+                    bot.PlayerId, bot.CurrentArea, bot.EvacuationDestination, restoredPath.Count);
+                return true;
+            }
+
+            // The destination no longer has a valid route. Let normal room selection recover.
+            bot.EvacuationDestination = AreaType.None;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            return false;
         }
 
         if (!currentAreaUnsafe)
@@ -283,6 +339,20 @@ public partial class BotPlayerManager
 
         if (candidate?.Path == null)
         {
+            if (!hasOpenNonCorridorRefuge)
+            {
+                // No room remains to escape to. Do not keep the bot in an evacuation
+                // wait loop: overtime still applies, but it must remain an active target.
+                bot.EvacuationDestination = AreaType.None;
+                bot.Path.Clear();
+                bot.PathIndex = 0;
+                bot.LoopWaitUntil = DateTime.MinValue;
+                _logger.LogInformation(
+                    "Bot last stand started: MatchingId={MatchingId}, BotId={BotId}, Area={Area}",
+                    matchingId, bot.PlayerId, bot.CurrentArea);
+                return false;
+            }
+
             bot.LoopWaitUntil = DateTime.UtcNow.AddMilliseconds(250);
             return true;
         }
@@ -298,6 +368,145 @@ public partial class BotPlayerManager
         return true;
     }
 
+    private bool HasOpenNonCorridorRefuge(long matchingId, AreaClosureManager closureManager)
+    {
+        var closure = closureManager.GetClientStateSnapshot(matchingId);
+        var unavailableAreas = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
+        return GameMapData.GetAreas(GetMatchingMapId(matchingId))
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Any(area => area != AreaType.None && !area.IsCorridor() && !unavailableAreas.Contains(area));
+    }
+
+    /// <summary>
+    /// Keeps a bot moving while it farms a nearby afterimage pack. This is intentionally
+    /// an in-room lateral weave: closure evacuation and committed room travel keep priority.
+    /// </summary>
+    private bool TryStartPveKitePath(BotPlayerState bot, long matchingId,
+        AreaClosureManager closureManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets)
+    {
+        var now = DateTime.UtcNow;
+        if (pveTargets.Count == 0 || bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor() ||
+            bot.EvacuationDestination != AreaType.None || bot.MovementDestination != AreaType.None ||
+            bot.PathIndex < bot.Path.Count || now < bot.NextPveKiteRepathAt)
+        {
+            return false;
+        }
+
+        var nearby = pveTargets
+            .Where(target => target.Area == bot.CurrentArea &&
+                             DistanceSquared(bot.Position, target.Position.X, target.Position.Y) <=
+                             PveKiteThreatRange * PveKiteThreatRange)
+            .OrderBy(target => DistanceSquared(bot.Position, target.Position.X, target.Position.Y))
+            .ToList();
+        if (nearby.Count == 0)
+            return false;
+
+        float nearestDistance = MathF.Sqrt(DistanceSquared(bot.Position, nearby[0].Position.X, nearby[0].Position.Y));
+        if (nearby.Count < 2 && nearestDistance > PveKiteImmediateThreatRange)
+            return false;
+
+        float centerX = nearby.Average(target => target.Position.X);
+        float centerY = nearby.Average(target => target.Position.Y);
+        float awayX = bot.Position.X - centerX;
+        float awayY = bot.Position.Y - centerY;
+        float awayLength = MathF.Sqrt(awayX * awayX + awayY * awayY);
+        if (awayLength < 0.01f)
+        {
+            float fallbackAngle = MathF.Abs(bot.PlayerId % 11) * (MathF.Tau / 11f);
+            awayX = MathF.Cos(fallbackAngle);
+            awayY = MathF.Sin(fallbackAngle);
+            awayLength = 1f;
+        }
+        awayX /= awayLength;
+        awayY /= awayLength;
+
+        int weaveSide = ((Math.Abs(bot.PlayerId) + (long)(now - DateTime.UnixEpoch).TotalSeconds) & 1) == 0 ? 1 : -1;
+        float tangentX = -awayY * weaveSide;
+        float tangentY = awayX * weaveSide;
+        float directionX = awayX * 0.45f + tangentX * 0.9f;
+        float directionY = awayY * 0.45f + tangentY * 0.9f;
+        float directionLength = MathF.Sqrt(directionX * directionX + directionY * directionY);
+        directionX /= directionLength;
+        directionY /= directionLength;
+
+        var mapId = GetMatchingMapId(matchingId);
+        foreach (float angleOffset in new[] { 0f, 0.55f, -0.55f, 1.1f, -1.1f })
+        {
+            float cosine = MathF.Cos(angleOffset);
+            float sine = MathF.Sin(angleOffset);
+            float candidateX = directionX * cosine - directionY * sine;
+            float candidateY = directionX * sine + directionY * cosine;
+            var targetCell = WorldToCell(new Vector3f(
+                bot.Position.X + candidateX * PveKiteStepDistance,
+                bot.Position.Y + candidateY * PveKiteStepDistance,
+                0f));
+            if (GameMapData.GetCurrentArea(mapId, targetCell) != bot.CurrentArea ||
+                !GameMapData.IsMoveablePosition(mapId, targetCell))
+            {
+                continue;
+            }
+
+            var path = BotPathfinder.FindPath(
+                mapId,
+                bot.CurrentArea,
+                bot.Cell,
+                bot.CurrentArea,
+                targetCell,
+                area => area != bot.CurrentArea || IsAreaClosingOrClosed(closureManager, matchingId, area));
+            if (path is not { Count: > 0 })
+                continue;
+
+            bot.Path = path;
+            bot.PathIndex = 0;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            bot.NextPveKiteRepathAt = now.AddMilliseconds(850);
+            _logger.LogDebug(
+                "Bot PVE kite: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, Threats={Threats}, Steps={Steps}",
+                matchingId, bot.PlayerId, bot.CurrentArea, nearby.Count, path.Count);
+            return true;
+        }
+
+        bot.NextPveKiteRepathAt = now.AddMilliseconds(400);
+        return false;
+    }
+    private bool TryStartLastStandPatrolPath(BotPlayerState bot, long matchingId,
+        AreaClosureManager closureManager)
+    {
+        if (bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor())
+            return false;
+
+        var mapId = GetMatchingMapId(matchingId);
+        int startIndex = Math.Abs((int)(bot.PlayerId % LastStandPatrolOffsets.Length));
+        foreach (var offsetIndex in Enumerable.Range(0, LastStandPatrolOffsets.Length))
+        {
+            var offset = LastStandPatrolOffsets[(startIndex + offsetIndex) % LastStandPatrolOffsets.Length];
+            var candidate = new Cell(bot.Cell.X + offset.X, bot.Cell.Y + offset.Y);
+            if (GameMapData.GetCurrentArea(mapId, candidate) != bot.CurrentArea ||
+                !GameMapData.IsMoveablePosition(mapId, candidate))
+            {
+                continue;
+            }
+
+            var path = BotPathfinder.FindPath(
+                mapId,
+                bot.CurrentArea,
+                bot.Cell,
+                bot.CurrentArea,
+                candidate,
+                area => area != bot.CurrentArea && IsAreaClosingOrClosed(closureManager, matchingId, area));
+            if (path is not { Count: > 0 })
+                continue;
+
+            bot.Path = path;
+            bot.PathIndex = 0;
+            bot.MovementDestination = AreaType.None;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            return true;
+        }
+
+        return false;
+    }
     private bool TryMaintainMovementDestination(BotPlayerState bot, long matchingId,
         AreaClosureManager closureManager)
     {
@@ -414,8 +623,9 @@ public partial class BotPlayerManager
     ///     일반 셀 walk는 진행 방향 + 속도 포함 MOVE 이벤트 반환.
     /// </summary>
     private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
-        AreaItemStockManager areaItemStockManager, IReadOnlyDictionary<long, AreaType> playerAreas,
-        ChecklistManager checklistManager)
+        AreaItemStockManager areaItemStockManager, InGameInventoryManager inventoryManager,
+        IReadOnlyDictionary<long, AreaType> playerAreas,
+        ChecklistManager checklistManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
         var now = DateTime.UtcNow;
         float deltaSec = (float)(now - bot.LastWalkStepTime).TotalSeconds;
@@ -491,8 +701,8 @@ public partial class BotPlayerManager
             // #134 — 도착 후 RNG 채집이 아직 안 됐으면 walking 보류 (ProcessBotMissionTick이 PendingRngInteractId 처리 후 0으로 클리어할 때까지 대기).
             if (bot.PendingRngInteractId != 0 || bot.PendingChecklistTaskId != 0) return null;
 
-            ChooseNewWanderTarget(bot, matchingId, closureManager, areaItemStockManager, playerAreas,
-                checklistManager);
+            ChooseNewWanderTarget(bot, matchingId, closureManager, areaItemStockManager, inventoryManager, playerAreas,
+                checklistManager, pveTargets);
             if (bot.Path.Count == 0) return null;
             // ChooseNewWanderTarget이 LoopWaitUntil(+3초)을 설정하므로 새 path는 다음 틱부터 진행.
             // 같은 틱에서 walking 시작 시 영역 도착 후 3초 휴식이 무력화되어 발소리/walk 애니가 끊기지 않음.
@@ -593,8 +803,9 @@ public partial class BotPlayerManager
     ///     복도는 목적지가 아니라 통과만(transit). 미션 수집 동선(직책 큐/RNG 채집)은 폐기.
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
-        AreaItemStockManager areaItemStockManager, IReadOnlyDictionary<long, AreaType> playerAreas,
-        ChecklistManager checklistManager)
+        AreaItemStockManager areaItemStockManager, InGameInventoryManager inventoryManager,
+        IReadOnlyDictionary<long, AreaType> playerAreas,
+        ChecklistManager checklistManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
         var mapId = GetMatchingMapId(matchingId);
         bot.Path.Clear();
@@ -604,24 +815,12 @@ public partial class BotPlayerManager
         bot.PendingChecklistTaskId = 0;
         bot.PendingChecklistInteractId = 0;
         bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-        // walking 시작 시 EXPLORE_END broadcast 안전망 — 다음 ProcessBotMovementTick에서 수집.
-        bot.PendingExploreEndBroadcast = true;
+        bot.PendingExploreEndBroadcast = false;
 
         bool needsGuardianOrb = bot.EquippedBattleItemId <= 0;
-        if (!needsGuardianOrb && bot.OrbFarmingTargetColor != SurvivorOrbColor.None &&
-            TryStartOrbResonanceFarmingPath(bot, matchingId, mapId, closureManager, areaItemStockManager))
-        {
-            return;
-        }
-        if ((bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) ||
-             needsGuardianOrb && !IsSecludedFarmingArea(mapId, bot.CurrentArea)) &&
-            TryStartPostExploreRelocation(
-                bot,
-                matchingId,
-                mapId,
-                closureManager,
-                areaItemStockManager,
-                requireSecludedArea: needsGuardianOrb))
+
+        if (bot.CurrentArea.IsCorridor() &&
+            TryStartCorridorExitPath(bot, matchingId, mapId, closureManager))
         {
             return;
         }
@@ -644,35 +843,17 @@ public partial class BotPlayerManager
             }
         }
 
-        if ((bot.Stamina < BotAutoConsumableStaminaThreshold ||
-             bot.Corruption >= BotAutoConsumableCorruptionThreshold) &&
-            TryStartRecoveryRngPath(bot, matchingId, closureManager, areaItemStockManager))
-        {
-            return;
-        }
-
-        if (TryStartQueuedRoomExplore(bot, matchingId, closureManager, areaItemStockManager))
-        {
-            return;
-        }
-
-        if (bot.CompletedRoomExploreAreas.Contains(bot.CurrentArea) &&
-            TryStartPostExploreRelocation(
-                bot,
-                matchingId,
-                mapId,
-                closureManager,
-                areaItemStockManager,
-                requireSecludedArea: needsGuardianOrb))
-        {
-            return;
-        }
-
-        // Until the first guardian orb is equipped, farming is the whole objective. If no valid
-        // secluded room is currently reachable, wait and retry instead of roaming toward players.
+        // Starting orbs are granted before the first movement tick. Keep the guard for an
+        // unexpected initialization failure, but never route to RNG pickup locations.
         if (needsGuardianOrb)
         {
             bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
+            return;
+        }
+
+        if (Config.MONSTER_SUMMON_ECONOMY_ENABLED &&
+            TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, inventoryManager, pveTargets))
+        {
             return;
         }
 
@@ -791,6 +972,114 @@ public partial class BotPlayerManager
             "Bot orb route pivot: MatchingId={MatchingId}, BotId={BotId}, Color={Color}, {From}->{To}, Steps={Steps}",
             matchingId, bot.PlayerId, color, from, destination.Area, destination.Path.Count);
         return true;
+    }
+
+    /// <summary>
+    /// Survivor Royale PVE policy: treat an afterimage pack as the room objective.
+    /// The score deliberately favors a visible core and an under-contested pack, while
+    /// retaining one committed destination until arrival so door thresholds cannot flip
+    /// the bot between two adjacent rooms every movement tick.
+    /// </summary>
+    private bool TryStartAfterimageHuntPath(
+        BotPlayerState bot,
+        long matchingId,
+        MapId mapId,
+        AreaClosureManager closureManager,
+        InGameInventoryManager inventoryManager,
+        IReadOnlyCollection<MonsterCombatTarget> pveTargets)
+    {
+        if (bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor() || pveTargets.Count == 0)
+            return false;
+
+        var closure = closureManager.GetClientStateSnapshot(matchingId);
+        var unavailable = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
+        var boardItemIds = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
+            .GetAllItems()
+            .Select(item => item.ItemId)
+            .ToArray();
+        var candidates = pveTargets
+            .Where(target => target.MapId == mapId &&
+                             target.Area != AreaType.None &&
+                             !target.Area.IsCorridor() &&
+                             !unavailable.Contains(target.Area) &&
+                             !IsRecentCombatRetreatOrigin(bot, target.Area))
+            .GroupBy(target => target.Area)
+            .Select(group =>
+            {
+                var preferredTarget = group
+                    .OrderByDescending(target => target.IsCore)
+                    .ThenBy(target => DistanceSquared(bot.Position, target.Position.X, target.Position.Y))
+                    .First();
+                var targetCell = WorldToCell(preferredTarget.Position);
+                var path = group.Key == bot.CurrentArea
+                    ? BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea, targetCell,
+                        area => area != bot.CurrentArea || unavailable.Contains(area))
+                    : BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, group.Key,
+                        GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, group.Key) ?? targetCell,
+                        unavailable.Contains);
+                int coreCount = group.Count(target => target.IsCore);
+                float affinityScore = CalculateBotPveAffinityScore(boardItemIds, preferredTarget.RewardItemId);
+                return new
+                {
+                    Area = group.Key,
+                    Target = preferredTarget,
+                    Path = path,
+                    AffinityScore = affinityScore,
+                    Score = group.Count() * 3 + coreCount * 8 + affinityScore * 4 -
+                            CountAreaPressure(matchingId, group.Key) * 5
+                };
+            })
+            .Where(candidate => candidate.Path is { Count: > 0 } || candidate.Area == bot.CurrentArea)
+            .OrderByDescending(candidate => candidate.Score - (candidate.Path?.Count ?? 0) * 0.2)
+            .ThenBy(candidate => candidate.Area == bot.CurrentArea ? 0 : 1)
+            .ThenBy(candidate => Math.Abs((int)(bot.PlayerId % 97) - (int)candidate.Area))
+            .ToList();
+
+        var selected = candidates.FirstOrDefault();
+        if (selected == null)
+            return false;
+
+        // The bot already owns this room's hunt. Let the automatic combat and lateral
+        // kite logic work instead of immediately replacing the local objective.
+        if (selected.Area == bot.CurrentArea && selected.Path is not { Count: > 0 })
+        {
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.45, 0.9);
+            return true;
+        }
+
+        bot.Path = selected.Path!;
+        bot.PathIndex = 0;
+        bot.MovementDestination = selected.Area;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        _logger.LogDebug(
+            "Bot afterimage hunt route: MatchingId={MatchingId}, BotId={BotId}, {From}->{To}, PackMembers={PackMembers}, Core={Core}, Affinity={Affinity}, Steps={Steps}",
+            matchingId,
+            bot.PlayerId,
+            bot.CurrentArea,
+            selected.Area,
+            pveTargets.Count(target => target.Area == selected.Area),
+            selected.Target.IsCore,
+            selected.AffinityScore,
+            selected.Path!.Count);
+        return true;
+    }
+
+    private static float CalculateBotPveAffinityScore(IEnumerable<int> boardItemIds, int monsterRewardItemId)
+    {
+        float score = 0f;
+        foreach (int itemId in boardItemIds)
+        {
+            if (SurvivorOrbData.TryGetColorAndTier(itemId, out SurvivorOrbColor color, out int tier))
+            {
+                score += tier * SurvivorOrbData.GetPveDamageMultiplier(color, monsterRewardItemId);
+                continue;
+            }
+
+            if (SurvivorOrbData.TryGetRecoveryTier(itemId, out int recoveryTier))
+                score += recoveryTier * 0.25f;
+        }
+
+        return score;
     }
 
     private bool TryStartPostExploreRelocation(BotPlayerState bot, long matchingId, MapId mapId,
@@ -1071,14 +1360,50 @@ public partial class BotPlayerManager
     ///     프로토 0 목적지(방) 선택. 떠보기 확률이면 최저 인원 방, 아니면 타겟이 있는 방(회복).
     ///     타겟 위치를 모르면 현재와 다른 임의 방.
     /// </summary>
-    private AreaType ChooseProto0Destination(BotPlayerState bot, long matchingId,
+    private AreaType ChooseProto0Destination(BotPlayerState bot, long matchingId, MapId mapId,
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
     {
         return ActiveProto0BotPolicy switch
         {
-            Proto0BotPolicy.DisguiseMvp => ChooseDisguiseProto0Destination(bot, matchingId, playerAreas, closureManager),
-            _ => ChooseSimpleProto0Destination(bot, matchingId, playerAreas, closureManager)
+            Proto0BotPolicy.DisguiseMvp => ChooseDisguiseProto0Destination(bot, matchingId, mapId, playerAreas, closureManager),
+            _ => ChooseSimpleProto0Destination(bot, matchingId, mapId, playerAreas, closureManager)
         };
+    }
+
+    private bool TryStartCorridorExitPath(BotPlayerState bot, long matchingId, MapId mapId,
+        AreaClosureManager closureManager)
+    {
+        var exit = GetOpenBotDestinationAreas(matchingId, mapId, closureManager)
+            .Where(area => area != bot.CurrentArea)
+            .Select(area => new
+            {
+                Area = area,
+                Path = BotPathfinder.FindPath(
+                    mapId,
+                    bot.CurrentArea,
+                    bot.Cell,
+                    area,
+                    GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, area)
+                    ?? GameMapData.GetAreaSpawnCell(mapId, area),
+                    candidate => IsAreaClosingOrClosed(closureManager, matchingId, candidate))
+            })
+            .Where(candidate => candidate.Path is { Count: > 0 })
+            .OrderBy(candidate => candidate.Path!.Count)
+            .ThenBy(candidate => CountAreaPressure(matchingId, candidate.Area))
+            .ThenBy(candidate => (int)candidate.Area)
+            .FirstOrDefault();
+
+        if (exit?.Path == null)
+            return false;
+
+        bot.Path = exit.Path;
+        bot.PathIndex = 0;
+        bot.MovementDestination = exit.Area;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        _logger.LogDebug(
+            "Bot corridor exit: BotId={Bot}, {From}->{To}, Steps={Steps}",
+            bot.PlayerId, bot.CurrentArea, exit.Area, exit.Path.Count);
+        return true;
     }
 
     private AreaType ChooseBehaviorDestination(BotPlayerState bot, long matchingId, MapId mapId,
@@ -1100,20 +1425,31 @@ public partial class BotPlayerManager
             players,
             area => IsAreaClosingOrClosed(closureManager, matchingId, area));
 
+        // Corridors are transit only. Following a target whose current area is a corridor
+        // must fall through to the room-selection policy; otherwise bots path to the
+        // corridor center and have no room destination to continue toward.
         if (decision.Kind == BotBehaviorActionKind.FollowTarget
             && decision.TargetArea != AreaType.None
+            && !decision.TargetArea.IsCorridor()
             && decision.TargetArea != bot.CurrentArea)
             return decision.TargetArea;
 
-        return ChooseProto0Destination(bot, matchingId, playerAreas, closureManager);
+        return ChooseProto0Destination(bot, matchingId, mapId, playerAreas, closureManager);
     }
 
-    private AreaType ChooseSimpleProto0Destination(BotPlayerState bot, long matchingId,
+    private List<AreaType> GetOpenBotDestinationAreas(long matchingId, MapId mapId,
+        AreaClosureManager closureManager) =>
+        GameMapData.GetAreas(mapId)
+            .Select(region => region.AreaType)
+            .Distinct()
+            .Where(area => area != AreaType.None && !area.IsCorridor() &&
+                           !IsAreaClosingOrClosed(closureManager, matchingId, area))
+            .ToList();
+
+    private AreaType ChooseSimpleProto0Destination(BotPlayerState bot, long matchingId, MapId mapId,
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
     {
-        var rooms = Proto0Rooms
-            .Where(a => !IsAreaClosingOrClosed(closureManager, matchingId, a))
-            .ToList();
+        var rooms = GetOpenBotDestinationAreas(matchingId, mapId, closureManager);
         if (rooms.Count == 0) return AreaType.None;
 
         // 떠보기: 최저 인원 방으로 (추적자 유인 — 회복 포기 비용)
@@ -1139,12 +1475,10 @@ public partial class BotPlayerManager
     }
 
     /// <summary>프로토 0 위장 정책: 즉시 추적 대신 지연, 미끼 이동, 떠보기 이동을 섞는다.</summary>
-    private AreaType ChooseDisguiseProto0Destination(BotPlayerState bot, long matchingId,
+    private AreaType ChooseDisguiseProto0Destination(BotPlayerState bot, long matchingId, MapId mapId,
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
     {
-        var rooms = Proto0Rooms
-            .Where(a => !IsAreaClosingOrClosed(closureManager, matchingId, a))
-            .ToList();
+        var rooms = GetOpenBotDestinationAreas(matchingId, mapId, closureManager);
         if (rooms.Count == 0) return AreaType.None;
 
         var now = DateTime.UtcNow;

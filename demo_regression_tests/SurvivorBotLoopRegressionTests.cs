@@ -43,7 +43,7 @@ public sealed class SurvivorBotLoopRegressionTests
     }
 
     [Fact]
-    public void UnarmedBotLeavesOpenAreaForSecludedFarmingRoom()
+    public void UnarmedBotWaitsInsteadOfEnteringLegacyFarmingRoute()
     {
         const long matchingId = 194200;
         const long botPlayerId = -1942001;
@@ -65,12 +65,116 @@ public sealed class SurvivorBotLoopRegressionTests
             fixture.GroundItemManager,
             Array.Empty<BotCombatTargetSnapshot>());
 
-        Assert.NotEmpty(bot.Path);
-        AreaType destination = bot.Path[^1].Area;
-        Assert.False(destination.IsCorridor());
-        Assert.DoesNotContain(destination, new[] { AreaType.Ground, AreaType.Gym, AreaType.Storage });
+        Assert.Empty(bot.Path);
+        Assert.Equal(AreaType.None, bot.MovementDestination);
+        Assert.True(bot.LoopWaitUntil > DateTime.UtcNow);
     }
 
+    [Fact]
+    public void BotKitesWithinItsRoomWhenNearbyAfterimagesCloseIn()
+    {
+        const long matchingId = 1942000;
+        const long botPlayerId = -19420001;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        bot.EquippedBattleItemId = RecorderT1;
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        bot.NextPveKiteRepathAt = DateTime.MinValue;
+
+        var threat = new MonsterCombatTarget(
+            202001,
+            MapId.School,
+            AreaType.Classroom3,
+            new Vector3f(bot.Position.X + 1f, bot.Position.Y, 0f),
+            107000010);
+        var result = fixture.BotManager.ProcessBotMovementTick(
+            matchingId,
+            fixture.ClosureManager,
+            fixture.AreaStockManager,
+            new Dictionary<long, AreaType>(),
+            fixture.ChecklistManager,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            Array.Empty<BotCombatTargetSnapshot>(),
+            [threat]);
+
+        Assert.Contains(result.Movements, movement => movement.BotPlayerId == botPlayerId);
+        Assert.Equal(AreaType.None, bot.MovementDestination);
+        Assert.True(bot.NextPveKiteRepathAt > DateTime.UtcNow);
+        Assert.All(bot.Path.Skip(bot.PathIndex), step => Assert.Equal(AreaType.Classroom3, step.Area));
+    }
+    [Fact]
+    public void BotPveRouteUsesBoardAffinityBeforeLegacyWander()
+    {
+        const long matchingId = 1942005;
+        const long botPlayerId = -19420051;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        SetBotPosition(bot, AreaType.Classroom3);
+        bot.EquippedBattleItemId = 107000010;
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        fixture.InventoryManager.AddItem(matchingId, botPlayerId, 107000010);
+
+        var favorableCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Classroom4);
+        var unfavorableCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.ExamRoom);
+        var targets = new[]
+        {
+            new MonsterCombatTarget(
+                202001, MapId.School, AreaType.Classroom4,
+                new Vector3f((favorableCell.X - favorableCell.Y) / 2f, (favorableCell.X + favorableCell.Y) / 4f, 0f),
+                107000020, IsCore: true),
+            new MonsterCombatTarget(
+                202002, MapId.School, AreaType.ExamRoom,
+                new Vector3f((unfavorableCell.X - unfavorableCell.Y) / 2f, (unfavorableCell.X + unfavorableCell.Y) / 4f, 0f),
+                107000030, IsCore: true)
+        };
+
+        fixture.BotManager.ProcessBotMovementTick(
+            matchingId,
+            fixture.ClosureManager,
+            fixture.AreaStockManager,
+            new Dictionary<long, AreaType>(),
+            fixture.ChecklistManager,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            Array.Empty<BotCombatTargetSnapshot>(),
+            targets);
+
+        Assert.Equal(AreaType.Classroom4, bot.MovementDestination);
+        Assert.NotEmpty(bot.Path);
+        Assert.Equal(AreaType.Classroom4, bot.Path[^1].Area);
+    }
+    [Fact]
+    public void BotFollowingTargetInCorridorSelectsRoomDestination()
+    {
+        const long matchingId = 1942001;
+        const long botPlayerId = -19420011;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        bot.EquippedBattleItemId = RecorderT1;
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+
+        fixture.BotManager.ProcessBotMovementTick(
+            matchingId,
+            fixture.ClosureManager,
+            fixture.AreaStockManager,
+            new Dictionary<long, AreaType> { [bot.TargetPlayerId] = AreaType.Corridor },
+            fixture.ChecklistManager,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            Array.Empty<BotCombatTargetSnapshot>());
+
+        Assert.NotEqual(AreaType.None, bot.MovementDestination);
+        Assert.False(bot.MovementDestination.IsCorridor());
+        Assert.NotEmpty(bot.Path);
+        Assert.False(bot.Path[^1].Area.IsCorridor());
+    }
     [Fact]
     public void BotMergesStoredRecoveryItemsAndUsesThemOnlyAtThreshold()
     {
@@ -419,6 +523,43 @@ public sealed class SurvivorBotLoopRegressionTests
     }
 
     [Fact]
+    public void FinalClosureWithoutAnyRefuge_KeepsBotMovingInLastStand()
+    {
+        const long matchingId = 1942052;
+        const long botPlayerId = -1942052;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        SetBotPosition(bot, AreaType.Classroom3);
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        bot.LastWalkStepTime = DateTime.UtcNow.AddSeconds(-1);
+
+        var closureState = fixture.ClosureManager.InitializeMatching(matchingId);
+        foreach (AreaType area in GameMapData.GetAreas(MapId.School)
+                     .Select(region => region.AreaType)
+                     .Distinct()
+                     .Where(area => area != AreaType.None && !area.IsCorridor()))
+        {
+            closureState.ClosedAreas.Add(area);
+        }
+
+        var tick = fixture.BotManager.ProcessBotMovementTick(
+            matchingId,
+            fixture.ClosureManager,
+            fixture.AreaStockManager,
+            new Dictionary<long, AreaType>(),
+            fixture.ChecklistManager,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            Array.Empty<BotCombatTargetSnapshot>());
+
+        Assert.Equal(AreaType.None, bot.EvacuationDestination);
+        Assert.Equal(DateTime.MinValue, bot.LoopWaitUntil);
+        Assert.NotEmpty(bot.Path);
+        Assert.Contains(tick.Movements, movement => movement.BotPlayerId == botPlayerId);
+    }
+    [Fact]
     public void StrongerNearbyOpponentMakesBotLeaveTheRoomInsteadOfKitingInPlace()
     {
         const long matchingId = 194206;
@@ -586,7 +727,7 @@ public sealed class SurvivorBotLoopRegressionTests
     }
 
     [Fact]
-    public void OrbLootRoutingSpreadsBotsAcrossAvailableRooms()
+    public void OrbEquippedBotsDoNotUseLegacyLootRouting()
     {
         const long matchingId = 194210;
         long[] botIds = [-1942101, -1942102, -1942103];
@@ -630,14 +771,7 @@ public sealed class SurvivorBotLoopRegressionTests
             ground,
             Array.Empty<BotCombatTargetSnapshot>());
 
-        var committedAreas = botIds
-            .Select(id => botManager.GetBot(matchingId, id)!)
-            .Select(bot => bot.MovementDestination != AreaType.None
-                ? bot.MovementDestination
-                : bot.CurrentArea)
-            .ToList();
-        Assert.True(committedAreas.Distinct().Count() >= 2);
-        Assert.All(committedAreas.GroupBy(area => area), group => Assert.True(group.Count() <= 2));
+        Assert.All(botIds, id => Assert.Equal(0, botManager.GetBot(matchingId, id)!.PendingRngInteractId));
     }
 
     [Theory]

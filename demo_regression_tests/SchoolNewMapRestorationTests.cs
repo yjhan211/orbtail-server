@@ -224,6 +224,7 @@ public class SchoolNewMapRestorationTests
         {
             Assert.True(door.IsInitiallyOpen);
             Assert.Equal(0, door.RequiredItemId);
+            Assert.Equal(2f, door.InteractDistance);
         });
 
         var classroomDoor = GameDoorData.GetDoorForTransition(
@@ -233,6 +234,8 @@ public class SchoolNewMapRestorationTests
             new Cell(113, 91));
         Assert.NotNull(classroomDoor);
         Assert.Equal(102, classroomDoor.DoorId);
+        Assert.Equal(2f, classroomDoor.InteractDistance);
+        Assert.True(GameDoorData.IsOutsidePassageRadius(classroomDoor, new Cell(119, 91)));
 
         var examRoomDoor = GameDoorData.GetDoorForTransition(
             AreaType.ExamRoom,
@@ -250,16 +253,16 @@ public class SchoolNewMapRestorationTests
         Assert.NotNull(infirmaryDoor);
         Assert.Equal(109, infirmaryDoor.DoorId);
 
-        // The Library/Corridor boundary is one cell beyond the door's interaction radius.
-        // Passage detection must identify Door_110 so relocking can wait for the player to leave its radius.
+        // The Library/Corridor boundary remains inside Door_110's two-cell interaction radius.
+        // Passage detection must identify the door so relocking can wait for the player to leave it.
         var libraryCorridorDoor = GameDoorData.GetDoorForTransition(
             AreaType.Library,
             AreaType.Corridor,
-            new Cell(103, 95),
-            new Cell(103, 95));
+            new Cell(103, 97),
+            new Cell(103, 97));
         Assert.NotNull(libraryCorridorDoor);
         Assert.Equal(110, libraryCorridorDoor.DoorId);
-        Assert.False(GameDoorData.IsOutsidePassageRadius(libraryCorridorDoor, new Cell(103, 95)));
+        Assert.False(GameDoorData.IsOutsidePassageRadius(libraryCorridorDoor, new Cell(103, 97)));
         Assert.True(GameDoorData.IsOutsidePassageRadius(libraryCorridorDoor, new Cell(103, 93)));
 
         var libraryStorageDoor = GameDoorData.GetDoorForTransition(
@@ -271,6 +274,9 @@ public class SchoolNewMapRestorationTests
         Assert.Equal(111, libraryStorageDoor.DoorId);
         Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(93, 72)));
         Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(92, 71)));
+
+        Assert.Equal(2f, GameDoorData.Get(112)!.InteractDistance);
+        Assert.True(GameDoorData.IsOutsidePassageRadius(GameDoorData.Get(112)!, new Cell(96, 57)));
 
         var storageGroundDoor = GameDoorData.GetDoorForTransition(
             AreaType.Storage,

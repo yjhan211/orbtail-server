@@ -8,15 +8,19 @@ public sealed class AreaItemStockManager
 {
     private readonly ConcurrentDictionary<long, MatchingAreaItemStock> _matchingStocks = new();
     private readonly Random _random;
+    private readonly bool _naturalExploreLootEnabled;
 
-    public AreaItemStockManager(Random? random = null)
+    public AreaItemStockManager(Random? random = null, bool naturalExploreLootEnabled = true)
     {
         _random = random ?? Random.Shared;
+        _naturalExploreLootEnabled = naturalExploreLootEnabled;
     }
 
     public void InitializeMatching(long matchingId)
     {
         var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
+        if (!_naturalExploreLootEnabled) return;
+
         lock (stock.SyncRoot)
         {
             foreach (var area in Enum.GetValues<AreaType>())
@@ -29,6 +33,8 @@ public sealed class AreaItemStockManager
 
     public bool HasRemaining(long matchingId, int areaType)
     {
+        if (!_naturalExploreLootEnabled) return false;
+
         var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
         lock (stock.SyncRoot)
             return stock.GetOrCreateAreaStock(areaType).Count > 0;
@@ -37,7 +43,7 @@ public sealed class AreaItemStockManager
     public bool TryConsumeDrops(long matchingId, int areaType, int maxCount, out List<int> itemIds)
     {
         itemIds = new List<int>();
-        if (maxCount <= 0) return false;
+        if (!_naturalExploreLootEnabled || maxCount <= 0) return false;
 
         var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
         lock (stock.SyncRoot)
@@ -63,6 +69,8 @@ public sealed class AreaItemStockManager
 
     public int GetRemainingCount(long matchingId, int areaType)
     {
+        if (!_naturalExploreLootEnabled) return 0;
+
         var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
         lock (stock.SyncRoot)
             return stock.GetOrCreateAreaStock(areaType).Count;
@@ -78,6 +86,8 @@ public sealed class AreaItemStockManager
         IReadOnlyCollection<AreaType> warningAreas,
         IReadOnlyCollection<AreaType> closedAreas)
     {
+        if (!_naturalExploreLootEnabled) return [];
+
         var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
         lock (stock.SyncRoot)
         {
@@ -126,7 +136,7 @@ public sealed class AreaItemStockManager
     /// </summary>
     public bool HasRemainingOrbColor(long matchingId, int areaType, SurvivorOrbColor color)
     {
-        if (color == SurvivorOrbColor.None) return false;
+        if (!_naturalExploreLootEnabled || color == SurvivorOrbColor.None) return false;
 
         var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
         lock (stock.SyncRoot)
@@ -136,6 +146,8 @@ public sealed class AreaItemStockManager
 
     public IReadOnlyDictionary<int, int> GetRemainingSnapshot(long matchingId, int areaType)
     {
+        if (!_naturalExploreLootEnabled) return new Dictionary<int, int>();
+
         if (!_matchingStocks.TryGetValue(matchingId, out var stock))
             return new Dictionary<int, int>();
 
@@ -153,6 +165,14 @@ public sealed class AreaItemStockManager
     public IReadOnlyList<(AreaType AreaType, bool IsDepleted, List<SurvivorOrbColor> AvailableOrbColors)>
         GetPublicDepletionSnapshot(long matchingId)
     {
+        if (!_naturalExploreLootEnabled)
+        {
+            return Enum.GetValues<AreaType>()
+                .Where(area => area != AreaType.None)
+                .Select(area => (area, true, new List<SurvivorOrbColor>()))
+                .ToList();
+        }
+
         var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
         lock (stock.SyncRoot)
         {

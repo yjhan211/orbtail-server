@@ -147,7 +147,9 @@ public class ProximityAutoCombatDataTests
         string playerSource = ReadNormalizedSource(
             repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");
 
-        Assert.Contains("attack.WeaponItemId,\n                damage);", gameServerSource);
+        Assert.Contains("targetSession.ApplyProximityAutoCombatHit(", gameServerSource);
+        Assert.Contains("attack.WeaponItemId,", gameServerSource);
+        Assert.Contains("damage);", gameServerSource);
         Assert.Contains("weaponItemId,\n            damage);", sessionSource);
         Assert.Contains(
             "localPlayerIsAttacker: true,\n                    packet.DamageValue);",
@@ -160,6 +162,32 @@ public class ProximityAutoCombatDataTests
         Assert.DoesNotContain("오염 +", playerSource);
     }
 
+    [Fact]
+    public void NeutralAfterimageMonstersDisableTheirOrbGlyphWhenReusedFromThePool()
+    {
+        string source = ReadNormalizedSource(
+            FindRepositoryRoot(), "client", "Assets", "Scripts", "Components", "MapObject",
+            "EmotionAfterimageOrbTheme.cs");
+
+        Assert.Contains("private int _itemId = -1;", source);
+        Assert.Contains("_core.enabled = itemId > 0;", source);
+    }
+    [Fact]
+    public void ObserversSeeBotOrbProjectilesWhenTheTargetIsAnAfterimageMonster()
+    {
+        string repoRoot = FindRepositoryRoot();
+        string serverSource = ReadNormalizedSource(
+            repoRoot, "game_server", "GameServer.EmotionAfterimageMonsters.cs");
+        string mapSource = ReadNormalizedSource(
+            repoRoot, "client", "Assets", "Scripts", "Managers", "Map", "MapManager.PlayerVisibility.cs");
+
+        Assert.Contains(
+            "if (primaryHit && EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(attack.IsWaveAreaSecondary))\n" +
+            "                BroadcastObservedProximityAttackVfx(attack, matchingSessions);",
+            serverSource);
+        Assert.Contains("if (packet.TargetPlayerId < 0)", mapSource);
+        Assert.Contains("PlayObservedGuardianProjectileAtMonster(attacker, monster, packet.WeaponItemId);", mapSource);
+    }
     [Fact]
     public void LocalDamageDisplayPulsesInventoryDecoWhileTheTotalIsPresented()
     {

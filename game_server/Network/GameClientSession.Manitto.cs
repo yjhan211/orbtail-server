@@ -705,7 +705,7 @@ public partial class GameClientSession
         if (eliminatedSession != null)
             eliminatedSession.DropAllInventoryAtCurrentPosition();
         else
-            DropBotInventoryAtCurrentPosition(eliminatedPlayerId);
+            AwardBotEliminationSummonStones(eliminatedPlayerId, resolvedAttackerPlayerId, allSessions);
 
         // 1. 전체에게 탈락 알림. 탈락자에게만 결과표를 고정 패킷 예산 안에서 나눠 보낸다.
         var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, CurrentMapSubId, 0);
@@ -896,6 +896,7 @@ public partial class GameClientSession
         _checklistManager.RemoveMatchingState(matchingId);
         _areaItemStockManager.RemoveMatchingState(matchingId);
         _groundItemManager.RemoveMatchingState(matchingId);
+        _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId);
         _inGameInventoryManager.RemoveMatchingState(matchingId);
         _interactableStateManager.RemoveMatchingState(matchingId);
         _areaRuleManager.RemoveMatchingState(matchingId);
@@ -908,9 +909,9 @@ public partial class GameClientSession
         _encounterRevealManager.CleanupMatching(matchingId);
         _manittoChainManager.CleanupMatching(matchingId);
         _gameEventLogManager.Clear(matchingId);
-        // #26: 봇 상태 + Redis matching_bots Hash 엔트리 정리 (TTL/누수 방지)
+        // 매치 전송용 봇/버프 데이터는 결과를 보낸 뒤 더 이상 재접속에 필요하지 않다.
         _botPlayerManager.CleanupMatching(matchingId);
-        _ = CleanupRedisMatchingBotsAsync(matchingId);
+        _ = CleanupRedisMatchingTransientStateAsync(matchingId);
     }
 
     private List<GameResultPlayerInfo> BuildGameResultPlayers(List<GameClientSession> allSessions, long matchingId,
@@ -992,19 +993,27 @@ public partial class GameClientSession
         return BotPlayerManager.IsBotPlayerId(playerId) ? $"Player{Math.Abs(playerId)}" : $"Player{playerId}";
     }
 
-    /// <summary>
-    ///     #26: Redis "matching_bots" Hash에서 매칭 엔트리 제거. 비동기 실패 시 무시 (다음 매칭 시 재로드).
-    /// </summary>
-    private async Task CleanupRedisMatchingBotsAsync(long matchingId)
+    /// <summary>매치 완료 뒤 재접속용 Redis handoff 데이터를 제거한다.</summary>
+    private async Task CleanupRedisMatchingTransientStateAsync(long matchingId)
     {
         try
         {
             await CacheHelper.HashDeleteAsync("matching_bots", matchingId);
-            Logger.LogInformation("Redis matching_bots 정리: MatchingId={MatchingId}", matchingId);
+            string prefix = $"{matchingId}:";
+            var fields = (await CacheHelper.HashGetAllAsync(PlayerBuffInfoKey))
+                .Select(entry => entry.Name.ToString())
+                .Where(field => field.StartsWith(prefix, StringComparison.Ordinal))
+                .ToArray();
+            foreach (string field in fields)
+                await CacheHelper.HashDeleteAsync(PlayerBuffInfoKey, field);
+
+            Logger.LogInformation(
+                "Redis matching handoff 정리: MatchingId={MatchingId}, BuffFields={BuffFieldCount}",
+                matchingId, fields.Length);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Redis matching_bots 정리 실패: MatchingId={MatchingId}", matchingId);
+            Logger.LogWarning(ex, "Redis matching handoff 정리 실패: MatchingId={MatchingId}", matchingId);
         }
     }
 

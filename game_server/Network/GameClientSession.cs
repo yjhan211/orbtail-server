@@ -45,6 +45,8 @@ public partial class GameClientSession : SessionBase
     private readonly ItemPoolManager _itemPoolManager;
     private readonly AreaItemStockManager _areaItemStockManager;
     private readonly GroundItemManager _groundItemManager;
+    private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager;
+    private readonly SummonStoneManager _summonStoneManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly SabotageManager _sabotageManager;
@@ -76,7 +78,7 @@ public partial class GameClientSession : SessionBase
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
     private DateTime _lastInteractRejectTime = DateTime.MinValue;
     private DateTime _lastMoveTime = DateTime.UtcNow;
-    private DateTime _lastSaveTime = DateTime.UtcNow;
+
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
 
     private Vector3f? _lastValidatedPosition;
@@ -130,6 +132,8 @@ public partial class GameClientSession : SessionBase
         ItemPoolManager itemPoolManager,
         AreaItemStockManager areaItemStockManager,
         GroundItemManager groundItemManager,
+        EmotionAfterimageMonsterManager emotionAfterimageMonsterManager,
+        SummonStoneManager summonStoneManager,
         DoorStateManager doorStateManager,
         SabotageManager sabotageManager,
         ManittoChainManager manittoChainManager,
@@ -152,6 +156,8 @@ public partial class GameClientSession : SessionBase
         _itemPoolManager = itemPoolManager;
         _areaItemStockManager = areaItemStockManager;
         _groundItemManager = groundItemManager;
+        _emotionAfterimageMonsterManager = emotionAfterimageMonsterManager;
+        _summonStoneManager = summonStoneManager;
         _doorStateManager = doorStateManager;
         _sabotageManager = sabotageManager;
         _manittoChainManager = manittoChainManager;
@@ -363,6 +369,8 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ATTACK,
             async bytes => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SUMMON_ORB,
+            async bytes => await HandleMessage<C_TO_G_SUMMON_ORB>(bytes, HandleSummonOrb));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT,
             async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,

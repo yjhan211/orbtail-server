@@ -79,6 +79,27 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Fact]
+    public void MonsterSummonEconomyDisablesNaturalExploreLootWithoutDeletingLegacyPools()
+    {
+        var manager = new AreaItemStockManager(new ZeroRandom(), naturalExploreLootEnabled: false);
+        const long matchId = 20201;
+        manager.InitializeMatching(matchId);
+
+        Assert.False(manager.HasRemaining(matchId, (int)AreaType.Classroom3));
+        Assert.Equal(0, manager.GetRemainingCount(matchId, (int)AreaType.Classroom3));
+        Assert.False(manager.TryConsumeDrop(matchId, (int)AreaType.Classroom3, out int itemId));
+        Assert.Equal(0, itemId);
+        Assert.Empty(manager.GetRemainingSnapshot(matchId, (int)AreaType.Classroom3));
+
+        var publicState = manager.GetPublicDepletionSnapshot(matchId)
+            .Single(state => state.AreaType == AreaType.Classroom3);
+        Assert.True(publicState.IsDepleted);
+        Assert.Empty(publicState.AvailableOrbColors);
+
+        Assert.NotEmpty(GameInteractableData.GetItemPoolByArea((int)AreaType.Classroom3));
+    }
+
+    [Fact]
     public void ExploreConsumesExactlyOneAndNeverRegeneratesWithinMatch()
     {
         var manager = new AreaItemStockManager();

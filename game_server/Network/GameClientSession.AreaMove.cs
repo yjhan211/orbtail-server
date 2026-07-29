@@ -104,27 +104,9 @@ public partial class GameClientSession
             return;
         }
 
-        // 6. 위치/구역 정보 영구 저장 (스태미나는 인-게임 한정이라 Redis 갱신 안 함)
-        await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-        var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
-
+        // 6. 매치 내부 위치/구역은 세션이 권위다. Redis의 영구 PlayerInfo에는 저장하지 않는다.
         var spawnPos = CellToWorldPosition(spawnCell);
         float rotation = _lastValidatedRotation;
-        if (playerInfo != null)
-        {
-            playerInfo.ObjectInfo.Cell = spawnCell;
-            playerInfo.ObjectInfo.Position = spawnPos;
-            playerInfo.ObjectInfo.Velocity = new Vector3f(0f, 0f, 0f);
-            playerInfo.ObjectInfo.MoveTimestamp = DateTime.UtcNow;
-            rotation = playerInfo.ObjectInfo.Rotation;
-            await playerInfo.Save(CacheHelper);
-        }
-        else
-        {
-            Logger.LogWarning(
-                "Player {PlayerId} AreaMove: PlayerInfo missing in Redis, proceeding with session state only. CurrentArea={CurrentArea}, RequestedArea={RequestedArea}",
-                PlayerId, CurrentArea, msg.TargetArea);
-        }
 
         // 7. 세션 상태 갱신 + Area 변경 후처리
         var oldArea = CurrentArea;

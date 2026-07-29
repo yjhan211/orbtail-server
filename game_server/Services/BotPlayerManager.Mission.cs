@@ -54,9 +54,6 @@ public partial class BotPlayerManager
                 ClearPendingChecklistActivity(bot);
             }
 
-            // 실제 지역 루팅은 레거시 부품 미션의 존재/완료 여부와 무관하게 진행한다.
-            TryRngCollectIfArrived(bot, matchingId, missionManager, inventoryManager, itemPoolManager,
-                areaItemStockManager, groundItemManager, result);
 
             var state = missionManager.GetState(matchingId, bot.PlayerId);
             if (state == null || state.IsCompleted) continue;
@@ -113,9 +110,8 @@ public partial class BotPlayerManager
         bool hasResonance = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor resonanceColor,
             out int supportTier);
         var equipped = inventory.GetEquippedBattleItem();
-        SurvivorOrbColor equippedColor = SurvivorOrbColor.None;
         bool hasEquippedOrb = equipped != null &&
-                              SurvivorOrbData.TryGetColorAndTier(equipped.ItemId, out equippedColor, out _);
+                              SurvivorOrbData.TryGetColorAndTier(equipped.ItemId, out _, out _);
         if (hasResonance)
         {
             bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
@@ -124,10 +120,9 @@ public partial class BotPlayerManager
         }
         else if (hasEquippedOrb)
         {
-            bool changedTarget = bot.OrbFarmingTargetColor != equippedColor;
-            bot.OrbFarmingTargetColor = equippedColor;
-            if (changedTarget || loadout.SurvivorOrbMerges.Count > 0)
-                bot.OrbFarmingPivotPending = true;
+            bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
+            bot.OrbFarmingDestination = AreaType.None;
+            bot.OrbFarmingPivotPending = false;
         }
         else
         {

@@ -47,10 +47,10 @@ public partial class BotPlayerManager
     // ?꾨줈??0: ?먰븯??諛??寃?諛??좊낫湲?諛????꾩갑??癒몃Т???쒓컙(珥?.
     // ???숈븞 ?뚮났쨌湲곗쿃???볦씠怨? 留뚮즺 ?꾩뿉???ㅼ쓬 寃곗젙(癒몃Ъ湲??좊낫湲????쒕떎.
     // (?놁쑝硫?癒몃Ъ湲?寃곗젙??留???250ms) ?ш뎬由쇰릺???좊낫湲??뺣쪧??怨㏓컮濡??곗졇 ?섍?踰꾨┛??)
-    private const double Proto0InitialDecisionDelayMinSeconds = 0.4;
-    private const double Proto0InitialDecisionDelayMaxSeconds = 4.5;
-    private const double Proto0RoomDwellMinSeconds = 6.0;
-    private const double Proto0RoomDwellMaxSeconds = 12.0;
+    private const double Proto0InitialDecisionDelayMinSeconds = 0.15;
+    private const double Proto0InitialDecisionDelayMaxSeconds = 1.2;
+    private const double Proto0RoomDwellMinSeconds = 1.25;
+    private const double Proto0RoomDwellMaxSeconds = 2.25;
 
     private enum Proto0BotPolicy
     {
@@ -439,6 +439,9 @@ public class BotPlayerState
 
     /// <summary>Next time the bot may replace its chase or retreat path.</summary>
     public DateTime NextCombatRepathAt { get; set; } = DateTime.MinValue;
+
+    /// <summary>Next time the bot may re-plan a short lateral path around nearby afterimages.</summary>
+    public DateTime NextPveKiteRepathAt { get; set; } = DateTime.MinValue;
 
     /// <summary>Safe room retained while the bot is travelling out of a warned area.</summary>
     public AreaType EvacuationDestination { get; set; } = AreaType.None;

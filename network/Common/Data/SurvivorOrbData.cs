@@ -24,6 +24,8 @@ namespace network.common.data
         public const float WindMoveSpeedMultiplier = 1.2f;
         public const float WindAttackRangeMultiplier = 1.2f;
         public const float WindAttackIntervalMultiplier = 0.85f;
+        public const float WindBaseDamageMultiplier = 0.5f;
+        public const float WindBaseAttackIntervalMultiplier = 0.5f;
         public const float WindProjectileSpeedMultiplier = 1.25f;
         public const float SunMarkLifetimeSeconds = 3f;
         public const int SunMarkTriggerCount = 3;
@@ -36,6 +38,16 @@ namespace network.common.data
         public const float WaveCounterDamageMultiplier = 1.25f;
         public const float WaveSlowSeconds = 1.5f;
         public const float WaveSlowMoveSpeedMultiplier = 0.65f;
+        public const float WaveBaseAttackIntervalMultiplier = 1.25f;
+        // The current room-horde pace needs each orb to fire twice as often.
+        public const float OrbAttackIntervalMultiplier = 0.5f;
+        // A Wave orb detonates at its primary target and damages every valid target in this radius.
+        public const float WaveSplashRadius = 1.8f;
+        public const float WaveTierTwoSplashRadius = 2.2f;
+        public const float WaveTierThreeSplashRadius = 2.6f;
+        public const float PveAdvantageDamageMultiplier = 1.5f;
+        public const float PveNeutralDamageMultiplier = 1f;
+        public const float PveDisadvantageDamageMultiplier = 0.5f;
 
         private static readonly SurvivorOrbColor[] EvolutionColors =
             new[] { SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue };
@@ -58,6 +70,151 @@ namespace network.common.data
         }
 
         public static bool IsSurvivorOrb(int itemId) => TryGetColorAndTier(itemId, out _, out _);
+
+        public static float GetBaseAttackIntervalMultiplier(SurvivorOrbColor color) => color switch
+        {
+            SurvivorOrbColor.Green => WindBaseAttackIntervalMultiplier,
+            SurvivorOrbColor.Blue => WaveBaseAttackIntervalMultiplier,
+            _ => 1f
+        };
+
+        public static int GetBaseAttackDamage(int baseDamage, SurvivorOrbColor color)
+        {
+            if (baseDamage <= 0)
+                return 0;
+
+            return color == SurvivorOrbColor.Green
+                ? Math.Max(1, (int)Math.Floor(baseDamage * WindBaseDamageMultiplier))
+                : baseDamage;
+        }
+
+        public static float GetAttackIntervalMultiplier(int itemId) => itemId switch
+        {
+            107000003 or 107000004 or 107000006 => OrbAttackIntervalMultiplier,
+            _ when IsSurvivorOrb(itemId) => OrbAttackIntervalMultiplier,
+            _ => 1f
+        };
+
+        public static float GetPveDamageMultiplier(int attackerItemId, int monsterRewardItemId)
+        {
+            if (!TryGetColorAndTier(attackerItemId, out SurvivorOrbColor attackerColor, out _) ||
+                !TryGetColorAndTier(monsterRewardItemId, out SurvivorOrbColor targetColor, out _))
+                return PveNeutralDamageMultiplier;
+
+            return GetPveDamageMultiplier(attackerColor, targetColor);
+        }
+
+        public static float GetPveDamageMultiplier(SurvivorOrbColor attackerColor, int monsterRewardItemId)
+        {
+            if (!TryGetColorAndTier(monsterRewardItemId, out SurvivorOrbColor targetColor, out _))
+                return PveNeutralDamageMultiplier;
+
+            return GetPveDamageMultiplier(attackerColor, targetColor);
+        }
+
+        public static float GetPveDamageMultiplier(SurvivorOrbColor attackerColor, SurvivorOrbColor targetColor)
+        {
+            if (attackerColor is SurvivorOrbColor.None or SurvivorOrbColor.Recovery ||
+                targetColor is SurvivorOrbColor.None or SurvivorOrbColor.Recovery)
+                return PveNeutralDamageMultiplier;
+
+            return (attackerColor, targetColor) switch
+            {
+                (SurvivorOrbColor.Red, SurvivorOrbColor.Green) => PveAdvantageDamageMultiplier,
+                (SurvivorOrbColor.Green, SurvivorOrbColor.Blue) => PveAdvantageDamageMultiplier,
+                (SurvivorOrbColor.Blue, SurvivorOrbColor.Red) => PveAdvantageDamageMultiplier,
+                (SurvivorOrbColor.Red, SurvivorOrbColor.Blue) => PveDisadvantageDamageMultiplier,
+                (SurvivorOrbColor.Green, SurvivorOrbColor.Red) => PveDisadvantageDamageMultiplier,
+                (SurvivorOrbColor.Blue, SurvivorOrbColor.Green) => PveDisadvantageDamageMultiplier,
+                _ => PveNeutralDamageMultiplier
+            };
+        }
+
+        /// <summary>
+        /// Resolves the board-wide PvE affinity only when one attack colour owns a
+        /// strict majority of every occupied orb slot. Tiers do not affect resonance.
+        /// Recovery orbs count as occupied slots but never become an attack affinity.
+        /// </summary>
+        public static bool TryGetDominantPveColor(
+            IEnumerable<int> boardItemIds,
+            out SurvivorOrbColor dominantColor)
+        {
+            if (boardItemIds == null)
+                throw new ArgumentNullException(nameof(boardItemIds));
+
+            var orbCounts = new Dictionary<SurvivorOrbColor, int>
+            {
+                [SurvivorOrbColor.Red] = 0,
+                [SurvivorOrbColor.Green] = 0,
+                [SurvivorOrbColor.Blue] = 0
+            };
+            int occupiedOrbCount = 0;
+
+            foreach (int itemId in boardItemIds)
+            {
+                if (IsRecoveryOrb(itemId))
+                {
+                    occupiedOrbCount++;
+                    continue;
+                }
+
+                if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _) ||
+                    !orbCounts.ContainsKey(color))
+                {
+                    continue;
+                }
+
+                occupiedOrbCount++;
+                orbCounts[color]++;
+            }
+
+            if (occupiedOrbCount < 2)
+            {
+                dominantColor = SurvivorOrbColor.None;
+                return false;
+            }
+
+            var majority = orbCounts
+                .Where(pair => pair.Value * 2 > occupiedOrbCount)
+                .Select(pair => pair.Key)
+                .ToArray();
+            if (majority.Length == 1)
+            {
+                dominantColor = majority[0];
+                return true;
+            }
+
+            dominantColor = SurvivorOrbColor.None;
+            return false;
+        }
+
+        public static int CalculatePveDamage(
+            int attackerItemId,
+            int monsterRewardItemId,
+            int baseDamage,
+            float hitDamageMultiplier = 1f)
+        {
+            if (baseDamage <= 0 || hitDamageMultiplier <= 0f)
+                return 0;
+
+            float damage = baseDamage * hitDamageMultiplier *
+                           GetPveDamageMultiplier(attackerItemId, monsterRewardItemId);
+            return Math.Max(1, (int)Math.Ceiling(damage));
+        }
+
+        public static int CalculatePveDamage(
+            SurvivorOrbColor attackerColor,
+            int monsterRewardItemId,
+            int baseDamage,
+            float hitDamageMultiplier = 1f)
+        {
+            if (baseDamage <= 0 || hitDamageMultiplier <= 0f)
+                return 0;
+
+            float damage = baseDamage * hitDamageMultiplier *
+                           GetPveDamageMultiplier(attackerColor, monsterRewardItemId);
+            return Math.Max(1, (int)Math.Ceiling(damage));
+        }
         public static bool TryGetRecoveryTier(int itemId, out int tier)
         {
             tier = itemId switch

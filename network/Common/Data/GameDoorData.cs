@@ -137,7 +137,14 @@ namespace network.common.data
 
         private static float GetPassageRadius(DoorInfoData door)
         {
-            return (door.InteractDistance > 0f ? door.InteractDistance : 1f) + PassageRadiusPadding;
+            float interactionRadius = door.InteractDistance > 0f ? door.InteractDistance : 1f;
+            return interactionRadius + (UsesTightPassageRadius(door) ? 0f : PassageRadiusPadding);
+        }
+
+        private static bool UsesTightPassageRadius(DoorInfoData door)
+        {
+            return door.AreaType is AreaType.Classroom2 or AreaType.Classroom3 or AreaType.Classroom4 or
+                AreaType.Storage or AreaType.Storage2;
         }
 
         private static float GetDistanceSquared(DoorInfoData door, Cell cell)
