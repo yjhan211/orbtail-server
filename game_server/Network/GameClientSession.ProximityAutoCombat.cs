@@ -64,10 +64,11 @@ public partial class GameClientSession
     }
     internal void SendEmotionAfterimageMonsterAttackFeedback(int monsterId, AreaType area, int weaponItemId, int damage)
     {
-        if (!PlayerId.HasValue || IsEliminated || monsterId <= 0 || weaponItemId <= 0 || damage <= 0)
+        if (!PlayerId.HasValue || IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0)
             return;
 
-        // targetCorruption is event-specific metadata here: it carries the attacked monster ID.
+        // targetCorruption is event-specific metadata here: zero means a Wave splash hit,
+        // so the client preserves its damage feedback without replaying the projectile.
         using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
             PlayerId.Value, area, EmotionAfterimageMonsterAttackDealtEventType, 0,
             weaponItemId, damage, monsterId);

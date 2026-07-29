@@ -13,11 +13,31 @@ public static class EmotionAfterimagePveCombatRules
     public static bool ShouldApplyWaveAreaAttack(int weaponItemId, bool isResonanceProc) =>
         !isResonanceProc && IsWaveOrb(weaponItemId);
 
+    public static bool ShouldEmitWaveProjectilePresentation(bool isWaveAreaSecondary) =>
+        !isWaveAreaSecondary;
+
+    public static float GetWaveSplashRadius(int weaponItemId)
+    {
+        if (!SurvivorOrbData.TryGetColorAndTier(weaponItemId, out SurvivorOrbColor color, out int tier) ||
+            color != SurvivorOrbColor.Blue)
+        {
+            return SurvivorOrbData.WaveSplashRadius;
+        }
+
+        return tier switch
+        {
+            >= 3 => SurvivorOrbData.WaveTierThreeSplashRadius,
+            2 => SurvivorOrbData.WaveTierTwoSplashRadius,
+            _ => SurvivorOrbData.WaveSplashRadius
+        };
+    }
+
     public static IReadOnlyList<long> FindWaveAreaSecondaryTargetIds(
         IReadOnlyCollection<ProximityCombatActor> combatTargets,
         long attackerPlayerId,
         long primaryTargetId,
-        AreaType area)
+        AreaType area,
+        int weaponItemId)
     {
         if (combatTargets == null)
             throw new ArgumentNullException(nameof(combatTargets));
@@ -31,7 +51,8 @@ public static class EmotionAfterimagePveCombatRules
         if (primaryTarget.PlayerId == 0)
             return [];
 
-        float radiusSquared = SurvivorOrbData.WaveSplashRadius * SurvivorOrbData.WaveSplashRadius;
+        float radius = GetWaveSplashRadius(weaponItemId);
+        float radiusSquared = radius * radius;
         return uniqueTargets
             .Where(target => target.PlayerId != primaryTargetId &&
                              target.MapId == primaryTarget.MapId &&

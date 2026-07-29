@@ -134,12 +134,22 @@ public partial class GameServer
         state.WaveCount = waveCount;
         state.HighestWaveItemId = highestWaveItemId;
 
+        var boardItemIds = items
+            .Where(item => item.Count > 0)
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count));
+        SurvivorOrbColor activeColor = SurvivorOrbData.TryGetDominantPveColor(boardItemIds, out var dominantColor)
+            ? dominantColor
+            : SurvivorOrbColor.None;
+
+        // Resonance is now a stable board-majority affinity. The former movement,
+        // mark, and counter triggers are deliberately disabled.
         return new SurvivorOrbResonanceSnapshot(
-            SurvivorOrbData.GetSunResonanceStage(sunCount),
-            windActive,
-            windJustActivated,
-            waveCount >= 2,
-            highestWaveItemId);
+            activeColor,
+            0,
+            false,
+            false,
+            false,
+            0);
     }
 
     private void NotifySurvivorOrbResonanceDamaged(long matchingId, long playerId, DateTime nowUtc)
@@ -260,6 +270,7 @@ public partial class GameServer
     }
 
     private readonly record struct SurvivorOrbResonanceSnapshot(
+        SurvivorOrbColor ActiveColor,
         int SunStage,
         bool WindActive,
         bool WindJustActivated,

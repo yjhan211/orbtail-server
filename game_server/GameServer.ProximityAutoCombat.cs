@@ -92,18 +92,6 @@ public partial class GameServer
 
         var nowUtc = DateTime.UtcNow;
         var resonanceStates = UpdateSurvivorOrbResonanceStates(matchingId, matchingSessions, matchingBots, nowUtc);
-        foreach (var session in matchingSessions)
-        {
-            if (!session.PlayerId.HasValue ||
-                !resonanceStates.TryGetValue(session.PlayerId.Value, out var resonanceState) ||
-                !resonanceState.WindJustActivated)
-            {
-                continue;
-            }
-
-            session.SendSurvivorOrbResonanceFeedback(SurvivorOrbColor.Green);
-        }
-
         var actors = BuildProximityCombatActors(matchingId, matchingSessions, matchingBots, resonanceStates);
         ProcessSurvivorOrbRecovery(matchingId, actors, matchingSessions, matchingBots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, matchingSessions);
@@ -245,10 +233,10 @@ public partial class GameServer
             if (combatData == null)
                 continue;
 
-            bool windActive = orbColor == SurvivorOrbColor.Green && resonanceState.WindActive;
-            int sunStage = orbColor == SurvivorOrbColor.Red ? resonanceState.SunStage : 0;
-            bool waveArmed = orbColor == SurvivorOrbColor.Blue && resonanceState.WaveArmed;
-            bool orbEffectActive = sunStage > 0 || windActive || waveArmed;
+            bool windActive = false;
+            int sunStage = 0;
+            bool waveArmed = false;
+            bool orbEffectActive = resonanceState.ActiveColor == orbColor;
 
             for (int stackIndex = 0; stackIndex < item.Count; stackIndex++)
             {

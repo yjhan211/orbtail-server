@@ -99,8 +99,7 @@ public partial class GameServer
     {
         SurvivorOrbColor affinityColor = ResolvePlayerPveAffinityColor(
             matchingId,
-            attack.AttackerPlayerId,
-            attack.WeaponItemId);
+            attack.AttackerPlayerId);
         int damage = SurvivorOrbData.CalculatePveDamage(
             affinityColor,
             target.RewardItemId,
@@ -147,17 +146,16 @@ public partial class GameServer
         return true;
     }
 
-    private SurvivorOrbColor ResolvePlayerPveAffinityColor(long matchingId, long playerId, int fallbackItemId)
+    private SurvivorOrbColor ResolvePlayerPveAffinityColor(long matchingId, long playerId)
     {
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
         var boardItemIds = inventory.GetAllItems()
             .Where(item => item.Count > 0)
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count));
-        if (SurvivorOrbData.TryGetDominantPveColor(boardItemIds, out SurvivorOrbColor dominantColor))
-            return dominantColor;
 
-        return SurvivorOrbData.TryGetColorAndTier(fallbackItemId, out SurvivorOrbColor fallbackColor, out _)
-            ? fallbackColor
+        // A board gains an elemental advantage only while one attack colour owns its majority.
+        return SurvivorOrbData.TryGetDominantPveColor(boardItemIds, out SurvivorOrbColor dominantColor)
+            ? dominantColor
             : SurvivorOrbColor.None;
     }
     private void ApplyMonsterAttack(long matchingId, MonsterAttack attack,

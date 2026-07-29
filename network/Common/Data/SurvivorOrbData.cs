@@ -43,6 +43,8 @@ namespace network.common.data
         public const float OrbAttackIntervalMultiplier = 0.5f;
         // A Wave orb detonates at its primary target and damages every valid target in this radius.
         public const float WaveSplashRadius = 1.8f;
+        public const float WaveTierTwoSplashRadius = 2.2f;
+        public const float WaveTierThreeSplashRadius = 2.6f;
         public const float PveAdvantageDamageMultiplier = 1.5f;
         public const float PveNeutralDamageMultiplier = 1f;
         public const float PveDisadvantageDamageMultiplier = 0.5f;
@@ -129,8 +131,9 @@ namespace network.common.data
         }
 
         /// <summary>
-        /// Resolves a board-wide PvE affinity. Total tier is the primary score;
-        /// a ready resonance resolves an otherwise tied top score.
+        /// Resolves the board-wide PvE affinity only when one attack colour owns a
+        /// strict majority of every occupied orb slot. Tiers do not affect resonance.
+        /// Recovery orbs count as occupied slots but never become an attack affinity.
         /// </summary>
         public static bool TryGetDominantPveColor(
             IEnumerable<int> boardItemIds,
@@ -139,52 +142,45 @@ namespace network.common.data
             if (boardItemIds == null)
                 throw new ArgumentNullException(nameof(boardItemIds));
 
-            var tierTotals = new Dictionary<SurvivorOrbColor, int>
-            {
-                [SurvivorOrbColor.Red] = 0,
-                [SurvivorOrbColor.Green] = 0,
-                [SurvivorOrbColor.Blue] = 0
-            };
             var orbCounts = new Dictionary<SurvivorOrbColor, int>
             {
                 [SurvivorOrbColor.Red] = 0,
                 [SurvivorOrbColor.Green] = 0,
                 [SurvivorOrbColor.Blue] = 0
             };
+            int occupiedOrbCount = 0;
 
             foreach (int itemId in boardItemIds)
             {
-                if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out int tier) ||
-                    !tierTotals.ContainsKey(color))
+                if (IsRecoveryOrb(itemId))
+                {
+                    occupiedOrbCount++;
                     continue;
+                }
 
-                tierTotals[color] += tier;
+                if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _) ||
+                    !orbCounts.ContainsKey(color))
+                {
+                    continue;
+                }
+
+                occupiedOrbCount++;
                 orbCounts[color]++;
             }
 
-            int highestTierTotal = tierTotals.Values.Max();
-            if (highestTierTotal <= 0)
+            if (occupiedOrbCount < 2)
             {
                 dominantColor = SurvivorOrbColor.None;
                 return false;
             }
 
-            var tiedColors = tierTotals
-                .Where(pair => pair.Value == highestTierTotal)
+            var majority = orbCounts
+                .Where(pair => pair.Value * 2 > occupiedOrbCount)
                 .Select(pair => pair.Key)
                 .ToArray();
-            if (tiedColors.Length == 1)
+            if (majority.Length == 1)
             {
-                dominantColor = tiedColors[0];
-                return true;
-            }
-
-            var resonantTiedColors = tiedColors
-                .Where(color => IsPveResonanceReady(color, orbCounts[color]))
-                .ToArray();
-            if (resonantTiedColors.Length == 1)
-            {
-                dominantColor = resonantTiedColors[0];
+                dominantColor = majority[0];
                 return true;
             }
 
@@ -192,9 +188,6 @@ namespace network.common.data
             return false;
         }
 
-        public static bool IsPveResonanceReady(SurvivorOrbColor color, int orbCount) =>
-            color == SurvivorOrbColor.Red ? orbCount >= 3 :
-            color is SurvivorOrbColor.Green or SurvivorOrbColor.Blue && orbCount >= 2;
         public static int CalculatePveDamage(
             int attackerItemId,
             int monsterRewardItemId,
