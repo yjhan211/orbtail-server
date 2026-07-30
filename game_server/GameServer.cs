@@ -57,6 +57,9 @@ public partial class GameServer(
     private readonly TraceManager _traceManager = new();
     private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly GameEventLogManager _gameEventLogManager = new();
+    private readonly MatchSummaryFileStore _matchSummaryFileStore = new(
+        configuration["MATCH_SUMMARY_DIRECTORY"],
+        configuration.GetValue<int>("MATCH_SUMMARY_MAX_FILES", MatchSummaryFileStore.DefaultMaxSummaries));
     private readonly EncounterRevealManager _encounterRevealManager = new();
     private readonly Proto0PresenceTracker _presenceTracker = new();
     private readonly ConcurrentDictionary<long, Timer> _headlessRoundTimers = new();
@@ -601,13 +604,23 @@ public partial class GameServer(
     {
         try
         {
-            _groundItemManager.ReleaseClaimReservationsForPlayer(matchingId, botId);
             var eliminatedBot = _botPlayerManager.GetBot(matchingId, botId);
             AreaType eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
             int finalOrbTier = ResolveFinalOrbTier(matchingId, botId);
-            var affected = _manittoChainManager.EliminatePlayer(matchingId, botId, reason,
+            var transition = _manittoChainManager.TryEliminatePlayer(matchingId, botId, reason,
                 attackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
                 finalOrbTier);
+            if (!transition.Applied)
+            {
+                logger.LogDebug(
+                    "Duplicate bot elimination ignored: MatchingId={MatchingId}, BotId={BotId}, Reason={Reason}",
+                    matchingId, botId, reason);
+                return;
+            }
+
+            var affected = transition.AffectedPlayers;
+            _groundItemManager.ReleaseClaimReservationsForPlayer(matchingId, botId);
+            _gameEventLogManager.LogElimination(matchingId, botId, reason.ToString(), isBot: true);
             var matchingSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                 .ToList();
@@ -2106,6 +2119,7 @@ public partial class GameServer(
                 new InteractionChoiceService(_interactionLogManager, _manittoChainManager, _gameEventLogManager),
                 _botPlayerManager,
                 _gameEventLogManager,
+                _matchSummaryFileStore,
                 _encounterRevealManager,
                 playerId => PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerLeft, playerId),
                 playerId => PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerCompleted, playerId));
@@ -2163,6 +2177,29 @@ public partial class GameServer(
                 other.PlayerId.HasValue && other.CurrentMapSubId == matchingId))
             return;
 
+        if (_gameEventLogManager.TryBeginFinalization(matchingId))
+        {
+            const string endReason = "last_human_left";
+            DateTime endedAtUtc = DateTime.UtcNow;
+            DateTime startedAtUtc = _areaClosureManager.GetMatchingState(matchingId)?.GameStartTime ?? endedAtUtc;
+            var finalPlayerStats = _manittoChainManager.BuildGameResult(matchingId)
+                .Select(row =>
+                {
+                    var stats = _gameEventLogManager.GetSurvivorResultStats(matchingId, row.playerId);
+                    DateTime survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
+                    return new SurvivorFinalPlayerStats(
+                        row.playerId,
+                        row.eliminationRank,
+                        Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
+                        stats.KillCount,
+                        stats.TotalDamageDealt,
+                        stats.TotalRecovery);
+                })
+                .ToList();
+            _gameEventLogManager.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
+            PersistMatchSummary(matchingId, endReason, 0);
+        }
+
         GameClientSession.CleanupAbandonedMatchingRuntime(matchingId);
         _areaClosureManager.CleanupMatching(matchingId);
         _botPlayerManager.CleanupMatching(matchingId);
@@ -2191,6 +2228,22 @@ public partial class GameServer(
         logger.LogInformation(
             "Removed abandoned matching after last human player left: MatchingId={MatchingId}",
             matchingId);
+    }
+
+    private void PersistMatchSummary(long matchingId, string endReason, long winnerId)
+    {
+        try
+        {
+            var events = _gameEventLogManager.GetRecent(matchingId);
+            var summary = _matchSummaryFileStore.Save(matchingId, endReason, winnerId, events);
+            logger.LogInformation(
+                "Match summary persisted: MatchingId={MatchingId}, EndReason={EndReason}, Events={EventCount}, Directory={Directory}",
+                matchingId, summary.EndReason, summary.Events.Count, _matchSummaryFileStore.DirectoryPath);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to persist match summary: MatchingId={MatchingId}", matchingId);
+        }
     }
 
     private async Task CleanupAbandonedMatchingRedisAsync(long matchingId)
@@ -2280,6 +2333,7 @@ public partial class GameServer(
     ///     운영툴 진행 로그 매니저 (AdminEndpoints에서 events 조회용)
     /// </summary>
     public GameEventLogManager GameEventLogManager => _gameEventLogManager;
+    public MatchSummaryFileStore MatchSummaryFileStore => _matchSummaryFileStore;
 
     /// <summary>
     ///     활성 인스턴스 ID 목록 반환 (MatchingId 기준 dedup)
@@ -2682,7 +2736,6 @@ public partial class GameServer(
             ? EliminationReason.DETECTED
             : EliminationReason.SETTLEMENT_LOW_CONTRIBUTION;
 
-        _gameEventLogManager.LogElimination(matchingId, eliminatedPlayerId, reason.ToString(), isBot: true);
         ProcessBotElimination(matchingId, eliminatedPlayerId, reason, []);
         _gameEventLogManager.LogSystem(matchingId,
             $"Headless elimination applied: Round={state.RoundNumber}, Player={eliminatedPlayerId}, Reason={reason}");
@@ -2725,12 +2778,18 @@ public partial class GameServer(
                         stats.TotalRecovery);
                 })
                 .ToList();
-            _gameEventLogManager.LogMatchEnded(
-                matchingId,
-                winnerId ?? 0,
-                isGameOver ? "last_survivor" : "round_limit",
-                isGameOver ? "not_required" : "resource_ranking",
-                finalPlayerStats);
+            string endReason = isGameOver ? "last_survivor" : "round_limit";
+            if (_gameEventLogManager.TryBeginFinalization(matchingId))
+            {
+                _gameEventLogManager.LogMatchEnded(
+                    matchingId,
+                    winnerId ?? 0,
+                    endReason,
+                    isGameOver ? "not_required" : "resource_ranking",
+                    finalPlayerStats);
+                PersistMatchSummary(matchingId, endReason, winnerId ?? 0);
+            }
+
             _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId);
             _summonStoneManager.RemoveMatchingState(matchingId);
             _gameEventLogManager.Clear(matchingId);

@@ -60,6 +60,7 @@ public partial class GameClientSession : SessionBase
     private readonly InteractionChoiceService _interactionChoiceService;
     private readonly BotPlayerManager _botPlayerManager;
     private readonly GameEventLogManager _gameEventLogManager;
+    private readonly MatchSummaryFileStore _matchSummaryFileStore;
     private readonly EncounterRevealManager _encounterRevealManager;
 
     // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
@@ -146,6 +147,7 @@ public partial class GameClientSession : SessionBase
         InteractionChoiceService interactionChoiceService,
         BotPlayerManager botPlayerManager,
         GameEventLogManager gameEventLogManager,
+        MatchSummaryFileStore matchSummaryFileStore,
         EncounterRevealManager encounterRevealManager,
         Action<long> recordLeavePenalty,
         Action<long> recordGameCompletion)
@@ -172,6 +174,7 @@ public partial class GameClientSession : SessionBase
         _interactionChoiceService = interactionChoiceService;
         _botPlayerManager = botPlayerManager;
         _gameEventLogManager = gameEventLogManager;
+        _matchSummaryFileStore = matchSummaryFileStore;
         _encounterRevealManager = encounterRevealManager;
         _recordLeavePenalty = recordLeavePenalty;
         _recordGameCompletion = recordGameCompletion;

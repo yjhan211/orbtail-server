@@ -158,12 +158,6 @@ public partial class GameServer
                 }
                 else if (target.Bot != null)
                 {
-                    _botPlayerManager.MarkEnvironmentalEliminated(target.Bot, matchingId);
-                    _gameEventLogManager.LogElimination(
-                        matchingId,
-                        target.PlayerId,
-                        EliminationReason.MENTAL_ZERO.ToString(),
-                        isBot: true);
                     ProcessBotElimination(
                         matchingId,
                         target.PlayerId,

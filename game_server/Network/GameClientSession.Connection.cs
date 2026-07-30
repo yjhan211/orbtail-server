@@ -1114,9 +1114,18 @@ public partial class GameClientSession
 
     private void ProcessBotRoundElimination(long matchingId, long botId, EliminationReason reason)
     {
+        var transition = _manittoChainManager.TryEliminatePlayer(matchingId, botId, reason);
+        if (!transition.Applied)
+        {
+            Logger.LogDebug(
+                "Duplicate round bot elimination ignored: MatchingId={MatchingId}, BotId={BotId}, Reason={Reason}",
+                matchingId, botId, reason);
+            return;
+        }
+
+        var affected = transition.AffectedPlayers;
         _groundItemManager.ReleaseClaimReservationsForPlayer(matchingId, botId);
         _gameEventLogManager.LogElimination(matchingId, botId, reason.ToString(), isBot: true);
-        var affected = _manittoChainManager.EliminatePlayer(matchingId, botId, reason);
         var matchingSessions = _getSessionsByInstance(CurrentMapId, matchingId);
 
         using (var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED))

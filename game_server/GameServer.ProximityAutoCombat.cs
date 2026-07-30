@@ -670,11 +670,6 @@ public partial class GameServer
             if (!_botPlayerManager.TryFinalizeProximityAutoCombatElimination(bot, matchingId))
                 continue;
 
-            _gameEventLogManager.LogElimination(
-                matchingId,
-                bot.PlayerId,
-                EliminationReason.MENTAL_ZERO.ToString(),
-                isBot: true);
             ProcessBotElimination(matchingId, bot.PlayerId, EliminationReason.MENTAL_ZERO, activeSessions,
                 attackerPlayerId: bot.LastProximityAttackerPlayerId);
         }

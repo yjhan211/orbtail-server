@@ -696,11 +696,22 @@ public partial class GameClientSession
         AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
-        _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
-        _gameEventLogManager.LogElimination(CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: false);
         int finalOrbTier = ResolveFinalOrbTier(CurrentMapSubId, eliminatedPlayerId);
-        var affected = _manittoChainManager.EliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason,
-            resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank, finalOrbTier);
+        var transition = _manittoChainManager.TryEliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason,
+            resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
+            finalOrbTier);
+        if (!transition.Applied)
+        {
+            Logger.LogDebug(
+                "Duplicate elimination ignored: MatchingId={MatchingId}, PlayerId={PlayerId}, Reason={Reason}",
+                CurrentMapSubId, eliminatedPlayerId, reason);
+            return Task.CompletedTask;
+        }
+
+        var affected = transition.AffectedPlayers;
+        _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
+        _gameEventLogManager.LogElimination(
+            CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: eliminatedBot != null);
 
         if (eliminatedSession != null)
             eliminatedSession.DropAllInventoryAtCurrentPosition();
@@ -862,8 +873,12 @@ public partial class GameClientSession
                 matchingId, endReason);
             return;
         }
-        if (allSessions.Any(session => session.IsGameEnded))
+        if (allSessions.Any(session => session.IsGameEnded) ||
+            !_gameEventLogManager.TryBeginFinalization(matchingId))
+        {
+            Logger.LogDebug("Duplicate match finalization ignored: MatchingId={MatchingId}", matchingId);
             return;
+        }
 
         var players = BuildGameResultPlayers(allSessions, matchingId, winnerId);
         _gameEventLogManager.LogMatchEnded(
@@ -878,6 +893,7 @@ public partial class GameClientSession
                 player.KillCount,
                 player.TotalDamageDealt,
                 player.TotalRecovery)).ToList());
+        PersistMatchSummary(matchingId, endReason, winnerId);
 
         var resultChunks = GameResultPacketChunker.CreateGameResultChunks(winnerId, isTimeout, players);
         foreach (var resultChunk in resultChunks)
@@ -926,6 +942,22 @@ public partial class GameClientSession
         // 매치 전송용 봇/버프 데이터는 결과를 보낸 뒤 더 이상 재접속에 필요하지 않다.
         _botPlayerManager.CleanupMatching(matchingId);
         _ = CleanupRedisMatchingTransientStateAsync(matchingId);
+    }
+
+    private void PersistMatchSummary(long matchingId, string endReason, long winnerId)
+    {
+        try
+        {
+            var events = _gameEventLogManager.GetRecent(matchingId);
+            var summary = _matchSummaryFileStore.Save(matchingId, endReason, winnerId, events);
+            Logger.LogInformation(
+                "Match summary persisted: MatchingId={MatchingId}, EndReason={EndReason}, Events={EventCount}, Directory={Directory}",
+                matchingId, summary.EndReason, summary.Events.Count, _matchSummaryFileStore.DirectoryPath);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to persist match summary: MatchingId={MatchingId}", matchingId);
+        }
     }
 
     private List<GameResultPlayerInfo> BuildGameResultPlayers(List<GameClientSession> allSessions, long matchingId,
@@ -1948,8 +1980,11 @@ public partial class GameClientSession
             if (session.IsEliminated) continue;
 
             // 체인 매니저에 탈락 등록 (chain break 브로드캐스트는 생략 — 어차피 즉시 게임 종료)
-            _manittoChainManager.EliminatePlayer(CurrentMapSubId, session.PlayerId.Value, EliminationReason.RACE_LOST);
-            session.ManittoStatus = ManittoStatus.SPECTATING;
+            _ = ProcessElimination(
+                session.PlayerId.Value,
+                EliminationReason.RACE_LOST,
+                causePlayerId: winnerId,
+                deferGameOver: true);
         }
 
         // 완주자 본인은 ELIMINATED가 아니므로 별도 처리 없음 (BuildGameResult에서 정상 노출)
