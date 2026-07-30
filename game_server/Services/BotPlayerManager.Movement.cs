@@ -819,6 +819,17 @@ public partial class BotPlayerManager
 
         bool needsGuardianOrb = bot.EquippedBattleItemId <= 0;
 
+        // 복도는 통로다. 잔상 분포로 목적지를 정할 수 있으면 그것이 우선이고,
+        // 못 정할 때만 가장 가까운 방으로 나간다. 이전에는 복도 탈출이 먼저 걸려
+        // 잔상 사냥 판단에 도달하지 못했고, 봇이 잔상 없는 방과 복도를 왕복했다
+        // (2026-07-30 6판 계측: 봇 1인당 잔상 타격 29회 대 사람 122회).
+        if (bot.CurrentArea.IsCorridor() && !needsGuardianOrb &&
+            Config.MONSTER_SUMMON_ECONOMY_ENABLED &&
+            TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, inventoryManager, pveTargets))
+        {
+            return;
+        }
+
         if (bot.CurrentArea.IsCorridor() &&
             TryStartCorridorExitPath(bot, matchingId, mapId, closureManager))
         {
@@ -988,7 +999,9 @@ public partial class BotPlayerManager
         InGameInventoryManager inventoryManager,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
-        if (bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor() || pveTargets.Count == 0)
+        // 복도에서도 목적지를 고를 수 있어야 한다. 후보는 방으로만 한정되므로
+        // 복도에 서 있는 봇은 "현재 지역 사냥" 분기를 타지 않고 경로만 받는다.
+        if (bot.CurrentArea == AreaType.None || pveTargets.Count == 0)
             return false;
 
         var closure = closureManager.GetClientStateSnapshot(matchingId);
