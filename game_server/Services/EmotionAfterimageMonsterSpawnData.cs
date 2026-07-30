@@ -14,10 +14,11 @@ internal static class EmotionAfterimageMonsterSpawnData
     private const int HopeT1 = 107000010;
     private const int ForgetT1 = 107000020;
     private const int DespairT1 = 107000030;
-    private const int ComfortT1 = 107000040;
     private const int PackSize = 9;
     private const int DefaultRoomAffinity = HopeT1;
-    private static readonly int[] AllAffinityItemIds = [HopeT1, ForgetT1, DespairT1, ComfortT1];
+    // Recovery remains a player-board option, but it has no combat identity for
+    // afterimages. Monster packs only spawn the three attack affinities.
+    private static readonly int[] AllAffinityItemIds = [HopeT1, ForgetT1, DespairT1];
 
     public static readonly MonsterDefinition[] Definitions = CreateDefinitions();
     private static readonly int[] WavePackSpawnBudgets = [3, 3, 2, 2, 1];
@@ -115,7 +116,7 @@ internal static class EmotionAfterimageMonsterSpawnData
                     // Preserve the authored cells as separate homes. Using only their
                     // average made all nine bodies appear to spawn from one point before
                     // the formation logic could spread them.
-                    Vector3f memberHome = CellToWorld(packCells[memberIndex % packCells.Count].x,
+                    Vector3f memberHome = CellToWorld(MapId.School, packCells[memberIndex % packCells.Count].x,
                         packCells[memberIndex % packCells.Count].y);
                     definitions.Add(new MonsterDefinition(
                         id++, MapId.School, area, memberHome,
@@ -152,7 +153,7 @@ internal static class EmotionAfterimageMonsterSpawnData
             {
                 int anchorId = nextPackId++;
                 definitions.Add(new MonsterDefinition(
-                    id++, MapId.School, AreaType.Corridor, CellToWorld(cell.Item1, cell.Item2),
+                    id++, MapId.School, AreaType.Corridor, CellToWorld(MapId.School, cell.Item1, cell.Item2),
                     MaxHealth: 12,
                     AttackDamage: 1,
                     AttackRange: 0.65f,
@@ -199,6 +200,6 @@ internal static class EmotionAfterimageMonsterSpawnData
             (values[index], values[swapIndex]) = (values[swapIndex], values[index]);
         }
     }
-    private static Vector3f CellToWorld(int cellX, int cellY) =>
-        new((cellX - cellY) / 2f, (cellX + cellY) / 4f, 0f);
+    private static Vector3f CellToWorld(MapId mapId, int cellX, int cellY) =>
+        MapCoordinateConverter.CellToWorld(mapId, new Cell(cellX, cellY));
 }

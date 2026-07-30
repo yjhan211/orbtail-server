@@ -91,12 +91,8 @@ public static class ProximityCombatLineOfSight
         return true;
     }
 
-    public static Cell WorldPositionToCell(Vector3f position)
-    {
-        int cellX = (int)Math.Floor(position.X + 2f * position.Y);
-        int cellY = (int)Math.Floor(2f * position.Y - position.X);
-        return new Cell(cellX, cellY);
-    }
+    public static Cell WorldPositionToCell(MapId mapId, Vector3f position) =>
+        MapCoordinateConverter.WorldToCell(mapId, position);
 
     private static bool IsTransparent(MapId mapId, int x, int y)
     {

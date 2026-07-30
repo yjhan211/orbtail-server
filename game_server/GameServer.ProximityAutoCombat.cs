@@ -96,7 +96,7 @@ public partial class GameServer
         ProcessSurvivorOrbRecovery(matchingId, actors, matchingSessions, matchingBots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, matchingSessions);
         var aliveMonsterTargets = AdvanceEmotionAfterimageMonsters(
-            matchingId, matchingSessions, matchingBots, actors, nowUtc);
+            matchingId, matchingSessions, matchingBots, nowUtc);
         var monsterTargetIds = aliveMonsterTargets
             .Select(target => -(long)target.MonsterId)
             .ToHashSet();
@@ -761,7 +761,7 @@ public partial class GameServer
         if (mapId == MapId.None || committedArea == AreaType.None || position == null)
             return false;
 
-        var cell = ProximityCombatLineOfSight.WorldPositionToCell(position);
+        var cell = ProximityCombatLineOfSight.WorldPositionToCell(mapId, position);
         var resolvedArea = GameMapData.GetCurrentArea(mapId, cell);
         if (resolvedArea == AreaType.None || resolvedArea != committedArea ||
             !GameMapData.IsMoveablePosition(mapId, cell))

@@ -257,7 +257,7 @@ public class EmotionAfterimageMonsterManagerTests
         foreach (int attackAffinity in new[] { 107000010, 107000020, 107000030 })
             Assert.True(affinityByArea.Values.Count(affinities => affinities.Contains(attackAffinity)) >= 2,
                 $"Attack affinity {attackAffinity} must be reachable in at least two areas.");
-        Assert.Contains(affinityByArea.Values, affinities => affinities.Contains(107000040));
+        Assert.DoesNotContain(affinityByArea.Values, affinities => affinities.Contains(107000040));
     }
 
     [Fact]
