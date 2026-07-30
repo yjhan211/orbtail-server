@@ -3,6 +3,7 @@ using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using network.common;
 using network.common.data.helpers;
 using network.core;
 using network.helpers;
@@ -28,6 +29,7 @@ public class UserServer(
     private CancellationTokenSource? _cts;
     private Task? _leaveUserTask;
     private IMatchingManager? _matchingManager;
+    private INatsClient? _matchingLifecycleNatsClient;
 
     public Task StartAsync(CancellationToken ct)
     {
@@ -54,6 +56,7 @@ public class UserServer(
         await (_cts?.CancelAsync() ?? Task.CompletedTask);
         if (_leaveUserTask != null) await _leaveUserTask;
         _matchingManager?.Dispose();
+        _matchingLifecycleNatsClient?.Close();
         _cts?.Dispose();
         logger.LogInformation("UserServer stopped");
     }
@@ -69,11 +72,32 @@ public class UserServer(
         GameDataHelper.Initialize();
         MapHelper.Initialize(serverConfig.GameServerNum);
 
-        // MatchingManager 초기화
-        natsClientFactory.Create();
+        // MatchingManager and lifecycle subscriptions
         _matchingManager = new MatchingManager(logger, cacheHelper, redLock, GetSession);
+        _matchingLifecycleNatsClient = natsClientFactory.Create();
+        _matchingLifecycleNatsClient.Subscribe(MatchingLifecycleSubjects.PlayerLeft,
+            (_, body) => HandleMatchingLifecycleMessage(body, completed: false));
+        _matchingLifecycleNatsClient.Subscribe(MatchingLifecycleSubjects.PlayerCompleted,
+            (_, body) => HandleMatchingLifecycleMessage(body, completed: true));
 
         logger.LogInformation("Services initialized successfully");
+    }
+
+    private void HandleMatchingLifecycleMessage(byte[] body, bool completed)
+    {
+        if (body.Length != sizeof(long))
+        {
+            logger.LogWarning("Invalid matching lifecycle message length: {Length}", body.Length);
+            return;
+        }
+
+        if (_matchingManager == null) return;
+
+        long playerId = BitConverter.ToInt64(body, 0);
+        if (completed)
+            _ = _matchingManager.RecordGameCompletionAsync(playerId);
+        else
+            _ = _matchingManager.RecordLeaveAsync(playerId);
     }
 
     private void StartNetworkService()
@@ -88,7 +112,6 @@ public class UserServer(
     {
         try
         {
-            natsClientFactory.Create();
 
             _ = new GameSession(
                 token,

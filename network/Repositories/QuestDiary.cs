@@ -21,6 +21,11 @@ public partial class QuestDiary
 
     public async Task Save(ICacheHelper cacheHelper)
     {
+        if (QuestDict.Count == 0)
+        {
+            await cacheHelper.HashDeleteAsync(HashKey, PlayerId);
+            return;
+        }
         await cacheHelper.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
     }
 

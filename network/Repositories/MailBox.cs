@@ -31,6 +31,11 @@ public partial class MailBox
 
     public async Task Save(ICacheHelper cacheHelper)
     {
+        if (MailDict.Count == 0)
+        {
+            await cacheHelper.HashDeleteAsync(HashKey, PlayerId);
+            return;
+        }
         await cacheHelper.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
     }
 

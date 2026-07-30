@@ -35,8 +35,7 @@ public partial class PlayerInfo
 
         var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
 
-        playerInfo.ObjectInfo = await GameObjectInfo.Load(cacheHelper, ObjectType.PLAYER, playerId) ??
-                                new GameObjectInfo(playerId);
+        playerInfo.ObjectInfo = new GameObjectInfo(playerId);
         playerInfo.InventoryInfo = await InventoryInfo.Load(cacheHelper, InventoryOwnerType.PLAYER, playerId) ??
                                    new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
         playerInfo.QuestDiary = await QuestDiary.Load(cacheHelper, playerId);

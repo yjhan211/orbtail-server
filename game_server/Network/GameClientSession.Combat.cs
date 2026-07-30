@@ -261,12 +261,6 @@ public partial class GameClientSession
             ? DateTime.UtcNow + ExploreMoveGracePeriod
             : DateTime.MinValue;
 
-        var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
-        if (playerInfo != null)
-        {
-            playerInfo.State = msg.State;
-            await playerInfo.Save(CacheHelper);
-        }
 
         // 같은 Area의 다른 플레이어들에게 상태 브로드캐스트
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
@@ -398,12 +392,6 @@ public partial class GameClientSession
 
         // 서버 측 상태 저장
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-        var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
-        if (playerInfo != null)
-        {
-            playerInfo.State = state;
-            await playerInfo.Save(CacheHelper);
-        }
 
         // 같은 Area의 모든 플레이어에게 상태 브로드캐스트 (본인 포함)
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);

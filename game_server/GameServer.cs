@@ -64,6 +64,7 @@ public partial class GameServer(
     private readonly ConcurrentDictionary<long, object> _survivorSettlementLocks = new();
     private long _adminBotOnlyMatchingIdSeed = 9_000_000;
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
+    private INatsClient? _matchingLifecycleNatsClient;
 
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
@@ -152,6 +153,7 @@ public partial class GameServer(
 
         _cts.Dispose();
 
+        _matchingLifecycleNatsClient?.Close();
         logger.LogInformation("Game server stopped.");
     }
 
@@ -165,6 +167,7 @@ public partial class GameServer(
         try
         {
             natsClientFactory.Initialize(natsEndpoint);
+            _matchingLifecycleNatsClient = natsClientFactory.Create();
             // 서버 환경에서 CSV 파일 경로 설정
             // Dev: 소스 디렉토리에서 직접 읽기 (Docker 볼륨 마운트 대응)
             string networkSourcePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..",
@@ -2011,12 +2014,25 @@ public partial class GameServer(
         }
     }
 
+
+    private void PublishMatchingLifecycle(string subject, long playerId)
+    {
+        try
+        {
+            _matchingLifecycleNatsClient?.Publish(subject, BitConverter.GetBytes(playerId));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Matching lifecycle publish failed: Subject={Subject}, PlayerId={PlayerId}",
+                subject, playerId);
+        }
+    }
+
     private void OnClientSessionCreated(UserToken token)
     {
         try
         {
             var redLockFactory = cacheHelper.GetRedLockFactory();
-            natsClientFactory.Create();
             _ = new GameClientSession(
                 token,
                 redLockFactory,
@@ -2043,7 +2059,9 @@ public partial class GameServer(
                 new InteractionChoiceService(_interactionLogManager, _manittoChainManager, _gameEventLogManager),
                 _botPlayerManager,
                 _gameEventLogManager,
-                _encounterRevealManager);
+                _encounterRevealManager,
+                playerId => PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerLeft, playerId),
+                playerId => PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerCompleted, playerId));
 
             logger.LogInformation("Game client session created");
         }
@@ -2132,14 +2150,8 @@ public partial class GameServer(
     {
         try
         {
+            await cacheHelper.KeyDeleteAsync(MatchingHandoffRedisKeys.Key(matchingId));
             await cacheHelper.HashDeleteAsync("matching_bots", matchingId);
-            string prefix = $"{matchingId}:";
-            var fields = (await cacheHelper.HashGetAllAsync("matching_player_buffs"))
-                .Select(entry => entry.Name.ToString())
-                .Where(field => field.StartsWith(prefix, StringComparison.Ordinal))
-                .ToArray();
-            foreach (string field in fields)
-                await cacheHelper.HashDeleteAsync("matching_player_buffs", field);
         }
         catch (Exception ex)
         {

@@ -26,6 +26,7 @@ public interface ICacheHelper
     public Task<long> ListLengthAsync(string key, int db = -1);
     public Task<long> StringIncrementAsync(string key, int db = -1);
     public Task<bool> KeyDeleteAsync(string key, int db = -1);
+    public Task<bool> KeyExpireAsync(string key, TimeSpan? expiry, int db = -1);
     public Task<bool> SortedSetAddAsync(string key, byte[] value, double score, int db = -1);
     public Task<byte[][]> SortedSetRangeByScoreAsync(string key, double start = double.NegativeInfinity, double stop = double.PositiveInfinity, int db = -1);
     public Task<bool> SortedSetRemoveAsync(string key, byte[] value, int db = -1);

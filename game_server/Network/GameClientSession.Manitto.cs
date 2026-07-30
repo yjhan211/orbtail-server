@@ -998,18 +998,10 @@ public partial class GameClientSession
     {
         try
         {
+            await CacheHelper.KeyDeleteAsync(MatchingHandoffRedisKeys.Key(matchingId));
             await CacheHelper.HashDeleteAsync("matching_bots", matchingId);
-            string prefix = $"{matchingId}:";
-            var fields = (await CacheHelper.HashGetAllAsync(PlayerBuffInfoKey))
-                .Select(entry => entry.Name.ToString())
-                .Where(field => field.StartsWith(prefix, StringComparison.Ordinal))
-                .ToArray();
-            foreach (string field in fields)
-                await CacheHelper.HashDeleteAsync(PlayerBuffInfoKey, field);
 
-            Logger.LogInformation(
-                "Redis matching handoff 정리: MatchingId={MatchingId}, BuffFields={BuffFieldCount}",
-                matchingId, fields.Length);
+            Logger.LogInformation("Redis matching handoff cleaned: MatchingId={MatchingId}", matchingId);
         }
         catch (Exception ex)
         {
