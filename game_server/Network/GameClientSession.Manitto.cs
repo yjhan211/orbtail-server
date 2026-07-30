@@ -823,6 +823,13 @@ public partial class GameClientSession
 
     internal void TryEndSurvivorMatch(long winnerId, string criterion)
     {
+        if (DevFlags.DisableGameEnd)
+        {
+            Logger.LogWarning(
+                "[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): TryEndSurvivorMatch winner={WinnerId}, criterion={Criterion}",
+                winnerId, criterion);
+            return;
+        }
         if (_isGameEnded || CurrentMapSubId <= 0)
             return;
 
@@ -848,6 +855,13 @@ public partial class GameClientSession
     private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout, long matchingId,
         string endReason = "last_survivor", string tieBreakCriterion = "not_required")
     {
+        if (DevFlags.DisableGameEnd)
+        {
+            Logger.LogWarning(
+                "[DEV] 게임 종료 결과 전송 차단됨 (DISABLE_GAME_END=1): MatchingId={MatchingId}, reason={Reason}",
+                matchingId, endReason);
+            return;
+        }
         if (allSessions.Any(session => session.IsGameEnded))
             return;
 

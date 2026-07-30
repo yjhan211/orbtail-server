@@ -8,8 +8,13 @@ namespace game_server.services;
 /// </summary>
 public static class MatchStartGate
 {
-    private const int MatchCapacity = 8;
+    private const int DefaultMatchCapacity = 8;
     private static readonly ConcurrentDictionary<long, State> States = new();
+
+    public static bool IsSoloMapValidationEnabled =>
+        Environment.GetEnvironmentVariable("SOLO_MAP_VALIDATION") == "1";
+
+    private static int MatchCapacity => IsSoloMapValidationEnabled ? 1 : DefaultMatchCapacity;
 
     public static void RegisterHumanPlayer(long matchingId, long playerId, int botCount)
     {

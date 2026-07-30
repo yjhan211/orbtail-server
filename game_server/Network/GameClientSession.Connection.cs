@@ -213,7 +213,7 @@ public partial class GameClientSession
             // The standalone submission client is only ready after the full initial snapshot
             // has been sent. Starting the countdown earlier lets bots consume finite room stock
             // while the human client is still loading the match.
-            if (connectedBotCount == 7)
+            if (connectedBotCount == 7 || MatchStartGate.IsSoloMapValidationEnabled)
             {
                 MatchStartGate.MarkHumanReady(msg.MatchingId, PlayerId.Value);
                 SendMatchStartCountdown(msg.MatchingId);

@@ -20,10 +20,13 @@ public sealed class EmotionAfterimageMonsterManager
 
     public void InitializeMatching(long matchingId)
     {
-        if (matchingId <= 0) return;
+        if (matchingId <= 0 || IsSoloMapValidationEnabled) return;
         _matchingStates.GetOrAdd(matchingId,
             id => new MatchingMonsterState(EmotionAfterimageMonsterSpawnData.CreateDefinitionsForMatching(id)));
     }
+
+    private static bool IsSoloMapValidationEnabled =>
+        Environment.GetEnvironmentVariable("SOLO_MAP_VALIDATION") == "1";
 
     public void SetMatchingStateRemovedCallback(Action<long> callback) =>
         _matchingStateRemoved = callback ?? throw new ArgumentNullException(nameof(callback));

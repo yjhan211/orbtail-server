@@ -30,10 +30,14 @@ public class MatchingManager : IMatchingManager
     private const int DefaultPlayersPerMatch = 1;
     private const int DefaultGamePlayersPerMatch = 8;
 
-    private static int PlayersPerMatch => IsTwoPlayerTestMatch ? 2 : DefaultPlayersPerMatch;
-    private static int GamePlayersPerMatch => DefaultGamePlayersPerMatch;
+    private static int PlayersPerMatch => IsSoloMapValidation ? 1 : IsTwoPlayerTestMatch ? 2 : DefaultPlayersPerMatch;
+    private static int GamePlayersPerMatch => IsSoloMapValidation
+        ? DefaultPlayersPerMatch
+        : DefaultGamePlayersPerMatch;
 
     private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
+    private static bool IsSoloMapValidation =>
+        Environment.GetEnvironmentVariable("SOLO_MAP_VALIDATION") == "1";
     private static JobTitle? ForcedPlayerJob => ParseForcedPlayerJob();
 
     private static long _botIdCounter; // 遊?PlayerId (?뚯닔)
@@ -275,7 +279,7 @@ public class MatchingManager : IMatchingManager
     /// </summary>
     private async Task CheckBotFillAsync()
     {
-        if (IsTwoPlayerTestMatch) return;
+        if (IsTwoPlayerTestMatch || IsSoloMapValidation) return;
 
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long botCutoff = now - BotFillTimeoutSeconds;
@@ -747,7 +751,7 @@ public class MatchingManager : IMatchingManager
         playerInfo.ObjectInfo.MapId = mapId;
         playerInfo.ObjectInfo.MapSubId = matchingId;
         playerInfo.ObjectInfo.Cell = Cell.Clone(spawnPosition);
-        playerInfo.ObjectInfo.Position = CellToWorldPosition(spawnPosition);
+        playerInfo.ObjectInfo.Position = CellToWorldPosition(mapId, spawnPosition);
         playerInfo.ObjectInfo.Velocity = new Vector3f(0f, 0f, 0f);
         playerInfo.ObjectInfo.MoveTimestamp = DateTime.UtcNow;
         string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
@@ -774,12 +778,8 @@ public class MatchingManager : IMatchingManager
             data.PlayerId, targetPlayerId, myJobTitle, targetJobTitle);
     }
 
-    private static Vector3f CellToWorldPosition(Cell cell)
-    {
-        float wX = (cell.X - cell.Y) / 2f;
-        float wY = (cell.X + cell.Y) / 4f;
-        return new Vector3f(wX, wY, 0f);
-    }
+    private static Vector3f CellToWorldPosition(MapId mapId, Cell cell) =>
+        MapCoordinateConverter.CellToWorld(mapId, cell);
 
     /// <summary>
     ///     ?댄깉 ?섎꼸???湲??쒓컙 議고쉶: ?댄깉 ?잛닔 횞 30珥?(理쒕? 300珥?.
