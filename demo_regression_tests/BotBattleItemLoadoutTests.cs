@@ -89,6 +89,122 @@ public sealed class BotBattleItemLoadoutTests
         Assert.Equal(107000010, merge.InputItemId);
         Assert.Equal(output, merge.OutputItemId);
     }
+    [Fact]
+    public void BotDoesNotDestroyAnOrbWhileAValidMergeExists()
+    {
+        const long matchingId = 206;
+        const long botPlayerId = -20601;
+        var inventoryManager = CreateFullOrbBoard(
+            matchingId,
+            botPlayerId,
+            107000010,
+            107000010,
+            107000021,
+            107000032,
+            107000040,
+            107000012);
+
+        var decision = BotBattleItemLoadout.SelectOverflowDestroyCandidate(
+            inventoryManager.GetPlayerInventory(matchingId, botPlayerId),
+            corruption: 0,
+            maxCorruption: 420);
+
+        Assert.Null(decision);
+    }
+
+    [Fact]
+    public void BotDestroysRecoveryOrbFirstWhileHealthy()
+    {
+        const long matchingId = 206;
+        const long botPlayerId = -20602;
+        var inventoryManager = CreateFullOrbBoard(
+            matchingId,
+            botPlayerId,
+            107000012,
+            107000021,
+            107000032,
+            107000040,
+            107000010,
+            107000020);
+
+        var decision = BotBattleItemLoadout.SelectOverflowDestroyCandidate(
+            inventoryManager.GetPlayerInventory(matchingId, botPlayerId),
+            corruption: 0,
+            maxCorruption: 420);
+
+        Assert.NotNull(decision);
+        Assert.Equal(107000040, decision.ItemId);
+        Assert.Equal(SurvivorOrbColor.Recovery, decision.Color);
+    }
+
+    [Fact]
+    public void BotPreservesRecoveryOrbWhenCorruptionIsHigh()
+    {
+        const long matchingId = 206;
+        const long botPlayerId = -20603;
+        var inventoryManager = CreateFullOrbBoard(
+            matchingId,
+            botPlayerId,
+            107000012,
+            107000021,
+            107000032,
+            107000040,
+            107000010,
+            107000020);
+
+        var decision = BotBattleItemLoadout.SelectOverflowDestroyCandidate(
+            inventoryManager.GetPlayerInventory(matchingId, botPlayerId),
+            corruption: 380,
+            maxCorruption: 420);
+
+        Assert.NotNull(decision);
+        Assert.NotEqual(SurvivorOrbColor.Recovery, decision.Color);
+    }
+
+    [Fact]
+    public void BotProtectsTheDominantResonanceColor()
+    {
+        const long matchingId = 206;
+        const long botPlayerId = -20604;
+        var inventoryManager = CreateFullOrbBoard(
+            matchingId,
+            botPlayerId,
+            107000010,
+            107000011,
+            107000012,
+            107000012,
+            107000020,
+            107000040);
+
+        var decision = BotBattleItemLoadout.SelectOverflowDestroyCandidate(
+            inventoryManager.GetPlayerInventory(matchingId, botPlayerId),
+            corruption: 350,
+            maxCorruption: 420);
+
+        Assert.NotNull(decision);
+        Assert.NotEqual(SurvivorOrbColor.Red, decision.Color);
+    }
+
+    private static InGameInventoryManager CreateFullOrbBoard(
+        long matchingId,
+        long botPlayerId,
+        params int[] itemIds)
+    {
+        var inventoryManager = new InGameInventoryManager();
+        inventoryManager.Initialize();
+        foreach (int itemId in itemIds)
+        {
+            Assert.True(inventoryManager.TryAddItemWithCapacity(
+                matchingId,
+                botPlayerId,
+                itemId,
+                6,
+                out _));
+        }
+
+        return inventoryManager;
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

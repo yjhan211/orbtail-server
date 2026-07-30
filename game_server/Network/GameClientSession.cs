@@ -377,6 +377,8 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SUMMON_ORB,
             async bytes => await HandleMessage<C_TO_G_SUMMON_ORB>(bytes, HandleSummonOrb));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DESTROY_ORB,
+            async bytes => await HandleMessage<C_TO_G_DESTROY_ORB>(bytes, HandleDestroyOrb));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT,
             async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,

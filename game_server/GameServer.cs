@@ -307,6 +307,7 @@ public partial class GameServer(
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 ProcessSurvivorResourceTickForMatching(matchingId, activeSessions);
+                ProcessPassiveSummonStoneIncomeForMatching(matchingId, activeSessions);
 
                 // 봇 미션 처리(부품 회수/결합/RNG 채집)는 별도 1초 타이머(ProcessBotMission)에서 수행.
 
@@ -364,6 +365,52 @@ public partial class GameServer(
     }
 
     /// <summary>프로토 0 기척: 인스턴스의 모든 플레이어(인간 + 생존 봇) 영역 맵.</summary>
+    private void ProcessPassiveSummonStoneIncomeForMatching(
+        long matchingId,
+        List<GameClientSession> activeSessions)
+    {
+        int awardedPlayerCount = 0;
+        foreach (var session in activeSessions)
+        {
+            if (session.CurrentMapSubId != matchingId || !session.PlayerId.HasValue)
+                continue;
+
+            var state = _summonStoneManager.AdvancePassiveIncome(
+                matchingId,
+                session.PlayerId.Value,
+                ResourceTickIntervalSeconds,
+                out int awardedStones);
+            if (awardedStones <= 0)
+                continue;
+
+            var source = session.LastValidatedPosition;
+            session.SendSummonStoneState(
+                awardedStones,
+                source?.X ?? 0f,
+                source?.Y ?? 0f);
+            awardedPlayerCount++;
+        }
+
+        int awardedBotCount = 0;
+        foreach (var bot in _botPlayerManager.GetBots(matchingId).Where(candidate => !candidate.IsEliminated))
+        {
+            _summonStoneManager.AdvancePassiveIncome(
+                matchingId,
+                bot.PlayerId,
+                ResourceTickIntervalSeconds,
+                out int awardedStones);
+            if (awardedStones > 0)
+                awardedBotCount++;
+        }
+
+        if (awardedPlayerCount > 0 || awardedBotCount > 0)
+            logger.LogInformation(
+                "Passive summon stone income granted: MatchingId={MatchingId}, Players={PlayerCount}, Bots={BotCount}, Amount={Amount}",
+                matchingId,
+                awardedPlayerCount,
+                awardedBotCount,
+                SummonStoneManager.PassiveIncomeAmount);
+    }
     private Dictionary<long, AreaType> BuildPlayerAreas(long matchingId, List<GameClientSession> activeSessions)
     {
         var areas = new Dictionary<long, AreaType>();

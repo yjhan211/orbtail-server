@@ -3,6 +3,7 @@ using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 using network.packets;
 
@@ -79,6 +80,71 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
+    private Task HandleDestroyOrb(C_TO_G_DESTROY_ORB request)
+    {
+        if (!PlayerId.HasValue)
+            return Task.CompletedTask;
+
+        long playerId = PlayerId.Value;
+        if (IsRoundActionLocked(out _))
+        {
+            SendDestroyOrbResult(false, ErrorCode.INVALID_GAME_STATE, request.ItemUid, 0,
+                _summonStoneManager.GetSnapshot(CurrentMapSubId, playerId));
+            return Task.CompletedTask;
+        }
+
+        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, playerId);
+        var item = inventory.GetItem(request.ItemUid);
+        if (item == null || item.Count <= 0)
+        {
+            SendDestroyOrbResult(false, ErrorCode.ITEM_NOT_FOUND, request.ItemUid, 0,
+                _summonStoneManager.GetSnapshot(CurrentMapSubId, playerId));
+            return Task.CompletedTask;
+        }
+
+        int tier;
+        bool isDestroyableOrb =
+            SurvivorOrbData.TryGetColorAndTier(item.ItemId, out _, out tier) ||
+            SurvivorOrbData.TryGetRecoveryTier(item.ItemId, out tier);
+        if (!isDestroyableOrb)
+        {
+            SendDestroyOrbResult(false, ErrorCode.ITEM_NOT_USABLE, request.ItemUid, 0,
+                _summonStoneManager.GetSnapshot(CurrentMapSubId, playerId));
+            return Task.CompletedTask;
+        }
+
+        if (!_inGameInventoryManager.TryRemoveItem(
+                CurrentMapSubId, playerId, request.ItemUid, 1, out var removedItem) ||
+            removedItem == null)
+        {
+            SendDestroyOrbResult(false, ErrorCode.ITEM_NOT_OWNED, request.ItemUid, 0,
+                _summonStoneManager.GetSnapshot(CurrentMapSubId, playerId));
+            return Task.CompletedTask;
+        }
+
+        int refundedStones = Math.Clamp(tier, 1, 3);
+        var state = _summonStoneManager.AddStones(CurrentMapSubId, playerId, refundedStones);
+        SendInGameInventoryUpdate(removedItem);
+        SendDestroyOrbResult(true, ErrorCode.SUCCESS, request.ItemUid, refundedStones, state);
+
+        _gameEventLogManager.LogSurvivorOrbBoardTransition(
+            CurrentMapSubId,
+            playerId,
+            inventory.GetAllItems(),
+            inventory.GetEquippedBattleItem()?.ItemId ?? 0,
+            CurrentArea.ToString(),
+            "destroy",
+            isBot: false);
+        Logger.LogInformation(
+            "Orb destroyed for summon stones: MatchingId={MatchingId}, PlayerId={PlayerId}, ItemId={ItemId}, ItemUid={ItemUid}, Tier={Tier}, RefundedStones={RefundedStones}",
+            CurrentMapSubId,
+            playerId,
+            item.ItemId,
+            request.ItemUid,
+            tier,
+            refundedStones);
+        return Task.CompletedTask;
+    }
     internal void SendSummonStoneState(int awardedStones = 0, float awardSourceX = 0f, float awardSourceY = 0f)
     {
         if (!PlayerId.HasValue || CurrentMapSubId <= 0)
@@ -96,6 +162,20 @@ public partial class GameClientSession
         Send(packet);
     }
 
+    private void SendDestroyOrbResult(bool success, ErrorCode errorCode, long itemUid,
+        int refundedStones, SummonStoneSnapshot state)
+    {
+        using var packet = Packet.Create((int)Protocol.G_TO_C_DESTROY_ORB_RESULT, PlayerId ?? 0);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_DESTROY_ORB_RESULT
+        {
+            Success = success,
+            ErrorCode = errorCode,
+            ItemUid = itemUid,
+            RefundedStones = refundedStones,
+            State = ToNetworkState(state)
+        }));
+        Send(packet);
+    }
     private void SendSummonOrbResult(bool success, ErrorCode errorCode, int summonedItemId,
         long summonedItemUid, SummonStoneSnapshot state)
     {

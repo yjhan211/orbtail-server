@@ -37,4 +37,20 @@ namespace network.common.data.models
         [Key("summonedItemUid")] public long SummonedItemUid { get; set; }
         [Key("state")] public SummonStoneStateInfo State { get; set; }
     }
+
+    [MessagePackObject]
+    public sealed class C_TO_G_DESTROY_ORB : IMessagePackObject
+    {
+        [Key("itemUid")] public long ItemUid { get; set; }
+    }
+
+    [MessagePackObject]
+    public sealed class G_TO_C_DESTROY_ORB_RESULT : IMessagePackObject
+    {
+        [Key("success")] public bool Success { get; set; }
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("itemUid")] public long ItemUid { get; set; }
+        [Key("refundedStones")] public int RefundedStones { get; set; }
+        [Key("state")] public SummonStoneStateInfo State { get; set; }
+    }
 }
