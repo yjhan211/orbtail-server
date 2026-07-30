@@ -187,6 +187,20 @@ public static class BotBattleItemLoadout
         return new BotOrbDestroyDecision(item.ItemUid, item.ItemId, tier, color, keepScore);
     }
 
+    /// <summary>
+    /// A third copy of the same orb means merging two of them still leaves one behind,
+    /// so the colour keeps its resonance pair once the merged result lands.
+    /// Waiting for a full board never fires in practice: bots hold five or six orbs
+    /// (2026-07-30, five matches — bots merged 0 times while players merged 39).
+    /// </summary>
+    public static bool HasResonanceSafeMerge(IReadOnlyCollection<InGameItemInfo> items)
+    {
+        return items
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
+            .GroupBy(itemId => itemId)
+            .Any(group => group.Count() >= 3 && SurvivorOrbData.CanMerge(group.Key, group.Key));
+    }
+
     private static bool HasValidMerge(IReadOnlyCollection<InGameItemInfo> items)
     {
         var itemIds = items
