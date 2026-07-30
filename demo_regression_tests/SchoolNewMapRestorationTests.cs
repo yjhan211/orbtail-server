@@ -80,11 +80,19 @@ public class SchoolNewMapRestorationTests
         Assert.True(GameMapData.GetCurrentArea(MapId.School, corridor).IsCorridor());
         Assert.True(GameMapData.IsMoveablePosition(MapId.School, corridor));
 
-        Assert.DoesNotContain(
+        Assert.Contains(
             GameMapData.GetMapRegions(MapId.School),
             region => region.RegionType.Equals("obstacle", StringComparison.OrdinalIgnoreCase));
+        // 벽은 obstacle CSV가 막고, 고사실 문 앞의 비워 둔 셀은 통과 가능해야 한다.
+        Assert.False(GameMapData.IsMoveablePosition(MapId.School, new Cell(118, 113)));
+        Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(117, 114)));
         Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(82, 18)));
         Assert.False(GameMapData.IsMoveablePosition(MapId.School, new Cell(0, 0)));
+
+        Assert.Equal(AreaType.ExamRoom, GameMapData.GetCurrentArea(MapId.School, new Cell(117, 113)));
+        Assert.Equal(AreaType.BroadcastRoom, GameMapData.GetCurrentArea(MapId.School, new Cell(148, 113)));
+        Assert.Equal(AreaType.Classroom2, GameMapData.GetCurrentArea(MapId.School, new Cell(181, 113)));
+        Assert.Equal(AreaType.Gym, GameMapData.GetCurrentArea(MapId.School, new Cell(198, 90)));
 
         var schoolAreas = GameMapData.GetAreas(MapId.School)
             .Select(region => region.AreaType)
@@ -240,7 +248,7 @@ public class SchoolNewMapRestorationTests
         var examRoomDoor = GameDoorData.GetDoorForTransition(
             AreaType.ExamRoom,
             AreaType.Corridor,
-            new Cell(117, 113),
+            new Cell(117, 114),
             new Cell(117, 112));
         Assert.NotNull(examRoomDoor);
         Assert.Equal(107, examRoomDoor.DoorId);
@@ -248,7 +256,7 @@ public class SchoolNewMapRestorationTests
         var infirmaryDoor = GameDoorData.GetDoorForTransition(
             AreaType.Classroom2,
             AreaType.Corridor,
-            new Cell(181, 113),
+            new Cell(181, 114),
             new Cell(180, 112));
         Assert.NotNull(infirmaryDoor);
         Assert.Equal(109, infirmaryDoor.DoorId);
