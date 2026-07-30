@@ -39,6 +39,7 @@ services:
       - /App/game_server/obj
       - /App/network/bin
       - /App/network/obj
+      - match-summary-data-dev:/App/match-summaries
     environment:
       - serverType=GameServer
       - gameServerNum=2
@@ -51,6 +52,8 @@ services:
       - DISABLE_GAME_END=0
       # Survivor Royale 로컬 기본: 실플레이어 1명 + 봇 7명
       - TEST_TWO_PLAYER_MATCH=0
+      - MATCH_SUMMARY_DIRECTORY=/App/match-summaries
+      - MATCH_SUMMARY_MAX_FILES=50
     depends_on:
       redis:
         condition: service_healthy
@@ -125,3 +128,4 @@ services:
 
 volumes:
   redis-data-dev:
+  match-summary-data-dev:

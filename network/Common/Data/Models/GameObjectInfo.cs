@@ -2,6 +2,7 @@
 
 using System;
 using MessagePack;
+using network.common.data;
 
 namespace network.common.data.models
 {
@@ -107,11 +108,9 @@ namespace network.common.data.models
         // Position이 업데이트될 때 Cell도 자동으로 업데이트
         public void UpdateCellFromPosition()
         {
-            // Unity Isometric Z as Y Tilemap conversion. Keep this identical
-            // to GameClientSession.WorldPositionToCell and Tilemap.WorldToCell.
-            Cell = new Cell(
-                (int)Math.Floor(Position.X + 2f * Position.Y),
-                (int)Math.Floor(2f * Position.Y - Position.X));
+            // Keep this identical to the server movement validator and the
+            // School_New Tilemap, including the authored Grid transform.
+            Cell = MapCoordinateConverter.WorldToCell(MapId, Position);
         }
 
         public string GetGameObjectKey()

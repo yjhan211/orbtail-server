@@ -49,6 +49,8 @@ public partial class GameClientSession : SessionBase
     private readonly SummonStoneManager _summonStoneManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly Action<long, GameClientSession> _registerSessionCallback;
+    private readonly Action<long> _recordLeavePenalty;
+    private readonly Action<long> _recordGameCompletion;
     private readonly SabotageManager _sabotageManager;
     private readonly ManittoChainManager _manittoChainManager;
     private readonly MissionManager _missionManager;
@@ -58,6 +60,7 @@ public partial class GameClientSession : SessionBase
     private readonly InteractionChoiceService _interactionChoiceService;
     private readonly BotPlayerManager _botPlayerManager;
     private readonly GameEventLogManager _gameEventLogManager;
+    private readonly MatchSummaryFileStore _matchSummaryFileStore;
     private readonly EncounterRevealManager _encounterRevealManager;
 
     // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
@@ -144,7 +147,10 @@ public partial class GameClientSession : SessionBase
         InteractionChoiceService interactionChoiceService,
         BotPlayerManager botPlayerManager,
         GameEventLogManager gameEventLogManager,
-        EncounterRevealManager encounterRevealManager)
+        MatchSummaryFileStore matchSummaryFileStore,
+        EncounterRevealManager encounterRevealManager,
+        Action<long> recordLeavePenalty,
+        Action<long> recordGameCompletion)
         : base(token, logger, cacheHelper, redLock)
     {
         _onLeaveCallback = onLeaveCallback;
@@ -168,7 +174,10 @@ public partial class GameClientSession : SessionBase
         _interactionChoiceService = interactionChoiceService;
         _botPlayerManager = botPlayerManager;
         _gameEventLogManager = gameEventLogManager;
+        _matchSummaryFileStore = matchSummaryFileStore;
         _encounterRevealManager = encounterRevealManager;
+        _recordLeavePenalty = recordLeavePenalty;
+        _recordGameCompletion = recordGameCompletion;
 
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
@@ -371,6 +380,8 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SUMMON_ORB,
             async bytes => await HandleMessage<C_TO_G_SUMMON_ORB>(bytes, HandleSummonOrb));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DESTROY_ORB,
+            async bytes => await HandleMessage<C_TO_G_DESTROY_ORB>(bytes, HandleDestroyOrb));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT,
             async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,
@@ -525,7 +536,7 @@ public partial class GameClientSession : SessionBase
         if (PlayerId.HasValue && !IsEliminated && CurrentMapSubId > 0
             && !_isGameEnded && !_isServerInitiatedDisconnect)
         {
-            _ = RecordLeavePenaltyAsync(PlayerId.Value);
+            _recordLeavePenalty(PlayerId.Value);
         }
 
         Logger.LogInformation("GameClient disconnected: PlayerId={PlayerId}", PlayerId);
@@ -540,43 +551,7 @@ public partial class GameClientSession : SessionBase
     {
         _isGameEnded = true;
         if (PlayerId.HasValue)
-            _ = RecordGameCompletionPenaltyDecayAsync(PlayerId.Value);
-    }
-
-    /// <summary>
-    ///     정상 게임 완료 시 이탈 횟수 1 감소.
-    /// </summary>
-    private async Task RecordGameCompletionPenaltyDecayAsync(long playerId)
-    {
-        try
-        {
-            const string penaltyKey = "leave_penalties";
-            const string decayAtKey = "leave_penalty_decay_at";
-
-            var existing = await CacheHelper.HashGetAsync(penaltyKey, playerId);
-            if (existing.IsNullOrEmpty) return;
-
-            long count = BitConverter.ToInt64((byte[])existing!);
-            if (count <= 0) return;
-
-            count = Math.Max(0, count - 1);
-
-            if (count == 0)
-            {
-                await CacheHelper.HashDeleteAsync(penaltyKey, playerId);
-                await CacheHelper.HashDeleteAsync(decayAtKey, playerId);
-            }
-            else
-            {
-                await CacheHelper.HashSetAsync(penaltyKey, playerId, BitConverter.GetBytes(count));
-            }
-
-            Logger.LogInformation("정상 완료 페널티 감소: PlayerId={PlayerId}, 남은횟수={Count}", playerId, count);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "정상 완료 페널티 감소 실패: PlayerId={PlayerId}", playerId);
-        }
+            _recordGameCompletion(PlayerId.Value);
     }
 
     /// <summary>
@@ -585,36 +560,6 @@ public partial class GameClientSession : SessionBase
     public void MarkServerInitiatedDisconnect()
     {
         _isServerInitiatedDisconnect = true;
-    }
-
-    /// <summary>
-    ///     게임 중 이탈 페널티 기록: Redis Hash에 이탈 횟수 누적.
-    ///     최초 기록 시 24h 감쇠 기준 시각(leave_penalty_decay_at)도 설정.
-    /// </summary>
-    private async Task RecordLeavePenaltyAsync(long playerId)
-    {
-        try
-        {
-            const string penaltyKey = "leave_penalties";
-            const string decayAtKey = "leave_penalty_decay_at";
-
-            var existing = await CacheHelper.HashGetAsync(penaltyKey, playerId);
-            long count = existing.IsNullOrEmpty ? 1 : BitConverter.ToInt64((byte[])existing!) + 1;
-            await CacheHelper.HashSetAsync(penaltyKey, playerId, BitConverter.GetBytes(count));
-
-            // 최초 페널티 기록 시 감쇠 기준 시각 설정 (이미 있으면 덮어쓰지 않음)
-            if (existing.IsNullOrEmpty)
-            {
-                long nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                await CacheHelper.HashSetAsync(decayAtKey, playerId, BitConverter.GetBytes(nowTs));
-            }
-
-            Logger.LogInformation("이탈 페널티 기록: PlayerId={PlayerId}, 누적={Count}", playerId, count);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "이탈 페널티 기록 실패: PlayerId={PlayerId}", playerId);
-        }
     }
 
     /// <summary>

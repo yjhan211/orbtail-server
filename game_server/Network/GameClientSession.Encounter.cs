@@ -384,7 +384,7 @@ public partial class GameClientSession
                IsAtRoomExploreSpot(exploreSpotPosition, bot.Position);
     }
 
-    private static bool TryGetExploreSpotPosition(InteractableInfoData info, out Vector3f exploreSpotPosition)
+    private bool TryGetExploreSpotPosition(InteractableInfoData info, out Vector3f exploreSpotPosition)
     {
         exploreSpotPosition = new Vector3f(0f, 0f, 0f);
         if (info.CellX == 0 && info.CellY == 0)

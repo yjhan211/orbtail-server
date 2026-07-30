@@ -3,6 +3,7 @@ using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
+using network.helpers;
 
 namespace game_server;
 
@@ -34,6 +35,10 @@ public partial class GameServer
             int aliveCount = humans.Count + bots.Count;
             if (aliveCount <= 1)
             {
+                // 맵 이동 검증에서는 단독 생존을 승리 상태로 정산하지 않는다.
+                if (DevFlags.DisableGameEnd)
+                    return;
+
                 if (aliveCount == 1 && humans.Count > 0)
                 {
                     humans[0].TryEndSurvivorMatch(humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
@@ -153,12 +158,6 @@ public partial class GameServer
                 }
                 else if (target.Bot != null)
                 {
-                    _botPlayerManager.MarkEnvironmentalEliminated(target.Bot, matchingId);
-                    _gameEventLogManager.LogElimination(
-                        matchingId,
-                        target.PlayerId,
-                        EliminationReason.MENTAL_ZERO.ToString(),
-                        isBot: true);
                     ProcessBotElimination(
                         matchingId,
                         target.PlayerId,

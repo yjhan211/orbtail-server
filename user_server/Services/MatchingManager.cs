@@ -20,8 +20,6 @@ public class MatchingManager : IMatchingManager
 {
     private const string MatchingQueueKey = "matching_queue";
     private const string MatchingIdKey = "matching_id";
-    private const string BotInfoKeyPrefix = "matching_bots";
-    private const string PlayerBuffInfoKey = "matching_player_buffs";
     private const string LeavePenaltyKey = "leave_penalties";
     private const string LeavePenaltyDecayAtKey = "leave_penalty_decay_at";
     private const int MatchingTimeoutSeconds = 3;
@@ -32,10 +30,14 @@ public class MatchingManager : IMatchingManager
     private const int DefaultPlayersPerMatch = 1;
     private const int DefaultGamePlayersPerMatch = 8;
 
-    private static int PlayersPerMatch => IsTwoPlayerTestMatch ? 2 : DefaultPlayersPerMatch;
-    private static int GamePlayersPerMatch => DefaultGamePlayersPerMatch;
+    private static int PlayersPerMatch => IsSoloMapValidation ? 1 : IsTwoPlayerTestMatch ? 2 : DefaultPlayersPerMatch;
+    private static int GamePlayersPerMatch => IsSoloMapValidation
+        ? DefaultPlayersPerMatch
+        : DefaultGamePlayersPerMatch;
 
     private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
+    private static bool IsSoloMapValidation =>
+        Environment.GetEnvironmentVariable("SOLO_MAP_VALIDATION") == "1";
     private static JobTitle? ForcedPlayerJob => ParseForcedPlayerJob();
 
     private static long _botIdCounter; // 遊?PlayerId (?뚯닔)
@@ -232,12 +234,13 @@ public class MatchingManager : IMatchingManager
                         ActiveBuffIds = new List<int>()
                     });
                 }
-                await SavePlayerBuffAssignmentsAsync(matchingId, chain);
 
                 if (botInfoList.Count > 0)
                 {
+                    string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
                     byte[] serialized = MessagePackSerializer.Serialize(botInfoList);
-                    await _cacheHelper.HashSetAsync(BotInfoKeyPrefix, matchingId, serialized);
+                    await _cacheHelper.HashSetAsync(handoffKey, MatchingHandoffRedisKeys.BotsField, serialized);
+                    await _cacheHelper.KeyExpireAsync(handoffKey, MatchingHandoffRedisKeys.Lifetime);
                 }
 
                 // ?ㅼ젣 ?뚮젅?댁뼱留?留ㅼ묶 ?깃났 ?⑦궥 ?꾩넚 + ???쒓굅
@@ -276,7 +279,7 @@ public class MatchingManager : IMatchingManager
     /// </summary>
     private async Task CheckBotFillAsync()
     {
-        if (IsTwoPlayerTestMatch) return;
+        if (IsTwoPlayerTestMatch || IsSoloMapValidation) return;
 
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long botCutoff = now - BotFillTimeoutSeconds;
@@ -328,12 +331,13 @@ public class MatchingManager : IMatchingManager
                 ActiveBuffIds = new List<int>()
             });
         }
-        await SavePlayerBuffAssignmentsAsync(matchingId, chain);
 
         if (botInfoList.Count > 0)
         {
+            string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
             byte[] serialized = MessagePackSerializer.Serialize(botInfoList);
-            await _cacheHelper.HashSetAsync(BotInfoKeyPrefix, matchingId, serialized);
+            await _cacheHelper.HashSetAsync(handoffKey, MatchingHandoffRedisKeys.BotsField, serialized);
+            await _cacheHelper.KeyExpireAsync(handoffKey, MatchingHandoffRedisKeys.Lifetime);
         }
 
         // ?ㅼ젣 ?뚮젅?댁뼱留?留ㅼ묶 ?깃났 ?⑦궥 ?꾩넚
@@ -712,21 +716,6 @@ public class MatchingManager : IMatchingManager
         return list;
     }
 
-    private static string MakePlayerBuffField(long matchingId, long playerId) => $"{matchingId}:{playerId}";
-
-
-
-    private async Task SavePlayerBuffAssignmentsAsync(long matchingId, IReadOnlyCollection<ManittoChainLink> chain)
-    {
-        foreach (var link in chain)
-        {
-            var data = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry);
-            await _cacheHelper.HashSetAsync(
-                PlayerBuffInfoKey,
-                MakePlayerBuffField(matchingId, data.PlayerId),
-                MessagePackSerializer.Serialize(new List<int>()));
-        }
-    }
     private async Task ProcessMatchedEntry(byte[] entry, long matchingId,
         long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle, List<PlayerInfo> playerRoster,
         Cell spawnCell)
@@ -762,10 +751,13 @@ public class MatchingManager : IMatchingManager
         playerInfo.ObjectInfo.MapId = mapId;
         playerInfo.ObjectInfo.MapSubId = matchingId;
         playerInfo.ObjectInfo.Cell = Cell.Clone(spawnPosition);
-        playerInfo.ObjectInfo.Position = CellToWorldPosition(spawnPosition);
+        playerInfo.ObjectInfo.Position = CellToWorldPosition(mapId, spawnPosition);
         playerInfo.ObjectInfo.Velocity = new Vector3f(0f, 0f, 0f);
         playerInfo.ObjectInfo.MoveTimestamp = DateTime.UtcNow;
-        await playerInfo.Save(_cacheHelper);
+        string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
+        await _cacheHelper.HashSetAsync(handoffKey, MatchingHandoffRedisKeys.SpawnField(data.PlayerId),
+            MessagePackSerializer.Serialize(spawnPosition));
+        await _cacheHelper.KeyExpireAsync(handoffKey, MatchingHandoffRedisKeys.Lifetime);
 
         // 寃뚯엫?쒕쾭 ?뺣낫
         string gameServerIp = Environment.GetEnvironmentVariable("GAME_SERVER_IP") ?? "127.0.0.1";
@@ -786,12 +778,8 @@ public class MatchingManager : IMatchingManager
             data.PlayerId, targetPlayerId, myJobTitle, targetJobTitle);
     }
 
-    private static Vector3f CellToWorldPosition(Cell cell)
-    {
-        float wX = (cell.X - cell.Y) / 2f;
-        float wY = (cell.X + cell.Y) / 4f;
-        return new Vector3f(wX, wY, 0f);
-    }
+    private static Vector3f CellToWorldPosition(MapId mapId, Cell cell) =>
+        MapCoordinateConverter.CellToWorld(mapId, cell);
 
     /// <summary>
     ///     ?댄깉 ?섎꼸???湲??쒓컙 議고쉶: ?댄깉 ?잛닔 횞 30珥?(理쒕? 300珥?.
@@ -877,6 +865,28 @@ public class MatchingManager : IMatchingManager
     /// <summary>
     ///     ?뺤긽 寃뚯엫 ?꾨즺 ???댄깉 ?잛닔 1 媛먯냼. game_server?먯꽌 NATS濡??몄텧.
     /// </summary>
+    public async Task RecordLeaveAsync(long playerId)
+    {
+        try
+        {
+            var existing = await _cacheHelper.HashGetAsync(LeavePenaltyKey, playerId);
+            long count = existing.IsNullOrEmpty ? 1 : BitConverter.ToInt64((byte[])existing!) + 1;
+            await _cacheHelper.HashSetAsync(LeavePenaltyKey, playerId, BitConverter.GetBytes(count));
+
+            if (existing.IsNullOrEmpty)
+            {
+                long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                await _cacheHelper.HashSetAsync(LeavePenaltyDecayAtKey, playerId, BitConverter.GetBytes(now));
+            }
+
+            _logger.LogInformation("Leave penalty recorded: PlayerId={PlayerId}, Count={Count}", playerId, count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Leave penalty record failed: PlayerId={PlayerId}", playerId);
+        }
+    }
+
     public async Task RecordGameCompletionAsync(long playerId)
     {
         try

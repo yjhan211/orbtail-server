@@ -53,8 +53,11 @@ public partial class GameClientSession
                 return;
             }
 
-            var previousCell = _lastValidCell;
-            var validatedPosition = ValidatePosition(msg.Position, msg.Velocity, deltaTime);
+            var validatedPosition = ValidatePosition(
+                msg.Position,
+                msg.Velocity,
+                deltaTime,
+                out bool requiresClientCorrection);
 
             // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
             var currentCell = WorldPositionToCell(validatedPosition);
@@ -145,7 +148,14 @@ public partial class GameClientSession
             var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
             var sameAreaSessions = GetSessionsInArea(otherSessions, CurrentArea);
 
-            foreach (var session in sameAreaSessions) session.Send(packet);
+            foreach (var session in sameAreaSessions)
+            {
+                if (session.PlayerId != PlayerId)
+                    session.Send(packet);
+            }
+
+            if (requiresClientCorrection)
+                Send(packet);
         }
         catch (Exception ex)
         {
@@ -158,8 +168,14 @@ public partial class GameClientSession
     ///     클라이언트 Position 검증 (치트 방지)
     ///     정상이면 클라이언트 Position 사용, 비정상이면 서버 계산 Position 사용
     /// </summary>
-    private Vector3f ValidatePosition(Vector3f clientPos, Vector3f velocity, float deltaTime)
+    private Vector3f ValidatePosition(
+        Vector3f clientPos,
+        Vector3f velocity,
+        float deltaTime,
+        out bool requiresClientCorrection)
     {
+        requiresClientCorrection = false;
+
         const float maxSpeed = 10f; // 최대 속도 (units/s)
         const float tolerance = 1.5f; // 허용 오차 (50%)
 
@@ -182,6 +198,7 @@ public partial class GameClientSession
                     _lastValidatedPosition.Y + correctedVelocity.Y * deltaTime,
                     0
                 );
+                requiresClientCorrection = true;
             }
         }
 
@@ -213,6 +230,7 @@ public partial class GameClientSession
                         _lastValidatedPosition.Y + velocity.Y * deltaTime,
                         0
                     );
+                    requiresClientCorrection = true;
                 }
             }
 
@@ -222,7 +240,7 @@ public partial class GameClientSession
         var clientCell = WorldPositionToCell(clientPos);
         if (!GameMapData.IsMoveablePosition(CurrentMapId, clientCell))
         {
-            // 이동 불가능한 위치 → 마지막 유효 위치로 보정
+            // 장애물 셀 접촉: 서버 위치만 유지하고 클라이언트에는 보정 패킷을 보내지 않음
             if (_lastValidatedPosition is not null && _lastValidCell is not null)
             {
                 Logger.LogWarning(
@@ -248,6 +266,7 @@ public partial class GameClientSession
             Logger.LogWarning(
                 "Player {PlayerId} attempted to cross an impassable cell: From=({FromX},{FromY}), To=({ToX},{ToY})",
                 PlayerId, _lastValidCell.X, _lastValidCell.Y, clientCell.X, clientCell.Y);
+            requiresClientCorrection = true;
             return _lastValidatedPosition;
         }
 
@@ -270,29 +289,15 @@ public partial class GameClientSession
     ///     unityCellY = floor (2 * WorldY - WorldX)
     ///     최종 Cell = unityCell + CellOffset (Y는 +1 추가)
     /// </summary>
-    private static Cell WorldPositionToCell(Vector3f worldPos)
-    {
-        // Unity Isometric Z as Y 역변환 공식
-        // Unity WorldToCell 결과를 그대로 반환 (CellOffset은 map_region.csv에 이미 반영됨)
-        int cellX = (int)Math.Floor(worldPos.X + 2f * worldPos.Y);
-        int cellY = (int)Math.Floor(2f * worldPos.Y - worldPos.X);
-
-        return new Cell(cellX, cellY);
-    }
+    private Cell WorldPositionToCell(Vector3f worldPos) =>
+        MapCoordinateConverter.WorldToCell(CurrentMapId, worldPos);
 
     /// <summary>
     ///     Cell → World position 역변환 (구역 이동 시 스폰용).
     ///     WorldPositionToCell의 역함수.
     /// </summary>
-    internal static Vector3f CellToWorldPosition(Cell cell)
-    {
-        // cellX = worldX + 2*worldY, cellY = 2*worldY - worldX
-        // → worldX = (cellX - cellY) / 2,  worldY = (cellX + cellY) / 4
-        // 셀 중심으로 +0.5 보정 (floor된 값을 셀 중심으로 복원)
-        float wX = (cell.X - cell.Y) / 2f;
-        float wY = (cell.X + cell.Y) / 4f;
-        return new Vector3f(wX, wY, 0f);
-    }
+    internal Vector3f CellToWorldPosition(Cell cell) =>
+        MapCoordinateConverter.CellToWorld(CurrentMapId, cell);
 
     #endregion
 

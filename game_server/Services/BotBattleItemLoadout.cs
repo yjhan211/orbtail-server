@@ -10,6 +10,43 @@ namespace game_server.services;
 /// </summary>
 public static class BotBattleItemLoadout
 {
+    public static BotOrbDestroyDecision? SelectOverflowDestroyCandidate(
+        PlayerInGameInventory inventory,
+        int corruption,
+        int maxCorruption)
+    {
+        ArgumentNullException.ThrowIfNull(inventory);
+
+        var items = inventory.GetAllItems()
+            .Where(item => item.Count > 0)
+            .ToList();
+        if (items.Count == 0 || HasValidMerge(items))
+            return null;
+
+        var boardItemIds = items
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
+            .ToList();
+        bool hasDominantColor = SurvivorOrbData.TryGetDominantPveColor(
+            boardItemIds,
+            out SurvivorOrbColor dominantColor);
+        float corruptionRatio = maxCorruption > 0
+            ? Math.Clamp((float)corruption / maxCorruption, 0f, 1f)
+            : 0f;
+
+        return items
+            .Select(item => CreateDestroyDecision(
+                item,
+                boardItemIds,
+                hasDominantColor ? dominantColor : SurvivorOrbColor.None,
+                corruptionRatio))
+            .Where(decision => decision != null)
+            .Select(decision => decision!)
+            .OrderBy(decision => decision.KeepScore)
+            .ThenBy(decision => decision.Tier)
+            .ThenBy(decision => decision.ItemUid)
+            .FirstOrDefault();
+    }
+
     public static BotBattleItemLoadoutResult CombineAndEquip(
         InGameInventoryManager inventoryManager,
         long matchingId,
@@ -30,7 +67,7 @@ public static class BotBattleItemLoadout
             var survivorInputs = inventory.GetAllItems()
                 .Where(item => item.Count > 0)
                 .Select(item => item.ItemId)
-                .Where(SurvivorOrbData.IsSurvivorOrb)
+                .Where(IsOrb)
                 .GroupBy(itemId => itemId)
                 .Where(group => group.Count() >= 2 && SurvivorOrbData.CanMerge(group.Key, group.Key))
                 .OrderBy(group => ConsumesLastEquippedResonanceSupport(group.Key, inventory) ? 1 : 0)
@@ -105,6 +142,85 @@ public static class BotBattleItemLoadout
         return new BotBattleItemLoadoutResult(combinedItemIds, equippedItem?.ItemId ?? 0, survivorOrbMerges);
     }
 
+    private static BotOrbDestroyDecision? CreateDestroyDecision(
+        InGameItemInfo item,
+        IReadOnlyCollection<int> boardItemIds,
+        SurvivorOrbColor dominantColor,
+        float corruptionRatio)
+    {
+        SurvivorOrbColor color;
+        int tier;
+        if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out color, out tier))
+        {
+            if (!SurvivorOrbData.TryGetRecoveryTier(item.ItemId, out tier))
+                return null;
+            color = SurvivorOrbColor.Recovery;
+        }
+
+        int keepScore = tier * 100;
+        keepScore += tier switch
+        {
+            1 => 30,
+            2 => 15,
+            _ => 0
+        };
+
+        if (color == SurvivorOrbColor.Recovery)
+        {
+            keepScore += (int)Math.Round(corruptionRatio * 300f);
+            if (corruptionRatio < 0.2f)
+                keepScore -= 40;
+        }
+        else
+        {
+            keepScore += 20;
+            keepScore += boardItemIds.Count(itemId =>
+            {
+                return SurvivorOrbData.TryGetColorAndTier(itemId, out SurvivorOrbColor otherColor, out _) &&
+                       otherColor == color;
+            }) * 12;
+
+            if (color == dominantColor)
+                keepScore += 120;
+        }
+
+        return new BotOrbDestroyDecision(item.ItemUid, item.ItemId, tier, color, keepScore);
+    }
+
+    /// <summary>
+    /// A third copy of the same orb means merging two of them still leaves one behind,
+    /// so the colour keeps its resonance pair once the merged result lands.
+    /// Waiting for a full board never fires in practice: bots hold five or six orbs
+    /// (2026-07-30, five matches — bots merged 0 times while players merged 39).
+    /// </summary>
+    public static bool HasResonanceSafeMerge(IReadOnlyCollection<InGameItemInfo> items)
+    {
+        return items
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
+            .GroupBy(itemId => itemId)
+            .Any(group => group.Count() >= 3 && SurvivorOrbData.CanMerge(group.Key, group.Key));
+    }
+
+    private static bool HasValidMerge(IReadOnlyCollection<InGameItemInfo> items)
+    {
+        var itemIds = items
+            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
+            .ToList();
+        if (itemIds
+            .GroupBy(itemId => itemId)
+            .Any(group => group.Count() >= 2 && SurvivorOrbData.CanMerge(group.Key, group.Key)))
+        {
+            return true;
+        }
+
+        return BattleItemRecipeData.GetAllRecipes()
+            .Where(recipe => BattleItemCombatData.IsCombatItem(recipe.OutputItemId))
+            .Any(recipe => HasInputs(itemIds, recipe.InputItemIds));
+    }
+
+    private static bool IsOrb(int itemId) =>
+        SurvivorOrbData.IsSurvivorOrb(itemId) || SurvivorOrbData.IsRecoveryOrb(itemId);
+
     private static bool ConsumesLastEquippedResonanceSupport(int inputItemId, PlayerInGameInventory inventory)
     {
         var equipped = inventory.GetEquippedBattleItem();
@@ -152,3 +268,10 @@ public sealed record BotBattleItemLoadoutResult(
     IReadOnlyList<BotSurvivorOrbMerge> SurvivorOrbMerges);
 
 public sealed record BotSurvivorOrbMerge(int InputItemId, int OutputItemId);
+
+public sealed record BotOrbDestroyDecision(
+    long ItemUid,
+    int ItemId,
+    int Tier,
+    SurvivorOrbColor Color,
+    int KeepScore);

@@ -1,4 +1,5 @@
 using MessagePack;
+using network.common.data;
 using network.interfaces;
 using RedLockNet;
 using StackExchange.Redis;
@@ -35,8 +36,7 @@ public partial class PlayerInfo
 
         var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
 
-        playerInfo.ObjectInfo = await GameObjectInfo.Load(cacheHelper, ObjectType.PLAYER, playerId) ??
-                                new GameObjectInfo(playerId);
+        playerInfo.ObjectInfo = new GameObjectInfo(playerId);
         playerInfo.InventoryInfo = await InventoryInfo.Load(cacheHelper, InventoryOwnerType.PLAYER, playerId) ??
                                    new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
         playerInfo.QuestDiary = await QuestDiary.Load(cacheHelper, playerId);
@@ -49,7 +49,7 @@ public partial class PlayerInfo
             playerInfo.LastCell ??= new Cell(0, 0);
             playerInfo.ObjectInfo.Cell = playerInfo.LastCell;
             // Cell → World Position 변환 (Unity Isometric Z as Y 타일맵)
-            playerInfo.ObjectInfo.Position = CellToWorldPosition(playerInfo.LastCell);
+            playerInfo.ObjectInfo.Position = CellToWorldPosition(playerInfo.LastMapId, playerInfo.LastCell);
             playerInfo.ObjectInfo.MapId = playerInfo.LastMapId;
             playerInfo.ObjectInfo.MapSubId = playerInfo.LastMapSubId;
 
@@ -60,7 +60,7 @@ public partial class PlayerInfo
             {
                 var spawnCell = mapInfo.GetInitialPosition().position;
                 playerInfo.ObjectInfo.Cell = spawnCell;
-                playerInfo.ObjectInfo.Position = CellToWorldPosition(spawnCell);
+                playerInfo.ObjectInfo.Position = CellToWorldPosition(playerInfo.LastMapId, spawnCell);
                 playerInfo.LastCell = spawnCell;
             }
         }
@@ -101,16 +101,6 @@ public partial class PlayerInfo
     ///     공식: WorldX = (GridCellX - GridCellY) * 0.5
     ///     WorldY = (GridCellX + GridCellY) * 0.25 + 0.25
     /// </summary>
-    private static Vector3f CellToWorldPosition(Cell cell)
-    {
-        const float cellCenterOffsetY = 0.25f;
-
-        // map_region.csv, the Unity Tilemap and the game server all use the
-        // same raw cell coordinates. The old -5/-5 offset moved the cached
-        // world position into a different region while leaving Cell unchanged.
-        float worldX = (cell.X - cell.Y) * 0.5f;
-        float worldY = (cell.X + cell.Y) * 0.25f + cellCenterOffsetY;
-
-        return new Vector3f(worldX, worldY, 0);
-    }
+    private static Vector3f CellToWorldPosition(MapId mapId, Cell cell) =>
+        MapCoordinateConverter.CellToWorld(mapId, cell);
 }

@@ -79,10 +79,7 @@ public class ProximityCombatLineOfSightTests
         int weaponItemId = 0)
     {
         bool armed = weaponItemId > 0;
-        var position = new Vector3f(
-            (cell.X - cell.Y) / 2f,
-            (cell.X + cell.Y) / 4f,
-            0f);
+        var position = MapCoordinateConverter.CellToWorld(MapId.School, cell);
         return new ProximityCombatActor(
             playerId,
             declaredArea,

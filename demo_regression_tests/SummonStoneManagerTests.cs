@@ -173,6 +173,22 @@ public class SummonStoneManagerTests
     }
 
     [Fact]
+    public void PassiveIncome_GrantsOneStoneEveryThirtyActiveSeconds()
+    {
+        var manager = new SummonStoneManager();
+
+        var beforeGrant = manager.AdvancePassiveIncome(202, 10, 25, out int earlyAward);
+        var firstGrant = manager.AdvancePassiveIncome(202, 10, 5, out int firstAward);
+        var secondGrant = manager.AdvancePassiveIncome(202, 10, 30, out int secondAward);
+
+        Assert.Equal(0, earlyAward);
+        Assert.Equal(0, beforeGrant.StoneCount);
+        Assert.Equal(1, firstAward);
+        Assert.Equal(1, firstGrant.StoneCount);
+        Assert.Equal(1, secondAward);
+        Assert.Equal(2, secondGrant.StoneCount);
+    }
+    [Fact]
     public void RemoveMatchingState_ResetsAllPlayerBalances()
     {
         var manager = new SummonStoneManager();

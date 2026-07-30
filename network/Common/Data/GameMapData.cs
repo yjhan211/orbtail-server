@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Globalization;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.managers;
@@ -62,12 +63,20 @@ namespace network.common.data
                 var initCellX = int.Parse(row["init_cell_x"]);
                 var initCellY = int.Parse(row["init_cell_y"]);
                 var isFlip = int.Parse(row["is_flip"]) == 1;
+                float worldOriginX = row.ContainsKey("world_origin_x")
+                    ? float.Parse(row["world_origin_x"], CultureInfo.InvariantCulture)
+                    : 0f;
+                float worldOriginY = row.ContainsKey("world_origin_y")
+                    ? float.Parse(row["world_origin_y"], CultureInfo.InvariantCulture)
+                    : 0f;
 
                 var mapInfo = new MapInfo
                 {
                     Id = int.Parse(row["id"]),
                     SceneName = row["scene_name"],
                     IsCommon = int.Parse(row["is_common"]) == 1,
+                    WorldOriginX = worldOriginX,
+                    WorldOriginY = worldOriginY,
                     InitCell = new InitCellData(
                         new Vector3Int(initCellX, initCellY, 0),
                         MapId.None,
@@ -547,6 +556,8 @@ namespace network.common.data
             public int Id { get; set; }
             public string SceneName { get; set; }
             public bool IsCommon { get; set; }
+            public float WorldOriginX { get; set; }
+            public float WorldOriginY { get; set; }
             public InitCellData InitCell { get; set; }
 
             public (Cell position, bool isFlip) GetInitialPosition()

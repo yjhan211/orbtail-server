@@ -908,10 +908,7 @@ public sealed class SurvivorBotLoopRegressionTests
         var cell = GameMapData.GetAreaSpawnCell(MapId.School, area);
         bot.CurrentArea = area;
         bot.Cell = cell;
-        bot.Position = new Vector3f(
-            (cell.X - cell.Y) / 2f,
-            (cell.X + cell.Y) / 4f,
-            0f);
+        bot.Position = MapCoordinateConverter.CellToWorld(MapId.School, cell);
     }
 
     private static void BackdateMissionTick(BotPlayerState bot)

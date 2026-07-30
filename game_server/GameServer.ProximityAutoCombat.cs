@@ -12,12 +12,15 @@ namespace game_server;
 public partial class GameServer
 {
     private const int ProximityAutoCombatTickIntervalMs = 50;
+    private static readonly TimeSpan ProximityCombatAreaEntryGrace = TimeSpan.FromSeconds(1);
 
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
     private readonly Dictionary<(long MatchingId, long ObserverPlayerId, long ActorPlayerId),
         SurvivorOrbVisualState> _survivorOrbVisualStates = new();
     private readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), DateTime>
         _survivorOrbRecoveryReadyAtUtc = new();
+    private readonly Dictionary<(long MatchingId, long PlayerId), ProximityCombatAreaEntryState>
+        _proximityCombatAreaEntryStates = new();
     private Timer? _proximityAutoCombatTimer;
     private int _proximityAutoCombatProcessing;
 
@@ -92,15 +95,39 @@ public partial class GameServer
 
         var nowUtc = DateTime.UtcNow;
         var resonanceStates = UpdateSurvivorOrbResonanceStates(matchingId, matchingSessions, matchingBots, nowUtc);
-        var actors = BuildProximityCombatActors(matchingId, matchingSessions, matchingBots, resonanceStates);
+        var actors = BuildProximityCombatActors(
+            matchingId,
+            matchingSessions,
+            matchingBots,
+            resonanceStates);
         ProcessSurvivorOrbRecovery(matchingId, actors, matchingSessions, matchingBots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, matchingSessions);
+        var combatReadyPlayerIds = matchingSessions
+            .Where(session =>
+                session.PlayerId.HasValue &&
+                HasCompletedProximityCombatAreaEntryGrace(
+                    matchingId,
+                    session.PlayerId.Value,
+                    session.CurrentArea,
+                    nowUtc))
+            .Select(session => session.PlayerId!.Value)
+            .Concat(matchingBots
+                .Where(bot => HasCompletedProximityCombatAreaEntryGrace(
+                    matchingId,
+                    bot.PlayerId,
+                    bot.CurrentArea,
+                    nowUtc))
+                .Select(bot => bot.PlayerId))
+            .ToHashSet();
+        var combatActors = actors
+            .Where(actor => combatReadyPlayerIds.Contains(actor.PlayerId))
+            .ToList();
         var aliveMonsterTargets = AdvanceEmotionAfterimageMonsters(
-            matchingId, matchingSessions, matchingBots, actors, nowUtc);
+            matchingId, matchingSessions, matchingBots, nowUtc);
         var monsterTargetIds = aliveMonsterTargets
             .Select(target => -(long)target.MonsterId)
             .ToHashSet();
-        var combatTargets = actors
+        var combatTargets = combatActors
             .Concat(aliveMonsterTargets.Select(CreateMonsterTargetActor))
             .ToList();
         var attacks = _proximityAutoCombatResolver.Resolve(
@@ -197,6 +224,28 @@ public partial class GameServer
 
         return actors;
     }
+
+    private bool HasCompletedProximityCombatAreaEntryGrace(
+        long matchingId,
+        long playerId,
+        AreaType area,
+        DateTime nowUtc)
+    {
+        if (area == AreaType.None)
+            return false;
+
+        var key = (matchingId, playerId);
+        if (!_proximityCombatAreaEntryStates.TryGetValue(key, out var state) || state.Area != area)
+        {
+            _proximityCombatAreaEntryStates[key] = new ProximityCombatAreaEntryState(
+                area,
+                nowUtc.Add(ProximityCombatAreaEntryGrace));
+            return false;
+        }
+
+        return nowUtc >= state.ReadyAtUtc;
+    }
+
     private static void AddInventoryCombatActors(
         ICollection<ProximityCombatActor> actors,
         ProximityCombatActor spatialActor,
@@ -464,6 +513,12 @@ public partial class GameServer
         {
             _survivorOrbRecoveryReadyAtUtc.Remove(key);
         }
+        foreach (var key in _proximityCombatAreaEntryStates.Keys
+                     .Where(key => key.MatchingId == matchingId)
+                     .ToArray())
+        {
+            _proximityCombatAreaEntryStates.Remove(key);
+        }
 
         RemoveSurvivorOrbResonanceStates(matchingId);
     }
@@ -670,11 +725,6 @@ public partial class GameServer
             if (!_botPlayerManager.TryFinalizeProximityAutoCombatElimination(bot, matchingId))
                 continue;
 
-            _gameEventLogManager.LogElimination(
-                matchingId,
-                bot.PlayerId,
-                EliminationReason.MENTAL_ZERO.ToString(),
-                isBot: true);
             ProcessBotElimination(matchingId, bot.PlayerId, EliminationReason.MENTAL_ZERO, activeSessions,
                 attackerPlayerId: bot.LastProximityAttackerPlayerId);
         }
@@ -761,7 +811,7 @@ public partial class GameServer
         if (mapId == MapId.None || committedArea == AreaType.None || position == null)
             return false;
 
-        var cell = ProximityCombatLineOfSight.WorldPositionToCell(position);
+        var cell = ProximityCombatLineOfSight.WorldPositionToCell(mapId, position);
         var resolvedArea = GameMapData.GetCurrentArea(mapId, cell);
         if (resolvedArea == AreaType.None || resolvedArea != committedArea ||
             !GameMapData.IsMoveablePosition(mapId, cell))
@@ -783,6 +833,11 @@ public partial class GameServer
             cell);
         return true;
     }
+
+    private readonly record struct ProximityCombatAreaEntryState(
+        AreaType Area,
+        DateTime ReadyAtUtc);
+
     private readonly record struct SurvivorOrbVisualState(
         AreaType Area,
         int WeaponItemId,

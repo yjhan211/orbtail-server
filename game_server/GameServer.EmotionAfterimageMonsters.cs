@@ -19,16 +19,9 @@ public partial class GameServer
         long matchingId,
         IReadOnlyCollection<GameClientSession> matchingSessions,
         IReadOnlyCollection<BotPlayerState> matchingBots,
-        IReadOnlyCollection<ProximityCombatActor> combatActors,
         DateTime nowUtc)
     {
-        var spatialPlayers = combatActors
-            .GroupBy(actor => actor.PlayerId)
-            .Select(group => group.First())
-            .ToList();
-        var possibleTargets = spatialPlayers
-            .Select(actor => new MonsterSpatialTarget(actor.PlayerId, actor.MapId, actor.Area, actor.Position))
-            .ToList();
+        var possibleTargets = BuildEmotionAfterimageMonsterTargets(matchingId, matchingSessions, matchingBots);
 
         var monsterTick = _emotionAfterimageMonsterManager.Tick(matchingId, possibleTargets, nowUtc);
         if (monsterTick.ChangedStates.Count > 0 && TryConsumeMonsterPositionBroadcastSlot(matchingId, nowUtc))
@@ -42,6 +35,43 @@ public partial class GameServer
         return _emotionAfterimageMonsterManager.GetAliveTargets(matchingId);
     }
 
+    private IReadOnlyList<MonsterSpatialTarget> BuildEmotionAfterimageMonsterTargets(
+        long matchingId,
+        IReadOnlyCollection<GameClientSession> matchingSessions,
+        IReadOnlyCollection<BotPlayerState> matchingBots)
+    {
+        var targets = new List<MonsterSpatialTarget>(matchingSessions.Count + matchingBots.Count);
+
+        // Monsters see every player in their server-committed room. This must not
+        // inherit combat's stricter tile validation or depend on equipped orbs.
+        foreach (var session in matchingSessions)
+        {
+            if (!session.PlayerId.HasValue || session.CurrentArea == AreaType.None ||
+                session.LastValidatedPosition == null)
+                continue;
+
+            targets.Add(new MonsterSpatialTarget(
+                session.PlayerId.Value,
+                session.CurrentMapId,
+                session.CurrentArea,
+                session.LastValidatedPosition));
+        }
+
+        MapId botMapId = _botPlayerManager.GetMatchingMapId(matchingId);
+        foreach (var bot in matchingBots)
+        {
+            if (bot.CurrentArea == AreaType.None)
+                continue;
+
+            targets.Add(new MonsterSpatialTarget(
+                bot.PlayerId,
+                botMapId,
+                bot.CurrentArea,
+                bot.Position));
+        }
+
+        return targets;
+    }
     private void ApplyPlayerOrbDamageToEmotionAfterimageMonsters(
         long matchingId,
         IReadOnlyCollection<ProximityCombatAttack> attacks,
@@ -82,7 +112,7 @@ public partial class GameServer
     }
     private static ProximityCombatActor CreateMonsterTargetActor(MonsterCombatTarget monster)
     {
-        var cell = ProximityCombatLineOfSight.WorldPositionToCell(monster.Position);
+        var cell = ProximityCombatLineOfSight.WorldPositionToCell(monster.MapId, monster.Position);
         return new ProximityCombatActor(
             -monster.MonsterId, monster.Area, monster.Position, 0, 0f, 0, 0f, 0f, 0f, monster.MapId, cell);
     }

@@ -226,6 +226,8 @@ namespace network.common
         G_TO_C_SUMMON_STONE_STATE,
         C_TO_G_SUMMON_ORB,
         G_TO_C_SUMMON_ORB_RESULT,
+        C_TO_G_DESTROY_ORB,
+        G_TO_C_DESTROY_ORB_RESULT,
 
         END
     }

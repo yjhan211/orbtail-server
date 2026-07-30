@@ -13,6 +13,8 @@ public sealed class SummonStoneManager
 {
     public const int NormalMonsterReward = 1;
     public const int CoreMonsterReward = 3;
+    public const int PassiveIncomeIntervalSeconds = 30;
+    public const int PassiveIncomeAmount = 1;
 
     private static readonly int[] SummonCosts = [2, 3, 4, 5, 6];
     private static readonly int[] SummonPool = [107000010, 107000020, 107000030, 107000040];
@@ -51,6 +53,31 @@ public sealed class SummonStoneManager
         }
     }
 
+    public SummonStoneSnapshot AdvancePassiveIncome(
+        long matchingId,
+        long playerId,
+        int elapsedSeconds,
+        out int awardedStones)
+    {
+        var state = GetOrCreatePlayerState(matchingId, playerId);
+        lock (state.SyncRoot)
+        {
+            awardedStones = 0;
+            if (elapsedSeconds <= 0)
+                return CreateSnapshot(state);
+
+            state.PassiveIncomeElapsedSeconds =
+                checked(state.PassiveIncomeElapsedSeconds + elapsedSeconds);
+            int grantCount = state.PassiveIncomeElapsedSeconds / PassiveIncomeIntervalSeconds;
+            if (grantCount <= 0)
+                return CreateSnapshot(state);
+
+            state.PassiveIncomeElapsedSeconds %= PassiveIncomeIntervalSeconds;
+            awardedStones = checked(grantCount * PassiveIncomeAmount);
+            state.StoneCount = checked(state.StoneCount + awardedStones);
+            return CreateSnapshot(state);
+        }
+    }
     public SummonStoneSnapshot GetSnapshot(long matchingId, long playerId)
     {
         var state = GetOrCreatePlayerState(matchingId, playerId);
@@ -118,6 +145,7 @@ public sealed class SummonStoneManager
         public int StoneCount { get; set; }
         public int SuccessfulSummonCount { get; set; }
         public bool HasStartingStones { get; set; }
+        public int PassiveIncomeElapsedSeconds { get; set; }
     }
 }
 

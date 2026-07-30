@@ -70,6 +70,20 @@ public static class AdminEndpoints
                 return Results.Ok(new { matchingId, count = events.Count, events });
             });
 
+        app.MapGet("/admin/match-summaries", (int? limit) =>
+        {
+            var summaries = gameServer.MatchSummaryFileStore.ListRecent(Math.Clamp(limit ?? 20, 1, 50));
+            return Results.Ok(new { count = summaries.Count, summaries });
+        });
+
+        app.MapGet("/admin/match-summary/{matchingId:long}", (long matchingId) =>
+        {
+            var summary = gameServer.MatchSummaryFileStore.Read(matchingId);
+            return summary == null
+                ? Results.NotFound(new { error = $"Match summary {matchingId} not found" })
+                : Results.Ok(summary);
+        });
+
         // GET /admin/matching-config — 현재 글로벌 매칭 config 조회
         app.MapPost("/admin/bot-only-instance", (int? botCount) =>
         {

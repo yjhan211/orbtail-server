@@ -13,7 +13,6 @@ namespace game_server.network;
 
 public partial class GameClientSession
 {
-    private const string PlayerBuffInfoKey = "matching_player_buffs";
 
     private async Task HandleConnect(C_TO_G_CONNECT msg)
     {
@@ -33,7 +32,7 @@ public partial class GameClientSession
             TargetPlayerId = msg.TargetPlayerId;
             MyJobTitle = msg.MyJobTitle;
             TargetJobTitle = msg.TargetJobTitle;
-            await LoadActiveBuffIds(msg.MatchingId, msg.PlayerId);
+            SetActiveBuffIds([]);
             Logger.LogInformation("留덈땲??泥댁씤: PlayerId={PlayerId}, ?寃?{Target}, ??吏곸콉={MyJob}, ?寃?吏곸콉={TargetJob}",
                 PlayerId, TargetPlayerId, MyJobTitle, TargetJobTitle);
 
@@ -48,6 +47,7 @@ public partial class GameClientSession
 
             // 誘몄뀡 珥덇린??
             _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
+            RestoreActiveBuffIdsFromMissionState(msg.MatchingId, msg.PlayerId);
             _missionManager.EnsureBroadcastTransmitterGift(msg.MatchingId, msg.PlayerId, msg.TargetPlayerId);
 
             // 遊?濡쒕뱶 (留ㅼ묶??理쒖큹 1?? ???먯뇙 珥덇린???꾩뿉 濡쒕뱶??吏곸콉 ????뺤젙 (#87)
@@ -129,13 +129,18 @@ public partial class GameClientSession
 
                 if (playerInfo != null)
                 {
+                    var matchingSpawnCell = await LoadMatchingSpawnCell(msg.MatchingId, msg.PlayerId);
+                    if (matchingSpawnCell != null)
+                    {
+                        playerInfo.ObjectInfo.Cell = matchingSpawnCell;
+                        playerInfo.ObjectInfo.Position = CellToWorldPosition(matchingSpawnCell);
+                    }
+
                     _lastValidatedPosition = playerInfo.ObjectInfo.Position;
                     _lastValidCell = playerInfo.ObjectInfo.Cell;
                     _lastValidatedRotation = playerInfo.ObjectInfo.Rotation;
                     // 珥덇린 Area ?ㅼ젙
                     CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
-                    playerInfo.State = global::network.common.PlayerState.IDLE;
-                    await playerInfo.Save(CacheHelper);
                     Logger.LogInformation(
                         "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
                         PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
@@ -208,7 +213,7 @@ public partial class GameClientSession
             // The standalone submission client is only ready after the full initial snapshot
             // has been sent. Starting the countdown earlier lets bots consume finite room stock
             // while the human client is still loading the match.
-            if (connectedBotCount == 7)
+            if (connectedBotCount == 7 || MatchStartGate.IsSoloMapValidationEnabled)
             {
                 MatchStartGate.MarkHumanReady(msg.MatchingId, PlayerId.Value);
                 SendMatchStartCountdown(msg.MatchingId);
@@ -231,48 +236,41 @@ public partial class GameClientSession
         }
     }
 
-    private async Task LoadActiveBuffIds(long matchingId, long playerId)
+    private void RestoreActiveBuffIdsFromMissionState(long matchingId, long playerId)
     {
-        try
-        {
-            var raw = await CacheHelper.HashGetAsync(PlayerBuffInfoKey, MakePlayerBuffField(matchingId, playerId));
-            if (raw.IsNullOrEmpty)
-            {
-                SetActiveBuffIds([]);
-                Logger.LogInformation("Active buffs empty: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId, playerId);
-                return;
-            }
-
-            var activeBuffIds = MessagePackSerializer.Deserialize<List<int>>((byte[])raw!);
-            SetActiveBuffIds(activeBuffIds);
-            Logger.LogInformation("Active buffs loaded: MatchingId={MatchingId}, PlayerId={PlayerId}, Buffs=[{Buffs}]",
-                matchingId, playerId, string.Join(",", activeBuffIds));
-        }
-        catch (Exception ex)
+        var state = _missionManager.GetState(matchingId, playerId);
+        if (state == null)
         {
             SetActiveBuffIds([]);
-            Logger.LogWarning(ex, "Active buffs load failed: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId, playerId);
+            return;
+        }
+
+        lock (state.SyncRoot)
+        {
+            SetActiveBuffIds(state.OwnedClueTags
+                .Select(ResolveInitialRoomEntryTraitBuffId)
+                .Where(buffId => buffId > 0));
         }
     }
 
-    private async Task SaveActiveBuffIds(long matchingId, long playerId)
+    private async Task<Cell?> LoadMatchingSpawnCell(long matchingId, long playerId)
     {
         try
         {
-            await CacheHelper.HashSetAsync(
-                PlayerBuffInfoKey,
-                MakePlayerBuffField(matchingId, playerId),
-                MessagePackSerializer.Serialize(_activeBuffIds));
-            Logger.LogInformation("Active buffs saved: MatchingId={MatchingId}, PlayerId={PlayerId}, Buffs=[{Buffs}]",
-                matchingId, playerId, string.Join(",", _activeBuffIds));
+            string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
+            var raw = await CacheHelper.HashGetAsync(handoffKey, MatchingHandoffRedisKeys.SpawnField(playerId));
+            return raw.IsNullOrEmpty
+                ? null
+                : MessagePackSerializer.Deserialize<Cell>((byte[])raw!);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Active buffs save failed: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId, playerId);
+            Logger.LogWarning(ex,
+                "Matching spawn handoff load failed: MatchingId={MatchingId}, PlayerId={PlayerId}",
+                matchingId, playerId);
+            return null;
         }
     }
-
-    private static string MakePlayerBuffField(long matchingId, long playerId) => $"{matchingId}:{playerId}";
     private async Task BroadcastPlayerJoin()
     {
         if (!PlayerId.HasValue) return;
@@ -413,13 +411,18 @@ public partial class GameClientSession
     {
         try
         {
-            var botData = await CacheHelper.HashGetAsync("matching_bots", matchingId);
+            if (_botPlayerManager.HasBots(matchingId)) return;
+
+            string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
+            var botData = await CacheHelper.HashGetAsync(handoffKey, MatchingHandoffRedisKeys.BotsField);
+            if (botData.IsNullOrEmpty)
+                botData = await CacheHelper.HashGetAsync("matching_bots", matchingId);
+
             if (botData.IsNullOrEmpty) return;
 
+            await CacheHelper.HashDeleteAsync(handoffKey, MatchingHandoffRedisKeys.BotsField);
+            await CacheHelper.HashDeleteAsync("matching_bots", matchingId);
             var botInfoList = MessagePackSerializer.Deserialize<List<BotMatchingInfo>>((byte[])botData!);
-            if (_botPlayerManager.HasBots(matchingId)
-                && IsSameBotChain(_botPlayerManager.GetBots(matchingId), botInfoList))
-                return;
 
             _botPlayerManager.RegisterBots(matchingId, mapId, botInfoList);
 
@@ -1111,9 +1114,18 @@ public partial class GameClientSession
 
     private void ProcessBotRoundElimination(long matchingId, long botId, EliminationReason reason)
     {
+        var transition = _manittoChainManager.TryEliminatePlayer(matchingId, botId, reason);
+        if (!transition.Applied)
+        {
+            Logger.LogDebug(
+                "Duplicate round bot elimination ignored: MatchingId={MatchingId}, BotId={BotId}, Reason={Reason}",
+                matchingId, botId, reason);
+            return;
+        }
+
+        var affected = transition.AffectedPlayers;
         _groundItemManager.ReleaseClaimReservationsForPlayer(matchingId, botId);
         _gameEventLogManager.LogElimination(matchingId, botId, reason.ToString(), isBot: true);
-        var affected = _manittoChainManager.EliminatePlayer(matchingId, botId, reason);
         var matchingSessions = _getSessionsByInstance(CurrentMapId, matchingId);
 
         using (var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED))

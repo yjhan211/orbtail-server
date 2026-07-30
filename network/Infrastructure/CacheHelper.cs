@@ -175,6 +175,11 @@ public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
         return ExecuteRedisCommandAsync(database => database.KeyDeleteAsync(key), db);
     }
 
+    public Task<bool> KeyExpireAsync(string key, TimeSpan? expiry, int db = -1)
+    {
+        return ExecuteRedisCommandAsync(database => database.KeyExpireAsync(key, expiry), db);
+    }
+
     public Task<bool> SortedSetAddAsync(string key, byte[] value, double score, int db = -1)
     {
         return ExecuteRedisCommandAsync(database => database.SortedSetAddAsync(key, value, score), db);

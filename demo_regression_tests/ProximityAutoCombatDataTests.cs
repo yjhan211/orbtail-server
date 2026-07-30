@@ -173,6 +173,19 @@ public class ProximityAutoCombatDataTests
         Assert.Contains("_core.enabled = itemId > 0;", source);
     }
     [Fact]
+    public void PlayerAffinityEncounterRequiresAVisibleTargetInTheCurrentArea()
+    {
+        string source = ReadNormalizedSource(
+            FindRepositoryRoot(), "client", "Assets", "Scripts", "Managers", "Map", "MapManager.PlayerVisibility.cs");
+
+        Assert.Contains("!IsPlayerAffinityEncounterVisible(targetPlayerId, out _)", source);
+        Assert.Contains("targetPlayer.IsEncounterVisualVisible", source);
+        Assert.Contains("return IsRemotePlayerInCurrentArea(targetPlayer);", source);
+        Assert.Contains("PruneOutOfAreaPlayerAffinityEncounterStates();", source);
+        Assert.Contains("_survivorOrbEffectStates.Remove(playerId);", source);
+    }
+
+    [Fact]
     public void ObserversSeeBotOrbProjectilesWhenTheTargetIsAnAfterimageMonster()
     {
         string repoRoot = FindRepositoryRoot();

@@ -99,7 +99,12 @@ public partial class BotPlayerManager
         int previouslyEquippedItemId = inventory.GetEquippedBattleItem()?.ItemId ?? 0;
         bool hadResonance = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor previousResonanceColor,
             out int previousSupportTier);
-        bool allowSurvivorOrbMerges = inventory.GetAllItems().Count >= Config.SURVIVOR_INVENTORY_SLOT_COUNT;
+        // 6칸 포화만 기다리면 봇은 T1에 영구히 머문다. 봇은 시작 오브 1개에 소환 4~5회로
+        // 5~6개를 들고 판이 끝나서 포화 조건이 사실상 발동하지 않는다.
+        // 같은 오브가 3개면 둘을 머지해도 원래 계열 하나가 남으므로 공명을 지키며 성장한다.
+        var botItems = inventory.GetAllItems();
+        bool allowSurvivorOrbMerges = botItems.Count >= Config.SURVIVOR_INVENTORY_SLOT_COUNT ||
+                                      BotBattleItemLoadout.HasResonanceSafeMerge(botItems);
         var loadout = BotBattleItemLoadout.CombineAndEquip(
             inventoryManager,
             matchingId,

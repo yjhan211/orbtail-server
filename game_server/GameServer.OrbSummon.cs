@@ -12,6 +12,8 @@ public partial class GameServer
 
         foreach (var bot in _botPlayerManager.GetBots(matchingId).Where(bot => !bot.IsEliminated))
         {
+            TryDestroyBotOverflowOrb(matchingId, bot);
+
             while (true)
             {
                 var attempt = _summonStoneManager.TrySummon(
@@ -55,5 +57,49 @@ public partial class GameServer
                     $"Stones={attempt.State.StoneCount}, NextCost={attempt.State.NextCost}");
             }
         }
+    }
+
+    private void TryDestroyBotOverflowOrb(long matchingId, BotPlayerState bot)
+    {
+        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, bot.PlayerId);
+        if (inventory.GetAllItems().Count(item => item.Count > 0) < Config.SURVIVOR_INVENTORY_SLOT_COUNT)
+            return;
+
+        var decision = BotBattleItemLoadout.SelectOverflowDestroyCandidate(
+            inventory,
+            bot.Corruption,
+            Config.SURVIVOR_MAX_CORRUPTION);
+        if (decision == null)
+            return;
+
+        var summonState = _summonStoneManager.GetSnapshot(matchingId, bot.PlayerId);
+        int refundedStones = Math.Clamp(decision.Tier, 1, 3);
+        if (summonState.StoneCount + refundedStones < summonState.NextCost)
+            return;
+
+        if (!_inGameInventoryManager.TryRemoveItem(
+                matchingId,
+                bot.PlayerId,
+                decision.ItemUid,
+                1,
+                out _))
+        {
+            return;
+        }
+
+        var state = _summonStoneManager.AddStones(matchingId, bot.PlayerId, refundedStones);
+        _gameEventLogManager.LogSurvivorOrbBoardTransition(
+            matchingId,
+            bot.PlayerId,
+            inventory.GetAllItems(),
+            inventory.GetEquippedBattleItem()?.ItemId ?? 0,
+            bot.CurrentArea.ToString(),
+            "bot_destroy",
+            isBot: true);
+        _gameEventLogManager.LogSystem(
+            matchingId,
+            $"Bot overflow orb destroyed: PlayerId={bot.PlayerId}, ItemId={decision.ItemId}, " +
+            $"Tier={decision.Tier}, Color={decision.Color}, KeepScore={decision.KeepScore}, " +
+            $"RefundedStones={refundedStones}, Stones={state.StoneCount}, NextCost={state.NextCost}");
     }
 }

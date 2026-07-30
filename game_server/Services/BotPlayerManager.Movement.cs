@@ -716,7 +716,7 @@ public partial class BotPlayerManager
         bool reachedStep = false;
 
         // Walk every waypoint at the same speed. An area transition is just the adjacent cell across a door.
-        var targetPos = CellToWorldPosition(nextStep.Cell);
+        var targetPos = CellToWorldPosition(mapId, nextStep.Cell);
         float dx = targetPos.X - bot.Position.X;
         float dy = targetPos.Y - bot.Position.Y;
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
@@ -738,7 +738,7 @@ public partial class BotPlayerManager
             velocity = new Vector3f(0f, 0f, 0f);
             if (bot.PathIndex < bot.Path.Count)
             {
-                var followingPos = CellToWorldPosition(bot.Path[bot.PathIndex].Cell);
+                var followingPos = CellToWorldPosition(mapId, bot.Path[bot.PathIndex].Cell);
                 float nextDx = followingPos.X - newPosition.X;
                 float nextDy = followingPos.Y - newPosition.Y;
                 float nextDist = (float)Math.Sqrt(nextDx * nextDx + nextDy * nextDy);

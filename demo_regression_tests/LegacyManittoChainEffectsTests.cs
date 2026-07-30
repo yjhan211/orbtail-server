@@ -67,6 +67,34 @@ public sealed class LegacyManittoChainEffectsTests
         Assert.True(result.isOvertimeElimination);
         Assert.False(result.isAreaClosureElimination);
     }
+    [Fact]
+    public void Elimination_AppliesOnlyOnceAndPreservesTheFirstResult()
+    {
+        const long matchingId = 194004;
+        var manager = new ManittoChainManager(NullLogger.Instance);
+
+        manager.RegisterLink(matchingId, CreateLink(1, 2));
+        manager.RegisterLink(matchingId, CreateLink(2, 3));
+        manager.RegisterLink(matchingId, CreateLink(3, 1));
+
+        var first = manager.TryEliminatePlayer(
+            matchingId, 2, EliminationReason.MENTAL_ZERO,
+            attackerPlayerId: 1, forcedRank: 3, finalOrbTier: 2);
+        var duplicate = manager.TryEliminatePlayer(
+            matchingId, 2, EliminationReason.DETECTED,
+            attackerPlayerId: 3, forcedRank: 2, finalOrbTier: 3);
+
+        Assert.True(first.Applied);
+        Assert.False(duplicate.Applied);
+        Assert.Empty(duplicate.AffectedPlayers);
+
+        var result = Assert.Single(manager.BuildGameResult(matchingId), row => row.playerId == 2);
+        Assert.Equal(EliminationReason.MENTAL_ZERO, result.reason);
+        Assert.Equal(1, result.attackerPlayerId);
+        Assert.Equal(3, result.eliminationRank);
+        Assert.Equal(2, result.finalOrbTier);
+    }
+
     private static ChainLink CreateLink(long playerId, long targetPlayerId) => new()
     {
         PlayerId = playerId,

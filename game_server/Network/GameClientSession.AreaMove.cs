@@ -287,8 +287,6 @@ public partial class GameClientSession
             _pendingRoomEntryEventId = 0;
         }
 
-        if (buffGranted)
-            await SaveActiveBuffIds(CurrentMapSubId, PlayerId.Value);
 
         SendMissionInfo();
 

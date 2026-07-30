@@ -219,7 +219,7 @@ public sealed class GroundItemManager
         if (layout == GroundItemSpawnLayout.EliminationScatter)
             return ResolveEliminationScatterLanding(mapId, area, originX, originY, itemIndex, itemCount);
 
-        var originCell = WorldPositionToCell(originX, originY);
+        var originCell = WorldPositionToCell(mapId, originX, originY);
         var areaRegions = GameMapData.GetAreas(mapId)
             .Where(candidate => candidate.AreaType == area)
             .ToList();
@@ -234,7 +234,7 @@ public sealed class GroundItemManager
         var centerCell = new Cell(
             (region.Start.X + region.End.X) / 2,
             (region.Start.Y + region.End.Y) / 2);
-        var centerWorld = CellToWorldPosition(centerCell);
+        var centerWorld = CellToWorldPosition(mapId, centerCell);
         float verticalDirection = centerWorld.Y >= originY ? 1f : -1f;
         float groupOffset = (itemIndex - (itemCount - 1) * 0.5f) * 0.24f;
 
@@ -244,7 +244,7 @@ public sealed class GroundItemManager
             float scatterX = groupOffset + (Random.Shared.NextSingle() - 0.5f) * 0.22f;
             float candidateX = originX + scatterX;
             float candidateY = originY + verticalDirection * distance;
-            var candidateCell = WorldPositionToCell(candidateX, candidateY);
+            var candidateCell = WorldPositionToCell(mapId, candidateX, candidateY);
             if (GameMapData.GetCurrentArea(mapId, candidateCell) != area ||
                 !GameMapData.IsMoveablePosition(mapId, candidateCell))
                 continue;
@@ -272,7 +272,7 @@ public sealed class GroundItemManager
             float angle = baseAngle + attempt * goldenAngle;
             float candidateX = originX + MathF.Cos(angle) * radius;
             float candidateY = originY + MathF.Sin(angle) * radius;
-            var candidateCell = WorldPositionToCell(candidateX, candidateY);
+            var candidateCell = WorldPositionToCell(mapId, candidateX, candidateY);
             if (GameMapData.GetCurrentArea(mapId, candidateCell) != area ||
                 !GameMapData.IsMoveablePosition(mapId, candidateCell))
                 continue;
@@ -284,8 +284,8 @@ public sealed class GroundItemManager
         return ResolveFallbackLanding(originX, originY, itemIndex, itemCount);
     }
 
-    private static Cell WorldPositionToCell(float worldX, float worldY) =>
-        new((int)MathF.Floor(worldX + 2f * worldY), (int)MathF.Floor(2f * worldY - worldX));
+    private static Cell WorldPositionToCell(MapId mapId, float worldX, float worldY) =>
+        MapCoordinateConverter.WorldToCell(mapId, new Vector3f(worldX, worldY, 0f));
 
     private static (float X, float Y) ResolveFallbackLanding(float originX, float originY, int itemIndex,
         int itemCount)
@@ -295,8 +295,8 @@ public sealed class GroundItemManager
         return (originX + MathF.Cos(angle) * radius, originY + MathF.Sin(angle) * radius * 0.55f);
     }
 
-    private static (float X, float Y) CellToWorldPosition(Cell cell) =>
-        ((cell.X - cell.Y) / 2f, (cell.X + cell.Y) / 4f);
+    private static (float X, float Y) CellToWorldPosition(MapId mapId, Cell cell) =>
+        MapCoordinateConverter.CellToWorldPoint(mapId, cell);
 
     private static GroundItemInfo Clone(GroundItemInfo source) => new()
     {

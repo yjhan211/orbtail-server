@@ -37,13 +37,15 @@ namespace network.common.data.helpers
 
                 if (xBoundary == yBoundary && movedX < countX && movedY < countY)
                 {
-                    // Crossing an exact corner: both adjacent side cells must be open.
-                    // Otherwise a diagonal input can cut through a wall corner.
+                    // Allow movement around a single blocked corner, such as the
+                    // edge of a doorway. Only reject squeezing diagonally between
+                    // two blocked side cells; the destination is checked below.
                     var current = new Cell(x, y);
                     var horizontal = new Cell(x + stepX, y);
                     var vertical = new Cell(x, y + stepY);
-                    if (!CanEnter(current, horizontal, canOccupy, canCross) ||
-                        !CanEnter(current, vertical, canOccupy, canCross))
+                    bool horizontalOpen = CanEnter(current, horizontal, canOccupy, canCross);
+                    bool verticalOpen = CanEnter(current, vertical, canOccupy, canCross);
+                    if (!horizontalOpen && !verticalOpen)
                         return false;
 
                     x += stepX;

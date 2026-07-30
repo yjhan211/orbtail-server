@@ -119,7 +119,7 @@ public partial class BotPlayerManager
                 startArea = AreaType.Corridor;
             }
 
-            var startPosition = CellToWorldPosition(startCell);
+            var startPosition = CellToWorldPosition(mapId, startCell);
             var now = DateTime.UtcNow;
 
             return new BotPlayerState
@@ -269,12 +269,8 @@ public partial class BotPlayerManager
     /// <summary>
     ///     Cell ??World 蹂?? GameClientSession???숈씪 ?⑥닔? ?숈씪 怨듭떇?댁?留?    ///     BotPlayerManager媛 game_server.network???섏〈?섏? ?딅룄濡?蹂??대옒???대????먯뿀??
     /// </summary>
-    internal static Vector3f CellToWorldPosition(Cell cell)
-    {
-        float wX = (cell.X - cell.Y) / 2f;
-        float wY = (cell.X + cell.Y) / 4f;
-        return new Vector3f(wX, wY, 0f);
-    }
+    internal static Vector3f CellToWorldPosition(MapId mapId, Cell cell) =>
+        MapCoordinateConverter.CellToWorld(mapId, cell);
 
     /// <summary>
     ///     留ㅼ묶??遊?紐⑸줉 議고쉶 (?덈씫 ?ы븿)

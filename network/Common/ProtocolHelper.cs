@@ -23,6 +23,7 @@ namespace network.common
             Protocol.C_TO_G_ATTACK,
             Protocol.C_TO_G_INTERACT,
             Protocol.C_TO_G_SUMMON_ORB,
+            Protocol.C_TO_G_DESTROY_ORB,
             Protocol.G_TO_C_ERROR,
         };
 

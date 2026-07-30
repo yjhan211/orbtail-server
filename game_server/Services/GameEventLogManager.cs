@@ -17,6 +17,7 @@ public class GameEventLogManager
 
     private readonly ConcurrentDictionary<long, MatchingEventLog> _logs = new();
     private readonly ConcurrentDictionary<long, MatchingEventLog> _archivedLogs = new();
+    private readonly ConcurrentDictionary<long, byte> _finalizedMatchings = new();
     private readonly ConcurrentDictionary<long, SurvivorCombatState> _survivorCombatStates = new();
     private readonly ConcurrentDictionary<long, SurvivorTelemetryState> _telemetryStates = new();
     private readonly Queue<long> _archivedMatchingIds = new();
@@ -493,6 +494,8 @@ public class GameEventLogManager
             state.MatchStarted = true;
             state.MatchStartedAtUtc = startedAt;
         }
+
+        _finalizedMatchings.TryRemove(matchingId, out _);
 
         Append(matchingId, "MATCH_STARTED", 0, false, $"Match started: seed={seed}.", entry =>
         {
@@ -1092,6 +1095,23 @@ public class GameEventLogManager
         LogOrbTelemetrySummaries(matchingId, players);
     }
 
+    public void LogMatchAbandoned(long matchingId, string endReason,
+        IReadOnlyCollection<SurvivorFinalPlayerStats>? players = null)
+    {
+        Append(matchingId, "MATCH_ABANDONED", 0, false,
+            $"Match abandoned: reason={endReason}.", entry =>
+            {
+                entry.EndReason = endReason;
+                entry.FinalPlayerStats = players?.ToList();
+                entry.CompletedAtUnixMs = entry.TimestampUnixMs;
+            });
+        if (players is { Count: > 0 })
+            LogOrbTelemetrySummaries(matchingId, players);
+    }
+
+    public bool TryBeginFinalization(long matchingId) =>
+        matchingId > 0 && _finalizedMatchings.TryAdd(matchingId, 0);
+
     public List<GameEventEntry> GetRecent(long matchingId, int limit = MaxEventsPerMatching, long? sinceSeq = null)
     {
         if (!_logs.TryGetValue(matchingId, out var log) && !_archivedLogs.TryGetValue(matchingId, out log))
@@ -1108,7 +1128,11 @@ public class GameEventLogManager
             {
                 _archivedMatchingIds.Enqueue(matchingId);
                 while (_archivedMatchingIds.Count > MaxArchivedMatchings)
-                    _archivedLogs.TryRemove(_archivedMatchingIds.Dequeue(), out _);
+                {
+                    long removedMatchingId = _archivedMatchingIds.Dequeue();
+                    _archivedLogs.TryRemove(removedMatchingId, out _);
+                    _finalizedMatchings.TryRemove(removedMatchingId, out _);
+                }
             }
         }
         _survivorCombatStates.TryRemove(matchingId, out _);

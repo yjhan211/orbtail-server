@@ -153,16 +153,24 @@ public class ManittoChainManager
     ///     플레이어 탈락 처리. 체인 단절 + 영향받는 플레이어 상태 변경.
     ///     반환: 영향받는 플레이어 목록 (playerId → 새 상태)
     /// </summary>
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
     public Dictionary<long, ManittoStatus> EliminatePlayer(long matchingId, long playerId, EliminationReason reason,
+        long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, bool isAreaClosureElimination = false,
+        bool isOvertimeElimination = false, int forcedRank = 0, int finalOrbTier = 0)
+    {
+        return TryEliminatePlayer(matchingId, playerId, reason, attackerPlayerId, eliminatedArea,
+            isAreaClosureElimination, isOvertimeElimination, forcedRank, finalOrbTier).AffectedPlayers;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
+    public PlayerEliminationTransition TryEliminatePlayer(long matchingId, long playerId, EliminationReason reason,
         long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, int forcedRank = 0, int finalOrbTier = 0)
     {
         var affected = new Dictionary<long, ManittoStatus>();
 
-        if (!_states.TryGetValue(matchingId, out var state)) return affected;
-        if (!state.Links.TryGetValue(playerId, out var link)) return affected;
-        if (link.Status == ManittoStatus.ELIMINATED) return affected;
+        if (!_states.TryGetValue(matchingId, out var state)) return new PlayerEliminationTransition(false, affected);
+        if (!state.Links.TryGetValue(playerId, out var link)) return new PlayerEliminationTransition(false, affected);
+        if (link.Status == ManittoStatus.ELIMINATED) return new PlayerEliminationTransition(false, affected);
 
         link.Status = ManittoStatus.ELIMINATED;
         link.EliminationReason = reason;
@@ -181,7 +189,7 @@ public class ManittoChainManager
         affected[playerId] = ManittoStatus.ELIMINATED;
 
         if (!ChainBreakConsequencesEnabled)
-            return affected;
+            return new PlayerEliminationTransition(true, affected);
 
         // 1) 탈락자의 타겟(▓▓) → 마니또(스토커)로부터 해방
         long freedPlayerId = link.TargetPlayerId;
@@ -202,7 +210,7 @@ public class ManittoChainManager
             _logger.LogInformation("시한부: PlayerId={PlayerId} (타겟 {Target} 탈락)", manittoLink.PlayerId, playerId);
         }
 
-        return affected;
+        return new PlayerEliminationTransition(true, affected);
     }
 
     /// <summary>
@@ -306,6 +314,10 @@ public class ManittoChainManager
         _states.TryRemove(matchingId, out _);
     }
 }
+
+public sealed record PlayerEliminationTransition(
+    bool Applied,
+    Dictionary<long, ManittoStatus> AffectedPlayers);
 
 public class MatchingChainState
 {
