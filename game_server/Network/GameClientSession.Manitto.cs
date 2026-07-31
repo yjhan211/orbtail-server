@@ -711,7 +711,13 @@ public partial class GameClientSession
         var affected = transition.AffectedPlayers;
         _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
         _gameEventLogManager.LogElimination(
-            CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: eliminatedBot != null);
+            CurrentMapSubId,
+            eliminatedPlayerId,
+            reason.ToString(),
+            isBot: eliminatedBot != null,
+            attackerPlayerId: resolvedAttackerPlayerId,
+            isAreaClosureElimination: isAreaClosureElimination,
+            isOvertimeElimination: isOvertimeElimination);
 
         if (eliminatedSession != null)
             eliminatedSession.DropAllInventoryAtCurrentPosition();
@@ -948,11 +954,11 @@ public partial class GameClientSession
     {
         try
         {
-            var events = _gameEventLogManager.GetRecent(matchingId);
+            var events = _gameEventLogManager.GetForPersistence(matchingId);
             var summary = _matchSummaryFileStore.Save(matchingId, endReason, winnerId, events);
             Logger.LogInformation(
                 "Match summary persisted: MatchingId={MatchingId}, EndReason={EndReason}, Events={EventCount}, Directory={Directory}",
-                matchingId, summary.EndReason, summary.Events.Count, _matchSummaryFileStore.DirectoryPath);
+                matchingId, summary.EndReason, summary.RawEventCount, _matchSummaryFileStore.DirectoryPath);
         }
         catch (Exception ex)
         {

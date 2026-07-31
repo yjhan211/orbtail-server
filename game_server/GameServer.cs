@@ -630,7 +630,14 @@ public partial class GameServer(
 
             var affected = transition.AffectedPlayers;
             _groundItemManager.ReleaseClaimReservationsForPlayer(matchingId, botId);
-            _gameEventLogManager.LogElimination(matchingId, botId, reason.ToString(), isBot: true);
+            _gameEventLogManager.LogElimination(
+                matchingId,
+                botId,
+                reason.ToString(),
+                isBot: true,
+                attackerPlayerId: attackerPlayerId,
+                isAreaClosureElimination: isAreaClosureElimination,
+                isOvertimeElimination: isOvertimeElimination);
             var matchingSessions = _clientSessions.Values
                 .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                 .ToList();
@@ -1404,6 +1411,14 @@ public partial class GameServer(
 
             _gameEventLogManager.LogMove(matchingId, ev.BotPlayerId,
                 ev.FromArea.ToString(), ev.ToArea.ToString(), isBot: true);
+            var core = _emotionAfterimageMonsterManager.GetSnapshot(matchingId, ev.ToArea)
+                .FirstOrDefault(monster => monster.IsAlive && monster.IsCore);
+            _gameEventLogManager.LogCoreContestedEntry(
+                matchingId,
+                ev.BotPlayerId,
+                ev.ToArea.ToString(),
+                core,
+                isBot: true);
 
             if (matchingSessions.Count == 0) return;
 
@@ -1658,11 +1673,19 @@ public partial class GameServer(
                     foreach (var session in sessions) session.Send(packet);
                 }
 
-                if (_emotionAfterimageMonsterManager.ApplyAreaClosureAndSpawnWave(
-                        matchingId, closureTick.ClosedAreas, DateTime.UtcNow))
+                bool monsterWaveChanged = _emotionAfterimageMonsterManager.ApplyAreaClosureAndSpawnWave(
+                    matchingId, closureTick.ClosedAreas, DateTime.UtcNow);
+                if (monsterWaveChanged)
                 {
                     BroadcastMonsterSnapshot(matchingId, sessions);
                     BroadcastMonsterMinimapSnapshot(sessions, _emotionAfterimageMonsterManager.GetSnapshot(matchingId));
+                }
+                if (closureTick.ClosedAreas.Count > 0)
+                {
+                    _gameEventLogManager.LogRewardAreaSnapshot(
+                        matchingId,
+                        _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(matchingId),
+                        "closure");
                 }
 
                 foreach (var closedArea in closureTick.ClosedAreas)
@@ -2274,11 +2297,11 @@ public partial class GameServer(
     {
         try
         {
-            var events = _gameEventLogManager.GetRecent(matchingId);
+            var events = _gameEventLogManager.GetForPersistence(matchingId);
             var summary = _matchSummaryFileStore.Save(matchingId, endReason, winnerId, events);
             logger.LogInformation(
                 "Match summary persisted: MatchingId={MatchingId}, EndReason={EndReason}, Events={EventCount}, Directory={Directory}",
-                matchingId, summary.EndReason, summary.Events.Count, _matchSummaryFileStore.DirectoryPath);
+                matchingId, summary.EndReason, summary.RawEventCount, _matchSummaryFileStore.DirectoryPath);
         }
         catch (Exception ex)
         {
@@ -2462,6 +2485,10 @@ public partial class GameServer(
         _areaItemStockManager.InitializeMatching(matchingId);
         _groundItemManager.InitializeMatching(matchingId);
         _emotionAfterimageMonsterManager.InitializeMatching(matchingId);
+        _gameEventLogManager.LogRewardAreaSnapshot(
+            matchingId,
+            _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(matchingId),
+            "initial");
         _doorStateManager.InitializeMatching(matchingId);
         _checklistManager.StartRound(matchingId, 1, playerIds,
             playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));

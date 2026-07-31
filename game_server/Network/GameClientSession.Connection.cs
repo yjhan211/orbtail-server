@@ -100,6 +100,10 @@ public partial class GameClientSession
             _emotionAfterimageMonsterManager.InitializeMatching(msg.MatchingId);
             int matchSeed = SurvivorRoyaleSpawnData.GetDeterministicSeed(msg.MatchingId);
             _gameEventLogManager.BeginMatch(msg.MatchingId, matchSeed);
+            _gameEventLogManager.LogRewardAreaSnapshot(
+                msg.MatchingId,
+                _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(msg.MatchingId),
+                "initial");
             foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
             {
                 _gameEventLogManager.LogSpawnAssignment(

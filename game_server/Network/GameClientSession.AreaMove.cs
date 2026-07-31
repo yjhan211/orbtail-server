@@ -128,6 +128,7 @@ public partial class GameClientSession
         // HandleAreaChange는 Movement에 정의됨 — 폐쇄 알림, 동선 추적 등 공통 처리
         _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
             oldArea.ToString(), msg.TargetArea.ToString(), isBot: false);
+        LogContestedCoreEntry(msg.TargetArea);
 
         await HandleAreaChange(oldArea, msg.TargetArea);
         TrySendCorridorEncounterEvents(spawnPos);
@@ -300,6 +301,21 @@ public partial class GameClientSession
             traitGranted,
             buffId,
             buffGranted);
+    }
+
+    private void LogContestedCoreEntry(AreaType area)
+    {
+        if (!PlayerId.HasValue || CurrentMapSubId <= 0 || area == AreaType.None)
+            return;
+
+        var core = _emotionAfterimageMonsterManager.GetSnapshot(CurrentMapSubId, area)
+            .FirstOrDefault(monster => monster.IsAlive && monster.IsCore);
+        _gameEventLogManager.LogCoreContestedEntry(
+            CurrentMapSubId,
+            PlayerId.Value,
+            area.ToString(),
+            core,
+            isBot: false);
     }
 
     private bool HasInitialRoomEntryTrait()

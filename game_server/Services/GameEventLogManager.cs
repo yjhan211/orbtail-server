@@ -97,11 +97,31 @@ public class GameEventLogManager
             CreateEntry);
     }
 
-    public void LogElimination(long matchingId, long playerId, string reason, bool isBot)
+    public void LogElimination(
+        long matchingId,
+        long playerId,
+        string reason,
+        bool isBot,
+        long attackerPlayerId = 0,
+        bool isAreaClosureElimination = false,
+        bool isOvertimeElimination = false)
     {
         var occurredAt = DateTimeOffset.UtcNow;
         LogFirstSurvivorElimination(matchingId, playerId, reason, isBot, occurredAt);
-        AppendAt(matchingId, "ELIMINATE", playerId, isBot, reason, occurredAt);
+        string sourceType = isAreaClosureElimination || isOvertimeElimination
+            ? "closure"
+            : attackerPlayerId != 0
+                ? "pvp"
+                : "mental";
+        AppendAt(matchingId, "ELIMINATE", playerId, isBot, reason, occurredAt, entry =>
+        {
+            entry.ActorPlayerId = attackerPlayerId;
+            entry.TargetPlayerId = playerId;
+            entry.DamageSourceType = sourceType;
+            entry.Outcome = reason;
+            entry.IsAreaClosureElimination = isAreaClosureElimination;
+            entry.IsOvertimeElimination = isOvertimeElimination;
+        });
     }
 
     public void LogSurvivorTierReached(
@@ -418,6 +438,97 @@ public class GameEventLogManager
                 entry.OccurredAtUnixMs = entry.TimestampUnixMs;
             });
     }
+    public void LogEmotionAfterimageKilled(
+        long matchingId,
+        int monsterId,
+        string area,
+        bool isCore,
+        long firstAttackerPlayerId,
+        long lastAttackerPlayerId,
+        IReadOnlyDictionary<long, int> damageByPlayer)
+    {
+        var contributions = damageByPlayer
+            .Where(pair => pair.Key != 0 && pair.Value > 0)
+            .OrderByDescending(pair => pair.Value)
+            .ThenBy(pair => pair.Key)
+            .Select(pair => new MonsterDamageContribution(pair.Key, pair.Value))
+            .ToList();
+
+        Append(matchingId, "AFTERIMAGE_KILLED", lastAttackerPlayerId,
+            BotPlayerManager.IsBotPlayerId(lastAttackerPlayerId),
+            $"Afterimage {monsterId} killed: core={isCore}, first={firstAttackerPlayerId}, last={lastAttackerPlayerId}, contributors={contributions.Count}.",
+            entry =>
+            {
+                entry.MonsterId = monsterId;
+                entry.Area = area;
+                entry.Outcome = isCore ? "core" : "normal";
+                entry.FirstAttackerPlayerId = firstAttackerPlayerId;
+                entry.LastAttackerPlayerId = lastAttackerPlayerId;
+                entry.MonsterDamageContributions = contributions;
+            });
+    }
+    public void LogRewardAreaSnapshot(long matchingId, MonsterRewardAreaSnapshot snapshot, string reason)
+    {
+        if (matchingId <= 0)
+            return;
+
+        string signature = string.Join(";", snapshot.Areas
+            .OrderBy(area => area.Area)
+            .Select(area => $"{area.Area}:{area.AliveMonsterCount}:{area.AliveCoreCount}:{area.RemainingSummonStoneReward}"));
+        var telemetry = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        lock (telemetry.SyncRoot)
+        {
+            if (telemetry.RewardAreaSignaturesByPhase.TryGetValue(snapshot.PhaseIndex, out string? previous) &&
+                string.Equals(previous, signature, StringComparison.Ordinal))
+                return;
+            telemetry.RewardAreaSignaturesByPhase[snapshot.PhaseIndex] = signature;
+        }
+
+        var areas = snapshot.Areas
+            .OrderBy(area => area.Area)
+            .Select(area => new MonsterRewardAreaTelemetry(
+                area.Area.ToString(),
+                area.AliveMonsterCount,
+                area.AliveCoreCount,
+                area.RemainingSummonStoneReward))
+            .ToList();
+        Append(matchingId, "SURVIVOR_REWARD_AREA_SNAPSHOT", 0, false,
+            $"Reward areas: phase={snapshot.PhaseIndex}, reason={reason}, areas={areas.Count}.", entry =>
+            {
+                entry.PhaseIndex = snapshot.PhaseIndex;
+                entry.Outcome = reason;
+                entry.RewardAreaStates = areas;
+            });
+    }
+
+    public void LogCoreContestedEntry(
+        long matchingId,
+        long enteringPlayerId,
+        string area,
+        MonsterRuntimeInfo? core,
+        bool isBot)
+    {
+        if (matchingId <= 0 || enteringPlayerId == 0 || core is not { IsAlive: true, IsCore: true })
+            return;
+
+        var log = _logs.GetOrAdd(matchingId, _ => new MatchingEventLog());
+        var otherPlayerIds = log.GetOtherPlayersInArea(enteringPlayerId, area);
+        if (otherPlayerIds.Count == 0)
+            return;
+
+        Append(matchingId, "SURVIVOR_CORE_CONTESTED_ENTRY", enteringPlayerId, isBot,
+            $"{FormatPlayer(enteringPlayerId)} entered contested core {core.MonsterId} in {area}; health={core.CurrentHealth}/{core.MaxHealth}.",
+            entry =>
+            {
+                entry.Area = area;
+                entry.MonsterId = core.MonsterId;
+                entry.CoreCurrentHealth = core.CurrentHealth;
+                entry.CoreMaxHealth = core.MaxHealth;
+                entry.AlreadyPresentPlayerIds = otherPlayerIds;
+                entry.Outcome = core.CurrentHealth < core.MaxHealth ? "damaged" : "full";
+            });
+    }
+
     public void LogInteraction(long matchingId, long playerId, string description, bool isBot)
     {
         Append(matchingId, "INTERACT", playerId, isBot, description);
@@ -1119,10 +1230,18 @@ public class GameEventLogManager
         return log.Snapshot(limit, sinceSeq);
     }
 
+    public List<GameEventEntry> GetForPersistence(long matchingId)
+    {
+        if (!_logs.TryGetValue(matchingId, out var log) && !_archivedLogs.TryGetValue(matchingId, out log))
+            return new List<GameEventEntry>();
+        return log.FullSnapshot();
+    }
+
     public void Clear(long matchingId)
     {
         if (_logs.TryRemove(matchingId, out var log))
         {
+            log.CompactForArchive();
             _archivedLogs[matchingId] = log;
             lock (_archiveLock)
             {
@@ -1334,6 +1453,7 @@ public class GameEventLogManager
         { get; } = new();
         public List<PendingEliminationDrop> PendingEliminationDrops { get; } = new();
         public Dictionary<long, OrbTelemetry> OrbTelemetry { get; } = new();
+        public Dictionary<int, string> RewardAreaSignaturesByPhase { get; } = new();
         public bool OrbSummariesLogged { get; set; }
     }
 
@@ -1442,6 +1562,7 @@ public class GameEventLogManager
     {
         private readonly Dictionary<ActivityKey, DateTimeOffset> _activeSchoolActivities = new();
         private readonly LinkedList<GameEventEntry> _entries = new();
+        private readonly List<GameEventEntry> _fullEntries = new();
         private readonly Dictionary<long, AreaPresenceState> _playerAreas = new();
         private readonly object _lock = new();
 
@@ -1589,6 +1710,17 @@ public class GameEventLogManager
             }
         }
 
+        public List<long> GetOtherPlayersInArea(long playerId, string area)
+        {
+            lock (_lock)
+                return _playerAreas
+                    .Where(pair => pair.Key != playerId &&
+                                   string.Equals(pair.Value.Area, area, StringComparison.Ordinal))
+                    .OrderBy(pair => pair.Value.EnteredAt)
+                    .Select(pair => pair.Key)
+                    .ToList();
+        }
+
         public void AddSchoolActivityStart(
             long playerId,
             int taskId,
@@ -1687,9 +1819,25 @@ public class GameEventLogManager
             }
         }
 
+        public List<GameEventEntry> FullSnapshot()
+        {
+            lock (_lock)
+                return _fullEntries.ToList();
+        }
+
+        public void CompactForArchive()
+        {
+            lock (_lock)
+            {
+                _fullEntries.Clear();
+                _fullEntries.AddRange(_entries);
+            }
+        }
+
         private void AddNoLock(GameEventEntry entry)
         {
             _entries.AddLast(entry);
+            _fullEntries.Add(entry);
             while (_entries.Count > MaxEventsPerMatching) _entries.RemoveFirst();
         }
 
@@ -1765,7 +1913,16 @@ public class GameEventEntry
     public int? WeaponTier { get; set; }
     public int? TargetWeaponTier { get; set; }
     public int? MonsterId { get; set; }
+    public int? PhaseIndex { get; set; }
+    public int? CoreCurrentHealth { get; set; }
+    public int? CoreMaxHealth { get; set; }
+    public List<MonsterRewardAreaTelemetry>? RewardAreaStates { get; set; }
     public string? DamageSourceType { get; set; }
+    public long? FirstAttackerPlayerId { get; set; }
+    public long? LastAttackerPlayerId { get; set; }
+    public List<MonsterDamageContribution>? MonsterDamageContributions { get; set; }
+    public bool? IsAreaClosureElimination { get; set; }
+    public bool? IsOvertimeElimination { get; set; }
     public int? CorruptionBefore { get; set; }
     public int? CorruptionAfter { get; set; }
     public int? Damage { get; set; }
@@ -1844,6 +2001,12 @@ public class GameEventEntry
     public long? SaidAtUnixMs { get; set; }
 }
 
+public sealed record MonsterDamageContribution(long PlayerId, int Damage);
+public sealed record MonsterRewardAreaTelemetry(
+    string Area,
+    int AliveMonsterCount,
+    int AliveCoreCount,
+    int RemainingSummonStoneReward);
 public sealed record SurvivorFinalPlayerStats(
     long PlayerId,
     int Rank,

@@ -127,6 +127,7 @@ public partial class GameClientSession
                     countAsEntry: true);
                 _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
                     oldArea.ToString(), newArea.ToString(), isBot: false);
+                LogContestedCoreEntry(newArea);
                 await HandleAreaChange(oldArea, newArea);
             }
 

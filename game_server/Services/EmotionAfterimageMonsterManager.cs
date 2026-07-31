@@ -45,6 +45,11 @@ public sealed class EmotionAfterimageMonsterManager
             ? state.GetSnapshot(area)
             : [];
 
+    public MonsterRewardAreaSnapshot GetRewardAreaSnapshot(long matchingId) =>
+        _matchingStates.TryGetValue(matchingId, out var state)
+            ? state.GetRewardAreaSnapshot()
+            : MonsterRewardAreaSnapshot.Empty;
+
     public IReadOnlyList<MonsterCombatTarget> GetAliveTargets(long matchingId) =>
         _matchingStates.TryGetValue(matchingId, out var state) ? state.GetAliveTargets() : [];
 
@@ -107,6 +112,24 @@ public sealed class EmotionAfterimageMonsterManager
                     .ToList();
         }
 
+        public MonsterRewardAreaSnapshot GetRewardAreaSnapshot()
+        {
+            lock (_sync)
+            {
+                var areas = _monsters.Values
+                    .Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor)
+                    .GroupBy(state => state.Definition.Area)
+                    .OrderBy(group => group.Key)
+                    .Select(group => new MonsterRewardAreaState(
+                        group.Key,
+                        group.Count(),
+                        group.Count(state => state.Definition.IsCore),
+                        group.Sum(state => state.Definition.SummonStoneReward)))
+                    .ToList();
+                return new MonsterRewardAreaSnapshot(_waveIndex, areas);
+            }
+        }
+
         public IReadOnlyList<MonsterCombatTarget> GetAliveTargets()
         {
             lock (_sync)
@@ -131,17 +154,33 @@ public sealed class EmotionAfterimageMonsterManager
                     return MonsterDamageResult.None;
 
                 state.LastDamagedAtUtc = nowUtc;
+                if (state.FirstAttackerPlayerId == 0)
+                    state.FirstAttackerPlayerId = attackerPlayerId;
                 state.LastAttackerPlayerId = attackerPlayerId;
                 state.DamageByPlayer.TryGetValue(attackerPlayerId, out int accumulatedDamage);
                 state.DamageByPlayer[attackerPlayerId] = accumulatedDamage + damage;
                 state.CurrentHealth = Math.Max(0, state.CurrentHealth - damage);
+                var contributions = state.DamageByPlayer.ToDictionary(pair => pair.Key, pair => pair.Value);
                 if (state.CurrentHealth > 0)
-                    return new MonsterDamageResult(ToRuntimeInfo(state), false, 0, true);
+                    return new MonsterDamageResult(
+                        ToRuntimeInfo(state),
+                        false,
+                        0,
+                        true,
+                        state.FirstAttackerPlayerId,
+                        state.LastAttackerPlayerId,
+                        contributions);
 
                 state.IsAlive = false;
                 state.NextAttackAtUtc = DateTime.MaxValue;
-                return new MonsterDamageResult(ToRuntimeInfo(state), true,
-                    state.Definition.SummonStoneReward, true);
+                return new MonsterDamageResult(
+                    ToRuntimeInfo(state),
+                    true,
+                    state.Definition.SummonStoneReward,
+                    true,
+                    state.FirstAttackerPlayerId,
+                    state.LastAttackerPlayerId,
+                    contributions);
             }
         }
 
@@ -163,18 +202,20 @@ public sealed class EmotionAfterimageMonsterManager
                 }
 
                 int waveIndex = _waveIndex++;
-                int spawnBudget = EmotionAfterimageMonsterSpawnData.GetWavePackSpawnBudget(waveIndex);
+                var aliveByArea = _monsters.Values.Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor)
+                    .GroupBy(state => state.Definition.Area)
+                    .ToDictionary(group => group.Key, group => group.Count());
+                int activeAreaTarget = EmotionAfterimageMonsterSpawnData.GetWaveActiveAreaTarget(waveIndex);
+                int spawnBudget = Math.Max(0, activeAreaTarget - aliveByArea.Count);
                 int requestedSpawnBudget = spawnBudget;
                 if (spawnBudget == 0) return changed;
 
                 TimeSpan releaseDuration = EmotionAfterimageMonsterSpawnData.GetWavePackReleaseDuration(waveIndex);
-                var aliveByArea = _monsters.Values.Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor)
-                    .GroupBy(state => state.Definition.Area)
-                    .ToDictionary(group => group.Key, group => group.Count());
+                var pendingClusterIds = _pendingWavePacks.Select(pack => pack.ClusterId).ToHashSet();
                 var dormantPacks = _monsters.Values
                     .Where(state => !state.Definition.IsAmbientCorridor && !_closedAreas.Contains(state.Definition.Area))
                     .GroupBy(state => state.Definition.ClusterId)
-                    .Where(pack => pack.All(state => !state.IsAlive))
+                    .Where(pack => pack.All(state => !state.IsAlive) && !pendingClusterIds.Contains(pack.Key))
                     .OrderBy(pack => pack.Min(state => state.Definition.SpawnPriority))
                     .ThenBy(pack => pack.Min(state => state.Definition.MonsterId));
 
@@ -186,9 +227,9 @@ public sealed class EmotionAfterimageMonsterManager
                     int packSize = pack.Count();
                     AreaType area = first.Definition.Area;
                     aliveByArea.TryGetValue(area, out int aliveCount);
-                    if (aliveCount + packSize > first.Definition.AreaAliveLimit) continue;
+                    if (aliveCount > 0 || aliveCount + packSize > first.Definition.AreaAliveLimit) continue;
 
-                    aliveByArea[area] = aliveCount + packSize;
+                    aliveByArea[area] = packSize;
                     double releaseOffsetSeconds = requestedSpawnBudget == 1
                         ? 0d
                         : releaseDuration.TotalSeconds * scheduledCount / (requestedSpawnBudget - 1d);
@@ -488,6 +529,7 @@ public sealed class EmotionAfterimageMonsterManager
         public int AttackDamage { get; private set; } = definition.AttackDamage;
         public int CurrentHealth { get; set; } = definition.MaxHealth;
         public bool IsAlive { get; set; } = definition.StartsActive;
+        public long FirstAttackerPlayerId { get; set; }
         public long LastAttackerPlayerId { get; set; }
         public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
         public DateTime NextAttackAtUtc { get; set; } = DateTime.MinValue;
@@ -507,6 +549,7 @@ public sealed class EmotionAfterimageMonsterManager
                 Definition.Position.Z);
             CurrentHealth = MaxHealth;
             IsAlive = true;
+            FirstAttackerPlayerId = 0;
             LastAttackerPlayerId = 0;
             LastDamagedAtUtc = DateTime.MinValue;
             NextAttackAtUtc = DateTime.MinValue;
@@ -543,12 +586,29 @@ public readonly record struct MonsterCombatTarget(
     int ClusterMemberIndex = 0,
     int ClusterSize = 1,
     bool IsCore = false);
+public readonly record struct MonsterRewardAreaState(
+    AreaType Area,
+    int AliveMonsterCount,
+    int AliveCoreCount,
+    int RemainingSummonStoneReward);
+public readonly record struct MonsterRewardAreaSnapshot(
+    int PhaseIndex,
+    IReadOnlyList<MonsterRewardAreaState> Areas)
+{
+    public static MonsterRewardAreaSnapshot Empty => new(0, []);
+}
 public readonly record struct MonsterSpatialTarget(long PlayerId, MapId MapId, AreaType Area, Vector3f Position);
 public readonly record struct MonsterAttack(int MonsterId, long TargetPlayerId, AreaType Area, int Damage);
-public readonly record struct MonsterDamageResult(MonsterRuntimeInfo? State, bool Killed, int SummonStoneReward,
-    bool StateChanged)
+public readonly record struct MonsterDamageResult(
+    MonsterRuntimeInfo? State,
+    bool Killed,
+    int SummonStoneReward,
+    bool StateChanged,
+    long FirstAttackerPlayerId,
+    long LastAttackerPlayerId,
+    IReadOnlyDictionary<long, int>? DamageByPlayer)
 {
-    public static MonsterDamageResult None => new(null, false, 0, false);
+    public static MonsterDamageResult None => new(null, false, 0, false, 0, 0, null);
 }
 public readonly record struct MonsterTickResult(IReadOnlyList<MonsterRuntimeInfo> ChangedStates,
     IReadOnlyList<MonsterAttack> Attacks, IReadOnlyList<MonsterRuntimeInfo> SpawnedStates)
