@@ -7,7 +7,7 @@ namespace game_server.services;
 
 /// <summary>
 /// Survivor Royale P0의 서버 권위 구역 폐쇄·오버타임 상태를 관리한다.
-/// 복도는 하나의 연결 영역이므로 절대로 폐쇄하지 않는다.
+/// 복도는 모든 방 폐쇄가 끝난 뒤 마지막 웨이브에서만 폐쇄한다.
 /// </summary>
 public class AreaClosureManager
 {
@@ -20,7 +20,8 @@ public class AreaClosureManager
         new(165, [AreaType.Classroom4, AreaType.Classroom3], 6),
         new(215, [AreaType.Library, AreaType.Gym], 8),
         new(255, [AreaType.Storage, AreaType.Junkyard, AreaType.AdminOffice], 10),
-        new(290, [AreaType.StaffRoom, AreaType.Junkyard2, AreaType.Storage2], 12)
+        new(290, [AreaType.StaffRoom, AreaType.Junkyard2, AreaType.Storage2], 12),
+        new(320, [AreaType.Corridor], 14)
     ];
 
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();
@@ -56,9 +57,6 @@ public class AreaClosureManager
             })
             .Where(wave => wave.Areas.Count > 0)
             .ToList();
-
-        if (waves.Any(wave => wave.Areas.Any(area => area.IsCorridor())))
-            throw new InvalidOperationException("Survivor Royale P0 closure schedule must not contain corridors.");
 
         var state = new MatchingClosureState
         {
@@ -220,56 +218,14 @@ public class AreaClosureManager
     public bool IsOvertimeActive(long matchingId) => GetOvertimeCorruptionPerTick(matchingId, 1) > 0;
     public GlobalClosureTick CheckGlobalClosureSchedule(long matchingId)
     {
-        if (!_states.TryGetValue(matchingId, out var state)) return GlobalClosureTick.Empty;
-
-        lock (state.SyncRoot)
-        {
-            if (state.Waves.Count == 0) return GlobalClosureTick.Empty;
-
-            var finalWave = state.Waves[^1];
-            double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
-            long closureAtUnixMs = ((DateTimeOffset)state.GameStartTime.AddSeconds(finalWave.ClosureAtSeconds))
-                .ToUnixTimeMilliseconds();
-
-            if (elapsedSeconds >= finalWave.ClosureAtSeconds)
-            {
-                if (state.GlobalClosureActiveSent) return GlobalClosureTick.Empty;
-
-                state.GlobalClosureActiveSent = true;
-                return new GlobalClosureTick(true, 0, closureAtUnixMs);
-            }
-
-            if (elapsedSeconds < finalWave.ClosureAtSeconds - ClosureWarningSeconds ||
-                state.GlobalClosureWarningSent)
-                return GlobalClosureTick.Empty;
-
-            state.GlobalClosureWarningSent = true;
-            int remainingSeconds = Math.Max(1, (int)Math.Ceiling(finalWave.ClosureAtSeconds - elapsedSeconds));
-            return new GlobalClosureTick(false, remainingSeconds, closureAtUnixMs);
-        }
+        _ = matchingId;
+        return GlobalClosureTick.Empty;
     }
 
     public GlobalClosureClientState GetGlobalClosureClientState(long matchingId)
     {
-        if (!_states.TryGetValue(matchingId, out var state)) return GlobalClosureClientState.Empty;
-
-        lock (state.SyncRoot)
-        {
-            if (state.Waves.Count == 0) return GlobalClosureClientState.Empty;
-
-            var finalWave = state.Waves[^1];
-            double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
-            if (elapsedSeconds < finalWave.ClosureAtSeconds - ClosureWarningSeconds)
-                return GlobalClosureClientState.Empty;
-
-            long closureAtUnixMs = ((DateTimeOffset)state.GameStartTime.AddSeconds(finalWave.ClosureAtSeconds))
-                .ToUnixTimeMilliseconds();
-            bool active = elapsedSeconds >= finalWave.ClosureAtSeconds;
-            int remainingSeconds = active
-                ? 0
-                : Math.Max(1, (int)Math.Ceiling(finalWave.ClosureAtSeconds - elapsedSeconds));
-            return new GlobalClosureClientState(true, active, remainingSeconds, closureAtUnixMs);
-        }
+        _ = matchingId;
+        return GlobalClosureClientState.Empty;
     }
 
     public (int Stage, int CorruptionPerSecond) GetOvertimeStatus(long matchingId)
@@ -287,7 +243,7 @@ public class AreaClosureManager
     }
 
 
-    /// <summary>운동장 전역 오버타임 단계. 마지막 폐쇄 완료 시각(4:50)부터 시작한다.</summary>
+    /// <summary>전역 오버타임 단계. 마지막 복도 폐쇄 완료 시각(5:20)부터 시작한다.</summary>
     private int GetOvertimeCorruptionPerSecond(MatchingClosureState state)
     {
         if (state.Waves.Count == 0) return 0;
