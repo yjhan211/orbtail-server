@@ -65,7 +65,11 @@ public partial class GameServer(
     private readonly ConcurrentDictionary<long, Timer> _headlessRoundTimers = new();
     private readonly ConcurrentDictionary<long, int> _lastMatchStartCountdownBroadcast = new();
     private readonly ConcurrentDictionary<long, object> _survivorSettlementLocks = new();
-    private long _adminBotOnlyMatchingIdSeed = 9_000_000;
+    // 재시작해도 되감기지 않도록 기동 시각을 섞는다. 고정 시드로 시작하면 서버를 다시
+    // 올릴 때마다 같은 matchingId가 나오고, 매치 요약 파일이 같은 이름을 만나
+    // 저장이 통째로 건너뛰어진다(기존 파일 우선 규칙).
+    private long _adminBotOnlyMatchingIdSeed =
+        9_000_000 + DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond % 900_000;
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
     private INatsClient? _matchingLifecycleNatsClient;
 
@@ -2192,7 +2196,24 @@ public partial class GameServer(
         }
     }
 
-    private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId)
+    /// <summary>
+    ///     사람 세션 없이 진행되는 매치(관리자 봇 전용 인스턴스)를 정산한다.
+    ///     승리 판정이 사람 세션에 의존해 최후 1인이 남아도 끝나지 않고, 오염도가 한계에
+    ///     닿은 봇이 계속 살아 있는 상태로 매치가 무한히 이어지던 것을 막는다.
+    /// </summary>
+    public void EndBotOnlyMatchIfSettled(long matchingId, long winnerPlayerId)
+    {
+        if (_clientSessions.Values.Any(session =>
+                session.PlayerId.HasValue && session.CurrentMapSubId == matchingId))
+            return;
+
+        CleanupMatchingIfNoHumanSessionsRemain(matchingId, "last_survivor_bot_only", winnerPlayerId);
+    }
+
+    private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId) =>
+        CleanupMatchingIfNoHumanSessionsRemain(matchingId, "last_human_left", 0);
+
+    private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId, string endReason, long winnerPlayerId)
     {
         if (_clientSessions.Values.Any(other =>
                 other.PlayerId.HasValue && other.CurrentMapSubId == matchingId))
@@ -2200,7 +2221,6 @@ public partial class GameServer(
 
         if (_gameEventLogManager.TryBeginFinalization(matchingId))
         {
-            const string endReason = "last_human_left";
             DateTime endedAtUtc = DateTime.UtcNow;
             DateTime startedAtUtc = _areaClosureManager.GetMatchingState(matchingId)?.GameStartTime ?? endedAtUtc;
             var finalPlayerStats = _manittoChainManager.BuildGameResult(matchingId)
@@ -2218,7 +2238,7 @@ public partial class GameServer(
                 })
                 .ToList();
             _gameEventLogManager.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
-            PersistMatchSummary(matchingId, endReason, 0);
+            PersistMatchSummary(matchingId, endReason, winnerPlayerId);
         }
 
         GameClientSession.CleanupAbandonedMatchingRuntime(matchingId);
@@ -2247,8 +2267,8 @@ public partial class GameServer(
         _ = CleanupAbandonedMatchingRedisAsync(matchingId);
 
         logger.LogInformation(
-            "Removed abandoned matching after last human player left: MatchingId={MatchingId}",
-            matchingId);
+            "Removed matching without human sessions: MatchingId={MatchingId}, EndReason={EndReason}",
+            matchingId, endReason);
     }
 
     private void PersistMatchSummary(long matchingId, string endReason, long winnerId)
