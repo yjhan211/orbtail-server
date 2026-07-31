@@ -14,6 +14,7 @@ public sealed class InMemoryCacheHelper(IRedLockFactory redLockFactory) : ICache
     private readonly ConcurrentDictionary<CacheKey, LockedList> _lists = new();
     private readonly ConcurrentDictionary<CacheKey, long> _strings = new();
     private readonly ConcurrentDictionary<CacheKey, LockedSortedSet> _sortedSets = new();
+    private readonly ConcurrentDictionary<CacheKey, CancellationTokenSource> _expirations = new();
 
     public IRedLockFactory GetRedLockFactory() => redLockFactory;
 
@@ -167,11 +168,32 @@ public sealed class InMemoryCacheHelper(IRedLockFactory redLockFactory) : ICache
     public Task<bool> KeyDeleteAsync(string key, int db = -1)
     {
         CacheKey cacheKey = MakeKey(key, db);
+        CancelExpiration(cacheKey);
         bool removed = _hashes.TryRemove(cacheKey, out _);
         removed |= _lists.TryRemove(cacheKey, out _);
         removed |= _strings.TryRemove(cacheKey, out _);
         removed |= _sortedSets.TryRemove(cacheKey, out _);
         return Task.FromResult(removed);
+    }
+
+    public Task<bool> KeyExpireAsync(string key, TimeSpan? expiry, int db = -1)
+    {
+        CacheKey cacheKey = MakeKey(key, db);
+        if (!KeyExists(cacheKey)) return Task.FromResult(false);
+
+        if (expiry is null)
+        {
+            CancelExpiration(cacheKey);
+            return Task.FromResult(true);
+        }
+
+        if (expiry <= TimeSpan.Zero) return KeyDeleteAsync(key, db);
+
+        var cancellation = new CancellationTokenSource();
+        CancelExpiration(cacheKey);
+        _expirations[cacheKey] = cancellation;
+        _ = ExpireKeyAsync(cacheKey, expiry.Value, cancellation);
+        return Task.FromResult(true);
     }
 
     public Task<bool> SortedSetAddAsync(string key, byte[] value, double score, int db = -1)
@@ -213,6 +235,39 @@ public sealed class InMemoryCacheHelper(IRedLockFactory redLockFactory) : ICache
     }
 
     private static CacheKey MakeKey(string key, int db) => new(db < 0 ? 0 : db, key);
+
+    private bool KeyExists(CacheKey cacheKey) =>
+        _hashes.ContainsKey(cacheKey) ||
+        _lists.ContainsKey(cacheKey) ||
+        _strings.ContainsKey(cacheKey) ||
+        _sortedSets.ContainsKey(cacheKey);
+
+    private void CancelExpiration(CacheKey cacheKey)
+    {
+        if (_expirations.TryRemove(cacheKey, out CancellationTokenSource? cancellation))
+        {
+            cancellation.Cancel();
+            cancellation.Dispose();
+        }
+    }
+
+    private async Task ExpireKeyAsync(CacheKey cacheKey, TimeSpan expiry, CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(expiry, cancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (_expirations.TryGetValue(cacheKey, out CancellationTokenSource? current) &&
+            ReferenceEquals(current, cancellation))
+        {
+            await KeyDeleteAsync(cacheKey.Key, cacheKey.Database);
+        }
+    }
 
     private static RedisValue[] Slice(List<RedisValue> values, int start, int end)
     {

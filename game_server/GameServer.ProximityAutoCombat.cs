@@ -14,6 +14,12 @@ public partial class GameServer
     private const int ProximityAutoCombatTickIntervalMs = 50;
     private static readonly TimeSpan ProximityCombatAreaEntryGrace = TimeSpan.FromSeconds(1);
 
+    /// <summary>
+    ///     이 시간 안에 직전 구역으로 되돌아오면 진입 유예를 다시 주지 않는다.
+    ///     문턱 왕복으로 무적이 되는 것을 막는다.
+    /// </summary>
+    private static readonly TimeSpan ProximityCombatAreaReentryWindow = TimeSpan.FromSeconds(5);
+
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
     private readonly Dictionary<(long MatchingId, long ObserverPlayerId, long ActorPlayerId),
         SurvivorOrbVisualState> _survivorOrbVisualStates = new();
@@ -59,10 +65,7 @@ public partial class GameServer
                 lock (GetSurvivorSettlementLock(matchingId))
                 {
                     ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
-                    bool matchingEnded = _clientSessions.Values
-                        .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
-                        .All(session => session.IsGameEnded);
-                    if (!matchingEnded) continue;
+                    if (!HasProximityAutoCombatMatchingEnded(matchingId)) continue;
                     _proximityAutoCombatResolver.RemoveMatching(matchingId);
                     RemoveSurvivorOrbVisualStates(matchingId);
                     _survivorSettlementLocks.TryRemove(matchingId, out _);
@@ -77,6 +80,22 @@ public partial class GameServer
         {
             Volatile.Write(ref _proximityAutoCombatProcessing, 0);
         }
+    }
+
+    /// <summary>
+    ///     자동전투 상태를 폐기해도 되는 시점인지 판정한다.
+    ///     세션이 하나도 없는 매치에 <c>All</c>을 쓰면 빈 시퀀스가 참이 되어 매 틱 종료로 오인한다.
+    ///     그러면 공격 쿨다운과 구역 진입 유예가 50ms마다 초기화되어 아무도 공격하지 못한다.
+    /// </summary>
+    private bool HasProximityAutoCombatMatchingEnded(long matchingId)
+    {
+        var matchingSessions = _clientSessions.Values
+            .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
+            .ToList();
+        if (matchingSessions.Count > 0)
+            return matchingSessions.All(session => session.IsGameEnded);
+
+        return !_botPlayerManager.GetBots(matchingId).Any(bot => !bot.IsEliminated);
     }
 
     private void ProcessProximityAutoCombatForMatching(
@@ -235,15 +254,30 @@ public partial class GameServer
             return false;
 
         var key = (matchingId, playerId);
-        if (!_proximityCombatAreaEntryStates.TryGetValue(key, out var state) || state.Area != area)
+        if (!_proximityCombatAreaEntryStates.TryGetValue(key, out var state))
         {
             _proximityCombatAreaEntryStates[key] = new ProximityCombatAreaEntryState(
                 area,
-                nowUtc.Add(ProximityCombatAreaEntryGrace));
+                nowUtc.Add(ProximityCombatAreaEntryGrace),
+                AreaType.None,
+                DateTime.MinValue);
             return false;
         }
 
-        return nowUtc >= state.ReadyAtUtc;
+        if (state.Area == area)
+            return nowUtc >= state.ReadyAtUtc;
+
+        // 문턱을 왕복하면 유예가 매번 갱신되어 그 대상은 아무도 때릴 수 없게 된다.
+        // 방금 떠난 구역으로 되돌아오는 것은 "처음 보는 상대"가 아니므로 유예를 주지 않는다.
+        // 비가시 공격 차단은 새로운 구역으로 진입할 때만 필요하다.
+        bool isReturningToRecentArea = area == state.PreviousArea &&
+                                       nowUtc - state.PreviousAreaLeftAtUtc <= ProximityCombatAreaReentryWindow;
+        _proximityCombatAreaEntryStates[key] = new ProximityCombatAreaEntryState(
+            area,
+            isReturningToRecentArea ? nowUtc : nowUtc.Add(ProximityCombatAreaEntryGrace),
+            state.Area,
+            nowUtc);
+        return isReturningToRecentArea;
     }
 
     private static void AddInventoryCombatActors(
@@ -836,7 +870,9 @@ public partial class GameServer
 
     private readonly record struct ProximityCombatAreaEntryState(
         AreaType Area,
-        DateTime ReadyAtUtc);
+        DateTime ReadyAtUtc,
+        AreaType PreviousArea,
+        DateTime PreviousAreaLeftAtUtc);
 
     private readonly record struct SurvivorOrbVisualState(
         AreaType Area,

@@ -43,7 +43,19 @@ public partial class GameServer
                 {
                     humans[0].TryEndSurvivorMatch(humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
                     CleanupSurvivorSettlementState(matchingId);
+                    return;
                 }
+
+                // 사람 세션이 없는 매치(관리자 봇 전용 인스턴스)는 정산 주체가 없어
+                // 최후 1인이 남아도 끝나지 않았다. 오염도가 한계에 닿은 봇이 계속 살아 있는
+                // 채로 매치가 무한히 이어진다.
+                if (humans.Count == 0)
+                {
+                    long winnerPlayerId = bots.Count == 1 ? bots[0].PlayerId : 0;
+                    CleanupSurvivorSettlementState(matchingId);
+                    EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
+                }
+
                 return;
             }
 
@@ -188,6 +200,7 @@ public partial class GameServer
     private void CleanupSurvivorSettlementState(long matchingId)
     {
         _proximityAutoCombatResolver.RemoveMatching(matchingId);
+        RemoveSurvivorOrbVisualStates(matchingId);
         _survivorSettlementLocks.TryRemove(matchingId, out _);
     }
 

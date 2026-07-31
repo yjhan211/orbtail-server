@@ -525,17 +525,6 @@ public class BotPlayerState
 
     /// <summary>Temporary movement slow applied by a wave counter.</summary>
     public DateTime WaveSlowUntilUtc { get; set; }
-    /// <summary>Colour the bot is currently farming to restore its equipped-orb resonance.</summary>
-    public SurvivorOrbColor OrbFarmingTargetColor { get; set; } = SurvivorOrbColor.None;
-
-    /// <summary>Destination selected after an orb evolution changes the bot's route.</summary>
-    public AreaType OrbFarmingDestination { get; set; } = AreaType.None;
-
-    public bool OrbFarmingPivotPending { get; set; }
-
-    public AreaType PendingOrbFarmingPivotFrom { get; set; } = AreaType.None;
-
-    public AreaType PendingOrbFarmingPivotTo { get; set; } = AreaType.None;
 
 
     /// <summary>RNG 梨꾩쭛 progress ?쒖옉 ?쒓컖. 0?대㈃ ?꾩쭅 ?쒖옉 ???? ?쒖옉 ??1.5珥?寃쎄낵 ??寃곌낵 ?곗텧.</summary>

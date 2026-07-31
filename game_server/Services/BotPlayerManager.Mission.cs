@@ -114,28 +114,6 @@ public partial class BotPlayerManager
 
         bool hasResonance = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor resonanceColor,
             out int supportTier);
-        var equipped = inventory.GetEquippedBattleItem();
-        bool hasEquippedOrb = equipped != null &&
-                              SurvivorOrbData.TryGetColorAndTier(equipped.ItemId, out _, out _);
-        if (hasResonance)
-        {
-            bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
-            bot.OrbFarmingDestination = AreaType.None;
-            bot.OrbFarmingPivotPending = false;
-        }
-        else if (hasEquippedOrb)
-        {
-            bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
-            bot.OrbFarmingDestination = AreaType.None;
-            bot.OrbFarmingPivotPending = false;
-        }
-        else
-        {
-            bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
-            bot.OrbFarmingDestination = AreaType.None;
-            bot.OrbFarmingPivotPending = false;
-        }
-
         foreach (int itemId in loadout.CombinedItemIds)
         {
             result.BattleItemCombines.Add((bot.PlayerId, itemId));
@@ -155,8 +133,7 @@ public partial class BotPlayerManager
                 hadResonance ? previousResonanceColor : SurvivorOrbColor.None,
                 previousSupportTier,
                 hasResonance ? resonanceColor : SurvivorOrbColor.None,
-                supportTier,
-                bot.OrbFarmingTargetColor));
+                supportTier));
         }
 
         if (loadout.EquippedItemId == 0 || loadout.EquippedItemId == previouslyEquippedItemId)
@@ -796,5 +773,4 @@ public sealed record BotSurvivorOrbMergeTelemetry(
     SurvivorOrbColor PreviousResonanceColor,
     int PreviousSupportTier,
     SurvivorOrbColor ResonanceColor,
-    int SupportTier,
-    SurvivorOrbColor NextTargetColor);
+    int SupportTier);
