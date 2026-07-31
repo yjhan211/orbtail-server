@@ -65,10 +65,7 @@ public partial class GameServer
                 lock (GetSurvivorSettlementLock(matchingId))
                 {
                     ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
-                    bool matchingEnded = _clientSessions.Values
-                        .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
-                        .All(session => session.IsGameEnded);
-                    if (!matchingEnded) continue;
+                    if (!HasProximityAutoCombatMatchingEnded(matchingId)) continue;
                     _proximityAutoCombatResolver.RemoveMatching(matchingId);
                     RemoveSurvivorOrbVisualStates(matchingId);
                     _survivorSettlementLocks.TryRemove(matchingId, out _);
@@ -83,6 +80,22 @@ public partial class GameServer
         {
             Volatile.Write(ref _proximityAutoCombatProcessing, 0);
         }
+    }
+
+    /// <summary>
+    ///     자동전투 상태를 폐기해도 되는 시점인지 판정한다.
+    ///     세션이 하나도 없는 매치에 <c>All</c>을 쓰면 빈 시퀀스가 참이 되어 매 틱 종료로 오인한다.
+    ///     그러면 공격 쿨다운과 구역 진입 유예가 50ms마다 초기화되어 아무도 공격하지 못한다.
+    /// </summary>
+    private bool HasProximityAutoCombatMatchingEnded(long matchingId)
+    {
+        var matchingSessions = _clientSessions.Values
+            .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
+            .ToList();
+        if (matchingSessions.Count > 0)
+            return matchingSessions.All(session => session.IsGameEnded);
+
+        return !_botPlayerManager.GetBots(matchingId).Any(bot => !bot.IsEliminated);
     }
 
     private void ProcessProximityAutoCombatForMatching(

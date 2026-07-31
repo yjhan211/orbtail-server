@@ -2262,8 +2262,7 @@ public partial class GameServer(
         _interactionLogManager.CleanupMatching(matchingId);
         _gameEventLogManager.Clear(matchingId);
         _encounterRevealManager.CleanupMatching(matchingId);
-        _proximityAutoCombatResolver.RemoveMatching(matchingId);
-        _survivorSettlementLocks.TryRemove(matchingId, out _);
+        CleanupSurvivorSettlementState(matchingId);
         _ = CleanupAbandonedMatchingRedisAsync(matchingId);
 
         logger.LogInformation(

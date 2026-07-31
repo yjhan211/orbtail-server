@@ -200,6 +200,7 @@ public partial class GameServer
     private void CleanupSurvivorSettlementState(long matchingId)
     {
         _proximityAutoCombatResolver.RemoveMatching(matchingId);
+        RemoveSurvivorOrbVisualStates(matchingId);
         _survivorSettlementLocks.TryRemove(matchingId, out _);
     }
 
