@@ -15,12 +15,12 @@ public class GridMovementTraversalTests
     }
 
     [Fact]
-    public void DiagonalCornerCutIsRejectedWhenASideCellIsBlocked()
+    public void DiagonalCornerCutIsAllowedWhenOnlyOneSideCellIsBlocked()
     {
         var canMove = GridMovementTraversal.IsTraversable(
             new Cell(0, 0), new Cell(1, 1), cell => !(cell.X == 1 && cell.Y == 0));
 
-        Assert.False(canMove);
+        Assert.True(canMove);
     }
 
     [Fact]

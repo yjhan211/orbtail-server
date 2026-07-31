@@ -14,8 +14,8 @@ public class ProximityCombatLineOfSightTests
         InitializeGameData();
         var resolver = new ProximityAutoCombatResolver();
         var now = new DateTime(2026, 7, 19, 0, 0, 0, DateTimeKind.Utc);
-        var gymCell = new Cell(188, 103);
-        var corridorCell = new Cell(188, 104);
+        var gymCell = new Cell(173, 88);
+        var corridorCell = new Cell(172, 88);
         var actors = new[]
         {
             ActorAtCell(1, gymCell, AreaType.Gym, weaponItemId: 107000003),
