@@ -122,7 +122,7 @@ public sealed class MatchSummaryFileStore
                 elimination?.Description,
                 events.Count(entry => entry.PlayerId == playerId && entry.Type == "ORB_SUMMON_SUCCEEDED"),
                 events.Count(entry => entry.PlayerId == playerId && entry.Type == "SURVIVOR_ORB_BOARD_STATE" &&
-                                      string.Equals(entry.Outcome, "merge", StringComparison.OrdinalIgnoreCase)),
+                                      IsOrbMergeOutcome(entry.Outcome)),
                 events.Where(entry => entry.PlayerId == playerId && entry.Type == "SUMMON_STONE_AWARDED")
                     .Sum(entry => entry.SummonStoneDelta ?? 0));
         }).ToList();
@@ -167,6 +167,14 @@ public sealed class MatchSummaryFileStore
             return null;
         }
     }
+
+    /// <summary>
+    ///     사람은 merge, 봇은 bot_merge로 보드 변경 사유를 남긴다.
+    ///     merge만 세면 봇 머지가 항상 0으로 집계된다.
+    /// </summary>
+    private static bool IsOrbMergeOutcome(string? outcome) =>
+        string.Equals(outcome, "merge", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(outcome, "bot_merge", StringComparison.OrdinalIgnoreCase);
 
     private void PruneOldFiles()
     {

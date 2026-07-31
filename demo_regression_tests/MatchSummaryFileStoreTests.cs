@@ -54,6 +54,38 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
     }
 
     [Fact]
+    public void Save_CountsBotOrbMergesAlongsidePlayerMerges()
+    {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var store = new MatchSummaryFileStore(_directory, 5);
+        var events = new List<GameEventEntry>
+        {
+            new() { Seq = 1, TimestampUnixMs = now, Type = "MATCH_STARTED" },
+            new()
+            {
+                Seq = 2, TimestampUnixMs = now + 1_000, Type = "SURVIVOR_ORB_BOARD_STATE",
+                PlayerId = 10, Outcome = "merge"
+            },
+            new()
+            {
+                Seq = 3, TimestampUnixMs = now + 2_000, Type = "SURVIVOR_ORB_BOARD_STATE",
+                PlayerId = -101, IsBot = true, Outcome = "bot_merge"
+            },
+            new()
+            {
+                Seq = 4, TimestampUnixMs = now + 3_000, Type = "SURVIVOR_ORB_BOARD_STATE",
+                PlayerId = -101, IsBot = true, Outcome = "bot_summon"
+            }
+        };
+
+        var summary = store.Save(206003, "last_survivor", 10, events);
+
+        Assert.Equal(1, Assert.Single(summary.Participants, player => player.PlayerId == 10).MergeCount);
+        var bot = Assert.Single(summary.Participants, player => player.PlayerId == -101);
+        Assert.Equal(1, bot.MergeCount);
+    }
+
+    [Fact]
     public void Save_IsIdempotentForTheSameMatchingId()
     {
         var store = new MatchSummaryFileStore(_directory, 5);
