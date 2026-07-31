@@ -163,6 +163,21 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
+    public void RecoveryOrbRecordsHumanRecoveryOnlyThroughSessionStats()
+    {
+        string source = ReadNormalizedSource(
+            FindRepositoryRoot(), "game_server", "GameServer.ProximityAutoCombat.cs");
+
+        Assert.Contains(
+            "if (session == null)\n" +
+            "            {\n" +
+            "                _gameEventLogManager.RecordSurvivorRecovery(\n" +
+            "                    matchingId, actor.PlayerId, effectiveRecovery);\n" +
+            "            }",
+            source);
+    }
+
+    [Fact]
     public void NeutralAfterimageMonstersDisableTheirOrbGlyphWhenReusedFromThePool()
     {
         string source = ReadNormalizedSource(

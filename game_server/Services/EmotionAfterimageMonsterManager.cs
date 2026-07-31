@@ -12,9 +12,10 @@ public sealed class EmotionAfterimageMonsterManager
 {
     public const int FirstMonsterId = 202001;
     private static readonly TimeSpan ResetDelay = TimeSpan.FromSeconds(6);
-    private static readonly TimeSpan AmbientCorridorSpawnInterval = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan AmbientCorridorSpawnInterval = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan AmbientCorridorDespawnDelay = TimeSpan.FromSeconds(4);
     private const float AmbientCorridorSafeSpawnDistance = 3f;
+    private const int AmbientCorridorAliveLimit = 6;
     private readonly ConcurrentDictionary<long, MatchingMonsterState> _matchingStates = new();
     private Action<long>? _matchingStateRemoved;
 
@@ -116,15 +117,21 @@ public sealed class EmotionAfterimageMonsterManager
         {
             lock (_sync)
             {
+                var hotspotAreas = _monsters.Values
+                    .Where(state => state.IsAlive && state.Definition.IsCore &&
+                                    !state.Definition.IsAmbientCorridor)
+                    .Select(state => state.Definition.Area)
+                    .ToHashSet();
                 var areas = _monsters.Values
-                    .Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor)
+                    .Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor &&
+                                    hotspotAreas.Contains(state.Definition.Area))
                     .GroupBy(state => state.Definition.Area)
                     .OrderBy(group => group.Key)
                     .Select(group => new MonsterRewardAreaState(
                         group.Key,
                         group.Count(),
                         group.Count(state => state.Definition.IsCore),
-                        group.Sum(state => state.Definition.SummonStoneReward)))
+                        group.Sum(state => state.SummonStoneReward)))
                     .ToList();
                 return new MonsterRewardAreaSnapshot(_waveIndex, areas);
             }
@@ -176,7 +183,7 @@ public sealed class EmotionAfterimageMonsterManager
                 return new MonsterDamageResult(
                     ToRuntimeInfo(state),
                     true,
-                    state.Definition.SummonStoneReward,
+                    state.SummonStoneReward,
                     true,
                     state.FirstAttackerPlayerId,
                     state.LastAttackerPlayerId,
@@ -202,21 +209,37 @@ public sealed class EmotionAfterimageMonsterManager
                 }
 
                 int waveIndex = _waveIndex++;
-                var aliveByArea = _monsters.Values.Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor)
-                    .GroupBy(state => state.Definition.Area)
-                    .ToDictionary(group => group.Key, group => group.Count());
+                foreach (var ambientState in _monsters.Values
+                             .Where(state => state.IsAlive && state.Definition.IsAmbientCorridor))
+                    changed |= ambientState.ApplyAmbientCorridorPhase(_waveIndex);
+
+                var activeCoreAreas = _monsters.Values
+                    .Where(state => state.IsAlive && state.Definition.IsCore &&
+                                    !state.Definition.IsAmbientCorridor)
+                    .Select(state => state.Definition.Area)
+                    .ToHashSet();
+                var pendingClusterIds = _pendingWavePacks.Select(pack => pack.ClusterId).ToHashSet();
+                foreach (var pendingArea in _pendingWavePacks
+                             .Select(pending => _monsters.Values.FirstOrDefault(state =>
+                                 state.Definition.ClusterId == pending.ClusterId && state.Definition.IsCore))
+                             .Where(state => state != null)
+                             .Select(state => state!.Definition.Area))
+                    activeCoreAreas.Add(pendingArea);
+
                 int activeAreaTarget = EmotionAfterimageMonsterSpawnData.GetWaveActiveAreaTarget(waveIndex);
-                int spawnBudget = Math.Max(0, activeAreaTarget - aliveByArea.Count);
+                int spawnBudget = Math.Max(0, activeAreaTarget - activeCoreAreas.Count);
                 int requestedSpawnBudget = spawnBudget;
                 if (spawnBudget == 0) return changed;
 
                 TimeSpan releaseDuration = EmotionAfterimageMonsterSpawnData.GetWavePackReleaseDuration(waveIndex);
-                var pendingClusterIds = _pendingWavePacks.Select(pack => pack.ClusterId).ToHashSet();
                 var dormantPacks = _monsters.Values
                     .Where(state => !state.Definition.IsAmbientCorridor && !_closedAreas.Contains(state.Definition.Area))
                     .GroupBy(state => state.Definition.ClusterId)
-                    .Where(pack => pack.All(state => !state.IsAlive) && !pendingClusterIds.Contains(pack.Key))
-                    .OrderBy(pack => pack.Min(state => state.Definition.SpawnPriority))
+                    .Where(pack => pack.Any(state => state.Definition.IsCore) &&
+                                   pack.Where(state => state.Definition.IsCore).All(state => !state.IsAlive) &&
+                                   !pendingClusterIds.Contains(pack.Key))
+                    .OrderBy(pack => pack.Any(state => state.Definition.StartsActive) ? 0 : 1)
+                    .ThenBy(pack => pack.Min(state => state.Definition.SpawnPriority))
                     .ThenBy(pack => pack.Min(state => state.Definition.MonsterId));
 
                 int scheduledCount = 0;
@@ -224,12 +247,10 @@ public sealed class EmotionAfterimageMonsterManager
                 {
                     if (spawnBudget <= 0) break;
                     var first = pack.First();
-                    int packSize = pack.Count();
                     AreaType area = first.Definition.Area;
-                    aliveByArea.TryGetValue(area, out int aliveCount);
-                    if (aliveCount > 0 || aliveCount + packSize > first.Definition.AreaAliveLimit) continue;
+                    if (activeCoreAreas.Contains(area)) continue;
 
-                    aliveByArea[area] = packSize;
+                    activeCoreAreas.Add(area);
                     double releaseOffsetSeconds = requestedSpawnBudget == 1
                         ? 0d
                         : releaseDuration.TotalSeconds * scheduledCount / (requestedSpawnBudget - 1d);
@@ -355,7 +376,7 @@ public sealed class EmotionAfterimageMonsterManager
                 return 0;
 
             int aliveCount = _monsters.Values.Count(state => state.IsAlive && state.Definition.IsAmbientCorridor);
-            if (aliveCount >= 3)
+            if (aliveCount >= AmbientCorridorAliveLimit)
                 return 0;
 
             var candidate = _monsters.Values
@@ -368,7 +389,7 @@ public sealed class EmotionAfterimageMonsterManager
             if (candidate == null)
                 return 0;
 
-            candidate.ActivateAtHome();
+            candidate.ActivateAmbientCorridor(_waveIndex);
             candidate.LastTargetSeenAtUtc = nowUtc;
             changed.Add(ToRuntimeInfo(candidate));
             return candidate.Definition.MonsterId;
@@ -488,7 +509,7 @@ public sealed class EmotionAfterimageMonsterManager
             IsAlive = state.IsAlive,
             RewardItemId = state.Definition.RewardItemId,
             IsCore = state.Definition.IsCore,
-            SummonStoneReward = state.Definition.SummonStoneReward
+            SummonStoneReward = state.SummonStoneReward
         };
 
         private static bool MoveTowards(MonsterState state, Vector3f destination, float elapsedSeconds)
@@ -527,6 +548,8 @@ public sealed class EmotionAfterimageMonsterManager
             definition.Position.Z);
         public int MaxHealth { get; private set; } = definition.MaxHealth;
         public int AttackDamage { get; private set; } = definition.AttackDamage;
+        public int SummonStoneReward { get; private set; } = definition.SummonStoneReward;
+        public int AppliedAmbientCorridorPhase { get; private set; } = -1;
         public int CurrentHealth { get; set; } = definition.MaxHealth;
         public bool IsAlive { get; set; } = definition.StartsActive;
         public long FirstAttackerPlayerId { get; set; }
@@ -539,10 +562,11 @@ public sealed class EmotionAfterimageMonsterManager
 
         public void ActivateAtHome(int strengthTier = 0)
         {
-            float healthMultiplier = 1f + Math.Max(0, strengthTier) * 0.20f;
-            float damageMultiplier = 1f + Math.Max(0, strengthTier) * 0.15f;
-            MaxHealth = Math.Max(1, (int)MathF.Ceiling(Definition.MaxHealth * healthMultiplier));
-            AttackDamage = Math.Max(1, (int)MathF.Ceiling(Definition.AttackDamage * damageMultiplier));
+            int coreStrengthTier = Definition.IsCore ? Math.Clamp(strengthTier, 0, 3) : 0;
+            MaxHealth = Definition.MaxHealth + coreStrengthTier * 24;
+            AttackDamage = Definition.AttackDamage + coreStrengthTier * 2;
+            SummonStoneReward = Definition.SummonStoneReward + coreStrengthTier * 2;
+            AppliedAmbientCorridorPhase = -1;
             Position = new Vector3f(
                 Definition.Position.X + Definition.FormationOffset.X,
                 Definition.Position.Y + Definition.FormationOffset.Y,
@@ -556,6 +580,34 @@ public sealed class EmotionAfterimageMonsterManager
             LastUpdatedAtUtc = DateTime.MinValue;
             LastTargetSeenAtUtc = DateTime.MinValue;
             DamageByPlayer.Clear();
+        }
+
+        public void ActivateAmbientCorridor(int closurePhase)
+        {
+            ActivateAtHome();
+            ApplyAmbientCorridorPhase(closurePhase);
+        }
+
+        public bool ApplyAmbientCorridorPhase(int closurePhase)
+        {
+            if (!Definition.IsAmbientCorridor)
+                return false;
+
+            int normalizedPhase = Math.Max(0, closurePhase);
+            if (AppliedAmbientCorridorPhase == normalizedPhase)
+                return false;
+
+            int multiplier = normalizedPhase >= 30 ? int.MaxValue : 1 << normalizedPhase;
+            AttackDamage = Math.Max(1, SaturatingMultiply(Definition.AttackDamage, multiplier));
+            SummonStoneReward = Math.Max(1, SaturatingMultiply(Definition.SummonStoneReward, multiplier));
+            AppliedAmbientCorridorPhase = normalizedPhase;
+            return true;
+        }
+
+        private static int SaturatingMultiply(int value, int multiplier)
+        {
+            long result = (long)value * multiplier;
+            return result >= int.MaxValue ? int.MaxValue : (int)result;
         }
 
         public void Deactivate()

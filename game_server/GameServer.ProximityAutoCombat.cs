@@ -435,8 +435,13 @@ public partial class GameServer
 
             session?.SendSurvivorOrbRecoveryFeedback(actor.WeaponItemId, effectiveRecovery);
 
-            _gameEventLogManager.RecordSurvivorRecovery(
-                matchingId, actor.PlayerId, effectiveRecovery);
+            // Human sessions already record effective recovery inside ModifyStats.
+            // Bots mutate their state directly, so only that path needs explicit telemetry.
+            if (session == null)
+            {
+                _gameEventLogManager.RecordSurvivorRecovery(
+                    matchingId, actor.PlayerId, effectiveRecovery);
+            }
             logger.LogDebug(
                 "Survivor recovery orb tick: MatchingId={MatchingId}, PlayerId={PlayerId}, ItemId={ItemId}, ItemUid={ItemUid}, StackIndex={StackIndex}, Recovery={Recovery}",
                 matchingId,

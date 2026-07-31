@@ -6,7 +6,8 @@ namespace game_server.services;
 
 /// <summary>
 /// Fixed room packs and corridor pressure anchors for the emotion-afterimage loop.
-/// Only four distributed room packs begin as public reward hotspots.
+/// Every room begins with normal afterimages while four distributed rooms also
+/// expose a core afterimage as a premium public hotspot.
 /// </summary>
 internal static class EmotionAfterimageMonsterSpawnData
 {
@@ -28,7 +29,7 @@ internal static class EmotionAfterimageMonsterSpawnData
 
     public static readonly MonsterDefinition[] Definitions = CreateDefinitions();
     // Initial 4, then the room-closure waves keep at most 4 -> 3 -> 2 -> 1 -> 1
-    // active reward areas. Existing live hotspots are never removed just to hit a cap.
+    // active core hotspots. Existing live hotspots are never removed just to hit a cap.
     private static readonly int[] WaveActiveAreaTargets = [4, 3, 2, 1, 1];
     private static readonly TimeSpan[] WavePackReleaseDurations =
     [
@@ -97,7 +98,8 @@ internal static class EmotionAfterimageMonsterSpawnData
             return definition with
             {
                 RewardItemId = affinityByPack[definition.ClusterId],
-                StartsActive = definition.StartsActive && InitialHotspotAreas.Contains(definition.Area)
+                StartsActive = definition.StartsActive &&
+                               (!definition.IsCore || InitialHotspotAreas.Contains(definition.Area))
             };
         }).ToArray();
     }
@@ -187,10 +189,10 @@ internal static class EmotionAfterimageMonsterSpawnData
                     AttackIntervalSeconds: 1.5f,
                     RewardItemId: 0,
                     IsCore: false,
-                    SummonStoneReward: 0,
+                    SummonStoneReward: 1,
                     MoveSpeed: 2.4f,
                     LeashRange: 4f,
-                    AreaAliveLimit: 3,
+                    AreaAliveLimit: 6,
                     StartsActive: false,
                     SpawnPriority: int.MaxValue,
                     ClusterId: anchorId,

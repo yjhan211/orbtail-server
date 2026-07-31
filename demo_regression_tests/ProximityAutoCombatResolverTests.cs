@@ -89,7 +89,7 @@ public class ProximityAutoCombatResolverTests
     }
 
     [Fact]
-    public void Resolve_UsesStraightLineDistanceAcrossPlayerAndMonsterTargets()
+    public void Resolve_PrefersEnemyPlayerOverCloserMonster()
     {
         var resolver = new ProximityAutoCombatResolver();
         var now = new DateTime(2026, 7, 29, 0, 0, 0, DateTimeKind.Utc);
@@ -97,13 +97,68 @@ public class ProximityAutoCombatResolverTests
         {
             Actor(1, 0f, 0f, weaponItemId: 107000010),
             Actor(2, 2f, 0f),
-            Actor(-202001, 0.5f, 0f)
+            Actor(-202001, 0.5f, 0f) with { IsMonsterTarget = true }
         };
 
         Assert.Empty(resolver.Resolve(202, actors, now));
         var attack = Assert.Single(resolver.Resolve(202, actors, now.Add(ProximityAutoCombatResolver.AimDuration)));
 
-        Assert.Equal(-202001, attack.TargetPlayerId);
+        Assert.Equal(2, attack.TargetPlayerId);
+    }
+
+    [Fact]
+    public void Resolve_KeepsCurrentCoreAheadOfOtherMonsters()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 31, 0, 0, 0, DateTimeKind.Utc);
+        var attacker = Actor(1, 0f, 0f, weaponItemId: 107000010);
+        var core = Actor(-202001, 1f, 0f) with
+        {
+            IsMonsterTarget = true,
+            IsCoreMonsterTarget = true
+        };
+
+        Assert.Empty(resolver.Resolve(210, [attacker, core], now));
+        var normal = Actor(-202002, 0.25f, 0f) with { IsMonsterTarget = true };
+        var attack = Assert.Single(resolver.Resolve(
+            210,
+            [attacker, core, normal],
+            now.Add(ProximityAutoCombatResolver.AimDuration)));
+
+        Assert.Equal(core.PlayerId, attack.TargetPlayerId);
+    }
+
+    [Fact]
+    public void Resolve_KeepsCurrentNormalAheadOfOtherMonsters_ButPlayerPreemptsIt()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 31, 1, 0, 0, DateTimeKind.Utc);
+        var attacker = Actor(1, 0f, 0f, weaponItemId: 107000010);
+        var normal = Actor(-202002, 1f, 0f) with { IsMonsterTarget = true };
+        var core = Actor(-202001, 0.25f, 0f) with
+        {
+            IsMonsterTarget = true,
+            IsCoreMonsterTarget = true
+        };
+
+        Assert.Empty(resolver.Resolve(211, [attacker, normal], now));
+        var monsterAttack = Assert.Single(resolver.Resolve(
+            211,
+            [attacker, normal, core],
+            now.Add(ProximityAutoCombatResolver.AimDuration)));
+        Assert.Equal(normal.PlayerId, monsterAttack.TargetPlayerId);
+
+        var enemyPlayer = Actor(2, 2f, 0f);
+        Assert.Empty(resolver.Resolve(
+            211,
+            [attacker, normal, core, enemyPlayer],
+            now.AddMilliseconds(750)));
+        var playerAttack = Assert.Single(resolver.Resolve(
+            211,
+            [attacker, normal, core, enemyPlayer],
+            now.AddMilliseconds(1250)));
+
+        Assert.Equal(enemyPlayer.PlayerId, playerAttack.TargetPlayerId);
     }
     [Fact]
     public void Resolve_TargetChangeRestartsHalfSecondAim()

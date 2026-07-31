@@ -26,7 +26,9 @@ public readonly record struct ProximityCombatActor(
     int WeaponStackIndex = 0,
     int SunResonanceStage = 0,
     bool WaveResonanceArmed = false,
-    float InitialAttackDelaySeconds = 0f);
+    float InitialAttackDelaySeconds = 0f,
+    bool IsMonsterTarget = false,
+    bool IsCoreMonsterTarget = false);
 
 public readonly record struct ProximityCombatAttack(
     long AttackerPlayerId,
@@ -149,16 +151,10 @@ public sealed class ProximityAutoCombatResolver
                 continue;
             }
 
-            eligibleTargets.Sort(static (left, right) =>
-            {
-                int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
-                return distanceComparison != 0
-                    ? distanceComparison
-                    : left.Actor.PlayerId.CompareTo(right.Actor.PlayerId);
-            });
-            var nearestTarget = eligibleTargets[0].Actor;
-
             bool hasCombatState = _combatStates.TryGetValue(stateKey, out var combatState);
+            eligibleTargets.Sort((left, right) =>
+                CompareTargetPriority(left, right, hasCombatState ? combatState.TargetPlayerId : 0));
+            var nearestTarget = eligibleTargets[0].Actor;
             if (!hasCombatState ||
                 combatState.TargetPlayerId != nearestTarget.PlayerId ||
                 combatState.WeaponItemId != attacker.WeaponItemId)
@@ -294,6 +290,31 @@ public sealed class ProximityAutoCombatResolver
         }
 
         return attacks;
+    }
+
+    private static int CompareTargetPriority(
+        (ProximityCombatActor Actor, float DistanceSquared) left,
+        (ProximityCombatActor Actor, float DistanceSquared) right,
+        long currentTargetPlayerId)
+    {
+        int priorityComparison = GetTargetPriority(left.Actor, currentTargetPlayerId)
+            .CompareTo(GetTargetPriority(right.Actor, currentTargetPlayerId));
+        if (priorityComparison != 0)
+            return priorityComparison;
+
+        int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
+        return distanceComparison != 0
+            ? distanceComparison
+            : left.Actor.PlayerId.CompareTo(right.Actor.PlayerId);
+    }
+
+    private static int GetTargetPriority(ProximityCombatActor target, long currentTargetPlayerId)
+    {
+        if (!target.IsMonsterTarget)
+            return 0;
+        if (target.PlayerId == currentTargetPlayerId)
+            return target.IsCoreMonsterTarget ? 1 : 2;
+        return 3;
     }
 
     public void RemoveMatching(long matchingId)

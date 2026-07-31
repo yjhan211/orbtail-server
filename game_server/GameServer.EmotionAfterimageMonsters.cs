@@ -120,7 +120,9 @@ public partial class GameServer
     {
         var cell = ProximityCombatLineOfSight.WorldPositionToCell(monster.MapId, monster.Position);
         return new ProximityCombatActor(
-            -monster.MonsterId, monster.Area, monster.Position, 0, 0f, 0, 0f, 0f, 0f, monster.MapId, cell);
+            -monster.MonsterId, monster.Area, monster.Position, 0, 0f, 0, 0f, 0f, 0f, monster.MapId, cell,
+            IsMonsterTarget: true,
+            IsCoreMonsterTarget: monster.IsCore);
     }
 
     private bool ApplyPlayerOrbDamageToEmotionAfterimageMonster(
