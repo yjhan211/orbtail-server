@@ -562,12 +562,17 @@ public partial class BotPlayerManager
             : 0;
     }
 
-    private int CountAreaPressure(long matchingId, AreaType area)
+    /// <summary>
+    ///     지역 혼잡도. 목적지를 고르는 봇 자신은 제외해야 한다. 자기가 선 방의 점수를
+    ///     스스로 깎으면 두 방을 1초 간격으로 왕복한다 (2026-07-30 matching 1983에서
+    ///     Storage↔Library 8회 진동 관측).
+    /// </summary>
+    private int CountAreaPressure(long matchingId, AreaType area, long excludeBotPlayerId = 0)
     {
         return _botStates.TryGetValue(matchingId, out var bots)
             ? bots.Count(other =>
             {
-                if (other.IsEliminated)
+                if (other.IsEliminated || (excludeBotPlayerId != 0 && other.PlayerId == excludeBotPlayerId))
                     return false;
 
                 // Travelling bots occupy their committed destination; idle bots occupy their current room.
@@ -1039,7 +1044,7 @@ public partial class BotPlayerManager
                     Path = path,
                     AffinityScore = affinityScore,
                     Score = group.Count() * 3 + coreCount * 8 + affinityScore * 4 -
-                            CountAreaPressure(matchingId, group.Key) * 5
+                            CountAreaPressure(matchingId, group.Key, bot.PlayerId) * 5
                 };
             })
             .Where(candidate => candidate.Path is { Count: > 0 } || candidate.Area == bot.CurrentArea)

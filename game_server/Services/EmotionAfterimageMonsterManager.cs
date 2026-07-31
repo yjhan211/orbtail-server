@@ -236,8 +236,9 @@ public sealed class EmotionAfterimageMonsterManager
                         bool movedHome = MoveTowards(state, GetIdleDestination(state, nowUtc), elapsedSeconds);
                         if (state.CurrentHealth < state.MaxHealth && nowUtc - state.LastDamagedAtUtc >= ResetDelay)
                         {
+                            // 체력 회복과 누적 피해 초기화는 문턱 왕복 딜 누적을 막는 규칙이다.
+                            // 직전 교전 상대만 기억해 재진입 시 타겟이 흔들리지 않게 한다.
                             state.CurrentHealth = state.MaxHealth;
-                            state.LastAttackerPlayerId = 0;
                             state.DamageByPlayer.Clear();
                             movedHome = true;
                         }
@@ -353,31 +354,36 @@ public sealed class EmotionAfterimageMonsterManager
             IReadOnlyList<MonsterSpatialTarget> targets)
         {
             var selected = targets[0];
-            int selectedDamage = state.DamageByPlayer.GetValueOrDefault(selected.PlayerId);
-            float selectedDistance = DistanceSquared(state.Definition.Position, selected.Position);
+            var selectedPriority = BuildTargetPriority(state, selected);
 
             for (int index = 1; index < targets.Count; index++)
             {
                 var candidate = targets[index];
-                int candidateDamage = state.DamageByPlayer.GetValueOrDefault(candidate.PlayerId);
-                if (candidateDamage < selectedDamage)
+                var candidatePriority = BuildTargetPriority(state, candidate);
+                if (candidatePriority.CompareTo(selectedPriority) >= 0)
                     continue;
-
-                float candidateDistance = DistanceSquared(state.Definition.Position, candidate.Position);
-                if (candidateDamage == selectedDamage && candidateDistance > selectedDistance)
-                    continue;
-                if (candidateDamage == selectedDamage && candidateDistance.Equals(selectedDistance) &&
-                    candidate.PlayerId >= selected.PlayerId)
-                {
-                    continue;
-                }
 
                 selected = candidate;
-                selectedDamage = candidateDamage;
-                selectedDistance = candidateDistance;
+                selectedPriority = candidatePriority;
             }
 
             return selected;
+        }
+
+        /// <summary>
+        ///     타겟 우선순위. 값이 작을수록 우선한다.
+        ///     누적 피해가 같을 때 직전 교전 상대를 유지하는 이유는, 문을 오가며 타겟이 바뀌면
+        ///     잔상이 두 대상 사이에서 진동하기 때문이다. 체력 회복과 누적 피해 초기화는
+        ///     그대로 두므로 문턱 왕복으로 피해를 누적하는 경로는 여전히 막혀 있다.
+        /// </summary>
+        private static (int NegativeDamage, int NotLastEngaged, float DistanceSquared, long PlayerId)
+            BuildTargetPriority(MonsterState state, MonsterSpatialTarget target)
+        {
+            return (
+                -state.DamageByPlayer.GetValueOrDefault(target.PlayerId),
+                target.PlayerId == state.LastAttackerPlayerId ? 0 : 1,
+                DistanceSquared(state.Definition.Position, target.Position),
+                target.PlayerId);
         }
 
         private static bool IsEscort(MonsterDefinition definition) =>

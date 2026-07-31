@@ -14,6 +14,12 @@ public partial class GameServer
     private const int ProximityAutoCombatTickIntervalMs = 50;
     private static readonly TimeSpan ProximityCombatAreaEntryGrace = TimeSpan.FromSeconds(1);
 
+    /// <summary>
+    ///     이 시간 안에 직전 구역으로 되돌아오면 진입 유예를 다시 주지 않는다.
+    ///     문턱 왕복으로 무적이 되는 것을 막는다.
+    /// </summary>
+    private static readonly TimeSpan ProximityCombatAreaReentryWindow = TimeSpan.FromSeconds(5);
+
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
     private readonly Dictionary<(long MatchingId, long ObserverPlayerId, long ActorPlayerId),
         SurvivorOrbVisualState> _survivorOrbVisualStates = new();
@@ -235,15 +241,30 @@ public partial class GameServer
             return false;
 
         var key = (matchingId, playerId);
-        if (!_proximityCombatAreaEntryStates.TryGetValue(key, out var state) || state.Area != area)
+        if (!_proximityCombatAreaEntryStates.TryGetValue(key, out var state))
         {
             _proximityCombatAreaEntryStates[key] = new ProximityCombatAreaEntryState(
                 area,
-                nowUtc.Add(ProximityCombatAreaEntryGrace));
+                nowUtc.Add(ProximityCombatAreaEntryGrace),
+                AreaType.None,
+                DateTime.MinValue);
             return false;
         }
 
-        return nowUtc >= state.ReadyAtUtc;
+        if (state.Area == area)
+            return nowUtc >= state.ReadyAtUtc;
+
+        // 문턱을 왕복하면 유예가 매번 갱신되어 그 대상은 아무도 때릴 수 없게 된다.
+        // 방금 떠난 구역으로 되돌아오는 것은 "처음 보는 상대"가 아니므로 유예를 주지 않는다.
+        // 비가시 공격 차단은 새로운 구역으로 진입할 때만 필요하다.
+        bool isReturningToRecentArea = area == state.PreviousArea &&
+                                       nowUtc - state.PreviousAreaLeftAtUtc <= ProximityCombatAreaReentryWindow;
+        _proximityCombatAreaEntryStates[key] = new ProximityCombatAreaEntryState(
+            area,
+            isReturningToRecentArea ? nowUtc : nowUtc.Add(ProximityCombatAreaEntryGrace),
+            state.Area,
+            nowUtc);
+        return isReturningToRecentArea;
     }
 
     private static void AddInventoryCombatActors(
@@ -836,7 +857,9 @@ public partial class GameServer
 
     private readonly record struct ProximityCombatAreaEntryState(
         AreaType Area,
-        DateTime ReadyAtUtc);
+        DateTime ReadyAtUtc,
+        AreaType PreviousArea,
+        DateTime PreviousAreaLeftAtUtc);
 
     private readonly record struct SurvivorOrbVisualState(
         AreaType Area,
