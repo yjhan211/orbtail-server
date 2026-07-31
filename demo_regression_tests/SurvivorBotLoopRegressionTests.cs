@@ -691,7 +691,6 @@ public sealed class SurvivorBotLoopRegressionTests
         SetBotPosition(bot, AreaType.Classroom3);
         bot.Corruption = (int)(Config.SURVIVOR_MAX_CORRUPTION * 0.8f);
         bot.EquippedBattleItemId = 107000020;
-        bot.OrbFarmingTargetColor = SurvivorOrbColor.Green;
 
         fixture.BotManager.UpdateCombatMovementIntent(
             bot,
@@ -742,7 +741,6 @@ public sealed class SurvivorBotLoopRegressionTests
             var bot = botManager.GetBot(matchingId, botId)!;
             SetBotPosition(bot, AreaType.Classroom3);
             bot.EquippedBattleItemId = 107000020;
-            bot.OrbFarmingTargetColor = SurvivorOrbColor.Green;
             bot.Path.Clear();
             bot.PathIndex = 0;
             bot.LoopWaitUntil = DateTime.MinValue;

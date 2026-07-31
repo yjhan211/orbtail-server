@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -16,6 +16,9 @@ public partial class BotPlayerManager
 {
     /// <summary>Bot movement speed matches the player fixed movement speed.</summary>
     private const float BotWalkSpeed = 5f;
+
+    /// <summary>한 번의 사냥 판단에서 실제로 길을 찾아볼 지역 수. 나머지는 사전 점수로 걸러낸다.</summary>
+    private const int MaxHuntPathCandidates = 4;
     private const float PveKiteThreatRange = 3.2f;
     private const float PveKiteImmediateThreatRange = 1.65f;
     private const float PveKiteStepDistance = 2.15f;
@@ -75,7 +78,6 @@ public partial class BotPlayerManager
         public List<BotMovementEvent> Movements { get; } = new();
         public List<(long botId, AreaType area)> ExploreEnds { get; } = new();
         public List<BotGroundItemPickup> GroundItemPickups { get; } = new();
-        public List<BotOrbFarmingPivot> OrbFarmingPivots { get; } = new();
     }
 
     /// <summary>
@@ -236,16 +238,6 @@ public partial class BotPlayerManager
                 checklistManager,
                 pveTargets ?? []);
             if (ev != null) result.Movements.Add(ev);
-            if (bot.PendingOrbFarmingPivotTo != AreaType.None)
-            {
-                result.OrbFarmingPivots.Add(new BotOrbFarmingPivot(
-                    bot.PlayerId,
-                    bot.OrbFarmingTargetColor,
-                    bot.PendingOrbFarmingPivotFrom,
-                    bot.PendingOrbFarmingPivotTo));
-                bot.PendingOrbFarmingPivotFrom = AreaType.None;
-                bot.PendingOrbFarmingPivotTo = AreaType.None;
-            }
             if (bot.PendingExploreEndBroadcast)
             {
                 result.ExploreEnds.Add((bot.PlayerId, bot.CurrentArea));
@@ -709,9 +701,12 @@ public partial class BotPlayerManager
             ChooseNewWanderTarget(bot, matchingId, closureManager, areaItemStockManager, inventoryManager, playerAreas,
                 checklistManager, pveTargets);
             if (bot.Path.Count == 0) return null;
-            // ChooseNewWanderTarget이 LoopWaitUntil(+3초)을 설정하므로 새 path는 다음 틱부터 진행.
-            // 같은 틱에서 walking 시작 시 영역 도착 후 3초 휴식이 무력화되어 발소리/walk 애니가 끊기지 않음.
-            return null;
+
+            // 영역 도착 휴식처럼 대기를 설정한 결정은 다음 틱부터 걷는다. 같은 틱에 출발하면
+            // 휴식이 무력화되어 발소리와 walk 애니가 끊긴다.
+            // 반대로 대기가 없는 결정(방 안 잔상 추적)까지 한 틱을 쉬면, 1~2스텝짜리 짧은
+            // 경로에서는 세 틱 중 한 틱을 멈춰 이동이 뚝뚝 끊겨 보인다.
+            if (now < bot.LoopWaitUntil) return null;
         }
 
         var nextStep = bot.Path[bot.PathIndex];
@@ -748,7 +743,23 @@ public partial class BotPlayerManager
                 float nextDy = followingPos.Y - newPosition.Y;
                 float nextDist = (float)Math.Sqrt(nextDx * nextDx + nextDy * nextDy);
                 if (nextDist > 0.01f)
+                {
                     velocity = ScaledWalkVelocity(nextDx / nextDist, nextDy / nextDist, bot.WindResonanceActive) * GetBotWaveSlowMultiplier(bot);
+
+                    // 웨이포인트에 스냅하면 이번 틱에 갈 수 있었던 거리가 버려져 그 틱만 느려진다.
+                    // 셀을 지날 때마다 반복되므로 이동이 움찔거려 보인다. 남은 몫을 다음
+                    // 웨이포인트 방향으로 이어서 소비한다.
+                    float leftover = maxDist - dist;
+                    if (leftover > 0f)
+                    {
+                        float carry = Math.Min(leftover, nextDist);
+                        newPosition = new Vector3f(
+                            newPosition.X + nextDx / nextDist * carry,
+                            newPosition.Y + nextDy / nextDist * carry,
+                            0f);
+                        bot.Position = newPosition;
+                    }
+                }
             }
         }
         else
@@ -912,83 +923,6 @@ public partial class BotPlayerManager
             bot.CurrentArea, destination, path.Count);
     }
 
-    private bool TryStartOrbResonanceFarmingPath(BotPlayerState bot, long matchingId, MapId mapId,
-        AreaClosureManager closureManager, AreaItemStockManager areaItemStockManager)
-    {
-        var color = bot.OrbFarmingTargetColor;
-        if (color == SurvivorOrbColor.None)
-            return false;
-
-        bool currentAreaHasTargetStock = !bot.CurrentArea.IsCorridor() &&
-                                         !IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea) &&
-                                         areaItemStockManager.HasRemainingOrbColor(
-                                             matchingId, (int)bot.CurrentArea, color);
-        bool hasAnyTargetStock = currentAreaHasTargetStock || GameMapData.GetAreas(mapId)
-            .Select(region => region.AreaType)
-            .Distinct()
-            .Any(area => area != AreaType.None && !area.IsCorridor() &&
-                         !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
-                         areaItemStockManager.HasRemainingOrbColor(matchingId, (int)area, color));
-
-        var candidates = GameMapData.GetAreas(mapId)
-            .Select(region => region.AreaType)
-            .Distinct()
-            .Where(area => area != AreaType.None && area != bot.CurrentArea && !area.IsCorridor() &&
-                           !IsRecentCombatRetreatOrigin(bot, area) &&
-                           !IsAreaClosingOrClosed(closureManager, matchingId, area) &&
-                           areaItemStockManager.HasRemainingOrbColor(matchingId, (int)area, color))
-            .Select(area => new
-            {
-                Area = area,
-                Path = BotPathfinder.FindPath(
-                    mapId, bot.CurrentArea, bot.Cell, area,
-                    GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, area) ??
-                    GameMapData.GetAreaSpawnCell(mapId, area),
-                    candidate => IsAreaClosingOrClosed(closureManager, matchingId, candidate))
-            })
-            .Where(candidate => candidate.Path is { Count: > 0 })
-            .OrderBy(candidate => CountAreaPressure(matchingId, candidate.Area))
-            .ThenBy(candidate => candidate.Path!.Count)
-            .ThenBy(_ => _rng.Next())
-            .ToList();
-
-        var destination = candidates.FirstOrDefault();
-        if (currentAreaHasTargetStock &&
-            (destination == null ||
-             CountAreaPressure(matchingId, bot.CurrentArea) <=
-             CountAreaPressure(matchingId, destination.Area) + 1))
-        {
-            bot.OrbFarmingDestination = bot.CurrentArea;
-            bot.OrbFarmingPivotPending = false;
-            return false;
-        }
-
-        if (destination?.Path == null)
-        {
-            if (!hasAnyTargetStock)
-                bot.OrbFarmingTargetColor = SurvivorOrbColor.None;
-            bot.OrbFarmingDestination = AreaType.None;
-            bot.OrbFarmingPivotPending = false;
-            return false;
-        }
-
-        AreaType from = bot.CurrentArea;
-        bot.Path = destination.Path;
-        bot.PathIndex = 0;
-        bot.MovementDestination = destination.Area;
-        bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 1.0);
-        bot.OrbFarmingDestination = destination.Area;
-        if (bot.OrbFarmingPivotPending)
-        {
-            bot.PendingOrbFarmingPivotFrom = from;
-            bot.PendingOrbFarmingPivotTo = destination.Area;
-        }
-        bot.OrbFarmingPivotPending = false;
-        _logger.LogInformation(
-            "Bot orb route pivot: MatchingId={MatchingId}, BotId={BotId}, Color={Color}, {From}->{To}, Steps={Steps}",
-            matchingId, bot.PlayerId, color, from, destination.Area, destination.Path.Count);
-        return true;
-    }
 
     /// <summary>
     /// Survivor Royale PVE policy: treat an afterimage pack as the room objective.
@@ -1015,13 +949,35 @@ public partial class BotPlayerManager
             .GetAllItems()
             .Select(item => item.ItemId)
             .ToArray();
-        var candidates = pveTargets
+        var areaGroups = pveTargets
             .Where(target => target.MapId == mapId &&
                              target.Area != AreaType.None &&
                              !target.Area.IsCorridor() &&
                              !unavailable.Contains(target.Area) &&
                              !IsRecentCombatRetreatOrigin(bot, target.Area))
             .GroupBy(target => target.Area)
+            .ToList();
+
+        // 경로 탐색이 이 틱의 비용을 지배한다. 잔상이 있는 모든 지역에 길을 찾으면
+        // 봇 수 x 지역 수만큼 A*가 돌아 틱이 200~370ms까지 튀고, 그동안 이동 틱이
+        // 통째로 스킵되어 봇 위치 브로드캐스트가 끊긴다 (2026-07-31 계측: 200틱 중 93틱 스킵).
+        //
+        // 현재 지역과 인접 지역만 후보로 둔다. 미니맵이 잔상 분포를 공개하므로 봇이 그
+        // 정보를 쓰는 것 자체는 규칙에 맞지만, 맵 반대편까지 직행할 필요는 없다. 인접
+        // 이동을 반복하면 결국 도달하고, 가까운 곳부터 훑는 편이 사람의 판단에 가깝다.
+        var nearbyGroups = areaGroups
+            .Where(group => group.Key == bot.CurrentArea ||
+                            GameAreaConnectionData.IsAdjacent(mapId, bot.CurrentArea, group.Key))
+            .ToList();
+        // 인접한 곳에 잔상이 하나도 없을 때만 전체 지역으로 넓힌다.
+        if (nearbyGroups.Count > 0)
+            areaGroups = nearbyGroups;
+
+        var candidates = areaGroups
+            .OrderByDescending(group => group.Key == bot.CurrentArea)
+            .ThenByDescending(group => group.Count() * 3 + group.Count(target => target.IsCore) * 8 -
+                                       CountAreaPressure(matchingId, group.Key, bot.PlayerId) * 5)
+            .Take(MaxHuntPathCandidates)
             .Select(group =>
             {
                 var preferredTarget = group
@@ -1391,8 +1347,20 @@ public partial class BotPlayerManager
     private bool TryStartCorridorExitPath(BotPlayerState bot, long matchingId, MapId mapId,
         AreaClosureManager closureManager)
     {
-        var exit = GetOpenBotDestinationAreas(matchingId, mapId, closureManager)
+        var exitAreas = GetOpenBotDestinationAreas(matchingId, mapId, closureManager)
             .Where(area => area != bot.CurrentArea)
+            .ToList();
+
+        // 복도에서는 인접한 방으로 나가면 충분하다. 열린 지역 전체에 길을 찾으면 봇마다
+        // A*가 지역 수만큼 돌아 이동 틱이 200ms 넘게 튀고, 그 사이 틱이 스킵되어 봇 위치
+        // 브로드캐스트가 끊긴다. 인접한 곳이 없을 때만 전체로 넓힌다.
+        var adjacentExitAreas = exitAreas
+            .Where(area => GameAreaConnectionData.IsAdjacent(mapId, bot.CurrentArea, area))
+            .ToList();
+        if (adjacentExitAreas.Count > 0)
+            exitAreas = adjacentExitAreas;
+
+        var exit = exitAreas
             .Select(area => new
             {
                 Area = area,
@@ -1890,5 +1858,3 @@ public class BotMovementEvent
     public bool IsAreaTransition { get; set; }
 }
 
-public sealed record BotOrbFarmingPivot(long BotPlayerId, SurvivorOrbColor Color, AreaType FromArea,
-    AreaType ToArea);

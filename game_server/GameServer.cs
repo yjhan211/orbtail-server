@@ -81,6 +81,12 @@ public partial class GameServer(
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private int _botMovementProcessing;
 
+    // 봇 이동 틱 계측 (#207) — 틱이 밀려 스킵되면 봇 위치 브로드캐스트 간격이 벌어진다.
+    private int _botMovementTickSkips;
+    private int _botMovementTickCount;
+    private double _botMovementTickTotalMs;
+    private double _botMovementTickMaxMs;
+
     internal const int ResourceTickIntervalSeconds = 5;
     private const int ChecklistProgressTickIntervalSeconds = 1;
     private const int ClosedAreaStatusEffectId = 1003;  // status_effect_info: 폐쇄 구역
@@ -800,8 +806,7 @@ public partial class GameServer(
                     $"SURVIVOR_ORB_MERGE inputs=[{merge.InputItemId},{merge.InputItemId}] " +
                     $"output={merge.OutputItemId} outputColor={outputColor} outputTier={outputTier} " +
                     $"resonanceBefore={merge.PreviousResonanceColor}/T{merge.PreviousSupportTier} " +
-                    $"resonanceAfter={merge.ResonanceColor}/T{merge.SupportTier} " +
-                    $"nextOrbColor={merge.NextTargetColor} nextArea=pending",
+                    $"resonanceAfter={merge.ResonanceColor}/T{merge.SupportTier}",
                     isBot: true);
             }
 
@@ -1776,8 +1781,14 @@ public partial class GameServer(
     private void ProcessBotMovement(object? state)
     {
         if (System.Threading.Interlocked.Exchange(ref _botMovementProcessing, 1) == 1)
+        {
+            // 틱이 50ms를 넘기면 다음 틱이 통째로 스킵되어 봇 위치 브로드캐스트 간격이
+            // 50ms와 100ms를 오간다. 클라 보간이 그대로 튀므로 빈도를 계측한다.
+            _botMovementTickSkips++;
             return;
+        }
 
+        var botMovementTickStartedAt = DateTime.UtcNow;
         try
         {
             var activeSessions = _clientSessions.Values
@@ -1826,14 +1837,6 @@ public partial class GameServer(
                     pveTargets);
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
-                foreach (var pivot in movementResult.OrbFarmingPivots)
-                {
-                    _gameEventLogManager.LogMission(
-                        matchingId,
-                        pivot.BotPlayerId,
-                        $"SURVIVOR_ORB_ROUTE_PIVOT color={pivot.Color} from={pivot.FromArea} to={pivot.ToArea}",
-                        isBot: true);
-                }
                 if (movementResult.ExploreEnds.Count > 0)
                 {
                     BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
@@ -1852,6 +1855,24 @@ public partial class GameServer(
         finally
         {
             System.Threading.Volatile.Write(ref _botMovementProcessing, 0);
+
+            double botTickElapsedMs = (DateTime.UtcNow - botMovementTickStartedAt).TotalMilliseconds;
+            _botMovementTickCount++;
+            _botMovementTickTotalMs += botTickElapsedMs;
+            if (botTickElapsedMs > _botMovementTickMaxMs) _botMovementTickMaxMs = botTickElapsedMs;
+            if (_botMovementTickCount >= 200)
+            {
+                logger.LogInformation(
+                    "Bot movement tick: avg={Avg:F1}ms max={Max:F1}ms skips={Skips} over {Count} ticks",
+                    _botMovementTickTotalMs / _botMovementTickCount,
+                    _botMovementTickMaxMs,
+                    _botMovementTickSkips,
+                    _botMovementTickCount);
+                _botMovementTickCount = 0;
+                _botMovementTickTotalMs = 0;
+                _botMovementTickMaxMs = 0;
+                _botMovementTickSkips = 0;
+            }
         }
     }
 
