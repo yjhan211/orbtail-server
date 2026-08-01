@@ -16,6 +16,16 @@ public sealed class EmotionAfterimageMonsterManager
     private static readonly TimeSpan AmbientCorridorDespawnDelay = TimeSpan.FromSeconds(4);
     private const float AmbientCorridorSafeSpawnDistance = 3f;
     private const int AmbientCorridorAliveLimit = 6;
+
+    /// <summary>
+    ///     페이즈마다 개체 하나씩 줄인다. 한 마리가 강해지고 보상도 커지므로 수까지 유지하면
+    ///     복도 총량이 폭증한다. 다만 1까지 내리면 후반 복도가 위험한 통로가 아니라 빈 통로가
+    ///     되므로 3에서 멈춘다.
+    /// </summary>
+    private static int GetAmbientCorridorAliveLimit(int closurePhase) =>
+        Math.Max(MinAmbientCorridorAliveLimit, AmbientCorridorAliveLimit - Math.Max(0, closurePhase));
+
+    private const int MinAmbientCorridorAliveLimit = 3;
     private readonly ConcurrentDictionary<long, MatchingMonsterState> _matchingStates = new();
     private Action<long>? _matchingStateRemoved;
 
@@ -376,7 +386,7 @@ public sealed class EmotionAfterimageMonsterManager
                 return 0;
 
             int aliveCount = _monsters.Values.Count(state => state.IsAlive && state.Definition.IsAmbientCorridor);
-            if (aliveCount >= AmbientCorridorAliveLimit)
+            if (aliveCount >= GetAmbientCorridorAliveLimit(_waveIndex))
                 return 0;
 
             var candidate = _monsters.Values
@@ -598,7 +608,18 @@ public sealed class EmotionAfterimageMonsterManager
                 return false;
 
             int multiplier = normalizedPhase >= 30 ? int.MaxValue : 1 << normalizedPhase;
+
+            // 보상과 피해만 올리면 후반 복도가 즉사 파밍터가 된다. 실제로 사람이 소환석의
+            // 97%를 복도에서 얻었다 (2026-07-31 match-2015: 425석 중 412석).
+            // 체력을 같은 배율로 올려 잡는 데 드는 시간이 보상과 함께 커지게 한다.
+            MaxHealth = Math.Max(1, SaturatingMultiply(Definition.MaxHealth, multiplier));
+            CurrentHealth = MaxHealth;
             AttackDamage = Math.Max(1, SaturatingMultiply(Definition.AttackDamage, multiplier));
+
+            // 사거리는 올리지 않는다. 몸집에 맞춰 함께 키웠더니 페이즈 3에서 5.2셀, 4에서
+            // 상한 9셀이 되어 화면 밖에서 맞는 상황이 나왔다 (2026-08-01 match-2043:
+            // 피해 4~8이 시야 밖에서 들어옴). 복도 잔상은 근접 위협으로 유지한다.
+
             SummonStoneReward = Math.Max(1, SaturatingMultiply(Definition.SummonStoneReward, multiplier));
             AppliedAmbientCorridorPhase = normalizedPhase;
             return true;

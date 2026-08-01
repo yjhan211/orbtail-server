@@ -225,6 +225,10 @@ public partial class BotPlayerManager
                 bot.RoomHuntEscapeRequested = true;
                 bot.MovementDestination = AreaType.None;
                 bot.LoopWaitUntil = DateTime.MinValue;
+                // 재계획은 경로가 비었을 때만 돈다. 방 안 kite 경로가 계속 갱신되면 경로가
+                // 마르지 않아 사냥 계획에 영영 닿지 못한다. 진행이 없는 상태이므로 버려도 잃을 게 없다.
+                bot.Path.Clear();
+                bot.PathIndex = 0;
                 bot.RoomHuntStartedAtUtc = DateTime.UtcNow;
             }
 
@@ -967,8 +971,8 @@ public partial class BotPlayerManager
         InGameInventoryManager inventoryManager,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
-        // 복도에서도 목적지를 고를 수 있어야 한다. 후보는 방으로만 한정되므로
-        // 복도에 서 있는 봇은 "현재 지역 사냥" 분기를 타지 않고 경로만 받는다.
+        // 복도에서도 목적지를 고를 수 있어야 한다. 복도에 서 있는 봇에게는 방만 후보로
+        // 남으므로 "현재 지역 사냥" 분기를 타지 않고 경로만 받는다.
         if (bot.CurrentArea == AreaType.None || pveTargets.Count == 0)
             return false;
 
@@ -982,10 +986,15 @@ public partial class BotPlayerManager
         // 않는 위치, 결판나지 않는 대치, 이미 남이 차지한 팩이 원인이며, 어느 쪽이든 그 방을
         // 계속 최우선 후보로 두면 봇이 제자리에 굳는다. 그때는 현재 지역을 후보에서 뺀다.
         bool roomHuntStalled = bot.RoomHuntEscapeRequested;
+        // 복도 잔상도 목적지가 된다. 폐쇄 페이즈마다 보상이 2배로 커지는데 봇만 방에
+        // 묶여 있으면, 사람만 아는 복도 파밍이 그대로 격차가 된다 (2026-07-31 match-2015:
+        // 사람 소환석 425 중 412가 복도, 봇 최고치는 123 중 20).
+        // 다만 이미 복도에 서 있는 봇에게 복도를 다시 목적지로 주면 제자리에서 맴돈다.
+        // 그 경우는 자동전투가 근처 잔상을 알아서 잡으므로 목적지에서만 뺀다.
         var areaGroups = pveTargets
             .Where(target => target.MapId == mapId &&
                              target.Area != AreaType.None &&
-                             !target.Area.IsCorridor() &&
+                             !(target.Area.IsCorridor() && bot.CurrentArea.IsCorridor()) &&
                              !unavailable.Contains(target.Area) &&
                              !IsRecentCombatRetreatOrigin(bot, target.Area) &&
                              !(roomHuntStalled && target.Area == bot.CurrentArea))
