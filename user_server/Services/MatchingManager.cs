@@ -612,9 +612,12 @@ public class MatchingManager : IMatchingManager
 
         var ordered = realPlayers.Concat(bots).ToList();
         var players = ordered.Select(x => x.Data).ToList();
+        // NONE을 배정하면 그 플레이어는 직책 없이 매치에 들어가 인게임 진입에서 막힌다.
+        // 실제 플레이어가 배열 앞에 오므로, 먼저 큐를 잡은 사람이 항상 걸렸다.
+        // JobTitle은 NONE을 빼고 정확히 8개라 8인 매치에 그대로 맞는다.
         var jobs = new[]
         {
-            JobTitle.NONE,
+            JobTitle.STUDENT_PRESIDENT,
             JobTitle.DISCIPLINE_MEMBER,
             JobTitle.BROADCAST_MEMBER,
             JobTitle.SCIENCE_MEMBER,
