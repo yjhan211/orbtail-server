@@ -61,7 +61,7 @@ public partial class GameClientSession
 
             // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
             var currentCell = WorldPositionToCell(validatedPosition);
-            var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
+            var newArea = GameMapData.GetStableCurrentArea(CurrentMapId, currentCell, CurrentArea);
 
 
             // 3. Area 변경 처리 (퇴장 조건 통과한 경우만)
