@@ -277,14 +277,18 @@ public partial class GameClientSession
     }
     private async Task BroadcastPlayerJoin()
     {
-        if (!PlayerId.HasValue) return;
+        if (!PlayerId.HasValue || IsEliminated) return;
 
         try
         {
             var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
             // Same-area players only
             var sameAreaSessions = allSessions
-                .Where(s => s.PlayerId != PlayerId && s.CurrentArea == CurrentArea && s.PlayerId.HasValue).ToList();
+                .Where(s => !s.IsEliminated &&
+                            s.PlayerId != PlayerId &&
+                            s.CurrentArea == CurrentArea &&
+                            s.PlayerId.HasValue)
+                .ToList();
 
             // 1. ?섏뿉寃?媛숈? Area???ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚
             if (sameAreaSessions.Count > 0)
@@ -294,7 +298,10 @@ public partial class GameClientSession
                 {
                     await using var playerLock = await PlayerInfo.Lock(RedLock, session.PlayerId!.Value);
                     var playerInfo = await PlayerInfo.Load(CacheHelper, session.PlayerId!.Value);
-                    if (playerInfo != null) playerInfoList.Add(playerInfo);
+                    if (playerInfo == null) continue;
+
+                    ApplyLivePlayerInfoSnapshot(session, playerInfo);
+                    playerInfoList.Add(playerInfo);
                 }
 
                 if (playerInfoList.Count > 0)
@@ -312,6 +319,8 @@ public partial class GameClientSession
 
             if (myPlayerInfo != null)
             {
+                ApplyLivePlayerInfoSnapshot(this, myPlayerInfo);
+
                 // 3. 媛숈? Area???ㅻⅨ ?뚮젅?댁뼱?ㅼ뿉寃????뺣낫 釉뚮줈?쒖틦?ㅽ듃
                 using var myPacket = PacketMaker.G_TO_C_PLAYER_INFO([myPlayerInfo]);
                 foreach (var session in sameAreaSessions) session.Send(myPacket);
@@ -344,6 +353,32 @@ public partial class GameClientSession
         {
             Logger.LogError(ex, "Failed to broadcast player join for PlayerId={L}", PlayerId);
         }
+    }
+
+    private static void ApplyLivePlayerInfoSnapshot(GameClientSession session, PlayerInfo playerInfo)
+    {
+        var cell = session._lastValidCell ?? playerInfo.LastCell ?? playerInfo.ObjectInfo?.Cell;
+        var position = session._lastValidatedPosition;
+
+        playerInfo.State = session.CurrentState == PlayerState.Exploring
+            ? global::network.common.PlayerState.EXPLORE_1
+            : global::network.common.PlayerState.IDLE;
+        playerInfo.LastMapId = session.CurrentMapId;
+        playerInfo.LastMapSubId = session.CurrentMapSubId;
+        playerInfo.ObjectInfo ??= new GameObjectInfo(playerInfo.PlayerId);
+        playerInfo.ObjectInfo.MapId = session.CurrentMapId;
+        playerInfo.ObjectInfo.MapSubId = session.CurrentMapSubId;
+        playerInfo.ObjectInfo.Rotation = session._lastValidatedRotation;
+
+        if (cell != null)
+        {
+            playerInfo.LastCell = Cell.Clone(cell);
+            playerInfo.ObjectInfo.Cell = Cell.Clone(cell);
+            position ??= session.CellToWorldPosition(cell);
+        }
+
+        if (position != null)
+            playerInfo.ObjectInfo.Position = position;
     }
 
     private void SendMatchStartCountdown(long matchingId)

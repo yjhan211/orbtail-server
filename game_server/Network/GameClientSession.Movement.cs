@@ -316,6 +316,8 @@ public partial class GameClientSession
 
             if (playerInfo == null) return;
 
+            ApplyLivePlayerInfoSnapshot(this, playerInfo);
+
             // 내 최신 위치로 playerInfo 업데이트
             if (_lastValidatedPosition != null)
             {
@@ -379,6 +381,8 @@ public partial class GameClientSession
                     var otherPlayerInfo = await PlayerInfo.Load(CacheHelper, session.PlayerId.Value);
                     if (otherPlayerInfo != null)
                     {
+                        ApplyLivePlayerInfoSnapshot(session, otherPlayerInfo);
+
                         // 세션의 최신 위치에서 Cell 계산 (없으면 캐시된 Cell 사용)
                         var otherCell = session._lastValidatedPosition != null
                             ? WorldPositionToCell(session._lastValidatedPosition)
