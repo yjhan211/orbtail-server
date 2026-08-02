@@ -88,12 +88,12 @@ public class SummonStoneManagerTests
     }
 
     [Fact]
-    public void SuccessfulSummons_UseTwoThreeFourFiveThenSixCostCap()
+    public void SuccessfulSummons_IncreaseCostWithoutCap()
     {
         var manager = new SummonStoneManager();
         manager.AddStones(202, 10, 100);
         long nextUid = 1;
-        int[] expectedNextCosts = [3, 4, 5, 6, 6, 6];
+        int[] expectedNextCosts = [3, 4, 5, 6, 7, 8];
 
         for (int index = 0; index < expectedNextCosts.Length; index++)
         {
@@ -105,7 +105,7 @@ public class SummonStoneManagerTests
             Assert.Contains(attempt.ItemId, manager.PoolItemIds);
         }
 
-        Assert.Equal(74, manager.GetSnapshot(202, 10).StoneCount);
+        Assert.Equal(73, manager.GetSnapshot(202, 10).StoneCount);
     }
 
     [Fact]
