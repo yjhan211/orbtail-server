@@ -340,7 +340,9 @@ public partial class GameServer
                     InitialBurstAttackCount = 0,
                     InitialBurstAttackIntervalMultiplier = 1f,
                     BurstRechargeSeconds = 0f,
-                    InitialAttackDelaySeconds = attackSlotIndex++ * 0.15f,
+                    // 슬롯마다 발사를 조금씩 어긋내 6칸이 같은 틱에 터지지 않게 한다.
+                    // 0.15는 6번째 오브를 0.75초나 늦춰 조우 반응이 굼떠 보였다.
+                    InitialAttackDelaySeconds = attackSlotIndex++ * 0.05f,
                     OrbEffectActive = orbEffectActive,
                     WeaponItemUid = item.ItemUid,
                     WeaponStackIndex = stackIndex,

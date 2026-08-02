@@ -6,6 +6,9 @@ namespace demo_regression_tests;
 
 public class ProximityAutoCombatResolverTests
 {
+    /// <summary>조준 경계를 검증하는 단언은 상수를 기준으로 잡아야 값이 바뀌어도 의미가 유지된다.</summary>
+    private static readonly double AimMs = ProximityAutoCombatResolver.AimDuration.TotalMilliseconds;
+
     [Fact]
     public void Resolve_ArmedActorTargetsNearestPlayerInRange()
     {
@@ -64,10 +67,10 @@ public class ProximityAutoCombatResolverTests
 
         actors[1] = Actor(2, 2f, 0f);
         Assert.Empty(resolver.Resolve(100, actors, now));
-        Assert.Empty(resolver.Resolve(100, actors, now.AddMilliseconds(499)));
-        Assert.Single(resolver.Resolve(100, actors, now.AddMilliseconds(500)));
-        Assert.Empty(resolver.Resolve(100, actors, now.AddMilliseconds(1999)));
-        Assert.Single(resolver.Resolve(100, actors, now.AddSeconds(2)));
+        Assert.Empty(resolver.Resolve(100, actors, now.AddMilliseconds(AimMs - 1)));
+        Assert.Single(resolver.Resolve(100, actors, now.AddMilliseconds(AimMs)));
+        Assert.Empty(resolver.Resolve(100, actors, now.AddMilliseconds(AimMs + 1499)));
+        Assert.Single(resolver.Resolve(100, actors, now.AddMilliseconds(AimMs + 1500)));
     }
 
     [Fact]
@@ -161,7 +164,7 @@ public class ProximityAutoCombatResolverTests
         Assert.Equal(enemyPlayer.PlayerId, playerAttack.TargetPlayerId);
     }
     [Fact]
-    public void Resolve_TargetChangeRestartsHalfSecondAim()
+    public void Resolve_TargetChangeRestartsAim()
     {
         var resolver = new ProximityAutoCombatResolver();
         var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
@@ -176,10 +179,13 @@ public class ProximityAutoCombatResolverTests
 
         actors[1] = Actor(2, 4f, 0f);
         actors[2] = Actor(3, 1f, 0f);
-        Assert.Empty(resolver.Resolve(100, actors, now.AddMilliseconds(250)));
-        Assert.Empty(resolver.Resolve(100, actors, now.AddMilliseconds(500)));
+        // 타깃이 바뀐 시점부터 조준이 다시 시작된다.
+        const double targetChangedAtMs = 250;
+        Assert.Empty(resolver.Resolve(100, actors, now.AddMilliseconds(targetChangedAtMs)));
+        Assert.Empty(resolver.Resolve(100, actors, now.AddMilliseconds(targetChangedAtMs + AimMs - 1)));
 
-        var attack = Assert.Single(resolver.Resolve(100, actors, now.AddMilliseconds(750)));
+        var attack = Assert.Single(
+            resolver.Resolve(100, actors, now.AddMilliseconds(targetChangedAtMs + AimMs)));
         Assert.Equal(3, attack.TargetPlayerId);
     }
 
@@ -308,15 +314,17 @@ public class ProximityAutoCombatResolverTests
             Actor(2, 1f, 0f)
         };
 
+        // 조준을 절반만 마친 상태에서 타깃을 잃고, 유예 안에 다시 잡으면 남은 절반만 채운다.
+        double halfAimMs = AimMs / 2;
         Assert.Empty(resolver.Resolve(198, actors, now));
         actors[1] = Actor(2, 1f, 0f, area: AreaType.Corridor3F);
-        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(300)));
+        Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(halfAimMs)));
 
         actors[1] = Actor(2, 1f, 0f);
-        var reacquiredAt = now.AddMilliseconds(1200);
+        var reacquiredAt = now.AddMilliseconds(halfAimMs + 900);
         Assert.Empty(resolver.Resolve(198, actors, reacquiredAt));
-        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(199)));
-        Assert.Single(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(200)));
+        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(halfAimMs - 1)));
+        Assert.Single(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(halfAimMs)));
     }
 
     [Fact]
@@ -337,8 +345,8 @@ public class ProximityAutoCombatResolverTests
         var reacquiredAt = now.AddMilliseconds(1801);
         actors[1] = Actor(2, 1f, 0f);
         Assert.Empty(resolver.Resolve(198, actors, reacquiredAt));
-        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(499)));
-        Assert.Single(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(500)));
+        Assert.Empty(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(AimMs - 1)));
+        Assert.Single(resolver.Resolve(198, actors, reacquiredAt.AddMilliseconds(AimMs)));
     }
 
     [Fact]
@@ -423,10 +431,11 @@ public class ProximityAutoCombatResolverTests
             Actor(2, 1f, 0f)
         };
 
+        // 슬롯 시차는 이 테스트가 직접 지정하므로 조준 시간에만 상대적으로 잡는다.
         Assert.Empty(resolver.Resolve(200, actors, now));
-        Assert.Single(resolver.Resolve(200, actors, now.AddMilliseconds(500)));
-        Assert.Empty(resolver.Resolve(200, actors, now.AddMilliseconds(649)));
-        Assert.Single(resolver.Resolve(200, actors, now.AddMilliseconds(650)));
+        Assert.Single(resolver.Resolve(200, actors, now.AddMilliseconds(AimMs)));
+        Assert.Empty(resolver.Resolve(200, actors, now.AddMilliseconds(AimMs + 149)));
+        Assert.Single(resolver.Resolve(200, actors, now.AddMilliseconds(AimMs + 150)));
     }
     private static ProximityCombatActor Actor(
         long playerId,
