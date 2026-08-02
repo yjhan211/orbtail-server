@@ -17,7 +17,6 @@ public sealed class SummonStoneManager
     public const int PassiveIncomeAmount = 1;
 
     private const int BaseSummonCost = 2;
-    private const int SummonCostIncreasePerSuccess = 1;
     private static readonly int[] SummonPool = [107000010, 107000020, 107000030, 107000040];
     private static readonly int[] OpeningAttackPool = SummonPool
         .Where(itemId => !SurvivorOrbData.IsRecoveryOrb(itemId))
@@ -121,8 +120,8 @@ public sealed class SummonStoneManager
 
     private static int GetCost(int successfulSummonCount)
     {
-        long cost = BaseSummonCost +
-                    (long)Math.Max(0, successfulSummonCount) * SummonCostIncreasePerSuccess;
+        long summonNumber = (long)Math.Max(0, successfulSummonCount) + 1;
+        long cost = Math.Max(BaseSummonCost, summonNumber * (summonNumber + 1) / 2);
         return (int)Math.Min(int.MaxValue, cost);
     }
 

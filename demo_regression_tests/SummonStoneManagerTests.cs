@@ -31,7 +31,7 @@ public class SummonStoneManagerTests
             itemId => new InGameItemInfo { ItemUid = 2, ItemId = itemId, Count = 1 });
         Assert.True(secondSummon.Success);
         Assert.Equal(0, secondSummon.State.StoneCount);
-        Assert.Equal(4, secondSummon.State.NextCost);
+        Assert.Equal(6, secondSummon.State.NextCost);
     }
 
 
@@ -93,7 +93,7 @@ public class SummonStoneManagerTests
         var manager = new SummonStoneManager();
         manager.AddStones(202, 10, 100);
         long nextUid = 1;
-        int[] expectedNextCosts = [3, 4, 5, 6, 7, 8];
+        int[] expectedNextCosts = [3, 6, 10, 15, 21, 28];
 
         for (int index = 0; index < expectedNextCosts.Length; index++)
         {
@@ -105,7 +105,7 @@ public class SummonStoneManagerTests
             Assert.Contains(attempt.ItemId, manager.PoolItemIds);
         }
 
-        Assert.Equal(73, manager.GetSnapshot(202, 10).StoneCount);
+        Assert.Equal(43, manager.GetSnapshot(202, 10).StoneCount);
     }
 
     [Fact]
