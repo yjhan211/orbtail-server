@@ -232,6 +232,56 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
     }
 
     [Fact]
+    public void SaveCountsAfterimageKillsIndependentlyFromStoneAwards()
+    {
+        const long matchingId = 210006;
+        long startedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var events = new List<GameEventEntry>
+        {
+            new() { Seq = 1, TimestampUnixMs = startedAt, Type = "MATCH_STARTED" },
+            new()
+            {
+                Seq = 2, TimestampUnixMs = startedAt + 1_000, Type = "AFTERIMAGE_KILLED",
+                PlayerId = 1, Area = "Library", Outcome = "core"
+            },
+            new()
+            {
+                Seq = 3, TimestampUnixMs = startedAt + 2_000, Type = "AFTERIMAGE_KILLED",
+                PlayerId = 1, Area = "Classroom1", Outcome = "normal"
+            },
+            new()
+            {
+                Seq = 4, TimestampUnixMs = startedAt + 3_000, Type = "AFTERIMAGE_KILLED",
+                PlayerId = 1, Area = "Corridor", Outcome = "normal"
+            },
+            new()
+            {
+                Seq = 5, TimestampUnixMs = startedAt + 4_000, Type = "SUMMON_STONE_AWARDED",
+                PlayerId = 1, Area = "Library", Outcome = "core", SummonStoneDelta = 6
+            },
+            new()
+            {
+                Seq = 6, TimestampUnixMs = startedAt + 5_000, Type = "SUMMON_STONE_AWARDED",
+                PlayerId = 1, Area = "Corridor", Outcome = "pvp", SummonStoneDelta = 2
+            },
+            new()
+            {
+                Seq = 7, TimestampUnixMs = startedAt + 6_000, Type = "MATCH_ENDED",
+                WinnerPlayerId = 1, EndReason = "test"
+            }
+        };
+
+        var store = new MatchSummaryFileStore(_directory, 5);
+        var summary = store.Save(matchingId, "test", 1, events);
+
+        Assert.Equal(1, summary.Metrics.CoreKillCount);
+        Assert.Equal(1, summary.Metrics.NormalKillCount);
+        Assert.Equal(1, summary.Metrics.CorridorKillCount);
+        Assert.Equal(6, summary.Metrics.SummonStoneSources["core"]);
+        Assert.Equal(2, summary.Metrics.SummonStoneSources["corridor"]);
+    }
+
+    [Fact]
     public void SaveUsesMatchTimestampsForFirstPacingMetrics()
     {
         const long matchingId = 210005;

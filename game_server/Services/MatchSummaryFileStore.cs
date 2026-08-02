@@ -214,6 +214,7 @@ public sealed class MatchSummaryFileStore
             eliminationCounts[ClassifyElimination(events, elimination)]++;
 
         var stoneEvents = events.Where(entry => entry.Type == "SUMMON_STONE_AWARDED").ToList();
+        var afterimageKillEvents = events.Where(entry => entry.Type == "AFTERIMAGE_KILLED").ToList();
         var stoneSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             ["room"] = stoneEvents.Where(entry => !IsCorridorArea(entry.Area))
@@ -256,12 +257,12 @@ public sealed class MatchSummaryFileStore
             PvpEliminationCount = eliminationCounts["pvp"],
             EliminationCounts = eliminationCounts,
             SummonStoneSources = stoneSources,
-            CoreKillCount = stoneEvents.Count(entry =>
+            CoreKillCount = afterimageKillEvents.Count(entry =>
                 string.Equals(entry.Outcome, "core", StringComparison.OrdinalIgnoreCase)),
-            NormalKillCount = stoneEvents.Count(entry =>
+            NormalKillCount = afterimageKillEvents.Count(entry =>
                 !string.Equals(entry.Outcome, "core", StringComparison.OrdinalIgnoreCase) &&
                 !IsCorridorArea(entry.Area)),
-            CorridorKillCount = stoneEvents.Count(entry => IsCorridorArea(entry.Area)),
+            CorridorKillCount = afterimageKillEvents.Count(entry => IsCorridorArea(entry.Area)),
             ContestedAreaEntryCount = areaContention.Sum(metric => metric.ContestedEntryCount),
             AreaContention = areaContention,
             RewardAreaSnapshots = rewardAreaSnapshots,
