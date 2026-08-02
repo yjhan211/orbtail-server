@@ -119,6 +119,252 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
     }
 
     [Fact]
+    public void FullPersistenceKeepsEarlyEventsBeyondTheLiveFiveThousandEventWindow()
+    {
+        const long matchingId = 210001;
+        var log = new GameEventLogManager();
+        log.BeginMatch(matchingId, 210);
+        for (int index = 0; index < 5_100; index++)
+            log.LogSystem(matchingId, $"event-{index}");
+
+        var recent = log.GetRecent(matchingId);
+        var complete = log.GetForPersistence(matchingId);
+
+        Assert.Equal(5_000, recent.Count);
+        Assert.DoesNotContain(recent, entry => entry.Type == "MATCH_STARTED");
+        Assert.Equal(5_101, complete.Count);
+        Assert.Equal("MATCH_STARTED", complete[0].Type);
+
+        var store = new MatchSummaryFileStore(_directory, 5);
+        var summary = store.Save(matchingId, "test", 0, complete);
+        var persisted = store.ReadRawEvents(matchingId, 6_000);
+
+        Assert.Equal(5_101, summary.RawEventCount);
+        Assert.Equal(500, summary.Events.Count);
+        Assert.Equal(5_101, persisted.Count);
+        Assert.Contains(persisted, entry => entry.Type == "MATCH_STARTED");
+    }
+
+    [Fact]
+    public void SaveBuildsIssue210PacingContentionAndSourceMetrics()
+    {
+        const long matchingId = 210002;
+        long startedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var events = new List<GameEventEntry>
+        {
+            new() { Seq = 1, TimestampUnixMs = startedAt, Type = "MATCH_STARTED" },
+            new() { Seq = 2, TimestampUnixMs = startedAt + 1_000, Type = "SPAWN_ASSIGNMENT", PlayerId = 1, Area = "Library" },
+            new() { Seq = 3, TimestampUnixMs = startedAt + 2_000, Type = "SPAWN_ASSIGNMENT", PlayerId = 2, Area = "Library" },
+            new() { Seq = 4, TimestampUnixMs = startedAt + 60_000, Type = "SURVIVOR_FIRST_T2", PlayerId = 1 },
+            new() { Seq = 5, TimestampUnixMs = startedAt + 100_000, Type = "SURVIVOR_FIRST_T3", PlayerId = 1 },
+            new()
+            {
+                Seq = 6, TimestampUnixMs = startedAt + 150_000, Type = "SURVIVOR_ORB_BOARD_FULL",
+                PlayerId = 1, ElapsedMilliseconds = 150_000
+            },
+            new()
+            {
+                Seq = 7, TimestampUnixMs = startedAt + 160_000, Type = "SUMMON_STONE_AWARDED",
+                PlayerId = 1, Area = "Library", Outcome = "core", SummonStoneDelta = 6
+            },
+            new()
+            {
+                Seq = 8, TimestampUnixMs = startedAt + 170_000, Type = "SUMMON_STONE_AWARDED",
+                PlayerId = 1, Area = "Corridor", Outcome = "normal", SummonStoneDelta = 1
+            },
+            new()
+            {
+                Seq = 9, TimestampUnixMs = startedAt + 180_000, Type = "ELIMINATE",
+                PlayerId = 2, TargetPlayerId = 2, ActorPlayerId = 1, DamageSourceType = "pvp",
+                Outcome = "MENTAL_ZERO"
+            },
+            new()
+            {
+                Seq = 10, TimestampUnixMs = startedAt + 200_000, Type = "ELIMINATE",
+                PlayerId = 1, TargetPlayerId = 1, DamageSourceType = "closure",
+                IsAreaClosureElimination = true, Outcome = "MENTAL_ZERO"
+            },
+            new()
+            {
+                Seq = 11, TimestampUnixMs = startedAt + 210_000, Type = "SURVIVOR_REWARD_AREA_SNAPSHOT",
+                PhaseIndex = 1, Outcome = "closure",
+                RewardAreaStates = [new MonsterRewardAreaTelemetry("Library", 9, 1, 14)]
+            },
+            new()
+            {
+                Seq = 12, TimestampUnixMs = startedAt + 220_000, Type = "SURVIVOR_CORE_CONTESTED_ENTRY",
+                PlayerId = 2, Area = "Library", MonsterId = 202101,
+                CoreCurrentHealth = 24, CoreMaxHealth = 48, AlreadyPresentPlayerIds = [1]
+            },
+            new()
+            {
+                Seq = 13, TimestampUnixMs = startedAt + 300_000, Type = "MATCH_ENDED",
+                WinnerPlayerId = 1, EndReason = "test"
+            }
+        };
+
+        var store = new MatchSummaryFileStore(_directory, 5);
+        var summary = store.Save(matchingId, "test", 1, events);
+
+        Assert.Equal(60_000, summary.Metrics.FirstTier2ElapsedMilliseconds);
+        Assert.Equal(100_000, summary.Metrics.FirstTier3ElapsedMilliseconds);
+        Assert.Equal(150_000, summary.Metrics.FirstBoardFullElapsedMilliseconds);
+        Assert.Equal(1, summary.Metrics.PvpEliminationCount);
+        Assert.Equal(1, summary.Metrics.EliminationCounts["closure"]);
+        Assert.Equal(6, summary.Metrics.SummonStoneSources["room"]);
+        Assert.Equal(1, summary.Metrics.SummonStoneSources["corridor"]);
+        Assert.Equal(6, summary.Metrics.SummonStoneSources["core"]);
+        Assert.Equal(1, summary.Metrics.ContestedAreaEntryCount);
+        var library = Assert.Single(summary.Metrics.AreaContention, metric => metric.Area == "Library");
+        Assert.Equal(2, library.MaxConcurrentPlayers);
+        Assert.Equal(2, library.UniqueVisitorCount);
+        var rewardSnapshot = Assert.Single(summary.Metrics.RewardAreaSnapshots);
+        Assert.Equal(1, rewardSnapshot.PhaseIndex);
+        Assert.Equal(14, Assert.Single(rewardSnapshot.Areas).RemainingSummonStoneReward);
+        var coreEntry = Assert.Single(summary.Metrics.CoreContestedEntries);
+        Assert.Equal(24, coreEntry.CoreCurrentHealth);
+        Assert.Equal([1L], coreEntry.AlreadyPresentPlayerIds);
+
+        var player = Assert.Single(summary.Participants, participant => participant.PlayerId == 1);
+        Assert.Equal(6, player.RoomSummonStonesEarned);
+        Assert.Equal(1, player.CorridorSummonStonesEarned);
+        Assert.Equal(6, player.CoreSummonStonesEarned);
+    }
+
+    [Fact]
+    public void SaveCountsAfterimageKillsIndependentlyFromStoneAwards()
+    {
+        const long matchingId = 210006;
+        long startedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var events = new List<GameEventEntry>
+        {
+            new() { Seq = 1, TimestampUnixMs = startedAt, Type = "MATCH_STARTED" },
+            new()
+            {
+                Seq = 2, TimestampUnixMs = startedAt + 1_000, Type = "AFTERIMAGE_KILLED",
+                PlayerId = 1, Area = "Library", Outcome = "core"
+            },
+            new()
+            {
+                Seq = 3, TimestampUnixMs = startedAt + 2_000, Type = "AFTERIMAGE_KILLED",
+                PlayerId = 1, Area = "Classroom1", Outcome = "normal"
+            },
+            new()
+            {
+                Seq = 4, TimestampUnixMs = startedAt + 3_000, Type = "AFTERIMAGE_KILLED",
+                PlayerId = 1, Area = "Corridor", Outcome = "normal"
+            },
+            new()
+            {
+                Seq = 5, TimestampUnixMs = startedAt + 4_000, Type = "SUMMON_STONE_AWARDED",
+                PlayerId = 1, Area = "Library", Outcome = "core", SummonStoneDelta = 6
+            },
+            new()
+            {
+                Seq = 6, TimestampUnixMs = startedAt + 5_000, Type = "SUMMON_STONE_AWARDED",
+                PlayerId = 1, Area = "Corridor", Outcome = "pvp", SummonStoneDelta = 2
+            },
+            new()
+            {
+                Seq = 7, TimestampUnixMs = startedAt + 6_000, Type = "MATCH_ENDED",
+                WinnerPlayerId = 1, EndReason = "test"
+            }
+        };
+
+        var store = new MatchSummaryFileStore(_directory, 5);
+        var summary = store.Save(matchingId, "test", 1, events);
+
+        Assert.Equal(1, summary.Metrics.CoreKillCount);
+        Assert.Equal(1, summary.Metrics.NormalKillCount);
+        Assert.Equal(1, summary.Metrics.CorridorKillCount);
+        Assert.Equal(6, summary.Metrics.SummonStoneSources["core"]);
+        Assert.Equal(2, summary.Metrics.SummonStoneSources["corridor"]);
+    }
+
+    [Fact]
+    public void SaveUsesMatchTimestampsForFirstPacingMetrics()
+    {
+        const long matchingId = 210005;
+        long startedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var events = new List<GameEventEntry>
+        {
+            new() { Seq = 1, TimestampUnixMs = startedAt, Type = "MATCH_STARTED" },
+            new()
+            {
+                Seq = 2, TimestampUnixMs = startedAt + 25_000, Type = "SURVIVOR_ENCOUNTER_START",
+                PlayerId = 1, ElapsedMilliseconds = 0
+            },
+            new()
+            {
+                Seq = 3, TimestampUnixMs = startedAt + 75_000, Type = "SURVIVOR_FIRST_ELIMINATION",
+                PlayerId = 2, ElapsedMilliseconds = 500
+            },
+            new()
+            {
+                Seq = 4, TimestampUnixMs = startedAt + 100_000, Type = "MATCH_ENDED",
+                WinnerPlayerId = 1, EndReason = "test"
+            }
+        };
+
+        var store = new MatchSummaryFileStore(_directory, 5);
+        var summary = store.Save(matchingId, "test", 1, events);
+
+        Assert.Equal(25_000, summary.Metrics.FirstEncounterElapsedMilliseconds);
+        Assert.Equal(75_000, summary.Metrics.FirstEliminationElapsedMilliseconds);
+    }
+
+    [Fact]
+    public void RewardAreaAndContestedCoreTelemetryAreDeduplicatedAndRecorded()
+    {
+        const long matchingId = 210004;
+        var log = new GameEventLogManager();
+        var rewardSnapshot = new MonsterRewardAreaSnapshot(
+            0,
+            [new MonsterRewardAreaState(network.common.AreaType.Library, 9, 1, 14)]);
+
+        log.LogRewardAreaSnapshot(matchingId, rewardSnapshot, "initial");
+        log.LogRewardAreaSnapshot(matchingId, rewardSnapshot, "reconnect");
+        log.SetPlayerArea(matchingId, 11, "Library");
+        log.LogMove(matchingId, 22, "Corridor", "Library", isBot: false);
+        log.LogCoreContestedEntry(matchingId, 22, "Library", new network.common.data.models.MonsterRuntimeInfo
+        {
+            MonsterId = 202101,
+            AreaType = network.common.AreaType.Library,
+            IsAlive = true,
+            IsCore = true,
+            CurrentHealth = 24,
+            MaxHealth = 48
+        }, isBot: false);
+
+        var events = log.GetRecent(matchingId);
+        Assert.Single(events, entry => entry.Type == "SURVIVOR_REWARD_AREA_SNAPSHOT");
+        var contested = Assert.Single(events, entry => entry.Type == "SURVIVOR_CORE_CONTESTED_ENTRY");
+        Assert.Equal(24, contested.CoreCurrentHealth);
+        Assert.Equal([11L], contested.AlreadyPresentPlayerIds);
+    }
+
+    [Fact]
+    public void CoreAfterimageKillRecordsFirstLastAndDamageContributors()
+    {
+        var log = new GameEventLogManager();
+
+        log.LogEmotionAfterimageKilled(
+            210003,
+            202101,
+            "Library",
+            isCore: true,
+            firstAttackerPlayerId: 11,
+            lastAttackerPlayerId: 22,
+            new Dictionary<long, int> { [11] = 30, [22] = 18 });
+
+        var killed = Assert.Single(log.GetRecent(210003));
+        Assert.Equal("AFTERIMAGE_KILLED", killed.Type);
+        Assert.Equal(11, killed.FirstAttackerPlayerId);
+        Assert.Equal(22, killed.LastAttackerPlayerId);
+        Assert.Equal([11L, 22L], killed.MonsterDamageContributions!.Select(entry => entry.PlayerId));
+        Assert.Equal([30, 18], killed.MonsterDamageContributions.Select(entry => entry.Damage));
+    }
+    [Fact]
     public void FinalizationGate_AcceptsOnlyTheFirstCaller()
     {
         var events = new GameEventLogManager();

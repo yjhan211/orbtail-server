@@ -301,7 +301,8 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.Empty(resolver.Resolve(
             matchingId, actors, start, onTargetAcquired: OnAcquired, onTargetLost: OnLost));
         Assert.Empty(resolver.Resolve(
-            matchingId, actors, start.AddMilliseconds(499), onTargetAcquired: OnAcquired, onTargetLost: OnLost));
+            matchingId, actors, start.AddMilliseconds(ProximityAutoCombatResolver.AimDuration.TotalMilliseconds - 1),
+            onTargetAcquired: OnAcquired, onTargetLost: OnLost));
 
         DateTime attackAt = start.Add(ProximityAutoCombatResolver.AimDuration);
         while (victim.Corruption < Config.SURVIVOR_MAX_CORRUPTION)
@@ -414,15 +415,16 @@ public sealed class SurvivorBotLoopRegressionTests
 
         var hits = events.Where(entry => entry.Type == "SURVIVOR_HIT").ToList();
         Assert.Equal(2, hits.Count);
-        Assert.Equal(500, hits[0].ElapsedMilliseconds);
+        int aimMs = (int)ProximityAutoCombatResolver.AimDuration.TotalMilliseconds;
+        Assert.Equal(aimMs, hits[0].ElapsedMilliseconds);
         Assert.Null(hits[0].PreviousHitGapMilliseconds);
-        Assert.InRange(hits[1].ElapsedMilliseconds!.Value, 1649, 1650);
+        Assert.InRange(hits[1].ElapsedMilliseconds!.Value, aimMs + 1149, aimMs + 1150);
         Assert.InRange(hits[1].PreviousHitGapMilliseconds!.Value, 1149, 1150);
 
         var escaped = Assert.Single(events, entry => entry.Type == "SURVIVOR_ENCOUNTER_END");
         Assert.True(escaped.Escaped);
         Assert.Equal("out_of_range_or_los", escaped.Outcome);
-        Assert.InRange(escaped.ElapsedMilliseconds!.Value, 1699, 1700);
+        Assert.InRange(escaped.ElapsedMilliseconds!.Value, aimMs + 1199, aimMs + 1200);
         Assert.Equal(2, escaped.HitCount);
     }
 

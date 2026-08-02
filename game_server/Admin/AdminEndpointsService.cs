@@ -84,6 +84,16 @@ public static class AdminEndpoints
                 : Results.Ok(summary);
         });
 
+        app.MapGet("/admin/match-summary/{matchingId:long}/events",
+            (long matchingId, int? limit, long? since) =>
+            {
+                if (gameServer.MatchSummaryFileStore.Read(matchingId) == null)
+                    return Results.NotFound(new { error = $"Match summary {matchingId} not found" });
+
+                int take = Math.Clamp(limit ?? 5_000, 1, 50_000);
+                var events = gameServer.MatchSummaryFileStore.ReadRawEvents(matchingId, take, since);
+                return Results.Ok(new { matchingId, count = events.Count, events });
+            });
         // GET /admin/matching-config — 현재 글로벌 매칭 config 조회
         app.MapPost("/admin/bot-only-instance", (int? botCount) =>
         {

@@ -572,7 +572,9 @@ public partial class GameClientSession : SessionBase
         List<GameClientSession> allSessions, AreaType area, bool excludeSelf = true)
     {
         return allSessions
-            .Where(s => s.CurrentArea == area && (!excludeSelf || s.PlayerId != PlayerId))
+            .Where(s => !s.IsEliminated &&
+                        s.CurrentArea == area &&
+                        (!excludeSelf || s.PlayerId != PlayerId))
             .ToList();
     }
 

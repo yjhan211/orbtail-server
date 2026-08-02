@@ -25,6 +25,82 @@ public class SchoolNewMapRestorationTests
     }
 
     [Fact]
+    public void Stable_Area_Resolution_Requires_Entering_One_Cell_Past_A_Shared_Boundary()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
+        Assert.Equal(
+            AreaType.Gym,
+            GameMapData.GetStableCurrentArea(MapId.School, new Cell(196, 82), AreaType.Gym));
+        Assert.Equal(
+            AreaType.Storage2,
+            GameMapData.GetStableCurrentArea(MapId.School, new Cell(197, 82), AreaType.Gym));
+        Assert.Equal(
+            AreaType.Storage2,
+            GameMapData.GetStableCurrentArea(MapId.School, new Cell(195, 82), AreaType.Storage2));
+        Assert.Equal(
+            AreaType.Gym,
+            GameMapData.GetStableCurrentArea(MapId.School, new Cell(194, 82), AreaType.Storage2));
+
+        Assert.Equal(
+            AreaType.StaffRoom,
+            GameMapData.GetStableCurrentArea(MapId.School, new Cell(168, 70), AreaType.StaffRoom));
+        Assert.Equal(
+            AreaType.Junkyard2,
+            GameMapData.GetStableCurrentArea(MapId.School, new Cell(169, 70), AreaType.StaffRoom));
+        Assert.Equal(
+            AreaType.Junkyard2,
+            GameMapData.GetStableCurrentArea(MapId.School, new Cell(167, 70), AreaType.Junkyard2));
+        Assert.Equal(
+            AreaType.StaffRoom,
+            GameMapData.GetStableCurrentArea(MapId.School, new Cell(166, 70), AreaType.Junkyard2));
+
+        Assert.Equal(
+            AreaType.Storage2,
+            GameMapData.GetStableCurrentArea(MapId.School, new Cell(196, 82), AreaType.None));
+    }
+
+    [Fact]
+    public void Stable_Area_Resolution_Allows_Every_Authored_Connection_To_Commit()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
+        foreach (var connection in GameAreaConnectionData.GetAll().Where(entry => entry.MapId == MapId.School))
+        {
+            AssertCanCommit(connection.FromArea, connection.ToArea, connection.SpawnCell);
+
+            var reverseSpawn = GameAreaConnectionData.GetSpawnCell(
+                MapId.School,
+                connection.ToArea,
+                connection.FromArea,
+                connection.StairSide);
+            Assert.NotNull(reverseSpawn);
+            AssertCanCommit(connection.ToArea, connection.FromArea, reverseSpawn!);
+        }
+
+        static void AssertCanCommit(AreaType fromArea, AreaType toArea, Cell entryCell)
+        {
+            Assert.Equal(toArea, GameMapData.GetCurrentArea(MapId.School, entryCell));
+            if (GameMapData.GetStableCurrentArea(MapId.School, entryCell, fromArea) == toArea)
+                return;
+
+            var innerCells = new[]
+            {
+                new Cell(entryCell.X - 1, entryCell.Y),
+                new Cell(entryCell.X + 1, entryCell.Y),
+                new Cell(entryCell.X, entryCell.Y - 1),
+                new Cell(entryCell.X, entryCell.Y + 1)
+            };
+            Assert.Contains(innerCells, cell =>
+                GameMapData.IsMoveablePosition(MapId.School, cell) &&
+                GameMapData.GetCurrentArea(MapId.School, cell) == toArea &&
+                GameMapData.GetStableCurrentArea(MapId.School, cell, fromArea) == toArea);
+        }
+    }
+
+    [Fact]
     public void BotPathfinder_Crosses_School_Doors_As_Adjacent_Walking_Steps()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());

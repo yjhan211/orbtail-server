@@ -708,10 +708,25 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        // Keep the live session state authoritative as soon as elimination is accepted.
+        if (eliminatedSession != null)
+            eliminatedSession.ManittoStatus = ManittoStatus.SPECTATING;
+        if (eliminatedBot != null)
+        {
+            eliminatedBot.ManittoStatus = ManittoStatus.SPECTATING;
+            eliminatedBot.IsEliminated = true;
+        }
+
         var affected = transition.AffectedPlayers;
         _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
         _gameEventLogManager.LogElimination(
-            CurrentMapSubId, eliminatedPlayerId, reason.ToString(), isBot: eliminatedBot != null);
+            CurrentMapSubId,
+            eliminatedPlayerId,
+            reason.ToString(),
+            isBot: eliminatedBot != null,
+            attackerPlayerId: resolvedAttackerPlayerId,
+            isAreaClosureElimination: isAreaClosureElimination,
+            isOvertimeElimination: isOvertimeElimination);
 
         if (eliminatedSession != null)
             eliminatedSession.DropAllInventoryAtCurrentPosition();
@@ -781,6 +796,14 @@ public partial class GameClientSession
                     bot.ManittoStatus = newStatus;
                 }
             }
+        }
+
+        // Elimination removes the actor from the live world immediately. The eliminated session
+        // remains connected for the result screen, so a dedicated leave packet is required.
+        using (var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(eliminatedPlayerId))
+        {
+            foreach (var session in allSessions)
+                session.Send(leavePacket);
         }
 
         foreach (var (playerId, newStatus) in affected)
@@ -948,11 +971,11 @@ public partial class GameClientSession
     {
         try
         {
-            var events = _gameEventLogManager.GetRecent(matchingId);
+            var events = _gameEventLogManager.GetForPersistence(matchingId);
             var summary = _matchSummaryFileStore.Save(matchingId, endReason, winnerId, events);
             Logger.LogInformation(
                 "Match summary persisted: MatchingId={MatchingId}, EndReason={EndReason}, Events={EventCount}, Directory={Directory}",
-                matchingId, summary.EndReason, summary.Events.Count, _matchSummaryFileStore.DirectoryPath);
+                matchingId, summary.EndReason, summary.RawEventCount, _matchSummaryFileStore.DirectoryPath);
         }
         catch (Exception ex)
         {
@@ -1196,7 +1219,7 @@ public partial class GameClientSession
     /// </summary>
     public void SendTargetLocation()
     {
-        if (!PlayerId.HasValue || TargetPlayerId == 0) return;
+        if (!PlayerId.HasValue || IsEliminated || TargetPlayerId == 0) return;
         // 1인 매칭으로 본인이 본인을 타겟으로 가지는 케이스 방어
         if (TargetPlayerId == PlayerId.Value) return;
 
@@ -1205,13 +1228,14 @@ public partial class GameClientSession
         var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == TargetPlayerId);
         if (targetSession != null)
         {
+            if (targetSession.IsEliminated) return;
             targetArea = targetSession.CurrentArea;
         }
         else
         {
             // #26: 타겟이 봇인 경우 BotPlayerManager에서 위치 조회
             var bot = _botPlayerManager.GetBot(CurrentMapSubId, TargetPlayerId);
-            if (bot == null || bot.IsEliminated) return;
+            if (bot == null || bot.IsEliminated || bot.ManittoStatus == ManittoStatus.SPECTATING) return;
             targetArea = bot.CurrentArea;
         }
 

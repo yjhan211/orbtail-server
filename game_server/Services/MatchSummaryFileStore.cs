@@ -1,10 +1,12 @@
 using System.Text.Json;
+using network.common;
 
 namespace game_server.services;
 
 public sealed class MatchSummaryFileStore
 {
     public const int DefaultMaxSummaries = 50;
+    private const int SummaryEventPreviewLimit = 500;
 
     private readonly string _directory;
     private readonly int _maxSummaries;
@@ -13,6 +15,7 @@ public sealed class MatchSummaryFileStore
     {
         WriteIndented = true
     };
+    private readonly JsonSerializerOptions _compactJsonOptions = new(JsonSerializerDefaults.Web);
 
     public MatchSummaryFileStore(string? directory = null, int maxSummaries = DefaultMaxSummaries)
     {
@@ -39,7 +42,14 @@ public sealed class MatchSummaryFileStore
             if (File.Exists(path))
                 return ReadFile(path)!;
 
-            var document = BuildDocument(matchingId, endReason, winnerPlayerId, events);
+            var orderedEvents = events.OrderBy(entry => entry.Seq).ToList();
+            string rawEventsFile = Path.GetFileName(GetRawEventsPath(matchingId));
+            WriteRawEvents(matchingId, orderedEvents);
+            var document = BuildDocument(matchingId, endReason, winnerPlayerId, orderedEvents) with
+            {
+                RawEventCount = orderedEvents.Count,
+                RawEventsFile = rawEventsFile
+            };
             string temporaryPath = path + ".tmp";
             File.WriteAllText(temporaryPath, JsonSerializer.Serialize(document, _jsonOptions));
             File.Move(temporaryPath, path, true);
@@ -54,6 +64,24 @@ public sealed class MatchSummaryFileStore
         {
             string path = GetPath(matchingId);
             return File.Exists(path) ? ReadFile(path) : null;
+        }
+    }
+
+    public IReadOnlyList<GameEventEntry> ReadRawEvents(long matchingId, int limit = 5_000, long? sinceSeq = null)
+    {
+        lock (_syncRoot)
+        {
+            string path = GetRawEventsPath(matchingId);
+            if (!File.Exists(path))
+                return [];
+
+            IEnumerable<GameEventEntry> events = File.ReadLines(path)
+                .Select(ReadRawEvent)
+                .Where(entry => entry != null)
+                .Select(entry => entry!);
+            if (sinceSeq.HasValue)
+                events = events.Where(entry => entry.Seq > sinceSeq.Value);
+            return events.Reverse().Take(Math.Max(1, limit)).ToList();
         }
     }
 
@@ -73,7 +101,7 @@ public sealed class MatchSummaryFileStore
                     document.EndReason,
                     document.WinnerPlayerId,
                     document.Participants.Count,
-                    document.Events.Count))
+                    document.RawEventCount > 0 ? document.RawEventCount : document.Events.Count))
                 .OrderByDescending(item => item.EndedAtUtc)
                 .Take(Math.Clamp(limit, 1, _maxSummaries))
                 .ToList();
@@ -112,6 +140,9 @@ public sealed class MatchSummaryFileStore
                 entry.Type == "ELIMINATE" && entry.PlayerId == playerId);
             bool isBot = BotPlayerManager.IsBotPlayerId(playerId) ||
                          events.Any(entry => entry.PlayerId == playerId && entry.IsBot);
+            var stoneEvents = events.Where(entry =>
+                    entry.PlayerId == playerId && entry.Type == "SUMMON_STONE_AWARDED")
+                .ToList();
             return new MatchSummaryParticipant(
                 playerId,
                 isBot,
@@ -123,8 +154,16 @@ public sealed class MatchSummaryFileStore
                 events.Count(entry => entry.PlayerId == playerId && entry.Type == "ORB_SUMMON_SUCCEEDED"),
                 events.Count(entry => entry.PlayerId == playerId && entry.Type == "SURVIVOR_ORB_BOARD_STATE" &&
                                       IsOrbMergeOutcome(entry.Outcome)),
-                events.Where(entry => entry.PlayerId == playerId && entry.Type == "SUMMON_STONE_AWARDED")
-                    .Sum(entry => entry.SummonStoneDelta ?? 0));
+                stoneEvents.Sum(entry => entry.SummonStoneDelta ?? 0))
+            {
+                RoomSummonStonesEarned = stoneEvents.Where(entry => !IsCorridorArea(entry.Area))
+                    .Sum(entry => entry.SummonStoneDelta ?? 0),
+                CorridorSummonStonesEarned = stoneEvents.Where(entry => IsCorridorArea(entry.Area))
+                    .Sum(entry => entry.SummonStoneDelta ?? 0),
+                CoreSummonStonesEarned = stoneEvents.Where(entry =>
+                        string.Equals(entry.Outcome, "core", StringComparison.OrdinalIgnoreCase))
+                    .Sum(entry => entry.SummonStoneDelta ?? 0)
+            };
         }).ToList();
 
         var integrityCounters = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
@@ -143,7 +182,10 @@ public sealed class MatchSummaryFileStore
             winnerPlayerId != 0 ? winnerPlayerId : endedEvent?.WinnerPlayerId ?? 0,
             participants,
             integrityCounters,
-            events);
+            events.TakeLast(SummaryEventPreviewLimit).ToList())
+        {
+            Metrics = BuildMetrics(events, startedAtUtc, endedAtUtc)
+        };
     }
 
     private static IEnumerable<long> GetPlayerIds(GameEventEntry entry)
@@ -156,6 +198,207 @@ public sealed class MatchSummaryFileStore
     private static int CountTypes(IEnumerable<GameEventEntry> events, string type) =>
         events.Count(entry => string.Equals(entry.Type, type, StringComparison.OrdinalIgnoreCase));
 
+    private static SurvivorMatchMetrics BuildMetrics(
+        IReadOnlyList<GameEventEntry> events,
+        DateTimeOffset startedAtUtc,
+        DateTimeOffset endedAtUtc)
+    {
+        var eliminationCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["pvp"] = 0,
+            ["mental"] = 0,
+            ["closure"] = 0,
+            ["other"] = 0
+        };
+        foreach (var elimination in events.Where(entry => entry.Type == "ELIMINATE"))
+            eliminationCounts[ClassifyElimination(events, elimination)]++;
+
+        var stoneEvents = events.Where(entry => entry.Type == "SUMMON_STONE_AWARDED").ToList();
+        var afterimageKillEvents = events.Where(entry => entry.Type == "AFTERIMAGE_KILLED").ToList();
+        var stoneSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["room"] = stoneEvents.Where(entry => !IsCorridorArea(entry.Area))
+                .Sum(entry => entry.SummonStoneDelta ?? 0),
+            ["corridor"] = stoneEvents.Where(entry => IsCorridorArea(entry.Area))
+                .Sum(entry => entry.SummonStoneDelta ?? 0),
+            ["core"] = stoneEvents.Where(entry =>
+                    string.Equals(entry.Outcome, "core", StringComparison.OrdinalIgnoreCase))
+                .Sum(entry => entry.SummonStoneDelta ?? 0)
+        };
+        var areaContention = BuildAreaContention(events);
+        var rewardAreaSnapshots = events
+            .Where(entry => entry.Type == "SURVIVOR_REWARD_AREA_SNAPSHOT")
+            .Select(entry => new MatchRewardAreaSnapshotMetric(
+                entry.PhaseIndex ?? 0,
+                Math.Max(0, entry.TimestampUnixMs - startedAtUtc.ToUnixTimeMilliseconds()),
+                entry.Outcome,
+                entry.RewardAreaStates ?? []))
+            .ToList();
+        var coreContestedEntries = events
+            .Where(entry => entry.Type == "SURVIVOR_CORE_CONTESTED_ENTRY")
+            .Select(entry => new MatchCoreContestedEntryMetric(
+                entry.PlayerId,
+                entry.Area ?? string.Empty,
+                entry.MonsterId ?? 0,
+                entry.CoreCurrentHealth ?? 0,
+                entry.CoreMaxHealth ?? 0,
+                Math.Max(0, entry.TimestampUnixMs - startedAtUtc.ToUnixTimeMilliseconds()),
+                entry.AlreadyPresentPlayerIds ?? []))
+            .ToList();
+
+        return new SurvivorMatchMetrics
+        {
+            MatchDurationSeconds = Math.Max(0d, (endedAtUtc - startedAtUtc).TotalSeconds),
+            FirstTier2ElapsedMilliseconds = GetFirstElapsedMilliseconds(events, "SURVIVOR_FIRST_T2", startedAtUtc),
+            FirstTier3ElapsedMilliseconds = GetFirstElapsedMilliseconds(events, "SURVIVOR_FIRST_T3", startedAtUtc),
+            FirstBoardFullElapsedMilliseconds = GetFirstElapsedMilliseconds(events, "SURVIVOR_ORB_BOARD_FULL", startedAtUtc),
+            FirstEncounterElapsedMilliseconds = GetFirstElapsedMilliseconds(events, "SURVIVOR_ENCOUNTER_START", startedAtUtc),
+            FirstEliminationElapsedMilliseconds = GetFirstElapsedMilliseconds(events, "SURVIVOR_FIRST_ELIMINATION", startedAtUtc),
+            PvpEliminationCount = eliminationCounts["pvp"],
+            EliminationCounts = eliminationCounts,
+            SummonStoneSources = stoneSources,
+            CoreKillCount = afterimageKillEvents.Count(entry =>
+                string.Equals(entry.Outcome, "core", StringComparison.OrdinalIgnoreCase)),
+            NormalKillCount = afterimageKillEvents.Count(entry =>
+                !string.Equals(entry.Outcome, "core", StringComparison.OrdinalIgnoreCase) &&
+                !IsCorridorArea(entry.Area)),
+            CorridorKillCount = afterimageKillEvents.Count(entry => IsCorridorArea(entry.Area)),
+            ContestedAreaEntryCount = areaContention.Sum(metric => metric.ContestedEntryCount),
+            AreaContention = areaContention,
+            RewardAreaSnapshots = rewardAreaSnapshots,
+            CoreContestedEntries = coreContestedEntries
+        };
+    }
+
+    private static long? GetFirstElapsedMilliseconds(
+        IEnumerable<GameEventEntry> events,
+        string type,
+        DateTimeOffset startedAtUtc)
+    {
+        var entry = events.FirstOrDefault(candidate =>
+            string.Equals(candidate.Type, type, StringComparison.OrdinalIgnoreCase));
+        if (entry == null)
+            return null;
+        return Math.Max(0, entry.TimestampUnixMs - startedAtUtc.ToUnixTimeMilliseconds());
+    }
+
+    private static string ClassifyElimination(
+        IReadOnlyList<GameEventEntry> events,
+        GameEventEntry elimination)
+    {
+        if (elimination.IsAreaClosureElimination == true || elimination.IsOvertimeElimination == true ||
+            string.Equals(elimination.DamageSourceType, "closure", StringComparison.OrdinalIgnoreCase))
+            return "closure";
+        if (string.Equals(elimination.DamageSourceType, "pvp", StringComparison.OrdinalIgnoreCase) ||
+            elimination.ActorPlayerId != 0 && elimination.ActorPlayerId != elimination.PlayerId)
+            return "pvp";
+
+        bool hasNearbyCombatElimination = events.Any(entry =>
+            entry.Type == "SURVIVOR_COMBAT_ELIMINATION" &&
+            entry.TargetPlayerId == elimination.PlayerId &&
+            entry.TimestampUnixMs <= elimination.TimestampUnixMs &&
+            elimination.TimestampUnixMs - entry.TimestampUnixMs <= 5_000);
+        if (hasNearbyCombatElimination)
+            return "pvp";
+
+        return string.Equals(elimination.Outcome ?? elimination.Description, "MENTAL_ZERO",
+            StringComparison.OrdinalIgnoreCase)
+            ? "mental"
+            : "other";
+    }
+
+    private static IReadOnlyList<MatchAreaContentionMetric> BuildAreaContention(
+        IReadOnlyList<GameEventEntry> events)
+    {
+        var currentAreaByPlayer = new Dictionary<long, string>();
+        var occupantsByArea = new Dictionary<string, HashSet<long>>(StringComparer.OrdinalIgnoreCase);
+        var accumulators = new Dictionary<string, AreaContentionAccumulator>(StringComparer.OrdinalIgnoreCase);
+
+        void RemovePlayer(long playerId)
+        {
+            if (!currentAreaByPlayer.Remove(playerId, out string? previousArea))
+                return;
+            if (occupantsByArea.TryGetValue(previousArea, out var occupants))
+                occupants.Remove(playerId);
+        }
+
+        foreach (var entry in events)
+        {
+            if (entry.Type == "ELIMINATE")
+            {
+                RemovePlayer(entry.PlayerId);
+                continue;
+            }
+
+            bool isEntry = entry.Type is "SPAWN_ASSIGNMENT" or "AREA_ENTER";
+            if (!isEntry || entry.PlayerId == 0)
+                continue;
+
+            string? area = entry.Area ?? entry.ToArea;
+            RemovePlayer(entry.PlayerId);
+            if (string.IsNullOrWhiteSpace(area) || IsCorridorArea(area) ||
+                string.Equals(area, "None", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!occupantsByArea.TryGetValue(area, out var occupants))
+            {
+                occupants = [];
+                occupantsByArea[area] = occupants;
+            }
+            if (!accumulators.TryGetValue(area, out var accumulator))
+            {
+                accumulator = new AreaContentionAccumulator(area);
+                accumulators[area] = accumulator;
+            }
+
+            accumulator.EntryCount++;
+            if (occupants.Count > 0)
+                accumulator.ContestedEntryCount++;
+            occupants.Add(entry.PlayerId);
+            currentAreaByPlayer[entry.PlayerId] = area;
+            accumulator.UniqueVisitors.Add(entry.PlayerId);
+            accumulator.MaxConcurrentPlayers = Math.Max(accumulator.MaxConcurrentPlayers, occupants.Count);
+        }
+
+        return accumulators.Values
+            .OrderBy(accumulator => accumulator.Area, StringComparer.Ordinal)
+            .Select(accumulator => new MatchAreaContentionMetric(
+                accumulator.Area,
+                accumulator.EntryCount,
+                accumulator.ContestedEntryCount,
+                accumulator.MaxConcurrentPlayers,
+                accumulator.UniqueVisitors.Count))
+            .ToList();
+    }
+
+    private static bool IsCorridorArea(string? area) =>
+        !string.IsNullOrWhiteSpace(area) &&
+        Enum.TryParse(area, true, out AreaType parsedArea) &&
+        parsedArea.IsCorridor();
+
+    private void WriteRawEvents(long matchingId, IReadOnlyCollection<GameEventEntry> events)
+    {
+        string path = GetRawEventsPath(matchingId);
+        string temporaryPath = path + ".tmp";
+        using (var writer = new StreamWriter(temporaryPath, false, new System.Text.UTF8Encoding(false)))
+        {
+            foreach (var entry in events)
+                writer.WriteLine(JsonSerializer.Serialize(entry, _compactJsonOptions));
+        }
+        File.Move(temporaryPath, path, true);
+    }
+
+    private GameEventEntry? ReadRawEvent(string line)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<GameEventEntry>(line, _compactJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
     private MatchSummaryDocument? ReadFile(string path)
     {
         try
@@ -183,10 +426,30 @@ public sealed class MatchSummaryFileStore
             .ThenByDescending(file => file.Name, StringComparer.Ordinal)
             .Skip(_maxSummaries)
             .ToList();
-        foreach (var file in files) file.Delete();
+        foreach (var file in files)
+        {
+            var document = ReadFile(file.FullName);
+            file.Delete();
+            if (document != null)
+            {
+                string rawEventsPath = GetRawEventsPath(document.MatchingId);
+                if (File.Exists(rawEventsPath))
+                    File.Delete(rawEventsPath);
+            }
+        }
     }
 
     private string GetPath(long matchingId) => Path.Combine(_directory, $"match-{matchingId}.json");
+    private string GetRawEventsPath(long matchingId) => Path.Combine(_directory, $"match-{matchingId}.events.jsonl");
+
+    private sealed class AreaContentionAccumulator(string area)
+    {
+        public string Area { get; } = area;
+        public int EntryCount { get; set; }
+        public int ContestedEntryCount { get; set; }
+        public int MaxConcurrentPlayers { get; set; }
+        public HashSet<long> UniqueVisitors { get; } = [];
+    }
 }
 
 public sealed record MatchSummaryDocument(
@@ -197,7 +460,12 @@ public sealed record MatchSummaryDocument(
     long WinnerPlayerId,
     IReadOnlyList<MatchSummaryParticipant> Participants,
     IReadOnlyDictionary<string, int> IntegrityCounters,
-    IReadOnlyList<GameEventEntry> Events);
+    IReadOnlyList<GameEventEntry> Events)
+{
+    public int RawEventCount { get; init; }
+    public string? RawEventsFile { get; init; }
+    public SurvivorMatchMetrics Metrics { get; init; } = new();
+}
 
 public sealed record MatchSummaryParticipant(
     long PlayerId,
@@ -209,7 +477,56 @@ public sealed record MatchSummaryParticipant(
     string? EliminationReason,
     int SummonCount,
     int MergeCount,
-    int SummonStonesEarned);
+    int SummonStonesEarned)
+{
+    public int RoomSummonStonesEarned { get; init; }
+    public int CorridorSummonStonesEarned { get; init; }
+    public int CoreSummonStonesEarned { get; init; }
+}
+
+public sealed record SurvivorMatchMetrics
+{
+    public double MatchDurationSeconds { get; init; }
+    public long? FirstTier2ElapsedMilliseconds { get; init; }
+    public long? FirstTier3ElapsedMilliseconds { get; init; }
+    public long? FirstBoardFullElapsedMilliseconds { get; init; }
+    public long? FirstEncounterElapsedMilliseconds { get; init; }
+    public long? FirstEliminationElapsedMilliseconds { get; init; }
+    public int PvpEliminationCount { get; init; }
+    public IReadOnlyDictionary<string, int> EliminationCounts { get; init; } =
+        new Dictionary<string, int>();
+    public IReadOnlyDictionary<string, int> SummonStoneSources { get; init; } =
+        new Dictionary<string, int>();
+    public int CoreKillCount { get; init; }
+    public int NormalKillCount { get; init; }
+    public int CorridorKillCount { get; init; }
+    public int ContestedAreaEntryCount { get; init; }
+    public IReadOnlyList<MatchAreaContentionMetric> AreaContention { get; init; } = [];
+    public IReadOnlyList<MatchRewardAreaSnapshotMetric> RewardAreaSnapshots { get; init; } = [];
+    public IReadOnlyList<MatchCoreContestedEntryMetric> CoreContestedEntries { get; init; } = [];
+}
+
+public sealed record MatchRewardAreaSnapshotMetric(
+    int PhaseIndex,
+    long ElapsedMilliseconds,
+    string? Reason,
+    IReadOnlyList<MonsterRewardAreaTelemetry> Areas);
+
+public sealed record MatchCoreContestedEntryMetric(
+    long EnteringPlayerId,
+    string Area,
+    int MonsterId,
+    int CoreCurrentHealth,
+    int CoreMaxHealth,
+    long ElapsedMilliseconds,
+    IReadOnlyList<long> AlreadyPresentPlayerIds);
+
+public sealed record MatchAreaContentionMetric(
+    string Area,
+    int EntryCount,
+    int ContestedEntryCount,
+    int MaxConcurrentPlayers,
+    int UniqueVisitorCount);
 
 public sealed record MatchSummaryListItem(
     long MatchingId,

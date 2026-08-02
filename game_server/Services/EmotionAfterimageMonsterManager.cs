@@ -12,9 +12,20 @@ public sealed class EmotionAfterimageMonsterManager
 {
     public const int FirstMonsterId = 202001;
     private static readonly TimeSpan ResetDelay = TimeSpan.FromSeconds(6);
-    private static readonly TimeSpan AmbientCorridorSpawnInterval = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan AmbientCorridorSpawnInterval = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan AmbientCorridorDespawnDelay = TimeSpan.FromSeconds(4);
     private const float AmbientCorridorSafeSpawnDistance = 3f;
+    private const int AmbientCorridorAliveLimit = 6;
+
+    /// <summary>
+    ///     페이즈마다 개체 하나씩 줄인다. 한 마리가 강해지고 보상도 커지므로 수까지 유지하면
+    ///     복도 총량이 폭증한다. 다만 1까지 내리면 후반 복도가 위험한 통로가 아니라 빈 통로가
+    ///     되므로 3에서 멈춘다.
+    /// </summary>
+    private static int GetAmbientCorridorAliveLimit(int closurePhase) =>
+        Math.Max(MinAmbientCorridorAliveLimit, AmbientCorridorAliveLimit - Math.Max(0, closurePhase));
+
+    private const int MinAmbientCorridorAliveLimit = 3;
     private readonly ConcurrentDictionary<long, MatchingMonsterState> _matchingStates = new();
     private Action<long>? _matchingStateRemoved;
 
@@ -44,6 +55,11 @@ public sealed class EmotionAfterimageMonsterManager
         area != AreaType.None && _matchingStates.TryGetValue(matchingId, out var state)
             ? state.GetSnapshot(area)
             : [];
+
+    public MonsterRewardAreaSnapshot GetRewardAreaSnapshot(long matchingId) =>
+        _matchingStates.TryGetValue(matchingId, out var state)
+            ? state.GetRewardAreaSnapshot()
+            : MonsterRewardAreaSnapshot.Empty;
 
     public IReadOnlyList<MonsterCombatTarget> GetAliveTargets(long matchingId) =>
         _matchingStates.TryGetValue(matchingId, out var state) ? state.GetAliveTargets() : [];
@@ -107,6 +123,30 @@ public sealed class EmotionAfterimageMonsterManager
                     .ToList();
         }
 
+        public MonsterRewardAreaSnapshot GetRewardAreaSnapshot()
+        {
+            lock (_sync)
+            {
+                var hotspotAreas = _monsters.Values
+                    .Where(state => state.IsAlive && state.Definition.IsCore &&
+                                    !state.Definition.IsAmbientCorridor)
+                    .Select(state => state.Definition.Area)
+                    .ToHashSet();
+                var areas = _monsters.Values
+                    .Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor &&
+                                    hotspotAreas.Contains(state.Definition.Area))
+                    .GroupBy(state => state.Definition.Area)
+                    .OrderBy(group => group.Key)
+                    .Select(group => new MonsterRewardAreaState(
+                        group.Key,
+                        group.Count(),
+                        group.Count(state => state.Definition.IsCore),
+                        group.Sum(state => state.SummonStoneReward)))
+                    .ToList();
+                return new MonsterRewardAreaSnapshot(_waveIndex, areas);
+            }
+        }
+
         public IReadOnlyList<MonsterCombatTarget> GetAliveTargets()
         {
             lock (_sync)
@@ -131,17 +171,33 @@ public sealed class EmotionAfterimageMonsterManager
                     return MonsterDamageResult.None;
 
                 state.LastDamagedAtUtc = nowUtc;
+                if (state.FirstAttackerPlayerId == 0)
+                    state.FirstAttackerPlayerId = attackerPlayerId;
                 state.LastAttackerPlayerId = attackerPlayerId;
                 state.DamageByPlayer.TryGetValue(attackerPlayerId, out int accumulatedDamage);
                 state.DamageByPlayer[attackerPlayerId] = accumulatedDamage + damage;
                 state.CurrentHealth = Math.Max(0, state.CurrentHealth - damage);
+                var contributions = state.DamageByPlayer.ToDictionary(pair => pair.Key, pair => pair.Value);
                 if (state.CurrentHealth > 0)
-                    return new MonsterDamageResult(ToRuntimeInfo(state), false, 0, true);
+                    return new MonsterDamageResult(
+                        ToRuntimeInfo(state),
+                        false,
+                        0,
+                        true,
+                        state.FirstAttackerPlayerId,
+                        state.LastAttackerPlayerId,
+                        contributions);
 
                 state.IsAlive = false;
                 state.NextAttackAtUtc = DateTime.MaxValue;
-                return new MonsterDamageResult(ToRuntimeInfo(state), true,
-                    state.Definition.SummonStoneReward, true);
+                return new MonsterDamageResult(
+                    ToRuntimeInfo(state),
+                    true,
+                    state.SummonStoneReward,
+                    true,
+                    state.FirstAttackerPlayerId,
+                    state.LastAttackerPlayerId,
+                    contributions);
             }
         }
 
@@ -163,19 +219,37 @@ public sealed class EmotionAfterimageMonsterManager
                 }
 
                 int waveIndex = _waveIndex++;
-                int spawnBudget = EmotionAfterimageMonsterSpawnData.GetWavePackSpawnBudget(waveIndex);
+                foreach (var ambientState in _monsters.Values
+                             .Where(state => state.IsAlive && state.Definition.IsAmbientCorridor))
+                    changed |= ambientState.ApplyAmbientCorridorPhase(_waveIndex);
+
+                var activeCoreAreas = _monsters.Values
+                    .Where(state => state.IsAlive && state.Definition.IsCore &&
+                                    !state.Definition.IsAmbientCorridor)
+                    .Select(state => state.Definition.Area)
+                    .ToHashSet();
+                var pendingClusterIds = _pendingWavePacks.Select(pack => pack.ClusterId).ToHashSet();
+                foreach (var pendingArea in _pendingWavePacks
+                             .Select(pending => _monsters.Values.FirstOrDefault(state =>
+                                 state.Definition.ClusterId == pending.ClusterId && state.Definition.IsCore))
+                             .Where(state => state != null)
+                             .Select(state => state!.Definition.Area))
+                    activeCoreAreas.Add(pendingArea);
+
+                int activeAreaTarget = EmotionAfterimageMonsterSpawnData.GetWaveActiveAreaTarget(waveIndex);
+                int spawnBudget = Math.Max(0, activeAreaTarget - activeCoreAreas.Count);
                 int requestedSpawnBudget = spawnBudget;
                 if (spawnBudget == 0) return changed;
 
                 TimeSpan releaseDuration = EmotionAfterimageMonsterSpawnData.GetWavePackReleaseDuration(waveIndex);
-                var aliveByArea = _monsters.Values.Where(state => state.IsAlive && !state.Definition.IsAmbientCorridor)
-                    .GroupBy(state => state.Definition.Area)
-                    .ToDictionary(group => group.Key, group => group.Count());
                 var dormantPacks = _monsters.Values
                     .Where(state => !state.Definition.IsAmbientCorridor && !_closedAreas.Contains(state.Definition.Area))
                     .GroupBy(state => state.Definition.ClusterId)
-                    .Where(pack => pack.All(state => !state.IsAlive))
-                    .OrderBy(pack => pack.Min(state => state.Definition.SpawnPriority))
+                    .Where(pack => pack.Any(state => state.Definition.IsCore) &&
+                                   pack.Where(state => state.Definition.IsCore).All(state => !state.IsAlive) &&
+                                   !pendingClusterIds.Contains(pack.Key))
+                    .OrderBy(pack => pack.Any(state => state.Definition.StartsActive) ? 0 : 1)
+                    .ThenBy(pack => pack.Min(state => state.Definition.SpawnPriority))
                     .ThenBy(pack => pack.Min(state => state.Definition.MonsterId));
 
                 int scheduledCount = 0;
@@ -183,12 +257,10 @@ public sealed class EmotionAfterimageMonsterManager
                 {
                     if (spawnBudget <= 0) break;
                     var first = pack.First();
-                    int packSize = pack.Count();
                     AreaType area = first.Definition.Area;
-                    aliveByArea.TryGetValue(area, out int aliveCount);
-                    if (aliveCount + packSize > first.Definition.AreaAliveLimit) continue;
+                    if (activeCoreAreas.Contains(area)) continue;
 
-                    aliveByArea[area] = aliveCount + packSize;
+                    activeCoreAreas.Add(area);
                     double releaseOffsetSeconds = requestedSpawnBudget == 1
                         ? 0d
                         : releaseDuration.TotalSeconds * scheduledCount / (requestedSpawnBudget - 1d);
@@ -314,7 +386,7 @@ public sealed class EmotionAfterimageMonsterManager
                 return 0;
 
             int aliveCount = _monsters.Values.Count(state => state.IsAlive && state.Definition.IsAmbientCorridor);
-            if (aliveCount >= 3)
+            if (aliveCount >= GetAmbientCorridorAliveLimit(_waveIndex))
                 return 0;
 
             var candidate = _monsters.Values
@@ -327,7 +399,7 @@ public sealed class EmotionAfterimageMonsterManager
             if (candidate == null)
                 return 0;
 
-            candidate.ActivateAtHome();
+            candidate.ActivateAmbientCorridor(_waveIndex);
             candidate.LastTargetSeenAtUtc = nowUtc;
             changed.Add(ToRuntimeInfo(candidate));
             return candidate.Definition.MonsterId;
@@ -447,7 +519,7 @@ public sealed class EmotionAfterimageMonsterManager
             IsAlive = state.IsAlive,
             RewardItemId = state.Definition.RewardItemId,
             IsCore = state.Definition.IsCore,
-            SummonStoneReward = state.Definition.SummonStoneReward
+            SummonStoneReward = state.SummonStoneReward
         };
 
         private static bool MoveTowards(MonsterState state, Vector3f destination, float elapsedSeconds)
@@ -486,8 +558,11 @@ public sealed class EmotionAfterimageMonsterManager
             definition.Position.Z);
         public int MaxHealth { get; private set; } = definition.MaxHealth;
         public int AttackDamage { get; private set; } = definition.AttackDamage;
+        public int SummonStoneReward { get; private set; } = definition.SummonStoneReward;
+        public int AppliedAmbientCorridorPhase { get; private set; } = -1;
         public int CurrentHealth { get; set; } = definition.MaxHealth;
         public bool IsAlive { get; set; } = definition.StartsActive;
+        public long FirstAttackerPlayerId { get; set; }
         public long LastAttackerPlayerId { get; set; }
         public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
         public DateTime NextAttackAtUtc { get; set; } = DateTime.MinValue;
@@ -497,22 +572,63 @@ public sealed class EmotionAfterimageMonsterManager
 
         public void ActivateAtHome(int strengthTier = 0)
         {
-            float healthMultiplier = 1f + Math.Max(0, strengthTier) * 0.20f;
-            float damageMultiplier = 1f + Math.Max(0, strengthTier) * 0.15f;
-            MaxHealth = Math.Max(1, (int)MathF.Ceiling(Definition.MaxHealth * healthMultiplier));
-            AttackDamage = Math.Max(1, (int)MathF.Ceiling(Definition.AttackDamage * damageMultiplier));
+            int coreStrengthTier = Definition.IsCore ? Math.Clamp(strengthTier, 0, 3) : 0;
+            MaxHealth = Definition.MaxHealth + coreStrengthTier * 24;
+            AttackDamage = Definition.AttackDamage + coreStrengthTier * 2;
+            SummonStoneReward = Definition.SummonStoneReward + coreStrengthTier * 2;
+            AppliedAmbientCorridorPhase = -1;
             Position = new Vector3f(
                 Definition.Position.X + Definition.FormationOffset.X,
                 Definition.Position.Y + Definition.FormationOffset.Y,
                 Definition.Position.Z);
             CurrentHealth = MaxHealth;
             IsAlive = true;
+            FirstAttackerPlayerId = 0;
             LastAttackerPlayerId = 0;
             LastDamagedAtUtc = DateTime.MinValue;
             NextAttackAtUtc = DateTime.MinValue;
             LastUpdatedAtUtc = DateTime.MinValue;
             LastTargetSeenAtUtc = DateTime.MinValue;
             DamageByPlayer.Clear();
+        }
+
+        public void ActivateAmbientCorridor(int closurePhase)
+        {
+            ActivateAtHome();
+            ApplyAmbientCorridorPhase(closurePhase);
+        }
+
+        public bool ApplyAmbientCorridorPhase(int closurePhase)
+        {
+            if (!Definition.IsAmbientCorridor)
+                return false;
+
+            int normalizedPhase = Math.Max(0, closurePhase);
+            if (AppliedAmbientCorridorPhase == normalizedPhase)
+                return false;
+
+            int multiplier = normalizedPhase >= 30 ? int.MaxValue : 1 << normalizedPhase;
+
+            // 보상과 피해만 올리면 후반 복도가 즉사 파밍터가 된다. 실제로 사람이 소환석의
+            // 97%를 복도에서 얻었다 (2026-07-31 match-2015: 425석 중 412석).
+            // 체력을 같은 배율로 올려 잡는 데 드는 시간이 보상과 함께 커지게 한다.
+            MaxHealth = Math.Max(1, SaturatingMultiply(Definition.MaxHealth, multiplier));
+            CurrentHealth = MaxHealth;
+            AttackDamage = Math.Max(1, SaturatingMultiply(Definition.AttackDamage, multiplier));
+
+            // 사거리는 올리지 않는다. 몸집에 맞춰 함께 키웠더니 페이즈 3에서 5.2셀, 4에서
+            // 상한 9셀이 되어 화면 밖에서 맞는 상황이 나왔다 (2026-08-01 match-2043:
+            // 피해 4~8이 시야 밖에서 들어옴). 복도 잔상은 근접 위협으로 유지한다.
+
+            SummonStoneReward = Math.Max(1, SaturatingMultiply(Definition.SummonStoneReward, multiplier));
+            AppliedAmbientCorridorPhase = normalizedPhase;
+            return true;
+        }
+
+        private static int SaturatingMultiply(int value, int multiplier)
+        {
+            long result = (long)value * multiplier;
+            return result >= int.MaxValue ? int.MaxValue : (int)result;
         }
 
         public void Deactivate()
@@ -543,12 +659,29 @@ public readonly record struct MonsterCombatTarget(
     int ClusterMemberIndex = 0,
     int ClusterSize = 1,
     bool IsCore = false);
+public readonly record struct MonsterRewardAreaState(
+    AreaType Area,
+    int AliveMonsterCount,
+    int AliveCoreCount,
+    int RemainingSummonStoneReward);
+public readonly record struct MonsterRewardAreaSnapshot(
+    int PhaseIndex,
+    IReadOnlyList<MonsterRewardAreaState> Areas)
+{
+    public static MonsterRewardAreaSnapshot Empty => new(0, []);
+}
 public readonly record struct MonsterSpatialTarget(long PlayerId, MapId MapId, AreaType Area, Vector3f Position);
 public readonly record struct MonsterAttack(int MonsterId, long TargetPlayerId, AreaType Area, int Damage);
-public readonly record struct MonsterDamageResult(MonsterRuntimeInfo? State, bool Killed, int SummonStoneReward,
-    bool StateChanged)
+public readonly record struct MonsterDamageResult(
+    MonsterRuntimeInfo? State,
+    bool Killed,
+    int SummonStoneReward,
+    bool StateChanged,
+    long FirstAttackerPlayerId,
+    long LastAttackerPlayerId,
+    IReadOnlyDictionary<long, int>? DamageByPlayer)
 {
-    public static MonsterDamageResult None => new(null, false, 0, false);
+    public static MonsterDamageResult None => new(null, false, 0, false, 0, 0, null);
 }
 public readonly record struct MonsterTickResult(IReadOnlyList<MonsterRuntimeInfo> ChangedStates,
     IReadOnlyList<MonsterAttack> Attacks, IReadOnlyList<MonsterRuntimeInfo> SpawnedStates)

@@ -16,7 +16,7 @@ public sealed class SummonStoneManager
     public const int PassiveIncomeIntervalSeconds = 30;
     public const int PassiveIncomeAmount = 1;
 
-    private static readonly int[] SummonCosts = [2, 3, 4, 5, 6];
+    private const int BaseSummonCost = 2;
     private static readonly int[] SummonPool = [107000010, 107000020, 107000030, 107000040];
     private static readonly int[] OpeningAttackPool = SummonPool
         .Where(itemId => !SurvivorOrbData.IsRecoveryOrb(itemId))
@@ -25,7 +25,7 @@ public sealed class SummonStoneManager
 
     public IReadOnlyList<int> PoolItemIds => SummonPool;
     // Players begin without an orb, but can pay the first two summon costs (2 + 3).
-    public static int InitialSummonStoneCount => SummonCosts[0] + SummonCosts[1];
+    public static int InitialSummonStoneCount => GetCost(0) + GetCost(1);
 
     public SummonStoneSnapshot EnsureStartingStones(long matchingId, long playerId)
     {
@@ -118,8 +118,12 @@ public sealed class SummonStoneManager
     private static SummonStoneSnapshot CreateSnapshot(PlayerSummonState state) =>
         new(state.StoneCount, state.SuccessfulSummonCount, GetCost(state.SuccessfulSummonCount));
 
-    private static int GetCost(int successfulSummonCount) =>
-        SummonCosts[Math.Clamp(successfulSummonCount, 0, SummonCosts.Length - 1)];
+    private static int GetCost(int successfulSummonCount)
+    {
+        long summonNumber = (long)Math.Max(0, successfulSummonCount) + 1;
+        long cost = Math.Max(BaseSummonCost, summonNumber * (summonNumber + 1) / 2);
+        return (int)Math.Min(int.MaxValue, cost);
+    }
 
     private static int SelectOrbItemId(long matchingId, long playerId, int successfulSummonCount)
     {

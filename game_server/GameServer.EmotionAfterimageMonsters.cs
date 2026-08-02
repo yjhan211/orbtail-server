@@ -27,7 +27,13 @@ public partial class GameServer
         if (monsterTick.ChangedStates.Count > 0 && TryConsumeMonsterPositionBroadcastSlot(matchingId, nowUtc))
             BroadcastMonsterSnapshot(matchingId, matchingSessions, monsterTick.ChangedStates);
         if (monsterTick.SpawnedStates.Count > 0)
+        {
             BroadcastMonsterMinimapSnapshot(matchingSessions, monsterTick.SpawnedStates);
+            _gameEventLogManager.LogRewardAreaSnapshot(
+                matchingId,
+                _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(matchingId),
+                "wave_spawn");
+        }
 
         foreach (var monsterAttack in monsterTick.Attacks)
             ApplyMonsterAttack(matchingId, monsterAttack, matchingSessions, matchingBots);
@@ -114,7 +120,9 @@ public partial class GameServer
     {
         var cell = ProximityCombatLineOfSight.WorldPositionToCell(monster.MapId, monster.Position);
         return new ProximityCombatActor(
-            -monster.MonsterId, monster.Area, monster.Position, 0, 0f, 0, 0f, 0f, 0f, monster.MapId, cell);
+            -monster.MonsterId, monster.Area, monster.Position, 0, 0f, 0, 0f, 0f, 0f, monster.MapId, cell,
+            IsMonsterTarget: true,
+            IsCoreMonsterTarget: monster.IsCore);
     }
 
     private bool ApplyPlayerOrbDamageToEmotionAfterimageMonster(
@@ -146,6 +154,14 @@ public partial class GameServer
         finalMonsterStates.Record(result.State);
         if (result.Killed)
         {
+            _gameEventLogManager.LogEmotionAfterimageKilled(
+                matchingId,
+                result.State.MonsterId,
+                result.State.AreaType.ToString(),
+                result.State.IsCore,
+                result.FirstAttackerPlayerId,
+                result.LastAttackerPlayerId,
+                result.DamageByPlayer ?? new Dictionary<long, int>());
             AwardMonsterKill(
                 matchingId,
                 result.State,

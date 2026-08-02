@@ -50,7 +50,7 @@ services:
       - DOTNET_USE_POLLING_FILE_WATCHER=true
       # #79 RNG 채집 시연/테스트용 — 모든 게임 종료 트리거 차단. 운영/시연 빌드에서는 제거
       - DISABLE_GAME_END=0
-      # Survivor Royale 로컬 기본: 실플레이어 1명 + 봇 7명
+      # Survivor Royale 로컬: 실플레이어 1명 + 봇 7명 (1이면 실플레이어 2명 + 봇 6명)
       - TEST_TWO_PLAYER_MATCH=0
       - MATCH_SUMMARY_DIRECTORY=/App/match-summaries
       - MATCH_SUMMARY_MAX_FILES=50
@@ -91,7 +91,7 @@ services:
       - DOTNET_USE_POLLING_FILE_WATCHER=true
       - FORCE_PLAYER_JOB=${FORCE_PLAYER_JOB:-}
       - FORCE_PLAYER_SPAWN_AREA=${FORCE_PLAYER_SPAWN_AREA:-}
-      # Survivor Royale 로컬 기본: 실플레이어 1명 + 봇 7명
+      # Survivor Royale 로컬: 실플레이어 1명 + 봇 7명 (1이면 실플레이어 2명 + 봇 6명)
       - TEST_TWO_PLAYER_MATCH=0
     depends_on:
       redis:

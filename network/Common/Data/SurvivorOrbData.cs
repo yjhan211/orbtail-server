@@ -233,9 +233,9 @@ namespace network.common.data
             TryGetRecoveryTier(itemId, out int tier)
                 ? tier switch
                 {
-                    1 => 3,
-                    2 => 7,
-                    3 => 14,
+                    1 => 5,
+                    2 => 10,
+                    3 => 20,
                     _ => 0
                 }
                 : 0;

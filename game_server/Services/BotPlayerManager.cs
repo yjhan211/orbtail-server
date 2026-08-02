@@ -406,6 +406,18 @@ public class BotPlayerState
     /// <summary>?곸뿭 ?꾪솚 吏곸쟾 ?꾩뼱 ?욎뿉???좎떆 硫덉땄 醫낅즺 ?쒓컖 (?ы깉 ?ㅼ뼱媛???쒓컖???⑥꽌).</summary>
     public DateTime TransitionPauseUntil { get; set; } = DateTime.MinValue;
 
+    /// <summary>
+    ///     현재 지역에 들어온 시각. 방 사냥이 진전 없이 길어졌는지 판정하는 기준이다.
+    ///     정상적인 팩 정리는 20초 안에 끝나므로, 이 시각이 오래되면 그 방을 목적지 후보에서 뺀다.
+    /// </summary>
+    public DateTime RoomHuntStartedAtUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    ///     정체가 감지되어 현재 방을 떠나야 한다는 요청. 이동 루프 상단에서 세우고
+    ///     잔상 사냥 계획이 소비한다. 목적지 커밋이 사냥 계획을 가로막기 때문에 두 단계로 나눈다.
+    /// </summary>
+    public bool RoomHuntEscapeRequested { get; set; }
+
     /// <summary>1:1 ?곹샇?묒슜 ?묐떟/???吏꾪뻾 以? true硫?遊?walking/?≪뀡 紐⑤몢 ?뺤? (?ㅼ젣 ?뚮젅?댁뼱? ?숇벑).</summary>
     public bool IsInInteraction { get; set; }
 

@@ -246,3 +246,4 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 1,obstacle,117,57,131,57,0
 1,obstacle,116,65,116,70,0
 1,obstacle,196,79,196,79,0
+1,obstacle,102,75,103,75,0

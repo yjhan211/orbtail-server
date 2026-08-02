@@ -26,7 +26,9 @@ public readonly record struct ProximityCombatActor(
     int WeaponStackIndex = 0,
     int SunResonanceStage = 0,
     bool WaveResonanceArmed = false,
-    float InitialAttackDelaySeconds = 0f);
+    float InitialAttackDelaySeconds = 0f,
+    bool IsMonsterTarget = false,
+    bool IsCoreMonsterTarget = false);
 
 public readonly record struct ProximityCombatAttack(
     long AttackerPlayerId,
@@ -58,7 +60,14 @@ public readonly record struct ProximityCombatTargetEvent(
 /// </summary>
 public sealed class ProximityAutoCombatResolver
 {
-    public static readonly TimeSpan AimDuration = TimeSpan.FromMilliseconds(500);
+    /// <summary>
+    ///     조준 지연. 다른 구역 대상에게 "알 수 없는 피해"가 들어가던 문제를 임시로 덮으려고
+    ///     2026-07-18에 500ms로 넣었으나, 다음 날 #194가 지역 경계와 벽 너머를 직접 차단하고
+    ///     #206이 진입 직후 사각까지 막으면서 그 역할은 끝났다.
+    ///     남은 것은 조우 반응이 굼뜨다는 체감뿐이라 100ms로 줄인다.
+    ///     0으로 두지 않는 이유는 재획득 유예가 이어받을 조준 시간을 잃기 때문이다.
+    /// </summary>
+    public static readonly TimeSpan AimDuration = TimeSpan.FromMilliseconds(100);
     public static readonly TimeSpan TargetReacquireGraceDuration = TimeSpan.FromSeconds(1.5);
 
     private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), CombatState>
@@ -149,16 +158,10 @@ public sealed class ProximityAutoCombatResolver
                 continue;
             }
 
-            eligibleTargets.Sort(static (left, right) =>
-            {
-                int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
-                return distanceComparison != 0
-                    ? distanceComparison
-                    : left.Actor.PlayerId.CompareTo(right.Actor.PlayerId);
-            });
-            var nearestTarget = eligibleTargets[0].Actor;
-
             bool hasCombatState = _combatStates.TryGetValue(stateKey, out var combatState);
+            eligibleTargets.Sort((left, right) =>
+                CompareTargetPriority(left, right, hasCombatState ? combatState.TargetPlayerId : 0));
+            var nearestTarget = eligibleTargets[0].Actor;
             if (!hasCombatState ||
                 combatState.TargetPlayerId != nearestTarget.PlayerId ||
                 combatState.WeaponItemId != attacker.WeaponItemId)
@@ -294,6 +297,31 @@ public sealed class ProximityAutoCombatResolver
         }
 
         return attacks;
+    }
+
+    private static int CompareTargetPriority(
+        (ProximityCombatActor Actor, float DistanceSquared) left,
+        (ProximityCombatActor Actor, float DistanceSquared) right,
+        long currentTargetPlayerId)
+    {
+        int priorityComparison = GetTargetPriority(left.Actor, currentTargetPlayerId)
+            .CompareTo(GetTargetPriority(right.Actor, currentTargetPlayerId));
+        if (priorityComparison != 0)
+            return priorityComparison;
+
+        int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
+        return distanceComparison != 0
+            ? distanceComparison
+            : left.Actor.PlayerId.CompareTo(right.Actor.PlayerId);
+    }
+
+    private static int GetTargetPriority(ProximityCombatActor target, long currentTargetPlayerId)
+    {
+        if (!target.IsMonsterTarget)
+            return 0;
+        if (target.PlayerId == currentTargetPlayerId)
+            return target.IsCoreMonsterTarget ? 1 : 2;
+        return 3;
     }
 
     public void RemoveMatching(long matchingId)

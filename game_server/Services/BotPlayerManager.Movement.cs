@@ -19,6 +19,7 @@ public partial class BotPlayerManager
 
     /// <summary>한 번의 사냥 판단에서 실제로 길을 찾아볼 지역 수. 나머지는 사전 점수로 걸러낸다.</summary>
     private const int MaxHuntPathCandidates = 4;
+    private const double RoomHuntStallSeconds = 40;
     private const float PveKiteThreatRange = 3.2f;
     private const float PveKiteImmediateThreatRange = 1.65f;
     private const float PveKiteStepDistance = 2.15f;
@@ -210,6 +211,27 @@ public partial class BotPlayerManager
             // Escape routes outrank looting and combat so a warning cannot be overwritten by a chase path.
             bool isEvacuating = TryMaintainClosureEvacuation(
                 bot, matchingId, closureManager, hasOpenNonCorridorRefuge);
+            // 목적지 커밋이 살아 있으면 잔상 사냥 계획을 아예 타지 않는다. 그래서 방에서
+            // 굳은 봇은 계획 안쪽의 정체 판정에 닿지도 못한다. 커밋을 먼저 풀어 다음 단계가
+            // 새 목적지를 고를 기회를 만든다. 대피는 정체보다 우선이므로 건드리지 않는다.
+            if (!isEvacuating && IsRoomHuntStalled(bot))
+            {
+                // 커밋 해제만으로도 봇은 재계획으로 밀려난다. 사냥 계획까지 도달하는 경우만
+                // 세면 실제 발동을 크게 과소 집계하므로 여기서 기록한다.
+                _logger.LogInformation(
+                    "Bot room hunt stalled: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, " +
+                    "DroppedDestination={DroppedDestination}",
+                    matchingId, bot.PlayerId, bot.CurrentArea, bot.MovementDestination);
+                bot.RoomHuntEscapeRequested = true;
+                bot.MovementDestination = AreaType.None;
+                bot.LoopWaitUntil = DateTime.MinValue;
+                // 재계획은 경로가 비었을 때만 돈다. 방 안 kite 경로가 계속 갱신되면 경로가
+                // 마르지 않아 사냥 계획에 영영 닿지 못한다. 진행이 없는 상태이므로 버려도 잃을 게 없다.
+                bot.Path.Clear();
+                bot.PathIndex = 0;
+                bot.RoomHuntStartedAtUtc = DateTime.UtcNow;
+            }
+
             bool isCommittingToDestination = !isEvacuating &&
                                              TryMaintainMovementDestination(bot, matchingId, closureManager);
             if (!isEvacuating &&
@@ -583,6 +605,15 @@ public partial class BotPlayerManager
         area == bot.RecentCombatRetreatOrigin &&
         DateTime.UtcNow < bot.CombatRetreatOriginBlockedUntil;
 
+    /// <summary>
+    ///     방 사냥이 막혔는지 판정한다. 팩 하나를 정리하는 정상 체류는 20초 안쪽이므로
+    ///     (2026-07-31 match-2008 계측: 활발한 봇 최장 20초, 사람 24초),
+    ///     그 두 배가 지나도록 같은 방에 있으면 진전이 없는 것으로 본다.
+    /// </summary>
+    private static bool IsRoomHuntStalled(BotPlayerState bot) =>
+        !bot.CurrentArea.IsCorridor() &&
+        (DateTime.UtcNow - bot.RoomHuntStartedAtUtc).TotalSeconds >= RoomHuntStallSeconds;
+
     private static void CancelBotActionForEvacuation(BotPlayerState bot)
     {
         bool hadAction = bot.IsInInteraction || bot.PendingRngInteractId != 0 ||
@@ -782,6 +813,8 @@ public partial class BotPlayerManager
             {
                 bot.CurrentArea = resolvedArea;
                 areaChanged = true;
+                bot.RoomHuntStartedAtUtc = DateTime.UtcNow;
+                bot.RoomHuntEscapeRequested = false;
                 ClearBotRoomExplorePlan(bot);
             }
         }
@@ -938,8 +971,8 @@ public partial class BotPlayerManager
         InGameInventoryManager inventoryManager,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
-        // 복도에서도 목적지를 고를 수 있어야 한다. 후보는 방으로만 한정되므로
-        // 복도에 서 있는 봇은 "현재 지역 사냥" 분기를 타지 않고 경로만 받는다.
+        // 복도에서도 목적지를 고를 수 있어야 한다. 복도에 서 있는 봇에게는 방만 후보로
+        // 남으므로 "현재 지역 사냥" 분기를 타지 않고 경로만 받는다.
         if (bot.CurrentArea == AreaType.None || pveTargets.Count == 0)
             return false;
 
@@ -949,12 +982,22 @@ public partial class BotPlayerManager
             .GetAllItems()
             .Select(item => item.ItemId)
             .ToArray();
+        // 같은 방에 오래 머물렀는데 아직 잔상이 남아 있다면 사냥이 막힌 상태다. 오브가 닿지
+        // 않는 위치, 결판나지 않는 대치, 이미 남이 차지한 팩이 원인이며, 어느 쪽이든 그 방을
+        // 계속 최우선 후보로 두면 봇이 제자리에 굳는다. 그때는 현재 지역을 후보에서 뺀다.
+        bool roomHuntStalled = bot.RoomHuntEscapeRequested;
+        // 복도 잔상도 목적지가 된다. 폐쇄 페이즈마다 보상이 2배로 커지는데 봇만 방에
+        // 묶여 있으면, 사람만 아는 복도 파밍이 그대로 격차가 된다 (2026-07-31 match-2015:
+        // 사람 소환석 425 중 412가 복도, 봇 최고치는 123 중 20).
+        // 다만 이미 복도에 서 있는 봇에게 복도를 다시 목적지로 주면 제자리에서 맴돈다.
+        // 그 경우는 자동전투가 근처 잔상을 알아서 잡으므로 목적지에서만 뺀다.
         var areaGroups = pveTargets
             .Where(target => target.MapId == mapId &&
                              target.Area != AreaType.None &&
-                             !target.Area.IsCorridor() &&
+                             !(target.Area.IsCorridor() && bot.CurrentArea.IsCorridor()) &&
                              !unavailable.Contains(target.Area) &&
-                             !IsRecentCombatRetreatOrigin(bot, target.Area))
+                             !IsRecentCombatRetreatOrigin(bot, target.Area) &&
+                             !(roomHuntStalled && target.Area == bot.CurrentArea))
             .GroupBy(target => target.Area)
             .ToList();
 
@@ -1010,6 +1053,21 @@ public partial class BotPlayerManager
             .ToList();
 
         var selected = candidates.FirstOrDefault();
+
+        // 정체 판정이 실제로 봇을 내보냈는지 확인할 수 있어야 한다. 탈출에 실패하면
+        // 후보가 없는 것인지 경로를 못 찾은 것인지 이 한 줄로 갈린다.
+        // 타이머를 여기서 다시 세워 같은 봇이 매 틱 로그를 쏟지 않게 한다.
+        if (roomHuntStalled)
+        {
+            // 탈출 요청이 실제로 어디로 이어졌는지만 남긴다. 발동 집계는 이동 루프 상단에서 한다.
+            _logger.LogInformation(
+                "Bot room hunt escape: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, " +
+                "Escape={Escape}, Candidates={Candidates}, PveAreas={PveAreas}",
+                matchingId, bot.PlayerId, bot.CurrentArea,
+                selected?.Area.ToString() ?? "none", candidates.Count, areaGroups.Count);
+            bot.RoomHuntEscapeRequested = false;
+        }
+
         if (selected == null)
             return false;
 

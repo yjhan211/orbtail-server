@@ -33,7 +33,7 @@ public class AreaClosureManagerTests
         }
     }
     [Fact]
-    public void InitializeMatching_UsesFixedP0WavesAndNeverClosesCorridor()
+    public void InitializeMatching_UsesFixedP0WavesAndClosesCorridorLast()
     {
         var now = new DateTime(2026, 7, 20, 0, 0, 0, DateTimeKind.Utc);
         var manager = CreateManager(() => now);
@@ -41,14 +41,14 @@ public class AreaClosureManagerTests
         var state = manager.InitializeMatching(195001);
 
         Assert.Empty(state.ClosedAreas);
-        Assert.Equal(5, state.Waves.Count);
-        Assert.Equal([105, 165, 215, 255, 290], state.Waves.Select(wave => wave.ClosureAtSeconds));
-        Assert.DoesNotContain(state.ClosureOrder, area => area.IsCorridor());
+        Assert.Equal(6, state.Waves.Count);
+        Assert.Equal([105, 165, 215, 255, 290, 320], state.Waves.Select(wave => wave.ClosureAtSeconds));
+        Assert.Equal(AreaType.Corridor, state.ClosureOrder[^1]);
         Assert.Equal(
             [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2],
             state.Waves[0].Areas);
         Assert.Equal(
-            [AreaType.StaffRoom, AreaType.Junkyard2, AreaType.Storage2],
+            [AreaType.Corridor],
             state.Waves[^1].Areas);
     }
 
@@ -90,14 +90,16 @@ public class AreaClosureManagerTests
         Assert.Equal(20, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.ExamRoom));
         Assert.Equal(0, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
 
-        now = now.AddSeconds(185); // 4:50: remaining waves close together after a delayed timer tick.
+        now = now.AddSeconds(185); // 4:50: all room waves close together after a delayed timer tick.
         manager.CheckClosureSchedule(matchingId);
-        Assert.Equal(70, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.ExamRoom));
-        Assert.Equal(10, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
+        Assert.Equal(60, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.ExamRoom));
+        Assert.Equal(0, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
 
         now = now.AddSeconds(30);
+        manager.CheckClosureSchedule(matchingId);
         Assert.Equal(80, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.ExamRoom));
-        Assert.Equal(20, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
+        Assert.Equal(10, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
+        Assert.Equal(80, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Corridor));
     }
 
     [Fact]
@@ -108,9 +110,10 @@ public class AreaClosureManagerTests
         const long matchingId = 198502;
         var state = manager.InitializeMatching(matchingId);
 
-        Assert.Equal(290, state.Waves[^1].ClosureAtSeconds);
-        now = now.AddSeconds(290);
+        Assert.Equal(320, state.Waves[^1].ClosureAtSeconds);
+        now = now.AddSeconds(320);
         manager.CheckClosureSchedule(matchingId);
+        Assert.True(manager.IsAreaClosed(matchingId, AreaType.Corridor));
         Assert.True(manager.IsOvertimeActive(matchingId));
         Assert.Equal((1, 2), manager.GetOvertimeStatus(matchingId));
 
@@ -118,29 +121,26 @@ public class AreaClosureManagerTests
         Assert.Equal((4, 16), manager.GetOvertimeStatus(matchingId));
     }
     [Fact]
-    public void GlobalClosureSchedule_WarnsBeforeTheFinalWaveAndActivatesWithOvertime()
+    public void GlobalClosureSchedule_RemainsDisabledWhenCorridorCloses()
     {
         var now = new DateTime(2026, 7, 24, 0, 0, 0, DateTimeKind.Utc);
         var manager = CreateManager(() => now);
         const long matchingId = 202001;
         manager.InitializeMatching(matchingId);
 
-        now = now.AddSeconds(274);
-        Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);
-
-        now = now.AddSeconds(1);
-        var warning = manager.CheckGlobalClosureSchedule(matchingId);
-        Assert.True(warning.HasTransition);
-        Assert.False(warning.IsActive);
-        Assert.Equal(15, warning.SecondsRemaining);
-        Assert.True(manager.GetGlobalClosureClientState(matchingId).IsKnown);
+        now = now.AddSeconds(290);
+        manager.CheckClosureSchedule(matchingId);
 
         now = now.AddSeconds(15);
-        var active = manager.CheckGlobalClosureSchedule(matchingId);
-        Assert.True(active.HasTransition);
-        Assert.True(active.IsActive);
-        Assert.Equal(0, active.SecondsRemaining);
-        Assert.True(manager.GetGlobalClosureClientState(matchingId).IsActive);
+        var warning = manager.CheckClosureSchedule(matchingId);
+        Assert.Equal([AreaType.Corridor], warning.WarningAreas);
+        Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);
+        Assert.False(manager.GetGlobalClosureClientState(matchingId).IsKnown);
+
+        now = now.AddSeconds(15);
+        var closure = manager.CheckClosureSchedule(matchingId);
+        Assert.Equal([AreaType.Corridor], closure.ClosedAreas);
+        Assert.True(manager.IsAreaClosed(matchingId, AreaType.Corridor));
         Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);
     }
 

@@ -6,8 +6,8 @@ namespace game_server.services;
 
 /// <summary>
 /// Fixed room packs and corridor pressure anchors for the emotion-afterimage loop.
-/// A room pack has 144 total HP and a 14-stone maximum reward budget across eight
-/// normal bodies and one core, keeping the horde readable without hiding its economy.
+/// Every room begins with normal afterimages while four distributed rooms also
+/// expose a core afterimage as a premium public hotspot.
 /// </summary>
 internal static class EmotionAfterimageMonsterSpawnData
 {
@@ -19,9 +19,18 @@ internal static class EmotionAfterimageMonsterSpawnData
     // Recovery remains a player-board option, but it has no combat identity for
     // afterimages. Monster packs only spawn the three attack affinities.
     private static readonly int[] AllAffinityItemIds = [HopeT1, ForgetT1, DespairT1];
+    private static readonly AreaType[] InitialHotspotAreas =
+    [
+        AreaType.Classroom4,
+        AreaType.Library,
+        AreaType.AdminOffice,
+        AreaType.Ground
+    ];
 
     public static readonly MonsterDefinition[] Definitions = CreateDefinitions();
-    private static readonly int[] WavePackSpawnBudgets = [3, 3, 2, 2, 1];
+    // Initial 4, then the room-closure waves keep at most 4 -> 3 -> 2 -> 1 -> 1
+    // active core hotspots. Existing live hotspots are never removed just to hit a cap.
+    private static readonly int[] WaveActiveAreaTargets = [4, 3, 2, 1, 1];
     private static readonly TimeSpan[] WavePackReleaseDurations =
     [
         TimeSpan.FromSeconds(20),
@@ -31,8 +40,8 @@ internal static class EmotionAfterimageMonsterSpawnData
         TimeSpan.FromSeconds(15)
     ];
 
-    public static int GetWavePackSpawnBudget(int waveIndex) =>
-        waveIndex >= 0 && waveIndex < WavePackSpawnBudgets.Length ? WavePackSpawnBudgets[waveIndex] : 0;
+    public static int GetWaveActiveAreaTarget(int waveIndex) =>
+        waveIndex >= 0 && waveIndex < WaveActiveAreaTargets.Length ? WaveActiveAreaTargets[waveIndex] : 0;
 
     public static TimeSpan GetWavePackReleaseDuration(int waveIndex) =>
         waveIndex >= 0 && waveIndex < WavePackReleaseDurations.Length
@@ -70,9 +79,29 @@ internal static class EmotionAfterimageMonsterSpawnData
             areaIndex++;
         }
 
-        return Definitions.Select(definition => definition.IsAmbientCorridor
-            ? definition
-            : definition with { RewardItemId = affinityByPack[definition.ClusterId] }).ToArray();
+        // The reduced opening supply must still expose all three attack affinities.
+        for (int hotspotIndex = 0; hotspotIndex < InitialHotspotAreas.Length; hotspotIndex++)
+        {
+            int packIndex = 0;
+            foreach (var pack in packs.Where(pack => pack.Area == InitialHotspotAreas[hotspotIndex]))
+            {
+                affinityByPack[pack.ClusterId] =
+                    affinityOrder[(hotspotIndex + Math.Min(packIndex++, 1)) % affinityOrder.Length];
+            }
+        }
+
+        return Definitions.Select(definition =>
+        {
+            if (definition.IsAmbientCorridor)
+                return definition;
+
+            return definition with
+            {
+                RewardItemId = affinityByPack[definition.ClusterId],
+                StartsActive = definition.StartsActive &&
+                               (!definition.IsCore || InitialHotspotAreas.Contains(definition.Area))
+            };
+        }).ToArray();
     }
 
     private static MonsterDefinition[] CreateDefinitions()
@@ -163,7 +192,7 @@ internal static class EmotionAfterimageMonsterSpawnData
                     SummonStoneReward: 1,
                     MoveSpeed: 2.4f,
                     LeashRange: 4f,
-                    AreaAliveLimit: 3,
+                    AreaAliveLimit: 6,
                     StartsActive: false,
                     SpawnPriority: int.MaxValue,
                     ClusterId: anchorId,

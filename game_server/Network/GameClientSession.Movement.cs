@@ -61,7 +61,7 @@ public partial class GameClientSession
 
             // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
             var currentCell = WorldPositionToCell(validatedPosition);
-            var newArea = GameMapData.GetCurrentArea(CurrentMapId, currentCell);
+            var newArea = GameMapData.GetStableCurrentArea(CurrentMapId, currentCell, CurrentArea);
 
 
             // 3. Area 변경 처리 (퇴장 조건 통과한 경우만)
@@ -127,6 +127,7 @@ public partial class GameClientSession
                     countAsEntry: true);
                 _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
                     oldArea.ToString(), newArea.ToString(), isBot: false);
+                LogContestedCoreEntry(newArea);
                 await HandleAreaChange(oldArea, newArea);
             }
 
@@ -315,6 +316,8 @@ public partial class GameClientSession
 
             if (playerInfo == null) return;
 
+            ApplyLivePlayerInfoSnapshot(this, playerInfo);
+
             // 내 최신 위치로 playerInfo 업데이트
             if (_lastValidatedPosition != null)
             {
@@ -378,6 +381,8 @@ public partial class GameClientSession
                     var otherPlayerInfo = await PlayerInfo.Load(CacheHelper, session.PlayerId.Value);
                     if (otherPlayerInfo != null)
                     {
+                        ApplyLivePlayerInfoSnapshot(session, otherPlayerInfo);
+
                         // 세션의 최신 위치에서 Cell 계산 (없으면 캐시된 Cell 사용)
                         var otherCell = session._lastValidatedPosition != null
                             ? WorldPositionToCell(session._lastValidatedPosition)

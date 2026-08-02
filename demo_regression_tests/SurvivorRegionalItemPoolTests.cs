@@ -522,14 +522,20 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Fact]
-    public void EveryOrbColorHasAnOpenReplacementRegionUntilTheFinalClosureWave()
+    public void EveryOrbColorHasAnOpenLegacySupplyRegionBeforeTheFinalRoomClosureWave()
     {
         var closure = new AreaClosureManager(NullLogger.Instance, new MatchingConfigService(null!, NullLogger.Instance));
         var state = closure.InitializeMatching(198501);
         var closed = new HashSet<AreaType>();
         var colors = new[] { SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue };
 
-        for (int waveIndex = 0; waveIndex < state.Waves.Count - 1; waveIndex++)
+        int finalRoomClosureWaveIndex = state.Waves.Count - 1;
+        while (finalRoomClosureWaveIndex >= 0 &&
+               state.Waves[finalRoomClosureWaveIndex].Areas.All(area => area.IsCorridor()))
+            finalRoomClosureWaveIndex--;
+
+        Assert.True(finalRoomClosureWaveIndex >= 0);
+        for (int waveIndex = 0; waveIndex < finalRoomClosureWaveIndex; waveIndex++)
         {
             foreach (var area in state.Waves[waveIndex].Areas)
                 closed.Add(area);
