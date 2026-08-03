@@ -542,6 +542,10 @@ public class GameEventLogManager
         double p50Milliseconds,
         double p95Milliseconds,
         double p99Milliseconds,
+        double snapshotP95Milliseconds,
+        double planningP95Milliseconds,
+        double walkingP95Milliseconds,
+        double broadcastP95Milliseconds,
         int sampleCount,
         int skippedTickCount,
         int maxConsecutiveSkippedTicks)
@@ -550,12 +554,18 @@ public class GameEventLogManager
             return;
 
         Append(matchingId, "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE", 0, false,
-            $"Bot movement tick: p50={p50Milliseconds:F1}ms, p95={p95Milliseconds:F1}ms, p99={p99Milliseconds:F1}ms, skips={skippedTickCount}.",
+            $"Bot movement tick: p50={p50Milliseconds:F1}ms, p95={p95Milliseconds:F1}ms, p99={p99Milliseconds:F1}ms, " +
+            $"sections p95 snapshot={snapshotP95Milliseconds:F1}ms, planning={planningP95Milliseconds:F1}ms, " +
+            $"walking={walkingP95Milliseconds:F1}ms, broadcast={broadcastP95Milliseconds:F1}ms, skips={skippedTickCount}.",
             entry =>
             {
                 entry.BotMovementTickP50Milliseconds = p50Milliseconds;
                 entry.BotMovementTickP95Milliseconds = p95Milliseconds;
                 entry.BotMovementTickP99Milliseconds = p99Milliseconds;
+                entry.BotMovementSnapshotP95Milliseconds = snapshotP95Milliseconds;
+                entry.BotMovementPlanningP95Milliseconds = planningP95Milliseconds;
+                entry.BotMovementWalkingP95Milliseconds = walkingP95Milliseconds;
+                entry.BotMovementBroadcastP95Milliseconds = broadcastP95Milliseconds;
                 entry.BotMovementTickSampleCount = sampleCount;
                 entry.BotMovementTickSkipCount = skippedTickCount;
                 entry.BotMovementMaxConsecutiveSkipCount = maxConsecutiveSkippedTicks;
@@ -1983,6 +1993,10 @@ public class GameEventEntry
     public double? BotMovementTickP50Milliseconds { get; set; }
     public double? BotMovementTickP95Milliseconds { get; set; }
     public double? BotMovementTickP99Milliseconds { get; set; }
+    public double? BotMovementSnapshotP95Milliseconds { get; set; }
+    public double? BotMovementPlanningP95Milliseconds { get; set; }
+    public double? BotMovementWalkingP95Milliseconds { get; set; }
+    public double? BotMovementBroadcastP95Milliseconds { get; set; }
     public int? BotMovementTickSampleCount { get; set; }
     public int? BotMovementTickSkipCount { get; set; }
     public int? BotMovementMaxConsecutiveSkipCount { get; set; }

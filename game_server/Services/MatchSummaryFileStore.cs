@@ -263,6 +263,14 @@ public sealed class MatchSummaryFileStore
             botMovementPerformanceEvents.Select(entry => entry.BotMovementTickP95Milliseconds));
         double? botMovementTickP99Milliseconds = MaxNullable(
             botMovementPerformanceEvents.Select(entry => entry.BotMovementTickP99Milliseconds));
+        double? botMovementSnapshotP95Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementSnapshotP95Milliseconds));
+        double? botMovementPlanningP95Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementPlanningP95Milliseconds));
+        double? botMovementWalkingP95Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementWalkingP95Milliseconds));
+        double? botMovementBroadcastP95Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementBroadcastP95Milliseconds));
         int botMovementMaxConsecutiveSkipCount = botMovementPerformanceEvents
             .Select(entry => entry.BotMovementMaxConsecutiveSkipCount ?? 0).DefaultIfEmpty(0).Max();
 
@@ -303,6 +311,10 @@ public sealed class MatchSummaryFileStore
             BotMovementTickP50Milliseconds = botMovementTickP50Milliseconds,
             BotMovementTickP95Milliseconds = botMovementTickP95Milliseconds,
             BotMovementTickP99Milliseconds = botMovementTickP99Milliseconds,
+            BotMovementSnapshotP95Milliseconds = botMovementSnapshotP95Milliseconds,
+            BotMovementPlanningP95Milliseconds = botMovementPlanningP95Milliseconds,
+            BotMovementWalkingP95Milliseconds = botMovementWalkingP95Milliseconds,
+            BotMovementBroadcastP95Milliseconds = botMovementBroadcastP95Milliseconds,
             BotMovementTickSampleCount = botMovementTickSampleCount,
             BotMovementTickSkipCount = botMovementTickSkipCount,
             BotMovementTickSkipRate = botMovementTickAttemptCount == 0
@@ -647,6 +659,10 @@ public sealed record SurvivorMatchMetrics
     public double? BotMovementTickP50Milliseconds { get; init; }
     public double? BotMovementTickP95Milliseconds { get; init; }
     public double? BotMovementTickP99Milliseconds { get; init; }
+    public double? BotMovementSnapshotP95Milliseconds { get; init; }
+    public double? BotMovementPlanningP95Milliseconds { get; init; }
+    public double? BotMovementWalkingP95Milliseconds { get; init; }
+    public double? BotMovementBroadcastP95Milliseconds { get; init; }
     public int BotMovementTickSampleCount { get; init; }
     public int BotMovementTickSkipCount { get; init; }
     public double BotMovementTickSkipRate { get; init; }

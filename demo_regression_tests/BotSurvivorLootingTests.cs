@@ -237,23 +237,56 @@ public sealed class BotSurvivorLootingTests
         Assert.Equal(0, bot.PendingRngInteractId);
     }
 
-    private static BotLootFixture CreateFixture(long matchingId, long botPlayerId, AreaType startArea)
+    [Fact]
+    public void MovementPlanningRotatesAcrossActiveBots()
+    {
+        const long matchingId = 194107;
+        long[] botPlayerIds = [-1941071, -1941072, -1941073];
+        var fixture = CreateFixture(matchingId, botPlayerIds, AreaType.Classroom3);
+        var planningBotIds = new List<long>();
+
+        for (int i = 0; i < botPlayerIds.Length; i++)
+        {
+            var result = fixture.BotManager.ProcessBotMovementTick(
+                matchingId,
+                fixture.ClosureManager,
+                fixture.AreaStockManager,
+                new Dictionary<long, AreaType>(),
+                fixture.ChecklistManager,
+                fixture.InventoryManager,
+                fixture.GroundItemManager,
+                Array.Empty<BotCombatTargetSnapshot>());
+            planningBotIds.Add(result.PlanningBotId);
+        }
+
+        Assert.Equal(botPlayerIds.Length, planningBotIds.Distinct().Count());
+        Assert.All(planningBotIds, planningBotId => Assert.Contains(planningBotId, botPlayerIds));
+    }
+
+    private static BotLootFixture CreateFixture(long matchingId, long botPlayerId, AreaType startArea) =>
+        CreateFixture(matchingId, [botPlayerId], startArea);
+
+    private static BotLootFixture CreateFixture(
+        long matchingId,
+        IReadOnlyList<long> botPlayerIds,
+        AreaType startArea)
     {
         var botManager = new BotPlayerManager(NullLogger.Instance);
         botManager.RegisterBots(matchingId, MapId.School,
-        [
-            new BotMatchingInfo
+            botPlayerIds.Select(botPlayerId => new BotMatchingInfo
             {
                 PlayerId = botPlayerId,
                 TargetPlayerId = botPlayerId - 1,
                 MyJobTitle = JobTitle.SCIENCE_MEMBER,
                 TargetJobTitle = JobTitle.HEALTH_MEMBER,
                 StartArea = startArea
-            }
-        ]);
-        var bot = botManager.GetBot(matchingId, botPlayerId)!;
-        bot.LoopWaitUntil = DateTime.MinValue;
-        bot.LastWalkStepTime = DateTime.UtcNow.AddSeconds(-1);
+            }).ToList());
+        foreach (long botPlayerId in botPlayerIds)
+        {
+            var bot = botManager.GetBot(matchingId, botPlayerId)!;
+            bot.LoopWaitUntil = DateTime.MinValue;
+            bot.LastWalkStepTime = DateTime.UtcNow.AddSeconds(-1);
+        }
 
         var config = new MatchingConfigService(null!, NullLogger.Instance);
         var closureManager = new AreaClosureManager(NullLogger.Instance, config);
@@ -270,7 +303,7 @@ public sealed class BotSurvivorLootingTests
         checklistManager.StartRound(
             matchingId,
             1,
-            [botPlayerId],
+            botPlayerIds,
             _ => new ChecklistChainContext(TargetAlive: true, ManittoAlive: true));
 
         return new BotLootFixture(

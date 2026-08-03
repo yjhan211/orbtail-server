@@ -136,6 +136,30 @@ public class SchoolNewMapRestorationTests
     }
 
     [Fact]
+    public void Runtime_Obstacle_Overrides_Cached_Walkability_And_Clear_Restores_It()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
+        var walkableCell = new Cell(120, 108);
+        Assert.True(GameMapData.IsMoveablePosition(MapId.School, walkableCell));
+
+        try
+        {
+            GameMapData.SetRuntimeObstacles(
+                MapId.School,
+                new[] { new UnityEngine.Vector3Int(walkableCell.X, walkableCell.Y, 0) });
+            Assert.False(GameMapData.IsMoveablePosition(MapId.School, walkableCell));
+        }
+        finally
+        {
+            GameMapData.ClearRuntimeObstacles(MapId.School);
+        }
+
+        Assert.True(GameMapData.IsMoveablePosition(MapId.School, walkableCell));
+    }
+
+    [Fact]
     public void School_Map_Uses_Legacy_Continuous_Map_Contract()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());

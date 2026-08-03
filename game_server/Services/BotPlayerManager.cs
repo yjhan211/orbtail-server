@@ -83,6 +83,10 @@ public partial class BotPlayerManager
     // matchingId ??遊?紐⑸줉
     private readonly ConcurrentDictionary<long, List<BotPlayerState>> _botStates = new();
 
+    // Cell BFS is expensive enough that replanning every bot in one 50 ms tick stalls broadcasts.
+    // Rotate one planning slot per matching while every bot keeps walking its existing path.
+    private readonly ConcurrentDictionary<long, int> _botMovementPlanningCursors = new();
+
     // matchingId ???몄뒪?댁뒪媛 ?ъ슜?섎뒗 MapId. 遊?ENTER/MOVE ?⑦궥??LastMapId/Position 蹂?섏뿉 ?꾩슂.
     private readonly ConcurrentDictionary<long, MapId> _botMapIds = new();
 
@@ -156,6 +160,7 @@ public partial class BotPlayerManager
         }).ToList();
 
         _botStates[matchingId] = bots;
+        _botMovementPlanningCursors[matchingId] = 0;
 
         _logger.LogInformation(
             "遊?{Count}紐??깅줉(紐⑹쟻???숈꽑): MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
@@ -326,6 +331,7 @@ public partial class BotPlayerManager
     {
         _botStates.TryRemove(matchingId, out _);
         _botMapIds.TryRemove(matchingId, out _);
+        _botMovementPlanningCursors.TryRemove(matchingId, out _);
     }
 
     /// <summary>

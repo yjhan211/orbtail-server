@@ -43,6 +43,9 @@ namespace network.common.data
 
         // 런타임 오버라이드: 에디터에서 추가한 장애물 위치
         private static readonly Dictionary<MapId, HashSet<Cell>> _runtimeObstacles = new();
+        private static readonly Dictionary<MapId, HashSet<Cell>> _staticWalkableCells = new();
+        private static readonly Dictionary<MapId, HashSet<Cell>> _staticObstacleCells = new();
+        private static readonly HashSet<MapId> _mapsWithExplicitWalkableCells = new();
 
         public static void Initialize(List<CsvRow> mapInfo, List<CsvRow> mapRegion)
         {
@@ -51,9 +54,13 @@ namespace network.common.data
             _chairInfos.Clear();
             _areaRegions.Clear();
             _runtimeObstacles.Clear();
+            _staticWalkableCells.Clear();
+            _staticObstacleCells.Clear();
+            _mapsWithExplicitWalkableCells.Clear();
 
             InitializeMapInfo(mapInfo);
             InitializeMapRegions(mapRegion);
+            BuildMoveablePositionCaches();
         }
 
         private static void InitializeMapInfo(List<CsvRow> data)
@@ -158,6 +165,68 @@ namespace network.common.data
             }
         }
 
+        private static void BuildMoveablePositionCaches()
+        {
+            var mapIds = new HashSet<MapId>(_mapInfos.Keys);
+            mapIds.UnionWith(_mapRegions.Keys);
+            mapIds.UnionWith(_areaRegions.Keys);
+
+            foreach (var mapId in mapIds)
+            {
+                var regions = _mapRegions.TryGetValue(mapId, out var mapRegions)
+                    ? mapRegions
+                    : new List<MapRegion>();
+                var areas = _areaRegions.TryGetValue(mapId, out var areaRegions)
+                    ? areaRegions
+                    : new List<AreaRegion>();
+                var obstacleCells = new HashSet<Cell>();
+
+                foreach (var region in regions)
+                {
+                    if (region.RegionType.Equals("obstacle", StringComparison.OrdinalIgnoreCase))
+                    {
+                        AddRectangleCells(obstacleCells, region.Start, region.End);
+                    }
+                }
+
+                _staticObstacleCells[mapId] = obstacleCells;
+
+                var groundRegions = regions
+                    .Where(region => region.RegionType.Equals("ground", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (groundRegions.Count == 0 && areas.Count == 0)
+                {
+                    continue;
+                }
+
+                var walkableCells = new HashSet<Cell>();
+                foreach (var region in groundRegions)
+                {
+                    AddRectangleCells(walkableCells, region.Start, region.End);
+                }
+
+                foreach (var area in areas)
+                {
+                    AddRectangleCells(walkableCells, area.Start, area.End);
+                }
+
+                walkableCells.ExceptWith(obstacleCells);
+                _staticWalkableCells[mapId] = walkableCells;
+                _mapsWithExplicitWalkableCells.Add(mapId);
+            }
+        }
+
+        private static void AddRectangleCells(HashSet<Cell> cells, Cell start, Cell end)
+        {
+            for (var x = start.X; x <= end.X; x++)
+            {
+                for (var y = start.Y; y <= end.Y; y++)
+                {
+                    cells.Add(new Cell(x, y));
+                }
+            }
+        }
+
         public static MapInfo GetMapInfo(MapId id)
         {
             return _mapInfos.TryGetValue(id, out var info) ? info : null;
@@ -184,69 +253,23 @@ namespace network.common.data
 
         public static bool IsMoveablePosition(MapId mapId, Cell position)
         {
-            // 런타임 오버라이드 체크 (Inspector에서 추가한 장애물)
-            if (_runtimeObstacles.TryGetValue(mapId, out var obstacles))
+            if (_runtimeObstacles.TryGetValue(mapId, out var obstacles) &&
+                obstacles.Contains(position))
             {
-                if (obstacles.Contains(position))
-                {
-                    return false;
-                }
+                return false;
             }
 
-            var regions = GetMapRegions(mapId);
-            var groundRegions = regions
-                .Where(r => r.RegionType.Equals("ground", StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            // Legacy continuous maps export exact walkable ground cells, while the
-            // current room map uses area rectangles as its walkable definition.
-            var areaRegions = _areaRegions.TryGetValue(mapId, out var areas) ? areas : new List<AreaRegion>();
-
-            if (groundRegions.Count > 0 || areaRegions.Count > 0)
+            if (_mapsWithExplicitWalkableCells.Contains(mapId))
             {
-                var isInWalkable = false;
-                foreach (var region in groundRegions)
-                {
-                    if (position.X >= region.Start.X && position.X <= region.End.X &&
-                        position.Y >= region.Start.Y && position.Y <= region.End.Y)
-                    {
-                        isInWalkable = true;
-                        break;
-                    }
-                }
-
-                foreach (var area in areaRegions)
-                {
-                    if (isInWalkable) break;
-                    if (position.X >= area.Start.X && position.X <= area.End.X &&
-                        position.Y >= area.Start.Y && position.Y <= area.End.Y)
-                    {
-                        isInWalkable = true;
-                        break;
-                    }
-                }
-
-                if (!isInWalkable)
-                {
-                    return false;
-                }
+                return _staticWalkableCells.TryGetValue(mapId, out var walkableCells) &&
+                       walkableCells.Contains(position);
             }
 
-            var obstacleRegions =
-                regions.Where(r => r.RegionType.Equals("obstacle", StringComparison.OrdinalIgnoreCase));
-            foreach (var region in obstacleRegions)
-            {
-                if (position.X >= region.Start.X && position.X <= region.End.X &&
-                    position.Y >= region.Start.Y && position.Y <= region.End.Y)
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return !_staticObstacleCells.TryGetValue(mapId, out var staticObstacles) ||
+                   !staticObstacles.Contains(position);
         }
 
-        // 런타임 장애물 추가/제거 (에디터 전용)
+        // Runtime obstacle overrides are applied before the cached static map cells.
         public static void SetRuntimeObstacles(MapId mapId, IEnumerable<Vector3Int> obstaclePositions)
         {
             if (!_runtimeObstacles.ContainsKey(mapId))

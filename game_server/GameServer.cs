@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using game_server.admin.dto;
 using game_server.controllers;
@@ -89,6 +90,10 @@ public partial class GameServer(
     private int _botMovementTickSkips;
     private int _botMovementTickCount;
     private double _botMovementTickTotalMs;
+    private readonly List<double> _botMovementSnapshotSamples = new(200);
+    private readonly List<double> _botMovementPlanningSamples = new(200);
+    private readonly List<double> _botMovementWalkingSamples = new(200);
+    private readonly List<double> _botMovementBroadcastSamples = new(200);
     private double _botMovementTickMaxMs;
     private readonly List<double> _botMovementTickSamples = new(200);
     private int _botMovementConsecutiveSkips;
@@ -1827,6 +1832,10 @@ public partial class GameServer(
         }
 
         var botMovementTickStartedAt = DateTime.UtcNow;
+        double snapshotElapsedMilliseconds = 0d;
+        double planningElapsedMilliseconds = 0d;
+        double walkingElapsedMilliseconds = 0d;
+        double broadcastElapsedMilliseconds = 0d;
         try
         {
             var activeSessions = _clientSessions.Values
@@ -1841,6 +1850,7 @@ public partial class GameServer(
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 // 프로토 0: 봇 타겟 추적/떠보기를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
+                long snapshotStartedAt = Stopwatch.GetTimestamp();
                 var humanAreas = activeSessions
                     .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
                     .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
@@ -1863,6 +1873,8 @@ public partial class GameServer(
                             bot.Corruption)))
                     .ToList();
                 var pveTargets = _emotionAfterimageMonsterManager.GetAliveTargets(matchingId);
+                snapshotElapsedMilliseconds += Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
+
                 var movementResult = _botPlayerManager.ProcessBotMovementTick(
                     matchingId,
                     _areaClosureManager,
@@ -1873,6 +1885,10 @@ public partial class GameServer(
                     _groundItemManager,
                     combatTargets,
                     pveTargets);
+                planningElapsedMilliseconds += movementResult.PlanningElapsedMilliseconds;
+                walkingElapsedMilliseconds += movementResult.WalkingElapsedMilliseconds;
+
+                long broadcastStartedAt = Stopwatch.GetTimestamp();
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
@@ -1884,6 +1900,7 @@ public partial class GameServer(
                 if (movementResult.GroundItemPickups.Count > 0)
                     BroadcastBotGroundItemPickups(matchingId, movementResult.GroundItemPickups, activeSessions);
                 StartTargetBotInterrogations(matchingId, activeSessions);
+                broadcastElapsedMilliseconds += Stopwatch.GetElapsedTime(broadcastStartedAt).TotalMilliseconds;
             }
         }
         catch (Exception ex)
@@ -1897,6 +1914,10 @@ public partial class GameServer(
                 double botTickElapsedMs = (DateTime.UtcNow - botMovementTickStartedAt).TotalMilliseconds;
                 System.Threading.Interlocked.Exchange(ref _botMovementConsecutiveSkips, 0);
                 _botMovementTickSamples.Add(botTickElapsedMs);
+                _botMovementSnapshotSamples.Add(snapshotElapsedMilliseconds);
+                _botMovementPlanningSamples.Add(planningElapsedMilliseconds);
+                _botMovementWalkingSamples.Add(walkingElapsedMilliseconds);
+                _botMovementBroadcastSamples.Add(broadcastElapsedMilliseconds);
                 _botMovementTickCount++;
                 _botMovementTickTotalMs += botTickElapsedMs;
                 if (botTickElapsedMs > _botMovementTickMaxMs) _botMovementTickMaxMs = botTickElapsedMs;
@@ -1906,15 +1927,29 @@ public partial class GameServer(
                     double p50Milliseconds = CalculatePercentile(sortedSamples, 0.50);
                     double p95Milliseconds = CalculatePercentile(sortedSamples, 0.95);
                     double p99Milliseconds = CalculatePercentile(sortedSamples, 0.99);
+                    double snapshotP95Milliseconds = CalculatePercentile(
+                        _botMovementSnapshotSamples.OrderBy(value => value).ToArray(), 0.95);
+                    double planningP95Milliseconds = CalculatePercentile(
+                        _botMovementPlanningSamples.OrderBy(value => value).ToArray(), 0.95);
+                    double walkingP95Milliseconds = CalculatePercentile(
+                        _botMovementWalkingSamples.OrderBy(value => value).ToArray(), 0.95);
+                    double broadcastP95Milliseconds = CalculatePercentile(
+                        _botMovementBroadcastSamples.OrderBy(value => value).ToArray(), 0.95);
                     int skippedTicks = System.Threading.Interlocked.Exchange(ref _botMovementTickSkips, 0);
                     int maxConsecutiveSkippedTicks =
                         System.Threading.Interlocked.Exchange(ref _botMovementMaxConsecutiveSkips, 0);
                     logger.LogInformation(
-                        "Bot movement tick: avg={Avg:F1}ms max={Max:F1}ms skips={Skips} over {Count} ticks",
+                        "Bot movement tick: avg={Avg:F1}ms max={Max:F1}ms skips={Skips} over {Count} ticks; " +
+                        "p95 snapshot={SnapshotP95:F1}ms planning={PlanningP95:F1}ms walking={WalkingP95:F1}ms " +
+                        "broadcast={BroadcastP95:F1}ms",
                         _botMovementTickTotalMs / _botMovementTickCount,
                         _botMovementTickMaxMs,
                         skippedTicks,
-                        _botMovementTickCount);
+                        _botMovementTickCount,
+                        snapshotP95Milliseconds,
+                        planningP95Milliseconds,
+                        walkingP95Milliseconds,
+                        broadcastP95Milliseconds);
                     foreach (long matchingId in GetActiveMatchingIds()
                                  .Where(_botPlayerManager.HasBots))
                     {
@@ -1923,6 +1958,10 @@ public partial class GameServer(
                             p50Milliseconds,
                             p95Milliseconds,
                             p99Milliseconds,
+                            snapshotP95Milliseconds,
+                            planningP95Milliseconds,
+                            walkingP95Milliseconds,
+                            broadcastP95Milliseconds,
                             _botMovementTickCount,
                             skippedTicks,
                             maxConsecutiveSkippedTicks);
@@ -1931,6 +1970,10 @@ public partial class GameServer(
                     _botMovementTickTotalMs = 0;
                     _botMovementTickMaxMs = 0;
                     _botMovementTickSamples.Clear();
+                    _botMovementSnapshotSamples.Clear();
+                    _botMovementPlanningSamples.Clear();
+                    _botMovementWalkingSamples.Clear();
+                    _botMovementBroadcastSamples.Clear();
                 }
             }
             catch (Exception ex)

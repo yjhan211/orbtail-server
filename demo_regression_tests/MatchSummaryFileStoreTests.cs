@@ -408,6 +408,10 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
                 BotMovementTickP50Milliseconds = 20,
                 BotMovementTickP95Milliseconds = 55,
                 BotMovementTickP99Milliseconds = 80,
+                BotMovementSnapshotP95Milliseconds = 4,
+                BotMovementPlanningP95Milliseconds = 40,
+                BotMovementWalkingP95Milliseconds = 2,
+                BotMovementBroadcastP95Milliseconds = 6,
                 BotMovementTickSampleCount = 200,
                 BotMovementTickSkipCount = 5,
                 BotMovementMaxConsecutiveSkipCount = 2
@@ -419,6 +423,10 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
                 BotMovementTickP50Milliseconds = 25,
                 BotMovementTickP95Milliseconds = 60,
                 BotMovementTickP99Milliseconds = 100,
+                BotMovementSnapshotP95Milliseconds = 5,
+                BotMovementPlanningP95Milliseconds = 45,
+                BotMovementWalkingP95Milliseconds = 3,
+                BotMovementBroadcastP95Milliseconds = 8,
                 BotMovementTickSampleCount = 200,
                 BotMovementTickSkipCount = 15,
                 BotMovementMaxConsecutiveSkipCount = 4
@@ -451,6 +459,10 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         Assert.Equal(25, summary.Metrics.BotMovementTickP50Milliseconds);
         Assert.Equal(60, summary.Metrics.BotMovementTickP95Milliseconds);
         Assert.Equal(100, summary.Metrics.BotMovementTickP99Milliseconds);
+        Assert.Equal(5, summary.Metrics.BotMovementSnapshotP95Milliseconds);
+        Assert.Equal(45, summary.Metrics.BotMovementPlanningP95Milliseconds);
+        Assert.Equal(3, summary.Metrics.BotMovementWalkingP95Milliseconds);
+        Assert.Equal(8, summary.Metrics.BotMovementBroadcastP95Milliseconds);
         Assert.Equal(400, summary.Metrics.BotMovementTickSampleCount);
         Assert.Equal(20, summary.Metrics.BotMovementTickSkipCount);
         Assert.Equal(20d / 420d, summary.Metrics.BotMovementTickSkipRate, 6);

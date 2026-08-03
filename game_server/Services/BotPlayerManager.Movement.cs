@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -79,6 +80,9 @@ public partial class BotPlayerManager
         public List<BotMovementEvent> Movements { get; } = new();
         public List<(long botId, AreaType area)> ExploreEnds { get; } = new();
         public List<BotGroundItemPickup> GroundItemPickups { get; } = new();
+        public long PlanningBotId { get; set; }
+        public double PlanningElapsedMilliseconds { get; set; }
+        public double WalkingElapsedMilliseconds { get; set; }
     }
 
     /// <summary>
@@ -198,58 +202,74 @@ public partial class BotPlayerManager
         var result = new BotWalkingTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
 
+        var activeBots = bots.Where(bot => !bot.IsEliminated).ToList();
+        if (activeBots.Count == 0) return result;
+
+        result.PlanningBotId = SelectMovementPlanningBot(matchingId, activeBots);
+
         // 전체 플레이어(인간 + 봇) 현재 영역 맵 — 봇 타겟 추적/떠보기 인원수 계산용.
         var playerAreas = new Dictionary<long, AreaType>(humanAreas);
-        foreach (var b in bots)
-            if (!b.IsEliminated) playerAreas[b.PlayerId] = b.CurrentArea;
+        foreach (var b in activeBots)
+            playerAreas[b.PlayerId] = b.CurrentArea;
 
         bool hasOpenNonCorridorRefuge = HasOpenNonCorridorRefuge(matchingId, closureManager);
-        foreach (var bot in bots)
+        foreach (var bot in activeBots)
         {
-            if (bot.IsEliminated) continue;
+            bool canPlanThisTick = bot.PlayerId == result.PlanningBotId;
+            bool isEvacuating = bot.EvacuationDestination != AreaType.None &&
+                                bot.PathIndex < bot.Path.Count;
+            bool isCommittingToDestination = bot.MovementDestination != AreaType.None &&
+                                             bot.PathIndex < bot.Path.Count;
 
-            // Escape routes outrank looting and combat so a warning cannot be overwritten by a chase path.
-            bool isEvacuating = TryMaintainClosureEvacuation(
-                bot, matchingId, closureManager, hasOpenNonCorridorRefuge);
-            // 목적지 커밋이 살아 있으면 잔상 사냥 계획을 아예 타지 않는다. 그래서 방에서
-            // 굳은 봇은 계획 안쪽의 정체 판정에 닿지도 못한다. 커밋을 먼저 풀어 다음 단계가
-            // 새 목적지를 고를 기회를 만든다. 대피는 정체보다 우선이므로 건드리지 않는다.
-            if (!isEvacuating && IsRoomHuntStalled(bot))
+            long planningStartedAt = Stopwatch.GetTimestamp();
+            if (canPlanThisTick)
             {
-                // 커밋 해제만으로도 봇은 재계획으로 밀려난다. 사냥 계획까지 도달하는 경우만
-                // 세면 실제 발동을 크게 과소 집계하므로 여기서 기록한다.
-                _logger.LogInformation(
-                    "Bot room hunt stalled: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, " +
-                    "DroppedDestination={DroppedDestination}",
-                    matchingId, bot.PlayerId, bot.CurrentArea, bot.MovementDestination);
-                bot.RoomHuntEscapeRequested = true;
-                bot.MovementDestination = AreaType.None;
-                bot.LoopWaitUntil = DateTime.MinValue;
-                // 재계획은 경로가 비었을 때만 돈다. 방 안 kite 경로가 계속 갱신되면 경로가
-                // 마르지 않아 사냥 계획에 영영 닿지 못한다. 진행이 없는 상태이므로 버려도 잃을 게 없다.
-                bot.Path.Clear();
-                bot.PathIndex = 0;
-                bot.RoomHuntStartedAtUtc = DateTime.UtcNow;
-            }
+                // Escape routes outrank looting and combat so a warning cannot be overwritten by a chase path.
+                isEvacuating = TryMaintainClosureEvacuation(
+                    bot, matchingId, closureManager, hasOpenNonCorridorRefuge);
+                // 목적지 커밋이 살아 있으면 잔상 사냥 계획을 아예 타지 않는다. 그래서 방에서
+                // 굳은 봇은 계획 안쪽의 정체 판정에 닿지도 못한다. 커밋을 먼저 풀어 다음 단계가
+                // 새 목적지를 고를 기회를 만든다. 대피는 정체보다 우선이므로 건드리지 않는다.
+                if (!isEvacuating && IsRoomHuntStalled(bot))
+                {
+                    // 커밋 해제만으로도 봇은 재계획으로 밀려난다. 사냥 계획까지 도달하는 경우만
+                    // 세면 실제 발동을 크게 과소 집계하므로 여기서 기록한다.
+                    _logger.LogInformation(
+                        "Bot room hunt stalled: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, " +
+                        "DroppedDestination={DroppedDestination}",
+                        matchingId, bot.PlayerId, bot.CurrentArea, bot.MovementDestination);
+                    bot.RoomHuntEscapeRequested = true;
+                    bot.MovementDestination = AreaType.None;
+                    bot.LoopWaitUntil = DateTime.MinValue;
+                    // 재계획은 경로가 비었을 때만 돈다. 방 안 kite 경로가 계속 갱신되면 경로가
+                    // 마르지 않아 사냥 계획에 영영 닿지 못한다. 진행이 없는 상태이므로 버려도 잃을 게 없다.
+                    bot.Path.Clear();
+                    bot.PathIndex = 0;
+                    bot.RoomHuntStartedAtUtc = DateTime.UtcNow;
+                }
 
-            bool isCommittingToDestination = !isEvacuating &&
-                                             TryMaintainMovementDestination(bot, matchingId, closureManager);
-            if (!isEvacuating &&
-                TryAutoPickupGroundItem(bot, matchingId, inventoryManager, groundItemManager, out var pickup) &&
-                pickup.HasValue)
-            {
-                result.GroundItemPickups.Add(pickup.Value);
+                isCommittingToDestination = !isEvacuating &&
+                                            TryMaintainMovementDestination(bot, matchingId, closureManager);
+                if (!isEvacuating &&
+                    TryAutoPickupGroundItem(bot, matchingId, inventoryManager, groundItemManager, out var pickup) &&
+                    pickup.HasValue)
+                {
+                    result.GroundItemPickups.Add(pickup.Value);
+                }
+                if (!isEvacuating && !isCommittingToDestination)
+                {
+                    UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
+                    TryStartPveKitePath(bot, matchingId, closureManager, pveTargets ?? []);
+                }
+                if (!hasOpenNonCorridorRefuge && bot.PathIndex >= bot.Path.Count &&
+                    !bot.IsInInteraction && bot.PendingRngInteractId == 0 && bot.PendingChecklistTaskId == 0)
+                {
+                    TryStartLastStandPatrolPath(bot, matchingId, closureManager);
+                }
             }
-            if (!isEvacuating && !isCommittingToDestination)
-            {
-                UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
-                TryStartPveKitePath(bot, matchingId, closureManager, pveTargets ?? []);
-            }
-            if (!hasOpenNonCorridorRefuge && bot.PathIndex >= bot.Path.Count &&
-                !bot.IsInInteraction && bot.PendingRngInteractId == 0 && bot.PendingChecklistTaskId == 0)
-            {
-                TryStartLastStandPatrolPath(bot, matchingId, closureManager);
-            }
+            result.PlanningElapsedMilliseconds += Stopwatch.GetElapsedTime(planningStartedAt).TotalMilliseconds;
+
+            long walkingStartedAt = Stopwatch.GetTimestamp();
             var ev = WalkStep(
                 bot,
                 matchingId,
@@ -258,7 +278,9 @@ public partial class BotPlayerManager
                 inventoryManager,
                 playerAreas,
                 checklistManager,
-                pveTargets ?? []);
+                pveTargets ?? [],
+                canPlanThisTick);
+            result.WalkingElapsedMilliseconds += Stopwatch.GetElapsedTime(walkingStartedAt).TotalMilliseconds;
             if (ev != null) result.Movements.Add(ev);
             if (bot.PendingExploreEndBroadcast)
             {
@@ -267,6 +289,15 @@ public partial class BotPlayerManager
             }
         }
         return result;
+    }
+
+    private long SelectMovementPlanningBot(long matchingId, IReadOnlyList<BotPlayerState> activeBots)
+    {
+        int cursor = _botMovementPlanningCursors.AddOrUpdate(
+            matchingId,
+            0,
+            (_, current) => (current + 1) % activeBots.Count);
+        return activeBots[cursor % activeBots.Count].PlayerId;
     }
 
     private bool TryMaintainClosureEvacuation(BotPlayerState bot, long matchingId,
@@ -659,7 +690,8 @@ public partial class BotPlayerManager
     private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
         AreaItemStockManager areaItemStockManager, InGameInventoryManager inventoryManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
-        ChecklistManager checklistManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets)
+        ChecklistManager checklistManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets,
+        bool allowPathPlanning)
     {
         var now = DateTime.UtcNow;
         float deltaSec = (float)(now - bot.LastWalkStepTime).TotalSeconds;
@@ -718,6 +750,8 @@ public partial class BotPlayerManager
 
         if (bot.PendingForcedInteractId > 0 && bot.PendingForcedInteractArea != AreaType.None)
         {
+            if (!allowPathPlanning) return null;
+
             if (TryStartBotInteractPath(bot, matchingId, bot.PendingForcedInteractArea,
                     bot.PendingForcedInteractId, closureManager))
                 return null;
@@ -735,6 +769,7 @@ public partial class BotPlayerManager
             // #134 — 도착 후 RNG 채집이 아직 안 됐으면 walking 보류 (ProcessBotMissionTick이 PendingRngInteractId 처리 후 0으로 클리어할 때까지 대기).
             if (bot.PendingRngInteractId != 0 || bot.PendingChecklistTaskId != 0) return null;
 
+            if (!allowPathPlanning) return null;
             ChooseNewWanderTarget(bot, matchingId, closureManager, areaItemStockManager, inventoryManager, playerAreas,
                 checklistManager, pveTargets);
             if (bot.Path.Count == 0) return null;
