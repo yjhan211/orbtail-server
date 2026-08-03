@@ -157,18 +157,23 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue || _lastValidatedPosition == null || CurrentArea == AreaType.None) return;
 
-        var removed = _inGameInventoryManager.TakeAllItems(CurrentMapSubId, PlayerId.Value);
-        if (removed.Count == 0) return;
+        var position = _lastValidatedPosition;
+        var drop = EliminationInventoryDropper.DropAll(
+            _inGameInventoryManager,
+            _groundItemManager,
+            CurrentMapSubId,
+            PlayerId.Value,
+            CurrentArea,
+            position.X,
+            position.Y,
+            CurrentMapId);
+        if (drop.RemovedItems.Count == 0) return;
 
         var emptyBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
         _gameEventLogManager.LogSurvivorOrbBoardTransition(
             CurrentMapSubId, PlayerId.Value, emptyBoard.GetAllItems(), 0, CurrentArea.ToString(), "elimination_drop",
             isBot: false);
-        var itemIds = removed
-            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
-            .Where(GroundItemPickupPolicy.ShouldDropOnElimination)
-            .ToList();
-        foreach (var item in removed)
+        foreach (var item in drop.RemovedItems)
             SendInGameInventoryUpdate(new InGameItemInfo
             {
                 ItemUid = item.ItemUid,
@@ -177,53 +182,54 @@ public partial class GameClientSession
                 GiftState = item.GiftState
             });
 
-        if (itemIds.Count == 0) return;
+        if (drop.DroppedItemIds.Count == 0) return;
 
-        var position = _lastValidatedPosition;
-        var spawned = _groundItemManager.SpawnItems(CurrentMapSubId, CurrentArea,
-            position.X, position.Y, itemIds, layout: GroundItemSpawnLayout.EliminationScatter);
         _gameEventLogManager.LogEliminationDrop(
             CurrentMapSubId,
             PlayerId.Value,
             CurrentArea.ToString(),
-            itemIds,
-            spawned,
-            GameEventLogManager.CalculateDropRecoveryTotal(itemIds),
+            drop.DroppedItemIds,
+            drop.SpawnedItems,
+            GameEventLogManager.CalculateDropRecoveryTotal(drop.DroppedItemIds),
             isBot: false);
-        BroadcastGroundItemsSpawned(CurrentArea, spawned);
+        BroadcastGroundItemsSpawned(CurrentArea, drop.SpawnedItems);
     }
 
-    internal void AwardBotEliminationSummonStones(long botPlayerId, long attackerPlayerId,
-        IReadOnlyCollection<GameClientSession> matchingSessions)
+    internal void DropBotInventoryAtCurrentPosition(long botPlayerId)
     {
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
-        if (bot == null)
+        if (bot == null || bot.CurrentArea == AreaType.None)
             return;
 
-        var removed = _inGameInventoryManager.TakeAllItems(CurrentMapSubId, botPlayerId);
+        var drop = EliminationInventoryDropper.DropAll(
+            _inGameInventoryManager,
+            _groundItemManager,
+            CurrentMapSubId,
+            botPlayerId,
+            bot.CurrentArea,
+            bot.Position.X,
+            bot.Position.Y,
+            _botPlayerManager.GetMatchingMapId(CurrentMapSubId));
+        if (drop.RemovedItems.Count == 0)
+            return;
+
         var emptyBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, botPlayerId);
         _gameEventLogManager.LogSurvivorOrbBoardTransition(
             CurrentMapSubId, botPlayerId, emptyBoard.GetAllItems(), 0, bot.CurrentArea.ToString(), "elimination_drop",
             isBot: true);
 
-        int reward = removed
-            .Where(item => SurvivorOrbData.IsSurvivorOrb(item.ItemId) || SurvivorOrbData.IsRecoveryOrb(item.ItemId))
-            .Sum(item => Math.Max(0, item.Count));
-        if (attackerPlayerId == 0 || reward == 0)
+        if (drop.DroppedItemIds.Count == 0)
             return;
 
-        var state = _summonStoneManager.AddStones(CurrentMapSubId, attackerPlayerId, reward);
-        matchingSessions.FirstOrDefault(session => session.PlayerId == attackerPlayerId)
-            ?.SendSummonStoneState(reward, bot.Position.X, bot.Position.Y);
-        _gameEventLogManager.LogSummonStoneAward(
+        _gameEventLogManager.LogEliminationDrop(
             CurrentMapSubId,
-            attackerPlayerId,
-            unchecked((int)botPlayerId),
-            reward,
-            state.StoneCount,
+            botPlayerId,
             bot.CurrentArea.ToString(),
-            isCore: false,
-            isBot: BotPlayerManager.IsBotPlayerId(attackerPlayerId));
+            drop.DroppedItemIds,
+            drop.SpawnedItems,
+            GameEventLogManager.CalculateDropRecoveryTotal(drop.DroppedItemIds),
+            isBot: true);
+        BroadcastGroundItemsSpawned(bot.CurrentArea, drop.SpawnedItems);
     }
 
     private void SendGroundItemSnapshot(AreaType area)

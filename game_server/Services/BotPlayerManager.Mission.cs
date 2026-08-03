@@ -136,10 +136,18 @@ public partial class BotPlayerManager
                 supportTier));
         }
 
-        if (loadout.EquippedItemId == 0 || loadout.EquippedItemId == previouslyEquippedItemId)
+        if (loadout.EquippedItemId == 0)
             return;
 
+        // 인벤토리에는 장착돼 있는데 봇 상태 필드만 0으로 남으면, 이동 계획이 시작 오브
+        // 미보유로 오판해 목적지를 영영 고르지 못한다 (2026-08-02 match-2063: 병합이 한 번도
+        // 없던 봇 3마리가 방에 굳은 채 전원 탈락). 중복 로그를 막는 가드가 상태 동기화까지
+        // 건너뛰지 않도록, 필드는 교체 여부와 무관하게 먼저 맞춘다.
         bot.EquippedBattleItemId = loadout.EquippedItemId;
+
+        if (loadout.EquippedItemId == previouslyEquippedItemId)
+            return;
+
         result.BattleItemEquips.Add((bot.PlayerId, loadout.EquippedItemId));
         _logger.LogInformation(
             "Bot battle item equipped: MatchingId={MatchingId}, BotId={BotId}, ItemId={ItemId}",

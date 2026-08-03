@@ -224,6 +224,56 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.NotEqual(DateTime.MinValue, bot.LastAutoConsumableUseTime);
     }
 
+    /// <summary>
+    ///     2026-08-02 match-2063 회귀: 병합이 한 번도 없던 봇은 인벤토리에 오브가 장착돼 있어도
+    ///     봇 상태 필드가 0으로 남았다. 이동 계획이 이를 시작 오브 미보유로 오판해 목적지를
+    ///     고르지 못했고, 봇 3마리가 같은 방에 굳은 채 전원 탈락했다.
+    /// </summary>
+    [Fact]
+    public void BotSyncsEquippedBattleItemIdWhenTheEquippedOrbDoesNotChange()
+    {
+        const long matchingId = 194211;
+        const long botPlayerId = -1942111;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        var missionManager = new MissionManager(NullLogger.Instance);
+        var itemPoolManager = new ItemPoolManager();
+        itemPoolManager.Initialize();
+        bot.Stamina = 80;
+
+        // 시작 오브 지급 경로 모사 — 인벤토리에는 장착됐지만 봇 상태 필드는 아직 비어 있다.
+        // 오브가 1개뿐이라 병합이 없고, 따라서 장착 아이템도 끝까지 바뀌지 않는다.
+        var startingOrb = fixture.InventoryManager.AddItem(matchingId, botPlayerId, RecorderT1);
+        Assert.True(fixture.InventoryManager.TryEquipBattleItem(
+            matchingId, botPlayerId, startingOrb.ItemUid, out _));
+        bot.EquippedBattleItemId = 0;
+
+        BackdateMissionTick(bot);
+        fixture.BotManager.ProcessBotMissionTick(
+            matchingId,
+            missionManager,
+            fixture.InventoryManager,
+            itemPoolManager,
+            fixture.AreaStockManager,
+            fixture.GroundItemManager,
+            fixture.ChecklistManager);
+
+        Assert.Equal(RecorderT1, bot.EquippedBattleItemId);
+
+        // 교체가 없는 후속 틱에서도 동기화가 풀리면 안 된다.
+        BackdateMissionTick(bot);
+        fixture.BotManager.ProcessBotMissionTick(
+            matchingId,
+            missionManager,
+            fixture.InventoryManager,
+            itemPoolManager,
+            fixture.AreaStockManager,
+            fixture.GroundItemManager,
+            fixture.ChecklistManager);
+
+        Assert.Equal(RecorderT1, bot.EquippedBattleItemId);
+    }
+
     [Fact]
     public void FarmingToT2CombatEliminationAndDropRemainsContinuous()
     {
@@ -586,6 +636,22 @@ public sealed class SurvivorBotLoopRegressionTests
                     RecorderT3)
             ]);
 
+        Assert.Empty(bot.Path);
+        Assert.Equal(BotCombatMovementDecision.Retreat, bot.PendingCombatDecision);
+        bot.PendingCombatDecisionReadyAt = DateTime.UtcNow.AddMilliseconds(-1);
+        fixture.BotManager.UpdateCombatMovementIntent(
+            bot,
+            matchingId,
+            fixture.ClosureManager,
+            [
+                new BotCombatTargetSnapshot(botPlayerId, AreaType.Classroom3, bot.Position, RecorderT1),
+                new BotCombatTargetSnapshot(
+                    enemyPlayerId,
+                    AreaType.Classroom3,
+                    new Vector3f(bot.Position.X + 0.5f, bot.Position.Y, 0f),
+                    RecorderT3)
+            ]);
+
         Assert.NotEmpty(bot.Path);
         Assert.NotEqual(AreaType.Classroom3, bot.Path[^1].Area);
         Assert.False(bot.Path[^1].Area.IsCorridor());
@@ -675,6 +741,22 @@ public sealed class SurvivorBotLoopRegressionTests
                     RecorderT1)
             ]);
 
+        Assert.Equal(AreaType.Classroom4, bot.MovementDestination);
+        Assert.Equal(BotCombatMovementDecision.Retreat, bot.PendingCombatDecision);
+        bot.PendingCombatDecisionReadyAt = DateTime.UtcNow.AddMilliseconds(-1);
+        fixture.BotManager.UpdateCombatMovementIntent(
+            bot,
+            matchingId,
+            fixture.ClosureManager,
+            [
+                new BotCombatTargetSnapshot(botPlayerId, AreaType.Classroom3, bot.Position, RecorderT1, bot.Corruption),
+                new BotCombatTargetSnapshot(
+                    enemyPlayerId,
+                    AreaType.Classroom3,
+                    new Vector3f(bot.Position.X + 0.5f, bot.Position.Y, 0f),
+                    RecorderT1)
+            ]);
+
         Assert.Equal(AreaType.None, bot.MovementDestination);
         Assert.NotEqual(AreaType.None, bot.EvacuationDestination);
         Assert.NotEqual(AreaType.Classroom3, bot.EvacuationDestination);
@@ -694,6 +776,21 @@ public sealed class SurvivorBotLoopRegressionTests
         bot.Corruption = (int)(Config.SURVIVOR_MAX_CORRUPTION * 0.8f);
         bot.EquippedBattleItemId = 107000020;
 
+        fixture.BotManager.UpdateCombatMovementIntent(
+            bot,
+            matchingId,
+            fixture.ClosureManager,
+            [
+                new BotCombatTargetSnapshot(botPlayerId, AreaType.Classroom3, bot.Position, 107000020, bot.Corruption),
+                new BotCombatTargetSnapshot(
+                    enemyPlayerId,
+                    AreaType.Classroom3,
+                    new Vector3f(bot.Position.X + 0.5f, bot.Position.Y, 0f),
+                    RecorderT3)
+            ]);
+
+        Assert.Equal(BotCombatMovementDecision.Retreat, bot.PendingCombatDecision);
+        bot.PendingCombatDecisionReadyAt = DateTime.UtcNow.AddMilliseconds(-1);
         fixture.BotManager.UpdateCombatMovementIntent(
             bot,
             matchingId,
