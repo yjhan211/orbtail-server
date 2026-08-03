@@ -15,7 +15,7 @@ public class EmotionAfterimageMonsterManagerTests
         var manager = CreateManager();
 
         var snapshot = manager.GetSnapshot(MatchingId);
-        Assert.Equal(161, snapshot.Count);
+        Assert.Equal(301, snapshot.Count);
         Assert.Equal(116, snapshot.Count(info => info.IsAlive));
         Assert.DoesNotContain(snapshot, info => info.AreaType == AreaType.Corridor && info.IsAlive);
 
@@ -40,6 +40,12 @@ public class EmotionAfterimageMonsterManagerTests
             Assert.Equal(8, pair.Value.Count);
             Assert.DoesNotContain(pair.Value, monster => monster.IsCore);
         });
+
+        var reinforcementStates = manager.GetReinforcementSnapshot(MatchingId);
+        Assert.Equal(4, reinforcementStates.Count);
+        Assert.All(reinforcementStates, state => Assert.Equal(0, state.PhaseIndex));
+        Assert.All(reinforcementStates, state => Assert.Equal(4, state.RemainingBudget));
+        Assert.All(reinforcementStates, state => Assert.Equal(9, state.TargetAliveCount));
     }
 
     [Fact]
@@ -131,6 +137,140 @@ public class EmotionAfterimageMonsterManagerTests
         var laterTick = manager.Tick(MatchingId, [], StartedAt.AddSeconds(60));
         Assert.DoesNotContain(laterTick.ChangedStates, info => info.MonsterId == monsterId);
         Assert.False(manager.GetSnapshot(MatchingId).Single(info => info.MonsterId == monsterId).IsAlive);
+    }
+
+    [Fact]
+    public void Reinforcement_ReleasesTwoAfterDelay_AndAwardsNoStone()
+    {
+        var manager = CreateManager();
+        KillRoomMonsters(manager, AreaType.Classroom4, 2);
+        var target = FarTarget(AreaType.Classroom4);
+
+        var scheduled = manager.Tick(MatchingId, [target], StartedAt);
+        Assert.Empty(scheduled.ReinforcementReleases);
+        Assert.True(Assert.Single(manager.GetReinforcementSnapshot(MatchingId),
+            state => state.Area == AreaType.Classroom4).IsReleasePending);
+
+        Assert.Empty(manager.Tick(MatchingId, [target], StartedAt.AddSeconds(1.49))
+            .ReinforcementReleases);
+        var releasedTick = manager.Tick(MatchingId, [target], StartedAt.AddSeconds(1.5));
+        var release = Assert.Single(releasedTick.ReinforcementReleases);
+
+        Assert.Equal(AreaType.Classroom4, release.Area);
+        Assert.Equal(2, release.ReleasedCount);
+        Assert.Equal(2, release.RemainingBudget);
+        Assert.Equal(9, release.AliveCountAfterRelease);
+        Assert.Equal(2, releasedTick.SpawnedStates.Count(state =>
+            state.AreaType == AreaType.Classroom4 && state.SummonStoneReward == 0));
+
+        int reinforcementId = releasedTick.SpawnedStates
+            .First(state => state.AreaType == AreaType.Classroom4 && state.SummonStoneReward == 0)
+            .MonsterId;
+        var lethal = manager.ApplyDamage(
+            MatchingId, reinforcementId, 10, 999, StartedAt.AddSeconds(1.6));
+        Assert.True(lethal.Killed);
+        Assert.True(lethal.IsReinforcement);
+        Assert.Equal(0, lethal.SummonStoneReward);
+    }
+
+    [Fact]
+    public void Reinforcement_PausesWhenRoomIsEmpty_AndRestartsFullDelayOnReentry()
+    {
+        var manager = CreateManager();
+        KillRoomMonsters(manager, AreaType.Classroom4, 2);
+        var firstRelease = ReleaseReinforcementPair(manager, AreaType.Classroom4, StartedAt);
+        Assert.Equal(2, Assert.Single(firstRelease.ReinforcementReleases).RemainingBudget);
+
+        KillRoomMonsters(manager, AreaType.Classroom4, 2);
+        var target = FarTarget(AreaType.Classroom4);
+
+        manager.Tick(MatchingId, [target], StartedAt.AddSeconds(2));
+        manager.Tick(MatchingId, [], StartedAt.AddSeconds(3));
+        Assert.False(Assert.Single(manager.GetReinforcementSnapshot(MatchingId),
+            state => state.Area == AreaType.Classroom4).IsReleasePending);
+
+        manager.Tick(MatchingId, [target], StartedAt.AddSeconds(10));
+        Assert.Empty(manager.Tick(MatchingId, [target], StartedAt.AddSeconds(11.49))
+            .ReinforcementReleases);
+        var released = Assert.Single(manager.Tick(
+            MatchingId, [target], StartedAt.AddSeconds(11.5)).ReinforcementReleases);
+
+        Assert.Equal(2, released.ReleasedCount);
+        Assert.Equal(0, released.RemainingBudget);
+    }
+
+    [Fact]
+    public void Reinforcement_StopsAfterFinitePhaseBudgetIsConsumed()
+    {
+        var manager = CreateManager();
+        KillRoomMonsters(manager, AreaType.Classroom4, 2);
+
+        var first = ReleaseReinforcementPair(manager, AreaType.Classroom4, StartedAt);
+        Assert.Equal(2, Assert.Single(first.ReinforcementReleases).RemainingBudget);
+
+        KillRoomMonsters(manager, AreaType.Classroom4, 2);
+        var second = ReleaseReinforcementPair(
+            manager, AreaType.Classroom4, StartedAt.AddSeconds(2));
+        Assert.Equal(0, Assert.Single(second.ReinforcementReleases).RemainingBudget);
+
+        KillRoomMonsters(manager, AreaType.Classroom4, 2);
+        var target = FarTarget(AreaType.Classroom4);
+        manager.Tick(MatchingId, [target], StartedAt.AddSeconds(4));
+        var exhausted = manager.Tick(MatchingId, [target], StartedAt.AddSeconds(10));
+
+        Assert.Empty(exhausted.ReinforcementReleases);
+        Assert.DoesNotContain(exhausted.SpawnedStates, state =>
+            state.AreaType == AreaType.Classroom4 && state.SummonStoneReward == 0);
+        var state = Assert.Single(manager.GetReinforcementSnapshot(MatchingId),
+            candidate => candidate.Area == AreaType.Classroom4);
+        Assert.Equal(0, state.RemainingBudget);
+        Assert.Equal(4, state.TotalReleased);
+    }
+
+    [Fact]
+    public void Closure_RemovesClosedHotspot_AndRefreshesSurvivingPhaseBudgets()
+    {
+        var manager = CreateManager();
+
+        Assert.True(manager.ApplyAreaClosureAndSpawnWave(
+            MatchingId, [AreaType.ExamRoom], StartedAt));
+        var refreshed = manager.GetReinforcementSnapshot(MatchingId);
+        Assert.Equal(4, refreshed.Count);
+        Assert.All(refreshed, state => Assert.Equal(1, state.PhaseIndex));
+        Assert.All(refreshed, state => Assert.Equal(6, state.RemainingBudget));
+        Assert.All(refreshed, state => Assert.Equal(10, state.TargetAliveCount));
+
+        Assert.True(manager.ApplyAreaClosureAndSpawnWave(
+            MatchingId, [AreaType.Classroom4], StartedAt.AddSeconds(1)));
+        Assert.DoesNotContain(manager.GetReinforcementSnapshot(MatchingId),
+            state => state.Area == AreaType.Classroom4);
+        var closedAreaTick = manager.Tick(
+            MatchingId, [FarTarget(AreaType.Classroom4)], StartedAt.AddSeconds(10));
+        Assert.DoesNotContain(closedAreaTick.ReinforcementReleases,
+            release => release.Area == AreaType.Classroom4);
+    }
+
+    [Fact]
+    public void DensitySample_UsesActualAttackableAreaInsteadOfAliveCountAlone()
+    {
+        var manager = CreateManager();
+        var occupiedAreas = new HashSet<AreaType> { AreaType.Classroom4 };
+
+        var outOfRange = Assert.Single(manager.SampleDensity(
+            MatchingId,
+            occupiedAreas,
+            new HashSet<AreaType>(),
+            StartedAt));
+        Assert.Equal(AreaType.Classroom4, outOfRange.Area);
+        Assert.True(outOfRange.AliveMonsterCount > 0);
+        Assert.False(outOfRange.HasAttackableMonster);
+
+        var inRange = Assert.Single(manager.SampleDensity(
+            MatchingId,
+            occupiedAreas,
+            new HashSet<AreaType> { AreaType.Classroom4 },
+            StartedAt.AddSeconds(1)));
+        Assert.True(inRange.HasAttackableMonster);
     }
 
     [Fact]
@@ -455,6 +595,35 @@ public class EmotionAfterimageMonsterManagerTests
             MatchingId, [atMonster], StartedAt.AddSeconds(4)).Attacks,
             attack => attack.MonsterId == corridorMonster.MonsterId);
         Assert.Equal(4, phaseTwoAttack.Damage);
+    }
+
+    private static void KillRoomMonsters(
+        EmotionAfterimageMonsterManager manager,
+        AreaType area,
+        int count)
+    {
+        var monsterIds = manager.GetSnapshot(MatchingId, area)
+            .Where(state => state.IsAlive && !state.IsCore)
+            .OrderBy(state => state.MonsterId)
+            .Take(count)
+            .Select(state => state.MonsterId)
+            .ToList();
+        Assert.Equal(count, monsterIds.Count);
+        foreach (int monsterId in monsterIds)
+            Assert.True(manager.ApplyDamage(MatchingId, monsterId, 10, 999, StartedAt).Killed);
+    }
+
+    private static MonsterSpatialTarget FarTarget(AreaType area) =>
+        new(10, MapId.School, area, new Vector3f(1_000f, 1_000f, 0f));
+
+    private static MonsterTickResult ReleaseReinforcementPair(
+        EmotionAfterimageMonsterManager manager,
+        AreaType area,
+        DateTime scheduledAt)
+    {
+        var target = FarTarget(area);
+        manager.Tick(MatchingId, [target], scheduledAt);
+        return manager.Tick(MatchingId, [target], scheduledAt.AddSeconds(1.5));
     }
 
     private static EmotionAfterimageMonsterManager CreateManager()

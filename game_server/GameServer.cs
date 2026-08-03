@@ -90,6 +90,9 @@ public partial class GameServer(
     private int _botMovementTickCount;
     private double _botMovementTickTotalMs;
     private double _botMovementTickMaxMs;
+    private readonly List<double> _botMovementTickSamples = new(200);
+    private int _botMovementConsecutiveSkips;
+    private int _botMovementMaxConsecutiveSkips;
 
     internal const int ResourceTickIntervalSeconds = 5;
     private const int ChecklistProgressTickIntervalSeconds = 1;
@@ -1817,7 +1820,9 @@ public partial class GameServer(
         {
             // 틱이 50ms를 넘기면 다음 틱이 통째로 스킵되어 봇 위치 브로드캐스트 간격이
             // 50ms와 100ms를 오간다. 클라 보간이 그대로 튀므로 빈도를 계측한다.
-            _botMovementTickSkips++;
+            System.Threading.Interlocked.Increment(ref _botMovementTickSkips);
+            int consecutiveSkips = System.Threading.Interlocked.Increment(ref _botMovementConsecutiveSkips);
+            UpdateMaximum(ref _botMovementMaxConsecutiveSkips, consecutiveSkips);
             return;
         }
 
@@ -1887,25 +1892,81 @@ public partial class GameServer(
         }
         finally
         {
-            System.Threading.Volatile.Write(ref _botMovementProcessing, 0);
-
-            double botTickElapsedMs = (DateTime.UtcNow - botMovementTickStartedAt).TotalMilliseconds;
-            _botMovementTickCount++;
-            _botMovementTickTotalMs += botTickElapsedMs;
-            if (botTickElapsedMs > _botMovementTickMaxMs) _botMovementTickMaxMs = botTickElapsedMs;
-            if (_botMovementTickCount >= 200)
+            try
             {
-                logger.LogInformation(
-                    "Bot movement tick: avg={Avg:F1}ms max={Max:F1}ms skips={Skips} over {Count} ticks",
-                    _botMovementTickTotalMs / _botMovementTickCount,
-                    _botMovementTickMaxMs,
-                    _botMovementTickSkips,
-                    _botMovementTickCount);
-                _botMovementTickCount = 0;
-                _botMovementTickTotalMs = 0;
-                _botMovementTickMaxMs = 0;
-                _botMovementTickSkips = 0;
+                double botTickElapsedMs = (DateTime.UtcNow - botMovementTickStartedAt).TotalMilliseconds;
+                System.Threading.Interlocked.Exchange(ref _botMovementConsecutiveSkips, 0);
+                _botMovementTickSamples.Add(botTickElapsedMs);
+                _botMovementTickCount++;
+                _botMovementTickTotalMs += botTickElapsedMs;
+                if (botTickElapsedMs > _botMovementTickMaxMs) _botMovementTickMaxMs = botTickElapsedMs;
+                if (_botMovementTickCount >= 200)
+                {
+                    var sortedSamples = _botMovementTickSamples.OrderBy(value => value).ToArray();
+                    double p50Milliseconds = CalculatePercentile(sortedSamples, 0.50);
+                    double p95Milliseconds = CalculatePercentile(sortedSamples, 0.95);
+                    double p99Milliseconds = CalculatePercentile(sortedSamples, 0.99);
+                    int skippedTicks = System.Threading.Interlocked.Exchange(ref _botMovementTickSkips, 0);
+                    int maxConsecutiveSkippedTicks =
+                        System.Threading.Interlocked.Exchange(ref _botMovementMaxConsecutiveSkips, 0);
+                    logger.LogInformation(
+                        "Bot movement tick: avg={Avg:F1}ms max={Max:F1}ms skips={Skips} over {Count} ticks",
+                        _botMovementTickTotalMs / _botMovementTickCount,
+                        _botMovementTickMaxMs,
+                        skippedTicks,
+                        _botMovementTickCount);
+                    foreach (long matchingId in GetActiveMatchingIds()
+                                 .Where(_botPlayerManager.HasBots))
+                    {
+                        _gameEventLogManager.LogBotMovementTickPerformance(
+                            matchingId,
+                            p50Milliseconds,
+                            p95Milliseconds,
+                            p99Milliseconds,
+                            _botMovementTickCount,
+                            skippedTicks,
+                            maxConsecutiveSkippedTicks);
+                    }
+                    _botMovementTickCount = 0;
+                    _botMovementTickTotalMs = 0;
+                    _botMovementTickMaxMs = 0;
+                    _botMovementTickSamples.Clear();
+                }
             }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to record bot movement tick metrics");
+            }
+            finally
+            {
+                System.Threading.Volatile.Write(ref _botMovementProcessing, 0);
+            }
+        }
+    }
+
+    private static double CalculatePercentile(IReadOnlyList<double> sortedValues, double percentile)
+    {
+        if (sortedValues.Count == 0)
+            return 0d;
+
+        double position = (sortedValues.Count - 1) * Math.Clamp(percentile, 0d, 1d);
+        int lowerIndex = (int)Math.Floor(position);
+        int upperIndex = (int)Math.Ceiling(position);
+        if (lowerIndex == upperIndex)
+            return sortedValues[lowerIndex];
+        double fraction = position - lowerIndex;
+        return sortedValues[lowerIndex] + (sortedValues[upperIndex] - sortedValues[lowerIndex]) * fraction;
+    }
+
+    private static void UpdateMaximum(ref int location, int candidate)
+    {
+        int current = System.Threading.Volatile.Read(ref location);
+        while (candidate > current)
+        {
+            int observed = System.Threading.Interlocked.CompareExchange(ref location, candidate, current);
+            if (observed == current)
+                return;
+            current = observed;
         }
     }
 

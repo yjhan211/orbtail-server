@@ -173,6 +173,29 @@ public partial class GameServer
                     BotPlayerManager.IsBotPlayerId(targetEvent.AttackerPlayerId),
                     targetEvent.OccurredAtUtc));
 
+        var playerCombatActors = combatTargets.Where(actor => !actor.IsMonsterTarget).ToList();
+        var occupiedAreas = playerCombatActors
+            .Select(actor => actor.Area)
+            .Where(area => area != AreaType.None)
+            .ToHashSet();
+        var monsterCombatActors = combatTargets.Where(actor => actor.IsMonsterTarget).ToList();
+        var attackableMonsterAreas = playerCombatActors
+            .Where(attacker => attacker.AttackRange > 0f && attacker.Damage > 0)
+            .Where(attacker => monsterCombatActors.Any(monster =>
+            {
+                if (monster.Area != attacker.Area)
+                    return false;
+                float dx = attacker.Position.X - monster.Position.X;
+                float dy = attacker.Position.Y - monster.Position.Y;
+                return dx * dx + dy * dy <= attacker.AttackRange * attacker.AttackRange &&
+                       ProximityCombatLineOfSight.CanTarget(attacker, monster);
+            }))
+            .Select(attacker => attacker.Area)
+            .ToHashSet();
+        foreach (var sample in _emotionAfterimageMonsterManager.SampleDensity(
+                     matchingId, occupiedAreas, attackableMonsterAreas, nowUtc))
+            _gameEventLogManager.LogMonsterDensitySample(matchingId, sample);
+
         if (attacks.Count == 0)
             return;
 

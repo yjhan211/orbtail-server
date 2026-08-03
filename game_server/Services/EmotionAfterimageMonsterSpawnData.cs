@@ -15,6 +15,7 @@ internal static class EmotionAfterimageMonsterSpawnData
     private const int ForgetT1 = 107000020;
     private const int DespairT1 = 107000030;
     private const int PackSize = 9;
+    private const int ReinforcementSlotsPerArea = 10;
     private const int DefaultRoomAffinity = HopeT1;
     // Recovery remains a player-board option, but it has no combat identity for
     // afterimages. Monster packs only spawn the three attack affinities.
@@ -39,6 +40,17 @@ internal static class EmotionAfterimageMonsterSpawnData
         TimeSpan.FromSeconds(15),
         TimeSpan.FromSeconds(15)
     ];
+    private static readonly int[] ReinforcementBudgets = [4, 6, 8, 10];
+    private static readonly int[] ReinforcementAliveTargets = [9, 10, 11, 12];
+
+    public const int ReinforcementBatchSize = 2;
+    public static readonly TimeSpan ReinforcementReleaseInterval = TimeSpan.FromSeconds(1.5);
+
+    public static int GetReinforcementBudget(int closurePhase) =>
+        ReinforcementBudgets[Math.Clamp(closurePhase, 0, ReinforcementBudgets.Length - 1)];
+
+    public static int GetReinforcementAliveTarget(int closurePhase) =>
+        ReinforcementAliveTargets[Math.Clamp(closurePhase, 0, ReinforcementAliveTargets.Length - 1)];
 
     public static int GetWaveActiveAreaTarget(int waveIndex) =>
         waveIndex >= 0 && waveIndex < WaveActiveAreaTargets.Length ? WaveActiveAreaTargets[waveIndex] : 0;
@@ -56,7 +68,7 @@ internal static class EmotionAfterimageMonsterSpawnData
     public static MonsterDefinition[] CreateDefinitionsForMatching(long matchingId)
     {
         var packs = Definitions
-            .Where(definition => !definition.IsAmbientCorridor)
+            .Where(definition => !definition.IsAmbientCorridor && !definition.IsReinforcement)
             .GroupBy(definition => definition.ClusterId)
             .Select(group => new { ClusterId = group.Key, Area = group.First().Area })
             .OrderBy(pack => pack.Area)
@@ -89,11 +101,23 @@ internal static class EmotionAfterimageMonsterSpawnData
                     affinityOrder[(hotspotIndex + Math.Min(packIndex++, 1)) % affinityOrder.Length];
             }
         }
+        var primaryAffinityByArea = packs
+            .GroupBy(pack => pack.Area)
+            .ToDictionary(group => group.Key, group => affinityByPack[group.First().ClusterId]);
 
         return Definitions.Select(definition =>
         {
             if (definition.IsAmbientCorridor)
                 return definition;
+
+            if (definition.IsReinforcement)
+            {
+                return definition with
+                {
+                    RewardItemId = primaryAffinityByArea[definition.Area],
+                    StartsActive = false
+                };
+            }
 
             return definition with
             {
@@ -168,6 +192,31 @@ internal static class EmotionAfterimageMonsterSpawnData
                         FormationOffset: CreatePackFormationOffset(packId, memberIndex)));
                 }
             }
+
+            int reinforcementClusterId = nextPackId++;
+            for (int memberIndex = 0; memberIndex < ReinforcementSlotsPerArea; memberIndex++)
+            {
+                var cell = cells[memberIndex % cells.Count];
+                definitions.Add(new MonsterDefinition(
+                    id++, MapId.School, area, CellToWorld(MapId.School, cell.x, cell.y),
+                    MaxHealth: 12,
+                    AttackDamage: 1,
+                    AttackRange: 0.65f,
+                    AttackIntervalSeconds: 1.5f,
+                    RewardItemId: DefaultRoomAffinity,
+                    IsCore: false,
+                    SummonStoneReward: 0,
+                    MoveSpeed: 2.4f,
+                    LeashRange: 5f,
+                    AreaAliveLimit: ReinforcementSlotsPerArea,
+                    StartsActive: false,
+                    SpawnPriority: priority,
+                    ClusterId: reinforcementClusterId,
+                    ClusterMemberIndex: memberIndex,
+                    ClusterSize: ReinforcementSlotsPerArea,
+                    FormationOffset: CreateReinforcementFormationOffset(reinforcementClusterId, memberIndex),
+                    IsReinforcement: true));
+            }
         }
 
         void AddCorridorAnchors()
@@ -204,6 +253,13 @@ internal static class EmotionAfterimageMonsterSpawnData
         }
     }
 
+
+    private static Vector3f CreateReinforcementFormationOffset(int clusterId, int memberIndex)
+    {
+        float angle = clusterId * 2.39996323f + MathF.Tau * memberIndex / ReinforcementSlotsPerArea;
+        float radius = 1.45f + memberIndex % 2 * 0.25f;
+        return new Vector3f(MathF.Cos(angle) * radius, MathF.Sin(angle) * radius, 0f);
+    }
 
     private static Vector3f CreatePackFormationOffset(int packId, int memberIndex)
     {

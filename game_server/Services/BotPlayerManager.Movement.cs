@@ -474,16 +474,22 @@ public partial class BotPlayerManager
             bot.Path = path;
             bot.PathIndex = 0;
             bot.LoopWaitUntil = DateTime.MinValue;
-            bot.NextPveKiteRepathAt = now.AddMilliseconds(850);
+            bot.NextPveKiteRepathAt = now.AddMilliseconds(
+                GetPveKiteRepathDelayMilliseconds(bot.PlayerId, 850));
             _logger.LogDebug(
                 "Bot PVE kite: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, Threats={Threats}, Steps={Steps}",
                 matchingId, bot.PlayerId, bot.CurrentArea, nearby.Count, path.Count);
             return true;
         }
 
-        bot.NextPveKiteRepathAt = now.AddMilliseconds(400);
+        bot.NextPveKiteRepathAt = now.AddMilliseconds(
+            GetPveKiteRepathDelayMilliseconds(bot.PlayerId, 400));
         return false;
     }
+
+    private static double GetPveKiteRepathDelayMilliseconds(long playerId, int baseMilliseconds) =>
+        baseMilliseconds + Math.Abs(playerId % 7) * 90d;
+
     private bool TryStartLastStandPatrolPath(BotPlayerState bot, long matchingId,
         AreaClosureManager closureManager)
     {
@@ -1017,10 +1023,6 @@ public partial class BotPlayerManager
             areaGroups = nearbyGroups;
 
         var candidates = areaGroups
-            .OrderByDescending(group => group.Key == bot.CurrentArea)
-            .ThenByDescending(group => group.Count() * 3 + group.Count(target => target.IsCore) * 8 -
-                                       CountAreaPressure(matchingId, group.Key, bot.PlayerId) * 5)
-            .Take(MaxHuntPathCandidates)
             .Select(group =>
             {
                 var preferredTarget = group
@@ -1028,31 +1030,52 @@ public partial class BotPlayerManager
                     .ThenBy(target => DistanceSquared(bot.Position, target.Position.X, target.Position.Y))
                     .First();
                 var targetCell = WorldToCell(preferredTarget.Position);
-                var path = group.Key == bot.CurrentArea
-                    ? BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea, targetCell,
-                        area => area != bot.CurrentArea || unavailable.Contains(area))
-                    : BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, group.Key,
-                        GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, group.Key) ?? targetCell,
-                        unavailable.Contains);
+                var pathTargetCell = group.Key == bot.CurrentArea
+                    ? targetCell
+                    : GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, group.Key) ?? targetCell;
                 int coreCount = group.Count(target => target.IsCore);
                 float affinityScore = CalculateBotPveAffinityScore(boardItemIds, preferredTarget.RewardItemId);
+                int estimatedSteps = Math.Abs(bot.Cell.X - pathTargetCell.X) +
+                                     Math.Abs(bot.Cell.Y - pathTargetCell.Y);
                 return new
                 {
                     Area = group.Key,
                     Target = preferredTarget,
-                    Path = path,
+                    PathTargetCell = pathTargetCell,
                     AffinityScore = affinityScore,
                     Score = group.Count() * 3 + coreCount * 8 + affinityScore * 4 -
-                            CountAreaPressure(matchingId, group.Key, bot.PlayerId) * 5
+                            CountAreaPressure(matchingId, group.Key, bot.PlayerId) * 5,
+                    EstimatedSteps = estimatedSteps
                 };
             })
-            .Where(candidate => candidate.Path is { Count: > 0 } || candidate.Area == bot.CurrentArea)
-            .OrderByDescending(candidate => candidate.Score - (candidate.Path?.Count ?? 0) * 0.2)
+            .OrderByDescending(candidate => candidate.Area == bot.CurrentArea)
+            .ThenByDescending(candidate => candidate.Score - candidate.EstimatedSteps * 0.2)
             .ThenBy(candidate => candidate.Area == bot.CurrentArea ? 0 : 1)
             .ThenBy(candidate => Math.Abs((int)(bot.PlayerId % 97) - (int)candidate.Area))
+            .Take(MaxHuntPathCandidates)
             .ToList();
 
-        var selected = candidates.FirstOrDefault();
+        int selectedIndex = -1;
+        List<BotPathfinder.Step>? selectedPath = null;
+        for (int index = 0; index < candidates.Count; index++)
+        {
+            var candidate = candidates[index];
+            var path = candidate.Area == bot.CurrentArea
+                ? BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea,
+                    candidate.PathTargetCell,
+                    area => area != bot.CurrentArea || unavailable.Contains(area))
+                : BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, candidate.Area,
+                    candidate.PathTargetCell,
+                    unavailable.Contains);
+            if (path is not { Count: > 0 } && candidate.Area != bot.CurrentArea)
+                continue;
+
+            selectedIndex = index;
+            selectedPath = path;
+            break;
+        }
+
+        var selected = selectedIndex >= 0 ? candidates[selectedIndex] : null;
 
         // 정체 판정이 실제로 봇을 내보냈는지 확인할 수 있어야 한다. 탈출에 실패하면
         // 후보가 없는 것인지 경로를 못 찾은 것인지 이 한 줄로 갈린다.
@@ -1073,13 +1096,13 @@ public partial class BotPlayerManager
 
         // The bot already owns this room's hunt. Let the automatic combat and lateral
         // kite logic work instead of immediately replacing the local objective.
-        if (selected.Area == bot.CurrentArea && selected.Path is not { Count: > 0 })
+        if (selected.Area == bot.CurrentArea && selectedPath is not { Count: > 0 })
         {
             bot.LoopWaitUntil = RandomizedDelayFromNow(0.45, 0.9);
             return true;
         }
 
-        bot.Path = selected.Path!;
+        bot.Path = selectedPath!;
         bot.PathIndex = 0;
         bot.MovementDestination = selected.Area;
         bot.LoopWaitUntil = DateTime.MinValue;
@@ -1092,7 +1115,7 @@ public partial class BotPlayerManager
             pveTargets.Count(target => target.Area == selected.Area),
             selected.Target.IsCore,
             selected.AffinityScore,
-            selected.Path!.Count);
+            selectedPath!.Count);
         return true;
     }
 

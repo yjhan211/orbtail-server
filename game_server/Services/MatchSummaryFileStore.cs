@@ -215,6 +215,12 @@ public sealed class MatchSummaryFileStore
 
         var stoneEvents = events.Where(entry => entry.Type == "SUMMON_STONE_AWARDED").ToList();
         var afterimageKillEvents = events.Where(entry => entry.Type == "AFTERIMAGE_KILLED").ToList();
+        var reinforcementReleaseEvents = events
+            .Where(entry => entry.Type == "SURVIVOR_REINFORCEMENT_RELEASED").ToList();
+        var densityEvents = events
+            .Where(entry => entry.Type == "SURVIVOR_MONSTER_DENSITY_SAMPLE").ToList();
+        var botMovementPerformanceEvents = events
+            .Where(entry => entry.Type == "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE").ToList();
         var stoneSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             ["room"] = stoneEvents.Where(entry => !IsCorridorArea(entry.Area))
@@ -245,6 +251,21 @@ public sealed class MatchSummaryFileStore
                 Math.Max(0, entry.TimestampUnixMs - startedAtUtc.ToUnixTimeMilliseconds()),
                 entry.AlreadyPresentPlayerIds ?? []))
             .ToList();
+        var hotspotDensity = BuildHotspotDensity(densityEvents, reinforcementReleaseEvents);
+        int botMovementTickSampleCount = botMovementPerformanceEvents
+            .Sum(entry => entry.BotMovementTickSampleCount ?? 0);
+        int botMovementTickSkipCount = botMovementPerformanceEvents
+            .Sum(entry => entry.BotMovementTickSkipCount ?? 0);
+        int botMovementTickAttemptCount = botMovementTickSampleCount + botMovementTickSkipCount;
+        double? botMovementTickP50Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementTickP50Milliseconds));
+        double? botMovementTickP95Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementTickP95Milliseconds));
+        double? botMovementTickP99Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementTickP99Milliseconds));
+        int botMovementMaxConsecutiveSkipCount = botMovementPerformanceEvents
+            .Select(entry => entry.BotMovementMaxConsecutiveSkipCount ?? 0).DefaultIfEmpty(0).Max();
+
 
         return new SurvivorMatchMetrics
         {
@@ -260,13 +281,34 @@ public sealed class MatchSummaryFileStore
             CoreKillCount = afterimageKillEvents.Count(entry =>
                 string.Equals(entry.Outcome, "core", StringComparison.OrdinalIgnoreCase)),
             NormalKillCount = afterimageKillEvents.Count(entry =>
-                !string.Equals(entry.Outcome, "core", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(entry.Outcome, "normal", StringComparison.OrdinalIgnoreCase) &&
                 !IsCorridorArea(entry.Area)),
+            ReinforcementKillCount = afterimageKillEvents.Count(entry =>
+                string.Equals(entry.Outcome, "reinforcement", StringComparison.OrdinalIgnoreCase)),
             CorridorKillCount = afterimageKillEvents.Count(entry => IsCorridorArea(entry.Area)),
             ContestedAreaEntryCount = areaContention.Sum(metric => metric.ContestedEntryCount),
             AreaContention = areaContention,
             RewardAreaSnapshots = rewardAreaSnapshots,
-            CoreContestedEntries = coreContestedEntries
+            CoreContestedEntries = coreContestedEntries,
+            ReinforcementReleasedCount = reinforcementReleaseEvents
+                .Sum(entry => entry.ReinforcementReleasedCount ?? 0),
+            MonsterDensitySampleCount = densityEvents.Count,
+            MonsterContactSampleCount = densityEvents.Count(entry => entry.HasAttackableMonster == true),
+            MonsterContactRatio = densityEvents.Count == 0
+                ? 0d
+                : densityEvents.Count(entry => entry.HasAttackableMonster == true) / (double)densityEvents.Count,
+            MaxConcurrentAliveAfterimages = densityEvents
+                .Select(entry => entry.GlobalAliveMonsterCount ?? 0).DefaultIfEmpty(0).Max(),
+            HotspotDensity = hotspotDensity,
+            BotMovementTickP50Milliseconds = botMovementTickP50Milliseconds,
+            BotMovementTickP95Milliseconds = botMovementTickP95Milliseconds,
+            BotMovementTickP99Milliseconds = botMovementTickP99Milliseconds,
+            BotMovementTickSampleCount = botMovementTickSampleCount,
+            BotMovementTickSkipCount = botMovementTickSkipCount,
+            BotMovementTickSkipRate = botMovementTickAttemptCount == 0
+                ? 0d
+                : botMovementTickSkipCount / (double)botMovementTickAttemptCount,
+            BotMovementMaxConsecutiveSkipCount = botMovementMaxConsecutiveSkipCount
         };
     }
 
@@ -369,6 +411,97 @@ public sealed class MatchSummaryFileStore
                 accumulator.MaxConcurrentPlayers,
                 accumulator.UniqueVisitors.Count))
             .ToList();
+    }
+
+    private static IReadOnlyList<MatchHotspotDensityMetric> BuildHotspotDensity(
+        IReadOnlyList<GameEventEntry> densityEvents,
+        IReadOnlyList<GameEventEntry> reinforcementReleaseEvents)
+    {
+        var releasedByArea = reinforcementReleaseEvents
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Area))
+            .GroupBy(entry => entry.Area!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Sum(entry => entry.ReinforcementReleasedCount ?? 0),
+                StringComparer.OrdinalIgnoreCase);
+
+        return densityEvents
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Area))
+            .GroupBy(entry => entry.Area!, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var ordered = group.OrderBy(entry => entry.TimestampUnixMs).ToList();
+                int contactSampleCount = ordered.Count(entry => entry.HasAttackableMonster == true);
+                var gaps = MeasureNoContactGaps(ordered);
+                return new MatchHotspotDensityMetric(
+                    group.Key,
+                    ordered.Count,
+                    contactSampleCount,
+                    ordered.Count == 0 ? 0d : contactSampleCount / (double)ordered.Count,
+                    ordered.Select(entry => entry.AliveMonsterCount ?? 0).DefaultIfEmpty(0).Max(),
+                    releasedByArea.GetValueOrDefault(group.Key),
+                    gaps.Count,
+                    gaps.LongestMilliseconds);
+            })
+            .ToList();
+    }
+
+    private static (int Count, long LongestMilliseconds) MeasureNoContactGaps(
+        IReadOnlyList<GameEventEntry> orderedSamples)
+    {
+        const long sampleSpanMilliseconds = 1_000;
+        const long maximumContinuousSampleGapMilliseconds = 1_500;
+        const long reportThresholdMilliseconds = 2_000;
+        int count = 0;
+        long longestMilliseconds = 0;
+        long? gapStartedAt = null;
+        long? lastGapSampleAt = null;
+
+        void CompleteGap()
+        {
+            if (!gapStartedAt.HasValue || !lastGapSampleAt.HasValue)
+                return;
+
+            long durationMilliseconds =
+                lastGapSampleAt.Value - gapStartedAt.Value + sampleSpanMilliseconds;
+            if (durationMilliseconds >= reportThresholdMilliseconds)
+            {
+                count++;
+                longestMilliseconds = Math.Max(longestMilliseconds, durationMilliseconds);
+            }
+
+            gapStartedAt = null;
+            lastGapSampleAt = null;
+        }
+
+        foreach (var sample in orderedSamples)
+        {
+            if (sample.HasAttackableMonster != false)
+            {
+                CompleteGap();
+                continue;
+            }
+
+            if (!gapStartedAt.HasValue ||
+                lastGapSampleAt.HasValue &&
+                sample.TimestampUnixMs - lastGapSampleAt.Value > maximumContinuousSampleGapMilliseconds)
+            {
+                CompleteGap();
+                gapStartedAt = sample.TimestampUnixMs;
+            }
+
+            lastGapSampleAt = sample.TimestampUnixMs;
+        }
+
+        CompleteGap();
+        return (count, longestMilliseconds);
+    }
+
+    private static double? MaxNullable(IEnumerable<double?> values)
+    {
+        var availableValues = values.Where(value => value.HasValue).Select(value => value!.Value).ToList();
+        return availableValues.Count == 0 ? null : availableValues.Max();
     }
 
     private static bool IsCorridorArea(string? area) =>
@@ -499,11 +632,25 @@ public sealed record SurvivorMatchMetrics
         new Dictionary<string, int>();
     public int CoreKillCount { get; init; }
     public int NormalKillCount { get; init; }
+    public int ReinforcementKillCount { get; init; }
     public int CorridorKillCount { get; init; }
     public int ContestedAreaEntryCount { get; init; }
     public IReadOnlyList<MatchAreaContentionMetric> AreaContention { get; init; } = [];
     public IReadOnlyList<MatchRewardAreaSnapshotMetric> RewardAreaSnapshots { get; init; } = [];
     public IReadOnlyList<MatchCoreContestedEntryMetric> CoreContestedEntries { get; init; } = [];
+    public int ReinforcementReleasedCount { get; init; }
+    public int MonsterDensitySampleCount { get; init; }
+    public int MonsterContactSampleCount { get; init; }
+    public double MonsterContactRatio { get; init; }
+    public int MaxConcurrentAliveAfterimages { get; init; }
+    public IReadOnlyList<MatchHotspotDensityMetric> HotspotDensity { get; init; } = [];
+    public double? BotMovementTickP50Milliseconds { get; init; }
+    public double? BotMovementTickP95Milliseconds { get; init; }
+    public double? BotMovementTickP99Milliseconds { get; init; }
+    public int BotMovementTickSampleCount { get; init; }
+    public int BotMovementTickSkipCount { get; init; }
+    public double BotMovementTickSkipRate { get; init; }
+    public int BotMovementMaxConsecutiveSkipCount { get; init; }
 }
 
 public sealed record MatchRewardAreaSnapshotMetric(
@@ -527,6 +674,16 @@ public sealed record MatchAreaContentionMetric(
     int ContestedEntryCount,
     int MaxConcurrentPlayers,
     int UniqueVisitorCount);
+
+public sealed record MatchHotspotDensityMetric(
+    string Area,
+    int SampleCount,
+    int ContactSampleCount,
+    double ContactRatio,
+    int MaxAliveMonsterCount,
+    int ReinforcementReleasedCount,
+    int LongNoContactGapCount,
+    long LongestNoContactGapMilliseconds);
 
 public sealed record MatchSummaryListItem(
     long MatchingId,

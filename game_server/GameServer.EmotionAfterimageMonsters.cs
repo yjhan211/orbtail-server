@@ -34,6 +34,8 @@ public partial class GameServer
                 _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(matchingId),
                 "wave_spawn");
         }
+        foreach (var release in monsterTick.ReinforcementReleases)
+            _gameEventLogManager.LogReinforcementReleased(matchingId, release);
 
         foreach (var monsterAttack in monsterTick.Attacks)
             ApplyMonsterAttack(matchingId, monsterAttack, matchingSessions, matchingBots);
@@ -161,7 +163,8 @@ public partial class GameServer
                 result.State.IsCore,
                 result.FirstAttackerPlayerId,
                 result.LastAttackerPlayerId,
-                result.DamageByPlayer ?? new Dictionary<long, int>());
+                result.DamageByPlayer ?? new Dictionary<long, int>(),
+                result.IsReinforcement);
             AwardMonsterKill(
                 matchingId,
                 result.State,

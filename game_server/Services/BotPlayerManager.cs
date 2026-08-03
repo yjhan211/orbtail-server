@@ -145,6 +145,8 @@ public partial class BotPlayerManager
                 LastMissionTickTime = now.AddMilliseconds(-_rng.Next(BotMissionTickIntervalSeconds * 1000)),
                 LastCellWanderTime = now,
                 GameStartTime = now,
+                NextPveKiteRepathAt = now.AddMilliseconds(
+                    Math.Abs(info.PlayerId % 8) * 100d),
                 LoopWaitUntil = now.AddSeconds(RandomRange(
                     Proto0InitialDecisionDelayMinSeconds,
                     Proto0InitialDecisionDelayMaxSeconds)),
