@@ -16,7 +16,7 @@ public partial class GameClientSession
         if (!PlayerId.HasValue)
             return Task.CompletedTask;
 
-        if (IsRoundActionLocked(out _))
+        if (IsRoundActionLocked(out _) || IsSurvivorBoardActionLocked())
         {
             SendSummonOrbResult(false, ErrorCode.INVALID_GAME_STATE, 0, 0,
                 _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value));
@@ -86,7 +86,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
 
         long playerId = PlayerId.Value;
-        if (IsRoundActionLocked(out _))
+        if (IsRoundActionLocked(out _) || IsSurvivorBoardActionLocked())
         {
             SendDestroyOrbResult(false, ErrorCode.INVALID_GAME_STATE, request.ItemUid, 0,
                 _summonStoneManager.GetSnapshot(CurrentMapSubId, playerId));

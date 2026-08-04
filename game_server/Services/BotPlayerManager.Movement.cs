@@ -197,7 +197,8 @@ public partial class BotPlayerManager
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
         IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets,
-        IReadOnlyCollection<MonsterCombatTarget>? pveTargets = null)
+        IReadOnlyCollection<MonsterCombatTarget>? pveTargets = null,
+        SurvivorPhaseManager? survivorPhaseManager = null)
     {
         var result = new BotWalkingTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
@@ -212,6 +213,8 @@ public partial class BotPlayerManager
         foreach (var b in activeBots)
             playerAreas[b.PlayerId] = b.CurrentArea;
 
+        SurvivorPhaseSnapshot survivorPhase = survivorPhaseManager?.GetSnapshot(matchingId)
+            ?? SurvivorPhaseSnapshot.Empty;
         bool hasOpenNonCorridorRefuge = HasOpenNonCorridorRefuge(matchingId, closureManager);
         foreach (var bot in activeBots)
         {
@@ -224,9 +227,20 @@ public partial class BotPlayerManager
             long planningStartedAt = Stopwatch.GetTimestamp();
             if (canPlanThisTick)
             {
-                // Escape routes outrank looting and combat so a warning cannot be overwritten by a chase path.
-                isEvacuating = TryMaintainClosureEvacuation(
-                    bot, matchingId, closureManager, hasOpenNonCorridorRefuge);
+                // #214 phase movement owns room exits and safe-room selection. The legacy closure
+                // evacuation remains the fallback for matches that do not use the phase machine.
+                isEvacuating = TryMaintainSurvivorPhaseMovement(
+                    bot,
+                    matchingId,
+                    survivorPhase,
+                    closureManager,
+                    inventoryManager,
+                    playerAreas);
+                if (!isEvacuating)
+                {
+                    isEvacuating = TryMaintainClosureEvacuation(
+                        bot, matchingId, closureManager, hasOpenNonCorridorRefuge);
+                }
                 // 목적지 커밋이 살아 있으면 잔상 사냥 계획을 아예 타지 않는다. 그래서 방에서
                 // 굳은 봇은 계획 안쪽의 정체 판정에 닿지도 못한다. 커밋을 먼저 풀어 다음 단계가
                 // 새 목적지를 고를 기회를 만든다. 대피는 정체보다 우선이므로 건드리지 않는다.
@@ -298,6 +312,206 @@ public partial class BotPlayerManager
             0,
             (_, current) => (current + 1) % activeBots.Count);
         return activeBots[cursor % activeBots.Count].PlayerId;
+    }
+
+    private bool TryMaintainSurvivorPhaseMovement(
+        BotPlayerState bot,
+        long matchingId,
+        SurvivorPhaseSnapshot phase,
+        AreaClosureManager closureManager,
+        InGameInventoryManager inventoryManager,
+        IReadOnlyDictionary<long, AreaType> playerAreas)
+    {
+        if (phase.MatchingId != matchingId)
+            return false;
+
+        switch (phase.Phase)
+        {
+            case SurvivorMatchPhase.ROOM_CLOSURE_WARNING:
+                bot.SurvivorRoomChoice = AreaType.None;
+                if (bot.CurrentArea.IsCorridor())
+                    return true;
+                return TryStageBotAtCorridorExit(bot, matchingId, closureManager);
+
+            case SurvivorMatchPhase.CORRIDOR_ENTRY:
+            case SurvivorMatchPhase.CORRIDOR_COMBAT:
+                bot.SurvivorRoomChoice = AreaType.None;
+                if (bot.CurrentArea.IsCorridor())
+                    return false;
+                return TryCommitSurvivorPhaseDestination(
+                    bot, matchingId, AreaType.Corridor, closureManager);
+
+            case SurvivorMatchPhase.ROOM_SELECTION:
+            case SurvivorMatchPhase.CORRIDOR_CLOSURE_WARNING:
+                if (phase.NextRooms.Contains(bot.CurrentArea))
+                {
+                    bot.Path.Clear();
+                    bot.PathIndex = 0;
+                    bot.MovementDestination = AreaType.None;
+                    return true;
+                }
+
+                if (!phase.NextRooms.Contains(bot.SurvivorRoomChoice))
+                {
+                    bot.SurvivorRoomChoice = ChooseSurvivorSafeRoom(
+                        bot, matchingId, phase.NextRooms, closureManager, inventoryManager, playerAreas);
+                }
+
+                if (bot.SurvivorRoomChoice == AreaType.None)
+                    return true;
+
+                return TryCommitSurvivorPhaseDestination(
+                    bot, matchingId, bot.SurvivorRoomChoice, closureManager);
+
+            case SurvivorMatchPhase.FINAL:
+                bot.SurvivorRoomChoice = AreaType.Ground;
+                if (bot.CurrentArea == AreaType.Ground)
+                    return false;
+                return TryCommitSurvivorPhaseDestination(
+                    bot, matchingId, AreaType.Ground, closureManager);
+
+            case SurvivorMatchPhase.ROOM_COMBAT:
+                bot.SurvivorRoomChoice = AreaType.None;
+                return !phase.CurrentRooms.Contains(bot.CurrentArea);
+
+            default:
+                return false;
+        }
+    }
+
+    private bool TryStageBotAtCorridorExit(
+        BotPlayerState bot,
+        long matchingId,
+        AreaClosureManager closureManager)
+    {
+        if (bot.MovementDestination == AreaType.Corridor && bot.PathIndex < bot.Path.Count)
+            return true;
+
+        CancelBotActionForEvacuation(bot);
+        MapId mapId = GetMatchingMapId(matchingId);
+        var fullPath = BotPathfinder.FindPath(
+            mapId,
+            bot.CurrentArea,
+            bot.Cell,
+            AreaType.Corridor,
+            GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, AreaType.Corridor)
+            ?? GameMapData.GetAreaSpawnCell(mapId, AreaType.Corridor),
+            area => IsAreaClosingOrClosed(closureManager, matchingId, area));
+
+        if (fullPath == null)
+            return true;
+
+        // The corridor remains closed during the warning. Walk to the final in-room
+        // doorway cell now, then cross only after CORRIDOR_ENTRY opens it.
+        var stagingPath = fullPath
+            .TakeWhile(step => !step.IsAreaTransition && step.Area == bot.CurrentArea)
+            .ToList();
+        bot.Path = stagingPath;
+        bot.PathIndex = 0;
+        bot.MovementDestination = AreaType.Corridor;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        return true;
+    }
+
+    private bool TryCommitSurvivorPhaseDestination(
+        BotPlayerState bot,
+        long matchingId,
+        AreaType destination,
+        AreaClosureManager closureManager)
+    {
+        if (destination == AreaType.None || bot.CurrentArea == destination)
+            return false;
+        if (bot.MovementDestination == destination && bot.PathIndex < bot.Path.Count)
+            return true;
+
+        CancelBotActionForEvacuation(bot);
+        MapId mapId = GetMatchingMapId(matchingId);
+        var path = BotPathfinder.FindPath(
+            mapId,
+            bot.CurrentArea,
+            bot.Cell,
+            destination,
+            GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, destination)
+            ?? GameMapData.GetAreaSpawnCell(mapId, destination),
+            area => IsAreaClosingOrClosed(closureManager, matchingId, area));
+
+        if (path is not { Count: > 0 })
+        {
+            bot.LoopWaitUntil = DateTime.UtcNow.AddMilliseconds(250);
+            return true;
+        }
+
+        bot.Path = path;
+        bot.PathIndex = 0;
+        bot.MovementDestination = destination;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        _logger.LogInformation(
+            "Bot survivor phase move: MatchingId={MatchingId}, BotId={BotId}, {From}->{To}, Steps={Steps}",
+            matchingId, bot.PlayerId, bot.CurrentArea, destination, path.Count);
+        return true;
+    }
+
+    private AreaType ChooseSurvivorSafeRoom(
+        BotPlayerState bot,
+        long matchingId,
+        IReadOnlyList<AreaType> nextRooms,
+        AreaClosureManager closureManager,
+        InGameInventoryManager inventoryManager,
+        IReadOnlyDictionary<long, AreaType> playerAreas)
+    {
+        if (nextRooms.Count == 0)
+            return AreaType.None;
+
+        MapId mapId = GetMatchingMapId(matchingId);
+        float corruptionRatio = Math.Clamp(
+            bot.Corruption / (float)Config.SURVIVOR_MAX_CORRUPTION, 0f, 1f);
+        var boardItemIds = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
+            .GetAllItems()
+            .Where(item => item.Count > 0)
+            .Select(item => item.ItemId)
+            .ToArray();
+        SurvivorOrbData.TryGetDominantPveColor(boardItemIds, out SurvivorOrbColor dominantColor);
+
+        var candidates = nextRooms
+            .Distinct()
+            .Select(area =>
+            {
+                var path = BotPathfinder.FindPath(
+                    mapId,
+                    bot.CurrentArea,
+                    bot.Cell,
+                    area,
+                    GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, area)
+                    ?? GameMapData.GetAreaSpawnCell(mapId, area),
+                    blocked => IsAreaClosingOrClosed(closureManager, matchingId, blocked));
+                int occupants = playerAreas.Count(entry =>
+                    entry.Key != bot.PlayerId && entry.Value == area);
+                float pressureWeight = corruptionRatio >= 0.65f ? 10f : 2.5f;
+                float score = (path?.Count ?? 10000) * 0.08f + occupants * pressureWeight;
+
+                int coreRewardItemId = EmotionAfterimageMonsterSpawnData.Definitions
+                    .Where(definition => definition.Area == area && definition.IsCore)
+                    .Select(definition => definition.RewardItemId)
+                    .FirstOrDefault();
+                if (dominantColor != SurvivorOrbColor.None &&
+                    SurvivorOrbData.TryGetColorAndTier(coreRewardItemId, out SurvivorOrbColor roomColor, out _))
+                {
+                    float affinity = SurvivorOrbData.GetPveDamageMultiplier(dominantColor, roomColor);
+                    score += affinity > 1f ? -3f : affinity < 1f ? 4f : 0f;
+                }
+
+                // Healthy bots may deliberately contest an occupied room; damaged bots seek space.
+                if (corruptionRatio < 0.35f && occupants > 0)
+                    score -= 2f;
+
+                return new { Area = area, Path = path, Score = score };
+            })
+            .Where(candidate => candidate.Path is { Count: > 0 })
+            .OrderBy(candidate => candidate.Score)
+            .ThenBy(candidate => Math.Abs((int)(bot.PlayerId % 97) - (int)candidate.Area))
+            .FirstOrDefault();
+
+        return candidates?.Area ?? AreaType.None;
     }
 
     private bool TryMaintainClosureEvacuation(BotPlayerState bot, long matchingId,

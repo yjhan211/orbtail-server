@@ -45,7 +45,9 @@ public partial class GameServer(
     private readonly AreaItemStockManager _areaItemStockManager =
         new(naturalExploreLootEnabled: !Config.MONSTER_SUMMON_ECONOMY_ENABLED);
     private readonly GroundItemManager _groundItemManager = new();
-    private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager = new();
+    private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager =
+        new(ambientCorridorEnabled: false);
+    private readonly SurvivorPhaseManager _survivorPhaseManager = new();
     private readonly SummonStoneManager _summonStoneManager = new();
     private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
@@ -113,6 +115,7 @@ public partial class GameServer(
         {
             logger.LogInformation("Game server starting...");
             GameClientSession.SetPresenceTracker(_presenceTracker);
+            GameClientSession.SetSurvivorPhaseManager(_survivorPhaseManager);
 
             InitializeServices();
             InitializeControllers();
@@ -1598,11 +1601,97 @@ public partial class GameServer(
             foreach (long matchingId in matchingIds)
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
-                var closureTick = _areaClosureManager.CheckClosureSchedule(matchingId);
-                var globalClosureTick = _areaClosureManager.CheckGlobalClosureSchedule(matchingId);
                 var sessions = _clientSessions.Values
                     .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                     .ToList();
+                var bots = _botPlayerManager.GetBots(matchingId)
+                    .Where(bot => !bot.IsEliminated)
+                    .ToList();
+                var alivePlayerIds = sessions
+                    .Where(session => !session.IsEliminated)
+                    .Select(session => session.PlayerId!.Value)
+                    .Concat(bots.Select(bot => bot.PlayerId))
+                    .ToArray();
+                bool phaseWasUninitialized = !_survivorPhaseManager.HasMatching(matchingId);
+                DateTime phaseStartUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId) ?? DateTime.UtcNow;
+                var occupiedStartingRooms = sessions
+                    .Where(session => !session.IsEliminated)
+                    .Select(session => session.CurrentArea)
+                    .Concat(bots.Select(bot => bot.CurrentArea))
+                    .Where(area => area != AreaType.None)
+                    .ToArray();
+                _survivorPhaseManager.InitializeMatching(
+                    matchingId,
+                    phaseStartUtc,
+                    occupiedStartingRooms);
+                var phaseTick = _survivorPhaseManager.Tick(matchingId, alivePlayerIds);
+                var phaseAreaDelta = _areaClosureManager.ApplyPhaseSnapshot(matchingId, phaseTick.Snapshot);
+                var closureTick = new ClosureScheduleTick(
+                    phaseAreaDelta.WarningAreas,
+                    phaseAreaDelta.WarningSeconds,
+                    phaseAreaDelta.TransitionAtUnixMs,
+                    phaseAreaDelta.ClosedAreas);
+                var globalClosureTick = GlobalClosureTick.Empty;
+
+                var visibleNextRooms = phaseTick.Snapshot.Phase is
+                    SurvivorMatchPhase.CORRIDOR_ENTRY or
+                    SurvivorMatchPhase.CORRIDOR_COMBAT or
+                    SurvivorMatchPhase.ROOM_SELECTION or
+                    SurvivorMatchPhase.CORRIDOR_CLOSURE_WARNING
+                        ? phaseTick.Snapshot.NextRooms
+                        : [];
+                int[] visibleNextRoomAreaTypes = visibleNextRooms
+                    .Select(area => (int)area)
+                    .ToArray();
+                int[] visibleNextRoomOccupancies = visibleNextRooms
+                    .Select(area => Math.Min(2,
+                        sessions.Count(session => !session.IsEliminated && session.CurrentArea == area) +
+                        bots.Count(bot => !bot.IsEliminated && bot.CurrentArea == area)))
+                    .ToArray();
+                using (var phasePacket = PacketMaker.G_TO_C_ROUND_STATE(
+                           matchingId,
+                           phaseTick.Snapshot.StageIndex + 1,
+                           5,
+                           SurvivorPhaseManager.ToRoundPhase(phaseTick.Snapshot.Phase),
+                           phaseTick.Snapshot.RemainingSeconds,
+                           SurvivorPhaseManager.GetPhaseDurationSeconds(phaseTick.Snapshot.Phase),
+                           phaseTick.Snapshot.Phase == SurvivorMatchPhase.FINISHED,
+                           visibleNextRoomAreaTypes,
+                           visibleNextRoomOccupancies))
+                {
+                    foreach (var session in sessions) session.Send(phasePacket);
+                }
+
+                var monsterPhaseStates = new Dictionary<int, MonsterRuntimeInfo>();
+                if (phaseWasUninitialized || phaseTick.Transitions.Count > 0)
+                {
+                    bool beginRoomWave = phaseTick.Snapshot.Phase is
+                        SurvivorMatchPhase.ROOM_COMBAT or SurvivorMatchPhase.FINAL;
+                    foreach (var monster in _emotionAfterimageMonsterManager.ApplyPhaseSnapshot(
+                                 matchingId,
+                                 phaseTick.Snapshot.OpenAreas,
+                                 beginRoomWave,
+                                 phaseTick.Snapshot.StageIndex,
+                                 DateTime.UtcNow))
+                        monsterPhaseStates[monster.MonsterId] = monster;
+
+                    if (phaseWasUninitialized)
+                        _gameEventLogManager.LogSurvivorPhaseTransition(
+                            matchingId, SurvivorPhaseSnapshot.Empty, phaseTick.Snapshot);
+
+                    foreach (var transition in phaseTick.Transitions)
+                    {
+                        _gameEventLogManager.LogSurvivorPhaseTransition(
+                            matchingId, transition.Before, transition.After);
+                        logger.LogInformation(
+                            "Survivor phase transition: MatchingId={MatchingId}, Stage={Stage}, From={From}, To={To}, OpenAreas={OpenAreas}",
+                            matchingId,
+                            transition.After.StageIndex,
+                            transition.Before.Phase,
+                            transition.After.Phase,
+                            string.Join(',', transition.After.OpenAreas));
+                    }
+                }
 
                 foreach (var expired in _groundItemManager.ExpireClaimReservations(matchingId))
                     _gameEventLogManager.LogGroundItemPriorityExpired(
@@ -1621,20 +1710,25 @@ public partial class GameServer(
 
                 if (closureTick.WarningAreas.Count > 0)
                 {
-                    var closureState = _areaClosureManager.GetClientStateSnapshot(matchingId);
-                    var replenished = _areaItemStockManager.ReplenishForClosureWarning(
-                        matchingId,
-                        closureTick.ClosureAtUnixMs,
-                        closureTick.WarningAreas,
-                        closureState.ClosedAreas);
-                    if (replenished.Count > 0)
+                    // #214 room phases use monsters and summon stones as their economy. The old
+                    // exploration-stock refresh remains available only to legacy closure matches.
+                    if (!_survivorPhaseManager.HasMatching(matchingId))
                     {
-                        BroadcastSurvivorAreaStockState(matchingId, sessions);
-                        BroadcastNaturalStockRefresh(matchingId, sessions, replenished.Select(entry => entry.AreaType));
-                        logger.LogInformation(
-                            "Survivor Royale closure supply added: MatchingId={MatchingId}, Supply={Supply}",
+                        var closureState = _areaClosureManager.GetClientStateSnapshot(matchingId);
+                        var replenished = _areaItemStockManager.ReplenishForClosureWarning(
                             matchingId,
-                            string.Join(',', replenished.Select(entry => $"{entry.AreaType}:{entry.ItemId}")));
+                            closureTick.ClosureAtUnixMs,
+                            closureTick.WarningAreas,
+                            closureState.ClosedAreas);
+                        if (replenished.Count > 0)
+                        {
+                            BroadcastSurvivorAreaStockState(matchingId, sessions);
+                            BroadcastNaturalStockRefresh(matchingId, sessions, replenished.Select(entry => entry.AreaType));
+                            logger.LogInformation(
+                                "Survivor Royale closure supply added: MatchingId={MatchingId}, Supply={Supply}",
+                                matchingId,
+                                string.Join(',', replenished.Select(entry => $"{entry.AreaType}:{entry.ItemId}")));
+                        }
                     }
 
                     var warningAreas = closureTick.WarningAreas.Select(area => area.ToString()).ToList();
@@ -1674,6 +1768,16 @@ public partial class GameServer(
                     }
                 }
 
+                foreach (var reopenedArea in phaseAreaDelta.ReopenedAreas)
+                {
+                    using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
+                    packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
+                    {
+                        AreaType = reopenedArea,
+                        IsClosed = false
+                    }));
+                    foreach (var session in sessions) session.Send(packet);
+                }
                 foreach (var warningArea in closureTick.WarningAreas)
                 {
                     using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
@@ -1687,12 +1791,10 @@ public partial class GameServer(
                     foreach (var session in sessions) session.Send(packet);
                 }
 
-                bool monsterWaveChanged = _emotionAfterimageMonsterManager.ApplyAreaClosureAndSpawnWave(
-                    matchingId, closureTick.ClosedAreas, DateTime.UtcNow);
-                if (monsterWaveChanged)
+                if (monsterPhaseStates.Count > 0)
                 {
-                    BroadcastMonsterSnapshot(matchingId, sessions);
-                    BroadcastMonsterMinimapSnapshot(sessions, _emotionAfterimageMonsterManager.GetSnapshot(matchingId));
+                    BroadcastMonsterSnapshot(matchingId, sessions, monsterPhaseStates.Values);
+                    BroadcastMonsterMinimapSnapshot(sessions, monsterPhaseStates.Values);
                 }
                 if (closureTick.ClosedAreas.Count > 0)
                 {
@@ -1707,7 +1809,11 @@ public partial class GameServer(
                     _gameEventLogManager.LogClosure(matchingId, closedArea.ToString());
 
                     using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
-                    var msg = new G_TO_C_AREA_CLOSED { AreaType = closedArea };
+                    var msg = new G_TO_C_AREA_CLOSED
+                    {
+                        AreaType = closedArea,
+                        SuppressAlert = phaseWasUninitialized
+                    };
                     packet.SetBody(MessagePackSerializer.Serialize(msg));
                     foreach (var session in sessions) session.Send(packet);
                 }
@@ -1884,7 +1990,8 @@ public partial class GameServer(
                     _inGameInventoryManager,
                     _groundItemManager,
                     combatTargets,
-                    pveTargets);
+                    pveTargets,
+                    _survivorPhaseManager);
                 planningElapsedMilliseconds += movementResult.PlanningElapsedMilliseconds;
                 walkingElapsedMilliseconds += movementResult.WalkingElapsedMilliseconds;
 
@@ -2376,6 +2483,7 @@ public partial class GameServer(
 
         GameClientSession.CleanupAbandonedMatchingRuntime(matchingId);
         _areaClosureManager.CleanupMatching(matchingId);
+        _survivorPhaseManager.CleanupMatching(matchingId);
         _botPlayerManager.CleanupMatching(matchingId);
         _presenceTracker.Remove(matchingId);
         _checklistManager.RemoveMatchingState(matchingId);
@@ -2554,7 +2662,7 @@ public partial class GameServer(
             });
         }
 
-        var spawnAssignments = SurvivorRoyaleSpawnData.CreateAssignments(matchingId, playerIds);
+        var spawnAssignments = SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
         foreach (var botInfo in botInfoList)
             botInfo.SpawnCell = Cell.Clone(spawnAssignments[botInfo.PlayerId]);
 

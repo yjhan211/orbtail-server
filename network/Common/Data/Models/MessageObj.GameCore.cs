@@ -223,6 +223,8 @@ namespace network.common.data.models
         [Key("phaseDurationSeconds")] public int PhaseDurationSeconds { get; set; }
         [Key("serverUnixMs")] public long ServerUnixMs { get; set; }
         [Key("isSessionEnded")] public bool IsSessionEnded { get; set; }
+        [Key("survivorNextRoomAreaTypes")] public int[] SurvivorNextRoomAreaTypes { get; set; } = Array.Empty<int>();
+        [Key("survivorNextRoomOccupancies")] public int[] SurvivorNextRoomOccupancies { get; set; } = Array.Empty<int>();
     }
 
     [MessagePackObject]

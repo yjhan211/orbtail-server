@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -36,28 +37,43 @@ public partial class GameClientSession
 
         try
         {
-            // 클라이언트 측 timestamp로 deltaTime 산출 — 서버 도착 클러스터링/지연 영향 제거.
-            // 첫 패킷이거나 시계가 뒤로 갔으면 0으로 처리 (ValidatePosition이 deltaTime>0 조건으로 검증 스킵).
-            float deltaTime;
-            if (_lastClientMoveTimestamp == 0 || msg.ClientTimestamp <= _lastClientMoveTimestamp)
-                deltaTime = 0f;
-            else
-                deltaTime = (msg.ClientTimestamp - _lastClientMoveTimestamp) / 1000f;
-            _lastClientMoveTimestamp = msg.ClientTimestamp;
-            _lastMoveTime = now;
-
-            // 1. 클라이언트 Position 검증
+            // Client timestamps are diagnostic data only. Movement authority is bounded by
+            // the server's monotonic receipt time so a forged future timestamp cannot expand
+            // the distance budget.
             if (msg.Position == null! || msg.Velocity == null!)
             {
                 Logger.LogWarning("Player {PlayerId} HandleMove: null Position/Velocity", PlayerId);
                 return;
             }
 
+            if (!MovementValidationPolicy.IsFinite(msg.Position) ||
+                !MovementValidationPolicy.IsFinite(msg.Velocity) ||
+                !float.IsFinite(msg.Rotation))
+            {
+                Logger.LogWarning("Player {PlayerId} sent a non-finite movement packet", PlayerId);
+                SendMovementCorrection(msg.InputSequence);
+                return;
+            }
+
+            if (IsStaleMoveInputSequence(msg.InputSequence))
+            {
+                Logger.LogWarning("Player {PlayerId} sent stale movement sequence {Sequence}",
+                    PlayerId, msg.InputSequence);
+                SendMovementCorrection(_lastProcessedMoveInputSequence);
+                return;
+            }
+
+            RecordMoveInputSequence(msg.InputSequence);
+            long receiptTimestamp = Stopwatch.GetTimestamp();
+            float deltaTime = GetServerReceiptDeltaSeconds(receiptTimestamp);
+            _lastMoveTime = now;
+
             var validatedPosition = ValidatePosition(
                 msg.Position,
                 msg.Velocity,
                 deltaTime,
-                out bool requiresClientCorrection);
+                out bool requiresClientCorrection,
+                out var validatedVelocity);
 
             // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
             var currentCell = WorldPositionToCell(validatedPosition);
@@ -104,6 +120,20 @@ public partial class GameClientSession
 
             // 잠긴 문 검증이 끝난 뒤 위치를 게시한다. 전투 타이머는 아래 지역 갱신까지의
             // 짧은 불일치 구간을 좌표에서 재계산한 지역과 비교해 제외한다.
+            // #214 uses closed areas as locked combat spaces, not optional hazard zones.
+            // Keep the legacy "enter and take damage" behavior for non-phase matches.
+            if (newArea != CurrentArea &&
+                newArea != AreaType.None &&
+                _survivorPhaseManager?.HasMatching(CurrentMapSubId) == true &&
+                _areaClosureManager.IsAreaClosed(CurrentMapSubId, newArea))
+            {
+                var fallbackCell = _lastValidatedPosition != null
+                    ? WorldPositionToCell(_lastValidatedPosition)
+                    : WorldPositionToCell(validatedPosition);
+                SendAreaExitBlocked(newArea, fallbackCell);
+                return;
+            }
+
             _lastValidatedPosition = validatedPosition;
             _groundItemManager.ReleaseSourcePickupBlocks(CurrentMapSubId, PlayerId.Value,
                 newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
@@ -139,7 +169,7 @@ public partial class GameClientSession
             using var packet = PacketMaker.G_TO_C_MOVE(
                 PlayerId.Value,
                 validatedPosition,
-                msg.Velocity,
+                validatedVelocity,
                 msg.Rotation,
                 currentCell,
                 msg.InputSequence,
@@ -155,8 +185,11 @@ public partial class GameClientSession
                     session.Send(packet);
             }
 
-            if (requiresClientCorrection)
+            if (requiresClientCorrection || ShouldSendMovementAcknowledgement(receiptTimestamp))
+            {
                 Send(packet);
+                _lastMoveAcknowledgementTimestamp = receiptTimestamp;
+            }
         }
         catch (Exception ex)
         {
@@ -173,12 +206,13 @@ public partial class GameClientSession
         Vector3f clientPos,
         Vector3f velocity,
         float deltaTime,
-        out bool requiresClientCorrection)
+        out bool requiresClientCorrection,
+        out Vector3f validatedVelocity)
     {
         requiresClientCorrection = false;
+        validatedVelocity = MovementValidationPolicy.ClampVelocity(velocity);
 
-        const float maxSpeed = 10f; // 최대 속도 (units/s)
-        const float tolerance = 1.5f; // 허용 오차 (50%)
+        const float maxSpeed = MovementValidationPolicy.MaximumSpeedUnitsPerSecond;
 
         // clientPos, velocity는 호출 전에 null 체크 완료
 
@@ -190,74 +224,65 @@ public partial class GameClientSession
         if (speed > maxSpeed)
         {
             Logger.LogWarning("Player {PlayerId} 속도 초과: {Speed:F2} > {MaxSpeed}", PlayerId, speed, maxSpeed);
-            // 클라이언트 위치를 신뢰하지 않고 서버 계산 위치 사용
             if (_lastValidatedPosition != null)
             {
-                var correctedVelocity = velocity.Normalized() * maxSpeed;
                 clientPos = new Vector3f(
-                    _lastValidatedPosition.X + correctedVelocity.X * deltaTime,
-                    _lastValidatedPosition.Y + correctedVelocity.Y * deltaTime,
+                    _lastValidatedPosition.X + validatedVelocity.X * deltaTime,
+                    _lastValidatedPosition.Y + validatedVelocity.Y * deltaTime,
                     0
                 );
                 requiresClientCorrection = true;
             }
         }
 
-        // 2. 이동 거리 검증 (텔레포트 방지)
-        if (_lastValidatedPosition != null && deltaTime > 0)
+        // 2. 서버가 관측한 시간 안에 가능한 거리만 허용한다. 클라이언트 timestamp는
+        // 이 예산을 늘릴 수 없으며, 첫 이동도 서버가 세션에 저장한 스폰 위치에서 시작한다.
+        if (_lastValidatedPosition != null)
         {
             var delta = clientPos - _lastValidatedPosition;
             float distance = delta.Magnitude();
-            float maxDistance = maxSpeed * deltaTime * tolerance;
+            float maxDistance = maxSpeed * deltaTime;
 
             if (distance > maxDistance)
             {
-                // The first packet may calibrate the client spawn position, but it must
-                // still pass the same wall-path validation below.
-                if (!_hasFirstMoveCalibrated)
-                {
-                    _hasFirstMoveCalibrated = true;
-                    Logger.LogInformation(
-                        "Player {PlayerId} is calibrating the initial position before path validation: distance={Distance:F2}",
-                        PlayerId, distance);
-                }
-                else
-                {
-                    Logger.LogWarning(
-                        "Player {PlayerId} teleport detected: distance={Distance:F2}, maxAllowed={MaxDistance:F2}",
-                        PlayerId, distance, maxDistance);
-                    clientPos = new Vector3f(
-                        _lastValidatedPosition.X + velocity.X * deltaTime,
-                        _lastValidatedPosition.Y + velocity.Y * deltaTime,
-                        0
-                    );
-                    requiresClientCorrection = true;
-                }
+                Logger.LogWarning(
+                    "Player {PlayerId} teleport detected: distance={Distance:F2}, maxAllowed={MaxDistance:F2}",
+                    PlayerId, distance, maxDistance);
+                var direction = delta.Normalized();
+                clientPos = new Vector3f(
+                    _lastValidatedPosition.X + direction.X * maxDistance,
+                    _lastValidatedPosition.Y + direction.Y * maxDistance,
+                    0
+                );
+                validatedVelocity = direction * maxSpeed;
+                requiresClientCorrection = true;
             }
-
         }
 
         // 3. Cell 기반 이동 가능 여부 검증 (맵 밖 이탈 방지)
         var clientCell = WorldPositionToCell(clientPos);
         if (!GameMapData.IsMoveablePosition(CurrentMapId, clientCell))
         {
-            // 장애물 셀 접촉: 서버 위치만 유지하고 클라이언트에는 보정 패킷을 보내지 않음
             if (_lastValidatedPosition is not null && _lastValidCell is not null)
             {
                 Logger.LogWarning(
                     "Player {PlayerId} 이동 불가 위치 감지: ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY}), 보정 → ({VX:F2},{VY:F2})",
                     PlayerId, clientPos.X, clientPos.Y, clientCell.X, clientCell.Y,
                     _lastValidatedPosition.X, _lastValidatedPosition.Y);
+                requiresClientCorrection = true;
+                validatedVelocity = new Vector3f(0f, 0f, 0f);
                 return _lastValidatedPosition;
             }
 
-            // 마지막 유효 위치가 없으면 (첫 이동) 클라이언트 위치 그대로 사용 (초기 스폰 위치 신뢰)
             Logger.LogWarning(
-                "Player {PlayerId} 이동 불가 위치 감지 (첫 이동): ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY})",
+                "Player {PlayerId} 이동 불가 위치 감지 (초기 위치): ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY})",
                 PlayerId, clientPos.X, clientPos.Y, clientCell.X, clientCell.Y);
+            requiresClientCorrection = true;
+            validatedVelocity = new Vector3f(0f, 0f, 0f);
+            return _lastValidatedPosition ?? clientPos;
         }
 
-        // 4. 검증 통과: 유효 위치 업데이트
+        // 4. 중간 벽 셀을 건너뛰는 이동 차단
         if (_lastValidatedPosition is not null && _lastValidCell is not null &&
             !GridMovementTraversal.IsTraversable(
                 _lastValidCell,
@@ -268,13 +293,80 @@ public partial class GameClientSession
                 "Player {PlayerId} attempted to cross an impassable cell: From=({FromX},{FromY}), To=({ToX},{ToY})",
                 PlayerId, _lastValidCell.X, _lastValidCell.Y, clientCell.X, clientCell.Y);
             requiresClientCorrection = true;
+            validatedVelocity = new Vector3f(0f, 0f, 0f);
             return _lastValidatedPosition;
         }
 
+        // 원본 속도가 아니라 서버가 승인한 위치 변화에서 원격 표시용 속도를 산출한다.
+        if (_lastValidatedPosition is not null && deltaTime > 0f)
+        {
+            var acceptedDelta = clientPos - _lastValidatedPosition;
+            validatedVelocity = MovementValidationPolicy.ClampVelocity(new Vector3f(
+                acceptedDelta.X / deltaTime,
+                acceptedDelta.Y / deltaTime,
+                0f));
+        }
         _lastValidCell = clientCell;
 
         // 검증 통과: 클라이언트 Position 사용
         return clientPos;
+    }
+
+    private bool IsStaleMoveInputSequence(uint sequence)
+    {
+        if (!_hasProcessedMoveInputSequence || sequence == _lastProcessedMoveInputSequence)
+            return false;
+
+        // Unsigned subtraction keeps the ordering valid across uint wrap-around.
+        return (uint)(sequence - _lastProcessedMoveInputSequence) > uint.MaxValue / 2;
+    }
+
+    private void RecordMoveInputSequence(uint sequence)
+    {
+        if (!_hasProcessedMoveInputSequence || sequence != _lastProcessedMoveInputSequence)
+        {
+            _lastProcessedMoveInputSequence = sequence;
+            _hasProcessedMoveInputSequence = true;
+        }
+    }
+    private float GetServerReceiptDeltaSeconds(long receiptTimestamp)
+    {
+        if (_lastMoveReceiptTimestamp == 0)
+        {
+            _lastMoveReceiptTimestamp = receiptTimestamp;
+            return MovementValidationPolicy.InitialReceiptDeltaSeconds;
+        }
+
+        double elapsedSeconds = (receiptTimestamp - _lastMoveReceiptTimestamp) / (double)Stopwatch.Frequency;
+        _lastMoveReceiptTimestamp = receiptTimestamp;
+        return MovementValidationPolicy.ClampReceiptDeltaSeconds(elapsedSeconds);
+    }
+
+    private bool ShouldSendMovementAcknowledgement(long receiptTimestamp)
+    {
+        if (_lastMoveAcknowledgementTimestamp == 0)
+            return true;
+
+        double elapsedSeconds = (receiptTimestamp - _lastMoveAcknowledgementTimestamp) / (double)Stopwatch.Frequency;
+        return elapsedSeconds >= MovementValidationPolicy.MovementAcknowledgementIntervalSeconds;
+    }
+
+    private void SendMovementCorrection(uint inputSequence)
+    {
+        if (!PlayerId.HasValue || _lastValidatedPosition is not { } position)
+            return;
+
+        var cell = _lastValidCell ?? WorldPositionToCell(position);
+        using var packet = PacketMaker.G_TO_C_MOVE(
+            PlayerId.Value,
+            position,
+            new Vector3f(0f, 0f, 0f),
+            _lastValidatedRotation,
+            cell,
+            inputSequence,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        Send(packet);
+        _lastMoveAcknowledgementTimestamp = Stopwatch.GetTimestamp();
     }
 
     #region Isometric 좌표 변환 (Unity Isometric Z as Y 타일맵)

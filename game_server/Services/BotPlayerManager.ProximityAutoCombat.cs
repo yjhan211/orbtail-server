@@ -119,9 +119,9 @@ public partial class BotPlayerManager
             return;
         }
 
-        // Corridors are transit only. A closing room blocks combat only while a
-        // refuge still exists; after the final closure bots must keep fighting.
-        if (bot.CurrentArea.IsCorridor() || bot.EvacuationDestination != AreaType.None ||
+        // Evacuation takes priority over combat. Outside evacuation windows,
+        // corridor combat remains available during Survivor Royale phases.
+        if (bot.EvacuationDestination != AreaType.None ||
             (IsAreaClosingOrClosed(closureManager, matchingId, bot.CurrentArea) &&
              HasOpenNonCorridorRefuge(matchingId, closureManager)))
         {

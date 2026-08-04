@@ -94,6 +94,9 @@ public partial class GameServer
         var finalMonsterStates = new MonsterSnapshotAccumulator();
         foreach (var attack in attacks)
         {
+            if (!_survivorPhaseManager.IsPveAllowed(matchingId, attack.Area))
+                continue;
+
             int primaryMonsterId = checked((int)-attack.TargetPlayerId);
             if (!monsterTargetsById.TryGetValue(primaryMonsterId, out var primaryTarget))
                 continue;
@@ -158,6 +161,10 @@ public partial class GameServer
         finalMonsterStates.Record(result.State);
         if (result.Killed)
         {
+            if (result.State.IsCore)
+                _survivorPhaseManager.ReportCoreDefeated(
+                    matchingId, attack.AttackerPlayerId, result.State.AreaType);
+
             _gameEventLogManager.LogEmotionAfterimageKilled(
                 matchingId,
                 result.State.MonsterId,
@@ -212,6 +219,9 @@ public partial class GameServer
     private void ApplyMonsterAttack(long matchingId, MonsterAttack attack,
         IReadOnlyCollection<GameClientSession> matchingSessions, IReadOnlyCollection<BotPlayerState> matchingBots)
     {
+        if (!_survivorPhaseManager.IsPveAllowed(matchingId, attack.Area))
+            return;
+
         BroadcastMonsterAttackVfx(attack, matchingSessions);
 
         var targetSession = matchingSessions.FirstOrDefault(session =>

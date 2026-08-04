@@ -28,13 +28,21 @@ public sealed class EmotionAfterimageMonsterManager
 
     private const int MinAmbientCorridorAliveLimit = 3;
     private readonly ConcurrentDictionary<long, MatchingMonsterState> _matchingStates = new();
+    private readonly bool _ambientCorridorEnabled;
     private Action<long>? _matchingStateRemoved;
+
+    public EmotionAfterimageMonsterManager(bool ambientCorridorEnabled = true)
+    {
+        _ambientCorridorEnabled = ambientCorridorEnabled;
+    }
 
     public void InitializeMatching(long matchingId)
     {
         if (matchingId <= 0 || IsSoloMapValidationEnabled) return;
         _matchingStates.GetOrAdd(matchingId,
-            id => new MatchingMonsterState(EmotionAfterimageMonsterSpawnData.CreateDefinitionsForMatching(id)));
+            id => new MatchingMonsterState(
+                EmotionAfterimageMonsterSpawnData.CreateDefinitionsForMatching(id),
+                _ambientCorridorEnabled));
     }
 
     private static bool IsSoloMapValidationEnabled =>
@@ -103,6 +111,15 @@ public sealed class EmotionAfterimageMonsterManager
         closedAreas.Count > 0 && _matchingStates.TryGetValue(matchingId, out var state)
         && state.ApplyAreaClosureAndQueueWave(closedAreas, nowUtc);
 
+    public IReadOnlyList<MonsterRuntimeInfo> ApplyPhaseSnapshot(
+        long matchingId,
+        IReadOnlyCollection<AreaType> openAreas,
+        bool beginRoomWave,
+        int stageIndex,
+        DateTime nowUtc) =>
+        _matchingStates.TryGetValue(matchingId, out var state)
+            ? state.ApplyPhaseSnapshot(openAreas, beginRoomWave, stageIndex, nowUtc)
+            : [];
     private sealed class MatchingMonsterState
     {
         private readonly object _sync = new();
@@ -112,11 +129,13 @@ public sealed class EmotionAfterimageMonsterManager
         private readonly Dictionary<AreaType, ReinforcementAreaState> _reinforcements = [];
         private readonly List<PendingWavePack> _pendingWavePacks = [];
         private int _waveIndex;
+        private readonly bool _ambientCorridorEnabled;
         private DateTime _nextAmbientCorridorSpawnAtUtc = DateTime.MinValue;
         private DateTime _nextDensitySampleAtUtc = DateTime.MinValue;
 
-        public MatchingMonsterState(IEnumerable<MonsterDefinition> definitions)
+        public MatchingMonsterState(IEnumerable<MonsterDefinition> definitions, bool ambientCorridorEnabled)
         {
+            _ambientCorridorEnabled = ambientCorridorEnabled;
             var materialized = definitions.ToList();
             _monsters = materialized.ToDictionary(definition => definition.MonsterId,
                 definition => new MonsterState(definition));
@@ -233,6 +252,79 @@ public sealed class EmotionAfterimageMonsterManager
             }
         }
 
+        public IReadOnlyList<MonsterRuntimeInfo> ApplyPhaseSnapshot(
+            IReadOnlyCollection<AreaType> openAreas,
+            bool beginRoomWave,
+            int stageIndex,
+            DateTime nowUtc)
+        {
+            lock (_sync)
+            {
+                var open = openAreas.ToHashSet();
+                var changed = new Dictionary<int, MonsterRuntimeInfo>();
+                _closedAreas.Clear();
+                foreach (AreaType area in _monsters.Values.Select(monster => monster.Definition.Area).Distinct())
+                {
+                    if (!open.Contains(area))
+                        _closedAreas.Add(area);
+                }
+
+                _pendingWavePacks.RemoveAll(pack =>
+                {
+                    var member = _monsters.Values.FirstOrDefault(monster =>
+                        monster.Definition.ClusterId == pack.ClusterId);
+                    return member == null || _closedAreas.Contains(member.Definition.Area);
+                });
+                foreach (AreaType area in _reinforcements.Keys.Where(_closedAreas.Contains).ToList())
+                    _reinforcements.Remove(area);
+                _activeHotspotAreas.RemoveWhere(_closedAreas.Contains);
+
+                foreach (var monster in _monsters.Values.Where(monster =>
+                             monster.IsAlive && _closedAreas.Contains(monster.Definition.Area)))
+                {
+                    monster.Deactivate();
+                    changed[monster.Definition.MonsterId] = ToRuntimeInfo(monster);
+                }
+
+                if (!beginRoomWave)
+                    return changed.Values.OrderBy(monster => monster.MonsterId).ToList();
+
+                _waveIndex = Math.Max(0, stageIndex);
+                _pendingWavePacks.Clear();
+                foreach (var monster in _monsters.Values.Where(monster =>
+                             !monster.Definition.IsAmbientCorridor && open.Contains(monster.Definition.Area)))
+                {
+                    if (monster.IsAlive)
+                    {
+                        monster.Deactivate();
+                        changed[monster.Definition.MonsterId] = ToRuntimeInfo(monster);
+                    }
+                }
+
+                foreach (AreaType area in open.Where(area => !area.IsCorridor()))
+                {
+                    var pack = _monsters.Values
+                        .Where(monster => !monster.Definition.IsAmbientCorridor &&
+                                          monster.Definition.Area == area)
+                        .GroupBy(monster => monster.Definition.ClusterId)
+                        .Where(group => group.Any(monster => monster.Definition.IsCore))
+                        .OrderBy(group => group.Min(monster => monster.Definition.SpawnPriority))
+                        .FirstOrDefault();
+                    if (pack == null)
+                        continue;
+
+                    foreach (var monster in pack)
+                    {
+                        monster.ActivateAtHome(stageIndex);
+                        changed[monster.Definition.MonsterId] = ToRuntimeInfo(monster);
+                    }
+                    ActivateHotspot(area, stageIndex);
+                }
+
+                _nextAmbientCorridorSpawnAtUtc = nowUtc;
+                return changed.Values.OrderBy(monster => monster.MonsterId).ToList();
+            }
+        }
         public bool ApplyAreaClosureAndQueueWave(IReadOnlyCollection<AreaType> closedAreas, DateTime nowUtc)
         {
             lock (_sync)
@@ -559,7 +651,7 @@ public sealed class EmotionAfterimageMonsterManager
         private int SpawnAmbientCorridorMonster(IReadOnlyList<MonsterSpatialTarget> possibleTargets, DateTime nowUtc,
             ICollection<MonsterRuntimeInfo> changed)
         {
-            if (nowUtc < _nextAmbientCorridorSpawnAtUtc)
+            if (!_ambientCorridorEnabled || nowUtc < _nextAmbientCorridorSpawnAtUtc)
                 return 0;
 
             var corridorTargets = possibleTargets

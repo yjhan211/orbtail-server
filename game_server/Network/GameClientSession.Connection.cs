@@ -1271,7 +1271,11 @@ public partial class GameClientSession
         foreach (var closedArea in snapshot.ClosedAreas)
         {
             using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED { AreaType = closedArea }));
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
+            {
+                AreaType = closedArea,
+                SuppressAlert = true
+            }));
             Send(packet);
         }
 
@@ -1314,6 +1318,40 @@ public partial class GameClientSession
 
     private void SendRoundStateSnapshot(long matchingId)
     {
+        if (_survivorPhaseManager?.HasMatching(matchingId) == true)
+        {
+            var survivor = _survivorPhaseManager.GetSnapshot(matchingId);
+            var visibleNextRooms = survivor.Phase is
+                SurvivorMatchPhase.CORRIDOR_ENTRY or
+                SurvivorMatchPhase.CORRIDOR_COMBAT or
+                SurvivorMatchPhase.ROOM_SELECTION or
+                SurvivorMatchPhase.CORRIDOR_CLOSURE_WARNING
+                    ? survivor.NextRooms
+                    : [];
+            var matchingSessions = _getSessionsByInstance(CurrentMapId, matchingId);
+            var matchingBots = _botPlayerManager.GetBots(matchingId);
+            int[] visibleNextRoomAreaTypes = visibleNextRooms
+                .Select(area => (int)area)
+                .ToArray();
+            int[] visibleNextRoomOccupancies = visibleNextRooms
+                .Select(area => System.Math.Min(2,
+                    matchingSessions.Count(session => !session.IsEliminated && session.CurrentArea == area) +
+                    matchingBots.Count(bot => !bot.IsEliminated && bot.CurrentArea == area)))
+                .ToArray();
+            using var survivorPacket = PacketMaker.G_TO_C_ROUND_STATE(
+                matchingId,
+                survivor.StageIndex + 1,
+                5,
+                SurvivorPhaseManager.ToRoundPhase(survivor.Phase),
+                survivor.RemainingSeconds,
+                SurvivorPhaseManager.GetPhaseDurationSeconds(survivor.Phase),
+                survivor.Phase == SurvivorMatchPhase.FINISHED,
+                visibleNextRoomAreaTypes,
+                visibleNextRoomOccupancies);
+            Send(survivorPacket);
+            return;
+        }
+
         if (!Config.ROUND_SYSTEM_ENABLED)
             return;
 

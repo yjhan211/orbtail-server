@@ -87,6 +87,41 @@ public class AreaClosureManager
     /// 접속·재접속한 클라이언트가 즉시 복원해야 하는 공개 폐쇄 상태다.
     /// 미래 웨이브 대상은 노출하지 않고, 현재 방송 중인 대상 묶음만 제공한다.
     /// </summary>
+    public PhaseAreaStateDelta ApplyPhaseSnapshot(long matchingId, SurvivorPhaseSnapshot snapshot)
+    {
+        if (!_states.TryGetValue(matchingId, out var state))
+            state = InitializeMatching(matchingId);
+
+        lock (state.SyncRoot)
+        {
+            var managedAreas = GameMapData.GetAreas(MapId.School)
+                .Select(region => region.AreaType)
+                .Where(area => area != AreaType.None)
+                .ToHashSet();
+            var desiredClosedAreas = managedAreas
+                .Where(area => !snapshot.OpenAreas.Contains(area))
+                .ToHashSet();
+            var newlyClosedAreas = desiredClosedAreas.Except(state.ClosedAreas).OrderBy(area => area).ToArray();
+            var reopenedAreas = state.ClosedAreas.Except(desiredClosedAreas).OrderBy(area => area).ToArray();
+            bool warningChanged = !state.PhaseWarningAreas.SetEquals(snapshot.WarningAreas);
+
+            state.PhaseDriven = true;
+            state.ClosedAreas = desiredClosedAreas;
+            state.PhaseWarningAreas = snapshot.WarningAreas.ToHashSet();
+            state.PhaseWarningEndsAtUtc = snapshot.WarningAreas.Count > 0
+                ? snapshot.PhaseEndsAtUtc
+                : DateTime.MinValue;
+
+            return new PhaseAreaStateDelta(
+                newlyClosedAreas,
+                reopenedAreas,
+                warningChanged ? snapshot.WarningAreas.ToArray() : [],
+                snapshot.RemainingSeconds,
+                snapshot.PhaseEndsAtUtc == DateTime.MaxValue
+                    ? 0
+                    : new DateTimeOffset(snapshot.PhaseEndsAtUtc).ToUnixTimeMilliseconds());
+        }
+    }
     public ClosureClientStateSnapshot GetClientStateSnapshot(long matchingId)
     {
         if (!_states.TryGetValue(matchingId, out var state))
@@ -94,6 +129,23 @@ public class AreaClosureManager
 
         lock (state.SyncRoot)
         {
+            if (state.PhaseDriven)
+            {
+                int phaseWarningSeconds = state.PhaseWarningEndsAtUtc == DateTime.MinValue
+                    ? 0
+                    : Math.Max(0, (int)Math.Ceiling((state.PhaseWarningEndsAtUtc - _utcNow()).TotalSeconds));
+                long phaseClosureAtUnixMs = state.PhaseWarningEndsAtUtc == DateTime.MinValue
+                    ? 0
+                    : new DateTimeOffset(state.PhaseWarningEndsAtUtc).ToUnixTimeMilliseconds();
+                return new ClosureClientStateSnapshot(
+                    state.ClosedAreas.OrderBy(area => area).ToArray(),
+                    state.PhaseWarningAreas.OrderBy(area => area).ToArray(),
+                    phaseWarningSeconds,
+                    phaseClosureAtUnixMs,
+                    0,
+                    0);
+            }
+
             double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
             var closedAreas = state.ClosedAreas.OrderBy(area => (int)area).ToArray();
 
@@ -142,6 +194,9 @@ public class AreaClosureManager
 
         lock (state.SyncRoot)
         {
+            if (state.PhaseDriven)
+                return ClosureScheduleTick.Empty;
+
             double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
             var closedAreas = new List<AreaType>();
 
@@ -246,7 +301,7 @@ public class AreaClosureManager
     /// <summary>전역 오버타임 단계. 마지막 복도 폐쇄 완료 시각(5:20)부터 시작한다.</summary>
     private int GetOvertimeCorruptionPerSecond(MatchingClosureState state)
     {
-        if (state.Waves.Count == 0) return 0;
+        if (state.PhaseDriven || state.Waves.Count == 0) return 0;
 
         double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
         double overtimeStartSeconds = state.Waves[^1].ClosureAtSeconds;
@@ -259,6 +314,8 @@ public class AreaClosureManager
 
     private static int GetCurrentClosedAreaCorruptionPerSecond(MatchingClosureState state)
     {
+        if (state.PhaseDriven) return 4;
+
         int lastClosedWaveIndex = state.NextClosureIndex - 1;
         return lastClosedWaveIndex >= 0 && lastClosedWaveIndex < state.Waves.Count
             ? state.Waves[lastClosedWaveIndex].ClosedAreaCorruptionPerSecond
@@ -327,6 +384,12 @@ public sealed record ClosureScheduleTick(
     public static readonly ClosureScheduleTick Empty = new([], 0, 0, []);
 }
 
+public sealed record PhaseAreaStateDelta(
+    IReadOnlyList<AreaType> ClosedAreas,
+    IReadOnlyList<AreaType> ReopenedAreas,
+    IReadOnlyList<AreaType> WarningAreas,
+    int WarningSeconds,
+    long TransitionAtUnixMs);
 public sealed record ClosureClientStateSnapshot(
     IReadOnlyList<AreaType> ClosedAreas,
     IReadOnlyList<AreaType> WarningAreas,
@@ -367,4 +430,7 @@ public class MatchingClosureState
     public bool GlobalClosureActiveSent { get; set; }
     public int StartDelaySec { get; set; }
     public int IntervalSec { get; set; }
+    public bool PhaseDriven { get; set; }
+    public HashSet<AreaType> PhaseWarningAreas { get; set; } = [];
+    public DateTime PhaseWarningEndsAtUtc { get; set; }
 }

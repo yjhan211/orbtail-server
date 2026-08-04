@@ -476,7 +476,7 @@ public class MatchingManager : IMatchingManager
         var playerIds = chain
             .Select(link => MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry).PlayerId)
             .ToList();
-        var assignments = SurvivorRoyaleSpawnData.CreateAssignments(matchingId, playerIds);
+        var assignments = SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
 
         foreach (var link in chain)
         {

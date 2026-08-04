@@ -32,6 +32,7 @@ public partial class GameClientSession : SessionBase
     private static readonly object _roundSessionStartLock = new();
     internal static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
     private static Proto0PresenceTracker? _presenceTracker;
+    private static SurvivorPhaseManager? _survivorPhaseManager;
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly List<int> _activeBuffIds = new();
     private readonly AreaRuleManager _areaRuleManager;
@@ -88,8 +89,11 @@ public partial class GameClientSession : SessionBase
     private Cell? _lastValidCell;
 
     private float _lastValidatedRotation;
-    private bool _hasFirstMoveCalibrated;
-    private long _lastClientMoveTimestamp; // 클라이언트 측 Unix ms — 패킷 클러스터 영향 없는 정확한 deltaTime 계산용
+    // Stopwatch ticks: client timestamps are telemetry only and never extend movement authority.
+    private long _lastMoveReceiptTimestamp;
+    private long _lastMoveAcknowledgementTimestamp;
+    private bool _hasProcessedMoveInputSequence;
+    private uint _lastProcessedMoveInputSequence;
 
     // 플레이어 상호작용 요청 상태
     private long? _pendingInteractPlayerId;
@@ -241,6 +245,18 @@ public partial class GameClientSession : SessionBase
         }
     }
 
+    internal static void SetSurvivorPhaseManager(SurvivorPhaseManager manager)
+    {
+        _survivorPhaseManager = manager;
+    }
+
+    private bool IsSurvivorBoardActionLocked()
+    {
+        return CurrentMapSubId > 0 &&
+               _survivorPhaseManager is { } manager &&
+               manager.HasMatching(CurrentMapSubId) &&
+               !manager.AreOrbBoardActionsAllowed(CurrentMapSubId, CurrentArea);
+    }
     internal static bool IsRoundActionPhase(long matchingId)
     {
         if (!MatchStartGate.IsGameplayActive(matchingId))

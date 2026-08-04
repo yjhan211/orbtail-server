@@ -156,6 +156,7 @@ public partial class GameServer
             actors);
         var projectileHits = projectileResolutions
             .SelectMany(resolution => resolution.Hits)
+            .Where(attack => _survivorPhaseManager.IsPvpAllowed(matchingId, attack.Area))
             .ToList();
         if (projectileResolutions.Count > 0)
             _gameEventLogManager.LogDodgeableProjectileResolutions(matchingId, projectileResolutions);
@@ -178,7 +179,7 @@ public partial class GameServer
             matchingId,
             combatTargets,
             nowUtc,
-            ProximityCombatLineOfSight.CanTarget,
+            (attacker, target) => CanResolveSurvivorPhaseCombatTarget(matchingId, attacker, target),
             onTargetAcquired: targetEvent =>
                 _gameEventLogManager.LogSurvivorTargetAcquired(
                     matchingId,
@@ -277,6 +278,18 @@ public partial class GameServer
             combatTargets);
         ApplyPlayerOrbDamageToEmotionAfterimageMonsters(
             matchingId, monsterAttacks, aliveMonsterTargets, nowUtc, matchingSessions);
+    }
+    private bool CanResolveSurvivorPhaseCombatTarget(
+        long matchingId,
+        ProximityCombatActor attacker,
+        ProximityCombatActor target)
+    {
+        if (!ProximityCombatLineOfSight.CanTarget(attacker, target))
+            return false;
+
+        return attacker.IsMonsterTarget || target.IsMonsterTarget
+            ? _survivorPhaseManager.IsPveAllowed(matchingId, attacker.Area)
+            : _survivorPhaseManager.IsPvpAllowed(matchingId, attacker.Area);
     }
     private List<ProximityCombatActor> BuildProximityCombatActors(
         long matchingId,
@@ -752,7 +765,7 @@ public partial class GameServer
         {
             var attack = pendingAttacks.Dequeue();
             int damage = attack.Damage;
-            if (damage <= 0)
+            if (damage <= 0 || !_survivorPhaseManager.IsPvpAllowed(matchingId, attack.Area))
                 continue;
 
             bool attackerStillValid = matchingSessions.Any(session =>
